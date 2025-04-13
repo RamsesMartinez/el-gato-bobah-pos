@@ -34,6 +34,7 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
             isSelected={category.id === selectedCategory}
             onClick={() => onCategoryClick(category)}
             index={index}
+            totalCategories={categories.length}
           />
         ))}
       </SimpleGrid>

@@ -8,6 +8,7 @@ interface CategoryCardProps {
   isSelected?: boolean;
   onClick: () => void;
   index: number;
+  totalCategories: number;
 }
 
 const toTitleCase = (str: string): string => {
@@ -22,9 +23,10 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   category,
   isSelected = false,
   onClick,
-  index
+  index,
+  totalCategories
 }) => {
-  const style = imageService.getCategoryStyle(index);
+  const style = imageService.getCategoryStyle(index, totalCategories);
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const textColor = useColorModeValue('gray.800', 'gray.100');
   const shadowColor = useColorModeValue('rgba(0,0,0,0.1)', 'rgba(0,0,0,0.3)');
