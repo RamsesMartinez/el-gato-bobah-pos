@@ -1,53 +1,27 @@
-import { env } from '../config/env';
-
-interface CategoryStyle {
-  background: string;
-  color: string;
-}
+import { CategoryStyle } from '../types/category';
 
 export class ImageService {
-  private readonly defaultCategoryImage: string;
-  private styleCache: Map<string, CategoryStyle>;
-
-  constructor() {
-    this.defaultCategoryImage = process.env.REACT_APP_DEFAULT_CATEGORY_IMAGE || '';
-    this.styleCache = new Map();
-  }
-
   getCategoryStyle(categoryId: string): CategoryStyle {
-    // Usar caché para evitar recálculos
-    const cacheKey = categoryId;
-    if (this.styleCache.has(cacheKey)) {
-      return this.styleCache.get(cacheKey)!;
-    }
+    // Convertir el ID en un número más continuo
+    const hash = categoryId.split('').reduce((acc, char, index) => {
+      return acc + (char.charCodeAt(0) * (index + 1));
+    }, 0);
 
-    const hue = this.generateHue(categoryId);
-    const saturation = 65 + (Math.abs(this.generateHash(categoryId)) % 20);
+    // Generar un tono base (hue) entre 0 y 360
+    const hue = hash % 360;
     
-    // Generar un estilo más distintivo y profesional
-    const style = {
+    // Mantener la saturación y luminosidad constantes para coherencia
+    const saturation = 85;
+    const lightness = 95;
+    const textLightness = 25;
+
+    return {
       background: `linear-gradient(135deg, 
-        hsl(${hue}, ${saturation}%, 97%) 0%, 
-        hsl(${hue}, ${saturation + 10}%, 92%) 50%,
-        hsl(${hue}, ${saturation + 5}%, 88%) 100%
+        hsl(${hue}, ${saturation - 25}%, ${lightness}%) 0%,
+        hsl(${hue}, ${saturation - 15}%, ${lightness - 5}%) 100%
       )`,
-      color: `hsl(${hue}, ${saturation + 15}%, 35%)`
+      color: `hsl(${hue}, ${saturation}%, ${textLightness}%)`
     };
-
-    this.styleCache.set(cacheKey, style);
-    return style;
-  }
-
-  private generateHue(id: string): number {
-    return Math.abs(this.generateHash(id) % 360);
-  }
-
-  private generateHash(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return hash;
   }
 }
 

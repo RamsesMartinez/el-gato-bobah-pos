@@ -37,10 +37,8 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
       borderRadius="xl"
       cursor="pointer"
       width="full"
-      minW="180px"
-      height="auto"
-      aspectRatio="1.2"
       position="relative"
+      aspectRatio="1"
       transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
       onClick={onClick}
       role="button"
@@ -51,7 +49,8 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         boxShadow: `0 0 0 3px ${style.color}40`,
       }}
       _hover={{
-        transform: isSelected ? 'scale(0.98)' : 'scale(1.03)',
+        transform: isSelected ? 'scale(0.98)' : 'scale(1.02)',
+        boxShadow: 'lg',
       }}
     >
       {/* Fondo con gradiente y efectos */}
@@ -68,24 +67,20 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         _hover={{
           opacity: 1,
           borderColor: style.color,
-          boxShadow: `0 10px 15px -3px ${shadowColor}, 0 4px 6px -2px ${shadowColor}`,
         }}
       />
 
       {/* Título centrado */}
       <Text
         position="relative"
-        fontSize={{ base: "xl", md: "2xl" }}
-        fontWeight="700"
+        fontSize={{ base: "sm", sm: "md", md: "lg", lg: "xl" }}
+        fontWeight="600"
         color={textColor}
         textAlign="center"
         lineHeight="shorter"
-        letterSpacing="tight"
-        px={6}
-        py={4}
-        maxW="95%"
-        whiteSpace="pre-wrap"
-        wordBreak="break-word"
+        px={{ base: 2, sm: 3, md: 4 }}
+        maxW="90%"
+        noOfLines={2}
       >
         {toTitleCase(category.attributes.name)}
       </Text>
