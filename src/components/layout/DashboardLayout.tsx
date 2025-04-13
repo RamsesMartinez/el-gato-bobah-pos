@@ -7,6 +7,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { Product } from '../../types/sales';
 import { FudoCategory } from '../../types/fudo';
 import { categoryService } from '../../services/api/categories';
+import { productService } from '../../services/api/products';
 
 interface CurrentSale {
   items: Array<{
@@ -40,27 +41,12 @@ export const DashboardLayout: React.FC = () => {
     // Cargar categorías y productos
     const loadData = async () => {
       try {
+        // Cargar categorías
         const categoriesResponse = await categoryService.getCategories();
-        const allProductsCategory: FudoCategory = {
-          type: 'ProductCategory',
-          id: 'all',
-          attributes: {
-            enableOnlineMenu: true,
-            name: 'Todos los productos',
-            preparationTime: null,
-            position: 0,
-          },
-          relationships: {
-            kitchen: { data: null },
-            parentCategory: { data: null },
-            products: { data: [] },
-          },
-        };
-        setCategories([allProductsCategory, ...categoriesResponse.data]);
-        setSelectedCategory('all');
+        setCategories(categoriesResponse.data);
 
-        // Cargar productos de todas las categorías
-        const productsResponse = await categoryService.getProductsByCategory('all');
+        // Cargar todos los productos
+        const productsResponse = await productService.getProducts();
         setProducts(productsResponse.data.map((p: any) => ({
           id: p.id,
           name: p.attributes.name,
@@ -107,9 +93,10 @@ export const DashboardLayout: React.FC = () => {
     setHasChanges(false);
   };
 
-  const filteredProducts = selectedCategory === 'all'
-    ? products
-    : products.filter(product => product.category === selectedCategory);
+  // Filtrar productos por categoría seleccionada
+  const filteredProducts = selectedCategory
+    ? products.filter(product => product.category === selectedCategory)
+    : products;
 
   return (
     <div style={{

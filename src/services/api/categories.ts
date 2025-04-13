@@ -1,5 +1,5 @@
 import api from './axios';
-import { FudoCategory, FudoResponse } from '../../types/fudo';
+import { FudoCategory, FudoProduct, FudoResponse } from '../../types/fudo';
 
 // Función adaptadora para transformar los datos de Fudo al formato FudoCategory
 function adaptFudoCategory(category: any): FudoCategory {
@@ -20,6 +20,37 @@ function adaptFudoCategory(category: any): FudoCategory {
   };
 }
 
+// Función adaptadora para transformar los datos de Fudo al formato FudoProduct
+function adaptFudoProduct(product: any): FudoProduct {
+  return {
+    type: "Product",
+    id: product.id,
+    attributes: {
+      name: product.attributes.name,
+      description: product.attributes.description || null,
+      price: product.attributes.price || 0,
+      imageUrl: product.attributes.imageUrl || null,
+      active: product.attributes.active || true,
+      code: product.attributes.code || null,
+      cost: product.attributes.cost || null,
+      enableOnlineMenu: product.attributes.enableOnlineMenu || null,
+      enableQrMenu: product.attributes.enableQrMenu || null,
+      favourite: product.attributes.favourite || null,
+      position: product.attributes.position || 0,
+      preparationTime: product.attributes.preparationTime || null,
+      sellAlone: product.attributes.sellAlone || true,
+      stock: product.attributes.stock || null,
+      stockControl: product.attributes.stockControl || false
+    },
+    relationships: {
+      kitchen: { data: product.relationships?.kitchen?.data || null },
+      productCategory: { data: product.relationships?.productCategory?.data || null },
+      productModifiersGroups: { data: product.relationships?.productModifiersGroups?.data || [] },
+      productProportions: { data: product.relationships?.productProportions?.data || [] }
+    }
+  };
+}
+
 export class CategoryService {
   // Obtener todas las categorías con sus productos
   async getCategories(): Promise<FudoResponse<FudoCategory>> {
@@ -29,7 +60,6 @@ export class CategoryService {
         include: 'products'
       }
     });
-    console.log('Respuesta completa de categorías:', response.data); // Para debug
     const adaptedCategories: FudoCategory[] = response.data.data.map(adaptFudoCategory);
     return { data: adaptedCategories };
   }
@@ -41,20 +71,52 @@ export class CategoryService {
         include: 'products'
       }
     });
-    console.log('Respuesta de categoría específica:', response.data); // Para debug
     const adaptedCategory = adaptFudoCategory(response.data.data);
     return { data: [adaptedCategory] };
   }
 
   // Obtener productos por categoría
-  async getProductsByCategory(categoryId: string): Promise<FudoResponse<any>> {
-    const response = await api.get<any>(`/product-categories/${categoryId}`, {
-      params: {
-        include: 'products'
+  async getProductsByCategory(categoryId: string): Promise<FudoResponse<FudoProduct | FudoCategory>> {
+    console.log('🔍 DEBUG - Servicio: Solicitando productos para categoría:', categoryId);
+    
+    try {
+      // Primero obtenemos la información de la categoría
+      const categoryResponse = await this.getCategoryById(categoryId);
+      const category = categoryResponse.data[0];
+
+      // Luego obtenemos los productos filtrados por categoría
+      const response = await api.get<any>('/products', {
+        params: {
+          'filter[categoryId]': `eq.${categoryId}`,
+          'filter[active]': true,
+          'sort': 'position'
+        }
+      });
+      
+      console.log('🔍 DEBUG - Servicio: Respuesta cruda del API:', {
+        data: response.data.data
+      });
+
+      if (!response.data.data) {
+        throw new Error('No se recibieron datos de productos');
       }
-    });
-    console.log('Respuesta de productos por categoría:', response.data); // Para debug
-    return response.data;
+      
+      // Adaptar los productos
+      const rawProducts: any[] = response.data.data;
+      const products = rawProducts
+        .map(adaptFudoProduct)
+        .filter(product => product.attributes.active);
+      
+      console.log('🔍 DEBUG - Servicio: Productos adaptados:', products);
+
+      // Devolver tanto la categoría como los productos
+      return {
+        data: [category, ...products]
+      };
+    } catch (error) {
+      console.error('❌ ERROR - Error en getProductsByCategory:', error);
+      throw error;
+    }
   }
 }
 

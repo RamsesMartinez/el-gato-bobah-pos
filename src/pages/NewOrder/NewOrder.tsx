@@ -16,7 +16,11 @@ const NewOrder: React.FC = () => {
     const fetchCategories = async () => {
       try {
         const response = await categoryService.getCategories();
-        setCategories(response.data);
+        // Filtrar solo las categorías activas que tienen productos
+        const activeCategories = response.data.filter(category => 
+          category.relationships.products.data.length > 0
+        );
+        setCategories(activeCategories);
       } catch (error) {
         console.error('Error fetching categories:', error);
       } finally {
@@ -29,7 +33,18 @@ const NewOrder: React.FC = () => {
 
   const handleCategoryClick = async (category: FudoCategory) => {
     try {
-      console.log('Navegando a categoría:', category);
+      console.log('🔍 DEBUG - Categoría seleccionada:', {
+        id: category.id,
+        name: category.attributes.name,
+        products: category.relationships.products.data
+      });
+      
+      // Verificar que la categoría tenga un ID válido
+      if (!category.id) {
+        console.error('Error: Categoría sin ID');
+        return;
+      }
+      
       navigate(`/sales/category/${category.id}`);
     } catch (error) {
       console.error('Error al seleccionar categoría:', error);
