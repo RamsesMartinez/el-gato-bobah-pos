@@ -6,6 +6,8 @@ import { useTheme } from '../../hooks/useTheme';
 import { FudoSale } from '../../types/fudo';
 import { saleService } from '../../services/api/sales';
 import { ROUTES } from '../../constants/routes';
+import { SALE_STATES, SALE_STATE_GROUPS, isStateInGroup } from '../../constants/saleStates';
+import { SaleState } from '../../types/filters';
 
 interface SalesGroups {
   pending: FudoSale[];
@@ -64,11 +66,14 @@ export const ActiveSales: React.FC = () => {
         : await saleService.getDeliverySales();
 
       const groupedSales = {
-        pending: response.data.filter(sale => sale.attributes.saleState === 'PENDING'),
-        inProgress: response.data.filter(sale => sale.attributes.saleState === 'IN-COURSE'),
+        pending: response.data.filter(sale => 
+          isStateInGroup(sale.attributes.saleState as SaleState, 'PENDING')
+        ),
+        inProgress: response.data.filter(sale => 
+          isStateInGroup(sale.attributes.saleState as SaleState, 'IN_PROGRESS')
+        ),
         toDeliver: response.data.filter(sale => 
-          sale.attributes.saleState === 'READY_TO_DELIVER' || 
-          sale.attributes.saleState === 'DELIVERY-SENT'
+          isStateInGroup(sale.attributes.saleState as SaleState, 'TO_DELIVER')
         )
       };
 
@@ -135,11 +140,11 @@ export const ActiveSales: React.FC = () => {
                     py={1}
                     borderRadius="md"
                     fontSize="sm"
-                    bg={sale.attributes.saleState === 'IN-COURSE' ? 'red.100' : 'yellow.100'}
-                    color={sale.attributes.saleState === 'IN-COURSE' ? 'red.700' : 'yellow.700'}
+                    bg={sale.attributes.saleState === SALE_STATES['IN-COURSE'] ? 'red.100' : 'yellow.100'}
+                    color={sale.attributes.saleState === SALE_STATES['IN-COURSE'] ? 'red.700' : 'yellow.700'}
                   >
-                    {sale.attributes.saleState === 'IN-COURSE' ? 'En curso' : 
-                     sale.attributes.saleState === 'READY_TO_DELIVER' ? 'A entregar' :
+                    {sale.attributes.saleState === SALE_STATES['IN-COURSE'] ? 'En curso' : 
+                     sale.attributes.saleState === SALE_STATES['READY_TO_DELIVER'] ? 'A entregar' :
                      'Pendiente'}
                   </Text>
                 </Td>
