@@ -16,9 +16,8 @@ export const ActiveSales: React.FC = () => {
     const loadSales = async () => {
       try {
         const response = await saleService.getSales();
-        // Filtramos solo las ventas activas (estado NUEVO o EN_PROCESO)
+        // Filtramos solo las ventas en proceso
         const activeOrders = response.data.filter(sale => 
-          sale.attributes.status === 'nuevo' || 
           sale.attributes.status === 'en_proceso'
         );
         setActiveSales(activeOrders);

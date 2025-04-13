@@ -32,10 +32,8 @@ function adaptFudoOrder(order: any): FudoSale {
 // Mapear estados de Fudo a nuestros estados
 function mapFudoStatus(fudoStatus: string): "nuevo" | "en_proceso" | "completado" | "cancelado" {
   const statusMap: { [key: string]: "nuevo" | "en_proceso" | "completado" | "cancelado" } = {
-    'pending': 'nuevo',
-    'in_progress': 'en_proceso',
-    'completed': 'completado',
-    'cancelled': 'cancelado'
+    'IN-COURSE': 'en_proceso',
+    'CLOSED': 'completado'
   };
   return statusMap[fudoStatus] || 'nuevo';
 }

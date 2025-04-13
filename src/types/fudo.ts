@@ -131,4 +131,9 @@ export interface FudoSaleItem {
       }>;
     };
   };
+}
+
+export enum FudoSaleState {
+  CLOSED = 'CLOSED',
+  IN_COURSE = 'IN-COURSE',
 } 
