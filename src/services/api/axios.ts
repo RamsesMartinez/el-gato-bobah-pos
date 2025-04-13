@@ -1,10 +1,12 @@
 import axios from 'axios';
+import { env } from '../../config/env';
 
 // Configuración base de axios
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://api.staging.fu.do/v1alpha1',
+  baseURL: env.FUDO_API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${env.FUDO_API_TOKEN}`,
   },
 });
 
@@ -12,8 +14,15 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Aquí podemos manejar errores globales
-    console.error('API Error:', error);
+    if (error.response) {
+      // Error de respuesta del servidor
+      console.error('API Error:', error.response.data);
+      if (error.response.status === 401) {
+        // Token inválido o expirado
+        console.error('Token inválido o expirado');
+        // Aquí podrías implementar un refresh token o redireccionar al login
+      }
+    }
     return Promise.reject(error);
   }
 );

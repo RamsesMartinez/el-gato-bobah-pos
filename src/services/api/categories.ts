@@ -1,48 +1,45 @@
-import { FudoCategory } from '../../types/fudo';
-import { Product } from '../../types/sales';
-import categoriesData from '../../mocks/fudo.categories.json';
-import productsData from '../../mocks/fudo.products.json';
+import api from './axios';
+import { FudoCategory, FudoResponse } from '../../types/fudo';
 
-interface CategoryProductsResponse {
-  data: Array<{
-    id: string;
+// Función adaptadora para transformar los datos de Fudo al formato FudoCategory
+function adaptFudoCategory(category: any): FudoCategory {
+  return {
+    type: "ProductCategory",
+    id: category.id,
     attributes: {
-      name: string;
-      description: string | null;
-      price: number;
-      imageUrl: string | null;
-      active: boolean;
-      sellAlone: boolean;
-    };
+      name: category.attributes.name,
+      enableOnlineMenu: category.attributes.enableOnlineMenu || null,
+      preparationTime: category.attributes.preparationTime || null,
+      position: category.attributes.position || 0
+    },
     relationships: {
-      productCategory: {
-        data: {
-          id: string;
-        } | null;
-      };
-    };
-  }>;
+      kitchen: { data: category.relationships.kitchen?.data || null },
+      parentCategory: { data: category.relationships.parentCategory?.data || null },
+      products: { data: category.relationships.products?.data || [] }
+    }
+  };
 }
 
-export const categoryService = {
-  getCategories: async (): Promise<{ data: FudoCategory[] }> => {
-    // Simulando una llamada a la API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ data: categoriesData.data as FudoCategory[] });
-      }, 500);
-    });
-  },
+export class CategoryService {
+  // Obtener todas las categorías
+  async getCategories(): Promise<FudoResponse<FudoCategory>> {
+    const response = await api.get<any>('/categories');
+    const adaptedCategories: FudoCategory[] = response.data.data.map(adaptFudoCategory);
+    return { data: adaptedCategories };
+  }
 
-  getCategoryProducts: async (categoryId: string): Promise<CategoryProductsResponse> => {
-    // Simulando una llamada a la API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const categoryProducts = productsData.data.filter(
-          (product: any) => product.relationships.productCategory.data?.id === categoryId
-        );
-        resolve({ data: categoryProducts });
-      }, 500);
-    });
-  },
-}; 
+  // Obtener una categoría por ID
+  async getCategoryById(id: string): Promise<FudoResponse<FudoCategory>> {
+    const response = await api.get<any>(`/categories/${id}`);
+    const adaptedCategory = adaptFudoCategory(response.data.data);
+    return { data: [adaptedCategory] };
+  }
+
+  // Obtener productos por categoría
+  async getProductsByCategory(categoryId: string): Promise<FudoResponse<any>> {
+    const response = await api.get<any>(`/categories/${categoryId}/products`);
+    return response.data;
+  }
+}
+
+export const categoryService = new CategoryService(); 

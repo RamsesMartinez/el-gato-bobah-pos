@@ -27,7 +27,7 @@ const NewOrder: React.FC = () => {
 
   const handleCategoryClick = async (category: FudoCategory) => {
     try {
-      const products = await categoryService.getCategoryProducts(category.id);
+      const products = await categoryService.getProductsByCategory(category.id);
       console.log('Category products:', products.data);
       // Aquí implementaremos la navegación a los productos de la categoría
     } catch (error) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ChakraProvider } from '@chakra-ui/react';
 import { DashboardLayout } from './components/layout/DashboardLayout';
@@ -9,8 +9,38 @@ import { theme } from './theme/chakraTheme';
 import './styles/globals.css';
 import './App.css';
 import NewOrder from './pages/NewOrder/NewOrder';
+import { env } from './config/env';
 
 export const App: React.FC = () => {
+  const [envError, setEnvError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      // Intentar acceder a env para validar las variables de entorno
+      console.log('Validando configuración...', env.FUDO_API_URL);
+    } catch (error) {
+      if (error instanceof Error) {
+        setEnvError(error.message);
+      }
+    }
+  }, []);
+
+  if (envError) {
+    return (
+      <ChakraProvider theme={theme}>
+        <div style={{ 
+          padding: '2rem', 
+          maxWidth: '800px', 
+          margin: '0 auto',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap'
+        }}>
+          {envError}
+        </div>
+      </ChakraProvider>
+    );
+  }
+
   return (
     <ChakraProvider theme={theme}>
       <ThemeProvider>

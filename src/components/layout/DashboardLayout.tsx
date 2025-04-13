@@ -33,6 +33,7 @@ export const DashboardLayout: React.FC = () => {
     total_amount: 0,
     status: 'pending'
   });
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
@@ -59,8 +60,8 @@ export const DashboardLayout: React.FC = () => {
         setSelectedCategory('all');
 
         // Cargar productos de todas las categorías
-        const productsResponse = await categoryService.getCategoryProducts('all');
-        setProducts(productsResponse.data.map(p => ({
+        const productsResponse = await categoryService.getProductsByCategory('all');
+        setProducts(productsResponse.data.map((p: any) => ({
           id: p.id,
           name: p.attributes.name,
           description: p.attributes.description || '',
@@ -92,18 +93,18 @@ export const DashboardLayout: React.FC = () => {
   };
 
   const handleProductSelect = (product: Product) => {
+    setSelectedProduct(product);
     setHasChanges(true);
-    const newItem = {
-      product_id: product.id,
-      quantity: 1,
-      unit_price: product.price
-    };
+  };
 
-    setCurrentSale(prev => ({
-      ...prev,
-      items: [...prev.items, newItem],
-      total_amount: prev.total_amount + product.price
-    }));
+  const handleSave = () => {
+    // Implementar lógica de guardado
+    setHasChanges(false);
+  };
+
+  const handleCancel = () => {
+    navigate('/sales');
+    setHasChanges(false);
   };
 
   const filteredProducts = selectedCategory === 'all'
