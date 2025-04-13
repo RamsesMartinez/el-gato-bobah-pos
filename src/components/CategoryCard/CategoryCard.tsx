@@ -77,7 +77,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
       {/* Título centrado */}
       <Text
         position="relative"
-        fontSize={{ base: "sm", sm: "md", md: "lg", lg: "xl" }}
+        fontSize={{ base: "md", sm: "lg", md: "xl", lg: "xl" }}
         fontWeight="600"
         color={textColor}
         textAlign="center"
