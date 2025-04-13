@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#BFFCC6"/>
+  <path d="M170 60H230V80L240 100V240H160V100L170 80V60Z" fill="#FFF"/>
+  <path d="M180 100L170 220H230L220 100H180Z" fill="#BFFCC6"/>
+  <circle cx="190" cy="200" r="8" fill="#333"/>
+  <circle cx="210" cy="180" r="8" fill="#333"/>
+  <circle cx="190" cy="160" r="8" fill="#333"/>
+  <circle cx="210" cy="140" r="8" fill="#333"/>
+  <path d="M180 90H220" stroke="#FFF" stroke-width="10"/>
+  <text x="200" y="270" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Bobah Tea's</text>
+</svg> 

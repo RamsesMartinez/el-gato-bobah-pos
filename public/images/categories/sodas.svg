@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#FFB8B5"/>
+  <path d="M180 60H220V80C220 80 230 90 230 100C230 110 220 120 220 130C220 140 230 150 230 160C230 170 220 180 220 190C220 200 230 210 230 220H170C170 210 180 200 180 190C180 180 170 170 170 160C170 150 180 140 180 130C180 120 170 110 170 100C170 90 180 80 180 80V60Z" fill="#FFF"/>
+  <circle cx="200" cy="100" r="5" fill="#FFB8B5"/>
+  <circle cx="200" cy="140" r="5" fill="#FFB8B5"/>
+  <circle cx="200" cy="180" r="5" fill="#FFB8B5"/>
+  <text x="200" y="270" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Sodas Explosivas</text>
+</svg> 

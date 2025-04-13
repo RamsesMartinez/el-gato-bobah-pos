@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#B5B9FF"/>
+  <path d="M160 60H240V80H160V60Z" fill="#FFF"/>
+  <path d="M170 80L150 240H250L230 80H170Z" fill="#FFF"/>
+  <path d="M180 100L170 220H230L220 100H180Z" fill="#B5B9FF"/>
+  <path d="M185 120C185 120 195 140 200 140C205 140 215 120 215 120" stroke="#FFF" stroke-width="8"/>
+  <text x="200" y="270" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Frappés Gatunos</text>
+</svg> 

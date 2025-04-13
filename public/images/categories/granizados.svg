@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#C4FAF8"/>
+  <path d="M170 80L150 240H250L230 80H170Z" fill="#FFF"/>
+  <path d="M180 100L170 220H230L220 100H180Z" fill="#C4FAF8"/>
+  <path d="M190 120L185 130H195L190 140L185 150H195L190 160" stroke="#FFF" stroke-width="4"/>
+  <path d="M210 120L205 130H215L210 140L205 150H215L210 160" stroke="#FFF" stroke-width="4"/>
+  <circle cx="190" cy="180" r="4" fill="#FF6B6B"/>
+  <circle cx="210" cy="190" r="4" fill="#FF6B6B"/>
+  <circle cx="200" cy="170" r="4" fill="#FF6B6B"/>
+  <text x="200" y="270" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Granizados & Chamoyadas</text>
+</svg> 
