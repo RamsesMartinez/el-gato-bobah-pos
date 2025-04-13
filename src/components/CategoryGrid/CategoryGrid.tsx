@@ -27,12 +27,13 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
         spacing={{ base: 3, sm: 4, md: 5 }}
         w="100%"
       >
-        {categories.map((category) => (
+        {categories.map((category, index) => (
           <CategoryCard
             key={category.id}
             category={category}
             isSelected={category.id === selectedCategory}
             onClick={() => onCategoryClick(category)}
+            index={index}
           />
         ))}
       </SimpleGrid>

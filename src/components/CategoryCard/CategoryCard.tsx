@@ -5,8 +5,9 @@ import { imageService } from '../../services/images';
 
 interface CategoryCardProps {
   category: FudoCategory;
-  isSelected: boolean;
+  isSelected?: boolean;
   onClick: () => void;
+  index: number;
 }
 
 const toTitleCase = (str: string): string => {
@@ -19,10 +20,11 @@ const toTitleCase = (str: string): string => {
 
 export const CategoryCard: React.FC<CategoryCardProps> = ({
   category,
-  isSelected,
+  isSelected = false,
   onClick,
+  index
 }) => {
-  const style = imageService.getCategoryStyle(category.id);
+  const style = imageService.getCategoryStyle(index);
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const textColor = useColorModeValue('gray.800', 'gray.100');
   const shadowColor = useColorModeValue('rgba(0,0,0,0.1)', 'rgba(0,0,0,0.3)');
