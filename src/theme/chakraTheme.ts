@@ -1,64 +1,102 @@
 import { extendTheme } from '@chakra-ui/react';
+import { themeConfig } from './config';
 
 const colors = {
-  brand: {
-    50: '#f7fafc',
-    100: '#edf2f7',
-    200: '#e2e8f0',
-    300: '#cbd5e0',
-    400: '#a0aec0',
+  primary: themeConfig.colors.primary,
+  secondary: themeConfig.colors.secondary,
+  success: themeConfig.colors.success,
+  error: themeConfig.colors.error,
+  warning: themeConfig.colors.warning,
+  text: themeConfig.colors.text,
+  background: themeConfig.colors.background,
+  border: themeConfig.colors.border,
+  status: themeConfig.colors.status,
+  gray: {
+    50: '#F7FAFC',
+    100: '#EDF2F7',
+    200: '#E2E8F0',
+    300: '#CBD5E0',
+    400: '#A0AEC0',
     500: '#718096',
-    600: '#4a5568',
-    700: '#2d3748',
-    800: '#1a202c',
+    600: '#4A5568',
+    700: '#2D3748',
+    800: '#1A202C',
     900: '#171923',
-  },
-  accent: {
-    primary: '#FF6B6B',
-    secondary: '#4ECDC4',
   }
 };
 
 const fonts = {
-  heading: '"Poppins", sans-serif',
-  body: '"Inter", sans-serif',
+  heading: themeConfig.typography.fontFamily,
+  body: themeConfig.typography.fontFamily,
 };
+
+const fontSizes = themeConfig.typography.fontSizes;
+const fontWeights = themeConfig.typography.fontWeights;
+
+const space = themeConfig.spacing;
+const radii = themeConfig.borderRadius;
+const shadows = themeConfig.shadows;
 
 const components = {
   Button: {
     baseStyle: {
-      fontWeight: 'bold',
+      fontWeight: 'semibold',
       borderRadius: 'md',
     },
     variants: {
-      solid: {
-        bg: 'accent.primary',
+      solid: (props: { colorScheme: string }) => ({
+        bg: `${props.colorScheme}.main`,
         color: 'white',
         _hover: {
-          bg: 'accent.secondary',
+          bg: `${props.colorScheme}.dark`,
         },
-      },
+      }),
+      outline: (props: { colorScheme: string }) => ({
+        border: '1px solid',
+        borderColor: `${props.colorScheme}.main`,
+        color: `${props.colorScheme}.main`,
+        _hover: {
+          bg: `${props.colorScheme}.main`,
+          color: 'white',
+        },
+      }),
+    },
+    defaultProps: {
+      colorScheme: 'primary',
     },
   },
-  Table: {
-    defaultProps: {
-      variant: 'simple',
+  Text: {
+    baseStyle: {
+      color: 'text.primary',
+    },
+  },
+  Heading: {
+    baseStyle: {
+      color: 'text.dark',
+    },
+  },
+  Badge: {
+    baseStyle: {
+      borderRadius: 'sm',
+      px: 2,
+      py: 1,
+      fontWeight: 'medium',
     },
     variants: {
-      simple: {
-        th: {
-          borderBottom: '1px',
-          borderColor: 'gray.200',
-          padding: '1rem',
-          textTransform: 'none',
-          letterSpacing: 'normal',
-        },
-        td: {
-          borderBottom: '1px',
-          borderColor: 'gray.200',
-          padding: '1rem',
-        },
-      },
+      solid: (props: { colorScheme: string }) => ({
+        bg: `${props.colorScheme}.main`,
+        color: 'white',
+      }),
+      outline: (props: { colorScheme: string }) => ({
+        bg: 'transparent',
+        border: '1px solid',
+        borderColor: `${props.colorScheme}.main`,
+        color: `${props.colorScheme}.main`,
+      }),
+    },
+    defaultProps: {
+      variant: 'solid',
+      colorScheme: 'primary',
     },
   },
 };
@@ -66,5 +104,10 @@ const components = {
 export const chakraTheme = extendTheme({
   colors,
   fonts,
+  fontSizes,
+  fontWeights,
+  space,
+  radii,
+  shadows,
   components,
 }); 

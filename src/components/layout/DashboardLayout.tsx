@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TicketPanel } from '../ticket/TicketPanel';
 import { ProductsPanel } from '../products/ProductsPanel';
+import { MainNav } from './MainNav';
 import { useTheme } from '../../hooks/useTheme';
 import { Product } from '../../types/sales';
 import { FudoCategory } from '../../types/fudo';
@@ -77,49 +78,13 @@ export const DashboardLayout: React.FC = () => {
     loadData();
   }, []);
 
-  const handleBackClick = () => {
-    if (hasChanges) {
-      if (window.confirm('¿Estás seguro que deseas salir? Se perderán los cambios no guardados.')) {
-        navigate('/sales');
-      }
-    } else {
-      navigate('/sales');
-    }
-  };
-
-  const handleAddGuest = () => {
-    console.log('Add guest clicked');
-  };
-
-  const handlePay = async () => {
-    try {
-      // Aquí iría la llamada a la API de Fudo
-      const response = await fetch('https://api.fu.do/sales', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(currentSale),
-      });
-
-      if (!response.ok) {
-        throw new Error('Error al procesar el pago');
-      }
-
-      // Limpiar la venta actual después de un pago exitoso
-      setCurrentSale({
-        items: [],
-        total_amount: 0,
-        status: 'pending'
-      });
-      setHasChanges(false);
-
-      // Redirigir a la lista de ventas después de un pago exitoso
-      navigate('/sales');
-
-    } catch (error) {
-      console.error('Error al procesar el pago:', error);
-    }
+  const handleNewSale = () => {
+    setCurrentSale({
+      items: [],
+      total_amount: 0,
+      status: 'pending'
+    });
+    setHasChanges(false);
   };
 
   const handleCategoryChange = (category: FudoCategory) => {
@@ -152,106 +117,7 @@ export const DashboardLayout: React.FC = () => {
       height: '100vh',
       backgroundColor: theme.colors.background.default,
     }}>
-      {/* Header/Navbar principal */}
-      <div style={{
-        backgroundColor: theme.colors.secondary.dark,
-        borderBottom: `1px solid ${theme.colors.secondary.main}`,
-      }}>
-        <div style={{
-          padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div style={{
-            display: 'flex',
-            gap: theme.spacing.lg,
-            alignItems: 'center',
-          }}>
-            <button
-              onClick={handleBackClick}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: theme.colors.text.disabled,
-                cursor: 'pointer',
-                padding: theme.spacing.sm,
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-              }}
-            >
-              ← Volver
-            </button>
-            <div style={{
-              height: '24px',
-              width: '1px',
-              backgroundColor: theme.colors.secondary.main,
-            }} />
-            <span style={{ color: theme.colors.text.disabled }}>
-              Mesa 1
-            </span>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.md,
-          }}>
-            <span style={{ color: theme.colors.text.disabled }}>
-              Ramses
-            </span>
-            <span style={{ color: theme.colors.text.disabled }}>
-              🔒
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Subheader con botones de acción */}
-      <div style={{
-        backgroundColor: theme.colors.secondary.dark,
-        borderBottom: `1px solid ${theme.colors.secondary.main}`,
-        padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <button
-            onClick={handleAddGuest}
-            style={{
-              backgroundColor: theme.colors.success.main,
-              color: 'white',
-              border: 'none',
-              padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-              borderRadius: theme.borderRadius.md,
-              cursor: 'pointer',
-              fontWeight: theme.typography.fontWeights.medium,
-              transition: 'background-color 0.2s',
-            }}
-          >
-            Nuevo pedido
-          </button>
-          <div style={{
-            display: 'flex',
-            gap: theme.spacing.md,
-          }}>
-            <button
-              style={{
-                backgroundColor: 'transparent',
-                color: theme.colors.text.disabled,
-                border: `1px solid ${theme.colors.secondary.main}`,
-                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                borderRadius: theme.borderRadius.md,
-                cursor: 'pointer',
-              }}
-            >
-              Tipo de pedido
-            </button>
-          </div>
-        </div>
-      </div>
+      <MainNav />
 
       {/* Contenido principal */}
       <div style={{
@@ -272,7 +138,7 @@ export const DashboardLayout: React.FC = () => {
         {/* Panel del ticket */}
         <TicketPanel
           currentSale={currentSale}
-          onPay={handlePay}
+          onPay={handleNewSale}
         />
       </div>
     </div>

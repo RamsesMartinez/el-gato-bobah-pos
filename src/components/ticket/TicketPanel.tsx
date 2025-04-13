@@ -1,16 +1,6 @@
 import React from 'react';
 import { Box, Text, Button, VStack, HStack, Divider } from '@chakra-ui/react';
 import { useTheme } from '../../hooks/useTheme';
-import { Product } from '../../types/sales';
-
-interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  total: number;
-  details?: string;
-}
 
 interface CurrentSale {
   items: Array<{
@@ -38,88 +28,42 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({
   const { theme } = useTheme();
 
   return (
-    <div style={{
-      backgroundColor: theme.colors.background.paper,
-      borderRight: `1px solid ${theme.colors.border.main}`,
-      height: '100%',
-      width: '400px',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: theme.spacing.md }}>
-        {currentSale.items.map((item) => (
-          <div
-            key={item.product_id}
-            style={{
-              marginBottom: theme.spacing.md,
-              padding: theme.spacing.md,
-              backgroundColor: theme.colors.background.default,
-              borderRadius: theme.borderRadius.md,
-            }}
-          >
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: theme.spacing.xs,
-            }}>
-              <span style={{ fontWeight: theme.typography.fontWeights.medium }}>
-                {item.product_id}
-              </span>
-              <span>{(item.quantity * item.unit_price).toFixed(2)}</span>
-            </div>
-            {item.modifiers && item.modifiers.length > 0 && (
-              <div style={{
-                fontSize: theme.typography.fontSizes.sm,
-                color: theme.colors.text.secondary,
-              }}>
-                {item.modifiers.map(mod => `${mod.id} x ${mod.quantity}`).join(', ')}
-              </div>
-            )}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: theme.spacing.xs,
-              fontSize: theme.typography.fontSizes.sm,
-            }}>
-              <span>Cantidad: {item.quantity}</span>
-              <span>Precio: {item.unit_price.toFixed(2)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{
-        padding: theme.spacing.md,
-        borderTop: `1px solid ${theme.colors.border.main}`,
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: theme.spacing.md,
-        }}>
-          <span style={{ fontWeight: theme.typography.fontWeights.semibold }}>
-            Precio total
-          </span>
-          <span style={{ fontWeight: theme.typography.fontWeights.bold }}>
-            ${currentSale.total_amount.toFixed(2)}
-          </span>
-        </div>
-        <button
+    <Box
+      width="400px"
+      height="100%"
+      borderLeft={`1px solid ${theme.colors.border.main}`}
+      backgroundColor={theme.colors.background.paper}
+      display="flex"
+      flexDirection="column"
+    >
+      <VStack spacing={4} p={4} align="stretch">
+        <Text fontSize="xl" fontWeight="bold">
+          Ticket #1
+        </Text>
+        <Divider />
+        <Box flex="1" overflowY="auto">
+          {currentSale.items.map((item, index) => (
+            <HStack key={index} spacing={4} p={2}>
+              <Text flex="1">{item.product_id}</Text>
+              <Text>{item.quantity}x</Text>
+              <Text>${item.unit_price.toFixed(2)}</Text>
+            </HStack>
+          ))}
+        </Box>
+        <Divider />
+        <HStack justify="space-between">
+          <Text fontWeight="bold">Total:</Text>
+          <Text fontWeight="bold">${currentSale.total_amount.toFixed(2)}</Text>
+        </HStack>
+        <Button
+          colorScheme="green"
+          size="lg"
           onClick={onPay}
-          style={{
-            width: '100%',
-            padding: theme.spacing.md,
-            backgroundColor: theme.colors.success.main,
-            color: theme.colors.background.paper,
-            border: 'none',
-            borderRadius: theme.borderRadius.md,
-            fontWeight: theme.typography.fontWeights.medium,
-            cursor: 'pointer',
-          }}
+          isDisabled={currentSale.items.length === 0}
         >
           Pagar
-        </button>
-      </div>
-    </div>
+        </Button>
+      </VStack>
+    </Box>
   );
 }; 
