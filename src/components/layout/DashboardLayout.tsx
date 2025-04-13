@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navbar } from './Navbar';
 import { TicketPanel } from '../ticket/TicketPanel';
 import { ProductsPanel } from '../products/ProductsPanel';
 import { useTheme } from '../../hooks/useTheme';
 import { Product } from '../../types/sales';
-import productsData from '../../mocks/fudo.products.json';
-import categoriesData from '../../mocks/fudo.categories.json';
-import { adaptFudoProduct, adaptFudoCategory } from '../../adapters/fudo';
+import { FudoCategory } from '../../types/fudo';
+import { categoryService } from '../../services/api/categories';
 
 interface CurrentSale {
   items: Array<{
@@ -27,8 +25,8 @@ export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categories, setCategories] = useState<FudoCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [currentSale, setCurrentSale] = useState<CurrentSale>({
     items: [],
     total_amount: 0,
@@ -37,12 +35,46 @@ export const DashboardLayout: React.FC = () => {
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
-    // Cargar productos y categorías de Fudo
-    const adaptedProducts = productsData.data.map(adaptFudoProduct);
-    const adaptedCategories = ['Todos los productos', ...categoriesData.data.map(adaptFudoCategory)];
-    setProducts(adaptedProducts);
-    setCategories(adaptedCategories);
-    setSelectedCategory('Todos los productos');
+    // Cargar categorías y productos
+    const loadData = async () => {
+      try {
+        const categoriesResponse = await categoryService.getCategories();
+        const allProductsCategory: FudoCategory = {
+          type: 'ProductCategory',
+          id: 'all',
+          attributes: {
+            enableOnlineMenu: true,
+            name: 'Todos los productos',
+            preparationTime: null,
+            position: 0,
+          },
+          relationships: {
+            kitchen: { data: null },
+            parentCategory: { data: null },
+            products: { data: [] },
+          },
+        };
+        setCategories([allProductsCategory, ...categoriesResponse.data]);
+        setSelectedCategory('all');
+
+        // Cargar productos de todas las categorías
+        const productsResponse = await categoryService.getCategoryProducts('all');
+        setProducts(productsResponse.data.map(p => ({
+          id: p.id,
+          name: p.attributes.name,
+          description: p.attributes.description || '',
+          price: p.attributes.price,
+          image_url: p.attributes.imageUrl || '',
+          category: p.relationships.productCategory.data?.id || 'default',
+          active: p.attributes.active,
+          sellAlone: p.attributes.sellAlone,
+        })));
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    };
+
+    loadData();
   }, []);
 
   const handleBackClick = () => {
@@ -90,8 +122,8 @@ export const DashboardLayout: React.FC = () => {
     }
   };
 
-  const handleCategoryChange = (category: string) => {
-    setSelectedCategory(category);
+  const handleCategoryChange = (category: FudoCategory) => {
+    setSelectedCategory(category.id);
   };
 
   const handleProductSelect = (product: Product) => {
@@ -109,7 +141,7 @@ export const DashboardLayout: React.FC = () => {
     }));
   };
 
-  const filteredProducts = selectedCategory === 'Todos los productos'
+  const filteredProducts = selectedCategory === 'all'
     ? products
     : products.filter(product => product.category === selectedCategory);
 
@@ -126,8 +158,6 @@ export const DashboardLayout: React.FC = () => {
         borderBottom: `1px solid ${theme.colors.secondary.main}`,
       }}>
         <div style={{
-          maxWidth: '1400px',
-          margin: '0 auto',
           padding: `${theme.spacing.md} ${theme.spacing.lg}`,
           display: 'flex',
           alignItems: 'center',
@@ -184,8 +214,6 @@ export const DashboardLayout: React.FC = () => {
         padding: `${theme.spacing.md} ${theme.spacing.lg}`,
       }}>
         <div style={{
-          maxWidth: '1400px',
-          margin: '0 auto',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -227,35 +255,24 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Contenido principal */}
       <div style={{
-        display: 'flex',
         flex: 1,
-        overflow: 'hidden',
+        display: 'flex',
+        width: '100%',
+        height: 'calc(100vh - 120px)', // Restamos el alto de los headers
       }}>
-        <TicketPanel
-          items={currentSale.items.map(item => {
-            const product = products.find(p => p.id === item.product_id);
-            return {
-              id: item.product_id,
-              name: product?.name || '',
-              quantity: item.quantity,
-              price: item.unit_price,
-              total: item.quantity * item.unit_price,
-              details: item.modifiers?.map(mod => {
-                const modifier = product?.modifiers?.find(m => m.id === mod.id);
-                return modifier ? `${modifier.name} x ${mod.quantity}` : '';
-              }).filter(Boolean).join(', ')
-            };
-          })}
-          onAddGuest={handleAddGuest}
-          onPay={handlePay}
-        />
-        
+        {/* Panel de productos */}
         <ProductsPanel
-          products={filteredProducts}
+          categories={categories}
           selectedCategory={selectedCategory}
           onCategoryChange={handleCategoryChange}
-          categories={categories}
+          products={filteredProducts}
           onProductSelect={handleProductSelect}
+        />
+
+        {/* Panel del ticket */}
+        <TicketPanel
+          currentSale={currentSale}
+          onPay={handlePay}
         />
       </div>
     </div>

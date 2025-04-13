@@ -23,9 +23,9 @@ export interface FudoCategory {
   type: "ProductCategory";
   id: string;
   attributes: {
-    enableOnlineMenu: boolean;
+    enableOnlineMenu: boolean | null;
     name: string;
-    preparationTime: number;
+    preparationTime: number | null;
     position: number;
   };
   relationships: {
@@ -41,13 +41,26 @@ export interface FudoProduct {
   id: string;
   attributes: {
     active: boolean;
-    name: string;
+    code: string | null;
+    cost: number | null;
     description: string | null;
-    price: number;
+    enableOnlineMenu: boolean | null;
+    enableQrMenu: boolean | null;
+    favourite: boolean | null;
+    imageUrl: string | null;
+    name: string;
     position: number;
+    preparationTime: number | null;
+    price: number;
+    sellAlone: boolean;
+    stock: number | null;
+    stockControl: boolean;
   };
   relationships: {
+    kitchen: FudoRelationship;
     productCategory: FudoRelationship;
+    productModifiersGroups: FudoProductsRelationship;
+    productProportions: FudoProductsRelationship;
   };
 }
 

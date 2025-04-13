@@ -1,5 +1,7 @@
 import React from 'react';
+import { Box, Text, Button, VStack, HStack, Divider } from '@chakra-ui/react';
 import { useTheme } from '../../hooks/useTheme';
+import { Product } from '../../types/sales';
 
 interface OrderItem {
   id: string;
@@ -10,19 +12,30 @@ interface OrderItem {
   details?: string;
 }
 
+interface CurrentSale {
+  items: Array<{
+    product_id: string;
+    quantity: number;
+    unit_price: number;
+    modifiers?: Array<{
+      id: string;
+      quantity: number;
+    }>;
+  }>;
+  total_amount: number;
+  status: 'pending' | 'completed' | 'cancelled';
+}
+
 interface TicketPanelProps {
-  items: OrderItem[];
-  onAddGuest: () => void;
+  currentSale: CurrentSale;
   onPay: () => void;
 }
 
 export const TicketPanel: React.FC<TicketPanelProps> = ({
-  items,
-  onAddGuest,
+  currentSale,
   onPay,
 }) => {
   const { theme } = useTheme();
-  const total = items.reduce((sum, item) => sum + item.total, 0);
 
   return (
     <div style={{
@@ -34,9 +47,9 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({
       flexDirection: 'column',
     }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: theme.spacing.md }}>
-        {items.map((item) => (
+        {currentSale.items.map((item) => (
           <div
-            key={item.id}
+            key={item.product_id}
             style={{
               marginBottom: theme.spacing.md,
               padding: theme.spacing.md,
@@ -50,16 +63,16 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({
               marginBottom: theme.spacing.xs,
             }}>
               <span style={{ fontWeight: theme.typography.fontWeights.medium }}>
-                {item.name}
+                {item.product_id}
               </span>
-              <span>{item.total.toFixed(2)}</span>
+              <span>{(item.quantity * item.unit_price).toFixed(2)}</span>
             </div>
-            {item.details && (
+            {item.modifiers && item.modifiers.length > 0 && (
               <div style={{
                 fontSize: theme.typography.fontSizes.sm,
                 color: theme.colors.text.secondary,
               }}>
-                {item.details}
+                {item.modifiers.map(mod => `${mod.id} x ${mod.quantity}`).join(', ')}
               </div>
             )}
             <div style={{
@@ -69,29 +82,11 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({
               fontSize: theme.typography.fontSizes.sm,
             }}>
               <span>Cantidad: {item.quantity}</span>
-              <span>Precio: {item.price.toFixed(2)}</span>
+              <span>Precio: {item.unit_price.toFixed(2)}</span>
             </div>
           </div>
         ))}
       </div>
-
-      <button
-        onClick={onAddGuest}
-        style={{
-          padding: theme.spacing.md,
-          backgroundColor: 'transparent',
-          border: 'none',
-          borderTop: `1px solid ${theme.colors.border.main}`,
-          color: theme.colors.primary.main,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-        }}
-      >
-        <span>👤</span>
-        <span>AÑADIR COMENSAL</span>
-      </button>
 
       <div style={{
         padding: theme.spacing.md,
@@ -106,7 +101,7 @@ export const TicketPanel: React.FC<TicketPanelProps> = ({
             Precio total
           </span>
           <span style={{ fontWeight: theme.typography.fontWeights.bold }}>
-            ${total.toFixed(2)}
+            ${currentSale.total_amount.toFixed(2)}
           </span>
         </div>
         <button

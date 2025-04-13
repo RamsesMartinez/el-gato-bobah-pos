@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Flex, Input, IconButton, useColorModeValue, Spinner } from '@chakra-ui/react';
 import { SearchIcon } from '@chakra-ui/icons';
-import CategoryGrid from '../../components/CategoryGrid/CategoryGrid';
+import { CategoryGrid } from '../../components/CategoryGrid/CategoryGrid';
 import { FudoCategory } from '../../types/fudo';
 import { categoryService } from '../../services/api/categories';
 

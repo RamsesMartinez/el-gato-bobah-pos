@@ -28,6 +28,16 @@ export interface Product {
   image_url: string;
   category: string;
   modifiers?: ProductModifier[];
+  active: boolean;
+  sellAlone: boolean;
+  code?: string;
+  cost?: number;
+  enableOnlineMenu?: boolean;
+  enableQrMenu?: boolean;
+  favourite?: boolean;
+  preparationTime?: number;
+  stock?: number;
+  stockControl?: boolean;
 }
 
 export interface ProductModifier {
