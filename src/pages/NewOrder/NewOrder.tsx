@@ -199,41 +199,37 @@ const NewOrder: React.FC = () => {
           overflow="auto"
           order={{ base: 2, md: 1 }}
         >
-          {/* Barra superior con navegación y búsqueda */}
-          <Box bg="white" borderBottom="1px" borderColor="gray.200">
-            <Box maxW="1200px" mx="auto" px={4}>
-              <Flex py={4} alignItems="center" justifyContent="space-between">
-                <HStack spacing={4}>
-                  {navigationStack.length > 0 && (
-                    <IconButton
-                      aria-label="Volver"
-                      icon={<ChevronLeftIcon />}
-                      onClick={handleBackClick}
-                      variant="ghost"
-                    />
-                  )}
-                  <Breadcrumb items={getBreadcrumbItems()} />
-                </HStack>
-                <HStack spacing={4}>
-                  <IconButton
-                    aria-label="Escanear"
-                    icon={<SearchIcon />}
-                    variant="outline"
-                  />
-                  <Button variant="outline">
-                    Promociones
-                  </Button>
-                </HStack>
-              </Flex>
-            </Box>
+          {/* Barra superior */}
+          <Box 
+            bg="white" 
+            borderBottom="1px solid" 
+            borderColor="gray.200"
+            position="sticky"
+            top={0}
+            zIndex={10}
+          >
+            <Flex py={4} px={4} alignItems="center" justifyContent="space-between">
+              <Breadcrumb items={getBreadcrumbItems()} />
+              <HStack spacing={4}>
+                <IconButton
+                  aria-label="Escanear"
+                  icon={<SearchIcon />}
+                  variant="outline"
+                />
+                <Button variant="outline">
+                  Promociones
+                </Button>
+                <Text fontWeight="bold">Ticket #1</Text>
+              </HStack>
+            </Flex>
           </Box>
 
           {/* Contenido principal */}
-          <Box maxW="1200px" mx="auto" px={4} py={6}>
+          <Box h="calc(100vh - 128px)" overflow="auto" p={4}>
             {loading ? (
-              <Box display="flex" justifyContent="center" alignItems="center" minH="200px">
+              <Flex justify="center" align="center" minH="200px">
                 <Spinner size="xl" />
-              </Box>
+              </Flex>
             ) : categories.length > 0 ? (
               <CategoryGrid 
                 categories={categories} 
@@ -241,7 +237,10 @@ const NewOrder: React.FC = () => {
                 selectedCategory={currentCategory?.id}
               />
             ) : products.length > 0 ? (
-              <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={4}>
+              <SimpleGrid 
+                columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} 
+                spacing={4}
+              >
                 {products.map(product => (
                   <ProductCard
                     key={product.id}
@@ -261,73 +260,48 @@ const NewOrder: React.FC = () => {
         </Box>
 
         {/* Panel derecho - Ticket */}
-        <Box 
-          w={{ base: '100%', md: '40%', lg: '35%', xl: '550px' }}
-          bg="white" 
+        <Box
+          w={{ base: '100%', md: '500px' }}
+          bg="white"
           borderLeft={{ base: 'none', md: '1px solid' }}
           borderTop={{ base: '1px solid', md: 'none' }}
-          borderColor="gray.200" 
-          overflow="auto"
+          borderColor="gray.200"
           order={{ base: 1, md: 2 }}
-          position={{ base: 'sticky', md: 'relative' }}
-          top={{ base: 0, md: 'auto' }}
-          zIndex={{ base: 10, md: 1 }}
-          minH={{ base: 'auto', md: '100%' }}
+          h={{ base: 'auto', md: '100%' }}
+          overflow="auto"
         >
-          <Box p={6} borderBottom="1px solid" borderColor="gray.200">
-            <Flex justify="space-between" align="center" mb={3}>
-              <Text fontSize="2xl" fontWeight="bold">Ticket N°13</Text>
-              <Text fontSize="lg" color="gray.600">Mesa 1</Text>
-            </Flex>
-            <Text color="gray.600" fontSize="md">
-              {ticketItems.length === 0 
-                ? 'Seleccione productos para añadir al pedido'
-                : `${ticketItems.length} productos en el pedido`}
-            </Text>
+          <Box p={4} borderBottom="1px solid" borderColor="gray.200">
+            <Text fontSize="lg" fontWeight="bold">COMENSAL 1</Text>
+            <Text color="gray.500" fontSize="sm">Pulse sobre este cliente para añadir productos a su pedido</Text>
           </Box>
 
-          <Table variant="simple" size="lg">
+          <Table variant="simple">
             <Thead>
               <Tr>
-                <Th fontSize="md">Nombre</Th>
-                <Th isNumeric fontSize="md">Cant.</Th>
-                <Th isNumeric fontSize="md">Precio</Th>
-                <Th isNumeric fontSize="md">Total</Th>
+                <Th>Nombre</Th>
+                <Th isNumeric>Cant.</Th>
+                <Th isNumeric>Precio</Th>
+                <Th isNumeric>Total</Th>
               </Tr>
             </Thead>
-            <Tbody fontSize="md">
+            <Tbody>
               {ticketItems.map(item => (
                 <Tr key={item.id}>
-                  <Td fontWeight="medium">{item.name}</Td>
+                  <Td>{item.name}</Td>
                   <Td isNumeric>{item.quantity}</Td>
                   <Td isNumeric>${item.price.toFixed(2)}</Td>
-                  <Td isNumeric fontWeight="semibold">${item.total.toFixed(2)}</Td>
+                  <Td isNumeric>${item.total.toFixed(2)}</Td>
                 </Tr>
               ))}
             </Tbody>
           </Table>
 
-          <Box 
-            p={6} 
-            borderTop="1px solid" 
-            borderColor="gray.200" 
-            position={{ base: 'sticky', md: 'relative' }}
-            bottom={0}
-            bg="white"
-            mt="auto"
-          >
-            <Flex justify="space-between" mb={6} fontSize="lg">
-              <Text fontWeight="medium">Precio total</Text>
-              <Text fontSize="xl" fontWeight="bold">${ticketTotal.toFixed(2)}</Text>
+          <Box p={4} borderTop="1px solid" borderColor="gray.200" mt="auto">
+            <Flex justify="space-between" mb={4}>
+              <Text>Total</Text>
+              <Text fontWeight="bold">${ticketTotal.toFixed(2)}</Text>
             </Flex>
-            <Button 
-              colorScheme="green" 
-              w="100%" 
-              size="lg"
-              fontSize="lg"
-              py={7}
-              isDisabled={ticketItems.length === 0}
-            >
+            <Button colorScheme="green" w="100%">
               Pagar
             </Button>
           </Box>

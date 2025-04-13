@@ -163,7 +163,7 @@ export const CategoryProducts: React.FC = () => {
       
       <Flex direction="row" h="calc(100vh - 64px)">
         {/* Panel izquierdo - Ticket */}
-        <Box w="400px" bg="white" borderRight="1px solid" borderColor="gray.200" overflow="auto">
+        <Box w="550px" bg="white" borderRight="1px solid" borderColor="gray.200" overflow="auto">
           <Box p={4} borderBottom="1px solid" borderColor="gray.200">
             <Text fontSize="lg" fontWeight="bold">COMENSAL 1</Text>
             <Text color="gray.500" fontSize="sm">Pulse sobre este cliente para añadir productos a su pedido</Text>

@@ -13,7 +13,7 @@ export const MainNav: React.FC = () => {
 
   return (
     <Box bg={theme.colors.background.dark} borderBottom="1px" borderColor={theme.colors.border.dark}>
-      <Flex justify="space-between" align="center" p={4} maxW="1400px" mx="auto">
+      <Flex justify="space-between" align="center" px={6} h="64px">
         <HStack spacing={8}>
           <Text
             color={isActive('/sales') && !isActive('/sales/history') ? theme.colors.text.light : theme.colors.text.disabled}
