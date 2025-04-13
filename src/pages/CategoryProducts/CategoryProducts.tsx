@@ -18,13 +18,16 @@ import {
   Tr,
   Th,
   Td,
-  IconButton
+  IconButton,
+  Spinner
 } from '@chakra-ui/react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainNav } from '../../components/layout/MainNav';
 import { categoryService } from '../../services/api/categories';
 import { FudoProduct, FudoCategory } from '../../types/fudo';
 import { ChevronRightIcon, SearchIcon } from '@chakra-ui/icons';
+import { Breadcrumb } from '../../components/Breadcrumb/Breadcrumb';
+import { BreadcrumbItem } from '../../types/breadcrumb';
 
 interface Product {
   id: string;
@@ -50,51 +53,84 @@ export const CategoryProducts: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [ticketItems, setTicketItems] = useState<TicketItem[]>([]);
   const [ticketTotal, setTicketTotal] = useState(0);
+  const [subCategories, setSubCategories] = useState<FudoCategory[]>([]);
+  const [hasSubCategories, setHasSubCategories] = useState(false);
+  const [parentCategory, setParentCategory] = useState<FudoCategory | null>(null);
 
   useEffect(() => {
-    const loadProducts = async () => {
+    const loadCategoryData = async () => {
+      if (!categoryId) return;
+      
       try {
-        if (!categoryId) return;
-        console.log('🔍 DEBUG - Iniciando carga de productos para categoría:', categoryId);
+        setLoading(true);
         
-        const response = await categoryService.getProductsByCategory(categoryId);
-        console.log('🔍 DEBUG - Respuesta del servicio:', response);
-
-        // El primer elemento es la categoría
-        const category = response.data[0] as FudoCategory;
-        console.log('🔍 DEBUG - Categoría encontrada:', {
-          id: category.id,
-          name: category.attributes?.name,
-          type: category.type
-        });
-
-        if (category && category.type === 'ProductCategory') {
-          setCategoryName(category.attributes.name);
+        // Obtener la información de la categoría actual
+        const categoryResponse = await categoryService.getCategoryById(categoryId);
+        const currentCategory = categoryResponse.data[0];
+        setCategoryName(currentCategory.attributes.name);
+        
+        // Verificar si esta categoría tiene una categoría padre
+        if (currentCategory.relationships.parentCategory.data) {
+          const parentResponse = await categoryService.getCategoryById(
+            currentCategory.relationships.parentCategory.data.id
+          );
+          setParentCategory(parentResponse.data[0]);
         }
 
-        // Los elementos restantes son productos
-        const mappedProducts = response.data
-          .slice(1) // Excluir la categoría
-          .filter((item): item is FudoProduct => item.type === 'Product')
-          .map(product => ({
-            id: product.id,
-            name: product.attributes.name,
-            description: product.attributes.description || '',
-            price: product.attributes.price,
-            imageUrl: product.attributes.imageUrl
-          }));
+        // Obtener subcategorías
+        const subCategoriesResponse = await categoryService.getSubCategories(categoryId);
+        const hasSubCats = subCategoriesResponse.data.length > 0;
+        setSubCategories(subCategoriesResponse.data);
+        setHasSubCategories(hasSubCats);
 
-        console.log('🔍 DEBUG - Productos mapeados:', mappedProducts);
-        setProducts(mappedProducts);
+        // Si no hay subcategorías, cargar los productos
+        if (!hasSubCats) {
+          const productsResponse = await categoryService.getProductsByCategory(categoryId);
+          const mappedProducts = productsResponse.data
+            .slice(1)
+            .filter((item): item is FudoProduct => item.type === 'Product')
+            .map(product => ({
+              id: product.id,
+              name: product.attributes.name,
+              description: product.attributes.description || '',
+              price: product.attributes.price,
+              imageUrl: product.attributes.imageUrl
+            }));
+          setProducts(mappedProducts);
+        }
       } catch (error) {
-        console.error('❌ ERROR - Error cargando productos:', error);
+        console.error('Error cargando datos:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    loadProducts();
+    loadCategoryData();
   }, [categoryId]);
+
+  const getBreadcrumbItems = (): BreadcrumbItem[] => {
+    const items: BreadcrumbItem[] = [
+      { label: 'Ventas', href: '/sales' },
+      { label: 'Nueva orden', href: '/sales/new' }
+    ];
+    
+    if (parentCategory) {
+      items.push({
+        label: parentCategory.attributes.name,
+        href: `/sales/category/${parentCategory.id}`
+      });
+    }
+    
+    if (categoryName) {
+      items.push({ label: categoryName });
+    }
+    
+    return items;
+  };
+
+  const handleSubCategoryClick = (subCategory: FudoCategory) => {
+    navigate(`/sales/category/${subCategory.id}`);
+  };
 
   const handleAddToTicket = (product: Product) => {
     setTicketItems(prevItems => {
@@ -168,47 +204,67 @@ export const CategoryProducts: React.FC = () => {
         {/* Panel derecho - Productos */}
         <Box flex={1} overflow="auto">
           {/* Barra superior */}
-          <Flex 
+          <Box 
             bg="white" 
-            p={4} 
             borderBottom="1px solid" 
             borderColor="gray.200"
-            justify="space-between"
-            align="center"
             position="sticky"
             top={0}
-            zIndex={1}
+            zIndex={10}
           >
-            <HStack spacing={2}>
-              <Button 
-                variant="link" 
-                color="blue.500"
-                fontWeight="normal" 
-                onClick={() => navigate('/sales/new')}
-              >
-                Todos los productos
-              </Button>
-              <ChevronRightIcon color="gray.500" />
-              <Text color="gray.700" fontWeight="medium">{categoryName}</Text>
-            </HStack>
+            <Box maxW="1200px" mx="auto" px={4}>
+              <Flex py={4} alignItems="center" justifyContent="space-between">
+                <Breadcrumb items={getBreadcrumbItems()} />
+                <HStack spacing={4}>
+                  <IconButton
+                    aria-label="Escanear"
+                    icon={<SearchIcon />}
+                    variant="outline"
+                  />
+                  <Button variant="outline">
+                    Promociones
+                  </Button>
+                  <Text fontWeight="bold">Ticket #1</Text>
+                </HStack>
+              </Flex>
+            </Box>
+          </Box>
 
-            <HStack spacing={4}>
-              <IconButton
-                aria-label="Escanear"
-                icon={<SearchIcon />}
-                variant="outline"
-              />
-              <Button variant="outline">
-                Promociones
-              </Button>
-              <Text fontWeight="bold">Ticket #1</Text>
-            </HStack>
-          </Flex>
-
-          {/* Productos */}
-          <Box p={4}>
+          {/* Productos o Subcategorías */}
+          <Box p={4} maxW="1200px" mx="auto">
             {loading ? (
-              <Text>Cargando productos...</Text>
+              <Flex justify="center" align="center" minH="200px">
+                <Spinner size="xl" />
+              </Flex>
+            ) : hasSubCategories ? (
+              <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={6}>
+                {subCategories.map((subCategory) => (
+                  <Card 
+                    key={subCategory.id}
+                    cursor="pointer"
+                    overflow="hidden"
+                    bg="white"
+                    boxShadow="sm"
+                    _hover={{ 
+                      transform: 'translateY(-2px)',
+                      boxShadow: 'md',
+                      transition: 'all 0.2s'
+                    }}
+                    onClick={() => handleSubCategoryClick(subCategory)}
+                  >
+                    <CardBody p={4}>
+                      <Stack spacing={2}>
+                        <Heading size="md" noOfLines={1}>
+                          {subCategory.attributes.name}
+                        </Heading>
+                        <Text color="gray.600" fontSize="sm">
+                          {subCategory.relationships.products.data.length} productos
+                        </Text>
+                      </Stack>
+                    </CardBody>
+                  </Card>
+                ))}
+              </SimpleGrid>
             ) : (
               <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={6}>
                 {products.map((product) => (
