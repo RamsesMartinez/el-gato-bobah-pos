@@ -56,10 +56,17 @@ export class CategoryService {
   async getCategories(): Promise<FudoResponse<FudoCategory>> {
     const response = await api.get<any>('/product-categories', {
       params: {
-        sort: 'id',
+        sort: 'name',
         include: 'products'
       }
     });
+    
+    console.log('🔍 DEBUG - Categorías ordenadas por nombre:', {
+      url: response.config.url,
+      params: response.config.params,
+      totalCategories: response.data.data.length
+    });
+
     const adaptedCategories: FudoCategory[] = response.data.data.map(adaptFudoCategory);
     return { data: adaptedCategories };
   }
