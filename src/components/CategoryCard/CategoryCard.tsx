@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text, VisuallyHidden, useColorModeValue } from '@chakra-ui/react';
 import { FudoCategory } from '../../types/fudo';
 import { imageService } from '../../services/images';
+import { categoryService } from '../../services/api/categories';
 
 interface CategoryCardProps {
   category: FudoCategory;
@@ -31,6 +32,31 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   const textColor = useColorModeValue('gray.800', 'gray.100');
   const shadowColor = useColorModeValue('rgba(0,0,0,0.1)', 'rgba(0,0,0,0.3)');
 
+  const handleClick = async () => {
+    try {
+      // Obtener las subcategorías usando el nuevo método
+      const response = await categoryService.getSubCategories(category.id);
+      const subCategories = response.data;
+      
+      console.log('🌳 CATEGORÍAS HIJAS 🌳\n', JSON.stringify({
+        categoríaPadre: {
+          id: category.id,
+          nombre: category.attributes.name
+        },
+        subcategorías: subCategories.map((sub: FudoCategory) => ({
+          id: sub.id,
+          nombre: sub.attributes.name,
+          cantidadProductos: sub.relationships.products.data.length
+        }))
+      }, null, 2));
+
+      onClick();
+    } catch (error) {
+      console.error('Error al obtener subcategorías:', error);
+      onClick();
+    }
+  };
+
   return (
     <Box
       as="button"
@@ -44,7 +70,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
       position="relative"
       aspectRatio="1"
       transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-      onClick={onClick}
+      onClick={handleClick}
       role="button"
       aria-pressed={isSelected}
       transform={isSelected ? 'scale(0.98)' : 'scale(1)'}

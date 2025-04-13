@@ -102,12 +102,33 @@ export class CategoryService {
 
   // Obtener productos por categoría
   async getProductsByCategory(categoryId: string): Promise<FudoResponse<FudoProduct | FudoCategory>> {
-    console.log('🔍 DEBUG - Servicio: Solicitando productos para categoría:', categoryId);
-    
     try {
-      // Primero obtenemos la información de la categoría
-      const categoryResponse = await this.getCategoryById(categoryId);
+      // Primero obtenemos la información de la categoría y todas las categorías
+      const [categoryResponse, allCategoriesResponse] = await Promise.all([
+        this.getCategoryById(categoryId),
+        this.getCategories()
+      ]);
+      
       const category = categoryResponse.data[0];
+      const allCategories = allCategoriesResponse.data;
+
+      // Encontrar subcategorías (categorías que tienen como padre la categoría seleccionada)
+      const subCategories = allCategories.filter((cat: FudoCategory) => 
+        cat.relationships.parentCategory.data?.id === categoryId
+      );
+      
+      console.log('🌳 JERARQUÍA DE CATEGORÍAS 🌳\n', JSON.stringify({
+        categoríaPadre: {
+          id: category.id,
+          nombre: category.attributes.name,
+          cantidadProductos: category.relationships.products.data.length
+        },
+        subcategorías: subCategories.map((sub: FudoCategory) => ({
+          id: sub.id,
+          nombre: sub.attributes.name,
+          cantidadProductos: sub.relationships.products.data.length
+        }))
+      }, null, 2));
 
       // Luego obtenemos los productos filtrados por categoría
       const response = await api.get<any>('/products', {
@@ -118,10 +139,6 @@ export class CategoryService {
         }
       });
       
-      console.log('🔍 DEBUG - Servicio: Respuesta cruda del API:', {
-        data: response.data.data
-      });
-
       if (!response.data.data) {
         throw new Error('No se recibieron datos de productos');
       }
@@ -132,8 +149,6 @@ export class CategoryService {
         .map(adaptFudoProduct)
         .filter(product => product.attributes.active);
       
-      console.log('🔍 DEBUG - Servicio: Productos adaptados:', products);
-
       // Devolver tanto la categoría como los productos
       return {
         data: [category, ...products]
@@ -142,6 +157,31 @@ export class CategoryService {
       console.error('❌ ERROR - Error en getProductsByCategory:', error);
       throw error;
     }
+  }
+
+  // Nuevo método para obtener todas las categorías (incluyendo subcategorías)
+  async getAllCategories(): Promise<FudoResponse<FudoCategory>> {
+    const response = await api.get<any>('/product-categories', {
+      params: {
+        'include': 'products,parentCategory',
+        'sort': 'name'
+      }
+    });
+    
+    const adaptedCategories: FudoCategory[] = response.data.data
+      .map(adaptFudoCategory);
+
+    return { data: adaptedCategories };
+  }
+
+  // Nuevo método para obtener subcategorías de una categoría específica
+  async getSubCategories(parentId: string): Promise<FudoResponse<FudoCategory>> {
+    const response = await this.getAllCategories();
+    const subCategories = response.data.filter(category => 
+      category.relationships.parentCategory.data?.id === parentId
+    );
+    
+    return { data: subCategories };
   }
 }
 
