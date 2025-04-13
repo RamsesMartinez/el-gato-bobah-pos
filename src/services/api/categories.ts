@@ -2,7 +2,7 @@ import api from './axios';
 import { FudoCategory, FudoProduct, FudoResponse } from '../../types/fudo';
 
 // Función adaptadora para transformar los datos de Fudo al formato FudoCategory
-function adaptFudoCategory(category: any): FudoCategory {
+function adaptFudoCategory(category: Record<string, any>): FudoCategory {
   return {
     type: "ProductCategory",
     id: category.id,
@@ -52,12 +52,12 @@ function adaptFudoProduct(product: any): FudoProduct {
 }
 
 export class CategoryService {
-  // Obtener todas las categorías con sus productos
+  // Obtener solo las categorías padre que tienen productos
   async getCategories(): Promise<FudoResponse<FudoCategory>> {
     const response = await api.get<any>('/product-categories', {
       params: {
-        sort: 'name',
-        include: 'products'
+        'include': 'products',
+        'sort': 'name'
       }
     });
     
@@ -67,7 +67,25 @@ export class CategoryService {
       totalCategories: response.data.data.length
     });
 
-    const adaptedCategories: FudoCategory[] = response.data.data.map(adaptFudoCategory);
+    // Filtrar solo las categorías padre (sin parentCategory) y que tienen productos
+    const adaptedCategories: FudoCategory[] = response.data.data
+      .map(adaptFudoCategory)
+      .filter((category: FudoCategory) => {
+        const isParentCategory = !category.relationships.parentCategory.data;
+        const hasProducts = category.relationships.products.data.length > 0;
+        return isParentCategory && hasProducts;
+      });
+
+    console.log('🔍 DEBUG - Categorías filtradas:', {
+      totalCategorias: adaptedCategories.length,
+      categorias: adaptedCategories.map(cat => ({
+        id: cat.id,
+        nombre: cat.attributes.name,
+        esCategoriaPadre: !cat.relationships.parentCategory.data,
+        cantidadProductos: cat.relationships.products.data.length
+      }))
+    });
+
     return { data: adaptedCategories };
   }
 

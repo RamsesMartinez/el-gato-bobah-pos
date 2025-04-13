@@ -19,25 +19,46 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
       w="100%"
       maxW="1200px"
       mx="auto"
-      px={{ base: 3, sm: 4, md: 5 }}
-      py={{ base: 3, sm: 4, md: 5 }}
+      height="calc(100vh - 64px)" // Altura total menos el header
+      display="flex"
+      flexDirection="column"
     >
-      <SimpleGrid
-        columns={{ base: 2, sm: 3, md: 3, lg: 4, xl: 4 }}
-        spacing={{ base: 3, sm: 4, md: 5 }}
-        w="100%"
+      <Box
+        flex="1"
+        overflow="auto"
+        px={{ base: 3, sm: 4, md: 5 }}
+        py={{ base: 3, sm: 4, md: 5 }}
+        sx={{
+          '&::-webkit-scrollbar': {
+            width: '4px',
+          },
+          '&::-webkit-scrollbar-track': {
+            width: '6px',
+            background: 'gray.100',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'gray.300',
+            borderRadius: '24px',
+          },
+        }}
       >
-        {categories.map((category, index) => (
-          <CategoryCard
-            key={category.id}
-            category={category}
-            isSelected={category.id === selectedCategory}
-            onClick={() => onCategoryClick(category)}
-            index={index}
-            totalCategories={categories.length}
-          />
-        ))}
-      </SimpleGrid>
+        <SimpleGrid
+          columns={{ base: 2, sm: 3, md: 3, lg: 4, xl: 4 }}
+          spacing={{ base: 3, sm: 4, md: 5 }}
+          w="100%"
+        >
+          {categories.map((category, index) => (
+            <CategoryCard
+              key={category.id}
+              category={category}
+              isSelected={category.id === selectedCategory}
+              onClick={() => onCategoryClick(category)}
+              index={index}
+              totalCategories={categories.length}
+            />
+          ))}
+        </SimpleGrid>
+      </Box>
     </Box>
   );
 }; 

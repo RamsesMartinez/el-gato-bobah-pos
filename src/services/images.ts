@@ -39,7 +39,7 @@ const DEFAULT_COLOR_SETTINGS: ColorSettings = {
   startHue: getRandomStartHue(),
   hueRange: ColorRange.EXTENDED,
   saturation: 70,
-  lightness: 91
+  lightness: 91,
 };
 
 export class ImageService {
