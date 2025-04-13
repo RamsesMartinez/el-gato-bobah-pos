@@ -2,39 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { Box, Button, HStack, VStack, Text, Badge, Flex, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import { MainNav } from '../../components/layout/MainNav';
-
-interface ActiveSale {
-  id: string;
-  ticketNumber: string;
-  table: string;
-  items: string[];
-  total: number;
-  status: 'NUEVO' | 'EN_PROCESO';
-  createdAt: string;
-  timeElapsed: string;
-}
+import { useTheme } from '../../hooks/useTheme';
+import { FudoSale } from '../../types/fudo';
+import { saleService } from '../../services/api/sales';
 
 export const ActiveSales: React.FC = () => {
   const navigate = useNavigate();
-  const [activeSales, setActiveSales] = useState<ActiveSale[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { theme } = useTheme();
+  const [activeSales, setActiveSales] = useState<FudoSale[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Aquí cargaríamos las ventas activas del API
-    const mockSales: ActiveSale[] = [
-      {
-        id: '14',
-        ticketNumber: '#14',
-        table: 'Mesa 1',
-        items: ['Quesadilla potatoes with chorizo, Beer (Victory), Beer (Corona), Bottled water, Boing (Mango), Order of 2 sopes'],
-        total: 230.00,
-        status: 'NUEVO',
-        createdAt: '2024-04-12T23:46:00',
-        timeElapsed: '32 minutes ago'
-      },
-      // Más ventas mock...
-    ];
-    setActiveSales(mockSales);
+    const loadSales = async () => {
+      try {
+        const response = await saleService.getSales();
+        // Filtramos solo las ventas activas (estado NUEVO o EN_PROCESO)
+        const activeOrders = response.data.filter(sale => 
+          sale.attributes.status === 'nuevo' || 
+          sale.attributes.status === 'en_proceso'
+        );
+        setActiveSales(activeOrders);
+      } catch (error) {
+        console.error('Error loading sales:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSales();
   }, []);
 
   const handleNewSale = () => {
@@ -50,11 +45,11 @@ export const ActiveSales: React.FC = () => {
         <Box borderBottom="1px" borderColor="gray.200">
           <Flex justify="space-between" align="center" p={4} maxW="1400px" mx="auto">
             <Button
-              bg="#00C853"
+              bg={theme.colors.success.main}
               color="white"
               size="md"
               onClick={handleNewSale}
-              _hover={{ bg: '#00B34A' }}
+              _hover={{ bg: theme.colors.success.dark }}
             >
               Nueva venta
             </Button>
@@ -88,17 +83,17 @@ export const ActiveSales: React.FC = () => {
             <Button 
               size="sm" 
               variant="ghost" 
-              color="#2196F3"
-              _hover={{ bg: 'transparent', color: '#1E88E5' }}
+              color={theme.colors.primary.main}
+              _hover={{ bg: 'transparent', color: theme.colors.primary.dark }}
             >
               DÍAS ANTERIORES (8)
             </Button>
             <Button 
               size="sm" 
               variant="ghost" 
-              color="#2196F3"
+              color={theme.colors.primary.main}
               fontWeight="bold"
-              _hover={{ bg: 'transparent', color: '#1E88E5' }}
+              _hover={{ bg: 'transparent', color: theme.colors.primary.dark }}
             >
               HOY (4)
             </Button>
@@ -121,32 +116,40 @@ export const ActiveSales: React.FC = () => {
               >
                 <Flex>
                   <Box flex="1">
-                    <Text color="#F44336" fontSize="lg">{sale.timeElapsed}</Text>
-                    <Text color="gray.500" fontSize="sm">23:46</Text>
+                    <Text color={theme.colors.error.main} fontSize="lg">
+                      {new Date(sale.attributes.openedAt).toLocaleTimeString()}
+                    </Text>
+                    <Text color="gray.500" fontSize="sm">
+                      {new Date(sale.attributes.openedAt).toLocaleDateString()}
+                    </Text>
                   </Box>
                   <Box flex="1">
                     <Text color="gray.500">2 hours</Text>
                   </Box>
                   <Box flex="3">
                     <HStack>
-                      <Text color="gray.900">{sale.ticketNumber}</Text>
-                      <Text color="gray.500">• PARA LLEVAR</Text>
+                      <Text color="gray.900">#{sale.attributes.number}</Text>
+                      <Text color="gray.500">• {sale.attributes.type}</Text>
                     </HStack>
                     <Text color="gray.500" fontSize="sm" noOfLines={1}>
-                      {sale.items.join(', ')}
+                      {sale.attributes.notes || 'Sin notas'}
                     </Text>
                   </Box>
                   <Box flex="1">
-                    <Badge bg="#F44336" color="white">NUEVO</Badge>
+                    <Badge bg={theme.colors.error.main} color="white">
+                      {sale.attributes.status}
+                    </Badge>
                   </Box>
                   <Box flex="1" textAlign="right">
-                    <Text color="gray.900" fontWeight="bold">${sale.total.toFixed(2)}</Text>
+                    <Text color="gray.900" fontWeight="bold">
+                      ${sale.attributes.totalAmount.toFixed(2)}
+                    </Text>
                     <Button 
-                      bg="#2196F3" 
+                      bg={theme.colors.primary.main} 
                       color="white" 
                       size="sm" 
                       mt={2}
-                      _hover={{ bg: '#1E88E5' }}
+                      _hover={{ bg: theme.colors.primary.dark }}
                     >
                       Pagar
                     </Button>
