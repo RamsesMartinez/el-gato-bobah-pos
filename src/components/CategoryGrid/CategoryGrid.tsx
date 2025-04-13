@@ -16,11 +16,10 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
 }) => {
   return (
     <SimpleGrid
-      columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }}
-      spacing={{ base: 2, sm: 3, md: 4 }}
+      columns={{ base: 2, sm: 3, md: 3, lg: 4, xl: 5 }}
+      spacing={{ base: 3, sm: 4, md: 5 }}
       w="100%"
-      p={{ base: 2, sm: 3, md: 4 }}
-      minChildWidth="140px"
+      p={{ base: 3, sm: 4, md: 5 }}
     >
       {categories.map((category) => (
         <CategoryCard
