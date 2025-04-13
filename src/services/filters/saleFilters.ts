@@ -1,4 +1,4 @@
-import { SaleFilters, DateFilter, SaleState, SaleType } from '../../types/filters';
+import { SaleFilters, DateFilter, SaleState, FudoSaleType } from '../../types/filters';
 
 export class SaleFilterService {
   /**
@@ -24,10 +24,8 @@ export class SaleFilterService {
       apiFilters['filter[saleState]'] = `in.(${filters.saleState.join(',')})`;
     }
 
-    if (filters.type && filters.type.length === 1) {
-      apiFilters['filter[saleType]'] = `eq.${filters.type[0]}`;
-    } else if (filters.type && filters.type.length > 1) {
-      apiFilters['filter[saleType]'] = `in.(${filters.type.join(',')})`;
+    if (filters.saleType) {
+      apiFilters['filter[saleType]'] = `eq.${filters.saleType}`;
     }
 
     if (filters.createdAt) {
@@ -57,11 +55,12 @@ export class SaleFilterService {
 
   /**
    * Construye filtros para la vista de mostrador (ventas pendientes y en curso)
+   * @param type Tipo de venta de mostrador (EAT-IN o TAKEAWAY)
    */
-  static getCounterSalesFilters(): SaleFilters {
+  static getCounterSalesFilters(type: 'EAT-IN' | 'TAKEAWAY'): SaleFilters {
     return {
       saleState: ['PENDING', 'IN-COURSE', 'READY_TO_DELIVER'],
-      type: ['TAKEAWAY', 'DINE_IN']
+      saleType: type
     };
   }
 
@@ -71,7 +70,7 @@ export class SaleFilterService {
   static getDeliverySalesFilters(): SaleFilters {
     return {
       saleState: ['PENDING', 'IN-COURSE', 'DELIVERY-SENT', 'READY_TO_DELIVER'],
-      type: ['DELIVERY']
+      saleType: 'DELIVERY'
     };
   }
 

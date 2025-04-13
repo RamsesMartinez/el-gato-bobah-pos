@@ -46,8 +46,19 @@ class SaleService {
    * Obtiene todas las ventas activas para mostrador
    */
   async getCounterSales(): Promise<ApiResponse<FudoSale[]>> {
-    const filters = SaleFilterService.getCounterSalesFilters();
-    return this.getSalesWithFilters(filters);
+    // Obtener ventas EAT-IN
+    const eatInFilters = SaleFilterService.getCounterSalesFilters('EAT-IN');
+    const eatInSales = await this.getSalesWithFilters(eatInFilters);
+
+    // Obtener ventas TAKEAWAY
+    const takeawayFilters = SaleFilterService.getCounterSalesFilters('TAKEAWAY');
+    const takeawaySales = await this.getSalesWithFilters(takeawayFilters);
+
+    // Combinar los resultados
+    return {
+      ...eatInSales,
+      data: [...eatInSales.data, ...takeawaySales.data]
+    };
   }
 
   /**

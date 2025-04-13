@@ -7,7 +7,12 @@ export type SaleState =
   | 'DELIVERY-SENT'
   | 'READY_TO_DELIVER';
 
-export type SaleType = 'DELIVERY' | 'TAKEAWAY' | 'DINE_IN';
+/**
+ * Valores válidos para el tipo de venta en la API de Fudo
+ * Solo se puede enviar un valor usando eq.
+ * @example filter[saleType]=eq.EAT-IN
+ */
+export type FudoSaleType = 'EAT-IN' | 'TAKEAWAY' | 'DELIVERY';
 
 export interface DateFilter {
   gte?: string; // greater than or equal
@@ -17,7 +22,11 @@ export interface DateFilter {
 
 export interface SaleFilters {
   saleState?: SaleState[];
-  type?: SaleType[];
+  /**
+   * Tipo de venta. Solo se puede enviar un valor usando eq.
+   * @example filter[saleType]=eq.EAT-IN
+   */
+  saleType?: FudoSaleType;
   createdAt?: DateFilter;
   openedAt?: DateFilter;
   closedAt?: DateFilter;
