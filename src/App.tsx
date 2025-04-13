@@ -3,9 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider } from './context/ThemeContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { SalesPage } from './pages/SalesPage';
-import NewOrder from './pages/NewOrder/NewOrder';
 import './styles/globals.css';
 import './App.css';
+import NewOrder from './pages/NewOrder/NewOrder';
 
 function App() {
   return (

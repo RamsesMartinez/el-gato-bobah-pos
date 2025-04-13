@@ -19,6 +19,24 @@ export const ProductsPanel: React.FC<ProductsPanelProps> = ({
 }) => {
   const { theme } = useTheme();
 
+  // Función para generar un color pastel aleatorio pero consistente para cada categoría
+  const getCategoryColor = (categoryName: string) => {
+    const colors = [
+      '#FFB5E8', // Rosa pastel
+      '#B5B9FF', // Azul pastel
+      '#B5FFB9', // Verde pastel
+      '#FFB8B5', // Coral pastel
+      '#BFFCC6', // Menta pastel
+      '#FFC9DE', // Rosa claro
+      '#C4FAF8', // Turquesa pastel
+      '#DBCDF0', // Lavanda pastel
+    ];
+    
+    // Usar el nombre de la categoría para seleccionar un color consistente
+    const index = categoryName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[index % colors.length];
+  };
+
   return (
     <div style={{
       flex: 1,
@@ -62,34 +80,66 @@ export const ProductsPanel: React.FC<ProductsPanelProps> = ({
         </button>
       </div>
 
-      {/* Categorías */}
+      {/* Categorías en cuadrícula */}
       <div style={{
         padding: theme.spacing.md,
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
         gap: theme.spacing.md,
-        overflowX: 'auto',
+        maxHeight: '200px',
+        overflowY: 'auto',
+        borderBottom: `1px solid ${theme.colors.border.main}`,
       }}>
-        {categories.map((category) => (
-          <button
-            key={category}
-            onClick={() => onCategoryChange(category)}
-            style={{
-              padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-              borderRadius: theme.borderRadius.md,
-              border: 'none',
-              backgroundColor: selectedCategory === category
-                ? theme.colors.primary.main
-                : theme.colors.background.paper,
-              color: selectedCategory === category
-                ? theme.colors.background.paper
-                : theme.colors.text.primary,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {category}
-          </button>
-        ))}
+        {categories.map((category) => {
+          const isSelected = selectedCategory === category;
+          const backgroundColor = getCategoryColor(category);
+          
+          return (
+            <button
+              key={category}
+              onClick={() => onCategoryChange(category)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: theme.spacing.md,
+                borderRadius: theme.borderRadius.lg,
+                border: isSelected ? `2px solid ${theme.colors.primary.main}` : 'none',
+                backgroundColor: backgroundColor,
+                color: theme.colors.text.primary,
+                cursor: 'pointer',
+                minHeight: '100px',
+                transition: 'all 0.2s ease-in-out',
+                transform: isSelected ? 'scale(0.98)' : 'scale(1)',
+                boxShadow: isSelected 
+                  ? 'inset 0 2px 4px rgba(0,0,0,0.1)' 
+                  : '0 2px 4px rgba(0,0,0,0.05)',
+              }}
+            >
+              <div style={{
+                fontSize: '24px',
+                marginBottom: theme.spacing.sm,
+              }}>
+                {/* Emoji basado en la categoría */}
+                {category === 'Todos los productos' ? '🏪' :
+                 category.toLowerCase().includes('frappe') ? '🥤' :
+                 category.toLowerCase().includes('té') ? '🫖' :
+                 category.toLowerCase().includes('café') ? '☕' :
+                 category.toLowerCase().includes('chocolate') ? '🍫' :
+                 '🍽️'}
+              </div>
+              <span style={{
+                fontSize: theme.typography.fontSizes.sm,
+                fontWeight: theme.typography.fontWeights.medium,
+                textAlign: 'center',
+                wordBreak: 'break-word',
+              }}>
+                {category}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Grid de productos */}

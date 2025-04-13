@@ -48,10 +48,10 @@ export const DashboardLayout: React.FC = () => {
   const handleBackClick = () => {
     if (hasChanges) {
       if (window.confirm('¿Estás seguro que deseas salir? Se perderán los cambios no guardados.')) {
-        navigate('/ventas');
+        navigate('/sales');
       }
     } else {
-      navigate('/ventas');
+      navigate('/sales');
     }
   };
 
@@ -83,7 +83,7 @@ export const DashboardLayout: React.FC = () => {
       setHasChanges(false);
 
       // Redirigir a la lista de ventas después de un pago exitoso
-      navigate('/ventas');
+      navigate('/sales');
 
     } catch (error) {
       console.error('Error al procesar el pago:', error);
