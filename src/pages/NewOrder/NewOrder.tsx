@@ -262,7 +262,7 @@ const NewOrder: React.FC = () => {
 
         {/* Panel derecho - Ticket */}
         <Box 
-          w={{ base: '100%', md: '40%', lg: '35%', xl: '700px' }}
+          w={{ base: '100%', md: '40%', lg: '35%', xl: '550px' }}
           bg="white" 
           borderLeft={{ base: 'none', md: '1px solid' }}
           borderTop={{ base: '1px solid', md: 'none' }}
