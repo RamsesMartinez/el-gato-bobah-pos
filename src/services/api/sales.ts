@@ -4,8 +4,10 @@ import { FudoSale, FudoResponse } from '../../types/fudo';
 // Mapear estados de Fudo a nuestros estados
 function mapFudoStatus(fudoStatus: string): "nuevo" | "en_proceso" | "completado" | "cancelado" {
   const statusMap: { [key: string]: "nuevo" | "en_proceso" | "completado" | "cancelado" } = {
+    'NEW': 'nuevo',
     'IN-COURSE': 'en_proceso',
-    'CLOSED': 'completado'
+    'CLOSED': 'completado',
+    'CANCELLED': 'cancelado'
   };
   return statusMap[fudoStatus] || 'nuevo';
 }
@@ -21,28 +23,31 @@ function mapFudoType(fudoType: string): "para_llevar" | "delivery" | "mesa" {
 }
 
 // Función adaptadora para transformar los datos de Fudo al formato FudoSale
-function adaptFudoOrder(order: any): FudoSale {
+function adaptFudoOrder(order: any): FudoSale & { raw_state: string } {
+  console.log('Raw order from Fudo:', order); // Para debug
+
   return {
     type: "Sale",
     id: order.id,
+    raw_state: order.attributes.saleState, // Cambiado de state a saleState
     attributes: {
-      number: order.attributes.createdAt.split('T')[0] + '-' + order.id,
-      status: mapFudoStatus(order.attributes.saleState),
-      type: mapFudoType(order.attributes.saleType),
+      number: `${order.attributes.number || order.id}`,
+      status: mapFudoStatus(order.attributes.saleState), // Cambiado de state a saleState
+      type: mapFudoType(order.attributes.type),
       openedAt: order.attributes.createdAt,
       closedAt: order.attributes.closedAt,
-      totalAmount: order.attributes.total,
-      totalItems: order.relationships.items.data.length,
+      totalAmount: order.attributes.total || 0,
+      totalItems: order.relationships?.items?.data?.length || 0,
       customerName: order.attributes.customerName,
-      customerPhone: null,
-      customerEmail: null,
-      deliveryAddress: null,
-      deliveryInstructions: null,
-      paymentMethod: null,
-      paymentStatus: "pending",
-      notes: order.attributes.comment
+      customerPhone: order.attributes.customerPhone || null,
+      customerEmail: order.attributes.customerEmail || null,
+      deliveryAddress: order.attributes.deliveryAddress || null,
+      deliveryInstructions: order.attributes.deliveryInstructions || null,
+      paymentMethod: order.attributes.paymentMethod || null,
+      paymentStatus: order.attributes.paymentStatus || "pending",
+      notes: order.attributes.notes || null
     },
-    relationships: order.relationships
+    relationships: order.relationships || {}
   };
 }
 

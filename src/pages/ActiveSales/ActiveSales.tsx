@@ -16,10 +16,16 @@ export const ActiveSales: React.FC = () => {
     const loadSales = async () => {
       try {
         const response = await saleService.getSales();
-        // Filtramos solo las ventas en proceso
-        const activeOrders = response.data.filter(sale => 
-          sale.attributes.status === 'en_proceso'
-        );
+        console.log('Respuesta completa de ventas:', response); // Para debug
+
+        // Filtramos solo las ventas activas (NEW o IN-COURSE)
+        const activeOrders = response.data.filter(sale => {
+          const rawState = (sale as any).raw_state;
+          console.log('Estado original de la venta:', rawState); // Para debug
+          return ['NEW', 'IN-COURSE'].includes(rawState);
+        });
+        
+        console.log('Ventas activas filtradas:', activeOrders); // Para debug
         setActiveSales(activeOrders);
       } catch (error) {
         console.error('Error loading sales:', error);
@@ -35,6 +41,11 @@ export const ActiveSales: React.FC = () => {
     navigate('/sales/new');
   };
 
+  const handleSaleClick = (sale: FudoSale) => {
+    console.log('Datos completos de la venta:', sale);
+    navigate(`/sales/${sale.id}`);
+  };
+
   return (
     <Box bg="white" minH="100vh">
       <VStack spacing={0} align="stretch">
@@ -47,7 +58,10 @@ export const ActiveSales: React.FC = () => {
               bg={theme.colors.success.main}
               color="white"
               size="md"
-              onClick={handleNewSale}
+              onClick={() => {
+                console.log('Creando nueva venta');
+                handleNewSale();
+              }}
               _hover={{ bg: theme.colors.success.dark }}
             >
               Nueva venta
@@ -57,9 +71,24 @@ export const ActiveSales: React.FC = () => {
                 Tipo de pedido
               </MenuButton>
               <MenuList bg="white" borderColor="gray.200">
-                <MenuItem _hover={{ bg: 'gray.100' }}>Para llevar</MenuItem>
-                <MenuItem _hover={{ bg: 'gray.100' }}>Mesa</MenuItem>
-                <MenuItem _hover={{ bg: 'gray.100' }}>Delivery</MenuItem>
+                <MenuItem 
+                  _hover={{ bg: 'gray.100' }}
+                  onClick={() => console.log('Filtrar por: Para llevar')}
+                >
+                  Para llevar
+                </MenuItem>
+                <MenuItem 
+                  _hover={{ bg: 'gray.100' }}
+                  onClick={() => console.log('Filtrar por: Mesa')}
+                >
+                  Mesa
+                </MenuItem>
+                <MenuItem 
+                  _hover={{ bg: 'gray.100' }}
+                  onClick={() => console.log('Filtrar por: Delivery')}
+                >
+                  Delivery
+                </MenuItem>
               </MenuList>
             </Menu>
           </Flex>
@@ -111,7 +140,7 @@ export const ActiveSales: React.FC = () => {
                 borderRadius="md"
                 boxShadow="sm"
                 _hover={{ bg: 'gray.50' }}
-                onClick={() => navigate(`/sales/${sale.id}`)}
+                onClick={() => handleSaleClick(sale)}
               >
                 <Flex>
                   <Box flex="1">
@@ -138,6 +167,9 @@ export const ActiveSales: React.FC = () => {
                     <Badge bg={theme.colors.error.main} color="white">
                       {sale.attributes.status}
                     </Badge>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      API: {(sale as any).raw_state || 'N/A'}
+                    </Text>
                   </Box>
                   <Box flex="1" textAlign="right">
                     <Text color="gray.900" fontWeight="bold">
@@ -148,6 +180,15 @@ export const ActiveSales: React.FC = () => {
                       color="white" 
                       size="sm" 
                       mt={2}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('Datos de pago:', {
+                          id: sale.id,
+                          total: sale.attributes.totalAmount,
+                          status: sale.attributes.status,
+                          raw_state: (sale as any).raw_state
+                        });
+                      }}
                       _hover={{ bg: theme.colors.primary.dark }}
                     >
                       Pagar

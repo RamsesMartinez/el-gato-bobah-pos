@@ -21,23 +21,39 @@ function adaptFudoCategory(category: any): FudoCategory {
 }
 
 export class CategoryService {
-  // Obtener todas las categorías
+  // Obtener todas las categorías con sus productos
   async getCategories(): Promise<FudoResponse<FudoCategory>> {
-    const response = await api.get<any>('/categories');
+    const response = await api.get<any>('/product-categories', {
+      params: {
+        sort: 'id',
+        include: 'products'
+      }
+    });
+    console.log('Respuesta completa de categorías:', response.data); // Para debug
     const adaptedCategories: FudoCategory[] = response.data.data.map(adaptFudoCategory);
     return { data: adaptedCategories };
   }
 
-  // Obtener una categoría por ID
+  // Obtener una categoría por ID con sus productos
   async getCategoryById(id: string): Promise<FudoResponse<FudoCategory>> {
-    const response = await api.get<any>(`/categories/${id}`);
+    const response = await api.get<any>(`/product-categories/${id}`, {
+      params: {
+        include: 'products'
+      }
+    });
+    console.log('Respuesta de categoría específica:', response.data); // Para debug
     const adaptedCategory = adaptFudoCategory(response.data.data);
     return { data: [adaptedCategory] };
   }
 
   // Obtener productos por categoría
   async getProductsByCategory(categoryId: string): Promise<FudoResponse<any>> {
-    const response = await api.get<any>(`/categories/${categoryId}/products`);
+    const response = await api.get<any>(`/product-categories/${categoryId}`, {
+      params: {
+        include: 'products'
+      }
+    });
+    console.log('Respuesta de productos por categoría:', response.data); // Para debug
     return response.data;
   }
 }
