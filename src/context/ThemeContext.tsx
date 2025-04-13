@@ -1,28 +1,25 @@
 import React, { createContext, useCallback, useMemo } from 'react';
-import { themeConfig, ThemeConfig } from '../theme/config';
+import { theme } from '../theme/chakraTheme';
+
+type CustomTheme = typeof theme;
 
 interface ThemeContextType {
-  theme: ThemeConfig;
-  updateTheme: (newTheme: Partial<ThemeConfig>) => void;
+  theme: CustomTheme;
+  updateTheme: (newTheme: Partial<CustomTheme>) => void;
 }
 
 export const ThemeContext = createContext<ThemeContextType | null>(null);
 
 interface ThemeProviderProps {
   children: React.ReactNode;
-  initialTheme?: Partial<ThemeConfig>;
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   children,
-  initialTheme = themeConfig,
 }) => {
-  const [theme, setTheme] = React.useState<ThemeConfig>({
-    ...themeConfig,
-    ...initialTheme,
-  });
+  const [currentTheme, setTheme] = React.useState<CustomTheme>(theme);
 
-  const updateTheme = useCallback((newTheme: Partial<ThemeConfig>) => {
+  const updateTheme = useCallback((newTheme: Partial<CustomTheme>) => {
     setTheme((prevTheme) => ({
       ...prevTheme,
       ...newTheme,
@@ -31,10 +28,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
   const value = useMemo(
     () => ({
-      theme,
+      theme: currentTheme,
       updateTheme,
     }),
-    [theme, updateTheme]
+    [currentTheme, updateTheme]
   );
 
   return (

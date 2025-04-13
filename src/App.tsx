@@ -5,13 +5,14 @@ import { DashboardLayout } from './components/layout/DashboardLayout';
 import { ActiveSales } from './pages/ActiveSales/ActiveSales';
 import { SalesHistory } from './pages/SalesHistory/SalesHistory';
 import { ThemeProvider } from './context/ThemeContext';
+import { theme } from './theme/chakraTheme';
 import './styles/globals.css';
 import './App.css';
 import NewOrder from './pages/NewOrder/NewOrder';
 
 export const App: React.FC = () => {
   return (
-    <ChakraProvider>
+    <ChakraProvider theme={theme}>
       <ThemeProvider>
         <Router>
           <Routes>
