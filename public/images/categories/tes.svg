@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="400" height="300" fill="#DBCDF0"/>
-  <path d="M160 120H240V220H160V120Z" fill="#FFF"/>
-  <path d="M240 140C260 140 270 160 270 180C270 200 260 220 240 220" stroke="#FFF" stroke-width="10"/>
-  <path d="M180 80C180 80 200 100 220 80" stroke="#FFF" stroke-width="8"/>
-  <path d="M190 100C190 100 200 110 210 100" stroke="#FFF" stroke-width="6"/>
-  <text x="200" y="270" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Té's</text>
-</svg> 

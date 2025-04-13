@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="400" height="300" fill="#E2E8F0"/>
-  <circle cx="200" cy="150" r="60" fill="#FFF"/>
-  <path d="M180 130L220 170M220 130L180 170" stroke="#E2E8F0" stroke-width="8"/>
-  <text x="200" y="250" font-family="Arial" font-size="24" fill="#FFF" text-anchor="middle">Categoría</text>
-</svg> 

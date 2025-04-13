@@ -8,30 +8,14 @@ interface CategoryCardProps {
   onClick: () => void;
 }
 
-const getCategoryIcon = (categoryName: string): string => {
+const getDefaultImage = (categoryName: string): string => {
   const name = categoryName.toLowerCase();
-  if (name === 'todos los productos') return '/images/categories/todos.svg';
-  if (name.includes('frappé')) return '/images/categories/frappes.svg';
-  if (name.includes('soda')) return '/images/categories/sodas.svg';
-  if (name.includes('té') || name.includes('tea')) return '/images/categories/tes.svg';
-  if (name.includes('café')) return '/images/categories/cafes.svg';
-  if (name.includes('crepa')) return '/images/categories/crepas.svg';
-  if (name.includes('granizado')) return '/images/categories/granizados.svg';
-  if (name.includes('licuado')) return '/images/categories/licuados.svg';
-  if (name.includes('bobah')) return '/images/categories/bobah.svg';
-  return '/images/categories/default.svg';
-};
-
-const getCategoryColor = (categoryName: string): string => {
-  const name = categoryName.toLowerCase();
-  if (name === 'todos los productos') return '#B5FFB9'; // Verde pastel
-  if (name.includes('frappé')) return '#FFB5E8'; // Rosa pastel
-  if (name.includes('soda')) return '#B5B9FF'; // Azul pastel
-  if (name.includes('té') || name.includes('tea')) return '#BFFCC6'; // Menta pastel
-  if (name.includes('café')) return '#C4FAF8'; // Turquesa pastel
-  if (name.includes('crepa')) return '#FFC9DE'; // Rosa claro
-  if (name.includes('granizado')) return '#DBCDF0'; // Lavanda pastel
-  return '#FFE0B2'; // Naranja pastel (default)
+  if (name.includes('quesadilla')) return 'https://images.unsplash.com/photo-1628191139360-4083564d03fd?w=300';
+  if (name.includes('bebida') || name.includes('refresco')) return 'https://images.unsplash.com/photo-1570526427001-9d80d114054d?w=300';
+  if (name.includes('postre') || name.includes('dessert')) return 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=300';
+  if (name.includes('sope')) return 'https://images.unsplash.com/photo-1617424771170-d333ef3d2d9b?w=300';
+  if (name.includes('kit') || name.includes('disposable')) return 'https://images.unsplash.com/photo-1610419241908-de94c55c14f9?w=300';
+  return 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=300';
 };
 
 export const CategoryCard: React.FC<CategoryCardProps> = ({
@@ -39,44 +23,57 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   isSelected,
   onClick,
 }) => {
-  const backgroundColor = getCategoryColor(category.attributes.name);
-  const icon = getCategoryIcon(category.attributes.name);
+  const imageUrl = getDefaultImage(category.attributes.name);
 
   return (
     <Box
       as="button"
       display="flex"
       flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      p={4}
-      borderRadius="lg"
-      border={isSelected ? '2px solid' : 'none'}
-      borderColor="primary.500"
-      backgroundColor={backgroundColor}
+      alignItems="stretch"
+      p={2}
+      borderRadius="xl"
+      backgroundColor="white"
       cursor="pointer"
-      minH="100px"
-      transition="all 0.2s ease-in-out"
-      transform={isSelected ? 'scale(0.98)' : 'scale(1)'}
-      boxShadow={isSelected ? 'inset 0 2px 4px rgba(0,0,0,0.1)' : '0 2px 4px rgba(0,0,0,0.05)'}
+      width="full"
+      height="180px"
+      position="relative"
+      overflow="hidden"
+      transition="all 0.2s"
       onClick={onClick}
+      border={isSelected ? '2px solid' : '1px solid'}
+      borderColor={isSelected ? 'blue.500' : 'gray.200'}
       _hover={{
-        transform: 'scale(1.02)',
+        transform: 'translateY(-2px)',
+        shadow: 'md',
       }}
     >
       <Box
-        as="img"
-        src={icon}
-        alt={category.attributes.name}
-        width="48px"
-        height="48px"
-        mb={2}
-      />
+        position="relative"
+        height="130px"
+        overflow="hidden"
+        borderRadius="lg"
+      >
+        <Box
+          as="img"
+          src={imageUrl}
+          alt={category.attributes.name}
+          width="100%"
+          height="100%"
+          objectFit="cover"
+          transition="transform 0.3s ease"
+          _hover={{
+            transform: 'scale(1.05)',
+          }}
+        />
+      </Box>
       <Text
+        mt={2}
         fontSize="sm"
-        fontWeight="medium"
+        fontWeight="500"
+        color="gray.800"
         textAlign="center"
-        wordBreak="break-word"
+        noOfLines={1}
       >
         {category.attributes.name}
       </Text>
