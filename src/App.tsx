@@ -1,25 +1,24 @@
 import React from 'react';
-import logo from './logo.svg';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeContext';
+import { DashboardLayout } from './components/layout/DashboardLayout';
+import { SalesPage } from './pages/SalesPage';
+import NewOrder from './pages/NewOrder/NewOrder';
+import './styles/globals.css';
 import './App.css';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <ThemeProvider>
+      <Router>
+        <Routes>
+          <Route path="/sales" element={<SalesPage />} />
+          <Route path="/dashboard" element={<DashboardLayout />} />
+          <Route path="/" element={<Navigate to="/sales" replace />} />
+          <Route path="/new-order" element={<NewOrder />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 

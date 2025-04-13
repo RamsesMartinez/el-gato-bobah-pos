@@ -1,0 +1,3736 @@
+{
+    "data": [
+      {
+        "type": "Sale",
+        "id": "3600",
+        "attributes": {
+          "closedAt": "2025-04-12T00:16:48Z",
+          "comment": null,
+          "createdAt": "2025-04-11T23:28:27Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 245,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10372"
+              },
+              {
+                "type": "Item",
+                "id": "10373"
+              },
+              {
+                "type": "Item",
+                "id": "10374"
+              },
+              {
+                "type": "Item",
+                "id": "10375"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3501"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3601",
+        "attributes": {
+          "closedAt": "2025-04-12T01:22:07Z",
+          "comment": null,
+          "createdAt": "2025-04-11T23:38:40Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 210,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10376"
+              },
+              {
+                "type": "Item",
+                "id": "10377"
+              },
+              {
+                "type": "Item",
+                "id": "10378"
+              },
+              {
+                "type": "Item",
+                "id": "10379"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3502"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3602",
+        "attributes": {
+          "closedAt": "2025-04-12T02:00:19Z",
+          "comment": null,
+          "createdAt": "2025-04-12T01:59:01Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 65,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10380"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3503"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3603",
+        "attributes": {
+          "closedAt": "2025-04-12T02:05:04Z",
+          "comment": null,
+          "createdAt": "2025-04-12T02:04:20Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 65,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10381"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3504"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3604",
+        "attributes": {
+          "closedAt": "2025-04-12T02:09:40Z",
+          "comment": null,
+          "createdAt": "2025-04-12T02:08:55Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 65,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10382"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3505"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3606",
+        "attributes": {
+          "closedAt": "2025-04-12T02:49:04Z",
+          "comment": null,
+          "createdAt": "2025-04-12T02:36:40Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 260,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10390"
+              },
+              {
+                "type": "Item",
+                "id": "10391"
+              },
+              {
+                "type": "Item",
+                "id": "10392"
+              },
+              {
+                "type": "Item",
+                "id": "10393"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3506"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3607",
+        "attributes": {
+          "closedAt": "2025-04-12T03:48:31Z",
+          "comment": null,
+          "createdAt": "2025-04-12T03:16:22Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 240,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10394"
+              },
+              {
+                "type": "Item",
+                "id": "10395"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3511"
+              }
+            ]
+          },
+          "tips": {
+            "data": [
+              {
+                "type": "Tip",
+                "id": "36"
+              }
+            ]
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3608",
+        "attributes": {
+          "closedAt": "2025-04-12T03:27:15Z",
+          "comment": null,
+          "createdAt": "2025-04-12T03:26:33Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 220,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10396"
+              },
+              {
+                "type": "Item",
+                "id": "10397"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3507"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3609",
+        "attributes": {
+          "closedAt": "2025-04-12T03:43:12Z",
+          "comment": null,
+          "createdAt": "2025-04-12T03:41:40Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 220,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10398"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3509"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3610",
+        "attributes": {
+          "closedAt": "2025-04-12T03:46:30Z",
+          "comment": null,
+          "createdAt": "2025-04-12T03:43:20Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 405,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10399"
+              },
+              {
+                "type": "Item",
+                "id": "10400"
+              },
+              {
+                "type": "Item",
+                "id": "10401"
+              },
+              {
+                "type": "Item",
+                "id": "10402"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3510"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3613",
+        "attributes": {
+          "closedAt": "2025-04-12T19:26:52Z",
+          "comment": null,
+          "createdAt": "2025-04-12T19:25:28Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 95,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10409"
+              },
+              {
+                "type": "Item",
+                "id": "10410"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3513"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3615",
+        "attributes": {
+          "closedAt": "2025-04-12T20:52:39Z",
+          "comment": null,
+          "createdAt": "2025-04-12T20:42:43Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 120,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10420"
+              },
+              {
+                "type": "Item",
+                "id": "10421"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3515"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3616",
+        "attributes": {
+          "closedAt": "2025-04-12T22:44:04Z",
+          "comment": null,
+          "createdAt": "2025-04-12T22:42:39Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 175,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10422"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3516"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3617",
+        "attributes": {
+          "closedAt": "2025-04-13T00:18:05Z",
+          "comment": null,
+          "createdAt": "2025-04-12T23:25:38Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 270,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10423"
+              },
+              {
+                "type": "Item",
+                "id": "10424"
+              },
+              {
+                "type": "Item",
+                "id": "10425"
+              },
+              {
+                "type": "Item",
+                "id": "10426"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3519"
+              },
+              {
+                "type": "Payment",
+                "id": "3520"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3618",
+        "attributes": {
+          "closedAt": "2025-04-12T23:41:48Z",
+          "comment": null,
+          "createdAt": "2025-04-12T23:41:38Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 50,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10427"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3517"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3619",
+        "attributes": {
+          "closedAt": "2025-04-13T00:17:39Z",
+          "comment": null,
+          "createdAt": "2025-04-13T00:11:39Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 55,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10428"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3518"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3620",
+        "attributes": {
+          "closedAt": null,
+          "comment": null,
+          "createdAt": "2025-04-13T00:17:23Z",
+          "people": null,
+          "customerName": "PRUEBA RAMSES",
+          "anonymousCustomer": {
+            "name": "PRUEBA RAMSES"
+          },
+          "total": 0,
+          "saleType": "TAKEAWAY",
+          "saleState": "IN-COURSE",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": []
+          },
+          "payments": {
+            "data": []
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": null
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3621",
+        "attributes": {
+          "closedAt": "2025-04-13T02:22:51Z",
+          "comment": null,
+          "createdAt": "2025-04-13T01:24:26Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 220,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10429"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3521"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3623",
+        "attributes": {
+          "closedAt": "2025-04-13T03:02:47Z",
+          "comment": null,
+          "createdAt": "2025-04-13T01:58:10Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 145,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10434"
+              },
+              {
+                "type": "Item",
+                "id": "10435"
+              },
+              {
+                "type": "Item",
+                "id": "10436"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3525"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3624",
+        "attributes": {
+          "closedAt": "2025-04-13T02:30:27Z",
+          "comment": null,
+          "createdAt": "2025-04-13T02:08:58Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 348,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10437"
+              },
+              {
+                "type": "Item",
+                "id": "10438"
+              },
+              {
+                "type": "Item",
+                "id": "10439"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3523"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3625",
+        "attributes": {
+          "closedAt": "2025-04-13T03:10:09Z",
+          "comment": null,
+          "createdAt": "2025-04-13T02:39:42Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 135,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10440"
+              },
+              {
+                "type": "Item",
+                "id": "10441"
+              },
+              {
+                "type": "Item",
+                "id": "10442"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3526"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3626",
+        "attributes": {
+          "closedAt": "2025-04-13T02:59:48Z",
+          "comment": null,
+          "createdAt": "2025-04-13T02:57:50Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 165,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10443"
+              },
+              {
+                "type": "Item",
+                "id": "10444"
+              },
+              {
+                "type": "Item",
+                "id": "10445"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3524"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3627",
+        "attributes": {
+          "closedAt": "2025-04-13T03:20:34Z",
+          "comment": null,
+          "createdAt": "2025-04-13T03:20:18Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 60,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10446"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3527"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3628",
+        "attributes": {
+          "closedAt": "2025-04-13T03:26:08Z",
+          "comment": null,
+          "createdAt": "2025-04-13T03:25:32Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 25,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10447"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3528"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      },
+      {
+        "type": "Sale",
+        "id": "3629",
+        "attributes": {
+          "closedAt": "2025-04-13T03:44:52Z",
+          "comment": null,
+          "createdAt": "2025-04-13T03:43:35Z",
+          "people": null,
+          "customerName": null,
+          "anonymousCustomer": null,
+          "total": 70,
+          "saleType": "TAKEAWAY",
+          "saleState": "CLOSED",
+          "expectedPayments": null
+        },
+        "relationships": {
+          "customer": {
+            "data": null
+          },
+          "discounts": {
+            "data": []
+          },
+          "items": {
+            "data": [
+              {
+                "type": "Item",
+                "id": "10448"
+              }
+            ]
+          },
+          "payments": {
+            "data": [
+              {
+                "type": "Payment",
+                "id": "3529"
+              }
+            ]
+          },
+          "tips": {
+            "data": []
+          },
+          "shippingCosts": {
+            "data": []
+          },
+          "table": {
+            "data": null
+          },
+          "waiter": {
+            "data": {
+              "type": "User",
+              "id": "12"
+            }
+          },
+          "saleIdentifier": {
+            "data": null
+          }
+        }
+      }
+    ],
+    "included": [
+      {
+        "type": "Item",
+        "id": "10372",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-11T23:28:53Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "357"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15914"
+              },
+              {
+                "type": "Subitem",
+                "id": "15915"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3600"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10373",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-11T23:29:36Z",
+          "price": 75,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15916"
+              },
+              {
+                "type": "Subitem",
+                "id": "15917"
+              },
+              {
+                "type": "Subitem",
+                "id": "15918"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3600"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10374",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-11T23:30:00Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15919"
+              },
+              {
+                "type": "Subitem",
+                "id": "15920"
+              },
+              {
+                "type": "Subitem",
+                "id": "15921"
+              },
+              {
+                "type": "Subitem",
+                "id": "15922"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3600"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10375",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-11T23:31:12Z",
+          "price": 35,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "758"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3600"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10376",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T00:00:40Z",
+          "price": 25,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "586"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3601"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10377",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T00:01:09Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "444"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15923"
+              },
+              {
+                "type": "Subitem",
+                "id": "15924"
+              },
+              {
+                "type": "Subitem",
+                "id": "15925"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3601"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10378",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T00:01:24Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "712"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3601"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10379",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T00:01:42Z",
+          "price": 50,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "417"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15926"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3601"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10380",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T01:59:10Z",
+          "price": 65,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "457"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3602"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10381",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:04:56Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15927"
+              },
+              {
+                "type": "Subitem",
+                "id": "15928"
+              },
+              {
+                "type": "Subitem",
+                "id": "15929"
+              },
+              {
+                "type": "Subitem",
+                "id": "15930"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3603"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10382",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:09:12Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15931"
+              },
+              {
+                "type": "Subitem",
+                "id": "15932"
+              },
+              {
+                "type": "Subitem",
+                "id": "15933"
+              },
+              {
+                "type": "Subitem",
+                "id": "15934"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3604"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10390",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:37:29Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "425"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15938"
+              },
+              {
+                "type": "Subitem",
+                "id": "15939"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3606"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10391",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:37:29Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "425"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15940"
+              },
+              {
+                "type": "Subitem",
+                "id": "15941"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3606"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10392",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:37:42Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "140"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3606"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10393",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T02:38:03Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15942"
+              },
+              {
+                "type": "Subitem",
+                "id": "15943"
+              },
+              {
+                "type": "Subitem",
+                "id": "15944"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3606"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10394",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:17:22Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15945"
+              },
+              {
+                "type": "Subitem",
+                "id": "15946"
+              },
+              {
+                "type": "Subitem",
+                "id": "15947"
+              },
+              {
+                "type": "Subitem",
+                "id": "15948"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3607"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10395",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:17:44Z",
+          "price": 174.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "404"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15949"
+              },
+              {
+                "type": "Subitem",
+                "id": "15950"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3607"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10396",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:27:08Z",
+          "price": 99.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "203"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15951"
+              },
+              {
+                "type": "Subitem",
+                "id": "15952"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3608"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10397",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:27:08Z",
+          "price": 119.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "286"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15953"
+              },
+              {
+                "type": "Subitem",
+                "id": "15954"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3608"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10398",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:42:14Z",
+          "price": 219.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "318"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15955"
+              },
+              {
+                "type": "Subitem",
+                "id": "15956"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3609"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10399",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:44:08Z",
+          "price": 174.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "404"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15957"
+              },
+              {
+                "type": "Subitem",
+                "id": "15958"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3610"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10400",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:44:08Z",
+          "price": 30,
+          "quantity": 3,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "268"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3610"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10401",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:44:19Z",
+          "price": 130,
+          "quantity": 2,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "477"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3610"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10402",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T03:44:37Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "357"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15959"
+              },
+              {
+                "type": "Subitem",
+                "id": "15960"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3610"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10409",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T19:26:49Z",
+          "price": 40,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15961"
+              },
+              {
+                "type": "Subitem",
+                "id": "15962"
+              },
+              {
+                "type": "Subitem",
+                "id": "15963"
+              },
+              {
+                "type": "Subitem",
+                "id": "15964"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3613"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10410",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T19:26:49Z",
+          "price": 40,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15965"
+              },
+              {
+                "type": "Subitem",
+                "id": "15966"
+              },
+              {
+                "type": "Subitem",
+                "id": "15967"
+              },
+              {
+                "type": "Subitem",
+                "id": "15968"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3613"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10420",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T20:51:11Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15970"
+              },
+              {
+                "type": "Subitem",
+                "id": "15971"
+              },
+              {
+                "type": "Subitem",
+                "id": "15972"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3615"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10421",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T20:51:11Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15973"
+              },
+              {
+                "type": "Subitem",
+                "id": "15974"
+              },
+              {
+                "type": "Subitem",
+                "id": "15975"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3615"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10422",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T22:43:08Z",
+          "price": 174.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "404"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15976"
+              },
+              {
+                "type": "Subitem",
+                "id": "15977"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3616"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10423",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T23:25:57Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "357"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15978"
+              },
+              {
+                "type": "Subitem",
+                "id": "15979"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3617"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10424",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T23:25:57Z",
+          "price": 60,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "357"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15980"
+              },
+              {
+                "type": "Subitem",
+                "id": "15981"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3617"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10425",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T23:26:13Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15982"
+              },
+              {
+                "type": "Subitem",
+                "id": "15983"
+              },
+              {
+                "type": "Subitem",
+                "id": "15984"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3617"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10426",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T23:26:30Z",
+          "price": 65,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "478"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3617"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10427",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-12T23:41:45Z",
+          "price": 50,
+          "quantity": 2,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "309"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3618"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10428",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T00:11:48Z",
+          "price": 54.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "529"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15985"
+              },
+              {
+                "type": "Subitem",
+                "id": "15986"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3619"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10429",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T01:25:30Z",
+          "price": 219.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "318"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15987"
+              },
+              {
+                "type": "Subitem",
+                "id": "15988"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3621"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10434",
+        "attributes": {
+          "canceled": true,
+          "cancellationComment": "gf",
+          "comment": null,
+          "createdAt": "2025-04-13T01:58:28Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": null
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15989"
+              },
+              {
+                "type": "Subitem",
+                "id": "15990"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3623"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10435",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T01:58:54Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15991"
+              },
+              {
+                "type": "Subitem",
+                "id": "15992"
+              },
+              {
+                "type": "Subitem",
+                "id": "15993"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3623"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10436",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T01:59:08Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15994"
+              },
+              {
+                "type": "Subitem",
+                "id": "15995"
+              },
+              {
+                "type": "Subitem",
+                "id": "15996"
+              },
+              {
+                "type": "Subitem",
+                "id": "15997"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3623"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10437",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:09:17Z",
+          "price": 65,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "441"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "15998"
+              },
+              {
+                "type": "Subitem",
+                "id": "15999"
+              },
+              {
+                "type": "Subitem",
+                "id": "16000"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3624"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10438",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:09:42Z",
+          "price": 37.99,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "302"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16001"
+              },
+              {
+                "type": "Subitem",
+                "id": "16002"
+              },
+              {
+                "type": "Subitem",
+                "id": "16003"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3624"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10439",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:10:10Z",
+          "price": 189.98,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "328"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16004"
+              },
+              {
+                "type": "Subitem",
+                "id": "16005"
+              },
+              {
+                "type": "Subitem",
+                "id": "16006"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3624"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10440",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:40:05Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "327"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16007"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3625"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10441",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:40:06Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "327"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16008"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3625"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10442",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:40:42Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "327"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16009"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3625"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10443",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:58:02Z",
+          "price": 65,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "312"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16010"
+              },
+              {
+                "type": "Subitem",
+                "id": "16011"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3626"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10444",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:58:24Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "283"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16012"
+              },
+              {
+                "type": "Subitem",
+                "id": "16013"
+              },
+              {
+                "type": "Subitem",
+                "id": "16014"
+              },
+              {
+                "type": "Subitem",
+                "id": "16015"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3626"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10445",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T02:58:32Z",
+          "price": 45,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "310"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3626"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10446",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T03:20:31Z",
+          "price": 40,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "723"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16016"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3627"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10447",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T03:25:50Z",
+          "price": 25,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "586"
+            }
+          },
+          "subitems": {
+            "data": []
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3628"
+            }
+          }
+        }
+      },
+      {
+        "type": "Item",
+        "id": "10448",
+        "attributes": {
+          "canceled": null,
+          "cancellationComment": null,
+          "comment": null,
+          "createdAt": "2025-04-13T03:44:13Z",
+          "price": 55,
+          "quantity": 1,
+          "status": "PENDING",
+          "paid": true
+        },
+        "relationships": {
+          "priceList": {
+            "data": null
+          },
+          "product": {
+            "data": {
+              "type": "Product",
+              "id": "359"
+            }
+          },
+          "subitems": {
+            "data": [
+              {
+                "type": "Subitem",
+                "id": "16017"
+              }
+            ]
+          },
+          "sale": {
+            "data": {
+              "type": "Sale",
+              "id": "3629"
+            }
+          }
+        }
+      }
+    ]
+  }
