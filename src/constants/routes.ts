@@ -4,7 +4,12 @@ export const ROUTES = {
     NEW: '/sales/new' as const,
     CATEGORY: '/sales/category/:categoryId' as const,
     PRODUCTS: '/sales/category/:categoryId/products' as const,
-    HISTORY: '/sales/history' as const
+    HISTORY: '/sales/history' as const,
+    ACTIVE: {
+      ROOT: '/sales/active' as const,
+      COUNTER: '/sales/active/counter' as const,
+      DELIVERY: '/sales/active/delivery' as const,
+    }
   }
 } as const;
 

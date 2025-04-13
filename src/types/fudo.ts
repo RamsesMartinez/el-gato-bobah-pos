@@ -69,38 +69,56 @@ export interface FudoSale {
   type: "Sale";
   id: string;
   attributes: {
-    number: string;
-    status: "nuevo" | "en_proceso" | "completado" | "cancelado";
-    type: "para_llevar" | "delivery" | "mesa";
-    openedAt: string;
     closedAt: string | null;
-    totalAmount: number;
-    totalItems: number;
+    comment: string | null;
+    createdAt: string;
+    people: number | null;
     customerName: string | null;
-    customerPhone: string | null;
-    customerEmail: string | null;
-    deliveryAddress: string | null;
-    deliveryInstructions: string | null;
-    paymentMethod: string | null;
-    paymentStatus: "pending" | "paid" | "refunded";
-    notes: string | null;
+    anonymousCustomer: {
+      name: string;
+    } | null;
+    total: number;
+    saleType: 'TAKEAWAY' | 'DELIVERY' | 'DINE_IN';
+    saleState: 'PENDING' | 'IN-COURSE' | 'READY_TO_DELIVER' | 'DELIVERY-SENT' | 'CLOSED' | 'CANCELED';
+    expectedPayments: any | null;
   };
   relationships: {
-    items: {
-      data: Array<{
-        type: "SaleItem";
-        id: string;
-      }>;
-    };
-    location: {
-      data: {
-        type: "Location";
+    customer: {
+      data: null | {
+        type: string;
         id: string;
       };
     };
-    user: {
-      data: {
-        type: "User";
+    discounts: {
+      data: any[];
+    };
+    items: {
+      data: any[];
+    };
+    payments: {
+      data: any[];
+    };
+    tips: {
+      data: any[];
+    };
+    shippingCosts: {
+      data: any[];
+    };
+    table: {
+      data: null | {
+        type: string;
+        id: string;
+      };
+    };
+    waiter: {
+      data: null | {
+        type: string;
+        id: string;
+      };
+    };
+    saleIdentifier: {
+      data: null | {
+        type: string;
         id: string;
       };
     };
@@ -136,4 +154,17 @@ export interface FudoSaleItem {
 export enum FudoSaleState {
   CLOSED = 'CLOSED',
   IN_COURSE = 'IN-COURSE',
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  meta?: {
+    pagination?: {
+      total: number;
+      count: number;
+      per_page: number;
+      current_page: number;
+      total_pages: number;
+    };
+  };
 } 

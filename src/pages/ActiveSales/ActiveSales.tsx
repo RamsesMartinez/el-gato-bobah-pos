@@ -1,215 +1,220 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, HStack, VStack, Text, Badge, Flex, Menu, MenuButton, MenuList, MenuItem, Center, Spinner } from '@chakra-ui/react';
-import { useNavigate } from 'react-router-dom';
+import { Box, Button, Text, Flex, Center, Spinner, Heading, Table, Thead, Tbody, Tr, Th, Td, Tabs, TabList, Tab, TabPanels, TabPanel } from '@chakra-ui/react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { MainNav } from '../../components/layout/MainNav';
 import { useTheme } from '../../hooks/useTheme';
 import { FudoSale } from '../../types/fudo';
 import { saleService } from '../../services/api/sales';
+import { ROUTES } from '../../constants/routes';
+
+interface SalesGroups {
+  pending: FudoSale[];
+  inProgress: FudoSale[];
+  toDeliver: FudoSale[];
+}
+
+type SaleType = 'counter' | 'delivery';
 
 export const ActiveSales: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useTheme();
-  const [activeSales, setActiveSales] = useState<FudoSale[]>([]);
+  const [counterSales, setCounterSales] = useState<SalesGroups>({
+    pending: [],
+    inProgress: [],
+    toDeliver: []
+  });
+  const [deliverySales, setDeliverySales] = useState<SalesGroups>({
+    pending: [],
+    inProgress: [],
+    toDeliver: []
+  });
   const [loading, setLoading] = useState(true);
 
+  // Determinar la pestaña seleccionada basada en la URL
+  const getSelectedTabFromPath = (path: string): SaleType => {
+    if (path === ROUTES.SALES.ACTIVE.DELIVERY) return 'delivery';
+    return 'counter'; // valor por defecto
+  };
+
+  const [selectedTab, setSelectedTab] = useState<SaleType>(getSelectedTabFromPath(location.pathname));
+
+  // Efecto para sincronizar la pestaña con la URL
   useEffect(() => {
-    const loadSales = async () => {
-      try {
-        const response = await saleService.getSales();
-        console.log('Respuesta completa de ventas:', response); // Para debug
+    const currentTab = getSelectedTabFromPath(location.pathname);
+    setSelectedTab(currentTab);
+  }, [location.pathname]);
 
-        // Filtramos solo las ventas activas (NEW o IN-COURSE)
-        const activeOrders = response.data.filter(sale => {
-          const rawState = (sale as any).raw_state;
-          console.log('Estado original de la venta:', rawState); // Para debug
-          return ['NEW', 'IN-COURSE'].includes(rawState);
-        });
-        
-        console.log('Ventas activas filtradas:', activeOrders); // Para debug
-        setActiveSales(activeOrders);
-      } catch (error) {
-        console.error('Error loading sales:', error);
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    loadSalesByType(selectedTab);
+  }, [selectedTab]);
+
+  const handleTabChange = (index: number) => {
+    const newTab = index === 0 ? 'counter' : 'delivery';
+    const newPath = newTab === 'counter' ? ROUTES.SALES.ACTIVE.COUNTER : ROUTES.SALES.ACTIVE.DELIVERY;
+    navigate(newPath);
+  };
+
+  const loadSalesByType = async (type: SaleType) => {
+    try {
+      setLoading(true);
+      console.log("Tipo de venta:", type);
+      const response = type === 'counter' 
+        ? await saleService.getCounterSales()
+        : await saleService.getDeliverySales();
+
+      const groupedSales = {
+        pending: response.data.filter(sale => sale.attributes.saleState === 'PENDING'),
+        inProgress: response.data.filter(sale => sale.attributes.saleState === 'IN-COURSE'),
+        toDeliver: response.data.filter(sale => 
+          sale.attributes.saleState === 'READY_TO_DELIVER' || 
+          sale.attributes.saleState === 'DELIVERY-SENT'
+        )
+      };
+
+      if (type === 'counter') {
+        setCounterSales(groupedSales);
+      } else {
+        setDeliverySales(groupedSales);
       }
-    };
-
-    loadSales();
-  }, []);
+    } catch (error) {
+      console.error('Error loading sales:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleNewSale = () => {
     navigate('/sales/new');
   };
 
   const handleSaleClick = (sale: FudoSale) => {
-    console.log('Datos completos de la venta:', sale);
     navigate(`/sales/${sale.id}`);
   };
 
-  return (
-    <Box bg="white" minH="100vh">
-      <VStack spacing={0} align="stretch">
+  const SalesTable: React.FC<{ title: string; sales: FudoSale[] }> = ({ title, sales }) => (
+    <Box mb={8}>
+      <Heading size="md" mb={4} color={theme.colors.text.primary}>{title}</Heading>
+      {sales.length === 0 ? (
+        <Text color="gray.500" textAlign="center" py={4}>
+          Sin ventas {title.toLowerCase()}.
+        </Text>
+      ) : (
+        <Table variant="simple" bg="white" borderRadius="md" overflow="hidden">
+          <Thead bg="gray.50">
+            <Tr>
+              <Th>ID</Th>
+              <Th>Hora Inicio</Th>
+              <Th>Origen</Th>
+              <Th>Estado</Th>
+              <Th>Cliente</Th>
+              <Th isNumeric>Total</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {sales.map((sale) => (
+              <Tr 
+                key={sale.id}
+                cursor="pointer"
+                _hover={{ bg: 'gray.50' }}
+                onClick={() => handleSaleClick(sale)}
+              >
+                <Td>{sale.id}</Td>
+                <Td>{new Date(sale.attributes.createdAt).toLocaleString('es-ES', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</Td>
+                <Td>{sale.attributes.saleType}</Td>
+                <Td>
+                  <Text 
+                    display="inline-block"
+                    px={2}
+                    py={1}
+                    borderRadius="md"
+                    fontSize="sm"
+                    bg={sale.attributes.saleState === 'IN-COURSE' ? 'red.100' : 'yellow.100'}
+                    color={sale.attributes.saleState === 'IN-COURSE' ? 'red.700' : 'yellow.700'}
+                  >
+                    {sale.attributes.saleState === 'IN-COURSE' ? 'En curso' : 
+                     sale.attributes.saleState === 'READY_TO_DELIVER' ? 'A entregar' :
+                     'Pendiente'}
+                  </Text>
+                </Td>
+                <Td>{sale.attributes.customerName || '-'}</Td>
+                <Td isNumeric>${sale.attributes.total.toFixed(2)}</Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+    </Box>
+  );
+
+  if (loading) {
+    return (
+      <Box>
         <MainNav />
+        <Center py={8}>
+          <Spinner size="xl" color="primary.500" />
+        </Center>
+      </Box>
+    );
+  }
 
-        {/* Header con botones de acción */}
-        <Box borderBottom="1px" borderColor="gray.200">
-          <Flex justify="space-between" align="center" p={4}>
-            <Button
-              bg={theme.colors.success.main}
-              color="white"
-              size="md"
-              onClick={() => {
-                console.log('Creando nueva venta');
-                handleNewSale();
-              }}
-              _hover={{ bg: theme.colors.success.dark }}
-            >
-              Nueva venta
-            </Button>
-            <Menu>
-              <MenuButton as={Button} variant="outline" color="gray.600" borderColor="gray.300">
-                Tipo de pedido
-              </MenuButton>
-              <MenuList bg="white" borderColor="gray.200">
-                <MenuItem 
-                  _hover={{ bg: 'gray.100' }}
-                  onClick={() => console.log('Filtrar por: Para llevar')}
-                >
-                  Para llevar
-                </MenuItem>
-                <MenuItem 
-                  _hover={{ bg: 'gray.100' }}
-                  onClick={() => console.log('Filtrar por: Mesa')}
-                >
-                  Mesa
-                </MenuItem>
-                <MenuItem 
-                  _hover={{ bg: 'gray.100' }}
-                  onClick={() => console.log('Filtrar por: Delivery')}
-                >
-                  Delivery
-                </MenuItem>
-              </MenuList>
-            </Menu>
-          </Flex>
-        </Box>
+  return (
+    <Box bg={theme.colors.background.default} minH="100vh">
+      <MainNav />
+      
+      <Box p={6}>
+        <Flex justify="space-between" align="center" mb={6}>
+          <Heading size="lg" color={theme.colors.text.primary}>
+            {selectedTab === 'counter' ? 'MOSTRADOR' : 'DOMICILIO'}
+          </Heading>
+          <Button
+            onClick={handleNewSale}
+            bg={theme.colors.success.main}
+            color="white"
+            size="lg"
+            px={8}
+            _hover={{ bg: theme.colors.success.dark }}
+          >
+            + Nuevo Pedido
+          </Button>
+        </Flex>
 
-        {/* Headers de la tabla */}
-        <Box borderBottom="1px" borderColor="gray.200">
-          <Flex p={4} color="gray.600">
-            <Text flex="1">Abierto</Text>
-            <Text flex="1">Hora de entrega</Text>
-            <Text flex="3">Orden</Text>
-            <Text flex="1">Estatus</Text>
-            <Text flex="1" textAlign="right">Importe</Text>
-          </Flex>
-        </Box>
+        <Tabs 
+          onChange={handleTabChange}
+          colorScheme="green"
+          mb={6}
+          index={selectedTab === 'counter' ? 0 : 1}
+        >
+          <TabList>
+            <Tab>Mostrador</Tab>
+            <Tab>Domicilio</Tab>
+          </TabList>
 
-        {/* Filtros de estado */}
-        <Box p={4} borderBottom="1px" borderColor="gray.200">
-          <HStack spacing={4}>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              color={theme.colors.primary.main}
-              _hover={{ bg: 'transparent', color: theme.colors.primary.dark }}
-            >
-              DÍAS ANTERIORES (8)
-            </Button>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              color={theme.colors.primary.main}
-              fontWeight="bold"
-              _hover={{ bg: 'transparent', color: theme.colors.primary.dark }}
-            >
-              HOY (4)
-            </Button>
-          </HStack>
-        </Box>
+          <TabPanels>
+            <TabPanel px={0}>
+              <Box>
+                <SalesTable title="PENDIENTE" sales={counterSales.pending} />
+                <SalesTable title="EN CURSO" sales={counterSales.inProgress} />
+                <SalesTable title="A ENTREGAR" sales={counterSales.toDeliver} />
+              </Box>
+            </TabPanel>
 
-        {/* Lista de ventas activas */}
-        <Box flex="1" overflowY="auto" bg="gray.50">
-          <VStack spacing={2} p={4} align="stretch">
-            {loading ? (
-              <Center py={8}>
-                <Spinner size="xl" color="primary.500" />
-              </Center>
-            ) : activeSales.length === 0 ? (
-              <Center py={8}>
-                <Text>No hay ventas activas</Text>
-              </Center>
-            ) : (
-              activeSales.map((sale) => (
-                <Box
-                  key={sale.id}
-                  bg="white"
-                  p={4}
-                  cursor="pointer"
-                  borderRadius="md"
-                  boxShadow="sm"
-                  _hover={{ bg: 'gray.50' }}
-                  onClick={() => handleSaleClick(sale)}
-                >
-                  <Flex>
-                    <Box flex="1">
-                      <Text color={theme.colors.error.main} fontSize="lg">
-                        {new Date(sale.attributes.openedAt).toLocaleTimeString()}
-                      </Text>
-                      <Text color="gray.500" fontSize="sm">
-                        {new Date(sale.attributes.openedAt).toLocaleDateString()}
-                      </Text>
-                    </Box>
-                    <Box flex="1">
-                      <Text color="gray.500">2 hours</Text>
-                    </Box>
-                    <Box flex="3">
-                      <HStack>
-                        <Text color="gray.900">#{sale.attributes.number}</Text>
-                        <Text color="gray.500">• {sale.attributes.type}</Text>
-                      </HStack>
-                      <Text color="gray.500" fontSize="sm" noOfLines={1}>
-                        {sale.attributes.notes || 'Sin notas'}
-                      </Text>
-                    </Box>
-                    <Box flex="1">
-                      <Badge bg={theme.colors.error.main} color="white">
-                        {sale.attributes.status}
-                      </Badge>
-                      <Text fontSize="xs" color="gray.500" mt={1}>
-                        API: {(sale as any).raw_state || 'N/A'}
-                      </Text>
-                    </Box>
-                    <Box flex="1" textAlign="right">
-                      <Text color="gray.900" fontWeight="bold">
-                        ${sale.attributes.totalAmount.toFixed(2)}
-                      </Text>
-                      <Button 
-                        bg={theme.colors.primary.main} 
-                        color="white" 
-                        size="sm" 
-                        mt={2}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('Datos de pago:', {
-                            id: sale.id,
-                            total: sale.attributes.totalAmount,
-                            status: sale.attributes.status,
-                            raw_state: (sale as any).raw_state
-                          });
-                        }}
-                        _hover={{ bg: theme.colors.primary.dark }}
-                      >
-                        Pagar
-                      </Button>
-                    </Box>
-                  </Flex>
-                </Box>
-              ))
-            )}
-          </VStack>
-        </Box>
-      </VStack>
+            <TabPanel px={0}>
+              <Box>
+                <SalesTable title="PENDIENTE" sales={deliverySales.pending} />
+                <SalesTable title="EN CURSO" sales={deliverySales.inProgress} />
+                <SalesTable title="A ENTREGAR" sales={deliverySales.toDeliver} />
+              </Box>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </Box>
     </Box>
   );
 }; 

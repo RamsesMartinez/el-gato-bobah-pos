@@ -2,8 +2,8 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Flex, Button, Text, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
 import { ChevronDownIcon } from '@chakra-ui/icons';
-import { SalesList } from '../components/SalesList';
 import { useTheme } from '../hooks/useTheme';
+import { ActiveSales } from './ActiveSales/ActiveSales';
 
 export const SalesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,72 +26,9 @@ export const SalesPage: React.FC = () => {
         borderBottomWidth="1px"
         borderColor="gray.700"
       >
-        <Flex gap={8} align="center">
-          <Box
-            position="relative"
-            cursor="pointer"
-            onClick={() => navigate('/ventas')}
-          >
-            <Text color="white" fontSize="md">Ventas</Text>
-            {isActive('/ventas') && (
-              <Box
-                position="absolute"
-                bottom="-17px"
-                left="0"
-                right="0"
-                h="3px"
-                bg="blue.500"
-                borderRadius="full"
-              />
-            )}
-          </Box>
-          <Box
-            position="relative"
-            cursor="pointer"
-            onClick={() => navigate('/floor-plan')}
-          >
-            <Text color="gray.300" fontSize="md" _hover={{ color: 'white' }}>
-              Plano de tu sucursal
-            </Text>
-            {isActive('/floor-plan') && (
-              <Box
-                position="absolute"
-                bottom="-17px"
-                left="0"
-                right="0"
-                h="3px"
-                bg="blue.500"
-                borderRadius="full"
-              />
-            )}
-          </Box>
-          <Box
-            position="relative"
-            cursor="pointer"
-            onClick={() => navigate('/history')}
-          >
-            <Text color="gray.300" fontSize="md" _hover={{ color: 'white' }}>
-              Historial de pedidos
-            </Text>
-            {isActive('/history') && (
-              <Box
-                position="absolute"
-                bottom="-17px"
-                left="0"
-                right="0"
-                h="3px"
-                bg="blue.500"
-                borderRadius="full"
-              />
-            )}
-          </Box>
-        </Flex>
-        <Flex ml="auto" gap={4} align="center">
-          <Flex align="center" gap={2}>
-            <Text color="white">Ramses</Text>
-            <Text fontSize="lg">🔒</Text>
-          </Flex>
-        </Flex>
+        <Text color="white" fontSize="xl" fontWeight="bold">
+          Bobah POS
+        </Text>
       </Flex>
 
       {/* Subheader con botón de nueva venta */}
@@ -135,7 +72,7 @@ export const SalesPage: React.FC = () => {
 
       {/* Contenido principal */}
       <Box flex={1} overflow="auto" bg={theme.colors.background.default}>
-        <SalesList />
+        <ActiveSales />
       </Box>
     </Box>
   );
