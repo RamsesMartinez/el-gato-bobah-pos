@@ -101,58 +101,45 @@ export class CategoryService {
   }
 
   // Obtener productos por categoría
-  async getProductsByCategory(categoryId: string): Promise<FudoResponse<FudoProduct | FudoCategory>> {
+  async getProductsByCategory(categoryId: string): Promise<FudoResponse<FudoProduct>> {
     try {
-      // Primero obtenemos la información de la categoría y todas las categorías
-      const [categoryResponse, allCategoriesResponse] = await Promise.all([
-        this.getCategoryById(categoryId),
-        this.getCategories()
-      ]);
-      
-      const category = categoryResponse.data[0];
-      const allCategories = allCategoriesResponse.data;
+      // Crear URLSearchParams para codificar correctamente los parámetros
+      const params = new URLSearchParams();
+      params.append('filter[categoryId]', `eq.${categoryId}`);
+      params.append('filter[active]', 'true');
+      params.append('sort', 'position');
 
-      // Encontrar subcategorías (categorías que tienen como padre la categoría seleccionada)
-      const subCategories = allCategories.filter((cat: FudoCategory) => 
-        cat.relationships.parentCategory.data?.id === categoryId
-      );
-      
-      console.log('🌳 JERARQUÍA DE CATEGORÍAS 🌳\n', JSON.stringify({
-        categoríaPadre: {
-          id: category.id,
-          nombre: category.attributes.name,
-          cantidadProductos: category.relationships.products.data.length
-        },
-        subcategorías: subCategories.map((sub: FudoCategory) => ({
-          id: sub.id,
-          nombre: sub.attributes.name,
-          cantidadProductos: sub.relationships.products.data.length
-        }))
-      }, null, 2));
-
-      // Luego obtenemos los productos filtrados por categoría
+      // Obtener los productos filtrados por categoría
       const response = await api.get<any>('/products', {
-        params: {
-          'filter[categoryId]': `eq.${categoryId}`,
-          'filter[active]': true,
-          'sort': 'position'
+        params,
+        paramsSerializer: {
+          encode: (param: string) => param, // Mantener los corchetes sin codificar
+          serialize: (params: Record<string, any>) => {
+            const searchParams = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+              if (Array.isArray(value)) {
+                value.forEach(v => searchParams.append(key, v));
+              } else {
+                searchParams.append(key, value as string);
+              }
+            });
+            return searchParams.toString();
+          }
         }
       });
       
       if (!response.data.data) {
-        throw new Error('No se recibieron datos de productos');
+        return { data: [] };
       }
       
       // Adaptar los productos
-      const rawProducts: any[] = response.data.data;
-      const products = rawProducts
+      const products = response.data.data
         .map(adaptFudoProduct)
-        .filter(product => product.attributes.active);
+        .filter((product: FudoProduct) => product.attributes.active);
       
-      // Devolver tanto la categoría como los productos
-      return {
-        data: [category, ...products]
-      };
+      console.log('🔍 DEBUG - URL generada:', response.config.url + '?' + params.toString());
+      
+      return { data: products };
     } catch (error) {
       console.error('❌ ERROR - Error en getProductsByCategory:', error);
       throw error;

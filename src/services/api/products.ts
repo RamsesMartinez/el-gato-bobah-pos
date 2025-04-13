@@ -18,11 +18,6 @@ class ProductService {
     return response.data;
   }
 
-  // Obtener productos por categoría
-  async getProductsByCategory(categoryId: string): Promise<FudoResponse<FudoProduct>> {
-    const response = await api.get<FudoResponse<FudoProduct>>(`/categories/${categoryId}/products`);
-    return response.data;
-  }
 }
 
 export const productService = new ProductService(); 
