@@ -9,9 +9,10 @@ export const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={ROUTES.SALES.ACTIVE.ROOT} replace />} />
-      <Route path={ROUTES.SALES.ROOT} element={<Navigate to={ROUTES.SALES.ACTIVE.COUNTER} replace />} />
-      <Route path={ROUTES.SALES.ACTIVE.ROOT} element={<Navigate to={ROUTES.SALES.ACTIVE.COUNTER} replace />} />
-      <Route path={ROUTES.SALES.ACTIVE.COUNTER} element={<ActiveSales />} />
+      <Route path={ROUTES.SALES.ROOT} element={<Navigate to={ROUTES.SALES.ACTIVE.TAKEAWAY} replace />} />
+      <Route path={ROUTES.SALES.ACTIVE.ROOT} element={<Navigate to={ROUTES.SALES.ACTIVE.TAKEAWAY} replace />} />
+      <Route path={ROUTES.SALES.ACTIVE.TAKEAWAY} element={<ActiveSales />} />
+      <Route path={ROUTES.SALES.ACTIVE.EAT_IN} element={<ActiveSales />} />
       <Route path={ROUTES.SALES.ACTIVE.DELIVERY} element={<ActiveSales />} />
       <Route path={ROUTES.SALES.HISTORY} element={<SalesHistory />} />
       <Route path={ROUTES.SALES.NEW} element={<NewOrder />} />

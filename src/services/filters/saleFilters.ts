@@ -1,4 +1,4 @@
-import { SaleFilters, DateFilter, SaleState, FudoSaleType } from '../../types/filters';
+import { SaleFilters, DateFilter } from '../../types/filters';
 
 export class SaleFilterService {
   /**
@@ -54,22 +54,31 @@ export class SaleFilterService {
   }
 
   /**
-   * Construye filtros para la vista de mostrador (ventas pendientes y en curso)
-   * @param type Tipo de venta de mostrador (EAT-IN o TAKEAWAY)
+   * Construye filtros para la vista de ventas para llevar
    */
-  static getCounterSalesFilters(type: 'EAT-IN' | 'TAKEAWAY'): SaleFilters {
+  static getTakeawaySalesFilters(): SaleFilters {
     return {
-      saleState: ['PENDING', 'IN-COURSE', 'READY_TO_DELIVER'],
-      saleType: type
+      saleState: ['PENDING', 'IN-COURSE', 'PAYMENT-PROCESS', 'READY_TO_DELIVER'],
+      saleType: 'TAKEAWAY'
     };
   }
 
   /**
-   * Construye filtros para la vista de domicilio (ventas pendientes y en curso)
+   * Construye filtros para la vista de ventas para comer en el local
+   */
+  static getEatInSalesFilters(): SaleFilters {
+    return {
+      saleState: ['PENDING', 'IN-COURSE', 'PAYMENT-PROCESS', 'READY_TO_DELIVER'],
+      saleType: 'EAT-IN'
+    };
+  }
+
+  /**
+   * Construye filtros para la vista de domicilio
    */
   static getDeliverySalesFilters(): SaleFilters {
     return {
-      saleState: ['PENDING', 'IN-COURSE', 'DELIVERY-SENT', 'READY_TO_DELIVER'],
+      saleState: ['PENDING', 'IN-COURSE', 'PAYMENT-PROCESS', 'DELIVERY-SENT', 'READY_TO_DELIVER'],
       saleType: 'DELIVERY'
     };
   }
@@ -97,7 +106,7 @@ export class SaleFilterService {
    */
   static getToDeliverSalesFilters(): SaleFilters {
     return {
-      saleState: ['READY_TO_DELIVER', 'DELIVERY-SENT']
+      saleState: ['READY_TO_DELIVER', 'DELIVERY-SENT', 'PAYMENT-PROCESS']
     };
   }
 } 

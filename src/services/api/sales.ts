@@ -1,7 +1,7 @@
 import api from './axios';
 import { FudoSale, ApiResponse } from '../../types/fudo';
 import { SaleFilterService } from '../filters/saleFilters';
-import { SaleFilters } from '../../types/filters';
+import { SaleFilters, FudoSaleType } from '../../types/filters';
 
 class SaleService {
   /**
@@ -15,7 +15,8 @@ class SaleService {
    */
   async getSalesWithFilters(filters: SaleFilters): Promise<ApiResponse<FudoSale[]>> {
     const apiFilters = SaleFilterService.buildApiFilters(filters);
-    return api.get('/sales', { params: apiFilters });
+    const response = await api.get<ApiResponse<FudoSale[]>>('/sales', { params: apiFilters });
+    return response.data;
   }
 
   /**
@@ -43,22 +44,19 @@ class SaleService {
   }
 
   /**
-   * Obtiene todas las ventas activas para mostrador
+   * Obtiene todas las ventas activas para llevar
    */
-  async getCounterSales(): Promise<ApiResponse<FudoSale[]>> {
-    // Obtener ventas EAT-IN
-    const eatInFilters = SaleFilterService.getCounterSalesFilters('EAT-IN');
-    const eatInSales = await this.getSalesWithFilters(eatInFilters);
+  async getTakeawaySales(): Promise<ApiResponse<FudoSale[]>> {
+    const filters = SaleFilterService.getTakeawaySalesFilters();
+    return this.getSalesWithFilters(filters);
+  }
 
-    // Obtener ventas TAKEAWAY
-    const takeawayFilters = SaleFilterService.getCounterSalesFilters('TAKEAWAY');
-    const takeawaySales = await this.getSalesWithFilters(takeawayFilters);
-
-    // Combinar los resultados
-    return {
-      ...eatInSales,
-      data: [...eatInSales.data, ...takeawaySales.data]
-    };
+  /**
+   * Obtiene todas las ventas activas para comer en el local
+   */
+  async getEatInSales(): Promise<ApiResponse<FudoSale[]>> {
+    const filters = SaleFilterService.getEatInSalesFilters();
+    return this.getSalesWithFilters(filters);
   }
 
   /**
@@ -94,7 +92,7 @@ class SaleService {
   /**
    * Crear una nueva venta
    */
-  async createSale(saleType: FudoSale['attributes']['saleType']): Promise<ApiResponse<FudoSale>> {
+  async createSale(saleType: FudoSaleType): Promise<ApiResponse<FudoSale>> {
     return api.post('/sales', {
       data: {
         type: "Sale",

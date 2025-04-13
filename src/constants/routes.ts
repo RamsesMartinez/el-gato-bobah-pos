@@ -7,7 +7,8 @@ export const ROUTES = {
     HISTORY: '/sales/history' as const,
     ACTIVE: {
       ROOT: '/sales/active' as const,
-      COUNTER: '/sales/active/counter' as const,
+      TAKEAWAY: '/sales/active/takeaway' as const,
+      EAT_IN: '/sales/active/eat-in' as const,
       DELIVERY: '/sales/active/delivery' as const,
     }
   }

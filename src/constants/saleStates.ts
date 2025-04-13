@@ -19,7 +19,11 @@ export const SALE_STATES: { [K in SaleState]: K } = {
 export const SALE_STATE_GROUPS = {
   PENDING: new Set<SaleState>([SALE_STATES['PENDING']]),
   IN_PROGRESS: new Set<SaleState>([SALE_STATES['IN-COURSE']]),
-  TO_DELIVER: new Set<SaleState>([SALE_STATES['READY_TO_DELIVER'], SALE_STATES['DELIVERY-SENT']])
+  TO_DELIVER: new Set<SaleState>([
+    SALE_STATES['READY_TO_DELIVER'], 
+    SALE_STATES['DELIVERY-SENT'],
+    SALE_STATES['PAYMENT-PROCESS']
+  ])
 } as const;
 
 /**
