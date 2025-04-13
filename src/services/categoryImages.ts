@@ -47,7 +47,7 @@ export const categoryImagesService = {
         data: {
           id: `img_default_${categoryId}`,
           categoryId,
-          imageUrl: 'https://via.placeholder.com/300x200/EDEDED/999999?text=Categoria',
+          imageUrl: 'https://placehold.co/300x200/EDEDED/999999?text=Categoria',
           isActive: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

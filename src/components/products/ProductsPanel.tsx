@@ -77,7 +77,7 @@ export const ProductsPanel: React.FC<ProductsPanelProps> = ({
               <Box position="relative" paddingTop="66.67%">
                 <Box
                   as="img"
-                  src={product.image_url || 'https://via.placeholder.com/300x200?text=Producto'}
+                  src={product.image_url || 'https://placehold.co/300x200?text=Producto'}
                   alt={product.name}
                   position="absolute"
                   top={0}

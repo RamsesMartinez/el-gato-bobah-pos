@@ -1,6 +1,7 @@
 interface EnvConfig {
   FUDO_API_URL: string;
   FUDO_API_TOKEN: string;
+  DEFAULT_CATEGORY_IMAGE?: string;
 }
 
 class MissingEnvironmentError extends Error {
@@ -47,7 +48,8 @@ const getEnvConfig = (): EnvConfig => {
   // Si llegamos aquí, todas las variables existen
   return {
     FUDO_API_URL: process.env.REACT_APP_FUDO_API_URL!,
-    FUDO_API_TOKEN: process.env.REACT_APP_FUDO_API_TOKEN!
+    FUDO_API_TOKEN: process.env.REACT_APP_FUDO_API_TOKEN!,
+    DEFAULT_CATEGORY_IMAGE: process.env.REACT_APP_DEFAULT_CATEGORY_IMAGE
   };
 };
 

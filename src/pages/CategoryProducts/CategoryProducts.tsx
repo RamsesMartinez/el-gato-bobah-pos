@@ -226,7 +226,7 @@ export const CategoryProducts: React.FC = () => {
                     onClick={() => handleAddToTicket(product)}
                   >
                     <Image
-                      src={product.imageUrl || 'https://via.placeholder.com/400x300'}
+                      src={product.imageUrl || 'https://placehold.co/400x300'}
                       alt={product.name}
                       objectFit="cover"
                       height="200px"
