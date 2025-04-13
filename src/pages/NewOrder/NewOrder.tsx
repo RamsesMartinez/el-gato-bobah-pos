@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   Box, 
   Flex, 
@@ -20,10 +20,12 @@ import { SearchIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 import { CategoryGrid } from '../../components/CategoryGrid/CategoryGrid';
 import { FudoCategory, FudoProduct } from '../../types/fudo';
 import { categoryService } from '../../services/api/categories';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Breadcrumb } from '../../components/Breadcrumb/Breadcrumb';
+import { BreadcrumbItem } from '../../types/breadcrumb';
 import { MainNav } from '../../components/layout/MainNav';
 import { ProductCard } from '../../components/ProductCard/ProductCard';
+import { ROUTES, generateCategoryRoute, generateProductsRoute } from '../../constants/routes';
 
 interface TicketItem {
   id: string;
@@ -43,9 +45,12 @@ const NewOrder: React.FC = () => {
   const [ticketTotal, setTicketTotal] = useState(0);
   const [currentCategory, setCurrentCategory] = useState<FudoCategory | null>(null);
   const [navigationStack, setNavigationStack] = useState<FudoCategory[]>([]);
+  
   const navigate = useNavigate();
+  const { categoryId } = useParams();
+  const location = useLocation();
 
-  const loadInitialCategories = async () => {
+  const loadInitialCategories = useCallback(async () => {
     try {
       setLoading(true);
       const response = await categoryService.getCategories();
@@ -53,19 +58,95 @@ const NewOrder: React.FC = () => {
       setProducts([]);
       setCurrentCategory(null);
       setNavigationStack([]);
-      navigate('/sales/new', { replace: true });
     } catch (error) {
       console.error('Error fetching categories:', error);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadCategoryData = useCallback(async (id: string) => {
+    try {
+      setLoading(true);
+      
+      // Obtener la información de la categoría actual
+      const categoryResponse = await categoryService.getCategoryById(id);
+      const currentCat = categoryResponse.data[0];
+      setCurrentCategory(currentCat);
+
+      // Primero verificamos si tiene subcategorías
+      const subCategoriesResponse = await categoryService.getSubCategories(id);
+      
+      if (subCategoriesResponse.data && subCategoriesResponse.data.length > 0) {
+        // Si tiene subcategorías, las mostramos
+        setCategories(subCategoriesResponse.data);
+        setProducts([]);
+      } else {
+        // Si no tiene subcategorías, buscamos productos
+        const productsResponse = await categoryService.getProductsByCategory(id);
+        setProducts(productsResponse.data);
+        setCategories([]);
+      }
+
+      // Actualizar el stack de navegación
+      if (currentCat) {
+        const newStack = [];
+        let parent = currentCat;
+        
+        while (parent && parent.relationships.parentCategory.data) {
+          newStack.unshift(parent);
+          const parentResponse = await categoryService.getCategoryById(parent.relationships.parentCategory.data.id);
+          parent = parentResponse.data[0];
+        }
+        if (parent) {
+          newStack.unshift(parent);
+        }
+        setNavigationStack(newStack);
+      }
+    } catch (error) {
+      console.error('Error al cargar categoría:', error);
+      navigate(ROUTES.SALES.NEW, { replace: true });
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
+
+  const getBreadcrumbItems = () => {
+    const items: BreadcrumbItem[] = [
+      { label: 'Ventas', href: ROUTES.SALES.ROOT },
+      { label: 'Nueva venta', href: ROUTES.SALES.NEW }
+    ];
+
+    navigationStack.forEach(category => {
+      items.push({
+        label: category.attributes.name,
+        href: generateCategoryRoute(category.id)
+      });
+    });
+
+    return items;
   };
 
+  // Efecto para cargar datos basados en la URL
   useEffect(() => {
-    loadInitialCategories();
-  // Este efecto solo debe ejecutarse una vez al montar el componente
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let isSubscribed = true;
+
+    const loadData = async () => {
+      if (location.pathname === ROUTES.SALES.NEW) {
+        if (isSubscribed) {
+          await loadInitialCategories();
+        }
+      } else if (categoryId && isSubscribed) {
+        await loadCategoryData(categoryId);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [location.pathname, categoryId, loadInitialCategories, loadCategoryData]);
 
   useEffect(() => {
     const total = ticketItems.reduce((sum, item) => sum + item.total, 0);
@@ -73,61 +154,17 @@ const NewOrder: React.FC = () => {
   }, [ticketItems]);
 
   const handleCategoryClick = async (category: FudoCategory) => {
-    try {
-      setLoading(true);
-      
-      // Primero verificamos si tiene subcategorías
-      const subCategoriesResponse = await categoryService.getSubCategories(category.id);
-      
-      if (subCategoriesResponse.data && subCategoriesResponse.data.length > 0) {
-        // Si tiene subcategorías, las mostramos
-        setCategories(subCategoriesResponse.data);
-        setProducts([]);
-        setNavigationStack([...navigationStack, category]);
-        setCurrentCategory(category);
-        navigate(`/sales/category/${category.id}`);
-      } else {
-        // Si no tiene subcategorías, buscamos productos
-        const productsResponse = await categoryService.getProductsByCategory(category.id);
-        
-        if (productsResponse.data && productsResponse.data.length > 0) {
-          // Si tiene productos, los mostramos
-          setProducts(productsResponse.data);
-          setCategories([]);
-          setNavigationStack([...navigationStack, category]);
-          setCurrentCategory(category);
-          navigate(`/sales/category/${category.id}`);
-        } else {
-          // Si no tiene ni subcategorías ni productos, mostramos mensaje
-          setCategories([]);
-          setProducts([]);
-          setCurrentCategory(category);
-          console.log('Categoría sin productos ni subcategorías:', category.attributes.name);
-        }
-      }
-    } catch (error) {
-      console.error('Error al cargar categoría:', error);
-    } finally {
-      setLoading(false);
-    }
+    navigate(generateCategoryRoute(category.id));
   };
 
   const handleBackClick = () => {
-    if (navigationStack.length === 0) {
-      loadInitialCategories();
+    if (navigationStack.length <= 1) {
+      navigate(ROUTES.SALES.NEW);
       return;
     }
 
-    const newStack = [...navigationStack];
-    newStack.pop(); // Remover la última categoría
-    
-    if (newStack.length === 0) {
-      loadInitialCategories();
-    } else {
-      const previousCategory = newStack[newStack.length - 1];
-      handleCategoryClick(previousCategory);
-    }
-    setNavigationStack(newStack);
+    const previousCategory = navigationStack[navigationStack.length - 2];
+    navigate(generateCategoryRoute(previousCategory.id));
   };
 
   const handleAddProduct = (product: FudoProduct) => {
@@ -149,19 +186,6 @@ const NewOrder: React.FC = () => {
       };
       setTicketItems([...ticketItems, newItem]);
     }
-  };
-
-  const getBreadcrumbItems = () => {
-    const items = [
-      { label: 'Ventas', href: '/sales' },
-      { label: 'Nueva orden', href: '/sales/new' }
-    ];
-
-    navigationStack.forEach(category => {
-      items.push({ label: category.attributes.name, href: `/sales/category/${category.id}` });
-    });
-
-    return items;
   };
 
   return (

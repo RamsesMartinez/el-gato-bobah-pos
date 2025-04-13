@@ -10,6 +10,7 @@ import './styles/globals.css';
 import './App.css';
 import NewOrder from './pages/NewOrder/NewOrder';
 import { env } from './config/env';
+import { ROUTES } from './constants/routes';
 
 export const App: React.FC = () => {
   const [envError, setEnvError] = useState<string | null>(null);
@@ -46,11 +47,16 @@ export const App: React.FC = () => {
       <ThemeProvider>
         <Router>
           <Routes>
-            <Route path="/" element={<Navigate to="/sales" replace />} />
-            <Route path="/sales" element={<ActiveSales />} />
-            <Route path="/sales/history" element={<SalesHistory />} />
-            <Route path="/sales/new" element={<NewOrder />} />
-            <Route path="/new-order" element={<NewOrder />} />
+            <Route path="/" element={<Navigate to={ROUTES.SALES.ROOT} replace />} />
+            <Route path={ROUTES.SALES.ROOT} element={<ActiveSales />} />
+            <Route path={ROUTES.SALES.NEW} element={<NewOrder />} />
+            <Route path={ROUTES.SALES.HISTORY} element={<SalesHistory />} />
+            <Route path={ROUTES.SALES.CATEGORY} element={<NewOrder />} />
+            <Route path={ROUTES.SALES.PRODUCTS} element={<NewOrder />} />
+            {/* Redirigir rutas antiguas */}
+            <Route path="/new-order" element={<Navigate to={ROUTES.SALES.NEW} replace />} />
+            {/* Ruta 404 */}
+            <Route path="*" element={<Navigate to={ROUTES.SALES.ROOT} replace />} />
           </Routes>
         </Router>
       </ThemeProvider>
