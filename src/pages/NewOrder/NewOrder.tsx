@@ -4,11 +4,13 @@ import { SearchIcon } from '@chakra-ui/icons';
 import { CategoryGrid } from '../../components/CategoryGrid/CategoryGrid';
 import { FudoCategory } from '../../types/fudo';
 import { categoryService } from '../../services/api/categories';
+import { useNavigate } from 'react-router-dom';
 
 const NewOrder: React.FC = () => {
   const bgColor = useColorModeValue('gray.50', 'gray.800');
   const [categories, setCategories] = useState<FudoCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -27,11 +29,10 @@ const NewOrder: React.FC = () => {
 
   const handleCategoryClick = async (category: FudoCategory) => {
     try {
-      const products = await categoryService.getProductsByCategory(category.id);
-      console.log('Category products:', products.data);
-      // Aquí implementaremos la navegación a los productos de la categoría
+      console.log('Navegando a categoría:', category);
+      navigate(`/sales/category/${category.id}`);
     } catch (error) {
-      console.error('Error fetching category products:', error);
+      console.error('Error al seleccionar categoría:', error);
     }
   };
 
