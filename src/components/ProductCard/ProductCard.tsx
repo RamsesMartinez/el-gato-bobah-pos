@@ -39,7 +39,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) =>
       onClick={onClick}
       position="relative"
       width="full"
-      aspectRatio="3/4"
+      aspectRatio="1"
       borderRadius="xl"
       overflow="hidden"
       transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
@@ -128,7 +128,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) =>
           <Text
             fontSize="sm"
             color="gray.100"
-            noOfLines={2}
+            noOfLines={1}
             textShadow="0 1px 2px rgba(0,0,0,0.5)"
           >
             {product.attributes.description}

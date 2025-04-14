@@ -186,8 +186,10 @@ export const NewOrder: React.FC = () => {
         {/* Panel izquierdo - Contenido principal */}
         <Box 
           flex={1} 
-          overflow="auto"
+          overflow="hidden"
           order={{ base: 2, md: 1 }}
+          display="flex"
+          flexDirection="column"
         >
           {/* Barra superior */}
           <Box 
@@ -215,7 +217,7 @@ export const NewOrder: React.FC = () => {
           </Box>
 
           {/* Contenido principal */}
-          <Box h="calc(100vh - 128px)" overflow="auto" p={4}>
+          <Box flex={1} overflow="auto" p={4}>
             {loading ? (
               <Flex justify="center" align="center" minH="200px">
                 <Spinner size="xl" />
@@ -229,7 +231,7 @@ export const NewOrder: React.FC = () => {
             ) : products.length > 0 ? (
               <SimpleGrid 
                 columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} 
-                spacing={4}
+                spacing={{ base: 3, sm: 4 }}
               >
                 {products.map(product => (
                   <ProductCard
