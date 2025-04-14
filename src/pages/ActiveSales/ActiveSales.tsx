@@ -195,31 +195,31 @@ export const ActiveSales: React.FC = () => {
   };
 
   const SalesTable: React.FC<{ title: string; sales: FudoSale[] }> = ({ title, sales }) => (
-    <Box mb={8} bg="white" borderRadius="xl" boxShadow="sm" overflow="hidden">
+    <Box mb={4} bg="white" borderRadius="sm" overflow="hidden">
       <Flex 
         bg="gray.50" 
-        p={4} 
+        p={2} 
         borderBottom="1px" 
         borderColor="gray.200"
         align="center"
       >
-        <Heading size="md" color={theme.colors.text.primary}>{title}</Heading>
+        <Heading size="sm" color="gray.700">{title}</Heading>
       </Flex>
       
       {sales.length === 0 ? (
-        <Text color="gray.500" textAlign="center" py={8}>
+        <Text color="gray.500" textAlign="center" py={4}>
           Sin ventas {title.toLowerCase()}.
         </Text>
       ) : (
-        <Table variant="simple">
+        <Table variant="simple" size="sm" bg="white">
           <Thead bg="gray.50">
             <Tr>
-              <Th borderColor="gray.200">ID</Th>
-              <Th borderColor="gray.200">Hora Inicio</Th>
-              <Th borderColor="gray.200">Origen</Th>
-              <Th borderColor="gray.200">Estado</Th>
-              <Th borderColor="gray.200">Cliente</Th>
-              <Th isNumeric borderColor="gray.200">Total</Th>
+              <Th py={2} borderColor="gray.200">ID</Th>
+              <Th py={2} borderColor="gray.200">Hora Inicio</Th>
+              <Th py={2} borderColor="gray.200">Origen</Th>
+              <Th py={2} borderColor="gray.200">Estado</Th>
+              <Th py={2} borderColor="gray.200">Cliente</Th>
+              <Th py={2} isNumeric borderColor="gray.200">Total</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -227,37 +227,38 @@ export const ActiveSales: React.FC = () => {
               <Tr 
                 key={sale.id}
                 cursor="pointer"
+                bg="white"
                 _hover={{ bg: 'gray.50' }}
                 onClick={() => handleSaleClick(sale)}
               >
-                <Td borderColor="gray.100">{sale.id}</Td>
-                <Td borderColor="gray.100">{new Date(sale.attributes.createdAt).toLocaleString('es-ES', {
+                <Td py={2} borderColor="gray.100">{sale.id}</Td>
+                <Td py={2} borderColor="gray.100">{new Date(sale.attributes.createdAt).toLocaleString('es-ES', {
                   day: '2-digit',
                   month: '2-digit',
                   year: '2-digit',
                   hour: '2-digit',
                   minute: '2-digit'
                 })}</Td>
-                <Td borderColor="gray.100">{sale.attributes.saleType}</Td>
-                <Td borderColor="gray.100">
+                <Td py={2} borderColor="gray.100">{sale.attributes.saleType}</Td>
+                <Td py={2} borderColor="gray.100">
                   <Flex 
                     display="inline-flex"
                     align="center"
-                    px={3}
-                    py={2}
+                    px={2}
+                    py={1}
                     borderRadius="full"
                     fontSize="sm"
                     bg={getStateStyle(sale.attributes.saleState).bg}
                     color={getStateStyle(sale.attributes.saleState).color}
                   >
-                    <Box mr={2}>
+                    <Box mr={1}>
                       {getStateStyle(sale.attributes.saleState).Icon}
                     </Box>
                     {getStateText(sale.attributes.saleState)}
                   </Flex>
                 </Td>
-                <Td borderColor="gray.100">{sale.attributes.customerName || '-'}</Td>
-                <Td isNumeric borderColor="gray.100" fontWeight="semibold">
+                <Td py={2} borderColor="gray.100">{sale.attributes.customerName || '-'}</Td>
+                <Td py={2} isNumeric borderColor="gray.100" fontWeight="semibold">
                   ${sale.attributes.total.toFixed(2)}
                 </Td>
               </Tr>
@@ -283,8 +284,14 @@ export const ActiveSales: React.FC = () => {
     <Box bg="gray.50" minH="100vh">
       <MainNav />
       
-      <Box maxW="1400px" mx="auto" p={6}>
-        <Flex justify="space-between" align="center" mb={6}>
+      <Box maxW="100%" mx="auto" p={4}>
+        <Flex 
+          justify="space-between" 
+          align="center" 
+          mb={4} 
+          mt={2}
+          px={2}
+        >
           <Heading size="lg" color={theme.colors.text.primary}>
             {selectedTab === 'takeaway' ? 'PARA LLEVAR' :
              selectedTab === 'eat-in' ? 'COMER AQUÍ' :
@@ -293,12 +300,16 @@ export const ActiveSales: React.FC = () => {
           <Button
             leftIcon={<AddIcon />}
             onClick={handleNewSale}
-            bg="teal.400"
+            bg="#40CFA3"
             color="white"
             size="lg"
-            px={8}
-            _hover={{ bg: 'teal.500' }}
+            px={6}
+            py={5}
+            _hover={{ bg: '#35B892', transform: 'scale(1.02)' }}
+            _active={{ bg: '#2EA07E' }}
             borderRadius="full"
+            boxShadow="0px 4px 12px rgba(0, 0, 0, 0.15)"
+            transition="all 0.2s"
           >
             Nuevo Pedido
           </Button>
@@ -307,14 +318,14 @@ export const ActiveSales: React.FC = () => {
         <Tabs 
           onChange={handleTabChange}
           colorScheme="blue"
-          mb={6}
+          mb={4}
           index={selectedTab === 'takeaway' ? 0 : selectedTab === 'eat-in' ? 1 : 2}
           variant="unstyled"
         >
-          <TabList borderBottom="1px" borderColor="gray.200">
+          <TabList borderBottom="1px" borderColor="gray.200" px={2}>
             <Tab 
-              px={8} 
-              py={4}
+              px={4} 
+              py={3}
               fontWeight="semibold"
               color="gray.600"
               _selected={{ 
@@ -327,8 +338,8 @@ export const ActiveSales: React.FC = () => {
               Para Llevar
             </Tab>
             <Tab 
-              px={8} 
-              py={4}
+              px={4} 
+              py={3}
               fontWeight="semibold"
               color="gray.600"
               _selected={{ 
@@ -341,8 +352,8 @@ export const ActiveSales: React.FC = () => {
               Comer Aquí
             </Tab>
             <Tab 
-              px={8} 
-              py={4}
+              px={4} 
+              py={3}
               fontWeight="semibold"
               color="gray.600"
               _selected={{ 
@@ -357,17 +368,17 @@ export const ActiveSales: React.FC = () => {
           </TabList>
 
           <TabPanels>
-            <TabPanel px={0}>
+            <TabPanel px={2} pt={4}>
               <SalesTable title="Pendientes" sales={takeawaySales.pending} />
               <SalesTable title="En Curso" sales={takeawaySales.inProgress} />
               <SalesTable title="Listos para Entregar" sales={takeawaySales.toDeliver} />
             </TabPanel>
-            <TabPanel px={0}>
+            <TabPanel px={2} pt={4}>
               <SalesTable title="Pendientes" sales={eatInSales.pending} />
               <SalesTable title="En Curso" sales={eatInSales.inProgress} />
               <SalesTable title="Listos para Entregar" sales={eatInSales.toDeliver} />
             </TabPanel>
-            <TabPanel px={0}>
+            <TabPanel px={2} pt={4}>
               <SalesTable title="Pendientes" sales={deliverySales.pending} />
               <SalesTable title="En Curso" sales={deliverySales.inProgress} />
               <SalesTable title="Listos para Entregar" sales={deliverySales.toDeliver} />
