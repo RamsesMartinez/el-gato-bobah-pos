@@ -8,6 +8,10 @@ import { saleService } from '../../services/api/sales';
 import { ROUTES } from '../../constants/routes';
 import { SALE_STATES, isStateInGroup } from '../../constants/saleStates';
 import { SaleState } from '../../types/filters';
+import { TimeIcon, CheckIcon, InfoIcon, AddIcon, HamburgerIcon, ExternalLinkIcon } from '@chakra-ui/icons';
+import { BsClockHistory, BsCreditCard, BsBox } from 'react-icons/bs';
+import { FiTruck } from 'react-icons/fi';
+import { IconType } from 'react-icons';
 
 interface SalesGroups {
   pending: FudoSale[];
@@ -18,24 +22,33 @@ interface SalesGroups {
 type SaleType = 'takeaway' | 'eat-in' | 'delivery';
 
 // Agregar estas funciones auxiliares al inicio del componente
-const getStateStyle = (state: SaleState): { bg: string; color: string } => {
+const getStateStyle = (state: SaleState) => {
   switch (state) {
     case SALE_STATES.PENDING:
-      return { bg: 'purple.50', color: 'purple.700' };
+      return {
+        bg: 'yellow.100',
+        color: 'yellow.800',
+        Icon: <TimeIcon />
+      };
     case SALE_STATES['IN-COURSE']:
-      return { bg: 'pink.50', color: 'pink.700' };
+      return {
+        bg: 'blue.100',
+        color: 'blue.800',
+        Icon: <InfoIcon />
+      };
+    case SALE_STATES.READY_TO_DELIVER:
     case SALE_STATES['PAYMENT-PROCESS']:
-      return { bg: 'blue.50', color: 'blue.700' };
-    case SALE_STATES['READY_TO_DELIVER']:
-      return { bg: 'green.50', color: 'green.700' };
-    case SALE_STATES['DELIVERY-SENT']:
-      return { bg: 'orange.50', color: 'orange.700' };
-    case SALE_STATES.CANCELED:
-      return { bg: 'gray.50', color: 'gray.700' };
-    case SALE_STATES.CLOSED:
-      return { bg: 'gray.50', color: 'gray.700' };
+      return {
+        bg: 'green.100',
+        color: 'green.800',
+        Icon: <CheckIcon />
+      };
     default:
-      return { bg: 'purple.50', color: 'purple.700' };
+      return {
+        bg: 'gray.100',
+        color: 'gray.800',
+        Icon: <InfoIcon />
+      };
   }
 };
 
@@ -182,22 +195,31 @@ export const ActiveSales: React.FC = () => {
   };
 
   const SalesTable: React.FC<{ title: string; sales: FudoSale[] }> = ({ title, sales }) => (
-    <Box mb={8}>
-      <Heading size="md" mb={4} color={theme.colors.text.primary}>{title}</Heading>
+    <Box mb={8} bg="white" borderRadius="xl" boxShadow="sm" overflow="hidden">
+      <Flex 
+        bg="gray.50" 
+        p={4} 
+        borderBottom="1px" 
+        borderColor="gray.200"
+        align="center"
+      >
+        <Heading size="md" color={theme.colors.text.primary}>{title}</Heading>
+      </Flex>
+      
       {sales.length === 0 ? (
-        <Text color="gray.500" textAlign="center" py={4}>
+        <Text color="gray.500" textAlign="center" py={8}>
           Sin ventas {title.toLowerCase()}.
         </Text>
       ) : (
-        <Table variant="simple" bg="white" borderRadius="md" overflow="hidden">
+        <Table variant="simple">
           <Thead bg="gray.50">
             <Tr>
-              <Th>ID</Th>
-              <Th>Hora Inicio</Th>
-              <Th>Origen</Th>
-              <Th>Estado</Th>
-              <Th>Cliente</Th>
-              <Th isNumeric>Total</Th>
+              <Th borderColor="gray.200">ID</Th>
+              <Th borderColor="gray.200">Hora Inicio</Th>
+              <Th borderColor="gray.200">Origen</Th>
+              <Th borderColor="gray.200">Estado</Th>
+              <Th borderColor="gray.200">Cliente</Th>
+              <Th isNumeric borderColor="gray.200">Total</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -208,30 +230,36 @@ export const ActiveSales: React.FC = () => {
                 _hover={{ bg: 'gray.50' }}
                 onClick={() => handleSaleClick(sale)}
               >
-                <Td>{sale.id}</Td>
-                <Td>{new Date(sale.attributes.createdAt).toLocaleString('es-ES', {
+                <Td borderColor="gray.100">{sale.id}</Td>
+                <Td borderColor="gray.100">{new Date(sale.attributes.createdAt).toLocaleString('es-ES', {
                   day: '2-digit',
                   month: '2-digit',
                   year: '2-digit',
                   hour: '2-digit',
                   minute: '2-digit'
                 })}</Td>
-                <Td>{sale.attributes.saleType}</Td>
-                <Td>
-                  <Text 
-                    display="inline-block"
-                    px={2}
-                    py={1}
-                    borderRadius="md"
+                <Td borderColor="gray.100">{sale.attributes.saleType}</Td>
+                <Td borderColor="gray.100">
+                  <Flex 
+                    display="inline-flex"
+                    align="center"
+                    px={3}
+                    py={2}
+                    borderRadius="full"
                     fontSize="sm"
                     bg={getStateStyle(sale.attributes.saleState).bg}
                     color={getStateStyle(sale.attributes.saleState).color}
                   >
+                    <Box mr={2}>
+                      {getStateStyle(sale.attributes.saleState).Icon}
+                    </Box>
                     {getStateText(sale.attributes.saleState)}
-                  </Text>
+                  </Flex>
                 </Td>
-                <Td>{sale.attributes.customerName || '-'}</Td>
-                <Td isNumeric>${sale.attributes.total.toFixed(2)}</Td>
+                <Td borderColor="gray.100">{sale.attributes.customerName || '-'}</Td>
+                <Td isNumeric borderColor="gray.100" fontWeight="semibold">
+                  ${sale.attributes.total.toFixed(2)}
+                </Td>
               </Tr>
             ))}
           </Tbody>
@@ -252,10 +280,10 @@ export const ActiveSales: React.FC = () => {
   }
 
   return (
-    <Box bg={theme.colors.background.default} minH="100vh">
+    <Box bg="gray.50" minH="100vh">
       <MainNav />
       
-      <Box p={6}>
+      <Box maxW="1400px" mx="auto" p={6}>
         <Flex justify="space-between" align="center" mb={6}>
           <Heading size="lg" color={theme.colors.text.primary}>
             {selectedTab === 'takeaway' ? 'PARA LLEVAR' :
@@ -263,27 +291,69 @@ export const ActiveSales: React.FC = () => {
              'DOMICILIO'}
           </Heading>
           <Button
+            leftIcon={<AddIcon />}
             onClick={handleNewSale}
-            bg={theme.colors.success.main}
+            bg="teal.400"
             color="white"
             size="lg"
             px={8}
-            _hover={{ bg: theme.colors.success.dark }}
+            _hover={{ bg: 'teal.500' }}
+            borderRadius="full"
           >
-            + Nuevo Pedido
+            Nuevo Pedido
           </Button>
         </Flex>
 
         <Tabs 
           onChange={handleTabChange}
-          colorScheme="green"
+          colorScheme="blue"
           mb={6}
           index={selectedTab === 'takeaway' ? 0 : selectedTab === 'eat-in' ? 1 : 2}
+          variant="unstyled"
         >
-          <TabList>
-            <Tab>Para Llevar</Tab>
-            <Tab>Comer Aquí</Tab>
-            <Tab>Domicilio</Tab>
+          <TabList borderBottom="1px" borderColor="gray.200">
+            <Tab 
+              px={8} 
+              py={4}
+              fontWeight="semibold"
+              color="gray.600"
+              _selected={{ 
+                color: 'blue.500',
+                borderBottom: '3px solid',
+                borderColor: 'blue.500'
+              }}
+            >
+              <HamburgerIcon mr={2} />
+              Para Llevar
+            </Tab>
+            <Tab 
+              px={8} 
+              py={4}
+              fontWeight="semibold"
+              color="gray.600"
+              _selected={{ 
+                color: 'blue.500',
+                borderBottom: '3px solid',
+                borderColor: 'blue.500'
+              }}
+            >
+              <HamburgerIcon mr={2} />
+              Comer Aquí
+            </Tab>
+            <Tab 
+              px={8} 
+              py={4}
+              fontWeight="semibold"
+              color="gray.600"
+              _selected={{ 
+                color: 'blue.500',
+                borderBottom: '3px solid',
+                borderColor: 'blue.500'
+              }}
+            >
+              <ExternalLinkIcon mr={2} />
+              Domicilio
+            </Tab>
           </TabList>
 
           <TabPanels>

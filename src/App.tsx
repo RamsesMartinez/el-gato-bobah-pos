@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ChakraProvider } from '@chakra-ui/react';
-import { DashboardLayout } from './components/layout/DashboardLayout';
-import { ActiveSales } from './pages/ActiveSales/ActiveSales';
-import { SalesHistory } from './pages/SalesHistory/SalesHistory';
 import { ThemeProvider } from './context/ThemeContext';
 import { theme } from './theme/chakraTheme';
 import './styles/globals.css';
 import './App.css';
-import NewOrder from './pages/NewOrder/NewOrder';
+import { ActiveSales } from './pages/ActiveSales/ActiveSales';
+import { SalesHistory } from './pages/SalesHistory/SalesHistory';
+import { NewOrder } from './pages/NewOrder/NewOrder';
 import { env } from './config/env';
 import { ROUTES } from './constants/routes';
 

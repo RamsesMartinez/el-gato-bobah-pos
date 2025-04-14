@@ -16,7 +16,7 @@ import {
   HStack,
   SimpleGrid
 } from '@chakra-ui/react';
-import { SearchIcon, ChevronLeftIcon } from '@chakra-ui/icons';
+import { SearchIcon } from '@chakra-ui/icons';
 import { CategoryGrid } from '../../components/CategoryGrid/CategoryGrid';
 import { FudoCategory, FudoProduct } from '../../types/fudo';
 import { categoryService } from '../../services/api/categories';
@@ -25,7 +25,7 @@ import { Breadcrumb } from '../../components/Breadcrumb/Breadcrumb';
 import { BreadcrumbItem } from '../../types/breadcrumb';
 import { MainNav } from '../../components/layout/MainNav';
 import { ProductCard } from '../../components/ProductCard/ProductCard';
-import { ROUTES, generateCategoryRoute, generateProductsRoute } from '../../constants/routes';
+import { ROUTES, generateCategoryRoute } from '../../constants/routes';
 
 interface TicketItem {
   id: string;
@@ -35,7 +35,7 @@ interface TicketItem {
   total: number;
 }
 
-const NewOrder: React.FC = () => {
+export const NewOrder: React.FC = () => {
   const { colorMode } = useColorMode();
   const bgColor = colorMode === 'light' ? 'gray.50' : 'gray.800';
   const [categories, setCategories] = useState<FudoCategory[]>([]);
@@ -155,16 +155,6 @@ const NewOrder: React.FC = () => {
 
   const handleCategoryClick = async (category: FudoCategory) => {
     navigate(generateCategoryRoute(category.id));
-  };
-
-  const handleBackClick = () => {
-    if (navigationStack.length <= 1) {
-      navigate(ROUTES.SALES.NEW);
-      return;
-    }
-
-    const previousCategory = navigationStack[navigationStack.length - 2];
-    navigate(generateCategoryRoute(previousCategory.id));
   };
 
   const handleAddProduct = (product: FudoProduct) => {
@@ -309,6 +299,4 @@ const NewOrder: React.FC = () => {
       </Flex>
     </Box>
   );
-};
-
-export default NewOrder; 
+}; 

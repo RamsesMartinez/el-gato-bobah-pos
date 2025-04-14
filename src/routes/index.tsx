@@ -1,7 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ActiveSales } from '../pages/ActiveSales/ActiveSales';
 import { SalesHistory } from '../pages/SalesHistory/SalesHistory';
-import NewOrder from '../pages/NewOrder/NewOrder';
+import { NewOrder } from '../pages/NewOrder/NewOrder';
 import { CategoryProducts } from '../pages/CategoryProducts/CategoryProducts';
 import { ROUTES } from '../constants/routes';
 

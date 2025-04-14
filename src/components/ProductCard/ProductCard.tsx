@@ -30,8 +30,6 @@ const getProductImageUrl = (product: FudoProduct): string => {
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onClick }) => {
   const borderColor = useColorModeValue('gray.200', 'gray.700');
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const textColor = useColorModeValue('gray.800', 'gray.100');
   const priceColor = useColorModeValue('green.600', 'green.400');
   const shadowColor = useColorModeValue('rgba(0,0,0,0.1)', 'rgba(0,0,0,0.3)');
 
