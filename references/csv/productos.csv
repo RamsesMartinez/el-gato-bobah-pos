@@ -1,0 +1,753 @@
+ID,Categoría,Subcategoría,Código,Nombre,Descripción,Precio,Costo,Proveedor,Activo,Favorito,Control de Stock,Stock,Margen,Contiene modificadores,Permitir vender solo,Posición,Tienda Online,Menú QR,Vender sin stock
+411,Bebidas Gatunas Calientes,,,CHAI LATTE VAINILLA,,45.0,,,Si,No,Si,,,No,Si,28300000,Si,Según categoría,Si
+402,Bebidas Gatunas Calientes,,,CHAI MIEL,,45.0,,,Si,No,Si,,,No,Si,27700000,Si,Según categoría,Si
+320,Bebidas Gatunas Calientes,,TEA,TEA'S,Bebidas calientes,15.0,,,Si,No,Si,,,Si,Si,20600000,Si,Según categoría,Si
+139,Bebidas Gatunas Calientes,Café's Y Chocolates,,CAFÉ AMERICANO,,50.0,,,Si,No,Si,,,No,Si,1500000,Si,Según categoría,No
+140,Bebidas Gatunas Calientes,Café's Y Chocolates,,CAPUCCINO,,63.0,,,Si,No,Si,,,No,Si,2100000,Si,Según categoría,Si
+141,Bebidas Gatunas Calientes,Café's Y Chocolates,,CARAMEL LATTE MACCHIATO,,63.0,,,Si,No,Si,,,No,Si,2200000,Si,Según categoría,No
+146,Bebidas Gatunas Calientes,Café's Y Chocolates,,CHAI LATTE,,63.0,,,Si,No,No,,,Si,Si,2700000,Según categoría,Según categoría,Si
+142,Bebidas Gatunas Calientes,Café's Y Chocolates,,CHOCOCINO,,63.0,,,Si,No,Si,,,No,No,3800000,Según categoría,Según categoría,No
+144,Bebidas Gatunas Calientes,Café's Y Chocolates,,CHOCOLATE BLANCO 16 OZ,,50.0,,,No,No,Si,,,No,Si,4000000,Según categoría,Según categoría,No
+143,Bebidas Gatunas Calientes,Café's Y Chocolates,,CHOCOLATE CALIENTE 16 OZ,,63.0,,,Si,No,Si,,,No,No,4300000,Según categoría,Según categoría,No
+145,Bebidas Gatunas Calientes,Café's Y Chocolates,,CHOCOLATE OAXACA 16 OZ,,69.0,,,Si,No,Si,,,No,Si,4900000,Según categoría,Según categoría,Si
+147,Bebidas Gatunas Calientes,Café's Y Chocolates,,LATTE 12 OZ,,63.0,,,Si,No,Si,,,No,Si,8600000,Según categoría,Según categoría,Si
+148,Bebidas Gatunas Calientes,Café's Y Chocolates,,LATTE MACCHIATO,,63.0,,,Si,No,Si,,,No,Si,8700000,Según categoría,Según categoría,Si
+149,Bebidas Gatunas Calientes,Café's Y Chocolates,,MOKA (MOCHA),,63.0,110.55,,Si,No,Si,-3.0,-47.55,No,Si,11300000,Según categoría,Según categoría,Si
+138,Bebidas Gatunas Calientes,Té's,,CANELA MANZANA TÉ´S,,0.0,,,Si,No,Si,,,No,No,2000000,Según categoría,Según categoría,Si
+321,Bebidas Gatunas Calientes,Té's,,FRUTOS ROJOS TÉ'S,,25.0,,,Si,No,Si,,,No,Si,20700000,Según categoría,Según categoría,No
+137,Bebidas Gatunas Calientes,Té's,,FUSIÓN HERBAL TÉ´S,,0.0,,,Si,No,Si,,,No,No,7200000,Según categoría,Según categoría,Si
+136,Bebidas Gatunas Calientes,Té's,,HIERBABUENA TÉ´S,,0.0,,,Si,No,Si,,,No,No,7900000,Según categoría,Según categoría,Si
+134,Bebidas Gatunas Calientes,Té's,,LIMÓN TÉ´S,,0.0,,,Si,No,Si,,,No,No,9100000,Según categoría,Según categoría,Si
+135,Bebidas Gatunas Calientes,Té's,,MANZANILLA TÉ´S,,0.0,,,Si,No,Si,,,No,No,10100000,Según categoría,Según categoría,Si
+460,Bebidas Gatunas Frías,,,CHOCOLATE FRIO,,55.0,,,Si,No,No,,,No,No,33000000,Según categoría,Según categoría,Si
+787,Bebidas Gatunas Frías,,,Helado Flotante Limón,,50.0,26.27058,,No,No,Si,,23.72942,No,Si,64600000,Según categoría,Según categoría,Si
+386,Bebidas Gatunas Frías,,,Leche 200 ml Vainilla Santa Clara,,0.0,5.0,,No,No,Si,,-5.0,No,No,26500000,Según categoría,Según categoría,Si
+387,Bebidas Gatunas Frías,,LEC_PROM,Lechita 200ml Promo 3x25,,25.0,,,No,No,Si,,,No,No,26600000,Según categoría,Según categoría,Si
+385,Bebidas Gatunas Frías,,LEC_200,Lechita Santa Clara 200ml,,10.0,,,No,No,Si,,,No,No,26400000,Según categoría,Según categoría,Si
+393,Bebidas Gatunas Frías,,VAQ_PROM,Vaquitas Promo 2x35,,35.0,18.0,,No,No,Si,,17.0,No,Si,27200000,Según categoría,Según categoría,Si
+774,Bebidas Gatunas Frías,Aguas Frescas,,AGUA DE MANGO - LITRO,,25.0,,,Si,No,Si,,,No,Si,63300000,Según categoría,Según categoría,Si
+656,Bebidas Gatunas Frías,Bebidas Coreanas,,AMERICANO BLACK - MCNULTY,,47.0,25.0,DOKSURI,No,No,Si,0.0,22.0,No,Si,52000000,Según categoría,Según categoría,Si
+643,Bebidas Gatunas Frías,Bebidas Coreanas,,AMERICANO SWEET - MCNULTY,,47.0,25.0,,No,No,Si,0.0,22.0,No,Si,50700000,Según categoría,Según categoría,Si
+665,Bebidas Gatunas Frías,Bebidas Coreanas,,ARIZONA KIWI FRESA,,25.0,14.41,Sam's Club,Si,No,Si,,10.59,No,No,52900000,Según categoría,Según categoría,Si
+586,Bebidas Gatunas Frías,Bebidas Coreanas,,ARIZONA MANGO,,25.0,14.41,Sam's Club,Si,No,Si,,10.59,No,No,45000000,Según categoría,Según categoría,Si
+666,Bebidas Gatunas Frías,Bebidas Coreanas,,ARIZONA SANDIA,,25.0,14.41,Sam's Club,Si,No,Si,,10.59,No,No,53000000,Según categoría,Según categoría,Si
+581,Bebidas Gatunas Frías,Bebidas Coreanas,,BONG BONG BEBIDA,,57.0,,,No,No,No,,,No,Si,44500000,Según categoría,Según categoría,No
+801,Bebidas Gatunas Frías,Bebidas Coreanas,,CAFÉ CAPPUCCINO  - OKF 240 ml,,55.0,21.85,Asiaon Mart,Si,No,Si,-2.0,33.15,No,Si,66000000,Según categoría,Según categoría,Si
+803,Bebidas Gatunas Frías,Bebidas Coreanas,,CAFÉ LATTE - OKF 240 ml,,55.0,21.85,Asiaon Mart,Si,No,Si,1.0,33.15,No,Si,66200000,Según categoría,Según categoría,Si
+802,Bebidas Gatunas Frías,Bebidas Coreanas,,CAFÉ MACCHIATO CARAMEL - OKF 240 ml,,55.0,21.85,Asiaon Mart,Si,No,Si,2.0,33.15,No,Si,66100000,Según categoría,Según categoría,Si
+804,Bebidas Gatunas Frías,Bebidas Coreanas,,CAFÉ MOCHA (MOKA) - OKF 240 ml,,55.0,21.85,Asiaon Mart,Si,No,Si,0.0,33.15,No,Si,66300000,Según categoría,Según categoría,Si
+700,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE CAFÉ VAINILLA AMERICANO - 230ml,,58.0,33.0,MEGAZONE,Si,No,Si,4.0,25.0,No,Si,56300000,Según categoría,Según categoría,Si
+797,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE FRESA - 230ml,,58.0,31.15,,Si,No,Si,5.0,26.85,No,Si,65600000,Según categoría,Según categoría,Si
+795,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE GRANADA - 230ml,,58.0,31.15,,Si,No,Si,0.0,26.85,No,Si,65400000,Según categoría,Según categoría,Si
+808,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE MANGO (Doble Mango) - 230ml,,58.0,33.0,MEGAZONE,Si,No,Si,5.0,25.0,No,Si,66700000,Según categoría,Según categoría,Si
+694,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE MANZANA - 230ml,,58.0,32.48,MEGAZONE,Si,No,Si,0.0,25.52,No,Si,55800000,Según categoría,Según categoría,Si
+796,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE MORA AZUL - 230ml,,58.0,31.15,,Si,No,Si,2.0,26.85,No,Si,65500000,Según categoría,Según categoría,Si
+693,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE NARANJA - 230ml,,58.0,32.48,MEGAZONE,Si,No,Si,0.0,25.52,No,Si,55700000,Según categoría,Según categoría,Si
+794,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE SANDÍA - 230ml,,58.0,31.15,,Si,No,Si,7.0,26.85,No,Si,65300000,Según categoría,Si,Si
+798,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE TÉ HELADO DURAZNO - 230ml,,58.0,31.15,,Si,No,Si,4.0,26.85,No,Si,65700000,Según categoría,Según categoría,Si
+699,Bebidas Gatunas Frías,Bebidas Coreanas,,CANTABILE UVA VERDE - 230ml,,58.0,33.0,MEGAZONE,Si,No,Si,0.0,25.0,No,Si,56200000,Según categoría,Según categoría,Si
+582,Bebidas Gatunas Frías,Bebidas Coreanas,,Chupa Chups,,70.0,,,No,No,No,,,No,Si,44600000,Según categoría,Según categoría,No
+423,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA FRESA,,55.0,28.25,,Si,No,Si,0.0,26.75,No,Si,29400000,Según categoría,Según categoría,Si
+790,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA MANGO,,55.0,28.25,,Si,No,Si,0.0,26.75,No,Si,64900000,Según categoría,Según categoría,Si
+692,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA MELÓN CREMOSA,,47.0,32.0,,No,No,Si,0.0,15.0,No,Si,55600000,Según categoría,Según categoría,Si
+424,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA NARANJA,,55.0,32.2,,Si,No,Si,0.0,22.8,No,Si,29500000,Según categoría,Según categoría,Si
+789,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA RASPBERRY (FRAMBUESA),,55.0,28.25,,Si,No,Si,0.0,26.75,No,Si,64800000,Según categoría,Según categoría,Si
+381,Bebidas Gatunas Frías,Bebidas Coreanas,,CHUPA CHUPS BEBIDA UVA,,47.0,32.2,,No,No,Si,0.0,14.8,No,Si,26000000,Según categoría,Según categoría,Si
+716,Bebidas Gatunas Frías,Bebidas Coreanas,,COMBO SOJU MILKI,,125.0,68.17,,No,No,Si,,56.83,Si,Si,57700000,Según categoría,Según categoría,Si
+677,Bebidas Gatunas Frías,Bebidas Coreanas,,COOL MOJITO - PURE PLUS 500ml,¡Delicioso Mojito! Bebida coreana sabor mojito de Lima-manzana y menta. No contiene alcohol. ¡Tómalo bien frío para un sabor más refrescante y delicioso!,55.0,31.75,MEGAFOOD,No,No,Si,0.0,23.25,No,Si,54100000,Según categoría,Según categoría,Si
+678,Bebidas Gatunas Frías,Bebidas Coreanas,,COOL PIÑA COLADA - PURE PLUS 500 ml,,55.0,31.75,,No,No,Si,0.0,23.25,No,Si,54200000,Según categoría,Según categoría,Si
+584,Bebidas Gatunas Frías,Bebidas Coreanas,,Could Brew Bts,,65.0,,,No,No,No,,,No,Si,44800000,Según categoría,Según categoría,No
+580,Bebidas Gatunas Frías,Bebidas Coreanas,,Frais Juis,,39.0,,,No,No,No,,,No,Si,44400000,Según categoría,Según categoría,No
+422,Bebidas Gatunas Frías,Bebidas Coreanas,,FRAIS JUS HALLABONG,,27.0,,,No,No,Si,0.0,,No,Si,29300000,Según categoría,Según categoría,Si
+200,Bebidas Gatunas Frías,Bebidas Coreanas,,FRAIS JUS MANGO,,27.0,,,No,No,Si,0.0,,No,Si,1300000,Según categoría,Según categoría,Si
+421,Bebidas Gatunas Frías,Bebidas Coreanas,,FRAIS JUS PIÑA,,27.0,,,No,No,Si,0.0,,No,Si,29200000,Según categoría,Según categoría,Si
+585,Bebidas Gatunas Frías,Bebidas Coreanas,,Haita Coco Palm Sabor Mango,,58.0,,,No,No,No,,,No,Si,44900000,Según categoría,Según categoría,No
+374,Bebidas Gatunas Frías,Bebidas Coreanas,,HAITAI BONG BONG UVA 238ml,,39.0,25.9,,No,No,Si,0.0,13.1,No,Si,25400000,Según categoría,Según categoría,Si
+462,Bebidas Gatunas Frías,Bebidas Coreanas,,HAITAI COCO PALM MANGO 340ml,,40.0,21.27,DOKSURI,No,No,Si,0.0,18.73,No,Si,33200000,Según categoría,Según categoría,Si
+669,Bebidas Gatunas Frías,Bebidas Coreanas,,HAITAI PERA,,39.0,36.1,DOKSURI,No,No,Si,0.0,2.9,No,Si,53300000,Según categoría,Según categoría,Si
+695,Bebidas Gatunas Frías,Bebidas Coreanas,,HATA MORA AZUL,,65.0,,,Si,No,No,,,No,Si,55900000,Según categoría,Según categoría,No
+657,Bebidas Gatunas Frías,Bebidas Coreanas,,HAZELNUT - MCNULTY,,47.0,25.0,DOKSURI,No,No,Si,0.0,22.0,Si,Si,52100000,Según categoría,Según categoría,Si
+642,Bebidas Gatunas Frías,Bebidas Coreanas,,ICE TALK BLUE LEMON,,47.0,27.6125,,No,No,No,,19.3875,No,No,50600000,No,No,No
+640,Bebidas Gatunas Frías,Bebidas Coreanas,,ICE TALK DURAZNO,,47.0,27.77,DOKSURI,No,No,No,,19.23,No,No,50400000,No,No,No
+641,Bebidas Gatunas Frías,Bebidas Coreanas,,ICE TALK SANDIA,,47.0,27.77,DOKSURI,No,No,No,,19.23,No,No,50500000,No,No,No
+828,Bebidas Gatunas Frías,Bebidas Coreanas,,LET'S BE CAFÉ,,47.0,,,No,No,Si,,,No,Si,68700000,Según categoría,Según categoría,Si
+769,Bebidas Gatunas Frías,Bebidas Coreanas,,LET'S BE CAPUCCINO - Lotte 240ml,,47.0,20.77,MEGAZONE,No,No,Si,0.0,26.23,No,Si,62800000,Según categoría,Según categoría,Si
+306,Bebidas Gatunas Frías,Bebidas Coreanas,,milkis,,0.0,0.0,,No,No,No,,0.0,No,No,19400000,Según categoría,Según categoría,No
+465,Bebidas Gatunas Frías,Bebidas Coreanas,,MILKIS DURAZNO 250 ml,,43.0,21.0,,Si,No,Si,0.0,22.0,No,Si,33500000,Según categoría,Según categoría,No
+373,Bebidas Gatunas Frías,Bebidas Coreanas,,MILKIS FRESA 250 ml,,43.0,23.0,,Si,No,Si,0.0,20.0,No,Si,25300000,Según categoría,Según categoría,Si
+710,Bebidas Gatunas Frías,Bebidas Coreanas,,MILKIS MANZANA 250 ml,,43.0,23.0,,Si,No,Si,0.0,20.0,No,Si,57100000,Según categoría,Según categoría,Si
+371,Bebidas Gatunas Frías,Bebidas Coreanas,,MILKIS MELÓN 250 ml,,43.0,21.0,,Si,No,Si,14.0,22.0,No,Si,25100000,Según categoría,Según categoría,Si
+372,Bebidas Gatunas Frías,Bebidas Coreanas,,MILKIS ORIGINAL 250 ml,,43.0,21.0,,Si,No,Si,0.0,22.0,No,Si,25200000,Según categoría,Según categoría,Si
+438,Bebidas Gatunas Frías,Bebidas Coreanas,,Paldo BTS Cold Brew Americano,"es café americano preparado en frío (cold brew) listo para consumir, a los amantes del café y fans de BTS les encantará.",65.0,41.55,Asiaon Mart,No,No,Si,0.0,23.45,No,Si,30800000,Según categoría,Según categoría,No
+738,Bebidas Gatunas Frías,Bebidas Coreanas,,Ponche De Arroz - Paldo Shikhye,,25.0,19.0,Asiaon Mart,No,No,Si,0.0,6.0,No,Si,59800000,Según categoría,Según categoría,Si
+705,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMINE LIMON,,65.0,,,No,No,No,,,No,Si,56600000,Según categoría,Según categoría,No
+583,Bebidas Gatunas Frías,Bebidas Coreanas,,Ramune,,94.0,,,No,No,No,,,No,Si,44700000,No,No,No
+435,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE FRESA,"Refresco tradicional japonés, La forma única de la botella y cómo está sellada con una canica hace que sea divertido y gratificante de abrir.",75.0,53.36,Asiaon Mart,Si,No,Si,5.0,21.64,No,Si,30500000,Según categoría,Según categoría,Si
+707,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE LIMON,,75.0,,,Si,No,Si,0.0,,No,Si,56800000,Según categoría,Según categoría,Si
+437,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE LYCHEE,"Refresco tradicional japonés, La forma única de la botella y cómo está sellada con una canica hace que sea divertido y gratificante de abrir.",75.0,46.92,,Si,No,Si,14.0,28.08,No,Si,30700000,Según categoría,Según categoría,No
+477,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE MELON,"Refresco tradicional japonés, La forma única de la botella y cómo está sellada con una canica hace que sea divertido y gratificante de abrir.",75.0,53.36,Asiaon Mart,Si,No,Si,5.0,21.64,No,Si,34600000,Según categoría,Según categoría,Si
+706,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE MORA AZUL,,65.0,,,No,No,Si,14.0,,No,Si,56700000,Según categoría,Según categoría,Si
+478,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE NARANJA,"Refresco tradicional japonés, La forma única de la botella y cómo está sellada con una canica hace que sea divertido y gratificante de abrir.",75.0,53.36,Asiaon Mart,Si,No,Si,4.0,21.64,No,Si,34700000,Según categoría,Según categoría,Si
+473,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE ORIGINAL,,75.0,53.36,Asiaon Mart,Si,No,Si,12.0,21.64,No,Si,34200000,Según categoría,Según categoría,Si
+436,Bebidas Gatunas Frías,Bebidas Coreanas,,RAMUNE UVA,"Refresco tradicional japonés, La forma única de la botella y cómo está sellada con una canica hace que sea divertido y gratificante de abrir.",75.0,53.36,Asiaon Mart,Si,No,Si,-1.0,21.64,No,Si,30600000,Según categoría,Según categoría,Si
+836,Bebidas Gatunas Frías,Bebidas Coreanas,,Soda coreana,,70.0,,,Si,No,No,,,No,No,69500000,Según categoría,Según categoría,Si
+711,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU AMERICANO,,100.0,69.05,,Si,No,Si,-1.0,30.95,No,Si,57200000,Según categoría,Según categoría,Si
+793,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU BLUE BERRY (MORA AZUL),,100.0,68.17,,Si,No,Si,-1.0,31.83,No,Si,65200000,Según categoría,Según categoría,Si
+805,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU CITRON,,100.0,68.17,Asiaon Mart,Si,No,Si,-1.0,31.83,No,Si,66400000,Según categoría,Según categoría,Si
+468,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU DURAZNO,,100.0,68.17,,Si,No,No,1.0,31.83,No,Si,33700000,Según categoría,Según categoría,Si
+469,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU FRESA,,100.0,68.17,,Si,No,Si,-3.0,31.83,No,Si,33800000,Según categoría,Según categoría,Si
+704,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU MANDARINA,,100.0,,,Si,No,Si,0.0,,No,Si,56500000,Según categoría,Según categoría,Si
+663,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU MANGO,,100.0,68.17,,Si,No,Si,0.0,31.83,No,Si,52700000,Según categoría,Según categoría,Si
+696,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU MANZANA,,100.0,,,No,No,No,,,No,Si,56000000,Según categoría,Según categoría,Si
+467,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU MANZANA VERDE,,100.0,68.17,,Si,No,Si,-1.0,31.83,No,Si,33600000,Según categoría,Según categoría,Si
+471,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU ORIGINAL,,100.0,68.17,,Si,No,Si,0.0,31.83,No,Si,34000000,Según categoría,Según categoría,Si
+470,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU SAERO,,100.0,68.17,,Si,No,Si,0.0,31.83,No,Si,33900000,Según categoría,Según categoría,Si
+792,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU UVA,,100.0,68.17,,Si,No,Si,0.0,31.83,No,Si,65100000,Según categoría,Según categoría,Si
+472,Bebidas Gatunas Frías,Bebidas Coreanas,,SOJU YOGURT,,100.0,68.17,,Si,No,Si,-1.0,31.83,No,Si,34100000,Según categoría,Según categoría,Si
+883,Bebidas Gatunas Frías,BEBIDAS KPOP,,HARD THE KITTEN,,89.0,,,Si,No,No,,,Si,Si,74200000,Según categoría,Según categoría,No
+880,Bebidas Gatunas Frías,BEBIDAS KPOP,,LILAC PURR LATTE,,89.0,,,Si,No,No,,,Si,Si,73900000,Según categoría,Según categoría,No
+884,Bebidas Gatunas Frías,BEBIDAS KPOP,,RED THE FLAVOR VELVET,,89.0,,,Si,No,No,,,Si,Si,74300000,Según categoría,Según categoría,No
+882,Bebidas Gatunas Frías,BEBIDAS KPOP,,RING DING DONG,,89.0,,,Si,No,No,,,Si,Si,74100000,Según categoría,Según categoría,No
+885,Bebidas Gatunas Frías,BEBIDAS KPOP,,SODA COREANA CANTABILE,,68.0,,,Si,No,No,,,Si,Si,74400000,Según categoría,Según categoría,No
+881,Bebidas Gatunas Frías,BEBIDAS KPOP,,TWICE TASTIC KITTY,,89.0,,,Si,No,No,,,Si,Si,74000000,Según categoría,Según categoría,No
+645,Bebidas Gatunas Frías,Bobah Tea's,,ALGODÓN DE AZÚCAR BOBA TEA'S,,0.0,,,Si,No,Si,,,No,No,50900000,Según categoría,Según categoría,Si
+302,Bebidas Gatunas Frías,Bobah Tea's,BOBAH,BOBAH TEA,,44.0,2.13,,Si,Si,Si,,41.87,Si,Si,18900000,Según categoría,Según categoría,Si
+380,Bebidas Gatunas Frías,Bobah Tea's,,BOBAH TEA AGUA,,40.0,0.0,,No,No,Si,,40.0,Si,No,25900000,Según categoría,Según categoría,Si
+611,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Chocolate 16 oz,,80.0,,,No,No,No,,,No,Si,47500000,Según categoría,Según categoría,No
+612,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Horchata 16 oz,,80.0,,,No,No,No,,,No,Si,47600000,Según categoría,Según categoría,No
+613,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Matcha 16 oz,,80.0,,,No,No,No,,,No,Si,47700000,Según categoría,Según categoría,No
+614,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Pink Lemonade 16 oz,,80.0,,,No,No,No,,,No,Si,47800000,Según categoría,Según categoría,No
+615,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Taro Purple 16 oz,,87.0,,,No,No,No,,,No,Si,47900000,Según categoría,Según categoría,No
+616,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Té Verde Frutos Rojos 16 oz,,80.0,,,No,No,No,,,No,Si,48000000,Según categoría,Según categoría,No
+617,Bebidas Gatunas Frías,Bobah Tea's,,Bobah Tea Vainilla 16 oz,,80.0,,,No,No,No,,,No,Si,48100000,Según categoría,Según categoría,No
+618,Bebidas Gatunas Frías,Bobah Tea's,,Chai Latte caliente,,58.0,,,Si,No,No,,,No,Si,48200000,Según categoría,Según categoría,No
+103,Bebidas Gatunas Frías,Bobah Tea's,,CHOCOLATE BOBA TEA´S,,0.0,70.0,,Si,No,Si,,-70.0,No,No,4200000,Según categoría,Según categoría,Si
+389,Bebidas Gatunas Frías,Bobah Tea's,,FRUTOS ROJOS BOBAH TEA'S,,63.0,,,Si,No,Si,,,No,No,26800000,Según categoría,Según categoría,Si
+109,Bebidas Gatunas Frías,Bobah Tea's,,FRUTOS ROJOS BOBA TEA´S,,63.0,,,Si,No,Si,,,No,No,15400000,Según categoría,Según categoría,Si
+104,Bebidas Gatunas Frías,Bobah Tea's,,HORCHATA BOBA TEA´S,,59.0,,,Si,No,Si,,,No,No,8000000,Según categoría,Según categoría,Si
+377,Bebidas Gatunas Frías,Bobah Tea's,,LECHE DESLACTOSADA BOBAH TEA,,0.0,10.37624,,Si,No,Si,,-10.37624,No,No,25700000,Según categoría,Según categoría,Si
+378,Bebidas Gatunas Frías,Bobah Tea's,,LECHE DESLACTOSADA LIGHT BOBAH TEA,,0.0,,,No,No,Si,,,No,No,25800000,Según categoría,Según categoría,Si
+376,Bebidas Gatunas Frías,Bobah Tea's,,LECHE ENTERA BOBAH TEA,,0.0,10.257,,Si,No,Si,,-10.257,No,No,25600000,Según categoría,Según categoría,Si
+105,Bebidas Gatunas Frías,Bobah Tea's,,MATCHA BOBA TEA´S,,70.0,,,Si,No,Si,,,No,No,10900000,Según categoría,Según categoría,Si
+851,Bebidas Gatunas Frías,Bobah Tea's,,matcha coco,,75.0,,,Si,No,No,,,No,Si,71000000,Según categoría,Según categoría,Si
+106,Bebidas Gatunas Frías,Bobah Tea's,,PINK LEMONADE BOBA TEA´S,,63.0,,,Si,No,Si,,,No,No,13400000,Según categoría,Según categoría,Si
+388,Bebidas Gatunas Frías,Bobah Tea's,BOB_2X100,PROMO BOBAH G 2X100,,100.0,,,No,No,Si,,,Si,Si,26700000,Según categoría,Según categoría,Si
+107,Bebidas Gatunas Frías,Bobah Tea's,,TARO BOBA TEA´S,,0.0,,,No,No,Si,,,No,No,15100000,Según categoría,Según categoría,Si
+108,Bebidas Gatunas Frías,Bobah Tea's,,TARO PURPPLE BOBA TEA´S,,75.0,,,Si,No,Si,,,No,No,15300000,Según categoría,Según categoría,Si
+110,Bebidas Gatunas Frías,Bobah Tea's,,VAINILLA BOBA TEA´S,,70.0,,,Si,No,Si,,,No,No,15600000,Según categoría,Según categoría,Si
+876,Bebidas Gatunas Frías,Cafés fríos,,ICE COFE,,76.0,,agua,Si,No,Si,,,No,Si,73500000,Según categoría,Si,Si
+867,Bebidas Gatunas Frías,Cafés fríos,,ICE COFFE,,65.0,,,No,No,Si,,,No,Si,72600000,Según categoría,Según categoría,Si
+840,Bebidas Gatunas Frías,Cafés fríos,,ICE COFFE (CAFÉ FRÍO),,50.0,,,No,No,No,,,No,No,69900000,No,No,No
+621,Bebidas Gatunas Frías,Chamoyadas,,Chamoyada Fresa Sandía,,72.0,,,No,No,No,,,No,No,48500000,Según categoría,Según categoría,No
+619,Bebidas Gatunas Frías,Chamoyadas,,Chamoyada Mango,,72.0,,,No,No,No,,,No,No,48300000,Según categoría,Según categoría,No
+622,Bebidas Gatunas Frías,Chamoyadas,,Chamoyada Maracuyá,,72.0,,,No,No,No,,,No,No,48600000,Según categoría,Según categoría,No
+858,Bebidas Gatunas Frías,Chamoyadas,,CHAMOYADA PELON,,52.0,,,Si,No,Si,,,Si,Si,71700000,Según categoría,Según categoría,Si
+620,Bebidas Gatunas Frías,Chamoyadas,,Chamoyada Picafresa,,72.0,,,No,No,No,,,No,No,48400000,Según categoría,Según categoría,No
+10,Bebidas Gatunas Frías,Frappé's Gatunos,,ALGODÓN DE AZUCAR FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,800000,Según categoría,Según categoría,No
+11,Bebidas Gatunas Frías,Frappé's Gatunos,,BAILEYS FRAPPÉ,,15.0,9.985,,Si,No,Si,,5.015,No,No,1000000,Según categoría,Según categoría,Si
+12,Bebidas Gatunas Frías,Frappé's Gatunos,,CAJETA FRAPPÉ,,0.0,8.19416,,Si,No,Si,,-8.19416,No,No,1700000,Según categoría,Según categoría,No
+414,Bebidas Gatunas Frías,Frappé's Gatunos,,CALABAZA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,28500000,Según categoría,Según categoría,Si
+284,Bebidas Gatunas Frías,Frappé's Gatunos,,CAPPUCCINO FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,1200000,Según categoría,Según categoría,No
+14,Bebidas Gatunas Frías,Frappé's Gatunos,,CEREZA FRAPPÉ,,15.0,,,Si,No,Si,,,No,No,2300000,Según categoría,Según categoría,No
+16,Bebidas Gatunas Frías,Frappé's Gatunos,,CHAI MANZANA CANELA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,2800000,Según categoría,Según categoría,No
+401,Bebidas Gatunas Frías,Frappé's Gatunos,,CHAI VAINILLA FRAPPÈ,,10.0,,,Si,No,Si,,,No,No,27600000,Según categoría,Según categoría,Si
+20,Bebidas Gatunas Frías,Frappé's Gatunos,,CHEESECAKE FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,3100000,Según categoría,Según categoría,No
+19,Bebidas Gatunas Frías,Frappé's Gatunos,,CHOCO AVELLANA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,3400000,Según categoría,Según categoría,No
+454,Bebidas Gatunas Frías,Frappé's Gatunos,,CHOCOCEREZA FRAPPÉ,,10.0,,,Si,No,No,,,No,No,32400000,Según categoría,Según categoría,No
+18,Bebidas Gatunas Frías,Frappé's Gatunos,,CHOCOLATE BLANCO FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,4100000,Según categoría,Según categoría,No
+17,Bebidas Gatunas Frías,Frappé's Gatunos,,CHOCOLATE FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,4400000,Según categoría,Según categoría,No
+829,Bebidas Gatunas Frías,Frappé's Gatunos,,CHOCORETAS FRAPPÉ,,15.0,,,Si,No,Si,,,No,No,68800000,Según categoría,Según categoría,Si
+77,Bebidas Gatunas Frías,Frappé's Gatunos,,CONEJITO TURÍN FRAPPÉ,,26.0,15.12,,Si,No,Si,,10.88,No,No,5100000,Según categoría,Según categoría,No
+78,Bebidas Gatunas Frías,Frappé's Gatunos,,COOKIES & CREAM (OREO) FRAPPÉ,,25.0,9.1044,,Si,No,Si,,15.8956,No,No,5200000,Según categoría,Según categoría,Si
+305,Bebidas Gatunas Frías,Frappé's Gatunos,,CREMA BATIDA,,0.0,6.9,,Si,No,Si,,-6.9,No,No,19300000,Según categoría,Según categoría,Si
+853,Bebidas Gatunas Frías,Frappé's Gatunos,,DRAGON FRUIT,,0.0,,,No,No,Si,,,No,Si,71200000,Según categoría,Según categoría,Si
+79,Bebidas Gatunas Frías,Frappé's Gatunos,,FERRERO FRAPPÉ,,35.0,15.0,,Si,No,Si,,20.0,No,No,5800000,Según categoría,Según categoría,Si
+13,Bebidas Gatunas Frías,Frappé's Gatunos,,FRAPPÉ 14 OZ (CH),,0.0,0.0,,Si,No,Si,,0.0,No,No,17300000,Según categoría,Según categoría,Si
+285,Bebidas Gatunas Frías,Frappé's Gatunos,,FRAPPÉ 16 OZ (G),,12.0,19.0195,,Si,No,Si,,-7.0195,No,No,17200000,Según categoría,Según categoría,Si
+522,Bebidas Gatunas Frías,Frappé's Gatunos,,Frappé' Bobah,,79.0,,,No,No,No,,,No,Si,39100000,Según categoría,Según categoría,No
+15,Bebidas Gatunas Frías,Frappé's Gatunos,,FRAPPÉ CHAI VAINILLA,,10.0,,,No,No,Si,,,No,No,2900000,Según categoría,Según categoría,No
+283,Bebidas Gatunas Frías,Frappé's Gatunos,FRAPPE,FRAPPÉ GATUNO,Refrescante bebida con una variedad de sabores deliciosos.,55.0,7.94716,,Si,Si,Si,,47.05284,Si,Si,17100000,Según categoría,Según categoría,Si
+856,Bebidas Gatunas Frías,Frappé's Gatunos,,FRAPPE MAGNUM,,0.0,,,No,No,Si,,,No,Si,71500000,Según categoría,Según categoría,Si
+857,Bebidas Gatunas Frías,Frappé's Gatunos,,FRAPPE MORDISCO,,0.0,,,No,No,Si,,,No,Si,71600000,Según categoría,Según categoría,Si
+725,Bebidas Gatunas Frías,Frappé's Gatunos,,FRESA - CHAMOYADA,,40.0,47.6112,,No,No,Si,,-7.6112,Si,Si,58600000,Según categoría,Según categoría,Si
+412,Bebidas Gatunas Frías,Frappé's Gatunos,,FRUTOS ROJOS FRAPPE,,67.0,,,Si,No,Si,,,No,No,28400000,Según categoría,Según categoría,Si
+708,Bebidas Gatunas Frías,Frappé's Gatunos,,GANSITO FRAPPE,,17.0,6.15,,Si,No,Si,,10.85,No,No,56900000,Según categoría,Según categoría,Si
+22,Bebidas Gatunas Frías,Frappé's Gatunos,,HORCHATA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,8100000,Según categoría,Según categoría,No
+407,Bebidas Gatunas Frías,Frappé's Gatunos,,JAVA CHIPS FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,5900000,Según categoría,Según categoría,No
+303,Bebidas Gatunas Frías,Frappé's Gatunos,,KITKAT FRAPPÉ,,20.0,,,Si,No,Si,,,No,No,19100000,Según categoría,Según categoría,Si
+845,Bebidas Gatunas Frías,Frappé's Gatunos,,MAGNUM FRAPPE,,35.0,15.0,,Si,No,Si,,20.0,No,No,70400000,Según categoría,Según categoría,Si
+23,Bebidas Gatunas Frías,Frappé's Gatunos,,MARSHMALLOW CHOCOLATE FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,10700000,Según categoría,Según categoría,No
+24,Bebidas Gatunas Frías,Frappé's Gatunos,,MATCHA FRAPPÉ,,17.0,,,Si,No,Si,,,No,No,11000000,Según categoría,Según categoría,No
+75,Bebidas Gatunas Frías,Frappé's Gatunos,,MAZAPÁN FRAPPÉ,,17.0,13.3906,,Si,No,Si,,3.6094,No,No,11100000,Según categoría,Según categoría,Si
+25,Bebidas Gatunas Frías,Frappé's Gatunos,,MOKACCINO FRAPPÉ,,17.0,,,Si,No,Si,,,No,No,11400000,Según categoría,Según categoría,No
+638,Bebidas Gatunas Frías,Frappé's Gatunos,,PAN DE MUERTO FRAPPÉ,,17.0,,,Si,No,Si,,,No,No,50200000,Según categoría,Según categoría,Si
+76,Bebidas Gatunas Frías,Frappé's Gatunos,,PAY DE LIMÓN FRAPPÉ,,17.0,,,Si,No,Si,,,No,No,12800000,Según categoría,Según categoría,No
+453,Bebidas Gatunas Frías,Frappé's Gatunos,,PIÑACOLADA FRAPPÉ,,17.0,,,No,No,No,,,No,No,32300000,Según categoría,Según categoría,No
+26,Bebidas Gatunas Frías,Frappé's Gatunos,,PISTACHE FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,13500000,Según categoría,Según categoría,No
+27,Bebidas Gatunas Frías,Frappé's Gatunos,,RED VELVET CHOCOLATE FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,14300000,Según categoría,Según categoría,Si
+452,Bebidas Gatunas Frías,Frappé's Gatunos,,ROMPOPE FRAPPÉ,,17.0,,,No,No,No,,,No,No,32200000,Según categoría,Según categoría,No
+28,Bebidas Gatunas Frías,Frappé's Gatunos,,STRAWBERRY CREAM (FRESA) FRAPPÉ,,10.0,9.06615,,Si,No,Si,,0.93385,No,No,14900000,Según categoría,Según categoría,No
+29,Bebidas Gatunas Frías,Frappé's Gatunos,,TARO FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,15200000,Según categoría,Según categoría,No
+375,Bebidas Gatunas Frías,Frappé's Gatunos,,TARO PURPLE FRAPPÉ,,17.0,,,Si,No,Si,,,No,No,25500000,Según categoría,Según categoría,Si
+30,Bebidas Gatunas Frías,Frappé's Gatunos,,VAINILLA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,15700000,Según categoría,Según categoría,No
+31,Bebidas Gatunas Frías,Frappé's Gatunos,,ZARZA CREMOSA FRAPPÉ,,10.0,,,Si,No,Si,,,No,No,16100000,Según categoría,Según categoría,No
+587,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Algodón de Azúcar,,73.0,,,No,No,No,,,No,Si,45100000,Según categoría,Según categoría,No
+588,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Bayleys,,73.0,,,No,No,No,,,No,Si,45200000,Según categoría,Según categoría,No
+589,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Cereza,,73.0,,,No,No,No,,,No,Si,45300000,Según categoría,Según categoría,No
+592,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Chai Manzana Canela,,73.0,,,No,No,No,,,No,Si,45600000,Según categoría,Según categoría,No
+591,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Chai Miel,,73.0,,,No,No,No,,,No,Si,45500000,Según categoría,Según categoría,No
+590,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Chai Vainilla,,73.0,,,No,No,No,,,No,Si,45400000,Según categoría,Según categoría,No
+595,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Choco Cereza,,73.0,,,No,No,No,,,No,Si,45900000,Según categoría,Según categoría,No
+593,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Chocolate,,73.0,,,No,No,No,,,No,Si,45700000,Según categoría,Según categoría,No
+594,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Chocolate Blanco,,73.0,,,No,No,No,,,No,Si,45800000,Según categoría,Según categoría,No
+596,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Conejito Turín,,109.0,,,No,No,No,,,No,Si,46000000,Según categoría,Según categoría,No
+597,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Ferrero,,109.0,,,No,No,No,,,No,Si,46100000,Según categoría,Según categoría,No
+598,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Horchata,,73.0,,,No,No,No,,,No,Si,46200000,Según categoría,Según categoría,No
+599,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Matcha,,86.0,,,No,No,No,,,No,Si,46300000,Según categoría,Según categoría,No
+600,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Mazapán,,86.0,,,No,No,No,,,No,Si,46400000,Según categoría,Según categoría,No
+601,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Mokaccino,,73.0,,,No,No,No,,,No,Si,46500000,Según categoría,Según categoría,No
+602,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Piña Colada,,86.0,,,No,No,No,,,No,Si,46600000,Según categoría,Según categoría,No
+603,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Red Velvet Chocolate,,73.0,,,No,No,No,,,No,Si,46700000,Según categoría,Según categoría,No
+604,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Rompope,,86.0,,,No,No,No,,,No,Si,46800000,Según categoría,Según categoría,No
+605,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Strawberry Cream,,86.0,,,No,No,No,,,No,Si,46900000,Según categoría,Según categoría,No
+606,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Taro,,73.0,,,No,No,No,,,No,Si,47000000,Según categoría,Según categoría,No
+607,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Taro Purple,,86.0,,,No,No,No,,,No,Si,47100000,Según categoría,Según categoría,No
+608,Bebidas Gatunas Frías,Frappés Gatunos,,Frappé Gatuno Vainilla,,73.0,,,No,No,No,,,No,Si,47200000,Según categoría,Según categoría,No
+698,Bebidas Gatunas Frías,Frappés Gatunos,,L,,0.0,,,No,No,No,,,No,No,3600000,Según categoría,Según categoría,No
+891,Bebidas Gatunas Frías,Frappés Gatunos,,MMATCHA COCO,,0.0,,,Si,No,No,,,No,Si,75000000,Según categoría,Según categoría,No
+839,Bebidas Gatunas Frías,Granizados,,DRAGON FRUIT - GRANIZADOS,,15.0,,,Si,No,Si,,,No,No,69800000,Según categoría,Según categoría,Si
+609,Bebidas Gatunas Frías,Granizados,,Granizado Chicle,,65.0,,,No,No,No,,,No,Si,47300000,Según categoría,Según categoría,No
+610,Bebidas Gatunas Frías,Granizados,,Granizado Kiwi,,65.0,,,No,No,No,,,No,Si,47400000,Según categoría,Según categoría,No
+771,Bebidas Gatunas Frías,Granizados,,Magnum,,30.0,,,Si,No,Si,,,No,Si,63000000,Según categoría,Según categoría,Si
+720,Bebidas Gatunas Frías,Granizados & Chamoyadas,,CEREZA - CHAMOYADA,,40.0,2.9396,,No,No,Si,,37.0604,Si,Si,58100000,Según categoría,Según categoría,Si
+279,Bebidas Gatunas Frías,Granizados & Chamoyadas,,CHAM DE TAMARINDO,,0.0,,,No,No,Si,,,No,No,16700000,Según categoría,Según categoría,No
+101,Bebidas Gatunas Frías,Granizados & Chamoyadas,CHAM,CHAMOYADA,Bebida refrescante agridulce junto a una paleta de hielo.,40.0,2.285,,No,Si,Si,,37.715,Si,Si,9500000,Según categoría,Según categoría,Si
+713,Bebidas Gatunas Frías,Granizados & Chamoyadas,CHAM_14,CHAMOYADA 14 OZ,,40.0,17.0,,Si,No,Si,,23.0,No,No,57400000,Según categoría,Según categoría,Si
+679,Bebidas Gatunas Frías,Granizados & Chamoyadas,,CHAMOYADA 16 OZ,,51.0,10.90186,,Si,No,Si,,40.09814,No,No,54300000,Según categoría,Según categoría,Si
+455,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FAPPÉ DE AGUA 14 OZ (CH),,0.0,,,Si,No,No,,,No,No,32500000,Según categoría,Según categoría,Si
+459,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRAPPÉ  16OZ,,10.0,,,Si,No,No,,,No,No,32900000,Según categoría,Según categoría,Si
+125,Bebidas Gatunas Frías,Granizados & Chamoyadas,GRAN,FRAPPÉ DE AGUA GRANIZADO,,35.0,1.84,,Si,Si,Si,,33.16,Si,Si,9000000,Según categoría,Según categoría,Si
+719,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRESA - FRAPPÉ DE AGUA,,0.0,,,Si,No,No,,,No,No,58000000,Según categoría,Según categoría,Si
+278,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRESA SANDÍA - CHAMOYADA,,40.0,4.7996,,Si,No,Si,,35.2004,Si,Si,16600000,Según categoría,Según categoría,Si
+718,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRESA SANDÍA - FRAPPÉ  DE AGUA,,0.0,,,Si,No,No,,,No,No,57900000,Según categoría,Según categoría,Si
+721,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRUTOS ROJOS - CHAMOYADA,,40.0,2.9396,,No,No,Si,,37.0604,Si,Si,58200000,Según categoría,Según categoría,Si
+122,Bebidas Gatunas Frías,Granizados & Chamoyadas,,FRUTOS ROJOS - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,7000000,Según categoría,Según categoría,No
+123,Bebidas Gatunas Frías,Granizados & Chamoyadas,,GRANIZADO GUAYABA,,0.0,,,No,No,Si,,,No,No,7300000,Según categoría,Según categoría,No
+133,Bebidas Gatunas Frías,Granizados & Chamoyadas,,GRANIZADO TAMARINDO,,0.0,,,No,No,Si,,,No,No,15000000,Según categoría,Según categoría,No
+121,Bebidas Gatunas Frías,Granizados & Chamoyadas,,ICE CEREZA - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,2400000,Según categoría,Según categoría,No
+130,Bebidas Gatunas Frías,Granizados & Chamoyadas,,ICE MORA AZUL - FAPPÉ  DE AGUA,,0.0,,,Si,No,Si,,,No,No,11500000,Según categoría,Según categoría,No
+124,Bebidas Gatunas Frías,Granizados & Chamoyadas,,KIWI - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,8300000,Según categoría,Según categoría,No
+282,Bebidas Gatunas Frías,Granizados & Chamoyadas,,LIMÓN - CHAMOYADA,,40.0,2.9396,,Si,No,Si,,37.0604,Si,Si,17000000,Según categoría,Según categoría,Si
+717,Bebidas Gatunas Frías,Granizados & Chamoyadas,,LIMÓN - FRAPPÉ DE AGUA,,0.0,,,Si,No,No,,,No,No,57800000,Según categoría,Según categoría,No
+126,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MANDARINA - GRANIZADO,,0.0,,,No,No,Si,,,No,No,9400000,Según categoría,Según categoría,No
+277,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MANGO - CHAMOYADA,,40.0,17.56216,,Si,No,Si,,22.43784,Si,No,16500000,Según categoría,Según categoría,Si
+127,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MANGO - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,9600000,Según categoría,Según categoría,No
+281,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MARACUYÁ - CHAMOYADA,"Refrescantes, dulces y picositas. Fruta natural, hielo frappé y chamoy con chilito. ¡El antojo perfecto en cada sorbo! 🍧🔥",40.0,2.9396,,No,No,Si,,37.0604,Si,Si,16900000,Según categoría,Según categoría,Si
+128,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MARACUYÁ - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,10500000,Según categoría,Según categoría,No
+722,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MOJITO - CHAMOYADA,,40.0,2.7116,,No,No,No,,37.2884,Si,Si,58300000,Según categoría,Según categoría,Si
+129,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MOJITO - FRAPPÉ DE AGUA,,0.0,,,Si,No,Si,,,No,No,11200000,Según categoría,Según categoría,No
+723,Bebidas Gatunas Frías,Granizados & Chamoyadas,,MORA AZUL - CHAMOYADA,,40.0,2.7116,,Si,No,No,,37.2884,Si,Si,58400000,Según categoría,Según categoría,Si
+280,Bebidas Gatunas Frías,Granizados & Chamoyadas,,PEPINO LIMÓN - CHAMOYADA,,40.0,2.9396,,No,No,Si,,37.0604,Si,Si,16800000,Según categoría,Según categoría,Si
+131,Bebidas Gatunas Frías,Granizados & Chamoyadas,,PEPINO LIMÓN - GRANIZADO,,0.0,,,No,No,Si,,,No,No,13100000,Según categoría,Según categoría,No
+451,Bebidas Gatunas Frías,Granizados & Chamoyadas,,PIÑA COLADA GRANIZADO,,0.0,,,No,No,Si,,,No,No,32100000,Según categoría,Según categoría,Si
+732,Bebidas Gatunas Frías,Granizados & Chamoyadas,,PINK LEMONADE - CHAMOYADA,,40.0,2.7116,,No,No,Si,,37.2884,Si,Si,59300000,Según categoría,Según categoría,Si
+450,Bebidas Gatunas Frías,Granizados & Chamoyadas,,ROMPOPE - GRANIZADO,,0.0,,,No,No,No,,,No,No,32000000,Según categoría,Según categoría,Si
+724,Bebidas Gatunas Frías,Granizados & Chamoyadas,,SANDÍA - CHAMOYADA,,40.0,5.0096,,Si,No,Si,,34.9904,Si,Si,58500000,Según categoría,Según categoría,Si
+132,Bebidas Gatunas Frías,Granizados & Chamoyadas,,SANDÍA -FRAPPÉ DE AGUA,,0.0,,,Si,No,No,,,No,No,14400000,Según categoría,Según categoría,Si
+463,Bebidas Gatunas Frías,Granizados & Chamoyadas,,SMOOTHIE FRUTOS ROJOS,,60.0,,,Si,No,Si,,,Si,Si,33300000,Según categoría,Según categoría,Si
+644,Bebidas Gatunas Frías,Licuados & Malteadas,,CHILATE,,45.0,,,Si,No,Si,,,No,Si,50800000,Según categoría,Según categoría,Si
+118,Bebidas Gatunas Frías,Licuados & Malteadas,,CHOCOBANA LICUADOS,,35.0,,,No,No,Si,,,No,Si,3500000,Según categoría,Según categoría,Si
+115,Bebidas Gatunas Frías,Licuados & Malteadas,,CHOCOLATE LICUADOS,,35.0,,,Si,No,Si,,,No,Si,4500000,Según categoría,Según categoría,Si
+112,Bebidas Gatunas Frías,Licuados & Malteadas,,CHOCOLATE MALTEADAS,,0.0,,,Si,No,Si,,,No,No,4600000,Según categoría,Según categoría,Si
+113,Bebidas Gatunas Frías,Licuados & Malteadas,,COOKIES & CREAM MALTEADAS,,0.0,,,Si,No,Si,,,No,No,5300000,Según categoría,Según categoría,Si
+120,Bebidas Gatunas Frías,Licuados & Malteadas,,FRESA CREMOSA LICUADOS,,35.0,,,Si,No,Si,,,No,Si,6300000,Según categoría,Según categoría,Si
+111,Bebidas Gatunas Frías,Licuados & Malteadas,,FRESA MALTEADAS,,0.0,,,Si,No,Si,,,No,No,6400000,Según categoría,Según categoría,Si
+117,Bebidas Gatunas Frías,Licuados & Malteadas,,FRUTOS ROJOS LICUADOS,,35.0,,,Si,No,Si,,,No,No,7100000,Según categoría,Según categoría,Si
+419,Bebidas Gatunas Frías,Licuados & Malteadas,,LECHE DESLACTOSADA LIGHT,,0.0,,,No,No,Si,,,No,No,29000000,Según categoría,Según categoría,Si
+420,Bebidas Gatunas Frías,Licuados & Malteadas,LICU,LICUADO GATUNO,,35.0,,,No,No,Si,,,Si,No,29100000,Según categoría,Según categoría,Si
+312,Bebidas Gatunas Frías,Licuados & Malteadas,MAL,MALTEADA GATUNA,,75.0,9.22744,,Si,Si,No,,65.77256,Si,Si,19900000,Según categoría,Según categoría,Si
+408,Bebidas Gatunas Frías,Licuados & Malteadas,SMOT,SMOOTHIE,,50.0,,,No,No,Si,,,Si,Si,28000000,Según categoría,Según categoría,Si
+409,Bebidas Gatunas Frías,Licuados & Malteadas,SMO_FR,SMOOTHIE FRESA,,60.0,,,Si,No,Si,,,Si,Si,28100000,Según categoría,Según categoría,No
+653,Bebidas Gatunas Frías,Licuados & Malteadas,SMO_MA,SMOOTHIE MANGO,,60.0,12.1539,,Si,No,Si,,47.8461,Si,Si,51700000,Según categoría,Según categoría,No
+119,Bebidas Gatunas Frías,Licuados & Malteadas,,VAINIBANANA LICUADOS,,37.0,,,No,No,Si,,,No,Si,15500000,Según categoría,Según categoría,No
+116,Bebidas Gatunas Frías,Licuados & Malteadas,,VAINILLA LICUADOS,,30.0,,,No,No,Si,,,No,Si,15800000,Según categoría,Según categoría,No
+114,Bebidas Gatunas Frías,Licuados & Malteadas,,VAINILLA MALTEADAS,,0.0,,,Si,No,Si,,,No,No,15900000,Según categoría,Según categoría,Si
+392,Bebidas Gatunas Frías,Licuados & Malteadas,VAQ,Vaquitas,,20.0,6.0,,No,No,Si,,14.0,No,Si,27100000,Según categoría,Según categoría,Si
+624,Bebidas Gatunas Frías,Malteadas,,Malteada Chocolate,,95.0,,,No,No,No,,,No,Si,48800000,Según categoría,Según categoría,No
+625,Bebidas Gatunas Frías,Malteadas,,Malteada Cookies & Cream,,95.0,,,No,No,No,,,No,Si,48900000,Según categoría,Según categoría,No
+623,Bebidas Gatunas Frías,Malteadas,,Malteada Fresa,,95.0,,,No,No,No,,,No,Si,48700000,Según categoría,Según categoría,No
+681,Bebidas Gatunas Frías,Mojito,,AMORE MIO - MOJITO,,80.0,,,Si,No,Si,,,No,Si,54500000,Según categoría,Según categoría,Si
+682,Bebidas Gatunas Frías,Mojito,,BLUE BUTTERFLY - MOJITO,,80.0,,,Si,No,Si,,,No,Si,54600000,Según categoría,Según categoría,Si
+683,Bebidas Gatunas Frías,Mojito,,DALGI - MOJITO,,80.0,,,Si,No,No,,,No,Si,54700000,Según categoría,Según categoría,Si
+684,Bebidas Gatunas Frías,Mojito,,MANGO GO - MOJITO,,80.0,,,Si,No,Si,,,No,Si,54800000,Según categoría,Según categoría,Si
+878,Bebidas Gatunas Frías,Refrescos,,ARIZONA,,29.0,,,No,No,No,,,No,Si,73700000,Si,Si,No
+456,Bebidas Gatunas Frías,Refrescos,,ARIZONA 591 ml,,29.0,14.08,,Si,No,Si,,14.92,Si,Si,32600000,Según categoría,Según categoría,No
+877,Bebidas Gatunas Frías,Refrescos,,COCACOLA,,29.0,,,No,No,No,,,No,Si,73600000,Según categoría,Según categoría,No
+309,Bebidas Gatunas Frías,Refrescos,,COCA COLA 355ml,,29.0,17.91,,Si,No,Si,8.0,11.09,No,Si,19600000,Según categoría,Según categoría,No
+308,Bebidas Gatunas Frías,Refrescos,,COCA COLA 600 ML,,25.0,18.0,,No,No,Si,,7.0,No,Si,19700000,Según categoría,Según categoría,Si
+893,Bebidas Gatunas Frías,Refrescos,,Jarritos lata 355ml,,25.0,,,Si,No,Si,,,No,Si,75200000,Según categoría,Según categoría,Si
+394,Bebidas Gatunas Frías,Refrescos,,MANZANITA DELICIOSA MINI,,15.0,5.63,,No,No,Si,,9.37,No,Si,27300000,Según categoría,Según categoría,Si
+391,Bebidas Gatunas Frías,Refrescos,,SANGRIA 400ML,,20.0,,,No,No,Si,,,No,Si,27000000,Según categoría,Según categoría,Si
+83,Bebidas Gatunas Frías,Sodas Explosivas,,BUBALOO - Sodas explosivas,,0.0,5.106,,Si,No,Si,,-5.106,No,No,1400000,Según categoría,Según categoría,Si
+403,Bebidas Gatunas Frías,Sodas Explosivas,,CEREZA NEGRA - Perlas explosivas,,0.0,,,No,No,Si,,,No,No,27800000,Según categoría,Según categoría,Si
+763,Bebidas Gatunas Frías,Sodas Explosivas,,CEREZA Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,62200000,Según categoría,Según categoría,Si
+81,Bebidas Gatunas Frías,Sodas Explosivas,,CEREZA - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,2600000,Según categoría,Según categoría,Si
+846,Bebidas Gatunas Frías,Sodas Explosivas,,CHAMOY,,0.0,0.0,,No,No,No,,0.0,No,Si,70500000,Según categoría,Según categoría,No
+93,Bebidas Gatunas Frías,Sodas Explosivas,,CHICLE - Perlas Explosivas,,0.0,,,Si,No,Si,,,No,No,3200000,Según categoría,Según categoría,Si
+82,Bebidas Gatunas Frías,Sodas Explosivas,,CHICLE - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,3300000,Según categoría,Según categoría,Si
+304,Bebidas Gatunas Frías,Sodas Explosivas,,CHOCOLATE Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,19200000,Según categoría,Según categoría,Si
+449,Bebidas Gatunas Frías,Sodas Explosivas,,DURAZNO - Sodas explosivas,,0.0,,,Si,No,Si,,,No,Si,31900000,Según categoría,Según categoría,Si
+84,Bebidas Gatunas Frías,Sodas Explosivas,,FRAMBUESA - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,6100000,Según categoría,Según categoría,Si
+94,Bebidas Gatunas Frías,Sodas Explosivas,,FRESA Perlas Explosivas,,0.0,,,Si,No,Si,-133.0,,No,No,6700000,Según categoría,Según categoría,Si
+85,Bebidas Gatunas Frías,Sodas Explosivas,,FRESA - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,6800000,Según categoría,Según categoría,Si
+850,Bebidas Gatunas Frías,Sodas Explosivas,,frutos rojos,,0.0,,,No,No,Si,,,No,Si,70900000,Según categoría,Según categoría,Si
+98,Bebidas Gatunas Frías,Sodas Explosivas,,KIWI Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,8400000,Según categoría,Según categoría,Si
+86,Bebidas Gatunas Frías,Sodas Explosivas,,KIWI - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,8500000,Según categoría,Según categoría,Si
+99,Bebidas Gatunas Frías,Sodas Explosivas,,LITCHI Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,9200000,Según categoría,Según categoría,No
+87,Bebidas Gatunas Frías,Sodas Explosivas,,LITCHI - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,9300000,Según categoría,Según categoría,Si
+96,Bebidas Gatunas Frías,Sodas Explosivas,,MANGO Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,9700000,Según categoría,Según categoría,No
+88,Bebidas Gatunas Frías,Sodas Explosivas,,MANGO - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,9800000,Según categoría,Según categoría,Si
+95,Bebidas Gatunas Frías,Sodas Explosivas,,MANZANA VERDE Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,9900000,Según categoría,Según categoría,No
+90,Bebidas Gatunas Frías,Sodas Explosivas,,MANZANA VERDE - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,10000000,Según categoría,Según categoría,Si
+91,Bebidas Gatunas Frías,Sodas Explosivas,,MARACUYA - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,10600000,Según categoría,Según categoría,Si
+97,Bebidas Gatunas Frías,Sodas Explosivas,,MORA AZUL - Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,11600000,Según categoría,Según categoría,No
+89,Bebidas Gatunas Frías,Sodas Explosivas,,MORA AZUL - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,11700000,Según categoría,Según categoría,Si
+479,Bebidas Gatunas Frías,Sodas Explosivas,,NEON FRUTOS ROJOS - Sodas explosivas,,0.0,,,No,No,Si,,,No,No,34800000,Según categoría,Según categoría,Si
+480,Bebidas Gatunas Frías,Sodas Explosivas,,NEON MANZANA VERDE - Sodas explosivas,,0.0,,,No,No,Si,,,No,No,34900000,Según categoría,Según categoría,Si
+481,Bebidas Gatunas Frías,Sodas Explosivas,,NEON MORA AZUL - Sodas explosivas,,0.0,,,No,No,Si,,,No,No,35000000,Según categoría,Según categoría,Si
+847,Bebidas Gatunas Frías,Sodas Explosivas,,PERLAS CHAMOY,,12.0,,Colday,Si,No,No,,,No,Si,70600000,Si,Si,Si
+92,Bebidas Gatunas Frías,Sodas Explosivas,,SANDÍA - Sodas explosivas,,0.0,,,Si,No,Si,,,No,No,14600000,Según categoría,Según categoría,Si
+316,Bebidas Gatunas Frías,Sodas Explosivas,SOD,SODA EXPLOSIVA,,35.0,5.11,,Si,Si,Si,,29.89,Si,Si,20200000,Según categoría,Según categoría,Si
+100,Bebidas Gatunas Frías,Sodas Explosivas,,YOGURTH Perlas explosivas,,0.0,,,Si,No,Si,,,No,No,16000000,Según categoría,Según categoría,Si
+203,Boneless Y Alitas,,AL_CH,ALITAS CH - 250g,,114.98,44.1355,,Si,Si,Si,,70.8445,Si,Si,1100000,Según categoría,Según categoría,Si
+328,Boneless Y Alitas,,AL_G,ALITAS G - 500g,,234.98,87.2196,,Si,Si,Si,,147.7604,Si,Si,21400000,Según categoría,Según categoría,Si
+406,Boneless Y Alitas,,AL_J,ALITAS J - 1 Kg,,398.98,163.3995,,Si,Si,Si,,235.5805,Si,Si,27900000,Según categoría,Según categoría,Si
+202,Boneless Y Alitas,,,ALITAS LEMON PEPPER 270GR,,95.0,,,No,No,No,,,No,No,8900000,Según categoría,Según categoría,No
+326,Boneless Y Alitas,,AL_M,ALITAS M - 370g,,164.98,61.5355,,Si,Si,Si,,103.4445,Si,Si,21100000,Según categoría,Según categoría,Si
+286,Boneless Y Alitas,,BO_CH,BONELESS CH - 250g,,129.98,69.17627,,Si,Si,Si,,60.80373,Si,Si,17400000,Si,Si,Si
+318,Boneless Y Alitas,,BO_G,BONELESS G - 500g,,244.98,121.2612,,Si,Si,Si,,123.7188,Si,Si,20500000,Según categoría,Según categoría,Si
+405,Boneless Y Alitas,,BO_J,BONELESS J - 1 Kg,,434.98,193.65805,,Si,Si,Si,,241.32195,Si,Si,21200000,Según categoría,Según categoría,Si
+404,Boneless Y Alitas,,BO_M,BONELESS M - 370g,,194.98,86.44874,,Si,Si,Si,,108.53126,Si,Si,17500000,Según categoría,Según categoría,Si
+324,Boneless Y Alitas,,,COMBO ALITAS GATO FRIEND ZONE (250gr),,125.0,,,No,No,Si,,,Si,Si,20900000,Según categoría,Según categoría,Si
+325,Boneless Y Alitas,,,COMBO ALITAS GATO MIMADO (500gr),,250.0,,,No,No,Si,,,Si,Si,21000000,Según categoría,Según categoría,Si
+307,Boneless Y Alitas,,CO_BO250,COMBO BONELESS GATO FRIEND ZONE (250GR),,125.0,38.25125,,No,No,Si,,86.74875,Si,Si,19500000,Según categoría,Según categoría,Si
+323,Boneless Y Alitas,,CO_BO500,COMBO BONELESS GATO MIMADO (500gr),,250.0,72.729,,No,No,Si,,177.271,Si,Si,20800000,Según categoría,Según categoría,Si
+628,Boneless Y Alitas,,,Dedos de Queso (3pz),,45.0,,,No,No,No,,,No,Si,49200000,Según categoría,Según categoría,No
+629,Boneless Y Alitas,,,Dedos de queso (8pz),,110.0,,,No,No,No,,,No,Si,49300000,Según categoría,Según categoría,No
+747,Boneless Y Alitas,,TE_5,TENDERS 5 PZ,,119.98,67.94485,,No,No,Si,,52.03515,Si,Si,60700000,Según categoría,Según categoría,Si
+650,Boneless Y Alitas,SALSAS BONELESS,,AJO PARMESANO ADEREZO G,,0.0,71.05,,Si,No,Si,,-71.05,No,No,51400000,Según categoría,Según categoría,Si
+461,Boneless Y Alitas,SALSAS BONELESS,,AJO PARMESANO ADEREZO M,,0.0,,,Si,No,Si,,,No,No,33100000,Según categoría,Según categoría,Si
+426,Boneless Y Alitas,SALSAS BONELESS,,BBQ A LA DIABLA SALSA CH,,0.0,3.48,,Si,No,Si,,-3.48,No,No,29600000,Según categoría,Según categoría,Si
+427,Boneless Y Alitas,SALSAS BONELESS,,BBQ A LA DIABLA SALSA G,,0.0,5.336,,No,No,Si,,-5.336,No,Si,29700000,Según categoría,Según categoría,Si
+295,Boneless Y Alitas,SALSAS BONELESS,,BBQ CHIPOTLE SALSA CH,,0.0,,Mr Wings,No,No,Si,,,No,No,18400000,Según categoría,Según categoría,Si
+330,Boneless Y Alitas,SALSAS BONELESS,,BBQ CHIPOTLE SALSA G,,0.0,,Mr Wings,Si,No,Si,,,No,No,21700000,Según categoría,Según categoría,Si
+298,Boneless Y Alitas,SALSAS BONELESS,,BBQ HABANERO SALSA CH,,0.0,4.263,Mr Wings,Si,No,Si,,-4.263,No,No,18700000,Según categoría,Según categoría,Si
+331,Boneless Y Alitas,SALSAS BONELESS,,BBQ HABANERO SALSA G,,0.0,6.3945,Mr Wings,Si,No,Si,,-6.3945,No,No,21800000,Según categoría,Según categoría,Si
+287,Boneless Y Alitas,SALSAS BONELESS,,BBQ SALSA CH,Salsa BBQ,0.0,4.0002,Mr Wings,Si,No,Si,,-4.0002,No,No,17600000,Si,Si,Si
+332,Boneless Y Alitas,SALSAS BONELESS,,BBQ SALSA G,,0.0,6.1698,Mr Wings,Si,No,Si,,-6.1698,No,No,21900000,Según categoría,Según categoría,Si
+369,Boneless Y Alitas,SALSAS BONELESS,,BONELESS LEMON PEPPER CH,,0.0,6.4722,,No,No,Si,,-6.4722,No,No,24900000,Según categoría,Según categoría,Si
+370,Boneless Y Alitas,SALSAS BONELESS,,BONELESS LEMON PEPPER G,,0.0,9.7083,,No,No,Si,,-9.7083,No,No,25000000,Según categoría,Según categoría,Si
+727,Boneless Y Alitas,SALSAS BONELESS,,BÚFALO CHAMPI SALSA CH,,0.0,3.6946,,Si,No,Si,,-3.6946,No,No,58800000,Según categoría,Según categoría,Si
+728,Boneless Y Alitas,SALSAS BONELESS,,BÚFALO CHAMPI SALSA G,,0.0,5.51348,,Si,No,Si,,-5.51348,No,No,58900000,Según categoría,Según categoría,Si
+291,Boneless Y Alitas,SALSAS BONELESS,,BÚFALO SALSA CH,,0.0,3.5238,Mr Wings,Si,No,Si,,-3.5238,No,No,18000000,Según categoría,Según categoría,Si
+333,Boneless Y Alitas,SALSAS BONELESS,,BÚFALO SALSA G,,0.0,5.2857,Mr Wings,Si,No,Si,,-5.2857,No,No,22000000,Según categoría,Según categoría,Si
+290,Boneless Y Alitas,SALSAS BONELESS,,CAJÚN SALSA CH,,0.0,4.2474,Mr Wings,Si,No,Si,,-4.2474,No,No,17900000,Según categoría,Según categoría,Si
+334,Boneless Y Alitas,SALSAS BONELESS,,CAJÚN SALSA G,,0.0,6.3711,Mr Wings,Si,No,Si,,-6.3711,No,No,22100000,Según categoría,Según categoría,Si
+652,Boneless Y Alitas,SALSAS BONELESS,,CATSUP SIN AZUCAR,,0.0,50.0,,No,No,No,0.0,-50.0,No,No,51600000,Según categoría,Según categoría,No
+820,Boneless Y Alitas,SALSAS BONELESS,,CHEETOS SALSA CH,,10.0,,,Si,No,Si,,,No,No,67900000,Según categoría,Según categoría,Si
+821,Boneless Y Alitas,SALSAS BONELESS,,CHEETOS SALSA G,,15.0,,,Si,No,Si,,,No,No,68000000,Según categoría,Según categoría,Si
+288,Boneless Y Alitas,SALSAS BONELESS,,CHINGU TERIYAKI SALSA CH,,0.0,4.1052,Mr Wings,Si,No,Si,,-4.1052,No,No,17700000,Según categoría,Según categoría,Si
+335,Boneless Y Alitas,SALSAS BONELESS,,CHINGU TERIYAKI SALSA G,,0.0,6.1578,Mr Wings,Si,No,Si,,-6.1578,No,No,22200000,Según categoría,Según categoría,Si
+816,Boneless Y Alitas,SALSAS BONELESS,,DORITOS NACHO SALSA CH,,15.0,,,Si,No,No,,,No,No,67500000,Según categoría,Según categoría,No
+817,Boneless Y Alitas,SALSAS BONELESS,,DORITOS NACHO SALSA G,,15.0,,,Si,No,Si,,,No,No,67600000,Según categoría,Según categoría,Si
+362,Boneless Y Alitas,SALSAS BONELESS,,FLAMIN HOT SALSA CH,,0.0,3.48,,Si,No,Si,,-3.48,No,No,24200000,Según categoría,Según categoría,Si
+366,Boneless Y Alitas,SALSAS BONELESS,,FLAMIN HOT SALSA G,,0.0,5.22,,Si,No,Si,,-5.22,No,No,24600000,Según categoría,Según categoría,Si
+361,Boneless Y Alitas,SALSAS BONELESS,,FRESA SPICY SALSA CH,,0.0,3.48,,Si,No,Si,,-3.48,No,No,24100000,Según categoría,Según categoría,Si
+364,Boneless Y Alitas,SALSAS BONELESS,,FRESA SPICY SALSA G,,0.0,5.22,,Si,No,Si,,-5.22,No,No,24400000,Según categoría,Según categoría,Si
+363,Boneless Y Alitas,SALSAS BONELESS,,JALAPEÑO SPICY SALSA CH,,0.0,3.48,,Si,No,Si,,-3.48,No,No,24300000,Según categoría,Según categoría,Si
+367,Boneless Y Alitas,SALSAS BONELESS,,JALAPEÑO SPICY SALSA G,,0.0,5.22,,Si,No,Si,,-5.22,No,No,24700000,Según categoría,Según categoría,Si
+382,Boneless Y Alitas,SALSAS BONELESS,,KRAZY HOT SALSA CH,,0.0,4.4052,,Si,No,Si,,-4.4052,No,No,26100000,Según categoría,Según categoría,Si
+383,Boneless Y Alitas,SALSAS BONELESS,,KRAZY HOT SALSA G,,0.0,6.6078,,Si,No,Si,,-6.6078,No,No,26200000,Según categoría,Según categoría,Si
+352,Boneless Y Alitas,SALSAS BONELESS,,LEMON PEPPER SALSA CH,,5.0,10.02115,Mr Wings,Si,No,Si,,-5.02115,No,No,23700000,Según categoría,Según categoría,Si
+353,Boneless Y Alitas,SALSAS BONELESS,,LEMON PEPPER SALSA G,,10.0,13.47299,,Si,No,Si,,-3.47299,No,No,23800000,Según categoría,Según categoría,Si
+735,Boneless Y Alitas,SALSAS BONELESS,,LOUISIANA SALSA CH,,0.0,4.7256,,Si,No,Si,,-4.7256,No,No,59600000,Según categoría,Según categoría,Si
+736,Boneless Y Alitas,SALSAS BONELESS,,LOUISIANA SALSA G,,0.0,7.0884,,Si,No,Si,,-7.0884,No,No,59700000,Según categoría,Según categoría,Si
+360,Boneless Y Alitas,SALSAS BONELESS,,MANGO GUAJILLO SALSA CH,,0.0,3.48,,Si,No,Si,,-3.48,No,No,24000000,Según categoría,Según categoría,Si
+365,Boneless Y Alitas,SALSAS BONELESS,,MANGO GUAJILLO SALSA G,,0.0,5.22,,Si,No,Si,,-5.22,No,No,24500000,Según categoría,Según categoría,Si
+296,Boneless Y Alitas,SALSAS BONELESS,,MANGO HABANERO SALSA CH,,0.0,3.4266,Mr Wings,Si,No,Si,,-3.4266,No,No,18500000,Según categoría,Según categoría,Si
+336,Boneless Y Alitas,SALSAS BONELESS,,MANGO HABANERO SALSA G,,0.0,5.1399,Mr Wings,Si,No,Si,,-5.1399,No,No,22300000,Según categoría,Según categoría,Si
+733,Boneless Y Alitas,SALSAS BONELESS,,MANGO HABANERO X2 SALSA CH,,0.0,4.989,,Si,No,Si,,-4.989,No,No,59400000,Según categoría,Según categoría,Si
+734,Boneless Y Alitas,SALSAS BONELESS,,MANGO HABANERO X2 SALSA G,,0.0,7.4835,,Si,No,Si,,-7.4835,No,No,59500000,Según categoría,Según categoría,Si
+292,Boneless Y Alitas,SALSAS BONELESS,,MANGO HOT SALSA CH,,0.0,3.6318,Mr Wings,Si,No,Si,,-3.6318,No,No,18100000,Según categoría,Según categoría,Si
+337,Boneless Y Alitas,SALSAS BONELESS,,MANGO HOT SALSA G,,0.0,5.4477,Mr Wings,Si,No,Si,,-5.4477,No,No,22400000,Según categoría,Según categoría,Si
+329,Boneless Y Alitas,SALSAS BONELESS,,MEZCAT SALSA CH,,0.0,4.4208,Mr Wings,No,No,Si,,-4.4208,No,No,21500000,Según categoría,Según categoría,Si
+338,Boneless Y Alitas,SALSAS BONELESS,,MEZCAT SALSA G,,0.0,6.6312,Mr Wings,No,No,Si,,-6.6312,No,No,22500000,Según categoría,Según categoría,Si
+294,Boneless Y Alitas,SALSAS BONELESS,,NARANJA CHIPOTLE SALSA CH,,0.0,4.263,Mr Wings,No,No,Si,,-4.263,No,No,18300000,Según categoría,Según categoría,Si
+339,Boneless Y Alitas,SALSAS BONELESS,,NARANJA CHIPOTLE SALSA G,,0.0,6.3945,Mr Wings,No,No,Si,,-6.3945,No,No,22600000,Según categoría,Según categoría,Si
+300,Boneless Y Alitas,SALSAS BONELESS,,Opcional Genérico,,0.0,,,Si,No,Si,,,No,Si,22700000,No,Según categoría,Si
+293,Boneless Y Alitas,SALSAS BONELESS,,ORIGINAL HOT SALSA CH,,0.0,3.1578,Mr Wings,Si,No,Si,,-3.1578,No,No,18200000,Según categoría,Según categoría,Si
+340,Boneless Y Alitas,SALSAS BONELESS,,ORIGINAL HOT SALSA G,,0.0,6.3156,Mr Wings,Si,No,Si,,-6.3156,No,No,22800000,Según categoría,Según categoría,No
+445,Boneless Y Alitas,SALSAS BONELESS,,PELONRICO GATUNO SALSA CH,,0.0,,,No,No,Si,,,No,Si,31500000,Según categoría,Según categoría,Si
+446,Boneless Y Alitas,SALSAS BONELESS,,PELONRICO GATUNO SALSA G,,0.0,,,No,No,Si,,,No,Si,31600000,Según categoría,Según categoría,Si
+855,Boneless Y Alitas,SALSAS BONELESS,,PIÑA GUAJILLO,,0.0,,,No,No,Si,,,No,Si,71400000,Según categoría,Según categoría,Si
+299,Boneless Y Alitas,SALSAS BONELESS,,Producto Genérico,,0.0,,,Si,No,No,1.0,,No,Si,22900000,No,Según categoría,No
+818,Boneless Y Alitas,SALSAS BONELESS,,RANCHERITOS SALSA CH,,15.0,,,Si,No,Si,,,No,No,67700000,Según categoría,Según categoría,Si
+819,Boneless Y Alitas,SALSAS BONELESS,,RANCHERITOS SALSA G,,10.0,,,Si,No,Si,,,No,No,67800000,Según categoría,Según categoría,Si
+814,Boneless Y Alitas,SALSAS BONELESS,,RUFFLESS QUESO SALSA CH,,15.0,,,Si,No,Si,,,No,No,67300000,Según categoría,Según categoría,Si
+815,Boneless Y Alitas,SALSAS BONELESS,,RUFFLESS QUESO SALSA G,,15.0,,,Si,No,Si,,,No,No,67400000,Según categoría,Según categoría,Si
+535,Boneless Y Alitas,SALSAS BONELESS,,SALSA BRAVA CH,,0.0,,,No,No,Si,,,No,No,40400000,Según categoría,Según categoría,Si
+534,Boneless Y Alitas,SALSAS BONELESS,,SALSA BRAVA G,,0.0,,,No,No,Si,,,No,No,40300000,Según categoría,Según categoría,Si
+651,Boneless Y Alitas,SALSAS BONELESS,,SAZONADOR FUEGO,,0.0,420.0,,Si,No,Si,0.0,-420.0,No,No,51500000,Según categoría,Según categoría,No
+297,Boneless Y Alitas,SALSAS BONELESS,,SRIRACHA SALSA CH,,0.0,6.279,Mr Wings,No,No,Si,,-6.279,No,No,18600000,Según categoría,Según categoría,Si
+341,Boneless Y Alitas,SALSAS BONELESS,,SRIRACHA SALSA G,,0.0,9.4185,Mr Wings,No,No,Si,,-9.4185,No,No,23000000,Según categoría,Según categoría,Si
+289,Boneless Y Alitas,SALSAS BONELESS,,TAMARINDO SALSA CH,,0.0,4.263,Mr Wings,Si,No,Si,,-4.263,No,No,17800000,Según categoría,Según categoría,Si
+342,Boneless Y Alitas,SALSAS BONELESS,,TAMARINDO SALSA G,,0.0,6.3945,Mr Wings,Si,No,Si,,-6.3945,No,No,23100000,Según categoría,Según categoría,Si
+675,Boneless Y Alitas,SALSAS BONELESS,,ZARZAMORA CHIPOTLE SALSA CH,,0.0,,,Si,No,Si,,,No,No,53900000,Según categoría,Según categoría,Si
+676,Boneless Y Alitas,SALSAS BONELESS,,ZARZAMORA CHIPOTLE SALSA G,,0.0,,,Si,No,Si,,,No,No,54000000,Según categoría,Según categoría,Si
+746,Combos,,,COMBO COREAN,,110.0,,,No,No,Si,,,Si,Si,60600000,Según categoría,Según categoría,Si
+864,Combos,,,COMBO CURRY Y CAFE OKF,,85.0,,,Si,No,Si,,,No,Si,72300000,No,No,Si
+866,Combos,,,DUO CHILATE,,60.0,,,Si,No,Si,,,No,Si,72500000,No,No,Si
+865,Combos,,,DUO FRAPPÉ,,105.0,,,Si,No,Si,,,No,Si,72400000,No,No,Si
+744,Comida Asiática,,,Promo Corean,,100.0,,,No,No,No,,,Si,Si,60400000,Según categoría,Según categoría,No
+837,Comida Asiática,,,Sushi Salmon,,130.0,100.0,,No,No,Si,,30.0,No,Si,69600000,Según categoría,Según categoría,Si
+862,Comida Asiática,Alimentos preparados,,COMBINADA,,0.0,0.0,,No,No,Si,,0.0,No,Si,72100000,Según categoría,Según categoría,Si
+354,Comida Asiática,Alimentos preparados,,PREPARADO,,15.0,,,Si,No,No,,,No,No,6900000,No,Si,Si
+861,Comida Asiática,Alimentos preparados,,QUESO,,0.0,,,No,No,Si,,,No,Si,72000000,Según categoría,Según categoría,Si
+647,Comida Asiática,Alimentos preparados,,TEST RAMEN PREPARADO,,5.0,,,No,No,Si,,,No,No,51100000,Según categoría,Según categoría,Si
+429,Comida Asiática,Alimentos preparados,TTE,TTEOKBOKKI PREPARADO,"Pastelitos de arroz bañados en una deliciosa salsa picante sazonada con sal, ajo y especias, contiene leche y soja.",90.0,,,No,No,No,,,Si,Si,29900000,Según categoría,Según categoría,No
+513,Comida Asiática,Ramen y más,,Buldak Carbonara 🔥🔥🔥,,120.0,,,No,No,No,,,No,Si,38200000,Según categoría,Según categoría,No
+519,Comida Asiática,Ramen y más,,Buldak Rose 🔥🔥,,120.0,,,No,No,No,,,No,Si,38800000,Según categoría,Según categoría,No
+852,Comida Asiática,Ramen y más,,BULDAK SWICY,,77.0,,,No,No,Si,,,No,Si,71100000,Según categoría,Según categoría,No
+872,Comida Asiática,Ramen y más,,BULKDAK TACO,,75.0,,,Si,No,Si,,,Si,Si,73100000,Si,Si,Si
+890,Comida Asiática,Ramen y más,,COMPAGGUETTI,,75.0,,,Si,No,No,,,Si,Si,74900000,Según categoría,Según categoría,No
+521,Comida Asiática,Ramen y más,,Cream Carbonara 🔥🔥,,120.0,,,No,No,No,,,No,Si,39000000,Según categoría,Según categoría,No
+527,Comida Asiática,Ramen y más,,Hot Chicken 3X 🔥🔥🔥🔥🔥🔥,,93.0,,,Si,No,Si,,,No,Si,39600000,Según categoría,Según categoría,Si
+518,Comida Asiática,Ramen y más,,Kimchi,,120.0,,,No,No,No,,,No,Si,38700000,Según categoría,Según categoría,No
+873,Comida Asiática,Ramen y más,,MAMA OK CARBONARA FLAVOR,,75.0,,,Si,No,Si,,,Si,Si,73200000,Si,Si,Si
+791,Comida Asiática,Ramen y más,,MARUCHAN QUESO,,20.0,15.21,MERCADO LIBRE,No,No,Si,,4.79,No,Si,65000000,Según categoría,Según categoría,Si
+887,Comida Asiática,Ramen y más,,NOMGSHIM SOON VEGGIE,,66.0,,,Si,No,No,,,Si,Si,74600000,Según categoría,Según categoría,No
+886,Comida Asiática,Ramen y más,,OTTOGI ODONGTONG MYON,,66.0,,,Si,No,No,,,Si,Si,74500000,Según categoría,Según categoría,No
+889,Comida Asiática,Ramen y más,,PALDO KOKOMEN,,75.0,,,Si,No,Si,,,Si,Si,74800000,Según categoría,Según categoría,Si
+654,Comida Asiática,Ramen y más,,PREPARADO LLEVAR,,15.0,78.18,,No,No,No,,-63.18,No,No,51800000,Si,Si,Si
+860,Comida Asiática,Ramen y más,,RAMEN BULDAK SWICY,,77.0,0.0,,Si,No,Si,,77.0,No,Si,71900000,Según categoría,Según categoría,No
+355,Comida Asiática,Ramen y más,,RAMEN CARBONARA - BULDAK,,75.0,27.6,ML - TOYO FOODS,Si,No,Si,,47.4,Si,Si,10300000,Si,Según categoría,Si
+807,Comida Asiática,Ramen y más,,RAMEN CARBONARA VOLCANO - Paldo,,77.0,27.6,MEGAFOOD,Si,No,Si,,49.4,Si,Si,66600000,Según categoría,Según categoría,Si
+574,Comida Asiática,Ramen y más,,Ramen Champaguetti,,94.0,,,No,No,No,,,Si,Si,44300000,Según categoría,Según categoría,No
+434,Comida Asiática,Ramen y más,,RAMEN CHAPAGETTI - NONGSHIM,"Versión de Nongshim de los fideos Jjajangmyun, un plato de fideos inmensamente popular en Corea.",60.0,32.2,Asiaon Mart,No,No,Si,0.0,27.8,No,Si,30400000,Según categoría,Según categoría,Si
+691,Comida Asiática,Ramen y más,,RAMEN CHEESE - OTTOGI,,78.0,40.0,,Si,No,Si,,38.0,Si,Si,55500000,Según categoría,Según categoría,Si
+569,Comida Asiática,Ramen y más,,Ramen Cream Carbonara,,120.0,,,No,No,No,,,Si,Si,43800000,Según categoría,Según categoría,No
+441,Comida Asiática,Ramen y más,,RAMEN CREAM CARBONARA - BULDAK,,66.0,35.0,Diposa INC,Si,No,Si,,31.0,Si,Si,31100000,Según categoría,Según categoría,Si
+655,Comida Asiática,Ramen y más,,RAMEN CURRY - BULDAK,,60.0,29.0,,No,No,Si,,31.0,No,Si,51900000,Según categoría,Según categoría,Si
+831,Comida Asiática,Ramen y más,,RAMEN Habanero Limon- buldak,,75.0,,,No,No,Si,,,No,No,69000000,Según categoría,Según categoría,No
+195,Comida Asiática,Ramen y más,,RAMEN HABANERO LIMON - BULDAK,,60.0,33.33,ML - TOYO FOODS,No,No,Si,,26.67,Si,Si,13700000,Según categoría,Según categoría,Si
+832,Comida Asiática,Ramen y más,,RAMEN Habanero limón  - BULDAK,,77.0,,,Si,No,Si,12.0,,Si,Si,69100000,Según categoría,Según categoría,No
+566,Comida Asiática,Ramen y más,,Ramen Hot Chicken,,120.0,,,No,No,No,,,Si,Si,43500000,Según categoría,Según categoría,No
+567,Comida Asiática,Ramen y más,,Ramen Hot Chicken 2x,,120.0,,,No,No,No,,,Si,Si,43600000,Según categoría,Según categoría,No
+193,Comida Asiática,Ramen y más,,RAMEN HOT CHICKEN 2X - BULDAK,,75.0,39.0,,Si,No,Si,,36.0,Si,Si,13900000,Según categoría,Según categoría,Si
+568,Comida Asiática,Ramen y más,,Ramen Hot Chicken 3x,,120.0,,,No,No,No,,,Si,Si,43700000,Según categoría,Según categoría,No
+358,Comida Asiática,Ramen y más,,RAMEN HOT CHICKEN 3X - BULDAK,,75.0,35.0,,No,No,Si,,40.0,Si,Si,14000000,Según categoría,Según categoría,Si
+192,Comida Asiática,Ramen y más,,RAMEN HOT CHICKEN - BULDAK,,75.0,39.93,ML - TOYO FOODS,Si,No,Si,,35.07,Si,Si,13800000,Según categoría,Según categoría,Si
+563,Comida Asiática,Ramen y más,,Ramen Hot Chicken Cheese,,120.0,,,No,No,No,,,Si,No,43200000,Según categoría,Según categoría,No
+194,Comida Asiática,Ramen y más,,RAMEN HOT CHICKEN CHEESE - BULDAK,,75.0,29.95,,Si,No,Si,,45.05,Si,Si,14100000,Según categoría,Según categoría,Si
+639,Comida Asiática,Ramen y más,,RAMEN HOT PEPPER - BULDAK,,98.0,35.0,Asiaon Mart,No,No,Si,,63.0,Si,Si,50300000,Según categoría,Según categoría,Si
+458,Comida Asiática,Ramen y más,,RAMEN JIN - OTTOGI,,60.0,24.0,,No,No,Si,,36.0,Si,Si,32800000,Según categoría,Según categoría,Si
+440,Comida Asiática,Ramen y más,,RAMEN JIN SPICY - OTTOGI,,60.0,30.0,DOKSURI,No,No,Si,0.0,30.0,No,Si,31000000,Según categoría,Según categoría,Si
+646,Comida Asiática,Ramen y más,,RAMEN JJAJANG - BULDAK,,60.0,32.0,,No,No,Si,,28.0,Si,No,51000000,Según categoría,Según categoría,Si
+745,Comida Asiática,Ramen y más,,RAMEN JJAJANG (Combo Corean),,0.0,32.0,,No,No,Si,,-32.0,No,No,60500000,Según categoría,Según categoría,Si
+561,Comida Asiática,Ramen y más,,Ramen Kimchi,,120.0,,,No,No,No,,,Si,Si,43000000,Según categoría,Según categoría,No
+670,Comida Asiática,Ramen y más,,RAMEN KIMCHI - BULDAK,,60.0,35.0,,No,No,Si,,25.0,Si,Si,53400000,Según categoría,Según categoría,No
+648,Comida Asiática,Ramen y más,,RAMEN KIMCHI - OTTOGI,,75.0,40.0,,Si,No,Si,,35.0,Si,Si,51200000,Según categoría,Según categoría,Si
+739,Comida Asiática,Ramen y más,,RAMEN KIMCHI - PALDO,,75.0,33.25,Asiaon Mart,Si,No,Si,,41.75,Si,Si,59900000,Según categoría,Según categoría,Si
+425,Comida Asiática,Ramen y más,,RAMEN KIMCHI - SAMYANG,,66.0,30.0,,Si,No,Si,,36.0,Si,Si,21600000,Según categoría,Según categoría,Si
+562,Comida Asiática,Ramen y más,,Ramen Kimchi Spicy,,120.0,,,No,No,No,,,Si,Si,43100000,Según categoría,Según categoría,No
+447,Comida Asiática,Ramen y más,,RAMEN LOVELY HOT CHICKEN - BULDAK,,89.0,36.0,ML - TOYO FOODS,No,No,Si,,53.0,Si,Si,31700000,Según categoría,Según categoría,Si
+788,Comida Asiática,Ramen y más,,RAMEN POLLO - OTOKI,,60.0,40.0,,No,No,Si,,20.0,No,Si,64700000,Según categoría,Según categoría,Si
+457,Comida Asiática,Ramen y más,,RAMEN QUATTRO CHEESE - BULDAK,,75.0,39.0,,Si,No,Si,,36.0,Si,Si,32700000,Según categoría,Según categoría,Si
+564,Comida Asiática,Ramen y más,,Ramen Ramen Carbonara,,120.0,,,No,No,No,,,Si,No,43300000,Según categoría,Según categoría,No
+565,Comida Asiática,Ramen y más,,Ramen Ramen Habanero Limón,,120.0,,,No,No,No,,,Si,No,43400000,Según categoría,Según categoría,No
+573,Comida Asiática,Ramen y más,,Ramen Rose,,120.0,,,No,No,No,,,Si,Si,44200000,Según categoría,Según categoría,No
+443,Comida Asiática,Ramen y más,,RAMEN ROSÉ - BULDAK,,66.0,35.0,DOKSURI,Si,No,Si,,31.0,Si,Si,31300000,Según categoría,Según categoría,Si
+357,Comida Asiática,Ramen y más,,RAMEN SAMYANG ORIGINAL - SAMYANG,,66.0,38.64,Asiaon Mart,Si,No,Si,,27.36,Si,Si,20300000,Según categoría,Según categoría,Si
+833,Comida Asiática,Ramen y más,,RAMEN SAMYANG Tom Yumy- BULDAK,,75.0,,,No,No,Si,0.0,,Si,Si,69200000,Según categoría,Según categoría,No
+356,Comida Asiática,Ramen y más,,RAMEN SHIN KIMCHI - NONGSHIM,,60.0,35.0,,No,No,Si,0.0,25.0,No,Si,19000000,Según categoría,Según categoría,Si
+571,Comida Asiática,Ramen y más,,Ramen Shin Noodles,,120.0,,,No,No,No,,,Si,Si,44000000,Según categoría,Según categoría,No
+191,Comida Asiática,Ramen y más,,RAMEN SHIN RAMYUN - NONGSHIM,,66.0,38.75,,Si,No,Si,,27.25,Si,Si,14200000,Si,Si,Si
+444,Comida Asiática,Ramen y más,,RAMEN TOMATO HOT CHICKEN - BULDAK,,65.0,35.0,,No,No,Si,,30.0,Si,Si,31400000,Según categoría,Según categoría,Si
+570,Comida Asiática,Ramen y más,,Ramen Tomato Pasta,,120.0,,,No,No,No,,,Si,Si,43900000,Según categoría,Según categoría,No
+560,Comida Asiática,Ramen y más,,Ramen Tradicional,,120.0,,,No,No,No,,,Si,Si,42900000,Según categoría,Según categoría,No
+572,Comida Asiática,Ramen y más,,Ramen Yakisoba,,120.0,,,No,No,No,,,Si,Si,44100000,Según categoría,Según categoría,No
+442,Comida Asiática,Ramen y más,,RAMEN YAKISOBA HOT CHICKEN -BULDAK,,65.0,34.0,DOKSURI,No,No,Si,,31.0,Si,Si,31200000,Según categoría,Según categoría,Si
+770,Comida Asiática,Ramen y más,,Rappoki,,75.0,58.344,,No,No,Si,,16.656,No,Si,62900000,Según categoría,Según categoría,Si
+634,Comida Asiática,Ramen y más,,SAMYANG HOT PEPPER,,60.0,35.0,,No,No,No,,25.0,No,Si,49800000,Según categoría,Según categoría,No
+516,Comida Asiática,Ramen y más,,Samyang Original,,120.0,,,No,No,No,,,No,Si,38500000,Según categoría,Según categoría,No
+875,Comida Asiática,Ramen y más,,SHIN RAMEN TOOMBA,,75.0,,,No,No,Si,,,Si,Si,73400000,Según categoría,Según categoría,Si
+874,Comida Asiática,Ramen y más,,SHIN RAMYUN TOOMBA,,75.0,,,Si,No,Si,,,Si,Si,73300000,Si,Si,Si
+673,Comida Asiática,Ramen y más,,SIN PREPARAR,,0.0,,,Si,No,No,,,No,No,53700000,Si,Según categoría,Si
+524,Comida Asiática,Ramen y más,,Tomato Hot Chicken 🔥🔥,,120.0,,,No,No,Si,,,No,Si,39300000,Según categoría,Según categoría,Si
+428,Comida Asiática,Ramen y más,,TTEOKBOKKI BULDAK - ORIGINAL,Combina el delicioso sabor de su salsa picante con el tradicional pastel de arroz,100.0,63.0,,No,No,Si,4.0,37.0,No,Si,29800000,Según categoría,Según categoría,No
+431,Comida Asiática,Ramen y más,,TTEOKBOKKI CJ BIBIGO - 125 g HOT & SPICY,"Pastelitos de arroz bañados en una deliciosa salsa picante sazonada con sal, ajo y especias, contiene leche y soja.",90.0,54.28,,No,No,Si,1.0,35.72,No,Si,30100000,Según categoría,Según categoría,No
+433,Comida Asiática,Ramen y más,,TTEOKBOKKI CJ BIBIGO - 125 G SWEET & SPICY,"Pastelitos de arroz bañados en una deliciosa salsa dulce y picante sazonada con sal, ajo y especias, contiene leche y soja.",90.0,54.28,Asiaon Mart,No,No,Si,2.0,35.72,No,Si,30300000,Según categoría,Según categoría,Si
+430,Comida Asiática,Ramen y más,,TTEOKBOKKI CJ BIBIGO - 360 g HOT & SPICY,"Pastelitos de arroz bañados en una deliciosa salsa picante sazonada con sal, ajo y especias, contiene leche y soja.",110.0,98.44,,No,No,Si,10.0,11.56,No,Si,30000000,Según categoría,Según categoría,Si
+432,Comida Asiática,Ramen y más,,TTEOKBOKKI CJ BIBIGO - 360 g Sweet & Spicy,"Pastelitos de arroz bañados en una deliciosa salsa dulce y picante sazonada con sal, ajo y especias, contiene leche y soja.",110.0,98.44,Asiaon Mart,No,No,Si,3.0,11.56,No,Si,30200000,Según categoría,Según categoría,Si
+888,Comida Asiática,Ramen y más,,UDON,,75.0,,,Si,No,No,,,Si,Si,74700000,Según categoría,Según categoría,No
+520,Comida Asiática,Ramen y más,,Yaklsoba Hot Chicken 🔥🔥,,120.0,,,No,No,No,,,No,No,38900000,Según categoría,Según categoría,No
+525,Crepas,,,Crepa de Champiñones,,95.0,,,No,No,No,,,No,Si,39400000,Según categoría,Según categoría,No
+871,Crepas,,,Creppa Baileys,,88.0,,,Si,No,Si,,,Si,Si,73000000,Si,Si,Si
+349,Crepas,Crepas Especiales,CRE_CT,CONEJITO TURIN CREPA,,80.0,59.667166,,Si,No,Si,,20.332834,No,Si,23400000,Si,Según categoría,Si
+176,Crepas,Crepas Especiales,,CREPA CHAMPIÑONES,,70.0,75.68,,Si,No,Si,,-5.68,No,Si,3000000,Si,Si,Si
+174,Crepas,Crepas Especiales,,CREPA HAWAIANA,,70.0,,,Si,No,Si,,,No,Si,7400000,Si,Si,Si
+685,Crepas,Crepas Especiales,,CREPIZZA HAWAIANA,,70.0,,,Si,No,Si,,,No,Si,54900000,Si,Según categoría,Si
+175,Crepas,Crepas Especiales,,CREPIZZA PEPPERONI,,70.0,50.535446,,Si,No,Si,,19.464554,No,Si,5700000,Según categoría,Según categoría,Si
+160,Crepas,Crepas Especiales,CRE_F,FERRERO CREPA,,85.0,60.521446,,Si,No,Si,,24.478554,No,No,6000000,Si,Si,Si
+813,Crepas,Crepas Especiales,CRE_GAN,GANSITO CREPA,,79.0,56.835446,,Si,No,Si,,22.164554,No,Si,67200000,Si,Si,Si
+766,Crepas,Crepas Especiales,CREP_KBUE,KINDER BUENO - CREPA,,75.0,54.534446,,Si,No,Si,,20.465554,Si,Si,62500000,Si,Si,Si
+752,Crepas,Crepas Especiales,CREP_KDEL,KINDER DELICE - CREPA,,85.0,39.074446,,Si,No,Si,,45.925554,Si,No,61200000,Si,Según categoría,Si
+161,Crepas,Crepas Especiales,CRE_K,KIT KAT CREPA,,85.0,67.821446,,Si,No,Si,,17.178554,No,Si,8200000,Si,Si,Si
+755,Crepas,Crepas Gatunas,,ALMENDRAS - Decoración crepa,,5.0,4.5,,No,No,Si,,0.5,No,Si,61400000,Si,Si,Si
+159,Crepas,Crepas Gatunas,,¡ARMA LA TUYA!,,32.0,,,No,No,Si,,,Si,No,900000,Según categoría,Según categoría,Si
+541,Crepas,Crepas Gatunas,,AZÚCAR GLASS - Decoración crepa,,0.0,,,Si,No,No,,,No,No,41000000,Según categoría,Según categoría,No
+757,Crepas,Crepas Gatunas,CREP_CAJ,CAJETA - CREPA,,35.0,15.772326,,Si,No,Si,,19.227674,Si,Si,61600000,Si,Si,Si
+150,Crepas,Crepas Gatunas,,CAJETA - Toppings crepa,,0.0,5.67288,,Si,No,Si,,-5.67288,No,No,1600000,Según categoría,Según categoría,Si
+540,Crepas,Crepas Gatunas,,CANELA - Decoración Crepa,,0.0,,,Si,No,Si,,,No,No,40900000,Según categoría,Según categoría,Si
+482,Crepas,Crepas Gatunas,,CHISPAS DE CHOCOLATE - Decoración crepa,,0.0,4.95,,Si,No,Si,,-4.95,No,No,35100000,Según categoría,Según categoría,Si
+166,Crepas,Crepas Gatunas,,CHOCOBANANA,,40.0,,,No,No,Si,,,No,Si,3700000,Según categoría,Según categoría,No
+152,Crepas,Crepas Gatunas,,CHOCOLATE LIQ HERSEY - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,3900000,Según categoría,Según categoría,Si
+765,Crepas,Crepas Gatunas,,CHOCOMENTAS - Decoración crepa,,0.0,1.27358,,Si,No,Si,,-1.27358,No,No,62400000,Según categoría,Según categoría,Si
+762,Crepas,Crepas Gatunas,CREP_CBAT,CREMA BATIDA - CREPA,,35.0,10.099446,,Si,No,No,,24.900554,Si,Si,62100000,Según categoría,Según categoría,Si
+754,Crepas,Crepas Gatunas,,CREMA BATIDA - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,61300000,Según categoría,Según categoría,Si
+761,Crepas,Crepas Gatunas,CREP_PAST,CREMA PASTELERA - CREPPA,,35.0,,,Si,Si,Si,,,No,Si,62000000,Si,Si,Si
+153,Crepas,Crepas Gatunas,,CREMA PASTELERA - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,5400000,Según categoría,Según categoría,Si
+162,Crepas,Crepas Gatunas,CRE_2,CREPA 2 INGREDIENTES,,40.0,,,No,No,No,,,No,No,5000000,Según categoría,Según categoría,Si
+517,Crepas,Crepas Gatunas,,Crepa Conejito Turín,,85.0,,,No,No,No,,,No,Si,38600000,Según categoría,Según categoría,No
+350,Crepas,Crepas Gatunas,CRE_DU,CREPA DULCE,,25.0,27.703,,No,No,Si,,-2.703,Si,Si,23500000,No,Si,Si
+748,Crepas,Crepas Gatunas,CRE_NUT,CREPA- DULCE,,37.0,12.679446,,Si,Si,Si,,24.320554,Si,Si,60800000,Si,Si,Si
+515,Crepas,Crepas Gatunas,,Crepa dulce 1 ingrediente,,55.0,,,No,No,No,,,No,Si,38400000,Según categoría,Según categoría,No
+512,Crepas,Crepas Gatunas,,Crepa dulce 3 ingredientes,,75.0,,,No,No,No,,,No,Si,38100000,Según categoría,Según categoría,Si
+526,Crepas,Crepas Gatunas,,Crepa Kit Kat,,85.0,,,No,No,No,,,No,Si,39500000,Según categoría,Según categoría,No
+359,Crepas,Crepas Gatunas,CRE_SA,CREPA SALADA,,55.0,12.879446,,No,Si,Si,,42.120554,Si,No,23900000,Según categoría,Según categoría,Si
+489,Crepas,Crepas Gatunas,,DURAZNOS EN ALMIBAR - Fruta crepa,,17.0,,,Si,No,Si,,,No,No,35800000,Según categoría,Según categoría,Si
+172,Crepas,Crepas Gatunas,,FRESA - Fruta crepa,,10.0,,,Si,No,Si,,,No,No,6200000,Según categoría,Según categoría,Si
+749,Crepas,Crepas Gatunas,,FRUTOS ROJOS - Fruta crepa,,0.0,,,Si,No,Si,,,No,No,60900000,Según categoría,Según categoría,Si
+756,Crepas,Crepas Gatunas,,GALLETA OREO - Toppings crepa,,10.0,6.0696,,Si,No,Si,,3.9304,No,No,61500000,Según categoría,Según categoría,Si
+171,Crepas,Crepas Gatunas,,HELADO COOKIES & CREAM,,20.0,,,No,No,Si,,,No,No,7500000,Según categoría,Según categoría,Si
+168,Crepas,Crepas Gatunas,,HELADO DE CHOCOLATE,,20.0,,,No,No,Si,,,No,No,7600000,Según categoría,Según categoría,Si
+169,Crepas,Crepas Gatunas,,HELADO DE FRESA,,20.0,,,No,No,Si,,,No,No,7700000,Según categoría,Según categoría,Si
+170,Crepas,Crepas Gatunas,,HELADO DE VAINILLA,,20.0,,,No,No,Si,,,No,No,7800000,Según categoría,Según categoría,Si
+758,Crepas,Crepas Gatunas,CREP_NUT,LECHERA - CREPA,,35.0,10.099446,,Si,Si,Si,,24.900554,Si,Si,61700000,Si,Si,Si
+155,Crepas,Crepas Gatunas,,LECHERA - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,8800000,Según categoría,Según categoría,Si
+759,Crepas,Crepas Gatunas,CREP_MAP,MAPPLE - CREPA,,35.0,10.099446,,Si,No,Si,,24.900554,No,Si,61800000,Si,Si,Si
+151,Crepas,Crepas Gatunas,,MERMELADA CEREZA NEGRA - Toppings crepa,,0.0,1.476,,Si,No,Si,,-1.476,No,No,2500000,Según categoría,Según categoría,Si
+158,Crepas,Crepas Gatunas,,MERMELADA DE ZARZAMORA - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,16200000,Según categoría,Según categoría,Si
+772,Crepas,Crepas Gatunas,,MERMELADA FRESA - CREPA,,35.0,,,Si,No,Si,,,No,Si,63100000,Según categoría,Según categoría,Si
+750,Crepas,Crepas Gatunas,,MERMELADA FRESA - Toppings crepa,,0.0,,,Si,No,No,,,No,No,61000000,Según categoría,Según categoría,No
+751,Crepas,Crepas Gatunas,,MERMELADA FRUTOS ROJOS - Toppings crepa,,0.0,,,Si,No,No,,,No,No,61100000,Según categoría,Según categoría,No
+859,Crepas,Crepas Gatunas,,miel maple,,0.0,0.0,,No,No,Si,,0.0,No,Si,71800000,Según categoría,Según categoría,Si
+773,Crepas,Crepas Gatunas,,NUTELLA - CREPAa,,37.0,,,No,No,Si,,,Si,Si,63200000,Según categoría,Según categoría,Si
+156,Crepas,Crepas Gatunas,,NUTELLA - Toppings crepa,,0.0,,,Si,No,Si,,,No,No,11800000,Según categoría,Según categoría,Si
+157,Crepas,Crepas Gatunas,,PHILADELPHIA CREPA,,0.0,2.78,,No,No,Si,,-2.78,No,No,13200000,Según categoría,Según categoría,Si
+760,Crepas,Crepas Gatunas,CREP_PHI,PHILADELPHIA - CREPA,,35.0,0.0,,Si,Si,Si,,35.0,Si,Si,61900000,Si,Si,Si
+164,Crepas,Crepas Gatunas,,PHILADELPHIA / NUTELLA,,40.0,,,No,No,Si,,,No,Si,13300000,Según categoría,Según categoría,Si
+384,Crepas,Crepas Gatunas,,PHILADELPHIA - Toppings crepa,,0.0,0.0,,Si,No,Si,-77.0,0.0,No,No,26300000,Según categoría,Según categoría,Si
+173,Crepas,Crepas Gatunas,,PLATANO - Fruta crepa,,10.0,,,Si,No,Si,,,No,No,13600000,Según categoría,Según categoría,Si
+658,Desayunos,,,BOWL FRUTL DEL DIA,,45.0,,,Si,No,No,,,No,Si,52200000,Según categoría,Según categoría,Si
+659,Desayunos,,,BOWL GRIEGO FRUTAL,,40.0,,,Si,No,No,,,No,Si,52300000,Según categoría,Según categoría,Si
+539,Desayunos,,,CAFÉ S,,15.0,,,Si,No,No,,,No,Si,40800000,Si,Según categoría,Si
+800,Desayunos,,CHILAQ_R_CH,CHILAQ ROJO CHICO,,54.99,34.93573478,,Si,No,Si,,20.05426522,Si,Si,65900000,Según categoría,Según categoría,Si
+799,Desayunos,,CHILAQ_R_G,CHILAQ ROJOS GRANDES,,64.99,39.95890766,,Si,No,Si,,25.03109234,Si,Si,65800000,Según categoría,Según categoría,Si
+528,Desayunos,,CHILA,CHILAQUILES,,50.0,,,No,No,Si,,,Si,No,39700000,Según categoría,Según categoría,Si
+529,Desayunos,,CHILAQ_V_CH,CHILAQ VERDE CHICOS,,54.99,30.03093274,,Si,Si,Si,,24.95906726,Si,Si,39800000,Si,Si,Si
+530,Desayunos,,CHILAQ_V_G,CHILAQ VERDES GRANDES,,64.99,36.96789778,,Si,Si,Si,,28.02210222,Si,Si,39900000,Si,Según categoría,Si
+537,Desayunos,,,CUERNITO DULCE,,35.0,7.0,,Si,No,Si,,28.0,No,Si,40600000,Según categoría,Según categoría,Si
+536,Desayunos,,,CUERNITO SALADO,,35.0,15.85495,,Si,No,Si,,19.14505,No,Si,40500000,Si,Si,Si
+533,Desayunos,,,GRATINADOS,,10.0,,,Si,No,Si,,,No,No,40200000,Según categoría,Según categoría,Si
+538,Desayunos,,,HOTCAKES 2PZ,,50.0,14.3102,,Si,No,Si,,35.6898,No,Si,40700000,Si,Si,Si
+532,Desayunos,,,HUEVO EXTRA,,10.0,3.03,,Si,No,Si,,6.97,No,No,40100000,Según categoría,Según categoría,Si
+531,Desayunos,,,POLLO EXTRA,,10.0,,,Si,No,Si,,,No,No,40000000,Según categoría,Según categoría,Si
+668,Desayunos,,,SALSA ROJA CHILAQUILES,,0.01,,,No,No,No,,,No,No,53200000,Según categoría,Según categoría,Si
+667,Desayunos,,,SALSA VERDE CHILAQUILES,,0.0,7.48190196,,No,No,No,,-7.48190196,No,No,53100000,Según categoría,Según categoría,Si
+630,Desayunos,,,SANDWICH 3 QUESOS,,30.0,13.4563,,Si,No,Si,,16.5437,No,Si,49400000,Si,Según categoría,Si
+631,Desayunos,,,SANDWICH JAMÓN,,25.0,7.7063,,Si,No,Si,,17.2937,No,Si,49500000,Según categoría,Según categoría,Si
+632,Desayunos,,,SINCRONIZADAS 3PZ,,40.0,,,Si,No,Si,,,No,Si,49600000,Si,Según categoría,Si
+649,Otro,,DON,Donas,,18.0,11.0,Sam's Club,No,No,No,0.0,7.0,No,Si,51300000,Según categoría,Según categoría,No
+554,Otro,,,Mini Donas Cajeta,,58.0,,,No,No,No,,,Si,No,42300000,Según categoría,Según categoría,No
+555,Otro,,,Mini Donas Chocolate,,58.0,,,No,No,Si,,,Si,No,42400000,Según categoría,Según categoría,Si
+556,Otro,,,Mini Donas Fresa,,58.0,,,No,No,No,,,Si,No,42500000,Según categoría,Según categoría,Si
+557,Otro,,,Mini Donas Lechera,,58.0,,,No,No,No,,,Si,No,42600000,Según categoría,Según categoría,Si
+558,Otro,,,Mini Donas Nutella,,58.0,,,No,No,No,,,Si,No,42700000,Según categoría,Según categoría,Si
+559,Otro,,,Mini Donas Zarzamora,,58.0,,,No,No,No,,,Si,No,42800000,Según categoría,Según categoría,Si
+390,Otro,Adicionales,,ADEREZO DE QUESO CH,,10.0,,Sam's Club,Si,No,Si,,,No,Si,26900000,Según categoría,Según categoría,Si
+709,Otro,Adicionales,,BASE AGUA BOBAH TEA,,0.0,,,Si,No,No,,,No,No,57000000,Según categoría,Según categoría,No
+729,Otro,Adicionales,,BLUE CHEESE ADEREZO G,,30.0,10.10944,,Si,No,Si,,19.89056,No,Si,59000000,Según categoría,Según categoría,Si
+730,Otro,Adicionales,,BLUE CHEESE ADEREZO M,,20.0,5.05472,,Si,No,Si,,14.94528,No,Si,59100000,Según categoría,Según categoría,Si
+275,Otro,Adicionales,,CAJUN SAZONADOR G,,10.0,16.9,,Si,No,Si,,-6.9,No,No,14700000,Según categoría,Según categoría,Si
+400,Otro,Adicionales,,camisa L,,1.0,,,No,No,No,,,No,No,27500000,Según categoría,Según categoría,No
+399,Otro,Adicionales,,camisa XL,,1.0,,,No,No,No,,,No,No,27400000,Según categoría,Según categoría,No
+269,Otro,Adicionales,DED8,DEDOS DE QUESO 8 PZA,,80.0,67.03281,,Si,No,Si,,12.96719,Si,Si,500000,Según categoría,Según categoría,Si
+268,Otro,Adicionales,DED,DEDOS DE QUESO PZA,,12.0,7.36344,GRUVI,Si,No,No,,4.63656,Si,Si,400000,Según categoría,Según categoría,Si
+410,Otro,Adicionales,,ENVIO,,20.0,300.0,,Si,No,No,,-280.0,No,Si,28200000,No,No,Si
+701,Otro,Adicionales,,FRAPPE DE AGUA,,18.0,,,Si,No,No,,,No,Si,56400000,Si,Si,Si
+347,Otro,Adicionales,,GRANILLO CHOCOLATE - Decoración crepa,,0.0,0.64,,Si,No,Si,,-0.64,No,No,23300000,Según categoría,Según categoría,Si
+660,Otro,Adicionales,,HUEVO PROTEINA,,0.0,3.03,,Si,No,Si,,-3.03,No,No,52400000,Según categoría,Según categoría,Si
+314,Otro,Adicionales,,LECHE DESLACTOSADA,,0.0,5.18812,,Si,No,Si,,-5.18812,No,No,20100000,Según categoría,Según categoría,Si
+313,Otro,Adicionales,,LECHE ENTERA,,0.0,4.997,,Si,No,Si,,-4.997,No,No,20000000,Según categoría,Según categoría,Si
+687,Otro,Adicionales,,LUNETAS - Toppings Crepa,,10.0,,,Si,No,Si,,,No,No,55100000,Según categoría,Según categoría,Si
+686,Otro,Adicionales,,MANGO EN ALMIBAR - Fruta crepa,,15.0,12.1539,,Si,No,Si,,2.8461,No,No,55000000,Según categoría,Según categoría,Si
+464,Otro,Adicionales,,MARACUYA - Jellys,,15.0,,COMERCIAL DE VASOS,Si,No,Si,,,No,No,33400000,Según categoría,Según categoría,Si
+841,Otro,Adicionales,,MOSTAZA MIEL ADEREZO G,4 oz de Aderezo Mostaza Miel,30.0,12.555,,Si,No,Si,,17.445,No,Si,70000000,Según categoría,Según categoría,Si
+842,Otro,Adicionales,,MOSTAZA MIEL ADEREZO M,2 oz de Aderezo Mostaza Miel,20.0,5.65767,,Si,No,Si,,14.34233,No,Si,70100000,Según categoría,Según categoría,Si
+633,Otro,Adicionales,,PAPAS A LA FRANCESA (170g),,29.0,,,No,No,Si,,,No,No,49700000,Según categoría,Según categoría,Si
+258,Otro,Adicionales,,+ PAPAS A LA FRANCESA CH,,25.0,,,No,No,Si,,,No,No,12500000,Según categoría,Según categoría,Si
+274,Otro,Adicionales,,PAPAS A LA FRANCESA IND (170gr),,0.0,9.70083,,No,No,Si,,-9.70083,No,No,200000,Si,No,Si
+259,Otro,Adicionales,,+ PAPAS A LA FRANCESA M,,30.0,,,No,No,Si,,,No,No,12600000,Según categoría,Según categoría,Si
+270,Otro,Adicionales,,PAPAS F CH (130g),,29.0,9.3414,,No,No,Si,,19.6586,No,No,12100000,Según categoría,Según categoría,Si
+272,Otro,Adicionales,,PAPAS F G (380g),,50.0,20.6739,,No,No,Si,,29.3261,No,No,12300000,Según categoría,Según categoría,No
+273,Otro,Adicionales,,PAPAS F J (500g),,60.0,27.0351,,No,No,Si,,32.9649,No,No,12400000,Según categoría,Según categoría,Si
+271,Otro,Adicionales,,PAPAS F M (250g),,35.0,13.7826,,No,No,Si,,21.2174,No,No,12200000,Según categoría,Según categoría,Si
+661,Otro,Adicionales,,POLLO PROTEINA,,0.0,9.72,,Si,No,Si,,-9.72,No,No,52500000,Según categoría,Según categoría,Si
+276,Otro,Adicionales,,QUESO CHEDAR SAZONADOR G,,10.0,,,Si,No,Si,,,No,No,14800000,Según categoría,Según categoría,Si
+266,Otro,Adicionales,,RANCH CREMOSO ADEREZO G,4 oz de Aderezo Ranch Cremoso,30.0,9.0152,,Si,No,Si,,20.9848,No,Si,600000,Según categoría,Según categoría,Si
+264,Otro,Adicionales,,RANCH CREMOSO ADEREZO M,2 oz de Aderezo ranch cremoso,20.0,4.0576,,Si,No,No,,15.9424,No,Si,700000,Según categoría,Según categoría,Si
+812,Otro,Adicionales,,RANCH HABANERO ADEREZO G,4 Oz de Aderezo Ranch Habanero,30.0,10.16048,,Si,No,Si,,19.83952,No,Si,67100000,Según categoría,Según categoría,Si
+811,Otro,Adicionales,,RANCH HABANERO ADEREZO M,2 Oz de Aderezo Ranch Habanero,20.0,5.03632,,Si,No,Si,,14.96368,No,Si,67000000,Según categoría,Según categoría,Si
+448,Otro,Adicionales,,Sazonador papas,,5.0,3.0096,,No,No,Si,,1.9904,No,No,31800000,Según categoría,Según categoría,Si
+301,Otro,Adicionales,,SIN CREMA BATIDA,,0.0,,,Si,No,No,,,No,No,18800000,Según categoría,Según categoría,Si
+351,Otro,Adicionales,,*SIN PERLAS EXPLOSIVAS*,,0.0,,,Si,No,No,,,No,No,23600000,Según categoría,Según categoría,Si
+662,Otro,Adicionales,,SIN PROTEINA,,0.01,,,Si,No,Si,,,No,No,52600000,Según categoría,Según categoría,Si
+368,Otro,Adicionales,,TAPIOCA,,15.0,6.2286,,Si,No,Si,,8.7714,No,No,24800000,Según categoría,Según categoría,Si
+697,Otro,Adicionales,,TENDERS PROTEINA,,0.0,,,Si,No,Si,,,No,No,56100000,Según categoría,Según categoría,Si
+854,Otro,Adicionales,,tupsi pop,,0.0,,,Si,No,Si,,,No,Si,71300000,Según categoría,Según categoría,Si
+664,Otro,Decoraciones,,DRAGON FRUIT Perlas explosivas,,0.0,,,No,No,Si,,,No,No,52800000,Según categoría,Según categoría,Si
+767,Otro,Decoraciones,,GRANILLO HALLOWEEN,,0.0,,,Si,No,Si,,,No,Si,62600000,Según categoría,Según categoría,Si
+626,Otro,EXTRAS,,Aderezo Ranch (Chico),,15.0,,,No,No,No,,,No,Si,49000000,Según categoría,Según categoría,No
+627,Otro,EXTRAS,,Aderezo Ranch (Mediano),,30.0,,,No,No,No,,,No,Si,49100000,Según categoría,Según categoría,No
+742,Otro,EXTRAS,,AJONJOLÍ,,0.0,,,Si,No,Si,,,No,No,60200000,Según categoría,Según categoría,Si
+743,Otro,EXTRAS,,CHILE QUEBRADO (CHILE SECO),,0.0,,,Si,No,Si,,,No,No,60300000,Según categoría,Según categoría,Si
+879,Otro,EXTRAS,,chuleta ahumada,,25.0,,,Si,No,No,,,No,Si,73800000,Según categoría,Según categoría,No
+870,Otro,EXTRAS,,chuleta ahumanda,,25.0,,,Si,No,No,,,No,Si,72900000,Según categoría,Según categoría,No
+741,Otro,EXTRAS,,HUEVO DURO,,15.0,,,Si,No,Si,,,No,No,60100000,Según categoría,Según categoría,Si
+740,Otro,EXTRAS,,HUEVO ESTRELLADO,,15.0,,,Si,No,Si,,,No,No,60000000,Según categoría,Según categoría,Si
+674,Otro,EXTRAS,,NO APLICA,,0.0,,,Si,No,No,,,No,No,53800000,Según categoría,Según categoría,Si
+768,Otro,Juegos,,Juego Gonggi,,30.0,30.0,MEGAZONE,Si,No,Si,17.0,0.0,No,Si,62700000,Según categoría,Según categoría,Si
+509,Otro,Modificadores genéricos,,14 oz,,0.0,,,Si,No,No,,,No,No,37800000,Según categoría,Según categoría,No
+488,Otro,Modificadores genéricos,,14 Piezas,,0.0,,,Si,No,No,,,No,No,35700000,Según categoría,Según categoría,No
+508,Otro,Modificadores genéricos,,16 oz,,0.0,,,Si,No,No,,,No,No,37700000,Según categoría,Según categoría,No
+487,Otro,Modificadores genéricos,,8 Piezas,,0.0,,,Si,No,No,,,No,No,35600000,Según categoría,Según categoría,No
+495,Otro,Modificadores genéricos,,Algodón de Azúcar,,0.0,,,Si,No,No,,,No,No,36400000,Según categoría,Según categoría,No
+506,Otro,Modificadores genéricos,,Cereza,,0.0,,,Si,No,No,,,No,No,37500000,Según categoría,Según categoría,No
+552,Otro,Modificadores genéricos,,CHAI CLÁSICO BOBAH TEAH,,0.0,,,Si,No,Si,,,No,No,42100000,Según categoría,Según categoría,Si
+553,Otro,Modificadores genéricos,,Chai Manzana Canela,,0.0,,,Si,No,No,,,No,No,42200000,Según categoría,Según categoría,No
+496,Otro,Modificadores genéricos,,Chai Vainilla,,0.0,,,Si,No,No,,,No,No,36500000,Según categoría,Según categoría,No
+545,Otro,Modificadores genéricos,,CHAMPIÑÓN - RAMEN,,0.0,,,Si,No,No,,,No,No,41400000,Según categoría,Según categoría,Si
+505,Otro,Modificadores genéricos,,Cheesecake,,0.0,,,Si,No,No,,,No,No,37400000,Según categoría,Según categoría,No
+542,Otro,Modificadores genéricos,,Chispas,,0.0,,,No,No,No,,,No,No,41100000,Según categoría,Según categoría,No
+502,Otro,Modificadores genéricos,,Choco Avellana,,0.0,,,Si,No,No,,,No,No,37100000,Según categoría,Según categoría,No
+486,Otro,Modificadores genéricos,,Chocobanana 3 ingredientes,,0.0,,,No,No,No,,,No,No,35500000,Según categoría,Según categoría,No
+500,Otro,Modificadores genéricos,,Choco Cereza,,0.0,,,Si,No,No,,,No,No,36900000,Según categoría,Según categoría,No
+504,Otro,Modificadores genéricos,,Chocolate Blanco,,0.0,,,Si,No,No,,,No,No,37300000,Según categoría,Según categoría,No
+549,Otro,Modificadores genéricos,,Chocolate blanco caliente,,0.0,,,Si,No,No,,,No,No,41800000,Según categoría,Según categoría,No
+550,Otro,Modificadores genéricos,,Chocolate Caliente,,58.0,,,No,No,No,,,No,Si,41900000,Según categoría,Según categoría,No
+551,Otro,Modificadores genéricos,,Chocolate oaxaca caliente,,0.0,,,No,No,No,,,No,No,42000000,Según categoría,Según categoría,No
+492,Otro,Modificadores genéricos,,GRANILLO CAPPUCCINO - Decoración crepa,,0.0,,,Si,No,Si,,,No,No,36100000,Según categoría,Según categoría,Si
+491,Otro,Modificadores genéricos,,GRANILLO FRESA - Decoración crepa,,0.0,,,Si,No,Si,,,No,No,36000000,Según categoría,Según categoría,Si
+543,Otro,Modificadores genéricos,,JAMÓN - RAMEN,,0.0,0.0,,Si,No,Si,,0.0,No,No,41200000,Según categoría,Según categoría,Si
+490,Otro,Modificadores genéricos,,MAPPLE - Toppings crepa,,0.0,,,Si,No,No,,,No,No,35900000,Según categoría,Según categoría,No
+494,Otro,Modificadores genéricos,,Matcha,,0.0,,,Si,No,No,,,No,No,36300000,Según categoría,Según categoría,No
+501,Otro,Modificadores genéricos,,Mokaccino,,65.0,,,Si,No,No,,,No,Si,37000000,Según categoría,Según categoría,No
+544,Otro,Modificadores genéricos,,MOZARELLA - RAMEN,,0.0,6.344,,Si,No,No,,-6.344,No,No,41300000,Según categoría,Según categoría,Si
+483,Otro,Modificadores genéricos,,"No, gracias",,0.0,,,Si,No,No,,,No,No,35200000,Según categoría,Según categoría,No
+484,Otro,Modificadores genéricos,,Nuez,,0.0,,,No,No,No,,,No,No,35300000,Según categoría,Según categoría,No
+672,Otro,Modificadores genéricos,,PEPPERONI - RAMEN,,0.0,,,Si,No,No,,,No,No,53600000,Según categoría,Según categoría,Si
+546,Otro,Modificadores genéricos,,Perlas de yogurt,,20.0,,,No,No,No,,,No,No,41500000,Según categoría,Según categoría,No
+547,Otro,Modificadores genéricos,,Perlas Explosivas,,15.0,,,No,No,No,,,No,No,41600000,Según categoría,Según categoría,No
+485,Otro,Modificadores genéricos,,Perlas explosivas chocolate,,0.0,,,No,No,No,,,No,No,35400000,Según categoría,Según categoría,No
+507,Otro,Modificadores genéricos,,Pistache,,0.0,,,Si,No,No,,,No,No,37600000,Según categoría,Según categoría,No
+511,Otro,Modificadores genéricos,,Ranch,,0.0,,,No,No,No,,,No,No,38000000,Según categoría,Según categoría,Si
+510,Otro,Modificadores genéricos,,Ranch Mediano,,0.0,,,No,No,No,,,No,No,37900000,Según categoría,Según categoría,No
+503,Otro,Modificadores genéricos,,Red Velvet Chocolate,,0.0,,,Si,No,No,,,No,No,37200000,Según categoría,Según categoría,No
+493,Otro,Modificadores genéricos,,Strawberry Cream,,0.0,,,No,No,No,,,No,No,36200000,Según categoría,Según categoría,No
+498,Otro,Modificadores genéricos,,Taro,,0.0,,,Si,No,No,,,No,No,36700000,Según categoría,Según categoría,No
+497,Otro,Modificadores genéricos,,Vainilla,,0.0,,,Si,No,No,,,No,No,36600000,Según categoría,Según categoría,No
+671,Otro,Modificadores genéricos,,VERDURAS - RAMEN,,12.0,5.0,,Si,No,Si,,7.0,No,No,53500000,Según categoría,Según categoría,Si
+548,Otro,Modificadores genéricos,,Yogurt,,0.0,,,Si,No,No,,,No,No,41700000,Según categoría,Según categoría,No
+499,Otro,Modificadores genéricos,,Zarza Cremosa - Ingrediente extra frappé,,0.0,,,No,No,No,,,No,No,36800000,Según categoría,Según categoría,No
+843,Postres,,PASTEL_INDIV,PASTEL INDIV TRIPLE CHOCO - BELLINI,"Base de pan esponja de chocolate bañado con nuestra mezcla de tres leches Tres Riches decorado con crema batida sabor chocolate, ganage de chocolate y chispas.",60.0,,Sigma Foodservice,No,No,Si,,,No,Si,70200000,Si,Si,Si
+863,Postres,,,PERLAS DE SANDIA,,0.0,,,Si,No,Si,,,No,No,72200000,Según categoría,Según categoría,No
+844,Snacks Gatunos,,,BANDERILLA COREANA,,60.0,0.0,SABRITAS,Si,No,Si,,60.0,Si,Si,70300000,Si,Si,Si
+637,Snacks Gatunos,,,BLUEBERRY - POCKY 40g,,60.0,,DOKSURI,Si,No,Si,0.0,,No,Si,50100000,Si,Según categoría,Si
+523,Snacks Gatunos,,,Boneles 370g (13-16),,255.0,,,No,No,No,,,No,Si,39200000,Según categoría,Según categoría,No
+476,Snacks Gatunos,,,BUBBLE GUM COLA,,20.0,11.96,Asiaon Mart,Si,No,Si,-14.0,8.04,No,Si,34500000,Según categoría,Según categoría,Si
+439,Snacks Gatunos,,,BUBBLE GUM DURAZNO,,20.0,11.04,Asiaon Mart,Si,No,Si,0.0,8.96,No,Si,30900000,Según categoría,Según categoría,Si
+474,Snacks Gatunos,,,BUBBLE GUM MANGO,,20.0,11.96,Asiaon Mart,Si,No,Si,0.0,8.04,No,Si,34300000,Según categoría,Según categoría,Si
+475,Snacks Gatunos,,,BUBBLE GUM UVA,,20.0,11.96,Asiaon Mart,Si,No,Si,0.0,8.04,No,Si,34400000,Según categoría,Según categoría,Si
+731,Snacks Gatunos,,,CACAHUATES JAPONESES,,8.0,3.82,La Costeña,No,No,Si,0.0,4.18,No,Si,59200000,Según categoría,Si,Si
+177,Snacks Gatunos,,,CAJETA MINI DONAS 14PZ,,0.0,4.88498,,Si,No,Si,,-4.88498,No,No,1800000,Según categoría,Según categoría,Si
+184,Snacks Gatunos,,,CAJETA MINI DONAS 8PZ,,0.0,7.24868,,Si,No,Si,,-7.24868,No,Si,1900000,Según categoría,Según categoría,Si
+178,Snacks Gatunos,,,CHOCOLATE MINI DONAS 14PZ,,0.0,,,Si,No,Si,,,No,Si,4700000,Según categoría,Según categoría,Si
+185,Snacks Gatunos,,,CHOCOLATE MINI DONAS 8PZ,,0.0,,,Si,No,Si,,,No,No,4800000,Según categoría,Según categoría,No
+636,Snacks Gatunos,,,CHOCOLATE - POCKY 40g,,60.0,41.2,DOKSURI,Si,No,Si,-3.0,18.8,No,Si,50000000,Si,Si,Si
+179,Snacks Gatunos,,,CREMA PASTELERA MINI DONAS 14PZ,,0.0,,,Si,No,Si,,,No,No,5500000,Según categoría,Según categoría,No
+186,Snacks Gatunos,,,CREMA PASTELERA MINI DONAS 8PZ,,0.0,,,Si,No,Si,,,No,No,5600000,Según categoría,Según categoría,No
+822,Snacks Gatunos,,DED3,DEDOS DE QUESO 3 PZA,,47.0,26.91262,,Si,No,Si,,20.08738,No,Si,68100000,Si,Según categoría,Si
+327,Snacks Gatunos,,DON14,DONITAS GATUNAS 14PZA,,50.0,12.1403088,,Si,Si,Si,,37.8596912,Si,Si,21300000,Según categoría,Si,Si
+317,Snacks Gatunos,,DON8,DONITAS GATUNAS 8PZA,,35.0,6.9294,,Si,Si,Si,,28.0706,Si,Si,20400000,Según categoría,Si,Si
+848,Snacks Gatunos,,,FLAMING. 1,,0.0,0.0,,No,No,Si,,0.0,No,Si,70700000,Según categoría,Según categoría,No
+180,Snacks Gatunos,,,FRESA MINI DONAS 14PZ,,0.0,,,Si,No,Si,,,No,No,6500000,Si,Si,No
+187,Snacks Gatunos,,,FRESA MINI DONAS 8PZ,,0.0,,,Si,No,Si,,,No,No,6600000,Según categoría,Según categoría,No
+806,Snacks Gatunos,,,GALLETAS CROWN LECHE - CROWN 77g,,40.0,19.17,MEGAFOOD,No,No,Si,1.0,20.83,No,Si,66500000,Según categoría,Según categoría,Si
+830,Snacks Gatunos,,,GOMITAS UVA - ORION,,45.0,33.0,,Si,No,Si,,12.0,No,Si,68900000,Según categoría,Según categoría,Si
+835,Snacks Gatunos,,,JALAPEÑO RELLENO 8PZA,,80.0,53.58703,,Si,No,Si,,26.41297,No,Si,69400000,Según categoría,Si,Si
+834,Snacks Gatunos,,,JALAPEÑO RELLENOS 3PZ,,40.0,20.11739,,Si,No,Si,,19.88261,No,Si,69300000,Si,Según categoría,Si
+764,Snacks Gatunos,,,LUNETAS M&M's - Decoración crepa,,5.0,2.3,,Si,No,Si,,2.7,No,No,62300000,Según categoría,Según categoría,Si
+181,Snacks Gatunos,,,MAPPLE MINI DONAS 14PZ,,0.0,,,Si,No,Si,,,No,No,10200000,Según categoría,Según categoría,No
+188,Snacks Gatunos,,,MAPPLE MINI DONAS 8PZ,,0.0,,,Si,No,Si,,,No,No,10400000,Según categoría,Según categoría,No
+199,Snacks Gatunos,,,MARUCHAN,,20.0,,,No,No,Si,,,No,Si,10800000,Según categoría,Según categoría,No
+514,Snacks Gatunos,,M_DO,Mini Donas Gatunas,,69.0,,Sam's Club,No,No,Si,,,No,Si,38300000,Según categoría,Según categoría,Si
+310,Snacks Gatunos,,,MINI PIZZA - 4 QUESOS,,45.0,26.9,Sam's Club,Si,Si,Si,,18.1,No,Si,19800000,Si,Según categoría,Si
+197,Snacks Gatunos,,MP,MINI PIZZA PEPERONI,,40.0,26.86,,No,No,Si,,13.14,No,No,300000,Según categoría,Según categoría,Si
+196,Snacks Gatunos,,,MINI PIZZA - PEPERONI,,45.0,26.9,Sam's Club,Si,Si,Si,,18.1,No,Si,12900000,Si,Según categoría,Si
+712,Snacks Gatunos,,,MINI PIZZA - _PEPPERONI,,45.0,26.9,Sam's Club,No,No,Si,,18.1,No,Si,57300000,Según categoría,Según categoría,Si
+823,Snacks Gatunos,,,MOCHI CHOCOLATE 180g,,95.0,71.0,,Si,No,Si,,24.0,No,Si,68200000,Si,Según categoría,Si
+690,Snacks Gatunos,,,MOCHI DURAZNO - ROYAL FAMILY,,95.0,,,Si,No,Si,,,No,Si,55400000,Según categoría,Si,Si
+726,Snacks Gatunos,,,MOCHI FRAMBUESA - ROYAL F,,80.0,72.0,,Si,No,Si,-1.0,8.0,No,Si,58700000,Según categoría,Según categoría,Si
+680,Snacks Gatunos,,,MOCHI FRESA - ROYAL,,80.0,66.0,,Si,No,Si,-2.0,14.0,No,Si,54400000,Según categoría,Según categoría,Si
+892,Snacks Gatunos,,,Mochi Japones 6pza,,115.0,,,Si,No,No,,,No,Si,75100000,No,No,Si
+689,Snacks Gatunos,,,MOCHI MANGO 132g - ROYAL FAMILY,,95.0,66.0,ML - TOYO FOODS,Si,No,Si,,29.0,No,Si,55300000,Según categoría,Según categoría,Si
+688,Snacks Gatunos,,,MOCHI NATILLA LIMON - ROYAL,,80.0,,,Si,No,Si,,,No,Si,55200000,Según categoría,Si,Si
+827,Snacks Gatunos,,,MOCHI PAY DE QUESO 180g,,95.0,75.0,MERCADO LIBRE,Si,No,Si,,20.0,No,Si,68600000,Si,Según categoría,Si
+825,Snacks Gatunos,,,MOCHI TIRAMISUO 180g,,95.0,71.0,,Si,No,Si,,24.0,No,Si,68400000,Si,Según categoría,Si
+826,Snacks Gatunos,,,MOCHI VAINILLA 120g,,75.0,,MERCADO LIBRE,Si,No,Si,,,No,Si,68500000,Si,Si,Si
+824,Snacks Gatunos,,,MOCHI VAINILLA 180g,,95.0,71.0,MERCADO LIBRE,Si,No,Si,,24.0,No,Si,68300000,Según categoría,Si,Si
+714,Snacks Gatunos,,MUN12,MUNCHERS - PALOMITAS DE PAPA - 12 PZA,"Bolitas empanizadas con un relleno de papa, queso chedar y jalapeño",65.0,36.94375,,Si,No,Si,,28.05625,No,Si,57500000,Según categoría,Según categoría,Si
+715,Snacks Gatunos,,MUNC_6,MUNCHERS - PALOMITAS DE PAPA - 6 PZA,,40.0,24.06375,,Si,No,Si,,15.93625,No,Si,57600000,Según categoría,Según categoría,Si
+346,Snacks Gatunos,,,NUEZ - Decoración crepa,,5.0,2.596,,Si,No,Si,,2.404,No,No,23200000,Según categoría,Según categoría,Si
+182,Snacks Gatunos,,,NUTELLA MINI DONAS 14PZ,,0.0,12.1403088,,Si,No,Si,,-12.1403088,No,No,11900000,Según categoría,Según categoría,Si
+189,Snacks Gatunos,,,NUTELLA MINI DONAS 8PZ,,0.0,6.9294,,Si,No,Si,,-6.9294,No,No,12000000,Según categoría,Según categoría,Si
+201,Snacks Gatunos,,,ORIGINAL PEPERO,"(ALMENDRA, COOKIES & CREAM, CRUNCHY)",60.0,,,Si,No,Si,-3.0,,No,Si,13000000,Si,Si,Si
+311,Snacks Gatunos,,PAP,PAPAS FRITAS,,0.0,,,No,No,Si,,,No,No,100000,Según categoría,Según categoría,Si
+784,Snacks Gatunos,,,PAPAS FRITAS - CORTE CURLY 170g,,40.0,25.96679,,No,No,Si,,14.03321,No,Si,63900000,Según categoría,Según categoría,Si
+737,Snacks Gatunos,,,PAPAS FRITAS - CORTE CURLY 280g,,50.0,38.4342,,No,No,Si,,11.5658,No,Si,64000000,Según categoría,Según categoría,Si
+785,Snacks Gatunos,,,PAPAS FRITAS - CORTE CURLY 350g,,65.0,44.33175,,No,No,Si,,20.66825,No,Si,64100000,Según categoría,Según categoría,Si
+786,Snacks Gatunos,,,PAPAS FRITAS - CORTE CURLY 500g,,75.0,60.69133,,No,No,Si,,14.30867,No,Si,64200000,Según categoría,Según categoría,Si
+775,Snacks Gatunos,,,PAPAS FRITAS - CORTE DELGADO 120g,,25.0,19.24076,,No,No,Si,,5.75924,No,No,14500000,Según categoría,Según categoría,Si
+776,Snacks Gatunos,,,PAPAS FRITAS - CORTE DELGADO 170g,,29.0,22.23725,,No,No,Si,,6.76275,No,Si,21550000,Según categoría,Según categoría,Si
+777,Snacks Gatunos,,,PAPAS FRITAS - CORTE DELGADO 280g,,40.0,28.44051,,No,No,Si,,11.55949,No,Si,25075000,Según categoría,Según categoría,Si
+778,Snacks Gatunos,,,PAPAS FRITAS - CORTE DELGADO 350g,,50.0,35.28887,,No,No,Si,,14.71113,No,Si,26837500,Según categoría,Según categoría,Si
+779,Snacks Gatunos,,,PAPAS FRITAS - CORTE DELGADO 500g,,60.0,45.18521,,No,No,Si,,14.81479,No,Si,27718750,Según categoría,Según categoría,Si
+780,Snacks Gatunos,,,PAPAS FRITAS - CORTE GAJO 170g,,40.0,23.96294,,No,No,Si,,16.03706,No,Si,64350000,Según categoría,Según categoría,Si
+781,Snacks Gatunos,,,PAPAS FRITAS - CORTE GAJO 270g,,50.0,38.04423,,Si,No,Si,,11.95577,No,Si,64375000,Si,Según categoría,Si
+782,Snacks Gatunos,,,PAPAS FRITAS - CORTE GAJO 380g,,65.0,54.80023,,Si,No,Si,,10.19977,No,Si,64400000,Según categoría,Según categoría,Si
+783,Snacks Gatunos,,,PAPAS FRITAS - CORTE GAJO 500g,,80.0,54.80023,,Si,No,Si,,25.19977,No,Si,64500000,Según categoría,Según categoría,Si
+415,Snacks Gatunos,,PAP_CH,PAPAS FRITAS - CORTE RECTO - CH (170g),,35.0,22.31777,,Si,Si,Si,,12.68223,Si,Si,28600000,Si,Según categoría,Si
+417,Snacks Gatunos,,PAP_G,PAPAS FRITAS - CORTE RECTO G (350g),,55.0,37.11756,,Si,Si,Si,,17.88244,Si,Si,28800000,Según categoría,Si,Si
+418,Snacks Gatunos,,PAP_J,PAPAS FRITAS - CORTE RECTO J (500g),,70.0,49.96361,,Si,Si,Si,,20.03639,Si,Si,28900000,Según categoría,Si,Si
+416,Snacks Gatunos,,PAP_M,PAPAS FRITAS - CORTE RECTO M (270g),,45.0,31.1787,,Si,Si,Si,,13.8213,Si,Si,28700000,Según categoría,Si,Si
+198,Snacks Gatunos,,,PAPAS LOCAS,,35.0,,,No,No,Si,,,No,Si,12700000,Según categoría,Según categoría,No
+809,Snacks Gatunos,,,PIZZA M - HAWAIANA,,70.0,35.1,SABRITAS,Si,No,Si,4.0,34.9,No,Si,66800000,Si,Si,Si
+810,Snacks Gatunos,,,PIZZA M - PEPPERONI,,70.0,34.03,Sigma Foodservice,Si,No,Si,-1.0,35.97,No,Si,66900000,Si,Si,Si
+849,Snacks Gatunos,,,RAMEN PANKO,,0.0,0.0,,No,No,No,,0.0,No,Si,70800000,Si,Si,Si
+838,Snacks Gatunos,,,REBANADA CHEESECAKE,,43.0,,,No,No,Si,,,No,Si,69700000,Según categoría,Según categoría,Si
+635,Snacks Gatunos,,,STRAWBERRY - POCKY 40g,,60.0,,DOKSURI,Si,No,Si,1.0,,No,Si,49900000,Si,Si,Si
+869,Snacks Gatunos,,,YOUS PUYAGI JELLYS UVA,,55.0,,,Si,No,Si,,,No,Si,72800000,Según categoría,Si,Si
+868,Snacks Gatunos,,,YOUUS PUYANGI ORIGINAL,,44.0,0.0,,Si,No,Si,,44.0,No,Si,72700000,Si,Según categoría,Si
+183,Snacks Gatunos,,,ZARZAMORA MINI DONAS 14PZ,,0.0,,,Si,No,Si,,,No,No,16300000,Según categoría,Según categoría,No
+190,Snacks Gatunos,,,ZARZAMORA MINI DONAS 8PZ,,0.0,,,Si,No,Si,,,No,No,16400000,Según categoría,Según categoría,No

@@ -1,0 +1,247 @@
+id,nombre_actual,categoria_actual,nombre_propuesto,categoria_propuesta,accion,favorito,precio,n_grupos
+4,CAFÉ AMERICANO,Bebidas Gatunas Calientes / Café's Y Chocolates,Café Americano,Bebidas Calientes,RENOMBRAR,f,50.00,0
+5,CAPUCCINO,Bebidas Gatunas Calientes / Café's Y Chocolates,Capuccino,Bebidas Calientes,RENOMBRAR,f,63.00,0
+6,CARAMEL LATTE MACCHIATO,Bebidas Gatunas Calientes / Café's Y Chocolates,Caramel Latte Macchiato,Bebidas Calientes,RENOMBRAR,f,63.00,0
+7,CHAI LATTE,Bebidas Gatunas Calientes / Café's Y Chocolates,Chai Latte,—(a modificadores)—,CONVERTIR_A_OPCION,f,63.00,1
+8,CHOCOCINO,Bebidas Gatunas Calientes / Café's Y Chocolates,Chococino,—(a modificadores)—,CONVERTIR_A_OPCION,f,63.00,0
+10,CHOCOLATE CALIENTE 16 OZ,Bebidas Gatunas Calientes / Café's Y Chocolates,Chocolate Caliente 16 Oz,—(a modificadores)—,CONVERTIR_A_OPCION,f,63.00,0
+11,CHOCOLATE OAXACA 16 OZ,Bebidas Gatunas Calientes / Café's Y Chocolates,Chocolate Oaxaca 16 Oz,Bebidas Calientes,RENOMBRAR,f,69.00,0
+12,LATTE 12 OZ,Bebidas Gatunas Calientes / Café's Y Chocolates,Latte 12 Oz,Bebidas Calientes,RENOMBRAR,f,63.00,0
+13,LATTE MACCHIATO,Bebidas Gatunas Calientes / Café's Y Chocolates,Latte Macchiato,Bebidas Calientes,RENOMBRAR,f,63.00,0
+14,MOKA (MOCHA),Bebidas Gatunas Calientes / Café's Y Chocolates,Moka (mocha),Bebidas Calientes,RENOMBRAR,f,63.00,0
+15,FRUTOS ROJOS TÉ'S,Bebidas Gatunas Calientes / Té's,Frutos Rojos Té's,Bebidas Calientes,RENOMBRAR,f,25.00,0
+22,AGUA DE MANGO - LITRO,Bebidas Gatunas Frías / Aguas Frescas,Agua De Mango - Litro,Bebidas Frías,RENOMBRAR,f,25.00,0
+26,CAFÉ CAPPUCCINO  - OKF 240 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Café Cappuccino - Okf 240 Ml,Bebidas Frías,RENOMBRAR,f,55.00,0
+27,CAFÉ LATTE - OKF 240 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Café Latte - Okf 240 Ml,Bebidas Frías,RENOMBRAR,f,55.00,0
+28,CAFÉ MACCHIATO CARAMEL - OKF 240 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Café Macchiato Caramel - Okf 240 Ml,Bebidas Frías,RENOMBRAR,f,55.00,0
+29,CAFÉ MOCHA (MOKA) - OKF 240 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Café Mocha (moka) - Okf 240 Ml,Bebidas Frías,RENOMBRAR,f,55.00,0
+30,CANTABILE CAFÉ VAINILLA AMERICANO - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Café Vainilla Americano - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+31,CANTABILE FRESA - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Fresa - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+32,CANTABILE GRANADA - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Granada - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+33,CANTABILE MANGO (Doble Mango) - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Mango (doble Mango) - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+34,CANTABILE MANZANA - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Manzana - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+35,CANTABILE MORA AZUL - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Mora Azul - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+36,CANTABILE NARANJA - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Naranja - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+37,CANTABILE SANDÍA - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Sandía - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+38,CANTABILE TÉ HELADO DURAZNO - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Té Helado Durazno - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+39,CANTABILE UVA VERDE - 230ml,Bebidas Gatunas Frías / Bebidas Coreanas,Cantabile Uva Verde - 230ml,Bebidas Frías,RENOMBRAR,f,58.00,0
+41,CHUPA CHUPS BEBIDA FRESA,Bebidas Gatunas Frías / Bebidas Coreanas,Chupa Chups Bebida Fresa,Bebidas Frías,RENOMBRAR,f,55.00,0
+42,CHUPA CHUPS BEBIDA MANGO,Bebidas Gatunas Frías / Bebidas Coreanas,Chupa Chups Bebida Mango,Bebidas Frías,RENOMBRAR,f,55.00,0
+44,CHUPA CHUPS BEBIDA NARANJA,Bebidas Gatunas Frías / Bebidas Coreanas,Chupa Chups Bebida Naranja,Bebidas Frías,RENOMBRAR,f,55.00,0
+45,CHUPA CHUPS BEBIDA RASPBERRY (FRAMBUESA),Bebidas Gatunas Frías / Bebidas Coreanas,Chupa Chups Bebida Raspberry (frambuesa),Bebidas Frías,RENOMBRAR,f,55.00,0
+59,HATA MORA AZUL,Bebidas Gatunas Frías / Bebidas Coreanas,Hata Mora Azul,Bebidas Frías,RENOMBRAR,f,65.00,0
+67,MILKIS DURAZNO 250 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Milkis Durazno 250 Ml,Bebidas Frías,RENOMBRAR,f,43.00,0
+68,MILKIS FRESA 250 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Milkis Fresa 250 Ml,Bebidas Frías,RENOMBRAR,f,43.00,0
+69,MILKIS MANZANA 250 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Milkis Manzana 250 Ml,Bebidas Frías,RENOMBRAR,f,43.00,0
+70,MILKIS MELÓN 250 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Milkis Melón 250 Ml,Bebidas Frías,RENOMBRAR,f,43.00,0
+71,MILKIS ORIGINAL 250 ml,Bebidas Gatunas Frías / Bebidas Coreanas,Milkis Original 250 Ml,Bebidas Frías,RENOMBRAR,f,43.00,0
+76,RAMUNE FRESA,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Fresa,Bebidas Frías,RENOMBRAR,f,75.00,0
+77,RAMUNE LIMON,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Limon,Bebidas Frías,RENOMBRAR,f,75.00,0
+78,RAMUNE LYCHEE,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Lychee,Bebidas Frías,RENOMBRAR,f,75.00,0
+79,RAMUNE MELON,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Melon,Bebidas Frías,RENOMBRAR,f,75.00,0
+81,RAMUNE NARANJA,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Naranja,Bebidas Frías,RENOMBRAR,f,75.00,0
+82,RAMUNE ORIGINAL,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Original,Bebidas Frías,RENOMBRAR,f,75.00,0
+83,RAMUNE UVA,Bebidas Gatunas Frías / Bebidas Coreanas,Ramune Uva,Bebidas Frías,RENOMBRAR,f,75.00,0
+84,Soda coreana,Bebidas Gatunas Frías / Bebidas Coreanas,Soda Coreana,—(a modificadores)—,CONVERTIR_A_OPCION,f,70.00,0
+85,SOJU AMERICANO,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Americano,Bebidas Frías,RENOMBRAR,f,100.00,0
+86,SOJU BLUE BERRY (MORA AZUL),Bebidas Gatunas Frías / Bebidas Coreanas,Soju Blue Berry (mora Azul),Bebidas Frías,RENOMBRAR,f,100.00,0
+87,SOJU CITRON,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Citron,Bebidas Frías,RENOMBRAR,f,100.00,0
+88,SOJU DURAZNO,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Durazno,Bebidas Frías,RENOMBRAR,f,100.00,0
+89,SOJU FRESA,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Fresa,Bebidas Frías,RENOMBRAR,f,100.00,0
+90,SOJU MANDARINA,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Mandarina,Bebidas Frías,RENOMBRAR,f,100.00,0
+91,SOJU MANGO,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Mango,Bebidas Frías,RENOMBRAR,f,100.00,0
+93,SOJU MANZANA VERDE,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Manzana Verde,Bebidas Frías,RENOMBRAR,f,100.00,0
+94,SOJU ORIGINAL,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Original,Bebidas Frías,RENOMBRAR,f,100.00,0
+95,SOJU SAERO,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Saero,Bebidas Frías,RENOMBRAR,f,100.00,0
+96,SOJU UVA,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Uva,Bebidas Frías,RENOMBRAR,f,100.00,0
+97,SOJU YOGURT,Bebidas Gatunas Frías / Bebidas Coreanas,Soju Yogurt,Bebidas Frías,RENOMBRAR,f,100.00,0
+98,HARD THE KITTEN,Bebidas Gatunas Frías / BEBIDAS KPOP,Hard The Kitten,—(a modificadores)—,CONVERTIR_A_OPCION,f,89.00,1
+99,LILAC PURR LATTE,Bebidas Gatunas Frías / BEBIDAS KPOP,Lilac Purr Latte,—(a modificadores)—,CONVERTIR_A_OPCION,f,89.00,1
+100,RED THE FLAVOR VELVET,Bebidas Gatunas Frías / BEBIDAS KPOP,Red The Flavor Velvet,—(a modificadores)—,CONVERTIR_A_OPCION,f,89.00,1
+101,RING DING DONG,Bebidas Gatunas Frías / BEBIDAS KPOP,Ring Ding Dong,—(a modificadores)—,CONVERTIR_A_OPCION,f,89.00,1
+102,SODA COREANA CANTABILE,Bebidas Gatunas Frías / BEBIDAS KPOP,Soda Coreana Cantabile,—(a modificadores)—,CONVERTIR_A_OPCION,f,68.00,1
+103,TWICE TASTIC KITTY,Bebidas Gatunas Frías / BEBIDAS KPOP,Twice Tastic Kitty,—(a modificadores)—,CONVERTIR_A_OPCION,f,89.00,1
+104,BOBAH TEA,Bebidas Gatunas Frías / Bobah Tea's,Bobah Tea,—(a modificadores)—,CONVERTIR_A_OPCION,t,44.00,4
+113,Chai Latte caliente,Bebidas Gatunas Frías / Bobah Tea's,Chai Latte Caliente,Bebidas Frías,RENOMBRAR,f,58.00,0
+115,matcha coco,Bebidas Gatunas Frías / Bobah Tea's,Matcha Coco,Bebidas Frías,RENOMBRAR,f,75.00,0
+117,ICE COFE,Bebidas Gatunas Frías / Cafés fríos,Ice Cofe,Bebidas Calientes,RENOMBRAR,f,76.00,0
+123,CHAMOYADA PELON,Bebidas Gatunas Frías / Chamoyadas,Chamoyada Pelon,—(a modificadores)—,CONVERTIR_A_OPCION,f,52.00,1
+125,CHOCOCEREZA FRAPPÉ,Bebidas Gatunas Frías / Frappé's Gatunos,Chococereza Frappé,—(a modificadores)—,CONVERTIR_A_OPCION,f,10.00,0
+128,FRAPPÉ GATUNO,Bebidas Gatunas Frías / Frappé's Gatunos,Frappé Gatuno,—(a modificadores)—,CONVERTIR_A_OPCION,t,55.00,5
+155,MMATCHA COCO,Bebidas Gatunas Frías / Frappés Gatunos,Mmatcha Coco,Bebidas Frías,RENOMBRAR,f,0.00,0
+158,Magnum,Bebidas Gatunas Frías / Granizados,Magnum,Bebidas Frías,RENOMBRAR,f,30.00,0
+162,FRAPPÉ DE AGUA GRANIZADO,Bebidas Gatunas Frías / Granizados & Chamoyadas,Frappé De Agua Granizado,—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,3
+163,FRESA SANDÍA - CHAMOYADA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Fresa Sandía - Chamoyada,—(a modificadores)—,CONVERTIR_A_OPCION,f,40.00,1
+167,KIWI - FRAPPÉ DE AGUA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Kiwi - Frappé De Agua,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+168,LIMÓN - CHAMOYADA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Limón - Chamoyada,—(a modificadores)—,CONVERTIR_A_OPCION,f,40.00,1
+169,LIMÓN - FRAPPÉ DE AGUA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Limón - Frappé De Agua,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+173,MORA AZUL - CHAMOYADA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Mora Azul - Chamoyada,—(a modificadores)—,CONVERTIR_A_OPCION,f,40.00,1
+177,SANDÍA - CHAMOYADA,Bebidas Gatunas Frías / Granizados & Chamoyadas,Sandía - Chamoyada,—(a modificadores)—,CONVERTIR_A_OPCION,f,40.00,1
+178,SMOOTHIE FRUTOS ROJOS,Bebidas Gatunas Frías / Granizados & Chamoyadas,Smoothie Frutos Rojos,—(a modificadores)—,CONVERTIR_A_OPCION,f,60.00,1
+179,CHILATE,Bebidas Gatunas Frías / Licuados & Malteadas,Chilate,Bebidas Frías,RENOMBRAR,f,45.00,0
+181,CHOCOLATE LICUADOS,Bebidas Gatunas Frías / Licuados & Malteadas,Chocolate Licuados,Bebidas Frías,RENOMBRAR,f,35.00,0
+182,FRESA CREMOSA LICUADOS,Bebidas Gatunas Frías / Licuados & Malteadas,Fresa Cremosa Licuados,Bebidas Frías,RENOMBRAR,f,35.00,0
+185,MALTEADA GATUNA,Bebidas Gatunas Frías / Licuados & Malteadas,Malteada Gatuna,—(a modificadores)—,CONVERTIR_A_OPCION,t,75.00,2
+187,SMOOTHIE FRESA,Bebidas Gatunas Frías / Licuados & Malteadas,Smoothie Fresa,—(a modificadores)—,CONVERTIR_A_OPCION,f,60.00,1
+188,SMOOTHIE MANGO,Bebidas Gatunas Frías / Licuados & Malteadas,Smoothie Mango,—(a modificadores)—,CONVERTIR_A_OPCION,f,60.00,1
+195,AMORE MIO - MOJITO,Bebidas Gatunas Frías / Mojito,Amore Mio - Mojito,Bebidas Frías,RENOMBRAR,f,80.00,0
+196,BLUE BUTTERFLY - MOJITO,Bebidas Gatunas Frías / Mojito,Blue Butterfly - Mojito,Bebidas Frías,RENOMBRAR,f,80.00,0
+197,DALGI - MOJITO,Bebidas Gatunas Frías / Mojito,Dalgi - Mojito,Bebidas Frías,RENOMBRAR,f,80.00,0
+198,MANGO GO - MOJITO,Bebidas Gatunas Frías / Mojito,Mango Go - Mojito,Bebidas Frías,RENOMBRAR,f,80.00,0
+200,ARIZONA 591 ml,Bebidas Gatunas Frías / Refrescos,Arizona 591 Ml,—(a modificadores)—,CONVERTIR_A_OPCION,f,29.00,1
+202,COCA COLA 355ml,Bebidas Gatunas Frías / Refrescos,Coca Cola 355ml,Bebidas Frías,RENOMBRAR,f,29.00,0
+204,Jarritos lata 355ml,Bebidas Gatunas Frías / Refrescos,Jarritos Lata 355ml,Bebidas Frías,RENOMBRAR,f,25.00,0
+208,DURAZNO - Sodas explosivas,Bebidas Gatunas Frías / Sodas Explosivas,Durazno - Sodas Explosivas,Bebidas Frías,RENOMBRAR,f,0.00,0
+210,PERLAS CHAMOY,Bebidas Gatunas Frías / Sodas Explosivas,Perlas Chamoy,Bebidas Frías,RENOMBRAR,f,12.00,0
+211,SODA EXPLOSIVA,Bebidas Gatunas Frías / Sodas Explosivas,Soda Explosiva,—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,2
+232,MANGO HABANERO X2 SALSA CH,Boneless Y Alitas / SALSAS BONELESS,Mango Habanero X2 Salsa Ch,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+233,MANGO HABANERO X2 SALSA G,Boneless Y Alitas / SALSAS BONELESS,Mango Habanero X2 Salsa G,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+234,Opcional Genérico,Boneless Y Alitas / SALSAS BONELESS,Opcional Genérico,Boneless & Alitas,RENOMBRAR,f,0.00,0
+238,Producto Genérico,Boneless Y Alitas / SALSAS BONELESS,Producto Genérico,Boneless & Alitas,RENOMBRAR,f,0.00,0
+239,SAZONADOR FUEGO,Boneless Y Alitas / SALSAS BONELESS,Sazonador Fuego,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+253,BULKDAK TACO,Comida Asiática / Ramen y más,Bulkdak Taco,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,2
+254,COMPAGGUETTI,Comida Asiática / Ramen y más,Compagguetti,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,2
+256,Hot Chicken 3X 🔥🔥🔥🔥🔥🔥,Comida Asiática / Ramen y más,Hot Chicken 3X,Ramen & Asiática,RENOMBRAR,f,93.00,0
+258,MAMA OK CARBONARA FLAVOR,Comida Asiática / Ramen y más,Mama Ok Carbonara Flavor,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,1
+260,NOMGSHIM SOON VEGGIE,Comida Asiática / Ramen y más,Nomgshim Soon Veggie,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,2
+261,OTTOGI ODONGTONG MYON,Comida Asiática / Ramen y más,Ottogi Odongtong Myon,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,2
+262,PALDO KOKOMEN,Comida Asiática / Ramen y más,Paldo Kokomen,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,2
+264,RAMEN BULDAK SWICY,Comida Asiática / Ramen y más,Ramen Buldak Swicy,Ramen & Asiática,RENOMBRAR,f,77.00,0
+265,RAMEN CARBONARA - BULDAK,Comida Asiática / Ramen y más,Ramen Carbonara - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+266,RAMEN CARBONARA VOLCANO - Paldo,Comida Asiática / Ramen y más,Ramen Carbonara Volcano - Paldo,—(a modificadores)—,CONVERTIR_A_OPCION,f,77.00,3
+269,RAMEN CHEESE - OTTOGI,Comida Asiática / Ramen y más,Ramen Cheese - Ottogi,—(a modificadores)—,CONVERTIR_A_OPCION,f,78.00,3
+271,RAMEN CREAM CARBONARA - BULDAK,Comida Asiática / Ramen y más,Ramen Cream Carbonara - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,3
+275,RAMEN Habanero limón  - BULDAK,Comida Asiática / Ramen y más,Ramen Habanero Limón - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,77.00,3
+281,RAMEN HOT CHICKEN - BULDAK,Comida Asiática / Ramen y más,Ramen Hot Chicken - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+278,RAMEN HOT CHICKEN 2X - BULDAK,Comida Asiática / Ramen y más,Ramen Hot Chicken 2X - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+283,RAMEN HOT CHICKEN CHEESE - BULDAK,Comida Asiática / Ramen y más,Ramen Hot Chicken Cheese - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+290,RAMEN KIMCHI - OTTOGI,Comida Asiática / Ramen y más,Ramen Kimchi - Ottogi,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+291,RAMEN KIMCHI - PALDO,Comida Asiática / Ramen y más,Ramen Kimchi - Paldo,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+292,RAMEN KIMCHI - SAMYANG,Comida Asiática / Ramen y más,Ramen Kimchi - Samyang,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,3
+296,RAMEN QUATTRO CHEESE - BULDAK,Comida Asiática / Ramen y más,Ramen Quattro Cheese - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+300,RAMEN ROSÉ - BULDAK,Comida Asiática / Ramen y más,Ramen Rosé - Buldak,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,3
+301,RAMEN SAMYANG ORIGINAL - SAMYANG,Comida Asiática / Ramen y más,Ramen Samyang Original - Samyang,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,3
+305,RAMEN SHIN RAMYUN - NONGSHIM,Comida Asiática / Ramen y más,Ramen Shin Ramyun - Nongshim,—(a modificadores)—,CONVERTIR_A_OPCION,f,66.00,3
+315,SHIN RAMYUN TOOMBA,Comida Asiática / Ramen y más,Shin Ramyun Toomba,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,1
+322,UDON,Comida Asiática / Ramen y más,Udon,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,2
+326,CONEJITO TURIN CREPA,Crepas / Crepas Especiales,Conejito Turin Crepa,Crepas,RENOMBRAR,f,80.00,0
+327,CREPA CHAMPIÑONES,Crepas / Crepas Especiales,Crepa Champiñones,Crepas,RENOMBRAR,f,70.00,0
+328,CREPA HAWAIANA,Crepas / Crepas Especiales,Crepa Hawaiana,Crepas,RENOMBRAR,f,70.00,0
+329,CREPIZZA HAWAIANA,Crepas / Crepas Especiales,Crepizza Hawaiana,Crepas,RENOMBRAR,f,70.00,0
+330,CREPIZZA PEPPERONI,Crepas / Crepas Especiales,Crepizza Pepperoni,Crepas,RENOMBRAR,f,70.00,0
+331,FERRERO CREPA,Crepas / Crepas Especiales,Ferrero Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,85.00,0
+332,GANSITO CREPA,Crepas / Crepas Especiales,Gansito Crepa,Crepas,RENOMBRAR,f,79.00,0
+333,KINDER BUENO - CREPA,Crepas / Crepas Especiales,Kinder Bueno - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,75.00,3
+334,KINDER DELICE - CREPA,Crepas / Crepas Especiales,Kinder Delice - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,85.00,3
+335,KIT KAT CREPA,Crepas / Crepas Especiales,Kit Kat Crepa,Crepas,RENOMBRAR,f,85.00,0
+338,CAJETA - CREPA,Crepas / Crepas Gatunas,Cajeta - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,35.00,3
+340,CREMA BATIDA - CREPA,Crepas / Crepas Gatunas,Crema Batida - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,35.00,3
+341,CREMA PASTELERA - CREPPA,Crepas / Crepas Gatunas,Crema Pastelera - Creppa,Crepas,RENOMBRAR,t,35.00,0
+345,CREPA- DULCE,Crepas / Crepas Gatunas,Crepa- Dulce,—(a modificadores)—,CONVERTIR_A_OPCION,t,37.00,3
+354,LECHERA - CREPA,Crepas / Crepas Gatunas,Lechera - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,3
+355,MAPPLE - CREPA,Crepas / Crepas Gatunas,Mapple - Crepa,Crepas,RENOMBRAR,f,35.00,0
+356,MERMELADA FRESA - CREPA,Crepas / Crepas Gatunas,Mermelada Fresa - Crepa,Crepas,RENOMBRAR,f,35.00,0
+360,PHILADELPHIA - CREPA,Crepas / Crepas Gatunas,Philadelphia - Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,3
+383,ADEREZO DE QUESO CH,Otro / Adicionales,Aderezo De Queso Ch,—(a modificadores)—,CONVERTIR_A_OPCION,f,10.00,0
+384,BLUE CHEESE ADEREZO G,Otro / Adicionales,Blue Cheese Aderezo G,—(a modificadores)—,CONVERTIR_A_OPCION,f,30.00,0
+387,DEDOS DE QUESO 8 PZA,Otro / Adicionales,Dedos De Queso 8 Pz,—(a modificadores)—,CONVERTIR_A_OPCION,f,80.00,2
+388,DEDOS DE QUESO PZA,Otro / Adicionales,Dedos De Queso Pza,—(a modificadores)—,CONVERTIR_A_OPCION,f,12.00,2
+389,ENVIO,Otro / Adicionales,Envio,—(a modificadores)—,CONVERTIR_A_OPCION,f,20.00,0
+390,LUNETAS - Toppings Crepa,Otro / Adicionales,Lunetas - Toppings Crepa,—(a modificadores)—,CONVERTIR_A_OPCION,f,10.00,0
+391,MOSTAZA MIEL ADEREZO G,Otro / Adicionales,Mostaza Miel Aderezo G,—(a modificadores)—,CONVERTIR_A_OPCION,f,30.00,0
+392,MOSTAZA MIEL ADEREZO M,Otro / Adicionales,Mostaza Miel Aderezo M,—(a modificadores)—,CONVERTIR_A_OPCION,f,20.00,0
+401,GRANILLO HALLOWEEN,Otro / Decoraciones,Granillo Halloween,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+404,chuleta ahumanda,Otro / EXTRAS,Chuleta Ahumanda,—(a modificadores)—,CONVERTIR_A_OPCION,f,25.00,0
+405,Juego Gonggi,Otro / Juegos,Juego Gonggi,—(a modificadores)—,CONVERTIR_A_OPCION,f,30.00,0
+406,14 oz,Otro / Modificadores genéricos,14 Oz,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+407,14 Piezas,Otro / Modificadores genéricos,14 Piezas,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+408,16 oz,Otro / Modificadores genéricos,16 Oz,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+409,8 Piezas,Otro / Modificadores genéricos,8 Piezas,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+410,Algodón de Azúcar,Otro / Modificadores genéricos,Algodón De Azúcar,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+411,Cereza,Otro / Modificadores genéricos,Cereza,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+412,Chai Manzana Canela,Otro / Modificadores genéricos,Chai Manzana Canela,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+413,Chai Vainilla,Otro / Modificadores genéricos,Chai Vainilla,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+414,Cheesecake,Otro / Modificadores genéricos,Cheesecake,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+415,Choco Avellana,Otro / Modificadores genéricos,Choco Avellana,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+417,Choco Cereza,Otro / Modificadores genéricos,Choco Cereza,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+418,Chocolate Blanco,Otro / Modificadores genéricos,Chocolate Blanco,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+419,Chocolate blanco caliente,Otro / Modificadores genéricos,Chocolate Blanco Caliente,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+422,Matcha,Otro / Modificadores genéricos,Matcha,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+423,Mokaccino,Otro / Modificadores genéricos,Mokaccino,—(a modificadores)—,CONVERTIR_A_OPCION,f,65.00,0
+427,Pistache,Otro / Modificadores genéricos,Pistache,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+430,Red Velvet Chocolate,Otro / Modificadores genéricos,Red Velvet Chocolate,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+432,Taro,Otro / Modificadores genéricos,Taro,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+433,Vainilla,Otro / Modificadores genéricos,Vainilla,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+434,Yogurt,Otro / Modificadores genéricos,Yogurt,—(a modificadores)—,CONVERTIR_A_OPCION,f,0.00,0
+1,CHAI LATTE VAINILLA,Bebidas Gatunas Calientes,Chai Latte Vainilla,Bebidas Calientes,RENOMBRAR,f,45.00,0
+2,CHAI MIEL,Bebidas Gatunas Calientes,Chai Miel,Bebidas Calientes,RENOMBRAR,f,45.00,0
+3,TEA'S,Bebidas Gatunas Calientes,Tea's,—(a modificadores)—,CONVERTIR_A_OPCION,f,15.00,1
+16,CHOCOLATE FRIO,Bebidas Gatunas Frías,Chocolate Frio,—(a modificadores)—,CONVERTIR_A_OPCION,f,55.00,0
+212,ALITAS CH - 250g,Boneless Y Alitas,Alitas Ch - 250g,—(a modificadores)—,CONVERTIR_A_OPCION,t,114.98,3
+213,ALITAS G - 500g,Boneless Y Alitas,Alitas G - 500g,—(a modificadores)—,CONVERTIR_A_OPCION,t,234.98,3
+214,ALITAS J - 1 Kg,Boneless Y Alitas,Alitas J - 1 Kg,—(a modificadores)—,CONVERTIR_A_OPCION,t,398.98,3
+216,ALITAS M - 370g,Boneless Y Alitas,Alitas M - 370g,—(a modificadores)—,CONVERTIR_A_OPCION,t,164.98,3
+217,BONELESS CH - 250g,Boneless Y Alitas,Boneless Ch - 250g,—(a modificadores)—,CONVERTIR_A_OPCION,t,129.98,4
+218,BONELESS G - 500g,Boneless Y Alitas,Boneless G - 500g,—(a modificadores)—,CONVERTIR_A_OPCION,t,244.98,4
+219,BONELESS J - 1 Kg,Boneless Y Alitas,Boneless J - 1 Kg,—(a modificadores)—,CONVERTIR_A_OPCION,t,434.98,4
+220,BONELESS M - 370g,Boneless Y Alitas,Boneless M - 370g,—(a modificadores)—,CONVERTIR_A_OPCION,t,194.98,4
+241,COMBO CURRY Y CAFE OKF,Combos,Combo Curry Y Cafe Okf,Combos,RENOMBRAR,f,85.00,0
+242,DUO CHILATE,Combos,Duo Chilate,Combos,RENOMBRAR,f,60.00,0
+243,DUO FRAPPÉ,Combos,Duo Frappé,Combos,RENOMBRAR,f,105.00,0
+325,Creppa Baileys,Crepas,Creppa Baileys,—(a modificadores)—,CONVERTIR_A_OPCION,f,88.00,2
+362,BOWL FRUTL DEL DIA,Desayunos,Bowl Frutl Del Dia,Desayunos,RENOMBRAR,f,45.00,0
+363,BOWL GRIEGO FRUTAL,Desayunos,Bowl Griego Frutal,Desayunos,RENOMBRAR,f,40.00,0
+364,CAFÉ S,Desayunos,Café S,Desayunos,RENOMBRAR,f,15.00,0
+365,CHILAQ ROJO CHICO,Desayunos,Chilaq Rojo Chico,—(a modificadores)—,CONVERTIR_A_OPCION,f,54.99,2
+366,CHILAQ ROJOS GRANDES,Desayunos,Chilaq Rojos Grandes,—(a modificadores)—,CONVERTIR_A_OPCION,f,64.99,2
+368,CHILAQ VERDE CHICOS,Desayunos,Chilaq Verde Chicos,—(a modificadores)—,CONVERTIR_A_OPCION,t,54.99,2
+369,CHILAQ VERDES GRANDES,Desayunos,Chilaq Verdes Grandes,—(a modificadores)—,CONVERTIR_A_OPCION,t,64.99,2
+370,CUERNITO DULCE,Desayunos,Cuernito Dulce,Desayunos,RENOMBRAR,f,35.00,0
+371,CUERNITO SALADO,Desayunos,Cuernito Salado,Desayunos,RENOMBRAR,f,35.00,0
+372,HOTCAKES 2PZ,Desayunos,Hotcakes 2 Pz,Desayunos,RENOMBRAR,f,50.00,0
+373,SANDWICH 3 QUESOS,Desayunos,Sandwich 3 Quesos,Desayunos,RENOMBRAR,f,30.00,0
+374,SANDWICH JAMÓN,Desayunos,Sandwich Jamón,Desayunos,RENOMBRAR,f,25.00,0
+375,SINCRONIZADAS 3PZ,Desayunos,Sincronizadas 3 Pz,Desayunos,RENOMBRAR,f,40.00,0
+437,BANDERILLA COREANA,Snacks Gatunos,Banderilla Coreana,—(a modificadores)—,CONVERTIR_A_OPCION,f,60.00,2
+438,BLUEBERRY - POCKY 40g,Snacks Gatunos,Blueberry - Pocky 40g,Snacks,RENOMBRAR,f,60.00,0
+440,BUBBLE GUM COLA,Snacks Gatunos,Bubble Gum Cola,Snacks,RENOMBRAR,f,20.00,0
+441,BUBBLE GUM DURAZNO,Snacks Gatunos,Bubble Gum Durazno,Snacks,RENOMBRAR,f,20.00,0
+442,BUBBLE GUM MANGO,Snacks Gatunos,Bubble Gum Mango,Snacks,RENOMBRAR,f,20.00,0
+443,BUBBLE GUM UVA,Snacks Gatunos,Bubble Gum Uva,Snacks,RENOMBRAR,f,20.00,0
+445,CAJETA MINI DONAS 8PZ,Snacks Gatunos,Cajeta Mini Donas 8 Pz,Snacks,RENOMBRAR,f,0.00,0
+447,CHOCOLATE - POCKY 40g,Snacks Gatunos,Chocolate - Pocky 40g,Snacks,RENOMBRAR,f,60.00,0
+446,CHOCOLATE MINI DONAS 14PZ,Snacks Gatunos,Chocolate Mini Donas 14 Pz,Snacks,RENOMBRAR,f,0.00,0
+448,DEDOS DE QUESO 3 PZA,Snacks Gatunos,Dedos De Queso 3 Pz,Snacks,RENOMBRAR,f,47.00,0
+449,DONITAS GATUNAS 14PZA,Snacks Gatunos,Donitas Gatunas 14 Pz,—(a modificadores)—,CONVERTIR_A_OPCION,t,50.00,1
+450,DONITAS GATUNAS 8PZA,Snacks Gatunos,Donitas Gatunas 8 Pz,—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,1
+453,GOMITAS UVA - ORION,Snacks Gatunos,Gomitas Uva - Orion,Snacks,RENOMBRAR,f,45.00,0
+454,JALAPEÑO RELLENO 8PZA,Snacks Gatunos,Jalapeño Relleno 8 Pz,Snacks,RENOMBRAR,f,80.00,0
+455,JALAPEÑO RELLENOS 3PZ,Snacks Gatunos,Jalapeño Rellenos 3 Pz,Snacks,RENOMBRAR,f,40.00,0
+458,MINI PIZZA - 4 QUESOS,Snacks Gatunos,Mini Pizza - 4 Quesos,Snacks,RENOMBRAR,t,45.00,0
+460,MINI PIZZA - PEPERONI,Snacks Gatunos,Mini Pizza - Peperoni,Snacks,RENOMBRAR,t,45.00,0
+462,MOCHI CHOCOLATE 180g,Snacks Gatunos,Mochi Chocolate 180g,Snacks,RENOMBRAR,f,95.00,0
+463,MOCHI DURAZNO - ROYAL FAMILY,Snacks Gatunos,Mochi Durazno - Royal Family,Snacks,RENOMBRAR,f,95.00,0
+464,MOCHI FRAMBUESA - ROYAL F,Snacks Gatunos,Mochi Frambuesa - Royal F,Snacks,RENOMBRAR,f,80.00,0
+465,MOCHI FRESA - ROYAL,Snacks Gatunos,Mochi Fresa - Royal,Snacks,RENOMBRAR,f,80.00,0
+466,Mochi Japones 6pza,Snacks Gatunos,Mochi Japones 6 Pz,Snacks,RENOMBRAR,f,115.00,0
+467,MOCHI MANGO 132g - ROYAL FAMILY,Snacks Gatunos,Mochi Mango 132g - Royal Family,Snacks,RENOMBRAR,f,95.00,0
+468,MOCHI NATILLA LIMON - ROYAL,Snacks Gatunos,Mochi Natilla Limon - Royal,Snacks,RENOMBRAR,f,80.00,0
+469,MOCHI PAY DE QUESO 180g,Snacks Gatunos,Mochi Pay De Queso 180g,Snacks,RENOMBRAR,f,95.00,0
+470,MOCHI TIRAMISUO 180g,Snacks Gatunos,Mochi Tiramisuo 180g,Snacks,RENOMBRAR,f,95.00,0
+471,MOCHI VAINILLA 120g,Snacks Gatunos,Mochi Vainilla 120g,Snacks,RENOMBRAR,f,75.00,0
+472,MOCHI VAINILLA 180g,Snacks Gatunos,Mochi Vainilla 180g,Snacks,RENOMBRAR,f,95.00,0
+473,MUNCHERS - PALOMITAS DE PAPA - 12 PZA,Snacks Gatunos,Munchers - Palomitas De Papa - 12 Pz,Snacks,RENOMBRAR,f,65.00,0
+474,MUNCHERS - PALOMITAS DE PAPA - 6 PZA,Snacks Gatunos,Munchers - Palomitas De Papa - 6 Pz,Snacks,RENOMBRAR,f,40.00,0
+475,ORIGINAL PEPERO,Snacks Gatunos,Original Pepero,Snacks,RENOMBRAR,f,60.00,0
+487,PAPAS FRITAS - CORTE GAJO 270g,Snacks Gatunos,Papas Fritas - Corte Gajo 270g,Snacks,RENOMBRAR,f,50.00,0
+488,PAPAS FRITAS - CORTE GAJO 380g,Snacks Gatunos,Papas Fritas - Corte Gajo 380g,Snacks,RENOMBRAR,f,65.00,0
+489,PAPAS FRITAS - CORTE GAJO 500g,Snacks Gatunos,Papas Fritas - Corte Gajo 500g,Snacks,RENOMBRAR,f,80.00,0
+490,PAPAS FRITAS - CORTE RECTO - CH (170g),Snacks Gatunos,Papas Fritas - Corte Recto - Ch (170g),—(a modificadores)—,CONVERTIR_A_OPCION,t,35.00,1
+491,PAPAS FRITAS - CORTE RECTO G (350g),Snacks Gatunos,Papas Fritas - Corte Recto G (350g),—(a modificadores)—,CONVERTIR_A_OPCION,t,55.00,1
+492,PAPAS FRITAS - CORTE RECTO J (500g),Snacks Gatunos,Papas Fritas - Corte Recto J (500g),—(a modificadores)—,CONVERTIR_A_OPCION,t,70.00,1
+493,PAPAS FRITAS - CORTE RECTO M (270g),Snacks Gatunos,Papas Fritas - Corte Recto M (270g),—(a modificadores)—,CONVERTIR_A_OPCION,t,45.00,1
+495,PIZZA M - HAWAIANA,Snacks Gatunos,Pizza M - Hawaiana,Snacks,RENOMBRAR,f,70.00,0
+496,PIZZA M - PEPPERONI,Snacks Gatunos,Pizza M - Pepperoni,Snacks,RENOMBRAR,f,70.00,0
+499,STRAWBERRY - POCKY 40g,Snacks Gatunos,Strawberry - Pocky 40g,Snacks,RENOMBRAR,f,60.00,0
+500,YOUS PUYAGI JELLYS UVA,Snacks Gatunos,Yous Puyagi Jellys Uva,Snacks,RENOMBRAR,f,55.00,0
+501,YOUUS PUYANGI ORIGINAL,Snacks Gatunos,Youus Puyangi Original,Snacks,RENOMBRAR,f,44.00,0

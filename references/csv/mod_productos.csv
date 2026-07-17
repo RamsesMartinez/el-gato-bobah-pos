@@ -1,0 +1,486 @@
+ID Grupo modificador,Titulo,Producto,Precio,Máxima cantidad
+101,Aderezo de cortesía,BLUE CHEESE ADEREZO M,0.0,1.0
+101,Aderezo de cortesía,RANCH CREMOSO ADEREZO M,0.0,1.0
+101,Aderezo de cortesía,RANCH HABANERO ADEREZO M,0.0,1.0
+46,Aderezos Extra,RANCH CREMOSO ADEREZO G,30.0,2.0
+46,Aderezos Extra,RANCH CREMOSO ADEREZO M,20.0,2.0
+46,Aderezos Extra,RANCH HABANERO ADEREZO G,30.0,2.0
+46,Aderezos Extra,RANCH HABANERO ADEREZO M,30.0,2.0
+10,,CREMA BATIDA,0.0,1.0
+10,,SIN CREMA BATIDA,0.0,1.0
+25,Elige tu refresco,COCA COLA 355ml,0.0,1.0
+25,Elige tu refresco,SANGRIA 400ML,0.0,1.0
+26,Agrega tus refrescos,COCA COLA 355ml,0.0,2.0
+26,Agrega tus refrescos,SANGRIA 400ML,0.0,2.0
+111,,FLAMING. 1,8.0,1.0
+111,,RAMEN PANKO,8.0,1.0
+19,,PAPAS A LA FRANCESA IND (170gr),20.0,1.0
+116,BANDERILLA COIREANA,COMBINADA,15.0,1.0
+116,BANDERILLA COIREANA,QUESO,25.0,1.0
+104,,BANDERILLA COREANA,10.0,1.0
+104,,QUESO,15.0,1.0
+39,,CREPA CHAMPIÑONES,15.0,1.0
+39,,CREPA HAWAIANA,15.0,1.0
+39,,CREPIZZA HAWAIANA,15.0,1.0
+39,,CREPIZZA PEPPERONI,15.0,1.0
+38,Elige tu decoración,ALMENDRAS - Decoración crepa,0.0,
+38,Elige tu decoración,AZÚCAR GLASS - Decoración crepa,0.0,
+38,Elige tu decoración,CANELA - Decoración Crepa,0.0,
+38,Elige tu decoración,CHISPAS DE CHOCOLATE - Decoración crepa,0.0,
+38,Elige tu decoración,CHOCOMENTAS - Decoración crepa,0.0,
+38,Elige tu decoración,GRANILLO CAPPUCCINO - Decoración crepa,0.0,
+38,Elige tu decoración,GRANILLO CHOCOLATE - Decoración crepa,0.0,
+38,Elige tu decoración,GRANILLO FRESA - Decoración crepa,0.0,
+38,Elige tu decoración,LUNETAS M&M's - Decoración crepa,0.0,
+38,Elige tu decoración,NUEZ - Decoración crepa,0.0,
+38,Elige tu decoración,"No, gracias",0.0,1.0
+38,Elige tu decoración,miel maple,0.0,1.0
+99,Agrega fruta,DURAZNOS EN ALMIBAR - Fruta crepa,20.0,
+99,Agrega fruta,FRESA - Fruta crepa,20.0,
+99,Agrega fruta,FRUTOS ROJOS - Fruta crepa,20.0,
+99,Agrega fruta,MANGO EN ALMIBAR - Fruta crepa,20.0,
+99,Agrega fruta,"No, gracias",0.0,1.0
+99,Agrega fruta,PLATANO - Fruta crepa,20.0,
+89,Ingrediente Extra Ramen,AJONJOLÍ,0.0,1.0
+89,Ingrediente Extra Ramen,CHAMPIÑÓN - RAMEN,20.0,1.0
+89,Ingrediente Extra Ramen,CHILE QUEBRADO (CHILE SECO),0.0,1.0
+89,Ingrediente Extra Ramen,HUEVO DURO,15.0,3.0
+89,Ingrediente Extra Ramen,HUEVO ESTRELLADO,20.0,3.0
+89,Ingrediente Extra Ramen,JAMÓN - RAMEN,20.0,1.0
+89,Ingrediente Extra Ramen,MOZARELLA - RAMEN,25.0,1.0
+89,Ingrediente Extra Ramen,NO APLICA,0.0,1.0
+89,Ingrediente Extra Ramen,PEPPERONI - RAMEN,15.0,1.0
+89,Ingrediente Extra Ramen,VERDURAS - RAMEN,20.0,1.0
+89,Ingrediente Extra Ramen,chuleta ahumada,25.0,1.0
+80,Elije el ingrediente,CHAMPIÑÓN - RAMEN,0.0,1.0
+80,Elije el ingrediente,JAMÓN - RAMEN,0.0,1.0
+80,Elije el ingrediente,MOZARELLA - RAMEN,0.0,1.0
+80,Elije el ingrediente,NO APLICA,0.0,1.0
+80,Elije el ingrediente,PEPPERONI - RAMEN,0.0,1.0
+80,Elije el ingrediente,VERDURAS - RAMEN,0.0,1.0
+91,,LECHE DESLACTOSADA,10.0,1.0
+91,,LECHE ENTERA,10.0,1.0
+34,Elige las perlas explosiva,*SIN PERLAS EXPLOSIVAS*,20.0,1.0
+34,Elige las perlas explosiva,CEREZA Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,CHICLE - Perlas Explosivas,20.0,1.0
+34,Elige las perlas explosiva,CHOCOLATE Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,DRAGON FRUIT Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,FRESA Perlas Explosivas,20.0,1.0
+34,Elige las perlas explosiva,KIWI Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,LITCHI Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,MANGO Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,MANZANA VERDE Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,MARACUYA - Jellys,20.0,1.0
+34,Elige las perlas explosiva,MORA AZUL - Perlas explosivas,20.0,1.0
+34,Elige las perlas explosiva,TAPIOCA,20.0,1.0
+34,Elige las perlas explosiva,YOGURTH Perlas explosivas,20.0,1.0
+7,,*SIN PERLAS EXPLOSIVAS*,0.0,1.0
+7,,CEREZA Perlas explosivas,20.0,2.0
+7,,CHICLE - Perlas Explosivas,20.0,2.0
+7,,CHOCOLATE Perlas explosivas,20.0,2.0
+7,,DRAGON FRUIT Perlas explosivas,20.0,2.0
+7,,FRESA Perlas Explosivas,20.0,2.0
+7,,KIWI Perlas explosivas,20.0,2.0
+7,,LITCHI Perlas explosivas,20.0,2.0
+7,,MANGO Perlas explosivas,20.0,2.0
+7,,MANZANA VERDE Perlas explosivas,20.0,2.0
+7,,MARACUYA - Jellys,20.0,2.0
+7,,MORA AZUL - Perlas explosivas,20.0,2.0
+7,,TAPIOCA,20.0,2.0
+7,,YOGURTH Perlas explosivas,20.0,2.0
+53,,*SIN PERLAS EXPLOSIVAS*,0.0,1.0
+53,,CEREZA Perlas explosivas,20.0,2.0
+53,,CHICLE - Perlas Explosivas,20.0,2.0
+53,,CHOCOLATE Perlas explosivas,20.0,2.0
+53,,DRAGON FRUIT Perlas explosivas,20.0,2.0
+53,,FRESA Perlas Explosivas,20.0,2.0
+53,,KIWI Perlas explosivas,20.0,2.0
+53,,LITCHI Perlas explosivas,20.0,2.0
+53,,MANGO Perlas explosivas,20.0,2.0
+53,,MANZANA VERDE Perlas explosivas,20.0,2.0
+53,,MARACUYA - Jellys,20.0,2.0
+53,,MORA AZUL - Perlas explosivas,20.0,2.0
+53,,TAPIOCA,20.0,2.0
+53,,YOGURTH Perlas explosivas,20.0,2.0
+60,,*SIN PERLAS EXPLOSIVAS*,0.0,1.0
+60,,CEREZA NEGRA - Perlas explosivas,15.0,1.0
+60,,CEREZA Perlas explosivas,15.0,1.0
+60,,CHICLE - Perlas Explosivas,15.0,1.0
+60,,CHOCOLATE Perlas explosivas,15.0,1.0
+60,,FRESA Perlas Explosivas,15.0,1.0
+60,,KIWI Perlas explosivas,15.0,1.0
+60,,LITCHI Perlas explosivas,15.0,1.0
+60,,MANGO Perlas explosivas,15.0,1.0
+60,,MANZANA VERDE Perlas explosivas,15.0,1.0
+60,,MARACUYA - Jellys,15.0,1.0
+60,,MORA AZUL - Perlas explosivas,15.0,1.0
+60,,TAPIOCA,17.0,1.0
+60,,YOGURTH Perlas explosivas,15.0,1.0
+1,ELIJE LAS PERLAS,*SIN PERLAS EXPLOSIVAS*,0.0,1.0
+1,ELIJE LAS PERLAS,CEREZA Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,CHICLE - Perlas Explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,CHOCOLATE Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,DRAGON FRUIT Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,FRESA Perlas Explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,KIWI Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,LITCHI Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,MANGO Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,MANZANA VERDE Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,MARACUYA - Jellys,20.0,2.0
+1,ELIJE LAS PERLAS,MORA AZUL - Perlas explosivas,20.0,2.0
+1,ELIJE LAS PERLAS,PERLAS CHAMOY,20.0,1.0
+1,ELIJE LAS PERLAS,PERLAS DE SANDIA,20.0,1.0
+1,ELIJE LAS PERLAS,TAPIOCA,20.0,2.0
+1,ELIJE LAS PERLAS,YOGURTH Perlas explosivas,20.0,2.0
+90,Proteina,HUEVO PROTEINA,0.01,1.0
+90,Proteina,POLLO PROTEINA,0.01,1.0
+90,Proteina,SIN PROTEINA,0.01,1.0
+77,,GRATINADOS,15.0,1.0
+77,,HUEVO EXTRA,15.0,1.0
+77,,POLLO EXTRA,20.0,1.0
+77,,TENDERS PROTEINA,20.0,1.0
+105,,BANDERILLA COREANA,15.0,1.0
+105,,QUESO,25.0,1.0
+86,¿Ramen preparado?,PREPARADO,23.0,1.0
+86,¿Ramen preparado?,SIN PREPARAR,0.0,1.0
+22,Sabor de tu Bobah Tea,ALGODÓN DE AZÚCAR BOBA TEA'S,6.0,1.0
+22,Sabor de tu Bobah Tea,CHAI CLÁSICO BOBAH TEAH,6.0,1.0
+22,Sabor de tu Bobah Tea,CHOCOLATE BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,FRUTOS ROJOS BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,HORCHATA BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,MATCHA BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,MMATCHA COCO,6.0,1.0
+22,Sabor de tu Bobah Tea,PINK LEMONADE BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,TARO BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,TARO PURPPLE BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,VAINILLA BOBA TEA´S,6.0,1.0
+22,Sabor de tu Bobah Tea,matcha coco,6.0,1.0
+4,,CEREZA - CHAMOYADA,0.0,1.0
+4,,CHAMOYADA PELON,0.0,1.0
+4,,FRESA - CHAMOYADA,0.0,1.0
+4,,FRESA SANDÍA - CHAMOYADA,0.0,1.0
+4,,FRUTOS ROJOS - CHAMOYADA,0.0,1.0
+4,,LIMÓN - CHAMOYADA,0.0,1.0
+4,,MANGO - CHAMOYADA,0.0,1.0
+4,,MARACUYÁ - CHAMOYADA,0.0,1.0
+4,,MOJITO - CHAMOYADA,0.0,1.0
+4,,MORA AZUL - CHAMOYADA,0.0,1.0
+4,,PEPINO LIMÓN - CHAMOYADA,0.0,1.0
+4,,PINK LEMONADE - CHAMOYADA,0.0,1.0
+4,,SANDÍA - CHAMOYADA,0.0,1.0
+5,,ALGODÓN DE AZUCAR FRAPPÉ,10.0,1.0
+5,,BAILEYS FRAPPÉ,15.0,1.0
+5,,CAJETA FRAPPÉ,10.0,1.0
+5,,CALABAZA FRAPPÉ,10.0,1.0
+5,,CAPPUCCINO FRAPPÉ,10.0,1.0
+5,,CEREZA FRAPPÉ,10.0,1.0
+5,,CHAI MANZANA CANELA FRAPPÉ,10.0,1.0
+5,,CHAI VAINILLA FRAPPÈ,10.0,1.0
+5,,CHEESECAKE FRAPPÉ,10.0,1.0
+5,,CHOCO AVELLANA FRAPPÉ,10.0,1.0
+5,,CHOCOLATE BLANCO FRAPPÉ,10.0,1.0
+5,,CHOCOLATE FRAPPÉ,10.0,1.0
+5,,CHOCORETAS FRAPPÉ,15.0,1.0
+5,,CONEJITO TURÍN FRAPPÉ,27.0,1.0
+5,,COOKIES & CREAM (OREO) FRAPPÉ,27.0,1.0
+5,,DRAGON FRUIT,15.0,1.0
+5,,FERRERO FRAPPÉ,27.0,1.0
+5,,FRAPPE MAGNUM,27.0,1.0
+5,,FRAPPÉ CHAI VAINILLA,10.0,1.0
+5,,FRUTOS ROJOS FRAPPE,10.0,1.0
+5,,GANSITO FRAPPE,25.0,1.0
+5,,HORCHATA FRAPPÉ,10.0,1.0
+5,,JAVA CHIPS FRAPPÉ,10.0,1.0
+5,,KITKAT FRAPPÉ,25.0,1.0
+5,,MAGNUM FRAPPE,27.0,1.0
+5,,MARSHMALLOW CHOCOLATE FRAPPÉ,10.0,1.0
+5,,MATCHA FRAPPÉ,15.0,1.0
+5,,MAZAPÁN FRAPPÉ,20.0,1.0
+5,,MMATCHA COCO,10.0,1.0
+5,,MOKACCINO FRAPPÉ,10.0,1.0
+5,,PAN DE MUERTO FRAPPÉ,17.0,1.0
+5,,PAY DE LIMÓN FRAPPÉ,17.0,1.0
+5,,PISTACHE FRAPPÉ,10.0,1.0
+5,,PIÑACOLADA FRAPPÉ,17.0,1.0
+5,,RED VELVET CHOCOLATE FRAPPÉ,10.0,1.0
+5,,ROMPOPE FRAPPÉ,17.0,1.0
+5,,STRAWBERRY CREAM (FRESA) FRAPPÉ,17.0,1.0
+5,,TARO FRAPPÉ,20.0,1.0
+5,,TARO PURPLE FRAPPÉ,20.0,1.0
+5,,VAINILLA FRAPPÉ,10.0,1.0
+5,,ZARZA CREMOSA FRAPPÉ,10.0,1.0
+11,,DRAGON FRUIT - GRANIZADOS,20.0,1.0
+11,,FRESA - FRAPPÉ DE AGUA,1510.0,1.0
+11,,FRESA SANDÍA - FRAPPÉ  DE AGUA,15.0,1.0
+11,,FRUTOS ROJOS - FRAPPÉ DE AGUA,15.0,1.0
+11,,ICE CEREZA - FRAPPÉ DE AGUA,15.0,1.0
+11,,ICE MORA AZUL - FAPPÉ  DE AGUA,15.0,1.0
+11,,MANGO - FRAPPÉ DE AGUA,15.0,1.0
+11,,MARACUYÁ - FRAPPÉ DE AGUA,15.0,1.0
+11,,MOJITO - FRAPPÉ DE AGUA,15.0,1.0
+11,,PEPINO LIMÓN - GRANIZADO,15.0,1.0
+11,,ROMPOPE - GRANIZADO,15.0,1.0
+11,,SANDÍA -FRAPPÉ DE AGUA,15.0,1.0
+88,Sabor Licuado,CHOCOBANA LICUADOS,10.0,1.0
+88,Sabor Licuado,CHOCOLATE LICUADOS,10.0,1.0
+88,Sabor Licuado,FRESA CREMOSA LICUADOS,10.0,1.0
+88,Sabor Licuado,FRUTOS ROJOS LICUADOS,10.0,1.0
+16,,CHOCOLATE MALTEADAS,4.0,1.0
+16,,COOKIES & CREAM MALTEADAS,4.0,1.0
+16,,FRESA MALTEADAS,4.0,1.0
+16,,VAINILLA MALTEADAS,4.0,1.0
+96,Sabor Milki,MILKIS DURAZNO 250 ml,0.0,1.0
+96,Sabor Milki,MILKIS FRESA 250 ml,0.0,1.0
+96,Sabor Milki,MILKIS MANZANA 250 ml,0.0,1.0
+96,Sabor Milki,MILKIS MELÓN 250 ml,0.0,1.0
+96,Sabor Milki,MILKIS ORIGINAL 250 ml,0.0,1.0
+30,,CAJETA MINI DONAS 14PZ,0.0,2.0
+30,,CHOCOLATE MINI DONAS 14PZ,0.0,2.0
+30,,CREMA PASTELERA MINI DONAS 14PZ,0.0,2.0
+30,,FRESA MINI DONAS 14PZ,0.0,2.0
+30,,LECHERA - Toppings crepa,0.0,2.0
+30,,MAPPLE MINI DONAS 14PZ,0.0,2.0
+30,,NUTELLA MINI DONAS 14PZ,0.0,2.0
+30,,ZARZAMORA MINI DONAS 14PZ,0.0,2.0
+29,,CAJETA MINI DONAS 8PZ,0.0,2.0
+29,,CHOCOLATE MINI DONAS 8PZ,0.0,2.0
+29,,CREMA PASTELERA MINI DONAS 8PZ,0.0,2.0
+29,,FRESA MINI DONAS 8PZ,0.0,2.0
+29,,LECHERA - Toppings crepa,0.0,2.0
+29,,MAPPLE MINI DONAS 8PZ,0.0,2.0
+29,,NUTELLA MINI DONAS 8PZ,0.0,2.0
+29,,ZARZAMORA MINI DONAS 8PZ,0.0,2.0
+14,,MINI PIZZA - 4 QUESOS,5.0,1.0
+14,,MINI PIZZA - PEPERONI,5.0,1.0
+45,,CHOCOLATE BOBA TEA´S,0.0,2.0
+45,,FRUTOS ROJOS BOBA TEA´S,0.0,2.0
+45,,FRUTOS ROJOS BOBAH TEA'S,0.0,2.0
+45,,HORCHATA BOBA TEA´S,0.0,2.0
+45,,MATCHA BOBA TEA´S,0.0,2.0
+45,,PINK LEMONADE BOBA TEA´S,0.0,2.0
+45,,TARO BOBA TEA´S,0.0,2.0
+45,,TARO PURPPLE BOBA TEA´S,0.0,2.0
+45,,VAINILLA BOBA TEA´S,0.0,2.0
+45,,matcha coco,0.0,2.0
+37,Sabor,BULDAK SWICY,5.0,1.0
+37,Sabor,RAMEN CARBONARA - BULDAK,5.0,1.0
+37,Sabor,RAMEN CHAPAGETTI - NONGSHIM,5.0,1.0
+37,Sabor,RAMEN CREAM CARBONARA - BULDAK,5.0,1.0
+37,Sabor,RAMEN HABANERO LIMON - BULDAK,5.0,1.0
+37,Sabor,RAMEN HOT CHICKEN - BULDAK,5.0,1.0
+37,Sabor,RAMEN HOT CHICKEN 2X - BULDAK,5.0,1.0
+37,Sabor,RAMEN HOT CHICKEN 3X - BULDAK,10.0,1.0
+37,Sabor,RAMEN HOT CHICKEN CHEESE - BULDAK,5.0,1.0
+37,Sabor,RAMEN HOT PEPPER - BULDAK,5.0,1.0
+37,Sabor,RAMEN JIN - OTTOGI,5.0,1.0
+37,Sabor,RAMEN JIN SPICY - OTTOGI,5.0,1.0
+37,Sabor,RAMEN KIMCHI - SAMYANG,5.0,1.0
+37,Sabor,RAMEN LOVELY HOT CHICKEN - BULDAK,10.0,1.0
+37,Sabor,RAMEN QUATTRO CHEESE - BULDAK,5.0,1.0
+37,Sabor,RAMEN ROSÉ - BULDAK,5.0,1.0
+37,Sabor,RAMEN SAMYANG ORIGINAL - SAMYANG,5.0,1.0
+37,Sabor,RAMEN SHIN KIMCHI - NONGSHIM,5.0,1.0
+37,Sabor,RAMEN SHIN RAMYUN - NONGSHIM,5.0,1.0
+37,Sabor,RAMEN TOMATO HOT CHICKEN - BULDAK,5.0,1.0
+37,Sabor,RAMEN YAKISOBA HOT CHICKEN -BULDAK,5.0,1.0
+98,Sabor Ramen,RAMEN CURRY - BULDAK,0.01,1.0
+98,Sabor Ramen,RAMEN JJAJANG (Combo Corean),0.01,1.0
+51,,SMOOTHIE FRESA,10.0,1.0
+51,,SMOOTHIE FRUTOS ROJOS,10.0,1.0
+20,Elige el sabor de tu soda explosiva,BUBALOO - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,CEREZA - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,CHICLE - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,DURAZNO - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,FRAMBUESA - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,FRESA - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,KIWI - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,LITCHI - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,MANGO - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,MANZANA VERDE - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,MARACUYA - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,MORA AZUL - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,NEON FRUTOS ROJOS - Sodas explosivas,25.0,1.0
+20,Elige el sabor de tu soda explosiva,NEON MANZANA VERDE - Sodas explosivas,25.0,1.0
+20,Elige el sabor de tu soda explosiva,NEON MORA AZUL - Sodas explosivas,25.0,1.0
+20,Elige el sabor de tu soda explosiva,SANDÍA - Sodas explosivas,15.0,1.0
+20,Elige el sabor de tu soda explosiva,frutos rojos,15.0,1.0
+20,Elige el sabor de tu soda explosiva,matcha coco,15.0,1.0
+21,Sabor de tu Té,CANELA MANZANA TÉ´S,0.0,1.0
+21,Sabor de tu Té,FRUTOS ROJOS TÉ'S,20.0,1.0
+21,Sabor de tu Té,FUSIÓN HERBAL TÉ´S,0.0,1.0
+21,Sabor de tu Té,HIERBABUENA TÉ´S,0.0,1.0
+21,Sabor de tu Té,LIMÓN TÉ´S,0.0,1.0
+21,Sabor de tu Té,MANZANILLA TÉ´S,0.0,1.0
+56,,TTEOKBOKKI BULDAK - ORIGINAL,15.0,1.0
+56,,TTEOKBOKKI CJ BIBIGO - 125 G SWEET & SPICY,10.0,1.0
+56,,TTEOKBOKKI CJ BIBIGO - 125 g HOT & SPICY,10.0,1.0
+56,,TTEOKBOKKI CJ BIBIGO - 360 g HOT & SPICY,30.0,1.0
+56,,TTEOKBOKKI CJ BIBIGO - 360 g Sweet & Spicy,30.0,1.0
+103,,BANDERILLA COREANA,0.0,1.0
+8,Elige el sabor de tus salsas,AJO PARMESANO ADEREZO M,0.01,2.0
+8,Elige el sabor de tus salsas,BBQ A LA DIABLA SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,BBQ CHIPOTLE SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,BBQ HABANERO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,BBQ SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,BÚFALO CHAMPI SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,BÚFALO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,CAJÚN SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,CHEETOS SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,CHINGU TERIYAKI SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,DORITOS NACHO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,FLAMIN HOT SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,FRESA SPICY SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,JALAPEÑO SPICY SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,KRAZY HOT SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,LEMON PEPPER SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,LOUISIANA SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,MANGO GUAJILLO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,MANGO HABANERO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,MANGO HOT SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,MEZCAT SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,NARANJA CHIPOTLE SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,ORIGINAL HOT SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,PELONRICO GATUNO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,PIÑA GUAJILLO,0.1,2.0
+8,Elige el sabor de tus salsas,RANCHERITOS SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,RUFFLESS QUESO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,SALSA BRAVA CH,0.01,2.0
+8,Elige el sabor de tus salsas,SRIRACHA SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,TAMARINDO SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,ZARZAMORA CHIPOTLE SALSA CH,0.01,2.0
+8,Elige el sabor de tus salsas,tupsi pop,0.1,2.0
+9,,AJO PARMESANO ADEREZO G,0.01,2.0
+9,,BBQ A LA DIABLA SALSA G,0.01,2.0
+9,,BBQ CHIPOTLE SALSA G,0.01,2.0
+9,,BBQ HABANERO SALSA G,0.01,2.0
+9,,BBQ SALSA G,0.01,2.0
+9,,BÚFALO CHAMPI SALSA G,0.01,2.0
+9,,BÚFALO SALSA G,0.01,2.0
+9,,CAJÚN SALSA G,0.01,2.0
+9,,CHEETOS SALSA G,0.01,2.0
+9,,CHINGU TERIYAKI SALSA G,0.01,2.0
+9,,DORITOS NACHO SALSA G,0.01,2.0
+9,,FLAMIN HOT SALSA G,0.01,2.0
+9,,FRESA SPICY SALSA G,0.01,2.0
+9,,JALAPEÑO SPICY SALSA G,0.01,2.0
+9,,KRAZY HOT SALSA G,0.01,2.0
+9,,LEMON PEPPER SALSA G,0.01,2.0
+9,,LOUISIANA SALSA G,0.01,2.0
+9,,MANGO GUAJILLO SALSA G,0.01,2.0
+9,,MANGO HABANERO SALSA G,0.01,2.0
+9,,MANGO HOT SALSA G,0.01,2.0
+9,,MEZCAT SALSA G,0.01,2.0
+9,,NARANJA CHIPOTLE SALSA G,0.01,2.0
+9,,ORIGINAL HOT SALSA G,0.01,2.0
+9,,PELONRICO GATUNO SALSA G,0.01,2.0
+9,,PIÑA GUAJILLO,0.01,2.0
+9,,RANCHERITOS SALSA G,0.01,2.0
+9,,RUFFLESS QUESO SALSA G,0.01,2.0
+9,,SALSA BRAVA G,0.01,2.0
+9,,SRIRACHA SALSA G,0.01,2.0
+9,,TAMARINDO SALSA G,0.01,2.0
+9,,ZARZAMORA CHIPOTLE SALSA G,0.01,2.0
+9,,tupsi pop,0.01,2.0
+92,Elige la salsa de tus chilaquiles,SALSA ROJA CHILAQUILES,0.01,1.0
+92,Elige la salsa de tus chilaquiles,SALSA VERDE CHILAQUILES,0.01,1.0
+54,¿Agregar Salsa Extra?,AJO PARMESANO ADEREZO M,15.0,1.0
+54,¿Agregar Salsa Extra?,BBQ A LA DIABLA SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,BBQ CHIPOTLE SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,BBQ HABANERO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,BBQ SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,BÚFALO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,CAJÚN SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,CHEETOS SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,CHINGU TERIYAKI SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,DORITOS NACHO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,FLAMIN HOT SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,FRESA SPICY SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,JALAPEÑO SPICY SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,KRAZY HOT SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,LEMON PEPPER SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,MANGO GUAJILLO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,MANGO HABANERO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,MANGO HOT SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,MEZCAT SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,NARANJA CHIPOTLE SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,ORIGINAL HOT SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,RANCHERITOS SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,RUFFLESS QUESO SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,SALSA BRAVA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,SRIRACHA SALSA CH,15.0,1.0
+54,¿Agregar Salsa Extra?,TAMARINDO SALSA CH,15.0,1.0
+55,,AJO PARMESANO ADEREZO M,15.0,1.0
+55,,BBQ A LA DIABLA SALSA G,15.0,1.0
+55,,BBQ CHIPOTLE SALSA G,15.0,1.0
+55,,BBQ HABANERO SALSA G,15.0,1.0
+55,,BBQ SALSA G,15.0,1.0
+55,,BÚFALO SALSA G,15.0,1.0
+55,,CAJÚN SALSA G,15.0,1.0
+55,,CHEETOS SALSA G,15.0,1.0
+55,,CHINGU TERIYAKI SALSA G,15.0,1.0
+55,,DORITOS NACHO SALSA G,15.0,1.0
+55,,FLAMIN HOT SALSA G,15.0,1.0
+55,,FRESA SPICY SALSA G,15.0,1.0
+55,,JALAPEÑO SPICY SALSA G,15.0,1.0
+55,,KRAZY HOT SALSA G,15.0,1.0
+55,,LEMON PEPPER SALSA G,15.0,1.0
+55,,MANGO GUAJILLO SALSA G,15.0,1.0
+55,,MANGO HABANERO SALSA G,15.0,1.0
+55,,MANGO HOT SALSA G,15.0,1.0
+55,,MEZCAT SALSA G,15.0,1.0
+55,,NARANJA CHIPOTLE SALSA G,15.0,1.0
+55,,ORIGINAL HOT SALSA G,15.0,1.0
+55,,RANCHERITOS SALSA G,15.0,1.0
+55,,RUFFLESS QUESO SALSA G,15.0,1.0
+55,,SALSA BRAVA G,15.0,1.0
+55,,SRIRACHA SALSA G,15.0,1.0
+55,,TAMARINDO SALSA G,15.0,1.0
+47,,CAJUN SAZONADOR G,5.0,1.0
+47,,LEMON PEPPER SALSA G,5.0,1.0
+47,,QUESO CHEDAR SAZONADOR G,5.0,1.0
+100,Elige el sabor de tu arizona,ARIZONA KIWI FRESA,0.0,1.0
+100,Elige el sabor de tu arizona,ARIZONA MANGO,0.0,1.0
+100,Elige el sabor de tu arizona,ARIZONA SANDIA,0.0,1.0
+94,,CHAMOYADA 14 OZ,17.0,1.0
+94,,CHAMOYADA 16 OZ,34.0,1.0
+57,,FAPPÉ DE AGUA 14 OZ (CH),0.0,1.0
+57,,FRAPPÉ  16OZ,10.0,1.0
+6,,FRAPPÉ 14 OZ (CH),0.0,1.0
+6,,FRAPPÉ 16 OZ (G),10.0,1.0
+28,,DONITAS GATUNAS 14PZA,40.0,1.0
+28,,DONITAS GATUNAS 8PZA,25.0,1.0
+15,Tamaño de tus papas,PAPAS FRITAS - CORTE RECTO - CH (170g),29.0,1.0
+15,Tamaño de tus papas,PAPAS FRITAS - CORTE RECTO G (350g),50.0,1.0
+15,Tamaño de tus papas,PAPAS FRITAS - CORTE RECTO J (500g),60.0,1.0
+15,Tamaño de tus papas,PAPAS FRITAS - CORTE RECTO M (270g),35.0,1.0
+33,Elija el tipo de Leche,BASE AGUA BOBAH TEA,0.0,1.0
+33,Elija el tipo de Leche,LECHE DESLACTOSADA BOBAH TEA,12.0,1.0
+33,Elija el tipo de Leche,LECHE ENTERA BOBAH TEA,0.0,1.0
+36,Tipo de leche,LECHE DESLACTOSADA,12.0,1.0
+36,Tipo de leche,LECHE ENTERA,0.0,1.0
+17,,LECHE DESLACTOSADA,12.0,1.0
+17,,LECHE ENTERA,0.0,1.0
+93,,LECHE DESLACTOSADA,12.0,1.0
+93,,LECHE ENTERA,0.0,1.0
+52,,LECHE DESLACTOSADA,12.0,1.0
+52,,LECHE ENTERA,0.0,1.0
+2,Agrega tus toppings,CAJETA - Toppings crepa,12.0,
+2,Agrega tus toppings,CHOCOLATE LIQ HERSEY - Toppings crepa,12.0,
+2,Agrega tus toppings,CREMA BATIDA - Toppings crepa,12.0,
+2,Agrega tus toppings,CREMA PASTELERA - Toppings crepa,12.0,
+2,Agrega tus toppings,GALLETA OREO - Toppings crepa,12.0,
+2,Agrega tus toppings,LECHERA - Toppings crepa,12.0,
+2,Agrega tus toppings,MAPPLE - Toppings crepa,12.0,
+2,Agrega tus toppings,MERMELADA CEREZA NEGRA - Toppings crepa,12.0,
+2,Agrega tus toppings,MERMELADA DE ZARZAMORA - Toppings crepa,12.0,
+2,Agrega tus toppings,MERMELADA FRESA - Toppings crepa,12.0,
+2,Agrega tus toppings,MERMELADA FRUTOS ROJOS - Toppings crepa,12.0,
+2,Agrega tus toppings,NUTELLA - Toppings crepa,0.0,
+2,Agrega tus toppings,"No, gracias",0.0,1.0
+2,Agrega tus toppings,PHILADELPHIA - Toppings crepa,12.0,
+79,,AZÚCAR GLASS - Decoración crepa,0.0,1.0
+79,,CANELA - Decoración Crepa,0.0,1.0
+79,,Chispas,0.0,1.0
+79,,Nuez,0.0,1.0
+95,Has tu bobah Granizado,FRAPPE DE AGUA,15.0,1.0
+95,Has tu bobah Granizado,NO APLICA,0.0,1.0

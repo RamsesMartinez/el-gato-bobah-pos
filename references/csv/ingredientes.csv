@@ -1,0 +1,319 @@
+ID,Categoría,Nombre,Costo,Proveedor,Unidad,Control de Stock,Stock,Merma
+267,Abarrotes,Palillos chinos - 1 par,77.68,,unid.,Si,133.0,
+250,Abarrotes,Tortillas,13.0,Tienda Abarrotes,kg,Si,4.0,3.0
+50,Aceites,Aceite Comestible Puro De Canola Vita 825ml,39.67,Aurrera,L,Si,-6.125,
+86,Aceites,Aceite Member 20 L,43.43,Sam's Club,L,Si,-294.2,
+109,Aceites,Ingrediente Prueba,0.0,,L,No,,
+245,Aderezos,Aderezo Blue Cheese - L,75.62,MERCADO LIBRE,L,Si,1.573,2.0
+349,Aderezos,Aderezo Honey Mustard (Mostaza Miel) 3.7kg,342.07,Custom Culinary,unid.,Si,1.0,0.0
+328,Aderezos,Ajo Parmesano Aderezo - L Mr Wings,0.0,Mr Wings,L,Si,-0.336,7.0
+203,Aderezos,Caldo de pollo Knorr en polvo,125.0,Aurrera,kg,Si,0.009,1.0
+337,Aderezos,Hot BBQ L - Custom Culinary,71.07,Custom Culinary,L,Si,3.785,5.0
+125,Aderezos,Mayonesa 870g,92.5,Aurrera,unid.,Si,,5.0
+263,Aderezos,Miguelito 1kg,87.6,Dulceria rosita,kg,Si,-2.194,5.0
+341,Aderezos,Ranch Habanero - L Custom Culinary,87.84,MERCADO LIBRE,L,Si,0.887,7.0
+117,Aderezos,Salsa Picante L,30.0,Sam's Club,L,Si,-90.277,3.0
+320,Aderezos,Salsa Roja Chilaquiles,46.23014,,L,Si,,7.0
+127,Aderezos,Salsa Verde Chilaquiles,28.99962,,L,Si,,7.0
+342,Aderezos,Smoky Bbq - L Custom Culinary,139.13,MERCADO LIBRE,L,Si,0.458,7.0
+339,Aderezos,Sobre salsa catsup Heinz 9g,0.0,Sam's Club,unid.,Si,,
+107,Agua,Agua Mineral 2L 3B,6.5,3B,L,Si,-223.36,
+93,Agua,Garrafon Agua Bonafont,1.0,Tienda Abarrotes,L,No,20.0,
+359,Alimentos en bolsa,BULDAK SWICY,0.0,,unid.,Si,,
+315,Alimentos en bolsa,Maruchan Vaso Queso - 64 Gr,15.21,MERCADO LIBRE,unid.,Si,0.0,
+171,Alimentos en bolsa,Ramen Carbonara - Buldak,40.0,ML - TOYO FOODS,unid.,Si,-15.0,
+329,Alimentos en bolsa,Ramen Carbonara - Volcano,30.41,MEGAFOOD,unid.,Si,0.0,
+233,Alimentos en bolsa,Ramen Cheese - Ottogi,52.5,,unid.,Si,-2.0,
+179,Alimentos en bolsa,Ramen Cream Carbonara - Buldak,35.0,,unid.,Si,-17.0,
+188,Alimentos en bolsa,Ramen Curry - Buldak,29.0,,unid.,Si,6.0,
+172,Alimentos en bolsa,Ramen Habanero Limon - Buldak,0.0,,unid.,Si,,
+345,Alimentos en bolsa,Ramen Habanero Limon-Buldak,75.0,,unid.,No,4.0,
+174,Alimentos en bolsa,Ramen Hot Chicken 2X - Buldak,26.57,,unid.,Si,8.0,
+175,Alimentos en bolsa,Ramen Hot Chicken 3X -Buldak,40.0,,unid.,Si,0.0,
+173,Alimentos en bolsa,Ramen Hot Chicken - Buldak,32.0,,unid.,Si,10.0,
+176,Alimentos en bolsa,Ramen Hot Chicken Cheese - Buldak,27.98,,unid.,Si,3.0,
+185,Alimentos en bolsa,Ramen Hot Pepper - Buldak,0.0,,unid.,Si,0.0,
+184,Alimentos en bolsa,Ramen Jin - Ottogi,0.0,,unid.,No,0.0,
+186,Alimentos en bolsa,Ramen Jjajang - Buldak,32.0,,unid.,Si,0.0,
+243,Alimentos en bolsa,Ramen Kimchi - Buldak,0.0,,unid.,Si,0.0,
+187,Alimentos en bolsa,Ramen Kimchi - Otoggi,40.0,,unid.,Si,-3.0,
+256,Alimentos en bolsa,Ramen Kimchi - Paldo,30.59,,unid.,Si,21.0,
+178,Alimentos en bolsa,Ramen Kimchi - Samyang,25.6,,unid.,Si,-1.0,
+183,Alimentos en bolsa,Ramen Lovely Hot Chicken - Buldak,41.33,,unid.,Si,0.0,
+177,Alimentos en bolsa,Ramen Picante Shin Ramyun - Nongshim,26.5,ML - GUVALFOODS,unid.,Si,-2.0,
+308,Alimentos en bolsa,Ramen Pollo - Otoki,40.0,,unid.,Si,,
+189,Alimentos en bolsa,Ramen Quattro Cheese - Buldak,40.0,,unid.,Si,24.0,
+299,Alimentos en bolsa,Ramen Ramyon Pollo - Ottogi,2.19,ML - TOYO FOODS,unid.,Si,0.0,
+181,Alimentos en bolsa,Ramen Rosé - Buldak,45.0,,unid.,Si,0.0,
+190,Alimentos en bolsa,Ramen Samyang - Samyang,14.0,,unid.,Si,0.0,
+347,Alimentos en bolsa,Ramen samyang Tom Yum- buldak,0.0,,unid.,Si,,
+182,Alimentos en bolsa,Ramen Tomato Hot Chicken - Buldak,0.0,,unid.,Si,0.0,
+346,Alimentos en bolsa,Ramen Tomy Yum - buldak samyang,75.0,,unid.,Si,,
+180,Alimentos en bolsa,Ramen Yakisoba Hot Chicken - Buldak,0.0,,unid.,Si,0.0,
+300,Alimentos en bolsa,Rapokki de queso - Yopokki 260g,52.0,MEGAZONE,unid.,Si,0.0,
+213,Azúcar y sustitutos,Azúcar estándar Aurrera 900 g,25.0,Aurrera,unid.,Si,1.0,3.0
+221,Bases Frappe,Base Algodón de Azúcar - MIG,213.15,MIG,kg,Si,1.8,3.0
+224,Bases Frappe,Base Choco Avellana - MIG,493.29,MIG,kg,Si,0.848,3.0
+219,Bases Frappe,Base Fresas con Crema 1Kg - MIG,213.15,MIG,kg,Si,0.3,3.0
+223,Bases Frappe,Base Matcha Té Verde 1kg - MIG,284.49,MIG,kg,Si,0.4,1.0
+220,Bases Frappe,Base Mix Red Velvet (1Kg) - MIG,258.39,MIG,kg,Si,1.1,1.0
+225,Bases Frappe,Base sabor Chocolate Blanco kg - MIG,397.59,MIG,kg,Si,1.6,1.0
+227,Bases Frappe,Base Sabor Vainilla kg - MIG,397.59,MIG,kg,Si,0.8,1.0
+222,Bases Frappe,Base Té Chai Vainilla (Tipo Elefante) Kg - MIG,493.29,MIG,kg,Si,2.4,1.0
+361,Bases Frappe,DRAGON FRUIT,0.0,,fl oz,Si,,
+363,Bases Frappe,FRAPPÉ MAGNUM,0.0,,fl oz,Si,,
+364,Bases Frappe,FRAPPÉ MORDISCO,0.0,,fl oz,Si,,
+119,Bases Frappe,Polvo Zaachila Strawberry Cream,201.47,Sam's Club,kg,Si,0.25,0.0
+365,Bebidas asiaticas preparadas,CHAMOYADA PELON,0.0,,fl oz,Si,,
+360,Bebidas asiaticas preparadas,FRUTOS ROJOS,0.0,,fl oz,Si,,
+235,Bebidas asiaticas preparadas,Ice talk Blue Lemanade 230ml,25.0,DOKSURI,unid.,Si,0.0,0.0
+234,Bebidas asiaticas preparadas,Ice Talk Durazno 230ml,25.0,DOKSURI,unid.,Si,-3.0,0.0
+236,Bebidas asiaticas preparadas,Ice Talk Sandía 230ml,25.0,DOKSURI,unid.,Si,1.0,0.0
+358,Bebidas asiaticas preparadas,matcha coco,0.0,,fl oz,Si,,
+350,Bebidas asiaticas preparadas,PERLAS CHAMOY,12.0,Colday,fl oz,Si,,0.0
+367,Bebidas asiaticas preparadas,perlas de sandia,0.0,,fl oz,Si,,0.0
+130,Carnes y Pollo,Pechuga de Pollo,90.0,Aurrera,kg,No,,7.0
+210,Carnes y Pollo,Pepperoni Campestre por kilo,304.0,Aurrera,kg,Si,-0.31,7.0
+255,Carnes y Pollo,Tenders GRVI,128.0,GRUVI,kg,Si,0.3,7.0
+266,Concentrados y Jarabes,Calpis - 1L,144.0,Casa del Chef,L,Si,1.0,7.0
+154,Concentrados y Jarabes,Concentrado Baileys - L Sirope,75.0,La Casa del Cheff,L,Si,-3.95,5.0
+156,Concentrados y Jarabes,Concentrado Banana - L Sirope,74.0,La Casa del Cheff,L,Si,2.0,5.0
+161,Concentrados y Jarabes,Concentrado Bubalo - L Sirope,69.0,La Casa del Cheff,L,Si,-2.256,5.0
+157,Concentrados y Jarabes,Concentrado Cereza - L Sirope,69.0,La Casa del Cheff,L,Si,2.0,5.0
+162,Concentrados y Jarabes,Concentrado Chicle - L Sirope,69.0,La Casa del Cheff,L,Si,1.0,5.0
+159,Concentrados y Jarabes,Concentrado Frutos de la Pasión - L Sirope,69.0,La Casa del Cheff,L,Si,2.0,5.0
+160,Concentrados y Jarabes,Concentrado Kiwi - L Sirope,69.0,La Casa del Cheff,L,Si,1.0,5.0
+228,Concentrados y Jarabes,Concentrado Limón Dulce,110.49,MIG,L,Si,2.0,
+155,Concentrados y Jarabes,Concentrado Manzana Verde - L Sirope,69.0,La Casa del Cheff,L,Si,1.0,5.0
+158,Concentrados y Jarabes,Concentrado Moza Azul - L Sirope,69.0,La Casa del Cheff,L,Si,1.0,5.0
+151,Concentrados y Jarabes,Concentrado Pulpa de Mango - L Sirope,70.0,La Casa del Cheff,L,Si,-0.385,5.0
+152,Concentrados y Jarabes,Concentrado Pulpa de Maracuya - L Sirope,70.0,La Casa del Cheff,L,Si,1.0,5.0
+298,Concentrados y Jarabes,Vainilla,50.0,,L,Si,,3.0
+73,Congelados,Alitas Picosas FC 6X2 KG,145.0,GRUVI,kg,Si,-27.4,7.0
+311,Congelados,Aros de Cebolla Kg,88.51,GRUVI,kg,Si,0.9,7.0
+237,Congelados,Boneless - Kg,128.0,Carnicos B&B,kg,Si,-26.017,7.0
+47,Congelados,Dedos de Queso Kg,204.54,GRUVI,kg,Si,0.487,3.0
+310,Congelados,Jalapeños Rellenos Kg,178.03,GRUVI,kg,Si,3.645,7.0
+238,Congelados,Munchers Kg,80.0,GRUVI,kg,Si,1.778,7.0
+309,Congelados,Papa Carita Kg,152.0,GRUVI,kg,Si,0.0,7.0
+116,Congelados,Papa Corte Delgado Kg,52.57,GRUVI,kg,Si,-29.959,7.0
+239,Congelados,Papa Corte Espiral Sazonado Kg,72.95,GRUVI,kg,Si,0.0,7.0
+304,Congelados,Papa Corte Gajo Sazonados Kg,62.0,GRUVI,kg,Si,-1.71,7.0
+74,Congelados,Papa Corte Ondulado Kg,53.01,GRUVI,kg,Si,0.0,7.0
+242,Congelados,Papa Corte Regular Cascara Kg,53.01,GRUVI,kg,Si,-26.288,7.0
+336,Congelados,Pizza Hawaiana Individual - FUD 265g,0.0,Sigma Foodservice,unid.,Si,,
+38,Congelados,Pizza Red Baron 1.97 Kg - 4 Quesos,24.92,Sam's Club,unid.,Si,11.0,
+37,Congelados,Pizza Red Baron 1.97 Kg - Pepperoni,24.92,Sam's Club,unid.,Si,-6.0,
+209,"Consomés, salsas ya derezos",Salsa Hunts cuatro quesos 360 g,82.0,Aurrera,kg,Si,-5.446,3.0
+344,Decoración,Azúcar glass,55.0,Aurrera,kg,Si,,7.0
+246,Decoración,Chamoy,38.0,Aurrera,L,Si,-8.853,3.0
+153,Decoración,Confetti comestible,140.0,La Casa del Cheff,kg,Si,0.0,5.0
+294,Decoración,Granillo cappuccino,0.0,,kg,Si,0.695,7.0
+293,Decoración,Granillo fresa,0.0,,kg,Si,1.273,7.0
+226,Decoración,Perlas Explosivas Cereza 1kg - MIG,162.69,MIG,kg,Si,1.0,10.0
+193,Decoración,Perlas Explosivas Chicle Azul - Colday,139.2,Colday,kg,Si,2.5,10.0
+196,Decoración,Perlas explosivas Dragon Fruit - Colday,147.2,Colday,kg,Si,2.5,10.0
+195,Decoración,Perlas explosivas fresa - Colday,139.2,Colday,kg,Si,2.5,10.0
+192,Decoración,Perlas explosivas kiwi - Colday,139.2,Colday,kg,Si,2.5,10.0
+194,Decoración,Perlas explosivas Mango - Colday,139.2,Colday,kg,Si,2.5,10.0
+197,Decoración,Perlas explosivas Manzana Verde - Colday,139.2,Colday,kg,Si,2.5,10.0
+63,Desechables,16MJ32 ENVASE DART BOWL MEDIO,0.5,TD Empaques,unid.,Si,-72.0,
+115,Desechables,Bolsa,0.2,TD Empaques,unid.,Si,,1.0
+145,Desechables,C-0 CAMISETA NEGRO P.B. (30*34),48.0,TD Empaques,kg,Si,1.0,1.0
+146,Desechables,C-2 CAMISETA NEGRO P.B. (25*52),55.0,TD Empaques,kg,Si,1.0,1.0
+147,Desechables,C-3 CAMISETA NEGRO P.B. (30*60),55.0,TD Empaques,kg,Si,1.0,1.0
+88,Desechables,Charola 7 Cuevas,1.92,TD Empaques,unid.,Si,-712.0,
+144,Desechables,CHAROLA 7 REYMA,1.1,TD Empaques,unid.,Si,50.0,
+241,Desechables,CHAROLA P/ALIMENTOS MINI BCO [ECO403],3.88,GRUVI,unid.,Si,,
+61,Desechables,Contenedor 7x7 Liso Reyma,2.1,TD Empaques,unid.,Si,-536.0,
+102,Desechables,Contenedor 8x8 Liso Bio Reyma,2.5,TD Empaques,unid.,Si,,
+106,Desechables,CUCHARA PASTELERA,1.0,Tienda Abarrotes,unid.,Si,20.0,
+68,Desechables,FAJILLA DE CARTON INIX (BODYCUP),0.65,TD Empaques,unid.,Si,100.0,
+60,Desechables,Hamburguesera Chimex Bio,0.72,TD Empaques,unid.,Si,-1408.0,
+307,Desechables,Popote biofase,0.1,Biofase,unid.,No,,
+164,Desechables,POPOTE PARA TAPIOCA,80.0,TD Empaques,kg,Si,,5.0
+69,Desechables,PORTAVASO,3.5,TD Empaques,unid.,Si,0.0,
+80,Desechables,ROLLO PARA MÁQUINA SELLADORA 90MM,1.05,,unid.,Si,,
+101,Desechables,TAPA 00 CUEVAS,0.2,TD Empaques,unid.,Si,-627.0,
+103,Desechables,TAPA 0 INIX (TS1),0.2,TD Empaques,unid.,Si,,
+143,Desechables,TAPA 0 PRIMO,0.2,TD Empaques,unid.,Si,100.0,
+64,Desechables,TAPA 32 JL 10 PAQ/100 PZA DART,1.08,TD Empaques,unid.,Si,100.0,
+229,Desechables,Tapa Domo 16oz - MIG,1.09,MIG,unid.,Si,702.0,
+65,Desechables,TAPA DOMO 16 REYMA,0.76,TD Empaques,unid.,Si,-734.0,
+82,Desechables,TAPA DOMO DL92 INIX C/1000 PZA,0.7,TD Empaques,unid.,Si,,
+84,Desechables,TAPA DOMO DL98 INIX,0.95,COMERCIAL DE VASOS,unid.,Si,,
+98,Desechables,TAPA PL2 (TS2) INIX,0.38,TD Empaques,unid.,Si,,
+141,Desechables,TAPA TRAVEL 16 MICHAN,0.88,TD Empaques,unid.,Si,50.0,
+67,Desechables,TAPA TRAVELER 16 INIX (TPS16N),1.1,TD Empaques,unid.,Si,49.0,
+150,Desechables,TENEDOR SOPERO CLASSY,0.52,TD Empaques,unid.,Si,-102.0,0.0
+100,Desechables,VASO 00 CUEVAS,0.17,TD Empaques,unid.,Si,-627.0,
+104,Desechables,VASO 0 INIX (S100),0.3,TD Empaques,unid.,Si,,
+142,Desechables,VASO 0 PRIMO,0.19,TD Empaques,unid.,Si,100.0,
+79,Desechables,VASO 14 PET INIX LC14,1.36,TD Empaques,unid.,Si,,
+78,Desechables,VASO 16 INIX (V16L),1.2,TD Empaques,unid.,Si,,
+81,Desechables,VASO 16L REYMA,1.08,COMERCIAL DE VASOS,unid.,Si,-1808.0,
+140,Desechables,VASO ENCERADO 12 BLANCO INIX (VPP12),1.8,TD Empaques,unid.,Si,50.0,
+66,Desechables,VASO ENCERADO 16 BLANCO LA UNIVERSAL,1.7,TD Empaques,unid.,Si,100.0,
+83,Desechables,VASO LC16 PET INIX,1.9,COMERCIAL DE VASOS,unid.,Si,,
+230,Desechables,Vaso Pet16oz - MIG,2.15,MIG,unid.,Si,999.0,
+99,Desechables,VASO TH200 (S200) INIX,0.44,TD Empaques,unid.,Si,,
+281,Dulces y Chocolates,Banderilla mango - El Gato,50.66,DULCERIA LA ESPECIAL,unid.,Si,-4.533,3.0
+316,Dulces y Chocolates,Cajeta,157.58,Aurrera,kg,Si,0.149,3.0
+335,Dulces y Chocolates,Chocolate en polvo Kg,98.57,Aurrera,kg,Si,1.4,5.0
+284,Dulces y Chocolates,Chocomenta mini - selfies,115.78,DULCERIA LA ESPECIAL,kg,Si,0.435,5.0
+163,Dulces y Chocolates,CUANDA LUCKY MANGUITO 1/8,65.49,DULCERIA LA ESPECIAL,kg,Si,,5.0
+283,Dulces y Chocolates,Gomitas Lombriz - Cuanda 1kg,93.0,DULCERIA LA ESPECIAL,kg,Si,-4.319,5.0
+334,Dulces y Chocolates,Jarabe Caramelo,80.88,Aurrera,kg,Si,0.68,5.0
+313,Dulces y Chocolates,Jarabe Hershey's Chocolate kg,87.0,Sam's Club,kg,Si,7.08,5.0
+216,Dulces y Chocolates,Jarabe Hershey's fresa kg,123.73,Aurrera,kg,Si,2.089,5.0
+288,Dulces y Chocolates,Kinder bueno - Ferrero 43g,18.22,DULCERIA LA ESPECIAL,unid.,Si,3.0,
+286,Dulces y Chocolates,Mazapán Jumbo - La Rosa 50g,4.63,DULCERIA LA ESPECIAL,unid.,Si,-32.0,
+287,Dulces y Chocolates,Mazapan Polvo - La Rosa 1kg,94.2,DULCERIA LA ESPECIAL,kg,Si,-6.354,3.0
+215,Dulces y Chocolates,Mermelada McCormick zarzamora 670 g,59.0,Aurrera,unid.,Si,0.5,5.0
+368,Embutidos,chuleta ahumada,25.0,,unid.,Si,,
+353,Embutidos,COMBINADA,0.0,Sigma Foodservice,kg,Si,,0.0
+126,Embutidos,Mayonesa Cda,1.25,Aurrera,unid.,Si,,7.0
+247,Embutidos,Peperoni,132.0,Aurrera,kg,Si,-2.941,7.0
+351,Embutidos,QUESO,0.0,Sigma Foodservice,kg,Si,,0.0
+202,Embutidos,Rebanada Jamón,0.0,Aurrera,unid.,Si,-430.5,
+352,Embutidos,SALCHICHA,0.0,Sigma Foodservice,kg,Si,,0.0
+369,Embutidos,salchichas,20.0,,unid.,Si,,
+133,Frutas y Verduras,Ajo,12.0,Aurrera,unid.,Si,,7.0
+113,Frutas y Verduras,Apio,82.35,Aurrera,kg,Si,,15.0
+132,Frutas y Verduras,Cebolla,28.57,Aurrera,kg,No,0.346,7.0
+251,Frutas y Verduras,Champiñones,151.4716,Sam's Club,kg,Si,0.0,30.0
+249,Frutas y Verduras,Champiñones Monte Blanco (380 g),57.55,Sam's Club,unid.,Si,1.2,0.0
+319,Frutas y Verduras,Chile cuaresmeño por kilo,50.0,Aurrera,kg,Si,-0.183,3.0
+204,Frutas y Verduras,Chile de árbol Great Value 100 g,30.0,Aurrera,unid.,Si,1.0,3.0
+205,Frutas y Verduras,Chile guajillo por kilo,325.0,Aurrera,kg,Si,0.791,3.0
+321,Frutas y Verduras,Chile habanero por kilo,108.48,Aurrera,kg,Si,0.098,7.0
+129,Frutas y Verduras,Chile Serrano por kilo,97.0,Aurrera,kg,Si,-1.636,7.0
+343,Frutas y Verduras,Fresa natural,140.0,Aurrera,kg,Si,,7.0
+211,Frutas y Verduras,Jitomate saladet por kilo,26.42,Aurrera,kg,Si,0.454,7.0
+121,Frutas y Verduras,Lechuga Italiana por pieza,18.9,Aurrera,unid.,Si,-61.981,7.0
+322,Frutas y Verduras,Mangos en Cubos - Member's Mark,83.82,Sam's Club,kg,Si,-3.15,7.0
+136,Frutas y Verduras,Manojo Cilantro,14.0,Aurrera,unid.,Si,,7.0
+214,Frutas y Verduras,Pepino por kilo,29.95,Aurrera,kg,Si,-61.018,5.0
+323,Frutas y Verduras,Piña en Almíbar kg,59.85,Sam's Club,kg,Si,3.7,15.0
+312,Frutas y Verduras,Plátano Kg,36.64,,kg,Si,1.125,
+135,Frutas y Verduras,Ramo epazote,10.0,Aurrera,unid.,No,,7.0
+128,Frutas y Verduras,Tomate verde en malla 1kg,36.55,Aurrera,kg,Si,-1.722,7.0
+248,Frutas y Verduras,Verduras Great Value congelados 500 g,50.0,Aurrera,kg,Si,,5.0
+112,Frutas y Verduras,Zanahoria por kilo,11.5,Aurrera,kg,Si,-69.206,15.0
+91,Harinas,HARINA PARA CREPAS,67.5,CUATRO HOJAS,kg,Si,-41.205,3.0
+48,Harinas,Harina pastel Aurrera,81.4,Aurrera,kg,Si,-1.113,
+92,Harinas,Mezcla Crepas,25.123,,unid.,Si,,13.0
+51,Harinas,Mezcla Masa Mini Donas Bote,27.7176,,unid.,Si,,
+366,Harinas,miel maple,0.0,,fl oz,Si,,
+200,Harinas,Pan blanco Wonder con ajonjolí 567 g,57.5,Aurrera,unid.,Si,-0.2,5.0
+201,Harinas,Rebanada Pan blanco Wonder con ajonjolí 567 g,2.875,Aurrera,unid.,Si,,
+45,Helados y Paletas,Bolsa de Hielo Fiesta 15 Kg,7.5,Sam's Club,kg,Si,-708.457,7.0
+32,Helados y Paletas,Helado de Crema Member Mark Sabor Fresa 4.7 L,40.27,Sam's Club,L,Si,4.7,
+296,Helados y Paletas,Mini Gansito - Marinela 24 gr,6.15,Sam's Club,unid.,Si,18.0,
+295,Helados y Paletas,Mini Paletas Frutales - Ola Malú 28g,0.0,Sam's Club,unid.,Si,39.0,
+305,Helados y Paletas,Nieve de Limón Member's Mark 4.7 L,43.31,Sam's Club,L,Si,2.882,7.0
+29,Lácteos,Aderezo de Queso,84.41,Sam's Club,kg,Si,-90.534,7.0
+46,Lácteos,Clavel Polvo Caja 24 piezas 460gr,174.82,Delta Foods,kg,Si,-187.781,
+138,Lácteos,Crema,69.0,Aurrera,L,No,,7.0
+30,Lácteos,Crema de Avellana Member's Mark 1 kg,121.74,Sam's Club,kg,Si,4.37,
+49,Lácteos,Huevo,3.03,Aurrera,unid.,Si,-442.806,
+207,Lácteos,Leche Condensada La Lechera Bolsa 670g,49.5,Aurrera,unid.,Si,1.0,3.0
+44,Lácteos,Leche Deslactosada - Santa Clara 1L,26.47,Sam's Club,L,Si,-135.56,3.0
+218,Lácteos,Leche en polvo Carnation clavel Kg,134.78,basura,kg,Si,-13.017,5.0
+314,Lácteos,Leche Entera - Mermbers 1L,23.22,Sam's Club,L,Si,-83.994,
+43,Lácteos,Leche Entera - Santa Clara 1L,26.3,Sam's Club,L,Si,-259.423,
+87,Lácteos,Manga crema batida - On Top 453gr,138.0,Sigma Foodservice,kg,Si,-100.253,7.0
+208,Lácteos,Margarina Iberia 4 en 1 kg,136.0,Aurrera,kg,Si,1.5,3.0
+31,Lácteos,Queso Crema Philadelphia,140.0,Sigma Foodservice,kg,Si,-12.665,7.0
+198,Lácteos,Queso manchego Rebanada,3.5,Aurrera,unid.,Si,13.0,0.0
+108,Lácteos,Queso Mozzarella,122.0,Sigma Foodservice,kg,Si,-30.495,7.0
+139,Lácteos,Queso Panela,137.0,Aurrera,kg,No,,7.0
+317,Lácteos,Rebanada Queso Amarillo,2.94,Aurrera,unid.,Si,13.0,
+97,Lácteos,Santa Clara Vainilla 200ml,5.0,Tienda Abarrotes,unid.,Si,,
+257,Mermeladas,Manga cereza negra - Estrali 1Kg,41.0,Todo para el panadero,kg,Si,0.892,3.0
+258,Mermeladas,Manga crema pastelera - Lastur 1kg,28.0,Todo para el panadero,kg,Si,1.0,3.0
+259,Mermeladas,Manga mermelada fresa - 1kg,36.0,Todo para el panadero,kg,Si,0.892,3.0
+260,Mermeladas,Manga mermelada frutos rojos - 1kg,38.0,Todo para el panadero,kg,Si,1.0,3.0
+261,Mermeladas,Manga mermelada zarzamora - 1kg,39.0,Todo para el panadero,kg,Si,1.0,3.0
+62,Papel de empaque,Papel alimenticio,50.0,TD Empaques,kg,Si,-3.288,
+148,Papel de empaque,PAPEL DIA DE MUERTOS,100.0,TD Empaques,kg,Si,0.5,1.0
+149,Papel de empaque,PELICULA 600 INIX (CLR-600),120.0,TD Empaques,unid.,Si,1.0,1.0
+89,Papel de empaque,Rollo Aluminio,0.61,TD Empaques,unid.,Si,-1293.0,
+110,Perlas y Tapioca,Miel mapple,192.0,3B,L,Si,-2.572,5.0
+240,Perlas y Tapioca,Perlas Explosivas Chocolate - Tea Zone 3.2Kg,175.0,Tea Zone,kg,Si,,10.0
+77,Perlas y Tapioca,Tapioca,91.48,,kg,Si,,
+42,Refrescos,Agua Mineral Peñafiel 2L,13.5,Tienda Abarrotes,L,No,4.0,
+302,Refrescos,Arizona Kiwi Fresa,15.25,Sam's Club,unid.,Si,0.0,
+301,Refrescos,ARIZONA Mango (591ml),15.25,Sam's Club,unid.,Si,-4.0,
+303,Refrescos,Arizona Sandía 591ml,16.0,Sam's Club,unid.,Si,-4.0,
+306,Refrescos,Refresco Coca-Cola 32 pzas de 355 ml,17.91,Sam's Club,unid.,Si,18.0,0.0
+105,Refrescos,Sangria 400ml,7.0,Central Tultitlán,unid.,Si,,
+348,Salsas alitas,Aderezo Mostaza Miel - Custom Culinary,92.5,Custom Culinary,L,Si,,7.0
+95,Salsas alitas,BBQ a la Diabla Salsa - L Sirope,58.0,TD Empaques,L,Si,-2.906,2.0
+35,Salsas alitas,BBQ Habanero Salsa - L Mr Wings,71.05,Mr Wings,L,Si,-1.59,7.0
+338,Salsas alitas,BBQ L - Custom Culinary,55.06,Custom Culinary,L,Si,3.785,7.0
+324,Salsas alitas,BBQ Salsa L - Hunts,67.8,Sam's Club,L,Si,-37.25,7.0
+6,Salsas alitas,BBQ Salsa - L Mr Wings,48.79,Mr Wings,L,Si,0.0,7.0
+340,Salsas alitas,BBQ Smoky - L Custom Culinary,0.0,MERCADO LIBRE,kg,Si,,7.0
+244,Salsas alitas,Bufalo para alitas Salsa (mr wings champ) - L Mr Wings,56.84,Mr Wings,L,Si,0.684,7.0
+59,Salsas alitas,Bufalo Salsa - L Sirope,58.0,TD Empaques,L,Si,-3.06,5.0
+326,Salsas alitas,Buffalo - L Custom Culinary,0.0,,L,Si,1.5,7.0
+23,Salsas alitas,Cajún estilo Louisiana Salsa - L Mr Wings,70.79,Mr Wings,L,Si,0.23,7.0
+96,Salsas alitas,Extra hot salsa - L Mr Wings,73.42,Mr Wings,L,Si,2.83,7.0
+57,Salsas alitas,Flamin Hot Salsa - L Sirope,58.0,TD Empaques,L,Si,-1.3,
+56,Salsas alitas,Fresa Hot Salsa - L Sirope,58.0,TD Empaques,L,Si,-4.3,
+58,Salsas alitas,Jalapeño Hot (Hot Jalapeño) - L Sirope,58.0,TD Empaques,L,Si,-0.72,
+55,Salsas alitas,Lemon Pepper Salsa - L Custom Culinary,107.87,Custom Culinary,L,Si,-10.693,7.0
+253,Salsas alitas,Louisiana Salsa - L -Hot Bull,78.76,Maprica,L,Si,3.7,7.0
+76,Salsas alitas,Mango Guajillo Salsa - L Sirope,58.0,TD Empaques,L,Si,2.1,
+252,Salsas alitas,Mango Habanero Salsa - L Custom Culinary,83.15,Maprica,L,Si,8.37,7.0
+13,Salsas alitas,Mango Habanero Salsa - L Mr Wings,57.11,Mr Wings,L,Si,-5.88,7.0
+9,Salsas alitas,Mango Hot Salsa - L Mr Wings,60.53,Mr Wings,L,Si,-0.06,7.0
+7,Salsas alitas,Mezcal Salsa - L Mr Wings,73.68,Mr Wings,L,No,3.11,7.0
+27,Salsas alitas,Naranja con Chipotle Salsa - L Mr Wings,71.05,Mr Wings,L,No,,7.0
+34,Salsas alitas,Oriental Sriracha Salsa - L Mr Wings,104.65,Mr Wings,L,No,,7.0
+11,Salsas alitas,Oriental Teriyaki Salsa - L Mr Wings,68.42,Mr Wings,L,Si,0.65,7.0
+21,Salsas alitas,Original Hot Salsa - L Mr Wings,52.63,Mr Wings,L,Si,-0.12,7.0
+94,Salsas alitas,Pelon Pero Rico Salsa - L Sirope,58.0,TD Empaques,L,Si,2.4,
+362,Salsas alitas,PIÑA GUAJILLO,0.0,,fl oz,Si,,
+15,Salsas alitas,Ranch Aderezo - L,65.85,Mr Wings,L,Si,-15.638,7.0
+332,Salsas alitas,Salsa Chetos - L Sirope,58.0,,L,Si,1.0,
+28,Salsas alitas,Salsa para Alitas RedHot Buffalo L,58.73,Sam's Club,L,Si,-16.83,
+331,Salsas alitas,Salsa Ranchertios - L Sirope,58.0,,L,Si,1.0,7.0
+330,Salsas alitas,Tamarindo  3 chiles - L Sirope,58.0,,L,Si,1.0,
+19,Salsas alitas,Tamarindo Natural Salsa - L Mr Wings,71.05,Mr Wings,L,Si,-1.77,5.0
+333,Salsas alitas,Zarzamora Chipotle - L Sirope,58.0,,L,Si,1.0,
+118,Sazonadores,"Catsup Generica / Mr Wings, Members",26.65,Sam's Club,kg,Si,-92.553,3.0
+168,Sazonadores,Catsup sin azucar,50.0,,L,No,3.8,
+357,Sazonadores,FLAMING,0.0,SABRITAS,kg,Si,,
+167,Sazonadores,Queso parmesano,728.0,Aurrera,kg,Si,6.085,3.0
+356,Sazonadores,RAMEN Z,0.0,SABRITAS,unid.,Si,,0.0
+17,Sazonadores,Sazonador adobo Cajún En Polvo - Bolsa 1 Kg,260.0,Mr Wings,kg,Si,-0.025,
+191,Sazonadores,Sazonador Cheese,0.0,,kg,Si,,
+169,Sazonadores,Sazonador Fuego,420.0,,kg,Si,0.1,
+16,Sazonadores,Sazonador Lemon Pepper - Bolsa 1 Kg,200.64,Mr Wings,kg,Si,-2.02,
+111,Semillas y Fruta Seca,Duraznos en almibar,55.88,3B,kg,Si,-1.218,10.0
+54,Semillas y Fruta Seca,Granillo chocolate,128.0,La Casa del Cheff,kg,Si,-0.115,7.0
+70,Semillas y Fruta Seca,Nuez Kg,236.0,TD Empaques,kg,Si,0.955,7.0
+275,Snacks y Postres,Chocolate Baileys - Turin Pza,6.01,DULCERIA LA ESPECIAL,unid.,Si,-123.0,
+282,Snacks y Postres,Conejito - Turín,7.56,Sigma Foodservice,unid.,Si,-13.0,
+273,Snacks y Postres,Kinder delice pastelito - Ferrero 39g,10.49,DULCERIA LA ESPECIAL,unid.,Si,-20.0,
+274,Snacks y Postres,Kit Kat - Nestlé 41.5g,14.15,DULCERIA LA ESPECIAL,unid.,Si,-5.0,
+277,Snacks y Postres,M&M mini,2.3,DULCERIA LA ESPECIAL,unid.,Si,39.0,
+291,Snacks y Postres,Oreo mini - bolsa 226g,151.74,NORIS,kg,Si,-1.696,
+276,Snacks y Postres,Wafer sticks avellana - Marian 100 pza,88.3,DULCERIA LA ESPECIAL,unid.,Si,206.27,3.0
+290,Snacks y Postres,Wafer sticks fresa - Marian 65 pza,63.6,NORIS,unid.,Si,80.0,3.0
+231,Tisanas,Tisana Amore Mio Kg - Mig,762.12,MIG,kg,Si,0.0,7.0
+232,Tisanas,Tisana Mora Azul Kg - Mig,695.13,MIG,kg,Si,0.963,7.0
+265,Toppings,Almendra fileteada,300.0,Casa del Chef,kg,Si,1.625,3.0
+297,Toppings,Canela en polvo,0.0,,kg,Si,0.5,
+264,Toppings,Chispas Chocolate - Herseys 1kg,330.0,Casa del Chef,kg,Si,-1.005,3.0
+271,Toppings,Chocolate Ferrero - 1 pza,10.02,Sam's Club,unid.,Si,-149.0,
+280,Toppings,Gomitas mango - SanSabor 1 kg,93.0,DULCERIA LA ESPECIAL,kg,Si,-0.066,5.0
+289,Toppings,Gomitas ositos - Cuanda 1kg,93.0,DULCERIA LA ESPECIAL,kg,Si,-1.643,5.0
+279,Toppings,Gomitas sandia - SanSabor 1 kg,93.0,DULCERIA LA ESPECIAL,kg,Si,-0.96,5.0
+292,Toppings,Granillo Halloween,0.0,Casa del Chef,kg,Si,0.107,7.0
+270,Toppings,Nutella 1kg,195.0,DULCERIA LA ESPECIAL,kg,Si,-2.153,3.0
+134,Tortillería y Panadería,Bolillo,2.0,Aurrera,unid.,Si,,
+120,Tortillería y Panadería,CUERNITO,7.0,,unid.,No,,
+131,Tortillería y Panadería,Totopos,35.0,Aurrera,kg,Si,,7.0

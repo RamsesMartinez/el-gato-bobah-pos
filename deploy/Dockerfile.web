@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+# Build del frontend + Caddy que lo sirve. Context = raíz del repo.
+FROM oven/bun:1-alpine AS build
+WORKDIR /app
+# --ignore-scripts salta el guard 'only-allow bun' (no hay node/npx en la imagen bun).
+COPY web/package.json web/bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --ignore-scripts
+COPY web/ ./
+RUN bun run build
+
+FROM caddy:2-alpine
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv/web

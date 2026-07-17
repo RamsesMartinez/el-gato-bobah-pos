@@ -1,0 +1,12 @@
+# Context del build web (deploy/Dockerfile.web usa la raíz como context).
+**/node_modules
+**/dist
+**/tmp
+.git
+.github
+.codegraph
+docs
+references/csv
+web/.env
+deploy/.env
+*.log

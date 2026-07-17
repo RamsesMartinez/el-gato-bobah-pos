@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+      - name: Lint (golangci-lint + gosec)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: server
+      - name: Vulnerabilities (govulncheck)
+        uses: golang/govulncheck-action@v1
+        with:
+          work-dir: server
+          go-version-file: server/go.mod
+
+  frontend:
+    name: Frontend (Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Build
+        run: bun run build
+      - name: Audit
+        run: bun audit || true

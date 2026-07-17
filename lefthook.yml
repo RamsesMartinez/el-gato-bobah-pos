@@ -1,0 +1,31 @@
+# Git hooks (lefthook). Instalar: `make install` o `lefthook install`.
+# Rápido y paralelo; corre lo esencial antes de commit/push.
+
+pre-commit:
+  parallel: true
+  commands:
+    go-fmt:
+      root: "server/"
+      glob: "*.go"
+      run: "test -z \"$(gofmt -l {staged_files})\" || (gofmt -l {staged_files}; echo 'corre gofmt -w'; exit 1)"
+    go-lint:
+      root: "server/"
+      glob: "*.go"
+      run: golangci-lint run ./...
+    web-lint:
+      root: "web/"
+      glob: "*.{ts,tsx}"
+      run: bun run lint && bun run typecheck
+
+pre-push:
+  parallel: true
+  commands:
+    go-test:
+      root: "server/"
+      run: go test ./...
+    go-vuln:
+      root: "server/"
+      run: govulncheck ./...
+    web-build:
+      root: "web/"
+      run: bun run build

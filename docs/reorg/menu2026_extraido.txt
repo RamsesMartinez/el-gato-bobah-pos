@@ -1,0 +1,689 @@
+ 1| BB ee bb ii dd aa
+ 1| ss
+ 1| Bebida
+ 1| s
+ 2| CHAI CLASICO
+ 2| CHAI MANZANA CANELA
+ 2| CHAI VAINILLA
+ 2| CHAI FRUTOS ROJOS
+ 2| CHOCOLATE
+ 2| CEREZA
+ 2| HORCHATA
+ 2| MATCHA
+ 2| MATCHA COCO
+ 2| MELON VERDE
+ 2| TARO PURPLE
+ 2| VAINILLA
+ 2| PINK LEMONADE (AGUA)
+ 2| FRUTOS ROJOS (AGUA)
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $70
+ 2| $75
+ 2| $75
+ 2| $70
+ 2| $70
+ 2| $63
+ 2| $63
+ 2| Deliciosa bebida de 16oz acompañada de suaves perlas de
+ 2| tapioca, yogurth o chocolate.
+ 2| ADICIONALESADICIONALESADICIONALES
+ 2| (Agrega por un costo extra)
+ 2| LECHE DESLACTOSADA
+ 2| PERLAS EXPLOSIVAS
+ 2| EXTRA DE TAPIOCA
+ 2| CREMA BATIDA
+ 2| $12
+ 2| $20
+ 2| $20
+ 2| $12
+ 3| $10
+ 3| $17
+ 3| $17
+ 3| $17
+ 3| LECHE DESLACTOSADA
+ 3| PERLAS DE CHOCOLATE
+ 3| PERLAS DE YOGURTH
+ 3| TAPIOCA
+ 3| ADICIONALESADICIONALESADICIONALES
+ 3| (Agrega por un costo extra)
+ 3| $12
+ 3| $20
+ 3| $20
+ 3| $20
+ 3| Refrescante bebida helada con una gran variedad de
+ 3| deliciosos sabores. Agrega tus complementos favoritos.
+ 3| ALGODÓN DE AZÚCAR
+ 3| BAILEYS
+ 3| CAPUCCINO
+ 3| CEREZA
+ 3| CHOCOLATE
+ 3| CHOCOLATE BLANCO
+ 3| CHOCORETA
+ 3| CHOCOCEREZA
+ 3| CHOCOAVELLANA
+ 3| CHAI VAINILLA
+ 3| CHAI MANZANA CANELA
+ 3| CONEJITO TURIN
+ 3| COOKIES & CREAM
+ 3| $65
+ 3| $70
+ 3| $65
+ 3| $65
+ 3| $65
+ 3| $65
+ 3| $70
+ 3| $65
+ 3| $65
+ 3| $65
+ 3| $65
+ 3| $80
+ 3| $80
+ 3| $75
+ 3| $80
+ 3| $75
+ 3| $75
+ 3| $75
+ 3| $75
+ 3| $80
+ 3| $75
+ 3| $75
+ 3| $75
+ 3| $75
+ 3| $92
+ 3| $92
+ 3| 14oz16oz
+ 3| $80
+ 3| $65
+ 3| $65
+ 3| $70
+ 3| $65
+ 3| $75
+ 3| $65
+ 3| $80
+ 3| $80
+ 3| $65
+ 3| $65
+ 3| $75
+ 3| $75
+ 3| $65
+ 3| $92
+ 3| $75
+ 3| $75
+ 3| $80
+ 3| $75
+ 3| $85
+ 3| $75
+ 3| $92
+ 3| $92
+ 3| $75
+ 3| $75
+ 3| $85
+ 3| $85
+ 3| $75
+ 3| 14oz16oz
+ 3| FERRERO
+ 3| HORCHATA
+ 3| PISTACHE
+ 3| MATCHA
+ 3| MATCHA COCO
+ 3| MAZAPÁN
+ 3| MELÓN VERDE
+ 3| MAGNUM
+ 3| MORDISCO
+ 3| MOKACCINO
+ 3| RED VELVET
+ 3| STRAWBERRY CREAM
+ 3| TARO PURPLE
+ 3| VAINILLA
+ 4| ¡ARMA TU SODA!¡ARMA TU SODA!¡ARMA TU SODA!
+ 4| (Selecciona el sabor de tus perlas
+ 4| explosivas. Puedes combinar el sabor
+ 4| de tus perlas sin costo extra)
+ 4| MORA AZÚL
+ 4| MANZANA VERDE
+ 4| SANDIA
+ 4| YOGURTH
+ 4| CEREZA
+ 4| FRESA
+ 4| KIWI
+ 4| LITCHI
+ 4| MANGO
+ 4| Saborea una explosión de sabores refrescantes y vibrantes
+ 4| en cada sorbo.
+ 4| BUBBALO
+ 4| CEREZA
+ 4| CHICLE
+ 4| FRAMBUESA
+ 4| FRESA
+ 4| KIWI
+ 4| LITCHI
+ 4| MANGO
+ 4| MORA AZUL
+ 4| MANZANA VERDE
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| $65
+ 4| Perlas extras $20
+ 5| ICE CEREZA
+ 5| DRAGÓN FRUIT
+ 5| FRAMBUESA
+ 5| FRESA
+ 5| LIMÓN
+ 5| MARACUYA
+ 5| ICE MORA AZUL
+ 5| MANGO
+ 5| PINK LEMONADE
+ 5| Bebida helada a base de frutas, con un toque de
+ 5| chamoy, miguelito, perlas de chamoy, gomitas y
+ 5| una mini paleta de hielo. Un toque divertido y
+ 5| agridulce.
+ 5| FRESA SANDIA
+ 5| LIMÓN
+ 5| MANGO
+ 5| PELONRICO
+ 5| $57
+ 5| $57
+ 5| $57
+ 5| $69
+ 5| $74
+ 5| $74
+ 5| $74
+ 5| $80
+ 5| 14oz16oz
+ 5| Refrescante bebida a base de agua.
+ 5| Agrega por un costo extra tus perlas favoritas.
+ 5| $50
+ 5| $55
+ 5| $50
+ 5| $50
+ 5| $50
+ 5| $50
+ 5| $50
+ 5| $50
+ 5| $50
+ 5| $60
+ 5| $65
+ 5| $60
+ 5| $60
+ 5| $60
+ 5| $60
+ 5| $60
+ 5| $60
+ 5| $60
+ 5| 14oz16oz
+ 6| $50
+ 6| $63
+ 6| $69
+ 6| $69
+ 6| $69
+ 6| $63
+ 6| $69
+ 6| $69
+ 6| $69
+ 6| COOKIES & CREAM
+ 6| CHOCOLATE
+ 6| STRAWBERRY CREAM
+ 6| VAINILLA
+ 6| (Leche deslactosada $12)
+ 6| $79
+ 6| $79
+ 6| $79
+ 6| $79
+ 6| 16oz
+ 6| AMERICANO
+ 6| CAPUCCINO
+ 6| CAPUCCINO BAILEYS
+ 6| CARAMEL LATTE
+ 6| MOKA
+ 6| CHOCOLATE TRADICIONAL
+ 6| CHOCOLATE OAXACA
+ 6| CHOCOLATE ITALIANO
+ 6| CHOCOLATE BLANCO
+ 6| (Leche deslactosada $12)
+ 6| (Shot de café extra $14)
+ 6| Tómalo Frio o Caliente
+ 7| Bebida a base de leche sabor Red Velvet, decorada con un
+ 7| cold foam de queso, chispas de chocolate y perlas de
+ 7| tapioca.
+ 7| Bebida frappeada a base de leche sabor chocomenta con un
+ 7| cold foam de queso, perlas de chocolate y tapioca.
+ 7| TWICE-TASTIC KITTY
+ 7| LILAC PURR-LATTE
+ 7| RING DING DONG ELASTIC CAT
+ 7| HARD THE KITTEN
+ 7| Bebida a base de leche sabor taro, decorada con crema batida perlas
+ 7| de yogurth y tapioca.
+ 7| Bebida frappeada base de agua sabor mango, con perlas de litchi
+ 7| y mango.
+ 7| Bebida frappeada a base de agua sabor ice cereza, con
+ 7| trozos de cereza y perlas de cereza.
+ 7| RED THE FLAVOR VELVET
+ 7| La bebida perfecta para tu espiritu kpoper
+ 7| (Leche deslactosada $12)
+ 7| $89
+ 7| $79
+ 7| $89
+ 7| $79
+ 7| $89
+ 8| “TOPPING ADICIONAL”“TOPPING ADICIONAL”“TOPPING ADICIONAL”
+ 8| (Agrega por un costo extra)
+ 8| HUEVO ESTRELLADO
+ 8| CHULETA AHUMADA
+ 8| MOZZARELLA
+ 8| CHAMPIÑONES
+ 8| SALCHICHA
+ 8| JAMÓN
+ 8| $20
+ 8| $25
+ 8| $25
+ 8| $20
+ 8| $20
+ 8| $20
+ 8| CREAM CARBONARA
+ 8| Ramen estilo carbonara extra cremoso y suave con un toque de picante.
+ 8| ROSE
+ 8| Ramen estilo aumado cremoso y suave con un toque de picante.
+ 8| SWEET & SPICY
+ 8| El balance perfecto entre lo pícante y dulce. ¡Sabor vibrante!
+ 8| QUATTRO CHEESE
+ 8| El ramen con mucho queso, cremos y picante. El favorito de muchos.
+ 8| CARBONARA
+ 8| El favorito de todos con sabor a queso, mantequilla y un toque de picante.
+ 8| HOT CHICKEN
+ 8| El sabor auténtico de Corea, pollo picante con un toque dulce y ahumado.
+ 8| HOT CHICKEN CHEeSE
+ 8| La receta original sabor pollo picante y un irresistible sabor a queso.
+ 8| HOT CHICKEN 2X
+ 8| ¡Solo para valientes! El doble de picante que el original para un reto extremo.
+ 8| TACO
+ 8| Sabor a carne asada, especias de taco y el picante icónico de Buldak.
+ 8| Por temporada
+ 8| $89
+ 8| $89
+ 8| $89
+ 8| $98
+ 8| $98
+ 8| $98
+ 8| $98
+ 8| $98
+ 8| $89
+ 8| Nuestro ramen a base de fideos suaves y picosos, la combinación perfecta para disfrutar.
+ 8| Acompaña con un topping de tu eleccion:
+ 8| (Chuleta ahumada, Salchicha, Huevo estrellado, Jamón, Champiñones, Mozzarella o Pepperoni)
+ 9| NONGSHIM SOON VEGGIE
+ 9| Fideos suaves con un sabor a vegetales y un ligero sabor a picante, acompañado con vegetales.
+ 9| OTTOGI CHEESE
+ 9| Fideos suave con un sabor exquisito a queso.
+ 9| OTTOGI ODONGTONG MYON
+ 9| Con un sabor a caldo de mariscos y kelp, ligeramente picante.
+ 9| PALDO KOKOMEN
+ 9| Fideos suaves con un sabor a pollo picante, acompañado de vegetales.
+ 9| TANGLE
+ 9| Fideos suaves con un sabor a pasta italiana y ramen coreano, la pasta ideal sin picante
+ 9| GompaguettI
+ 9| Con un sabor a res y un caldo cremoso, acompañado con vegetales.
+ 9| PALDO KIMCHI
+ 9| El gran sabor del kimchi coreano, con un caldo picoso y delicioso, acompañado
+ 9| con vegetales.
+ 9| OTTOGI KIMCHI
+ 9| El más popular de la casa, un sabor kimchi con liguero picante y fideos
+ 9| suaves.
+ 9| SHIN RAMYUN
+ 9| El ramen mas popurar de corea, con un sabor a res y caldo picoso, un
+ 9| ramen delicioso.
+ 9| $89
+ 9| $89
+ 9| $89
+ 9| $89
+ 9| $98
+ 9| $98
+ 9| $98
+ 9| $98
+ 9| $89
+ 9| Nuestro ramen a base de fideos suaves en caldo, la combinación perfecta para disfrutar.
+ 9| Acompaña con un topping de tu eleccion:
+ 9| (Huevo duro, Chuleta ahumada, Huevo estrellado, Jamón, Champiñones, Mozzarella o Verduras)
+ 9| “TOPPING ADICIONAL”“TOPPING ADICIONAL”“TOPPING ADICIONAL”
+ 9| (Agrega por un costo extra)
+ 9| HUEVO ESTRELLADO
+ 9| CHULETA AHUMADA
+ 9| MOZZARELLA
+ 9| CHAMPIÑONES
+ 9| VERDURA
+ 9| JAMÓN
+ 9| $20
+ 9| $25
+ 9| $25
+ 9| $20
+ 9| $20
+ 9| $20
+ 9| ”Todos nuestros ramen incluyen alga, ajonjoli y cebollin.”
+10| SOJU
+10| COCA-COLA
+10| ARIZONA
+10| JARRITO
+10| MILKIS
+10| $43
+10| $110
+10| $30
+10| $30
+10| $30
+10| Bebida carbonatada con leche
+10| CAFE OKF$55
+10| Bebida sabor cafe con leche
+10| RAMUNE
+10| $75
+10| Bebida gaseosa y deliciosa
+10| haIta uva
+10| $44
+10| Jugo de Uva con trozos de Uva
+10| “
+10| T
+10| a
+10| n
+10| ic
+10| o
+10| n
+10| ic
+10| o
+10| c
+10| o
+10| m
+10| o
+10| lo
+10| s
+10| k
+10| -
+10| d
+10| r
+10| a
+10| m
+10| a
+10| s
+10| ”
+10| La bebida más top en corea, con tu iconico vasito de hielo.
+10| CANTABILE$58
+10| Convierte tu cantabile en soda explosiva por un costo extra de $88
+10| Vtalk
+10| $44
+10| Bebida sabor limonada azul y limonada rosa.
+12| 370gr de boneless, 200gr de papas y
+12| aderezo grande.
+12| Puedes seleccionar hasta dos salsas.
+12| 1kg de boneless, 320gr de papas y 2
+12| aderezos grande.
+12| Puedes seleccionar hasta tres salsas.
+12| 500gr de boneless, 280gr de papas y
+12| aderezo grande.
+12| Puedes seleccionar hasta dos salsas.
+12| 250gr de boneless, 150gr de papas y
+12| aderezo chico.
+12| Puedes seleccionar hasta dos salsas.
+12| $150
+12| $280
+12| $215
+12| $500
+12| (Incluye Papas delgadas, Aderezo y Verduras)
+12| Ranch
+12| Ranch Habanero
+12| Blue Cheese
+12| $20
+12| $20
+12| $20
+12| MÁS ADEREZO
+12| (Agrega por un costo extra)
+13| (Incluye Papas delgadas, Aderezo, Ajonjoli y Verduras)
+13| 370gr de alitas, 200gr de papas y
+13| aderezo grande.
+13| Puedes seleccionar hasta dos salsas.
+13| 1kg de alitas, 320gr de papas y 2
+13| aderezos grande.
+13| Puedes seleccionar hasta tres salsas.
+13| 500gr de alitas, 280gr de papas y
+13| aderezo grande.
+13| Puedes seleccionar hasta dos salsas.
+13| 250gr de alitas, 150gr de papas y
+13| aderezo chico.
+13| Puedes seleccionar hasta dos salsas.
+13| $130
+13| $260
+13| $190
+13| $459
+13| Ranch
+13| Ranch Habanero
+13| Blue Cheese
+13| $20
+13| $20
+13| $20
+13| MÁS ADEREZO
+13| (Agrega por un costo extra)
+14| Agrega salsa extraAgrega salsa extra
+14| por solo $15por solo $15
+14| Agrega salsa extra
+14| por solo $15
+14| CAJÚN
+14| ORIGINAL HOT
+14| CHETTOS FLAMING
+14| JALAPEÑO SPICE
+14| FLAMING HOT SPICY
+14| MANGO HABANERO SPICY
+14| TAMARINDO SPICY
+14| KRAZY HOT
+14| Lemon Pepper
+14| HONEY MUSTARD
+14| Ajo Parmesano
+14| BBQ OrIgInal
+14| ChIngu TerIyakI
+14| PelónrIco Gatuno
+14| Ruffles Queso
+14| BÚFALO
+14| BBQ HOT
+14| BBQ A LA DIABLA
+14| CHETTOS
+14| DORITOS NACHO
+14| FRESA SPICY
+14| MANGO GUAJILLO
+14| RANCHERITOS
+14| FRAMUESA MORITA
+14| ZARZAMORITA
+14| (El color de los chilitos es el grado de picor)
+15| Deliciosas papas a la francesa de corte recto.
+15| Acompañadas de catsup, queso amarillo y salsa picante
+15| PAPAS A LA FRANCESA CH (170g)
+15| PAPAS A LA FRANCESA M (280g)
+15| PAPAS A LA FRANCESA G (380g)
+15| PAPAS A LA FRANCESA J (500g)
+15| $40
+15| $52
+15| $60
+15| $80
+15| SAZONA GRATIS CON
+15| ☆ LEMON PEPPER
+15| ☆ CAJÚN
+15| Deliciosas papas corte gajo sazonadas con cajún.
+15| Elige un aderezo para acompañar.
+15| PAPAS GAJO M (270g)
+15| PAPAS GAJO G (380g)
+15| PAPAS GAJO J (500g)
+15| $58
+15| $75
+15| $92
+16| Deliciosos dedos de queso mozarella para disfrutar.
+16| 3 PIEZAS
+16| 8 PIEZAS
+16| $50
+16| $98
+16| (Agrega dedo extra por solo $17)
+16| Jalapeños rellenos de queso philadelphia. Acompañalos con aderezo de tú elección
+16| 3 PIEZA
+16| 8 PIEZAS
+16| $50
+16| $90
+16| (Agrega jalapeño extra por solo $17)
+16| Queso
+16| Ranch
+16| Ranch Habanero
+16| Blue Cheese
+16| SELECCIONA TU ADEREZO
+17| CajetaCajetaCajeta
+17| Chocolate Hershe´yChocolate Hershe´yChocolate Hershe´y
+17| Crema pasteleraCrema pasteleraCrema pastelera
+17| LecheraLecheraLechera
+17| Mermelada de cerezaMermelada de cerezaMermelada de cereza
+17| Mermelada de fresaMermelada de fresaMermelada de fresa
+17| Mermelada de frutos rojosMermelada de frutos rojosMermelada de frutos rojos
+17| Mermelada de zarzamoraMermelada de zarzamoraMermelada de zarzamora
+17| NutellaNutellaNutella
+17| Miel mapleMiel mapleMiel maple
+17| PhiladelphiaPhiladelphiaPhiladelphia
+17| Mermeladas o PhiladelphiaMermeladas o PhiladelphiaMermeladas o Philadelphia
+17| INGREDIENTE EXTRAINGREDIENTE EXTRAINGREDIENTE EXTRA
+17| +$14+$14+$14
+17| Fresa, Mango en almibar, DuraznoFresa, Mango en almibar, Durazno
+17| en almibar o Frutos rojos .e n almibar o Frutos rojos .
+17| Fresa, Mango en almibar, Durazno
+17| en almibar o Frutos rojos .
+17| AGREGA FRUTAAGREGA FRUTAAGREGA FRUTA
+17| +$20+$20+$20
+17| 11 INGREDIENTEINGREDIENTE1 INGREDIENTE$43$43$43
+17| $10
+17| $17
+17| $17
+17| $17
+17| LUNETAS
+17| NUEZ
+17| GALLETA OREO
+17| CHISPAS DE CHOCOLATE
+17| GRANILLO CHOCOLATE
+17| DECORA TU CREPADECORA TU CREPADECORA TU CREPA
+17| (Agrega sin costo extra)
+18| FERREROFERREROFERRERO
+18| Crepa rellena de Nutella,
+18| Philadelphia, Ferrero y fresas,
+18| decorada con almendras y un toque
+18| de chocolate Hershey.KITKATKITKATKITKAT
+18| Crepa rellena de Nutella, Philadelphia,
+18| Kitkat y frutos rojos, decorada con
+18| chispas de chocolate y un toque de
+18| chocolate Hershey.
+18| KINDER DELICEKINDER DELICEKINDER DELICE
+18| Crepa rellena de Nutella,
+18| Philadelphia, Kinder delice, fresa y
+18| durazno, decorada con nuez.BAILEYSBAILEYSBAILEYS
+18| Crepa rellena de Philadelphia,
+18| pastelito baileys y fresas, decorada
+18| con nuez y un toque de baileys.
+18| GALLETA OREOGALLETA OREOGALLETA OREO
+18| Crepa rellena de queso philadelphia,
+18| galleta oreo y duraznos, decorada con
+18| chispas de chocolate.CONEJITO TURINCONEJITO TURINCONEJITO TURIN
+18| Crepa rellena de Nutella,
+18| Philadelphia, Conejito Turin y
+18| duraznos, decorada con chispas de
+18| chocolate.
+18| CREPIZZA PEPPERONICREPIZZA PEPPERONICREPIZZA PEPPERONI
+18| Crepa rellena de Philadelphia, salsa
+18| de tomate, hierbas finas, queso
+18| Mozzarella y Pepperoni con un
+18| toque de queso parmesano.CREPIZZA HAWAIANACREPIZZA HAWAIANACREPIZZA HAWAIANA
+18| Crepa rellena de Philadelphia, salsa
+18| de tomate, hierbas finas, queso
+18| Mozzarella, jamón con piña, con un
+18| toque de queso parmesano.
+18| CREPA HAWAIANACREPA HAWAIANACREPA HAWAIANA
+18| Crepa rellena de Philadelphia,
+18| jamón con piña salteados con
+18| hierbas finas y queso Mozzarella.CREPA CHAMPIÑONESCREPA CHAMPIÑONESCREPA CHAMPIÑONES
+18| Crepa rellena de Philadelphia,
+18| champiñones salteados con
+18| hierbas finas y queso Mozzarella.
+18| $95
+18| $85
+18| $95
+18| $95
+18| $95$95
+18| $95$95
+18| $95$95
+19| CajetaCajetaCajeta
+19| Chocolate Hershe´yChocolate Hershe´yChocolate Hershe´y
+19| LecheraLecheraLechera
+19| Mermelada de fresaMermelada de fresaMermelada de fresa
+19| Mermelada de frutos rojosMermelada de frutos rojosMermelada de frutos rojos
+19| Mermelada de zarzamoraMermelada de zarzamoraMermelada de zarzamora
+19| NutellaNutellaNutella
+19| Miel mapleMiel mapleMiel maple
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $35$35$35
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| $50$50$50
+19| 14pz14pz14pz8pz8pz8pz
+19| Irresistibles y esponjosas donitas, perfectas para acompañar con tu cáfe.Irresistibles y esponjosas donitas, perfectas para acompañar con tu cáfe.Irresistibles y esponjosas donitas, perfectas para acompañar con tu cáfe.
+19| Decora tus donas con nuez, chispas, canela o azúcar glass.
+19| Sin costo extra.
+20| Encuentranos en
+20| El Gato Bobah
+20| elgatobobah_mx
+20| el.gato.bobah
+20| 55 6871 6251
+20| Haz tu pedido para recoger
+20| en el local c:
+20| (Solo mensajes)
+20| Lunes
+20| Martes
+20| MIércoles
+20| Jueves
+20| VIernes
+20| Sábado
+20| DomIngo
+20| 3:30 pm a 9:30 pm
+20| 10:00 am a 9:30 pm
+20| 10:00 am a 9:30 pm
+20| 10:00 am a 9:30 pm
+20| 3:30 pm a 10:00 pm
+20| 3:30pm a 10:00 pm
+20| 3:30 pm a 9:30 pm
+20| nn
+20| UU
+20| EE
+20| SS
+20| TT RR OO SS HH OO RR
+20| AA
+20| RR
+20| II OO
+20| SS
+20| n
+20| U
+20| E
+20| S
+20| TROS HOR
+20| A
+20| R
+20| IO
+20| S
+20| Siguenos en nuestras Redes Sociales y etiquétanos c:
+20| Haz tu pedido aqui

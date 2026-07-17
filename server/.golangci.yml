@@ -1,0 +1,29 @@
+version: "2"
+
+linters:
+  # default (errcheck, govet, staticcheck, ineffassign, unused) + seguridad y calidad
+  enable:
+    - gosec       # análisis de seguridad
+    - bodyclose   # http bodies sin cerrar
+    - noctx       # http requests sin context
+  settings:
+    gosec:
+      excludes:
+        - G115  # conversiones int→int16: valores acotados por el dominio (qty, method id)
+        - G109  # strconv.Atoi→int: idem, valores acotados
+        - G304  # os.Open con path: solo el CLI de importación lee CSV conocidos
+        - G703  # os.Stat con ruta de config (ENV_FILE); no es entrada de usuario
+        - G124  # cookie Secure es condicional (true en prod, false en dev sobre http)
+  exclusions:
+    rules:
+      # el código generado por sqlc no se linta
+      - path: internal/store/db/
+        linters: [gosec, staticcheck, errcheck, govet, unused]
+      # en tests permitimos errores no chequeados
+      - path: _test\.go
+        linters: [errcheck, gosec]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
