@@ -1,0 +1,13 @@
+{
+  "short_name": "Gato Bobah POS",
+  "name": "El Gato Bobah — Punto de venta",
+  "icons": [
+    { "src": "favicon-32.png", "type": "image/png", "sizes": "32x32" },
+    { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "logo512.webp", "type": "image/webp", "sizes": "512x512", "purpose": "any" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#E23B2E",
+  "background_color": "#ffffff"
+}

@@ -1,0 +1,4 @@
+tmp/
+api
+*.log
+.air.toml

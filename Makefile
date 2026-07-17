@@ -1,0 +1,100 @@
+# El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
+.PHONY: help install start check check-env deps-up deps-down \
+        web-dev web-build web-test api-dev api-run api-build api-test \
+        sqlc migrate-new fudo-import reset-admin build deploy
+.DEFAULT_GOAL := help
+
+# Puertos no estándar (5433/6380) para no chocar con otros contenedores locales.
+DEV_DATABASE_URL ?= postgres://gatobobah:gatobobah@localhost:5433/gatobobah?sslmode=disable
+DEV_REDIS_URL    ?= redis://localhost:6380
+DEV_JWT_SECRET   ?= dev-secret-no-usar-en-prod
+GOBIN := $(shell go env GOPATH)/bin
+export DEV_DATABASE_URL DEV_REDIS_URL DEV_JWT_SECRET
+
+help: ## Lista los targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+check: ## Verifica prerequisitos (docker, bun, go, node) y dice qué falta
+	@bash scripts/check.sh
+
+check-env: ## Valida que deploy/.env tenga las variables requeridas configuradas
+	@bash scripts/check-env.sh
+
+install: ## Prepara TODO: valida entorno + variables, instala deps y herramientas, baja imágenes
+	@bash scripts/check.sh || (echo "Instala lo que falta arriba y vuelve a correr 'make install'"; exit 1)
+	@bash scripts/check-env.sh || (echo "Configura deploy/.env y vuelve a correr 'make install'"; exit 1)
+	@echo "▶ Instalando dependencias del frontend (bun)…"
+	cd web && bun install
+	@echo "▶ Descargando dependencias del backend (go)…"
+	cd server && go mod download
+	@echo "▶ Instalando herramientas Go (sqlc, goose, air, linters de seguridad)…"
+	@GOBIN="$(GOBIN)" go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	@GOBIN="$(GOBIN)" go install github.com/pressly/goose/v3/cmd/goose@latest
+	@GOBIN="$(GOBIN)" go install github.com/air-verse/air@latest
+	@GOBIN="$(GOBIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@GOBIN="$(GOBIN)" go install golang.org/x/vuln/cmd/govulncheck@latest
+	@GOBIN="$(GOBIN)" go install github.com/evilmartians/lefthook@latest
+	@echo "▶ Instalando git hooks (lefthook)…"
+	@$(GOBIN)/lefthook install
+	@echo "▶ Bajando imágenes docker (postgres, redis)…"
+	docker compose -f deploy/docker-compose.dev.yml pull
+	@echo "\n✅ Listo. Corre 'make start' para levantar todo."
+
+start: ## Levanta todo (postgres+redis+API+web); avisa si falta algo
+	@bash scripts/start.sh
+
+# --- Infra dev (postgres + redis) ---
+deps-up: ## Levanta postgres + redis (dev)
+	docker compose -f deploy/docker-compose.dev.yml up -d
+deps-down: ## Detiene postgres + redis (dev)
+	docker compose -f deploy/docker-compose.dev.yml down
+
+# --- Frontend ---
+web-dev: ## Frontend en dev (Vite, http://localhost:3000)
+	cd web && bun run dev
+web-build: ## Build de producción del frontend
+	cd web && bun run build
+web-test: ## Tests del frontend (vitest)
+	cd web && bun run test
+
+# --- Backend ---
+api-dev: deps-up ## API con hot reload (air); secretos desde deploy/.env
+	@bash scripts/dev-api.sh air
+api-run: deps-up ## API sin air (go run); secretos desde deploy/.env
+	@bash scripts/dev-api.sh
+api-build: ## Compila el backend
+	cd server && go build ./...
+api-test: ## Tests del backend
+	cd server && go test ./...
+
+# --- Seguridad / calidad ---
+lint: ## Lint backend (golangci-lint + gosec)
+	cd server && $(GOBIN)/golangci-lint run ./...
+vuln: ## Vulnerabilidades backend (govulncheck)
+	cd server && $(GOBIN)/govulncheck ./...
+web-lint: ## Lint frontend (eslint + tsc)
+	cd web && bun run lint && bun run typecheck
+web-audit: ## Auditoría de deps del frontend
+	cd web && bun audit || true
+sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
+	@echo "\n✅ Chequeos de seguridad completados"
+
+reset-admin: deps-up ## Actualiza contraseña/PIN del admin desde deploy/.env (sin borrar datos)
+	@bash scripts/dev-api.sh reset-admin
+
+sqlc: ## Regenera el código sqlc
+	cd server && $(GOBIN)/sqlc generate
+migrate-new: ## Crea migración goose: make migrate-new name=xxx
+	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
+fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la cache del menú)
+	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir ../references
+	@docker compose -f deploy/docker-compose.dev.yml exec -T redis redis-cli DEL pos:menu >/dev/null 2>&1 || true
+	@echo "cache del menú limpiada"
+
+# --- Producción ---
+build: ## Build de imágenes de producción (API + web, self-contained, sin bun en host)
+	docker compose -f deploy/docker-compose.yml build
+deploy: ## Deploy con docker compose (VPS)
+	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
+	$(MAKE) build
+	docker compose -f deploy/docker-compose.yml up -d

@@ -1,0 +1,42 @@
+familia_base,n_variantes,id,nombre,precio,activo,categoria
+papas fritas corte gajo,3,781,PAPAS FRITAS - CORTE GAJO 270g,50.0,Si,Snacks Gatunos/
+papas fritas corte gajo,3,782,PAPAS FRITAS - CORTE GAJO 380g,65.0,Si,Snacks Gatunos/
+papas fritas corte gajo,3,783,PAPAS FRITAS - CORTE GAJO 500g,80.0,Si,Snacks Gatunos/
+frappe,2,13,FRAPPÉ 14 OZ (CH),0.0,Si,Bebidas Gatunas Frías/Frappé's Gatunos
+frappe,2,459,FRAPPÉ  16OZ,10.0,Si,Bebidas Gatunas Frías/Granizados & Chamoyadas
+chamoyada,2,713,CHAMOYADA 14 OZ,40.0,Si,Bebidas Gatunas Frías/Granizados & Chamoyadas
+chamoyada,2,679,CHAMOYADA 16 OZ,51.0,Si,Bebidas Gatunas Frías/Granizados & Chamoyadas
+alitas,2,203,ALITAS CH - 250g,114.98,Si,Boneless Y Alitas/
+alitas,2,326,ALITAS M - 370g,164.98,Si,Boneless Y Alitas/
+boneless,2,286,BONELESS CH - 250g,129.98,Si,Boneless Y Alitas/
+boneless,2,404,BONELESS M - 370g,194.98,Si,Boneless Y Alitas/
+mango habanero salsa,2,296,MANGO HABANERO SALSA CH,0.0,Si,Boneless Y Alitas/SALSAS BONELESS
+mango habanero salsa,2,733,MANGO HABANERO X2 SALSA CH,0.0,Si,Boneless Y Alitas/SALSAS BONELESS
+mango habanero salsa g,2,336,MANGO HABANERO SALSA G,0.0,Si,Boneless Y Alitas/SALSAS BONELESS
+mango habanero salsa g,2,734,MANGO HABANERO X2 SALSA G,0.0,Si,Boneless Y Alitas/SALSAS BONELESS
+ramen hot chicken buldak,2,193,RAMEN HOT CHICKEN 2X - BULDAK,75.0,Si,Comida Asiática/Ramen y más
+ramen hot chicken buldak,2,192,RAMEN HOT CHICKEN - BULDAK,75.0,Si,Comida Asiática/Ramen y más
+dedos de queso,2,269,DEDOS DE QUESO 8 PZA,80.0,Si,Otro/Adicionales
+dedos de queso,2,822,DEDOS DE QUESO 3 PZA,47.0,Si,Snacks Gatunos/
+cajeta mini donas,2,177,CAJETA MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+cajeta mini donas,2,184,CAJETA MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+chocolate mini donas,2,178,CHOCOLATE MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+chocolate mini donas,2,185,CHOCOLATE MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+crema pastelera mini donas,2,179,CREMA PASTELERA MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+crema pastelera mini donas,2,186,CREMA PASTELERA MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+donitas gatunas,2,327,DONITAS GATUNAS 14PZA,50.0,Si,Snacks Gatunos/
+donitas gatunas,2,317,DONITAS GATUNAS 8PZA,35.0,Si,Snacks Gatunos/
+fresa mini donas,2,180,FRESA MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+fresa mini donas,2,187,FRESA MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+mapple mini donas,2,181,MAPPLE MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+mapple mini donas,2,188,MAPPLE MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+mochi vainilla,2,826,MOCHI VAINILLA 120g,75.0,Si,Snacks Gatunos/
+mochi vainilla,2,824,MOCHI VAINILLA 180g,95.0,Si,Snacks Gatunos/
+munchers palomitas de papa,2,714,MUNCHERS - PALOMITAS DE PAPA - 12 PZA,65.0,Si,Snacks Gatunos/
+munchers palomitas de papa,2,715,MUNCHERS - PALOMITAS DE PAPA - 6 PZA,40.0,Si,Snacks Gatunos/
+nutella mini donas,2,182,NUTELLA MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+nutella mini donas,2,189,NUTELLA MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/
+papas fritas corte recto,2,415,PAPAS FRITAS - CORTE RECTO - CH (170g),35.0,Si,Snacks Gatunos/
+papas fritas corte recto,2,416,PAPAS FRITAS - CORTE RECTO M (270g),45.0,Si,Snacks Gatunos/
+zarzamora mini donas,2,183,ZARZAMORA MINI DONAS 14PZ,0.0,Si,Snacks Gatunos/
+zarzamora mini donas,2,190,ZARZAMORA MINI DONAS 8PZ,0.0,Si,Snacks Gatunos/

@@ -1,0 +1,14 @@
+# Reemplaza el dominio por el real en producción. Caddy gestiona TLS automáticamente.
+pos.elgatobobah.mx {
+	handle /api/* {
+		reverse_proxy api:8080 {
+			flush_interval -1  # streaming inmediato para SSE
+		}
+	}
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+	encode gzip
+}
