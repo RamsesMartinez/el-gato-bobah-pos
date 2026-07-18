@@ -55,6 +55,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 			r.Get("/pos/modifier-defaults", h.ModifierDefaults)
 			r.Get("/products/{id}/costing", h.ProductCosting)
 
+			// preferencias del usuario autenticado (p. ej. orden de categorías del POS), sincronizadas entre tablets
+			r.Get("/me/preferences/{key}", h.MeGetPreference)
+			r.Put("/me/preferences/{key}", h.MeSetPreference)
+
 			r.Route("/orders", func(r chi.Router) {
 				r.Post("/", h.CreateOrder)
 				r.Get("/", h.ListOrders)

@@ -31,6 +31,14 @@ update users set pin_hash = $2, updated_at = now() where id = $1;
 update users set password_hash = $2, pin_hash = $3, is_active = true, updated_at = now()
 where username = $1;
 
+-- name: GetUserPreference :one
+select value from user_preferences where user_id = $1 and key = $2;
+
+-- name: SetUserPreference :exec
+insert into user_preferences (user_id, key, value, updated_at)
+values ($1, $2, $3, now())
+on conflict (user_id, key) do update set value = excluded.value, updated_at = now();
+
 -- name: CreateRefreshToken :one
 insert into refresh_tokens (user_id, token_hash, expires_at)
 values ($1, $2, $3)

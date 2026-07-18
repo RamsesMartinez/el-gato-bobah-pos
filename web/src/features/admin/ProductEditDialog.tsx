@@ -12,6 +12,7 @@ import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
+import { ProductGroupsManager } from './ProductGroupsManager';
 
 interface Props {
   product: AdminProduct | null;
@@ -80,6 +81,11 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                         onChange={(e) => setEdit({ ...edit, availableUntil: e.target.value || null })} />
                     </Field>
                   </HStack>
+                </Box>
+                <Box borderTopWidth="1px" pt={4}>
+                  <Text fontSize="sm" fontWeight="600" mb={1}>Grupos modificadores</Text>
+                  <Text fontSize="xs" color="fg.muted" mb={3}>Los cambios de grupos se aplican al instante (no dependen de «Guardar»).</Text>
+                  <ProductGroupsManager productId={edit.id} />
                 </Box>
               </VStack>
             </DialogBody>

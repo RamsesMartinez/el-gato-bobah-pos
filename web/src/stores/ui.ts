@@ -25,14 +25,6 @@ export const REC_STRATEGIES = [
 
 export type RecStrategy = (typeof REC_STRATEGIES)[number]['id'];
 
-// Orden personalizado de categorías/subcategorías en el POS, POR USUARIO (userId → orden).
-// Local al dispositivo; sigue al usuario activo en su estación. Los ids no listados quedan
-// después, en el orden del menú (sort_key). "Top"/"Todos"/"Populares" nunca se reordenan.
-export interface CatOrder {
-  roots: number[];
-  subs: Record<number, number[]>; // parentId → orden de subcategorías
-}
-
 interface UiState {
   palette: PaletteId;
   setPalette: (p: PaletteId) => void;
@@ -40,9 +32,6 @@ interface UiState {
   setTopCount: (n: number) => void;
   recStrategy: RecStrategy;
   setRecStrategy: (s: RecStrategy) => void;
-  catOrder: Record<number, CatOrder>; // userId → orden
-  setRootOrder: (userId: number, ids: number[]) => void;
-  setSubOrder: (userId: number, parentId: number, ids: number[]) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -54,15 +43,6 @@ export const useUiStore = create<UiState>()(
       setTopCount: (topCount) => set({ topCount: Math.max(1, Math.min(60, Math.round(topCount) || 1)) }),
       recStrategy: 'smart',
       setRecStrategy: (recStrategy) => set({ recStrategy }),
-      catOrder: {},
-      setRootOrder: (userId, ids) => set((s) => {
-        const cur = s.catOrder[userId] ?? { roots: [], subs: {} };
-        return { catOrder: { ...s.catOrder, [userId]: { ...cur, roots: ids } } };
-      }),
-      setSubOrder: (userId, parentId, ids) => set((s) => {
-        const cur = s.catOrder[userId] ?? { roots: [], subs: {} };
-        return { catOrder: { ...s.catOrder, [userId]: { ...cur, subs: { ...cur.subs, [parentId]: ids } } } };
-      }),
     }),
     { name: 'egb:ui:v1' },
   ),

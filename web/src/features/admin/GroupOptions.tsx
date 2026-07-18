@@ -23,7 +23,7 @@ const OPTS_KEY = (groupId: number) => ['admin', 'group-options', groupId] as con
 // Reordenable arrastrando el asa (⋮⋮); el orden se persiste en sort_key y se refleja en el POS.
 // filter: si viene (búsqueda por nombre de opción), muestra solo las que coinciden y desactiva el
 // arrastre (reordenar un subconjunto filtrado corrompería el orden real).
-export function GroupOptions({ groupId, filter = '' }: { groupId: number; filter?: string }) {
+export function GroupOptions({ groupId, filter = '', hideInactive = false }: { groupId: number; filter?: string; hideInactive?: boolean }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: OPTS_KEY(groupId),
@@ -86,24 +86,38 @@ export function GroupOptions({ groupId, filter = '' }: { groupId: number; filter
   if (isLoading) return <Center py={4}><Spinner /></Center>;
   const opts = data?.items ?? [];
   const q = normalize(filter);
-  const filtering = q !== '';
-  const shown = filtering ? opts.filter((o) => normalize(o.name).includes(q)) : opts;
+  const searching = q !== '';
+  const base = hideInactive ? opts.filter((o) => o.active) : opts;
+  const shown = searching ? base.filter((o) => normalize(o.name).includes(q)) : base;
+  const hiddenCount = opts.length - base.length; // archivadas ocultas por el toggle
+  // arrastrar (reordenar) solo cuando se ven TODAS en su orden real: ni búsqueda ni ocultando inactivas
+  const sortable = !searching && hiddenCount === 0;
+  const plural = (n: number) => (n === 1 ? '' : 's');
 
   return (
     <VStack align="stretch" gap={1.5} pl={2}>
-      {filtering ? (
-        // vista filtrada: solo coincidencias, sin arrastre
-        shown.map((o) => <OptionRow key={o.id} o={o} fav={fav} arch={arch} onEdit={setEdit}
-          style={{ opacity: o.active ? 1 : 0.55 }} />)
-      ) : (
+      {sortable ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={opts.map((o) => o.id)} strategy={verticalListSortingStrategy}>
-            {opts.map((o) => <SortableOptionRow key={o.id} o={o} fav={fav} arch={arch} onEdit={setEdit} />)}
+          <SortableContext items={shown.map((o) => o.id)} strategy={verticalListSortingStrategy}>
+            {shown.map((o) => <SortableOptionRow key={o.id} o={o} fav={fav} arch={arch} onEdit={setEdit} />)}
           </SortableContext>
         </DndContext>
+      ) : (
+        // vista sin arrastre (búsqueda u ocultando inactivas): reordenar un subconjunto corrompería el orden real
+        shown.map((o) => <OptionRow key={o.id} o={o} fav={fav} arch={arch} onEdit={setEdit}
+          style={{ opacity: o.active ? 1 : 0.55 }} />)
       )}
-      {shown.length === 0 && <Text fontSize="sm" color="fg.subtle" py={1}>{filtering ? 'Sin coincidencias en este grupo.' : 'Sin opciones aún.'}</Text>}
-      {!filtering && (
+      {shown.length === 0 && (
+        <Text fontSize="sm" color="fg.subtle" py={1}>
+          {searching ? 'Sin coincidencias en este grupo.'
+            : hiddenCount > 0 ? `${hiddenCount} archivada${plural(hiddenCount)} oculta${plural(hiddenCount)}.`
+              : 'Sin opciones aún.'}
+        </Text>
+      )}
+      {shown.length > 0 && hiddenCount > 0 && !searching && (
+        <Text fontSize="xs" color="fg.subtle" py={0.5}>{hiddenCount} archivada{plural(hiddenCount)} oculta{plural(hiddenCount)}.</Text>
+      )}
+      {!searching && (
         <Button size="sm" variant="outline" alignSelf="start" onClick={() => setCreating(true)}>
           <LuPlus /> Opción
         </Button>

@@ -2,12 +2,29 @@ package app
 
 import (
 	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
+
+// GetPreference devuelve el valor JSON crudo de una preferencia del usuario, o nil si no existe.
+func (s *UsersService) GetPreference(ctx context.Context, userID int64, key string) ([]byte, error) {
+	v, err := s.store.Q.GetUserPreference(ctx, db.GetUserPreferenceParams{UserID: userID, Key: key})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return v, err
+}
+
+// SetPreference guarda (upsert) el valor JSON de una preferencia del usuario. value debe ser JSON válido.
+func (s *UsersService) SetPreference(ctx context.Context, userID int64, key string, value []byte) error {
+	return s.store.Q.SetUserPreference(ctx, db.SetUserPreferenceParams{UserID: userID, Key: key, Value: value})
+}
 
 type UsersService struct {
 	store *store.Store

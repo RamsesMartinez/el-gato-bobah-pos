@@ -147,6 +147,22 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User
 	return i, err
 }
 
+const getUserPreference = `-- name: GetUserPreference :one
+select value from user_preferences where user_id = $1 and key = $2
+`
+
+type GetUserPreferenceParams struct {
+	UserID int64  `json:"user_id"`
+	Key    string `json:"key"`
+}
+
+func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferenceParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getUserPreference, arg.UserID, arg.Key)
+	var value []byte
+	err := row.Scan(&value)
+	return value, err
+}
+
 const listActiveUsers = `-- name: ListActiveUsers :many
 select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
 from users where is_active order by name
@@ -211,6 +227,23 @@ type SetUserPinParams struct {
 
 func (q *Queries) SetUserPin(ctx context.Context, arg SetUserPinParams) error {
 	_, err := q.db.Exec(ctx, setUserPin, arg.ID, arg.PinHash)
+	return err
+}
+
+const setUserPreference = `-- name: SetUserPreference :exec
+insert into user_preferences (user_id, key, value, updated_at)
+values ($1, $2, $3, now())
+on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
+`
+
+type SetUserPreferenceParams struct {
+	UserID int64  `json:"user_id"`
+	Key    string `json:"key"`
+	Value  []byte `json:"value"`
+}
+
+func (q *Queries) SetUserPreference(ctx context.Context, arg SetUserPreferenceParams) error {
+	_, err := q.db.Exec(ctx, setUserPreference, arg.UserID, arg.Key, arg.Value)
 	return err
 }
 
