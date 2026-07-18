@@ -71,6 +71,18 @@ func (h *Handlers) ModifierDefaults(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, defaults)
 }
 
+// POST /admin/reload — recarga el estado en caché sin reiniciar el proceso: menú,
+// popularidad y el memo del recomendador. Útil tras editar la BD por fuera
+// (migraciones / reorg SQL), donde el flujo normal del admin no invalida la caché.
+// OJO: recarga ESTADO, no CÓDIGO — cambios de lógica siguen requiriendo recompilar.
+func (h *Handlers) AdminReload(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	h.menuCache.Invalidate(ctx)
+	h.menuCache.InvalidatePopular(ctx)
+	h.suggest.Invalidate()
+	JSON(w, http.StatusOK, map[string]any{"reloaded": []string{"menu", "popular", "recommendations"}})
+}
+
 // GET /products/{id}/costing — costo calculado del producto (desglose simple).
 func (h *Handlers) ProductCosting(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

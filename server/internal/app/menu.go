@@ -52,6 +52,7 @@ type MenuOption struct {
 	Name       string  `json:"name"`
 	PriceDelta float64 `json:"priceDelta"`
 	MaxPerLine int     `json:"maxPerLine"`
+	Favorite   bool    `json:"favorite"`
 }
 
 type MenuService struct {
@@ -102,6 +103,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 	for _, o := range optRows {
 		optionsByGroup[o.GroupID] = append(optionsByGroup[o.GroupID], MenuOption{
 			ID: o.ID, Name: o.Name, PriceDelta: o.PriceDelta, MaxPerLine: int(o.MaxPerLine),
+			Favorite: o.IsFavorite,
 		})
 	}
 

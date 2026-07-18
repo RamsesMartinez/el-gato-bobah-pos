@@ -30,7 +30,7 @@ export function TicketTabs() {
             gap={1}
             h="44px"
             pl={3}
-            pr={1.5}
+            pr={active ? 1 : 3}
             borderRadius={RADIUS}
             borderWidth={BORDER_W}
             borderColor={active ? 'colorPalette.600' : 'border'}
@@ -40,15 +40,26 @@ export function TicketTabs() {
             <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap">
               {t.customerName || `Cuenta ${t.num}`}{count > 0 ? ` · ${count}` : ''}
             </Text>
-            <Box
-              as="span"
-              p={1}
-              borderRadius="full"
-              _hover={{ bg: active ? 'whiteAlpha.300' : 'bg.muted' }}
-              onClick={(e) => { e.stopPropagation(); close(t.id, count > 0); }}
-            >
-              <LuX size={14} />
-            </Box>
+            {/* la ✕ solo en la cuenta activa → no se cierra por error una de fondo al cambiar.
+                target amplio (32px, para 7") + confirmación si tiene artículos (fn close). */}
+            {active && (
+              <Box
+                as="span"
+                role="button"
+                aria-label="Cerrar cuenta"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                minW="32px"
+                minH="32px"
+                borderRadius="full"
+                _hover={{ bg: 'whiteAlpha.300' }}
+                _active={{ bg: 'whiteAlpha.400' }}
+                onClick={(e) => { e.stopPropagation(); close(t.id, count > 0); }}
+              >
+                <LuX size={16} />
+              </Box>
+            )}
           </HStack>
         );
       })}

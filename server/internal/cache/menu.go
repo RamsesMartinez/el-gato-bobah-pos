@@ -76,3 +76,11 @@ func (c *MenuCache) SetPopular(ctx context.Context, doc []byte) {
 	}
 	_ = c.rdb.Set(ctx, popularKey, doc, popularTTL).Err()
 }
+
+// InvalidatePopular borra el read model de popularidad cacheado.
+func (c *MenuCache) InvalidatePopular(ctx context.Context) {
+	if c.rdb == nil {
+		return
+	}
+	_ = c.rdb.Del(ctx, popularKey).Err()
+}

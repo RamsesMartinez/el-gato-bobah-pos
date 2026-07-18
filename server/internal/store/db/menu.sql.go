@@ -33,7 +33,7 @@ func (q *Queries) MenuCategories(ctx context.Context) ([]MenuCategoriesRow, erro
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MenuCategoriesRow
+	items := []MenuCategoriesRow{}
 	for rows.Next() {
 		var i MenuCategoriesRow
 		if err := rows.Scan(
@@ -55,7 +55,7 @@ func (q *Queries) MenuCategories(ctx context.Context) ([]MenuCategoriesRow, erro
 }
 
 const menuOptions = `-- name: MenuOptions :many
-select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line
+select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line, mo.is_favorite
 from modifier_options mo
 where mo.is_active
 order by mo.group_id, mo.sort_key, mo.name
@@ -67,6 +67,7 @@ type MenuOptionsRow struct {
 	Name       string  `json:"name"`
 	PriceDelta float64 `json:"price_delta"`
 	MaxPerLine int16   `json:"max_per_line"`
+	IsFavorite bool    `json:"is_favorite"`
 }
 
 func (q *Queries) MenuOptions(ctx context.Context) ([]MenuOptionsRow, error) {
@@ -75,7 +76,7 @@ func (q *Queries) MenuOptions(ctx context.Context) ([]MenuOptionsRow, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MenuOptionsRow
+	items := []MenuOptionsRow{}
 	for rows.Next() {
 		var i MenuOptionsRow
 		if err := rows.Scan(
@@ -84,6 +85,7 @@ func (q *Queries) MenuOptions(ctx context.Context) ([]MenuOptionsRow, error) {
 			&i.Name,
 			&i.PriceDelta,
 			&i.MaxPerLine,
+			&i.IsFavorite,
 		); err != nil {
 			return nil, err
 		}
@@ -97,7 +99,9 @@ func (q *Queries) MenuOptions(ctx context.Context) ([]MenuOptionsRow, error) {
 
 const menuProductGroups = `-- name: MenuProductGroups :many
 select pmg.product_id, pmg.group_id, coalesce(pmg.title, mg.name) as title,
-       pmg.min_select, pmg.max_select, pmg.position
+       coalesce(pmg.min_select, mg.default_min_select) as min_select,
+       coalesce(pmg.max_select, mg.default_max_select) as max_select,
+       pmg.position
 from product_modifier_groups pmg
 join modifier_groups mg on mg.id = pmg.group_id
 where mg.is_active
@@ -113,13 +117,14 @@ type MenuProductGroupsRow struct {
 	Position  int32  `json:"position"`
 }
 
+// min/max efectivos: el override del producto o, si es NULL, el default del grupo.
 func (q *Queries) MenuProductGroups(ctx context.Context) ([]MenuProductGroupsRow, error) {
 	rows, err := q.db.Query(ctx, menuProductGroups)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MenuProductGroupsRow
+	items := []MenuProductGroupsRow{}
 	for rows.Next() {
 		var i MenuProductGroupsRow
 		if err := rows.Scan(
@@ -174,7 +179,7 @@ func (q *Queries) MenuProducts(ctx context.Context) ([]MenuProductsRow, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MenuProductsRow
+	items := []MenuProductsRow{}
 	for rows.Next() {
 		var i MenuProductsRow
 		if err := rows.Scan(
@@ -224,7 +229,7 @@ func (q *Queries) PopularProducts(ctx context.Context) ([]PopularProductsRow, er
 		return nil, err
 	}
 	defer rows.Close()
-	var items []PopularProductsRow
+	items := []PopularProductsRow{}
 	for rows.Next() {
 		var i PopularProductsRow
 		if err := rows.Scan(&i.ProductID, &i.Qty); err != nil {

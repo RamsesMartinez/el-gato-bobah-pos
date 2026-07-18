@@ -9,7 +9,9 @@ import { ExpensesPage } from './features/backoffice/ExpensesPage';
 import { StockPage } from './features/backoffice/StockPage';
 import { ReportsPage } from './features/backoffice/ReportsPage';
 import { EmployeesPage } from './features/admin/EmployeesPage';
+import { CatalogPage } from './features/admin/CatalogPage';
 import { ProductsAdminPage } from './features/admin/ProductsAdminPage';
+import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
 import { AppearancePage } from './features/admin/AppearancePage';
 
 export const App = () => (
@@ -29,7 +31,14 @@ export const App = () => (
         <Route path="/gastos" element={<ExpensesPage />} />
         <Route path="/almacen" element={<StockPage />} />
         <Route path="/reportes" element={<ReportsPage />} />
-        <Route path="/productos" element={<ProductsAdminPage />} />
+        <Route path="/catalogo" element={<CatalogPage />}>
+          <Route index element={<Navigate to="/catalogo/productos" replace />} />
+          <Route path="productos" element={<ProductsAdminPage />} />
+          <Route path="opciones" element={<ModifierOptionsPage />} />
+        </Route>
+        {/* rutas viejas → redirigen al hub (compatibilidad con enlaces existentes) */}
+        <Route path="/productos" element={<Navigate to="/catalogo/productos" replace />} />
+        <Route path="/opciones" element={<Navigate to="/catalogo/opciones" replace />} />
         <Route path="/empleados" element={<EmployeesPage />} />
         <Route path="/apariencia" element={<AppearancePage />} />
       </Route>

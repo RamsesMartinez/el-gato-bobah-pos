@@ -5,7 +5,9 @@ tmp_dir = "tmp"
   cmd = "go build -o ./tmp/api ./cmd/api"
   bin = "./tmp/api"
   include_ext = ["go", "sql"]
-  exclude_dir = ["tmp", "internal/store/db"]
+  # OJO: no excluir internal/store/db — es el código generado por sqlc; si se excluye,
+  # regenerar queries no dispara rebuild y el server sirve un binario viejo (bug silencioso).
+  exclude_dir = ["tmp"]
   delay = 500
   stop_on_error = true
 

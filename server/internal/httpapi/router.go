@@ -90,7 +90,30 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
 				r.Get("/", h.AdminListProducts)
 				r.Patch("/{id}", h.AdminUpdateProduct)
+				// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+				r.Get("/{id}/groups", h.AdminProductGroups)
+				r.Post("/{id}/groups", h.AdminAttachProductGroup)
+				r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
 			})
+
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
+				r.Get("/", h.AdminListModifierOptions)
+				r.Patch("/{id}", h.AdminUpdateOption)
+			})
+
+			// catálogo global de grupos + sus opciones
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/groups", func(r chi.Router) {
+				r.Get("/", h.AdminListGroups)
+				r.Post("/", h.AdminCreateGroup)
+				r.Patch("/{id}", h.AdminUpdateGroup)
+				r.Get("/{id}/options", h.AdminGroupOptions)
+				r.Post("/{id}/options", h.AdminCreateOption)
+				r.Post("/{id}/options/reorder", h.AdminReorderOptions)
+				r.Get("/{id}/products", h.AdminGroupProducts)
+			})
+
+			// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/reload", h.AdminReload)
 
 			r.With(RequireRole(domain.RoleAdmin)).Route("/users", func(r chi.Router) {
 				r.Get("/", h.ListUsers)

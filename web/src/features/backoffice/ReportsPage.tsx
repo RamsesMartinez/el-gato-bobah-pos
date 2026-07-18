@@ -4,6 +4,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
 import { money } from '../../utils/format';
+import { Page } from '../../components/Page';
 
 export function ReportsPage() {
   const sales = useQuery({ queryKey: ['report', 'sales'], queryFn: () => backofficeApi.reportSales() });
@@ -15,7 +16,7 @@ export function ReportsPage() {
   const totalOrders = sales.data?.byDay.reduce((s, d) => s + d.orders, 0) ?? 0;
 
   return (
-    <Box p={6} maxW="960px">
+    <Page maxW="1150px">
       <Heading size="lg" mb={4}>Reportes (últimos 30 días)</Heading>
       <HStack mb={4}>
         <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Ventas</Stat.Label><Stat.ValueText>{money(totalRevenue)}</Stat.ValueText></Stat.Root>
@@ -52,6 +53,6 @@ export function ReportsPage() {
           </Table.Root>
         </Box>
       </SimpleGrid>
-    </Box>
+    </Page>
   );
 }

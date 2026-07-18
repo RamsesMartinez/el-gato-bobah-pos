@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { BoardOrder, Menu, OrderView, PaymentMethod } from '../types/pos';
+import type { BoardOrder, Menu, OrderView, PaymentMethod, RankedOption } from '../types/pos';
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -24,7 +24,7 @@ export const posApi = {
     api.post<void>(`/orders/${id}/cancel`, { reason }),
 };
 
-export type ModifierDefaults = Record<string, Record<string, number[]>>;
+export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;
 
 export interface CreateOrderBody {
   clientUuid: string;
@@ -35,7 +35,7 @@ export interface CreateOrderBody {
     productId: number;
     qty: number;
     notes?: string;
-    modifiers: Array<{ optionId: number; qty: number; portion?: 'A' | 'B' }>;
+    modifiers: Array<{ optionId: number; qty: number }>;
   }>;
   payment?: { methodId: number; amount: number; tip?: number };
 }

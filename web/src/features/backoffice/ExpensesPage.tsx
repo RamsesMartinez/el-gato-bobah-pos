@@ -6,6 +6,7 @@ import { NativeSelectRoot, NativeSelectField } from '../../components/ui/native-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
 import { money } from '../../utils/format';
+import { Page } from '../../components/Page';
 
 export function ExpensesPage() {
   const qc = useQueryClient();
@@ -26,12 +27,12 @@ export function ExpensesPage() {
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   return (
-    <Box p={6} maxW="820px">
+    <Page maxW="820px">
       <Heading size="lg" mb={4}>Gastos</Heading>
       <HStack bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4} align="end" flexWrap="wrap">
         <NativeSelectRoot maxW="220px">
           <NativeSelectField placeholder="Categoría" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            {cats?.items.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.financial_group})</option>)}
+            {(cats?.items ?? []).map((c) => <option key={c.id} value={c.id}>{c.name} ({c.financial_group})</option>)}
           </NativeSelectField>
         </NativeSelectRoot>
         <Input placeholder="Monto" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} maxW="140px" />
@@ -45,7 +46,7 @@ export function ExpensesPage() {
         <Table.Root size="sm">
           <Table.Header><Table.Row><Table.ColumnHeader>Fecha</Table.ColumnHeader><Table.ColumnHeader>Categoría</Table.ColumnHeader><Table.ColumnHeader>Proveedor</Table.ColumnHeader><Table.ColumnHeader>Descripción</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Monto</Table.ColumnHeader></Table.Row></Table.Header>
           <Table.Body>
-            {data?.items.map((e) => (
+            {(data?.items ?? []).map((e) => (
               <Table.Row key={e.id}>
                 <Table.Cell>{e.expense_date?.slice(0, 10)}</Table.Cell>
                 <Table.Cell>{e.category}</Table.Cell>
@@ -57,6 +58,6 @@ export function ExpensesPage() {
           </Table.Body>
         </Table.Root>
       </Box>
-    </Box>
+    </Page>
   );
 }

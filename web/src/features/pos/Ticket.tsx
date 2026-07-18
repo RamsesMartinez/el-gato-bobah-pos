@@ -1,7 +1,7 @@
 import {
   Box, Flex, HStack, VStack, Text, Button, IconButton, Separator, Center,
 } from '@chakra-ui/react';
-import { LuTrash2, LuStickyNote } from 'react-icons/lu';
+import { LuTrash2, LuStickyNote, LuPanelRightClose } from 'react-icons/lu';
 import { useTicketStore, useActiveTicket, lineTotal, ticketTotal } from '../../stores/ticket';
 import type { TicketLine } from '../../types/pos';
 import { money } from '../../utils/format';
@@ -9,9 +9,10 @@ import { money } from '../../utils/format';
 interface Props {
   onCheckout: () => void;
   onEditLine: (line: TicketLine) => void;
+  onHide?: () => void; // ocultar el panel lateral (solo modo ancho)
 }
 
-export function Ticket({ onCheckout, onEditLine }: Props) {
+export function Ticket({ onCheckout, onEditLine, onHide }: Props) {
   const { lines, customerName } = useActiveTicket();
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
@@ -21,12 +22,22 @@ export function Ticket({ onCheckout, onEditLine }: Props) {
 
   return (
     <Flex direction="column" h="100%" bg="bg.panel">
-      <HStack justify="space-between" p={4} pb={2}>
-        <Text fontWeight="700" fontSize="lg">
-          Pedido {customerName && <Text as="span" color="fg.muted" fontWeight="500">· {customerName}</Text>}
-        </Text>
+      <HStack justify="space-between" p={3} pb={2} gap={2}>
+        {/* collapse a la IZQUIERDA, lejos de "Vaciar" (destructivo) para evitar toques accidentales en 7" */}
+        <HStack gap={2} minW={0} flex="1">
+          {onHide && (
+            <IconButton size="sm" minW="40px" minH="40px" variant="ghost" colorPalette="gray"
+              aria-label="Ocultar pedido" onClick={onHide}>
+              <LuPanelRightClose />
+            </IconButton>
+          )}
+          <Text fontWeight="700" fontSize="lg" truncate>
+            Pedido {customerName && <Text as="span" color="fg.muted" fontWeight="500">· {customerName}</Text>}
+          </Text>
+        </HStack>
         {lines.length > 0 && (
-          <Button size="xs" variant="ghost" colorPalette="red" onClick={() => { if (confirm('¿Vaciar pedido?')) clear(); }}>
+          <Button size="sm" minH="40px" px={3} variant="ghost" colorPalette="red"
+            onClick={() => { if (confirm('¿Vaciar pedido?')) clear(); }}>
             Vaciar
           </Button>
         )}
@@ -47,10 +58,7 @@ export function Ticket({ onCheckout, onEditLine }: Props) {
                 {l.modifiers.length > 0 && (
                   <Text fontSize="xs" color="fg.muted" lineClamp={2}>
                     {l.modifiers
-                      .map((m) => {
-                        const label = m.portion ? `½${m.portion} ${m.name}` : m.name;
-                        return m.qty > 1 ? `${label} ×${m.qty}` : label;
-                      })
+                      .map((m) => (m.qty > 1 ? `${m.name} ×${m.qty}` : m.name))
                       .join(' · ')}
                   </Text>
                 )}

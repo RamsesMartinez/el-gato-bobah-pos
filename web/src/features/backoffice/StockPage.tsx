@@ -3,6 +3,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
+import { Page } from '../../components/Page';
 
 export function StockPage() {
   const levels = useQuery({ queryKey: ['stock', 'levels'], queryFn: backofficeApi.stockLevels });
@@ -11,7 +12,7 @@ export function StockPage() {
   if (levels.isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   return (
-    <Box p={6} maxW="900px">
+    <Page maxW="1150px">
       <Heading size="lg" mb={4}>Almacén</Heading>
       <Tabs.Root defaultValue="existencias">
         <Tabs.List>
@@ -23,10 +24,10 @@ export function StockPage() {
             <Table.Root size="sm">
               <Table.Header><Table.Row><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Mínimo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
-                {levels.data?.items.length === 0 && (
+                {(levels.data?.items ?? []).length === 0 && (
                   <Table.Row><Table.Cell colSpan={4}><Text color="fg.subtle">Sin movimientos aún</Text></Table.Cell></Table.Row>
                 )}
-                {levels.data?.items.map((s, i) => {
+                {(levels.data?.items ?? []).map((s, i) => {
                   const low = s.min_stock != null && s.on_hand <= s.min_stock;
                   return (
                     <Table.Row key={i} bg={s.on_hand < 0 ? 'red.50' : undefined}>
@@ -48,7 +49,7 @@ export function StockPage() {
             <Table.Root size="sm">
               <Table.Header><Table.Row><Table.ColumnHeader>Fecha</Table.ColumnHeader><Table.ColumnHeader>Artículo</Table.ColumnHeader><Table.ColumnHeader>Tipo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Cantidad</Table.ColumnHeader><Table.ColumnHeader>Motivo</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
-                {moves.data?.items.map((m) => (
+                {(moves.data?.items ?? []).map((m) => (
                   <Table.Row key={m.id}>
                     <Table.Cell>{new Date(m.created_at).toLocaleString('es-MX')}</Table.Cell>
                     <Table.Cell>{m.item_name}</Table.Cell>
@@ -62,6 +63,6 @@ export function StockPage() {
           </Box>
         </Tabs.Content>
       </Tabs.Root>
-    </Box>
+    </Page>
   );
 }

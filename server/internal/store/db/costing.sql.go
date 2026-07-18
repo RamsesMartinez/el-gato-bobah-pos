@@ -30,7 +30,7 @@ func (q *Queries) ListComboSlotDefaultsForCosting(ctx context.Context) ([]ListCo
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListComboSlotDefaultsForCostingRow
+	items := []ListComboSlotDefaultsForCostingRow{}
 	for rows.Next() {
 		var i ListComboSlotDefaultsForCostingRow
 		if err := rows.Scan(&i.ComboID, &i.ProductID, &i.MinSelect); err != nil {
@@ -67,7 +67,7 @@ func (q *Queries) ListIngredientsForCosting(ctx context.Context) ([]ListIngredie
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListIngredientsForCostingRow
+	items := []ListIngredientsForCostingRow{}
 	for rows.Next() {
 		var i ListIngredientsForCostingRow
 		if err := rows.Scan(
@@ -105,7 +105,7 @@ func (q *Queries) ListModifierOptionsForCosting(ctx context.Context) ([]ListModi
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListModifierOptionsForCostingRow
+	items := []ListModifierOptionsForCostingRow{}
 	for rows.Next() {
 		var i ListModifierOptionsForCostingRow
 		if err := rows.Scan(&i.ID, &i.RecipeID, &i.LinkedProductID); err != nil {
@@ -137,7 +137,7 @@ func (q *Queries) ListProductsForCosting(ctx context.Context) ([]ListProductsFor
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListProductsForCostingRow
+	items := []ListProductsForCostingRow{}
 	for rows.Next() {
 		var i ListProductsForCostingRow
 		if err := rows.Scan(
@@ -175,7 +175,7 @@ func (q *Queries) ListRecipeItemsForCosting(ctx context.Context) ([]ListRecipeIt
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListRecipeItemsForCostingRow
+	items := []ListRecipeItemsForCostingRow{}
 	for rows.Next() {
 		var i ListRecipeItemsForCostingRow
 		if err := rows.Scan(&i.RecipeID, &i.IngredientID, &i.QtyBase); err != nil {

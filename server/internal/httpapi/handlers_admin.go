@@ -10,14 +10,121 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
-// GET /admin/products
+// GET /admin/products?status=&search=&limit=&offset=  (paginado en el backend)
 func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
-	items, err := h.admin.ListProducts(r.Context())
+	q := r.URL.Query()
+	status := q.Get("status") // ""=todos | "act" | "inact"
+	if status != "act" && status != "inact" {
+		status = ""
+	}
+	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (POS modo edición)
+	offset := atoiOr(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+	groups := q.Get("groups") // ""=todos | "none"=sin grupos | "some"=con grupos
+	if groups != "none" && groups != "some" {
+		groups = ""
+	}
+	sort := q.Get("sort") // ""=nombre | "groups"=por cantidad de grupos
+	if sort != "groups" {
+		sort = ""
+	}
+	dir := q.Get("dir") // "asc" | "desc" (default desc para grupos)
+	if dir != "asc" {
+		dir = "desc"
+	}
+	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), groups, sort, dir, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items})
+	JSON(w, http.StatusOK, page)
+}
+
+func atoiOr(s string, def int) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return def
+}
+
+func clampInt(n, lo, hi int) int {
+	if n < lo {
+		return lo
+	}
+	if n > hi {
+		return hi
+	}
+	return n
+}
+
+// GET /admin/modifier-options?status=&search=&limit=&offset=  (paginado en el backend)
+func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	status := q.Get("status") // ""=todas | "act" | "inact"
+	if status != "act" && status != "inact" {
+		status = ""
+	}
+	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (el POS pide todas)
+	offset := atoiOr(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
+	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), int32(limit), int32(offset))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, page)
+}
+
+// PATCH /admin/modifier-options/{id}  {favorite?, active?, name?, priceDelta?, maxPerLine?} — actualiza lo que venga.
+func (h *Handlers) AdminUpdateOption(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Favorite   *bool    `json:"favorite"`
+		Active     *bool    `json:"active"`
+		Name       *string  `json:"name"`
+		PriceDelta *float64 `json:"priceDelta"`
+		MaxPerLine *int     `json:"maxPerLine"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	// edición de campos: nombre/precio/max llegan juntos desde el formulario
+	if body.Name != nil {
+		pd, mpl := 0.0, 1
+		if body.PriceDelta != nil {
+			pd = *body.PriceDelta
+		}
+		if body.MaxPerLine != nil {
+			mpl = *body.MaxPerLine
+		}
+		if err := h.admin.UpdateOptionFields(r.Context(), id, *body.Name, pd, mpl); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+	if body.Favorite != nil {
+		if err := h.admin.SetOptionFavorite(r.Context(), id, *body.Favorite); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+	if body.Active != nil {
+		if err := h.admin.SetOptionActive(r.Context(), id, *body.Active); err != nil {
+			Error(w, err)
+			return
+		}
+	}
+	h.menuChanged(r.Context())
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // PATCH /admin/products/{id}

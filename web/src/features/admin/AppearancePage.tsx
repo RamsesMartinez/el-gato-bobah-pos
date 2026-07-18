@@ -1,8 +1,9 @@
 import { Box, Heading, Text, SimpleGrid, HStack, VStack, Flex, Button } from '@chakra-ui/react';
 import { LuCheck, LuSun, LuMoon, LuMonitor } from 'react-icons/lu';
 import { useTheme } from 'next-themes';
-import { PALETTES, useUiStore } from '../../stores/ui';
+import { PALETTES, REC_STRATEGIES, useUiStore } from '../../stores/ui';
 import { RADIUS } from '../../theme/ui';
+import { Page } from '../../components/Page';
 
 const THEMES = [
   { id: 'light', label: 'Claro', icon: LuSun },
@@ -15,10 +16,12 @@ export function AppearancePage() {
   const setPalette = useUiStore((s) => s.setPalette);
   const topCount = useUiStore((s) => s.topCount);
   const setTopCount = useUiStore((s) => s.setTopCount);
+  const recStrategy = useUiStore((s) => s.recStrategy);
+  const setRecStrategy = useUiStore((s) => s.setRecStrategy);
   const { theme, setTheme } = useTheme();
 
   return (
-    <Box p={6} maxW="900px">
+    <Page maxW="900px">
       <Heading size="lg" mb={1}>Interfaz</Heading>
       <Text color="fg.muted" mb={6}>Personaliza el aspecto del sistema. Los cambios se aplican al instante.</Text>
 
@@ -78,6 +81,39 @@ export function AppearancePage() {
         })}
       </SimpleGrid>
 
+      <Text fontWeight="700" mt={8} mb={1}>Recomendación de opciones</Text>
+      <Text color="fg.muted" fontSize="sm" mb={3}>
+        Cómo se ordenan y sugieren las opciones (salsas, toppings…) al armar un producto.
+      </Text>
+      <VStack align="stretch" gap={2} maxW="520px">
+        {REC_STRATEGIES.map((s) => {
+          const active = s.id === recStrategy;
+          return (
+            <Box
+              key={s.id}
+              as="button"
+              textAlign="left"
+              colorPalette={palette}
+              onClick={() => setRecStrategy(s.id)}
+              p={3}
+              borderWidth="2px"
+              borderColor={active ? 'colorPalette.500' : 'border'}
+              borderRadius={RADIUS}
+              bg="bg.panel"
+              transition="border-color .15s"
+            >
+              <HStack justify="space-between" align="start">
+                <VStack align="start" gap={0}>
+                  <Text fontWeight="700">{s.label}</Text>
+                  <Text fontSize="xs" color="fg.muted">{s.hint}</Text>
+                </VStack>
+                {active && <Box color="colorPalette.600"><LuCheck size={20} /></Box>}
+              </HStack>
+            </Box>
+          );
+        })}
+      </VStack>
+
       <Text fontWeight="700" mt={8} mb={1}>Pantalla de venta</Text>
       <Text color="fg.muted" fontSize="sm" mb={3}>
         Cuántos productos «Top» (los más vendidos) se muestran al abrir el POS.
@@ -96,6 +132,6 @@ export function AppearancePage() {
           <Button colorPalette={palette} variant="subtle">Sutil</Button>
         </HStack>
       </Box>
-    </Box>
+    </Page>
   );
 }

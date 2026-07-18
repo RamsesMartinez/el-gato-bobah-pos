@@ -77,6 +77,7 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	h.suggest.Invalidate() // el pedido nuevo debe reflejarse en las recomendaciones al instante
 	h.broker.Publish(realtime.Event{Type: "order.created", Data: order})
 	JSON(w, http.StatusCreated, order)
 }

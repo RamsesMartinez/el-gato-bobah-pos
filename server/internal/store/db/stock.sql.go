@@ -35,7 +35,7 @@ func (q *Queries) GetRecipeDepletion(ctx context.Context, dollar_1 []int64) ([]G
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetRecipeDepletionRow
+	items := []GetRecipeDepletionRow{}
 	for rows.Next() {
 		var i GetRecipeDepletionRow
 		if err := rows.Scan(&i.ProductID, &i.IngredientID, &i.QtyBase); err != nil {
@@ -59,7 +59,7 @@ func (q *Queries) GetTrackStockProductIDs(ctx context.Context, dollar_1 []int64)
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int64
+	items := []int64{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
@@ -136,7 +136,7 @@ func (q *Queries) ListStockLevels(ctx context.Context) ([]ListStockLevelsRow, er
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListStockLevelsRow
+	items := []ListStockLevelsRow{}
 	for rows.Next() {
 		var i ListStockLevelsRow
 		if err := rows.Scan(
@@ -182,7 +182,7 @@ func (q *Queries) ListStockMovements(ctx context.Context, limit int32) ([]ListSt
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListStockMovementsRow
+	items := []ListStockMovementsRow{}
 	for rows.Next() {
 		var i ListStockMovementsRow
 		if err := rows.Scan(

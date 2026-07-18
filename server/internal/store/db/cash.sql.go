@@ -52,7 +52,7 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExpectedByMethodSinceRow
+	items := []ExpectedByMethodSinceRow{}
 	for rows.Next() {
 		var i ExpectedByMethodSinceRow
 		if err := rows.Scan(
@@ -113,7 +113,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListPaymentMethodsRow
+	items := []ListPaymentMethodsRow{}
 	for rows.Next() {
 		var i ListPaymentMethodsRow
 		if err := rows.Scan(
@@ -152,7 +152,7 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSessionsRow
+	items := []ListSessionsRow{}
 	for rows.Next() {
 		var i ListSessionsRow
 		if err := rows.Scan(
