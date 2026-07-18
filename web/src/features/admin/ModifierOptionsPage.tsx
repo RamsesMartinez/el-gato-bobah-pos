@@ -5,7 +5,7 @@ import {
 } from '@chakra-ui/react';
 import {
   LuChevronRight, LuChevronDown, LuChevronLeft, LuPencil, LuArchive, LuArchiveRestore,
-  LuPlus, LuArrowUp, LuArrowDown, LuChevronsDownUp, LuChevronsUpDown, LuX, LuSearch,
+  LuPlus, LuArrowUp, LuArrowDown, LuChevronsDownUp, LuChevronsUpDown, LuX, LuSearch, LuEye, LuEyeOff,
 } from 'react-icons/lu';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { adminApi, type Group } from '../../api/admin';
@@ -35,6 +35,7 @@ export function ModifierOptionsPage() {
   const [status, setStatus] = useState<Status>('act');
   const [sort, setSort] = useState<Sort>('name');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
+  const [showArchivedOpts, setShowArchivedOpts] = useState(false); // opciones inactivas dentro de cada grupo
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [editGroup, setEditGroup] = useState<Group | null>(null);
@@ -119,6 +120,11 @@ export function ModifierOptionsPage() {
               {dir === 'asc' ? <LuArrowUp /> : <LuArrowDown />}
             </IconButton>
           </HStack>
+          <Button size="sm" variant={showArchivedOpts ? 'solid' : 'ghost'} colorPalette={showArchivedOpts ? undefined : 'gray'}
+            onClick={() => setShowArchivedOpts((v) => !v)}
+            title={showArchivedOpts ? 'Ocultar opciones archivadas' : 'Mostrar opciones archivadas'}>
+            {showArchivedOpts ? <LuEye /> : <LuEyeOff />} Archivadas
+          </Button>
           <Button size="sm" variant="ghost" onClick={toggleAll}>
             {allOpen ? <LuChevronsDownUp /> : <LuChevronsUpDown />} {allOpen ? 'Colapsar' : 'Desplegar'} todo
           </Button>
@@ -129,6 +135,7 @@ export function ModifierOptionsPage() {
       <Box flex="1" minH={0} overflowY="auto" mt={2}>
         {items.map((g) => (
           <GroupCard key={g.id} group={g} search={dsearch} open={searching || expanded.has(g.id)}
+            hideInactiveOpts={!showArchivedOpts}
             onToggle={() => toggleOne(g.id)} onEdit={setEditGroup} onShowProducts={setProductsFor} />
         ))}
         {items.length === 0 && <Text color="fg.subtle">Sin coincidencias.</Text>}
@@ -159,10 +166,11 @@ export function ModifierOptionsPage() {
 }
 
 // --- Tarjeta de grupo (expandible → opciones) ---
-function GroupCard({ group, search, open, onToggle, onEdit, onShowProducts }: {
+function GroupCard({ group, search, open, hideInactiveOpts, onToggle, onEdit, onShowProducts }: {
   group: Group;
   search: string;
   open: boolean;
+  hideInactiveOpts: boolean;
   onToggle: () => void;
   onEdit: (g: Group) => void;
   onShowProducts: (g: Group) => void;
@@ -230,7 +238,7 @@ function GroupCard({ group, search, open, onToggle, onEdit, onShowProducts }: {
           )}
         </HStack>
       </HStack>
-      {open && <Box px={4} pb={3} pt={1}><GroupOptions groupId={group.id} filter={optionFilter} /></Box>}
+      {open && <Box px={4} pb={3} pt={1}><GroupOptions groupId={group.id} filter={optionFilter} hideInactive={hideInactiveOpts} /></Box>}
     </Box>
   );
 }

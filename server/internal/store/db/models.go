@@ -891,3 +891,10 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+type UserPreference struct {
+	UserID    int64     `json:"user_id"`
+	Key       string    `json:"key"`
+	Value     []byte    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

@@ -10,8 +10,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { MenuCategory } from '../../types/pos';
 import { categoryColor } from '../../utils/format';
 import { RADIUS, BORDER_W, ACCENT_W } from '../../theme/ui';
-import { useSessionStore } from '../../stores/session';
-import { useUiStore } from '../../stores/ui';
+import { useCatOrder } from '../../hooks/useCatOrder';
 
 interface Props {
   categories: MenuCategory[];
@@ -82,10 +81,7 @@ function applyOrder<T extends { id: number }>(items: T[], order?: number[]): T[]
 }
 
 export function CategoryRail({ categories, selection, onSelect }: Props) {
-  const userId = useSessionStore((s) => s.user?.id ?? null);
-  const order = useUiStore((s) => (userId != null ? s.catOrder[userId] : undefined));
-  const setRootOrder = useUiStore((s) => s.setRootOrder);
-  const setSubOrder = useUiStore((s) => s.setSubOrder);
+  const { order, setRootOrder, setSubOrder } = useCatOrder();
 
   const roots = useMemo(
     () => applyOrder(categories.filter((c) => c.parentId === null), order?.roots),
@@ -105,17 +101,15 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
 
   const onRootDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
-    if (userId == null || !over || active.id === over.id) return;
+    if (!over || active.id === over.id) return;
     const ids = roots.map((c) => c.id);
-    const next = arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
-    setRootOrder(userId, next);
+    setRootOrder(arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id))));
   };
   const onSubDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
-    if (userId == null || activeRoot == null || !over || active.id === over.id) return;
+    if (activeRoot == null || !over || active.id === over.id) return;
     const ids = subs.map((c) => c.id);
-    const next = arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
-    setSubOrder(userId, activeRoot, next);
+    setSubOrder(activeRoot, arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id))));
   };
 
   const cur = selection.kind === 'root' ? selection : null;
