@@ -21,15 +21,18 @@ where p.is_active
 order by p.sort_key, p.name;
 
 -- name: MenuProductGroups :many
+-- min/max efectivos: el override del producto o, si es NULL, el default del grupo.
 select pmg.product_id, pmg.group_id, coalesce(pmg.title, mg.name) as title,
-       pmg.min_select, pmg.max_select, pmg.position
+       coalesce(pmg.min_select, mg.default_min_select) as min_select,
+       coalesce(pmg.max_select, mg.default_max_select) as max_select,
+       pmg.position
 from product_modifier_groups pmg
 join modifier_groups mg on mg.id = pmg.group_id
 where mg.is_active
 order by pmg.product_id, pmg.position;
 
 -- name: MenuOptions :many
-select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line
+select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line, mo.is_favorite
 from modifier_options mo
 where mo.is_active
 order by mo.group_id, mo.sort_key, mo.name;

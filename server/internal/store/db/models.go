@@ -642,9 +642,11 @@ type IngredientPurchaseFormat struct {
 }
 
 type ModifierGroup struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	IsActive bool   `json:"is_active"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	IsActive         bool   `json:"is_active"`
+	DefaultMinSelect int16  `json:"default_min_select"`
+	DefaultMaxSelect int16  `json:"default_max_select"`
 }
 
 type ModifierOption struct {
@@ -658,6 +660,7 @@ type ModifierOption struct {
 	CurrentCost     float64 `json:"current_cost"`
 	SortKey         float64 `json:"sort_key"`
 	IsActive        bool    `json:"is_active"`
+	IsFavorite      bool    `json:"is_favorite"`
 }
 
 type Order struct {
@@ -776,8 +779,8 @@ type ProductModifierGroup struct {
 	ProductID int64   `json:"product_id"`
 	GroupID   int64   `json:"group_id"`
 	Title     *string `json:"title"`
-	MinSelect int16   `json:"min_select"`
-	MaxSelect int16   `json:"max_select"`
+	MinSelect *int16  `json:"min_select"`
+	MaxSelect *int16  `json:"max_select"`
 	Position  int32   `json:"position"`
 }
 

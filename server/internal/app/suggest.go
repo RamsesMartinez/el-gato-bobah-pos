@@ -24,8 +24,9 @@ import (
 //	  × exp(-(Δhora_circular)² / 2σ²)         · cercanía a la hora actual
 //	  × (mismo día de semana ? factor : 1)    · patrón semanal
 //
-// El default de un grupo es el argmax; se omite si el soporte (score acumulado del
-// grupo) es menor a minSupport → el cliente cae al comportamiento previo.
+// El default de un grupo es el argmax de los scores. Sin umbral de soporte: el local
+// es de bajo volumen, así que se emite aun con pocas compras y el POS refleja las
+// elecciones recientes de inmediato en vez de quedarse mudo.
 
 const (
 	// ponytail: knobs calibrables (como calibrar un sensor). Ajustar según cómo
@@ -33,7 +34,6 @@ const (
 	recencyHalfLifeDays = 21.0 // half-life del peso por antigüedad
 	hourSigma           = 2.5  // ancho (horas) del kernel por hora del día
 	sameDOWFactor       = 1.6  // multiplica el peso si fue el mismo día de semana
-	minSupport          = 5.0  // soporte mínimo (score) para emitir default de un grupo
 	maxRanked           = 4    // opciones rankeadas devueltas por grupo
 )
 
@@ -49,13 +49,20 @@ type pick struct {
 	at        time.Time
 }
 
+// RankedOption es una opción sugerida con su probabilidad: pct = % del peso del grupo
+// que se llevó esa opción (share ponderado). El POS lo muestra como "72%".
+type RankedOption struct {
+	OptionID int64 `json:"id"`
+	Pct      int   `json:"pct"`
+}
+
 type SuggestService struct {
 	store *store.Store
 	now   func() time.Time
 	loc   *time.Location
 
 	mu           sync.Mutex
-	cached       map[int64]map[int64][]int64
+	cached       map[int64]map[int64][]RankedOption
 	cachedBucket time.Time // hora truncada del último cómputo
 }
 
@@ -69,7 +76,7 @@ func NewSuggestService(s *store.Store, now func() time.Time) *SuggestService {
 // Defaults devuelve producto→grupo→opciones rankeadas por probabilidad contextual.
 // Memoiza por bucket de hora: recomputa a lo más una vez por hora (los hábitos no
 // cambian entre requests, y la ventana de 90 días la evalúa la BD).
-func (s *SuggestService) Defaults(ctx context.Context) (map[int64]map[int64][]int64, error) {
+func (s *SuggestService) Defaults(ctx context.Context) (map[int64]map[int64][]RankedOption, error) {
 	now := s.now().In(s.loc)
 	bucket := now.Truncate(time.Hour)
 
@@ -98,40 +105,56 @@ func (s *SuggestService) Defaults(ctx context.Context) (map[int64]map[int64][]in
 	return result, nil
 }
 
+// Invalidate descarta el memo para que el próximo Defaults() recompute. Se llama al
+// crear un pedido: las elecciones nuevas afectan las recomendaciones de inmediato.
+func (s *SuggestService) Invalidate() {
+	s.mu.Lock()
+	s.cached = nil
+	s.cachedBucket = time.Time{}
+	s.mu.Unlock()
+}
+
 // rankDefaults es la función pura del algoritmo (sin BD) → unit-testeable.
-func rankDefaults(picks []pick, now time.Time) map[int64]map[int64][]int64 {
+// Devuelve, por grupo, el top de opciones con su pct = share ponderado del grupo.
+func rankDefaults(picks []pick, now time.Time) map[int64]map[int64][]RankedOption {
 	lambda := math.Ln2 / recencyHalfLifeDays
 
-	// scores[product][group][option] y support[product][group]
+	// scores[product][group][option] = suma de pesos
 	scores := map[int64]map[int64]map[int64]float64{}
-	support := map[int64]map[int64]float64{}
 	for _, p := range picks {
 		w := weight(p.at, now, lambda)
 		if scores[p.productID] == nil {
 			scores[p.productID] = map[int64]map[int64]float64{}
-			support[p.productID] = map[int64]float64{}
 		}
 		if scores[p.productID][p.groupID] == nil {
 			scores[p.productID][p.groupID] = map[int64]float64{}
 		}
 		scores[p.productID][p.groupID][p.optionID] += w
-		support[p.productID][p.groupID] += w
 	}
 
-	out := map[int64]map[int64][]int64{}
+	out := map[int64]map[int64][]RankedOption{}
 	for prod, groups := range scores {
 		for grp, opts := range groups {
-			if support[prod][grp] < minSupport {
-				continue // soporte insuficiente → el cliente usa el fallback
+			var total float64
+			for _, s := range opts {
+				total += s
 			}
 			ranked := rankOptions(opts)
 			if len(ranked) > maxRanked {
 				ranked = ranked[:maxRanked]
 			}
-			if out[prod] == nil {
-				out[prod] = map[int64][]int64{}
+			list := make([]RankedOption, 0, len(ranked))
+			for _, id := range ranked {
+				pct := 0
+				if total > 0 {
+					pct = int(math.Round(opts[id] / total * 100))
+				}
+				list = append(list, RankedOption{OptionID: id, Pct: pct})
 			}
-			out[prod][grp] = ranked
+			if out[prod] == nil {
+				out[prod] = map[int64][]RankedOption{}
+			}
+			out[prod][grp] = list
 		}
 	}
 	return out

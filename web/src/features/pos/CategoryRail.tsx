@@ -1,8 +1,17 @@
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Box, HStack, Button } from '@chakra-ui/react';
 import { LuFlame } from 'react-icons/lu';
+import {
+  DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { MenuCategory } from '../../types/pos';
 import { categoryColor } from '../../utils/format';
 import { RADIUS, BORDER_W, ACCENT_W } from '../../theme/ui';
+import { useSessionStore } from '../../stores/session';
+import { useUiStore } from '../../stores/ui';
 
 interface Props {
   categories: MenuCategory[];
@@ -12,7 +21,7 @@ interface Props {
 
 export type Selection =
   | { kind: 'top' }
-  | { kind: 'root'; rootId: number; subId: number | null };
+  | { kind: 'root'; rootId: number; subId: number | null; popular: boolean };
 
 // Categorías: nivel principal, prominente por tamaño (el radio lo hereda del tema).
 function chip(active: boolean, color?: string) {
@@ -62,49 +71,127 @@ const railScroll = {
   scrollSnapType: 'x proximity' as const,
 };
 
+// aplica el orden guardado por el usuario; los ids no guardados quedan después en su orden original.
+function applyOrder<T extends { id: number }>(items: T[], order?: number[]): T[] {
+  if (!order || order.length === 0) return items;
+  const pos = new Map(order.map((id, i) => [id, i]));
+  return items
+    .map((it, i) => ({ it, key: pos.get(it.id) ?? order.length + i }))
+    .sort((a, b) => a.key - b.key)
+    .map((x) => x.it);
+}
+
 export function CategoryRail({ categories, selection, onSelect }: Props) {
-  const roots = categories.filter((c) => c.parentId === null);
+  const userId = useSessionStore((s) => s.user?.id ?? null);
+  const order = useUiStore((s) => (userId != null ? s.catOrder[userId] : undefined));
+  const setRootOrder = useUiStore((s) => s.setRootOrder);
+  const setSubOrder = useUiStore((s) => s.setSubOrder);
+
+  const roots = useMemo(
+    () => applyOrder(categories.filter((c) => c.parentId === null), order?.roots),
+    [categories, order],
+  );
   const activeRoot = selection.kind === 'root' ? selection.rootId : null;
-  const subs = categories.filter((c) => c.parentId === activeRoot);
+  const subs = useMemo(
+    () => applyOrder(categories.filter((c) => c.parentId === activeRoot), activeRoot != null ? order?.subs[activeRoot] : undefined),
+    [categories, activeRoot, order],
+  );
+
+  // long-press (delay) para arrastrar; un swipe rápido (tolerancia) cancela y deja scrollear.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { delay: 300, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  const onRootDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (userId == null || !over || active.id === over.id) return;
+    const ids = roots.map((c) => c.id);
+    const next = arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
+    setRootOrder(userId, next);
+  };
+  const onSubDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (userId == null || activeRoot == null || !over || active.id === over.id) return;
+    const ids = subs.map((c) => c.id);
+    const next = arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
+    setSubOrder(userId, activeRoot, next);
+  };
+
+  const cur = selection.kind === 'root' ? selection : null;
 
   return (
     <Box>
       <HStack gap={2} overflowX="auto" py={2} css={railScroll}>
+        {/* Top global (más vendidos de todo) — fijo, no se reordena */}
         <Button {...chip(selection.kind === 'top', 'colorPalette.500')} onClick={() => onSelect({ kind: 'top' })}>
           <LuFlame /> Top
         </Button>
-        {roots.map((c) => (
-          <Button
-            key={c.id}
-            {...chip(activeRoot === c.id, categoryColor(c.id, c.color))}
-            onClick={() => onSelect({ kind: 'root', rootId: c.id, subId: null })}
-          >
-            {c.name}
-          </Button>
-        ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onRootDragEnd}>
+          <SortableContext items={roots.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+            {roots.map((c) => (
+              <SortableChip key={c.id} id={c.id} chipProps={chip(activeRoot === c.id, categoryColor(c.id, c.color))}
+                onClick={() => onSelect({ kind: 'root', rootId: c.id, subId: null, popular: false })}>
+                {c.name}
+              </SortableChip>
+            ))}
+          </SortableContext>
+        </DndContext>
       </HStack>
 
-      {selection.kind === 'root' && subs.length > 0 && (
+      {cur && (
         <Box mt={1} pl={3} borderLeftWidth={ACCENT_W} borderColor="colorPalette.400" bg="bg.muted" borderRadius={RADIUS}>
           <HStack gap={2} overflowX="auto" py={2} pr={2} css={railScroll}>
-            <Button
-              {...subChip(selection.subId === null, 'colorPalette.500')}
-              onClick={() => onSelect({ kind: 'root', rootId: selection.rootId, subId: null })}
-            >
+            {/* Todos + Populares: fijos (no se reordenan). Populares es un toggle que se combina con el scope. */}
+            <Button {...subChip(cur.subId === null, 'colorPalette.500')}
+              onClick={() => onSelect({ kind: 'root', rootId: cur.rootId, subId: null, popular: cur.popular })}>
               Todos
             </Button>
-            {subs.map((c) => (
-              <Button
-                key={c.id}
-                {...subChip(selection.subId === c.id, categoryColor(c.id, c.color))}
-                onClick={() => onSelect({ kind: 'root', rootId: selection.rootId, subId: c.id })}
-              >
-                {c.name}
-              </Button>
-            ))}
+            <Button {...subChip(cur.popular, 'orange.500')}
+              onClick={() => onSelect({ kind: 'root', rootId: cur.rootId, subId: cur.subId, popular: !cur.popular })}>
+              <LuFlame /> Populares
+            </Button>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSubDragEnd}>
+              <SortableContext items={subs.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+                {subs.map((c) => (
+                  <SortableChip key={c.id} id={c.id} chipProps={subChip(cur.subId === c.id, categoryColor(c.id, c.color))}
+                    onClick={() => onSelect({ kind: 'root', rootId: cur.rootId, subId: c.id, popular: cur.popular })}>
+                    {c.name}
+                  </SortableChip>
+                ))}
+              </SortableContext>
+            </DndContext>
           </HStack>
         </Box>
       )}
     </Box>
+  );
+}
+
+// Chip arrastrable con long-press. Un tap normal selecciona; tras un arrastre real se suprime el click.
+function SortableChip({ id, chipProps, onClick, children }: {
+  id: number;
+  chipProps: Record<string, unknown>;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const dragged = useRef(false);
+  useEffect(() => {
+    if (isDragging) dragged.current = true;
+    else if (dragged.current) { const t = setTimeout(() => { dragged.current = false; }, 60); return () => clearTimeout(t); }
+  }, [isDragging]);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 2 : undefined,
+  };
+  return (
+    <Button ref={setNodeRef} style={style} {...attributes} {...listeners} {...chipProps}
+      onClick={() => { if (dragged.current) { dragged.current = false; return; } onClick(); }}>
+      {children}
+    </Button>
   );
 }

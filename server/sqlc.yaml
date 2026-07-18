@@ -10,6 +10,7 @@ sql:
         sql_package: pgx/v5
         emit_json_tags: true
         emit_pointers_for_null_types: true
+        emit_empty_slices: true
         overrides:
           # ponytail: numeric → float64 en todo el backend. Simplifica costeo/menú/órdenes.
           # Ceiling: para dinero se redondea a 2 decimales en cada frontera (money.Round2);

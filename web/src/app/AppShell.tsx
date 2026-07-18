@@ -16,7 +16,7 @@ const NAV = [
   { to: '/gastos', icon: LuHandCoins, label: 'Gastos' },
   { to: '/almacen', icon: LuPackage, label: 'Almacén' },
   { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
-  { to: '/productos', icon: LuTag, label: 'Productos' },
+  { to: '/catalogo', icon: LuTag, label: 'Catálogo' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
   { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
 ];

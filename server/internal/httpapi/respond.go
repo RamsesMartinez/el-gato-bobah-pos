@@ -45,6 +45,11 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
+	case errors.Is(err, domain.ErrProductNotSell),
+		errors.Is(err, domain.ErrOptionNotFound),
+		errors.Is(err, domain.ErrEmptyOrder):
+		// reglas de negocio del armado del pedido: 422 con el mensaje real (no 500 opaco)
+		status, code = http.StatusUnprocessableEntity, "UNPROCESSABLE"
 	}
 
 	if status == http.StatusInternalServerError {

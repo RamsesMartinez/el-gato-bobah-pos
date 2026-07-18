@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrEmptyOrder     = errors.New("el pedido no tiene líneas")
@@ -79,8 +82,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 	var out BuiltOrder
 	for _, in := range lines {
 		p, ok := products[in.ProductID]
-		if !ok || !p.Active {
-			return BuiltOrder{}, ErrProductNotSell
+		if !ok {
+			return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrProductNotSell, in.ProductID)
+		}
+		if !p.Active {
+			return BuiltOrder{}, fmt.Errorf("%w: %s", ErrProductNotSell, p.Name)
 		}
 		if in.Qty <= 0 {
 			return BuiltOrder{}, ErrValidation
@@ -97,7 +103,7 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		for _, m := range in.Modifiers {
 			o, ok := options[m.OptionID]
 			if !ok {
-				return BuiltOrder{}, ErrOptionNotFound
+				return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrOptionNotFound, m.OptionID)
 			}
 			q := m.Qty
 			if q <= 0 {

@@ -46,7 +46,7 @@ func (q *Queries) ProductMargins(ctx context.Context, arg ProductMarginsParams) 
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ProductMarginsRow
+	items := []ProductMarginsRow{}
 	for rows.Next() {
 		var i ProductMarginsRow
 		if err := rows.Scan(
@@ -93,7 +93,7 @@ func (q *Queries) SalesByDay(ctx context.Context, arg SalesByDayParams) ([]Sales
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SalesByDayRow
+	items := []SalesByDayRow{}
 	for rows.Next() {
 		var i SalesByDayRow
 		if err := rows.Scan(&i.BusinessDate, &i.Orders, &i.Revenue); err != nil {
@@ -130,7 +130,7 @@ func (q *Queries) SalesByMethod(ctx context.Context, createdAt time.Time) ([]Sal
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SalesByMethodRow
+	items := []SalesByMethodRow{}
 	for rows.Next() {
 		var i SalesByMethodRow
 		if err := rows.Scan(&i.Method, &i.Payments, &i.Total); err != nil {

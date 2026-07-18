@@ -7,6 +7,7 @@ import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
 import { money } from '../../utils/format';
+import { Page } from '../../components/Page';
 
 export function CashPage() {
   const qc = useQueryClient();
@@ -34,7 +35,7 @@ export function CashPage() {
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   return (
-    <Box p={6} maxW="720px">
+    <Page maxW="720px">
       <Heading size="lg" mb={4}>Corte de caja</Heading>
 
       {!session ? (
@@ -80,6 +81,6 @@ export function CashPage() {
           </Button>
         </VStack>
       )}
-    </Box>
+    </Page>
   );
 }

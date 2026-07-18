@@ -58,7 +58,7 @@ func (q *Queries) ListExpenseCategories(ctx context.Context) ([]ListExpenseCateg
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListExpenseCategoriesRow
+	items := []ListExpenseCategoriesRow{}
 	for rows.Next() {
 		var i ListExpenseCategoriesRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.FinancialGroup); err != nil {
@@ -98,7 +98,7 @@ func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpenses
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListExpensesRow
+	items := []ListExpensesRow{}
 	for rows.Next() {
 		var i ListExpensesRow
 		if err := rows.Scan(
@@ -135,7 +135,7 @@ func (q *Queries) ListSuppliers(ctx context.Context) ([]ListSuppliersRow, error)
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListSuppliersRow
+	items := []ListSuppliersRow{}
 	for rows.Next() {
 		var i ListSuppliersRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {

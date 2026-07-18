@@ -249,7 +249,7 @@ func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]Get
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetPricedOptionsRow
+	items := []GetPricedOptionsRow{}
 	for rows.Next() {
 		var i GetPricedOptionsRow
 		if err := rows.Scan(
@@ -290,7 +290,7 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetPricedProductsRow
+	items := []GetPricedProductsRow{}
 	for rows.Next() {
 		var i GetPricedProductsRow
 		if err := rows.Scan(
@@ -339,7 +339,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListActiveOrdersRow
+	items := []ListActiveOrdersRow{}
 	for rows.Next() {
 		var i ListActiveOrdersRow
 		if err := rows.Scan(
@@ -384,7 +384,7 @@ func (q *Queries) ListOrderLineModifiers(ctx context.Context, orderID int64) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListOrderLineModifiersRow
+	items := []ListOrderLineModifiersRow{}
 	for rows.Next() {
 		var i ListOrderLineModifiersRow
 		if err := rows.Scan(
@@ -426,7 +426,7 @@ func (q *Queries) ListOrderLines(ctx context.Context, orderID int64) ([]ListOrde
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListOrderLinesRow
+	items := []ListOrderLinesRow{}
 	for rows.Next() {
 		var i ListOrderLinesRow
 		if err := rows.Scan(
@@ -467,7 +467,7 @@ func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListO
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListOrderPaymentsRow
+	items := []ListOrderPaymentsRow{}
 	for rows.Next() {
 		var i ListOrderPaymentsRow
 		if err := rows.Scan(
@@ -528,7 +528,7 @@ func (q *Queries) RecentModifierPicks(ctx context.Context) ([]RecentModifierPick
 		return nil, err
 	}
 	defer rows.Close()
-	var items []RecentModifierPicksRow
+	items := []RecentModifierPicksRow{}
 	for rows.Next() {
 		var i RecentModifierPicksRow
 		if err := rows.Scan(

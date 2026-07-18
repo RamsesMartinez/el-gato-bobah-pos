@@ -30,6 +30,8 @@ type AdminProductView struct {
 	Category       string  `json:"category"`
 	AvailableFrom  *string `json:"availableFrom"`
 	AvailableUntil *string `json:"availableUntil"`
+	GroupCount     int     `json:"groupCount"`    // grupos de modificadores activos ligados al producto
+	OverrideCount  int     `json:"overrideCount"` // grupos con min/max personalizado en este producto
 }
 
 const dateFmt = "2006-01-02"
@@ -53,20 +55,43 @@ func parseDate(s *string) (pgtype.Date, error) {
 	return pgtype.Date{Time: t, Valid: true}, nil
 }
 
-func (s *AdminService) ListProducts(ctx context.Context) ([]AdminProductView, error) {
-	rows, err := s.store.Q.AdminListProducts(ctx)
+// ProductsPage: página del catálogo (items + total del filtro) más los conteos por
+// estado para las pestañas. total sirve al paginador; counts es independiente de la búsqueda.
+type ProductsPage struct {
+	Items  []AdminProductView `json:"items"`
+	Total  int                `json:"total"`
+	Counts ProductCounts      `json:"counts"`
+}
+
+type ProductCounts struct {
+	Act   int `json:"act"`
+	Inact int `json:"inact"`
+}
+
+// ListProducts pagina el catálogo en el backend. status: ""=todos | "act" | "inact".
+func (s *AdminService) ListProducts(ctx context.Context, status, search, groups, sort, dir string, limit, offset int32) (ProductsPage, error) {
+	rows, err := s.store.Q.AdminListProducts(ctx, db.AdminListProductsParams{
+		Status: status, Search: search, Groups: groups, Sort: sort, Dir: dir, Lim: limit, Off: offset,
+	})
 	if err != nil {
-		return nil, err
+		return ProductsPage{}, err
 	}
 	out := make([]AdminProductView, 0, len(rows))
+	total := 0
 	for _, r := range rows {
+		total = int(r.Total) // igual en todas las filas (window count)
 		out = append(out, AdminProductView{
 			ID: r.ID, Name: r.Name, Price: r.Price, CurrentCost: r.CurrentCost,
 			Type: string(r.Type), IsActive: r.IsActive, IsFavorite: r.IsFavorite,
 			Category: r.Category, AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
+			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 		})
 	}
-	return out, nil
+	c, err := s.store.Q.AdminProductCounts(ctx)
+	if err != nil {
+		return ProductsPage{}, err
+	}
+	return ProductsPage{Items: out, Total: total, Counts: ProductCounts{Act: int(c.Active), Inact: int(c.Inactive)}}, nil
 }
 
 type UpdateProductInput struct {
@@ -77,6 +102,57 @@ type UpdateProductInput struct {
 	Active         bool
 	AvailableFrom  *string
 	AvailableUntil *string
+}
+
+// AdminOptionView: opción de modificador con su grupo, para gestionar (favorito/activo) en el admin.
+type AdminOptionView struct {
+	ID         int64   `json:"id"`
+	GroupID    int64   `json:"groupId"`
+	GroupName  string  `json:"groupName"`
+	Name       string  `json:"name"`
+	PriceDelta float64 `json:"priceDelta"`
+	Favorite   bool    `json:"favorite"`
+	Active     bool    `json:"active"`
+}
+
+// OptionsPage: página de opciones (items + total del filtro) más los conteos por estado
+// para las pestañas. Misma forma que ProductsPage; reutiliza ProductCounts ({act, inact}).
+type OptionsPage struct {
+	Items  []AdminOptionView `json:"items"`
+	Total  int               `json:"total"`
+	Counts ProductCounts     `json:"counts"`
+}
+
+// ListModifierOptions pagina las opciones en el backend. status: ""=todas | "act" | "inact".
+func (s *AdminService) ListModifierOptions(ctx context.Context, status, search string, limit, offset int32) (OptionsPage, error) {
+	rows, err := s.store.Q.AdminListModifierOptions(ctx, db.AdminListModifierOptionsParams{
+		Status: status, Search: search, Lim: limit, Off: offset,
+	})
+	if err != nil {
+		return OptionsPage{}, err
+	}
+	out := make([]AdminOptionView, 0, len(rows))
+	total := 0
+	for _, r := range rows {
+		total = int(r.Total) // igual en todas las filas (window count)
+		out = append(out, AdminOptionView{
+			ID: r.ID, GroupID: r.GroupID, GroupName: r.GroupName, Name: r.Name,
+			PriceDelta: r.PriceDelta, Favorite: r.IsFavorite, Active: r.IsActive,
+		})
+	}
+	c, err := s.store.Q.AdminModifierOptionCounts(ctx)
+	if err != nil {
+		return OptionsPage{}, err
+	}
+	return OptionsPage{Items: out, Total: total, Counts: ProductCounts{Act: int(c.Active), Inact: int(c.Inactive)}}, nil
+}
+
+func (s *AdminService) SetOptionFavorite(ctx context.Context, id int64, fav bool) error {
+	return s.store.Q.AdminSetOptionFavorite(ctx, db.AdminSetOptionFavoriteParams{ID: id, IsFavorite: fav})
+}
+
+func (s *AdminService) SetOptionActive(ctx context.Context, id int64, active bool) error {
+	return s.store.Q.AdminSetOptionActive(ctx, db.AdminSetOptionActiveParams{ID: id, IsActive: active})
 }
 
 func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput) error {

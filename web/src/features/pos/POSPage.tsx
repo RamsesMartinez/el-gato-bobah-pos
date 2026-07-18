@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Box, Flex, VStack, HStack, Text, Button, Spinner, Center, IconButton, useDisclosure,
 } from '@chakra-ui/react';
-import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil } from 'react-icons/lu';
+import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
 import { DrawerRoot, DrawerBackdrop, DrawerContent } from '../../components/ui/drawer';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
@@ -55,12 +55,15 @@ export function POSPage() {
   const [editProduct, setEditProduct] = useState<AdminProduct | null>(null);
   // catálogo admin (con todos los campos editables); solo se carga en modo editar.
   const { data: adminProducts } = useQuery({
-    queryKey: ['admin', 'products'], queryFn: adminApi.products, enabled: editMode && canEdit,
+    queryKey: ['admin', 'products', 'all'],
+    queryFn: () => adminApi.products({ status: 'all', limit: 0 }), // 0 = todo el catálogo (para mapear el producto tocado)
+    enabled: editMode && canEdit,
   });
 
   const ticketDrawer = useDisclosure();
   const checkout = useDisclosure();
   const modSheet = useDisclosure();
+  const [panelHidden, setPanelHidden] = useState(false); // ocultar panel del pedido (modo ancho)
 
   // defensivo: nunca asumir que vienen arreglos (catálogo vacío o respuesta parcial)
   const allCategories = menu?.categories ?? [];
@@ -89,10 +92,20 @@ export function POSPage() {
       const base = ranked.length ? ranked : allProducts.filter((p) => p.favorite);
       return (base.length ? base : allProducts).slice(0, topCount);
     }
-    const { rootId, subId } = selection;
-    if (subId !== null) return allProducts.filter((p) => p.categoryId === subId);
-    const cats = new Set<number>([rootId, ...(childrenByRoot[rootId] ?? [])]);
-    return allProducts.filter((p) => cats.has(p.categoryId));
+    // scope = subcategoría, o categoría raíz + sus hijos
+    const { rootId, subId, popular: showPopular } = selection;
+    const scope = subId !== null
+      ? allProducts.filter((p) => p.categoryId === subId)
+      : allProducts.filter((p) => {
+          const cats = new Set<number>([rootId, ...(childrenByRoot[rootId] ?? [])]);
+          return cats.has(p.categoryId);
+        });
+    if (!showPopular) return scope;
+    // Populares del scope: mismo ranking global de ventas, filtrado a este scope y cortado a topCount.
+    const rankById = new Map((popular ?? []).map((id, i) => [id, i] as const));
+    const ranked = scope.filter((p) => rankById.has(p.id)).sort((a, b) => rankById.get(a.id)! - rankById.get(b.id)!);
+    const base = ranked.length ? ranked : scope.filter((p) => p.favorite);
+    return (base.length ? base : scope).slice(0, topCount);
   }, [allProducts, search, selection, childrenByRoot, popular, topCount]);
 
   const counts = useMemo(() => {
@@ -186,32 +199,49 @@ export function POSPage() {
   );
 
   return (
-    <Box ref={ref} h="100%" bg="bg.subtle">
+    <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
       {wide ? (
         <Flex h="100%">
           <Box flex="1" minW={0}>{catalog}</Box>
-          <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
-            <Ticket onCheckout={checkout.onOpen} onEditLine={editLine} />
-          </Box>
+          {!panelHidden && (
+            <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
+              <Ticket onCheckout={checkout.onOpen} onEditLine={editLine} onHide={() => setPanelHidden(true)} />
+            </Box>
+          )}
         </Flex>
       ) : (
         <Flex direction="column" h="100%">
           <Box flex="1" minH={0}>{catalog}</Box>
           <HStack
-            as="button" onClick={ticketDrawer.onOpen}
-            h="64px" px={4} bg="colorPalette.600" color="white" justify="space-between"
+            h="64px" px={3} bg="colorPalette.600" color="white" gap={2}
             display={count > 0 ? 'flex' : 'none'}
           >
-            <HStack gap={2}>
+            <HStack as="button" onClick={ticketDrawer.onOpen} flex="1" minW={0} gap={2}>
               <LuShoppingCart />
-              <Text fontWeight="700">{count} art · {money(total)}</Text>
-            </HStack>
-            <HStack gap={1}>
-              <Text fontWeight="600">Ver pedido</Text>
+              <Text fontWeight="700" truncate>{count} art · {money(total)}</Text>
               <LuChevronUp />
             </HStack>
+            <Button size="md" colorPalette="green" fontWeight="800" px={6} onClick={checkout.onOpen}>
+              Cobrar
+            </Button>
           </HStack>
         </Flex>
+      )}
+
+      {/* Panel oculto (modo ancho): píldora flotante para reabrir + atajo Cobrar */}
+      {wide && panelHidden && (
+        <HStack position="absolute" bottom={4} right={4} zIndex={20}
+          bg="colorPalette.600" color="white" borderRadius="full" boxShadow="lg" pl={5} pr={2} py={2} gap={3}>
+          <HStack as="button" onClick={() => setPanelHidden(false)} gap={2} minH="44px" px={1}>
+            <LuPanelRightOpen />
+            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total)}` : 'Ver pedido'}</Text>
+          </HStack>
+          {count > 0 && (
+            <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6} onClick={checkout.onOpen}>
+              Cobrar
+            </Button>
+          )}
+        </HStack>
       )}
 
       {/* Ticket como bottom sheet en modo angosto */}
@@ -247,14 +277,14 @@ export function POSPage() {
         onClose={() => setEditProduct(null)}
       />
 
-      {/* Confirmación */}
-      <DialogRoot open={lastOrder !== null} onOpenChange={(e) => { if (!e.open) setLastOrder(null); }} placement="center" size={{ base: 'full', md: 'sm' }}>
+      {/* Confirmación — modal compacto centrado (no full-screen; ocupa lo mínimo) */}
+      <DialogRoot open={lastOrder !== null} onOpenChange={(e) => { if (!e.open) setLastOrder(null); }} placement="center" size="xs">
         <DialogBackdrop />
-        <DialogContent colorPalette={palette} mx={{ base: 0, md: 4 }}>
-          <DialogBody py={10} textAlign="center">
-            <Center color="green.500" mb={2}><LuCircleCheck size={72} /></Center>
-            <Text fontSize="2xl" fontWeight="800">Pedido #{lastOrder?.number}</Text>
-            <Text color="fg.muted" mb={6}>Registrado correctamente</Text>
+        <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
+          <DialogBody py={6} textAlign="center">
+            <Center color="green.500" mb={2}><LuCircleCheck size={56} /></Center>
+            <Text fontSize="xl" fontWeight="800">Pedido #{lastOrder?.number}</Text>
+            <Text color="fg.muted" mb={5}>Registrado correctamente</Text>
             <VStack gap={2}>
               <Button size="lg" w="100%" onClick={() => setLastOrder(null)}>
                 Nuevo pedido

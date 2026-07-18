@@ -1,30 +1,34 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-// Patrón legítimo: reinicia el estado del sheet cuando se abre para otro producto/edición.
-import { useEffect, useRef, useState } from 'react';
+// Reinicia el estado del sheet cuando se abre para otro producto/edición.
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Wrap, WrapItem, Input, Flex,
 } from '@chakra-ui/react';
-import { LuSearch, LuStar, LuSplit } from 'react-icons/lu';
+import { LuSearch, LuArchiveRestore } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
   DrawerCloseTrigger,
 } from '../../components/ui/drawer';
-import type { MenuGroup, MenuOption, MenuProduct, TicketModifier } from '../../types/pos';
+import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { MenuGroup, MenuOption, MenuProduct, RankedOption, TicketModifier } from '../../types/pos';
 import { money, normalize } from '../../utils/format';
 import { useUiStore } from '../../stores/ui';
+import { useSessionStore } from '../../stores/session';
+import { adminApi, type AdminModifierOption } from '../../api/admin';
+import { toaster } from '../../components/ui/toaster';
 
 interface Props {
   product: MenuProduct | null;
   isOpen: boolean;
   initialModifiers?: TicketModifier[];
   initialNotes?: string;
-  optionRanks?: Record<string, number[]>; // grupo(id) → opciones rankeadas por contexto
+  optionRanks?: Record<string, RankedOption[]>; // grupo(id) → opciones rankeadas (con %) por contexto
   onClose: () => void;
   onConfirm: (modifiers: TicketModifier[], notes: string, qty: number) => void;
 }
 
-// selección: porción ('' entero | 'A' | 'B') -> groupId -> optionId -> cantidad
-type Sel = Record<string, Record<number, Record<number, number>>>;
+// selección: groupId -> optionId -> cantidad
+type Sel = Record<number, Record<number, number>>;
 
 const SEARCH_THRESHOLD = 12; // muestra el buscador de opciones si hay más de esto
 
@@ -32,17 +36,102 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const [sel, setSel] = useState<Sel>({});
   const [notes, setNotes] = useState('');
   const [qty, setQty] = useState(1);
-  const [splitOn, setSplitOn] = useState(false);
   const [optQuery, setOptQuery] = useState('');
   const palette = useUiStore((s) => s.palette);
+  const recStrategy = useUiStore((s) => s.recStrategy);
+  const role = useSessionStore((s) => s.user?.role);
+  const canManage = role === 'admin' || role === 'gerente';
+  const qc = useQueryClient();
+
+  // Gestionar una opción (mantener presionado / clic derecho): desactivar para quitar basura.
+  const [manageOpt, setManageOpt] = useState<{ id: number; name: string } | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
+  const suppressClick = useRef(false);
+  const pressTimer = useRef<number | undefined>(undefined);
+
+  const deactivate = useMutation({
+    mutationFn: (id: number) => adminApi.setOptionActive(id, false),
+    onSuccess: (_d, id) => {
+      setHiddenIds((s) => new Set(s).add(id));
+      qc.invalidateQueries({ queryKey: ['menu'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'modifier-options'] });
+      setManageOpt(null);
+      toaster.create({
+        title: 'Opción archivada',
+        type: 'success',
+        action: {
+          label: 'Deshacer',
+          onClick: () => {
+            adminApi.setOptionActive(id, true)
+              .then(() => {
+                setHiddenIds((s) => { const n = new Set(s); n.delete(id); return n; });
+                qc.invalidateQueries({ queryKey: ['menu'] });
+                qc.invalidateQueries({ queryKey: ['admin', 'modifier-options'] });
+              })
+              .catch((e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }));
+          },
+        },
+      });
+    },
+    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+  });
+
+  // Ver archivadas dentro del sheet + reactivar al elegirlas (para venderlas de nuevo).
+  const [showInactive, setShowInactive] = useState(false);
+  const [extraOptions, setExtraOptions] = useState<Map<number, MenuOption[]>>(new Map());
+  const { data: allOptions } = useQuery({
+    queryKey: ['admin', 'modifier-options', 'all'],
+    queryFn: () => adminApi.modifierOptions({ status: 'all', limit: 0 }), // 0 = todas (incluye inactivas para reactivar)
+    enabled: canManage && showInactive,
+  });
+  const reactivate = useMutation({
+    mutationFn: (v: { g: MenuGroup; ao: AdminModifierOption }) => adminApi.setOptionActive(v.ao.id, true),
+    onSuccess: (_d, { g, ao }) => {
+      const mo: MenuOption = { id: ao.id, name: ao.name, priceDelta: ao.priceDelta, maxPerLine: 1, favorite: false };
+      setExtraOptions((prev) => { const m = new Map(prev); m.set(g.id, [...(m.get(g.id) ?? []), mo]); return m; });
+      setSel((s) => (g.max === 1
+        ? { ...s, [g.id]: { [ao.id]: 1 } }
+        : { ...s, [g.id]: { ...(s[g.id] ?? {}), [ao.id]: 1 } }));
+      qc.invalidateQueries({ queryKey: ['menu'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'modifier-options'] });
+      toaster.create({ title: `«${ao.name}» reactivada`, description: 'Queda disponible para la venta.', type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+  });
+
+  const openManage = (o: MenuOption) => { if (canManage) setManageOpt({ id: o.id, name: o.name }); };
+  const pressStart = (o: MenuOption) => {
+    if (!canManage) return;
+    suppressClick.current = false;
+    pressTimer.current = window.setTimeout(() => { suppressClick.current = true; openManage(o); }, 500);
+  };
+  const pressCancel = () => { if (pressTimer.current) window.clearTimeout(pressTimer.current); };
+  const manageHandlers = (o: MenuOption) => (canManage ? {
+    onContextMenu: (e: MouseEvent) => { e.preventDefault(); openManage(o); },
+    onPointerDown: () => pressStart(o),
+    onPointerUp: pressCancel,
+    onPointerLeave: pressCancel,
+    onPointerCancel: pressCancel,
+  } : {});
 
   // orden de inserción de picks multi-select (las claves numéricas de sel no lo conservan),
   // para expulsar la más antigua al llegar al tope (FIFO).
   const pickSeq = useRef(0);
   const pickOrder = useRef<Record<string, number>>({});
-  const okey = (portion: string, gid: number, oid: number) => `${portion}:${gid}:${oid}`;
+  const okey = (gid: number, oid: number) => `${gid}:${oid}`;
 
-  const ranksFor = (gid: number): number[] => optionRanks?.[String(gid)] ?? [];
+  const ranksFor = (gid: number): RankedOption[] => optionRanks?.[String(gid)] ?? [];
+
+  // Patrón Strategy: cada modo decide qué opciones se recomiendan (para pre-marcar y
+  // mostrar arriba). 'smart' trae % contextual; 'favorites' las marcadas; 'alphabetical' nada.
+  const byName = (a: MenuOption, b: MenuOption) => a.name.localeCompare(b.name, 'es');
+  const favRanked = (g: MenuGroup) => g.options.filter((o) => o.favorite).sort(byName).map((o) => ({ id: o.id }));
+  const strategyRanked = (g: MenuGroup): { id: number; pct?: number }[] => {
+    // 'smart' cae a favoritas cuando aún no hay señal contextual (sin registro/probabilidad).
+    if (recStrategy === 'smart') { const r = ranksFor(g.id); return r.length > 0 ? r : favRanked(g); }
+    if (recStrategy === 'favorites') return favRanked(g);
+    return [];
+  };
 
   // inicializa al abrir: restaura edición, o preselecciona el default contextual
   // (top rankeado, o el primero) en grupos de elección única obligatoria.
@@ -51,147 +140,123 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     const s: Sel = {};
     pickOrder.current = {};
     pickSeq.current = 0;
-    const put = (portion: string, gid: number, oid: number, q: number) => {
-      (s[portion] ??= {});
-      (s[portion][gid] ??= {});
-      s[portion][gid][oid] = q;
-      pickOrder.current[okey(portion, gid, oid)] = pickSeq.current++;
+    const put = (gid: number, oid: number, q: number) => {
+      (s[gid] ??= {});
+      s[gid][oid] = q;
+      pickOrder.current[okey(gid, oid)] = pickSeq.current++;
     };
-    let split = false;
     if (initialModifiers?.length) {
       for (const m of initialModifiers) {
-        if (m.portion) split = true;
-        put(m.portion ?? '', m.groupId, m.optionId, m.qty);
+        put(m.groupId, m.optionId, m.qty);
       }
     } else {
-      // pre-marcado inteligente: en TODO grupo con variantes, pre-elige lo que el
-      // sistema de análisis (optionRanks por contexto) marca como más probable.
-      // single-select → 1 opción; multi-select → su mínimo requerido (opcional multi = 0).
+      // pre-marcado inteligente por contexto (optionRanks). Regla anti-"deseleccionar":
+      // - elección única requerida → un default (rankeado, o el más barato como fallback).
+      // - multi-select requerido → SOLO opciones con señal real (rankeadas), hasta el mínimo.
+      //   sin datos NO adivina: pre-marcar un fallback alfabético obliga a deseleccionarlo.
       for (const g of product.groups) {
-        const count = g.max === 1 ? 1 : g.min;
-        if (count <= 0 || g.options.length === 0) continue;
-        const rank = new Map(ranksFor(g.id).map((id, i) => [id, i]));
-        const ordered = [...g.options].sort((a, b) => {
-          const ra = rank.get(a.id) ?? Infinity, rb = rank.get(b.id) ?? Infinity;
-          if (ra !== rb) return ra - rb;          // 1º lo más probable por contexto
-          return a.priceDelta - b.priceDelta;      // sin datos: default = más barato
-        });
-        for (const o of ordered.slice(0, count)) put('', g.id, o.id, 1);
+        if (g.options.length === 0) continue;
+        const ranked = strategyRanked(g);
+        if (g.max === 1) {
+          if (g.min <= 0) continue;
+          const rank = new Map(ranked.map((r, i) => [r.id, i]));
+          const best = [...g.options].sort((a, b) => {
+            const ra = rank.get(a.id) ?? Infinity, rb = rank.get(b.id) ?? Infinity;
+            if (ra !== rb) return ra - rb;          // 1º lo más probable por contexto
+            return a.priceDelta - b.priceDelta;      // sin datos: default = más barato
+          })[0];
+          put(g.id, best.id, 1);
+        } else if (g.min > 0 && ranked.length > 0) {
+          const valid = new Set(g.options.map((o) => o.id));
+          for (const r of ranked.slice(0, g.min)) if (valid.has(r.id)) put(g.id, r.id, 1);
+        }
       }
     }
     setSel(s);
-    setSplitOn(split);
     setNotes(initialNotes ?? '');
     setQty(1);
     setOptQuery('');
+    setHiddenIds(new Set());
+    setManageOpt(null);
+    setShowInactive(false);
+    setExtraOptions(new Map());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, product?.id]);
 
   if (!product) return null;
 
-  // grupos single-select se dividen A/B cuando el modo dividir está activo; el resto es compartido ('').
-  const groupPortions = (g: MenuGroup): string[] => (splitOn && g.max === 1 ? ['A', 'B'] : ['']);
-  const splittable = product.groups.some((g) => g.max === 1);
   // obligatorios primero (sort estable → conserva el orden del menú dentro de cada grupo).
   const orderedGroups = [...product.groups].sort((a, b) => (b.min > 0 ? 1 : 0) - (a.min > 0 ? 1 : 0));
 
-  const countIn = (portion: string, gid: number) =>
-    Object.values(sel[portion]?.[gid] ?? {}).reduce((a, b) => a + b, 0);
+  const countIn = (gid: number) =>
+    Object.values(sel[gid] ?? {}).reduce((a, b) => a + b, 0);
 
-  const setSingle = (portion: string, gid: number, oid: number) =>
-    setSel((s) => ({ ...s, [portion]: { ...(s[portion] ?? {}), [gid]: { [oid]: 1 } } }));
+  const setSingle = (gid: number, oid: number) =>
+    setSel((s) => ({ ...s, [gid]: { [oid]: 1 } }));
 
   const toggleMulti = (gid: number, oid: number, max: number) =>
     setSel((s) => {
-      const grp = { ...((s[''] ?? {})[gid] ?? {}) };
+      const grp = { ...(s[gid] ?? {}) };
       if (grp[oid]) {
         delete grp[oid];
-        delete pickOrder.current[okey('', gid, oid)];
+        delete pickOrder.current[okey(gid, oid)];
       } else {
         // al tope: FIFO — expulsa la más antigua para que el nuevo pick entre en un solo toque.
         if (Object.values(grp).reduce((a, b) => a + b, 0) >= max) {
           let oldest: number | null = null, min = Infinity;
           for (const k of Object.keys(grp)) {
-            const seq = pickOrder.current[okey('', gid, Number(k))] ?? 0;
+            const seq = pickOrder.current[okey(gid, Number(k))] ?? 0;
             if (seq < min) { min = seq; oldest = Number(k); }
           }
-          if (oldest !== null) { delete grp[oldest]; delete pickOrder.current[okey('', gid, oldest)]; }
+          if (oldest !== null) { delete grp[oldest]; delete pickOrder.current[okey(gid, oldest)]; }
         }
         grp[oid] = 1;
-        pickOrder.current[okey('', gid, oid)] = pickSeq.current++;
+        pickOrder.current[okey(gid, oid)] = pickSeq.current++;
       }
-      return { ...s, ['']: { ...(s[''] ?? {}), [gid]: grp } };
+      return { ...s, [gid]: grp };
     });
 
-  // al activar dividir, duplica la elección única a ambas mitades; al desactivar, colapsa a la mitad A.
-  const toggleSplit = () => {
-    setSel((s) => {
-      const next: Sel = JSON.parse(JSON.stringify(s)); // ponytail: clon simple, estado chico
-      for (const g of product.groups) {
-        if (g.max !== 1) continue;
-        if (!splitOn) {
-          const cur = next['']?.[g.id];
-          if (cur) {
-            (next['A'] ??= {})[g.id] = { ...cur };
-            (next['B'] ??= {})[g.id] = { ...cur };
-            delete next[''][g.id];
-          }
-        } else {
-          const a = next['A']?.[g.id];
-          if (a) (next[''] ??= {})[g.id] = { ...a };
-          if (next['A']) delete next['A'][g.id];
-          if (next['B']) delete next['B'][g.id];
-        }
-      }
-      return next;
-    });
-    setSplitOn((v) => !v);
+  // opciones de un grupo = las del menú + las reactivadas en esta sesión del sheet.
+  const optsOf = (g: MenuGroup): MenuOption[] => {
+    const ex = extraOptions.get(g.id);
+    return ex && ex.length ? [...g.options, ...ex] : g.options;
   };
+  const extraIds = new Set([...extraOptions.values()].flat().map((o) => o.id));
+  const archivedFor = (g: MenuGroup): AdminModifierOption[] =>
+    (allOptions?.items ?? []).filter((o) => !o.active && o.groupId === g.id && !extraIds.has(o.id));
 
   const optById = new Map<number, MenuOption>();
-  product.groups.forEach((g) => g.options.forEach((o) => optById.set(o.id, o)));
+  product.groups.forEach((g) => optsOf(g).forEach((o) => optById.set(o.id, o)));
 
   let perUnitDelta = 0;
-  for (const groups of Object.values(sel)) {
-    for (const picks of Object.values(groups)) {
-      for (const [oid, q] of Object.entries(picks)) {
-        const o = optById.get(Number(oid));
-        if (o) perUnitDelta += o.priceDelta * q;
-      }
+  for (const picks of Object.values(sel)) {
+    for (const [oid, q] of Object.entries(picks)) {
+      const o = optById.get(Number(oid));
+      if (o) perUnitDelta += o.priceDelta * q;
     }
   }
   const unit = product.price + perUnitDelta;
   const total = Math.round(unit * qty * 100) / 100;
 
-  const unmet = orderedGroups.filter((g) => groupPortions(g).some((p) => countIn(p, g.id) < g.min));
+  const unmet = orderedGroups.filter((g) => countIn(g.id) < g.min);
   const canConfirm = unmet.length === 0;
   const firstUnmetId = unmet[0]?.id ?? null;
-
-  // ordena las opciones: rankeadas por contexto primero, luego el resto (sort estable).
-  const orderedOptions = (g: MenuGroup): MenuOption[] => {
-    const r = ranksFor(g.id);
-    if (r.length === 0) return g.options;
-    const rank = new Map(r.map((id, i) => [id, i]));
-    return [...g.options].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
-  };
 
   const q = normalize(optQuery);
   const showSearch = product.groups.reduce((n, g) => n + g.options.length, 0) > SEARCH_THRESHOLD;
   const visibleOptions = (g: MenuGroup) =>
-    orderedOptions(g).filter((o) => !q || normalize(o.name).includes(q));
+    optsOf(g).filter((o) => !hiddenIds.has(o.id) && (!q || normalize(o.name).includes(q)));
 
   const confirm = () => {
     const modifiers: TicketModifier[] = [];
     for (const g of product.groups) {
-      for (const portion of groupPortions(g)) {
-        const picks = sel[portion]?.[g.id] ?? {};
-        for (const o of g.options) {
-          if (picks[o.id]) {
-            modifiers.push({
-              optionId: o.id, groupId: g.id, name: o.name, priceDelta: o.priceDelta,
-              qty: picks[o.id], portion: portion === '' ? undefined : (portion as 'A' | 'B'),
-            });
-          }
+      const picks = sel[g.id] ?? {};
+      for (const o of optsOf(g)) {
+        if (picks[o.id]) {
+          modifiers.push({
+            optionId: o.id, groupId: g.id, name: o.name, priceDelta: o.priceDelta,
+            qty: picks[o.id],
+          });
         }
       }
     }
@@ -199,41 +264,104 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     onClose();
   };
 
-  // renderiza los botones de opción de un grupo para una porción dada.
-  const optionButtons = (g: MenuGroup, portion: string) => {
+  // renderiza las opciones de un grupo: primero las "top" (rankeadas, con su %),
+  // luego el resto en orden alfabético. Al buscar, lista plana filtrada.
+  const optionButtons = (g: MenuGroup) => {
     const single = g.max === 1;
-    const picks = sel[portion]?.[g.id] ?? {};
-    const suggested = ranksFor(g.id)[0];
-    return (
-      <Wrap gap={2}>
-        {visibleOptions(g).map((o) => {
-          const on = !!picks[o.id];
-          // ⭐ solo como pista en grupos que NO se auto-seleccionan (opcionales/múltiples).
-          const star = o.id === suggested && !(g.min >= 1 && single) && !on;
-          return (
-            <WrapItem key={o.id}>
-              <Button
-                size="lg" minH="48px"
-                variant={on ? 'solid' : 'outline'}
-                colorPalette={on ? undefined : 'gray'}
-                onClick={() => (single ? setSingle(portion, g.id, o.id) : toggleMulti(g.id, o.id, g.max))}
-              >
-                {star && <Box as="span" color="yellow.500" mr={1}><LuStar size={14} /></Box>}
-                {o.name}
-                {o.priceDelta !== 0 && (
+    const picks = sel[g.id] ?? {};
+    const ranked = strategyRanked(g);
+    const pctById = new Map(ranked.flatMap((r) => (r.pct === undefined ? [] : [[r.id, r.pct] as const])));
+    const rankedIds = new Set(ranked.map((r) => r.id));
+
+    const btn = (o: MenuOption) => {
+      const on = !!picks[o.id];
+      const pct = pctById.get(o.id);
+      return (
+        <WrapItem key={o.id}>
+          <Button
+            size="lg" minH="48px"
+            variant={on ? 'solid' : 'outline'}
+            colorPalette={on ? undefined : 'gray'}
+            onClick={() => {
+              if (suppressClick.current) { suppressClick.current = false; return; } // fue long-press
+              if (single) setSingle(g.id, o.id); else toggleMulti(g.id, o.id, g.max);
+            }}
+            {...manageHandlers(o)}
+          >
+            {o.name}
+            {pct !== undefined && (
+              <Text as="span" ml={1.5} fontSize="xs" fontWeight="700" color={on ? 'whiteAlpha.800' : 'colorPalette.500'}>
+                {pct}%
+              </Text>
+            )}
+            {o.priceDelta !== 0 && (
+              <Text as="span" ml={1} fontSize="xs" opacity={0.8}>
+                {o.priceDelta > 0 ? '+' : ''}{money(o.priceDelta)}
+              </Text>
+            )}
+          </Button>
+        </WrapItem>
+      );
+    };
+
+    // archivadas (con el toggle "ver archivadas"): al elegirlas se reactivan para la venta.
+    const archived = showInactive
+      ? archivedFor(g).filter((o) => !q || normalize(o.name).includes(q))
+      : [];
+    const archBlock = archived.length > 0 ? (
+      <Box>
+        <Text fontSize="2xs" color="orange.500" fontWeight="700" letterSpacing="wide" textTransform="uppercase" mb={1}>
+          Archivadas · se reactivan al elegirlas
+        </Text>
+        <Wrap gap={2}>
+          {archived.map((ao) => (
+            <WrapItem key={`arch-${ao.id}`}>
+              <Button size="lg" minH="48px" variant="outline" colorPalette="orange"
+                loading={reactivate.isPending && reactivate.variables?.ao.id === ao.id}
+                onClick={() => reactivate.mutate({ g, ao })}>
+                <LuArchiveRestore size={14} />
+                <Text as="span" ml={1}>{ao.name}</Text>
+                {ao.priceDelta !== 0 && (
                   <Text as="span" ml={1} fontSize="xs" opacity={0.8}>
-                    {o.priceDelta > 0 ? '+' : ''}{money(o.priceDelta)}
+                    {ao.priceDelta > 0 ? '+' : ''}{money(ao.priceDelta)}
                   </Text>
                 )}
               </Button>
             </WrapItem>
-          );
-        })}
-      </Wrap>
+          ))}
+        </Wrap>
+      </Box>
+    ) : null;
+
+    if (q) {
+      return (
+        <VStack align="stretch" gap={2}>
+          <Wrap gap={2}>{visibleOptions(g).map(btn)}</Wrap>
+          {archBlock}
+        </VStack>
+      );
+    }
+
+    const opts = optsOf(g).filter((o) => !hiddenIds.has(o.id)); // + reactivadas, − recién archivadas
+    const top = ranked.map((r) => opts.find((o) => o.id === r.id)).filter((o): o is MenuOption => !!o);
+    // "Todas" respeta el orden manual del catálogo (sort_key); el menú ya llega ordenado así.
+    const rest = opts.filter((o) => !rankedIds.has(o.id));
+    return (
+      <VStack align="stretch" gap={2}>
+        {top.length > 0 && <Wrap gap={2}>{top.map(btn)}</Wrap>}
+        {top.length > 0 && rest.length > 0 && (
+          <Text fontSize="2xs" color="fg.subtle" fontWeight="700" letterSpacing="wide" textTransform="uppercase">
+            Todas
+          </Text>
+        )}
+        {rest.length > 0 && <Wrap gap={2}>{rest.map(btn)}</Wrap>}
+        {archBlock}
+      </VStack>
     );
   };
 
   return (
+    <>
     <DrawerRoot open={isOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="full">
       <DrawerBackdrop />
       <DrawerContent
@@ -248,16 +376,6 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
         <DrawerHeader pb={2}>
           <Text fontSize="lg" fontWeight="700">{product.name}</Text>
           <Text fontSize="sm" color="fg.muted">{money(product.price)} base</Text>
-          {splittable && (
-            <Button
-              mt={2} size="sm"
-              variant={splitOn ? 'solid' : 'outline'}
-              colorPalette={splitOn ? 'purple' : 'gray'}
-              onClick={toggleSplit}
-            >
-              <LuSplit /> {splitOn ? 'Dividido en mitades' : 'Dividir (mitad y mitad)'}
-            </Button>
-          )}
           {showSearch && (
             <HStack mt={2} px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
               <LuSearch />
@@ -266,6 +384,12 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
                 value={optQuery} onChange={(e) => setOptQuery(e.target.value)}
               />
             </HStack>
+          )}
+          {canManage && (
+            <Button mt={2} size="sm" variant={showInactive ? 'solid' : 'outline'}
+              colorPalette={showInactive ? 'orange' : 'gray'} onClick={() => setShowInactive((v) => !v)}>
+              <LuArchiveRestore /> {showInactive ? 'Ocultar archivadas' : 'Ver archivadas'}
+            </Button>
           )}
         </DrawerHeader>
         <DrawerBody>
@@ -279,11 +403,12 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             }}
           >
             {orderedGroups.map((g) => {
-              if (visibleOptions(g).length === 0) return null; // oculto al filtrar sin coincidencias
+              const hasArchived = showInactive && archivedFor(g).length > 0;
+              if (visibleOptions(g).length === 0 && !hasArchived) return null; // sin coincidencias
               const single = g.max === 1;
               const isFirstUnmet = g.id === firstUnmetId;
-              const totalCount = groupPortions(g).reduce((n, p) => n + countIn(p, g.id), 0);
-              const need = groupPortions(g).some((p) => countIn(p, g.id) < g.min);
+              const totalCount = countIn(g.id);
+              const need = totalCount < g.min;
               return (
                 <Box key={g.id} display="inline-block" w="100%" mb={4} p={4} borderWidth="1px" borderColor="border.muted" borderRadius="lg" bg="bg.panel" css={{ breakInside: 'avoid' }}>
                   <HStack justify="space-between" mb={2} align="baseline">
@@ -298,18 +423,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
                     </Text>
                   </HStack>
 
-                  {groupPortions(g).length === 1
-                    ? optionButtons(g, '')
-                    : (
-                      <VStack align="stretch" gap={2}>
-                        {(['A', 'B'] as const).map((p) => (
-                          <Box key={p}>
-                            <Text fontSize="sm" fontWeight="700" color="purple.600" mb={1}>Mitad {p}</Text>
-                            {optionButtons(g, p)}
-                          </Box>
-                        ))}
-                      </VStack>
-                    )}
+                  {optionButtons(g)}
                 </Box>
               );
             })}
@@ -334,5 +448,26 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
+
+    {/* Gestionar opción (long-press / clic derecho) — desactivar para quitar basura del POS */}
+    <DialogRoot open={manageOpt !== null} onOpenChange={(e) => { if (!e.open) setManageOpt(null); }} placement="center" size="xs">
+      <DialogBackdrop />
+      <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
+        <DialogBody py={5}>
+          <Text fontWeight="700" fontSize="lg" mb={1}>{manageOpt?.name}</Text>
+          <Text fontSize="sm" color="fg.muted" mb={4}>
+            Se ocultará de esta lista en el POS. Puedes reactivarla en Admin → Opciones.
+          </Text>
+          <VStack align="stretch" gap={2}>
+            <Button size="lg" colorPalette="red" loading={deactivate.isPending}
+              onClick={() => manageOpt && deactivate.mutate(manageOpt.id)}>
+              Archivar opción
+            </Button>
+            <Button size="lg" variant="ghost" onClick={() => setManageOpt(null)}>Cancelar</Button>
+          </VStack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { NativeSelectRoot, NativeSelectField } from '../../components/ui/native-
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '../../api/admin';
+import { Page } from '../../components/Page';
 
 const ROLES = ['admin', 'gerente', 'cajero', 'mesero'];
 
@@ -29,7 +30,7 @@ export function EmployeesPage() {
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
   return (
-    <Box p={6} maxW="720px">
+    <Page maxW="720px">
       <Heading size="lg" mb={4}>Empleados</Heading>
       <HStack bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4} align="end" flexWrap="wrap">
         <Input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxW="200px" />
@@ -46,7 +47,7 @@ export function EmployeesPage() {
         <Table.Root size="sm">
           <Table.Header><Table.Row><Table.ColumnHeader>Nombre</Table.ColumnHeader><Table.ColumnHeader>Usuario</Table.ColumnHeader><Table.ColumnHeader>Rol</Table.ColumnHeader><Table.ColumnHeader>Estado</Table.ColumnHeader></Table.Row></Table.Header>
           <Table.Body>
-            {data?.items.map((u) => (
+            {(data?.items ?? []).map((u) => (
               <Table.Row key={u.id}>
                 <Table.Cell>{u.name}</Table.Cell>
                 <Table.Cell>{u.username ?? '—'}</Table.Cell>
@@ -57,6 +58,6 @@ export function EmployeesPage() {
           </Table.Body>
         </Table.Root>
       </Box>
-    </Box>
+    </Page>
   );
 }

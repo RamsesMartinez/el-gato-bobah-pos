@@ -5,6 +5,7 @@ export interface MenuOption {
   name: string;
   priceDelta: number;
   maxPerLine: number;
+  favorite: boolean;
 }
 
 export interface MenuGroup {
@@ -13,6 +14,12 @@ export interface MenuGroup {
   min: number;
   max: number;
   options: MenuOption[];
+}
+
+// Opción sugerida por el recomendador: pct = % de probabilidad (share del grupo).
+export interface RankedOption {
+  id: number;
+  pct: number;
 }
 
 export interface MenuCategory {
@@ -62,7 +69,6 @@ export interface TicketModifier {
   name: string;
   priceDelta: number;
   qty: number;
-  portion?: 'A' | 'B'; // mitad-y-mitad; ausente = aplica al producto completo
 }
 
 export interface TicketLine {

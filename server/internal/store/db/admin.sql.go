@@ -11,13 +11,111 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const adminListProducts = `-- name: AdminListProducts :many
-select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
-       p.available_from, p.available_until, c.name as category
-from products p
-join categories c on c.id = p.category_id
-order by p.name
+const adminListModifierOptions = `-- name: AdminListModifierOptions :many
+select mo.id, mo.group_id, mg.name as group_name, mo.name, mo.price_delta, mo.is_favorite, mo.is_active,
+       count(*) over() as total
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mg.is_active
+  and ($1::text = ''
+        or ($1 = 'act' and mo.is_active)
+        or ($1 = 'inact' and not mo.is_active))
+  and ($2::text = '' or mo.name ilike '%' || $2 || '%' or mg.name ilike '%' || $2 || '%')
+order by mg.name, mo.sort_key, mo.name
+limit nullif($4::int, 0) offset $3
 `
+
+type AdminListModifierOptionsParams struct {
+	Status string `json:"status"`
+	Search string `json:"search"`
+	Off    int32  `json:"off"`
+	Lim    int32  `json:"lim"`
+}
+
+type AdminListModifierOptionsRow struct {
+	ID         int64   `json:"id"`
+	GroupID    int64   `json:"group_id"`
+	GroupName  string  `json:"group_name"`
+	Name       string  `json:"name"`
+	PriceDelta float64 `json:"price_delta"`
+	IsFavorite bool    `json:"is_favorite"`
+	IsActive   bool    `json:"is_active"`
+	Total      int64   `json:"total"`
+}
+
+// Página de opciones (de grupos activos) filtrada por estado (”=todas | 'act' | 'inact') y
+// búsqueda (nombre de opción o de grupo). count(*) over() = total del filtro, para el paginador.
+// Incluye inactivas y price_delta: el POS puede mostrar/cobrar una opción archivada al reactivarla.
+func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListModifierOptionsParams) ([]AdminListModifierOptionsRow, error) {
+	rows, err := q.db.Query(ctx, adminListModifierOptions,
+		arg.Status,
+		arg.Search,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminListModifierOptionsRow{}
+	for rows.Next() {
+		var i AdminListModifierOptionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GroupID,
+			&i.GroupName,
+			&i.Name,
+			&i.PriceDelta,
+			&i.IsFavorite,
+			&i.IsActive,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListProducts = `-- name: AdminListProducts :many
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.category, q.group_count, q.override_count, count(*) over() as total
+from (
+  select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
+         p.available_from, p.available_until, c.name as category,
+         (select count(*) from product_modifier_groups pmg
+            join modifier_groups mg on mg.id = pmg.group_id
+           where pmg.product_id = p.id and mg.is_active)::int as group_count,
+         (select count(*) from product_modifier_groups pmg
+           where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count
+  from products p
+  join categories c on c.id = p.category_id
+  where ($1::text = ''
+          or ($1 = 'act' and p.is_active)
+          or ($1 = 'inact' and not p.is_active))
+    and ($2::text = '' or p.name ilike '%' || $2 || '%')
+) q
+where ($3::text = ''
+        or ($3 = 'none' and q.group_count = 0)
+        or ($3 = 'some' and q.group_count > 0))
+order by
+  case when $4::text = 'groups' and $5::text = 'asc'  then q.group_count end asc  nulls last,
+  case when $4::text = 'groups' and $5::text <> 'asc' then q.group_count end desc nulls last,
+  q.name
+limit nullif($7::int, 0) offset $6
+`
+
+type AdminListProductsParams struct {
+	Status string `json:"status"`
+	Search string `json:"search"`
+	Groups string `json:"groups"`
+	Sort   string `json:"sort"`
+	Dir    string `json:"dir"`
+	Off    int32  `json:"off"`
+	Lim    int32  `json:"lim"`
+}
 
 type AdminListProductsRow struct {
 	ID             int64       `json:"id"`
@@ -30,15 +128,30 @@ type AdminListProductsRow struct {
 	AvailableFrom  pgtype.Date `json:"available_from"`
 	AvailableUntil pgtype.Date `json:"available_until"`
 	Category       string      `json:"category"`
+	GroupCount     int32       `json:"group_count"`
+	OverrideCount  int32       `json:"override_count"`
+	Total          int64       `json:"total"`
 }
 
-func (q *Queries) AdminListProducts(ctx context.Context) ([]AdminListProductsRow, error) {
-	rows, err := q.db.Query(ctx, adminListProducts)
+// Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro),
+// grupos (”=todos | 'none'=sin grupos activos | 'some'=con grupos) y orden
+// (”=nombre | 'groups'=por cantidad de grupos desc). count(*) over() (tras el filtro de
+// grupos) = total del filtro en la misma consulta, para el paginador (sin viaje extra).
+func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsParams) ([]AdminListProductsRow, error) {
+	rows, err := q.db.Query(ctx, adminListProducts,
+		arg.Status,
+		arg.Search,
+		arg.Groups,
+		arg.Sort,
+		arg.Dir,
+		arg.Off,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AdminListProductsRow
+	items := []AdminListProductsRow{}
 	for rows.Next() {
 		var i AdminListProductsRow
 		if err := rows.Scan(
@@ -52,6 +165,9 @@ func (q *Queries) AdminListProducts(ctx context.Context) ([]AdminListProductsRow
 			&i.AvailableFrom,
 			&i.AvailableUntil,
 			&i.Category,
+			&i.GroupCount,
+			&i.OverrideCount,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -61,6 +177,78 @@ func (q *Queries) AdminListProducts(ctx context.Context) ([]AdminListProductsRow
 		return nil, err
 	}
 	return items, nil
+}
+
+const adminModifierOptionCounts = `-- name: AdminModifierOptionCounts :one
+
+select count(*) filter (where mo.is_active)::int as active,
+       count(*) filter (where not mo.is_active)::int as inactive
+from modifier_options mo
+join modifier_groups mg on mg.id = mo.group_id
+where mg.is_active
+`
+
+type AdminModifierOptionCountsRow struct {
+	Active   int32 `json:"active"`
+	Inactive int32 `json:"inactive"`
+}
+
+// lim=0 → sin límite (el POS pide todas)
+// Totales por estado (opciones de grupos activos), para las pestañas. Independiente de la búsqueda.
+func (q *Queries) AdminModifierOptionCounts(ctx context.Context) (AdminModifierOptionCountsRow, error) {
+	row := q.db.QueryRow(ctx, adminModifierOptionCounts)
+	var i AdminModifierOptionCountsRow
+	err := row.Scan(&i.Active, &i.Inactive)
+	return i, err
+}
+
+const adminProductCounts = `-- name: AdminProductCounts :one
+
+select count(*) filter (where is_active)::int as active,
+       count(*) filter (where not is_active)::int as inactive
+from products
+`
+
+type AdminProductCountsRow struct {
+	Active   int32 `json:"active"`
+	Inactive int32 `json:"inactive"`
+}
+
+// lim=0 → sin límite (POS modo edición pide todo)
+// Totales del catálogo por estado, para las pestañas (independientes de la búsqueda, como antes).
+func (q *Queries) AdminProductCounts(ctx context.Context) (AdminProductCountsRow, error) {
+	row := q.db.QueryRow(ctx, adminProductCounts)
+	var i AdminProductCountsRow
+	err := row.Scan(&i.Active, &i.Inactive)
+	return i, err
+}
+
+const adminSetOptionActive = `-- name: AdminSetOptionActive :exec
+update modifier_options set is_active = $2 where id = $1
+`
+
+type AdminSetOptionActiveParams struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+func (q *Queries) AdminSetOptionActive(ctx context.Context, arg AdminSetOptionActiveParams) error {
+	_, err := q.db.Exec(ctx, adminSetOptionActive, arg.ID, arg.IsActive)
+	return err
+}
+
+const adminSetOptionFavorite = `-- name: AdminSetOptionFavorite :exec
+update modifier_options set is_favorite = $2 where id = $1
+`
+
+type AdminSetOptionFavoriteParams struct {
+	ID         int64 `json:"id"`
+	IsFavorite bool  `json:"is_favorite"`
+}
+
+func (q *Queries) AdminSetOptionFavorite(ctx context.Context, arg AdminSetOptionFavoriteParams) error {
+	_, err := q.db.Exec(ctx, adminSetOptionFavorite, arg.ID, arg.IsFavorite)
+	return err
 }
 
 const adminUpdateProduct = `-- name: AdminUpdateProduct :exec
