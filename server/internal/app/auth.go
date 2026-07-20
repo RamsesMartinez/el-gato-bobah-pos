@@ -9,6 +9,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -85,7 +86,19 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Sessio
 		}
 		return nil, err
 	}
-	if rt.RevokedAt.Valid || rt.ExpiresAt.Before(s.now()) {
+	switch domain.ClassifyRefresh(rt.RevokedAt.Valid, rt.ExpiresAt, s.now()) {
+	case domain.RefreshReused:
+		// Reuse-detection: un refresh ya revocado que reaparece delata robo/reuso. No se
+		// puede saber si lo presenta el atacante o el usuario, así que se revoca TODA la
+		// familia (ambos quedan fuera y re-autentican). Fail-closed: si la revocación
+		// falla, igual denegamos, pero lo registramos como incidente aparte.
+		if err := s.store.Q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
+			logging.SecurityEvent(ctx, "refresh_reuse_revoke_failed", "user_id", rt.UserID, "error", err.Error())
+			return nil, domain.ErrUnauthorized
+		}
+		logging.SecurityEvent(ctx, "refresh_reuse", "user_id", rt.UserID)
+		return nil, domain.ErrUnauthorized
+	case domain.RefreshExpired:
 		return nil, domain.ErrUnauthorized
 	}
 	if err := s.store.Q.RevokeRefreshToken(ctx, hash); err != nil {
