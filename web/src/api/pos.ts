@@ -7,6 +7,9 @@ export const posApi = {
     api.post<{ accessToken: string; user: SessionUser }>('/auth/login', { username, password }),
   pinSwitch: (userId: number, pin: string) =>
     api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch', { userId, pin }),
+  // Revoca el refresh token y borra la cookie en el server. Sin esto, "Salir" solo limpia
+  // memoria y la sesión revive tras un reload (el arranque canjea la cookie que sobrevive).
+  logout: () => api.post<void>('/auth/logout'),
 
   menu: () => api.get<Menu>('/pos/menu'),
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).

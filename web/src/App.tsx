@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
-import { RequireAuth } from './app/RequireAuth';
+import { RequireAuth, RequireRole } from './app/RequireAuth';
 import { LoginPage } from './features/auth/LoginPage';
 import { POSPage } from './features/pos/POSPage';
 import { OrdersBoardPage } from './features/orders/OrdersBoardPage';
@@ -14,7 +16,15 @@ import { ProductsAdminPage } from './features/admin/ProductsAdminPage';
 import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
 import { AppearancePage } from './features/admin/AppearancePage';
 
-export const App = () => (
+export const App = () => {
+  useEffect(() => {
+    // Purga el token que instalaciones previas dejaron en localStorage (ya no se persiste)
+    // y re-emite la sesión con la cookie HttpOnly de refresh tras un reload en frío.
+    localStorage.removeItem('egb:session:v1');
+    void restoreSession();
+  }, []);
+
+  return (
   <BrowserRouter>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -27,11 +37,11 @@ export const App = () => (
       >
         <Route path="/pos" element={<POSPage />} />
         <Route path="/pedidos" element={<OrdersBoardPage />} />
-        <Route path="/caja" element={<CashPage />} />
-        <Route path="/gastos" element={<ExpensesPage />} />
-        <Route path="/almacen" element={<StockPage />} />
-        <Route path="/reportes" element={<ReportsPage />} />
-        <Route path="/catalogo" element={<CatalogPage />}>
+        <Route path="/caja" element={<RequireRole path="/caja"><CashPage /></RequireRole>} />
+        <Route path="/gastos" element={<RequireRole path="/gastos"><ExpensesPage /></RequireRole>} />
+        <Route path="/almacen" element={<RequireRole path="/almacen"><StockPage /></RequireRole>} />
+        <Route path="/reportes" element={<RequireRole path="/reportes"><ReportsPage /></RequireRole>} />
+        <Route path="/catalogo" element={<RequireRole path="/catalogo"><CatalogPage /></RequireRole>}>
           <Route index element={<Navigate to="/catalogo/productos" replace />} />
           <Route path="productos" element={<ProductsAdminPage />} />
           <Route path="opciones" element={<ModifierOptionsPage />} />
@@ -39,10 +49,11 @@ export const App = () => (
         {/* rutas viejas → redirigen al hub (compatibilidad con enlaces existentes) */}
         <Route path="/productos" element={<Navigate to="/catalogo/productos" replace />} />
         <Route path="/opciones" element={<Navigate to="/catalogo/opciones" replace />} />
-        <Route path="/empleados" element={<EmployeesPage />} />
+        <Route path="/empleados" element={<RequireRole path="/empleados"><EmployeesPage /></RequireRole>} />
         <Route path="/apariencia" element={<AppearancePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/pos" replace />} />
     </Routes>
   </BrowserRouter>
-);
+  );
+};

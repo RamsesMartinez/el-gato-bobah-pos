@@ -159,10 +159,10 @@ type ProductGroupView struct {
 	GroupName   string `json:"groupName"`
 	GroupActive bool   `json:"groupActive"`
 	Title       string `json:"title"`
-	MinSelect   int    `json:"minSelect"`   // efectivo (override o default del grupo)
-	MaxSelect   int    `json:"maxSelect"`   // efectivo
-	Overridden  bool   `json:"overridden"`  // true = el producto sobrescribe el default del grupo
-	DefaultMin  int    `json:"defaultMin"`  // default del grupo (para mostrar y restablecer)
+	MinSelect   int    `json:"minSelect"`  // efectivo (override o default del grupo)
+	MaxSelect   int    `json:"maxSelect"`  // efectivo
+	Overridden  bool   `json:"overridden"` // true = el producto sobrescribe el default del grupo
+	DefaultMin  int    `json:"defaultMin"` // default del grupo (para mostrar y restablecer)
 	DefaultMax  int    `json:"defaultMax"`
 	Position    int    `json:"position"`
 	OptionCount int    `json:"optionCount"`

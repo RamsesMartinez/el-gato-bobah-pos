@@ -46,7 +46,15 @@ export function ModifierOptionsPage() {
     const t = setTimeout(() => setDsearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => { setPage(1); }, [dsearch, status, sort, dir]);
+  // Reset a página 1 cuando cambian los filtros. Se ajusta en render (no en efecto) para
+  // evitar el render en cascada que marca react-hooks/set-state-in-effect; React descarta
+  // el render a medias y no llega a pintar la página vieja.
+  const filterKey = `${dsearch}|${status}|${sort}|${dir}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'groups', { status, dsearch, sort, dir, page }],
@@ -158,7 +166,8 @@ export function ModifierOptionsPage() {
         )}
       </HStack>
 
-      <GroupFormDialog group={editGroup} isOpen={editGroup !== null || creating}
+      <GroupFormDialog key={editGroup ? `g${editGroup.id}` : creating ? 'new' : 'closed'}
+        group={editGroup} isOpen={editGroup !== null || creating}
         onClose={() => { setEditGroup(null); setCreating(false); }} />
       <GroupProductsDialog group={productsFor} isOpen={productsFor !== null} onClose={() => setProductsFor(null)} />
     </Page>
@@ -247,17 +256,12 @@ function GroupCard({ group, search, open, hideInactiveOpts, onToggle, onEdit, on
 function GroupFormDialog({ group, isOpen, onClose }: { group: Group | null; isOpen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
-  const [name, setName] = useState('');
-  const [active, setActive] = useState(true);
-  const [min, setMin] = useState('0');
-  const [max, setMax] = useState('1');
-
-  useEffect(() => {
-    setName(group?.name ?? '');
-    setActive(group?.isActive ?? true);
-    setMin(String(group?.defaultMin ?? 0));
-    setMax(String(group?.defaultMax ?? 1));
-  }, [group, isOpen]);
+  // El padre remonta con `key` por grupo/creación, así que estos initializers corren
+  // en fresco en cada apertura (evita setState-en-efecto).
+  const [name, setName] = useState(group?.name ?? '');
+  const [active, setActive] = useState(group?.isActive ?? true);
+  const [min, setMin] = useState(String(group?.defaultMin ?? 0));
+  const [max, setMax] = useState(String(group?.defaultMax ?? 1));
 
   const minN = parseInt(min, 10) || 0;
   const maxN = parseInt(max, 10) || 0;

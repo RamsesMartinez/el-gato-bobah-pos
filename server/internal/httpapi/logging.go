@@ -81,11 +81,18 @@ func RequestLogger(next http.Handler) http.Handler {
 			"status", cw.status,
 			"dur_ms", time.Since(start).Milliseconds(),
 			"ip", clientIP(r),
-			"req_body", redactBody(r.Header.Get("Content-Type"), reqBody),
-			"resp_body", redactBody(cw.Header().Get("Content-Type"), cw.body.Bytes()),
 		}
 		if ti.userID != 0 {
 			attrs = append(attrs, "user_id", ti.userID, "role", ti.role)
+		}
+		// A09: los cuerpos traen PII (customerName, notas). En operación normal no se
+		// registran; solo cuando el operador pidió verbosidad (debug) o hubo un 5xx que
+		// hay que triagear. Los secretos siguen redactados por si aparecen aquí.
+		if cw.status >= 500 || slog.Default().Enabled(r.Context(), slog.LevelDebug) {
+			attrs = append(attrs,
+				"req_body", redactBody(r.Header.Get("Content-Type"), reqBody),
+				"resp_body", redactBody(cw.Header().Get("Content-Type"), cw.body.Bytes()),
+			)
 		}
 		slog.Info("http", attrs...)
 	})
@@ -135,10 +142,14 @@ func (c *captureWriter) Flush() {
 
 // --- redacción de datos sensibles ---
 
+// Claves redactadas (comparadas en minúsculas). Dos grupos: secretos (nunca deben verse) y
+// PII de cliente (customerName, notes) — se enmascara también aquí para que no aparezca ni
+// en los cuerpos que sí se registran (debug o 5xx de triage), no solo fuera de los logs Info.
 var sensitiveKeys = map[string]bool{
 	"password": true, "pin": true, "token": true, "accesstoken": true,
 	"refreshtoken": true, "secret": true, "authorization": true, "jwt": true,
 	"pin_hash": true, "password_hash": true,
+	"customername": true, "notes": true,
 }
 
 func redactBody(contentType string, body []byte) string {

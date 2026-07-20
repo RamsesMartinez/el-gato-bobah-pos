@@ -9,6 +9,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -41,11 +42,19 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Se
 	u, err := s.store.Q.GetUserByUsername(ctx, &username)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// bcrypt de descarte: sin él esta rama responde en ~µs y la de "password
+			// incorrecto" en decenas de ms, revelando qué usuarios existen (A07).
+			auth.CheckDummySecret(password)
 			return nil, domain.ErrInvalidCredentials
 		}
 		return nil, err
 	}
-	if u.PasswordHash == nil || !auth.CheckSecret(*u.PasswordHash, password) {
+	if u.PasswordHash == nil {
+		// Usuario sin password: misma igualación de latencia que la rama de arriba.
+		auth.CheckDummySecret(password)
+		return nil, domain.ErrInvalidCredentials
+	}
+	if !auth.CheckSecret(*u.PasswordHash, password) {
 		return nil, domain.ErrInvalidCredentials
 	}
 	return s.issue(ctx, u)
@@ -57,11 +66,19 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (
 	u, err := s.store.Q.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// bcrypt de descarte: pin-switch está exento del throttle per-IP y el lockout es
+			// per-userID, así que sin igualar la latencia un atacante autenticado enumera qué
+			// userIDs existen/están activos/tienen PIN barriendo N (A07).
+			auth.CheckDummySecret(pin)
 			return nil, domain.ErrInvalidCredentials
 		}
 		return nil, err
 	}
-	if !u.IsActive || u.PinHash == nil || !auth.CheckSecret(*u.PinHash, pin) {
+	if !u.IsActive || u.PinHash == nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
+	}
+	if !auth.CheckSecret(*u.PinHash, pin) {
 		return nil, domain.ErrInvalidCredentials
 	}
 	return s.issue(ctx, u)
@@ -77,11 +94,33 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Sessio
 		}
 		return nil, err
 	}
-	if rt.RevokedAt.Valid || rt.ExpiresAt.Before(s.now()) {
+	switch domain.ClassifyRefresh(rt.RevokedAt.Valid, rt.ExpiresAt, s.now()) {
+	case domain.RefreshReused:
+		// Reuse-detection: un refresh ya revocado que reaparece delata robo/reuso. No se
+		// puede saber si lo presenta el atacante o el usuario, así que se revoca TODA la
+		// familia (ambos quedan fuera y re-autentican). Fail-closed: si la revocación
+		// falla, igual denegamos, pero lo registramos como incidente aparte.
+		if err := s.store.Q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
+			logging.SecurityEvent(ctx, "refresh_reuse_revoke_failed", "user_id", rt.UserID, "error", err.Error())
+			return nil, domain.ErrUnauthorized
+		}
+		logging.SecurityEvent(ctx, "refresh_reuse", "user_id", rt.UserID)
+		return nil, domain.ErrUnauthorized
+	case domain.RefreshExpired:
 		return nil, domain.ErrUnauthorized
 	}
-	if err := s.store.Q.RevokeRefreshToken(ctx, hash); err != nil {
+	// Rotación atómica: revoca SOLO si sigue activo. revoked==0 significa que otro request ya
+	// rotó/revocó este token entre nuestro read y ahora (dos pestañas refrescando a la vez, o
+	// un reuso concurrente): se deniega a quien pierde la carrera para no acuñar dos tokens
+	// vivos. Un robo real se detecta igual en la siguiente ronda por la rama revoked-at-read
+	// de arriba (ClassifyRefresh→RefreshReused→revoca familia). Cierra el TOCTOU del
+	// read-then-revoke sin castigar refrescos concurrentes legítimos.
+	revoked, err := s.store.Q.RevokeRefreshTokenIfActive(ctx, hash)
+	if err != nil {
 		return nil, err
+	}
+	if revoked == 0 {
+		return nil, domain.ErrUnauthorized
 	}
 	u, err := s.store.Q.GetUserByID(ctx, rt.UserID)
 	if err != nil {

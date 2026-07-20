@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
@@ -112,12 +114,16 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	// attempts pile up for this username within the window.
 	key := "login:" + body.Username
 	if h.authFails.blocked(key) {
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "login", "username", body.Username, "ip", clientIP(r))
 		tooManyRequests(w, h.authFails.retryAfter(key))
 		return
 	}
 	s, err := h.auth.Login(r.Context(), body.Username, body.Password)
 	if err != nil {
 		h.authFails.record(key)
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			logging.SecurityEvent(r.Context(), "login_failed", "username", body.Username, "ip", clientIP(r))
+		}
 		Error(w, err)
 		return
 	}
@@ -139,12 +145,16 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	// controls in the body, so guessing any operator's PIN is throttled.
 	key := "pin:" + strconv.FormatInt(body.UserID, 10)
 	if h.authFails.blocked(key) {
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", body.UserID, "ip", clientIP(r))
 		tooManyRequests(w, h.authFails.retryAfter(key))
 		return
 	}
 	s, err := h.auth.PinSwitch(r.Context(), body.UserID, body.PIN)
 	if err != nil {
 		h.authFails.record(key)
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", body.UserID, "ip", clientIP(r))
+		}
 		Error(w, err)
 		return
 	}

@@ -43,7 +43,7 @@ func TestRankDefaults_RecencyBeatsVolume(t *testing.T) {
 	now := time.Date(2026, 7, 1, 10, 0, 0, 0, mxLocation)
 	var picks []pick
 	picks = append(picks, repeat(2, 20, 200, atTime(now, 60, 10), 20)...) // viejo, mucho volumen
-	picks = append(picks, repeat(2, 20, 201, atTime(now, 1, 10), 5)...)    // reciente, poco volumen
+	picks = append(picks, repeat(2, 20, 201, atTime(now, 1, 10), 5)...)   // reciente, poco volumen
 
 	got := rankDefaults(picks, now)[2][20]
 	if len(got) == 0 || got[0].OptionID != 201 {

@@ -111,13 +111,17 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		if !p.Active {
 			return BuiltOrder{}, fmt.Errorf("%w: %s", ErrProductNotSell, p.Name)
 		}
-		if in.Qty <= 0 {
+		// Redondear a 2dp (order_lines.quantity es numeric(8,2)) y validar el valor ya
+		// redondeado: si no, un qty como 0.001 pasa la validación pero Postgres lo coacciona
+		// a 0.00 y viola el check (quantity > 0) → 500 en vez de un 400 limpio.
+		qty := Round2(in.Qty)
+		if !ValidQty(qty, MaxOrderQty, false) {
 			return BuiltOrder{}, ErrValidation
 		}
 		line := BuiltLine{
 			ProductID:   p.ID,
 			ProductName: p.Name,
-			Qty:         in.Qty,
+			Qty:         qty,
 			UnitPrice:   p.Price,
 			UnitCost:    p.Cost,
 			Notes:       in.Notes,
@@ -131,6 +135,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			q := m.Qty
 			if q <= 0 {
 				q = 1
+			}
+			// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme
+			// hace wrap (40000 → -25536) y corrompe el ticket sin siquiera dar 500.
+			if !ValidQty(float64(q), MaxOrderQty, false) {
+				return BuiltOrder{}, ErrValidation
 			}
 			modsPerUnit += o.PriceDelta * float64(q)
 			modCostPerUnit += o.Cost * float64(q)
@@ -148,11 +157,17 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		}
 		line.ModifiersTotal = Round2(modsPerUnit)
 		line.UnitCost = Round2(p.Cost + modCostPerUnit)
-		line.LineTotal = Round2((p.Price + modsPerUnit) * in.Qty)
+		line.LineTotal = Round2((p.Price + modsPerUnit) * qty)
 		out.Lines = append(out.Lines, line)
 		out.Subtotal += line.LineTotal
 	}
 	out.Subtotal = Round2(out.Subtotal)
 	out.Total = out.Subtotal // sin descuentos en MVP
+	// Aunque cada Qty esté acotada, un precio de catálogo alto × muchas líneas podría
+	// desbordar el total: se rechaza antes de tocar el numeric(10,2) (allowZero: un pedido
+	// comped puede totalizar 0).
+	if !ValidMoney(out.Total, true) {
+		return BuiltOrder{}, ErrValidation
+	}
 	return out, nil
 }

@@ -1,4 +1,4 @@
-import { useSessionStore } from '../stores/session';
+import { useSessionStore, type SessionUser } from '../stores/session';
 import { uuid } from '../utils/uuid';
 
 // En dev, Vite hace proxy de /api → localhost:8080. En prod, mismo origen tras Caddy.
@@ -21,29 +21,45 @@ export class ApiError extends Error {
 // canjeamos el refresh por un access nuevo y reintentamos, en vez de expulsar al usuario.
 // single-flight: /auth/refresh rota y revoca el token viejo, así que dos refresh en
 // paralelo se pisarían → compartimos una sola promesa entre todas las peticiones que fallen.
-let refreshing: Promise<boolean> | null = null;
+let refreshing: Promise<{ accessToken: string; user: SessionUser } | null> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+// fetchRefresh canjea la cookie de refresh por una sesión nueva pero NO la aplica al store;
+// cada quien llama decide si aplicarla (así el arranque no pisa un login concurrente).
+// single-flight: /auth/refresh rota y revoca el token viejo, dos en paralelo se pisarían.
+function fetchRefresh(): Promise<{ accessToken: string; user: SessionUser } | null> {
   if (!refreshing) {
     refreshing = fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
-      .then(async (r) => {
-        if (!r.ok) {
-          useSessionStore.getState().clear();
-          return false;
-        }
-        const { accessToken, user } = await r.json();
-        useSessionStore.getState().setSession(accessToken, user);
-        return true;
-      })
-      .catch(() => {
-        useSessionStore.getState().clear();
-        return false;
-      })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
       .finally(() => {
         refreshing = null;
       });
   }
   return refreshing;
+}
+
+// Reintento tras un 401: la sesión ya estaba activa, aplicamos el refresh sin condiciones.
+async function tryRefresh(): Promise<boolean> {
+  const s = await fetchRefresh();
+  if (!s) return false;
+  useSessionStore.getState().setSession(s.accessToken, s.user);
+  return true;
+}
+
+// restoreSession se llama al arrancar: como el access token no se persiste, un reload en frío
+// parte sin sesión y canjea la cookie HttpOnly. Solo aplica el resultado si nadie autenticó
+// mientras el refresh estaba en vuelo (evita pisar un login concurrente desde /login).
+export async function restoreSession(): Promise<boolean> {
+  const s = await fetchRefresh();
+  if (useSessionStore.getState().status !== 'loading') {
+    return useSessionStore.getState().status === 'authed';
+  }
+  if (!s) {
+    useSessionStore.getState().clear();
+    return false;
+  }
+  useSessionStore.getState().setSession(s.accessToken, s.user);
+  return true;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
@@ -67,7 +83,6 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     });
   } catch (err) {
     const ms = Math.round(performance.now() - started);
-    // eslint-disable-next-line no-console
     console.error(`[api] ✗ ${label} · red caída · ${ms}ms · id=${requestId}`, err);
     throw new ApiError(0, 'NETWORK', 'Sin conexión con el servidor', requestId);
   }
@@ -94,13 +109,11 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     } catch {
       /* respuesta sin cuerpo JSON */
     }
-    // eslint-disable-next-line no-console
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
     throw new ApiError(res.status, code, message, traceId);
   }
 
   if (DEBUG) {
-    // eslint-disable-next-line no-console
     console.debug(`[api] ✓ ${label} · ${res.status} · ${ms}ms · id=${traceId}`);
   }
   if (res.status === 204) return undefined as T;
