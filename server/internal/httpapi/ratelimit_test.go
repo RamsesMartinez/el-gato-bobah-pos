@@ -69,8 +69,8 @@ func TestRateLimitMiddleware_Returns429(t *testing.T) {
 		return rec.Code
 	}
 
-	if do() != http.StatusOK || do() != http.StatusOK {
-		t.Fatal("first two requests should pass")
+	if c1, c2 := do(), do(); c1 != http.StatusOK || c2 != http.StatusOK {
+		t.Fatalf("first two requests should pass, got %d and %d", c1, c2)
 	}
 	if code := do(); code != http.StatusTooManyRequests {
 		t.Fatalf("third request should be rate-limited, got %d", code)
