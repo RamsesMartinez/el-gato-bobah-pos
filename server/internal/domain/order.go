@@ -111,13 +111,17 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		if !p.Active {
 			return BuiltOrder{}, fmt.Errorf("%w: %s", ErrProductNotSell, p.Name)
 		}
-		if !ValidQty(in.Qty, MaxOrderQty, false) {
+		// Redondear a 2dp (order_lines.quantity es numeric(8,2)) y validar el valor ya
+		// redondeado: si no, un qty como 0.001 pasa la validación pero Postgres lo coacciona
+		// a 0.00 y viola el check (quantity > 0) → 500 en vez de un 400 limpio.
+		qty := Round2(in.Qty)
+		if !ValidQty(qty, MaxOrderQty, false) {
 			return BuiltOrder{}, ErrValidation
 		}
 		line := BuiltLine{
 			ProductID:   p.ID,
 			ProductName: p.Name,
-			Qty:         in.Qty,
+			Qty:         qty,
 			UnitPrice:   p.Price,
 			UnitCost:    p.Cost,
 			Notes:       in.Notes,
@@ -153,7 +157,7 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		}
 		line.ModifiersTotal = Round2(modsPerUnit)
 		line.UnitCost = Round2(p.Cost + modCostPerUnit)
-		line.LineTotal = Round2((p.Price + modsPerUnit) * in.Qty)
+		line.LineTotal = Round2((p.Price + modsPerUnit) * qty)
 		out.Lines = append(out.Lines, line)
 		out.Subtotal += line.LineTotal
 	}
