@@ -1,0 +1,37 @@
+# Dependabot: mantiene al día dependencias y los pines de SHA/digest (A06/A08).
+# Agrupa los updates no-mayores para no ahogar en PRs; los mayores llegan sueltos.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm # bun.lock (texto) soportado por el ecosistema npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        update-types: [minor, patch]
+
+  # Imágenes base clavadas por digest en cada Dockerfile.
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: weekly
