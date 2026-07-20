@@ -80,6 +80,15 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
 	}
+	// A04: acota pago/propina antes de la tx. Un Amount=Inf pasaba el gate `> 0` y
+	// desbordaba el numeric(10,2) (→ 500); una propina negativa violaba el check de la
+	// columna. allowZero en la propina (0 es válido), no en el monto.
+	if cmd.Payment != nil && cmd.Payment.Amount > 0 {
+		if !domain.ValidMoney(domain.Round2(cmd.Payment.Amount), false) ||
+			!domain.ValidMoney(domain.Round2(cmd.Payment.Tip), true) {
+			return nil, domain.ErrValidation
+		}
+	}
 
 	// idempotencia: si ya existe una orden con ese client_uuid, devolverla
 	if id, err := s.store.Q.GetOrderIDByClientUUID(ctx, cmd.ClientUUID); err == nil {

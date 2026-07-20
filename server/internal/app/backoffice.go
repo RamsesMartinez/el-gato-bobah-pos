@@ -66,6 +66,11 @@ type SessionView struct {
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, openingCash float64, userID int64) (*SessionView, error) {
+	// allowZero: abrir con cajón vacío es válido. Rechaza negativos (la columna no tiene
+	// check) e importes absurdos antes de que desborden el numeric(10,2).
+	if !domain.ValidMoney(domain.Round2(openingCash), true) {
+		return nil, domain.ErrValidation
+	}
 	if _, err := s.store.Q.GetOpenSession(ctx); err == nil {
 		return nil, domain.ErrConflict // ya hay una caja abierta
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -112,6 +117,12 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 
 // CloseSession cierra la caja abierta, guarda esperado vs declarado por método.
 func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, declared map[int]float64, notes string) (*SessionView, error) {
+	// allowZero: un método puede cerrar en 0 (sin ventas). Rechaza negativos y absurdos.
+	for _, d := range declared {
+		if !domain.ValidMoney(domain.Round2(d), true) {
+			return nil, domain.ErrValidation
+		}
+	}
 	sess, err := s.store.Q.GetOpenSession(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -161,7 +172,10 @@ type ExpenseInput struct {
 }
 
 func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) (int64, error) {
-	if in.Amount <= 0 || in.CategoryID == 0 {
+	// Valida el monto ya redondeado: así un sub-centavo (0.004→0.00) y un valor absurdo
+	// (Inf, sobre el tope del numeric(10,2)) se rechazan como 400 en vez de 500.
+	amount := domain.Round2(in.Amount)
+	if !domain.ValidMoney(amount, false) || in.CategoryID == 0 {
 		return 0, domain.ErrValidation
 	}
 	var desc *string
@@ -172,7 +186,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		ExpenseDate:     pgtype.Date{Time: in.Date, Valid: true},
 		CategoryID:      in.CategoryID,
 		SupplierID:      in.SupplierID,
-		Amount:          domain.Round2(in.Amount),
+		Amount:          amount,
 		PaymentMethodID: in.MethodID,
 		Description:     desc,
 		CreatedBy:       in.UserID,
@@ -197,7 +211,9 @@ func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]
 
 // RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
 func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty float64, reason string, userID int64) error {
-	if qty == 0 {
+	// allowNegative: el delta puede restar (merma/ajuste). Rechaza 0, Inf/NaN y valores
+	// que desbordarían el numeric(14,4).
+	if !domain.ValidQty(domain.Round2(qty), domain.MaxStockQty, true) {
 		return domain.ErrValidation
 	}
 	var r *string

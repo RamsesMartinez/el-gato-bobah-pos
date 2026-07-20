@@ -111,7 +111,7 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		if !p.Active {
 			return BuiltOrder{}, fmt.Errorf("%w: %s", ErrProductNotSell, p.Name)
 		}
-		if in.Qty <= 0 {
+		if !ValidQty(in.Qty, MaxOrderQty, false) {
 			return BuiltOrder{}, ErrValidation
 		}
 		line := BuiltLine{
@@ -131,6 +131,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			q := m.Qty
 			if q <= 0 {
 				q = 1
+			}
+			// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme
+			// hace wrap (40000 → -25536) y corrompe el ticket sin siquiera dar 500.
+			if !ValidQty(float64(q), MaxOrderQty, false) {
+				return BuiltOrder{}, ErrValidation
 			}
 			modsPerUnit += o.PriceDelta * float64(q)
 			modCostPerUnit += o.Cost * float64(q)
@@ -154,5 +159,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 	}
 	out.Subtotal = Round2(out.Subtotal)
 	out.Total = out.Subtotal // sin descuentos en MVP
+	// Aunque cada Qty esté acotada, un precio de catálogo alto × muchas líneas podría
+	// desbordar el total: se rechaza antes de tocar el numeric(10,2) (allowZero: un pedido
+	// comped puede totalizar 0).
+	if !ValidMoney(out.Total, true) {
+		return BuiltOrder{}, ErrValidation
+	}
 	return out, nil
 }
