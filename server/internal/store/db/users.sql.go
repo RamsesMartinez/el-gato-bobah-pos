@@ -207,6 +207,18 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) erro
 	return err
 }
 
+const revokeRefreshTokenIfActive = `-- name: RevokeRefreshTokenIfActive :execrows
+update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_at is null
+`
+
+func (q *Queries) RevokeRefreshTokenIfActive(ctx context.Context, tokenHash string) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeRefreshTokenIfActive, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
 update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null
 `

@@ -40,3 +40,22 @@ func HashSecret(secret string) (string, error) {
 func CheckSecret(hash, secret string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 }
+
+// dummyHash es un hash bcrypt válido, precomputado al costo de HashSecret, contra el que
+// se compara en las ramas de fallo del login que no tienen un hash real (usuario
+// inexistente o sin password). Se genera en init para que el costo siga a bcrypt.DefaultCost
+// automáticamente: si difiriera, la latencia dejaría de igualar a la rama real.
+var dummyHash = func() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("timing-equalizer"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err) // input fijo y válido; un error aquí sería un bug de la librería
+	}
+	return h
+}()
+
+// CheckDummySecret corre un bcrypt de descarte para igualar la latencia de las ramas de
+// login sin hash real (evita el oráculo de temporización de enumeración de usuarios, A07).
+// Siempre devuelve false: el resultado no se usa, solo el tiempo que tarda.
+func CheckDummySecret(secret string) bool {
+	return bcrypt.CompareHashAndPassword(dummyHash, []byte(secret)) == nil
+}

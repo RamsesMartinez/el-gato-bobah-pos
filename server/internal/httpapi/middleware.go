@@ -8,6 +8,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 )
 
 type ctxKey int
@@ -62,6 +63,10 @@ func RequireRole(roles ...domain.Role) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := userFrom(r.Context())
 			if !ok || !u.Role.In(roles...) {
+				// Evento de seguridad para detección: quién (id/rol) intentó qué ruta.
+				logging.SecurityEvent(r.Context(), "forbidden",
+					"user_id", u.ID, "role", string(u.Role),
+					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
 				Error(w, domain.ErrForbidden)
 				return
 			}

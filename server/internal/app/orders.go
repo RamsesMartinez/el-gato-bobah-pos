@@ -80,6 +80,15 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
 	}
+	// A04: acota pago/propina antes de la tx. Un Amount=Inf pasaba el gate `> 0` y
+	// desbordaba el numeric(10,2) (→ 500); una propina negativa violaba el check de la
+	// columna. allowZero en la propina (0 es válido), no en el monto.
+	if cmd.Payment != nil && cmd.Payment.Amount > 0 {
+		if !domain.ValidMoney(domain.Round2(cmd.Payment.Amount), false) ||
+			!domain.ValidMoney(domain.Round2(cmd.Payment.Tip), true) {
+			return nil, domain.ErrValidation
+		}
+	}
 
 	// idempotencia: si ya existe una orden con ese client_uuid, devolverla
 	if id, err := s.store.Q.GetOrderIDByClientUUID(ctx, cmd.ClientUUID); err == nil {
@@ -193,14 +202,14 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		reason := "venta"
 		for pid, qty := range qtyByProduct {
 			if depletion.trackStock[pid] {
-				if err := q.InsertStockMovement(ctx, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "producto", nil, &pid, -qty)); err != nil {
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "producto", nil, &pid, -qty)); err != nil {
 					return err
 				}
 				continue
 			}
 			for _, it := range depletion.recipe[pid] {
 				ingID := it.ingredientID
-				if err := q.InsertStockMovement(ctx, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "ingrediente", &ingID, nil, -(it.qtyBase*qty))); err != nil {
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "ingrediente", &ingID, nil, -(it.qtyBase*qty))); err != nil {
 					return err
 				}
 			}
@@ -376,11 +385,26 @@ func movementIngredientOrProduct(orderID, userID int64, reason, itemType string,
 		IngredientID: ingID,
 		ProductID:    prodID,
 		MovementType: db.StockMovementType("venta"),
-		Quantity:     domain.Round2(qty),
+		Quantity:     qty, // insertDepletion redondea (4dp) y valida
 		OrderID:      &orderID,
 		UserID:       &userID,
 		Reason:       &reason,
 	}
+}
+
+// insertDepletion registra un movimiento de venta acotando el delta a numeric(14,4): un
+// delta que redondea a 0 (depleción despreciable) se omite —un movimiento 0 viola el check
+// de la columna—; uno fuera de rango (pedido abusivo: muchas líneas de un producto $0 que
+// esquiva el tope del total) es 400, no un overflow del numeric → 500.
+func insertDepletion(ctx context.Context, q *db.Queries, p db.InsertStockMovementParams) error {
+	p.Quantity = domain.Round4(p.Quantity)
+	if p.Quantity == 0 {
+		return nil
+	}
+	if !domain.ValidQty(p.Quantity, domain.MaxStockQty, true) {
+		return domain.ErrValidation
+	}
+	return q.InsertStockMovement(ctx, p)
 }
 
 func collectIDs(lines []domain.OrderLineInput) ([]int64, []int64) {

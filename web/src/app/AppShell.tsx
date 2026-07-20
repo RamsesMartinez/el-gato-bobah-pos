@@ -5,8 +5,10 @@ import {
   LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette,
 } from 'react-icons/lu';
 import logo from '../assets/logo.webp';
+import { posApi } from '../api/pos';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
+import { canAccess } from './roles';
 import { RADIUS } from '../theme/ui';
 
 const NAV = [
@@ -26,8 +28,19 @@ export function AppShell() {
   const clear = useSessionStore((s) => s.clear);
   const palette = useUiStore((s) => s.palette);
   const navigate = useNavigate();
+  // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
+  // siendo la autoridad; esto es solo UX.
+  const nav = NAV.filter((n) => canAccess(user?.role, n.to));
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoca la cookie de refresh en el server ANTES de limpiar; si no, la sesión revive
+    // tras un reload (la cookie sobrevive y el arranque la canjea). Best-effort: si la red
+    // se cae, igual cerramos localmente.
+    try {
+      await posApi.logout();
+    } catch {
+      /* red caída: cerramos localmente de todos modos */
+    }
     clear();
     navigate('/login');
   };
@@ -41,7 +54,7 @@ export function AppShell() {
           flex="1" minH={0} overflowY="auto" gap={2} w="100%"
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
         >
-          {NAV.map((n) => {
+          {nav.map((n) => {
             const Icon = n.icon;
             return (
               <NavLink key={n.to} to={n.to} style={{ width: '100%' }}>

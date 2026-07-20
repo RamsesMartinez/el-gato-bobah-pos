@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Input, Button, VStack } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
@@ -20,15 +20,11 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
   onSaved: () => void;
 }) {
   const palette = useUiStore((s) => s.palette);
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('0');
-  const [maxPerLine, setMaxPerLine] = useState('1');
-
-  useEffect(() => {
-    setName(option?.name ?? '');
-    setPrice(String(option?.priceDelta ?? 0));
-    setMaxPerLine(String(option?.maxPerLine ?? 1));
-  }, [option, isOpen]);
+  // El padre remonta con `key` por opción/creación, así que estos initializers
+  // corren en fresco en cada apertura (evita setState-en-efecto).
+  const [name, setName] = useState(option?.name ?? '');
+  const [price, setPrice] = useState(String(option?.priceDelta ?? 0));
+  const [maxPerLine, setMaxPerLine] = useState(String(option?.maxPerLine ?? 1));
 
   const save = useMutation({
     mutationFn: () => {

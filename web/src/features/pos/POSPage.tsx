@@ -65,9 +65,11 @@ export function POSPage() {
   const modSheet = useDisclosure();
   const [panelHidden, setPanelHidden] = useState(false); // ocultar panel del pedido (modo ancho)
 
-  // defensivo: nunca asumir que vienen arreglos (catálogo vacío o respuesta parcial)
-  const allCategories = menu?.categories ?? [];
-  const allProducts = menu?.products ?? [];
+  // defensivo: nunca asumir que vienen arreglos (catálogo vacío o respuesta parcial).
+  // useMemo para estabilizar la referencia: sin él, `?? []` crea un arreglo nuevo cada
+  // render y rompería la memoización de los useMemo de abajo.
+  const allCategories = useMemo(() => menu?.categories ?? [], [menu]);
+  const allProducts = useMemo(() => menu?.products ?? [], [menu]);
 
   const childrenByRoot = useMemo(() => {
     const m: Record<number, number[]> = {};

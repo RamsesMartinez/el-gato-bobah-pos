@@ -6,17 +6,20 @@ pos.elgatobobah.mx {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		# No adivinar el MIME type.
 		X-Content-Type-Options "nosniff"
-		# Anti-clickjacking (no embeber el POS en iframes).
+		# Anti-clickjacking (X-Frame-Options para navegadores viejos; frame-ancestors abajo
+		# es el equivalente moderno).
 		X-Frame-Options "DENY"
-		Content-Security-Policy "frame-ancestors 'none'"
+		# CSP completo, probado contra el build real de la SPA (headless Chrome, 0 violaciones):
+		#  - script-src 'self': el bundle de Vite es un módulo externo, sin scripts inline.
+		#  - style-src 'unsafe-inline': Chakra/Emotion inyectan estilos inline en runtime.
+		#  - img-src data:: por si Chakra/Vite incrustan algún asset chico como data URI.
+		#  - connect-src 'self': API y SSE son del mismo origen (Caddy hace proxy de /api).
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		# No filtrar URLs (incluye el ?token= del SSE) vía Referer.
 		Referrer-Policy "no-referrer"
 		# No revelar el servidor.
 		-Server
 	}
-	# TODO post-MVP: CSP completo (default-src 'self'; script-src 'self';
-	# style-src 'self' 'unsafe-inline' para Chakra/Emotion; connect-src 'self' para SSE)
-	# tras probarlo contra el build de la SPA.
 
 	handle /api/* {
 		reverse_proxy api:8080 {

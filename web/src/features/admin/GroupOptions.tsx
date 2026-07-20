@@ -123,7 +123,8 @@ export function GroupOptions({ groupId, filter = '', hideInactive = false }: { g
         </Button>
       )}
 
-      <OptionFormDialog groupId={groupId} option={edit} isOpen={edit !== null || creating}
+      <OptionFormDialog key={edit ? `e${edit.id}` : creating ? 'new' : 'closed'}
+        groupId={groupId} option={edit} isOpen={edit !== null || creating}
         onClose={() => { setEdit(null); setCreating(false); }} onSaved={invalidate} />
     </VStack>
   );
