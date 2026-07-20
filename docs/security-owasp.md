@@ -48,6 +48,28 @@ bloqueadores de lanzamiento** y el hardening barato de alta señal. `govulncheck
 | A06/A08 | `bun audit` bloqueante (`--audit-level=high`); Actions clavadas por SHA; imágenes base por digest; Dependabot (actions/gomod/npm/docker). | `.github/workflows/ci.yml`, `.github/dependabot.yml`, `server/Dockerfile`, `deploy/Dockerfile.web` | — |
 | A01/UX | Gating client-side por rol (nav + guardas de ruta), espejo de los `RequireRole` del backend. | `web/app/roles.ts`, `web/app/AppShell.tsx`, `web/app/RequireAuth.tsx`, `web/App.tsx` | `web/app/roles.test.ts` |
 
+### Verificación adversarial de la ronda post-MVP
+
+Se revisó cada control de forma adversarial (¿un atacante lo evade?). La revisión halló y se
+**corrigieron 11 defectos** sobre los propios cambios (5 commits de fix):
+
+- **A02/A05 (alto, regresión):** "Salir" no llamaba a `/auth/logout`, así que la cookie de
+  refresh sobrevivía y el arranque re-autenticaba al operador que acababa de salir en una
+  tablet compartida. Ahora `logout` la revoca en el server. Además, el refresh de arranque
+  podía pisar un login concurrente → el single-flight ahora solo aplica si nadie autenticó.
+- **A07 (medio):** `PinSwitch` tenía el mismo oráculo de temporización que Login (y sin
+  throttle per-IP, lockout per-userID) → enumeración de usuarios; ahora corre bcrypt de
+  descarte. La rotación de refresh era read-then-revoke no atómico → dos presentaciones
+  concurrentes acuñaban dos tokens; ahora `RevokeRefreshTokenIfActive` (UPDATE condicional).
+- **A04 (medio/bajo):** qty de línea validado sin redondear (0.001 → 500) y la depleción de
+  stock de la venta sin `ValidQty` (overflow del numeric → 500); `RecordMovement` usaba
+  Round2 en una columna de 4 decimales. Corregidos con Round2/Round4 + validación.
+- **A06/A08 (bajo/medio):** faltaba `permissions: contents: read`; `version:/bun-version:
+  latest` no pinados; Dependabot `/web` estaba en ecosistema `npm` (no actualiza `bun.lock`)
+  → cambiado a `bun`.
+- **A09/A05 (bajo):** PII de cliente (customerName/notes) se registraba en cuerpos de 5xx/
+  debug → añadida al redactor; `object-src 'none'` añadido a la CSP.
+
 ## Pendiente post-MVP (no bloquea)
 
 - **Refund/void de orden entregada**: hoy `entregada` es terminal a propósito (`domain.CanTransition`).
