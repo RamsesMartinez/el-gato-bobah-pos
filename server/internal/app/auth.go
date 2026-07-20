@@ -41,11 +41,19 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Se
 	u, err := s.store.Q.GetUserByUsername(ctx, &username)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// bcrypt de descarte: sin él esta rama responde en ~µs y la de "password
+			// incorrecto" en decenas de ms, revelando qué usuarios existen (A07).
+			auth.CheckDummySecret(password)
 			return nil, domain.ErrInvalidCredentials
 		}
 		return nil, err
 	}
-	if u.PasswordHash == nil || !auth.CheckSecret(*u.PasswordHash, password) {
+	if u.PasswordHash == nil {
+		// Usuario sin password: misma igualación de latencia que la rama de arriba.
+		auth.CheckDummySecret(password)
+		return nil, domain.ErrInvalidCredentials
+	}
+	if !auth.CheckSecret(*u.PasswordHash, password) {
 		return nil, domain.ErrInvalidCredentials
 	}
 	return s.issue(ctx, u)
