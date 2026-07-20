@@ -5,6 +5,11 @@ on:
     branches: [main, develop]
   pull_request:
 
+# Menor privilegio (A08): todos los jobs son read-only (build/test/lint/scan). Sin esto el
+# GITHUB_TOKEN toma el scope por defecto del repo, que puede ser de escritura.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (Go)
@@ -27,7 +32,9 @@ jobs:
       - name: Lint (golangci-lint + gosec)
         uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6
         with:
-          version: latest
+          # Versión pinada (no `latest`): una release nueva del linter no debe romper CI
+          # sin revisión. Dependabot no rastrea inputs `with:`, así que se sube a mano.
+          version: v2.1.6
           working-directory: server
       - name: Vulnerabilities (govulncheck)
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
@@ -45,7 +52,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.3.7 # pinado (no `latest`): reproducible y a la par del lockfile
       - name: Install
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Lint

@@ -18,7 +18,7 @@ updates:
       go:
         update-types: [minor, patch]
 
-  - package-ecosystem: npm # bun.lock (texto) soportado por el ecosistema npm
+  - package-ecosystem: bun # web/ es bun-only (bun.lock); el ecosistema npm no lo actualiza
     directory: /web
     schedule:
       interval: weekly
