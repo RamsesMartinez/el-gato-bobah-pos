@@ -27,23 +27,32 @@ async function tryRefresh(): Promise<boolean> {
   if (!refreshing) {
     refreshing = fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
       .then(async (r) => {
-        if (!r.ok) {
-          useSessionStore.getState().clear();
-          return false;
-        }
+        if (!r.ok) return false;
         const { accessToken, user } = await r.json();
         useSessionStore.getState().setSession(accessToken, user);
         return true;
       })
-      .catch(() => {
-        useSessionStore.getState().clear();
-        return false;
-      })
+      .catch(() => false)
+      // El clear() en fallo lo hace quien llama (request() ante un 401, restoreSession al
+      // arrancar): así el refresh de arranque no puede pisar un login que ocurrió mientras
+      // seguía en vuelo.
       .finally(() => {
         refreshing = null;
       });
   }
   return refreshing;
+}
+
+// restoreSession se llama al arrancar la app: como el access token ya no se persiste, un
+// reload en frío parte sin sesión y hay que canjear la cookie HttpOnly de refresh. Comparte
+// el single-flight con los reintentos de 401. Solo degrada a 'anon' si nadie autenticó
+// mientras tanto (evita el clobber de un login concurrente desde /login).
+export async function restoreSession(): Promise<boolean> {
+  const ok = await tryRefresh();
+  if (!ok && useSessionStore.getState().status === 'loading') {
+    useSessionStore.getState().clear();
+  }
+  return ok;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
