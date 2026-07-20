@@ -24,6 +24,12 @@ func TestRedactBody(t *testing.T) {
 		t.Fatalf("dato no sensible debería permanecer: %s", out)
 	}
 
+	// PII de cliente redactada aun en los cuerpos que sí se registran (debug/5xx).
+	pii := redactBody("application/json", []byte(`{"customerName":"Ana Pérez","notes":"alérgica, tel 5551234"}`))
+	if strings.Contains(pii, "Ana") || strings.Contains(pii, "5551234") {
+		t.Fatalf("PII (customerName/notes) no redactada: %s", pii)
+	}
+
 	if got := redactBody("text/plain", []byte("hola")); got != "[4 bytes]" {
 		t.Fatalf("no-JSON debe reportar bytes, got %q", got)
 	}
