@@ -66,11 +66,19 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (
 	u, err := s.store.Q.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// bcrypt de descarte: pin-switch está exento del throttle per-IP y el lockout es
+			// per-userID, así que sin igualar la latencia un atacante autenticado enumera qué
+			// userIDs existen/están activos/tienen PIN barriendo N (A07).
+			auth.CheckDummySecret(pin)
 			return nil, domain.ErrInvalidCredentials
 		}
 		return nil, err
 	}
-	if !u.IsActive || u.PinHash == nil || !auth.CheckSecret(*u.PinHash, pin) {
+	if !u.IsActive || u.PinHash == nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
+	}
+	if !auth.CheckSecret(*u.PinHash, pin) {
 		return nil, domain.ErrInvalidCredentials
 	}
 	return s.issue(ctx, u)
@@ -101,8 +109,18 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Sessio
 	case domain.RefreshExpired:
 		return nil, domain.ErrUnauthorized
 	}
-	if err := s.store.Q.RevokeRefreshToken(ctx, hash); err != nil {
+	// Rotación atómica: revoca SOLO si sigue activo. revoked==0 significa que otro request ya
+	// rotó/revocó este token entre nuestro read y ahora (dos pestañas refrescando a la vez, o
+	// un reuso concurrente): se deniega a quien pierde la carrera para no acuñar dos tokens
+	// vivos. Un robo real se detecta igual en la siguiente ronda por la rama revoked-at-read
+	// de arriba (ClassifyRefresh→RefreshReused→revoca familia). Cierra el TOCTOU del
+	// read-then-revoke sin castigar refrescos concurrentes legítimos.
+	revoked, err := s.store.Q.RevokeRefreshTokenIfActive(ctx, hash)
+	if err != nil {
 		return nil, err
+	}
+	if revoked == 0 {
+		return nil, domain.ErrUnauthorized
 	}
 	u, err := s.store.Q.GetUserByID(ctx, rt.UserID)
 	if err != nil {
