@@ -1,4 +1,4 @@
-import { useSessionStore } from '../stores/session';
+import { useSessionStore, type SessionUser } from '../stores/session';
 import { uuid } from '../utils/uuid';
 
 // En dev, Vite hace proxy de /api → localhost:8080. En prod, mismo origen tras Caddy.
@@ -21,21 +21,16 @@ export class ApiError extends Error {
 // canjeamos el refresh por un access nuevo y reintentamos, en vez de expulsar al usuario.
 // single-flight: /auth/refresh rota y revoca el token viejo, así que dos refresh en
 // paralelo se pisarían → compartimos una sola promesa entre todas las peticiones que fallen.
-let refreshing: Promise<boolean> | null = null;
+let refreshing: Promise<{ accessToken: string; user: SessionUser } | null> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+// fetchRefresh canjea la cookie de refresh por una sesión nueva pero NO la aplica al store;
+// cada quien llama decide si aplicarla (así el arranque no pisa un login concurrente).
+// single-flight: /auth/refresh rota y revoca el token viejo, dos en paralelo se pisarían.
+function fetchRefresh(): Promise<{ accessToken: string; user: SessionUser } | null> {
   if (!refreshing) {
     refreshing = fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
-      .then(async (r) => {
-        if (!r.ok) return false;
-        const { accessToken, user } = await r.json();
-        useSessionStore.getState().setSession(accessToken, user);
-        return true;
-      })
-      .catch(() => false)
-      // El clear() en fallo lo hace quien llama (request() ante un 401, restoreSession al
-      // arrancar): así el refresh de arranque no puede pisar un login que ocurrió mientras
-      // seguía en vuelo.
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
       .finally(() => {
         refreshing = null;
       });
@@ -43,16 +38,28 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
-// restoreSession se llama al arrancar la app: como el access token ya no se persiste, un
-// reload en frío parte sin sesión y hay que canjear la cookie HttpOnly de refresh. Comparte
-// el single-flight con los reintentos de 401. Solo degrada a 'anon' si nadie autenticó
-// mientras tanto (evita el clobber de un login concurrente desde /login).
+// Reintento tras un 401: la sesión ya estaba activa, aplicamos el refresh sin condiciones.
+async function tryRefresh(): Promise<boolean> {
+  const s = await fetchRefresh();
+  if (!s) return false;
+  useSessionStore.getState().setSession(s.accessToken, s.user);
+  return true;
+}
+
+// restoreSession se llama al arrancar: como el access token no se persiste, un reload en frío
+// parte sin sesión y canjea la cookie HttpOnly. Solo aplica el resultado si nadie autenticó
+// mientras el refresh estaba en vuelo (evita pisar un login concurrente desde /login).
 export async function restoreSession(): Promise<boolean> {
-  const ok = await tryRefresh();
-  if (!ok && useSessionStore.getState().status === 'loading') {
-    useSessionStore.getState().clear();
+  const s = await fetchRefresh();
+  if (useSessionStore.getState().status !== 'loading') {
+    return useSessionStore.getState().status === 'authed';
   }
-  return ok;
+  if (!s) {
+    useSessionStore.getState().clear();
+    return false;
+  }
+  useSessionStore.getState().setSession(s.accessToken, s.user);
+  return true;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
