@@ -51,5 +51,10 @@ from refresh_tokens where token_hash = $1;
 -- name: RevokeRefreshToken :exec
 update refresh_tokens set revoked_at = now() where token_hash = $1;
 
+-- name: RevokeRefreshTokenIfActive :execrows
+-- Rotación atómica: revoca solo si sigue activo. RowsAffected=0 => otro request ya lo
+-- revocó (rotación concurrente o reuso). Cierra el TOCTOU del rotate read-then-revoke.
+update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_at is null;
+
 -- name: RevokeUserRefreshTokens :exec
 update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null;
