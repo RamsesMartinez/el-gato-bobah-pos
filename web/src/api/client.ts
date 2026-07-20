@@ -67,7 +67,6 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     });
   } catch (err) {
     const ms = Math.round(performance.now() - started);
-    // eslint-disable-next-line no-console
     console.error(`[api] ✗ ${label} · red caída · ${ms}ms · id=${requestId}`, err);
     throw new ApiError(0, 'NETWORK', 'Sin conexión con el servidor', requestId);
   }
@@ -94,13 +93,11 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     } catch {
       /* respuesta sin cuerpo JSON */
     }
-    // eslint-disable-next-line no-console
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
     throw new ApiError(res.status, code, message, traceId);
   }
 
   if (DEBUG) {
-    // eslint-disable-next-line no-console
     console.debug(`[api] ✓ ${label} · ${res.status} · ${ms}ms · id=${traceId}`);
   }
   if (res.status === 204) return undefined as T;
