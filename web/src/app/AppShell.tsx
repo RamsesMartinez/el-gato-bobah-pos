@@ -5,6 +5,7 @@ import {
   LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette,
 } from 'react-icons/lu';
 import logo from '../assets/logo.webp';
+import { posApi } from '../api/pos';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
 import { canAccess } from './roles';
@@ -31,7 +32,15 @@ export function AppShell() {
   // siendo la autoridad; esto es solo UX.
   const nav = NAV.filter((n) => canAccess(user?.role, n.to));
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoca la cookie de refresh en el server ANTES de limpiar; si no, la sesión revive
+    // tras un reload (la cookie sobrevive y el arranque la canjea). Best-effort: si la red
+    // se cae, igual cerramos localmente.
+    try {
+      await posApi.logout();
+    } catch {
+      /* red caída: cerramos localmente de todos modos */
+    }
     clear();
     navigate('/login');
   };

@@ -34,6 +34,25 @@ test('reload en frío: canjea la cookie de refresh por una sesión nueva', async
   expect(s.status).toBe('authed');
 });
 
+test('el refresh de arranque NO pisa un login concurrente', async () => {
+  // Un login (desde /login) estableció la sesión B mientras el refresh de arranque —con la
+  // cookie de otro operador A— seguía en vuelo. Al resolver, NO debe sobreescribir a B.
+  useSessionStore.getState().setSession('tok-B', { id: 2, name: 'Beto', role: 'mesero' });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({ accessToken: 'tok-A', user: { id: 1, name: 'Ana', role: 'admin' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    ),
+  );
+  await restoreSession();
+  const s = useSessionStore.getState();
+  expect(s.token).toBe('tok-B');
+  expect(s.user?.name).toBe('Beto');
+});
+
 test('reload en frío sin cookie válida: queda anónimo', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
   const ok = await restoreSession();
