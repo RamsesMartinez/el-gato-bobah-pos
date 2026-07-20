@@ -35,24 +35,25 @@ bloqueadores de lanzamiento** y el hardening barato de alta señal. `govulncheck
 | A06 | Bump toolchain Go → 1.25.12 (cierra GO-2026-5856 en crypto/tls). | `go.mod` |
 | A05 | Cap de logs de contenedor (json-file 10m×3) → no llena el disco del VPS. | `docker-compose.yml` |
 
-## Pendiente post-MVP (no bloquea, priorizado)
+## Post-MVP — CORREGIDO (segunda ronda de endurecimiento)
 
-- **A05/A10 — CSP completo** (`script-src 'self'`, `style-src 'self' 'unsafe-inline'`
-  para Chakra/Emotion, `connect-src 'self'` para SSE) tras probar contra el build.
-- **A02/A05 — access token en `localStorage`**: moverlo a memoria (re-mint por refresh
-  cookie al recargar). Defensa en profundidad; B2 + CSP son la mitigación real.
-- **A07 — timing oracle de enumeración de usuarios** en login (bcrypt dummy en la rama
-  "no encontrado").
-- **A07 — reuse-detection de refresh** (revocar la familia si se reusa un token revocado).
-- **A04 — validación de rangos** (montos/cantidades máximos) para evitar overflow → 500.
-- **A09 — logging**: bajar el volcado de body/PII a `LOG_LEVEL=debug`; eventos de
-  seguridad distintos (login fallido, 403) para detección.
-- **A06/A08 — Dependabot/Renovate** + pin por digest de imágenes base; SHA-pin de
-  GitHub Actions; `bun audit` bloqueante en CI (quitar `|| true`).
-- **UX — gating client-side** de `/caja`,`/gastos`,`/almacen` por rol (el backend ya lo
-  aplica; hoy un mesero llega a un 403 en vez de no ver la opción).
-- **Refund/void de orden entregada**: hoy `entregada` es terminal (no se puede cancelar
-  una orden ya entregada). Si el negocio lo requiere, añadir flujo de devolución dedicado.
+| OWASP | Cambio | Archivo(s) | Test |
+|-------|--------|-----------|------|
+| A07 | Timing oracle de enumeración: bcrypt de descarte (`CheckDummySecret`) en las ramas "usuario no encontrado" y "sin password" del login. | `auth/password.go`, `app/auth.go` | `auth/timing_test.go` |
+| A07 | Reuse-detection de refresh: reusar un token ya revocado revoca **toda la familia** del usuario + evento de seguridad. Clasificador puro `domain.ClassifyRefresh`. | `domain/refresh.go`, `app/auth.go` | `domain/refresh_test.go` |
+| A04 | Validación de rangos central (`domain.ValidMoney`/`ValidQty`): rechaza NaN/±Inf y topes bajo el límite de cada columna. Cableada en orders/pagos/gastos/caja/stock. Evita overflow→500 y wrap de int16 en modificadores. | `domain/limits.go`, `domain/order.go`, `app/orders.go`, `app/backoffice.go` | `domain/limits_test.go`, `domain/order_test.go` |
+| A09 | Body/PII (customerName, notas) fuera de logs normales: solo en `LOG_LEVEL=debug` o 5xx. Eventos de seguridad distintos (`login_failed`, `pin_failed`, `auth_lockout`, `forbidden`) vía `logging.SecurityEvent`. | `httpapi/logging.go`, `httpapi/handlers.go`, `httpapi/middleware.go`, `logging/security.go` | `httpapi/logging_test.go`, `httpapi/middleware_test.go` |
+| A02/A05 | Access token fuera de `localStorage` → slice en memoria de zustand; re-emitido con la cookie de refresh al recargar (`restoreSession` al arrancar). | `web/stores/session.ts`, `web/api/client.ts`, `web/App.tsx`, `web/app/RequireAuth.tsx` | `web/stores/session.test.ts` |
+| A05/A10 | CSP completo (probado contra el build real en Chrome headless, 0 violaciones). | `deploy/Caddyfile` | verificación headless |
+| A06/A08 | `bun audit` bloqueante (`--audit-level=high`); Actions clavadas por SHA; imágenes base por digest; Dependabot (actions/gomod/npm/docker). | `.github/workflows/ci.yml`, `.github/dependabot.yml`, `server/Dockerfile`, `deploy/Dockerfile.web` | — |
+| A01/UX | Gating client-side por rol (nav + guardas de ruta), espejo de los `RequireRole` del backend. | `web/app/roles.ts`, `web/app/AppShell.tsx`, `web/app/RequireAuth.tsx`, `web/App.tsx` | `web/app/roles.test.ts` |
+
+## Pendiente post-MVP (no bloquea)
+
+- **Refund/void de orden entregada**: hoy `entregada` es terminal a propósito (`domain.CanTransition`).
+  **Requiere decisión de negocio**: si se quiere permitir devoluciones, añadir un flujo
+  dedicado (estado nuevo, reverso contable del pago y re-stock inverso), NO reutilizar el
+  cancel. No se implementa de forma especulativa.
 
 ## Checklist de lanzamiento en el VPS (operador)
 
