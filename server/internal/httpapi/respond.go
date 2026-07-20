@@ -45,6 +45,8 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
+	case errors.Is(err, domain.ErrTooManyRequests):
+		status, code = http.StatusTooManyRequests, "TOO_MANY_REQUESTS"
 	case errors.Is(err, domain.ErrProductNotSell),
 		errors.Is(err, domain.ErrOptionNotFound),
 		errors.Is(err, domain.ErrEmptyOrder):

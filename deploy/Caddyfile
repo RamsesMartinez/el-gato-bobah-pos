@@ -1,5 +1,23 @@
 # Reemplaza el dominio por el real en producción. Caddy gestiona TLS automáticamente.
 pos.elgatobobah.mx {
+	# Headers de seguridad (subset seguro que no rompe la SPA).
+	header {
+		# HSTS: fuerza HTTPS en el navegador (1 año, subdominios).
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# No adivinar el MIME type.
+		X-Content-Type-Options "nosniff"
+		# Anti-clickjacking (no embeber el POS en iframes).
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
+		# No filtrar URLs (incluye el ?token= del SSE) vía Referer.
+		Referrer-Policy "no-referrer"
+		# No revelar el servidor.
+		-Server
+	}
+	# TODO post-MVP: CSP completo (default-src 'self'; script-src 'self';
+	# style-src 'self' 'unsafe-inline' para Chakra/Emotion; connect-src 'self' para SSE)
+	# tras probarlo contra el build de la SPA.
+
 	handle /api/* {
 		reverse_proxy api:8080 {
 			flush_interval -1  # streaming inmediato para SSE

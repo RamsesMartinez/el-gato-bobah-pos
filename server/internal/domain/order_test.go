@@ -2,6 +2,33 @@ package domain
 
 import "testing"
 
+func TestCanTransition(t *testing.T) {
+	ok := [][2]string{
+		{StatusAbierta, StatusLista},
+		{StatusAbierta, StatusEntregada},
+		{StatusAbierta, StatusCancelada},
+		{StatusLista, StatusEntregada},
+		{StatusLista, StatusCancelada},
+	}
+	for _, tc := range ok {
+		if !CanTransition(tc[0], tc[1]) {
+			t.Errorf("%s→%s should be allowed", tc[0], tc[1])
+		}
+	}
+	bad := [][2]string{
+		{StatusCancelada, StatusCancelada}, // doble cancel (evita doble-restock)
+		{StatusEntregada, StatusCancelada}, // void después de entregar
+		{StatusEntregada, StatusLista},     // regresión
+		{StatusLista, StatusAbierta},       // regresión
+		{StatusCancelada, StatusLista},
+	}
+	for _, tc := range bad {
+		if CanTransition(tc[0], tc[1]) {
+			t.Errorf("%s→%s should be rejected", tc[0], tc[1])
+		}
+	}
+}
+
 func TestBuildOrder(t *testing.T) {
 	products := map[int64]PricedProduct{
 		1: {ID: 1, Name: "Frappé", Price: 45, Cost: 12, Active: true},

@@ -87,6 +87,12 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Sessio
 	if err != nil {
 		return nil, err
 	}
+	// El token viejo ya se revocó arriba. Si el usuario fue dado de baja, no emitimos
+	// uno nuevo: así una cuenta desactivada deja de funcionar de inmediato (antes seguía
+	// viva hasta 30 días mientras rotara su refresh token).
+	if !u.IsActive {
+		return nil, domain.ErrUnauthorized
+	}
 	return s.issue(ctx, u)
 }
 

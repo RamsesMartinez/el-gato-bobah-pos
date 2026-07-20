@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -13,6 +14,17 @@ import (
 )
 
 const refreshCookie = "refresh_token"
+
+// authFailMax/Window: account-targeted lockout. 10 wrong secrets lock that
+// username/user for the rest of a short window (self-healing, no permanent lock).
+// This is the real brute-force gate for passwords and the 4-digit PIN. The window is
+// deliberately short so a mistyped-PIN operator (or someone maliciously locking a
+// colleague on shared café WiFi) recovers fast; brute force is still bounded to
+// ~2880 tries/day/account, which bcrypt + the weak-PIN blocklist make impractical.
+const (
+	authFailMax    = 10
+	authFailWindow = 5 * time.Minute
+)
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
@@ -43,6 +55,8 @@ type Handlers struct {
 	backoffice *app.BackofficeService
 	admin      *app.AdminService
 	broker     *realtime.Broker
+	authFails  *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs    *rateLimiter // per-IP request throttle for the /auth group
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -50,6 +64,8 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, broker: d.Broker,
+		authFails: newRateLimiter(authFailMax, authFailWindow),
+		authIPs:   newRateLimiter(60, time.Minute),
 	}
 }
 
@@ -92,11 +108,20 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Account-targeted lockout: block before hitting bcrypt once too many wrong
+	// attempts pile up for this username within the window.
+	key := "login:" + body.Username
+	if h.authFails.blocked(key) {
+		tooManyRequests(w, h.authFails.retryAfter(key))
+		return
+	}
 	s, err := h.auth.Login(r.Context(), body.Username, body.Password)
 	if err != nil {
+		h.authFails.record(key)
 		Error(w, err)
 		return
 	}
+	h.authFails.reset(key) // success: don't penalize the next legit login
 	h.writeSession(w, s, http.StatusOK)
 }
 
@@ -110,11 +135,20 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// PIN keyspace is tiny (4 digits) — lock per target user id, which the caller
+	// controls in the body, so guessing any operator's PIN is throttled.
+	key := "pin:" + strconv.FormatInt(body.UserID, 10)
+	if h.authFails.blocked(key) {
+		tooManyRequests(w, h.authFails.retryAfter(key))
+		return
+	}
 	s, err := h.auth.PinSwitch(r.Context(), body.UserID, body.PIN)
 	if err != nil {
+		h.authFails.record(key)
 		Error(w, err)
 		return
 	}
+	h.authFails.reset(key)
 	h.writeSession(w, s, http.StatusOK)
 }
 

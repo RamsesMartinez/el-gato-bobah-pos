@@ -98,7 +98,9 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second, // cuerpo completo: corta slowloris/slow-body
 		IdleTimeout:       120 * time.Second,
+		// Sin WriteTimeout global: SSE (/events) mantiene la respuesta abierta.
 	}
 
 	go func() {
@@ -139,6 +141,9 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 	if username == "" || password == "" {
 		return fmt.Errorf("no hay usuarios y faltan ADMIN_USERNAME/ADMIN_PASSWORD para crear el admin inicial (defínelos en deploy/.env)")
 	}
+	if err := checkAdminSecrets(password, pin); err != nil {
+		return err
+	}
 
 	pwHash, err := auth.HashSecret(password)
 	if err != nil {
@@ -161,6 +166,19 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 		return err
 	}
 	slog.Info("admin inicial creado", "username", username)
+	return nil
+}
+
+// checkAdminSecrets refuses to create/reset the admin with shipped example values or
+// a trivially guessable PIN. This runs even when the operator does `docker compose up`
+// directly (bypassing scripts/check-env.sh), so the guard must live in code.
+func checkAdminSecrets(password, pin string) error {
+	if config.IsPlaceholder(password) {
+		return fmt.Errorf("ADMIN_PASSWORD es un valor de ejemplo; define una contraseña real en deploy/.env")
+	}
+	if pin != "" && auth.IsWeakPin(pin) {
+		return fmt.Errorf("ADMIN_PIN es demasiado débil (evita 1234/0000/secuencias); usa uno menos obvio en deploy/.env")
+	}
 	return nil
 }
 
@@ -220,6 +238,9 @@ func resetAdminUser(ctx context.Context, st *store.Store) error {
 	pin := os.Getenv("ADMIN_PIN")
 	if username == "" || password == "" {
 		return fmt.Errorf("define ADMIN_USERNAME/ADMIN_PASSWORD")
+	}
+	if err := checkAdminSecrets(password, pin); err != nil {
+		return err
 	}
 	pwHash, err := auth.HashSecret(password)
 	if err != nil {

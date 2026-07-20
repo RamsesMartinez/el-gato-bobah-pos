@@ -1,7 +1,16 @@
 # Producción (VPS): api + postgres + redis + caddy (TLS + estáticos del frontend).
+
+# Cap de logs para que ningún contenedor llene el disco del VPS.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     build: ../server
+    logging: *default-logging
     env_file:
       - path: .env
         required: false
@@ -24,6 +33,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    logging: *default-logging
     environment:
       POSTGRES_DB: gatobobah
       POSTGRES_USER: gatobobah
@@ -38,6 +48,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    logging: *default-logging
     command: ["redis-server", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -50,6 +61,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
+    logging: *default-logging
     ports: ["80:80", "443:443"]
     volumes:
       - caddy_data:/data
