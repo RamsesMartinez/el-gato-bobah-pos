@@ -7,6 +7,7 @@ import {
 import logo from '../assets/logo.webp';
 import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
+import { canAccess } from './roles';
 import { RADIUS } from '../theme/ui';
 
 const NAV = [
@@ -26,6 +27,9 @@ export function AppShell() {
   const clear = useSessionStore((s) => s.clear);
   const palette = useUiStore((s) => s.palette);
   const navigate = useNavigate();
+  // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
+  // siendo la autoridad; esto es solo UX.
+  const nav = NAV.filter((n) => canAccess(user?.role, n.to));
 
   const logout = () => {
     clear();
@@ -41,7 +45,7 @@ export function AppShell() {
           flex="1" minH={0} overflowY="auto" gap={2} w="100%"
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
         >
-          {NAV.map((n) => {
+          {nav.map((n) => {
             const Icon = n.icon;
             return (
               <NavLink key={n.to} to={n.to} style={{ width: '100%' }}>
