@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestCanTransition(t *testing.T) {
 	ok := [][2]string{
@@ -65,5 +68,26 @@ func TestBuildOrder(t *testing.T) {
 	// pedido vacío → error
 	if _, err := BuildOrder(nil, products, options); err == nil {
 		t.Fatal("pedido vacío debe fallar")
+	}
+
+	// A04 — cotas: entradas absurdas fallan como validación (400), no como overflow (500).
+	adversarial := []struct {
+		name string
+		line OrderLineInput
+	}{
+		{"qty +Inf", OrderLineInput{ProductID: 1, Qty: math.Inf(1)}},
+		{"qty NaN", OrderLineInput{ProductID: 1, Qty: math.NaN()}},
+		{"qty sobre el tope", OrderLineInput{ProductID: 1, Qty: MaxOrderQty + 1}},
+		{"qty gigante (overflow del total)", OrderLineInput{ProductID: 1, Qty: 1e300}},
+		{"modificador con qty que haría wrap de int16", OrderLineInput{
+			ProductID: 1, Qty: 1, Modifiers: []OrderModInput{{OptionID: 10, Qty: 40000}},
+		}},
+	}
+	for _, c := range adversarial {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := BuildOrder([]OrderLineInput{c.line}, products, options); err == nil {
+				t.Fatalf("%s debe rechazarse", c.name)
+			}
+		})
 	}
 }
