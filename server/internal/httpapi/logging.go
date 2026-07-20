@@ -142,10 +142,14 @@ func (c *captureWriter) Flush() {
 
 // --- redacción de datos sensibles ---
 
+// Claves redactadas (comparadas en minúsculas). Dos grupos: secretos (nunca deben verse) y
+// PII de cliente (customerName, notes) — se enmascara también aquí para que no aparezca ni
+// en los cuerpos que sí se registran (debug o 5xx de triage), no solo fuera de los logs Info.
 var sensitiveKeys = map[string]bool{
 	"password": true, "pin": true, "token": true, "accesstoken": true,
 	"refreshtoken": true, "secret": true, "authorization": true, "jwt": true,
 	"pin_hash": true, "password_hash": true,
+	"customername": true, "notes": true,
 }
 
 func redactBody(contentType string, body []byte) string {
