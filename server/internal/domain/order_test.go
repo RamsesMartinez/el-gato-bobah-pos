@@ -78,6 +78,7 @@ func TestBuildOrder(t *testing.T) {
 		{"qty +Inf", OrderLineInput{ProductID: 1, Qty: math.Inf(1)}},
 		{"qty NaN", OrderLineInput{ProductID: 1, Qty: math.NaN()}},
 		{"qty sobre el tope", OrderLineInput{ProductID: 1, Qty: MaxOrderQty + 1}},
+		{"qty sub-centésima que redondea a 0 (numeric(8,2))", OrderLineInput{ProductID: 1, Qty: 0.001}},
 		{"qty gigante (overflow del total)", OrderLineInput{ProductID: 1, Qty: 1e300}},
 		{"modificador con qty que haría wrap de int16", OrderLineInput{
 			ProductID: 1, Qty: 1, Modifiers: []OrderModInput{{OptionID: 10, Qty: 40000}},

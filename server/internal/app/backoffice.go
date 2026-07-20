@@ -211,9 +211,11 @@ func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]
 
 // RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
 func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty float64, reason string, userID int64) error {
-	// allowNegative: el delta puede restar (merma/ajuste). Rechaza 0, Inf/NaN y valores
-	// que desbordarían el numeric(14,4).
-	if !domain.ValidQty(domain.Round2(qty), domain.MaxStockQty, true) {
+	// allowNegative: el delta puede restar (merma/ajuste). Round4 porque la columna es
+	// numeric(14,4) (base units g/ml); Round2 rechazaría ajustes válidos de sub-centésima.
+	// Rechaza 0, Inf/NaN y valores que desbordarían la columna.
+	q := domain.Round4(qty)
+	if !domain.ValidQty(q, domain.MaxStockQty, true) {
 		return domain.ErrValidation
 	}
 	var r *string
@@ -225,7 +227,7 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 		IngredientID: ingID,
 		ProductID:    prodID,
 		MovementType: db.StockMovementType(mtype),
-		Quantity:     domain.Round2(qty),
+		Quantity:     q,
 		UserID:       &userID,
 		Reason:       r,
 	})

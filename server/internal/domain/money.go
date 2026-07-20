@@ -8,3 +8,10 @@ import "math"
 func Round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
+
+// Round4 redondea a 4 decimales, para cantidades de stock (columnas numeric(14,4) en base
+// units: gramos/ml). El dinero usa Round2; usar Round2 aquí perdería precisión que el
+// esquema sí soporta y rechazaría ajustes válidos de sub-centésima.
+func Round4(v float64) float64 {
+	return math.Round(v*10000) / 10000
+}
