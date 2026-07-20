@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, Center, VStack, Heading, Input, Button, Text, Image } from '@chakra-ui/react';
+import { Box, Center, VStack, Heading, Input, Button, Text, Image, InputGroup, IconButton } from '@chakra-ui/react';
+import { LuEye, LuEyeOff } from 'react-icons/lu';
 import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/logo.webp';
 import { toaster } from '../../components/ui/toaster';
@@ -12,6 +13,7 @@ import { RADIUS } from '../../theme/ui';
 export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const palette = useUiStore((s) => s.palette);
   const setSession = useSessionStore((s) => s.setSession);
@@ -45,7 +47,15 @@ export function LoginPage() {
             <Text color="fg.muted">Punto de venta</Text>
           </Box>
           <Input size="lg" placeholder="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
-          <Input size="lg" type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <InputGroup endElement={
+            <IconButton aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} size="sm" variant="ghost"
+              tabIndex={-1} onClick={() => setShowPass((v) => !v)}>
+              {showPass ? <LuEyeOff /> : <LuEye />}
+            </IconButton>
+          }>
+            <Input size="lg" type={showPass ? 'text' : 'password'} placeholder="Contraseña"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </InputGroup>
           <Button size="lg" type="submit" loading={loading}>Entrar</Button>
         </VStack>
       </Box>

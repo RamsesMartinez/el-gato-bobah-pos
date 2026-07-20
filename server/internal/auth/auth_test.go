@@ -52,6 +52,21 @@ func TestSecretHashing(t *testing.T) {
 	}
 }
 
+func TestIsWeakPin(t *testing.T) {
+	weak := []string{"", "12", "123", "0000", "1111", "9999", "1234", "4321", "2345", "6789", "3210", "123456", "654321"}
+	for _, p := range weak {
+		if !IsWeakPin(p) {
+			t.Errorf("PIN %q should be flagged weak", p)
+		}
+	}
+	strong := []string{"1357", "8264", "0428", "135792", "2580"}
+	for _, p := range strong {
+		if IsWeakPin(p) {
+			t.Errorf("PIN %q should be accepted", p)
+		}
+	}
+}
+
 func TestRefreshTokenHashStable(t *testing.T) {
 	tok, hash, err := NewRefreshToken()
 	if err != nil {

@@ -2,7 +2,7 @@ module github.com/ramthedev/el-gato-bobah-pos/server
 
 go 1.25.7
 
-toolchain go1.25.11
+toolchain go1.25.12
 
 require (
 	github.com/caarlos0/env/v11 v11.4.1

@@ -10,16 +10,17 @@ EXAMPLE="$ROOT/deploy/.env.example"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YEL='\033[0;33m'; NC='\033[0m'
 
 # Variables obligatorias para producción
-REQUIRED=(POSTGRES_PASSWORD JWT_SECRET ADMIN_PASSWORD)
+REQUIRED=(POSTGRES_PASSWORD JWT_SECRET ADMIN_PASSWORD ADMIN_PIN)
 
 gen_secret() {
   openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 }
 
 is_placeholder() {
-  # vacío, o los valores de ejemplo (cambia-esto…, your_…_here)
+  # vacío, o los valores de ejemplo (cambia-esto…, your_…_here), o PINs triviales
   case "$1" in
     "" | cambia-esto* | your_*_here) return 0 ;;
+    1234 | 0000 | 1111 | 2222 | 3333 | 4444 | 5555 | 6666 | 7777 | 8888 | 9999 | 4321 | 2345 | 3456 | 4567 | 5678 | 6789) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -48,10 +49,11 @@ for key in "${REQUIRED[@]}"; do
   fi
 done
 
-# JWT_SECRET además debe ser razonablemente largo
+# JWT_SECRET además debe ser largo (la API exige 32+ y se niega a arrancar si no)
 jwt="$(get_val JWT_SECRET)"
-if [ -n "$jwt" ] && [ "${#jwt}" -lt 16 ] && ! is_placeholder "$jwt"; then
-  printf "${YEL}!${NC} JWT_SECRET es muy corto; usa uno de 32+ caracteres (ej. openssl rand -hex 32)\n"
+if [ -n "$jwt" ] && [ "${#jwt}" -lt 32 ] && ! is_placeholder "$jwt"; then
+  printf "${RED}✗${NC} JWT_SECRET es muy corto (<32); genera uno con: openssl rand -base64 48\n"
+  missing+=("JWT_SECRET")
 fi
 
 if [ ${#missing[@]} -ne 0 ]; then

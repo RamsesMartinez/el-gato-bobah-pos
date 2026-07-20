@@ -18,8 +18,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 	r := chi.NewRouter()
 	r.Use(RequestID) // X-Request-Id (del front o generado), trazabilidad
 	r.Use(middleware.Recoverer)
-	r.Use(RequestLogger) // captura request/response (redactado) en todos los ambientes
-	r.Use(cors(cfg.CORSOrigin))
+	r.Use(maxBody(1 << 20)) // 1 MiB: acota el cuerpo antes de leerlo (anti-DoS)
+	r.Use(RequestLogger)    // captura request/response (redactado) en todos los ambientes
+	r.Use(cors(cfg.CORSOrigin, cfg.Env != "production"))
 
 	// Ops (unversioned)
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -37,8 +38,12 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/login", h.Login)
-			r.Post("/refresh", h.Refresh)
+			// per-IP throttle solo en los endpoints sensibles a flood; pin-switch/me
+			// (frecuentes en el POS) no se limitan por IP — pin-switch ya está protegido
+			// por el limiter per-usuario. behindProxy=true en prod (detrás de Caddy).
+			ipThrottle := rateLimit(h.authIPs, cfg.Env == "production")
+			r.With(ipThrottle).Post("/login", h.Login)
+			r.With(ipThrottle).Post("/refresh", h.Refresh)
 			r.Post("/logout", h.Logout)
 			r.Group(func(r chi.Router) {
 				r.Use(RequireAuth(jm))
@@ -53,7 +58,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 			r.Get("/pos/menu", h.PosMenu)
 			r.Get("/pos/popular", h.PosPopular)
 			r.Get("/pos/modifier-defaults", h.ModifierDefaults)
-			r.Get("/products/{id}/costing", h.ProductCosting)
+			// costo/margen es información de gestión, no operativa del POS
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 
 			// preferencias del usuario autenticado (p. ej. orden de categorías del POS), sincronizadas entre tablets
 			r.Get("/me/preferences/{key}", h.MeGetPreference)
@@ -69,19 +75,23 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 
 			r.Get("/events", h.Events)
 
-			// Backoffice
+			// Backoffice. Role gates reflejan segregación de funciones; ajusta los
+			// roles a tu operación real (p. ej. si un mesero también cobra).
 			r.Get("/payment-methods", h.PaymentMethods)
-			r.Route("/cash-sessions", func(r chi.Router) {
+			// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Route("/cash-sessions", func(r chi.Router) {
 				r.Post("/", h.OpenCashSession)
 				r.Get("/current", h.CurrentCashSession)
 				r.Post("/close", h.CloseCashSession)
 			})
 			r.Get("/expense-categories", h.ExpenseCategories)
-			r.Route("/expenses", func(r chi.Router) {
+			// gastos: función de gestión/contabilidad
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/expenses", func(r chi.Router) {
 				r.Get("/", h.ListExpenses)
 				r.Post("/", h.CreateExpense)
 			})
-			r.Route("/stock", func(r chi.Router) {
+			// inventario: ajustes/mermas los hace gerencia
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
 				r.Get("/levels", h.StockLevels)
 				r.Get("/movements", h.StockMovements)
 				r.Post("/movements", h.CreateStockMovement)
@@ -129,15 +139,23 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 	return r
 }
 
-// cors: con credentials NO se puede usar "*" (el browser lo rechaza). Si CORS_ORIGIN
-// es "*" reflejamos el Origin del request; si es específico, se usa tal cual.
-func cors(allowed string) func(http.Handler) http.Handler {
+// cors resuelve el header Access-Control-Allow-Origin. Con credentials NO se puede
+// usar "*" literal (el browser lo rechaza), así que:
+//   - origen exacto (https://dominio) → se usa tal cual (recomendado en prod).
+//   - "" (vacío) → NO se emiten headers CORS = solo mismo origen (fail-closed).
+//   - "*" → SOLO en desarrollo reflejamos el Origin; en prod se ignora (config.Validate
+//     ya rechaza "*" en producción, esto es defensa en profundidad).
+func cors(allowed string, dev bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			allow := allowed
-			if allowed == "*" && origin != "" {
-				allow = origin
+			if allowed == "*" {
+				if dev && origin != "" {
+					allow = origin // conveniencia de desarrollo
+				} else {
+					allow = "" // en prod no reflejamos orígenes arbitrarios
+				}
 			}
 			if allow != "" {
 				w.Header().Set("Access-Control-Allow-Origin", allow)

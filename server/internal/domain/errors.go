@@ -10,4 +10,5 @@ var (
 	ErrInvalidCredentials = errors.New("credenciales inválidas")
 	ErrValidation         = errors.New("datos inválidos")
 	ErrConflict           = errors.New("conflicto")
+	ErrTooManyRequests    = errors.New("demasiados intentos, espera un momento")
 )

@@ -288,20 +288,53 @@ func (s *OrdersService) Detail(ctx context.Context, id int64) (*OrderView, error
 	return s.load(ctx, id)
 }
 
-// SetStatus avanza el estado de una orden (lista / entregada).
+// SetStatus avanza el estado de una orden (lista / entregada), respetando la
+// máquina de estados: no retrocede ni toca órdenes terminales.
 func (s *OrdersService) SetStatus(ctx context.Context, id int64, status string) error {
-	if status != "lista" && status != "entregada" {
+	if status != domain.StatusLista && status != domain.StatusEntregada {
 		return domain.ErrValidation
 	}
-	return s.store.Q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: id, Status: db.OrderStatus(status)})
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrder(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		// mismo estado = no-op idempotente: un doble-tap en el tablero no debe dar error
+		// (mantra: nunca hacer que el operador deshaga para rehacer).
+		if string(o.Status) == status {
+			return nil
+		}
+		if !domain.CanTransition(string(o.Status), status) {
+			return domain.ErrConflict
+		}
+		return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: id, Status: db.OrderStatus(status)})
+	})
 }
 
 // Cancel cancela una orden (razón obligatoria) y repone el stock descontado.
+// Idempotente: si ya está cancelada (o entregada) rechaza con ErrConflict, así un
+// doble-tap no duplica los movimientos de reposición.
+// ponytail: el guard se lee dentro de la tx con GetOrder (no FOR UPDATE); cubre el
+// caso real (doble-tap secuencial). Si dos cancels concurren, añade SELECT ... FOR
+// UPDATE en una query dedicada cuando exista sqlc en el toolchain.
 func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reason string) error {
 	if reason == "" {
 		return domain.ErrValidation
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrder(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
+			return domain.ErrConflict
+		}
 		if err := q.CancelOrder(ctx, db.CancelOrderParams{ID: id, CancelledBy: &actor, CancelReason: &reason}); err != nil {
 			return err
 		}

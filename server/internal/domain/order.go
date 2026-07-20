@@ -11,6 +11,29 @@ var (
 	ErrOptionNotFound = errors.New("opción de modificador no encontrada")
 )
 
+// Estados de una orden. "paid" es un campo derivado, no un estado.
+const (
+	StatusAbierta   = "abierta"
+	StatusLista     = "lista"
+	StatusEntregada = "entregada"
+	StatusCancelada = "cancelada"
+)
+
+// CanTransition indica si una orden puede pasar de current a next. Los estados
+// terminales (entregada, cancelada) no permiten más cambios y el estado nunca
+// retrocede. Esto hace la cancelación idempotente (cancelada→cancelada = false,
+// evita el doble-restock del doble-tap) y cierra el "void después de entregar".
+func CanTransition(current, next string) bool {
+	switch current {
+	case StatusAbierta:
+		return next == StatusLista || next == StatusEntregada || next == StatusCancelada
+	case StatusLista:
+		return next == StatusEntregada || next == StatusCancelada
+	default: // entregada, cancelada = terminal
+		return false
+	}
+}
+
 // --- Entradas del cliente (solo IDs + cantidades; los precios los pone el servidor) ---
 
 type OrderLineInput struct {
