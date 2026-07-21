@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -20,18 +21,18 @@ func NewAdminService(s *store.Store) *AdminService { return &AdminService{store:
 // AdminProductView expone las fechas de disponibilidad como "YYYY-MM-DD" o null
 // (JSON limpio para el front) en vez del pgtype.Date crudo.
 type AdminProductView struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Price          float64 `json:"price"`
-	CurrentCost    float64 `json:"current_cost"`
-	Type           string  `json:"type"`
-	IsActive       bool    `json:"is_active"`
-	IsFavorite     bool    `json:"is_favorite"`
-	Category       string  `json:"category"`
-	AvailableFrom  *string `json:"availableFrom"`
-	AvailableUntil *string `json:"availableUntil"`
-	GroupCount     int     `json:"groupCount"`    // grupos de modificadores activos ligados al producto
-	OverrideCount  int     `json:"overrideCount"` // grupos con min/max personalizado en este producto
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	Price          decimal.Decimal `json:"price"`
+	CurrentCost    decimal.Decimal `json:"current_cost"`
+	Type           string          `json:"type"`
+	IsActive       bool            `json:"is_active"`
+	IsFavorite     bool            `json:"is_favorite"`
+	Category       string          `json:"category"`
+	AvailableFrom  *string         `json:"availableFrom"`
+	AvailableUntil *string         `json:"availableUntil"`
+	GroupCount     int             `json:"groupCount"`    // grupos de modificadores activos ligados al producto
+	OverrideCount  int             `json:"overrideCount"` // grupos con min/max personalizado en este producto
 }
 
 const dateFmt = "2006-01-02"
@@ -97,7 +98,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search, groups,
 type UpdateProductInput struct {
 	ID             int64
 	Name           string
-	Price          float64
+	Price          decimal.Decimal
 	Favorite       bool
 	Active         bool
 	AvailableFrom  *string
@@ -106,13 +107,13 @@ type UpdateProductInput struct {
 
 // AdminOptionView: opción de modificador con su grupo, para gestionar (favorito/activo) en el admin.
 type AdminOptionView struct {
-	ID         int64   `json:"id"`
-	GroupID    int64   `json:"groupId"`
-	GroupName  string  `json:"groupName"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"priceDelta"`
-	Favorite   bool    `json:"favorite"`
-	Active     bool    `json:"active"`
+	ID         int64           `json:"id"`
+	GroupID    int64           `json:"groupId"`
+	GroupName  string          `json:"groupName"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"priceDelta"`
+	Favorite   bool            `json:"favorite"`
+	Active     bool            `json:"active"`
 }
 
 // OptionsPage: página de opciones (items + total del filtro) más los conteos por estado
@@ -156,7 +157,7 @@ func (s *AdminService) SetOptionActive(ctx context.Context, id int64, active boo
 }
 
 func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput) error {
-	if in.Name == "" || in.Price < 0 {
+	if in.Name == "" || in.Price.IsNegative() {
 		return domain.ErrValidation
 	}
 	from, err := parseDate(in.AvailableFrom)

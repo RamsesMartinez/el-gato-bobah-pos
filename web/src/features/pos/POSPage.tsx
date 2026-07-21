@@ -130,7 +130,7 @@ export function POSPage() {
       setModProduct(p);
       modSheet.onOpen();
     } else {
-      addLine({ productId: p.id, name: p.name, unitPrice: p.price, qty: 1, modifiers: [] });
+      addLine({ productId: p.id, name: p.name, unitPrice: Number(p.price), qty: 1, modifiers: [] });
     }
   };
 
@@ -148,7 +148,7 @@ export function POSPage() {
       updateLineModifiers(editing.lineId, modifiers, notes || undefined);
     } else {
       for (let i = 0; i < qty; i++) {
-        addLine({ productId: modProduct.id, name: modProduct.name, unitPrice: modProduct.price, qty: 1, modifiers, notes: notes || undefined });
+        addLine({ productId: modProduct.id, name: modProduct.name, unitPrice: Number(modProduct.price), qty: 1, modifiers, notes: notes || undefined });
       }
     }
     setEditing(null);

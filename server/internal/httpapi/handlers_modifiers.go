@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
@@ -125,9 +126,9 @@ func (h *Handlers) AdminCreateOption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name       string  `json:"name"`
-		PriceDelta float64 `json:"priceDelta"`
-		MaxPerLine int     `json:"maxPerLine"`
+		Name       string          `json:"name"`
+		PriceDelta decimal.Decimal `json:"priceDelta"`
+		MaxPerLine int             `json:"maxPerLine"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)

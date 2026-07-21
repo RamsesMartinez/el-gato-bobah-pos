@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const listComboSlotDefaultsForCosting = `-- name: ListComboSlotDefaultsForCosting :many
@@ -51,13 +52,13 @@ from ingredients
 `
 
 type ListIngredientsForCostingRow struct {
-	ID          int64          `json:"id"`
-	IsPrep      bool           `json:"is_prep"`
-	RecipeID    *int64         `json:"recipe_id"`
-	YieldQty    pgtype.Numeric `json:"yield_qty"`
-	WastePct    float64        `json:"waste_pct"`
-	CurrentCost float64        `json:"current_cost"`
-	CostSource  CostSource     `json:"cost_source"`
+	ID          int64           `json:"id"`
+	IsPrep      bool            `json:"is_prep"`
+	RecipeID    *int64          `json:"recipe_id"`
+	YieldQty    pgtype.Numeric  `json:"yield_qty"`
+	WastePct    decimal.Decimal `json:"waste_pct"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	CostSource  CostSource      `json:"cost_source"`
 }
 
 // Cargas para el motor de costeo (recompute batch).
@@ -164,9 +165,9 @@ join units u on u.id = ri.unit_id
 `
 
 type ListRecipeItemsForCostingRow struct {
-	RecipeID     int64   `json:"recipe_id"`
-	IngredientID int64   `json:"ingredient_id"`
-	QtyBase      float64 `json:"qty_base"`
+	RecipeID     int64           `json:"recipe_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	QtyBase      decimal.Decimal `json:"qty_base"`
 }
 
 func (q *Queries) ListRecipeItemsForCosting(ctx context.Context) ([]ListRecipeItemsForCostingRow, error) {
@@ -195,8 +196,8 @@ update ingredients set current_cost = $2, updated_at = now() where id = $1
 `
 
 type UpdateIngredientCostParams struct {
-	ID          int64   `json:"id"`
-	CurrentCost float64 `json:"current_cost"`
+	ID          int64           `json:"id"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
 }
 
 // Escrituras de costo (una por fila; el motor las agrupa en una tx).
@@ -210,8 +211,8 @@ update modifier_options set current_cost = $2 where id = $1
 `
 
 type UpdateOptionCostParams struct {
-	ID          int64   `json:"id"`
-	CurrentCost float64 `json:"current_cost"`
+	ID          int64           `json:"id"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
 }
 
 func (q *Queries) UpdateOptionCost(ctx context.Context, arg UpdateOptionCostParams) error {
@@ -224,8 +225,8 @@ update products set current_cost = $2, updated_at = now() where id = $1
 `
 
 type UpdateProductCostParams struct {
-	ID          int64   `json:"id"`
-	CurrentCost float64 `json:"current_cost"`
+	ID          int64           `json:"id"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
 }
 
 func (q *Queries) UpdateProductCost(ctx context.Context, arg UpdateProductCostParams) error {

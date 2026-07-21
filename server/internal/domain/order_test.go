@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"math"
-	"testing"
-)
+import "testing"
 
 func TestCanTransition(t *testing.T) {
 	ok := [][2]string{
@@ -34,35 +31,35 @@ func TestCanTransition(t *testing.T) {
 
 func TestBuildOrder(t *testing.T) {
 	products := map[int64]PricedProduct{
-		1: {ID: 1, Name: "Frappé", Price: 45, Cost: 12, Active: true},
-		2: {ID: 2, Name: "Inactivo", Price: 10, Active: false},
+		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true},
+		2: {ID: 2, Name: "Inactivo", Price: d("10"), Active: false},
 	}
 	options := map[int64]PricedOption{
-		10: {ID: 10, Name: "Perlas", PriceDelta: 20, Cost: 5, GroupTitle: "Toppings"},
-		11: {ID: 11, Name: "Litchi", PriceDelta: 20, Cost: 6, GroupTitle: "Toppings"},
+		10: {ID: 10, Name: "Perlas", PriceDelta: d("20"), Cost: d("5"), GroupTitle: "Toppings"},
+		11: {ID: 11, Name: "Litchi", PriceDelta: d("20"), Cost: d("6"), GroupTitle: "Toppings"},
 	}
 
 	// 2 Frappé con Perlas x1 y Litchi x1: unit = 45 + 20 + 20 = 85 ; línea = 170
 	got, err := BuildOrder([]OrderLineInput{
-		{ProductID: 1, Qty: 2, Modifiers: []OrderModInput{{OptionID: 10, Qty: 1}, {OptionID: 11, Qty: 1}}},
+		{ProductID: 1, Qty: d("2"), Modifiers: []OrderModInput{{OptionID: 10, Qty: 1}, {OptionID: 11, Qty: 1}}},
 	}, products, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Total != 170 {
+	if !got.Total.Equal(d("170")) {
 		t.Fatalf("total=%v want 170", got.Total)
 	}
 	l := got.Lines[0]
-	if l.ModifiersTotal != 40 || l.UnitCost != 23 || l.LineTotal != 170 {
+	if !l.ModifiersTotal.Equal(d("40")) || !l.UnitCost.Equal(d("23")) || !l.LineTotal.Equal(d("170")) {
 		t.Fatalf("línea: modsTotal=%v unitCost=%v lineTotal=%v", l.ModifiersTotal, l.UnitCost, l.LineTotal)
 	}
 
 	// producto inactivo → error
-	if _, err := BuildOrder([]OrderLineInput{{ProductID: 2, Qty: 1}}, products, options); err == nil {
+	if _, err := BuildOrder([]OrderLineInput{{ProductID: 2, Qty: d("1")}}, products, options); err == nil {
 		t.Fatal("producto inactivo debe fallar")
 	}
 	// opción inexistente → error
-	if _, err := BuildOrder([]OrderLineInput{{ProductID: 1, Qty: 1, Modifiers: []OrderModInput{{OptionID: 99}}}}, products, options); err == nil {
+	if _, err := BuildOrder([]OrderLineInput{{ProductID: 1, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: 99}}}}, products, options); err == nil {
 		t.Fatal("opción inexistente debe fallar")
 	}
 	// pedido vacío → error
@@ -71,17 +68,16 @@ func TestBuildOrder(t *testing.T) {
 	}
 
 	// A04 — cotas: entradas absurdas fallan como validación (400), no como overflow (500).
+	// Con decimal ya no hay NaN/±Inf que probar (son imposibles); quedan las cotas reales.
 	adversarial := []struct {
 		name string
 		line OrderLineInput
 	}{
-		{"qty +Inf", OrderLineInput{ProductID: 1, Qty: math.Inf(1)}},
-		{"qty NaN", OrderLineInput{ProductID: 1, Qty: math.NaN()}},
-		{"qty sobre el tope", OrderLineInput{ProductID: 1, Qty: MaxOrderQty + 1}},
-		{"qty sub-centésima que redondea a 0 (numeric(8,2))", OrderLineInput{ProductID: 1, Qty: 0.001}},
-		{"qty gigante (overflow del total)", OrderLineInput{ProductID: 1, Qty: 1e300}},
+		{"qty sobre el tope", OrderLineInput{ProductID: 1, Qty: MaxOrderQty.Add(d("1"))}},
+		{"qty sub-centésima que redondea a 0 (numeric(8,2))", OrderLineInput{ProductID: 1, Qty: d("0.001")}},
+		{"qty gigante (overflow del total)", OrderLineInput{ProductID: 1, Qty: d("1e50")}},
 		{"modificador con qty que haría wrap de int16", OrderLineInput{
-			ProductID: 1, Qty: 1, Modifiers: []OrderModInput{{OptionID: 10, Qty: 40000}},
+			ProductID: 1, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: 10, Qty: 40000}},
 		}},
 	}
 	for _, c := range adversarial {

@@ -4,11 +4,17 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
+
+// costDec convierte un costo calculado (el motor de costeo trabaja en float64: los costos
+// son ESTIMACIONES analíticas de margen, no dinero facturado) a decimal para persistir en
+// las columnas numeric de costo. Round4 = precisión de las columnas current_cost.
+func costDec(x float64) decimal.Decimal { return decimal.NewFromFloat(x).Round(4) }
 
 type CostingService struct {
 	store *store.Store
@@ -31,19 +37,19 @@ func (s *CostingService) RecomputeAll(ctx context.Context) error {
 			if !ing.IsPrep {
 				continue // materia prima: su costo no se deriva
 			}
-			c := domain.Round2(g.IngredientCost(ing.ID))
+			c := costDec(g.IngredientCost(ing.ID))
 			if err := q.UpdateIngredientCost(ctx, db.UpdateIngredientCostParams{ID: ing.ID, CurrentCost: c}); err != nil {
 				return err
 			}
 		}
 		for _, p := range prods {
-			c := domain.Round2(g.ProductCost(p.ID))
+			c := costDec(g.ProductCost(p.ID))
 			if err := q.UpdateProductCost(ctx, db.UpdateProductCostParams{ID: p.ID, CurrentCost: c}); err != nil {
 				return err
 			}
 		}
 		for _, o := range opts {
-			c := domain.Round2(g.OptionCost(o.ID))
+			c := costDec(g.OptionCost(o.ID))
 			if err := q.UpdateOptionCost(ctx, db.UpdateOptionCostParams{ID: o.ID, CurrentCost: c}); err != nil {
 				return err
 			}
@@ -53,12 +59,12 @@ func (s *CostingService) RecomputeAll(ctx context.Context) error {
 }
 
 // ProductCost devuelve el costo calculado de un producto (sin persistir), para /costing.
-func (s *CostingService) ProductCost(ctx context.Context, productID int64) (float64, error) {
+func (s *CostingService) ProductCost(ctx context.Context, productID int64) (decimal.Decimal, error) {
 	g, _, _, _, err := s.loadGraph(ctx)
 	if err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
-	return domain.Round2(g.ProductCost(productID)), nil
+	return costDec(g.ProductCost(productID)), nil
 }
 
 func (s *CostingService) loadGraph(ctx context.Context) (
@@ -96,14 +102,14 @@ func (s *CostingService) loadGraph(ctx context.Context) (
 			IsPrep:      r.IsPrep,
 			RecipeID:    r.RecipeID,
 			YieldQty:    numF(r.YieldQty),
-			WastePct:    r.WastePct,
-			CurrentCost: r.CurrentCost,
+			WastePct:    r.WastePct.InexactFloat64(),
+			CurrentCost: r.CurrentCost.InexactFloat64(),
 		}
 	}
 	recipes := map[int64][]domain.CostRecipeItem{}
 	for _, r := range itemRows {
 		recipes[r.RecipeID] = append(recipes[r.RecipeID], domain.CostRecipeItem{
-			IngredientID: r.IngredientID, QtyBase: r.QtyBase,
+			IngredientID: r.IngredientID, QtyBase: r.QtyBase.InexactFloat64(),
 		})
 	}
 	products := make(map[int64]domain.CostProduct, len(prodRows))

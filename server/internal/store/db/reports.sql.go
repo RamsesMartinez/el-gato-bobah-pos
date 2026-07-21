@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const productMargins = `-- name: ProductMargins :many
@@ -32,11 +33,11 @@ type ProductMarginsParams struct {
 }
 
 type ProductMarginsRow struct {
-	ProductName string  `json:"product_name"`
-	Qty         float64 `json:"qty"`
-	Revenue     float64 `json:"revenue"`
-	Cost        float64 `json:"cost"`
-	Margin      float64 `json:"margin"`
+	ProductName string          `json:"product_name"`
+	Qty         decimal.Decimal `json:"qty"`
+	Revenue     decimal.Decimal `json:"revenue"`
+	Cost        decimal.Decimal `json:"cost"`
+	Margin      decimal.Decimal `json:"margin"`
 }
 
 // Utilidad por producto usando snapshots de las líneas (no depende del costo actual).
@@ -82,9 +83,9 @@ type SalesByDayParams struct {
 }
 
 type SalesByDayRow struct {
-	BusinessDate pgtype.Date `json:"business_date"`
-	Orders       int32       `json:"orders"`
-	Revenue      float64     `json:"revenue"`
+	BusinessDate pgtype.Date     `json:"business_date"`
+	Orders       int32           `json:"orders"`
+	Revenue      decimal.Decimal `json:"revenue"`
 }
 
 func (q *Queries) SalesByDay(ctx context.Context, arg SalesByDayParams) ([]SalesByDayRow, error) {
@@ -119,9 +120,9 @@ order by total desc
 `
 
 type SalesByMethodRow struct {
-	Method   string  `json:"method"`
-	Payments int32   `json:"payments"`
-	Total    float64 `json:"total"`
+	Method   string          `json:"method"`
+	Payments int32           `json:"payments"`
+	Total    decimal.Decimal `json:"total"`
 }
 
 func (q *Queries) SalesByMethod(ctx context.Context, createdAt time.Time) ([]SalesByMethodRow, error) {

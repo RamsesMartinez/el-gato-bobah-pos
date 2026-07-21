@@ -52,7 +52,7 @@ export function ExpensesPage() {
                 <Table.Cell>{e.category}</Table.Cell>
                 <Table.Cell>{e.supplier ?? '—'}</Table.Cell>
                 <Table.Cell>{e.description ?? '—'}</Table.Cell>
-                <Table.Cell textAlign="end">{money(e.amount)}</Table.Cell>
+                <Table.Cell textAlign="end">{money(e.amount, e.currency)}</Table.Cell>
               </Table.Row>
             ))}
           </Table.Body>

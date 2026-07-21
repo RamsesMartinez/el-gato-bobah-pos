@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const createExpense = `-- name: CreateExpense :one
@@ -18,13 +19,13 @@ returning id
 `
 
 type CreateExpenseParams struct {
-	ExpenseDate     pgtype.Date `json:"expense_date"`
-	CategoryID      int64       `json:"category_id"`
-	SupplierID      *int64      `json:"supplier_id"`
-	Amount          float64     `json:"amount"`
-	PaymentMethodID *int16      `json:"payment_method_id"`
-	Description     *string     `json:"description"`
-	CreatedBy       int64       `json:"created_by"`
+	ExpenseDate     pgtype.Date     `json:"expense_date"`
+	CategoryID      int64           `json:"category_id"`
+	SupplierID      *int64          `json:"supplier_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	PaymentMethodID *int16          `json:"payment_method_id"`
+	Description     *string         `json:"description"`
+	CreatedBy       int64           `json:"created_by"`
 }
 
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (int64, error) {
@@ -74,7 +75,7 @@ func (q *Queries) ListExpenseCategories(ctx context.Context) ([]ListExpenseCateg
 
 const listExpenses = `-- name: ListExpenses :many
 select e.id, e.expense_date, ec.name as category, ec.financial_group, s.name as supplier,
-       e.amount, e.description
+       e.amount, e.currency, e.description
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -83,13 +84,14 @@ limit $1
 `
 
 type ListExpensesRow struct {
-	ID             int64          `json:"id"`
-	ExpenseDate    pgtype.Date    `json:"expense_date"`
-	Category       string         `json:"category"`
-	FinancialGroup FinancialGroup `json:"financial_group"`
-	Supplier       *string        `json:"supplier"`
-	Amount         float64        `json:"amount"`
-	Description    *string        `json:"description"`
+	ID             int64           `json:"id"`
+	ExpenseDate    pgtype.Date     `json:"expense_date"`
+	Category       string          `json:"category"`
+	FinancialGroup FinancialGroup  `json:"financial_group"`
+	Supplier       *string         `json:"supplier"`
+	Amount         decimal.Decimal `json:"amount"`
+	Currency       string          `json:"currency"`
+	Description    *string         `json:"description"`
 }
 
 func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpensesRow, error) {
@@ -108,6 +110,7 @@ func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpenses
 			&i.FinancialGroup,
 			&i.Supplier,
 			&i.Amount,
+			&i.Currency,
 			&i.Description,
 		); err != nil {
 			return nil, err

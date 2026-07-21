@@ -8,7 +8,9 @@ const baseOrder: OrderView = {
   status: 'abierta',
   serviceType: 'mostrador',
   customerName: null,
-  total: 5000,
+  subtotal: '5000',
+  total: '5000',
+  currency: 'MXN',
   paid: false,
   openedAt: '2026-07-19T12:00:00Z',
   lines: [],
@@ -22,10 +24,10 @@ describe('buildReceiptHtml', () => {
       lines: [
         {
           productName: '<script>alert(2)</script>',
-          quantity: 1,
-          unitPrice: 5000,
-          lineTotal: 5000,
-          modifiers: [{ name: '<b>extra</b>', quantity: 1, priceDelta: 0 }],
+          quantity: '1',
+          unitPrice: '5000',
+          lineTotal: '5000',
+          modifiers: [{ name: '<b>extra</b>', quantity: 1, priceDelta: '0' }],
         },
       ],
     };
@@ -44,7 +46,7 @@ describe('buildReceiptHtml', () => {
     const order: OrderView = {
       ...baseOrder,
       customerName: 'María',
-      lines: [{ productName: 'Boba fresa', quantity: 2, unitPrice: 2500, lineTotal: 5000, modifiers: [] }],
+      lines: [{ productName: 'Boba fresa', quantity: '2', unitPrice: '2500', lineTotal: '5000', modifiers: [] }],
     };
     const html = buildReceiptHtml(order);
     expect(html).toContain('María');

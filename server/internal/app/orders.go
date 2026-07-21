@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -28,8 +29,8 @@ func NewOrdersService(s *store.Store, now func() time.Time) *OrdersService {
 
 type PaymentInput struct {
 	MethodID  int16
-	Amount    float64
-	Tip       float64
+	Amount    decimal.Decimal
+	Tip       decimal.Decimal
 	Reference *string
 }
 
@@ -51,26 +52,27 @@ type OrderView struct {
 	ServiceType  string          `json:"serviceType"`
 	CustomerName *string         `json:"customerName"`
 	Notes        *string         `json:"notes"`
-	Subtotal     float64         `json:"subtotal"`
-	Total        float64         `json:"total"`
+	Subtotal     decimal.Decimal `json:"subtotal"`
+	Total        decimal.Decimal `json:"total"`
+	Currency     domain.Currency `json:"currency"`
 	Paid         bool            `json:"paid"`
 	OpenedAt     time.Time       `json:"openedAt"`
 	Lines        []OrderLineView `json:"lines"`
 }
 
 type OrderLineView struct {
-	ProductName string         `json:"productName"`
-	Quantity    float64        `json:"quantity"`
-	UnitPrice   float64        `json:"unitPrice"`
-	LineTotal   float64        `json:"lineTotal"`
-	Notes       string         `json:"notes,omitempty"`
-	Modifiers   []OrderModView `json:"modifiers,omitempty"`
+	ProductName string          `json:"productName"`
+	Quantity    decimal.Decimal `json:"quantity"`
+	UnitPrice   decimal.Decimal `json:"unitPrice"`
+	LineTotal   decimal.Decimal `json:"lineTotal"`
+	Notes       string          `json:"notes,omitempty"`
+	Modifiers   []OrderModView  `json:"modifiers,omitempty"`
 }
 
 type OrderModView struct {
-	Name       string  `json:"name"`
-	Quantity   int     `json:"quantity"`
-	PriceDelta float64 `json:"priceDelta"`
+	Name       string          `json:"name"`
+	Quantity   int             `json:"quantity"`
+	PriceDelta decimal.Decimal `json:"priceDelta"`
 }
 
 func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderView, error) {
@@ -80,10 +82,10 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
 	}
-	// A04: acota pago/propina antes de la tx. Un Amount=Inf pasaba el gate `> 0` y
-	// desbordaba el numeric(10,2) (→ 500); una propina negativa violaba el check de la
-	// columna. allowZero en la propina (0 es válido), no en el monto.
-	if cmd.Payment != nil && cmd.Payment.Amount > 0 {
+	// A04: acota pago/propina antes de la tx. Un monto sobre el tope desbordaría el
+	// numeric(10,2) (→ 500); una propina negativa violaría el check de la columna.
+	// allowZero en la propina (0 es válido), no en el monto.
+	if cmd.Payment != nil && cmd.Payment.Amount.IsPositive() {
 		if !domain.ValidMoney(domain.Round2(cmd.Payment.Amount), false) ||
 			!domain.ValidMoney(domain.Round2(cmd.Payment.Tip), true) {
 			return nil, domain.ErrValidation
@@ -122,9 +124,9 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	}
 
 	// datos para depleción de stock (lectura antes de la tx)
-	qtyByProduct := map[int64]float64{}
+	qtyByProduct := map[int64]decimal.Decimal{}
 	for _, l := range built.Lines {
-		qtyByProduct[l.ProductID] += l.Qty
+		qtyByProduct[l.ProductID] = qtyByProduct[l.ProductID].Add(l.Qty)
 	}
 	depletion, err := s.loadDepletion(ctx, prodIDs)
 	if err != nil {
@@ -183,7 +185,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				}
 			}
 		}
-		if cmd.Payment != nil && cmd.Payment.Amount > 0 {
+		if cmd.Payment != nil && cmd.Payment.Amount.IsPositive() {
 			if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
 				OrderID:         ord.ID,
 				PaymentMethodID: cmd.Payment.MethodID,
@@ -202,14 +204,14 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		reason := "venta"
 		for pid, qty := range qtyByProduct {
 			if depletion.trackStock[pid] {
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "producto", nil, &pid, -qty)); err != nil {
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "producto", nil, &pid, qty.Neg())); err != nil {
 					return err
 				}
 				continue
 			}
 			for _, it := range depletion.recipe[pid] {
 				ingID := it.ingredientID
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "ingrediente", &ingID, nil, -(it.qtyBase*qty))); err != nil {
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "ingrediente", &ingID, nil, it.qtyBase.Mul(qty).Neg())); err != nil {
 					return err
 				}
 			}
@@ -245,14 +247,15 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 			Name: m.OptionName, Quantity: int(m.Quantity), PriceDelta: m.PriceDelta,
 		})
 	}
-	var paid float64
+	var paid decimal.Decimal
 	for _, pmt := range pays {
-		paid += pmt.Amount
+		paid = paid.Add(pmt.Amount)
 	}
 	view := &OrderView{
 		ID: o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
 		ServiceType: string(o.ServiceType), CustomerName: o.CustomerName, Notes: o.Notes,
-		Subtotal: o.Subtotal, Total: o.Total, Paid: paid >= o.Total && o.Total > 0,
+		Subtotal: o.Subtotal, Total: o.Total, Currency: domain.Currency(o.Currency),
+		Paid:     paid.GreaterThanOrEqual(o.Total) && o.Total.IsPositive(),
 		OpenedAt: o.OpenedAt,
 	}
 	for _, l := range lines {
@@ -265,14 +268,15 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 }
 
 type BoardOrder struct {
-	ID           int64     `json:"id"`
-	Number       int       `json:"number"`
-	Status       string    `json:"status"`
-	ServiceType  string    `json:"serviceType"`
-	CustomerName *string   `json:"customerName"`
-	Total        float64   `json:"total"`
-	Paid         bool      `json:"paid"`
-	OpenedAt     time.Time `json:"openedAt"`
+	ID           int64           `json:"id"`
+	Number       int             `json:"number"`
+	Status       string          `json:"status"`
+	ServiceType  string          `json:"serviceType"`
+	CustomerName *string         `json:"customerName"`
+	Total        decimal.Decimal `json:"total"`
+	Currency     domain.Currency `json:"currency"`
+	Paid         bool            `json:"paid"`
+	OpenedAt     time.Time       `json:"openedAt"`
 }
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
@@ -286,7 +290,8 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 		out = append(out, BoardOrder{
 			ID: r.ID, Number: int(r.DailyNumber), Status: string(r.Status),
 			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
-			Total: r.Total, Paid: r.Paid >= r.Total && r.Total > 0, OpenedAt: r.OpenedAt,
+			Total: r.Total, Currency: domain.Currency(r.Currency),
+			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
 		})
 	}
 	return out, nil
@@ -357,7 +362,7 @@ type depletionData struct {
 }
 type recipeDelta struct {
 	ingredientID int64
-	qtyBase      float64
+	qtyBase      decimal.Decimal
 }
 
 func (s *OrdersService) loadDepletion(ctx context.Context, prodIDs []int64) (depletionData, error) {
@@ -379,7 +384,7 @@ func (s *OrdersService) loadDepletion(ctx context.Context, prodIDs []int64) (dep
 	return d, nil
 }
 
-func movementIngredientOrProduct(orderID, userID int64, reason, itemType string, ingID, prodID *int64, qty float64) db.InsertStockMovementParams {
+func movementIngredientOrProduct(orderID, userID int64, reason, itemType string, ingID, prodID *int64, qty decimal.Decimal) db.InsertStockMovementParams {
 	return db.InsertStockMovementParams{
 		ItemType:     db.StockItemType(itemType),
 		IngredientID: ingID,
@@ -398,7 +403,7 @@ func movementIngredientOrProduct(orderID, userID int64, reason, itemType string,
 // esquiva el tope del total) es 400, no un overflow del numeric → 500.
 func insertDepletion(ctx context.Context, q *db.Queries, p db.InsertStockMovementParams) error {
 	p.Quantity = domain.Round4(p.Quantity)
-	if p.Quantity == 0 {
+	if p.Quantity.IsZero() {
 		return nil
 	}
 	if !domain.ValidQty(p.Quantity, domain.MaxStockQty, true) {

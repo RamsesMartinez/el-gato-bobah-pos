@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 )
 
@@ -21,7 +23,7 @@ func (h *Handlers) PaymentMethods(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		OpeningCash float64 `json:"openingCash"`
+		OpeningCash decimal.Decimal `json:"openingCash"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -47,14 +49,14 @@ func (h *Handlers) CurrentCashSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Declared map[string]float64 `json:"declared"` // methodId(string) → contado
-		Notes    string             `json:"notes"`
+		Declared map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
+		Notes    string                     `json:"notes"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	declared := map[int]float64{}
+	declared := map[int]decimal.Decimal{}
 	for k, v := range body.Declared {
 		if id, err := strconv.Atoi(k); err == nil {
 			declared[id] = v
@@ -91,12 +93,12 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Date        string  `json:"date"`
-		CategoryID  int64   `json:"categoryId"`
-		SupplierID  *int64  `json:"supplierId"`
-		Amount      float64 `json:"amount"`
-		MethodID    *int16  `json:"methodId"`
-		Description string  `json:"description"`
+		Date        string          `json:"date"`
+		CategoryID  int64           `json:"categoryId"`
+		SupplierID  *int64          `json:"supplierId"`
+		Amount      decimal.Decimal `json:"amount"`
+		MethodID    *int16          `json:"methodId"`
+		Description string          `json:"description"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -141,12 +143,12 @@ func (h *Handlers) StockMovements(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CreateStockMovement(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ItemType     string  `json:"itemType"` // ingrediente | producto
-		IngredientID *int64  `json:"ingredientId"`
-		ProductID    *int64  `json:"productId"`
-		MovementType string  `json:"movementType"` // ajuste | compra | merma
-		Quantity     float64 `json:"quantity"`
-		Reason       string  `json:"reason"`
+		ItemType     string          `json:"itemType"` // ingrediente | producto
+		IngredientID *int64          `json:"ingredientId"`
+		ProductID    *int64          `json:"productId"`
+		MovementType string          `json:"movementType"` // ajuste | compra | merma
+		Quantity     decimal.Decimal `json:"quantity"`
+		Reason       string          `json:"reason"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
