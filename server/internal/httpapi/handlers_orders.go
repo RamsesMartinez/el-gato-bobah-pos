@@ -10,6 +10,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
@@ -125,6 +126,41 @@ func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.broker.Publish(realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "cancelada"}})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /orders/delivered — entregadas del día (superficie de reembolso, admin/gerente).
+func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.orders.DeliveredToday(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// POST /orders/{id}/refund  {reason}  — reembolsa una orden entregada (admin/gerente).
+func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.orders.Refund(r.Context(), id, u.ID, body.Reason); err != nil {
+		Error(w, err)
+		return
+	}
+	// Salida de dinero: evento de seguridad para detección/auditoría (quién reembolsó qué).
+	logging.SecurityEvent(r.Context(), "order_refund", "order_id", id, "user_id", u.ID)
+	h.broker.Publish(realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "reembolsada"}})
 	w.WriteHeader(http.StatusNoContent)
 }
 

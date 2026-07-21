@@ -34,7 +34,7 @@ const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount
 `
 
 type CreateOrderParams struct {
@@ -89,6 +89,10 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.CancelReason,
 		&i.UpdatedAt,
 		&i.Currency,
+		&i.RefundedAt,
+		&i.RefundedBy,
+		&i.RefundReason,
+		&i.RefundAmount,
 	)
 	return i, err
 }
@@ -187,7 +191,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -216,6 +220,10 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.CancelReason,
 		&i.UpdatedAt,
 		&i.Currency,
+		&i.RefundedAt,
+		&i.RefundedBy,
+		&i.RefundReason,
+		&i.RefundAmount,
 	)
 	return i, err
 }
@@ -346,6 +354,61 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 	items := []ListActiveOrdersRow{}
 	for rows.Next() {
 		var i ListActiveOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.Status,
+			&i.ServiceType,
+			&i.CustomerName,
+			&i.Total,
+			&i.Currency,
+			&i.OpenedAt,
+			&i.ReadyAt,
+			&i.Paid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeliveredToday = `-- name: ListDeliveredToday :many
+select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+       o.opened_at, o.ready_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.status = 'entregada' and o.business_date = $1
+order by o.completed_at desc nulls last, o.id desc
+`
+
+type ListDeliveredTodayRow struct {
+	ID           int64              `json:"id"`
+	DailyNumber  int32              `json:"daily_number"`
+	Status       OrderStatus        `json:"status"`
+	ServiceType  ServiceType        `json:"service_type"`
+	CustomerName *string            `json:"customer_name"`
+	Total        decimal.Decimal    `json:"total"`
+	Currency     string             `json:"currency"`
+	OpenedAt     time.Time          `json:"opened_at"`
+	ReadyAt      pgtype.Timestamptz `json:"ready_at"`
+	Paid         decimal.Decimal    `json:"paid"`
+}
+
+// Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
+// fecha de negocio para no arrastrar todo el histórico.
+func (q *Queries) ListDeliveredToday(ctx context.Context, businessDate pgtype.Date) ([]ListDeliveredTodayRow, error) {
+	rows, err := q.db.Query(ctx, listDeliveredToday, businessDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDeliveredTodayRow{}
+	for rows.Next() {
+		var i ListDeliveredTodayRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.DailyNumber,
@@ -550,6 +613,30 @@ func (q *Queries) RecentModifierPicks(ctx context.Context) ([]RecentModifierPick
 		return nil, err
 	}
 	return items, nil
+}
+
+const refundOrder = `-- name: RefundOrder :exec
+update orders set status = 'reembolsada', refunded_at = now(),
+  refunded_by = $2, refund_reason = $3, refund_amount = $4
+where id = $1
+`
+
+type RefundOrderParams struct {
+	ID           int64           `json:"id"`
+	RefundedBy   *int64          `json:"refunded_by"`
+	RefundReason *string         `json:"refund_reason"`
+	RefundAmount decimal.Decimal `json:"refund_amount"`
+}
+
+// Devolución de una orden entregada: la marca 'reembolsada' (pérdida). Sin restock.
+func (q *Queries) RefundOrder(ctx context.Context, arg RefundOrderParams) error {
+	_, err := q.db.Exec(ctx, refundOrder,
+		arg.ID,
+		arg.RefundedBy,
+		arg.RefundReason,
+		arg.RefundAmount,
+	)
+	return err
 }
 
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec

@@ -85,6 +85,22 @@ update orders set status = $2,
   completed_at = case when $2 = 'entregada'::order_status then now() else completed_at end
 where id = $1;
 
+-- name: ListDeliveredToday :many
+-- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
+-- fecha de negocio para no arrastrar todo el histórico.
+select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+       o.opened_at, o.ready_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.status = 'entregada' and o.business_date = $1
+order by o.completed_at desc nulls last, o.id desc;
+
+-- name: RefundOrder :exec
+-- Devolución de una orden entregada: la marca 'reembolsada' (pérdida). Sin restock.
+update orders set status = 'reembolsada', refunded_at = now(),
+  refunded_by = $2, refund_reason = $3, refund_amount = $4
+where id = $1;
+
 -- name: CancelOrder :exec
 update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
 where id = $1;

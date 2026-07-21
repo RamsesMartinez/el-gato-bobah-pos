@@ -145,10 +145,11 @@ func (ns NullFinancialGroup) Value() (driver.Value, error) {
 type OrderStatus string
 
 const (
-	OrderStatusAbierta   OrderStatus = "abierta"
-	OrderStatusLista     OrderStatus = "lista"
-	OrderStatusEntregada OrderStatus = "entregada"
-	OrderStatusCancelada OrderStatus = "cancelada"
+	OrderStatusAbierta     OrderStatus = "abierta"
+	OrderStatusLista       OrderStatus = "lista"
+	OrderStatusEntregada   OrderStatus = "entregada"
+	OrderStatusCancelada   OrderStatus = "cancelada"
+	OrderStatusReembolsada OrderStatus = "reembolsada"
 )
 
 func (e *OrderStatus) Scan(src interface{}) error {
@@ -688,6 +689,10 @@ type Order struct {
 	CancelReason       *string            `json:"cancel_reason"`
 	UpdatedAt          time.Time          `json:"updated_at"`
 	Currency           string             `json:"currency"`
+	RefundedAt         pgtype.Timestamptz `json:"refunded_at"`
+	RefundedBy         *int64             `json:"refunded_by"`
+	RefundReason       *string            `json:"refund_reason"`
+	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 }
 
 type OrderCounter struct {
