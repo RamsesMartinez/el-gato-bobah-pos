@@ -69,12 +69,12 @@ done
 
 # API en background; usa scripts/dev-api.sh (secretos desde deploy/.env + conexión dev).
 # Se detiene junto con la web al salir (Ctrl-C).
-echo "▶ Iniciando API (Go) en :$BACK_PORT…"
+echo "> Iniciando API (Go) en :${BACK_PORT}"
 bash scripts/dev-api.sh &
 API_PID=$!
-trap 'echo; echo "Deteniendo…"; kill $API_PID 2>/dev/null; exit 0' INT TERM
+trap 'echo; echo "Deteniendo..."; kill ${API_PID} 2>/dev/null; exit 0' INT TERM
 
-echo "▶ Iniciando web (Vite) en :$FRONT_PORT (proxy /api → :$BACK_PORT)…"
+echo "> Iniciando web (Vite) en :${FRONT_PORT} (proxy /api -> :${BACK_PORT})"
 cd web && bun run dev
 
 kill $API_PID 2>/dev/null || true
