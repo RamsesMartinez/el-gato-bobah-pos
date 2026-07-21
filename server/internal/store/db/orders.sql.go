@@ -376,6 +376,61 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 	return items, nil
 }
 
+const listDeliveredToday = `-- name: ListDeliveredToday :many
+select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+       o.opened_at, o.ready_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.status = 'entregada' and o.business_date = $1
+order by o.completed_at desc nulls last, o.id desc
+`
+
+type ListDeliveredTodayRow struct {
+	ID           int64              `json:"id"`
+	DailyNumber  int32              `json:"daily_number"`
+	Status       OrderStatus        `json:"status"`
+	ServiceType  ServiceType        `json:"service_type"`
+	CustomerName *string            `json:"customer_name"`
+	Total        decimal.Decimal    `json:"total"`
+	Currency     string             `json:"currency"`
+	OpenedAt     time.Time          `json:"opened_at"`
+	ReadyAt      pgtype.Timestamptz `json:"ready_at"`
+	Paid         decimal.Decimal    `json:"paid"`
+}
+
+// Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
+// fecha de negocio para no arrastrar todo el histórico.
+func (q *Queries) ListDeliveredToday(ctx context.Context, businessDate pgtype.Date) ([]ListDeliveredTodayRow, error) {
+	rows, err := q.db.Query(ctx, listDeliveredToday, businessDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDeliveredTodayRow{}
+	for rows.Next() {
+		var i ListDeliveredTodayRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.Status,
+			&i.ServiceType,
+			&i.CustomerName,
+			&i.Total,
+			&i.Currency,
+			&i.OpenedAt,
+			&i.ReadyAt,
+			&i.Paid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrderLineModifiers = `-- name: ListOrderLineModifiers :many
 select olm.order_line_id, olm.group_title, olm.option_name, olm.quantity, olm.price_delta
 from order_line_modifiers olm

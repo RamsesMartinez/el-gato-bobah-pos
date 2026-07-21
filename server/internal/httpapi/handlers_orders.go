@@ -129,6 +129,16 @@ func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GET /orders/delivered — entregadas del día (superficie de reembolso, admin/gerente).
+func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.orders.DeliveredToday(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 // POST /orders/{id}/refund  {reason}  — reembolsa una orden entregada (admin/gerente).
 func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

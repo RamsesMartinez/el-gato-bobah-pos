@@ -297,6 +297,24 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 	return out, nil
 }
 
+// DeliveredToday lista las órdenes entregadas del día (para la sección de reembolsos).
+func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error) {
+	rows, err := s.store.Q.ListDeliveredToday(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BoardOrder, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, BoardOrder{
+			ID: r.ID, Number: int(r.DailyNumber), Status: string(r.Status),
+			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
+			Total: r.Total, Currency: domain.Currency(r.Currency),
+			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
+		})
+	}
+	return out, nil
+}
+
 // Detail carga una orden completa.
 func (s *OrdersService) Detail(ctx context.Context, id int64) (*OrderView, error) {
 	return s.load(ctx, id)
