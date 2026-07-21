@@ -71,6 +71,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 				r.Get("/{id}", h.GetOrder)
 				r.Post("/{id}/status", h.SetOrderStatus)
 				r.Post("/{id}/cancel", h.CancelOrder)
+				// Reembolso = salida de dinero → solo admin/gerente (más restrictivo que cancelar).
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
 			})
 
 			r.Get("/events", h.Events)

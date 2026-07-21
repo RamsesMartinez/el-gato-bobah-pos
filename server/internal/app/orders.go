@@ -356,6 +356,32 @@ func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reaso
 	})
 }
 
+// Refund reembolsa una orden YA entregada (razón obligatoria). A diferencia de Cancel, NO
+// repone stock: la mercancía se hizo y se entregó, así que su costo ya consumido ES la
+// pérdida de inventario; solo se revierte el ingreso marcando la orden 'reembolsada' con el
+// monto devuelto (el total). Idempotente: si no está entregada (ya reembolsada, cancelada,
+// abierta…) rechaza con ErrConflict, así un doble-tap no reembolsa dos veces.
+func (s *OrdersService) Refund(ctx context.Context, id, actor int64, reason string) error {
+	if reason == "" {
+		return domain.ErrValidation
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrder(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.CanRefund(string(o.Status)) {
+			return domain.ErrConflict
+		}
+		return q.RefundOrder(ctx, db.RefundOrderParams{
+			ID: id, RefundedBy: &actor, RefundReason: &reason, RefundAmount: o.Total,
+		})
+	})
+}
+
 type depletionData struct {
 	trackStock map[int64]bool
 	recipe     map[int64][]recipeDelta

@@ -29,6 +29,17 @@ func TestCanTransition(t *testing.T) {
 	}
 }
 
+func TestCanRefund(t *testing.T) {
+	if !CanRefund(StatusEntregada) {
+		t.Error("una orden entregada debe poder reembolsarse")
+	}
+	for _, s := range []string{StatusAbierta, StatusLista, StatusCancelada, StatusReembolsada} {
+		if CanRefund(s) {
+			t.Errorf("no se debe poder reembolsar desde %q", s)
+		}
+	}
+}
+
 func TestBuildOrder(t *testing.T) {
 	products := map[int64]PricedProduct{
 		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true},
