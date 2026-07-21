@@ -16,7 +16,7 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
 ## 2. Comandos (todos en `Makefile`; `make help` los lista)
 
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
-- `make start` — levanta todo: Postgres **:5433**, Redis **:6380** (puertos no estándar para no chocar con otros contenedores), API y web (Vite en http://localhost:3000).
+- `make start` — levanta todo: Postgres **:5433**, Redis **:6380** (puertos no estándar para no chocar con otros contenedores), API (default **:8080**) y web (Vite default **:3000**). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
