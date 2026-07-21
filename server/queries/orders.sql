@@ -85,6 +85,12 @@ update orders set status = $2,
   completed_at = case when $2 = 'entregada'::order_status then now() else completed_at end
 where id = $1;
 
+-- name: RefundOrder :exec
+-- Devolución de una orden entregada: la marca 'reembolsada' (pérdida). Sin restock.
+update orders set status = 'reembolsada', refunded_at = now(),
+  refunded_by = $2, refund_reason = $3, refund_amount = $4
+where id = $1;
+
 -- name: CancelOrder :exec
 update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
 where id = $1;
