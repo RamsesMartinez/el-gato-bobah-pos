@@ -80,9 +80,13 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 
 ## 9. Dependencias y supply chain
 
+- **Siempre la última versión estable** (para tener los parches de seguridad). Runtimes con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.26.5`). Toma los bumps de Dependabot salvo que rompan el build (un major puede requerir revisión). Objetivo: no arrastrar versiones viejas con CVEs.
 - **Un CVE BLOQUEA y nunca se mergea.** Go: `govulncheck` (pre-push lefthook **+** CI). Frontend: `bun audit --audit-level=high` (**bloqueante** en CI, sin `|| true`). Ya configurado — no lo aflojes.
 - **Frescura ≠ pre-commit.** Actualizar deps al día lo maneja **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)): github-actions, gomod (`/server`), **bun** (`/web`, no `npm`: es lo único que actualiza `bun.lock`) y docker (`/server`+`/deploy`), semanal. Chequeo manual: `go list -u -m all` (Go), `bun outdated` (web). **No** añadas un pre-commit de "deps desactualizadas" (ruidoso, bloquea cambios ajenos).
-- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/Dockerfile.web`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (`toolchain go1.25.12`).
+- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/Dockerfile.web`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (`toolchain go1.26.5`).
+- **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
+  - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.26.x sirve para cualquier toolchain 1.26.y), no por patch.
+  - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
 - **KNOWN NON-ISSUE (no lo "arregles"):** el aviso de deprecación de `golang.org/x/crypto/blowfish` que aparece dentro de `x/crypto/bcrypt` es **esperado** — bcrypt usa blowfish internamente. `bcrypt.GenerateFromPassword` ([auth.HashSecret](server/internal/auth/password.go)) es la forma correcta y vigente de hashear passwords y **no** está deprecada. No lo cambies por AES ni otro cifrado.
 
 ## 10. Commits / PR
