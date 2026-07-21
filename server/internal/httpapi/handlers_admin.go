@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
@@ -87,11 +88,11 @@ func (h *Handlers) AdminUpdateOption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Favorite   *bool    `json:"favorite"`
-		Active     *bool    `json:"active"`
-		Name       *string  `json:"name"`
-		PriceDelta *float64 `json:"priceDelta"`
-		MaxPerLine *int     `json:"maxPerLine"`
+		Favorite   *bool            `json:"favorite"`
+		Active     *bool            `json:"active"`
+		Name       *string          `json:"name"`
+		PriceDelta *decimal.Decimal `json:"priceDelta"`
+		MaxPerLine *int             `json:"maxPerLine"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -99,7 +100,7 @@ func (h *Handlers) AdminUpdateOption(w http.ResponseWriter, r *http.Request) {
 	}
 	// edición de campos: nombre/precio/max llegan juntos desde el formulario
 	if body.Name != nil {
-		pd, mpl := 0.0, 1
+		pd, mpl := decimal.Zero, 1
 		if body.PriceDelta != nil {
 			pd = *body.PriceDelta
 		}
@@ -135,12 +136,12 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name           string  `json:"name"`
-		Price          float64 `json:"price"`
-		Favorite       bool    `json:"favorite"`
-		Active         bool    `json:"active"`
-		AvailableFrom  *string `json:"availableFrom"`
-		AvailableUntil *string `json:"availableUntil"`
+		Name           string          `json:"name"`
+		Price          decimal.Decimal `json:"price"`
+		Favorite       bool            `json:"favorite"`
+		Active         bool            `json:"active"`
+		AvailableFrom  *string         `json:"availableFrom"`
+		AvailableUntil *string         `json:"availableUntil"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)

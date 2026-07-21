@@ -8,7 +8,7 @@ returning id;
 
 -- name: ListExpenses :many
 select e.id, e.expense_date, ec.name as category, ec.financial_group, s.name as supplier,
-       e.amount, e.description
+       e.amount, e.currency, e.description
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id

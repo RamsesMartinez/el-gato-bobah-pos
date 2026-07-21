@@ -1,9 +1,15 @@
-// Tipos del dominio POS (espejo del backend Go). camelCase, dinero en pesos (number).
+// Tipos del dominio POS (espejo del backend Go). camelCase. El DINERO viaja como string
+// decimal exacto ("70.50") — nunca number en el cable (ver utils/format.ts money()). Los
+// tipos internos del ticket (TicketLine/TicketModifier) sí usan number: son solo la
+// previsualización local; el servidor recalcula el total autoritativo.
+
+// Moneda ISO-4217. Hoy se opera en una a la vez; el default del local es MXN.
+export type Currency = 'MXN' | 'USD';
 
 export interface MenuOption {
   id: number;
   name: string;
-  priceDelta: number;
+  priceDelta: string;
   maxPerLine: number;
   favorite: boolean;
 }
@@ -35,9 +41,9 @@ export interface MenuProduct {
   id: number;
   name: string;
   description: string | null;
-  price: number;
-  cost: number;
-  margin: number;
+  price: string;
+  cost: string;
+  margin: string;
   categoryId: number;
   type: 'simple' | 'combo';
   favorite: boolean;
@@ -89,16 +95,18 @@ export interface OrderView {
   status: string;
   serviceType: string;
   customerName: string | null;
-  total: number;
+  subtotal: string;
+  total: string;
+  currency: Currency;
   paid: boolean;
   openedAt: string;
   lines?: Array<{
     productName: string;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
+    quantity: string;
+    unitPrice: string;
+    lineTotal: string;
     notes?: string;
-    modifiers?: Array<{ name: string; quantity: number; priceDelta: number }>;
+    modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
   }>;
 }
 
@@ -108,7 +116,8 @@ export interface BoardOrder {
   status: string;
   serviceType: string;
   customerName: string | null;
-  total: number;
+  total: string;
+  currency: Currency;
   paid: boolean;
   openedAt: string;
 }

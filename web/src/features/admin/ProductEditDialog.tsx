@@ -31,7 +31,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const save = useMutation({
     mutationFn: (p: AdminProduct) =>
       adminApi.updateProduct(p.id, {
-        name: p.name, price: p.price, favorite: p.is_favorite, active: p.is_active,
+        name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: () => {
@@ -58,7 +58,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 </Field>
                 <Field label="Precio">
                   <Input type="number" value={edit.price}
-                    onChange={(e) => setEdit({ ...edit, price: parseFloat(e.target.value) || 0 })} />
+                    onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
                 <HStack justify="space-between">
                   <Text>Favorito</Text>

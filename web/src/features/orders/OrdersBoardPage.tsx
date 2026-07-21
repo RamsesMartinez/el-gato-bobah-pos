@@ -97,7 +97,7 @@ function Column({ title, orders, advanceLabel, onAdvance, onCancel }: ColProps) 
                 </HStack>
               </Box>
               <VStack align="end" gap={1}>
-                <Text fontWeight="700">{money(o.total)}</Text>
+                <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                 {!o.paid && <Badge colorPalette="orange">POR COBRAR</Badge>}
               </VStack>
             </Flex>

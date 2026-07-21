@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const cancelOrder = `-- name: CancelOrder :exec
@@ -33,21 +34,21 @@ const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency
 `
 
 type CreateOrderParams struct {
-	ClientUuid         uuid.UUID   `json:"client_uuid"`
-	BusinessDate       pgtype.Date `json:"business_date"`
-	DailyNumber        int32       `json:"daily_number"`
-	ServiceType        ServiceType `json:"service_type"`
-	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
-	CustomerName       *string     `json:"customer_name"`
-	Notes              *string     `json:"notes"`
-	RegisterSessionID  *int64      `json:"register_session_id"`
-	OpenedBy           int64       `json:"opened_by"`
-	Subtotal           float64     `json:"subtotal"`
-	Total              float64     `json:"total"`
+	ClientUuid         uuid.UUID       `json:"client_uuid"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
+	DailyNumber        int32           `json:"daily_number"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	CustomerName       *string         `json:"customer_name"`
+	Notes              *string         `json:"notes"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	OpenedBy           int64           `json:"opened_by"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	Total              decimal.Decimal `json:"total"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -87,6 +88,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.CancelledBy,
 		&i.CancelReason,
 		&i.UpdatedAt,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -99,15 +101,15 @@ returning id
 `
 
 type CreateOrderLineParams struct {
-	OrderID        int64   `json:"order_id"`
-	ProductID      int64   `json:"product_id"`
-	ProductName    string  `json:"product_name"`
-	Quantity       float64 `json:"quantity"`
-	UnitPrice      float64 `json:"unit_price"`
-	ModifiersTotal float64 `json:"modifiers_total"`
-	UnitCost       float64 `json:"unit_cost"`
-	LineTotal      float64 `json:"line_total"`
-	Notes          *string `json:"notes"`
+	OrderID        int64           `json:"order_id"`
+	ProductID      int64           `json:"product_id"`
+	ProductName    string          `json:"product_name"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	UnitPrice      decimal.Decimal `json:"unit_price"`
+	ModifiersTotal decimal.Decimal `json:"modifiers_total"`
+	UnitCost       decimal.Decimal `json:"unit_cost"`
+	LineTotal      decimal.Decimal `json:"line_total"`
+	Notes          *string         `json:"notes"`
 }
 
 func (q *Queries) CreateOrderLine(ctx context.Context, arg CreateOrderLineParams) (int64, error) {
@@ -134,13 +136,13 @@ values ($1,$2,$3,$4,$5,$6,$7)
 `
 
 type CreateOrderLineModifierParams struct {
-	OrderLineID      int64   `json:"order_line_id"`
-	ModifierOptionID int64   `json:"modifier_option_id"`
-	GroupTitle       string  `json:"group_title"`
-	OptionName       string  `json:"option_name"`
-	Quantity         int16   `json:"quantity"`
-	PriceDelta       float64 `json:"price_delta"`
-	UnitCost         float64 `json:"unit_cost"`
+	OrderLineID      int64           `json:"order_line_id"`
+	ModifierOptionID int64           `json:"modifier_option_id"`
+	GroupTitle       string          `json:"group_title"`
+	OptionName       string          `json:"option_name"`
+	Quantity         int16           `json:"quantity"`
+	PriceDelta       decimal.Decimal `json:"price_delta"`
+	UnitCost         decimal.Decimal `json:"unit_cost"`
 }
 
 func (q *Queries) CreateOrderLineModifier(ctx context.Context, arg CreateOrderLineModifierParams) error {
@@ -162,13 +164,13 @@ values ($1,$2,$3,$4,$5,$6,$7)
 `
 
 type CreateOrderPaymentParams struct {
-	OrderID           int64   `json:"order_id"`
-	PaymentMethodID   int16   `json:"payment_method_id"`
-	Amount            float64 `json:"amount"`
-	TipAmount         float64 `json:"tip_amount"`
-	RegisterSessionID *int64  `json:"register_session_id"`
-	ReceivedBy        *int64  `json:"received_by"`
-	Reference         *string `json:"reference"`
+	OrderID           int64           `json:"order_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	Reference         *string         `json:"reference"`
 }
 
 func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) error {
@@ -185,7 +187,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -213,6 +215,7 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.CancelledBy,
 		&i.CancelReason,
 		&i.UpdatedAt,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -236,11 +239,11 @@ where mo.id = any($1::bigint[])
 `
 
 type GetPricedOptionsRow struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	PriceDelta  float64 `json:"price_delta"`
-	CurrentCost float64 `json:"current_cost"`
-	GroupTitle  string  `json:"group_title"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	PriceDelta  decimal.Decimal `json:"price_delta"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	GroupTitle  string          `json:"group_title"`
 }
 
 func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]GetPricedOptionsRow, error) {
@@ -276,11 +279,11 @@ from products where id = any($1::bigint[])
 `
 
 type GetPricedProductsRow struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	Price       float64 `json:"price"`
-	CurrentCost float64 `json:"current_cost"`
-	IsActive    bool    `json:"is_active"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Price       decimal.Decimal `json:"price"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	IsActive    bool            `json:"is_active"`
 }
 
 // Pricing (autoritativo en el servidor)
@@ -312,7 +315,7 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 
 const listActiveOrders = `-- name: ListActiveOrders :many
 
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total,
+select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
 from orders o
@@ -326,10 +329,11 @@ type ListActiveOrdersRow struct {
 	Status       OrderStatus        `json:"status"`
 	ServiceType  ServiceType        `json:"service_type"`
 	CustomerName *string            `json:"customer_name"`
-	Total        float64            `json:"total"`
+	Total        decimal.Decimal    `json:"total"`
+	Currency     string             `json:"currency"`
 	OpenedAt     time.Time          `json:"opened_at"`
 	ReadyAt      pgtype.Timestamptz `json:"ready_at"`
-	Paid         float64            `json:"paid"`
+	Paid         decimal.Decimal    `json:"paid"`
 }
 
 // Board / detalle
@@ -349,6 +353,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.ServiceType,
 			&i.CustomerName,
 			&i.Total,
+			&i.Currency,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -371,11 +376,11 @@ where ol.order_id = $1
 `
 
 type ListOrderLineModifiersRow struct {
-	OrderLineID int64   `json:"order_line_id"`
-	GroupTitle  string  `json:"group_title"`
-	OptionName  string  `json:"option_name"`
-	Quantity    int16   `json:"quantity"`
-	PriceDelta  float64 `json:"price_delta"`
+	OrderLineID int64           `json:"order_line_id"`
+	GroupTitle  string          `json:"group_title"`
+	OptionName  string          `json:"option_name"`
+	Quantity    int16           `json:"quantity"`
+	PriceDelta  decimal.Decimal `json:"price_delta"`
 }
 
 func (q *Queries) ListOrderLineModifiers(ctx context.Context, orderID int64) ([]ListOrderLineModifiersRow, error) {
@@ -410,14 +415,14 @@ from order_lines where order_id = $1 order by id
 `
 
 type ListOrderLinesRow struct {
-	ID             int64   `json:"id"`
-	ProductID      int64   `json:"product_id"`
-	ProductName    string  `json:"product_name"`
-	Quantity       float64 `json:"quantity"`
-	UnitPrice      float64 `json:"unit_price"`
-	ModifiersTotal float64 `json:"modifiers_total"`
-	LineTotal      float64 `json:"line_total"`
-	Notes          *string `json:"notes"`
+	ID             int64           `json:"id"`
+	ProductID      int64           `json:"product_id"`
+	ProductName    string          `json:"product_name"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	UnitPrice      decimal.Decimal `json:"unit_price"`
+	ModifiersTotal decimal.Decimal `json:"modifiers_total"`
+	LineTotal      decimal.Decimal `json:"line_total"`
+	Notes          *string         `json:"notes"`
 }
 
 func (q *Queries) ListOrderLines(ctx context.Context, orderID int64) ([]ListOrderLinesRow, error) {
@@ -454,11 +459,11 @@ select id, payment_method_id, amount, tip_amount, created_at from order_payments
 `
 
 type ListOrderPaymentsRow struct {
-	ID              int64     `json:"id"`
-	PaymentMethodID int16     `json:"payment_method_id"`
-	Amount          float64   `json:"amount"`
-	TipAmount       float64   `json:"tip_amount"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              int64           `json:"id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	TipAmount       decimal.Decimal `json:"tip_amount"`
+	CreatedAt       time.Time       `json:"created_at"`
 }
 
 func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListOrderPaymentsRow, error) {
