@@ -51,7 +51,7 @@ export function CashPage() {
           <HStack>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Fondo inicial</Stat.Label>
-              <Stat.ValueText>{money(session.openingCash)}</Stat.ValueText>
+              <Stat.ValueText>{money(session.openingCash, session.currency)}</Stat.ValueText>
             </Stat.Root>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Abierta desde</Stat.Label>
@@ -66,7 +66,7 @@ export function CashPage() {
                 {session.totals.map((t) => (
                   <Table.Row key={t.methodId}>
                     <Table.Cell>{t.name}</Table.Cell>
-                    <Table.Cell textAlign="end">{money(t.expected)}</Table.Cell>
+                    <Table.Cell textAlign="end">{money(t.expected, session.currency)}</Table.Cell>
                     <Table.Cell>
                       <Input size="sm" w="120px" type="number" placeholder="0"
                         value={declared[t.methodId] ?? ''} onChange={(e) => setDeclared({ ...declared, [t.methodId]: e.target.value })} />

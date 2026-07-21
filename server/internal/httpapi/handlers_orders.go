@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -19,9 +20,9 @@ type createOrderBody struct {
 	CustomerName       *string `json:"customerName"`
 	Notes              *string `json:"notes"`
 	Lines              []struct {
-		ProductID int64   `json:"productId"`
-		Qty       float64 `json:"qty"`
-		Notes     string  `json:"notes"`
+		ProductID int64           `json:"productId"`
+		Qty       decimal.Decimal `json:"qty"`
+		Notes     string          `json:"notes"`
 		Modifiers []struct {
 			OptionID int64  `json:"optionId"`
 			Qty      int    `json:"qty"`
@@ -29,10 +30,10 @@ type createOrderBody struct {
 		} `json:"modifiers"`
 	} `json:"lines"`
 	Payment *struct {
-		MethodID  int16   `json:"methodId"`
-		Amount    float64 `json:"amount"`
-		Tip       float64 `json:"tip"`
-		Reference *string `json:"reference"`
+		MethodID  int16           `json:"methodId"`
+		Amount    decimal.Decimal `json:"amount"`
+		Tip       decimal.Decimal `json:"tip"`
+		Reference *string         `json:"reference"`
 	} `json:"payment"`
 }
 

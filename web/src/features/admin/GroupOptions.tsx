@@ -152,7 +152,7 @@ function OptionRow({ o, fav, arch, onEdit, handle, innerRef, style }: {
       <Box flex="1" minW={0}>
         <Text fontWeight="500">{o.name}</Text>
         <Text fontSize="xs" color="fg.muted">
-          {o.priceDelta === 0 ? 'sin costo extra' : money(o.priceDelta)} · máx {o.maxPerLine}/línea
+          {Number(o.priceDelta) === 0 ? 'sin costo extra' : money(o.priceDelta)} · máx {o.maxPerLine}/línea
         </Text>
       </Box>
       <IconButton aria-label="Editar opción" size="md" variant="ghost" onClick={() => onEdit(o)}><LuPencil /></IconButton>

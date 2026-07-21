@@ -45,7 +45,7 @@ values ($1,$2,$3,$4,$5,$6,$7);
 -- Board / detalle
 
 -- name: ListActiveOrders :many
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total,
+select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
 from orders o

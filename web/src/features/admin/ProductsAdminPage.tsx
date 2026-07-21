@@ -56,7 +56,7 @@ export function ProductsAdminPage() {
   const setActive = useMutation({
     mutationFn: ({ p, active }: { p: AdminProduct; active: boolean }) =>
       adminApi.updateProduct(p.id, {
-        name: p.name, price: p.price, favorite: p.is_favorite, active,
+        name: p.name, price: Number(p.price), favorite: p.is_favorite, active,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: (_d, { p, active }) => {
@@ -152,7 +152,7 @@ export function ProductsAdminPage() {
                 <Table.Cell>{p.category}</Table.Cell>
                 <Table.Cell textAlign="end">{money(p.price)}</Table.Cell>
                 <Table.Cell textAlign="end">{money(p.current_cost)}</Table.Cell>
-                <Table.Cell textAlign="end">{money(p.price - p.current_cost)}</Table.Cell>
+                <Table.Cell textAlign="end">{money(Number(p.price) - Number(p.current_cost))}</Table.Cell>
                 <Table.Cell textAlign="center">
                   <Text as="span" color={p.groupCount === 0 ? 'fg.subtle' : undefined}
                     fontWeight={p.groupCount === 0 ? undefined : '600'}>

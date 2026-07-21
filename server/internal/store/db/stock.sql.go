@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const getRecipeDepletion = `-- name: GetRecipeDepletion :many
@@ -22,9 +23,9 @@ where p.id = any($1::bigint[])
 `
 
 type GetRecipeDepletionRow struct {
-	ProductID    int64   `json:"product_id"`
-	IngredientID int64   `json:"ingredient_id"`
-	QtyBase      float64 `json:"qty_base"`
+	ProductID    int64           `json:"product_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	QtyBase      decimal.Decimal `json:"qty_base"`
 }
 
 // Depleción en venta
@@ -83,7 +84,7 @@ type InsertStockMovementParams struct {
 	IngredientID *int64            `json:"ingredient_id"`
 	ProductID    *int64            `json:"product_id"`
 	MovementType StockMovementType `json:"movement_type"`
-	Quantity     float64           `json:"quantity"`
+	Quantity     decimal.Decimal   `json:"quantity"`
 	UnitCost     pgtype.Numeric    `json:"unit_cost"`
 	OrderID      *int64            `json:"order_id"`
 	UserID       *int64            `json:"user_id"`
@@ -122,11 +123,11 @@ order by item_name
 `
 
 type ListStockLevelsRow struct {
-	ItemType StockItemType  `json:"item_type"`
-	ItemName string         `json:"item_name"`
-	OnHand   float64        `json:"on_hand"`
-	MinStock pgtype.Numeric `json:"min_stock"`
-	UnitCode string         `json:"unit_code"`
+	ItemType StockItemType   `json:"item_type"`
+	ItemName string          `json:"item_name"`
+	OnHand   decimal.Decimal `json:"on_hand"`
+	MinStock pgtype.Numeric  `json:"min_stock"`
+	UnitCode string          `json:"unit_code"`
 }
 
 // Almacén / niveles
@@ -171,7 +172,7 @@ type ListStockMovementsRow struct {
 	ItemType     StockItemType     `json:"item_type"`
 	ItemName     string            `json:"item_name"`
 	MovementType StockMovementType `json:"movement_type"`
-	Quantity     float64           `json:"quantity"`
+	Quantity     decimal.Decimal   `json:"quantity"`
 	Reason       *string           `json:"reason"`
 	CreatedAt    time.Time         `json:"created_at"`
 }

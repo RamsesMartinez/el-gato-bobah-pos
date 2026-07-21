@@ -12,13 +12,16 @@ sql:
         emit_pointers_for_null_types: true
         emit_empty_slices: true
         overrides:
-          # ponytail: numeric → float64 en todo el backend. Simplifica costeo/menú/órdenes.
-          # Ceiling: para dinero se redondea a 2 decimales en cada frontera (money.Round2);
-          # si la exactitud al centavo llega a fallar, migrar a centavos int64.
+          # numeric → decimal.Decimal exacto (dinero/costos/cantidades). Postgres numeric ya es
+          # exacto; el bug era escanearlo a float64. Escaneo vía pgx-shopspring-decimal (store.go).
           - db_type: "pg_catalog.numeric"
-            go_type: "float64"
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
           - db_type: "numeric"
-            go_type: "float64"
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
           - db_type: "timestamptz"
             go_type: "time.Time"
           - db_type: "user_role"

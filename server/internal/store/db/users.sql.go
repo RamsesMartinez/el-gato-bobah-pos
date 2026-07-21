@@ -211,6 +211,8 @@ const revokeRefreshTokenIfActive = `-- name: RevokeRefreshTokenIfActive :execrow
 update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_at is null
 `
 
+// Rotación atómica: revoca solo si sigue activo. RowsAffected=0 => otro request ya lo
+// revocó (rotación concurrente o reuso). Cierra el TOCTOU del rotate read-then-revoke.
 func (q *Queries) RevokeRefreshTokenIfActive(ctx context.Context, tokenHash string) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeRefreshTokenIfActive, tokenHash)
 	if err != nil {

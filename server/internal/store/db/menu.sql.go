@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/shopspring/decimal"
 )
 
 const menuCategories = `-- name: MenuCategories :many
@@ -18,12 +20,12 @@ order by parent_id nulls first, sort_key, name
 `
 
 type MenuCategoriesRow struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	ParentID *int64  `json:"parent_id"`
-	SortKey  float64 `json:"sort_key"`
-	Color    *string `json:"color"`
-	ImageUrl *string `json:"image_url"`
+	ID       int64           `json:"id"`
+	Name     string          `json:"name"`
+	ParentID *int64          `json:"parent_id"`
+	SortKey  decimal.Decimal `json:"sort_key"`
+	Color    *string         `json:"color"`
+	ImageUrl *string         `json:"image_url"`
 }
 
 // Lecturas planas para armar el documento del menú POS (se ensambla en Go y se cachea en Redis).
@@ -62,12 +64,12 @@ order by mo.group_id, mo.sort_key, mo.name
 `
 
 type MenuOptionsRow struct {
-	ID         int64   `json:"id"`
-	GroupID    int64   `json:"group_id"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"price_delta"`
-	MaxPerLine int16   `json:"max_per_line"`
-	IsFavorite bool    `json:"is_favorite"`
+	ID         int64           `json:"id"`
+	GroupID    int64           `json:"group_id"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	MaxPerLine int16           `json:"max_per_line"`
+	IsFavorite bool            `json:"is_favorite"`
 }
 
 func (q *Queries) MenuOptions(ctx context.Context) ([]MenuOptionsRow, error) {
@@ -161,16 +163,16 @@ order by p.sort_key, p.name
 `
 
 type MenuProductsRow struct {
-	ID          int64       `json:"id"`
-	Name        string      `json:"name"`
-	Description *string     `json:"description"`
-	Price       float64     `json:"price"`
-	CurrentCost float64     `json:"current_cost"`
-	CategoryID  int64       `json:"category_id"`
-	Type        ProductType `json:"type"`
-	IsFavorite  bool        `json:"is_favorite"`
-	ImageUrl    *string     `json:"image_url"`
-	TrackStock  bool        `json:"track_stock"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Description *string         `json:"description"`
+	Price       decimal.Decimal `json:"price"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	CategoryID  int64           `json:"category_id"`
+	Type        ProductType     `json:"type"`
+	IsFavorite  bool            `json:"is_favorite"`
+	ImageUrl    *string         `json:"image_url"`
+	TrackStock  bool            `json:"track_stock"`
 }
 
 func (q *Queries) MenuProducts(ctx context.Context) ([]MenuProductsRow, error) {
@@ -217,8 +219,8 @@ limit 60
 `
 
 type PopularProductsRow struct {
-	ProductID int64   `json:"product_id"`
-	Qty       float64 `json:"qty"`
+	ProductID int64           `json:"product_id"`
+	Qty       decimal.Decimal `json:"qty"`
 }
 
 // Productos más vendidos por cantidad en los últimos 30 días; alimenta la pestaña "Top" del POS.

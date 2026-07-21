@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
@@ -92,14 +93,14 @@ func (s *AdminService) UpdateGroup(ctx context.Context, id int64, name string, a
 // --- Opciones de un grupo --------------------------------------------------
 
 type GroupOptionView struct {
-	ID          int64   `json:"id"`
-	GroupID     int64   `json:"groupId"`
-	Name        string  `json:"name"`
-	PriceDelta  float64 `json:"priceDelta"`
-	MaxPerLine  int     `json:"maxPerLine"`
-	CurrentCost float64 `json:"currentCost"`
-	Favorite    bool    `json:"favorite"`
-	Active      bool    `json:"active"`
+	ID          int64           `json:"id"`
+	GroupID     int64           `json:"groupId"`
+	Name        string          `json:"name"`
+	PriceDelta  decimal.Decimal `json:"priceDelta"`
+	MaxPerLine  int             `json:"maxPerLine"`
+	CurrentCost decimal.Decimal `json:"currentCost"`
+	Favorite    bool            `json:"favorite"`
+	Active      bool            `json:"active"`
 }
 
 func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]GroupOptionView, error) {
@@ -117,7 +118,7 @@ func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]Group
 	return out, nil
 }
 
-func (s *AdminService) CreateOption(ctx context.Context, groupID int64, name string, priceDelta float64, maxPerLine int) (int64, error) {
+func (s *AdminService) CreateOption(ctx context.Context, groupID int64, name string, priceDelta decimal.Decimal, maxPerLine int) (int64, error) {
 	if name == "" || maxPerLine < 1 {
 		return 0, domain.ErrValidation
 	}
@@ -130,7 +131,7 @@ func (s *AdminService) CreateOption(ctx context.Context, groupID int64, name str
 	return id, err
 }
 
-func (s *AdminService) UpdateOptionFields(ctx context.Context, id int64, name string, priceDelta float64, maxPerLine int) error {
+func (s *AdminService) UpdateOptionFields(ctx context.Context, id int64, name string, priceDelta decimal.Decimal, maxPerLine int) error {
 	if name == "" || maxPerLine < 1 {
 		return domain.ErrValidation
 	}

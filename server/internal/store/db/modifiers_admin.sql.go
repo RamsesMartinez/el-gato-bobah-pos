@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/shopspring/decimal"
 )
 
 const adminAttachGroup = `-- name: AdminAttachGroup :exec
@@ -65,10 +67,10 @@ returning id
 `
 
 type AdminCreateOptionParams struct {
-	GroupID    int64   `json:"group_id"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"price_delta"`
-	MaxPerLine int16   `json:"max_per_line"`
+	GroupID    int64           `json:"group_id"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	MaxPerLine int16           `json:"max_per_line"`
 }
 
 func (q *Queries) AdminCreateOption(ctx context.Context, arg AdminCreateOptionParams) (int64, error) {
@@ -125,14 +127,14 @@ order by mo.sort_key, mo.name
 `
 
 type AdminGroupOptionsRow struct {
-	ID          int64   `json:"id"`
-	GroupID     int64   `json:"group_id"`
-	Name        string  `json:"name"`
-	PriceDelta  float64 `json:"price_delta"`
-	MaxPerLine  int16   `json:"max_per_line"`
-	CurrentCost float64 `json:"current_cost"`
-	IsFavorite  bool    `json:"is_favorite"`
-	IsActive    bool    `json:"is_active"`
+	ID          int64           `json:"id"`
+	GroupID     int64           `json:"group_id"`
+	Name        string          `json:"name"`
+	PriceDelta  decimal.Decimal `json:"price_delta"`
+	MaxPerLine  int16           `json:"max_per_line"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	IsFavorite  bool            `json:"is_favorite"`
+	IsActive    bool            `json:"is_active"`
 }
 
 // Opciones ------------------------------------------------------------------
@@ -425,10 +427,10 @@ where id = $4
 `
 
 type AdminUpdateOptionFieldsParams struct {
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"price_delta"`
-	MaxPerLine int16   `json:"max_per_line"`
-	ID         int64   `json:"id"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	MaxPerLine int16           `json:"max_per_line"`
+	ID         int64           `json:"id"`
 }
 
 func (q *Queries) AdminUpdateOptionFields(ctx context.Context, arg AdminUpdateOptionFieldsParams) error {

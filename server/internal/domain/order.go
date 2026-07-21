@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"fmt"
+
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -38,7 +40,7 @@ func CanTransition(current, next string) bool {
 
 type OrderLineInput struct {
 	ProductID int64
-	Qty       float64
+	Qty       decimal.Decimal
 	Notes     string
 	Modifiers []OrderModInput
 }
@@ -54,35 +56,35 @@ type OrderModInput struct {
 type PricedProduct struct {
 	ID     int64
 	Name   string
-	Price  float64
-	Cost   float64
+	Price  decimal.Decimal
+	Cost   decimal.Decimal
 	Active bool
 }
 
 type PricedOption struct {
 	ID         int64
 	Name       string
-	PriceDelta float64
-	Cost       float64
+	PriceDelta decimal.Decimal
+	Cost       decimal.Decimal
 	GroupTitle string
 }
 
 // --- Resultado priceado (snapshots que van a order_lines) ---
 
 type BuiltOrder struct {
-	Subtotal float64
-	Total    float64
+	Subtotal decimal.Decimal
+	Total    decimal.Decimal
 	Lines    []BuiltLine
 }
 
 type BuiltLine struct {
 	ProductID      int64
 	ProductName    string
-	Qty            float64
-	UnitPrice      float64
-	ModifiersTotal float64 // por unidad
-	UnitCost       float64 // por unidad (producto + opciones)
-	LineTotal      float64
+	Qty            decimal.Decimal
+	UnitPrice      decimal.Decimal
+	ModifiersTotal decimal.Decimal // por unidad
+	UnitCost       decimal.Decimal // por unidad (producto + opciones)
+	LineTotal      decimal.Decimal
 	Notes          string
 	Modifiers      []BuiltMod
 }
@@ -92,8 +94,8 @@ type BuiltMod struct {
 	GroupTitle string
 	OptionName string
 	Qty        int
-	PriceDelta float64
-	UnitCost   float64
+	PriceDelta decimal.Decimal
+	UnitCost   decimal.Decimal
 }
 
 // BuildOrder calcula precios, costos y totales de forma autoritativa en el servidor.
@@ -126,7 +128,7 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			UnitCost:    p.Cost,
 			Notes:       in.Notes,
 		}
-		var modsPerUnit, modCostPerUnit float64
+		var modsPerUnit, modCostPerUnit decimal.Decimal
 		for _, m := range in.Modifiers {
 			o, ok := options[m.OptionID]
 			if !ok {
@@ -136,13 +138,14 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			if q <= 0 {
 				q = 1
 			}
+			qd := decimal.NewFromInt(int64(q))
 			// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme
 			// hace wrap (40000 → -25536) y corrompe el ticket sin siquiera dar 500.
-			if !ValidQty(float64(q), MaxOrderQty, false) {
+			if !ValidQty(qd, MaxOrderQty, false) {
 				return BuiltOrder{}, ErrValidation
 			}
-			modsPerUnit += o.PriceDelta * float64(q)
-			modCostPerUnit += o.Cost * float64(q)
+			modsPerUnit = modsPerUnit.Add(o.PriceDelta.Mul(qd))
+			modCostPerUnit = modCostPerUnit.Add(o.Cost.Mul(qd))
 			// ponytail: la mitad se refleja prefijando el nombre snapshot ("½A · BBQ").
 			// Aflora en cocina/ticket sin migración. Ceiling: solo 2 mitades, sin precio
 			// fraccionado por mitad ni líneas hijas (parent_line_id).
@@ -156,10 +159,10 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			})
 		}
 		line.ModifiersTotal = Round2(modsPerUnit)
-		line.UnitCost = Round2(p.Cost + modCostPerUnit)
-		line.LineTotal = Round2((p.Price + modsPerUnit) * qty)
+		line.UnitCost = Round2(p.Cost.Add(modCostPerUnit))
+		line.LineTotal = Round2(p.Price.Add(modsPerUnit).Mul(qty))
 		out.Lines = append(out.Lines, line)
-		out.Subtotal += line.LineTotal
+		out.Subtotal = out.Subtotal.Add(line.LineTotal)
 	}
 	out.Subtotal = Round2(out.Subtotal)
 	out.Total = out.Subtotal // sin descuentos en MVP
