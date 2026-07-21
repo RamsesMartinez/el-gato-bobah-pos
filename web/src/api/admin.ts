@@ -10,8 +10,8 @@ export interface AdminUser {
 export interface AdminProduct {
   id: number;
   name: string;
-  price: number;
-  current_cost: number;
+  price: string; // dinero = string decimal exacto (ver types/pos.ts)
+  current_cost: string;
   type: string;
   is_active: boolean;
   is_favorite: boolean;
@@ -116,9 +116,9 @@ export interface GroupOption {
   id: number;
   groupId: number;
   name: string;
-  priceDelta: number;
+  priceDelta: string;
   maxPerLine: number;
-  currentCost: number;
+  currentCost: string;
   favorite: boolean;
   active: boolean;
 }
@@ -149,7 +149,7 @@ export interface AdminModifierOption {
   groupId: number;
   groupName: string;
   name: string;
-  priceDelta: number;
+  priceDelta: string;
   favorite: boolean;
   active: boolean;
 }

@@ -12,7 +12,7 @@ export function ReportsPage() {
 
   if (sales.isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
-  const totalRevenue = sales.data?.byDay.reduce((s, d) => s + d.revenue, 0) ?? 0;
+  const totalRevenue = sales.data?.byDay.reduce((s, d) => s + Number(d.revenue), 0) ?? 0;
   const totalOrders = sales.data?.byDay.reduce((s, d) => s + d.orders, 0) ?? 0;
 
   return (
@@ -46,7 +46,7 @@ export function ReportsPage() {
                   <Table.Cell>{m.product_name}</Table.Cell>
                   <Table.Cell textAlign="end">{m.qty}</Table.Cell>
                   <Table.Cell textAlign="end">{money(m.revenue)}</Table.Cell>
-                  <Table.Cell textAlign="end" color={m.margin < 0 ? 'red.600' : 'green.600'}>{money(m.margin)}</Table.Cell>
+                  <Table.Cell textAlign="end" color={Number(m.margin) < 0 ? 'red.600' : 'green.600'}>{money(m.margin)}</Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>

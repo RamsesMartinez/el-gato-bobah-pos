@@ -163,7 +163,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
           const best = [...g.options].sort((a, b) => {
             const ra = rank.get(a.id) ?? Infinity, rb = rank.get(b.id) ?? Infinity;
             if (ra !== rb) return ra - rb;          // 1º lo más probable por contexto
-            return a.priceDelta - b.priceDelta;      // sin datos: default = más barato
+            return Number(a.priceDelta) - Number(b.priceDelta); // sin datos: default = más barato
           })[0];
           put(g.id, best.id, 1);
         } else if (g.min > 0 && ranked.length > 0) {
@@ -232,10 +232,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   for (const picks of Object.values(sel)) {
     for (const [oid, q] of Object.entries(picks)) {
       const o = optById.get(Number(oid));
-      if (o) perUnitDelta += o.priceDelta * q;
+      if (o) perUnitDelta += Number(o.priceDelta) * q;
     }
   }
-  const unit = product.price + perUnitDelta;
+  const unit = Number(product.price) + perUnitDelta;
   const total = Math.round(unit * qty * 100) / 100;
 
   const unmet = orderedGroups.filter((g) => countIn(g.id) < g.min);
@@ -254,7 +254,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
       for (const o of optsOf(g)) {
         if (picks[o.id]) {
           modifiers.push({
-            optionId: o.id, groupId: g.id, name: o.name, priceDelta: o.priceDelta,
+            optionId: o.id, groupId: g.id, name: o.name, priceDelta: Number(o.priceDelta),
             qty: picks[o.id],
           });
         }
@@ -294,9 +294,9 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
                 {pct}%
               </Text>
             )}
-            {o.priceDelta !== 0 && (
+            {Number(o.priceDelta) !== 0 && (
               <Text as="span" ml={1} fontSize="xs" opacity={0.8}>
-                {o.priceDelta > 0 ? '+' : ''}{money(o.priceDelta)}
+                {Number(o.priceDelta) > 0 ? '+' : ''}{money(o.priceDelta)}
               </Text>
             )}
           </Button>
@@ -321,9 +321,9 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
                 onClick={() => reactivate.mutate({ g, ao })}>
                 <LuArchiveRestore size={14} />
                 <Text as="span" ml={1}>{ao.name}</Text>
-                {ao.priceDelta !== 0 && (
+                {Number(ao.priceDelta) !== 0 && (
                   <Text as="span" ml={1} fontSize="xs" opacity={0.8}>
-                    {ao.priceDelta > 0 ? '+' : ''}{money(ao.priceDelta)}
+                    {Number(ao.priceDelta) > 0 ? '+' : ''}{money(ao.priceDelta)}
                   </Text>
                 )}
               </Button>

@@ -1,16 +1,18 @@
 import { api } from './client';
 
+// Dinero/cantidades = string decimal exacto desde el backend (ver types/pos.ts).
 export interface MethodTotal {
   methodId: number;
   name: string;
-  expected: number;
-  declared: number;
-  difference: number;
+  expected: string;
+  declared: string;
+  difference: string;
 }
 export interface CashSession {
   id: number;
   status: string;
-  openingCash: number;
+  openingCash: string;
+  currency: string;
   openedAt: string;
   totals: MethodTotal[];
 }
@@ -24,14 +26,15 @@ export interface ExpenseRow {
   expense_date: string;
   category: string;
   supplier: string | null;
-  amount: number;
+  amount: string;
+  currency: string;
   description: string | null;
 }
 export interface StockLevel {
   item_type: string;
   item_name: string;
-  on_hand: number;
-  min_stock: number | null;
+  on_hand: string;
+  min_stock: string | null;
   unit_code: string;
 }
 export interface StockMovement {
@@ -39,7 +42,7 @@ export interface StockMovement {
   item_type: string;
   item_name: string;
   movement_type: string;
-  quantity: number;
+  quantity: string;
   reason: string | null;
   created_at: string;
 }
@@ -68,11 +71,11 @@ export const backofficeApi = {
 
   reportSales: (from?: string, to?: string) =>
     api.get<{
-      byDay: Array<{ business_date: string; orders: number; revenue: number }>;
-      byMethod: Array<{ method: string; payments: number; total: number }>;
+      byDay: Array<{ business_date: string; orders: number; revenue: string }>;
+      byMethod: Array<{ method: string; payments: number; total: string }>;
     }>(`/reports/sales${from ? `?from=${from}&to=${to}` : ''}`),
   reportMargins: () =>
-    api.get<{ items: Array<{ product_name: string; qty: number; revenue: number; cost: number; margin: number }> }>(
+    api.get<{ items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }> }>(
       '/reports/margins?limit=50',
     ),
 };

@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
@@ -25,18 +27,18 @@ type MenuCategory struct {
 }
 
 type MenuProduct struct {
-	ID          int64       `json:"id"`
-	Name        string      `json:"name"`
-	Description *string     `json:"description"`
-	Price       float64     `json:"price"`
-	Cost        float64     `json:"cost"`
-	Margin      float64     `json:"margin"`
-	CategoryID  int64       `json:"categoryId"`
-	Type        string      `json:"type"`
-	Favorite    bool        `json:"favorite"`
-	ImageURL    *string     `json:"imageUrl"`
-	TrackStock  bool        `json:"trackStock"`
-	Groups      []MenuGroup `json:"groups"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Description *string         `json:"description"`
+	Price       decimal.Decimal `json:"price"`
+	Cost        decimal.Decimal `json:"cost"`
+	Margin      decimal.Decimal `json:"margin"`
+	CategoryID  int64           `json:"categoryId"`
+	Type        string          `json:"type"`
+	Favorite    bool            `json:"favorite"`
+	ImageURL    *string         `json:"imageUrl"`
+	TrackStock  bool            `json:"trackStock"`
+	Groups      []MenuGroup     `json:"groups"`
 }
 
 type MenuGroup struct {
@@ -48,11 +50,11 @@ type MenuGroup struct {
 }
 
 type MenuOption struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"priceDelta"`
-	MaxPerLine int     `json:"maxPerLine"`
-	Favorite   bool    `json:"favorite"`
+	ID         int64           `json:"id"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"priceDelta"`
+	MaxPerLine int             `json:"maxPerLine"`
+	Favorite   bool            `json:"favorite"`
 }
 
 type MenuService struct {
@@ -95,7 +97,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 	for _, c := range catRows {
 		doc.Categories = append(doc.Categories, MenuCategory{
 			ID: c.ID, Name: c.Name, ParentID: c.ParentID,
-			SortKey: c.SortKey, Color: c.Color, ImageURL: c.ImageUrl,
+			SortKey: c.SortKey.InexactFloat64(), Color: c.Color, ImageURL: c.ImageUrl,
 		})
 	}
 
@@ -128,7 +130,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 			ID: pr.ID, Name: pr.Name, Description: pr.Description,
 			Price:      domain.Round2(pr.Price),
 			Cost:       domain.Round2(pr.CurrentCost),
-			Margin:     domain.Round2(pr.Price - pr.CurrentCost),
+			Margin:     domain.Round2(pr.Price.Sub(pr.CurrentCost)),
 			CategoryID: pr.CategoryID, Type: string(pr.Type),
 			Favorite: pr.IsFavorite, ImageURL: pr.ImageUrl, TrackStock: pr.TrackStock,
 			Groups: groups,

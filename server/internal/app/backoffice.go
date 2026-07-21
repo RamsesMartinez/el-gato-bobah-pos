@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -50,22 +51,23 @@ func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethod
 // ---- Cortes de caja ----
 
 type MethodTotal struct {
-	MethodID   int     `json:"methodId"`
-	Name       string  `json:"name"`
-	Expected   float64 `json:"expected"`
-	Declared   float64 `json:"declared"`
-	Difference float64 `json:"difference"`
+	MethodID   int             `json:"methodId"`
+	Name       string          `json:"name"`
+	Expected   decimal.Decimal `json:"expected"`
+	Declared   decimal.Decimal `json:"declared"`
+	Difference decimal.Decimal `json:"difference"`
 }
 
 type SessionView struct {
-	ID          int64         `json:"id"`
-	Status      string        `json:"status"`
-	OpeningCash float64       `json:"openingCash"`
-	OpenedAt    time.Time     `json:"openedAt"`
-	Totals      []MethodTotal `json:"totals"`
+	ID          int64           `json:"id"`
+	Status      string          `json:"status"`
+	OpeningCash decimal.Decimal `json:"openingCash"`
+	Currency    domain.Currency `json:"currency"`
+	OpenedAt    time.Time       `json:"openedAt"`
+	Totals      []MethodTotal   `json:"totals"`
 }
 
-func (s *BackofficeService) OpenSession(ctx context.Context, openingCash float64, userID int64) (*SessionView, error) {
+func (s *BackofficeService) OpenSession(ctx context.Context, openingCash decimal.Decimal, userID int64) (*SessionView, error) {
 	// allowZero: abrir con cajón vacío es válido. Rechaza negativos (la columna no tiene
 	// check) e importes absurdos antes de que desborden el numeric(10,2).
 	if !domain.ValidMoney(domain.Round2(openingCash), true) {
@@ -104,11 +106,14 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
-	view := &SessionView{ID: sess.ID, Status: string(sess.Status), OpeningCash: sess.OpeningCash, OpenedAt: sess.OpenedAt}
+	view := &SessionView{
+		ID: sess.ID, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
+		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt,
+	}
 	for _, r := range rows {
 		expected := r.Expected
 		if r.AffectsCashDrawer {
-			expected += sess.OpeningCash
+			expected = expected.Add(sess.OpeningCash)
 		}
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: domain.Round2(expected)})
 	}
@@ -116,7 +121,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 }
 
 // CloseSession cierra la caja abierta, guarda esperado vs declarado por método.
-func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, declared map[int]float64, notes string) (*SessionView, error) {
+func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, declared map[int]decimal.Decimal, notes string) (*SessionView, error) {
 	// allowZero: un método puede cerrar en 0 (sin ventas). Rechaza negativos y absurdos.
 	for _, d := range declared {
 		if !domain.ValidMoney(domain.Round2(d), true) {
@@ -138,7 +143,7 @@ func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, decl
 		for i := range view.Totals {
 			t := &view.Totals[i]
 			t.Declared = domain.Round2(declared[t.MethodID])
-			t.Difference = domain.Round2(t.Declared - t.Expected)
+			t.Difference = domain.Round2(t.Declared.Sub(t.Expected))
 			if err := q.SaveSessionTotal(ctx, db.SaveSessionTotalParams{
 				SessionID: sess.ID, PaymentMethodID: int16(t.MethodID),
 				Expected: t.Expected, Declared: t.Declared,
@@ -165,7 +170,7 @@ type ExpenseInput struct {
 	Date        time.Time
 	CategoryID  int64
 	SupplierID  *int64
-	Amount      float64
+	Amount      decimal.Decimal
 	MethodID    *int16
 	Description string
 	UserID      int64
@@ -210,10 +215,10 @@ func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]
 }
 
 // RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
-func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty float64, reason string, userID int64) error {
+func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string, ingID, prodID *int64, mtype string, qty decimal.Decimal, reason string, userID int64) error {
 	// allowNegative: el delta puede restar (merma/ajuste). Round4 porque la columna es
 	// numeric(14,4) (base units g/ml); Round2 rechazaría ajustes válidos de sub-centésima.
-	// Rechaza 0, Inf/NaN y valores que desbordarían la columna.
+	// Rechaza 0 y valores que desbordarían la columna.
 	q := domain.Round4(qty)
 	if !domain.ValidQty(q, domain.MaxStockQty, true) {
 		return domain.ErrValidation

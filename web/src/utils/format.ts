@@ -1,8 +1,11 @@
-// Sin productos con centavos: se ocultan los ".00" ($70, no $70.00). Si por alguna
-// razón hay centavos (cambio en efectivo), se muestran ($70.50) para no engañar.
-export function money(n: number): string {
+// El backend envía dinero como string decimal exacto ("70.50"); el front lo parsea solo
+// para FORMATEAR (el servidor es la fuente de verdad del cálculo). Acepta string o number.
+// currency (ISO-4217) elige el símbolo; el locale se queda en es-MX. Sin centavos se ocultan
+// los ".00" ($70, no $70.00); con centavos se muestran ($70.50) para no engañar.
+export function money(v: string | number, currency: string = 'MXN'): string {
+  const n = typeof v === 'string' ? Number(v) : v;
   return n.toLocaleString('es-MX', {
-    style: 'currency', currency: 'MXN',
+    style: 'currency', currency,
     minimumFractionDigits: 0, maximumFractionDigits: 2,
   });
 }

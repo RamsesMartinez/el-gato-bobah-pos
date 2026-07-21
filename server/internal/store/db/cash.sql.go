@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const closeSession = `-- name: CloseSession :exec
@@ -39,10 +40,10 @@ order by pm.sort_key
 `
 
 type ExpectedByMethodSinceRow struct {
-	PaymentMethodID   int16   `json:"payment_method_id"`
-	Name              string  `json:"name"`
-	AffectsCashDrawer bool    `json:"affects_cash_drawer"`
-	Expected          float64 `json:"expected"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Name              string          `json:"name"`
+	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
+	Expected          decimal.Decimal `json:"expected"`
 }
 
 // Totales esperados por método desde la apertura de la sesión (ventana temporal).
@@ -73,7 +74,7 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 
 const getOpenSession = `-- name: GetOpenSession :one
 
-select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes from register_sessions where status = 'abierta' limit 1
+select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency from register_sessions where status = 'abierta' limit 1
 `
 
 // Cortes de caja
@@ -90,6 +91,7 @@ func (q *Queries) GetOpenSession(ctx context.Context) (RegisterSession, error) {
 		&i.ClosedBy,
 		&i.ClosedAt,
 		&i.Notes,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -141,7 +143,7 @@ type ListSessionsRow struct {
 	ID           int64              `json:"id"`
 	BusinessDate pgtype.Date        `json:"business_date"`
 	Status       SessionStatus      `json:"status"`
-	OpeningCash  float64            `json:"opening_cash"`
+	OpeningCash  decimal.Decimal    `json:"opening_cash"`
 	OpenedAt     time.Time          `json:"opened_at"`
 	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
 }
@@ -176,13 +178,13 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 const openSession = `-- name: OpenSession :one
 insert into register_sessions (business_date, opening_cash, opened_by)
 values ($1, $2, $3)
-returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes
+returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency
 `
 
 type OpenSessionParams struct {
-	BusinessDate pgtype.Date `json:"business_date"`
-	OpeningCash  float64     `json:"opening_cash"`
-	OpenedBy     int64       `json:"opened_by"`
+	BusinessDate pgtype.Date     `json:"business_date"`
+	OpeningCash  decimal.Decimal `json:"opening_cash"`
+	OpenedBy     int64           `json:"opened_by"`
 }
 
 func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (RegisterSession, error) {
@@ -198,6 +200,7 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.ClosedBy,
 		&i.ClosedAt,
 		&i.Notes,
+		&i.Currency,
 	)
 	return i, err
 }
@@ -208,10 +211,10 @@ values ($1, $2, $3, $4)
 `
 
 type SaveSessionTotalParams struct {
-	SessionID       int64   `json:"session_id"`
-	PaymentMethodID int16   `json:"payment_method_id"`
-	Expected        float64 `json:"expected"`
-	Declared        float64 `json:"declared"`
+	SessionID       int64           `json:"session_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Expected        decimal.Decimal `json:"expected"`
+	Declared        decimal.Decimal `json:"declared"`
 }
 
 func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalParams) error {

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 const adminListModifierOptions = `-- name: AdminListModifierOptions :many
@@ -33,14 +34,14 @@ type AdminListModifierOptionsParams struct {
 }
 
 type AdminListModifierOptionsRow struct {
-	ID         int64   `json:"id"`
-	GroupID    int64   `json:"group_id"`
-	GroupName  string  `json:"group_name"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"price_delta"`
-	IsFavorite bool    `json:"is_favorite"`
-	IsActive   bool    `json:"is_active"`
-	Total      int64   `json:"total"`
+	ID         int64           `json:"id"`
+	GroupID    int64           `json:"group_id"`
+	GroupName  string          `json:"group_name"`
+	Name       string          `json:"name"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	IsFavorite bool            `json:"is_favorite"`
+	IsActive   bool            `json:"is_active"`
+	Total      int64           `json:"total"`
 }
 
 // Página de opciones (de grupos activos) filtrada por estado (”=todas | 'act' | 'inact') y
@@ -118,19 +119,19 @@ type AdminListProductsParams struct {
 }
 
 type AdminListProductsRow struct {
-	ID             int64       `json:"id"`
-	Name           string      `json:"name"`
-	Price          float64     `json:"price"`
-	CurrentCost    float64     `json:"current_cost"`
-	Type           ProductType `json:"type"`
-	IsActive       bool        `json:"is_active"`
-	IsFavorite     bool        `json:"is_favorite"`
-	AvailableFrom  pgtype.Date `json:"available_from"`
-	AvailableUntil pgtype.Date `json:"available_until"`
-	Category       string      `json:"category"`
-	GroupCount     int32       `json:"group_count"`
-	OverrideCount  int32       `json:"override_count"`
-	Total          int64       `json:"total"`
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	Price          decimal.Decimal `json:"price"`
+	CurrentCost    decimal.Decimal `json:"current_cost"`
+	Type           ProductType     `json:"type"`
+	IsActive       bool            `json:"is_active"`
+	IsFavorite     bool            `json:"is_favorite"`
+	AvailableFrom  pgtype.Date     `json:"available_from"`
+	AvailableUntil pgtype.Date     `json:"available_until"`
+	Category       string          `json:"category"`
+	GroupCount     int32           `json:"group_count"`
+	OverrideCount  int32           `json:"override_count"`
+	Total          int64           `json:"total"`
 }
 
 // Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro),
@@ -259,13 +260,13 @@ where id = $1
 `
 
 type AdminUpdateProductParams struct {
-	ID             int64       `json:"id"`
-	Name           string      `json:"name"`
-	Price          float64     `json:"price"`
-	IsFavorite     bool        `json:"is_favorite"`
-	IsActive       bool        `json:"is_active"`
-	AvailableFrom  pgtype.Date `json:"available_from"`
-	AvailableUntil pgtype.Date `json:"available_until"`
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	Price          decimal.Decimal `json:"price"`
+	IsFavorite     bool            `json:"is_favorite"`
+	IsActive       bool            `json:"is_active"`
+	AvailableFrom  pgtype.Date     `json:"available_from"`
+	AvailableUntil pgtype.Date     `json:"available_until"`
 }
 
 func (q *Queries) AdminUpdateProduct(ctx context.Context, arg AdminUpdateProductParams) error {
