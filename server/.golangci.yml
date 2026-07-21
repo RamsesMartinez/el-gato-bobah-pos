@@ -19,9 +19,10 @@ linters:
       # el código generado por sqlc no se linta
       - path: internal/store/db/
         linters: [gosec, staticcheck, errcheck, govet, unused]
-      # en tests permitimos errores no chequeados
+      # en tests permitimos errores no chequeados y requests sin context (noctx es
+      # una regla para el código de producción, no para httptest en pruebas)
       - path: _test\.go
-        linters: [errcheck, gosec]
+        linters: [errcheck, gosec, noctx]
 
 formatters:
   enable:
