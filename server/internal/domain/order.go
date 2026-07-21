@@ -19,7 +19,17 @@ const (
 	StatusLista     = "lista"
 	StatusEntregada = "entregada"
 	StatusCancelada = "cancelada"
+	// Devolución de una orden YA entregada. Terminal, y distinto de cancelada: es una
+	// pérdida (mercancía consumida, ingreso revertido), no un pedido que nunca se sirvió.
+	StatusReembolsada = "reembolsada"
 )
+
+// CanRefund indica si una orden puede reembolsarse. Solo desde 'entregada': lo abierto/listo
+// se cancela (repone stock); lo ya cancelado o reembolsado es terminal. Separado de
+// CanTransition a propósito, para no reabrir el flujo normal de estados.
+func CanRefund(current string) bool {
+	return current == StatusEntregada
+}
 
 // CanTransition indica si una orden puede pasar de current a next. Los estados
 // terminales (entregada, cancelada) no permiten más cambios y el estado nunca

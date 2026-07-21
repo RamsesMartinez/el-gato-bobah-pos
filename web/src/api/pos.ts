@@ -25,6 +25,10 @@ export const posApi = {
     api.post<void>(`/orders/${id}/status`, { status }),
   cancelOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/cancel`, { reason }),
+  // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
+  deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
+  refundOrder: (id: number, reason: string) =>
+    api.post<void>(`/orders/${id}/refund`, { reason }),
 };
 
 export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;

@@ -10,6 +10,7 @@ import { posApi } from '../../api/pos';
 import type { BoardOrder } from '../../types/pos';
 import { money } from '../../utils/format';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
+import { useSessionStore } from '../../stores/session';
 
 const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
   mostrador: { label: 'Mostrador', icon: LuStore },
@@ -18,25 +19,46 @@ const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
 };
 
 const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', 'Otro'];
+const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente', 'Cobro erróneo', 'Otro'];
 
 export function OrdersBoardPage() {
   const live = useOrderEvents();
   const qc = useQueryClient();
+  // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El
+  // backend igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
+  const role = useSessionStore((s) => s.user?.role);
+  const canRefund = role === 'admin' || role === 'gerente';
+
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
     queryFn: posApi.activeOrders,
     refetchInterval: 10_000, // respaldo si SSE se cae
   });
+  const { data: deliveredData } = useQuery({
+    queryKey: ['orders', 'delivered'],
+    queryFn: posApi.deliveredOrders,
+    enabled: canRefund,
+    refetchInterval: 15_000, // SSE solo invalida 'active'; refrescamos entregadas aparte
+  });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['orders', 'active'] });
+  const invalidateActive = () => qc.invalidateQueries({ queryKey: ['orders', 'active'] });
+  const invalidateAll = () => {
+    invalidateActive();
+    qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
+  };
   const statusMut = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => posApi.setOrderStatus(id, status),
-    onSuccess: invalidate,
+    onSuccess: invalidateAll, // entregar mueve la orden a la sección de entregadas
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
   const cancelMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.cancelOrder(id, reason),
-    onSuccess: invalidate,
+    onSuccess: invalidateActive,
+  });
+  const refundMut = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.refundOrder(id, reason),
+    onSuccess: () => { invalidateAll(); toaster.create({ title: 'Reembolso registrado', type: 'success' }); },
+    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
@@ -50,6 +72,10 @@ export function OrdersBoardPage() {
     const reason = window.prompt(`Motivo de cancelación:\n(${CANCEL_REASONS.join(', ')})`, CANCEL_REASONS[0]);
     if (reason) cancelMut.mutate({ id: o.id, reason });
   };
+  const refund = (o: BoardOrder) => {
+    const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
+    if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
+  };
 
   return (
     <Box p={4} h="100%" overflowY="auto">
@@ -61,6 +87,41 @@ export function OrdersBoardPage() {
         <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} advanceLabel="Marcar listo" />
         <Column title="Listos" orders={listos} onAdvance={advance} onCancel={cancel} advanceLabel="Entregar" />
       </SimpleGrid>
+      {canRefund && <DeliveredSection orders={deliveredData?.items ?? []} onRefund={refund} />}
+    </Box>
+  );
+}
+
+// Entregadas del día: solo admin/gerente, para reembolsar (devolución = pérdida). Compacta
+// para no competir con el flujo operativo de arriba.
+function DeliveredSection({ orders, onRefund }: { orders: BoardOrder[]; onRefund: (o: BoardOrder) => void }) {
+  return (
+    <Box mt={6}>
+      <HStack mb={3}>
+        <Text fontWeight="700" fontSize="lg">Entregadas hoy</Text>
+        <Badge borderRadius="full" px={2}>{orders.length}</Badge>
+      </HStack>
+      {orders.length === 0 ? (
+        <Text color="fg.subtle">Sin entregas hoy</Text>
+      ) : (
+        <VStack align="stretch" gap={2}>
+          {orders.map((o) => (
+            <Flex key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg"
+              px={4} py={2} justify="space-between" align="center">
+              <HStack gap={3}>
+                <Text fontWeight="800">#{o.number}</Text>
+                <Text fontSize="sm" color="fg.muted">
+                  {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
+                </Text>
+              </HStack>
+              <HStack gap={3}>
+                <Text fontWeight="700">{money(o.total, o.currency)}</Text>
+                <Button size="sm" variant="outline" colorPalette="red" onClick={() => onRefund(o)}>Reembolsar</Button>
+              </HStack>
+            </Flex>
+          ))}
+        </VStack>
+      )}
     </Box>
   );
 }

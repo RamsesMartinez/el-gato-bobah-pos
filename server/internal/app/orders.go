@@ -297,6 +297,24 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 	return out, nil
 }
 
+// DeliveredToday lista las órdenes entregadas del día (para la sección de reembolsos).
+func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error) {
+	rows, err := s.store.Q.ListDeliveredToday(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BoardOrder, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, BoardOrder{
+			ID: r.ID, Number: int(r.DailyNumber), Status: string(r.Status),
+			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
+			Total: r.Total, Currency: domain.Currency(r.Currency),
+			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
+		})
+	}
+	return out, nil
+}
+
 // Detail carga una orden completa.
 func (s *OrdersService) Detail(ctx context.Context, id int64) (*OrderView, error) {
 	return s.load(ctx, id)
@@ -353,6 +371,32 @@ func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reaso
 			return err
 		}
 		return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &id, ActorID: &actor})
+	})
+}
+
+// Refund reembolsa una orden YA entregada (razón obligatoria). A diferencia de Cancel, NO
+// repone stock: la mercancía se hizo y se entregó, así que su costo ya consumido ES la
+// pérdida de inventario; solo se revierte el ingreso marcando la orden 'reembolsada' con el
+// monto devuelto (el total). Idempotente: si no está entregada (ya reembolsada, cancelada,
+// abierta…) rechaza con ErrConflict, así un doble-tap no reembolsa dos veces.
+func (s *OrdersService) Refund(ctx context.Context, id, actor int64, reason string) error {
+	if reason == "" {
+		return domain.ErrValidation
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrder(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.CanRefund(string(o.Status)) {
+			return domain.ErrConflict
+		}
+		return q.RefundOrder(ctx, db.RefundOrderParams{
+			ID: id, RefundedBy: &actor, RefundReason: &reason, RefundAmount: o.Total,
+		})
 	})
 }
 

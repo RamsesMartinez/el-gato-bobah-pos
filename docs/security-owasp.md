@@ -70,12 +70,27 @@ Se revisó cada control de forma adversarial (¿un atacante lo evade?). La revis
 - **A09/A05 (bajo):** PII de cliente (customerName/notes) se registraba en cuerpos de 5xx/
   debug → añadida al redactor; `object-src 'none'` añadido a la CSP.
 
-## Pendiente post-MVP (no bloquea)
+## Refund/void de orden entregada — IMPLEMENTADO
 
-- **Refund/void de orden entregada**: hoy `entregada` es terminal a propósito (`domain.CanTransition`).
-  **Requiere decisión de negocio**: si se quiere permitir devoluciones, añadir un flujo
-  dedicado (estado nuevo, reverso contable del pago y re-stock inverso), NO reutilizar el
-  cancel. No se implementa de forma especulativa.
+El negocio confirmó que sí hay devoluciones. Flujo dedicado (no reutiliza cancel):
+
+- Estado nuevo `reembolsada` (terminal), solo alcanzable desde `entregada`
+  (`domain.CanRefund`, migración 0018). Tratado como **pérdida**: sin restock (la mercancía
+  se consumió; el costo ya descontado ES la pérdida de inventario), solo se revierte el
+  ingreso. `refund_amount`/motivo/actor persistidos.
+- Reportes: `SalesByDay`/`ProductMargins` excluyen `reembolsada`; `RefundsByDay` la reporta
+  como pérdida por devolución.
+- `POST /orders/{id}/refund` gated admin/gerente + evento de seguridad `order_refund`;
+  UI en el tablero (sección "Entregadas hoy", solo admin/gerente).
+- Verificado end-to-end con tests de integración contra Postgres real.
+
+## Testing de integración (Postgres efímero)
+
+Suite `internal/integration` (build tag `integration`) contra un Postgres real —cubre lo que
+los tests unitarios no alcanzan por el `*db.Queries` concreto: reuso de refresh→revoca
+familia, rotación, y el flujo de reembolso. Job de CI `integration` con servicio
+postgres:16-alpine (digest-pin). `go test ./...` normal no se ve afectado (skip sin
+`TEST_DATABASE_URL`).
 
 ## Checklist de lanzamiento en el VPS (operador)
 
