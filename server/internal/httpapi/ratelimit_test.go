@@ -10,53 +10,56 @@ import (
 
 func TestRateLimiter_BlocksAfterMax(t *testing.T) {
 	now := time.Now()
-	rl := newRateLimiter(3, time.Minute)
+	rl := newRateLimiter("", "rl:", 3, time.Minute)
 	rl.now = func() time.Time { return now }
+	ctx := t.Context()
 	const key = "1.2.3.4"
 
 	for i := 0; i < 3; i++ {
-		if rl.blocked(key) {
+		if rl.blocked(ctx, key) {
 			t.Fatalf("attempt %d should be allowed", i)
 		}
-		rl.record(key)
+		rl.record(ctx, key)
 	}
-	if !rl.blocked(key) {
+	if !rl.blocked(ctx, key) {
 		t.Fatal("expected key to be blocked after reaching max attempts")
 	}
 }
 
 func TestRateLimiter_WindowExpiry(t *testing.T) {
 	now := time.Now()
-	rl := newRateLimiter(2, time.Minute)
+	rl := newRateLimiter("", "rl:", 2, time.Minute)
 	rl.now = func() time.Time { return now }
+	ctx := t.Context()
 	const key = "user:kate"
 
-	rl.record(key)
-	rl.record(key)
-	if !rl.blocked(key) {
+	rl.record(ctx, key)
+	rl.record(ctx, key)
+	if !rl.blocked(ctx, key) {
 		t.Fatal("expected blocked at limit")
 	}
 	now = now.Add(time.Minute + time.Second) // window elapsed
-	if rl.blocked(key) {
+	if rl.blocked(ctx, key) {
 		t.Fatal("expected counter to reset after the window elapsed")
 	}
 }
 
 func TestRateLimiter_ResetClearsCounter(t *testing.T) {
-	rl := newRateLimiter(1, time.Minute)
+	rl := newRateLimiter("", "rl:", 1, time.Minute)
+	ctx := t.Context()
 	const key = "login:admin"
-	rl.record(key)
-	if !rl.blocked(key) {
+	rl.record(ctx, key)
+	if !rl.blocked(ctx, key) {
 		t.Fatal("expected blocked")
 	}
-	rl.reset(key) // e.g. after a successful login
-	if rl.blocked(key) {
+	rl.reset(ctx, key) // e.g. after a successful login
+	if rl.blocked(ctx, key) {
 		t.Fatal("reset must clear the counter so a legit user is not penalized")
 	}
 }
 
 func TestRateLimitMiddleware_Returns429(t *testing.T) {
-	rl := newRateLimiter(2, time.Minute)
+	rl := newRateLimiter("", "rl:", 2, time.Minute)
 	h := rateLimit(rl, false)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -98,11 +101,12 @@ func TestRateKeyIP(t *testing.T) {
 
 func TestRateLimiter_MapStaysBounded(t *testing.T) {
 	now := time.Now()
-	rl := newRateLimiter(5, time.Minute)
+	rl := newRateLimiter("", "rl:", 5, time.Minute)
 	rl.now = func() time.Time { return now }
+	ctx := t.Context()
 	// floodea claves distintas y ya vencidas; el sweep debe podarlas
 	for i := 0; i < rlSweepEvery*2; i++ {
-		rl.record("k" + strconv.Itoa(i))
+		rl.record(ctx, "k"+strconv.Itoa(i))
 		now = now.Add(2 * time.Minute) // cada entrada vence de inmediato
 	}
 	rl.mu.Lock()
