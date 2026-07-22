@@ -17,9 +17,21 @@ export interface CashMovement {
   concept: string;
   createdAt: string;
   userName: string;
+  transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
+}
+// Caja física (registro). La primaria recibe las ventas del POS.
+export interface CashRegister {
+  id: number;
+  name: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  openSessionId: number | null; // no-null si la caja tiene una sesión abierta
 }
 export interface CashSession {
   id: number;
+  registerId: number;
+  registerName: string;
+  isPrimary: boolean;
   status: string;
   openingCash: string;
   currency: string;
@@ -31,6 +43,7 @@ export interface CashSession {
 // Fila del histórico de cortes.
 export interface CashSessionRow {
   id: number;
+  registerName: string;
   status: string;
   openingCash: string;
   currency: string;
@@ -44,6 +57,7 @@ export interface CashSessionRow {
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
   id: number;
+  registerName: string;
   status: string;
   openingCash: string;
   currency: string;
@@ -103,14 +117,24 @@ export interface StockMovement {
 }
 
 export const backofficeApi = {
-  cashCurrent: () => api.get<CashSession | null>('/cash-sessions/current'),
-  cashOpen: (openingCash: number) => api.post<CashSession>('/cash-sessions', { openingCash }),
-  cashClose: (declared: Record<string, number>, notes?: string) =>
-    api.post<CashSession>('/cash-sessions/close', { declared, notes }),
+  // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
+  cashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers'),
+  allCashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers/all'),
+  createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
+  updateCashRegister: (id: number, b: { name: string; isActive: boolean }) =>
+    api.patch<CashRegister>(`/cash-registers/${id}`, b),
+
+  cashCurrent: (registerId: number) => api.get<CashSession | null>(`/cash-sessions/current?registerId=${registerId}`),
+  cashOpen: (registerId: number, openingCash: number) => api.post<CashSession>('/cash-sessions', { registerId, openingCash }),
+  cashClose: (registerId: number, declared: Record<string, number>, notes?: string) =>
+    api.post<CashSession>('/cash-sessions/close', { registerId, declared, notes }),
   cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
-  cashMovement: (kind: 'entrada' | 'salida', amount: number, concept: string) =>
-    api.post<CashSession>('/cash-sessions/movements', { kind, amount, concept }),
+  cashMovement: (registerId: number, kind: 'entrada' | 'salida', amount: number, concept: string) =>
+    api.post<CashSession>('/cash-sessions/movements', { registerId, kind, amount, concept }),
+  // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
+  cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
+    api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),
   // Config de negocio (admin/gerente): qué método se declara solo al cerrar caja.
   setPaymentMethodAutoDeclare: (id: number, autoDeclare: boolean) =>
     api.patch<PaymentMethod>(`/payment-methods/${id}`, { autoDeclare }),
@@ -140,9 +164,9 @@ export const backofficeApi = {
   },
   createExpense: (b: {
     categoryId: number; supplierId?: number; amount: number;
-    description?: string; status: ExpenseStatus; methodId?: number;
+    description?: string; status: ExpenseStatus; methodId?: number; registerId?: number;
   }) => api.post<{ id: number }>('/expenses', b),
-  payExpense: (id: number, methodId: number) => api.post<void>(`/expenses/${id}/pay`, { methodId }),
+  payExpense: (id: number, methodId: number, registerId: number) => api.post<void>(`/expenses/${id}/pay`, { methodId, registerId }),
   cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
 
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),

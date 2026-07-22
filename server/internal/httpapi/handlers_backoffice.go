@@ -51,10 +51,69 @@ func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, pm)
 }
 
-// ---- Cortes de caja ----
+// ---- Cajas + cortes ----
+
+// GET /cash-registers — cajas activas + estado (id de sesión abierta). Para pickers y la vista de caja.
+func (h *Handlers) CashRegisters(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.CashRegisters(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// GET /cash-registers/all — todas las cajas (incl. inactivas), para la gestión.
+func (h *Handlers) AllCashRegisters(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.AllCashRegisters(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateCashRegister(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CreateCashRegister(r.Context(), body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, v)
+}
+
+func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		IsActive bool   `json:"isActive"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.UpdateCashRegister(r.Context(), id, body.Name, body.IsActive)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
 
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		RegisterID  int64           `json:"registerId"`
 		OpeningCash decimal.Decimal `json:"openingCash"`
 	}
 	if err := Decode(r, &body); err != nil {
@@ -62,7 +121,7 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.OpeningCash, u.ID)
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, body.OpeningCash, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -70,19 +129,26 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, sess)
 }
 
+// GET /cash-sessions/current?registerId= — sesión abierta de una caja (null si está cerrada).
 func (h *Handlers) CurrentCashSession(w http.ResponseWriter, r *http.Request) {
-	sess, err := h.backoffice.Current(r.Context())
+	registerID, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	sess, err := h.backoffice.CurrentByRegister(r.Context(), registerID)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, sess) // null si no hay caja abierta
+	JSON(w, http.StatusOK, sess) // null si esa caja no está abierta
 }
 
 func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Declared map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
-		Notes    string                     `json:"notes"`
+		RegisterID int64                      `json:"registerId"`
+		Declared   map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
+		Notes      string                     `json:"notes"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -95,7 +161,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.CloseSession(r.Context(), u.ID, declared, body.Notes)
+	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
 	if err != nil {
 		Error(w, err)
 		return
@@ -103,9 +169,30 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, sess)
 }
 
-// GET /cash-status — ¿hay caja abierta? Ligero, para el aviso del POS (cualquier rol autenticado).
+// POST /cash-sessions/transfer — traspaso de efectivo entre dos cajas abiertas.
+func (h *Handlers) CashTransfer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FromRegisterID int64           `json:"fromRegisterId"`
+		ToRegisterID   int64           `json:"toRegisterId"`
+		Amount         decimal.Decimal `json:"amount"`
+		Note           string          `json:"note"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	id, err := h.backoffice.Transfer(r.Context(), body.FromRegisterID, body.ToRegisterID, body.Amount, body.Note, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+// GET /cash-status — ¿hay alguna caja abierta? Ligero, para el aviso del POS (cualquier rol).
 func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
-	open, err := h.backoffice.HasOpenSession(r.Context())
+	open, err := h.backoffice.HasAnyOpenSession(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
@@ -144,19 +231,20 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, view)
 }
 
-// POST /cash-sessions/movements — registra entrada/salida de efectivo en la caja abierta.
+// POST /cash-sessions/movements — registra entrada/salida de efectivo en la sesión abierta de una caja.
 func (h *Handlers) CreateCashMovement(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Kind    string          `json:"kind"`
-		Amount  decimal.Decimal `json:"amount"`
-		Concept string          `json:"concept"`
+		RegisterID int64           `json:"registerId"`
+		Kind       string          `json:"kind"`
+		Amount     decimal.Decimal `json:"amount"`
+		Concept    string          `json:"concept"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.Kind, body.Amount, body.Concept, u.ID)
+	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.RegisterID, body.Kind, body.Amount, body.Concept, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -295,6 +383,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		Description string          `json:"description"`
 		Status      string          `json:"status"`
 		MethodID    *int16          `json:"methodId"`
+		RegisterID  *int64          `json:"registerId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -303,7 +392,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	id, err := h.backoffice.CreateExpense(r.Context(), app.ExpenseInput{
 		CategoryID: body.CategoryID, SupplierID: body.SupplierID, Amount: body.Amount,
-		Description: body.Description, Status: body.Status, MethodID: body.MethodID, UserID: u.ID,
+		Description: body.Description, Status: body.Status, MethodID: body.MethodID, RegisterID: body.RegisterID, UserID: u.ID,
 	})
 	if err != nil {
 		Error(w, err)
@@ -319,14 +408,15 @@ func (h *Handlers) PayExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		MethodID int16 `json:"methodId"`
+		MethodID   int16 `json:"methodId"`
+		RegisterID int64 `json:"registerId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.backoffice.PayExpense(r.Context(), id, body.MethodID, u.ID); err != nil {
+	if err := h.backoffice.PayExpense(r.Context(), id, body.MethodID, body.RegisterID, u.ID); err != nil {
 		Error(w, err)
 		return
 	}

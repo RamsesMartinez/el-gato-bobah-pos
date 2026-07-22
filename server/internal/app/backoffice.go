@@ -88,16 +88,20 @@ type MethodTotal struct {
 }
 
 type CashMovementView struct {
-	ID        int64           `json:"id"`
-	Kind      string          `json:"kind"` // entrada | salida
-	Amount    decimal.Decimal `json:"amount"`
-	Concept   string          `json:"concept"`
-	CreatedAt time.Time       `json:"createdAt"`
-	UserName  string          `json:"userName"`
+	ID         int64           `json:"id"`
+	Kind       string          `json:"kind"` // entrada | salida
+	Amount     decimal.Decimal `json:"amount"`
+	Concept    string          `json:"concept"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UserName   string          `json:"userName"`
+	TransferID *int64          `json:"transferId"` // no-nil si el movimiento es una pierna de un traspaso
 }
 
 type SessionView struct {
 	ID           int64              `json:"id"`
+	RegisterID   int64              `json:"registerId"`
+	RegisterName string             `json:"registerName"`
+	IsPrimary    bool               `json:"isPrimary"` // la caja primaria recibe las ventas del POS
 	Status       string             `json:"status"`
 	OpeningCash  decimal.Decimal    `json:"openingCash"`
 	Currency     domain.Currency    `json:"currency"`
@@ -107,11 +111,21 @@ type SessionView struct {
 	Movements    []CashMovementView `json:"movements"`
 }
 
+// CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
+type CashRegisterView struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	IsPrimary     bool   `json:"isPrimary"`
+	IsActive      bool   `json:"isActive"`
+	OpenSessionID *int64 `json:"openSessionId"`
+}
+
 // SessionDetailView es una sesión (normalmente ya cerrada) con sus totales guardados y
 // movimientos, para el histórico. Difiere de SessionView en que los totales vienen de
 // register_session_totals (snapshot al cerrar), no del cálculo en vivo.
 type SessionDetailView struct {
 	ID           int64              `json:"id"`
+	RegisterName string             `json:"registerName"`
 	Status       string             `json:"status"`
 	OpeningCash  decimal.Decimal    `json:"openingCash"`
 	Currency     domain.Currency    `json:"currency"`
@@ -126,6 +140,7 @@ type SessionDetailView struct {
 
 type SessionHistoryRow struct {
 	ID              int64           `json:"id"`
+	RegisterName    string          `json:"registerName"`
 	Status          string          `json:"status"`
 	OpeningCash     decimal.Decimal `json:"openingCash"`
 	Currency        domain.Currency `json:"currency"`
@@ -137,14 +152,98 @@ type SessionHistoryRow struct {
 	Notes           *string         `json:"notes"`
 }
 
-func (s *BackofficeService) OpenSession(ctx context.Context, openingCash decimal.Decimal, userID int64) (*SessionView, error) {
+// CashRegisters lista las cajas activas + el id de su sesión abierta (para pickers y la vista de caja).
+func (s *BackofficeService) CashRegisters(ctx context.Context) ([]CashRegisterView, error) {
+	rows, err := s.store.QC(ctx).ListCashRegisters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CashRegisterView, len(rows))
+	for i, r := range rows {
+		out[i] = CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, OpenSessionID: r.OpenSessionID}
+	}
+	return out, nil
+}
+
+// AllCashRegisters lista TODAS las cajas (incl. inactivas) para la gestión; sin estado de sesión.
+func (s *BackofficeService) AllCashRegisters(ctx context.Context) ([]CashRegisterView, error) {
+	rows, err := s.store.QC(ctx).ListAllCashRegisters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CashRegisterView, len(rows))
+	for i, r := range rows {
+		out[i] = CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}
+	}
+	return out, nil
+}
+
+func (s *BackofficeService) CreateCashRegister(ctx context.Context, name string) (CashRegisterView, error) {
+	if name == "" {
+		return CashRegisterView{}, domain.ErrValidation
+	}
+	r, err := s.store.QC(ctx).CreateCashRegister(ctx, name)
+	if err != nil {
+		return CashRegisterView{}, err
+	}
+	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}, nil
+}
+
+func (s *BackofficeService) UpdateCashRegister(ctx context.Context, id int64, name string, isActive bool) (CashRegisterView, error) {
+	if name == "" {
+		return CashRegisterView{}, domain.ErrValidation
+	}
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return CashRegisterView{}, domain.ErrNotFound
+		}
+		return CashRegisterView{}, err
+	}
+	// La caja primaria recibe las ventas del POS: desactivarla dejaría al punto de venta sin
+	// dónde cuadrar el efectivo. Renombrarla sí se permite.
+	if reg.IsPrimary && !isActive {
+		return CashRegisterView{}, domain.ErrValidation
+	}
+	r, err := s.store.QC(ctx).UpdateCashRegister(ctx, db.UpdateCashRegisterParams{ID: id, Name: name, IsActive: isActive})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return CashRegisterView{}, domain.ErrNotFound
+		}
+		return CashRegisterView{}, err
+	}
+	return CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}, nil
+}
+
+// activeRegister carga una caja y exige que exista y esté activa (una caja inactiva no opera).
+func (s *BackofficeService) activeRegister(ctx context.Context, registerID int64) (db.GetCashRegisterRow, error) {
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return reg, domain.ErrNotFound
+		}
+		return reg, err
+	}
+	if !reg.IsActive {
+		return reg, domain.ErrValidation
+	}
+	return reg, nil
+}
+
+// OpenSession abre una sesión (corte) para una caja concreta. Falla si esa caja ya tiene una
+// sesión abierta (respaldado por el índice único one_open_session_per_register).
+func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, openingCash decimal.Decimal, userID int64) (*SessionView, error) {
 	// allowZero: abrir con cajón vacío es válido. Rechaza negativos (la columna no tiene
 	// check) e importes absurdos antes de que desborden el numeric(10,2).
 	if !domain.ValidMoney(domain.Round2(openingCash), true) {
 		return nil, domain.ErrValidation
 	}
-	if _, err := s.store.QC(ctx).GetOpenSession(ctx); err == nil {
-		return nil, domain.ErrConflict // ya hay una caja abierta
+	reg, err := s.activeRegister(ctx, registerID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID); err == nil {
+		return nil, domain.ErrConflict // esa caja ya está abierta
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
@@ -152,26 +251,39 @@ func (s *BackofficeService) OpenSession(ctx context.Context, openingCash decimal
 		BusinessDate: pgtype.Date{Time: s.now(), Valid: true},
 		OpeningCash:  domain.Round2(openingCash),
 		OpenedBy:     userID,
+		RegisterID:   registerID,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.sessionWithExpected(ctx, sess)
+	return s.sessionWithExpected(ctx, sess, reg)
 }
 
-// Current devuelve la caja abierta con sus esperados en vivo, o nil si no hay.
-func (s *BackofficeService) Current(ctx context.Context) (*SessionView, error) {
-	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
+// CurrentByRegister devuelve la sesión abierta de una caja con sus esperados en vivo, o nil si
+// esa caja está cerrada.
+func (s *BackofficeService) CurrentByRegister(ctx context.Context, registerID int64) (*SessionView, error) {
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return s.sessionWithExpected(ctx, sess)
+	return s.sessionWithExpected(ctx, sess, reg)
 }
 
-func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.RegisterSession) (*SessionView, error) {
+// sessionWithExpected arma la vista en vivo de una sesión. La caja PRIMARIA recibe las ventas del
+// POS (esperado por método = suma de order_payments desde la apertura); una caja SECUNDARIA no
+// vende: solo maneja efectivo (fondo + neto de entradas/salidas y traspasos), así que su único
+// esperado es el del método que toca cajón.
+func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.RegisterSession, reg db.GetCashRegisterRow) (*SessionView, error) {
 	rows, err := s.store.QC(ctx).ExpectedByMethodSince(ctx, sess.OpenedAt)
 	if err != nil {
 		return nil, err
@@ -187,12 +299,20 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
-		ID: sess.ID, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
+		ID: sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
+		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{},
 	}
 	for _, r := range rows {
+		// Caja secundaria: los métodos no-efectivo no aplican (no vende por ellos) → se omiten.
+		if !reg.IsPrimary && !r.AffectsCashDrawer {
+			continue
+		}
 		expected := r.Expected
+		if !reg.IsPrimary {
+			expected = decimal.Zero // secundaria: sin ventas; el esperado es solo fondo + movimientos
+		}
 		if r.AffectsCashDrawer {
 			expected = expected.Add(sess.OpeningCash).Add(net) // fondo + neto de movimientos
 		}
@@ -200,28 +320,35 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
-			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName,
+			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID,
 		})
 	}
 	return view, nil
 }
 
-// CloseSession cierra la caja abierta, guarda esperado vs declarado por método.
-func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, declared map[int]decimal.Decimal, notes string) (*SessionView, error) {
+// CloseSession cierra la sesión abierta de una caja, guarda esperado vs declarado por método.
+func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, declared map[int]decimal.Decimal, notes string) (*SessionView, error) {
 	// allowZero: un método puede cerrar en 0 (sin ventas). Rechaza negativos y absurdos.
 	for _, d := range declared {
 		if !domain.ValidMoney(domain.Round2(d), true) {
 			return nil, domain.ErrValidation
 		}
 	}
-	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
-	view, err := s.sessionWithExpected(ctx, sess)
+	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	view, err := s.sessionWithExpected(ctx, sess, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -250,17 +377,24 @@ func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, decl
 	return view, nil
 }
 
-// RecordCashMovement registra una entrada/salida de efectivo del cajón en la caja abierta.
-// El neto (entradas − salidas) entra al efectivo esperado al cerrar (ver sessionWithExpected).
-func (s *BackofficeService) RecordCashMovement(ctx context.Context, kind string, amount decimal.Decimal, concept string, userID int64) (*SessionView, error) {
-	if kind != "entrada" && kind != "salida" {
+// RecordCashMovement registra una entrada/salida de efectivo del cajón en la sesión abierta de una
+// caja. El neto (entradas − salidas) entra al efectivo esperado al cerrar (ver sessionWithExpected).
+func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID int64, kind string, amount decimal.Decimal, concept string, userID int64) (*SessionView, error) {
+	if !domain.ValidCashKind(kind) {
 		return nil, domain.ErrValidation
 	}
 	amt := domain.Round2(amount)
 	if !domain.ValidMoney(amt, false) || concept == "" { // monto > 0 y con concepto
 		return nil, domain.ErrValidation
 	}
-	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound // sin caja abierta no hay dónde registrar
@@ -272,7 +406,82 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, kind string,
 	}); err != nil {
 		return nil, err
 	}
-	return s.sessionWithExpected(ctx, sess)
+	return s.sessionWithExpected(ctx, sess, reg)
+}
+
+// Transfer mueve efectivo de una caja abierta a otra: registra el traspaso y genera, en la MISMA
+// tx, la salida en origen + la entrada en destino, ambas ligadas al traspaso → las dos cajas lo
+// reflejan de forma atómica ("lo detectan"). Exige ambas cajas abiertas y misma moneda (un
+// traspaso no convierte divisa). Devuelve el id del traspaso.
+func (s *BackofficeService) Transfer(ctx context.Context, fromRegisterID, toRegisterID int64, amount decimal.Decimal, note string, userID int64) (int64, error) {
+	amt := domain.Round2(amount)
+	if !domain.ValidTransfer(fromRegisterID, toRegisterID, amt) {
+		return 0, domain.ErrValidation
+	}
+	from, err := s.store.QC(ctx).GetCashRegister(ctx, fromRegisterID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, domain.ErrNotFound
+		}
+		return 0, err
+	}
+	to, err := s.store.QC(ctx).GetCashRegister(ctx, toRegisterID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, domain.ErrNotFound
+		}
+		return 0, err
+	}
+	fromSess, err := s.openSessionOrConflict(ctx, fromRegisterID)
+	if err != nil {
+		return 0, err
+	}
+	toSess, err := s.openSessionOrConflict(ctx, toRegisterID)
+	if err != nil {
+		return 0, err
+	}
+	if fromSess.Currency != toSess.Currency {
+		return 0, domain.ErrValidation
+	}
+	var transferID int64
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		var e error
+		transferID, e = q.CreateCashTransfer(ctx, db.CreateCashTransferParams{
+			FromSessionID: fromSess.ID, ToSessionID: toSess.ID, Amount: amt, Note: strPtr(note), CreatedBy: userID,
+		})
+		if e != nil {
+			return e
+		}
+		// Concepto con el nombre de la contraparte al momento del traspaso (snapshot de auditoría:
+		// si luego renombran la caja, el histórico conserva cómo se llamaba).
+		if e = q.InsertTransferMovement(ctx, db.InsertTransferMovementParams{
+			SessionID: fromSess.ID, Kind: domain.CashSalida, Amount: amt,
+			Concept: "Traspaso a " + to.Name, UserID: userID, TransferID: &transferID,
+		}); e != nil {
+			return e
+		}
+		return q.InsertTransferMovement(ctx, db.InsertTransferMovementParams{
+			SessionID: toSess.ID, Kind: domain.CashEntrada, Amount: amt,
+			Concept: "Traspaso desde " + from.Name, UserID: userID, TransferID: &transferID,
+		})
+	})
+	if err != nil {
+		return 0, err
+	}
+	return transferID, nil
+}
+
+// openSessionOrConflict devuelve la sesión abierta de una caja, o ErrConflict si está cerrada
+// (un traspaso exige ambas cajas abiertas).
+func (s *BackofficeService) openSessionOrConflict(ctx context.Context, registerID int64) (db.RegisterSession, error) {
+	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return sess, domain.ErrConflict
+		}
+		return sess, err
+	}
+	return sess, nil
 }
 
 // SessionHistory lista los últimos cortes (abiertos y cerrados) para el histórico.
@@ -284,7 +493,7 @@ func (s *BackofficeService) SessionHistory(ctx context.Context, limit int32) ([]
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
 		out[i] = SessionHistoryRow{
-			ID: r.ID, Status: string(r.Status), OpeningCash: r.OpeningCash,
+			ID: r.ID, RegisterName: r.RegisterName, Status: string(r.Status), OpeningCash: r.OpeningCash,
 			Currency: domain.Currency(r.Currency), OpenedAt: r.OpenedAt, ClosedAt: tsPtr(r.ClosedAt),
 			OpenedByName: r.OpenedByName, ClosedByName: r.ClosedByName,
 			TotalDifference: r.TotalDifference, Notes: r.Notes,
@@ -311,7 +520,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		return nil, err
 	}
 	view := &SessionDetailView{
-		ID: sess.ID, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
+		ID: sess.ID, RegisterName: sess.RegisterName, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, ClosedAt: tsPtr(sess.ClosedAt),
 		OpenedByName: sess.OpenedByName, ClosedByName: sess.ClosedByName, Notes: sess.Notes,
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, // no-nil → [] en JSON
@@ -324,22 +533,16 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
-			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName,
+			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID,
 		})
 	}
 	return view, nil
 }
 
-// HasOpenSession: chequeo ligero (¿hay caja abierta?) para el aviso del POS, sin calcular
-// esperados. Disponible a cualquier rol autenticado: saber si hay caja no es dato sensible.
-func (s *BackofficeService) HasOpenSession(ctx context.Context) (bool, error) {
-	if _, err := s.store.QC(ctx).GetOpenSession(ctx); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
+// HasAnyOpenSession: ¿hay alguna caja abierta? Chequeo ligero para el aviso del POS, sin calcular
+// esperados. Disponible a cualquier rol autenticado: saber si el negocio opera no es dato sensible.
+func (s *BackofficeService) HasAnyOpenSession(ctx context.Context) (bool, error) {
+	return s.store.QC(ctx).AnyOpenSession(ctx)
 }
 
 // tsPtr convierte un timestamptz anulable de pgx a *time.Time (nil si NULL).
@@ -374,11 +577,13 @@ type ExpenseInput struct {
 	Description string
 	Status      string // pendiente | pagada
 	MethodID    *int16 // requerido si status == pagada
+	RegisterID  *int64 // caja contra la que se paga; requerida (y abierta) si status == pagada
 	UserID      int64
 }
 
-// CreateExpense registra un gasto pendiente o directamente pagado. Si es pagado en efectivo y
-// hay caja abierta, genera la salida de efectivo en el mismo tx (el corte cuadra solo).
+// CreateExpense registra un gasto pendiente o directamente pagado. Todo gasto PAGADO exige una
+// caja abierta (elegida en RegisterID): el gasto se liga a esa sesión y, si el método es efectivo,
+// genera la salida del cajón en el mismo tx (el corte cuadra solo). Un pendiente no toca caja.
 func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) (int64, error) {
 	amount := domain.Round2(in.Amount)
 	// Monto ya redondeado (sub-centavo/absurdo → 400, no 500), categoría y estado válidos.
@@ -401,14 +606,14 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	var sessionID *int64
 	var isCash bool
 	if in.Status == domain.ExpensePagada {
-		if in.MethodID == nil {
-			return 0, domain.ErrValidation // pagar exige método
+		if in.MethodID == nil || in.RegisterID == nil {
+			return 0, domain.ErrValidation // pagar exige método y caja
 		}
-		sid, cash, err := s.resolveCashPayment(ctx, *in.MethodID)
+		sid, cash, err := s.resolveExpensePayment(ctx, *in.MethodID, *in.RegisterID)
 		if err != nil {
 			return 0, err
 		}
-		sessionID, isCash = sid, cash
+		isCash, sessionID = cash, &sid
 		params.PaymentMethodID = in.MethodID
 		params.RegisterSessionID = sessionID
 		params.PaidAt = pgtype.Timestamptz{Time: s.now(), Valid: true}
@@ -431,8 +636,9 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	return id, err
 }
 
-// PayExpense marca una pendiente como pagada; en efectivo con caja abierta registra la salida.
-func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID int16, userID int64) error {
+// PayExpense marca una pendiente como pagada contra una caja abierta (registerID); en efectivo
+// registra la salida del cajón en el mismo tx.
+func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID int16, registerID int64, userID int64) error {
 	exp, err := s.store.QC(ctx).GetExpense(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -443,10 +649,11 @@ func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID i
 	if !domain.CanPayExpense(string(exp.Status)) {
 		return domain.ErrConflict // ya pagada/cancelada
 	}
-	sessionID, isCash, err := s.resolveCashPayment(ctx, methodID)
+	sid, isCash, err := s.resolveExpensePayment(ctx, methodID, registerID)
 	if err != nil {
 		return err
 	}
+	sessionID := &sid
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		n, err := q.PayExpense(ctx, db.PayExpenseParams{ID: id, PaymentMethodID: &methodID, RegisterSessionID: sessionID, PaidBy: &userID})
 		if err != nil {
@@ -455,9 +662,9 @@ func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID i
 		if n == 0 {
 			return domain.ErrConflict // carrera: alguien la cambió entre el GET y el UPDATE
 		}
-		if isCash && sessionID != nil {
+		if isCash {
 			return q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: *sessionID, Amount: exp.Amount, Concept: expenseConcept(derefStr(exp.Description)), ExpenseID: &id, UserID: userID,
+				SessionID: sid, Amount: exp.Amount, Concept: expenseConcept(derefStr(exp.Description)), ExpenseID: &id, UserID: userID,
 			})
 		}
 		return nil
@@ -517,27 +724,26 @@ func (s *BackofficeService) ListExpenses(ctx context.Context, status string, lim
 	return out, total, nil
 }
 
-// resolveCashPayment: dado un método de pago, decide si toca el cajón (efectivo) y en qué caja.
-// Efectivo sin caja abierta → se paga igual (petty cash), sin movimiento (sessionID nil).
-func (s *BackofficeService) resolveCashPayment(ctx context.Context, methodID int16) (*int64, bool, error) {
+// resolveExpensePayment valida el pago de un gasto contra una caja: TODO gasto pagado exige que la
+// caja elegida (registerID) tenga una sesión abierta — sin ella, ErrConflict (no hay caja abierta),
+// ya no hay fallback de "petty cash". Devuelve el id de esa sesión (para ligar el gasto) y si el
+// método toca el cajón (efectivo → salida de efectivo).
+func (s *BackofficeService) resolveExpensePayment(ctx context.Context, methodID int16, registerID int64) (int64, bool, error) {
 	m, err := s.store.QC(ctx).GetPaymentMethod(ctx, methodID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, false, domain.ErrValidation // método inexistente
+			return 0, false, domain.ErrValidation // método inexistente
 		}
-		return nil, false, err
+		return 0, false, err
 	}
-	if !m.AffectsCashDrawer {
-		return nil, false, nil
-	}
-	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
+	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, true, nil // efectivo pero sin caja abierta
+			return 0, false, domain.ErrConflict // la caja elegida no está abierta (o no existe)
 		}
-		return nil, true, err
+		return 0, false, err
 	}
-	return &sess.ID, true, nil
+	return sess.ID, m.AffectsCashDrawer, nil
 }
 
 func expenseConcept(description string) string {

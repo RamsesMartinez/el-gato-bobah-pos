@@ -13,6 +13,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const anyOpenSession = `-- name: AnyOpenSession :one
+select exists(select 1 from register_sessions where status = 'abierta')
+`
+
+func (q *Queries) AnyOpenSession(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, anyOpenSession)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const closeSession = `-- name: CloseSession :exec
 update register_sessions set status = 'cerrada', closed_by = $2, closed_at = now(), notes = $3
 where id = $1
@@ -27,6 +38,59 @@ type CloseSessionParams struct {
 func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) error {
 	_, err := q.db.Exec(ctx, closeSession, arg.ID, arg.ClosedBy, arg.Notes)
 	return err
+}
+
+const createCashRegister = `-- name: CreateCashRegister :one
+insert into cash_registers (name) values ($1)
+returning id, name, is_primary, is_active
+`
+
+type CreateCashRegisterRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
+	IsActive  bool   `json:"is_active"`
+}
+
+// is_primary/is_active toman su default (secundaria, activa): la primaria la fija la migración.
+func (q *Queries) CreateCashRegister(ctx context.Context, name string) (CreateCashRegisterRow, error) {
+	row := q.db.QueryRow(ctx, createCashRegister, name)
+	var i CreateCashRegisterRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsPrimary,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const createCashTransfer = `-- name: CreateCashTransfer :one
+insert into cash_transfers (from_session_id, to_session_id, amount, note, created_by)
+values ($1, $2, $3, $4, $5)
+returning id
+`
+
+type CreateCashTransferParams struct {
+	FromSessionID int64           `json:"from_session_id"`
+	ToSessionID   int64           `json:"to_session_id"`
+	Amount        decimal.Decimal `json:"amount"`
+	Note          *string         `json:"note"`
+	CreatedBy     int64           `json:"created_by"`
+}
+
+// Traspasos entre cajas: la fila de traspaso + cada pierna como movimiento ligado.
+func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransferParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createCashTransfer,
+		arg.FromSessionID,
+		arg.ToSessionID,
+		arg.Amount,
+		arg.Note,
+		arg.CreatedBy,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const expectedByMethodSince = `-- name: ExpectedByMethodSince :many
@@ -74,14 +138,37 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 	return items, nil
 }
 
-const getOpenSession = `-- name: GetOpenSession :one
-
-select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency from register_sessions where status = 'abierta' limit 1
+const getCashRegister = `-- name: GetCashRegister :one
+select id, name, is_primary, is_active from cash_registers where id = $1
 `
 
-// Cortes de caja
-func (q *Queries) GetOpenSession(ctx context.Context) (RegisterSession, error) {
-	row := q.db.QueryRow(ctx, getOpenSession)
+type GetCashRegisterRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
+	IsActive  bool   `json:"is_active"`
+}
+
+func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegisterRow, error) {
+	row := q.db.QueryRow(ctx, getCashRegister, id)
+	var i GetCashRegisterRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsPrimary,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getOpenSessionByRegister = `-- name: GetOpenSessionByRegister :one
+
+select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id from register_sessions where register_id = $1 and status = 'abierta' limit 1
+`
+
+// Cortes de caja (sesiones de una caja)
+func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64) (RegisterSession, error) {
+	row := q.db.QueryRow(ctx, getOpenSessionByRegister, registerID)
 	var i RegisterSession
 	err := row.Scan(
 		&i.ID,
@@ -94,6 +181,7 @@ func (q *Queries) GetOpenSession(ctx context.Context) (RegisterSession, error) {
 		&i.ClosedAt,
 		&i.Notes,
 		&i.Currency,
+		&i.RegisterID,
 	)
 	return i, err
 }
@@ -124,8 +212,9 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 }
 
 const getSession = `-- name: GetSession :one
-select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, ob.name as opened_by_name, cb.name as closed_by_name
+select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
 from register_sessions s
+join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
 where s.id = $1
@@ -142,6 +231,8 @@ type GetSessionRow struct {
 	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
 	Notes        *string            `json:"notes"`
 	Currency     string             `json:"currency"`
+	RegisterID   int64              `json:"register_id"`
+	RegisterName string             `json:"register_name"`
 	OpenedByName string             `json:"opened_by_name"`
 	ClosedByName *string            `json:"closed_by_name"`
 }
@@ -160,6 +251,8 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 		&i.ClosedAt,
 		&i.Notes,
 		&i.Currency,
+		&i.RegisterID,
+		&i.RegisterName,
 		&i.OpenedByName,
 		&i.ClosedByName,
 	)
@@ -169,7 +262,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id
 `
 
 type InsertCashMovementParams struct {
@@ -199,6 +292,7 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.ExpenseID,
 		&i.UserID,
 		&i.CreatedAt,
+		&i.TransferID,
 	)
 	return i, err
 }
@@ -228,8 +322,70 @@ func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpen
 	return err
 }
 
+const insertTransferMovement = `-- name: InsertTransferMovement :exec
+insert into register_cash_movements (session_id, kind, amount, concept, user_id, transfer_id)
+values ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertTransferMovementParams struct {
+	SessionID  int64           `json:"session_id"`
+	Kind       string          `json:"kind"`
+	Amount     decimal.Decimal `json:"amount"`
+	Concept    string          `json:"concept"`
+	UserID     int64           `json:"user_id"`
+	TransferID *int64          `json:"transfer_id"`
+}
+
+func (q *Queries) InsertTransferMovement(ctx context.Context, arg InsertTransferMovementParams) error {
+	_, err := q.db.Exec(ctx, insertTransferMovement,
+		arg.SessionID,
+		arg.Kind,
+		arg.Amount,
+		arg.Concept,
+		arg.UserID,
+		arg.TransferID,
+	)
+	return err
+}
+
+const listAllCashRegisters = `-- name: ListAllCashRegisters :many
+select id, name, is_primary, is_active from cash_registers order by is_primary desc, name
+`
+
+type ListAllCashRegistersRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
+	IsActive  bool   `json:"is_active"`
+}
+
+func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegistersRow, error) {
+	rows, err := q.db.Query(ctx, listAllCashRegisters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllCashRegistersRow{}
+	for rows.Next() {
+		var i ListAllCashRegistersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.IsPrimary,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCashMovements = `-- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -237,12 +393,13 @@ order by m.created_at
 `
 
 type ListCashMovementsRow struct {
-	ID        int64           `json:"id"`
-	Kind      string          `json:"kind"`
-	Amount    decimal.Decimal `json:"amount"`
-	Concept   string          `json:"concept"`
-	CreatedAt time.Time       `json:"created_at"`
-	UserName  string          `json:"user_name"`
+	ID         int64           `json:"id"`
+	Kind       string          `json:"kind"`
+	Amount     decimal.Decimal `json:"amount"`
+	Concept    string          `json:"concept"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UserName   string          `json:"user_name"`
+	TransferID *int64          `json:"transfer_id"`
 }
 
 func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]ListCashMovementsRow, error) {
@@ -261,6 +418,101 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.Concept,
 			&i.CreatedAt,
 			&i.UserName,
+			&i.TransferID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCashRegisters = `-- name: ListCashRegisters :many
+
+select r.id, r.name, r.is_primary, r.is_active, s.id as open_session_id
+from cash_registers r
+left join register_sessions s on s.register_id = r.id and s.status = 'abierta'
+where r.is_active
+order by r.is_primary desc, r.name
+`
+
+type ListCashRegistersRow struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	IsPrimary     bool   `json:"is_primary"`
+	IsActive      bool   `json:"is_active"`
+	OpenSessionID *int64 `json:"open_session_id"`
+}
+
+// Cajas (registros físicos con nombre; la primaria recibe las ventas del POS)
+// Cajas activas + el id de su sesión abierta (null si está cerrada). Para pickers y la vista de caja.
+// LEFT JOIN (no subquery escalar) para que sqlc infiera open_session_id como nullable; el índice
+// único one_open_session_per_register garantiza ≤1 sesión abierta por caja (sin duplicar filas).
+func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow, error) {
+	rows, err := q.db.Query(ctx, listCashRegisters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCashRegistersRow{}
+	for rows.Next() {
+		var i ListCashRegistersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.IsPrimary,
+			&i.IsActive,
+			&i.OpenSessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenSessions = `-- name: ListOpenSessions :many
+select s.id, s.register_id, r.name as register_name, r.is_primary, s.opening_cash, s.currency, s.opened_at
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta'
+order by r.is_primary desc, r.name
+`
+
+type ListOpenSessionsRow struct {
+	ID           int64           `json:"id"`
+	RegisterID   int64           `json:"register_id"`
+	RegisterName string          `json:"register_name"`
+	IsPrimary    bool            `json:"is_primary"`
+	OpeningCash  decimal.Decimal `json:"opening_cash"`
+	Currency     string          `json:"currency"`
+	OpenedAt     time.Time       `json:"opened_at"`
+}
+
+// Todas las cajas abiertas (para el POS / aviso y validaciones de traspaso).
+func (q *Queries) ListOpenSessions(ctx context.Context) ([]ListOpenSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listOpenSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenSessionsRow{}
+	for rows.Next() {
+		var i ListOpenSessionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RegisterID,
+			&i.RegisterName,
+			&i.IsPrimary,
+			&i.OpeningCash,
+			&i.Currency,
+			&i.OpenedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -357,9 +609,11 @@ func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]Lis
 
 const listSessions = `-- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
+       r.name as register_name,
        ob.name as opened_by_name, cb.name as closed_by_name,
        coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
 from register_sessions s
+join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
 order by s.opened_at desc limit $1
@@ -374,6 +628,7 @@ type ListSessionsRow struct {
 	OpenedAt        time.Time          `json:"opened_at"`
 	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
 	Notes           *string            `json:"notes"`
+	RegisterName    string             `json:"register_name"`
 	OpenedByName    string             `json:"opened_by_name"`
 	ClosedByName    *string            `json:"closed_by_name"`
 	TotalDifference decimal.Decimal    `json:"total_difference"`
@@ -397,6 +652,7 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 			&i.OpenedAt,
 			&i.ClosedAt,
 			&i.Notes,
+			&i.RegisterName,
 			&i.OpenedByName,
 			&i.ClosedByName,
 			&i.TotalDifference,
@@ -425,19 +681,25 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 }
 
 const openSession = `-- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by)
-values ($1, $2, $3)
-returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency
+insert into register_sessions (business_date, opening_cash, opened_by, register_id)
+values ($1, $2, $3, $4)
+returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id
 `
 
 type OpenSessionParams struct {
 	BusinessDate pgtype.Date     `json:"business_date"`
 	OpeningCash  decimal.Decimal `json:"opening_cash"`
 	OpenedBy     int64           `json:"opened_by"`
+	RegisterID   int64           `json:"register_id"`
 }
 
 func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (RegisterSession, error) {
-	row := q.db.QueryRow(ctx, openSession, arg.BusinessDate, arg.OpeningCash, arg.OpenedBy)
+	row := q.db.QueryRow(ctx, openSession,
+		arg.BusinessDate,
+		arg.OpeningCash,
+		arg.OpenedBy,
+		arg.RegisterID,
+	)
 	var i RegisterSession
 	err := row.Scan(
 		&i.ID,
@@ -450,6 +712,7 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.ClosedAt,
 		&i.Notes,
 		&i.Currency,
+		&i.RegisterID,
 	)
 	return i, err
 }
@@ -474,6 +737,36 @@ func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalPara
 		arg.Declared,
 	)
 	return err
+}
+
+const updateCashRegister = `-- name: UpdateCashRegister :one
+update cash_registers set name = $2, is_active = $3 where id = $1
+returning id, name, is_primary, is_active
+`
+
+type UpdateCashRegisterParams struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	IsActive bool   `json:"is_active"`
+}
+
+type UpdateCashRegisterRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
+	IsActive  bool   `json:"is_active"`
+}
+
+func (q *Queries) UpdateCashRegister(ctx context.Context, arg UpdateCashRegisterParams) (UpdateCashRegisterRow, error) {
+	row := q.db.QueryRow(ctx, updateCashRegister, arg.ID, arg.Name, arg.IsActive)
+	var i UpdateCashRegisterRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsPrimary,
+		&i.IsActive,
+	)
+	return i, err
 }
 
 const updatePaymentMethodAutoDeclare = `-- name: UpdatePaymentMethodAutoDeclare :one
