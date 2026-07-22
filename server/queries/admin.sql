@@ -1,8 +1,9 @@
 -- name: AdminListProducts :many
--- Página filtrada por estado (''=todos | 'act' | 'inact'), búsqueda (''=sin filtro),
--- grupos (''=todos | 'none'=sin grupos activos | 'some'=con grupos) y orden
--- (''=nombre | 'groups'=por cantidad de grupos desc). count(*) over() (tras el filtro de
--- grupos) = total del filtro en la misma consulta, para el paginador (sin viaje extra).
+-- Página filtrada por estado (''=todos | 'act' | 'inact'), búsqueda (''=sin filtro), categoría
+-- (@category_id=0 → todas; elegir una raíz incluye sus subcategorías vía c.parent_id) y grupos
+-- (''=todos | 'none'=sin grupos activos | 'some'=con grupos). Orden por columna: @sort ∈
+-- (''|name|price|cost|margin|category|groups) × @dir (asc|desc); default nombre asc. count(*)
+-- over() (tras el filtro de grupos) = total del filtro en la misma consulta (sin viaje extra).
 select q.*, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
@@ -18,15 +19,32 @@ from (
           or (@status = 'act' and p.is_active)
           or (@status = 'inact' and not p.is_active))
     and (@search::text = '' or p.name ilike '%' || @search || '%')
+    and (@category_id::bigint = 0 or p.category_id = @category_id or c.parent_id = @category_id)
 ) q
 where (@groups::text = ''
         or (@groups = 'none' and q.group_count = 0)
         or (@groups = 'some' and q.group_count > 0))
 order by
-  case when @sort::text = 'groups' and @dir::text = 'asc'  then q.group_count end asc  nulls last,
-  case when @sort::text = 'groups' and @dir::text <> 'asc' then q.group_count end desc nulls last,
+  case when @sort::text = 'price'    and @dir::text = 'asc'  then q.price end asc  nulls last,
+  case when @sort::text = 'price'    and @dir::text <> 'asc' then q.price end desc nulls last,
+  case when @sort::text = 'cost'     and @dir::text = 'asc'  then q.current_cost end asc  nulls last,
+  case when @sort::text = 'cost'     and @dir::text <> 'asc' then q.current_cost end desc nulls last,
+  case when @sort::text = 'margin'   and @dir::text = 'asc'  then (q.price - q.current_cost) end asc  nulls last,
+  case when @sort::text = 'margin'   and @dir::text <> 'asc' then (q.price - q.current_cost) end desc nulls last,
+  case when @sort::text = 'groups'   and @dir::text = 'asc'  then q.group_count end asc  nulls last,
+  case when @sort::text = 'groups'   and @dir::text <> 'asc' then q.group_count end desc nulls last,
+  case when @sort::text = 'category' and @dir::text = 'asc'  then q.category end asc  nulls last,
+  case when @sort::text = 'category' and @dir::text <> 'asc' then q.category end desc nulls last,
+  case when @sort::text = 'name'     and @dir::text = 'desc' then q.name end desc nulls last,
   q.name
 limit nullif(@lim::int, 0) offset @off;  -- lim=0 → sin límite (POS modo edición pide todo)
+
+-- name: AdminCreateProduct :one
+-- Alta mínima de producto (tipo 'simple', activo por defecto). El costo/receta/canales se
+-- configuran después; sku/imagen quedan null.
+insert into products (name, category_id, price, is_favorite, track_stock)
+values ($1, $2, $3, $4, $5)
+returning id;
 
 -- name: AdminProductCounts :one
 -- Totales del catálogo por estado, para las pestañas (independientes de la búsqueda, como antes).

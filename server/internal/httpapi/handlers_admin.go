@@ -27,20 +27,59 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	if groups != "none" && groups != "some" {
 		groups = ""
 	}
-	sort := q.Get("sort") // ""=nombre | "groups"=por cantidad de grupos
-	if sort != "groups" {
+	categoryID := int64(atoiOr(q.Get("categoryId"), 0)) // 0 = todas las categorías
+	if categoryID < 0 {
+		categoryID = 0
+	}
+	// Orden por columna: solo valores conocidos (lo demás → nombre asc, el default del query).
+	sort := q.Get("sort")
+	switch sort {
+	case "name", "price", "cost", "margin", "category", "groups":
+	default:
 		sort = ""
 	}
-	dir := q.Get("dir") // "asc" | "desc" (default desc para grupos)
-	if dir != "asc" {
-		dir = "desc"
+	dir := q.Get("dir")
+	if dir != "desc" {
+		dir = "asc"
 	}
-	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), groups, sort, dir, int32(limit), int32(offset))
+	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, sort, dir, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusOK, page)
+}
+
+// GET /admin/categories — categorías activas para el filtro y el alta de productos.
+func (h *Handlers) AdminCategories(w http.ResponseWriter, r *http.Request) {
+	items, err := h.admin.Categories(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// POST /admin/products — alta de producto (admin/gerente). Invalida la caché del menú.
+func (h *Handlers) AdminCreateProduct(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name       string          `json:"name"`
+		CategoryID int64           `json:"categoryId"`
+		Price      decimal.Decimal `json:"price"`
+		Favorite   bool            `json:"favorite"`
+		TrackStock bool            `json:"trackStock"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	id, err := h.admin.CreateProduct(r.Context(), body.Name, body.CategoryID, body.Price, body.Favorite, body.TrackStock)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.menuChanged(r.Context())
+	JSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
 func atoiOr(s string, def int) int {

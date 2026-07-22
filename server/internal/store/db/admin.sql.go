@@ -12,6 +12,37 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const adminCreateProduct = `-- name: AdminCreateProduct :one
+
+insert into products (name, category_id, price, is_favorite, track_stock)
+values ($1, $2, $3, $4, $5)
+returning id
+`
+
+type AdminCreateProductParams struct {
+	Name       string          `json:"name"`
+	CategoryID int64           `json:"category_id"`
+	Price      decimal.Decimal `json:"price"`
+	IsFavorite bool            `json:"is_favorite"`
+	TrackStock bool            `json:"track_stock"`
+}
+
+// lim=0 → sin límite (POS modo edición pide todo)
+// Alta mínima de producto (tipo 'simple', activo por defecto). El costo/receta/canales se
+// configuran después; sku/imagen quedan null.
+func (q *Queries) AdminCreateProduct(ctx context.Context, arg AdminCreateProductParams) (int64, error) {
+	row := q.db.QueryRow(ctx, adminCreateProduct,
+		arg.Name,
+		arg.CategoryID,
+		arg.Price,
+		arg.IsFavorite,
+		arg.TrackStock,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const adminListModifierOptions = `-- name: AdminListModifierOptions :many
 select mo.id, mo.group_id, mg.name as group_name, mo.name, mo.price_delta, mo.is_favorite, mo.is_active,
        count(*) over() as total
@@ -97,25 +128,36 @@ from (
           or ($1 = 'act' and p.is_active)
           or ($1 = 'inact' and not p.is_active))
     and ($2::text = '' or p.name ilike '%' || $2 || '%')
+    and ($3::bigint = 0 or p.category_id = $3 or c.parent_id = $3)
 ) q
-where ($3::text = ''
-        or ($3 = 'none' and q.group_count = 0)
-        or ($3 = 'some' and q.group_count > 0))
+where ($4::text = ''
+        or ($4 = 'none' and q.group_count = 0)
+        or ($4 = 'some' and q.group_count > 0))
 order by
-  case when $4::text = 'groups' and $5::text = 'asc'  then q.group_count end asc  nulls last,
-  case when $4::text = 'groups' and $5::text <> 'asc' then q.group_count end desc nulls last,
+  case when $5::text = 'price'    and $6::text = 'asc'  then q.price end asc  nulls last,
+  case when $5::text = 'price'    and $6::text <> 'asc' then q.price end desc nulls last,
+  case when $5::text = 'cost'     and $6::text = 'asc'  then q.current_cost end asc  nulls last,
+  case when $5::text = 'cost'     and $6::text <> 'asc' then q.current_cost end desc nulls last,
+  case when $5::text = 'margin'   and $6::text = 'asc'  then (q.price - q.current_cost) end asc  nulls last,
+  case when $5::text = 'margin'   and $6::text <> 'asc' then (q.price - q.current_cost) end desc nulls last,
+  case when $5::text = 'groups'   and $6::text = 'asc'  then q.group_count end asc  nulls last,
+  case when $5::text = 'groups'   and $6::text <> 'asc' then q.group_count end desc nulls last,
+  case when $5::text = 'category' and $6::text = 'asc'  then q.category end asc  nulls last,
+  case when $5::text = 'category' and $6::text <> 'asc' then q.category end desc nulls last,
+  case when $5::text = 'name'     and $6::text = 'desc' then q.name end desc nulls last,
   q.name
-limit nullif($7::int, 0) offset $6
+limit nullif($8::int, 0) offset $7
 `
 
 type AdminListProductsParams struct {
-	Status string `json:"status"`
-	Search string `json:"search"`
-	Groups string `json:"groups"`
-	Sort   string `json:"sort"`
-	Dir    string `json:"dir"`
-	Off    int32  `json:"off"`
-	Lim    int32  `json:"lim"`
+	Status     string `json:"status"`
+	Search     string `json:"search"`
+	CategoryID int64  `json:"category_id"`
+	Groups     string `json:"groups"`
+	Sort       string `json:"sort"`
+	Dir        string `json:"dir"`
+	Off        int32  `json:"off"`
+	Lim        int32  `json:"lim"`
 }
 
 type AdminListProductsRow struct {
@@ -134,14 +176,16 @@ type AdminListProductsRow struct {
 	Total          int64           `json:"total"`
 }
 
-// Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro),
-// grupos (”=todos | 'none'=sin grupos activos | 'some'=con grupos) y orden
-// (”=nombre | 'groups'=por cantidad de grupos desc). count(*) over() (tras el filtro de
-// grupos) = total del filtro en la misma consulta, para el paginador (sin viaje extra).
+// Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro), categoría
+// (@category_id=0 → todas; elegir una raíz incluye sus subcategorías vía c.parent_id) y grupos
+// (”=todos | 'none'=sin grupos activos | 'some'=con grupos). Orden por columna: @sort ∈
+// (”|name|price|cost|margin|category|groups) × @dir (asc|desc); default nombre asc. count(*)
+// over() (tras el filtro de grupos) = total del filtro en la misma consulta (sin viaje extra).
 func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsParams) ([]AdminListProductsRow, error) {
 	rows, err := q.db.Query(ctx, adminListProducts,
 		arg.Status,
 		arg.Search,
+		arg.CategoryID,
 		arg.Groups,
 		arg.Sort,
 		arg.Dir,
@@ -204,7 +248,6 @@ func (q *Queries) AdminModifierOptionCounts(ctx context.Context) (AdminModifierO
 }
 
 const adminProductCounts = `-- name: AdminProductCounts :one
-
 select count(*) filter (where is_active)::int as active,
        count(*) filter (where not is_active)::int as inactive
 from products
@@ -215,7 +258,6 @@ type AdminProductCountsRow struct {
 	Inactive int32 `json:"inactive"`
 }
 
-// lim=0 → sin límite (POS modo edición pide todo)
 // Totales del catálogo por estado, para las pestañas (independientes de la búsqueda, como antes).
 func (q *Queries) AdminProductCounts(ctx context.Context) (AdminProductCountsRow, error) {
 	row := q.db.QueryRow(ctx, adminProductCounts)

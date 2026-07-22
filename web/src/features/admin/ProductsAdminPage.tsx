@@ -1,21 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Table, Center, Spinner, Input, Badge, Button, ButtonGroup,
-  IconButton, HStack, Pagination, useDisclosure, Text,
+  IconButton, HStack, VStack, Pagination, useDisclosure, Text,
 } from '@chakra-ui/react';
-import { LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuArrowUp, LuArrowDown } from 'react-icons/lu';
+import { LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuArrowUp, LuArrowDown, LuPlus } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { adminApi, type AdminProduct } from '../../api/admin';
+import { adminApi, type AdminProduct, type Category, type ProductSort } from '../../api/admin';
 import { money } from '../../utils/format';
 import { Page } from '../../components/Page';
+import { Picker, type PickerOption } from '../../components/Picker';
+import { Switch } from '../../components/ui/switch';
 import { ConfirmPopover } from '../../components/ui/confirm-popover';
 import { ProductEditDialog } from './ProductEditDialog';
 import { ProductGroupsDialog } from './ProductGroupsDialog';
+import {
+  DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
+  DialogTitle, DialogCloseTrigger,
+} from '../../components/ui/dialog';
+import { Field } from '../../components/ui/field';
 
 const PAGE_SIZE = 25;
 
 type GroupsFilter = '' | 'some' | 'none';
+
+// Etiqueta de categoría con prefijo del padre ("Bebidas › Calientes") para desambiguar subcategorías.
+function categoryOptions(cats: Category[]): PickerOption[] {
+  const nameById = new Map(cats.map((c) => [c.id, c.name]));
+  return cats.map((c) => ({
+    value: String(c.id),
+    label: c.parentId ? `${nameById.get(c.parentId) ?? '—'} › ${c.name}` : c.name,
+  }));
+}
 
 export function ProductsAdminPage() {
   const qc = useQueryClient();
@@ -23,12 +39,14 @@ export function ProductsAdminPage() {
   const [dsearch, setDsearch] = useState(''); // debounced: 1 request por pausa de tecleo, no por tecla
   const [status, setStatus] = useState<'act' | 'inact' | 'all'>('act');
   const [groupsFilter, setGroupsFilter] = useState<GroupsFilter>(''); // con/sin grupos
-  const [sort, setSort] = useState<'name' | 'groups'>('name');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+  const [categoryId, setCategoryId] = useState(''); // '' = todas
+  const [sort, setSort] = useState<ProductSort>('name');
+  const [dir, setDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1); // 1-based, como el paginador de Chakra
   const [edit, setEdit] = useState<AdminProduct | null>(null);
   const [groupsProduct, setGroupsProduct] = useState<AdminProduct | null>(null);
   const modal = useDisclosure();
+  const newModal = useDisclosure();
 
   useEffect(() => {
     const t = setTimeout(() => { setDsearch(search); setPage(1); }, 300); // nueva búsqueda → página 1
@@ -36,13 +54,16 @@ export function ProductsAdminPage() {
   }, [search]);
   // los demás filtros resetean la página en su propio handler (sin efecto → sin renders en cascada).
 
+  const { data: catData } = useQuery({ queryKey: ['admin', 'categories'], queryFn: adminApi.categories });
+  const catOptions = useMemo(() => categoryOptions(catData?.items ?? []), [catData]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, sort, dir, page }],
+    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, categoryId, sort, dir, page }],
     queryFn: () => adminApi.products({
       status, search: dsearch,
       groups: groupsFilter || undefined,
-      sort: sort === 'groups' ? 'groups' : undefined,
-      dir: sort === 'groups' ? dir : undefined,
+      categoryId: categoryId ? Number(categoryId) : undefined,
+      sort, dir,
       limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
     }),
     placeholderData: keepPreviousData, // no parpadea al cambiar de página
@@ -71,8 +92,6 @@ export function ProductsAdminPage() {
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
 
-  if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
-
   const TABS: Array<{ k: typeof status; label: string; n: number }> = [
     { k: 'act', label: 'Activos', n: counts.act },
     { k: 'inact', label: 'Inactivos', n: counts.inact },
@@ -84,11 +103,10 @@ export function ProductsAdminPage() {
     { k: 'none', label: 'Sin grupos' },
   ];
 
-  // 1er clic en «Grupos» → orden desc; 2º → asc; 3º → vuelve a nombre.
-  const toggleGroupSort = () => {
-    if (sort !== 'groups') { setSort('groups'); setDir('desc'); }
-    else if (dir === 'desc') setDir('asc');
-    else setSort('name');
+  // Orden por columna: 1er clic ordena (texto asc / número desc); reclics alternan asc/desc.
+  const onSort = (col: ProductSort, numeric = false) => {
+    if (sort === col) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSort(col); setDir(numeric ? 'desc' : 'asc'); }
     setPage(1);
   };
 
@@ -97,7 +115,12 @@ export function ProductsAdminPage() {
   return (
     <Page maxW="1150px" fill>
       <HStack mb={4} gap={3} wrap="wrap" flexShrink={0}>
-        <Input placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} maxW="280px" bg="bg.panel" />
+        <Input placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} maxW="240px" bg="bg.panel" />
+        <Box minW="220px">
+          <Picker value={categoryId} onChange={(v) => { setCategoryId(v); setPage(1); }}
+            placeholder="Todas las categorías" title="Filtrar por categoría"
+            clearable clearLabel="Todas las categorías" options={catOptions} />
+        </Box>
         <HStack gap={1} bg="bg.muted" p={1} borderRadius="lg">
           {TABS.map((t) => (
             <Button key={t.k} size="sm" variant={status === t.k ? 'solid' : 'ghost'}
@@ -114,24 +137,19 @@ export function ProductsAdminPage() {
             </Button>
           ))}
         </HStack>
+        <Button size="sm" colorPalette="green" ml="auto" onClick={newModal.onOpen}><LuPlus /> Nuevo producto</Button>
       </HStack>
 
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="auto" flex="1" minH={0}>
         <Table.Root size="sm" stickyHeader>
           <Table.Header>
             <Table.Row bg="bg.panel">
-              <Table.ColumnHeader>Producto</Table.ColumnHeader>
-              <Table.ColumnHeader>Categoría</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Precio</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Costo</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Margen</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="center" cursor="pointer" userSelect="none" onClick={toggleGroupSort}
-                title="Ordenar por cantidad de grupos">
-                <HStack gap={1} justify="center">
-                  <Text as="span">Grupos</Text>
-                  {sort === 'groups' && (dir === 'asc' ? <LuArrowUp size={12} /> : <LuArrowDown size={12} />)}
-                </HStack>
-              </Table.ColumnHeader>
+              <SortHead label="Producto" col="name" sort={sort} dir={dir} onSort={onSort} />
+              <SortHead label="Categoría" col="category" sort={sort} dir={dir} onSort={onSort} />
+              <SortHead label="Precio" col="price" sort={sort} dir={dir} onSort={onSort} numeric align="end" />
+              <SortHead label="Costo" col="cost" sort={sort} dir={dir} onSort={onSort} numeric align="end" />
+              <SortHead label="Margen" col="margin" sort={sort} dir={dir} onSort={onSort} numeric align="end" />
+              <SortHead label="Grupos" col="groups" sort={sort} dir={dir} onSort={onSort} numeric align="center" />
               <Table.ColumnHeader></Table.ColumnHeader>
             </Table.Row>
           </Table.Header>
@@ -181,8 +199,12 @@ export function ProductsAdminPage() {
                 </Table.Cell>
               </Table.Row>
             ))}
+            {!isLoading && items.length === 0 && (
+              <Table.Row><Table.Cell colSpan={7}><Center py={12}><Text color="fg.muted">Sin resultados.</Text></Center></Table.Cell></Table.Row>
+            )}
           </Table.Body>
         </Table.Root>
+        {isLoading && <Center py={16}><Spinner size="xl" /></Center>}
       </Box>
 
       <HStack mt={3} pt={3} borderTopWidth="1px" justify="space-between" wrap="wrap" gap={2} flexShrink={0}>
@@ -211,6 +233,91 @@ export function ProductsAdminPage() {
       <ProductEditDialog product={edit} isOpen={modal.open} onClose={modal.onClose} />
       <ProductGroupsDialog productId={groupsProduct?.id ?? null} productName={groupsProduct?.name ?? ''}
         isOpen={groupsProduct !== null} onClose={() => setGroupsProduct(null)} />
+      <NewProductDialog isOpen={newModal.open} onClose={newModal.onClose} categoryOptions={catOptions} />
     </Page>
+  );
+}
+
+// Cabecera de columna ordenable: clic alterna asc/desc y muestra la flecha en la columna activa.
+function SortHead({ label, col, sort, dir, onSort, numeric, align }: {
+  label: string;
+  col: ProductSort;
+  sort: ProductSort;
+  dir: 'asc' | 'desc';
+  onSort: (col: ProductSort, numeric?: boolean) => void;
+  numeric?: boolean;
+  align?: 'end' | 'center';
+}) {
+  const active = sort === col;
+  const justify = align === 'end' ? 'end' : align === 'center' ? 'center' : 'start';
+  return (
+    <Table.ColumnHeader textAlign={align} cursor="pointer" userSelect="none" onClick={() => onSort(col, numeric)}
+      title={`Ordenar por ${label.toLowerCase()}`}>
+      <HStack gap={1} justify={justify}>
+        <Text as="span">{label}</Text>
+        {active && (dir === 'asc' ? <LuArrowUp size={12} /> : <LuArrowDown size={12} />)}
+      </HStack>
+    </Table.ColumnHeader>
+  );
+}
+
+// Alta de producto (nombre, categoría, precio, favorito). Invalida catálogo + menú al crear.
+function NewProductDialog({ isOpen, onClose, categoryOptions }: {
+  isOpen: boolean; onClose: () => void; categoryOptions: PickerOption[];
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [price, setPrice] = useState('');
+  const [favorite, setFavorite] = useState(false);
+
+  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); };
+  const create = useMutation({
+    mutationFn: () => adminApi.createProduct({
+      name: name.trim(), categoryId: Number(categoryId), price: parseFloat(price) || 0, favorite,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
+      reset(); onClose();
+      toaster.create({ title: 'Producto creado', type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo crear', description: String(e), type: 'error' }),
+  });
+  const canCreate = name.trim().length > 0 && !!categoryId && (parseFloat(price) || 0) >= 0 && price !== '';
+
+  return (
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }}>
+      <DialogBackdrop />
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nuevo producto</DialogTitle></DialogHeader>
+        <DialogCloseTrigger />
+        <DialogBody>
+          <VStack align="stretch" gap={4}>
+            <Field label="Nombre">
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Latte" />
+            </Field>
+            <Field label="Categoría">
+              <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
+                options={categoryOptions} />
+            </Field>
+            <Field label="Precio">
+              <Input type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+            </Field>
+            <HStack justify="space-between">
+              <Text>Favorito</Text>
+              <Switch checked={favorite} onCheckedChange={(e) => setFavorite(e.checked)} />
+            </HStack>
+            <Text fontSize="xs" color="fg.muted">
+              El costo, la receta y los grupos modificadores se configuran después, al editar el producto.
+            </Text>
+          </VStack>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" mr={3} onClick={() => { onClose(); reset(); }}>Cancelar</Button>
+          <Button colorPalette="green" disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>Crear</Button>
+        </DialogFooter>
+      </DialogContent>
+    </DialogRoot>
   );
 }

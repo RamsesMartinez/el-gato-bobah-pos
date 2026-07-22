@@ -24,12 +24,24 @@ export interface AdminProduct {
   overrideCount: number; // grupos con min/max personalizado en este producto
 }
 
+// Categoría (para filtro y alta de productos).
+export interface Category {
+  id: number;
+  name: string;
+  parentId: number | null;
+}
+
+// Columnas ordenables de la tabla de productos (espejo de AdminListProducts en el backend).
+export type ProductSort = 'name' | 'price' | 'cost' | 'margin' | 'category' | 'groups';
+
 export interface ProductsQuery {
   status?: 'act' | 'inact' | 'all';
   search?: string;
-  sort?: 'name' | 'options' | 'products' | 'groups'; // 'options'/'products' solo grupos; 'groups' solo productos
+  // 'options'/'products' solo aplican a la página de grupos; el resto son columnas de productos.
+  sort?: 'options' | 'products' | ProductSort;
   dir?: 'asc' | 'desc';
   groups?: 'none' | 'some'; // solo productos: filtra por con/sin grupos activos
+  categoryId?: number;      // solo productos: filtra por categoría (incluye subcategorías)
   limit?: number;
   offset?: number;
 }
@@ -56,6 +68,7 @@ function pageQs(p: ProductsQuery): string {
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   if (p.groups) qs.set('groups', p.groups);
+  if (p.categoryId) qs.set('categoryId', String(p.categoryId));
   qs.set('limit', String(p.limit ?? 25));
   qs.set('offset', String(p.offset ?? 0));
   return qs.toString();
@@ -72,7 +85,10 @@ export const adminApi = {
   setUserPin: (id: number, pin: string) =>
     api.post<void>(`/users/${id}/pin`, { pin }),
 
+  categories: () => api.get<{ items: Category[] }>('/admin/categories'),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
+  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean }) =>
+    api.post<{ id: number }>('/admin/products', b),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
 
