@@ -74,8 +74,11 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
-		authFails: newRateLimiter(authFailMax, authFailWindow),
-		authIPs:   newRateLimiter(60, time.Minute),
+		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
+		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
+		// limiters comparten la misma instancia de Redis sin pisarse las claves.
+		authFails: newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-fails:", authFailMax, authFailWindow),
+		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", 60, time.Minute),
 	}
 }
 
@@ -143,14 +146,14 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Lockout por cuenta = empresa+usuario: bloquea antes de tocar bcrypt tras demasiados fallos.
 	key := "login:" + body.Slug + ":" + body.Username
-	if h.authFails.blocked(key) {
+	if h.authFails.blocked(r.Context(), key) {
 		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "login", "slug", body.Slug, "username", body.Username, "ip", clientIP(r))
-		tooManyRequests(w, h.authFails.retryAfter(key))
+		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
 		return
 	}
 	s, err := h.auth.Login(r.Context(), body.Username, body.Slug, body.Password)
 	if err != nil {
-		h.authFails.record(key)
+		h.authFails.record(r.Context(), key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
 			logging.SecurityEvent(r.Context(), "login_failed", "slug", body.Slug, "username", body.Username, "ip", clientIP(r))
 			// Mensaje un poco más orientativo SIN revelar cuál de los tres falló (anti-enumeración):
@@ -161,7 +164,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.authFails.reset(key) // success: don't penalize the next legit login
+	h.authFails.reset(r.Context(), key) // success: don't penalize the next legit login
 	h.writeSession(w, s, http.StatusOK)
 }
 
@@ -178,21 +181,21 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	// PIN keyspace is tiny (4 digits) — lock per target user id, which the caller
 	// controls in the body, so guessing any operator's PIN is throttled.
 	key := "pin:" + strconv.FormatInt(body.UserID, 10)
-	if h.authFails.blocked(key) {
+	if h.authFails.blocked(r.Context(), key) {
 		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", body.UserID, "ip", clientIP(r))
-		tooManyRequests(w, h.authFails.retryAfter(key))
+		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
 		return
 	}
 	s, err := h.auth.PinSwitch(r.Context(), body.UserID, body.PIN)
 	if err != nil {
-		h.authFails.record(key)
+		h.authFails.record(r.Context(), key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
 			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", body.UserID, "ip", clientIP(r))
 		}
 		Error(w, err)
 		return
 	}
-	h.authFails.reset(key)
+	h.authFails.reset(r.Context(), key)
 	h.writeSession(w, s, http.StatusOK)
 }
 
