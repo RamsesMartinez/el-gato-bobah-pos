@@ -1,6 +1,14 @@
 # Cloudflare Pages headers (sintaxis propia, no un Caddyfile). Antes vivían en deploy/Caddyfile,
 # pero el frontend ya no lo sirve Caddy — ahora Cloudflare Pages. connect-src debe listar el
 # dominio de la API explícitamente: ya no es mismo-origen.
+
+# El service worker y el manifest NUNCA se cachean en HTTP: si el navegador sirve un sw.js viejo
+# desde caché, la detección de "versión nueva" se desincroniza y puede entrar en bucle de recarga.
+# (Los assets con hash en el nombre sí se cachean fuerte; eso lo hace Cloudflare Pages solo.)
+/sw.js
+  Cache-Control: no-cache
+/manifest.json
+  Cache-Control: no-cache
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
