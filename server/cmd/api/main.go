@@ -19,8 +19,10 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/cache"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/hibp"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/mailer"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
@@ -29,6 +31,7 @@ import (
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "ping local /healthz and exit (for Docker HEALTHCHECK)")
 	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
+	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (ADMIN_*) y sale")
 	flag.Parse()
 
 	loadEnvFile() // carga deploy/.env de forma literal (soporta # $ espacios, sin expansión de shell)
@@ -51,38 +54,80 @@ func main() {
 	slog.SetDefault(logger)
 
 	ctx := context.Background()
-	st, err := store.New(ctx, cfg.DatabaseURL)
+	// Dual-pool multi-tenant: el store ADMIN (owner/superuser, DATABASE_URL) migra y hace
+	// bootstrap — salta RLS, necesario para DDL/backfills/provisioning. El store de SERVICIO
+	// (rol gatobobah_app, APP_DATABASE_URL) atiende requests SUJETO a RLS (un superuser la
+	// saltaría). Si no hay APP_DATABASE_URL, cae a DATABASE_URL (dev single-tenant sin aislamiento).
+	admin, err := store.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("store", "error", err)
 		os.Exit(1)
 	}
-	defer st.Close()
 
-	if err := store.Migrate(ctx, st.Pool); err != nil {
+	if err := store.Migrate(ctx, admin.Pool); err != nil {
 		slog.Error("migrate", "error", err)
+		admin.Close()
+		os.Exit(1)
+	}
+	if err := ensureAppRolePassword(ctx, admin, cfg.AppDBPassword); err != nil {
+		slog.Error("app role password", "error", err)
+		admin.Close()
 		os.Exit(1)
 	}
 
 	if *resetAdmin {
-		if err := resetAdminUser(ctx, st); err != nil {
+		if err := resetAdminUser(ctx, admin); err != nil {
 			slog.Error("reset admin", "error", err)
+			admin.Close()
 			os.Exit(1)
 		}
 		slog.Info("admin actualizado")
+		admin.Close()
 		return
 	}
 
-	if err := bootstrapAdmin(ctx, st); err != nil {
+	if *createCompany {
+		if err := provisionCompany(ctx, admin); err != nil {
+			slog.Error("create company", "error", err)
+			admin.Close()
+			os.Exit(1)
+		}
+		admin.Close()
+		return
+	}
+
+	if err := bootstrapAdmin(ctx, admin); err != nil {
 		slog.Error("bootstrap admin", "error", err)
+		admin.Close()
 		os.Exit(1)
+	}
+	admin.Close() // ya no se usa: servir va por el rol de app bajo RLS
+
+	st, err := store.New(ctx, cfg.AppDatabaseURLOrDefault())
+	if err != nil {
+		slog.Error("serving store", "error", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	// Verificación en runtime de que el aislamiento multi-tenant ES real (no solo config). Solo
+	// cuando servimos con el rol de app dedicado (APP_DATABASE_URL); en dev sin él se sirve como
+	// owner single-tenant a propósito. Aborta si el rol saltaría RLS → jamás servir sin aislar.
+	if cfg.AppDatabaseURL != "" {
+		if err := assertRLSEnforced(ctx, st); err != nil {
+			slog.Error("aislamiento multi-tenant no garantizado", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	jm := auth.NewManager(cfg.JWTSecret, nil)
+	hibpClient := hibp.New(&http.Client{Timeout: 5 * time.Second})
+	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.MailFrom)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:        cfg,
 		JWT:        jm,
 		Auth:       app.NewAuthService(st, jm, nil),
-		Users:      app.NewUsersService(st),
+		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled),
 		Menu:       app.NewMenuService(st, nil),
 		MenuCache:  cache.NewMenuCache(cfg.RedisURL),
 		Suggest:    app.NewSuggestService(st, nil),
@@ -91,9 +136,11 @@ func main() {
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
 		Settings:   app.NewSettingsService(st),
+		Company:    app.NewCompanyService(st),
+		Reset:      app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:     realtime.NewBroker(),
 	})
-	router := httpapi.Router(cfg, jm, handlers, st.Pool.Ping)
+	router := httpapi.Router(cfg, jm, handlers, st)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -124,12 +171,125 @@ func main() {
 	}
 }
 
-// bootstrapAdmin creates the first admin if the users table is empty, using
-// ADMIN_USERNAME / ADMIN_PASSWORD (required) and ADMIN_PIN (optional) from the
-// environment. No hardcoded credentials: if they're missing on an empty DB the
-// API refuses to start with a clear message.
+// assertRLSEnforced verifica en runtime que el rol de servicio NO puede saltar RLS: (1) no es
+// superuser ni bypassrls; (2) prueba funcional — sin contexto de tenant, `users` (que tras el
+// bootstrap tiene ≥1 fila) debe verse VACÍA por RLS. Si se ven filas, el rol está saltando RLS
+// (es owner/superuser) y servir así filtraría datos entre empresas → abortar.
+func assertRLSEnforced(ctx context.Context, st *store.Store) error {
+	var bypass bool
+	if err := st.Pool.QueryRow(ctx,
+		"select coalesce(bool_or(rolsuper or rolbypassrls), false) from pg_roles where rolname = current_user").Scan(&bypass); err != nil {
+		return err
+	}
+	if bypass {
+		return fmt.Errorf("el rol de servicio (%s) es superuser/bypassrls: RLS no aislaría los tenants", "current_user")
+	}
+	var n int
+	if err := st.Pool.QueryRow(ctx, "select count(*) from users").Scan(&n); err != nil {
+		return err
+	}
+	if n != 0 {
+		return fmt.Errorf("RLS no aísla: sin contexto de tenant se ven %d usuarios (el rol de servicio no debe ser el owner de las tablas)", n)
+	}
+	return nil
+}
+
+// ensureAppRolePassword le fija el password al rol gatobobah_app (creado sin password en la
+// migración 0024 para no versionar secretos). Corre como owner (admin store). No-op si no se
+// definió APP_DB_PASSWORD (dev que sirve como owner). El password de un rol NO admite parámetro
+// en DDL → se escapa como literal SQL; viene de env de confianza (deploy/.env).
+func ensureAppRolePassword(ctx context.Context, st *store.Store, pw string) error {
+	if pw == "" {
+		return nil
+	}
+	lit := "'" + strings.ReplaceAll(pw, "'", "''") + "'"
+	_, err := st.Pool.Exec(ctx, "alter role gatobobah_app with login password "+lit)
+	return err
+}
+
+// defaultCompany resuelve (o crea) la empresa de arranque por COMPANY_SLUG (default 'gatobobah',
+// sembrada en la migración 0022) y devuelve su id. Provisioning de plataforma → corre como owner.
+func defaultCompany(ctx context.Context, st *store.Store) (int64, error) {
+	slug := envOr("COMPANY_SLUG", "gatobobah")
+	id, err := st.Q.ResolveCompanyBySlug(ctx, slug)
+	if err != nil {
+		return 0, err
+	}
+	if id != 0 {
+		return id, nil
+	}
+	co, err := st.Q.CreateCompany(ctx, db.CreateCompanyParams{Slug: slug, Name: envOr("COMPANY_NAME", slug)})
+	if err != nil {
+		return 0, err
+	}
+	return co.ID, nil
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// provisionCompany crea una empresa NUEVA (COMPANY_SLUG/COMPANY_NAME) y su admin inicial
+// (ADMIN_*), para onboarding de un tenant adicional. Operación de plataforma → corre como owner.
+// Falla si el slug ya existe.
+func provisionCompany(ctx context.Context, st *store.Store) error {
+	slug := os.Getenv("COMPANY_SLUG")
+	name := envOr("COMPANY_NAME", slug)
+	username := os.Getenv("ADMIN_USERNAME")
+	password := os.Getenv("ADMIN_PASSWORD")
+	pin := os.Getenv("ADMIN_PIN")
+	if !domain.ValidSlug(slug) {
+		return fmt.Errorf("COMPANY_SLUG inválido (2-40, minúsculas/dígitos/guiones): %q", slug)
+	}
+	if username == "" || password == "" {
+		return fmt.Errorf("define ADMIN_USERNAME/ADMIN_PASSWORD para el admin de la empresa")
+	}
+	if err := checkAdminSecrets(password, pin); err != nil {
+		return err
+	}
+	if err := domain.ValidatePassword(password); err != nil {
+		return err
+	}
+	if existing, err := st.Q.ResolveCompanyBySlug(ctx, slug); err != nil {
+		return err
+	} else if existing != 0 {
+		return fmt.Errorf("el slug %q ya está en uso", slug)
+	}
+	co, err := st.Q.CreateCompany(ctx, db.CreateCompanyParams{Slug: slug, Name: name})
+	if err != nil {
+		return err
+	}
+	pwHash, err := auth.HashSecret(password)
+	if err != nil {
+		return err
+	}
+	params := db.CreateUserParams{
+		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin), PasswordHash: &pwHash,
+	}
+	if pin != "" {
+		pinHash, err := auth.HashSecret(pin)
+		if err != nil {
+			return err
+		}
+		params.PinHash = &pinHash
+	}
+	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
+		_, err := q.CreateUser(ctx, params)
+		return err
+	}); err != nil {
+		return err
+	}
+	slog.Info("empresa provisionada", "slug", slug, "company_id", co.ID, "admin", username)
+	return nil
+}
+
+// bootstrapAdmin creates the first admin (en la empresa por defecto) if the users table is
+// empty, using ADMIN_USERNAME / ADMIN_PASSWORD (required) and ADMIN_PIN (optional).
 func bootstrapAdmin(ctx context.Context, st *store.Store) error {
-	n, err := st.Q.CountUsers(ctx)
+	n, err := st.Q.CountUsers(ctx) // owner: RLS bypassed → cuenta global (arranque = BD vacía)
 	if err != nil {
 		return err
 	}
@@ -145,7 +305,10 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 	if err := checkAdminSecrets(password, pin); err != nil {
 		return err
 	}
-
+	companyID, err := defaultCompany(ctx, st)
+	if err != nil {
+		return err
+	}
 	pwHash, err := auth.HashSecret(password)
 	if err != nil {
 		return err
@@ -163,10 +326,14 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 		}
 		params.PinHash = &pinHash
 	}
-	if _, err := st.Q.CreateUser(ctx, params); err != nil {
+	// WithTenant fija app.company_id → el DEFAULT de users.company_id lo auto-sella al insertar.
+	if err := st.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		_, err := q.CreateUser(ctx, params)
+		return err
+	}); err != nil {
 		return err
 	}
-	slog.Info("admin inicial creado", "username", username)
+	slog.Info("admin inicial creado", "username", username, "company_id", companyID)
 	return nil
 }
 
@@ -255,19 +422,28 @@ func resetAdminUser(ctx context.Context, st *store.Store) error {
 		}
 		pinHash = &h
 	}
-	n, err := st.Q.SetUserSecretsByUsername(ctx, db.SetUserSecretsByUsernameParams{
-		Username: &username, PasswordHash: &pwHash, PinHash: pinHash,
-	})
+	companyID, err := defaultCompany(ctx, st)
 	if err != nil {
 		return err
 	}
-	if n == 0 { // no existía → crear
-		_, err = st.Q.CreateUser(ctx, db.CreateUserParams{
-			Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
-			PasswordHash: &pwHash, PinHash: pinHash,
+	// Scopeado a la empresa por defecto. ponytail: SetUserSecretsByUsername filtra solo por
+	// username; como owner (admin store) RLS no acota, pero en el arranque hay una sola empresa.
+	// Si algún día se resetea admin con multi-empresa poblada, añadir company_id al WHERE.
+	return st.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		n, err := q.SetUserSecretsByUsername(ctx, db.SetUserSecretsByUsernameParams{
+			Username: &username, PasswordHash: &pwHash, PinHash: pinHash,
 		})
-	}
-	return err
+		if err != nil {
+			return err
+		}
+		if n == 0 { // no existía → crear
+			_, err = q.CreateUser(ctx, db.CreateUserParams{
+				Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin),
+				PasswordHash: &pwHash, PinHash: pinHash,
+			})
+		}
+		return err
+	})
 }
 
 func runHealthcheck(port string) int {

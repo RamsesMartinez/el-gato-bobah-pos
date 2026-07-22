@@ -12,7 +12,8 @@ import (
 // lo arma desde Postgres y lo cachea.
 func (h *Handlers) PosMenu(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if b, ok := h.menuCache.Get(ctx); ok {
+	u, _ := userFrom(ctx)
+	if b, ok := h.menuCache.Get(ctx, u.CompanyID); ok {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(b)
@@ -28,7 +29,7 @@ func (h *Handlers) PosMenu(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.menuCache.Set(ctx, b)
+	h.menuCache.Set(ctx, u.CompanyID, b)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
@@ -38,7 +39,8 @@ func (h *Handlers) PosMenu(w http.ResponseWriter, r *http.Request) {
 // Redis primero; si falla, lo calcula desde Postgres y lo cachea 5 min.
 func (h *Handlers) PosPopular(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if b, ok := h.menuCache.GetPopular(ctx); ok {
+	u, _ := userFrom(ctx)
+	if b, ok := h.menuCache.GetPopular(ctx, u.CompanyID); ok {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(b)
@@ -54,7 +56,7 @@ func (h *Handlers) PosPopular(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.menuCache.SetPopular(ctx, b)
+	h.menuCache.SetPopular(ctx, u.CompanyID, b)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
@@ -63,7 +65,8 @@ func (h *Handlers) PosPopular(w http.ResponseWriter, r *http.Request) {
 // GET /pos/modifier-defaults — opciones de modificador más probables por contexto
 // (producto→grupo→[optionId rankeadas]). El POS las usa para preseleccionar.
 func (h *Handlers) ModifierDefaults(w http.ResponseWriter, r *http.Request) {
-	defaults, err := h.suggest.Defaults(r.Context())
+	u, _ := userFrom(r.Context())
+	defaults, err := h.suggest.Defaults(r.Context(), u.CompanyID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -77,9 +80,10 @@ func (h *Handlers) ModifierDefaults(w http.ResponseWriter, r *http.Request) {
 // OJO: recarga ESTADO, no CÓDIGO — cambios de lógica siguen requiriendo recompilar.
 func (h *Handlers) AdminReload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	h.menuCache.Invalidate(ctx)
-	h.menuCache.InvalidatePopular(ctx)
-	h.suggest.Invalidate()
+	u, _ := userFrom(ctx)
+	h.menuCache.Invalidate(ctx, u.CompanyID)
+	h.menuCache.InvalidatePopular(ctx, u.CompanyID)
+	h.suggest.Invalidate(u.CompanyID)
 	JSON(w, http.StatusOK, map[string]any{"reloaded": []string{"menu", "popular", "recommendations"}})
 }
 

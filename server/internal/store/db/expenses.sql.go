@@ -31,6 +31,18 @@ func (q *Queries) CancelExpense(ctx context.Context, arg CancelExpenseParams) (i
 	return result.RowsAffected(), nil
 }
 
+const countExpenses = `-- name: CountExpenses :one
+select count(*) from expenses e
+where ($1::expense_status is null or e.status = $1)
+`
+
+func (q *Queries) CountExpenses(ctx context.Context, status *ExpenseStatus) (int64, error) {
+	row := q.db.QueryRow(ctx, countExpenses, status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createExpense = `-- name: CreateExpense :one
 
 insert into expenses (
@@ -269,11 +281,12 @@ left join payment_methods pm on pm.id = e.payment_method_id
 left join users ub on ub.id = e.created_by
 where ($1::expense_status is null or e.status = $1)
 order by e.expense_date desc, e.id desc
-limit $2
+limit $3 offset $2
 `
 
 type ListExpensesParams struct {
 	Status *ExpenseStatus `json:"status"`
+	Off    int32          `json:"off"`
 	Lim    int32          `json:"lim"`
 }
 
@@ -294,7 +307,7 @@ type ListExpensesRow struct {
 }
 
 func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error) {
-	rows, err := q.db.Query(ctx, listExpenses, arg.Status, arg.Lim)
+	rows, err := q.db.Query(ctx, listExpenses, arg.Status, arg.Off, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

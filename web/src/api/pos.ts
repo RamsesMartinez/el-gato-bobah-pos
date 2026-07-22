@@ -3,13 +3,31 @@ import type { BoardOrder, Menu, OrderView, PaymentMethod, RankedOption } from '.
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
-  login: (username: string, password: string) =>
-    api.post<{ accessToken: string; user: SessionUser }>('/auth/login', { username, password }),
+  // Login multi-empresa: un solo identificador usuario@empresa. El backend separa el @ y
+  // resuelve la empresa por su slug.
+  login: (identifier: string, password: string) =>
+    api.post<{ accessToken: string; user: SessionUser }>('/auth/login', { username: identifier, password }),
   pinSwitch: (userId: number, pin: string) =>
     api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch', { userId, pin }),
   // Revoca el refresh token y borra la cookie en el server. Sin esto, "Salir" solo limpia
   // memoria y la sesión revive tras un reload (el arranque canjea la cookie que sobrevive).
   logout: () => api.post<void>('/auth/logout'),
+
+  // Recuperación de contraseña. forgot: un solo identificador usuario@empresa; siempre 204
+  // (anti-enumeración). reset: token del email.
+  forgotPassword: (identifier: string) =>
+    api.post<void>('/auth/forgot', { username: identifier }),
+  resetPassword: (token: string, password: string) =>
+    api.post<void>('/auth/reset', { token, password }),
+
+  // Cuenta propia (cualquier empleado).
+  changeOwnPassword: (currentPassword: string, newPassword: string) =>
+    api.post<void>('/me/password', { currentPassword, newPassword }),
+  setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
+
+  // Empresa (tenant). GET cualquiera; PATCH solo admin/gerente (backend aplica el 403).
+  company: () => api.get<Company>('/company'),
+  updateCompany: (name: string, slug: string) => api.patch<Company>('/company', { name, slug }),
 
   menu: () => api.get<Menu>('/pos/menu'),
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).
@@ -45,6 +63,13 @@ export interface BusinessSettings {
   deliveryFee: string;
 }
 
+export interface Company {
+  id: number;
+  slug: string;
+  name: string;
+  isActive: boolean;
+}
+
 export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;
 
 export interface CreateOrderBody {
@@ -59,5 +84,6 @@ export interface CreateOrderBody {
     notes?: string;
     modifiers: Array<{ optionId: number; qty: number }>;
   }>;
-  payment?: { methodId: number; amount: number; tip?: number };
+  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
+  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
 }

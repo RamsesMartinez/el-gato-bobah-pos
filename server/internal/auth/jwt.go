@@ -21,6 +21,10 @@ var ErrInvalidToken = errors.New("token inválido")
 type Claims struct {
 	Name string      `json:"name"`
 	Role domain.Role `json:"role"`
+	// CompanyID es el tenant del usuario: el middleware lo usa para fijar el GUC de RLS. Va
+	// firmado en el JWT (no manipulable por el cliente). Slug es solo para UX (mostrar user@slug).
+	CompanyID int64  `json:"cid"`
+	Slug      string `json:"slug,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -40,8 +44,10 @@ func NewManager(secret string, now func() time.Time) *Manager {
 func (m *Manager) Issue(u domain.User) (string, error) {
 	now := m.now()
 	claims := Claims{
-		Name: u.Name,
-		Role: u.Role,
+		Name:      u.Name,
+		Role:      u.Role,
+		CompanyID: u.CompanyID,
+		Slug:      u.CompanySlug,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   strconv.FormatInt(u.ID, 10),
 			IssuedAt:  jwt.NewNumericDate(now),

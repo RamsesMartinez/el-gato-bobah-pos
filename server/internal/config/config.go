@@ -15,15 +15,48 @@ const minSecretLen = 32
 type Config struct {
 	Port        string `env:"PORT" envDefault:"8080"`
 	DatabaseURL string `env:"DATABASE_URL,required"`
-	RedisURL    string `env:"REDIS_URL" envDefault:""`
-	JWTSecret   string `env:"JWT_SECRET,required"`
-	LogLevel    string `env:"LOG_LEVEL" envDefault:"info"`
-	LogDir      string `env:"LOG_DIR" envDefault:"logs"`
+	// AppDatabaseURL: conexión de SERVICIO del API, como el rol no-superusuario gatobobah_app,
+	// para que RLS aplique (un superusuario la saltaría). DATABASE_URL queda para migrar/bootstrap
+	// (owner, salta RLS). Vacío = usa DATABASE_URL (modo sin aislamiento; Validate lo prohíbe en prod).
+	AppDatabaseURL string `env:"APP_DATABASE_URL" envDefault:""`
+	// AppDBPassword: password que el bootstrap le fija al rol gatobobah_app (creado sin password
+	// en la migración para no versionar secretos).
+	AppDBPassword string `env:"APP_DB_PASSWORD" envDefault:""`
+	RedisURL      string `env:"REDIS_URL" envDefault:""`
+	JWTSecret     string `env:"JWT_SECRET,required"`
+	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
+	LogDir        string `env:"LOG_DIR" envDefault:"logs"`
 	// CORSOrigin: exact allowed origin (scheme+host), e.g. https://app.elgatobobah.com.
 	// Empty = same-origin only (no CORS headers). "*" is only honored in development.
 	CORSOrigin string `env:"CORS_ORIGIN" envDefault:""`
 	Env        string `env:"APP_ENV" envDefault:"development"`
+
+	// --- Email (recuperación de contraseña). Local: Mailpit. Prod: Zoho Mail SMTP. ---
+	SMTPHost string `env:"SMTP_HOST" envDefault:""` // vacío = email deshabilitado (recuperación no disponible)
+	SMTPPort int    `env:"SMTP_PORT" envDefault:"1025"`
+	SMTPUser string `env:"SMTP_USER" envDefault:""`
+	SMTPPass string `env:"SMTP_PASS" envDefault:""`
+	MailFrom string `env:"MAIL_FROM" envDefault:"no-reply@elgatobobah.com"`
+	// AppBaseURL: origen público del frontend, para armar el link de reset en el email.
+	AppBaseURL string `env:"APP_BASE_URL" envDefault:"http://localhost:3000"`
+
+	// HIBPEnabled: verifica la contraseña contra Have I Been Pwned (k-anonymity) al fijarla.
+	// Fail-open: si HIBP no responde, se permite (con evento de seguridad) para no bloquear el
+	// alta de usuarios cuando el POS está sin internet.
+	HIBPEnabled bool `env:"HIBP_ENABLED" envDefault:"true"`
 }
+
+// AppDatabaseURLOrDefault devuelve la conexión de servicio (rol app) o, si no se configuró,
+// DATABASE_URL. En producción Validate exige APP_DATABASE_URL para que RLS no quede desactivado.
+func (c Config) AppDatabaseURLOrDefault() string {
+	if c.AppDatabaseURL != "" {
+		return c.AppDatabaseURL
+	}
+	return c.DatabaseURL
+}
+
+// EmailEnabled reports whether SMTP is configured (host set).
+func (c Config) EmailEnabled() bool { return c.SMTPHost != "" }
 
 func Load() (Config, error) {
 	c, err := env.ParseAs[Config]()
@@ -44,6 +77,12 @@ func Validate(c Config) error {
 	}
 	if c.Env == "production" && c.CORSOrigin == "*" {
 		return errors.New("CORS_ORIGIN=* no está permitido en producción: define el origen exacto (https://tu-dominio)")
+	}
+	// Multi-tenant fail-fast: en producción el API DEBE servir como el rol no-superusuario
+	// (APP_DATABASE_URL) para que RLS aísle las empresas. Sin él caería al owner (que salta RLS)
+	// y anularía el aislamiento en silencio. main.go además lo verifica en runtime (assertRLSEnforced).
+	if c.Env == "production" && c.AppDatabaseURL == "" {
+		return errors.New("APP_DATABASE_URL requerido en producción: el API debe conectarse como el rol de app (no-superusuario) para que RLS aísle los tenants")
 	}
 	return nil
 }

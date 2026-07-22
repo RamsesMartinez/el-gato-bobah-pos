@@ -10,6 +10,7 @@ package integration
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -24,39 +25,126 @@ var fixedNow = time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 
 func clock() time.Time { return fixedNow }
 
-func newTestStore(t *testing.T) *store.Store {
+// defaultCompanyID: la empresa 'gatobobah' que siembra la migración 0022 (id=1 en BD limpia).
+const defaultCompanyID = 1
+
+// appRolePassword: password de prueba para gatobobah_app, fijado tras migrar (en prod lo hace
+// el bootstrap desde APP_DB_PASSWORD).
+const appRolePassword = "test_app_pw"
+
+func testURL(t *testing.T) string {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
+	u := os.Getenv("TEST_DATABASE_URL")
+	if u == "" {
 		t.Skip("TEST_DATABASE_URL no definido; omitiendo tests de integración")
 	}
+	return u
+}
+
+func newTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	dbURL := testURL(t)
 	ctx := context.Background()
-	st, err := store.New(ctx, url)
+
+	// Fase de setup en un store temporal (owner): schema limpio + migrar + preparar el rol de app.
+	setup, err := store.New(ctx, dbURL)
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}
-	// Slate limpio en cada corrida (reproducible local y en CI). drop schema borra también
-	// la tabla de versiones de goose, así que Migrate re-aplica todo desde cero.
-	if _, err := st.Pool.Exec(ctx, "drop schema public cascade; create schema public;"); err != nil {
-		st.Close()
+	if _, err := setup.Pool.Exec(ctx, "drop schema public cascade; create schema public;"); err != nil {
+		setup.Close()
 		t.Fatalf("reset schema: %v", err)
 	}
-	if err := store.Migrate(ctx, st.Pool); err != nil {
-		st.Close()
+	if err := store.Migrate(ctx, setup.Pool); err != nil {
+		setup.Close()
 		t.Fatalf("migrate: %v", err)
+	}
+	// Rol de app usable en los tests de aislamiento (RLS aplica a él, no al owner).
+	u, _ := url.Parse(dbURL)
+	dbName := u.Path[1:]
+	for _, stmt := range []string{
+		"alter role gatobobah_app with login password '" + appRolePassword + "'",
+		"grant connect on database " + dbName + " to gatobobah_app",
+		// GUC de tenant por defecto a nivel BD: las conexiones del OWNER (que salta RLS)
+		// auto-sellan company_id=1 en sus inserts sin fijar el GUC en cada test. Aplica a
+		// conexiones NUEVAS → reabrimos el pool abajo.
+		"alter database " + dbName + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
+	} {
+		if _, err := setup.Pool.Exec(ctx, stmt); err != nil {
+			setup.Close()
+			t.Fatalf("setup rol/guc (%q): %v", stmt, err)
+		}
+	}
+	setup.Close()
+
+	// Pool definitivo (owner): sus conexiones heredan app.company_id=1 por el ALTER DATABASE.
+	st, err := store.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("store.New (final): %v", err)
 	}
 	t.Cleanup(st.Close)
 	return st
 }
 
-// --- fixtures mínimos vía SQL crudo (válidos para los flujos bajo prueba) ---
+// appRoleStore devuelve un store conectado como gatobobah_app (no-superusuario) → RLS SÍ aplica.
+// Úsalo para verificar el aislamiento real de tenant a través del store/servicios.
+func appRoleStore(t *testing.T) *store.Store {
+	t.Helper()
+	u, _ := url.Parse(testURL(t))
+	u.User = url.UserPassword("gatobobah_app", appRolePassword)
+	st, err := store.New(context.Background(), u.String())
+	if err != nil {
+		t.Fatalf("app-role store.New: %v", err)
+	}
+	t.Cleanup(st.Close)
+	return st
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
+}
+
+// --- fixtures mínimos vía SQL crudo (owner: salta RLS). company_id explícito para poder sembrar
+// en cualquier empresa (los inserts del owner sin company_id caen en la empresa 1 por el GUC). ---
+
+func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
+	t.Helper()
+	var id int64
+	if err := st.Pool.QueryRow(context.Background(),
+		`insert into companies (slug, name) values ($1, $2) returning id`, slug, "Test "+slug).Scan(&id); err != nil {
+		t.Fatalf("makeCompany(%s): %v", slug, err)
+	}
+	return id
+}
 
 func makeUser(t *testing.T, st *store.Store, username, role string) int64 {
+	return makeUserIn(t, st, defaultCompanyID, username, role)
+}
+
+func makeUserIn(t *testing.T, st *store.Store, companyID int64, username, role string) int64 {
 	t.Helper()
 	var id int64
 	err := st.Pool.QueryRow(context.Background(),
-		`insert into users (name, username, role) values ($1, $2, $3::user_role) returning id`,
-		"Test "+username, username, role).Scan(&id)
+		`insert into users (company_id, name, username, role) values ($1, $2, $3, $4::user_role) returning id`,
+		companyID, "Test "+username, username, role).Scan(&id)
 	if err != nil {
 		t.Fatalf("makeUser(%s): %v", username, err)
 	}

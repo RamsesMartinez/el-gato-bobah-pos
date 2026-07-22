@@ -56,39 +56,43 @@ type RankedOption struct {
 	Pct      int   `json:"pct"`
 }
 
+// memoEntry es el memo POR EMPRESA: resultado + bucket de hora en que se computó.
+type memoEntry struct {
+	result map[int64]map[int64][]RankedOption
+	bucket time.Time
+}
+
 type SuggestService struct {
 	store *store.Store
 	now   func() time.Time
 	loc   *time.Location
 
-	mu           sync.Mutex
-	cached       map[int64]map[int64][]RankedOption
-	cachedBucket time.Time // hora truncada del último cómputo
+	mu     sync.Mutex
+	cached map[int64]memoEntry // companyID → memo (NO compartir entre empresas: datos de otra)
 }
 
 func NewSuggestService(s *store.Store, now func() time.Time) *SuggestService {
 	if now == nil {
 		now = time.Now
 	}
-	return &SuggestService{store: s, now: now, loc: mxLocation}
+	return &SuggestService{store: s, now: now, loc: mxLocation, cached: map[int64]memoEntry{}}
 }
 
-// Defaults devuelve producto→grupo→opciones rankeadas por probabilidad contextual.
-// Memoiza por bucket de hora: recomputa a lo más una vez por hora (los hábitos no
-// cambian entre requests, y la ventana de 90 días la evalúa la BD).
-func (s *SuggestService) Defaults(ctx context.Context) (map[int64]map[int64][]RankedOption, error) {
+// Defaults devuelve producto→grupo→opciones rankeadas por probabilidad contextual, para la
+// empresa dada. Memoiza POR EMPRESA y por bucket de hora: el memo de una empresa nunca se sirve
+// a otra (aislamiento multi-tenant también en este cómputo en memoria).
+func (s *SuggestService) Defaults(ctx context.Context, companyID int64) (map[int64]map[int64][]RankedOption, error) {
 	now := s.now().In(s.loc)
 	bucket := now.Truncate(time.Hour)
 
 	s.mu.Lock()
-	if s.cached != nil && s.cachedBucket.Equal(bucket) {
-		c := s.cached
+	if e, ok := s.cached[companyID]; ok && e.bucket.Equal(bucket) {
 		s.mu.Unlock()
-		return c, nil
+		return e.result, nil
 	}
 	s.mu.Unlock()
 
-	rows, err := s.store.Q.RecentModifierPicks(ctx)
+	rows, err := s.store.QC(ctx).RecentModifierPicks(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -99,18 +103,16 @@ func (s *SuggestService) Defaults(ctx context.Context) (map[int64]map[int64][]Ra
 	result := rankDefaults(picks, now)
 
 	s.mu.Lock()
-	s.cached = result
-	s.cachedBucket = bucket
+	s.cached[companyID] = memoEntry{result: result, bucket: bucket}
 	s.mu.Unlock()
 	return result, nil
 }
 
-// Invalidate descarta el memo para que el próximo Defaults() recompute. Se llama al
-// crear un pedido: las elecciones nuevas afectan las recomendaciones de inmediato.
-func (s *SuggestService) Invalidate() {
+// Invalidate descarta el memo de una empresa para que el próximo Defaults() recompute. Se llama
+// al crear un pedido: las elecciones nuevas afectan las recomendaciones de inmediato.
+func (s *SuggestService) Invalidate(companyID int64) {
 	s.mu.Lock()
-	s.cached = nil
-	s.cachedBucket = time.Time{}
+	delete(s.cached, companyID)
 	s.mu.Unlock()
 }
 

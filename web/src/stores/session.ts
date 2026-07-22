@@ -2,8 +2,11 @@ import { create } from 'zustand';
 
 export interface SessionUser {
   id: number;
+  companyId: number;
+  companySlug?: string;
   name: string;
   role: string;
+  mustChangePassword?: boolean; // tras alta/reset por admin: forzar cambio en el primer login
 }
 
 // 'loading' hasta que el arranque intenta canjear la cookie de refresh; luego 'authed' o

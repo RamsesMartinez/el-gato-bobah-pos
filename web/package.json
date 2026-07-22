@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "node scripts/require-node.mjs && vitest run"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.36.1",
