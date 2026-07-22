@@ -65,6 +65,7 @@ export interface PaymentMethod {
   name: string;
   kind: string;
   affectsCashDrawer: boolean;
+  autoDeclare: boolean;
 }
 
 // --- Ticket (estado local del cajero) ---
@@ -96,6 +97,7 @@ export interface OrderView {
   serviceType: string;
   customerName: string | null;
   subtotal: string;
+  deliveryFee: string;
   total: string;
   currency: Currency;
   paid: boolean;

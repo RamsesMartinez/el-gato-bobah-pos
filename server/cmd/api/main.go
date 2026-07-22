@@ -90,6 +90,7 @@ func main() {
 		Orders:     app.NewOrdersService(st, nil),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
+		Settings:   app.NewSettingsService(st),
 		Broker:     realtime.NewBroker(),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st.Pool.Ping)

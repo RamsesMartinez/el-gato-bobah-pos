@@ -82,9 +82,10 @@ type PricedOption struct {
 // --- Resultado priceado (snapshots que van a order_lines) ---
 
 type BuiltOrder struct {
-	Subtotal decimal.Decimal
-	Total    decimal.Decimal
-	Lines    []BuiltLine
+	Subtotal    decimal.Decimal
+	DeliveryFee decimal.Decimal
+	Total       decimal.Decimal
+	Lines       []BuiltLine
 }
 
 type BuiltLine struct {
@@ -183,4 +184,25 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		return BuiltOrder{}, ErrValidation
 	}
 	return out, nil
+}
+
+// ApplyDeliveryFee suma el costo de envío al total de un pedido a domicilio. El fee lo captura
+// el operador en el cobro (como la propina): se valida en la frontera y NUNCA se asume para un
+// pedido que no es a domicilio (ahí queda en 0, aunque el cliente mande otra cosa). allowZero:
+// el envío gratis es válido. Devuelve la orden con DeliveryFee y Total ya actualizados.
+func ApplyDeliveryFee(o BuiltOrder, fee decimal.Decimal, isDelivery bool) (BuiltOrder, error) {
+	if !isDelivery {
+		o.DeliveryFee = decimal.Zero
+		return o, nil // Total ya = Subtotal, validado en BuildOrder
+	}
+	fee = Round2(fee)
+	if !ValidMoney(fee, true) {
+		return BuiltOrder{}, ErrValidation
+	}
+	o.DeliveryFee = fee
+	o.Total = Round2(o.Subtotal.Add(fee))
+	if !ValidMoney(o.Total, true) {
+		return BuiltOrder{}, ErrValidation
+	}
+	return o, nil
 }

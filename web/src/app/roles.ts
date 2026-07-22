@@ -11,6 +11,7 @@ export const ROUTE_ROLES: Record<string, Role[]> = {
   '/reportes': ['admin', 'gerente'],
   '/catalogo': ['admin', 'gerente'],
   '/empleados': ['admin'],
+  '/negocio': ['admin', 'gerente'],
 };
 
 export function canAccess(role: string | undefined, path: string): boolean {

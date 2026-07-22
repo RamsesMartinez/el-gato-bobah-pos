@@ -4,14 +4,15 @@ import {
 } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
-  DrawerCloseTrigger, DrawerTitle,
+  DrawerCloseTrigger, DrawerTitle, DrawerGrabber,
 } from '../../components/ui/drawer';
+import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import {
   LuBanknote, LuCreditCard, LuLandmark, LuStore, LuShoppingBag, LuBike, LuX, LuTriangleAlert,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMenu } from '../../hooks/useMenu';
 import { useTicketStore, useActiveTicket, ticketTotal } from '../../stores/ticket';
 import { useUiStore } from '../../stores/ui';
@@ -43,6 +44,7 @@ interface Props {
 }
 
 export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
+  const swipe = useSwipeDownToClose(onClose);
   const { id: activeId, lines, serviceType, customerName } = useActiveTicket();
   const setServiceType = useTicketStore((s) => s.setServiceType);
   const setCustomerName = useTicketStore((s) => s.setCustomerName);
@@ -63,9 +65,17 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const [methodId, setMethodId] = useState(2);  // Tarjeta débito por default
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
   const [tip, setTip] = useState('');
+  // Costo de envío: solo a domicilio. Se pre-llena con el ajuste de negocio ($20) pero el
+  // operador puede editarlo o ponerlo en 0 (envío gratis) para este pedido. null = usar default.
+  const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
+  const [feeOverride, setFeeOverride] = useState<string | null>(null);
+  const isDelivery = serviceType === 'domicilio';
+  const defaultFee = settings ? settings.deliveryFee : '20';
+  const feeInput = feeOverride ?? defaultFee;
+  const deliveryFee = isDelivery ? Math.max(0, Math.round((parseFloat(feeInput) || 0) * 100) / 100) : 0;
 
   const tipAmount = Math.max(0, Math.round((parseFloat(tip) || 0) * 100) / 100);
-  const grandTotal = Math.round((total + tipAmount) * 100) / 100;
+  const grandTotal = Math.round((total + deliveryFee + tipAmount) * 100) / 100;
 
   // "Exacto" es el default: campo vacío ⇒ el cliente pagó justo, sin cambio.
   const isExact = tendered === '';
@@ -77,13 +87,16 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     clientUuid: uuid(),
     serviceType,
     customerName: customerName || undefined,
+    deliveryFee,
     lines: chargeLines.map((l) => ({
       productId: l.productId,
       qty: l.qty,
       notes: l.notes,
       modifiers: l.modifiers.map((m) => ({ optionId: m.optionId, qty: m.qty })),
     })),
-    payment: withPayment ? { methodId, amount: total, tip: tipAmount || undefined } : undefined,
+    // amount = total del pedido (subtotal + envío); la propina va aparte. Si no incluyera el
+    // envío, el pedido a domicilio quedaría como "no pagado" (paid < total).
+    payment: withPayment ? { methodId, amount: total + deliveryFee, tip: tipAmount || undefined } : undefined,
   });
 
   const mutation = useMutation({
@@ -92,6 +105,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       closeTab(activeId); // la cuenta se envió/cobró: se cierra y queda la siguiente activa
       setTendered('');
       setTip('');
+      setFeeOverride(null); // siguiente pedido vuelve al costo de envío por defecto
       qc.invalidateQueries({ queryKey: ['orders', 'active'] });
       // el pedido nuevo alimenta las recomendaciones → refetch para verlas al instante
       qc.invalidateQueries({ queryKey: ['modifier-defaults'] });
@@ -117,9 +131,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
         maxH={{ base: '100dvh', md: '94vh' }}
         maxW={{ base: '100%', md: '640px' }}
         mx="auto"
+        style={{
+          transform: swipe.offset ? `translateY(${swipe.offset}px)` : undefined,
+          transition: swipe.dragging ? 'none' : 'transform 0.2s ease',
+        }}
       >
+        <DrawerGrabber {...swipe.handlers} />
         <DrawerCloseTrigger />
-        <DrawerHeader><DrawerTitle>Cobrar · {money(total)}</DrawerTitle></DrawerHeader>
+        <DrawerHeader style={{ touchAction: 'none' }} {...swipe.handlers}><DrawerTitle>Cobrar · {money(total)}</DrawerTitle></DrawerHeader>
         <DrawerBody>
           <VStack align="stretch" gap={5}>
             {/* Advertencia: productos que ya no están en el menú activo */}
@@ -169,6 +188,16 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
             <Input size="lg" placeholder="Nombre del cliente (opcional)"
               value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
 
+            {/* Envío: solo a domicilio. Pre-llenado con el ajuste de negocio, editable (0 = gratis). */}
+            {isDelivery && (
+              <Box>
+                <Text fontWeight="600" mb={2}>Costo de envío</Text>
+                <Input size="lg" type="number" inputMode="decimal" placeholder={money(Number(defaultFee))}
+                  value={feeInput} onChange={(e) => setFeeOverride(e.target.value)} />
+                <Text fontSize="xs" color="fg.muted" mt={1}>0 = envío gratis</Text>
+              </Box>
+            )}
+
             {/* Método de pago */}
             <Box>
               <Text fontWeight="600" mb={2}>Método de pago</Text>
@@ -208,11 +237,20 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                 value={tip} onChange={(e) => setTip(e.target.value)} />
             </Box>
 
-            {tipAmount > 0 && (
-              <Flex justify="space-between" align="baseline">
-                <Text color="fg.muted">Total con propina</Text>
-                <Text fontSize="xl" fontWeight="700">{money(grandTotal)}</Text>
-              </Flex>
+            {(deliveryFee > 0 || tipAmount > 0) && (
+              <Box>
+                <Flex justify="space-between"><Text color="fg.muted">Subtotal</Text><Text>{money(total)}</Text></Flex>
+                {deliveryFee > 0 && (
+                  <Flex justify="space-between"><Text color="fg.muted">Envío</Text><Text>{money(deliveryFee)}</Text></Flex>
+                )}
+                {tipAmount > 0 && (
+                  <Flex justify="space-between"><Text color="fg.muted">Propina</Text><Text>{money(tipAmount)}</Text></Flex>
+                )}
+                <Flex justify="space-between" align="baseline" mt={1}>
+                  <Text fontWeight="700">Total</Text>
+                  <Text fontSize="xl" fontWeight="800">{money(grandTotal)}</Text>
+                </Flex>
+              </Box>
             )}
 
             {/* Efectivo: recibido + billetes rápidos + cambio */}

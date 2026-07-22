@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // @fontsource-* solo exporta CSS (side-effect), sin tipos propios.
 declare module '@fontsource-variable/inter';

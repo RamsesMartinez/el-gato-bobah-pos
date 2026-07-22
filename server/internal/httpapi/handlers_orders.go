@@ -15,11 +15,12 @@ import (
 )
 
 type createOrderBody struct {
-	ClientUUID         string  `json:"clientUuid"`
-	ServiceType        string  `json:"serviceType"`
-	DeliveryPlatformID *int16  `json:"deliveryPlatformId"`
-	CustomerName       *string `json:"customerName"`
-	Notes              *string `json:"notes"`
+	ClientUUID         string          `json:"clientUuid"`
+	ServiceType        string          `json:"serviceType"`
+	DeliveryPlatformID *int16          `json:"deliveryPlatformId"`
+	CustomerName       *string         `json:"customerName"`
+	Notes              *string         `json:"notes"`
+	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
 	Lines              []struct {
 		ProductID int64           `json:"productId"`
 		Qty       decimal.Decimal `json:"qty"`
@@ -59,6 +60,7 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		CustomerName:       body.CustomerName,
 		Notes:              body.Notes,
 		OpenedBy:           u.ID,
+		DeliveryFee:        body.DeliveryFee,
 	}
 	for _, l := range body.Lines {
 		line := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}

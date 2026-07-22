@@ -15,6 +15,7 @@ import { CatalogPage } from './features/admin/CatalogPage';
 import { ProductsAdminPage } from './features/admin/ProductsAdminPage';
 import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
 import { AppearancePage } from './features/admin/AppearancePage';
+import { BusinessSettingsPage } from './features/admin/BusinessSettingsPage';
 
 export const App = () => {
   useEffect(() => {
@@ -50,6 +51,7 @@ export const App = () => {
         <Route path="/productos" element={<Navigate to="/catalogo/productos" replace />} />
         <Route path="/opciones" element={<Navigate to="/catalogo/opciones" replace />} />
         <Route path="/empleados" element={<RequireRole path="/empleados"><EmployeesPage /></RequireRole>} />
+        <Route path="/negocio" element={<RequireRole path="/negocio"><BusinessSettingsPage /></RequireRole>} />
         <Route path="/apariencia" element={<AppearancePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/pos" replace />} />

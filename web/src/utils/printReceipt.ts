@@ -31,6 +31,12 @@ export function buildReceiptHtml(order: OrderView): string {
     })
     .join('');
 
+  // Desglose solo cuando hubo envío (domicilio): el ticket muestra subtotal + envío antes del total.
+  const totalsHead = Number(order.deliveryFee) > 0
+    ? `<tr><td>Subtotal</td><td class="r">${money(order.subtotal)}</td></tr>` +
+      `<tr><td>Envío</td><td class="r">${money(order.deliveryFee)}</td></tr>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"><title>Ticket #${order.number}</title>
 <style>
   @page { size: 80mm auto; margin: 0; }
@@ -52,7 +58,7 @@ export function buildReceiptHtml(order: OrderView): string {
   <hr/>
   <table>${rows}</table>
   <hr/>
-  <table><tr><td class="total">TOTAL</td><td class="r total">${money(order.total)}</td></tr></table>
+  <table>${totalsHead}<tr><td class="total">TOTAL</td><td class="r total">${money(order.total)}</td></tr></table>
   <div class="center muted" style="margin-top:8px">${order.paid ? 'PAGADO' : 'POR COBRAR'}</div>
   <div class="center" style="margin-top:10px">¡Gracias!</div>
 </body></html>`;

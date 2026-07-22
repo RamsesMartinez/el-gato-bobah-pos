@@ -5,9 +5,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 )
 
 func (h *Handlers) PaymentMethods(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +20,35 @@ func (h *Handlers) PaymentMethods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// PATCH /payment-methods/{id}  {autoDeclare} — a nivel negocio, solo admin/gerente (gateado
+// en el router). Marca si el método se declara solo (= esperado) al cerrar caja.
+func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
+	// bitSize 16: payment_methods.id es smallint; ParseInt (a diferencia de Atoi) rechaza lo
+	// que no entra en int16 en vez de truncar/wrap y actualizar el método equivocado.
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 16)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		AutoDeclare bool `json:"autoDeclare"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	pm, err := h.backoffice.SetPaymentMethodAutoDeclare(r.Context(), int(id), body.AutoDeclare)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Config con impacto directo en la reconciliación de caja: evento de seguridad para
+	// auditoría (quién la cambió, sobre qué método, a qué valor).
+	u, _ := userFrom(r.Context())
+	logging.SecurityEvent(r.Context(), "payment_method_auto_declare_changed", "method_id", pm.ID, "auto_declare", pm.AutoDeclare, "user_id", u.ID)
+	JSON(w, http.StatusOK, pm)
 }
 
 // ---- Cortes de caja ----
@@ -71,7 +103,68 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, sess)
 }
 
-// ---- Gastos ----
+// GET /cash-status — ¿hay caja abierta? Ligero, para el aviso del POS (cualquier rol autenticado).
+func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
+	open, err := h.backoffice.HasOpenSession(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"open": open})
+}
+
+// GET /cash-sessions — histórico de cortes (últimos N).
+func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	rows, err := h.backoffice.SessionHistory(r.Context(), int32(limit))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": rows})
+}
+
+// GET /cash-sessions/{id} — detalle de un corte (totales guardados + movimientos).
+func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	view, err := h.backoffice.SessionDetail(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, view)
+}
+
+// POST /cash-sessions/movements — registra entrada/salida de efectivo en la caja abierta.
+func (h *Handlers) CreateCashMovement(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Kind    string          `json:"kind"`
+		Amount  decimal.Decimal `json:"amount"`
+		Concept string          `json:"concept"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.Kind, body.Amount, body.Concept, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, sess)
+}
+
+// ---- Categorías de gasto ----
 
 func (h *Handlers) ExpenseCategories(w http.ResponseWriter, r *http.Request) {
 	items, err := h.backoffice.ExpenseCategories(r.Context())
@@ -82,8 +175,103 @@ func (h *Handlers) ExpenseCategories(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *Handlers) CreateExpenseCategory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name           string `json:"name"`
+		FinancialGroup string `json:"financialGroup"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CreateExpenseCategory(r.Context(), body.Name, body.FinancialGroup)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, v)
+}
+
+func (h *Handlers) UpdateExpenseCategory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Name           string `json:"name"`
+		FinancialGroup string `json:"financialGroup"`
+		IsActive       bool   `json:"isActive"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.UpdateExpenseCategory(r.Context(), id, body.Name, body.FinancialGroup, body.IsActive)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// ---- Proveedores ----
+
+func (h *Handlers) Suppliers(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.Suppliers(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateSupplier(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name  string  `json:"name"`
+		Phone *string `json:"phone"`
+		Notes *string `json:"notes"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.CreateSupplier(r.Context(), body.Name, body.Phone, body.Notes)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, v)
+}
+
+func (h *Handlers) UpdateSupplier(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Name     string  `json:"name"`
+		Phone    *string `json:"phone"`
+		Notes    *string `json:"notes"`
+		IsActive bool    `json:"isActive"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.UpdateSupplier(r.Context(), id, body.Name, body.Phone, body.Notes, body.IsActive)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// ---- Gastos ----
+
 func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.ListExpenses(r.Context(), queryLimit(r, 100))
+	items, err := h.backoffice.ListExpenses(r.Context(), r.URL.Query().Get("status"), queryLimit(r, 100))
 	if err != nil {
 		Error(w, err)
 		return
@@ -93,12 +281,12 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Date        string          `json:"date"`
 		CategoryID  int64           `json:"categoryId"`
 		SupplierID  *int64          `json:"supplierId"`
 		Amount      decimal.Decimal `json:"amount"`
-		MethodID    *int16          `json:"methodId"`
 		Description string          `json:"description"`
+		Status      string          `json:"status"`
+		MethodID    *int16          `json:"methodId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -106,19 +294,56 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	id, err := h.backoffice.CreateExpense(r.Context(), app.ExpenseInput{
-		Date:        parseDate(body.Date, time.Now()),
-		CategoryID:  body.CategoryID,
-		SupplierID:  body.SupplierID,
-		Amount:      body.Amount,
-		MethodID:    body.MethodID,
-		Description: body.Description,
-		UserID:      u.ID,
+		CategoryID: body.CategoryID, SupplierID: body.SupplierID, Amount: body.Amount,
+		Description: body.Description, Status: body.Status, MethodID: body.MethodID, UserID: u.ID,
 	})
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+func (h *Handlers) PayExpense(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		MethodID int16 `json:"methodId"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.PayExpense(r.Context(), id, body.MethodID, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) CancelExpense(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.backoffice.CancelExpense(r.Context(), id, body.Reason, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- Almacén ----

@@ -29,7 +29,21 @@ export const posApi = {
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
+
+  // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
+  // PUT lo restringe el backend a admin/gerente.
+  // ¿hay caja abierta? Para el aviso del POS (disponible a cualquier rol).
+  cashStatus: () => api.get<{ open: boolean }>('/cash-status'),
+
+  businessSettings: () => api.get<BusinessSettings>('/business-settings'),
+  updateBusinessSettings: (deliveryFee: number) =>
+    api.put<BusinessSettings>('/business-settings', { deliveryFee }),
 };
+
+// El dinero viaja como string decimal exacto (ver types/pos.ts).
+export interface BusinessSettings {
+  deliveryFee: string;
+}
 
 export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;
 
@@ -38,6 +52,7 @@ export interface CreateOrderBody {
   serviceType: string;
   customerName?: string;
   notes?: string;
+  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
   lines: Array<{
     productId: number;
     qty: number;

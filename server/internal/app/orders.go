@@ -41,6 +41,7 @@ type CreateOrderCmd struct {
 	CustomerName       *string
 	Notes              *string
 	OpenedBy           int64
+	DeliveryFee        decimal.Decimal // capturado en el cobro; solo aplica a domicilio
 	Lines              []domain.OrderLineInput
 	Payment            *PaymentInput
 }
@@ -53,6 +54,7 @@ type OrderView struct {
 	CustomerName *string         `json:"customerName"`
 	Notes        *string         `json:"notes"`
 	Subtotal     decimal.Decimal `json:"subtotal"`
+	DeliveryFee  decimal.Decimal `json:"deliveryFee"`
 	Total        decimal.Decimal `json:"total"`
 	Currency     domain.Currency `json:"currency"`
 	Paid         bool            `json:"paid"`
@@ -122,6 +124,11 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if err != nil {
 		return nil, err
 	}
+	// El costo de envío solo aplica a domicilio; para el resto queda en 0 aunque el cliente lo mande.
+	built, err = domain.ApplyDeliveryFee(built, cmd.DeliveryFee, cmd.ServiceType == "domicilio")
+	if err != nil {
+		return nil, err
+	}
 
 	// datos para depleción de stock (lectura antes de la tx)
 	qtyByProduct := map[int64]decimal.Decimal{}
@@ -151,6 +158,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			OpenedBy:           cmd.OpenedBy,
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
+			DeliveryFee:        built.DeliveryFee,
 		})
 		if err != nil {
 			return err
@@ -254,7 +262,7 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 	view := &OrderView{
 		ID: o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
 		ServiceType: string(o.ServiceType), CustomerName: o.CustomerName, Notes: o.Notes,
-		Subtotal: o.Subtotal, Total: o.Total, Currency: domain.Currency(o.Currency),
+		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:     paid.GreaterThanOrEqual(o.Total) && o.Total.IsPositive(),
 		OpenedAt: o.OpenedAt,
 	}

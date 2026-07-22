@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react-swc';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
 // Puertos configurables por env (los fija scripts/start.sh tras preguntar/detectar libres);
@@ -8,7 +9,21 @@ const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3000;
 const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 8080;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'prompt', // POS: nunca recargar solo a media venta; el operador decide (ver registerPwa.ts)
+      injectRegister: false, // registramos a mano en registerPwa.ts para poder mostrar el aviso con nuestro toaster
+      manifest: false, // public/manifest.json es la fuente de verdad; el plugin solo genera el service worker
+      workbox: {
+        // Precachea el shell (incl. fuente e íconos) para que la app abra aunque parpadee la red.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api/], // el SW nunca sirve el shell a llamadas de API
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

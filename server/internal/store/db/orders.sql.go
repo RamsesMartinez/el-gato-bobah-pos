@@ -32,9 +32,9 @@ func (q *Queries) CancelOrder(ctx context.Context, arg CancelOrderParams) error 
 
 const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
-                    customer_name, notes, register_session_id, opened_by, subtotal, total)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount
+                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee
 `
 
 type CreateOrderParams struct {
@@ -49,6 +49,7 @@ type CreateOrderParams struct {
 	OpenedBy           int64           `json:"opened_by"`
 	Subtotal           decimal.Decimal `json:"subtotal"`
 	Total              decimal.Decimal `json:"total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -64,6 +65,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.OpenedBy,
 		arg.Subtotal,
 		arg.Total,
+		arg.DeliveryFee,
 	)
 	var i Order
 	err := row.Scan(
@@ -93,6 +95,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.RefundedBy,
 		&i.RefundReason,
 		&i.RefundAmount,
+		&i.DeliveryFee,
 	)
 	return i, err
 }
@@ -191,7 +194,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -224,6 +227,7 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.RefundedBy,
 		&i.RefundReason,
 		&i.RefundAmount,
+		&i.DeliveryFee,
 	)
 	return i, err
 }

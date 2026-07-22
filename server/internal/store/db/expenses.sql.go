@@ -12,38 +12,221 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const cancelExpense = `-- name: CancelExpense :execrows
+update expenses set status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
+where id = $1 and status = 'pendiente'
+`
+
+type CancelExpenseParams struct {
+	ID           int64   `json:"id"`
+	CancelledBy  *int64  `json:"cancelled_by"`
+	CancelReason *string `json:"cancel_reason"`
+}
+
+func (q *Queries) CancelExpense(ctx context.Context, arg CancelExpenseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelExpense, arg.ID, arg.CancelledBy, arg.CancelReason)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createExpense = `-- name: CreateExpense :one
-insert into expenses (expense_date, category_id, supplier_id, amount, payment_method_id, description, created_by)
-values ($1, $2, $3, $4, $5, $6, $7)
+
+insert into expenses (
+  expense_date, category_id, supplier_id, amount, description, created_by,
+  status, payment_method_id, register_session_id, paid_at, paid_by
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 returning id
 `
 
 type CreateExpenseParams struct {
-	ExpenseDate     pgtype.Date     `json:"expense_date"`
-	CategoryID      int64           `json:"category_id"`
-	SupplierID      *int64          `json:"supplier_id"`
-	Amount          decimal.Decimal `json:"amount"`
-	PaymentMethodID *int16          `json:"payment_method_id"`
-	Description     *string         `json:"description"`
-	CreatedBy       int64           `json:"created_by"`
+	ExpenseDate       pgtype.Date        `json:"expense_date"`
+	CategoryID        int64              `json:"category_id"`
+	SupplierID        *int64             `json:"supplier_id"`
+	Amount            decimal.Decimal    `json:"amount"`
+	Description       *string            `json:"description"`
+	CreatedBy         int64              `json:"created_by"`
+	Status            ExpenseStatus      `json:"status"`
+	PaymentMethodID   *int16             `json:"payment_method_id"`
+	RegisterSessionID *int64             `json:"register_session_id"`
+	PaidAt            pgtype.Timestamptz `json:"paid_at"`
+	PaidBy            *int64             `json:"paid_by"`
 }
 
+// ==== Gastos ====
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (int64, error) {
 	row := q.db.QueryRow(ctx, createExpense,
 		arg.ExpenseDate,
 		arg.CategoryID,
 		arg.SupplierID,
 		arg.Amount,
-		arg.PaymentMethodID,
 		arg.Description,
 		arg.CreatedBy,
+		arg.Status,
+		arg.PaymentMethodID,
+		arg.RegisterSessionID,
+		arg.PaidAt,
+		arg.PaidBy,
 	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
+const createExpenseCategory = `-- name: CreateExpenseCategory :one
+insert into expense_categories (name, financial_group) values ($1, $2)
+returning id, name, financial_group, is_active
+`
+
+type CreateExpenseCategoryParams struct {
+	Name           string         `json:"name"`
+	FinancialGroup FinancialGroup `json:"financial_group"`
+}
+
+func (q *Queries) CreateExpenseCategory(ctx context.Context, arg CreateExpenseCategoryParams) (ExpenseCategory, error) {
+	row := q.db.QueryRow(ctx, createExpenseCategory, arg.Name, arg.FinancialGroup)
+	var i ExpenseCategory
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.FinancialGroup,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const createSupplier = `-- name: CreateSupplier :one
+insert into suppliers (name, phone, notes) values ($1, $2, $3)
+returning id, name, phone, notes, is_active
+`
+
+type CreateSupplierParams struct {
+	Name  string  `json:"name"`
+	Phone *string `json:"phone"`
+	Notes *string `json:"notes"`
+}
+
+type CreateSupplierRow struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Phone    *string `json:"phone"`
+	Notes    *string `json:"notes"`
+	IsActive bool    `json:"is_active"`
+}
+
+func (q *Queries) CreateSupplier(ctx context.Context, arg CreateSupplierParams) (CreateSupplierRow, error) {
+	row := q.db.QueryRow(ctx, createSupplier, arg.Name, arg.Phone, arg.Notes)
+	var i CreateSupplierRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Notes,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const getExpense = `-- name: GetExpense :one
+select id, expense_date, category_id, supplier_id, amount, payment_method_id, register_session_id, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason from expenses where id = $1
+`
+
+func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
+	row := q.db.QueryRow(ctx, getExpense, id)
+	var i Expense
+	err := row.Scan(
+		&i.ID,
+		&i.ExpenseDate,
+		&i.CategoryID,
+		&i.SupplierID,
+		&i.Amount,
+		&i.PaymentMethodID,
+		&i.RegisterSessionID,
+		&i.Description,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.Currency,
+		&i.Status,
+		&i.PaidAt,
+		&i.PaidBy,
+		&i.CancelledAt,
+		&i.CancelledBy,
+		&i.CancelReason,
+	)
+	return i, err
+}
+
+const listAllExpenseCategories = `-- name: ListAllExpenseCategories :many
+select id, name, financial_group, is_active from expense_categories order by financial_group, name
+`
+
+// Todas (incl. inactivas), para la gestión.
+func (q *Queries) ListAllExpenseCategories(ctx context.Context) ([]ExpenseCategory, error) {
+	rows, err := q.db.Query(ctx, listAllExpenseCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpenseCategory{}
+	for rows.Next() {
+		var i ExpenseCategory
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.FinancialGroup,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllSuppliers = `-- name: ListAllSuppliers :many
+select id, name, phone, notes, is_active from suppliers order by name
+`
+
+type ListAllSuppliersRow struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Phone    *string `json:"phone"`
+	Notes    *string `json:"notes"`
+	IsActive bool    `json:"is_active"`
+}
+
+func (q *Queries) ListAllSuppliers(ctx context.Context) ([]ListAllSuppliersRow, error) {
+	rows, err := q.db.Query(ctx, listAllSuppliers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllSuppliersRow{}
+	for rows.Next() {
+		var i ListAllSuppliersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Phone,
+			&i.Notes,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listExpenseCategories = `-- name: ListExpenseCategories :many
+
 select id, name, financial_group from expense_categories where is_active order by financial_group, name
 `
 
@@ -53,6 +236,8 @@ type ListExpenseCategoriesRow struct {
 	FinancialGroup FinancialGroup `json:"financial_group"`
 }
 
+// ==== Categorías de gasto ====
+// Activas, para el formulario de gasto.
 func (q *Queries) ListExpenseCategories(ctx context.Context) ([]ListExpenseCategoriesRow, error) {
 	rows, err := q.db.Query(ctx, listExpenseCategories)
 	if err != nil {
@@ -74,28 +259,42 @@ func (q *Queries) ListExpenseCategories(ctx context.Context) ([]ListExpenseCateg
 }
 
 const listExpenses = `-- name: ListExpenses :many
-select e.id, e.expense_date, ec.name as category, ec.financial_group, s.name as supplier,
-       e.amount, e.currency, e.description
+select e.id, e.expense_date, e.status, ec.name as category, ec.financial_group,
+       s.name as supplier, e.amount, e.currency, e.description,
+       pm.name as payment_method, e.paid_at, e.register_session_id, ub.name as created_by_name
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
+left join payment_methods pm on pm.id = e.payment_method_id
+left join users ub on ub.id = e.created_by
+where ($1::expense_status is null or e.status = $1)
 order by e.expense_date desc, e.id desc
-limit $1
+limit $2
 `
 
-type ListExpensesRow struct {
-	ID             int64           `json:"id"`
-	ExpenseDate    pgtype.Date     `json:"expense_date"`
-	Category       string          `json:"category"`
-	FinancialGroup FinancialGroup  `json:"financial_group"`
-	Supplier       *string         `json:"supplier"`
-	Amount         decimal.Decimal `json:"amount"`
-	Currency       string          `json:"currency"`
-	Description    *string         `json:"description"`
+type ListExpensesParams struct {
+	Status *ExpenseStatus `json:"status"`
+	Lim    int32          `json:"lim"`
 }
 
-func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpensesRow, error) {
-	rows, err := q.db.Query(ctx, listExpenses, limit)
+type ListExpensesRow struct {
+	ID                int64              `json:"id"`
+	ExpenseDate       pgtype.Date        `json:"expense_date"`
+	Status            ExpenseStatus      `json:"status"`
+	Category          string             `json:"category"`
+	FinancialGroup    FinancialGroup     `json:"financial_group"`
+	Supplier          *string            `json:"supplier"`
+	Amount            decimal.Decimal    `json:"amount"`
+	Currency          string             `json:"currency"`
+	Description       *string            `json:"description"`
+	PaymentMethod     *string            `json:"payment_method"`
+	PaidAt            pgtype.Timestamptz `json:"paid_at"`
+	RegisterSessionID *int64             `json:"register_session_id"`
+	CreatedByName     *string            `json:"created_by_name"`
+}
+
+func (q *Queries) ListExpenses(ctx context.Context, arg ListExpensesParams) ([]ListExpensesRow, error) {
+	rows, err := q.db.Query(ctx, listExpenses, arg.Status, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +305,17 @@ func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpenses
 		if err := rows.Scan(
 			&i.ID,
 			&i.ExpenseDate,
+			&i.Status,
 			&i.Category,
 			&i.FinancialGroup,
 			&i.Supplier,
 			&i.Amount,
 			&i.Currency,
 			&i.Description,
+			&i.PaymentMethod,
+			&i.PaidAt,
+			&i.RegisterSessionID,
+			&i.CreatedByName,
 		); err != nil {
 			return nil, err
 		}
@@ -124,6 +328,7 @@ func (q *Queries) ListExpenses(ctx context.Context, limit int32) ([]ListExpenses
 }
 
 const listSuppliers = `-- name: ListSuppliers :many
+
 select id, name from suppliers where is_active order by name
 `
 
@@ -132,6 +337,8 @@ type ListSuppliersRow struct {
 	Name string `json:"name"`
 }
 
+// ==== Proveedores ====
+// Activos, para el formulario de gasto.
 func (q *Queries) ListSuppliers(ctx context.Context) ([]ListSuppliersRow, error) {
 	rows, err := q.db.Query(ctx, listSuppliers)
 	if err != nil {
@@ -150,4 +357,100 @@ func (q *Queries) ListSuppliers(ctx context.Context) ([]ListSuppliersRow, error)
 		return nil, err
 	}
 	return items, nil
+}
+
+const payExpense = `-- name: PayExpense :execrows
+update expenses set status = 'pagada', payment_method_id = $2, register_session_id = $3,
+       paid_at = now(), paid_by = $4
+where id = $1 and status = 'pendiente'
+`
+
+type PayExpenseParams struct {
+	ID                int64  `json:"id"`
+	PaymentMethodID   *int16 `json:"payment_method_id"`
+	RegisterSessionID *int64 `json:"register_session_id"`
+	PaidBy            *int64 `json:"paid_by"`
+}
+
+// El AND status='pendiente' es el guard de carrera (idempotente); el servicio ya valida el estado.
+func (q *Queries) PayExpense(ctx context.Context, arg PayExpenseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, payExpense,
+		arg.ID,
+		arg.PaymentMethodID,
+		arg.RegisterSessionID,
+		arg.PaidBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateExpenseCategory = `-- name: UpdateExpenseCategory :one
+update expense_categories set name = $2, financial_group = $3, is_active = $4 where id = $1
+returning id, name, financial_group, is_active
+`
+
+type UpdateExpenseCategoryParams struct {
+	ID             int64          `json:"id"`
+	Name           string         `json:"name"`
+	FinancialGroup FinancialGroup `json:"financial_group"`
+	IsActive       bool           `json:"is_active"`
+}
+
+func (q *Queries) UpdateExpenseCategory(ctx context.Context, arg UpdateExpenseCategoryParams) (ExpenseCategory, error) {
+	row := q.db.QueryRow(ctx, updateExpenseCategory,
+		arg.ID,
+		arg.Name,
+		arg.FinancialGroup,
+		arg.IsActive,
+	)
+	var i ExpenseCategory
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.FinancialGroup,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const updateSupplier = `-- name: UpdateSupplier :one
+update suppliers set name = $2, phone = $3, notes = $4, is_active = $5 where id = $1
+returning id, name, phone, notes, is_active
+`
+
+type UpdateSupplierParams struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Phone    *string `json:"phone"`
+	Notes    *string `json:"notes"`
+	IsActive bool    `json:"is_active"`
+}
+
+type UpdateSupplierRow struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Phone    *string `json:"phone"`
+	Notes    *string `json:"notes"`
+	IsActive bool    `json:"is_active"`
+}
+
+func (q *Queries) UpdateSupplier(ctx context.Context, arg UpdateSupplierParams) (UpdateSupplierRow, error) {
+	row := q.db.QueryRow(ctx, updateSupplier,
+		arg.ID,
+		arg.Name,
+		arg.Phone,
+		arg.Notes,
+		arg.IsActive,
+	)
+	var i UpdateSupplierRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Notes,
+		&i.IsActive,
+	)
+	return i, err
 }

@@ -1,13 +1,14 @@
 // Reinicia el estado del sheet cuando se abre para otro producto/edición.
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
-  Box, Button, HStack, VStack, Text, Wrap, WrapItem, Input, Flex,
+  Box, Button, HStack, VStack, Text, Wrap, WrapItem, Input, Textarea, Flex,
 } from '@chakra-ui/react';
 import { LuSearch, LuArchiveRestore } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
-  DrawerCloseTrigger,
+  DrawerCloseTrigger, DrawerGrabber,
 } from '../../components/ui/drawer';
+import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MenuGroup, MenuOption, MenuProduct, RankedOption, TicketModifier } from '../../types/pos';
@@ -42,6 +43,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const role = useSessionStore((s) => s.user?.role);
   const canManage = role === 'admin' || role === 'gerente';
   const qc = useQueryClient();
+  const swipe = useSwipeDownToClose(onClose);
 
   // Gestionar una opción (mantener presionado / clic derecho): desactivar para quitar basura.
   const [manageOpt, setManageOpt] = useState<{ id: number; name: string } | null>(null);
@@ -371,9 +373,23 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
         maxH="100dvh"
         w="100vw"
         maxW="100vw"
+        // POS táctil: al tocar/mantener una opción no debe salir el menú de selección de texto de
+        // Android sobre nombres/precios. Los inputs (buscar opción) sí quedan editables.
+        css={{
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          '& input, & textarea': { userSelect: 'text', WebkitUserSelect: 'text' },
+        }}
+        style={{
+          transform: swipe.offset ? `translateY(${swipe.offset}px)` : undefined,
+          transition: swipe.dragging ? 'none' : 'transform 0.2s ease',
+        }}
       >
+        <DrawerGrabber {...swipe.handlers} />
         <DrawerCloseTrigger />
-        <DrawerHeader pb={2}>
+        {/* El gesto de cerrar cubre todo el header (más fácil de agarrar en tablet que solo
+            el grip), no el body: ahí abajo hay scroll y hay que dejarlo libre. */}
+        <DrawerHeader pb={2} style={{ touchAction: 'none' }} {...swipe.handlers}>
           <Text fontSize="lg" fontWeight="700">{product.name}</Text>
           <Text fontSize="sm" color="fg.muted">{money(product.price)} base</Text>
           {showSearch && (
@@ -429,9 +445,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             })}
           </Box>
 
-          <Box mt={2}>
+          {/* pb generoso: en 7" el textarea de 2 líneas no debe pegarse al footer (qty/Agregar) */}
+          <Box mt={2} pb={6}>
             <Text fontWeight="600" mb={2}>Nota de cocina</Text>
-            <Input placeholder="Ej. sin cebolla" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Textarea rows={2} resize="none" placeholder="Ej. sin cebolla" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Box>
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px">

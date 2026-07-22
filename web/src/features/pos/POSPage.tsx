@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Box, Flex, VStack, HStack, Text, Button, Spinner, Center, IconButton, useDisclosure,
 } from '@chakra-ui/react';
-import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen } from 'react-icons/lu';
+import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
-import { DrawerRoot, DrawerBackdrop, DrawerContent } from '../../components/ui/drawer';
+import { useNavigate } from 'react-router-dom';
+import { posApi } from '../../api/pos';
+import { canAccess } from '../../app/roles';
+import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerGrabber } from '../../components/ui/drawer';
+import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
 import { useMenu } from '../../hooks/useMenu';
 import { usePopular } from '../../hooks/usePopular';
@@ -26,6 +30,21 @@ import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
 import { CheckoutSheet } from './CheckoutSheet';
 
+// Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
+// Clamp aproximado al cargar por si el viewport cambió de tamaño entre sesiones (no dejarla fuera).
+function loadPillOffset(): { x: number; y: number } {
+  try {
+    const s = JSON.parse(localStorage.getItem('pos.pillOffset') || 'null');
+    if (s && typeof s.x === 'number' && typeof s.y === 'number') {
+      return {
+        x: Math.min(0, Math.max(s.x, -(window.innerWidth - 96))),
+        y: Math.min(0, Math.max(s.y, -(window.innerHeight - 72))),
+      };
+    }
+  } catch { /* corrupto → default */ }
+  return { x: 0, y: 0 };
+}
+
 export function POSPage() {
   const { data: menu, isLoading, error } = useMenu();
   const { data: popular } = usePopular();
@@ -37,6 +56,11 @@ export function POSPage() {
   const topCount = useUiStore((s) => s.topCount);
   const role = useSessionStore((s) => s.user?.role);
   const canEdit = role === 'admin' || role === 'gerente';
+  const navigate = useNavigate();
+  // Aviso de caja: si no hay caja abierta, el POS lo anuncia (no bloquea el cobro). Poll suave
+  // por si otra tablet abre/cierra; al abrir caja desde /caja se invalida ['cash'] y refresca.
+  const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
+  const canOpenCash = canAccess(role, '/caja');
   const lines = useActiveTicket().lines;
   const addLine = useTicketStore((s) => s.addLine);
   const updateLineModifiers = useTicketStore((s) => s.updateLineModifiers);
@@ -61,9 +85,44 @@ export function POSPage() {
   });
 
   const ticketDrawer = useDisclosure();
+  const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
   const checkout = useDisclosure();
   const modSheet = useDisclosure();
-  const [panelHidden, setPanelHidden] = useState(false); // ocultar panel del pedido (modo ancho)
+  // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado
+  // y el grid ocupa todo. La píldora flotante lo reabre y mantiene el total visible. En tablets
+  // altas se ve por defecto. matchMedia puede faltar en jsdom (tests) → default false.
+  const [panelHidden, setPanelHidden] = useState(
+    () => window.matchMedia?.('(max-height: 720px)')?.matches ?? false,
+  );
+
+  // Píldora arrastrable: a veces tapa las cards de abajo-derecha; el operador la mueve a discreción.
+  // Offset relativo a la esquina inferior-derecha; se persiste. Handle dedicado → no choca con los taps.
+  const pillRef = useRef<HTMLDivElement>(null);
+  const pillDrag = useRef<{ px: number; py: number; ox: number; oy: number; rect: DOMRect } | null>(null);
+  const [pillOffset, setPillOffset] = useState(loadPillOffset);
+  const pillOffsetRef = useRef(pillOffset);
+
+  const onPillDragStart = (e: PointerEvent<HTMLDivElement>) => {
+    const el = pillRef.current;
+    if (!el) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pillDrag.current = { px: e.clientX, py: e.clientY, ox: pillOffset.x, oy: pillOffset.y, rect: el.getBoundingClientRect() };
+  };
+  const onPillDragMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = pillDrag.current;
+    if (!d) return;
+    const m = 8; // margen mínimo al borde de la pantalla
+    const left = Math.min(Math.max(d.rect.left + (e.clientX - d.px), m), window.innerWidth - d.rect.width - m);
+    const top = Math.min(Math.max(d.rect.top + (e.clientY - d.py), m), window.innerHeight - d.rect.height - m);
+    const next = { x: d.ox + (left - d.rect.left), y: d.oy + (top - d.rect.top) };
+    pillOffsetRef.current = next;
+    setPillOffset(next);
+  };
+  const onPillDragEnd = () => {
+    if (!pillDrag.current) return;
+    pillDrag.current = null;
+    localStorage.setItem('pos.pillOffset', JSON.stringify(pillOffsetRef.current));
+  };
 
   // defensivo: nunca asumir que vienen arreglos (catálogo vacío o respuesta parcial).
   // useMemo para estabilizar la referencia: sin él, `?? []` crea un arreglo nuevo cada
@@ -160,12 +219,25 @@ export function POSPage() {
 
   const catalog = (
     <VStack align="stretch" gap={2} h="100%" overflow="hidden">
+      {/* Aviso (no bloqueo): sin caja abierta las ventas en efectivo no cuadran el corte. */}
+      {cashStatus.data && !cashStatus.data.open && (
+        <Box mx={{ base: 3, md: 4 }} mt={2} px={3} py={2} borderRadius="md" bg="orange.500" color="white">
+          <HStack justify="space-between" gap={2}>
+            <HStack gap={2} minW={0}><LuTriangleAlert /><Text fontWeight="600" fontSize="sm" truncate>No hay caja abierta</Text></HStack>
+            {canOpenCash && (
+              <Button size="xs" minH="32px" variant="solid" colorPalette="whiteAlpha" flexShrink={0} onClick={() => navigate('/caja')}>
+                Abrir caja
+              </Button>
+            )}
+          </HStack>
+        </Box>
+      )}
+      {/* Una sola fila (cuentas · buscador · toggles): recupera ~56px de alto en 7" landscape.
+          Las cuentas scrollean solas; el buscador queda con ancho cómodo y fijo a la derecha. */}
       <Box px={{ base: 3, md: 4 }} pt={3}>
-        <TicketTabs />
-      </Box>
-      <Box px={{ base: 3, md: 4 }}>
-        <HStack gap={2}>
-          <Box flex="1"><SearchBar value={search} onChange={setSearch} /></Box>
+        <HStack gap={2} align="center">
+          <Box flex="1" minW={0}><TicketTabs /></Box>
+          <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}
@@ -232,8 +304,18 @@ export function POSPage() {
 
       {/* Panel oculto (modo ancho): píldora flotante para reabrir + atajo Cobrar */}
       {wide && panelHidden && (
-        <HStack position="absolute" bottom={4} right={4} zIndex={20}
-          bg="colorPalette.600" color="white" borderRadius="full" boxShadow="lg" pl={5} pr={2} py={2} gap={3}>
+        <HStack ref={pillRef} position="absolute" bottom={4} right={4} zIndex={20}
+          transform={`translate(${pillOffset.x}px, ${pillOffset.y}px)`}
+          bg="colorPalette.600" color="white" borderRadius="full" boxShadow="lg" pl={2} pr={2} py={2} gap={2}>
+          {/* Handle de arrastre. touch-action:none → mover no scrollea la página; los toques de
+              "Ver pedido"/"Cobrar" siguen siendo taps normales (no compiten con el drag). */}
+          <Box aria-label="Mover" cursor="grab"
+            onPointerDown={onPillDragStart} onPointerMove={onPillDragMove}
+            onPointerUp={onPillDragEnd} onPointerCancel={onPillDragEnd}
+            display="flex" alignItems="center" justifyContent="center" minW="36px" minH="44px"
+            color="whiteAlpha.800" css={{ touchAction: 'none' }}>
+            <LuGripVertical size={20} />
+          </Box>
           <HStack as="button" onClick={() => setPanelHidden(false)} gap={2} minH="44px" px={1}>
             <LuPanelRightOpen />
             <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total)}` : 'Ver pedido'}</Text>
@@ -249,10 +331,23 @@ export function POSPage() {
       {/* Ticket como bottom sheet en modo angosto */}
       <DrawerRoot open={ticketDrawer.open} placement="bottom" onOpenChange={(e) => { if (!e.open) ticketDrawer.onClose(); }} size="full">
         <DrawerBackdrop />
-        <DrawerContent colorPalette={palette} borderTopRadius={{ base: 0, md: '2xl' }} maxH={{ base: '100dvh', md: '92vh' }}>
-          <Box h={{ base: '100dvh', md: '92vh' }}>
-            <Ticket onCheckout={() => { ticketDrawer.onClose(); checkout.onOpen(); }} onEditLine={editLine} />
-          </Box>
+        <DrawerContent
+          colorPalette={palette} borderTopRadius={{ base: 0, md: '2xl' }} maxH={{ base: '100dvh', md: '92vh' }}
+          style={{
+            transform: ticketSwipe.offset ? `translateY(${ticketSwipe.offset}px)` : undefined,
+            transition: ticketSwipe.dragging ? 'none' : 'transform 0.2s ease',
+          }}
+        >
+          <Flex direction="column" h={{ base: '100dvh', md: '92vh' }}>
+            <DrawerGrabber {...ticketSwipe.handlers} />
+            {/* onHide = cerrar el sheet: a size=full el backdrop queda tapado, sin esto no hay cómo cerrarlo */}
+            <Box flex="1" minH={0}>
+              <Ticket
+                onCheckout={() => { ticketDrawer.onClose(); checkout.onOpen(); }} onEditLine={editLine}
+                onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers}
+              />
+            </Box>
+          </Flex>
         </DrawerContent>
       </DrawerRoot>
 

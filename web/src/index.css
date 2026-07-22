@@ -11,3 +11,30 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* --- Feedback táctil (POS en tablet: sin hover, cada toque necesita confirmación visual) --- */
+/* Sustituye el flash gris nativo (inconsistente entre navegadores Android) por un "press" propio. */
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role='button'],
+a {
+  transition: transform 80ms ease-out;
+}
+
+/* Scale sutil al presionar: retroalimentación inmediata de que el toque se registró, antes de
+   que la acción ocurra. 0.96/80ms se siente instantáneo, no "animado". */
+button:active,
+[role='button']:active,
+a:active {
+  transform: scale(0.96);
+}
+
+/* Un toque rápido o mantenido no debe seleccionar el texto de los controles (molesto en POS). */
+button,
+[role='button'] {
+  -webkit-user-select: none;
+  user-select: none;
+}

@@ -30,12 +30,12 @@ func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) erro
 }
 
 const expectedByMethodSince = `-- name: ExpectedByMethodSince :many
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer,
+select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected
 from payment_methods pm
 left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer
+group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key
 `
 
@@ -43,6 +43,7 @@ type ExpectedByMethodSinceRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
+	AutoDeclare       bool            `json:"auto_declare"`
 	Expected          decimal.Decimal `json:"expected"`
 }
 
@@ -60,6 +61,7 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 			&i.PaymentMethodID,
 			&i.Name,
 			&i.AffectsCashDrawer,
+			&i.AutoDeclare,
 			&i.Expected,
 		); err != nil {
 			return nil, err
@@ -96,9 +98,183 @@ func (q *Queries) GetOpenSession(ctx context.Context) (RegisterSession, error) {
 	return i, err
 }
 
+const getPaymentMethod = `-- name: GetPaymentMethod :one
+select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where id = $1
+`
+
+type GetPaymentMethodRow struct {
+	ID                int16       `json:"id"`
+	Name              string      `json:"name"`
+	Kind              PaymentKind `json:"kind"`
+	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
+	AutoDeclare       bool        `json:"auto_declare"`
+}
+
+func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMethodRow, error) {
+	row := q.db.QueryRow(ctx, getPaymentMethod, id)
+	var i GetPaymentMethodRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.AffectsCashDrawer,
+		&i.AutoDeclare,
+	)
+	return i, err
+}
+
+const getSession = `-- name: GetSession :one
+select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, ob.name as opened_by_name, cb.name as closed_by_name
+from register_sessions s
+join users ob on ob.id = s.opened_by
+left join users cb on cb.id = s.closed_by
+where s.id = $1
+`
+
+type GetSessionRow struct {
+	ID           int64              `json:"id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	Status       SessionStatus      `json:"status"`
+	OpeningCash  decimal.Decimal    `json:"opening_cash"`
+	OpenedBy     int64              `json:"opened_by"`
+	OpenedAt     time.Time          `json:"opened_at"`
+	ClosedBy     *int64             `json:"closed_by"`
+	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
+	Notes        *string            `json:"notes"`
+	Currency     string             `json:"currency"`
+	OpenedByName string             `json:"opened_by_name"`
+	ClosedByName *string            `json:"closed_by_name"`
+}
+
+func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, error) {
+	row := q.db.QueryRow(ctx, getSession, id)
+	var i GetSessionRow
+	err := row.Scan(
+		&i.ID,
+		&i.BusinessDate,
+		&i.Status,
+		&i.OpeningCash,
+		&i.OpenedBy,
+		&i.OpenedAt,
+		&i.ClosedBy,
+		&i.ClosedAt,
+		&i.Notes,
+		&i.Currency,
+		&i.OpenedByName,
+		&i.ClosedByName,
+	)
+	return i, err
+}
+
+const insertCashMovement = `-- name: InsertCashMovement :one
+insert into register_cash_movements (session_id, kind, amount, concept, user_id)
+values ($1, $2, $3, $4, $5)
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at
+`
+
+type InsertCashMovementParams struct {
+	SessionID int64           `json:"session_id"`
+	Kind      string          `json:"kind"`
+	Amount    decimal.Decimal `json:"amount"`
+	Concept   string          `json:"concept"`
+	UserID    int64           `json:"user_id"`
+}
+
+// Movimientos de efectivo (entradas/salidas del cajón durante la sesión).
+func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovementParams) (RegisterCashMovement, error) {
+	row := q.db.QueryRow(ctx, insertCashMovement,
+		arg.SessionID,
+		arg.Kind,
+		arg.Amount,
+		arg.Concept,
+		arg.UserID,
+	)
+	var i RegisterCashMovement
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Kind,
+		&i.Amount,
+		&i.Concept,
+		&i.ExpenseID,
+		&i.UserID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertExpenseCashMovement = `-- name: InsertExpenseCashMovement :exec
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
+values ($1, 'salida', $2, $3, $4, $5)
+`
+
+type InsertExpenseCashMovementParams struct {
+	SessionID int64           `json:"session_id"`
+	Amount    decimal.Decimal `json:"amount"`
+	Concept   string          `json:"concept"`
+	ExpenseID *int64          `json:"expense_id"`
+	UserID    int64           `json:"user_id"`
+}
+
+// Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
+func (q *Queries) InsertExpenseCashMovement(ctx context.Context, arg InsertExpenseCashMovementParams) error {
+	_, err := q.db.Exec(ctx, insertExpenseCashMovement,
+		arg.SessionID,
+		arg.Amount,
+		arg.Concept,
+		arg.ExpenseID,
+		arg.UserID,
+	)
+	return err
+}
+
+const listCashMovements = `-- name: ListCashMovements :many
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name
+from register_cash_movements m
+join users u on u.id = m.user_id
+where m.session_id = $1
+order by m.created_at
+`
+
+type ListCashMovementsRow struct {
+	ID        int64           `json:"id"`
+	Kind      string          `json:"kind"`
+	Amount    decimal.Decimal `json:"amount"`
+	Concept   string          `json:"concept"`
+	CreatedAt time.Time       `json:"created_at"`
+	UserName  string          `json:"user_name"`
+}
+
+func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]ListCashMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listCashMovements, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCashMovementsRow{}
+	for rows.Next() {
+		var i ListCashMovementsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Amount,
+			&i.Concept,
+			&i.CreatedAt,
+			&i.UserName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPaymentMethods = `-- name: ListPaymentMethods :many
 
-select id, name, kind, affects_cash_drawer from payment_methods where is_active order by sort_key, name
+select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where is_active order by sort_key, name
 `
 
 type ListPaymentMethodsRow struct {
@@ -106,6 +282,7 @@ type ListPaymentMethodsRow struct {
 	Name              string      `json:"name"`
 	Kind              PaymentKind `json:"kind"`
 	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
+	AutoDeclare       bool        `json:"auto_declare"`
 }
 
 // Medios de pago (lookup)
@@ -123,6 +300,50 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 			&i.Name,
 			&i.Kind,
 			&i.AffectsCashDrawer,
+			&i.AutoDeclare,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionTotals = `-- name: ListSessionTotals :many
+select t.payment_method_id, pm.name, t.expected, t.declared,
+       (t.declared - t.expected)::numeric(10,2) as difference
+from register_session_totals t
+join payment_methods pm on pm.id = t.payment_method_id
+where t.session_id = $1
+order by pm.sort_key
+`
+
+type ListSessionTotalsRow struct {
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Name            string          `json:"name"`
+	Expected        decimal.Decimal `json:"expected"`
+	Declared        decimal.Decimal `json:"declared"`
+	Difference      decimal.Decimal `json:"difference"`
+}
+
+func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]ListSessionTotalsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionTotals, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionTotalsRow{}
+	for rows.Next() {
+		var i ListSessionTotalsRow
+		if err := rows.Scan(
+			&i.PaymentMethodID,
+			&i.Name,
+			&i.Expected,
+			&i.Declared,
+			&i.Difference,
 		); err != nil {
 			return nil, err
 		}
@@ -135,17 +356,27 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 }
 
 const listSessions = `-- name: ListSessions :many
-select id, business_date, status, opening_cash, opened_at, closed_at from register_sessions
-order by opened_at desc limit $1
+select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
+       ob.name as opened_by_name, cb.name as closed_by_name,
+       coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
+from register_sessions s
+join users ob on ob.id = s.opened_by
+left join users cb on cb.id = s.closed_by
+order by s.opened_at desc limit $1
 `
 
 type ListSessionsRow struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
+	ID              int64              `json:"id"`
+	BusinessDate    pgtype.Date        `json:"business_date"`
+	Status          SessionStatus      `json:"status"`
+	OpeningCash     decimal.Decimal    `json:"opening_cash"`
+	Currency        string             `json:"currency"`
+	OpenedAt        time.Time          `json:"opened_at"`
+	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
+	Notes           *string            `json:"notes"`
+	OpenedByName    string             `json:"opened_by_name"`
+	ClosedByName    *string            `json:"closed_by_name"`
+	TotalDifference decimal.Decimal    `json:"total_difference"`
 }
 
 func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessionsRow, error) {
@@ -162,8 +393,13 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 			&i.BusinessDate,
 			&i.Status,
 			&i.OpeningCash,
+			&i.Currency,
 			&i.OpenedAt,
 			&i.ClosedAt,
+			&i.Notes,
+			&i.OpenedByName,
+			&i.ClosedByName,
+			&i.TotalDifference,
 		); err != nil {
 			return nil, err
 		}
@@ -173,6 +409,19 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 		return nil, err
 	}
 	return items, nil
+}
+
+const netCashMovements = `-- name: NetCashMovements :one
+select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
+from register_cash_movements where session_id = $1
+`
+
+// Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
+func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, netCashMovements, sessionID)
+	var net decimal.Decimal
+	err := row.Scan(&net)
+	return net, err
 }
 
 const openSession = `-- name: OpenSession :one
@@ -225,4 +474,35 @@ func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalPara
 		arg.Declared,
 	)
 	return err
+}
+
+const updatePaymentMethodAutoDeclare = `-- name: UpdatePaymentMethodAutoDeclare :one
+update payment_methods set auto_declare = $2 where id = $1
+returning id, name, kind, affects_cash_drawer, auto_declare
+`
+
+type UpdatePaymentMethodAutoDeclareParams struct {
+	ID          int16 `json:"id"`
+	AutoDeclare bool  `json:"auto_declare"`
+}
+
+type UpdatePaymentMethodAutoDeclareRow struct {
+	ID                int16       `json:"id"`
+	Name              string      `json:"name"`
+	Kind              PaymentKind `json:"kind"`
+	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
+	AutoDeclare       bool        `json:"auto_declare"`
+}
+
+func (q *Queries) UpdatePaymentMethodAutoDeclare(ctx context.Context, arg UpdatePaymentMethodAutoDeclareParams) (UpdatePaymentMethodAutoDeclareRow, error) {
+	row := q.db.QueryRow(ctx, updatePaymentMethodAutoDeclare, arg.ID, arg.AutoDeclare)
+	var i UpdatePaymentMethodAutoDeclareRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.AffectsCashDrawer,
+		&i.AutoDeclare,
+	)
+	return i, err
 }

@@ -1,4 +1,4 @@
-import { Drawer as ChakraDrawer, Portal } from "@chakra-ui/react"
+import { Drawer as ChakraDrawer, Portal, Box, type BoxProps } from "@chakra-ui/react"
 import { CloseButton } from "./close-button"
 import * as React from "react"
 
@@ -45,10 +45,21 @@ export const DrawerCloseTrigger = React.forwardRef<
       {...props}
       asChild
     >
-      <CloseButton size="sm" ref={ref} />
+      <CloseButton size="lg" ref={ref} />
     </ChakraDrawer.CloseTrigger>
   )
 })
+
+// Barra de agarre para cerrar arrastrando hacia abajo (bottom sheet táctil, ver
+// useSwipeDownToClose). El área de toque es más alta que la barra visible: en 7" un grip de
+// 4px sería imposible de agarrar con el dedo.
+export function DrawerGrabber(props: BoxProps) {
+  return (
+    <Box py="4" display="flex" justifyContent="center" style={{ touchAction: "none" }} {...props}>
+      <Box w="40px" h="4px" borderRadius="full" bg="border.emphasized" />
+    </Box>
+  )
+}
 
 export const DrawerTrigger = ChakraDrawer.Trigger
 export const DrawerRoot = ChakraDrawer.Root

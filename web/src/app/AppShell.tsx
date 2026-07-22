@@ -2,7 +2,7 @@ import { Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins,
-  LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette,
+  LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette, LuStore,
 } from 'react-icons/lu';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
@@ -20,6 +20,7 @@ const NAV = [
   { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
   { to: '/catalogo', icon: LuTag, label: 'Catálogo' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
+  { to: '/negocio', icon: LuStore, label: 'Negocio' },
   { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
 ];
 
@@ -46,7 +47,7 @@ export function AppShell() {
   };
 
   return (
-    <Flex h="100vh" overflow="hidden" colorPalette={palette}>
+    <Flex h="100dvh" overflow="hidden" colorPalette={palette}>
       <Flex direction="column" w="76px" bg="gray.900" color="white" py={3} flexShrink={0}>
         <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />
         {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems */}

@@ -99,6 +99,49 @@ func (ns NullCostSource) Value() (driver.Value, error) {
 	return string(ns.CostSource), nil
 }
 
+type ExpenseStatus string
+
+const (
+	ExpenseStatusPendiente ExpenseStatus = "pendiente"
+	ExpenseStatusPagada    ExpenseStatus = "pagada"
+	ExpenseStatusCancelada ExpenseStatus = "cancelada"
+)
+
+func (e *ExpenseStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExpenseStatus(s)
+	case string:
+		*e = ExpenseStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExpenseStatus: %T", src)
+	}
+	return nil
+}
+
+type NullExpenseStatus struct {
+	ExpenseStatus ExpenseStatus `json:"expense_status"`
+	Valid         bool          `json:"valid"` // Valid is true if ExpenseStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExpenseStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExpenseStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExpenseStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExpenseStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExpenseStatus), nil
+}
+
 type FinancialGroup string
 
 const (
@@ -534,6 +577,13 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type BusinessSetting struct {
+	ID          bool            `json:"id"`
+	DeliveryFee decimal.Decimal `json:"delivery_fee"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	UpdatedBy   *int64          `json:"updated_by"`
+}
+
 type Category struct {
 	ID       int64           `json:"id"`
 	Name     string          `json:"name"`
@@ -579,17 +629,23 @@ type DeliveryPlatform struct {
 }
 
 type Expense struct {
-	ID                int64           `json:"id"`
-	ExpenseDate       pgtype.Date     `json:"expense_date"`
-	CategoryID        int64           `json:"category_id"`
-	SupplierID        *int64          `json:"supplier_id"`
-	Amount            decimal.Decimal `json:"amount"`
-	PaymentMethodID   *int16          `json:"payment_method_id"`
-	RegisterSessionID *int64          `json:"register_session_id"`
-	Description       *string         `json:"description"`
-	CreatedBy         int64           `json:"created_by"`
-	CreatedAt         time.Time       `json:"created_at"`
-	Currency          string          `json:"currency"`
+	ID                int64              `json:"id"`
+	ExpenseDate       pgtype.Date        `json:"expense_date"`
+	CategoryID        int64              `json:"category_id"`
+	SupplierID        *int64             `json:"supplier_id"`
+	Amount            decimal.Decimal    `json:"amount"`
+	PaymentMethodID   *int16             `json:"payment_method_id"`
+	RegisterSessionID *int64             `json:"register_session_id"`
+	Description       *string            `json:"description"`
+	CreatedBy         int64              `json:"created_by"`
+	CreatedAt         time.Time          `json:"created_at"`
+	Currency          string             `json:"currency"`
+	Status            ExpenseStatus      `json:"status"`
+	PaidAt            pgtype.Timestamptz `json:"paid_at"`
+	PaidBy            *int64             `json:"paid_by"`
+	CancelledAt       pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy       *int64             `json:"cancelled_by"`
+	CancelReason      *string            `json:"cancel_reason"`
 }
 
 type ExpenseCategory struct {
@@ -693,6 +749,7 @@ type Order struct {
 	RefundedBy         *int64             `json:"refunded_by"`
 	RefundReason       *string            `json:"refund_reason"`
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
 }
 
 type OrderCounter struct {
@@ -748,6 +805,7 @@ type PaymentMethod struct {
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 	IsActive          bool            `json:"is_active"`
 	SortKey           decimal.Decimal `json:"sort_key"`
+	AutoDeclare       bool            `json:"auto_declare"`
 }
 
 type Product struct {
