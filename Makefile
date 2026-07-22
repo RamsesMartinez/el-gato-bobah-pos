@@ -1,7 +1,8 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
-        sqlc migrate-new fudo-import reset-admin build deploy prod-db-tunnel
+        sqlc migrate-new fudo-import reset-admin reset-password build deploy \
+        prod-db-tunnel prod-reset-password
 .DEFAULT_GOAL := help
 
 # Puertos no estándar (5433/6380) para no chocar con otros contenedores locales.
@@ -84,6 +85,8 @@ sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
 
 reset-admin: deps-up ## Actualiza contraseña/PIN del admin desde deploy/.env (sin borrar datos)
 	@bash scripts/dev-api.sh reset-admin
+reset-password: deps-up ## Resetea password de un usuario (prompt oculto): make reset-password user=admin@gatobobah
+	@bash scripts/dev-api.sh reset-password "$(user)"
 
 sqlc: ## Regenera el código sqlc
 	cd server && $(GOBIN)/sqlc generate
@@ -110,3 +113,10 @@ prod-db-tunnel: ## Túnel local :5434 -> Postgres de producción (Ctrl+C para ce
 	@PG_IP=$$(gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a --quiet \
 		--command="docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' deploy-postgres-1"); \
 	gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a -- -N -L 5434:$$PG_IP:5432
+
+# Corre el binario YA compilado dentro del contenedor api en producción (sin `go` en la VPS,
+# solo Docker). --ssh-flag=-t + `exec -it` fuerzan una pty de punta a punta, si no el prompt
+# oculto del password (term.ReadPassword) no tiene terminal real donde leer.
+prod-reset-password: ## Resetea password en la VPS (prompt oculto): make prod-reset-password user=admin@gatobobah
+	gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a --ssh-flag="-t" --command="cd el-gato-bobah-pos && \
+		docker compose -f deploy/docker-compose.yml exec -it api /api -reset-password='$(user)'"

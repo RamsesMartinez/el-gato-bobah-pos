@@ -3,7 +3,7 @@
 # deploy/.env con parseo LITERAL (godotenv) — soporta #, $, espacios, comillas sin que
 # el shell los interprete. Este script solo fija la CONEXIÓN local (postgres/redis del
 # compose dev en 5433/6380) y la ruta del .env.
-# Uso: dev-api.sh [air|reset-admin]
+# Uso: dev-api.sh [air|reset-admin|reset-password USUARIO@SLUG]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +30,8 @@ export ENV_FILE="$ROOT/deploy/.env"
 
 cd "$ROOT/server"
 case "${1:-}" in
-  air)         exec "$(go env GOPATH)/bin/air" ;;
-  reset-admin) exec go run ./cmd/api -reset-admin ;;
-  *)           exec go run ./cmd/api ;;
+  air)            exec "$(go env GOPATH)/bin/air" ;;
+  reset-admin)    exec go run ./cmd/api -reset-admin ;;
+  reset-password) exec go run ./cmd/api -reset-password="${2:?uso: make reset-password user=usuario@slug}" ;;
+  *)              exec go run ./cmd/api ;;
 esac

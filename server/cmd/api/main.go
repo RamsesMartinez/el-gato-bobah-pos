@@ -26,12 +26,16 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
+
+	"github.com/jackc/pgx/v5"
+	"golang.org/x/term"
 )
 
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "ping local /healthz and exit (for Docker HEALTHCHECK)")
 	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
 	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (ADMIN_*) y sale")
+	resetPassword := flag.String("reset-password", "", "resetea la contraseña de username@slug (prompt interactivo, oculto) y sale")
 	flag.Parse()
 
 	loadEnvFile() // carga deploy/.env de forma literal (soporta # $ espacios, sin expansión de shell)
@@ -118,6 +122,18 @@ func main() {
 			slog.Error("aislamiento multi-tenant no garantizado", "error", err)
 			os.Exit(1)
 		}
+	}
+
+	// Corre sobre `st` (rol de servicio, RLS-enforced en prod): el GetUserByUsername de abajo
+	// depende de RLS para acotar a la empresa correcta — hacerlo como owner (admin) vería
+	// usernames repetidos entre empresas y podría resetear el usuario equivocado.
+	if *resetPassword != "" {
+		if err := runResetPassword(ctx, cfg, st, *resetPassword); err != nil {
+			slog.Error("reset password", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("password actualizado", "identifier", *resetPassword)
+		return
 	}
 
 	jm := auth.NewManager(cfg.JWTSecret, nil)
@@ -444,6 +460,64 @@ func resetAdminUser(ctx context.Context, st *store.Store) error {
 		}
 		return err
 	})
+}
+
+// runResetPassword resetea la contraseña de username@slug pidiéndola por terminal (oculta, con
+// confirmación) — misma política que el reset por admin vía HTTP (fuerza + HIBP,
+// must_change_password=true tras el reset): no es un atajo que bypasee esas reglas.
+func runResetPassword(ctx context.Context, cfg config.Config, st *store.Store, identifier string) error {
+	username, slug, ok := strings.Cut(identifier, "@")
+	if !ok || username == "" || slug == "" {
+		return fmt.Errorf("formato inválido: usa username@slug")
+	}
+	companyID, err := st.Q.ResolveCompanyBySlug(ctx, slug)
+	if err != nil {
+		return err
+	}
+	if companyID == 0 {
+		return fmt.Errorf("no existe la empresa %q", slug)
+	}
+
+	tenantCtx, release, err := st.AcquireTenant(ctx, companyID)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	u, err := st.QC(tenantCtx).GetUserByUsername(tenantCtx, &username)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("no existe el usuario %q en la empresa %q", username, slug)
+		}
+		return err
+	}
+
+	pw, err := promptPassword("Nuevo password: ")
+	if err != nil {
+		return err
+	}
+	confirm, err := promptPassword("Confirma: ")
+	if err != nil {
+		return err
+	}
+	if pw != confirm {
+		return fmt.Errorf("los passwords no coinciden")
+	}
+
+	users := app.NewUsersService(st, hibp.New(nil), cfg.HIBPEnabled)
+	return users.AdminSetPassword(tenantCtx, u.ID, pw)
+}
+
+// promptPassword pide un valor por terminal sin hacer eco (no queda en el scrollback ni en
+// grabaciones de pantalla, y nunca pasa por argv/shell history).
+func promptPassword(label string) (string, error) {
+	fmt.Fprint(os.Stderr, label)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func runHealthcheck(port string) int {
