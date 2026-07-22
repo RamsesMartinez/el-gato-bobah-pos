@@ -1,7 +1,7 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
-        sqlc migrate-new fudo-import reset-admin build deploy
+        sqlc migrate-new fudo-import reset-admin build deploy prod-db-tunnel
 .DEFAULT_GOAL := help
 
 # Puertos no estándar (5433/6380) para no chocar con otros contenedores locales.
@@ -101,3 +101,12 @@ deploy: ## Deploy con docker compose (VPS)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build
 	docker compose -f deploy/docker-compose.yml up -d
+
+# Túnel SSH a Postgres de la VPS, para inspeccionar con DataGrip/psql sin exponer el puerto a
+# internet. Resuelve la IP interna del contenedor en cada corrida (puede cambiar si se recrea).
+# Corre en primer plano a propósito — Ctrl+C lo cierra, nada queda vivo en segundo plano.
+prod-db-tunnel: ## Túnel local :5434 -> Postgres de producción (Ctrl+C para cerrar)
+	@echo "Túnel localhost:5434 -> Postgres (VPS). Ctrl+C para cerrar."
+	@PG_IP=$$(gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a --quiet \
+		--command="docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' deploy-postgres-1"); \
+	gcloud compute ssh ramses_mtz96@pos-vps --zone=us-central1-a -- -N -L 5434:$$PG_IP:5432
