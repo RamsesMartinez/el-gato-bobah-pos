@@ -41,6 +41,7 @@ type Deps struct {
 	Orders     *app.OrdersService
 	Backoffice *app.BackofficeService
 	Admin      *app.AdminService
+	Settings   *app.SettingsService
 	Broker     *realtime.Broker
 }
 
@@ -56,6 +57,7 @@ type Handlers struct {
 	orders     *app.OrdersService
 	backoffice *app.BackofficeService
 	admin      *app.AdminService
+	settings   *app.SettingsService
 	broker     *realtime.Broker
 	authFails  *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs    *rateLimiter // per-IP request throttle for the /auth group
@@ -65,7 +67,7 @@ func NewHandlers(d Deps) *Handlers {
 	return &Handlers{
 		cfg: d.Cfg, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
-		backoffice: d.Backoffice, admin: d.Admin, broker: d.Broker,
+		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, broker: d.Broker,
 		authFails: newRateLimiter(authFailMax, authFailWindow),
 		authIPs:   newRateLimiter(60, time.Minute),
 	}

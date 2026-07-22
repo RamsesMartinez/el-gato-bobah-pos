@@ -38,7 +38,7 @@ export function LoginPage() {
   };
 
   return (
-    <Center h="100vh" bg="bg.subtle" colorPalette={palette}>
+    <Center h="100dvh" bg="bg.subtle" colorPalette={palette}>
       <Box as="form" onSubmit={submit} bg="bg.panel" p={8} borderRadius={RADIUS} boxShadow="lg" w="360px" maxW="90vw">
         <VStack gap={5} align="stretch">
           <Box textAlign="center">

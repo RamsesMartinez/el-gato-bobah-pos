@@ -9,6 +9,7 @@ const baseOrder: OrderView = {
   serviceType: 'mostrador',
   customerName: null,
   subtotal: '5000',
+  deliveryFee: '0',
   total: '5000',
   currency: 'MXN',
   paid: false,

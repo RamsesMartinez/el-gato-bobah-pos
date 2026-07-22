@@ -10,7 +10,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   // un reload en frío mandaría al operador a re-loguearse aunque su sesión siga viva.
   if (status === 'loading') {
     return (
-      <Center h="100vh">
+      <Center h="100dvh">
         <Spinner size="lg" />
       </Center>
     );

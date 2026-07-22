@@ -23,8 +23,8 @@ select id from orders where client_uuid = $1;
 
 -- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
-                    customer_name, notes, register_session_id, opened_by, subtotal, total)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 returning *;
 
 -- name: CreateOrderLine :one

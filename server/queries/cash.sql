@@ -1,7 +1,19 @@
 -- Medios de pago (lookup)
 
 -- name: ListPaymentMethods :many
-select id, name, kind, affects_cash_drawer from payment_methods where is_active order by sort_key, name;
+select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where is_active order by sort_key, name;
+
+-- name: GetPaymentMethod :one
+select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where id = $1;
+
+-- name: UpdatePaymentMethodAutoDeclare :one
+update payment_methods set auto_declare = $2 where id = $1
+returning id, name, kind, affects_cash_drawer, auto_declare;
+
+-- name: InsertExpenseCashMovement :exec
+-- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
+insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
+values ($1, 'salida', $2, $3, $4, $5);
 
 -- Cortes de caja
 
@@ -22,15 +34,53 @@ insert into register_session_totals (session_id, payment_method_id, expected, de
 values ($1, $2, $3, $4);
 
 -- name: ListSessions :many
-select id, business_date, status, opening_cash, opened_at, closed_at from register_sessions
-order by opened_at desc limit $1;
+select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
+       ob.name as opened_by_name, cb.name as closed_by_name,
+       coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
+from register_sessions s
+join users ob on ob.id = s.opened_by
+left join users cb on cb.id = s.closed_by
+order by s.opened_at desc limit $1;
+
+-- name: GetSession :one
+select s.*, ob.name as opened_by_name, cb.name as closed_by_name
+from register_sessions s
+join users ob on ob.id = s.opened_by
+left join users cb on cb.id = s.closed_by
+where s.id = $1;
+
+-- name: ListSessionTotals :many
+select t.payment_method_id, pm.name, t.expected, t.declared,
+       (t.declared - t.expected)::numeric(10,2) as difference
+from register_session_totals t
+join payment_methods pm on pm.id = t.payment_method_id
+where t.session_id = $1
+order by pm.sort_key;
+
+-- Movimientos de efectivo (entradas/salidas del cajón durante la sesión).
+-- name: InsertCashMovement :one
+insert into register_cash_movements (session_id, kind, amount, concept, user_id)
+values ($1, $2, $3, $4, $5)
+returning *;
+
+-- name: ListCashMovements :many
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name
+from register_cash_movements m
+join users u on u.id = m.user_id
+where m.session_id = $1
+order by m.created_at;
+
+-- Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
+-- name: NetCashMovements :one
+select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
+from register_cash_movements where session_id = $1;
 
 -- Totales esperados por método desde la apertura de la sesión (ventana temporal).
 -- name: ExpectedByMethodSince :many
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer,
+select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected
 from payment_methods pm
 left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer
+group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key;

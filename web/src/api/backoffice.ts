@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { PaymentMethod } from '../types/pos';
 
 // Dinero/cantidades = string decimal exacto desde el backend (ver types/pos.ts).
 export interface MethodTotal {
@@ -7,6 +8,15 @@ export interface MethodTotal {
   expected: string;
   declared: string;
   difference: string;
+  autoDeclare: boolean;
+}
+export interface CashMovement {
+  id: number;
+  kind: 'entrada' | 'salida';
+  amount: string;
+  concept: string;
+  createdAt: string;
+  userName: string;
 }
 export interface CashSession {
   id: number;
@@ -14,21 +24,66 @@ export interface CashSession {
   openingCash: string;
   currency: string;
   openedAt: string;
+  netMovements: string;
   totals: MethodTotal[];
+  movements: CashMovement[];
 }
+// Fila del histórico de cortes.
+export interface CashSessionRow {
+  id: number;
+  status: string;
+  openingCash: string;
+  currency: string;
+  openedAt: string;
+  closedAt: string | null;
+  openedByName: string;
+  closedByName: string | null;
+  totalDifference: string;
+  notes: string | null;
+}
+// Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
+export interface CashSessionDetail {
+  id: number;
+  status: string;
+  openingCash: string;
+  currency: string;
+  openedAt: string;
+  closedAt: string | null;
+  openedByName: string;
+  closedByName: string | null;
+  notes: string | null;
+  totals: MethodTotal[];
+  movements: CashMovement[];
+}
+export type FinancialGroup = 'operacional' | 'administrativo' | 'otro';
+export type ExpenseStatus = 'pendiente' | 'pagada' | 'cancelada';
+
 export interface ExpenseCategory {
   id: number;
   name: string;
-  financial_group: string;
+  financialGroup: FinancialGroup;
+  isActive: boolean;
 }
-export interface ExpenseRow {
+export interface Supplier {
   id: number;
-  expense_date: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  isActive: boolean;
+}
+export interface Expense {
+  id: number;
+  expenseDate: string; // YYYY-MM-DD
+  status: ExpenseStatus;
   category: string;
+  financialGroup: FinancialGroup;
   supplier: string | null;
   amount: string;
   currency: string;
   description: string | null;
+  paymentMethod: string | null;
+  paidAt: string | null;
+  createdBy: string | null;
 }
 export interface StockLevel {
   item_type: string;
@@ -50,13 +105,39 @@ export interface StockMovement {
 export const backofficeApi = {
   cashCurrent: () => api.get<CashSession | null>('/cash-sessions/current'),
   cashOpen: (openingCash: number) => api.post<CashSession>('/cash-sessions', { openingCash }),
-  cashClose: (declared: Record<string, number>) =>
-    api.post<CashSession>('/cash-sessions/close', { declared }),
+  cashClose: (declared: Record<string, number>, notes?: string) =>
+    api.post<CashSession>('/cash-sessions/close', { declared, notes }),
+  cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
+  cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
+  cashMovement: (kind: 'entrada' | 'salida', amount: number, concept: string) =>
+    api.post<CashSession>('/cash-sessions/movements', { kind, amount, concept }),
+  // Config de negocio (admin/gerente): qué método se declara solo al cerrar caja.
+  setPaymentMethodAutoDeclare: (id: number, autoDeclare: boolean) =>
+    api.patch<PaymentMethod>(`/payment-methods/${id}`, { autoDeclare }),
 
+  // Categorías de gasto
   expenseCategories: () => api.get<{ items: ExpenseCategory[] }>('/expense-categories'),
-  expenses: () => api.get<{ items: ExpenseRow[] }>('/expenses'),
-  createExpense: (b: { categoryId: number; amount: number; description?: string }) =>
-    api.post<{ id: number }>('/expenses', b),
+  createExpenseCategory: (b: { name: string; financialGroup: FinancialGroup }) =>
+    api.post<ExpenseCategory>('/expense-categories', b),
+  updateExpenseCategory: (id: number, b: { name: string; financialGroup: FinancialGroup; isActive: boolean }) =>
+    api.patch<ExpenseCategory>(`/expense-categories/${id}`, b),
+
+  // Proveedores
+  suppliers: () => api.get<{ items: Supplier[] }>('/suppliers'),
+  createSupplier: (b: { name: string; phone?: string; notes?: string }) =>
+    api.post<Supplier>('/suppliers', b),
+  updateSupplier: (id: number, b: { name: string; phone?: string; notes?: string; isActive: boolean }) =>
+    api.patch<Supplier>(`/suppliers/${id}`, b),
+
+  // Gastos
+  expenses: (status?: ExpenseStatus) =>
+    api.get<{ items: Expense[] }>(`/expenses${status ? `?status=${status}` : ''}`),
+  createExpense: (b: {
+    categoryId: number; supplierId?: number; amount: number;
+    description?: string; status: ExpenseStatus; methodId?: number;
+  }) => api.post<{ id: number }>('/expenses', b),
+  payExpense: (id: number, methodId: number) => api.post<void>(`/expenses/${id}/pay`, { methodId }),
+  cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
 
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),

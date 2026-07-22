@@ -116,7 +116,7 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
 
   return (
     <Box>
-      <HStack gap={2} overflowX="auto" py={2} css={railScroll}>
+      <HStack gap={2} overflowX="auto" py={1.5} css={railScroll}>
         {/* Top global (más vendidos de todo) — fijo, no se reordena */}
         <Button {...chip(selection.kind === 'top', 'colorPalette.500')} onClick={() => onSelect({ kind: 'top' })}>
           <LuFlame /> Top
@@ -134,8 +134,8 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
       </HStack>
 
       {cur && (
-        <Box mt={1} pl={3} borderLeftWidth={ACCENT_W} borderColor="colorPalette.400" bg="bg.muted" borderRadius={RADIUS}>
-          <HStack gap={2} overflowX="auto" py={2} pr={2} css={railScroll}>
+        <Box mt={0.5} pl={3} borderLeftWidth={ACCENT_W} borderColor="colorPalette.400" bg="bg.muted" borderRadius={RADIUS}>
+          <HStack gap={2} overflowX="auto" py={1} pr={2} css={railScroll}>
             {/* Todos + Populares: fijos (no se reordenan). Populares es un toggle que se combina con el scope. */}
             <Button {...subChip(cur.subId === null, 'colorPalette.500')}
               onClick={() => onSelect({ kind: 'root', rootId: cur.rootId, subId: null, popular: cur.popular })}>

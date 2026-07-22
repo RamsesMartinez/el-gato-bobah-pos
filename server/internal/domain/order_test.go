@@ -99,3 +99,30 @@ func TestBuildOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyDeliveryFee(t *testing.T) {
+	base := func() BuiltOrder { return BuiltOrder{Subtotal: d("170"), Total: d("170")} }
+
+	// No domicilio: el fee se ignora aunque venga en el body → 0, total intacto.
+	if o, err := ApplyDeliveryFee(base(), d("20"), false); err != nil ||
+		!o.DeliveryFee.Equal(d("0")) || !o.Total.Equal(d("170")) {
+		t.Fatalf("no-domicilio: fee=%v total=%v err=%v", o.DeliveryFee, o.Total, err)
+	}
+	// Domicilio con fee: se suma al total.
+	if o, err := ApplyDeliveryFee(base(), d("20"), true); err != nil ||
+		!o.DeliveryFee.Equal(d("20")) || !o.Total.Equal(d("190")) {
+		t.Fatalf("domicilio: fee=%v total=%v err=%v", o.DeliveryFee, o.Total, err)
+	}
+	// Envío gratis (0) es válido a domicilio.
+	if o, err := ApplyDeliveryFee(base(), d("0"), true); err != nil ||
+		!o.DeliveryFee.Equal(d("0")) || !o.Total.Equal(d("170")) {
+		t.Fatalf("envío gratis: fee=%v total=%v err=%v", o.DeliveryFee, o.Total, err)
+	}
+	// Adversarial: montos absurdos caen como validación (400), no como check de columna violado.
+	if _, err := ApplyDeliveryFee(base(), d("-1"), true); err == nil {
+		t.Error("fee negativo debe rechazarse")
+	}
+	if _, err := ApplyDeliveryFee(base(), MaxMoney.Add(d("1")), true); err == nil {
+		t.Error("fee > MaxMoney debe rechazarse")
+	}
+}

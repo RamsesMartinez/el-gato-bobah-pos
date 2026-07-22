@@ -4,15 +4,19 @@ import {
 import { LuTrash2, LuStickyNote, LuPanelRightClose } from 'react-icons/lu';
 import { useTicketStore, useActiveTicket, lineTotal, ticketTotal } from '../../stores/ticket';
 import type { TicketLine } from '../../types/pos';
+import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
 
 interface Props {
   onCheckout: () => void;
   onEditLine: (line: TicketLine) => void;
   onHide?: () => void; // ocultar el panel lateral (solo modo ancho)
+  // solo cuando Ticket vive dentro del bottom sheet (modo angosto): arrastrar el header
+  // hacia abajo también lo cierra, además del botón "Ocultar pedido".
+  swipeHandlers?: SwipeHandlers;
 }
 
-export function Ticket({ onCheckout, onEditLine, onHide }: Props) {
+export function Ticket({ onCheckout, onEditLine, onHide, swipeHandlers }: Props) {
   const { lines, customerName } = useActiveTicket();
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
@@ -22,11 +26,12 @@ export function Ticket({ onCheckout, onEditLine, onHide }: Props) {
 
   return (
     <Flex direction="column" h="100%" bg="bg.panel">
-      <HStack justify="space-between" p={3} pb={2} gap={2}>
+      <HStack justify="space-between" p={3} pb={2} gap={2}
+        style={swipeHandlers ? { touchAction: 'none' } : undefined} {...swipeHandlers}>
         {/* collapse a la IZQUIERDA, lejos de "Vaciar" (destructivo) para evitar toques accidentales en 7" */}
         <HStack gap={2} minW={0} flex="1">
           {onHide && (
-            <IconButton size="sm" minW="40px" minH="40px" variant="ghost" colorPalette="gray"
+            <IconButton size="lg" minW="48px" minH="48px" variant="ghost" colorPalette="gray"
               aria-label="Ocultar pedido" onClick={onHide}>
               <LuPanelRightClose />
             </IconButton>

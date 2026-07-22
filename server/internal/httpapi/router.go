@@ -81,17 +81,39 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 			// Backoffice. Role gates reflejan segregación de funciones; ajusta los
 			// roles a tu operación real (p. ej. si un mesero también cobra).
 			r.Get("/payment-methods", h.PaymentMethods)
+			// auto_declare (config de negocio): solo admin/gerente elige qué métodos se
+			// declaran solos al cerrar caja.
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/payment-methods/{id}", h.UpdatePaymentMethod)
+			// Ajustes de negocio: GET lo necesita el cobro (costo de envío por defecto); PUT solo
+			// admin/gerente (es dinero autoritativo del negocio).
+			r.Get("/business-settings", h.BusinessSettings)
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
+			// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
+			r.Get("/cash-status", h.CashStatus)
 			// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
 			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Route("/cash-sessions", func(r chi.Router) {
 				r.Post("/", h.OpenCashSession)
+				r.Get("/", h.CashHistory)
 				r.Get("/current", h.CurrentCashSession)
+				r.Get("/{id}", h.CashSessionDetail)
 				r.Post("/close", h.CloseCashSession)
+				r.Post("/movements", h.CreateCashMovement)
 			})
+			// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 			r.Get("/expense-categories", h.ExpenseCategories)
-			// gastos: función de gestión/contabilidad
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/expenses", func(r chi.Router) {
-				r.Get("/", h.ListExpenses)
-				r.Post("/", h.CreateExpense)
+			// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
+			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+				r.Post("/expense-categories", h.CreateExpenseCategory)
+				r.Patch("/expense-categories/{id}", h.UpdateExpenseCategory)
+				r.Get("/suppliers", h.Suppliers)
+				r.Post("/suppliers", h.CreateSupplier)
+				r.Patch("/suppliers/{id}", h.UpdateSupplier)
+				r.Route("/expenses", func(r chi.Router) {
+					r.Get("/", h.ListExpenses)
+					r.Post("/", h.CreateExpense)
+					r.Post("/{id}/pay", h.PayExpense)
+					r.Post("/{id}/cancel", h.CancelExpense)
+				})
 			})
 			// inventario: ajustes/mermas los hace gerencia
 			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
