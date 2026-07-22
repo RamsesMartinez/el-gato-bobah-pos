@@ -4,6 +4,9 @@ import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
 import { RequireAuth, RequireRole } from './app/RequireAuth';
 import { LoginPage } from './features/auth/LoginPage';
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
+import { AccountPage } from './features/auth/AccountPage';
 import { POSPage } from './features/pos/POSPage';
 import { OrdersBoardPage } from './features/orders/OrdersBoardPage';
 import { CashPage } from './features/backoffice/CashPage';
@@ -29,6 +32,8 @@ export const App = () => {
   <BrowserRouter>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/recuperar" element={<ForgotPasswordPage />} />
+      <Route path="/reset" element={<ResetPasswordPage />} />
       <Route
         element={
           <RequireAuth>
@@ -53,6 +58,7 @@ export const App = () => {
         <Route path="/empleados" element={<RequireRole path="/empleados"><EmployeesPage /></RequireRole>} />
         <Route path="/negocio" element={<RequireRole path="/negocio"><BusinessSettingsPage /></RequireRole>} />
         <Route path="/apariencia" element={<AppearancePage />} />
+        <Route path="/cuenta" element={<AccountPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/pos" replace />} />
     </Routes>

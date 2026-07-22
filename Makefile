@@ -1,5 +1,5 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
-.PHONY: help install start check check-env deps-up deps-down \
+.PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc migrate-new fudo-import reset-admin build deploy
 .DEFAULT_GOAL := help
@@ -42,6 +42,9 @@ install: ## Prepara TODO: valida entorno + variables, instala deps y herramienta
 
 start: ## Levanta todo (postgres+redis+API+web); avisa si falta algo
 	@bash scripts/start.sh
+
+stop: ## Detiene todo lo que 'make start' dejó vivo (docker + API/web huérfanos)
+	@bash scripts/stop.sh
 
 # --- Infra dev (postgres + redis) ---
 deps-up: ## Levanta postgres + redis (dev)

@@ -18,7 +18,13 @@ func (h *Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ch, unsub := h.broker.Subscribe()
+	// Suscripción scopeada a la empresa del usuario: nunca recibe eventos de otro tenant.
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, fmt.Errorf("streaming requiere sesión"))
+		return
+	}
+	ch, unsub := h.broker.Subscribe(u.CompanyID)
 	defer unsub()
 
 	// ping inicial para abrir el stream

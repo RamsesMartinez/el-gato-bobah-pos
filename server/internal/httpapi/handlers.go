@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -42,6 +44,8 @@ type Deps struct {
 	Backoffice *app.BackofficeService
 	Admin      *app.AdminService
 	Settings   *app.SettingsService
+	Company    *app.CompanyService
+	Reset      *app.ResetService
 	Broker     *realtime.Broker
 }
 
@@ -58,6 +62,8 @@ type Handlers struct {
 	backoffice *app.BackofficeService
 	admin      *app.AdminService
 	settings   *app.SettingsService
+	company    *app.CompanyService
+	reset      *app.ResetService
 	broker     *realtime.Broker
 	authFails  *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs    *rateLimiter // per-IP request throttle for the /auth group
@@ -67,7 +73,7 @@ func NewHandlers(d Deps) *Handlers {
 	return &Handlers{
 		cfg: d.Cfg, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
-		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, broker: d.Broker,
+		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		authFails: newRateLimiter(authFailMax, authFailWindow),
 		authIPs:   newRateLimiter(60, time.Minute),
 	}
@@ -78,16 +84,32 @@ type sessionResponse struct {
 	User        domain.User `json:"user"`
 }
 
-func (h *Handlers) setRefreshCookie(w http.ResponseWriter, token string) {
+// La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
+// empresa (para RLS) ANTES de conocer al usuario. cid no es secreto (solo dice qué empresa);
+// la autenticación real es el token aleatorio. Ver AuthService.Refresh.
+func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookie,
-		Value:    token,
+		Value:    strconv.FormatInt(companyID, 10) + "." + token,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
 		Secure:   h.cfg.Env == "production",
 		SameSite: http.SameSiteStrictMode,
 		Expires:  time.Now().Add(app.RefreshTokenTTL),
 	})
+}
+
+// parseRefreshCookie separa "cid.token". Devuelve (0,"") si el formato no calza.
+func parseRefreshCookie(v string) (int64, string) {
+	cid, token, ok := strings.Cut(v, ".")
+	if !ok {
+		return 0, ""
+	}
+	id, err := strconv.ParseInt(cid, 10, 64)
+	if err != nil {
+		return 0, ""
+	}
+	return id, token
 }
 
 func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
@@ -98,33 +120,43 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
-	h.setRefreshCookie(w, s.RefreshToken)
+	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken)
 	JSON(w, status, sessionResponse{AccessToken: s.AccessToken, User: s.User})
 }
 
-// POST /auth/login
+// POST /auth/login  {username, slug, password}. El identificador es username@slug; también se
+// acepta que venga junto en `username` ("nick@empresa") y aquí se separa.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
+		Slug     string `json:"slug"`
 		Password string `json:"password"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	// Account-targeted lockout: block before hitting bcrypt once too many wrong
-	// attempts pile up for this username within the window.
-	key := "login:" + body.Username
+	if body.Slug == "" {
+		if nick, slug, ok := strings.Cut(body.Username, "@"); ok {
+			body.Username, body.Slug = nick, slug
+		}
+	}
+	// Lockout por cuenta = empresa+usuario: bloquea antes de tocar bcrypt tras demasiados fallos.
+	key := "login:" + body.Slug + ":" + body.Username
 	if h.authFails.blocked(key) {
-		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "login", "username", body.Username, "ip", clientIP(r))
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "login", "slug", body.Slug, "username", body.Username, "ip", clientIP(r))
 		tooManyRequests(w, h.authFails.retryAfter(key))
 		return
 	}
-	s, err := h.auth.Login(r.Context(), body.Username, body.Password)
+	s, err := h.auth.Login(r.Context(), body.Username, body.Slug, body.Password)
 	if err != nil {
 		h.authFails.record(key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			logging.SecurityEvent(r.Context(), "login_failed", "username", body.Username, "ip", clientIP(r))
+			logging.SecurityEvent(r.Context(), "login_failed", "slug", body.Slug, "username", body.Username, "ip", clientIP(r))
+			// Mensaje un poco más orientativo SIN revelar cuál de los tres falló (anti-enumeración):
+			// el mismo texto para usuario/empresa/contraseña incorrectos.
+			Error(w, fmt.Errorf("%w: revisa el usuario, la empresa y la contraseña", domain.ErrInvalidCredentials))
+			return
 		}
 		Error(w, err)
 		return
@@ -164,14 +196,19 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	h.writeSession(w, s, http.StatusOK)
 }
 
-// POST /auth/refresh (reads refresh cookie)
+// POST /auth/refresh (reads refresh cookie "cid.token")
 func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(refreshCookie)
 	if err != nil {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
-	s, err := h.auth.Refresh(r.Context(), c.Value)
+	companyID, token := parseRefreshCookie(c.Value)
+	if companyID == 0 {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	s, err := h.auth.Refresh(r.Context(), companyID, token)
 	if err != nil {
 		Error(w, err)
 		return
@@ -182,9 +219,55 @@ func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
 // POST /auth/logout
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(refreshCookie); err == nil {
-		_ = h.auth.Logout(r.Context(), c.Value)
+		if companyID, token := parseRefreshCookie(c.Value); companyID != 0 {
+			_ = h.auth.Logout(r.Context(), companyID, token)
+		}
 	}
 	h.clearRefreshCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /auth/forgot  {slug, username | username="nick@slug"} — solicita recuperación.
+// Anti-enumeración: SIEMPRE responde 204 (no revela si la cuenta o su email existen).
+func (h *Handlers) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Username string `json:"username"`
+		Slug     string `json:"slug"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Slug == "" {
+		if nick, slug, ok := strings.Cut(body.Username, "@"); ok {
+			body.Username, body.Slug = nick, slug
+		}
+	}
+	// best-effort: ignoramos el error interno para no filtrar existencia por diferencias de
+	// respuesta; los fallos reales quedan en el log/eventos de seguridad del servicio.
+	_ = h.reset.Request(r.Context(), body.Slug, body.Username)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /auth/reset  {token, password} — confirma con el token del email (cid.token).
+func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	companyID, token := parseRefreshCookie(body.Token) // mismo formato cid.token
+	if companyID == 0 {
+		Error(w, domain.ErrResetInvalid) // token malformado → mismo mensaje accionable
+		return
+	}
+	if err := h.reset.Confirm(r.Context(), companyID, token, body.Password); err != nil {
+		Error(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -196,6 +279,6 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{
-		"id": u.ID, "name": u.Name, "role": u.Role,
+		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
 	})
 }

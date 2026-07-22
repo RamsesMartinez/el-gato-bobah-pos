@@ -578,7 +578,6 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 }
 
 type BusinessSetting struct {
-	ID          bool            `json:"id"`
 	DeliveryFee decimal.Decimal `json:"delivery_fee"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	UpdatedBy   *int64          `json:"updated_by"`
@@ -620,6 +619,15 @@ type ComboSlotProduct struct {
 	ProductID  int64           `json:"product_id"`
 	PriceDelta decimal.Decimal `json:"price_delta"`
 	IsDefault  bool            `json:"is_default"`
+}
+
+type Company struct {
+	ID        int64     `json:"id"`
+	Slug      string    `json:"slug"`
+	Name      string    `json:"name"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type DeliveryPlatform struct {
@@ -798,6 +806,16 @@ type OrderPayment struct {
 	CreatedAt         time.Time       `json:"created_at"`
 }
 
+type PasswordResetToken struct {
+	ID        int64              `json:"id"`
+	CompanyID int64              `json:"company_id"`
+	UserID    int64              `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
 type PaymentMethod struct {
 	ID                int16           `json:"id"`
 	Name              string          `json:"name"`
@@ -948,15 +966,18 @@ type Unit struct {
 }
 
 type User struct {
-	ID           int64     `json:"id"`
-	Name         string    `json:"name"`
-	Username     *string   `json:"username"`
-	Role         string    `json:"role"`
-	PinHash      *string   `json:"pin_hash"`
-	PasswordHash *string   `json:"password_hash"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                 int64     `json:"id"`
+	Name               string    `json:"name"`
+	Username           *string   `json:"username"`
+	Role               string    `json:"role"`
+	PinHash            *string   `json:"pin_hash"`
+	PasswordHash       *string   `json:"password_hash"`
+	IsActive           bool      `json:"is_active"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	CompanyID          int64     `json:"company_id"`
+	RecoveryEmail      *string   `json:"recovery_email"`
+	MustChangePassword bool      `json:"must_change_password"`
 }
 
 type UserPreference struct {

@@ -129,9 +129,15 @@ export const backofficeApi = {
   updateSupplier: (id: number, b: { name: string; phone?: string; notes?: string; isActive: boolean }) =>
     api.patch<Supplier>(`/suppliers/${id}`, b),
 
-  // Gastos
-  expenses: (status?: ExpenseStatus) =>
-    api.get<{ items: Expense[] }>(`/expenses${status ? `?status=${status}` : ''}`),
+  // Gastos (paginado)
+  expenses: (params?: { status?: ExpenseStatus; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.page != null) q.set('page', String(params.page));
+    if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
+    const qs = q.toString();
+    return api.get<{ items: Expense[]; total: number; page: number; pageSize: number }>(`/expenses${qs ? `?${qs}` : ''}`);
+  },
   createExpense: (b: {
     categoryId: number; supplierId?: number; amount: number;
     description?: string; status: ExpenseStatus; methodId?: number;

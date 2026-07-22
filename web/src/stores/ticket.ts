@@ -59,7 +59,24 @@ export const useTicketStore = create<TicketState>()(
 
         addLine: (line) =>
           set((s) =>
-            onActive(s, (t) => ({ ...t, lines: [...t.lines, { ...line, lineId: uuid() }] })),
+            onActive(s, (t) => {
+              // Producto "directo" (sin modificadores ni nota): tocarlo de nuevo SUMA a la línea
+              // existente en vez de duplicarla. Con modificadores/nota cada línea puede diferir
+              // (distinta configuración), así que esas sí van en líneas separadas.
+              const mergeable = line.modifiers.length === 0 && !line.notes;
+              if (mergeable) {
+                const idx = t.lines.findIndex(
+                  (l) => l.productId === line.productId && l.modifiers.length === 0 && !l.notes,
+                );
+                if (idx !== -1) {
+                  return {
+                    ...t,
+                    lines: t.lines.map((l, i) => (i === idx ? { ...l, qty: l.qty + line.qty } : l)),
+                  };
+                }
+              }
+              return { ...t, lines: [...t.lines, { ...line, lineId: uuid() }] };
+            }),
           ),
         incrementLine: (lineId) =>
           set((s) =>

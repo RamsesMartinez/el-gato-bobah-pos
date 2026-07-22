@@ -12,18 +12,13 @@ import (
 )
 
 const getBusinessSettings = `-- name: GetBusinessSettings :one
-select id, delivery_fee, updated_at, updated_by from business_settings where id = true
+select delivery_fee, updated_at, updated_by from business_settings where id = true
 `
 
 func (q *Queries) GetBusinessSettings(ctx context.Context) (BusinessSetting, error) {
 	row := q.db.QueryRow(ctx, getBusinessSettings)
 	var i BusinessSetting
-	err := row.Scan(
-		&i.ID,
-		&i.DeliveryFee,
-		&i.UpdatedAt,
-		&i.UpdatedBy,
-	)
+	err := row.Scan(&i.DeliveryFee, &i.UpdatedAt, &i.UpdatedBy)
 	return i, err
 }
 
@@ -31,7 +26,7 @@ const updateDeliveryFee = `-- name: UpdateDeliveryFee :one
 update business_settings
 set delivery_fee = $1, updated_at = now(), updated_by = $2
 where id = true
-returning id, delivery_fee, updated_at, updated_by
+returning delivery_fee, updated_at, updated_by
 `
 
 type UpdateDeliveryFeeParams struct {
@@ -42,11 +37,6 @@ type UpdateDeliveryFeeParams struct {
 func (q *Queries) UpdateDeliveryFee(ctx context.Context, arg UpdateDeliveryFeeParams) (BusinessSetting, error) {
 	row := q.db.QueryRow(ctx, updateDeliveryFee, arg.DeliveryFee, arg.UpdatedBy)
 	var i BusinessSetting
-	err := row.Scan(
-		&i.ID,
-		&i.DeliveryFee,
-		&i.UpdatedAt,
-		&i.UpdatedBy,
-	)
+	err := row.Scan(&i.DeliveryFee, &i.UpdatedAt, &i.UpdatedBy)
 	return i, err
 }

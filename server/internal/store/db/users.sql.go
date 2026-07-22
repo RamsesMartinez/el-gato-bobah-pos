@@ -48,19 +48,22 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (name, username, role, pin_hash, password_hash)
-values ($1, $2, $3, $4, $5)
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
+insert into users (name, username, role, pin_hash, password_hash, recovery_email, must_change_password)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password
 `
 
 type CreateUserParams struct {
-	Name         string  `json:"name"`
-	Username     *string `json:"username"`
-	Role         string  `json:"role"`
-	PinHash      *string `json:"pin_hash"`
-	PasswordHash *string `json:"password_hash"`
+	Name               string  `json:"name"`
+	Username           *string `json:"username"`
+	Role               string  `json:"role"`
+	PinHash            *string `json:"pin_hash"`
+	PasswordHash       *string `json:"password_hash"`
+	RecoveryEmail      *string `json:"recovery_email"`
+	MustChangePassword bool    `json:"must_change_password"`
 }
 
+// company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Name,
@@ -68,6 +71,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Role,
 		arg.PinHash,
 		arg.PasswordHash,
+		arg.RecoveryEmail,
+		arg.MustChangePassword,
 	)
 	var i User
 	err := row.Scan(
@@ -80,6 +85,9 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.RecoveryEmail,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -104,10 +112,10 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where id = $1
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where id = $1
 `
 
+// RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
@@ -121,13 +129,15 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.RecoveryEmail,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where username = $1 and is_active
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where username = $1 and is_active
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User, error) {
@@ -143,6 +153,9 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.RecoveryEmail,
+		&i.MustChangePassword,
 	)
 	return i, err
 }
@@ -164,8 +177,7 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 }
 
 const listActiveUsers = `-- name: ListActiveUsers :many
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where is_active order by name
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where is_active order by name
 `
 
 func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
@@ -187,6 +199,9 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CompanyID,
+			&i.RecoveryEmail,
+			&i.MustChangePassword,
 		); err != nil {
 			return nil, err
 		}
@@ -230,6 +245,22 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID int64) err
 	return err
 }
 
+const setUserPassword = `-- name: SetUserPassword :exec
+update users set password_hash = $2, must_change_password = $3, updated_at = now() where id = $1
+`
+
+type SetUserPasswordParams struct {
+	ID                 int64   `json:"id"`
+	PasswordHash       *string `json:"password_hash"`
+	MustChangePassword bool    `json:"must_change_password"`
+}
+
+// must_change_password lo fija quien llama (true tras reset por admin, false en cambio propio).
+func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, setUserPassword, arg.ID, arg.PasswordHash, arg.MustChangePassword)
+	return err
+}
+
 const setUserPin = `-- name: SetUserPin :exec
 update users set pin_hash = $2, updated_at = now() where id = $1
 `
@@ -261,6 +292,20 @@ func (q *Queries) SetUserPreference(ctx context.Context, arg SetUserPreferencePa
 	return err
 }
 
+const setUserRecoveryEmail = `-- name: SetUserRecoveryEmail :exec
+update users set recovery_email = $2, updated_at = now() where id = $1
+`
+
+type SetUserRecoveryEmailParams struct {
+	ID            int64   `json:"id"`
+	RecoveryEmail *string `json:"recovery_email"`
+}
+
+func (q *Queries) SetUserRecoveryEmail(ctx context.Context, arg SetUserRecoveryEmailParams) error {
+	_, err := q.db.Exec(ctx, setUserRecoveryEmail, arg.ID, arg.RecoveryEmail)
+	return err
+}
+
 const setUserSecretsByUsername = `-- name: SetUserSecretsByUsername :execrows
 update users set password_hash = $2, pin_hash = $3, is_active = true, updated_at = now()
 where username = $1
@@ -282,16 +327,17 @@ func (q *Queries) SetUserSecretsByUsername(ctx context.Context, arg SetUserSecre
 
 const updateUser = `-- name: UpdateUser :one
 update users
-set name = $2, role = $3, is_active = $4, updated_at = now()
+set name = $2, role = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password
 `
 
 type UpdateUserParams struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Role     string `json:"role"`
-	IsActive bool   `json:"is_active"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	Role          string  `json:"role"`
+	IsActive      bool    `json:"is_active"`
+	RecoveryEmail *string `json:"recovery_email"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
@@ -300,6 +346,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		arg.Name,
 		arg.Role,
 		arg.IsActive,
+		arg.RecoveryEmail,
 	)
 	var i User
 	err := row.Scan(
@@ -312,6 +359,9 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanyID,
+		&i.RecoveryEmail,
+		&i.MustChangePassword,
 	)
 	return i, err
 }

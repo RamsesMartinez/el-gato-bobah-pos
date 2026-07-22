@@ -71,7 +71,7 @@ type ProductCounts struct {
 
 // ListProducts pagina el catálogo en el backend. status: ""=todos | "act" | "inact".
 func (s *AdminService) ListProducts(ctx context.Context, status, search, groups, sort, dir string, limit, offset int32) (ProductsPage, error) {
-	rows, err := s.store.Q.AdminListProducts(ctx, db.AdminListProductsParams{
+	rows, err := s.store.QC(ctx).AdminListProducts(ctx, db.AdminListProductsParams{
 		Status: status, Search: search, Groups: groups, Sort: sort, Dir: dir, Lim: limit, Off: offset,
 	})
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search, groups,
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 		})
 	}
-	c, err := s.store.Q.AdminProductCounts(ctx)
+	c, err := s.store.QC(ctx).AdminProductCounts(ctx)
 	if err != nil {
 		return ProductsPage{}, err
 	}
@@ -126,7 +126,7 @@ type OptionsPage struct {
 
 // ListModifierOptions pagina las opciones en el backend. status: ""=todas | "act" | "inact".
 func (s *AdminService) ListModifierOptions(ctx context.Context, status, search string, limit, offset int32) (OptionsPage, error) {
-	rows, err := s.store.Q.AdminListModifierOptions(ctx, db.AdminListModifierOptionsParams{
+	rows, err := s.store.QC(ctx).AdminListModifierOptions(ctx, db.AdminListModifierOptionsParams{
 		Status: status, Search: search, Lim: limit, Off: offset,
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func (s *AdminService) ListModifierOptions(ctx context.Context, status, search s
 			PriceDelta: r.PriceDelta, Favorite: r.IsFavorite, Active: r.IsActive,
 		})
 	}
-	c, err := s.store.Q.AdminModifierOptionCounts(ctx)
+	c, err := s.store.QC(ctx).AdminModifierOptionCounts(ctx)
 	if err != nil {
 		return OptionsPage{}, err
 	}
@@ -149,11 +149,11 @@ func (s *AdminService) ListModifierOptions(ctx context.Context, status, search s
 }
 
 func (s *AdminService) SetOptionFavorite(ctx context.Context, id int64, fav bool) error {
-	return s.store.Q.AdminSetOptionFavorite(ctx, db.AdminSetOptionFavoriteParams{ID: id, IsFavorite: fav})
+	return s.store.QC(ctx).AdminSetOptionFavorite(ctx, db.AdminSetOptionFavoriteParams{ID: id, IsFavorite: fav})
 }
 
 func (s *AdminService) SetOptionActive(ctx context.Context, id int64, active bool) error {
-	return s.store.Q.AdminSetOptionActive(ctx, db.AdminSetOptionActiveParams{ID: id, IsActive: active})
+	return s.store.QC(ctx).AdminSetOptionActive(ctx, db.AdminSetOptionActiveParams{ID: id, IsActive: active})
 }
 
 func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput) error {
@@ -168,7 +168,7 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	if err != nil {
 		return err
 	}
-	return s.store.Q.AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
+	return s.store.QC(ctx).AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
 		ID:             in.ID,
 		Name:           in.Name,
 		Price:          domain.Round2(in.Price),

@@ -563,11 +563,14 @@ const nextDailyNumber = `-- name: NextDailyNumber :one
 
 insert into order_counters (business_date, last_number)
 values ($1, 1)
-on conflict (business_date) do update set last_number = order_counters.last_number + 1
+on conflict on constraint order_counters_pkey do update set last_number = order_counters.last_number + 1
 returning last_number
 `
 
 // Creación
+// company_id lo auto-sella el default (GUC del tenant); el folio diario es por-empresa. Se
+// arbitra por NOMBRE de la PK compuesta (company_id, business_date): referir la columna por
+// nombre haría fallar a sqlc, que no ve las columnas agregadas dinámicamente en la migración.
 func (q *Queries) NextDailyNumber(ctx context.Context, businessDate pgtype.Date) (int32, error) {
 	row := q.db.QueryRow(ctx, nextDailyNumber, businessDate)
 	var last_number int32

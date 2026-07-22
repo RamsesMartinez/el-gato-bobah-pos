@@ -71,19 +71,19 @@ func NewMenuService(s *store.Store, now func() time.Time) *MenuService {
 
 // Build arma el documento del menú desde lecturas planas.
 func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
-	catRows, err := s.store.Q.MenuCategories(ctx)
+	catRows, err := s.store.QC(ctx).MenuCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
-	prodRows, err := s.store.Q.MenuProducts(ctx)
+	prodRows, err := s.store.QC(ctx).MenuProducts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	groupRows, err := s.store.Q.MenuProductGroups(ctx)
+	groupRows, err := s.store.QC(ctx).MenuProductGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
-	optRows, err := s.store.Q.MenuOptions(ctx)
+	optRows, err := s.store.QC(ctx).MenuOptions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 // en minutos sin reconstruir todo el catálogo. No filtra a productos vigentes —
 // el front mapea id→producto y descarta los que ya no existen.
 func (s *MenuService) Popular(ctx context.Context) ([]int64, error) {
-	rows, err := s.store.Q.PopularProducts(ctx)
+	rows, err := s.store.QC(ctx).PopularProducts(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -154,8 +154,9 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	// el catálogo cambió: invalidar cache del menú y avisar a las tablets
-	h.menuCache.Invalidate(r.Context())
-	h.broker.Publish(realtime.Event{Type: "menu.updated"})
+	// el catálogo cambió: invalidar cache del menú y avisar a las tablets (de esta empresa)
+	u, _ := userFrom(r.Context())
+	h.menuCache.Invalidate(r.Context(), u.CompanyID)
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "menu.updated"})
 	w.WriteHeader(http.StatusNoContent)
 }
