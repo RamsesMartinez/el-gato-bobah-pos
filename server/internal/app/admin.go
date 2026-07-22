@@ -69,10 +69,43 @@ type ProductCounts struct {
 	Inact int `json:"inact"`
 }
 
+// CategoryView es una categoría para pickers/filtros del admin (id, nombre, categoría padre).
+type CategoryView struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	ParentID *int64 `json:"parentId"`
+}
+
+// Categories lista las categorías activas (para el filtro y el alta de productos). Reutiliza la
+// lectura del menú (MenuCategories); aquí solo interesan id/nombre/padre.
+func (s *AdminService) Categories(ctx context.Context) ([]CategoryView, error) {
+	rows, err := s.store.QC(ctx).MenuCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CategoryView, len(rows))
+	for i, r := range rows {
+		out[i] = CategoryView{ID: r.ID, Name: r.Name, ParentID: r.ParentID}
+	}
+	return out, nil
+}
+
+// CreateProduct da de alta un producto mínimo (activo, tipo simple). categoryID debe existir
+// (FK); el costo/receta/canales se configuran después.
+func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool) (int64, error) {
+	if name == "" || categoryID == 0 || !domain.ValidMoney(domain.Round2(price), true) {
+		return 0, domain.ErrValidation
+	}
+	return s.store.QC(ctx).AdminCreateProduct(ctx, db.AdminCreateProductParams{
+		Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
+	})
+}
+
 // ListProducts pagina el catálogo en el backend. status: ""=todos | "act" | "inact".
-func (s *AdminService) ListProducts(ctx context.Context, status, search, groups, sort, dir string, limit, offset int32) (ProductsPage, error) {
+// categoryID=0 → todas; sort/dir ordenan por columna (ver AdminListProducts).
+func (s *AdminService) ListProducts(ctx context.Context, status, search string, categoryID int64, groups, sort, dir string, limit, offset int32) (ProductsPage, error) {
 	rows, err := s.store.QC(ctx).AdminListProducts(ctx, db.AdminListProductsParams{
-		Status: status, Search: search, Groups: groups, Sort: sort, Dir: dir, Lim: limit, Off: offset,
+		Status: status, Search: search, CategoryID: categoryID, Groups: groups, Sort: sort, Dir: dir, Lim: limit, Off: offset,
 	})
 	if err != nil {
 		return ProductsPage{}, err
