@@ -10,6 +10,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/hibp"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -131,7 +132,8 @@ func (s *UsersService) Update(ctx context.Context, in UpdateUserInput) (domain.U
 	return toDomainUser(u), nil
 }
 
-// AdminSetPassword: reset por admin. Fuerza cambio en el próximo login (must_change_password).
+// AdminSetPassword: reset por admin (o por el CLI -reset-password, que llama esto mismo).
+// Fuerza cambio en el próximo login (must_change_password).
 func (s *UsersService) AdminSetPassword(ctx context.Context, userID int64, password string) error {
 	if err := s.checkPassword(ctx, password); err != nil {
 		return err
@@ -140,7 +142,11 @@ func (s *UsersService) AdminSetPassword(ctx context.Context, userID int64, passw
 	if err != nil {
 		return err
 	}
-	return s.store.QC(ctx).SetUserPassword(ctx, db.SetUserPasswordParams{ID: userID, PasswordHash: &h, MustChangePassword: true})
+	if err := s.store.QC(ctx).SetUserPassword(ctx, db.SetUserPasswordParams{ID: userID, PasswordHash: &h, MustChangePassword: true}); err != nil {
+		return err
+	}
+	logging.SecurityEvent(ctx, "password_reset_by_admin", "user_id", userID)
+	return nil
 }
 
 // ChangeOwnPassword: el empleado cambia su propia contraseña (verifica la actual). Quita el
@@ -163,7 +169,11 @@ func (s *UsersService) ChangeOwnPassword(ctx context.Context, userID int64, curr
 	if err != nil {
 		return err
 	}
-	return s.store.QC(ctx).SetUserPassword(ctx, db.SetUserPasswordParams{ID: userID, PasswordHash: &h, MustChangePassword: false})
+	if err := s.store.QC(ctx).SetUserPassword(ctx, db.SetUserPasswordParams{ID: userID, PasswordHash: &h, MustChangePassword: false}); err != nil {
+		return err
+	}
+	logging.SecurityEvent(ctx, "password_changed_self", "user_id", userID)
+	return nil
 }
 
 // SetPIN fija/actualiza el PIN de un usuario (admin sobre cualquiera, o el propio empleado).

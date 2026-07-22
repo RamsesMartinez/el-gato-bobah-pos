@@ -21,9 +21,12 @@ func Setup(dir, level string) (*slog.Logger, error) {
 		return nil, err
 	}
 	rotator := &lumberjack.Logger{
-		Filename:   filepath.Join(dir, "app.log"),
-		MaxSize:    5,  // MB por archivo antes de rotar
-		MaxBackups: 7,  // archivos históricos
+		Filename: filepath.Join(dir, "app.log"),
+		// ponytail: 1MB es el mínimo real de lumberjack (MaxSize son megabytes enteros, sin
+		// fracciones) — la etapa de desarrollo pidió 64KB, no alcanzable con esta librería tal
+		// cual; 1MB + 10 backups sigue siendo chico y deja ver la rotación sin generar GBs de prueba.
+		MaxSize:    1,
+		MaxBackups: 10, // archivos históricos
 		MaxAge:     14, // días
 		Compress:   true,
 	}

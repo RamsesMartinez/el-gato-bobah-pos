@@ -11,9 +11,15 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+# /logs con dueño 65532 (UID/GID de "nonroot" en distroless, ver abajo): un volumen NUEVO
+# monta ahí heredando el contenido/permisos de la imagen la primera vez. Sin esto, Docker crea
+# el punto de montaje como root:root y el proceso nonroot nunca puede escribir su log de archivo
+# (slog traga ese error en silencio — logging.Setup queda "funcionando" solo por stdout).
+RUN mkdir -p /out/logs && chown 65532:65532 /out/logs
 
 # distroless: ca-certs + tzdata + usuario nonroot, imagen ~24MB.
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
 COPY --from=build /out/api /api
+COPY --from=build --chown=65532:65532 /out/logs /logs
 EXPOSE 8080
 ENTRYPOINT ["/api"]
