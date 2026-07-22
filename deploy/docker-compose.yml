@@ -16,11 +16,14 @@ services:
       - path: .env
         required: false
     environment:
-      # DATABASE_URL = owner (gatobobah): migra + bootstrap + fija el password del rol de app.
-      DATABASE_URL: postgres://gatobobah:${POSTGRES_PASSWORD}@postgres:5432/gatobobah?sslmode=disable
-      # APP_DATABASE_URL = rol no-superusuario (gatobobah_app): sirve requests SUJETO a RLS
-      # (aislamiento multi-empresa). Su password lo fija el bootstrap desde APP_DB_PASSWORD.
-      APP_DATABASE_URL: postgres://gatobobah_app:${APP_DB_PASSWORD}@postgres:5432/gatobobah?sslmode=disable
+      # DATABASE_URL = owner (POSTGRES_USER/POSTGRES_DB, ver servicio postgres abajo): migra +
+      # bootstrap + fija el password del rol de app.
+      DATABASE_URL: postgres://${POSTGRES_USER:-gatobobah}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gatobobah}?sslmode=disable
+      # APP_DATABASE_URL = rol no-superusuario: sirve requests SUJETO a RLS (aislamiento
+      # multi-empresa). Su password lo fija el bootstrap desde APP_DB_PASSWORD. "gatobobah_app"
+      # queda fijo a propósito (lo crea por nombre server/migrations/0024_tenant_rls.sql, no es
+      # configurable sin tocar esa migración).
+      APP_DATABASE_URL: postgres://gatobobah_app:${APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-gatobobah}?sslmode=disable
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       REDIS_URL: redis://redis:6379
       APP_ENV: production
@@ -48,12 +51,12 @@ services:
     image: postgres:16-alpine
     logging: *default-logging
     environment:
-      POSTGRES_DB: gatobobah
-      POSTGRES_USER: gatobobah
+      POSTGRES_DB: ${POSTGRES_DB:-gatobobah}
+      POSTGRES_USER: ${POSTGRES_USER:-gatobobah}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gatobobah -d gatobobah"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gatobobah} -d ${POSTGRES_DB:-gatobobah}"]
       interval: 10s
       timeout: 3s
       retries: 5
