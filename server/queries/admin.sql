@@ -46,6 +46,58 @@ insert into products (name, category_id, price, is_favorite, track_stock)
 values ($1, $2, $3, $4, $5)
 returning id;
 
+-- ==== Duplicar producto (clon profundo con sus relaciones) ====
+
+-- name: GetProductCloneInfo :one
+-- Datos que deciden el clon: tipo (para slots de combo) y si tiene receta propia (a clonar).
+select type, recipe_id from products where id = $1;
+
+-- name: CloneRecipe :one
+-- Receta vacía nueva (hereda company_id del GUC vía default); luego se copian sus ítems.
+insert into recipes default values returning id;
+
+-- name: CloneRecipeItems :exec
+-- Alias en la fuente: el insert y el select son sobre tablas del mismo esquema; sin alias, sqlc
+-- reporta columnas ambiguas entre el target del insert y la fuente del select.
+insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id, position)
+select sqlc.arg(dst_recipe), ri.ingredient_id, ri.quantity, ri.unit_id, ri.position
+from recipe_items ri where ri.recipe_id = sqlc.arg(src_recipe);
+
+-- name: CloneProductRow :one
+-- Copia la fila del producto de origen con nombre nuevo. sku queda null (es unique; no se copia)
+-- y recipe_id apunta a la receta ya clonada (o null). company_id lo sella el default del GUC.
+insert into products (
+  name, description, type, category_id, price, cost_source, manual_cost, current_cost,
+  recipe_id, track_stock, allow_oversell, min_stock, is_favorite, sort_key, image_url, is_active
+)
+select sqlc.arg(name), p.description, p.type, p.category_id, p.price, p.cost_source, p.manual_cost, p.current_cost,
+       sqlc.narg(recipe_id), p.track_stock, p.allow_oversell, p.min_stock, p.is_favorite, p.sort_key, p.image_url, p.is_active
+from products p where p.id = sqlc.arg(src_id)
+returning id;
+
+-- name: CloneProductModifierGroups :exec
+insert into product_modifier_groups (product_id, group_id, title, min_select, max_select, position)
+select sqlc.arg(dst_product), pmg.group_id, pmg.title, pmg.min_select, pmg.max_select, pmg.position
+from product_modifier_groups pmg where pmg.product_id = sqlc.arg(src_product);
+
+-- name: CloneProductChannels :exec
+insert into product_channels (product_id, channel_id, visibility)
+select sqlc.arg(dst_product), pc.channel_id, pc.visibility
+from product_channels pc where pc.product_id = sqlc.arg(src_product);
+
+-- name: ListComboSlots :many
+select id, name, min_select, max_select, position from combo_slots where combo_id = $1 order by position, id;
+
+-- name: CloneComboSlot :one
+insert into combo_slots (combo_id, name, min_select, max_select, position)
+values ($1, $2, $3, $4, $5)
+returning id;
+
+-- name: CloneComboSlotProducts :exec
+insert into combo_slot_products (slot_id, product_id, price_delta, is_default)
+select sqlc.arg(dst_slot), csp.product_id, csp.price_delta, csp.is_default
+from combo_slot_products csp where csp.slot_id = sqlc.arg(src_slot);
+
 -- name: AdminProductCounts :one
 -- Totales del catálogo por estado, para las pestañas (independientes de la búsqueda, como antes).
 select count(*) filter (where is_active)::int as active,

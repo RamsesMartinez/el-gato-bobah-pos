@@ -3,7 +3,10 @@ import {
   Box, Table, Center, Spinner, Input, Badge, Button, ButtonGroup,
   IconButton, HStack, VStack, Pagination, useDisclosure, Text,
 } from '@chakra-ui/react';
-import { LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuArrowUp, LuArrowDown, LuPlus } from 'react-icons/lu';
+import {
+  LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuArrowUp, LuArrowDown, LuPlus,
+  LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy,
+} from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { adminApi, type AdminProduct, type Category, type ProductSort } from '../../api/admin';
@@ -12,6 +15,9 @@ import { Page } from '../../components/Page';
 import { Picker, type PickerOption } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { ConfirmPopover } from '../../components/ui/confirm-popover';
+import {
+  MenuRoot, MenuTrigger, MenuContent, MenuItemGroup, MenuRadioItemGroup, MenuRadioItem, MenuSeparator,
+} from '../../components/ui/menu';
 import { ProductEditDialog } from './ProductEditDialog';
 import { ProductGroupsDialog } from './ProductGroupsDialog';
 import {
@@ -45,6 +51,7 @@ export function ProductsAdminPage() {
   const [page, setPage] = useState(1); // 1-based, como el paginador de Chakra
   const [edit, setEdit] = useState<AdminProduct | null>(null);
   const [groupsProduct, setGroupsProduct] = useState<AdminProduct | null>(null);
+  const [duplicateSrc, setDuplicateSrc] = useState<AdminProduct | null>(null);
   const modal = useDisclosure();
   const newModal = useDisclosure();
 
@@ -92,16 +99,8 @@ export function ProductsAdminPage() {
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
 
-  const TABS: Array<{ k: typeof status; label: string; n: number }> = [
-    { k: 'act', label: 'Activos', n: counts.act },
-    { k: 'inact', label: 'Inactivos', n: counts.inact },
-    { k: 'all', label: 'Todos', n: counts.all },
-  ];
-  const GROUP_FILTERS: Array<{ k: GroupsFilter; label: string }> = [
-    { k: '', label: 'Todos' },
-    { k: 'some', label: 'Con grupos' },
-    { k: 'none', label: 'Sin grupos' },
-  ];
+  // Filtros no-default activos (para el badge del botón «Filtros»): estado ≠ Activos y grupos ≠ todos.
+  const activeFilters = (status !== 'act' ? 1 : 0) + (groupsFilter !== '' ? 1 : 0);
 
   // Orden por columna: 1er clic ordena (texto asc / número desc); reclics alternan asc/desc.
   const onSort = (col: ProductSort, numeric = false) => {
@@ -114,30 +113,45 @@ export function ProductsAdminPage() {
 
   return (
     <Page maxW="1150px" fill>
-      <HStack mb={4} gap={3} wrap="wrap" flexShrink={0}>
-        <Input placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} maxW="240px" bg="bg.panel" />
-        <Box minW="220px">
-          <Picker value={categoryId} onChange={(v) => { setCategoryId(v); setPage(1); }}
+      {/* Toolbar compacta para tabletas de 7": búsqueda + categoría crecen; estado/grupos se
+          colapsan en un menú «Filtros»; «Nuevo» es compacto (icono en pantallas chicas). */}
+      <HStack mb={3} gap={2} wrap="wrap" flexShrink={0}>
+        <Input placeholder="Buscar producto…" value={search} onChange={(e) => setSearch(e.target.value)}
+          flex="1 1 150px" minW="130px" maxW={{ base: 'full', md: '260px' }} bg="bg.panel" size="sm" />
+        <Box flex="1 1 150px" minW="130px" maxW={{ base: 'full', md: '240px' }}>
+          <Picker size="sm" value={categoryId} onChange={(v) => { setCategoryId(v); setPage(1); }}
             placeholder="Todas las categorías" title="Filtrar por categoría"
             clearable clearLabel="Todas las categorías" options={catOptions} />
         </Box>
-        <HStack gap={1} bg="bg.muted" p={1} borderRadius="lg">
-          {TABS.map((t) => (
-            <Button key={t.k} size="sm" variant={status === t.k ? 'solid' : 'ghost'}
-              colorPalette={status === t.k ? undefined : 'gray'} onClick={() => { setStatus(t.k); setPage(1); }}>
-              {t.label} <Text as="span" opacity={0.7} ml={1}>{t.n}</Text>
+        <MenuRoot>
+          <MenuTrigger asChild>
+            <Button size="sm" variant="outline" colorPalette="gray" flexShrink={0}>
+              <LuListFilter />
+              <Box as="span" display={{ base: 'none', sm: 'inline' }}>Filtros</Box>
+              {activeFilters > 0 && <Badge colorPalette="blue" borderRadius="full">{activeFilters}</Badge>}
             </Button>
-          ))}
-        </HStack>
-        <HStack gap={1} bg="bg.muted" p={1} borderRadius="lg">
-          {GROUP_FILTERS.map((f) => (
-            <Button key={f.k} size="sm" variant={groupsFilter === f.k ? 'solid' : 'ghost'}
-              colorPalette={groupsFilter === f.k ? undefined : 'gray'} onClick={() => { setGroupsFilter(f.k); setPage(1); }}>
-              {f.label}
-            </Button>
-          ))}
-        </HStack>
-        <Button size="sm" colorPalette="green" ml="auto" onClick={newModal.onOpen}><LuPlus /> Nuevo producto</Button>
+          </MenuTrigger>
+          <MenuContent minW="220px">
+            <MenuItemGroup title="Estado">
+              <MenuRadioItemGroup value={status} onValueChange={(e) => { setStatus(e.value as typeof status); setPage(1); }}>
+                <MenuRadioItem value="act">Activos ({counts.act})</MenuRadioItem>
+                <MenuRadioItem value="inact">Inactivos ({counts.inact})</MenuRadioItem>
+                <MenuRadioItem value="all">Todos ({counts.all})</MenuRadioItem>
+              </MenuRadioItemGroup>
+            </MenuItemGroup>
+            <MenuSeparator />
+            <MenuItemGroup title="Grupos de modificadores">
+              <MenuRadioItemGroup value={groupsFilter} onValueChange={(e) => { setGroupsFilter(e.value as GroupsFilter); setPage(1); }}>
+                <MenuRadioItem value="">Todos</MenuRadioItem>
+                <MenuRadioItem value="some">Con grupos</MenuRadioItem>
+                <MenuRadioItem value="none">Sin grupos</MenuRadioItem>
+              </MenuRadioItemGroup>
+            </MenuItemGroup>
+          </MenuContent>
+        </MenuRoot>
+        <Button size="sm" colorPalette="green" flexShrink={0} onClick={newModal.onOpen} title="Nuevo producto">
+          <LuPlus /><Box as="span" display={{ base: 'none', sm: 'inline' }}>Nuevo</Box>
+        </Button>
       </HStack>
 
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="auto" flex="1" minH={0}>
@@ -178,23 +192,22 @@ export function ProductsAdminPage() {
                   </Text>
                 </Table.Cell>
                 <Table.Cell>
-                  <HStack justify="end" gap={2}>
-                    {!p.is_active && <Badge>inactivo</Badge>}
+                  {/* Acciones como iconos (no texto): ahorran ancho en tabletas de 7". title = tooltip. */}
+                  <HStack justify="end" gap={1}>
                     {p.is_active ? (
                       <ConfirmPopover title="¿Archivar producto?"
                         description="Se ocultará del POS. Puedes deshacerlo enseguida o reactivarlo cuando quieras."
                         onConfirm={() => setActive.mutate({ p, active: false })}>
-                        <Button size="xs" variant="outline" colorPalette="gray">Archivar</Button>
+                        <IconButton size="sm" variant="ghost" colorPalette="gray" aria-label="Archivar" title="Archivar"><LuArchive /></IconButton>
                       </ConfirmPopover>
                     ) : (
-                      <Button size="xs" variant="solid" colorPalette="green"
+                      <IconButton size="sm" variant="solid" colorPalette="green" aria-label="Reactivar" title="Reactivar"
                         loading={setActive.isPending && setActive.variables?.p.id === p.id}
-                        onClick={() => setActive.mutate({ p, active: true })}>
-                        Reactivar
-                      </Button>
+                        onClick={() => setActive.mutate({ p, active: true })}><LuRotateCcw /></IconButton>
                     )}
-                    <Button size="xs" variant="outline" onClick={() => setGroupsProduct(p)}>Grupos</Button>
-                    <Button size="xs" onClick={() => openEdit(p)}>Editar</Button>
+                    <IconButton size="sm" variant="ghost" aria-label="Duplicar" title="Duplicar producto" onClick={() => setDuplicateSrc(p)}><LuCopy /></IconButton>
+                    <IconButton size="sm" variant="ghost" aria-label="Grupos" title="Grupos modificadores" onClick={() => setGroupsProduct(p)}><LuLayers /></IconButton>
+                    <IconButton size="sm" variant="outline" aria-label="Editar" title="Editar" onClick={() => openEdit(p)}><LuPencil /></IconButton>
                   </HStack>
                 </Table.Cell>
               </Table.Row>
@@ -234,6 +247,10 @@ export function ProductsAdminPage() {
       <ProductGroupsDialog productId={groupsProduct?.id ?? null} productName={groupsProduct?.name ?? ''}
         isOpen={groupsProduct !== null} onClose={() => setGroupsProduct(null)} />
       <NewProductDialog isOpen={newModal.open} onClose={newModal.onClose} categoryOptions={catOptions} />
+      {/* key → remonta por producto: el nombre pre-rellenado se inicializa sin useEffect+setState. */}
+      {duplicateSrc && (
+        <DuplicateProductDialog key={duplicateSrc.id} source={duplicateSrc} onClose={() => setDuplicateSrc(null)} />
+      )}
     </Page>
   );
 }
@@ -258,6 +275,50 @@ function SortHead({ label, col, sort, dir, onSort, numeric, align }: {
         {active && (dir === 'asc' ? <LuArrowUp size={12} /> : <LuArrowDown size={12} />)}
       </HStack>
     </Table.ColumnHeader>
+  );
+}
+
+// Duplicar producto: copia el producto de origen con TODAS sus relaciones (categoría, precio,
+// grupos de modificadores, canales y receta). Solo pide un nombre distinto (no se permiten
+// nombres idénticos; el backend además lo valida como 409).
+function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(`Copia de ${source.name}`);
+  const dup = useMutation({
+    mutationFn: () => adminApi.duplicateProduct(source.id, name.trim()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
+      onClose();
+      toaster.create({ title: 'Producto duplicado', description: 'Se copió con sus grupos, canales y receta. Edítalo para ajustarlo.', type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo duplicar', description: String(e), type: 'error' }),
+  });
+  const canDup = name.trim().length > 0 && name.trim().toLowerCase() !== source.name.toLowerCase();
+
+  return (
+    <DialogRoot open onOpenChange={(e) => { if (!e.open) onClose(); }}>
+      <DialogBackdrop />
+      <DialogContent>
+        <DialogHeader><DialogTitle>Duplicar producto</DialogTitle></DialogHeader>
+        <DialogCloseTrigger />
+        <DialogBody>
+          <VStack align="stretch" gap={3}>
+            <Text fontSize="sm" color="fg.muted">
+              Crea una copia de «{source.name}» con toda su configuración (categoría, precio, grupos de
+              modificadores, canales y receta). Dale un nombre distinto para empezar.
+            </Text>
+            <Field label="Nombre del nuevo producto">
+              <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            </Field>
+          </VStack>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" mr={3} onClick={onClose}>Cancelar</Button>
+          <Button colorPalette="green" disabled={!canDup} loading={dup.isPending} onClick={() => dup.mutate()}>Duplicar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </DialogRoot>
   );
 }
 

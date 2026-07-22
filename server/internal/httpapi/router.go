@@ -160,7 +160,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/categories", h.AdminCategories)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
 					r.Get("/", h.AdminListProducts)
-					r.Post("/", h.AdminCreateProduct) // alta de producto (gerente y admin)
+					r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
+					r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
 					r.Patch("/{id}", h.AdminUpdateProduct)
 					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
 					r.Get("/{id}/groups", h.AdminProductGroups)

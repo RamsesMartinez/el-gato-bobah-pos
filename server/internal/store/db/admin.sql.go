@@ -323,3 +323,191 @@ func (q *Queries) AdminUpdateProduct(ctx context.Context, arg AdminUpdateProduct
 	)
 	return err
 }
+
+const cloneComboSlot = `-- name: CloneComboSlot :one
+insert into combo_slots (combo_id, name, min_select, max_select, position)
+values ($1, $2, $3, $4, $5)
+returning id
+`
+
+type CloneComboSlotParams struct {
+	ComboID   int64  `json:"combo_id"`
+	Name      string `json:"name"`
+	MinSelect int16  `json:"min_select"`
+	MaxSelect int16  `json:"max_select"`
+	Position  int32  `json:"position"`
+}
+
+func (q *Queries) CloneComboSlot(ctx context.Context, arg CloneComboSlotParams) (int64, error) {
+	row := q.db.QueryRow(ctx, cloneComboSlot,
+		arg.ComboID,
+		arg.Name,
+		arg.MinSelect,
+		arg.MaxSelect,
+		arg.Position,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const cloneComboSlotProducts = `-- name: CloneComboSlotProducts :exec
+insert into combo_slot_products (slot_id, product_id, price_delta, is_default)
+select $1, csp.product_id, csp.price_delta, csp.is_default
+from combo_slot_products csp where csp.slot_id = $2
+`
+
+type CloneComboSlotProductsParams struct {
+	DstSlot int64 `json:"dst_slot"`
+	SrcSlot int64 `json:"src_slot"`
+}
+
+func (q *Queries) CloneComboSlotProducts(ctx context.Context, arg CloneComboSlotProductsParams) error {
+	_, err := q.db.Exec(ctx, cloneComboSlotProducts, arg.DstSlot, arg.SrcSlot)
+	return err
+}
+
+const cloneProductChannels = `-- name: CloneProductChannels :exec
+insert into product_channels (product_id, channel_id, visibility)
+select $1, pc.channel_id, pc.visibility
+from product_channels pc where pc.product_id = $2
+`
+
+type CloneProductChannelsParams struct {
+	DstProduct int64 `json:"dst_product"`
+	SrcProduct int64 `json:"src_product"`
+}
+
+func (q *Queries) CloneProductChannels(ctx context.Context, arg CloneProductChannelsParams) error {
+	_, err := q.db.Exec(ctx, cloneProductChannels, arg.DstProduct, arg.SrcProduct)
+	return err
+}
+
+const cloneProductModifierGroups = `-- name: CloneProductModifierGroups :exec
+insert into product_modifier_groups (product_id, group_id, title, min_select, max_select, position)
+select $1, pmg.group_id, pmg.title, pmg.min_select, pmg.max_select, pmg.position
+from product_modifier_groups pmg where pmg.product_id = $2
+`
+
+type CloneProductModifierGroupsParams struct {
+	DstProduct int64 `json:"dst_product"`
+	SrcProduct int64 `json:"src_product"`
+}
+
+func (q *Queries) CloneProductModifierGroups(ctx context.Context, arg CloneProductModifierGroupsParams) error {
+	_, err := q.db.Exec(ctx, cloneProductModifierGroups, arg.DstProduct, arg.SrcProduct)
+	return err
+}
+
+const cloneProductRow = `-- name: CloneProductRow :one
+insert into products (
+  name, description, type, category_id, price, cost_source, manual_cost, current_cost,
+  recipe_id, track_stock, allow_oversell, min_stock, is_favorite, sort_key, image_url, is_active
+)
+select $1, p.description, p.type, p.category_id, p.price, p.cost_source, p.manual_cost, p.current_cost,
+       $2, p.track_stock, p.allow_oversell, p.min_stock, p.is_favorite, p.sort_key, p.image_url, p.is_active
+from products p where p.id = $3
+returning id
+`
+
+type CloneProductRowParams struct {
+	Name     string `json:"name"`
+	RecipeID *int64 `json:"recipe_id"`
+	SrcID    int64  `json:"src_id"`
+}
+
+// Copia la fila del producto de origen con nombre nuevo. sku queda null (es unique; no se copia)
+// y recipe_id apunta a la receta ya clonada (o null). company_id lo sella el default del GUC.
+func (q *Queries) CloneProductRow(ctx context.Context, arg CloneProductRowParams) (int64, error) {
+	row := q.db.QueryRow(ctx, cloneProductRow, arg.Name, arg.RecipeID, arg.SrcID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const cloneRecipe = `-- name: CloneRecipe :one
+insert into recipes default values returning id
+`
+
+// Receta vacía nueva (hereda company_id del GUC vía default); luego se copian sus ítems.
+func (q *Queries) CloneRecipe(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, cloneRecipe)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const cloneRecipeItems = `-- name: CloneRecipeItems :exec
+insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id, position)
+select $1, ri.ingredient_id, ri.quantity, ri.unit_id, ri.position
+from recipe_items ri where ri.recipe_id = $2
+`
+
+type CloneRecipeItemsParams struct {
+	DstRecipe int64 `json:"dst_recipe"`
+	SrcRecipe int64 `json:"src_recipe"`
+}
+
+// Alias en la fuente: el insert y el select son sobre tablas del mismo esquema; sin alias, sqlc
+// reporta columnas ambiguas entre el target del insert y la fuente del select.
+func (q *Queries) CloneRecipeItems(ctx context.Context, arg CloneRecipeItemsParams) error {
+	_, err := q.db.Exec(ctx, cloneRecipeItems, arg.DstRecipe, arg.SrcRecipe)
+	return err
+}
+
+const getProductCloneInfo = `-- name: GetProductCloneInfo :one
+
+select type, recipe_id from products where id = $1
+`
+
+type GetProductCloneInfoRow struct {
+	Type     ProductType `json:"type"`
+	RecipeID *int64      `json:"recipe_id"`
+}
+
+// ==== Duplicar producto (clon profundo con sus relaciones) ====
+// Datos que deciden el clon: tipo (para slots de combo) y si tiene receta propia (a clonar).
+func (q *Queries) GetProductCloneInfo(ctx context.Context, id int64) (GetProductCloneInfoRow, error) {
+	row := q.db.QueryRow(ctx, getProductCloneInfo, id)
+	var i GetProductCloneInfoRow
+	err := row.Scan(&i.Type, &i.RecipeID)
+	return i, err
+}
+
+const listComboSlots = `-- name: ListComboSlots :many
+select id, name, min_select, max_select, position from combo_slots where combo_id = $1 order by position, id
+`
+
+type ListComboSlotsRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	MinSelect int16  `json:"min_select"`
+	MaxSelect int16  `json:"max_select"`
+	Position  int32  `json:"position"`
+}
+
+func (q *Queries) ListComboSlots(ctx context.Context, comboID int64) ([]ListComboSlotsRow, error) {
+	rows, err := q.db.Query(ctx, listComboSlots, comboID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListComboSlotsRow{}
+	for rows.Next() {
+		var i ListComboSlotsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MinSelect,
+			&i.MaxSelect,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
