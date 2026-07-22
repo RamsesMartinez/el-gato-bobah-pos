@@ -19,7 +19,7 @@ type Config struct {
 	JWTSecret   string `env:"JWT_SECRET,required"`
 	LogLevel    string `env:"LOG_LEVEL" envDefault:"info"`
 	LogDir      string `env:"LOG_DIR" envDefault:"logs"`
-	// CORSOrigin: exact allowed origin (scheme+host), e.g. https://pos.elgatobobah.mx.
+	// CORSOrigin: exact allowed origin (scheme+host), e.g. https://app.elgatobobah.com.
 	// Empty = same-origin only (no CORS headers). "*" is only honored in development.
 	CORSOrigin string `env:"CORS_ORIGIN" envDefault:""`
 	Env        string `env:"APP_ENV" envDefault:"development"`

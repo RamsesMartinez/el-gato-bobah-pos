@@ -33,7 +33,7 @@ func TestValidate_RejectsWildcardCORSInProd(t *testing.T) {
 	if err := Validate(c); err == nil {
 		t.Fatal("CORS_ORIGIN=* must be rejected in production")
 	}
-	c.CORSOrigin = "https://pos.elgatobobah.mx"
+	c.CORSOrigin = "https://app.elgatobobah.com"
 	if err := Validate(c); err != nil {
 		t.Fatalf("exact origin should pass in prod, got %v", err)
 	}

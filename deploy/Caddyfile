@@ -1,5 +1,5 @@
 # Reemplaza el dominio por el real en producción. Caddy gestiona TLS automáticamente.
-pos.elgatobobah.mx {
+app.elgatobobah.com {
 	# Headers de seguridad (subset seguro que no rompe la SPA).
 	header {
 		# HSTS: fuerza HTTPS en el navegador (1 año, subdominios).

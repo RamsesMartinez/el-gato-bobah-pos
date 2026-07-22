@@ -403,7 +403,7 @@ volumes: { pgdata: {}, caddy_data: {} }
 `Caddyfile` — automatic HTTPS, SPA fallback, SSE-safe proxying:
 
 ```
-pos.elgatobobah.mx {
+app.elgatobobah.com {
     handle /api/* {
         reverse_proxy api:8080 { flush_interval -1 }   # -1 = stream immediately (SSE)
     }
