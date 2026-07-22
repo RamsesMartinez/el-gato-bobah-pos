@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel domain errors. The HTTP layer maps these to status codes + error codes.
 var (
@@ -10,7 +13,10 @@ var (
 	ErrInvalidCredentials = errors.New("credenciales inválidas")
 	ErrValidation         = errors.New("datos inválidos")
 	ErrConflict           = errors.New("conflicto")
-	ErrTooManyRequests    = errors.New("demasiados intentos, espera un momento")
+	// ErrDuplicateName: ya existe un producto (por empresa) con ese nombre. Envuelve ErrConflict
+	// para heredar el 409 y a la vez dar un mensaje accionable en el alta/edición/duplicado.
+	ErrDuplicateName   = fmt.Errorf("ya existe un producto con ese nombre (%w)", ErrConflict)
+	ErrTooManyRequests = errors.New("demasiados intentos, espera un momento")
 	// ErrWeakPassword: la contraseña no cumple la política. Se envuelve con el motivo concreto
 	// (longitud / común / filtrada) para que el mensaje llegue al usuario (422).
 	ErrWeakPassword = errors.New("contraseña insegura")

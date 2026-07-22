@@ -89,6 +89,9 @@ export const adminApi = {
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean }) =>
     api.post<{ id: number }>('/admin/products', b),
+  // Duplica un producto con todas sus relaciones (grupos, canales, receta, slots de combo).
+  duplicateProduct: (id: number, name: string) =>
+    api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name }),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
 

@@ -82,6 +82,29 @@ func (h *Handlers) AdminCreateProduct(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
+// POST /admin/products/{id}/duplicate — clona el producto con sus relaciones (admin/gerente).
+func (h *Handlers) AdminDuplicateProduct(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	newID, err := h.admin.DuplicateProduct(r.Context(), id, body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.menuChanged(r.Context())
+	JSON(w, http.StatusCreated, map[string]any{"id": newID})
+}
+
 func atoiOr(s string, def int) int {
 	if n, err := strconv.Atoi(s); err == nil {
 		return n

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -91,14 +93,85 @@ func (s *AdminService) Categories(ctx context.Context) ([]CategoryView, error) {
 }
 
 // CreateProduct da de alta un producto mínimo (activo, tipo simple). categoryID debe existir
-// (FK); el costo/receta/canales se configuran después.
+// (FK); el costo/receta/canales se configuran después. Nombre duplicado (por empresa) → 409.
 func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool) (int64, error) {
 	if name == "" || categoryID == 0 || !domain.ValidMoney(domain.Round2(price), true) {
 		return 0, domain.ErrValidation
 	}
-	return s.store.QC(ctx).AdminCreateProduct(ctx, db.AdminCreateProductParams{
+	id, err := s.store.QC(ctx).AdminCreateProduct(ctx, db.AdminCreateProductParams{
 		Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
 	})
+	if isUniqueViolation(err) {
+		return 0, domain.ErrDuplicateName
+	}
+	return id, err
+}
+
+// DuplicateProduct clona un producto de origen con TODAS sus relaciones (receta + ítems, grupos
+// de modificadores, canales y, si es combo, sus slots y productos) en una sola tx. El clon lleva
+// un nombre nuevo (obligatorio y distinto: nombre duplicado → 409). El sku no se copia (es unique).
+func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, newName string) (int64, error) {
+	if newName == "" {
+		return 0, domain.ErrValidation
+	}
+	var newID int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		info, err := q.GetProductCloneInfo(ctx, sourceID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		// Receta propia → clonarla primero para apuntar el producto nuevo a la copia (recipe_id es unique).
+		var newRecipeID *int64
+		if info.RecipeID != nil {
+			rid, err := q.CloneRecipe(ctx)
+			if err != nil {
+				return err
+			}
+			if err := q.CloneRecipeItems(ctx, db.CloneRecipeItemsParams{DstRecipe: rid, SrcRecipe: *info.RecipeID}); err != nil {
+				return err
+			}
+			newRecipeID = &rid
+		}
+		newID, err = q.CloneProductRow(ctx, db.CloneProductRowParams{Name: newName, RecipeID: newRecipeID, SrcID: sourceID})
+		if err != nil {
+			return err
+		}
+		if err := q.CloneProductModifierGroups(ctx, db.CloneProductModifierGroupsParams{DstProduct: newID, SrcProduct: sourceID}); err != nil {
+			return err
+		}
+		if err := q.CloneProductChannels(ctx, db.CloneProductChannelsParams{DstProduct: newID, SrcProduct: sourceID}); err != nil {
+			return err
+		}
+		// Combo: cada slot lleva sus productos → clonar slot y remapear sus productos al slot nuevo.
+		if info.Type == db.ProductTypeCombo {
+			slots, err := q.ListComboSlots(ctx, sourceID)
+			if err != nil {
+				return err
+			}
+			for _, sl := range slots {
+				newSlot, err := q.CloneComboSlot(ctx, db.CloneComboSlotParams{
+					ComboID: newID, Name: sl.Name, MinSelect: sl.MinSelect, MaxSelect: sl.MaxSelect, Position: sl.Position,
+				})
+				if err != nil {
+					return err
+				}
+				if err := q.CloneComboSlotProducts(ctx, db.CloneComboSlotProductsParams{DstSlot: newSlot, SrcSlot: sl.ID}); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if isUniqueViolation(err) {
+		return 0, domain.ErrDuplicateName
+	}
+	if err != nil {
+		return 0, err
+	}
+	return newID, nil
 }
 
 // ListProducts pagina el catálogo en el backend. status: ""=todos | "act" | "inact".
@@ -201,7 +274,7 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	if err != nil {
 		return err
 	}
-	return s.store.QC(ctx).AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
+	err = s.store.QC(ctx).AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
 		ID:             in.ID,
 		Name:           in.Name,
 		Price:          domain.Round2(in.Price),
@@ -210,4 +283,8 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 		AvailableFrom:  from,
 		AvailableUntil: until,
 	})
+	if isUniqueViolation(err) { // renombrar a un nombre ya usado → 409 accionable
+		return domain.ErrDuplicateName
+	}
+	return err
 }
