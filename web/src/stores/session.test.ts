@@ -11,7 +11,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 test('el token no se persiste en localStorage', () => {
-  useSessionStore.getState().setSession('secreto', { id: 1, name: 'Kate', role: 'cajero' });
+  useSessionStore.getState().setSession('secreto', { id: 1, companyId: 1, name: 'Kate', role: 'cajero' });
   const dumped = JSON.stringify(localStorage);
   expect(dumped).not.toContain('secreto');
 });
@@ -21,7 +21,7 @@ test('reload en frío: canjea la cookie de refresh por una sesión nueva', async
     'fetch',
     vi.fn(async () =>
       new Response(
-        JSON.stringify({ accessToken: 'tok-nuevo', user: { id: 1, name: 'Kate', role: 'cajero' } }),
+        JSON.stringify({ accessToken: 'tok-nuevo', user: { id: 1, companyId: 1, name: 'Kate', role: 'cajero' } }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
     ),
@@ -37,12 +37,12 @@ test('reload en frío: canjea la cookie de refresh por una sesión nueva', async
 test('el refresh de arranque NO pisa un login concurrente', async () => {
   // Un login (desde /login) estableció la sesión B mientras el refresh de arranque —con la
   // cookie de otro operador A— seguía en vuelo. Al resolver, NO debe sobreescribir a B.
-  useSessionStore.getState().setSession('tok-B', { id: 2, name: 'Beto', role: 'mesero' });
+  useSessionStore.getState().setSession('tok-B', { id: 2, companyId: 1, name: 'Beto', role: 'mesero' });
   vi.stubGlobal(
     'fetch',
     vi.fn(async () =>
       new Response(
-        JSON.stringify({ accessToken: 'tok-A', user: { id: 1, name: 'Ana', role: 'admin' } }),
+        JSON.stringify({ accessToken: 'tok-A', user: { id: 1, companyId: 1, name: 'Ana', role: 'admin' } }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
     ),

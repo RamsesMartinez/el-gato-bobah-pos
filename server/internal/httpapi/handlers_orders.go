@@ -31,12 +31,13 @@ type createOrderBody struct {
 			Portion  string `json:"portion"`
 		} `json:"modifiers"`
 	} `json:"lines"`
-	Payment *struct {
+	// payments: 0..N métodos (pago dividido). El front manda una línea por método.
+	Payments []struct {
 		MethodID  int16           `json:"methodId"`
 		Amount    decimal.Decimal `json:"amount"`
 		Tip       decimal.Decimal `json:"tip"`
 		Reference *string         `json:"reference"`
-	} `json:"payment"`
+	} `json:"payments"`
 }
 
 // POST /orders
@@ -69,11 +70,10 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		cmd.Lines = append(cmd.Lines, line)
 	}
-	if body.Payment != nil {
-		cmd.Payment = &app.PaymentInput{
-			MethodID: body.Payment.MethodID, Amount: body.Payment.Amount,
-			Tip: body.Payment.Tip, Reference: body.Payment.Reference,
-		}
+	for _, p := range body.Payments {
+		cmd.Payments = append(cmd.Payments, app.PaymentInput{
+			MethodID: p.MethodID, Amount: p.Amount, Tip: p.Tip, Reference: p.Reference,
+		})
 	}
 
 	order, err := h.orders.Create(r.Context(), cmd)
@@ -81,8 +81,8 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.suggest.Invalidate() // el pedido nuevo debe reflejarse en las recomendaciones al instante
-	h.broker.Publish(realtime.Event{Type: "order.created", Data: order})
+	h.suggest.Invalidate(u.CompanyID) // el pedido nuevo debe reflejarse en las recomendaciones al instante
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.created", Data: order})
 	JSON(w, http.StatusCreated, order)
 }
 
@@ -104,7 +104,8 @@ func (h *Handlers) SetOrderStatus(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.broker.Publish(realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": body.Status}})
+	u, _ := userFrom(r.Context())
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": body.Status}})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -127,7 +128,7 @@ func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.broker.Publish(realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "cancelada"}})
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "cancelada"}})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -162,7 +163,7 @@ func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	// Salida de dinero: evento de seguridad para detección/auditoría (quién reembolsó qué).
 	logging.SecurityEvent(r.Context(), "order_refund", "order_id", id, "user_id", u.ID)
-	h.broker.Publish(realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "reembolsada"}})
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id, "status": "reembolsada"}})
 	w.WriteHeader(http.StatusNoContent)
 }
 

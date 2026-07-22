@@ -3,6 +3,7 @@ import {
   Box, Heading, Text, Button, HStack, VStack, Table, Input, Textarea,
   Center, Spinner, Tabs, Badge,
 } from '@chakra-ui/react';
+import { LuPlus, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
@@ -43,7 +44,115 @@ export function ExpensesPage() {
 function GastosTab() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<ExpenseStatus | ''>('');
-  const { data, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => backofficeApi.expenses(filter || undefined) });
+  const [page, setPage] = useState(0);
+  const pageSize = 20;
+  const { data, isLoading } = useQuery({
+    queryKey: ['expenses', filter, page],
+    queryFn: () => backofficeApi.expenses({ status: filter || undefined, page, pageSize }),
+    placeholderData: (prev) => prev, // sin parpadeo al cambiar de página
+  });
+  const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
+
+  const [newOpen, setNewOpen] = useState(false);
+  const [payTarget, setPayTarget] = useState<Expense | null>(null);
+
+  const invalidate = () => { qc.invalidateQueries({ queryKey: ['expenses'] }); qc.invalidateQueries({ queryKey: ['cash'] }); };
+  const cancel = useMutation({
+    mutationFn: (v: { id: number; reason: string }) => backofficeApi.cancelExpense(v.id, v.reason),
+    onSuccess: () => invalidate(),
+    onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
+  });
+
+  const setFilterReset = (f: ExpenseStatus | '') => { setFilter(f); setPage(0); };
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  return (
+    <VStack align="stretch" gap={4}>
+      {/* Cabecera: filtros por estado + acción principal (la tabla es la protagonista) */}
+      <HStack justify="space-between" flexWrap="wrap" gap={3}>
+        <HStack gap={2} flexWrap="wrap">
+          {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas']] as const).map(([v, label]) => (
+            <Button key={v} size="sm" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
+              onClick={() => setFilterReset(v)}>{label}</Button>
+          ))}
+        </HStack>
+        <Button colorPalette="green" onClick={() => setNewOpen(true)}><LuPlus /> Nuevo gasto</Button>
+      </HStack>
+
+      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto" minH="220px">
+        {isLoading ? (
+          <Center py={16}><Spinner size="xl" /></Center>
+        ) : (
+          <Table.Root size="sm" interactive stickyHeader>
+            <Table.Header><Table.Row>
+              <Table.ColumnHeader>Fecha</Table.ColumnHeader>
+              <Table.ColumnHeader>Estado</Table.ColumnHeader>
+              <Table.ColumnHeader>Categoría</Table.ColumnHeader>
+              <Table.ColumnHeader>Proveedor</Table.ColumnHeader>
+              <Table.ColumnHeader>Descripción</Table.ColumnHeader>
+              <Table.ColumnHeader>Método</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Importe</Table.ColumnHeader>
+              <Table.ColumnHeader></Table.ColumnHeader>
+            </Table.Row></Table.Header>
+            <Table.Body>
+              {items.map((e) => (
+                <Table.Row key={e.id}>
+                  <Table.Cell whiteSpace="nowrap">{e.expenseDate}</Table.Cell>
+                  <Table.Cell><Badge colorPalette={STATUS_COLOR[e.status]}>{STATUS_LABEL[e.status]}</Badge></Table.Cell>
+                  <Table.Cell>{e.category}</Table.Cell>
+                  <Table.Cell>{e.supplier ?? '—'}</Table.Cell>
+                  <Table.Cell>{e.description ?? '—'}</Table.Cell>
+                  <Table.Cell>{e.paymentMethod ?? '—'}</Table.Cell>
+                  <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, e.currency)}</Table.Cell>
+                  <Table.Cell>
+                    {e.status === 'pendiente' && (
+                      <HStack gap={1} justify="end">
+                        <Button size="xs" colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button>
+                        <Button size="xs" variant="outline" colorPalette="red" onClick={() => {
+                          const reason = prompt('Motivo de cancelación (opcional):');
+                          if (reason === null) return;
+                          cancel.mutate({ id: e.id, reason });
+                        }}>Cancelar</Button>
+                      </HStack>
+                    )}
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+              {items.length === 0 && (
+                <Table.Row><Table.Cell colSpan={8}><Center py={10}><Text color="fg.muted">Sin gastos en esta vista.</Text></Center></Table.Cell></Table.Row>
+              )}
+            </Table.Body>
+          </Table.Root>
+        )}
+      </Box>
+
+      {/* Paginador */}
+      <HStack justify="space-between" flexWrap="wrap" gap={2}>
+        <Text fontSize="sm" color="fg.muted">{total} gasto{total === 1 ? '' : 's'}</Text>
+        <HStack gap={2}>
+          <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            <LuChevronLeft /> Anterior
+          </Button>
+          <Text fontSize="sm" minW="130px" textAlign="center">Página {page + 1} de {pages}</Text>
+          <Button size="sm" variant="outline" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>
+            Siguiente <LuChevronRight />
+          </Button>
+        </HStack>
+      </HStack>
+
+      <NewExpenseDialog open={newOpen} onClose={() => setNewOpen(false)} onCreated={() => { setNewOpen(false); invalidate(); }} />
+      <PayDialog expense={payTarget} methods={(methods?.items ?? []).map((m) => ({ id: m.id, name: m.name }))}
+        onClose={() => setPayTarget(null)} onPaid={invalidate} />
+    </VStack>
+  );
+}
+
+// Alta de gasto en diálogo: mantiene la tabla como protagonista. Categoría/proveedor con alta
+// inline (Picker) para no romper el flujo si falta uno.
+function NewExpenseDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const qc = useQueryClient();
   const { data: cats } = useQuery({ queryKey: ['expense-cats'], queryFn: backofficeApi.expenseCategories });
   const { data: sups } = useQuery({ queryKey: ['suppliers'], queryFn: backofficeApi.suppliers });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
@@ -54,13 +163,11 @@ function GastosTab() {
   const [description, setDescription] = useState('');
   const [payNow, setPayNow] = useState(false);
   const [methodId, setMethodId] = useState('');
-  const [payTarget, setPayTarget] = useState<Expense | null>(null);
 
   const activeCats = (cats?.items ?? []).filter((c) => c.isActive);
   const activeSups = (sups?.items ?? []).filter((s) => s.isActive);
 
-  const invalidate = () => { qc.invalidateQueries({ queryKey: ['expenses'] }); qc.invalidateQueries({ queryKey: ['cash'] }); };
-
+  const reset = () => { setCategoryId(''); setSupplierId(''); setAmount(''); setDescription(''); setPayNow(false); setMethodId(''); };
   const create = useMutation({
     mutationFn: () => backofficeApi.createExpense({
       categoryId: Number(categoryId),
@@ -70,121 +177,59 @@ function GastosTab() {
       status: payNow ? 'pagada' : 'pendiente',
       methodId: payNow ? Number(methodId) : undefined,
     }),
-    onSuccess: () => { invalidate(); setAmount(''); setDescription(''); setSupplierId(''); setPayNow(false); setMethodId(''); },
+    onSuccess: () => { reset(); onCreated(); },
     onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
   });
-  const cancel = useMutation({
-    mutationFn: (v: { id: number; reason: string }) => backofficeApi.cancelExpense(v.id, v.reason),
-    onSuccess: () => invalidate(),
-    onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
-  });
-
   const canCreate = !!categoryId && (parseFloat(amount) || 0) > 0 && (!payNow || !!methodId);
 
-  if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
-
   return (
-    <VStack align="stretch" gap={4}>
-      {/* Alta de gasto */}
-      <Box bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
-        <Text fontWeight="700" mb={3}>Registrar gasto</Text>
-        <HStack align="end" flexWrap="wrap" gap={3}>
-          <Field label="Categoría" w="220px">
-            <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
-              options={activeCats.map((c) => ({ value: String(c.id), label: c.name }))}
-              onCreate={async (name) => {
-                // Alta rápida sin salir del flujo: grupo por defecto 'operacional', se reclasifica
-                // luego en la pestaña Categorías (datos mínimos ahora, refinamiento después).
-                const c = await backofficeApi.createExpenseCategory({ name, financialGroup: 'operacional' });
-                qc.setQueryData(['expense-cats'], (old?: { items: ExpenseCategory[] }) => ({ items: [...(old?.items ?? []), c] }));
-                return { value: String(c.id), label: c.name };
-              }} />
-          </Field>
-          <Field label="Proveedor (opcional)" w="220px">
-            <Picker value={supplierId} onChange={setSupplierId} placeholder="— Sin proveedor —" title="Proveedor"
-              clearable clearLabel="— Sin proveedor —"
-              options={activeSups.map((s) => ({ value: String(s.id), label: s.name }))}
-              onCreate={async (name) => {
-                const s = await backofficeApi.createSupplier({ name });
-                qc.setQueryData(['suppliers'], (old?: { items: Supplier[] }) => ({ items: [...(old?.items ?? []), s] }));
-                return { value: String(s.id), label: s.name };
-              }} />
-          </Field>
-          <Field label="Importe" w="130px">
-            <Input type="number" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </Field>
-          <Field label="Descripción" flex="1" minW="180px">
-            <Input placeholder="Concepto / comentario" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </Field>
-        </HStack>
-        <HStack mt={3} gap={3} flexWrap="wrap" align="center">
-          <Switch checked={payNow} onCheckedChange={(e) => setPayNow(e.checked)}>Pagar ahora</Switch>
-          {payNow && (
-            <Box w="220px">
-              <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
-                options={(methods?.items ?? []).map((m) => ({ value: String(m.id), label: m.name }))} />
-            </Box>
-          )}
-          <Button ml="auto" disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>
-            {payNow ? 'Registrar y pagar' : 'Registrar pendiente'}
-          </Button>
-        </HStack>
-      </Box>
-
-      {/* Filtro por estado */}
-      <HStack gap={2} flexWrap="wrap">
-        {([['', 'Todos'], ['pendiente', 'Pendientes'], ['pagada', 'Pagadas'], ['cancelada', 'Canceladas']] as const).map(([v, label]) => (
-          <Button key={v} size="sm" variant={filter === v ? 'solid' : 'outline'} colorPalette={filter === v ? undefined : 'gray'}
-            onClick={() => setFilter(v)}>{label}</Button>
-        ))}
-      </HStack>
-
-      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
-        <Table.Root size="sm">
-          <Table.Header><Table.Row>
-            <Table.ColumnHeader>Fecha</Table.ColumnHeader>
-            <Table.ColumnHeader>Estado</Table.ColumnHeader>
-            <Table.ColumnHeader>Categoría</Table.ColumnHeader>
-            <Table.ColumnHeader>Proveedor</Table.ColumnHeader>
-            <Table.ColumnHeader>Descripción</Table.ColumnHeader>
-            <Table.ColumnHeader>Método</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="end">Importe</Table.ColumnHeader>
-            <Table.ColumnHeader></Table.ColumnHeader>
-          </Table.Row></Table.Header>
-          <Table.Body>
-            {(data?.items ?? []).map((e) => (
-              <Table.Row key={e.id}>
-                <Table.Cell>{e.expenseDate}</Table.Cell>
-                <Table.Cell><Badge colorPalette={STATUS_COLOR[e.status]}>{STATUS_LABEL[e.status]}</Badge></Table.Cell>
-                <Table.Cell>{e.category}</Table.Cell>
-                <Table.Cell>{e.supplier ?? '—'}</Table.Cell>
-                <Table.Cell>{e.description ?? '—'}</Table.Cell>
-                <Table.Cell>{e.paymentMethod ?? '—'}</Table.Cell>
-                <Table.Cell textAlign="end" fontWeight="600">{money(e.amount, e.currency)}</Table.Cell>
-                <Table.Cell>
-                  {e.status === 'pendiente' && (
-                    <HStack gap={1} justify="end">
-                      <Button size="xs" colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button>
-                      <Button size="xs" variant="outline" colorPalette="red" onClick={() => {
-                        const reason = prompt('Motivo de cancelación (opcional):');
-                        if (reason === null) return;
-                        cancel.mutate({ id: e.id, reason });
-                      }}>Cancelar</Button>
-                    </HStack>
-                  )}
-                </Table.Cell>
-              </Table.Row>
-            ))}
-            {(data?.items ?? []).length === 0 && (
-              <Table.Row><Table.Cell colSpan={8}><Text color="fg.muted" py={2}>Sin gastos.</Text></Table.Cell></Table.Row>
+    <DialogRoot open={open} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="md" scrollBehavior="inside">
+      <DialogBackdrop />
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nuevo gasto</DialogTitle></DialogHeader>
+        <DialogCloseTrigger />
+        <DialogBody pb={6}>
+          <VStack align="stretch" gap={3}>
+            <Field label="Categoría">
+              <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
+                options={activeCats.map((c) => ({ value: String(c.id), label: c.name }))}
+                onCreate={async (name) => {
+                  // Alta rápida: grupo 'operacional' por defecto, se reclasifica en la pestaña Categorías.
+                  const c = await backofficeApi.createExpenseCategory({ name, financialGroup: 'operacional' });
+                  qc.setQueryData(['expense-cats'], (old?: { items: ExpenseCategory[] }) => ({ items: [...(old?.items ?? []), c] }));
+                  return { value: String(c.id), label: c.name };
+                }} />
+            </Field>
+            <Field label="Proveedor (opcional)">
+              <Picker value={supplierId} onChange={setSupplierId} placeholder="— Sin proveedor —" title="Proveedor"
+                clearable clearLabel="— Sin proveedor —"
+                options={activeSups.map((s) => ({ value: String(s.id), label: s.name }))}
+                onCreate={async (name) => {
+                  const s = await backofficeApi.createSupplier({ name });
+                  qc.setQueryData(['suppliers'], (old?: { items: Supplier[] }) => ({ items: [...(old?.items ?? []), s] }));
+                  return { value: String(s.id), label: s.name };
+                }} />
+            </Field>
+            <Field label="Importe">
+              <Input type="number" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </Field>
+            <Field label="Descripción / comentario">
+              <Input placeholder="Concepto" value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+            <Switch checked={payNow} onCheckedChange={(e) => setPayNow(e.checked)}>Pagar ahora</Switch>
+            {payNow && (
+              <Field label="Método de pago">
+                <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
+                  options={(methods?.items ?? []).map((m) => ({ value: String(m.id), label: m.name }))} />
+              </Field>
             )}
-          </Table.Body>
-        </Table.Root>
-      </Box>
-
-      <PayDialog expense={payTarget} methods={(methods?.items ?? []).map((m) => ({ id: m.id, name: m.name }))}
-        onClose={() => setPayTarget(null)} onPaid={invalidate} />
-    </VStack>
+            <Button mt={1} disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>
+              {payNow ? 'Registrar y pagar' : 'Registrar pendiente'}
+            </Button>
+          </VStack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
   );
 }
 

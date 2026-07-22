@@ -43,7 +43,9 @@ type CreateOrderCmd struct {
 	OpenedBy           int64
 	DeliveryFee        decimal.Decimal // capturado en el cobro; solo aplica a domicilio
 	Lines              []domain.OrderLineInput
-	Payment            *PaymentInput
+	// Payments: 0..N líneas de pago (pago dividido). Vacío = enviar a cocina sin cobrar.
+	// La orden queda "pagada" cuando la suma de amounts cubre el total (ver load()).
+	Payments []PaymentInput
 }
 
 type OrderView struct {
@@ -84,18 +86,18 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
 	}
-	// A04: acota pago/propina antes de la tx. Un monto sobre el tope desbordaría el
-	// numeric(10,2) (→ 500); una propina negativa violaría el check de la columna.
-	// allowZero en la propina (0 es válido), no en el monto.
-	if cmd.Payment != nil && cmd.Payment.Amount.IsPositive() {
-		if !domain.ValidMoney(domain.Round2(cmd.Payment.Amount), false) ||
-			!domain.ValidMoney(domain.Round2(cmd.Payment.Tip), true) {
+	// A04: acota cada línea de pago/propina antes de la tx. Un monto sobre el tope desbordaría
+	// el numeric(10,2) (→ 500); una propina negativa violaría el check de la columna.
+	// allowZero en la propina (0 es válido), no en el monto (una línea de pago cobra algo).
+	for _, p := range cmd.Payments {
+		if !domain.ValidMoney(domain.Round2(p.Amount), false) ||
+			!domain.ValidMoney(domain.Round2(p.Tip), true) {
 			return nil, domain.ErrValidation
 		}
 	}
 
 	// idempotencia: si ya existe una orden con ese client_uuid, devolverla
-	if id, err := s.store.Q.GetOrderIDByClientUUID(ctx, cmd.ClientUUID); err == nil {
+	if id, err := s.store.QC(ctx).GetOrderIDByClientUUID(ctx, cmd.ClientUUID); err == nil {
 		return s.load(ctx, id)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
@@ -103,11 +105,11 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 
 	// cargar catálogo priceado (autoritativo)
 	prodIDs, optIDs := collectIDs(cmd.Lines)
-	prodRows, err := s.store.Q.GetPricedProducts(ctx, prodIDs)
+	prodRows, err := s.store.QC(ctx).GetPricedProducts(ctx, prodIDs)
 	if err != nil {
 		return nil, err
 	}
-	optRows, err := s.store.Q.GetPricedOptions(ctx, optIDs)
+	optRows, err := s.store.QC(ctx).GetPricedOptions(ctx, optIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -193,14 +195,19 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				}
 			}
 		}
-		if cmd.Payment != nil && cmd.Payment.Amount.IsPositive() {
+		// Pago dividido: una fila order_payments por método. La suma de amounts determina si
+		// la orden queda pagada (load() la compara con el total).
+		for _, p := range cmd.Payments {
+			if !p.Amount.IsPositive() {
+				continue // línea vacía: se ignora (no crea filas de $0)
+			}
 			if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
 				OrderID:         ord.ID,
-				PaymentMethodID: cmd.Payment.MethodID,
-				Amount:          domain.Round2(cmd.Payment.Amount),
-				TipAmount:       domain.Round2(cmd.Payment.Tip),
+				PaymentMethodID: p.MethodID,
+				Amount:          domain.Round2(p.Amount),
+				TipAmount:       domain.Round2(p.Tip),
 				ReceivedBy:      &cmd.OpenedBy,
-				Reference:       cmd.Payment.Reference,
+				Reference:       p.Reference,
 			}); err != nil {
 				return err
 			}
@@ -233,19 +240,19 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 }
 
 func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) {
-	o, err := s.store.Q.GetOrder(ctx, id)
+	o, err := s.store.QC(ctx).GetOrder(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	lines, err := s.store.Q.ListOrderLines(ctx, id)
+	lines, err := s.store.QC(ctx).ListOrderLines(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	mods, err := s.store.Q.ListOrderLineModifiers(ctx, id)
+	mods, err := s.store.QC(ctx).ListOrderLineModifiers(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	pays, err := s.store.Q.ListOrderPayments(ctx, id)
+	pays, err := s.store.QC(ctx).ListOrderPayments(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +296,7 @@ type BoardOrder struct {
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
 func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
-	rows, err := s.store.Q.ListActiveOrders(ctx)
+	rows, err := s.store.QC(ctx).ListActiveOrders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +314,7 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 
 // DeliveredToday lista las órdenes entregadas del día (para la sección de reembolsos).
 func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error) {
-	rows, err := s.store.Q.ListDeliveredToday(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	rows, err := s.store.QC(ctx).ListDeliveredToday(ctx, pgtype.Date{Time: s.now(), Valid: true})
 	if err != nil {
 		return nil, err
 	}
@@ -419,14 +426,14 @@ type recipeDelta struct {
 
 func (s *OrdersService) loadDepletion(ctx context.Context, prodIDs []int64) (depletionData, error) {
 	d := depletionData{trackStock: map[int64]bool{}, recipe: map[int64][]recipeDelta{}}
-	tracked, err := s.store.Q.GetTrackStockProductIDs(ctx, prodIDs)
+	tracked, err := s.store.QC(ctx).GetTrackStockProductIDs(ctx, prodIDs)
 	if err != nil {
 		return d, err
 	}
 	for _, id := range tracked {
 		d.trackStock[id] = true
 	}
-	rows, err := s.store.Q.GetRecipeDepletion(ctx, prodIDs)
+	rows, err := s.store.QC(ctx).GetRecipeDepletion(ctx, prodIDs)
 	if err != nil {
 		return d, err
 	}

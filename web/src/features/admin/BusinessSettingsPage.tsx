@@ -19,6 +19,21 @@ export function BusinessSettingsPage() {
   const [fee, setFee] = useState<string | null>(null);
   const feeValue = fee ?? data?.deliveryFee ?? '';
 
+  const { data: company } = useQuery({ queryKey: ['company'], queryFn: posApi.company });
+  const [coName, setCoName] = useState<string | null>(null);
+  const [coSlug, setCoSlug] = useState<string | null>(null);
+  const nameValue = coName ?? company?.name ?? '';
+  const slugValue = coSlug ?? company?.slug ?? '';
+
+  const saveCompany = useMutation({
+    mutationFn: () => posApi.updateCompany(nameValue.trim(), slugValue.trim()),
+    onSuccess: (c) => {
+      qc.setQueryData(['company'], c);
+      toaster.create({ title: 'Empresa actualizada', description: 'El nuevo slug aplica al login (usuario@' + c.slug + ').', type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo actualizar', description: String(e), type: 'error' }),
+  });
+
   const toggleAutoDeclare = useMutation({
     mutationFn: (v: { id: number; autoDeclare: boolean }) =>
       backofficeApi.setPaymentMethodAutoDeclare(v.id, v.autoDeclare),
@@ -42,6 +57,24 @@ export function BusinessSettingsPage() {
     <Page maxW="560px">
       <Heading size="lg" mb={1}>Negocio</Heading>
       <Text color="fg.muted" mb={6}>Ajustes generales del local.</Text>
+
+      <Box mb={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Identidad de la empresa</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          El «slug» es el identificador con el que tu equipo inicia sesión: usuario@<b>{slugValue || 'slug'}</b>.
+          Cambiarlo modifica el login de todos los empleados (2–40, minúsculas, dígitos y guiones).
+        </Text>
+        <VStack align="stretch" gap={3} maxW="360px">
+          <Input placeholder="Nombre del negocio" value={nameValue} onChange={(e) => setCoName(e.target.value)} />
+          <InputGroup startElement="@">
+            <Input placeholder="slug" value={slugValue} autoCapitalize="none"
+              onChange={(e) => setCoSlug(e.target.value.toLowerCase())} />
+          </InputGroup>
+          <Button alignSelf="start" loading={saveCompany.isPending}
+            disabled={!nameValue.trim() || slugValue.trim().length < 2}
+            onClick={() => saveCompany.mutate()}>Guardar empresa</Button>
+        </VStack>
+      </Box>
 
       <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
         <Text fontWeight="700" mb={1}>Costo de envío</Text>

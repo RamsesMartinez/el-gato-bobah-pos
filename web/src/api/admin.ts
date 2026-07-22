@@ -6,6 +6,8 @@ export interface AdminUser {
   username: string | null;
   role: string;
   isActive: boolean;
+  recoveryEmail?: string | null;
+  mustChangePassword?: boolean;
 }
 export interface AdminProduct {
   id: number;
@@ -61,8 +63,14 @@ function pageQs(p: ProductsQuery): string {
 
 export const adminApi = {
   users: () => api.get<{ items: AdminUser[] }>('/users'),
-  createUser: (b: { name: string; role: string; username?: string; pin?: string; password?: string }) =>
+  createUser: (b: { name: string; role: string; username?: string; pin?: string; password: string; recoveryEmail?: string }) =>
     api.post<AdminUser>('/users', b),
+  updateUser: (id: number, b: { name: string; role: string; isActive: boolean; recoveryEmail?: string | null }) =>
+    api.patch<AdminUser>(`/users/${id}`, b),
+  resetUserPassword: (id: number, password: string) =>
+    api.post<void>(`/users/${id}/password`, { password }),
+  setUserPin: (id: number, pin: string) =>
+    api.post<void>(`/users/${id}/pin`, { pin }),
 
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
   updateProduct: (id: number, b: UpdateProductBody) =>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Button, VStack, HStack, SimpleGrid, Text, Input, Box, Flex,
+  Button, VStack, HStack, SimpleGrid, Text, Input, Box, Flex, IconButton,
 } from '@chakra-ui/react';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -9,6 +9,7 @@ import {
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import {
   LuBanknote, LuCreditCard, LuLandmark, LuStore, LuShoppingBag, LuBike, LuX, LuTriangleAlert,
+  LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
@@ -65,6 +66,9 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const [methodId, setMethodId] = useState(2);  // Tarjeta débito por default
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
   const [tip, setTip] = useState('');
+  // Pago dividido: cada línea es {método, monto}. Se activa con "Dividir pago".
+  const [splitMode, setSplitMode] = useState(false);
+  const [splits, setSplits] = useState<Array<{ methodId: number; amount: string }>>([]);
   // Costo de envío: solo a domicilio. Se pre-llena con el ajuste de negocio ($20) pero el
   // operador puede editarlo o ponerlo en 0 (envío gratis) para este pedido. null = usar default.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
@@ -75,13 +79,55 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const deliveryFee = isDelivery ? Math.max(0, Math.round((parseFloat(feeInput) || 0) * 100) / 100) : 0;
 
   const tipAmount = Math.max(0, Math.round((parseFloat(tip) || 0) * 100) / 100);
-  const grandTotal = Math.round((total + deliveryFee + tipAmount) * 100) / 100;
+  // orderTotal = lo que cubren los pagos (subtotal + envío); la propina va aparte, en la 1ª línea.
+  const orderTotal = Math.round((total + deliveryFee) * 100) / 100;
+  const grandTotal = Math.round((orderTotal + tipAmount) * 100) / 100;
 
   // "Exacto" es el default: campo vacío ⇒ el cliente pagó justo, sin cambio.
   const isExact = tendered === '';
   const received = isExact ? grandTotal : (parseFloat(tendered) || 0);
   const change = Math.max(0, received - grandTotal);
-  const cashShort = methodId === 1 && !isExact && received < grandTotal;
+  const cashShort = !splitMode && methodId === 1 && !isExact && received < grandTotal;
+
+  // --- Pago dividido ---
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const splitSum = round2(splits.reduce((a, s) => a + (parseFloat(s.amount) || 0), 0));
+  const splitRemaining = round2(orderTotal - splitSum);
+  // Válido cuando la suma cubre EXACTO el total del pedido (tolerancia de 1 centavo).
+  const splitValid = splits.length > 0 && splitSum > 0 && Math.abs(splitRemaining) < 0.005;
+
+  const enableSplit = () => {
+    // arranca con una línea = método actual y el monto completo (editable); dividir = ir bajando.
+    setSplits([{ methodId, amount: String(orderTotal) }]);
+    setTendered('');
+    setSplitMode(true);
+  };
+  const firstUnusedMethod = (xs: Array<{ methodId: number }>) => {
+    const used = new Set(xs.map((s) => s.methodId));
+    return (METHODS.find((m) => !used.has(m.id)) ?? METHODS[0]).id;
+  };
+  const addSplit = () => setSplits((xs) => [...xs, { methodId: firstUnusedMethod(xs), amount: '' }]);
+  const removeSplit = (i: number) => setSplits((xs) => xs.filter((_, j) => j !== i));
+  const setSplitMethod = (i: number, id: number) => setSplits((xs) => xs.map((s, j) => (j === i ? { ...s, methodId: id } : s)));
+  const setSplitAmount = (i: number, v: string) => setSplits((xs) => xs.map((s, j) => (j === i ? { ...s, amount: v } : s)));
+  // Rellena esta línea con lo que falta para cubrir el total (un tap para cuadrar el resto).
+  const fillRest = (i: number) => setSplits((xs) => {
+    const others = xs.reduce((a, s, j) => a + (j === i ? 0 : parseFloat(s.amount) || 0), 0);
+    return xs.map((s, j) => (j === i ? { ...s, amount: String(Math.max(0, round2(orderTotal - others))) } : s));
+  });
+
+  // Líneas de pago: en modo dividido, una por método (montos que cuadran con orderTotal); en
+  // modo simple, una sola por orderTotal. La propina va en la PRIMERA línea (amount = total del
+  // pedido, la propina es aparte; si no incluyera el envío, un domicilio quedaría "no pagado").
+  const buildPayments = (): NonNullable<CreateOrderBody['payments']> => {
+    if (splitMode) {
+      return splits
+        .map((s) => ({ methodId: s.methodId, amount: round2(parseFloat(s.amount) || 0) }))
+        .filter((p) => p.amount > 0)
+        .map((p, i) => (i === 0 && tipAmount > 0 ? { ...p, tip: tipAmount } : p));
+    }
+    return [{ methodId, amount: orderTotal, ...(tipAmount > 0 ? { tip: tipAmount } : {}) }];
+  };
 
   const build = (withPayment: boolean): CreateOrderBody => ({
     clientUuid: uuid(),
@@ -94,9 +140,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       notes: l.notes,
       modifiers: l.modifiers.map((m) => ({ optionId: m.optionId, qty: m.qty })),
     })),
-    // amount = total del pedido (subtotal + envío); la propina va aparte. Si no incluyera el
-    // envío, el pedido a domicilio quedaría como "no pagado" (paid < total).
-    payment: withPayment ? { methodId, amount: total + deliveryFee, tip: tipAmount || undefined } : undefined,
+    payments: withPayment ? buildPayments() : undefined,
   });
 
   const mutation = useMutation({
@@ -105,6 +149,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       closeTab(activeId); // la cuenta se envió/cobró: se cierra y queda la siguiente activa
       setTendered('');
       setTip('');
+      setSplitMode(false); setSplits([]); // el siguiente pedido arranca en modo simple
       setFeeOverride(null); // siguiente pedido vuelve al costo de envío por defecto
       qc.invalidateQueries({ queryKey: ['orders', 'active'] });
       // el pedido nuevo alimenta las recomendaciones → refetch para verlas al instante
@@ -200,21 +245,75 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
 
             {/* Método de pago */}
             <Box>
-              <Text fontWeight="600" mb={2}>Método de pago</Text>
-              <SimpleGrid columns={2} gap={2}>
-                {METHODS.map((m) => {
-                  const Icon = m.icon;
-                  const on = methodId === m.id;
-                  return (
-                    <Button key={m.id} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
-                      variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
-                      onClick={() => setMethodId(m.id)}>
-                      <Icon size={20} />
-                      {m.label}
-                    </Button>
-                  );
-                })}
-              </SimpleGrid>
+              <HStack justify="space-between" mb={2}>
+                <Text fontWeight="600">Método de pago</Text>
+                <Button size="xs" minH="36px" variant="ghost" colorPalette={splitMode ? undefined : 'gray'}
+                  onClick={() => (splitMode ? setSplitMode(false) : enableSplit())}>
+                  <LuSplit /> {splitMode ? 'Un solo método' : 'Dividir pago'}
+                </Button>
+              </HStack>
+
+              {!splitMode ? (
+                <SimpleGrid columns={2} gap={2}>
+                  {METHODS.map((m) => {
+                    const Icon = m.icon;
+                    const on = methodId === m.id;
+                    return (
+                      <Button key={m.id} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
+                        variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
+                        onClick={() => setMethodId(m.id)}>
+                        <Icon size={20} />
+                        {m.label}
+                      </Button>
+                    );
+                  })}
+                </SimpleGrid>
+              ) : (
+                <VStack align="stretch" gap={3}>
+                  {splits.map((s, i) => (
+                    <Box key={i} borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+                      <HStack justify="space-between" mb={2}>
+                        <Text fontSize="sm" color="fg.muted">Pago {i + 1}</Text>
+                        {splits.length > 1 && (
+                          <IconButton aria-label="Quitar pago" size="xs" variant="ghost" colorPalette="red"
+                            onClick={() => removeSplit(i)}><LuTrash2 /></IconButton>
+                        )}
+                      </HStack>
+                      <SimpleGrid columns={4} gap={1} mb={2}>
+                        {METHODS.map((m) => {
+                          const on = s.methodId === m.id;
+                          return (
+                            <Button key={m.id} h="44px" px={1} fontSize="xs" whiteSpace="normal"
+                              variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
+                              onClick={() => setSplitMethod(i, m.id)}>
+                              {m.label}
+                            </Button>
+                          );
+                        })}
+                      </SimpleGrid>
+                      <HStack>
+                        <Input flex="1" size="lg" type="number" inputMode="decimal" placeholder="0.00"
+                          value={s.amount} onChange={(e) => setSplitAmount(i, e.target.value)} />
+                        <Button size="sm" minH="40px" variant="outline" colorPalette="gray" onClick={() => fillRest(i)}>
+                          Resto
+                        </Button>
+                      </HStack>
+                    </Box>
+                  ))}
+                  <Button variant="outline" colorPalette="gray" onClick={addSplit}>
+                    <LuPlus /> Agregar método
+                  </Button>
+                  <Flex justify="space-between" align="baseline">
+                    <Text color="fg.muted">Restante</Text>
+                    <Text fontSize="xl" fontWeight="800" color={splitValid ? 'green.500' : 'orange.500'}>
+                      {money(splitRemaining)}
+                    </Text>
+                  </Flex>
+                  {splitRemaining < -0.005 && (
+                    <Text fontSize="xs" color="red.400">Los pagos superan el total del pedido.</Text>
+                  )}
+                </VStack>
+              )}
             </Box>
 
             {/* Propina */}
@@ -253,8 +352,8 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               </Box>
             )}
 
-            {/* Efectivo: recibido + billetes rápidos + cambio */}
-            {methodId === 1 && (
+            {/* Efectivo (modo simple): recibido + billetes rápidos + cambio */}
+            {!splitMode && methodId === 1 && (
               <Box>
                 <HStack justify="space-between" mb={2}>
                   <Text fontWeight="600">Recibido</Text>
@@ -297,7 +396,8 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               disabled={chargeLines.length === 0} loading={sending} onClick={() => mutation.mutate(false)}>
               Enviar a cocina
             </Button>
-            <Button flex="1.4" size="lg" colorPalette="green" disabled={cashShort || chargeLines.length === 0}
+            <Button flex="1.4" size="lg" colorPalette="green"
+              disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
               loading={charging} onClick={() => mutation.mutate(true)}>
               COBRAR {money(grandTotal)}
             </Button>

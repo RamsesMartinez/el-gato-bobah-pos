@@ -52,6 +52,12 @@ func Error(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrEmptyOrder):
 		// reglas de negocio del armado del pedido: 422 con el mensaje real (no 500 opaco)
 		status, code = http.StatusUnprocessableEntity, "UNPROCESSABLE"
+	case errors.Is(err, domain.ErrWeakPassword):
+		// política de contraseña: 422 con el motivo concreto (envuelto en el error)
+		status, code = http.StatusUnprocessableEntity, "WEAK_PASSWORD"
+	case errors.Is(err, domain.ErrResetInvalid):
+		// enlace de recuperación inválido/usado/vencido: 410 Gone con mensaje accionable
+		status, code = http.StatusGone, "RESET_INVALID"
 	}
 
 	if status == http.StatusInternalServerError {

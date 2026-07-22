@@ -30,118 +30,163 @@ func NewAuthService(s *store.Store, jm *auth.Manager, now func() time.Time) *Aut
 }
 
 // Session is the result of a successful auth: an access token, an opaque refresh
-// token, and the user it belongs to.
+// token, and the user it belongs to. CompanyID viaja aparte para que el handler lo
+// codifique en la cookie de refresh (cid.token): el refresh resuelve su tenant sin conocer
+// al usuario todavía.
 type Session struct {
 	AccessToken  string      `json:"accessToken"`
 	RefreshToken string      `json:"refreshToken"`
+	CompanyID    int64       `json:"-"`
 	User         domain.User `json:"user"`
 }
 
-// Login authenticates a backoffice user by username + password.
-func (s *AuthService) Login(ctx context.Context, username, password string) (*Session, error) {
-	u, err := s.store.Q.GetUserByUsername(ctx, &username)
+// Login authenticates a user by username + company slug + password. El identificador de login
+// es username@slug: se resuelve el slug→company_id (resolver SECURITY DEFINER, sin tenant aún)
+// y luego el usuario se busca YA dentro del tenant (RLS lo acota a esa empresa).
+func (s *AuthService) Login(ctx context.Context, username, slug, password string) (*Session, error) {
+	companyID, err := s.store.Q.ResolveCompanyBySlug(ctx, slug)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// bcrypt de descarte: sin él esta rama responde en ~µs y la de "password
-			// incorrecto" en decenas de ms, revelando qué usuarios existen (A07).
-			auth.CheckDummySecret(password)
-			return nil, domain.ErrInvalidCredentials
-		}
 		return nil, err
 	}
-	if u.PasswordHash == nil {
-		// Usuario sin password: misma igualación de latencia que la rama de arriba.
+	if companyID == 0 {
+		// Empresa inexistente: iguala latencia (bcrypt de descarte) para no filtrar qué slugs existen.
 		auth.CheckDummySecret(password)
 		return nil, domain.ErrInvalidCredentials
 	}
-	if !auth.CheckSecret(*u.PasswordHash, password) {
-		return nil, domain.ErrInvalidCredentials
+	var sess *Session
+	err = s.store.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		u, err := q.GetUserByUsername(ctx, &username)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// bcrypt de descarte: sin él la rama "no existe" responde en ~µs y la de
+				// "password incorrecto" en decenas de ms, revelando qué usuarios existen (A07).
+				auth.CheckDummySecret(password)
+				return domain.ErrInvalidCredentials
+			}
+			return err
+		}
+		if u.PasswordHash == nil {
+			auth.CheckDummySecret(password)
+			return domain.ErrInvalidCredentials
+		}
+		if !auth.CheckSecret(*u.PasswordHash, password) {
+			return domain.ErrInvalidCredentials
+		}
+		sess, err = s.issue(ctx, q, u)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
-	return s.issue(ctx, u)
+	return sess, nil
 }
 
-// PinSwitch re-mints a session for a different operator via their PIN. Requires an
-// already-valid device session (enforced at the HTTP layer).
+// PinSwitch re-mints a session for a different operator via their PIN, DENTRO de la misma
+// empresa: corre bajo el tenant del request (QC/WithTx), así RLS impide cambiar a un usuario
+// de otra empresa (el userID de otra empresa simplemente no existe para esta sesión).
 func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (*Session, error) {
-	u, err := s.store.Q.GetUserByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// bcrypt de descarte: pin-switch está exento del throttle per-IP y el lockout es
-			// per-userID, así que sin igualar la latencia un atacante autenticado enumera qué
-			// userIDs existen/están activos/tienen PIN barriendo N (A07).
+	var sess *Session
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		u, err := q.GetUserByID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// bcrypt de descarte: pin-switch está exento del throttle per-IP y el lockout es
+				// per-userID; sin igualar latencia un atacante autenticado enumera userIDs (A07).
+				auth.CheckDummySecret(pin)
+				return domain.ErrInvalidCredentials
+			}
+			return err
+		}
+		if !u.IsActive || u.PinHash == nil {
 			auth.CheckDummySecret(pin)
-			return nil, domain.ErrInvalidCredentials
+			return domain.ErrInvalidCredentials
 		}
+		if !auth.CheckSecret(*u.PinHash, pin) {
+			return domain.ErrInvalidCredentials
+		}
+		sess, err = s.issue(ctx, q, u)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
-	if !u.IsActive || u.PinHash == nil {
-		auth.CheckDummySecret(pin)
-		return nil, domain.ErrInvalidCredentials
-	}
-	if !auth.CheckSecret(*u.PinHash, pin) {
-		return nil, domain.ErrInvalidCredentials
-	}
-	return s.issue(ctx, u)
+	return sess, nil
 }
 
-// Refresh rotates a refresh token and returns a fresh session.
-func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*Session, error) {
+// Refresh rotates a refresh token and returns a fresh session. companyID viene de la cookie
+// (cid.token): fija el tenant antes de buscar el token, así RLS acota la búsqueda a esa empresa
+// (un token válido presentado con el cid equivocado no matchea → 401).
+func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken string) (*Session, error) {
 	hash := auth.HashToken(refreshToken)
-	rt, err := s.store.Q.GetRefreshToken(ctx, hash)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrUnauthorized
+	var sess *Session
+	var reusedUserID int64 // != 0 → se detectó reuso; se responde 401 TRAS commitear la revocación
+	err := s.store.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		rt, err := q.GetRefreshToken(ctx, hash)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrUnauthorized
+			}
+			return err
 		}
-		return nil, err
-	}
-	switch domain.ClassifyRefresh(rt.RevokedAt.Valid, rt.ExpiresAt, s.now()) {
-	case domain.RefreshReused:
-		// Reuse-detection: un refresh ya revocado que reaparece delata robo/reuso. No se
-		// puede saber si lo presenta el atacante o el usuario, así que se revoca TODA la
-		// familia (ambos quedan fuera y re-autentican). Fail-closed: si la revocación
-		// falla, igual denegamos, pero lo registramos como incidente aparte.
-		if err := s.store.Q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
-			logging.SecurityEvent(ctx, "refresh_reuse_revoke_failed", "user_id", rt.UserID, "error", err.Error())
-			return nil, domain.ErrUnauthorized
+		switch domain.ClassifyRefresh(rt.RevokedAt.Valid, rt.ExpiresAt, s.now()) {
+		case domain.RefreshReused:
+			// Reuse-detection: un refresh ya revocado que reaparece delata robo/reuso → se revoca
+			// TODA la familia. CLAVE: la revocación va en ESTA tx; devolver un error aquí la haría
+			// rollback. Por eso devolvemos nil (commit) y señalamos el reuso por variable, para
+			// responder 401 después del commit.
+			if err := q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
+				return err // fail-closed: sin revocar, abortamos (rollback) y el llamador ve error
+			}
+			reusedUserID = rt.UserID
+			return nil
+		case domain.RefreshExpired:
+			return domain.ErrUnauthorized
 		}
-		logging.SecurityEvent(ctx, "refresh_reuse", "user_id", rt.UserID)
-		return nil, domain.ErrUnauthorized
-	case domain.RefreshExpired:
+		// Rotación atómica TOCTOU-safe: revoca solo si sigue activo; revoked==0 => otro request
+		// ya rotó (dos pestañas o reuso concurrente) → se deniega a quien pierde la carrera.
+		revoked, err := q.RevokeRefreshTokenIfActive(ctx, hash)
+		if err != nil {
+			return err
+		}
+		if revoked == 0 {
+			return domain.ErrUnauthorized
+		}
+		u, err := q.GetUserByID(ctx, rt.UserID)
+		if err != nil {
+			return err
+		}
+		// Cuenta dada de baja deja de refrescar de inmediato (antes seguía viva hasta 30 días).
+		if !u.IsActive {
+			return domain.ErrUnauthorized
+		}
+		sess, err = s.issue(ctx, q, u)
+		return err
+	})
+	if reusedUserID != 0 {
+		logging.SecurityEvent(ctx, "refresh_reuse", "user_id", reusedUserID)
 		return nil, domain.ErrUnauthorized
 	}
-	// Rotación atómica: revoca SOLO si sigue activo. revoked==0 significa que otro request ya
-	// rotó/revocó este token entre nuestro read y ahora (dos pestañas refrescando a la vez, o
-	// un reuso concurrente): se deniega a quien pierde la carrera para no acuñar dos tokens
-	// vivos. Un robo real se detecta igual en la siguiente ronda por la rama revoked-at-read
-	// de arriba (ClassifyRefresh→RefreshReused→revoca familia). Cierra el TOCTOU del
-	// read-then-revoke sin castigar refrescos concurrentes legítimos.
-	revoked, err := s.store.Q.RevokeRefreshTokenIfActive(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
-	if revoked == 0 {
-		return nil, domain.ErrUnauthorized
-	}
-	u, err := s.store.Q.GetUserByID(ctx, rt.UserID)
-	if err != nil {
-		return nil, err
-	}
-	// El token viejo ya se revocó arriba. Si el usuario fue dado de baja, no emitimos
-	// uno nuevo: así una cuenta desactivada deja de funcionar de inmediato (antes seguía
-	// viva hasta 30 días mientras rotara su refresh token).
-	if !u.IsActive {
-		return nil, domain.ErrUnauthorized
-	}
-	return s.issue(ctx, u)
+	return sess, nil
 }
 
-// Logout revokes a refresh token.
-func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
-	return s.store.Q.RevokeRefreshToken(ctx, auth.HashToken(refreshToken))
+// Logout revokes a refresh token dentro de su empresa (companyID de la cookie).
+func (s *AuthService) Logout(ctx context.Context, companyID int64, refreshToken string) error {
+	return s.store.WithTenant(ctx, companyID, func(q *db.Queries) error {
+		return q.RevokeRefreshToken(ctx, auth.HashToken(refreshToken))
+	})
 }
 
-func (s *AuthService) issue(ctx context.Context, u db.User) (*Session, error) {
+// issue firma el access token y crea el refresh token usando la Queries YA scopeada al tenant
+// (q): CreateRefreshToken auto-sella company_id desde el GUC. Rellena el slug consultando la
+// propia empresa (para mostrar user@slug en el front) — barato y evita threading del slug.
+func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Session, error) {
 	du := toDomainUser(u)
+	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
+		du.CompanySlug = co.Slug
+	}
 	access, err := s.jwt.Issue(du)
 	if err != nil {
 		return nil, err
@@ -150,23 +195,26 @@ func (s *AuthService) issue(ctx context.Context, u db.User) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.store.Q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+	if _, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hash,
 		ExpiresAt: s.now().Add(RefreshTokenTTL),
 	}); err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: access, RefreshToken: token, User: du}, nil
+	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du}, nil
 }
 
 func toDomainUser(u db.User) domain.User {
 	return domain.User{
-		ID:        u.ID,
-		Name:      u.Name,
-		Username:  u.Username,
-		Role:      domain.Role(u.Role),
-		IsActive:  u.IsActive,
-		CreatedAt: u.CreatedAt,
+		ID:                 u.ID,
+		CompanyID:          u.CompanyID,
+		Name:               u.Name,
+		Username:           u.Username,
+		Role:               domain.Role(u.Role),
+		IsActive:           u.IsActive,
+		RecoveryEmail:      u.RecoveryEmail,
+		MustChangePassword: u.MustChangePassword,
+		CreatedAt:          u.CreatedAt,
 	}
 }
