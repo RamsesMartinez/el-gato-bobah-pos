@@ -30,22 +30,22 @@ func TestRefreshReuseRevokesFamily(t *testing.T) {
 		t.Fatalf("set password: %v", err)
 	}
 
-	// Login → sesión A.
-	sA, err := svc.Login(ctx, "op_reuse", "passw0rd")
+	// Login → sesión A (empresa por defecto 'gatobobah').
+	sA, err := svc.Login(ctx, "op_reuse", "gatobobah", "passw0rd")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
 	// Refresh legítimo → sesión B (rota; el token A queda revocado).
-	sB, err := svc.Refresh(ctx, sA.RefreshToken)
+	sB, err := svc.Refresh(ctx, sA.CompanyID, sA.RefreshToken)
 	if err != nil {
 		t.Fatalf("Refresh legítimo: %v", err)
 	}
 	// Reuso del token A (ya revocado) → unauthorized + revoca la familia.
-	if _, err := svc.Refresh(ctx, sA.RefreshToken); !errors.Is(err, domain.ErrUnauthorized) {
+	if _, err := svc.Refresh(ctx, sA.CompanyID, sA.RefreshToken); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("reuso de token revocado debe dar ErrUnauthorized, got %v", err)
 	}
 	// La familia quedó revocada: el token B (legítimo) ya no sirve.
-	if _, err := svc.Refresh(ctx, sB.RefreshToken); !errors.Is(err, domain.ErrUnauthorized) {
+	if _, err := svc.Refresh(ctx, sB.CompanyID, sB.RefreshToken); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("tras el reuso, el token B (familia) debe quedar revocado, got %v", err)
 	}
 }
@@ -64,11 +64,11 @@ func TestRefreshRotationHappyPath(t *testing.T) {
 		t.Fatalf("set password: %v", err)
 	}
 
-	sA, err := svc.Login(ctx, "op_rot", "passw0rd")
+	sA, err := svc.Login(ctx, "op_rot", "gatobobah", "passw0rd")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	sB, err := svc.Refresh(ctx, sA.RefreshToken)
+	sB, err := svc.Refresh(ctx, sA.CompanyID, sA.RefreshToken)
 	if err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestRefreshRotationHappyPath(t *testing.T) {
 		t.Fatal("el refresh debe rotar el token")
 	}
 	// El nuevo token sí rota otra vez.
-	if _, err := svc.Refresh(ctx, sB.RefreshToken); err != nil {
+	if _, err := svc.Refresh(ctx, sB.CompanyID, sB.RefreshToken); err != nil {
 		t.Fatalf("segundo refresh del token vigente debe funcionar: %v", err)
 	}
 }

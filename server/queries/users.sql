@@ -2,30 +2,36 @@
 select count(*) from users;
 
 -- name: GetUserByID :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where id = $1;
+-- RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
+select * from users where id = $1;
 
 -- name: GetUserByUsername :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where username = $1 and is_active;
+select * from users where username = $1 and is_active;
 
 -- name: ListActiveUsers :many
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at
-from users where is_active order by name;
+select * from users where is_active order by name;
 
 -- name: CreateUser :one
-insert into users (name, username, role, pin_hash, password_hash)
-values ($1, $2, $3, $4, $5)
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at;
+-- company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
+insert into users (name, username, role, pin_hash, password_hash, recovery_email, must_change_password)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning *;
 
 -- name: UpdateUser :one
 update users
-set name = $2, role = $3, is_active = $4, updated_at = now()
+set name = $2, role = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at;
+returning *;
 
 -- name: SetUserPin :exec
 update users set pin_hash = $2, updated_at = now() where id = $1;
+
+-- name: SetUserPassword :exec
+-- must_change_password lo fija quien llama (true tras reset por admin, false en cambio propio).
+update users set password_hash = $2, must_change_password = $3, updated_at = now() where id = $1;
+
+-- name: SetUserRecoveryEmail :exec
+update users set recovery_email = $2, updated_at = now() where id = $1;
 
 -- name: SetUserSecretsByUsername :execrows
 update users set password_hash = $2, pin_hash = $3, is_active = true, updated_at = now()

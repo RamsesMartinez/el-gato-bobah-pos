@@ -56,7 +56,11 @@ left join payment_methods pm on pm.id = e.payment_method_id
 left join users ub on ub.id = e.created_by
 where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('status'))
 order by e.expense_date desc, e.id desc
-limit sqlc.arg('lim');
+limit sqlc.arg('lim') offset sqlc.arg('off');
+
+-- name: CountExpenses :one
+select count(*) from expenses e
+where (sqlc.narg('status')::expense_status is null or e.status = sqlc.narg('status'));
 
 -- name: PayExpense :execrows
 -- El AND status='pendiente' es el guard de carrera (idempotente); el servicio ya valida el estado.

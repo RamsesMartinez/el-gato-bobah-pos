@@ -74,23 +74,23 @@ func (s *CostingService) loadGraph(ctx context.Context) (
 	[]db.ListModifierOptionsForCostingRow,
 	error,
 ) {
-	ingRows, err := s.store.Q.ListIngredientsForCosting(ctx)
+	ingRows, err := s.store.QC(ctx).ListIngredientsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	itemRows, err := s.store.Q.ListRecipeItemsForCosting(ctx)
+	itemRows, err := s.store.QC(ctx).ListRecipeItemsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	prodRows, err := s.store.Q.ListProductsForCosting(ctx)
+	prodRows, err := s.store.QC(ctx).ListProductsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	comboRows, err := s.store.Q.ListComboSlotDefaultsForCosting(ctx)
+	comboRows, err := s.store.QC(ctx).ListComboSlotDefaultsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	optRows, err := s.store.Q.ListModifierOptionsForCosting(ctx)
+	optRows, err := s.store.QC(ctx).ListModifierOptionsForCosting(ctx)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

@@ -45,7 +45,7 @@ bloqueadores de lanzamiento** y el hardening barato de alta señal. `govulncheck
 | A09 | Body/PII (customerName, notas) fuera de logs normales: solo en `LOG_LEVEL=debug` o 5xx. Eventos de seguridad distintos (`login_failed`, `pin_failed`, `auth_lockout`, `forbidden`) vía `logging.SecurityEvent`. | `httpapi/logging.go`, `httpapi/handlers.go`, `httpapi/middleware.go`, `logging/security.go` | `httpapi/logging_test.go`, `httpapi/middleware_test.go` |
 | A02/A05 | Access token fuera de `localStorage` → slice en memoria de zustand; re-emitido con la cookie de refresh al recargar (`restoreSession` al arrancar). | `web/stores/session.ts`, `web/api/client.ts`, `web/App.tsx`, `web/app/RequireAuth.tsx` | `web/stores/session.test.ts` |
 | A05/A10 | CSP completo (probado contra el build real en Chrome headless, 0 violaciones). | `deploy/Caddyfile` | verificación headless |
-| A06/A08 | `bun audit` bloqueante (`--audit-level=high`); Actions clavadas por SHA; imágenes base por digest; Dependabot (actions/gomod/npm/docker). | `.github/workflows/ci.yml`, `.github/dependabot.yml`, `server/Dockerfile`, `deploy/Dockerfile.web` | — |
+| A06/A08 | `bun audit` bloqueante (`--audit-level=high`); Actions clavadas por SHA; imágenes base por digest; Dependabot (actions/gomod/npm/docker). | `.github/workflows/ci.yml`, `.github/dependabot.yml`, `server/Dockerfile`, `deploy/docker-compose.yml` | — |
 | A01/UX | Gating client-side por rol (nav + guardas de ruta), espejo de los `RequireRole` del backend. | `web/app/roles.ts`, `web/app/AppShell.tsx`, `web/app/RequireAuth.tsx`, `web/App.tsx` | `web/app/roles.test.ts` |
 
 ### Verificación adversarial de la ronda post-MVP

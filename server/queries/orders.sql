@@ -13,9 +13,12 @@ where mo.id = any($1::bigint[]);
 -- Creación
 
 -- name: NextDailyNumber :one
+-- company_id lo auto-sella el default (GUC del tenant); el folio diario es por-empresa. Se
+-- arbitra por NOMBRE de la PK compuesta (company_id, business_date): referir la columna por
+-- nombre haría fallar a sqlc, que no ve las columnas agregadas dinámicamente en la migración.
 insert into order_counters (business_date, last_number)
 values ($1, 1)
-on conflict (business_date) do update set last_number = order_counters.last_number + 1
+on conflict on constraint order_counters_pkey do update set last_number = order_counters.last_number + 1
 returning last_number;
 
 -- name: GetOrderIDByClientUUID :one

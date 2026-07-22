@@ -11,10 +11,12 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
-// Router assembles the HTTP API.
-func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(context.Context) error) http.Handler {
+// Router assembles the HTTP API. st es el store de SERVICIO (rol app, sujeto a RLS): lo usa el
+// middleware WithTenant para atar la conexión del tenant a cada request autenticado.
+func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Use(RequestID) // X-Request-Id (del front o generado), trazabilidad
 	r.Use(middleware.Recoverer)
@@ -29,7 +31,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
-		if err := pingDB(ctx); err != nil {
+		if err := st.Pool.Ping(ctx); err != nil {
 			JSON(w, http.StatusServiceUnavailable, map[string]string{"status": "db_down"})
 			return
 		}
@@ -45,8 +47,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 			r.With(ipThrottle).Post("/login", h.Login)
 			r.With(ipThrottle).Post("/refresh", h.Refresh)
 			r.Post("/logout", h.Logout)
+			// Recuperación de contraseña (pública). Throttle per-IP: enviar correos y probar
+			// tokens son superficies de abuso/flood.
+			r.With(ipThrottle).Post("/forgot", h.ForgotPassword)
+			r.With(ipThrottle).Post("/reset", h.ResetPassword)
 			r.Group(func(r chi.Router) {
 				r.Use(RequireAuth(jm))
+				r.Use(WithTenant(st)) // pin-switch corre bajo el tenant del dispositivo
 				r.Post("/pin-switch", h.PinSwitch)
 				r.Get("/me", h.Me)
 			})
@@ -55,109 +62,127 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, pingDB func(contex
 		r.Group(func(r chi.Router) {
 			r.Use(RequireAuth(jm))
 
-			r.Get("/pos/menu", h.PosMenu)
-			r.Get("/pos/popular", h.PosPopular)
-			r.Get("/pos/modifier-defaults", h.ModifierDefaults)
-			// costo/margen es información de gestión, no operativa del POS
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
-
-			// preferencias del usuario autenticado (p. ej. orden de categorías del POS), sincronizadas entre tablets
-			r.Get("/me/preferences/{key}", h.MeGetPreference)
-			r.Put("/me/preferences/{key}", h.MeSetPreference)
-
-			r.Route("/orders", func(r chi.Router) {
-				r.Post("/", h.CreateOrder)
-				r.Get("/", h.ListOrders)
-				r.Get("/{id}", h.GetOrder)
-				r.Post("/{id}/status", h.SetOrderStatus)
-				r.Post("/{id}/cancel", h.CancelOrder)
-				// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
-			})
-
+			// SSE fuera del middleware de tenant: mantiene la respuesta abierta y acapararía una
+			// conexión del pool. El aislamiento por empresa lo da el broker, que suscribe por
+			// company_id del JWT (realtime.Broker + handlers_sse.go), no una conexión de tenant.
 			r.Get("/events", h.Events)
 
-			// Backoffice. Role gates reflejan segregación de funciones; ajusta los
-			// roles a tu operación real (p. ej. si un mesero también cobra).
-			r.Get("/payment-methods", h.PaymentMethods)
-			// auto_declare (config de negocio): solo admin/gerente elige qué métodos se
-			// declaran solos al cerrar caja.
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/payment-methods/{id}", h.UpdatePaymentMethod)
-			// Ajustes de negocio: GET lo necesita el cobro (costo de envío por defecto); PUT solo
-			// admin/gerente (es dinero autoritativo del negocio).
-			r.Get("/business-settings", h.BusinessSettings)
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
-			// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
-			r.Get("/cash-status", h.CashStatus)
-			// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Route("/cash-sessions", func(r chi.Router) {
-				r.Post("/", h.OpenCashSession)
-				r.Get("/", h.CashHistory)
-				r.Get("/current", h.CurrentCashSession)
-				r.Get("/{id}", h.CashSessionDetail)
-				r.Post("/close", h.CloseCashSession)
-				r.Post("/movements", h.CreateCashMovement)
-			})
-			// Lista de categorías (para el formulario de gasto): cualquier autenticado.
-			r.Get("/expense-categories", h.ExpenseCategories)
-			// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
-				r.Post("/expense-categories", h.CreateExpenseCategory)
-				r.Patch("/expense-categories/{id}", h.UpdateExpenseCategory)
-				r.Get("/suppliers", h.Suppliers)
-				r.Post("/suppliers", h.CreateSupplier)
-				r.Patch("/suppliers/{id}", h.UpdateSupplier)
-				r.Route("/expenses", func(r chi.Router) {
-					r.Get("/", h.ListExpenses)
-					r.Post("/", h.CreateExpense)
-					r.Post("/{id}/pay", h.PayExpense)
-					r.Post("/{id}/cancel", h.CancelExpense)
+			r.Group(func(r chi.Router) {
+				r.Use(WithTenant(st)) // todo lo demás: conexión atada al tenant → RLS aísla cada query
+
+				r.Get("/pos/menu", h.PosMenu)
+				r.Get("/pos/popular", h.PosPopular)
+				r.Get("/pos/modifier-defaults", h.ModifierDefaults)
+				// costo/margen es información de gestión, no operativa del POS
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
+
+				// preferencias del usuario autenticado (p. ej. orden de categorías del POS), sincronizadas entre tablets
+				r.Get("/me/preferences/{key}", h.MeGetPreference)
+				r.Put("/me/preferences/{key}", h.MeSetPreference)
+
+				// Cuenta propia (cualquier empleado autenticado): su contraseña / PIN.
+				r.Post("/me/password", h.ChangeOwnPassword)
+				r.Post("/me/pin", h.SetOwnPIN)
+
+				// Empresa (tenant): lectura para cualquier autenticado; editar nombre/slug solo admin/gerente.
+				r.Get("/company", h.GetCompany)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/company", h.UpdateCompany)
+
+				r.Route("/orders", func(r chi.Router) {
+					r.Post("/", h.CreateOrder)
+					r.Get("/", h.ListOrders)
+					r.Get("/{id}", h.GetOrder)
+					r.Post("/{id}/status", h.SetOrderStatus)
+					r.Post("/{id}/cancel", h.CancelOrder)
+					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
 				})
-			})
-			// inventario: ajustes/mermas los hace gerencia
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
-				r.Get("/levels", h.StockLevels)
-				r.Get("/movements", h.StockMovements)
-				r.Post("/movements", h.CreateStockMovement)
-			})
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
-				r.Get("/sales", h.ReportSales)
-				r.Get("/margins", h.ReportMargins)
-			})
 
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
-				r.Get("/", h.AdminListProducts)
-				r.Patch("/{id}", h.AdminUpdateProduct)
-				// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
-				r.Get("/{id}/groups", h.AdminProductGroups)
-				r.Post("/{id}/groups", h.AdminAttachProductGroup)
-				r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
-			})
+				// Backoffice. Role gates reflejan segregación de funciones; ajusta los
+				// roles a tu operación real (p. ej. si un mesero también cobra).
+				r.Get("/payment-methods", h.PaymentMethods)
+				// auto_declare (config de negocio): solo admin/gerente elige qué métodos se
+				// declaran solos al cerrar caja.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/payment-methods/{id}", h.UpdatePaymentMethod)
+				// Ajustes de negocio: GET lo necesita el cobro (costo de envío por defecto); PUT solo
+				// admin/gerente (es dinero autoritativo del negocio).
+				r.Get("/business-settings", h.BusinessSettings)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
+				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
+				r.Get("/cash-status", h.CashStatus)
+				// caja: la opera el cajero; excluye al mesero para que no cierre cortes ajenos
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Route("/cash-sessions", func(r chi.Router) {
+					r.Post("/", h.OpenCashSession)
+					r.Get("/", h.CashHistory)
+					r.Get("/current", h.CurrentCashSession)
+					r.Get("/{id}", h.CashSessionDetail)
+					r.Post("/close", h.CloseCashSession)
+					r.Post("/movements", h.CreateCashMovement)
+				})
+				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
+				r.Get("/expense-categories", h.ExpenseCategories)
+				// Gastos, proveedores y catálogo de categorías = gestión/contabilidad → admin/gerente.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+					r.Post("/expense-categories", h.CreateExpenseCategory)
+					r.Patch("/expense-categories/{id}", h.UpdateExpenseCategory)
+					r.Get("/suppliers", h.Suppliers)
+					r.Post("/suppliers", h.CreateSupplier)
+					r.Patch("/suppliers/{id}", h.UpdateSupplier)
+					r.Route("/expenses", func(r chi.Router) {
+						r.Get("/", h.ListExpenses)
+						r.Post("/", h.CreateExpense)
+						r.Post("/{id}/pay", h.PayExpense)
+						r.Post("/{id}/cancel", h.CancelExpense)
+					})
+				})
+				// inventario: ajustes/mermas los hace gerencia
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {
+					r.Get("/levels", h.StockLevels)
+					r.Get("/movements", h.StockMovements)
+					r.Post("/movements", h.CreateStockMovement)
+				})
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
+					r.Get("/sales", h.ReportSales)
+					r.Get("/margins", h.ReportMargins)
+				})
 
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
-				r.Get("/", h.AdminListModifierOptions)
-				r.Patch("/{id}", h.AdminUpdateOption)
-			})
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
+					r.Get("/", h.AdminListProducts)
+					r.Patch("/{id}", h.AdminUpdateProduct)
+					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+					r.Get("/{id}/groups", h.AdminProductGroups)
+					r.Post("/{id}/groups", h.AdminAttachProductGroup)
+					r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
+				})
 
-			// catálogo global de grupos + sus opciones
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/groups", func(r chi.Router) {
-				r.Get("/", h.AdminListGroups)
-				r.Post("/", h.AdminCreateGroup)
-				r.Patch("/{id}", h.AdminUpdateGroup)
-				r.Get("/{id}/options", h.AdminGroupOptions)
-				r.Post("/{id}/options", h.AdminCreateOption)
-				r.Post("/{id}/options/reorder", h.AdminReorderOptions)
-				r.Get("/{id}/products", h.AdminGroupProducts)
-			})
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
+					r.Get("/", h.AdminListModifierOptions)
+					r.Patch("/{id}", h.AdminUpdateOption)
+				})
 
-			// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
-			r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/reload", h.AdminReload)
+				// catálogo global de grupos + sus opciones
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/groups", func(r chi.Router) {
+					r.Get("/", h.AdminListGroups)
+					r.Post("/", h.AdminCreateGroup)
+					r.Patch("/{id}", h.AdminUpdateGroup)
+					r.Get("/{id}/options", h.AdminGroupOptions)
+					r.Post("/{id}/options", h.AdminCreateOption)
+					r.Post("/{id}/options/reorder", h.AdminReorderOptions)
+					r.Get("/{id}/products", h.AdminGroupProducts)
+				})
 
-			r.With(RequireRole(domain.RoleAdmin)).Route("/users", func(r chi.Router) {
-				r.Get("/", h.ListUsers)
-				r.Post("/", h.CreateUser)
-			})
+				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/reload", h.AdminReload)
+
+				r.With(RequireRole(domain.RoleAdmin)).Route("/users", func(r chi.Router) {
+					r.Get("/", h.ListUsers)
+					r.Post("/", h.CreateUser)
+					r.Patch("/{id}", h.UpdateUser)               // nombre/rol/alta-baja/email de recuperación
+					r.Post("/{id}/password", h.AdminSetPassword) // reset de contraseña por admin
+					r.Post("/{id}/pin", h.AdminSetPIN)           // set/reset de PIN por admin
+				})
+			}) // cierra el grupo WithTenant
 		})
 	})
 

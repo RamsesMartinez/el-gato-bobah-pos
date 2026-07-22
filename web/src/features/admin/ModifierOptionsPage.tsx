@@ -10,7 +10,6 @@ import {
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { adminApi, type Group } from '../../api/admin';
 import { normalize } from '../../utils/format';
-import { NativeSelectRoot, NativeSelectField } from '../../components/ui/native-select';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
   DialogTitle, DialogCloseTrigger,
@@ -116,13 +115,11 @@ export function ModifierOptionsPage() {
         </HStack>
         <HStack gap={2} wrap="wrap">
           <HStack gap={1}>
-            <NativeSelectRoot size="sm" w="auto">
-              <NativeSelectField value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                <option value="name">Nombre</option>
-                <option value="options"># opciones</option>
-                <option value="products"># productos</option>
-              </NativeSelectField>
-            </NativeSelectRoot>
+            {/* Orden: conjunto fijo → chips (sin dropdown nativo, ver regla de UX táctil). */}
+            {([['name', 'Nombre'], ['options', '# opc.'], ['products', '# prod.']] as const).map(([v, label]) => (
+              <Button key={v} size="sm" variant={sort === v ? 'solid' : 'outline'}
+                colorPalette={sort === v ? undefined : 'gray'} onClick={() => setSort(v)}>{label}</Button>
+            ))}
             <IconButton aria-label="Dirección" size="sm" variant="outline"
               onClick={() => setDir((d) => (d === 'asc' ? 'desc' : 'asc'))}>
               {dir === 'asc' ? <LuArrowUp /> : <LuArrowDown />}

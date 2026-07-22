@@ -271,12 +271,20 @@ func (h *Handlers) UpdateSupplier(w http.ResponseWriter, r *http.Request) {
 // ---- Gastos ----
 
 func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.ListExpenses(r.Context(), r.URL.Query().Get("status"), queryLimit(r, 100))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 0 {
+		page = 0
+	}
+	pageSize := 20
+	if n, err := strconv.Atoi(r.URL.Query().Get("pageSize")); err == nil && n >= 1 && n <= 100 {
+		pageSize = n
+	}
+	items, total, err := h.backoffice.ListExpenses(r.Context(), r.URL.Query().Get("status"), int32(pageSize), int32(page*pageSize))
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items})
+	JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "page": page, "pageSize": pageSize})
 }
 
 func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,7 @@ import { ApiError } from '../../api/client';
 import { RADIUS } from '../../theme/ui';
 
 export function LoginPage() {
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,9 +23,11 @@ export function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { accessToken, user } = await posApi.login(username, password);
+      // Un solo campo usuario@empresa; el backend separa el @.
+      const { accessToken, user } = await posApi.login(identifier, password);
       setSession(accessToken, user);
-      navigate('/pos');
+      // Tras alta/reset por admin: obligar a cambiar la contraseña antes de operar.
+      navigate(user.mustChangePassword ? '/cuenta?forzar=1' : '/pos');
     } catch (err) {
       toaster.create({
         title: 'No se pudo entrar',
@@ -46,7 +48,8 @@ export function LoginPage() {
             <Heading size="lg">El Gato Bobah</Heading>
             <Text color="fg.muted">Punto de venta</Text>
           </Box>
-          <Input size="lg" placeholder="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+          <Input size="lg" placeholder="usuario@empresa" value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)} autoCapitalize="none" autoFocus />
           <InputGroup endElement={
             <IconButton aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} size="sm" variant="ghost"
               tabIndex={-1} onClick={() => setShowPass((v) => !v)}>
@@ -57,6 +60,9 @@ export function LoginPage() {
               value={password} onChange={(e) => setPassword(e.target.value)} />
           </InputGroup>
           <Button size="lg" type="submit" loading={loading}>Entrar</Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/recuperar')} type="button">
+            ¿Olvidaste tu contraseña?
+          </Button>
         </VStack>
       </Box>
     </Center>

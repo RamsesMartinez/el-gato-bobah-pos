@@ -38,7 +38,7 @@ type PaymentMethodView struct {
 }
 
 func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethodView, error) {
-	rows, err := s.store.Q.ListPaymentMethods(ctx)
+	rows, err := s.store.QC(ctx).ListPaymentMethods(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethod
 // SetPaymentMethodAutoDeclare marca a nivel negocio si un método de pago se declara solo al
 // cerrar caja (declarado = esperado, sin captura del cajero) o requiere conteo manual.
 func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, methodID int, auto bool) (PaymentMethodView, error) {
-	current, err := s.store.Q.GetPaymentMethod(ctx, int16(methodID))
+	current, err := s.store.QC(ctx).GetPaymentMethod(ctx, int16(methodID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return PaymentMethodView{}, domain.ErrNotFound
@@ -64,7 +64,7 @@ func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, met
 	if auto && current.AffectsCashDrawer {
 		return PaymentMethodView{}, domain.ErrValidation
 	}
-	row, err := s.store.Q.UpdatePaymentMethodAutoDeclare(ctx, db.UpdatePaymentMethodAutoDeclareParams{
+	row, err := s.store.QC(ctx).UpdatePaymentMethodAutoDeclare(ctx, db.UpdatePaymentMethodAutoDeclareParams{
 		ID: int16(methodID), AutoDeclare: auto,
 	})
 	if err != nil {
@@ -143,12 +143,12 @@ func (s *BackofficeService) OpenSession(ctx context.Context, openingCash decimal
 	if !domain.ValidMoney(domain.Round2(openingCash), true) {
 		return nil, domain.ErrValidation
 	}
-	if _, err := s.store.Q.GetOpenSession(ctx); err == nil {
+	if _, err := s.store.QC(ctx).GetOpenSession(ctx); err == nil {
 		return nil, domain.ErrConflict // ya hay una caja abierta
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	sess, err := s.store.Q.OpenSession(ctx, db.OpenSessionParams{
+	sess, err := s.store.QC(ctx).OpenSession(ctx, db.OpenSessionParams{
 		BusinessDate: pgtype.Date{Time: s.now(), Valid: true},
 		OpeningCash:  domain.Round2(openingCash),
 		OpenedBy:     userID,
@@ -161,7 +161,7 @@ func (s *BackofficeService) OpenSession(ctx context.Context, openingCash decimal
 
 // Current devuelve la caja abierta con sus esperados en vivo, o nil si no hay.
 func (s *BackofficeService) Current(ctx context.Context) (*SessionView, error) {
-	sess, err := s.store.Q.GetOpenSession(ctx)
+	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -172,16 +172,16 @@ func (s *BackofficeService) Current(ctx context.Context) (*SessionView, error) {
 }
 
 func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.RegisterSession) (*SessionView, error) {
-	rows, err := s.store.Q.ExpectedByMethodSince(ctx, sess.OpenedAt)
+	rows, err := s.store.QC(ctx).ExpectedByMethodSince(ctx, sess.OpenedAt)
 	if err != nil {
 		return nil, err
 	}
 	// Neto de efectivo movido (entradas − salidas): entra en el esperado del cajón, junto al fondo.
-	net, err := s.store.Q.NetCashMovements(ctx, sess.ID)
+	net, err := s.store.QC(ctx).NetCashMovements(ctx, sess.ID)
 	if err != nil {
 		return nil, err
 	}
-	moves, err := s.store.Q.ListCashMovements(ctx, sess.ID)
+	moves, err := s.store.QC(ctx).ListCashMovements(ctx, sess.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (s *BackofficeService) CloseSession(ctx context.Context, userID int64, decl
 			return nil, domain.ErrValidation
 		}
 	}
-	sess, err := s.store.Q.GetOpenSession(ctx)
+	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -260,14 +260,14 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, kind string,
 	if !domain.ValidMoney(amt, false) || concept == "" { // monto > 0 y con concepto
 		return nil, domain.ErrValidation
 	}
-	sess, err := s.store.Q.GetOpenSession(ctx)
+	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound // sin caja abierta no hay dónde registrar
 		}
 		return nil, err
 	}
-	if _, err := s.store.Q.InsertCashMovement(ctx, db.InsertCashMovementParams{
+	if _, err := s.store.QC(ctx).InsertCashMovement(ctx, db.InsertCashMovementParams{
 		SessionID: sess.ID, Kind: kind, Amount: amt, Concept: concept, UserID: userID,
 	}); err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, kind string,
 
 // SessionHistory lista los últimos cortes (abiertos y cerrados) para el histórico.
 func (s *BackofficeService) SessionHistory(ctx context.Context, limit int32) ([]SessionHistoryRow, error) {
-	rows, err := s.store.Q.ListSessions(ctx, limit)
+	rows, err := s.store.QC(ctx).ListSessions(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -295,18 +295,18 @@ func (s *BackofficeService) SessionHistory(ctx context.Context, limit int32) ([]
 
 // SessionDetail devuelve una sesión con sus totales GUARDADOS (snapshot al cerrar) y movimientos.
 func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*SessionDetailView, error) {
-	sess, err := s.store.Q.GetSession(ctx, id)
+	sess, err := s.store.QC(ctx).GetSession(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
-	totals, err := s.store.Q.ListSessionTotals(ctx, id)
+	totals, err := s.store.QC(ctx).ListSessionTotals(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	moves, err := s.store.Q.ListCashMovements(ctx, id)
+	moves, err := s.store.QC(ctx).ListCashMovements(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +333,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 // HasOpenSession: chequeo ligero (¿hay caja abierta?) para el aviso del POS, sin calcular
 // esperados. Disponible a cualquier rol autenticado: saber si hay caja no es dato sensible.
 func (s *BackofficeService) HasOpenSession(ctx context.Context) (bool, error) {
-	if _, err := s.store.Q.GetOpenSession(ctx); err != nil {
+	if _, err := s.store.QC(ctx).GetOpenSession(ctx); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
@@ -433,7 +433,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 
 // PayExpense marca una pendiente como pagada; en efectivo con caja abierta registra la salida.
 func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID int16, userID int64) error {
-	exp, err := s.store.Q.GetExpense(ctx, id)
+	exp, err := s.store.QC(ctx).GetExpense(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrNotFound
@@ -466,7 +466,7 @@ func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID i
 
 // CancelExpense anula una pendiente (una pagada es terminal — ver domain.CanCancelExpense).
 func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
-	exp, err := s.store.Q.GetExpense(ctx, id)
+	exp, err := s.store.QC(ctx).GetExpense(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrNotFound
@@ -480,7 +480,7 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 	if reason != "" {
 		r = &reason
 	}
-	n, err := s.store.Q.CancelExpense(ctx, db.CancelExpenseParams{ID: id, CancelledBy: &userID, CancelReason: r})
+	n, err := s.store.QC(ctx).CancelExpense(ctx, db.CancelExpenseParams{ID: id, CancelledBy: &userID, CancelReason: r})
 	if err != nil {
 		return err
 	}
@@ -490,15 +490,20 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 	return nil
 }
 
-func (s *BackofficeService) ListExpenses(ctx context.Context, status string, limit int32) ([]ExpenseView, error) {
+// ListExpenses devuelve una página de gastos + el total (para el paginador).
+func (s *BackofficeService) ListExpenses(ctx context.Context, status string, limit, offset int32) ([]ExpenseView, int64, error) {
 	var st *db.ExpenseStatus
 	if domain.ValidExpenseStatus(status) {
-		s := db.ExpenseStatus(status)
-		st = &s
+		v := db.ExpenseStatus(status)
+		st = &v
 	}
-	rows, err := s.store.Q.ListExpenses(ctx, db.ListExpensesParams{Status: st, Lim: limit})
+	total, err := s.store.QC(ctx).CountExpenses(ctx, st)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	rows, err := s.store.QC(ctx).ListExpenses(ctx, db.ListExpensesParams{Status: st, Lim: limit, Off: offset})
+	if err != nil {
+		return nil, 0, err
 	}
 	out := make([]ExpenseView, len(rows))
 	for i, r := range rows {
@@ -509,13 +514,13 @@ func (s *BackofficeService) ListExpenses(ctx context.Context, status string, lim
 			PaymentMethod: r.PaymentMethod, PaidAt: tsPtr(r.PaidAt), CreatedBy: r.CreatedByName,
 		}
 	}
-	return out, nil
+	return out, total, nil
 }
 
 // resolveCashPayment: dado un método de pago, decide si toca el cajón (efectivo) y en qué caja.
 // Efectivo sin caja abierta → se paga igual (petty cash), sin movimiento (sessionID nil).
 func (s *BackofficeService) resolveCashPayment(ctx context.Context, methodID int16) (*int64, bool, error) {
-	m, err := s.store.Q.GetPaymentMethod(ctx, methodID)
+	m, err := s.store.QC(ctx).GetPaymentMethod(ctx, methodID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, false, domain.ErrValidation // método inexistente
@@ -525,7 +530,7 @@ func (s *BackofficeService) resolveCashPayment(ctx context.Context, methodID int
 	if !m.AffectsCashDrawer {
 		return nil, false, nil
 	}
-	sess, err := s.store.Q.GetOpenSession(ctx)
+	sess, err := s.store.QC(ctx).GetOpenSession(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, true, nil // efectivo pero sin caja abierta
@@ -553,7 +558,7 @@ type SupplierView struct {
 }
 
 func (s *BackofficeService) Suppliers(ctx context.Context) ([]SupplierView, error) {
-	rows, err := s.store.Q.ListAllSuppliers(ctx)
+	rows, err := s.store.QC(ctx).ListAllSuppliers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +573,7 @@ func (s *BackofficeService) CreateSupplier(ctx context.Context, name string, pho
 	if name == "" {
 		return SupplierView{}, domain.ErrValidation
 	}
-	r, err := s.store.Q.CreateSupplier(ctx, db.CreateSupplierParams{Name: name, Phone: phone, Notes: notes})
+	r, err := s.store.QC(ctx).CreateSupplier(ctx, db.CreateSupplierParams{Name: name, Phone: phone, Notes: notes})
 	if err != nil {
 		return SupplierView{}, err
 	}
@@ -579,7 +584,7 @@ func (s *BackofficeService) UpdateSupplier(ctx context.Context, id int64, name s
 	if name == "" {
 		return SupplierView{}, domain.ErrValidation
 	}
-	r, err := s.store.Q.UpdateSupplier(ctx, db.UpdateSupplierParams{ID: id, Name: name, Phone: phone, Notes: notes, IsActive: active})
+	r, err := s.store.QC(ctx).UpdateSupplier(ctx, db.UpdateSupplierParams{ID: id, Name: name, Phone: phone, Notes: notes, IsActive: active})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return SupplierView{}, domain.ErrNotFound
@@ -603,7 +608,7 @@ func validFinancialGroup(g string) bool {
 }
 
 func (s *BackofficeService) ExpenseCategories(ctx context.Context) ([]ExpenseCategoryView, error) {
-	rows, err := s.store.Q.ListAllExpenseCategories(ctx)
+	rows, err := s.store.QC(ctx).ListAllExpenseCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -618,7 +623,7 @@ func (s *BackofficeService) CreateExpenseCategory(ctx context.Context, name, gro
 	if name == "" || !validFinancialGroup(group) {
 		return ExpenseCategoryView{}, domain.ErrValidation
 	}
-	r, err := s.store.Q.CreateExpenseCategory(ctx, db.CreateExpenseCategoryParams{Name: name, FinancialGroup: db.FinancialGroup(group)})
+	r, err := s.store.QC(ctx).CreateExpenseCategory(ctx, db.CreateExpenseCategoryParams{Name: name, FinancialGroup: db.FinancialGroup(group)})
 	if err != nil {
 		return ExpenseCategoryView{}, err
 	}
@@ -629,7 +634,7 @@ func (s *BackofficeService) UpdateExpenseCategory(ctx context.Context, id int64,
 	if name == "" || !validFinancialGroup(group) {
 		return ExpenseCategoryView{}, domain.ErrValidation
 	}
-	r, err := s.store.Q.UpdateExpenseCategory(ctx, db.UpdateExpenseCategoryParams{ID: id, Name: name, FinancialGroup: db.FinancialGroup(group), IsActive: active})
+	r, err := s.store.QC(ctx).UpdateExpenseCategory(ctx, db.UpdateExpenseCategoryParams{ID: id, Name: name, FinancialGroup: db.FinancialGroup(group), IsActive: active})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ExpenseCategoryView{}, domain.ErrNotFound
@@ -642,10 +647,10 @@ func (s *BackofficeService) UpdateExpenseCategory(ctx context.Context, id int64,
 // ---- Almacén ----
 
 func (s *BackofficeService) StockLevels(ctx context.Context) ([]db.ListStockLevelsRow, error) {
-	return s.store.Q.ListStockLevels(ctx)
+	return s.store.QC(ctx).ListStockLevels(ctx)
 }
 func (s *BackofficeService) StockMovements(ctx context.Context, limit int32) ([]db.ListStockMovementsRow, error) {
-	return s.store.Q.ListStockMovements(ctx, limit)
+	return s.store.QC(ctx).ListStockMovements(ctx, limit)
 }
 
 // RecordMovement registra un ajuste/compra/merma manual sobre un ingrediente o producto.
@@ -661,7 +666,7 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 	if reason != "" {
 		r = &reason
 	}
-	return s.store.Q.InsertStockMovement(ctx, db.InsertStockMovementParams{
+	return s.store.QC(ctx).InsertStockMovement(ctx, db.InsertStockMovementParams{
 		ItemType:     db.StockItemType(itemType),
 		IngredientID: ingID,
 		ProductID:    prodID,
@@ -675,14 +680,14 @@ func (s *BackofficeService) RecordMovement(ctx context.Context, itemType string,
 // ---- Reportes ----
 
 func (s *BackofficeService) SalesByDay(ctx context.Context, from, to time.Time) ([]db.SalesByDayRow, error) {
-	return s.store.Q.SalesByDay(ctx, db.SalesByDayParams{
+	return s.store.QC(ctx).SalesByDay(ctx, db.SalesByDayParams{
 		BusinessDate:   pgtype.Date{Time: from, Valid: true},
 		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
 }
 func (s *BackofficeService) SalesByMethod(ctx context.Context, since time.Time) ([]db.SalesByMethodRow, error) {
-	return s.store.Q.SalesByMethod(ctx, since)
+	return s.store.QC(ctx).SalesByMethod(ctx, since)
 }
 func (s *BackofficeService) ProductMargins(ctx context.Context, since time.Time, limit int32) ([]db.ProductMarginsRow, error) {
-	return s.store.Q.ProductMargins(ctx, db.ProductMarginsParams{OpenedAt: since, Limit: limit})
+	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{OpenedAt: since, Limit: limit})
 }

@@ -25,7 +25,7 @@ type BusinessSettings struct {
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
-	row, err := s.store.Q.GetBusinessSettings(ctx)
+	row, err := s.store.QC(ctx).GetBusinessSettings(ctx)
 	if err != nil {
 		return BusinessSettings{}, err
 	}
@@ -39,7 +39,7 @@ func (s *SettingsService) SetDeliveryFee(ctx context.Context, fee decimal.Decima
 	if !domain.ValidMoney(fee, true) {
 		return BusinessSettings{}, domain.ErrValidation
 	}
-	row, err := s.store.Q.UpdateDeliveryFee(ctx, db.UpdateDeliveryFeeParams{DeliveryFee: fee, UpdatedBy: &userID})
+	row, err := s.store.QC(ctx).UpdateDeliveryFee(ctx, db.UpdateDeliveryFeeParams{DeliveryFee: fee, UpdatedBy: &userID})
 	if err != nil {
 		return BusinessSettings{}, err
 	}

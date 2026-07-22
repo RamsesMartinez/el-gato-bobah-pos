@@ -41,7 +41,7 @@ type GroupsPage struct {
 }
 
 func (s *AdminService) ListGroups(ctx context.Context, status, search, sort, dir string, limit, offset int32) (GroupsPage, error) {
-	rows, err := s.store.Q.AdminListGroups(ctx, db.AdminListGroupsParams{
+	rows, err := s.store.QC(ctx).AdminListGroups(ctx, db.AdminListGroupsParams{
 		Status: status, Search: search, Sort: sort, Dir: dir, Lim: limit, Off: offset,
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *AdminService) ListGroups(ctx context.Context, status, search, sort, dir
 			OptionCount: int(r.OptionCount), ProductCount: int(r.ProductCount), OverrideCount: int(r.OverrideCount),
 		})
 	}
-	c, err := s.store.Q.AdminGroupCounts(ctx)
+	c, err := s.store.QC(ctx).AdminGroupCounts(ctx)
 	if err != nil {
 		return GroupsPage{}, err
 	}
@@ -68,7 +68,7 @@ func (s *AdminService) CreateGroup(ctx context.Context, name string, defMin, def
 	if name == "" || !validMinMax(defMin, defMax) {
 		return 0, domain.ErrValidation
 	}
-	id, err := s.store.Q.AdminCreateGroup(ctx, db.AdminCreateGroupParams{
+	id, err := s.store.QC(ctx).AdminCreateGroup(ctx, db.AdminCreateGroupParams{
 		Name: name, DefaultMinSelect: int16(defMin), DefaultMaxSelect: int16(defMax),
 	})
 	if isUniqueViolation(err) {
@@ -81,7 +81,7 @@ func (s *AdminService) UpdateGroup(ctx context.Context, id int64, name string, a
 	if name == "" || !validMinMax(defMin, defMax) {
 		return domain.ErrValidation
 	}
-	err := s.store.Q.AdminUpdateGroup(ctx, db.AdminUpdateGroupParams{
+	err := s.store.QC(ctx).AdminUpdateGroup(ctx, db.AdminUpdateGroupParams{
 		ID: id, Name: name, IsActive: active, DefaultMinSelect: int16(defMin), DefaultMaxSelect: int16(defMax),
 	})
 	if isUniqueViolation(err) {
@@ -104,7 +104,7 @@ type GroupOptionView struct {
 }
 
 func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]GroupOptionView, error) {
-	rows, err := s.store.Q.AdminGroupOptions(ctx, groupID)
+	rows, err := s.store.QC(ctx).AdminGroupOptions(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (s *AdminService) CreateOption(ctx context.Context, groupID int64, name str
 	if name == "" || maxPerLine < 1 {
 		return 0, domain.ErrValidation
 	}
-	id, err := s.store.Q.AdminCreateOption(ctx, db.AdminCreateOptionParams{
+	id, err := s.store.QC(ctx).AdminCreateOption(ctx, db.AdminCreateOptionParams{
 		GroupID: groupID, Name: name, PriceDelta: domain.Round2(priceDelta), MaxPerLine: int16(maxPerLine),
 	})
 	if isUniqueViolation(err) {
@@ -135,7 +135,7 @@ func (s *AdminService) UpdateOptionFields(ctx context.Context, id int64, name st
 	if name == "" || maxPerLine < 1 {
 		return domain.ErrValidation
 	}
-	err := s.store.Q.AdminUpdateOptionFields(ctx, db.AdminUpdateOptionFieldsParams{
+	err := s.store.QC(ctx).AdminUpdateOptionFields(ctx, db.AdminUpdateOptionFieldsParams{
 		ID: id, Name: name, PriceDelta: domain.Round2(priceDelta), MaxPerLine: int16(maxPerLine),
 	})
 	if isUniqueViolation(err) {
@@ -150,7 +150,7 @@ func (s *AdminService) ReorderOptions(ctx context.Context, groupID int64, ids []
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.store.Q.AdminReorderOptions(ctx, db.AdminReorderOptionsParams{GroupID: groupID, Ids: ids})
+	return s.store.QC(ctx).AdminReorderOptions(ctx, db.AdminReorderOptionsParams{GroupID: groupID, Ids: ids})
 }
 
 // --- Producto ↔ grupos (aquí vive min/max/obligatorio, por producto) -------
@@ -170,7 +170,7 @@ type ProductGroupView struct {
 }
 
 func (s *AdminService) ProductGroups(ctx context.Context, productID int64) ([]ProductGroupView, error) {
-	rows, err := s.store.Q.AdminProductGroups(ctx, productID)
+	rows, err := s.store.QC(ctx).AdminProductGroups(ctx, productID)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ type GroupProductView struct {
 }
 
 func (s *AdminService) GroupProducts(ctx context.Context, groupID int64) ([]GroupProductView, error) {
-	rows, err := s.store.Q.AdminGroupProducts(ctx, groupID)
+	rows, err := s.store.QC(ctx).AdminGroupProducts(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +230,12 @@ func (s *AdminService) AttachGroup(ctx context.Context, in AttachGroupInput) err
 		mn, mx := int16(in.MinSelect), int16(in.MaxSelect)
 		minP, maxP = &mn, &mx
 	}
-	return s.store.Q.AdminAttachGroup(ctx, db.AdminAttachGroupParams{
+	return s.store.QC(ctx).AdminAttachGroup(ctx, db.AdminAttachGroupParams{
 		ProductID: in.ProductID, GroupID: in.GroupID, Title: in.Title,
 		MinSelect: minP, MaxSelect: maxP, Position: int32(in.Position),
 	})
 }
 
 func (s *AdminService) DetachGroup(ctx context.Context, productID, groupID int64) error {
-	return s.store.Q.AdminDetachGroup(ctx, db.AdminDetachGroupParams{ProductID: productID, GroupID: groupID})
+	return s.store.QC(ctx).AdminDetachGroup(ctx, db.AdminDetachGroupParams{ProductID: productID, GroupID: groupID})
 }

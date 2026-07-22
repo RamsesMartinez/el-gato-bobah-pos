@@ -14,24 +14,30 @@ const INTERACTIVE_SELECTOR = 'input, textarea, button, select, [role="button"], 
 // capture: el arrastre sigue funcionando aunque el dedo se salga del área mientras se mueve.
 export function useSwipeDownToClose(onClose: () => void) {
   const [offset, setOffset] = useState(0);
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState(false); // solo para la transición CSS (se lee en render)
+  // Guard SÍNCRONO del arrastre en un ref: los tres eventos (down/move/up) pueden llegar en el
+  // mismo tick sin re-render entre ellos; con state, move/up leerían un `dragging` viejo (false)
+  // y el gesto nunca cerraría. El ref se ve al instante en los handlers.
+  const activeRef = useRef(false);
   const offsetRef = useRef(0);
   const startY = useRef(0);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.target instanceof HTMLElement && e.target.closest(INTERACTIVE_SELECTOR)) return;
+    activeRef.current = true;
     setDragging(true);
     startY.current = e.clientY;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
-    if (!dragging) return;
+    if (!activeRef.current) return;
     const next = Math.max(0, e.clientY - startY.current);
     offsetRef.current = next;
     setOffset(next);
   };
   const endDrag = () => {
-    if (!dragging) return;
+    if (!activeRef.current) return;
+    activeRef.current = false;
     setDragging(false);
     const dismiss = offsetRef.current > DISMISS_THRESHOLD;
     offsetRef.current = 0;

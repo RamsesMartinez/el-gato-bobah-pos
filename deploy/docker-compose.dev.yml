@@ -1,4 +1,4 @@
-# Dev: solo postgres + redis con puertos publicados. La API corre en el host con air
+# Dev: postgres + redis + mailpit (captura de correos local). La API corre en el host con air
 # y el frontend con `bun dev` (Vite proxy /api → localhost:8080). Inner loop más rápido.
 services:
   postgres:
@@ -19,5 +19,17 @@ services:
     image: redis:7-alpine
     ports: ["6380:6379"]
 
+  # Mailpit = servidor SMTP falso para desarrollo (como EfexBackend). Captura todo correo sin
+  # enviarlo; el host habla con él por localhost (no por IP interna). En prod NO se usa Mailpit
+  # — ahí es Zoho Mail SMTP. Puertos host no estándar (1026/8026 en vez de los 1025/8025 de
+  # Mailpit) igual que postgres/redis, para no chocar con otro Mailpit local del equipo.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8026:8025", "1026:1025"]  # UI http://localhost:8026 · SMTP localhost:1026
+    restart: unless-stopped
+
+# Sin red custom: nadie habla contenedor-a-contenedor (la API corre en el host y llega a cada
+# servicio por localhost:puerto). Compose crea la red 'default' sola; fijar subred aquí chocaba
+# con redes de otros compose del equipo — p.ej. sat_cfdi ocupa 172.28.0.0/16.
 volumes:
   pgdata_dev: {}

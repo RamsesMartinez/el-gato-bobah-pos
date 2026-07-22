@@ -52,7 +52,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
 		Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payment:     &app.PaymentInput{MethodID: cardID, Amount: decimal.RequireFromString("80")},
+		Payments:    []app.PaymentInput{{MethodID: cardID, Amount: decimal.RequireFromString("80")}},
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}

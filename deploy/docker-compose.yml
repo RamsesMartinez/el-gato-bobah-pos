@@ -1,4 +1,5 @@
-# Producción (VPS): api + postgres + redis + caddy (TLS + estáticos del frontend).
+# Producción (VPS): api + postgres + redis + caddy (TLS del subdominio de la API).
+# El frontend ya NO se sirve aquí — vive en Cloudflare Pages (ver web/public/_headers).
 
 # Cap de logs para que ningún contenedor llene el disco del VPS.
 x-logging: &default-logging
@@ -15,10 +16,22 @@ services:
       - path: .env
         required: false
     environment:
+      # DATABASE_URL = owner (gatobobah): migra + bootstrap + fija el password del rol de app.
       DATABASE_URL: postgres://gatobobah:${POSTGRES_PASSWORD}@postgres:5432/gatobobah?sslmode=disable
+      # APP_DATABASE_URL = rol no-superusuario (gatobobah_app): sirve requests SUJETO a RLS
+      # (aislamiento multi-empresa). Su password lo fija el bootstrap desde APP_DB_PASSWORD.
+      APP_DATABASE_URL: postgres://gatobobah_app:${APP_DB_PASSWORD}@postgres:5432/gatobobah?sslmode=disable
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       REDIS_URL: redis://redis:6379
       APP_ENV: production
       LOG_DIR: /logs
+      # Recuperación de contraseña por email → Zoho Mail SMTP en producción.
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+      APP_BASE_URL: ${APP_BASE_URL}
     volumes:
       - apilogs:/logs
     depends_on:
@@ -58,12 +71,13 @@ services:
     restart: unless-stopped
 
   caddy:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.web
+    # Imagen oficial clavada por digest (A08) — sin build propio: solo reverse-proxy a la
+    # API, el Caddyfile entra por bind mount.
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     logging: *default-logging
     ports: ["80:80", "443:443"]
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on: [api]
     restart: unless-stopped

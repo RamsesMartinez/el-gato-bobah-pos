@@ -11,4 +11,10 @@ var (
 	ErrValidation         = errors.New("datos inválidos")
 	ErrConflict           = errors.New("conflicto")
 	ErrTooManyRequests    = errors.New("demasiados intentos, espera un momento")
+	// ErrWeakPassword: la contraseña no cumple la política. Se envuelve con el motivo concreto
+	// (longitud / común / filtrada) para que el mensaje llegue al usuario (422).
+	ErrWeakPassword = errors.New("contraseña insegura")
+	// ErrResetInvalid: el enlace/token de recuperación no sirve (inexistente, ya usado o vencido).
+	// Distinto de ErrInvalidCredentials para dar un mensaje accionable en la pantalla de reset.
+	ErrResetInvalid = errors.New("el enlace de recuperación es inválido o expiró; solicita uno nuevo")
 )
