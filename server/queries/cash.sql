@@ -15,14 +15,52 @@ returning id, name, kind, affects_cash_drawer, auto_declare;
 insert into register_cash_movements (session_id, kind, amount, concept, expense_id, user_id)
 values ($1, 'salida', $2, $3, $4, $5);
 
--- Cortes de caja
+-- Cajas (registros físicos con nombre; la primaria recibe las ventas del POS)
 
--- name: GetOpenSession :one
-select * from register_sessions where status = 'abierta' limit 1;
+-- name: ListCashRegisters :many
+-- Cajas activas + el id de su sesión abierta (null si está cerrada). Para pickers y la vista de caja.
+-- LEFT JOIN (no subquery escalar) para que sqlc infiera open_session_id como nullable; el índice
+-- único one_open_session_per_register garantiza ≤1 sesión abierta por caja (sin duplicar filas).
+select r.id, r.name, r.is_primary, r.is_active, s.id as open_session_id
+from cash_registers r
+left join register_sessions s on s.register_id = r.id and s.status = 'abierta'
+where r.is_active
+order by r.is_primary desc, r.name;
+
+-- name: ListAllCashRegisters :many
+select id, name, is_primary, is_active from cash_registers order by is_primary desc, name;
+
+-- name: GetCashRegister :one
+select id, name, is_primary, is_active from cash_registers where id = $1;
+
+-- name: CreateCashRegister :one
+-- is_primary/is_active toman su default (secundaria, activa): la primaria la fija la migración.
+insert into cash_registers (name) values ($1)
+returning id, name, is_primary, is_active;
+
+-- name: UpdateCashRegister :one
+update cash_registers set name = $2, is_active = $3 where id = $1
+returning id, name, is_primary, is_active;
+
+-- Cortes de caja (sesiones de una caja)
+
+-- name: GetOpenSessionByRegister :one
+select * from register_sessions where register_id = $1 and status = 'abierta' limit 1;
+
+-- name: ListOpenSessions :many
+-- Todas las cajas abiertas (para el POS / aviso y validaciones de traspaso).
+select s.id, s.register_id, r.name as register_name, r.is_primary, s.opening_cash, s.currency, s.opened_at
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta'
+order by r.is_primary desc, r.name;
+
+-- name: AnyOpenSession :one
+select exists(select 1 from register_sessions where status = 'abierta');
 
 -- name: OpenSession :one
-insert into register_sessions (business_date, opening_cash, opened_by)
-values ($1, $2, $3)
+insert into register_sessions (business_date, opening_cash, opened_by, register_id)
+values ($1, $2, $3, $4)
 returning *;
 
 -- name: CloseSession :exec
@@ -35,16 +73,19 @@ values ($1, $2, $3, $4);
 
 -- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
+       r.name as register_name,
        ob.name as opened_by_name, cb.name as closed_by_name,
        coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
 from register_sessions s
+join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
 order by s.opened_at desc limit $1;
 
 -- name: GetSession :one
-select s.*, ob.name as opened_by_name, cb.name as closed_by_name
+select s.*, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
 from register_sessions s
+join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
 where s.id = $1;
@@ -64,7 +105,7 @@ values ($1, $2, $3, $4, $5)
 returning *;
 
 -- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -74,6 +115,16 @@ order by m.created_at;
 -- name: NetCashMovements :one
 select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1;
+
+-- Traspasos entre cajas: la fila de traspaso + cada pierna como movimiento ligado.
+-- name: CreateCashTransfer :one
+insert into cash_transfers (from_session_id, to_session_id, amount, note, created_by)
+values ($1, $2, $3, $4, $5)
+returning id;
+
+-- name: InsertTransferMovement :exec
+insert into register_cash_movements (session_id, kind, amount, concept, user_id, transfer_id)
+values ($1, $2, $3, $4, $5, $6);
 
 -- Totales esperados por método desde la apertura de la sesión (ventana temporal).
 -- name: ExpectedByMethodSince :many

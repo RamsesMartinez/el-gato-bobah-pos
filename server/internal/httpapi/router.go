@@ -119,6 +119,15 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/{id}", h.CashSessionDetail)
 					r.Post("/close", h.CloseCashSession)
 					r.Post("/movements", h.CreateCashMovement)
+					r.Post("/transfer", h.CashTransfer) // traspaso entre dos cajas abiertas
+				})
+				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// Gestión del catálogo de cajas (alta/renombrar/activar) = configuración → admin/gerente.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+					r.Get("/cash-registers/all", h.AllCashRegisters)
+					r.Post("/cash-registers", h.CreateCashRegister)
+					r.Patch("/cash-registers/{id}", h.UpdateCashRegister)
 				})
 				// Lista de categorías (para el formulario de gasto): cualquier autenticado.
 				r.Get("/expense-categories", h.ExpenseCategories)

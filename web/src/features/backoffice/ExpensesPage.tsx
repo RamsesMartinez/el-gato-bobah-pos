@@ -156,6 +156,7 @@ function NewExpenseDialog({ open, onClose, onCreated }: { open: boolean; onClose
   const { data: cats } = useQuery({ queryKey: ['expense-cats'], queryFn: backofficeApi.expenseCategories });
   const { data: sups } = useQuery({ queryKey: ['suppliers'], queryFn: backofficeApi.suppliers });
   const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
+  const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
 
   const [categoryId, setCategoryId] = useState('');
   const [supplierId, setSupplierId] = useState('');
@@ -163,11 +164,14 @@ function NewExpenseDialog({ open, onClose, onCreated }: { open: boolean; onClose
   const [description, setDescription] = useState('');
   const [payNow, setPayNow] = useState(false);
   const [methodId, setMethodId] = useState('');
+  const [registerId, setRegisterId] = useState('');
 
   const activeCats = (cats?.items ?? []).filter((c) => c.isActive);
   const activeSups = (sups?.items ?? []).filter((s) => s.isActive);
+  // Pagar un gasto exige una caja ABIERTA (el backend lo fuerza): solo esas son opciones válidas.
+  const openRegisters = (registers?.items ?? []).filter((r) => r.openSessionId !== null);
 
-  const reset = () => { setCategoryId(''); setSupplierId(''); setAmount(''); setDescription(''); setPayNow(false); setMethodId(''); };
+  const reset = () => { setCategoryId(''); setSupplierId(''); setAmount(''); setDescription(''); setPayNow(false); setMethodId(''); setRegisterId(''); };
   const create = useMutation({
     mutationFn: () => backofficeApi.createExpense({
       categoryId: Number(categoryId),
@@ -176,11 +180,12 @@ function NewExpenseDialog({ open, onClose, onCreated }: { open: boolean; onClose
       description: description || undefined,
       status: payNow ? 'pagada' : 'pendiente',
       methodId: payNow ? Number(methodId) : undefined,
+      registerId: payNow ? Number(registerId) : undefined,
     }),
     onSuccess: () => { reset(); onCreated(); },
     onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
   });
-  const canCreate = !!categoryId && (parseFloat(amount) || 0) > 0 && (!payNow || !!methodId);
+  const canCreate = !!categoryId && (parseFloat(amount) || 0) > 0 && (!payNow || (!!methodId && !!registerId));
 
   return (
     <DialogRoot open={open} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="md" scrollBehavior="inside">
@@ -218,10 +223,20 @@ function NewExpenseDialog({ open, onClose, onCreated }: { open: boolean; onClose
             </Field>
             <Switch checked={payNow} onCheckedChange={(e) => setPayNow(e.checked)}>Pagar ahora</Switch>
             {payNow && (
-              <Field label="Método de pago">
-                <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
-                  options={(methods?.items ?? []).map((m) => ({ value: String(m.id), label: m.name }))} />
-              </Field>
+              <>
+                <Field label="Método de pago">
+                  <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
+                    options={(methods?.items ?? []).map((m) => ({ value: String(m.id), label: m.name }))} />
+                </Field>
+                <Field label="Caja">
+                  {openRegisters.length === 0 ? (
+                    <Text fontSize="sm" color="red.500">No hay ninguna caja abierta. Abre una en la sección Caja para poder pagar.</Text>
+                  ) : (
+                    <Picker value={registerId} onChange={setRegisterId} placeholder="Elegir caja" title="Caja"
+                      options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+                  )}
+                </Field>
+              </>
             )}
             <Button mt={1} disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>
               {payNow ? 'Registrar y pagar' : 'Registrar pendiente'}
@@ -240,25 +255,40 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
   onPaid: () => void;
 }) {
   const [methodId, setMethodId] = useState('');
+  const [registerId, setRegisterId] = useState('');
+  const { data: registers } = useQuery({ queryKey: ['cash', 'registers'], queryFn: backofficeApi.cashRegisters });
+  const openRegisters = (registers?.items ?? []).filter((r) => r.openSessionId !== null);
+
+  const reset = () => { setMethodId(''); setRegisterId(''); };
   const pay = useMutation({
-    mutationFn: () => backofficeApi.payExpense(expense!.id, Number(methodId)),
-    onSuccess: () => { onPaid(); onClose(); setMethodId(''); },
+    mutationFn: () => backofficeApi.payExpense(expense!.id, Number(methodId), Number(registerId)),
+    onSuccess: () => { onPaid(); onClose(); reset(); },
     onError: (e) => toaster.create({ title: 'No se pudo pagar', description: String(e), type: 'error' }),
   });
   return (
-    <DialogRoot open={expense !== null} onOpenChange={(e) => { if (!e.open) { onClose(); setMethodId(''); } }} placement="center" size="sm">
+    <DialogRoot open={expense !== null} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="sm">
       <DialogBackdrop />
       <DialogContent>
         <DialogHeader><DialogTitle>Pagar gasto</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody pb={6}>
           <Text mb={3}>{expense?.category} · <b>{expense && money(expense.amount, expense.currency)}</b></Text>
-          <Text fontSize="sm" color="fg.muted" mb={2}>Si pagas en efectivo con caja abierta, se registra la salida en el corte.</Text>
-          <Box mb={4}>
-            <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
-              options={methods.map((m) => ({ value: String(m.id), label: m.name }))} />
-          </Box>
-          <Button w="100%" colorPalette="green" disabled={!methodId} loading={pay.isPending} onClick={() => pay.mutate()}>
+          <Text fontSize="sm" color="fg.muted" mb={2}>El gasto se registra contra la caja elegida; en efectivo genera la salida del cajón.</Text>
+          <VStack align="stretch" gap={3} mb={4}>
+            <Field label="Método de pago">
+              <Picker value={methodId} onChange={setMethodId} placeholder="Método de pago" title="Método de pago"
+                options={methods.map((m) => ({ value: String(m.id), label: m.name }))} />
+            </Field>
+            <Field label="Caja">
+              {openRegisters.length === 0 ? (
+                <Text fontSize="sm" color="red.500">No hay ninguna caja abierta. Abre una en la sección Caja para poder pagar.</Text>
+              ) : (
+                <Picker value={registerId} onChange={setRegisterId} placeholder="Elegir caja" title="Caja"
+                  options={openRegisters.map((r) => ({ value: String(r.id), label: r.name }))} />
+              )}
+            </Field>
+          </VStack>
+          <Button w="100%" colorPalette="green" disabled={!methodId || !registerId} loading={pay.isPending} onClick={() => pay.mutate()}>
             Confirmar pago
           </Button>
         </DialogBody>

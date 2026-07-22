@@ -25,6 +25,17 @@ func paymentMethodID(t *testing.T, st *store.Store, name string) int16 {
 	return id
 }
 
+// registerID resuelve el id de una caja sembrada (0026): "Caja principal" (primaria) / "Caja fuerte".
+func registerID(t *testing.T, st *store.Store, name string) int64 {
+	t.Helper()
+	var id int64
+	if err := st.Pool.QueryRow(context.Background(),
+		`select id from cash_registers where name = $1`, name).Scan(&id); err != nil {
+		t.Fatalf("registerID(%s): %v", name, err)
+	}
+	return id
+}
+
 // Un método marcado auto_declare cierra SIEMPRE con declarado = esperado del servidor: el
 // valor que el cliente mande al cerrar caja para ese método se ignora. Cubre de punta a
 // punta (DB → servicio → persistencia) el control central de domain.ResolveDeclared, que
@@ -42,7 +53,8 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	if _, err := backoffice.SetPaymentMethodAutoDeclare(ctx, int(cardID), true); err != nil {
 		t.Fatalf("SetPaymentMethodAutoDeclare: %v", err)
 	}
-	if _, err := backoffice.OpenSession(ctx, decimal.Zero, cashier); err != nil {
+	primaryID := registerID(t, st, "Caja principal")
+	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, cashier); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -59,7 +71,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 
 	// Cierre con un declarado FALSEADO (1, muy por debajo del esperado) para ese método.
 	declared := map[int]decimal.Decimal{int(cardID): decimal.RequireFromString("1")}
-	sess, err := backoffice.CloseSession(ctx, cashier, declared, "")
+	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, declared, "")
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
@@ -110,5 +122,128 @@ func TestSetPaymentMethodAutoDeclareRejectsCashDrawer(t *testing.T) {
 	// un método que afecta el cajón.
 	if _, err := backoffice.SetPaymentMethodAutoDeclare(ctx, int(cashID), false); err != nil {
 		t.Fatalf("SetPaymentMethodAutoDeclare(Efectivo, false): %v", err)
+	}
+}
+
+// Un traspaso entre dos cajas abiertas genera, en un solo tx, la salida en la caja origen y la
+// entrada en la destino, ambas ligadas al mismo cash_transfer: cada caja "detecta" el movimiento
+// automáticamente y el neto es simétrico (−monto en origen, +monto en destino).
+func TestTransferBetweenRegistersDetectedInBoth(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+
+	cashier := makeUser(t, st, "cajero_traspaso", "cajero")
+	primaryID := registerID(t, st, "Caja principal")
+	safeID := registerID(t, st, "Caja fuerte")
+
+	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.RequireFromString("1000"), cashier); err != nil {
+		t.Fatalf("OpenSession(principal): %v", err)
+	}
+	if _, err := backoffice.OpenSession(ctx, safeID, decimal.Zero, cashier); err != nil {
+		t.Fatalf("OpenSession(fuerte): %v", err)
+	}
+
+	if _, err := backoffice.Transfer(ctx, primaryID, safeID, decimal.RequireFromString("300"), "guardar excedente", cashier); err != nil {
+		t.Fatalf("Transfer: %v", err)
+	}
+
+	// Origen: salida 300, neto −300.
+	from, err := backoffice.CurrentByRegister(ctx, primaryID)
+	if err != nil || from == nil {
+		t.Fatalf("CurrentByRegister(principal): %v (nil=%v)", err, from == nil)
+	}
+	if !from.NetMovements.Equal(decimal.RequireFromString("-300")) {
+		t.Fatalf("neto principal = %s, want -300", from.NetMovements)
+	}
+	if len(from.Movements) != 1 || from.Movements[0].Kind != domain.CashSalida || from.Movements[0].TransferID == nil {
+		t.Fatalf("movimiento origen inesperado: %+v", from.Movements)
+	}
+
+	// Destino: entrada 300, neto +300.
+	to, err := backoffice.CurrentByRegister(ctx, safeID)
+	if err != nil || to == nil {
+		t.Fatalf("CurrentByRegister(fuerte): %v (nil=%v)", err, to == nil)
+	}
+	if !to.NetMovements.Equal(decimal.RequireFromString("300")) {
+		t.Fatalf("neto fuerte = %s, want 300", to.NetMovements)
+	}
+	if len(to.Movements) != 1 || to.Movements[0].Kind != domain.CashEntrada || to.Movements[0].TransferID == nil {
+		t.Fatalf("movimiento destino inesperado: %+v", to.Movements)
+	}
+	// Ambas piernas apuntan al mismo traspaso.
+	if *from.Movements[0].TransferID != *to.Movements[0].TransferID {
+		t.Fatalf("las piernas del traspaso no comparten transfer_id: %d vs %d", *from.Movements[0].TransferID, *to.Movements[0].TransferID)
+	}
+}
+
+// Un traspaso exige que AMBAS cajas estén abiertas: con la destino cerrada, ErrConflict y sin
+// escribir ningún movimiento (nada que "detectar" a medias).
+func TestTransferRequiresBothRegistersOpen(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+
+	cashier := makeUser(t, st, "cajero_traspaso2", "cajero")
+	primaryID := registerID(t, st, "Caja principal")
+	safeID := registerID(t, st, "Caja fuerte")
+
+	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.RequireFromString("500"), cashier); err != nil {
+		t.Fatalf("OpenSession(principal): %v", err)
+	}
+	// Caja fuerte NO abierta.
+	if _, err := backoffice.Transfer(ctx, primaryID, safeID, decimal.RequireFromString("100"), "", cashier); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("Transfer con destino cerrada = %v, want ErrConflict", err)
+	}
+	var n int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from register_cash_movements`).Scan(&n); err != nil {
+		t.Fatalf("count movements: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("se escribieron %d movimientos en un traspaso fallido, want 0", n)
+	}
+}
+
+// Todo gasto PAGADO exige una caja abierta: sin caja abierta, ErrConflict (ya no hay fallback de
+// petty cash). Con la caja abierta y pago en efectivo, el gasto se liga a esa sesión y genera la
+// salida del cajón.
+func TestExpensePaidRequiresOpenRegister(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+
+	admin := makeUser(t, st, "admin_gasto", "admin")
+	primaryID := registerID(t, st, "Caja principal")
+	cashID := paymentMethodID(t, st, "Efectivo")
+	var catID int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into expense_categories (name, financial_group) values ('Insumos test', 'operacional') returning id`).Scan(&catID); err != nil {
+		t.Fatalf("categoria: %v", err)
+	}
+
+	in := app.ExpenseInput{
+		CategoryID: catID, Amount: decimal.RequireFromString("150"),
+		Status: domain.ExpensePagada, MethodID: &cashID, RegisterID: &primaryID, UserID: admin,
+	}
+	// Sin caja abierta → ErrConflict.
+	if _, err := backoffice.CreateExpense(ctx, in); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("CreateExpense sin caja abierta = %v, want ErrConflict", err)
+	}
+
+	// Con caja abierta → ok + salida de efectivo ligada al gasto.
+	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, admin); err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	id, err := backoffice.CreateExpense(ctx, in)
+	if err != nil {
+		t.Fatalf("CreateExpense con caja abierta: %v", err)
+	}
+	var moves int
+	if err := st.Pool.QueryRow(ctx,
+		`select count(*) from register_cash_movements where expense_id = $1 and kind = 'salida'`, id).Scan(&moves); err != nil {
+		t.Fatalf("count movements: %v", err)
+	}
+	if moves != 1 {
+		t.Fatalf("salidas de efectivo del gasto = %d, want 1", moves)
 	}
 }

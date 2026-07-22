@@ -583,6 +583,25 @@ type BusinessSetting struct {
 	UpdatedBy   *int64          `json:"updated_by"`
 }
 
+type CashRegister struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
+	IsActive  bool   `json:"is_active"`
+	CompanyID int64  `json:"company_id"`
+}
+
+type CashTransfer struct {
+	ID            int64           `json:"id"`
+	FromSessionID int64           `json:"from_session_id"`
+	ToSessionID   int64           `json:"to_session_id"`
+	Amount        decimal.Decimal `json:"amount"`
+	Note          *string         `json:"note"`
+	CreatedBy     int64           `json:"created_by"`
+	CreatedAt     time.Time       `json:"created_at"`
+	CompanyID     int64           `json:"company_id"`
+}
+
 type Category struct {
 	ID       int64           `json:"id"`
 	Name     string          `json:"name"`
@@ -893,14 +912,15 @@ type RefreshToken struct {
 }
 
 type RegisterCashMovement struct {
-	ID        int64           `json:"id"`
-	SessionID int64           `json:"session_id"`
-	Kind      string          `json:"kind"`
-	Amount    decimal.Decimal `json:"amount"`
-	Concept   string          `json:"concept"`
-	ExpenseID *int64          `json:"expense_id"`
-	UserID    int64           `json:"user_id"`
-	CreatedAt time.Time       `json:"created_at"`
+	ID         int64           `json:"id"`
+	SessionID  int64           `json:"session_id"`
+	Kind       string          `json:"kind"`
+	Amount     decimal.Decimal `json:"amount"`
+	Concept    string          `json:"concept"`
+	ExpenseID  *int64          `json:"expense_id"`
+	UserID     int64           `json:"user_id"`
+	CreatedAt  time.Time       `json:"created_at"`
+	TransferID *int64          `json:"transfer_id"`
 }
 
 type RegisterSession struct {
@@ -914,6 +934,7 @@ type RegisterSession struct {
 	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
 	Notes        *string            `json:"notes"`
 	Currency     string             `json:"currency"`
+	RegisterID   int64              `json:"register_id"`
 }
 
 type RegisterSessionTotal struct {
