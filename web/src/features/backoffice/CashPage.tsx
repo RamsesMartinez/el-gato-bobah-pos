@@ -1,13 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useState, Fragment, type ReactNode } from 'react';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
 } from '@chakra-ui/react';
-import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus } from 'react-icons/lu';
+import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal,
+  backofficeApi, type CashSession, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown,
 } from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
@@ -37,15 +37,18 @@ function movementType(m: CashMovement): { label: string; palette: string } {
 
 // ---- Tablas del resumen (compartidas entre caja en vivo, histórico y resumen post-cierre) ----
 
-// Totales por método: esperado vs declarado vs diferencia (solo lectura).
-function TotalsTable({ totals, currency }: { totals: MethodTotal[]; currency: string }) {
+// Totales por método: esperado (sistema) vs declarado (usuario) vs diferencia (solo lectura).
+// withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
+function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
   if (totals.length === 0) return null;
+  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (parseFloat(pick(t)) || 0), 0);
+  const diffTotal = sum((t) => t.difference);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
         <Table.Header><Table.Row>
           <Table.ColumnHeader>Método</Table.ColumnHeader>
-          <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Sistema</Table.ColumnHeader>
           <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
           <Table.ColumnHeader textAlign="end">Dif.</Table.ColumnHeader>
         </Table.Row></Table.Header>
@@ -58,6 +61,14 @@ function TotalsTable({ totals, currency }: { totals: MethodTotal[]; currency: st
               <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">{money(t.difference, currency)}</Table.Cell>
             </Table.Row>
           ))}
+          {withTotalRow && (
+            <Table.Row fontWeight="700">
+              <Table.Cell>Total</Table.Cell>
+              <Table.Cell textAlign="end">{money(sum((t) => t.expected), currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{money(sum((t) => t.declared), currency)}</Table.Cell>
+              <Table.Cell textAlign="end" color={diffColor(String(diffTotal))}>{money(diffTotal, currency)}</Table.Cell>
+            </Table.Row>
+          )}
         </Table.Body>
       </Table.Root>
     </Box>
@@ -140,6 +151,114 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <Text fontWeight="700" mb={2}>{title}</Text>
       {children}
     </Box>
+  );
+}
+
+// Fila de la tarjeta jerárquica Ingresos/Egresos (label a la izquierda, monto a la derecha).
+function SummaryLine({ label, amount, indent = 0, weight = '400', color, top }: {
+  label: string; amount?: string; indent?: number; weight?: string; color?: string; top?: boolean;
+}) {
+  return (
+    <HStack justify="space-between" px={3} py="6px" pl={3 + indent * 4}
+      borderTopWidth={top ? '1px' : undefined} borderColor="border.muted">
+      <Text fontSize="sm" fontWeight={weight} color={color}>{label}</Text>
+      {amount !== undefined && <Text fontSize="sm" fontWeight={weight} color={color} whiteSpace="nowrap">{amount}</Text>}
+    </HStack>
+  );
+}
+
+// Tarjeta jerárquica del corte: Monto inicial → Ingresos (por método → concepto) → Egresos.
+// Es la "categorización por naturaleza del dinero" que explica cómo el sistema llegó a cada esperado.
+function IngresosEgresosCard({ openingCash, breakdown, currency }: { openingCash: string; breakdown: CorteBreakdown; currency: string }) {
+  return (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
+      <SummaryLine label="Monto inicial" amount={money(openingCash, currency)} weight="600" />
+      <SummaryLine label="Ingresos" amount={money(breakdown.ingresosTotal, currency)} weight="700" color="green.600" top />
+      {breakdown.ingresos.map((m) => (
+        <Fragment key={m.method}>
+          <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
+          {m.items.map((it) => (
+            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted" />
+          ))}
+        </Fragment>
+      ))}
+      {breakdown.ingresos.length === 0 && <SummaryLine label="Sin ingresos" indent={1} color="fg.muted" />}
+      <SummaryLine label="Egresos" amount={`−${money(breakdown.egresosTotal, currency)}`} weight="700" color="red.600" top />
+      {breakdown.egresos.map((it) => (
+        <SummaryLine key={it.concept} label={it.concept} amount={`−${money(it.amount, currency)}`} indent={1} color="fg.muted" />
+      ))}
+      {breakdown.egresos.length === 0 && <SummaryLine label="Sin egresos" indent={1} color="fg.muted" />}
+    </Box>
+  );
+}
+
+// Bloque plegable para el drill-down (tablas de movimientos/gastos) — ahorra espacio por defecto.
+function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Box>
+      <Button size="sm" variant="ghost" w="100%" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
+        <Text fontWeight="700">{title}</Text>
+        {open ? <LuChevronUp /> : <LuChevronDown />}
+      </Button>
+      {open && <Box mt={2}>{children}</Box>}
+    </Box>
+  );
+}
+
+// Datos mínimos del resumen (los cumplen CashSession y CashSessionDetail por estructura).
+interface CorteData {
+  openingCash: string;
+  currency: string;
+  breakdown: CorteBreakdown;
+  totals: MethodTotal[];
+  movements: CashMovement[];
+  expenses: CashExpenseLine[];
+}
+
+// Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
+function CorteSummary({ data }: { data: CorteData }) {
+  const cur = data.currency;
+  return (
+    <VStack align="stretch" gap={4}>
+      <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
+      {data.totals.length > 0 && (
+        <Section title="Conciliación (sistema vs declarado)">
+          <TotalsTable totals={data.totals} currency={cur} withTotalRow />
+        </Section>
+      )}
+      <Collapsible title={`Movimientos de efectivo (${data.movements.filter((m) => m.expenseId === null).length})`}>
+        <MovementsTable movements={data.movements} currency={cur} />
+      </Collapsible>
+      {data.expenses.length > 0 && (
+        <Collapsible title={`Gastos (${data.expenses.length})`}>
+          <ExpensesTable expenses={data.expenses} currency={cur} />
+        </Collapsible>
+      )}
+    </VStack>
+  );
+}
+
+// Detalle completo de un corte (carga por id): cabecera + resumen + notas. Lo usan el diálogo (7")
+// y el panel lateral (pantallas grandes).
+function CorteDetail({ id }: { id: number }) {
+  const { data, isLoading } = useQuery({ queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id) });
+  if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
+  return (
+    <VStack align="stretch" gap={4}>
+      <SimpleGrid columns={2} gap={2} fontSize="sm">
+        <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
+        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {new Date(data.openedAt).toLocaleString('es-MX')}</Text>
+        {data.closedAt && (<>
+          <Text color="fg.muted">Cerró</Text>
+          <Text textAlign="end">{data.closedByName ?? '—'} · {new Date(data.closedAt).toLocaleString('es-MX')}</Text>
+        </>)}
+      </SimpleGrid>
+      <CorteSummary data={data} />
+      {data.notes && (
+        <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
+      )}
+    </VStack>
   );
 }
 
@@ -264,6 +383,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               <Stat.ValueText fontSize="sm">{new Date(session.openedAt).toLocaleString('es-MX')}</Stat.ValueText>
             </Stat.Root>
           </SimpleGrid>
+
+          <Section title="Resumen del corte">
+            <IngresosEgresosCard openingCash={session.openingCash} breakdown={session.breakdown} currency={session.currency} />
+          </Section>
 
           <MovementsPanel session={session} />
 
@@ -502,97 +625,82 @@ function ManageRegistersTab() {
   );
 }
 
-// ---- Tab: histórico de cortes ----
+// ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
 function HistoryTab() {
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'history'], queryFn: backofficeApi.cashHistory });
   const [detailId, setDetailId] = useState<number | null>(null);
+  // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
+  const wide = useBreakpointValue({ base: false, xl: true }, { ssr: false });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   const rows = data?.items ?? [];
   if (rows.length === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
 
+  const list = (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm" interactive>
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Caja</Table.ColumnHeader>
+          <Table.ColumnHeader>Abierta</Table.ColumnHeader>
+          <Table.ColumnHeader>Estado</Table.ColumnHeader>
+          {!wide && <Table.ColumnHeader>Abrió / Cerró</Table.ColumnHeader>}
+          <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
+          <Table.ColumnHeader></Table.ColumnHeader>
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {rows.map((r) => (
+            <Table.Row key={r.id} cursor="pointer" onClick={() => setDetailId(r.id)}
+              bg={wide && detailId === r.id ? 'bg.muted' : undefined}>
+              <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
+              <Table.Cell whiteSpace="nowrap">{new Date(r.openedAt).toLocaleString('es-MX')}</Table.Cell>
+              <Table.Cell>
+                <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
+                  {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}
+                </Badge>
+              </Table.Cell>
+              {!wide && <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>}
+              <Table.Cell textAlign="end" color={diffColor(r.totalDifference)} fontWeight="600">
+                {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
+              </Table.Cell>
+              <Table.Cell textAlign="end">
+                <Button size="xs" variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+    </Box>
+  );
+
+  if (wide) {
+    return (
+      <HStack align="start" gap={4}>
+        <Box flex="1.1" minW={0}>{list}</Box>
+        <Box flex="1" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 220px)" overflowY="auto">
+          {detailId
+            ? <CorteDetail id={detailId} />
+            : <Center py={12}><Text color="fg.muted">Selecciona un corte para ver el detalle.</Text></Center>}
+        </Box>
+      </HStack>
+    );
+  }
   return (
     <>
-      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
-        <Table.Root size="sm">
-          <Table.Header><Table.Row>
-            <Table.ColumnHeader>Caja</Table.ColumnHeader>
-            <Table.ColumnHeader>Abierta</Table.ColumnHeader>
-            <Table.ColumnHeader>Estado</Table.ColumnHeader>
-            <Table.ColumnHeader>Abrió / Cerró</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="end">Fondo</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
-            <Table.ColumnHeader></Table.ColumnHeader>
-          </Table.Row></Table.Header>
-          <Table.Body>
-            {rows.map((r) => (
-              <Table.Row key={r.id}>
-                <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
-                <Table.Cell>{new Date(r.openedAt).toLocaleString('es-MX')}</Table.Cell>
-                <Table.Cell>
-                  <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
-                    {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}
-                  </Badge>
-                </Table.Cell>
-                <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>
-                <Table.Cell textAlign="end">{money(r.openingCash, r.currency)}</Table.Cell>
-                <Table.Cell textAlign="end" color={diffColor(r.totalDifference)} fontWeight="600">
-                  {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
-                </Table.Cell>
-                <Table.Cell><Button size="xs" variant="outline" onClick={() => setDetailId(r.id)}>Ver</Button></Table.Cell>
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table.Root>
-      </Box>
+      {list}
       <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
     </>
   );
 }
 
 function SessionDetailDialog({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['cash', 'session', id],
-    queryFn: () => backofficeApi.cashSession(id!),
-    enabled: id !== null,
-  });
   return (
     <DialogRoot open={id !== null} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" size="lg" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent>
-        <DialogHeader><DialogTitle>Corte #{id}{data ? ` · ${data.registerName}` : ''}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Corte #{id}</DialogTitle></DialogHeader>
         <DialogCloseTrigger />
         <DialogBody pb={6}>
-          {isLoading || !data ? (
-            <Center py={8}><Spinner /></Center>
-          ) : (
-            <VStack align="stretch" gap={4}>
-              <SimpleGrid columns={2} gap={2} fontSize="sm">
-                <Text color="fg.muted">Fondo inicial</Text><Text textAlign="end">{money(data.openingCash, data.currency)}</Text>
-                <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {new Date(data.openedAt).toLocaleString('es-MX')}</Text>
-                {data.closedAt && (<>
-                  <Text color="fg.muted">Cerró</Text>
-                  <Text textAlign="end">{data.closedByName ?? '—'} · {new Date(data.closedAt).toLocaleString('es-MX')}</Text>
-                </>)}
-              </SimpleGrid>
-
-              {(data.totals ?? []).length > 0 && (
-                <Section title="Totales por método"><TotalsTable totals={data.totals ?? []} currency={data.currency} /></Section>
-              )}
-
-              <Section title="Movimientos de efectivo">
-                <MovementsTable movements={data.movements ?? []} currency={data.currency} />
-              </Section>
-
-              {(data.expenses ?? []).length > 0 && (
-                <Section title="Gastos"><ExpensesTable expenses={data.expenses ?? []} currency={data.currency} /></Section>
-              )}
-
-              {data.notes && (
-                <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
-              )}
-            </VStack>
-          )}
+          {id !== null && <CorteDetail id={id} />}
         </DialogBody>
       </DialogContent>
     </DialogRoot>
