@@ -3,6 +3,17 @@ sql:
   - engine: postgresql
     schema: migrations
     queries: queries
+    # `sqlc vet` prepara CADA query contra una Postgres real con el esquema ya migrado (regla
+    # db-prepare) → atrapa el drift esquema↔query que la generación no ve (p. ej. una columna
+    # inexistente en el WHERE, como el `where id = true` que llegó a prod). La URI viene de
+    # SQLC_DB_URI (la fija `make sqlc-vet` / CI). analyzer.database:false → `sqlc generate` NO
+    # toca la DB (sigue siendo estático y offline); solo `vet` la usa.
+    database:
+      uri: "${SQLC_DB_URI}"
+    rules:
+      - sqlc/db-prepare
+    analyzer:
+      database: false
     gen:
       go:
         package: db

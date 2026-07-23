@@ -1,7 +1,7 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
-        sqlc migrate-new fudo-import reset-admin reset-password build deploy \
+        sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
         prod-db-tunnel prod-reset-password
 .DEFAULT_GOAL := help
 
@@ -9,6 +9,9 @@
 DEV_DATABASE_URL ?= postgres://gatobobah:gatobobah@localhost:5433/gatobobah?sslmode=disable
 DEV_REDIS_URL    ?= redis://localhost:6380
 DEV_JWT_SECRET   ?= dev-secret-no-usar-en-prod
+# sqlc pinado (no @latest): el código generado y `sqlc vet` deben ser reproducibles entre local
+# y CI. Súbelo a mano aquí y en .github/workflows/ci.yml a la vez.
+SQLC_VERSION     ?= v1.31.1
 GOBIN := $(shell go env GOPATH)/bin
 export DEV_DATABASE_URL DEV_REDIS_URL DEV_JWT_SECRET
 
@@ -29,7 +32,7 @@ install: ## Prepara TODO: valida entorno + variables, instala deps y herramienta
 	@echo "▶ Descargando dependencias del backend (go)…"
 	cd server && go mod download
 	@echo "▶ Instalando herramientas Go (sqlc, goose, air, linters de seguridad)…"
-	@GOBIN="$(GOBIN)" go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	@GOBIN="$(GOBIN)" go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 	@GOBIN="$(GOBIN)" go install github.com/pressly/goose/v3/cmd/goose@latest
 	@GOBIN="$(GOBIN)" go install github.com/air-verse/air@latest
 	@GOBIN="$(GOBIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
@@ -90,6 +93,12 @@ reset-password: deps-up ## Resetea password de un usuario (prompt oculto): make 
 
 sqlc: ## Regenera el código sqlc
 	cd server && $(GOBIN)/sqlc generate
+sqlc-diff: ## Falla si el código sqlc generado no está al día (olvidaste `make sqlc`)
+	cd server && $(GOBIN)/sqlc diff
+db-migrate: deps-up ## Aplica las migraciones embebidas a la DB de dev (:5433)
+	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/migrate
+sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) — atrapa drift esquema↔query
+	cd server && SQLC_DB_URI="$(DEV_DATABASE_URL)" $(GOBIN)/sqlc vet
 migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
 fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la cache del menú)

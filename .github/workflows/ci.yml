@@ -77,6 +77,26 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
+      # sqlc pinado (misma versión que el Makefile → codegen reproducible local/CI).
+      - name: Instalar sqlc
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # El código generado debe estar al día (nadie olvidó `make sqlc` tras tocar una query).
+      - name: sqlc al día (sqlc diff)
+        run: sqlc diff
+      # Carga el esquema (migraciones embebidas) para que `sqlc vet` prepare contra la DB real.
+      - name: Cargar esquema (migraciones)
+        run: go run ./cmd/migrate
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
+      # db-prepare: PREPARA cada query contra el esquema real → atrapa el drift esquema↔query
+      # (columna inexistente en el WHERE, tipos, SQL inválido) que la generación no ve. Gatea el
+      # deploy (deploy-backend needs [integration]).
+      - name: sqlc vet (db-prepare)
+        run: sqlc vet
+        env:
+          SQLC_DB_URI: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
