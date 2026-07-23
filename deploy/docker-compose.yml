@@ -10,7 +10,12 @@ x-logging: &default-logging
 
 services:
   api:
-    build: ../server
+    build:
+      context: ../server
+      # Versión del build: la fija `make build` (GIT_SHA/BUILT_AT). Sin ellas → "dev".
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILT_AT: ${BUILT_AT:-}
     logging: *default-logging
     env_file:
       - path: .env

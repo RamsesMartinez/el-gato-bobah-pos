@@ -31,6 +31,13 @@ import (
 	"golang.org/x/term"
 )
 
+// Inyectadas por ldflags en el build de producción (server/Dockerfile: -X main.version / main.builtAt).
+// En dev quedan con estos defaults.
+var (
+	version = "dev"
+	builtAt = ""
+)
+
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "ping local /healthz and exit (for Docker HEALTHCHECK)")
 	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
@@ -141,6 +148,8 @@ func main() {
 	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.MailFrom)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:        cfg,
+		Version:    version,
+		BuiltAt:    builtAt,
 		JWT:        jm,
 		Auth:       app.NewAuthService(st, jm, nil),
 		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled),

@@ -7,10 +7,15 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+# Versión del build inyectada por ldflags (la pasan make build / docker-compose). Default "dev".
+ARG GIT_SHA=dev
+ARG BUILT_AT=
 # Cache de módulos + cache de compilación → rebuilds en segundos.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+    CGO_ENABLED=0 GOOS=linux go build -trimpath \
+      -ldflags="-s -w -X main.version=${GIT_SHA} -X main.builtAt=${BUILT_AT}" \
+      -o /out/api ./cmd/api
 # /logs con dueño 65532 (UID/GID de "nonroot" en distroless, ver abajo): un volumen NUEVO
 # monta ahí heredando el contenido/permisos de la imagen la primera vez. Sin esto, Docker crea
 # el punto de montaje como root:root y el proceso nonroot nunca puede escribir su log de archivo

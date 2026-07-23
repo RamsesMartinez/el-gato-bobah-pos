@@ -108,7 +108,8 @@ fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la
 
 # --- Producción ---
 build: ## Build de imágenes de producción (API + web, self-contained, sin bun en host)
-	docker compose -f deploy/docker-compose.yml build
+	GIT_SHA="$$(git rev-parse --short HEAD)" BUILT_AT="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		docker compose -f deploy/docker-compose.yml build
 deploy: ## Deploy con docker compose (VPS)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build

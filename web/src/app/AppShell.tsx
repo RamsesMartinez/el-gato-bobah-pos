@@ -10,6 +10,7 @@ import { useSessionStore } from '../stores/session';
 import { useUiStore } from '../stores/ui';
 import { canAccess } from './roles';
 import { RADIUS } from '../theme/ui';
+import { SystemInfo } from './SystemInfo';
 
 const NAV = [
   { to: '/pos', icon: LuShoppingCart, label: 'Vender' },
@@ -77,6 +78,7 @@ export function AppShell() {
         <VStack gap={0} flexShrink={0} pt={2}>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           <Button size="xs" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>
+          <SystemInfo />
         </VStack>
       </Flex>
       <Box flex="1" minW={0} overflowY="auto">
