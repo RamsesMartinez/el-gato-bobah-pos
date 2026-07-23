@@ -22,16 +22,17 @@ func TestCorteBreakdown(t *testing.T) {
 		{Kind: domain.CashEntrada, Amount: mustDec("30"), TransferID: &tid}, // traspaso recibido
 		{Kind: domain.CashSalida, Amount: mustDec("15"), ExpenseID: &eid},   // gasto en efectivo
 	}
-	// Efectivo: esperado 175 = fondo 100 + neto 25 + ventas 50. Tarjeta: 40 de ventas.
+	// Esperado = ventas + propinas (+ fondo/neto en efectivo).
+	// Efectivo: 180 = fondo 100 + neto 25 + ventas 50 + propina 5. Tarjeta: 50 = ventas 40 + propina 10.
 	methods := []methodExpected{
-		{name: "Efectivo", expected: mustDec("175"), affectsCash: true},
-		{name: "Tarjeta", expected: mustDec("40"), affectsCash: false},
+		{name: "Efectivo", expected: mustDec("180"), tips: mustDec("5"), affectsCash: true},
+		{name: "Tarjeta", expected: mustDec("50"), tips: mustDec("10"), affectsCash: false},
 	}
 
 	b := corteBreakdown(mustDec("100"), methods, moves)
 
-	if !b.IngresosTotal.Equal(mustDec("140")) {
-		t.Fatalf("ingresosTotal = %s, want 140", b.IngresosTotal)
+	if !b.IngresosTotal.Equal(mustDec("155")) { // efectivo 105 + tarjeta 50
+		t.Fatalf("ingresosTotal = %s, want 155", b.IngresosTotal)
 	}
 	if !b.EgresosTotal.Equal(mustDec("25")) {
 		t.Fatalf("egresosTotal = %s, want 25", b.EgresosTotal)
@@ -41,10 +42,10 @@ func TestCorteBreakdown(t *testing.T) {
 	}
 
 	ef := b.Ingresos[0]
-	if ef.Method != "Efectivo" || !ef.Total.Equal(mustDec("100")) {
-		t.Fatalf("efectivo total = %s (%s), want 100", ef.Total, ef.Method)
+	if ef.Method != "Efectivo" || !ef.Total.Equal(mustDec("105")) {
+		t.Fatalf("efectivo total = %s (%s), want 105", ef.Total, ef.Method)
 	}
-	wantItems := map[string]string{"Ventas": "50", "Entradas": "20", "Traspasos recibidos": "30"}
+	wantItems := map[string]string{"Ventas": "50", "Propinas": "5", "Entradas": "20", "Traspasos recibidos": "30"}
 	if len(ef.Items) != len(wantItems) {
 		t.Fatalf("efectivo items = %d, want %d", len(ef.Items), len(wantItems))
 	}
@@ -55,8 +56,17 @@ func TestCorteBreakdown(t *testing.T) {
 		}
 	}
 
-	if b.Ingresos[1].Method != "Tarjeta" || !b.Ingresos[1].Total.Equal(mustDec("40")) {
-		t.Fatalf("tarjeta = %s (%s), want 40", b.Ingresos[1].Total, b.Ingresos[1].Method)
+	// Tarjeta: Ventas 40 + Propinas 10 = 50.
+	tj := b.Ingresos[1]
+	if tj.Method != "Tarjeta" || !tj.Total.Equal(mustDec("50")) {
+		t.Fatalf("tarjeta total = %s (%s), want 50", tj.Total, tj.Method)
+	}
+	wantTj := map[string]string{"Ventas": "40", "Propinas": "10"}
+	for _, it := range tj.Items {
+		w, ok := wantTj[it.Concept]
+		if !ok || !it.Amount.Equal(mustDec(w)) {
+			t.Fatalf("tarjeta item %q = %s, want %s", it.Concept, it.Amount, w)
+		}
 	}
 
 	// Egresos: Gastos 15 + Salidas 10; "Traspasos enviados" (0) se omite.
