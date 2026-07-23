@@ -158,6 +158,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)
 					r.Get("/margins", h.ReportMargins)
+					r.Get("/tips", h.ReportTips)
 				})
 
 				// Categorías (para filtro y alta de productos): admin/gerente.

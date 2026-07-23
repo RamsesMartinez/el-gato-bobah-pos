@@ -1042,3 +1042,15 @@ func (s *BackofficeService) SalesByMethod(ctx context.Context, since time.Time) 
 func (s *BackofficeService) ProductMargins(ctx context.Context, since time.Time, limit int32) ([]db.ProductMarginsRow, error) {
 	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{OpenedAt: since, Limit: limit})
 }
+
+func (s *BackofficeService) TipsByEmployee(ctx context.Context, from, to time.Time) ([]db.TipsByEmployeeRow, error) {
+	return s.store.QC(ctx).TipsByEmployee(ctx, db.TipsByEmployeeParams{
+		BusinessDate: pgtype.Date{Time: from, Valid: true}, BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+	})
+}
+
+func (s *BackofficeService) TipsByDay(ctx context.Context, from, to time.Time) ([]db.TipsByDayRow, error) {
+	return s.store.QC(ctx).TipsByDay(ctx, db.TipsByDayParams{
+		BusinessDate: pgtype.Date{Time: from, Valid: true}, BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+	})
+}

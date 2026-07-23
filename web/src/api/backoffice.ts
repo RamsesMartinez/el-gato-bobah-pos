@@ -213,4 +213,10 @@ export const backofficeApi = {
     api.get<{ items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }> }>(
       '/reports/margins?limit=50',
     ),
+  // Propinas (pass-through, para repartir): por empleado que cobró y por día.
+  reportTips: (from?: string, to?: string) =>
+    api.get<{
+      byEmployee: Array<{ employee: string; payments: number; tips: string }>;
+      byDay: Array<{ business_date: string; tips: string }>;
+    }>(`/reports/tips${from ? `?from=${from}&to=${to}` : ''}`),
 };
