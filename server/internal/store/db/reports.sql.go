@@ -187,3 +187,92 @@ func (q *Queries) SalesByMethod(ctx context.Context, createdAt time.Time) ([]Sal
 	}
 	return items, nil
 }
+
+const tipsByDay = `-- name: TipsByDay :many
+select o.business_date,
+       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as tips
+from order_payments op
+join orders o on o.id = op.order_id
+where o.status not in ('cancelada', 'reembolsada')
+  and op.tip_amount > 0
+  and o.business_date between $1 and $2
+group by o.business_date
+order by o.business_date
+`
+
+type TipsByDayParams struct {
+	BusinessDate   pgtype.Date `json:"business_date"`
+	BusinessDate_2 pgtype.Date `json:"business_date_2"`
+}
+
+type TipsByDayRow struct {
+	BusinessDate pgtype.Date     `json:"business_date"`
+	Tips         decimal.Decimal `json:"tips"`
+}
+
+func (q *Queries) TipsByDay(ctx context.Context, arg TipsByDayParams) ([]TipsByDayRow, error) {
+	rows, err := q.db.Query(ctx, tipsByDay, arg.BusinessDate, arg.BusinessDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TipsByDayRow{}
+	for rows.Next() {
+		var i TipsByDayRow
+		if err := rows.Scan(&i.BusinessDate, &i.Tips); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const tipsByEmployee = `-- name: TipsByEmployee :many
+select coalesce(u.name, 'Sin asignar') as employee,
+       count(*)::int as payments,
+       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as tips
+from order_payments op
+join orders o on o.id = op.order_id
+left join users u on u.id = op.received_by
+where o.status not in ('cancelada', 'reembolsada')
+  and op.tip_amount > 0
+  and o.business_date between $1 and $2
+group by u.name
+order by tips desc
+`
+
+type TipsByEmployeeParams struct {
+	BusinessDate   pgtype.Date `json:"business_date"`
+	BusinessDate_2 pgtype.Date `json:"business_date_2"`
+}
+
+type TipsByEmployeeRow struct {
+	Employee string          `json:"employee"`
+	Payments int32           `json:"payments"`
+	Tips     decimal.Decimal `json:"tips"`
+}
+
+// Propinas por empleado que cobró (received_by), para repartirlas. "Sin asignar" = pago sin cajero.
+// Propinas son pass-through (del personal), no ingreso del negocio; este reporte es para reparto.
+func (q *Queries) TipsByEmployee(ctx context.Context, arg TipsByEmployeeParams) ([]TipsByEmployeeRow, error) {
+	rows, err := q.db.Query(ctx, tipsByEmployee, arg.BusinessDate, arg.BusinessDate_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TipsByEmployeeRow{}
+	for rows.Next() {
+		var i TipsByEmployeeRow
+		if err := rows.Scan(&i.Employee, &i.Payments, &i.Tips); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -503,6 +503,23 @@ func (h *Handlers) ReportSales(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"byDay": rows, "byMethod": methods})
 }
 
+// GET /reports/tips?from=&to= — propinas por empleado (para repartir) y por día.
+func (h *Handlers) ReportTips(w http.ResponseWriter, r *http.Request) {
+	to := parseDate(r.URL.Query().Get("to"), time.Now())
+	from := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), from, to)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	byDay, err := h.backoffice.TipsByDay(r.Context(), from, to)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"byEmployee": byEmployee, "byDay": byDay})
+}
+
 func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
 	since := parseDate(r.URL.Query().Get("since"), time.Now().AddDate(0, 0, -30))
 	rows, err := h.backoffice.ProductMargins(r.Context(), since, queryLimit(r, 50))

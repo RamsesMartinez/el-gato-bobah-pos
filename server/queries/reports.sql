@@ -28,6 +28,32 @@ where o.status = 'reembolsada' and o.business_date between $1 and $2
 group by o.business_date
 order by o.business_date;
 
+-- name: TipsByEmployee :many
+-- Propinas por empleado que cobró (received_by), para repartirlas. "Sin asignar" = pago sin cajero.
+-- Propinas son pass-through (del personal), no ingreso del negocio; este reporte es para reparto.
+select coalesce(u.name, 'Sin asignar') as employee,
+       count(*)::int as payments,
+       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as tips
+from order_payments op
+join orders o on o.id = op.order_id
+left join users u on u.id = op.received_by
+where o.status not in ('cancelada', 'reembolsada')
+  and op.tip_amount > 0
+  and o.business_date between $1 and $2
+group by u.name
+order by tips desc;
+
+-- name: TipsByDay :many
+select o.business_date,
+       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as tips
+from order_payments op
+join orders o on o.id = op.order_id
+where o.status not in ('cancelada', 'reembolsada')
+  and op.tip_amount > 0
+  and o.business_date between $1 and $2
+group by o.business_date
+order by o.business_date;
+
 -- name: ProductMargins :many
 -- Utilidad por producto usando snapshots de las líneas (no depende del costo actual).
 select ol.product_name,
