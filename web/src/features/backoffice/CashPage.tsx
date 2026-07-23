@@ -39,8 +39,8 @@ function movementType(m: CashMovement): { label: string; palette: string } {
 
 // Totales por método: esperado (sistema) vs declarado (usuario) vs diferencia (solo lectura).
 // withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
-function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
-  if (totals.length === 0) return null;
+export function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
+  if (!totals?.length) return null;
   const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (parseFloat(pick(t)) || 0), 0);
   const diffTotal = sum((t) => t.difference);
   return (
@@ -77,8 +77,8 @@ function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]
 
 // Movimientos de efectivo en tabla: Hora · Tipo · Concepto · Usuario · Monto. Excluye las salidas
 // de gastos (van en su propia sección) para no contarlas dos veces.
-function MovementsTable({ movements, currency }: { movements: CashMovement[]; currency: string }) {
-  const rows = movements.filter((m) => m.expenseId === null);
+export function MovementsTable({ movements, currency }: { movements: CashMovement[]; currency: string }) {
+  const rows = (movements ?? []).filter((m) => m.expenseId === null);
   if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -113,8 +113,8 @@ function MovementsTable({ movements, currency }: { movements: CashMovement[]; cu
 }
 
 // Gastos del corte en tabla + total. No renderiza nada si no hay gastos (ahorra espacio).
-function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
-  if (expenses.length === 0) return null;
+export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
+  if (!expenses?.length) return null;
   const total = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -169,12 +169,14 @@ function SummaryLine({ label, amount, indent = 0, weight = '400', color, top }: 
 
 // Tarjeta jerárquica del corte: Monto inicial → Ingresos (por método → concepto) → Egresos.
 // Es la "categorización por naturaleza del dinero" que explica cómo el sistema llegó a cada esperado.
-function IngresosEgresosCard({ openingCash, breakdown, currency }: { openingCash: string; breakdown: CorteBreakdown; currency: string }) {
+export function IngresosEgresosCard({ openingCash, breakdown, currency }: { openingCash: string; breakdown: CorteBreakdown; currency: string }) {
+  const ingresos = breakdown?.ingresos ?? [];
+  const egresos = breakdown?.egresos ?? [];
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
       <SummaryLine label="Monto inicial" amount={money(openingCash, currency)} weight="600" />
-      <SummaryLine label="Ingresos" amount={money(breakdown.ingresosTotal, currency)} weight="700" color="green.600" top />
-      {breakdown.ingresos.map((m) => (
+      <SummaryLine label="Ingresos" amount={money(breakdown?.ingresosTotal ?? '0', currency)} weight="700" color="green.600" top />
+      {ingresos.map((m) => (
         <Fragment key={m.method}>
           <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
           {m.items.map((it) => (
@@ -182,12 +184,12 @@ function IngresosEgresosCard({ openingCash, breakdown, currency }: { openingCash
           ))}
         </Fragment>
       ))}
-      {breakdown.ingresos.length === 0 && <SummaryLine label="Sin ingresos" indent={1} color="fg.muted" />}
-      <SummaryLine label="Egresos" amount={`−${money(breakdown.egresosTotal, currency)}`} weight="700" color="red.600" top />
-      {breakdown.egresos.map((it) => (
+      {ingresos.length === 0 && <SummaryLine label="Sin ingresos" indent={1} color="fg.muted" />}
+      <SummaryLine label="Egresos" amount={`−${money(breakdown?.egresosTotal ?? '0', currency)}`} weight="700" color="red.600" top />
+      {egresos.map((it) => (
         <SummaryLine key={it.concept} label={it.concept} amount={`−${money(it.amount, currency)}`} indent={1} color="fg.muted" />
       ))}
-      {breakdown.egresos.length === 0 && <SummaryLine label="Sin egresos" indent={1} color="fg.muted" />}
+      {egresos.length === 0 && <SummaryLine label="Sin egresos" indent={1} color="fg.muted" />}
     </Box>
   );
 }
@@ -219,20 +221,23 @@ interface CorteData {
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
 function CorteSummary({ data }: { data: CorteData }) {
   const cur = data.currency;
+  const totals = data.totals ?? [];
+  const movements = data.movements ?? [];
+  const expenses = data.expenses ?? [];
   return (
     <VStack align="stretch" gap={4}>
       <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
-      {data.totals.length > 0 && (
+      {totals.length > 0 && (
         <Section title="Conciliación (sistema vs declarado)">
-          <TotalsTable totals={data.totals} currency={cur} withTotalRow />
+          <TotalsTable totals={totals} currency={cur} withTotalRow />
         </Section>
       )}
-      <Collapsible title={`Movimientos de efectivo (${data.movements.filter((m) => m.expenseId === null).length})`}>
-        <MovementsTable movements={data.movements} currency={cur} />
+      <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
+        <MovementsTable movements={movements} currency={cur} />
       </Collapsible>
-      {data.expenses.length > 0 && (
-        <Collapsible title={`Gastos (${data.expenses.length})`}>
-          <ExpensesTable expenses={data.expenses} currency={cur} />
+      {expenses.length > 0 && (
+        <Collapsible title={`Gastos (${expenses.length})`}>
+          <ExpensesTable expenses={expenses} currency={cur} />
         </Collapsible>
       )}
     </VStack>
