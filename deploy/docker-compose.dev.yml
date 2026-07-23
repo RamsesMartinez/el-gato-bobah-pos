@@ -19,13 +19,10 @@ services:
     image: redis:7-alpine
     ports: ["6380:6379"]
 
-  # Mailpit = servidor SMTP falso para desarrollo (como EfexBackend). Captura todo correo sin
-  # enviarlo; el host habla con él por localhost (no por IP interna). En prod NO se usa Mailpit
-  # — ahí es Zoho Mail SMTP. Puertos host no estándar (1026/8026 en vez de los 1025/8025 de
-  # Mailpit) igual que postgres/redis, para no chocar con otro Mailpit local del equipo.
+
   mailpit:
     image: axllent/mailpit:latest
-    ports: ["8026:8025", "1026:1025"]  # UI http://localhost:8026 · SMTP localhost:1026
+    ports: ["8027:8025", "1026:1025"]
     restart: unless-stopped
 
 # Sin red custom: nadie habla contenedor-a-contenedor (la API corre en el host y llega a cada

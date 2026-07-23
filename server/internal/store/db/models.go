@@ -943,6 +943,7 @@ type RegisterSessionTotal struct {
 	Expected        decimal.Decimal `json:"expected"`
 	Declared        decimal.Decimal `json:"declared"`
 	Difference      pgtype.Numeric  `json:"difference"`
+	Tips            decimal.Decimal `json:"tips"`
 }
 
 type StockLevel struct {
