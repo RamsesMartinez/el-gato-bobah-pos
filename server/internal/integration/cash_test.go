@@ -204,6 +204,70 @@ func TestTransferRequiresBothRegistersOpen(t *testing.T) {
 	}
 }
 
+// Una venta con propina entra al corte: el esperado del método incluye la propina y el resumen
+// jerárquico la muestra como línea "Propinas" separada de "Ventas".
+func TestTipFlowsIntoCorte(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordersSvc := app.NewOrdersService(st, clock)
+	backoffice := app.NewBackofficeService(st, clock)
+
+	cashier := makeUser(t, st, "cajero_tip", "cajero")
+	prod := makeProduct(t, st, "Latte tip", decimal.RequireFromString("100"), false)
+	cashID := paymentMethodID(t, st, "Efectivo")
+	primaryID := registerID(t, st, "Caja principal")
+
+	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, cashier); err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	// Venta de 100 en efectivo con 15 de propina.
+	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		ClientUUID:  uuid.New(),
+		ServiceType: "mostrador",
+		OpenedBy:    cashier,
+		Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+		Payments:    []app.PaymentInput{{MethodID: cashID, Amount: decimal.RequireFromString("100"), Tip: decimal.RequireFromString("15")}},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	view, err := backoffice.CurrentByRegister(ctx, primaryID)
+	if err != nil || view == nil {
+		t.Fatalf("CurrentByRegister: %v (nil=%v)", err, view == nil)
+	}
+	// Esperado del efectivo = fondo 0 + ventas 100 + propina 15 = 115.
+	var cash *app.MethodTotal
+	for i := range view.Totals {
+		if view.Totals[i].Name == "Efectivo" {
+			cash = &view.Totals[i]
+		}
+	}
+	if cash == nil || !cash.Expected.Equal(decimal.RequireFromString("115")) {
+		t.Fatalf("esperado efectivo = %v, want 115", cash)
+	}
+	if !cash.Tips.Equal(decimal.RequireFromString("15")) {
+		t.Fatalf("propinas efectivo = %s, want 15", cash.Tips)
+	}
+	// El breakdown separa Ventas 100 de Propinas 15 bajo Efectivo.
+	var ventas, propinas string
+	for _, m := range view.Breakdown.Ingresos {
+		if m.Method != "Efectivo" {
+			continue
+		}
+		for _, it := range m.Items {
+			switch it.Concept {
+			case "Ventas":
+				ventas = it.Amount.String()
+			case "Propinas":
+				propinas = it.Amount.String()
+			}
+		}
+	}
+	if ventas != "100" || propinas != "15" {
+		t.Fatalf("breakdown efectivo: ventas=%q propinas=%q, want 100 / 15", ventas, propinas)
+	}
+}
+
 // El resumen del corte incluye los gastos atribuidos (sección "Gastos") y la salida de efectivo
 // del gasto trae expenseId (el front la excluye de la tabla de movimientos para no duplicar).
 func TestSessionSummaryIncludesExpenses(t *testing.T) {

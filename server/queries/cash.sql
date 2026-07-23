@@ -68,8 +68,8 @@ update register_sessions set status = 'cerrada', closed_by = $2, closed_at = now
 where id = $1;
 
 -- name: SaveSessionTotal :exec
-insert into register_session_totals (session_id, payment_method_id, expected, declared)
-values ($1, $2, $3, $4);
+insert into register_session_totals (session_id, payment_method_id, expected, declared, tips)
+values ($1, $2, $3, $4, $5);
 
 -- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
@@ -91,7 +91,7 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared,
+select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -141,8 +141,11 @@ values ($1, $2, $3, $4, $5, $6);
 
 -- Totales esperados por método desde la apertura de la sesión (ventana temporal).
 -- name: ExpectedByMethodSince :many
+-- expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
+-- dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
 select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as expected
+       coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
+       coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
 left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
 where pm.is_active

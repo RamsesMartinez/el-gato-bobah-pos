@@ -81,9 +81,10 @@ func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, met
 type MethodTotal struct {
 	MethodID    int             `json:"methodId"`
 	Name        string          `json:"name"`
-	Expected    decimal.Decimal `json:"expected"`
+	Expected    decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
 	Declared    decimal.Decimal `json:"declared"`
 	Difference  decimal.Decimal `json:"difference"`
+	Tips        decimal.Decimal `json:"tips"` // propinas del método (parte del esperado; línea aparte en el resumen)
 	AutoDeclare bool            `json:"autoDeclare"`
 }
 
@@ -128,16 +129,17 @@ type CorteBreakdown struct {
 	EgresosTotal  decimal.Decimal        `json:"egresosTotal"`
 }
 
-// methodExpected: entrada para corteBreakdown (nombre, esperado del sistema y si toca el cajón).
+// methodExpected: entrada para corteBreakdown (nombre, esperado del sistema, propinas y si toca cajón).
 type methodExpected struct {
 	name        string
-	expected    decimal.Decimal
+	expected    decimal.Decimal // ventas + propinas (+ fondo/neto en efectivo)
+	tips        decimal.Decimal
 	affectsCash bool
 }
 
 // corteBreakdown descompone un corte en ingresos (por método → concepto) y egresos de efectivo.
-// ventas de efectivo se derivan como esperado_efectivo − fondo − neto de movimientos (así una caja
-// secundaria, cuyo esperado = fondo + neto, da 0 ventas automáticamente); las demás = su esperado.
+// ventas se derivan del esperado restando propinas y (en efectivo) fondo + neto de movimientos, así
+// una caja secundaria (esperado = fondo + neto) da 0 ventas sola. Propinas se listan aparte.
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
 	var entradas, traspasosIn, salidas, traspasosOut, gastos, net decimal.Decimal
 	for _, m := range moves {
@@ -164,12 +166,11 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 
 	out := CorteBreakdown{Ingresos: []CorteMethodBreakdown{}, Egresos: []CorteBucket{}}
 	for _, me := range methods {
-		var ventas decimal.Decimal
+		ventas := me.expected.Sub(me.tips)
 		if me.affectsCash {
-			ventas = domain.Round2(me.expected.Sub(opening).Sub(net))
-		} else {
-			ventas = domain.Round2(me.expected)
+			ventas = ventas.Sub(opening).Sub(net)
 		}
+		ventas = domain.Round2(ventas)
 		items := []CorteBucket{}
 		total := decimal.Zero
 		add := func(concept string, amt decimal.Decimal) {
@@ -179,6 +180,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 			}
 		}
 		add("Ventas", ventas)
+		add("Propinas", domain.Round2(me.tips))
 		if me.affectsCash {
 			add("Entradas", domain.Round2(entradas))
 			add("Traspasos recibidos", domain.Round2(traspasosIn))
@@ -441,16 +443,17 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		if !reg.IsPrimary && !r.AffectsCashDrawer {
 			continue
 		}
-		expected := r.Expected
+		ventas, tips := r.Expected, r.Tips
 		if !reg.IsPrimary {
-			expected = decimal.Zero // secundaria: sin ventas; el esperado es solo fondo + movimientos
+			ventas, tips = decimal.Zero, decimal.Zero // secundaria: sin ventas ni propinas
 		}
+		expected := ventas.Add(tips) // ventas + propinas: ambas son dinero recibido en el corte
 		if r.AffectsCashDrawer {
-			expected = expected.Add(sess.OpeningCash).Add(net) // fondo + neto de movimientos
+			expected = expected.Add(sess.OpeningCash).Add(net) // + fondo + neto de movimientos
 		}
-		expected = domain.Round2(expected)
-		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, AutoDeclare: r.AutoDeclare})
-		methods = append(methods, methodExpected{name: r.Name, expected: expected, affectsCash: r.AffectsCashDrawer})
+		expected, tips = domain.Round2(expected), domain.Round2(tips)
+		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
+		methods = append(methods, methodExpected{name: r.Name, expected: expected, tips: tips, affectsCash: r.AffectsCashDrawer})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
@@ -494,7 +497,7 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 			t.Difference = domain.Round2(t.Declared.Sub(t.Expected))
 			if err := q.SaveSessionTotal(ctx, db.SaveSessionTotalParams{
 				SessionID: sess.ID, PaymentMethodID: int16(t.MethodID),
-				Expected: t.Expected, Declared: t.Declared,
+				Expected: t.Expected, Declared: t.Declared, Tips: t.Tips,
 			}); err != nil {
 				return err
 			}
@@ -668,9 +671,9 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	for _, t := range totals {
 		view.Totals = append(view.Totals, MethodTotal{
 			MethodID: int(t.PaymentMethodID), Name: t.Name,
-			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference,
+			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
 		})
-		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, affectsCash: t.AffectsCashDrawer})
+		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, tips: t.Tips, affectsCash: t.AffectsCashDrawer})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
