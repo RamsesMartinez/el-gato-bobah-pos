@@ -12,9 +12,12 @@ import (
 )
 
 const getBusinessSettings = `-- name: GetBusinessSettings :one
-select delivery_fee, updated_at, updated_by from business_settings where id = true
+select delivery_fee, updated_at, updated_by from business_settings limit 1
 `
 
+// Una fila por empresa (la PK pasó a company_id en 0023); RLS ya la restringe al tenant actual,
+// así que basta con leer su única fila. (Antes: where id = true, con la columna id que 0023 quitó
+// → 42703 en runtime; sqlc no valida columnas del WHERE, por eso no lo atrapaba make sqlc.)
 func (q *Queries) GetBusinessSettings(ctx context.Context) (BusinessSetting, error) {
 	row := q.db.QueryRow(ctx, getBusinessSettings)
 	var i BusinessSetting
@@ -25,7 +28,6 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (BusinessSetting, err
 const updateDeliveryFee = `-- name: UpdateDeliveryFee :one
 update business_settings
 set delivery_fee = $1, updated_at = now(), updated_by = $2
-where id = true
 returning delivery_fee, updated_at, updated_by
 `
 
@@ -34,6 +36,7 @@ type UpdateDeliveryFeeParams struct {
 	UpdatedBy   *int64          `json:"updated_by"`
 }
 
+// Sin WHERE: RLS acota el UPDATE a la fila de la empresa actual (hay exactamente una).
 func (q *Queries) UpdateDeliveryFee(ctx context.Context, arg UpdateDeliveryFeeParams) (BusinessSetting, error) {
 	row := q.db.QueryRow(ctx, updateDeliveryFee, arg.DeliveryFee, arg.UpdatedBy)
 	var i BusinessSetting

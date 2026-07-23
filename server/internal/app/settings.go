@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -27,6 +29,11 @@ type BusinessSettings struct {
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 	row, err := s.store.QC(ctx).GetBusinessSettings(ctx)
 	if err != nil {
+		// Empresa sin fila de ajustes aún (p. ej. tenant recién provisionado): default sin costo
+		// de envío, en vez de un 500 en el camino del cobro.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return BusinessSettings{DeliveryFee: decimal.Zero}, nil
+		}
 		return BusinessSettings{}, err
 	}
 	return BusinessSettings{DeliveryFee: row.DeliveryFee}, nil
