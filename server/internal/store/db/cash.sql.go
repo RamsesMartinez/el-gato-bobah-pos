@@ -385,7 +385,7 @@ func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegist
 }
 
 const listCashMovements = `-- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -400,8 +400,11 @@ type ListCashMovementsRow struct {
 	CreatedAt  time.Time       `json:"created_at"`
 	UserName   string          `json:"user_name"`
 	TransferID *int64          `json:"transfer_id"`
+	ExpenseID  *int64          `json:"expense_id"`
 }
 
+// expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
+// de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
 func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]ListCashMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listCashMovements, sessionID)
 	if err != nil {
@@ -419,6 +422,7 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.CreatedAt,
 			&i.UserName,
 			&i.TransferID,
+			&i.ExpenseID,
 		); err != nil {
 			return nil, err
 		}
@@ -466,6 +470,56 @@ func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow
 			&i.IsPrimary,
 			&i.IsActive,
 			&i.OpenSessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExpensesBySession = `-- name: ListExpensesBySession :many
+select e.id, ec.name as category, s.name as supplier, pm.name as payment_method,
+       e.amount, e.currency, e.status
+from expenses e
+join expense_categories ec on ec.id = e.category_id
+left join suppliers s on s.id = e.supplier_id
+left join payment_methods pm on pm.id = e.payment_method_id
+where e.register_session_id = $1
+order by e.id
+`
+
+type ListExpensesBySessionRow struct {
+	ID            int64           `json:"id"`
+	Category      string          `json:"category"`
+	Supplier      *string         `json:"supplier"`
+	PaymentMethod *string         `json:"payment_method"`
+	Amount        decimal.Decimal `json:"amount"`
+	Currency      string          `json:"currency"`
+	Status        ExpenseStatus   `json:"status"`
+}
+
+// Gastos atribuidos a un corte (efectivo y no-efectivo): sección "Gastos" del resumen del corte.
+func (q *Queries) ListExpensesBySession(ctx context.Context, registerSessionID *int64) ([]ListExpensesBySessionRow, error) {
+	rows, err := q.db.Query(ctx, listExpensesBySession, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpensesBySessionRow{}
+	for rows.Next() {
+		var i ListExpensesBySessionRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Category,
+			&i.Supplier,
+			&i.PaymentMethod,
+			&i.Amount,
+			&i.Currency,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}

@@ -105,11 +105,24 @@ values ($1, $2, $3, $4, $5)
 returning *;
 
 -- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id
+-- expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
+-- de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
 order by m.created_at;
+
+-- name: ListExpensesBySession :many
+-- Gastos atribuidos a un corte (efectivo y no-efectivo): sección "Gastos" del resumen del corte.
+select e.id, ec.name as category, s.name as supplier, pm.name as payment_method,
+       e.amount, e.currency, e.status
+from expenses e
+join expense_categories ec on ec.id = e.category_id
+left join suppliers s on s.id = e.supplier_id
+left join payment_methods pm on pm.id = e.payment_method_id
+where e.register_session_id = $1
+order by e.id;
 
 -- Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
 -- name: NetCashMovements :one

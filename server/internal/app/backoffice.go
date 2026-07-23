@@ -95,6 +95,18 @@ type CashMovementView struct {
 	CreatedAt  time.Time       `json:"createdAt"`
 	UserName   string          `json:"userName"`
 	TransferID *int64          `json:"transferId"` // no-nil si el movimiento es una pierna de un traspaso
+	ExpenseID  *int64          `json:"expenseId"`  // no-nil si es la salida de un gasto (va en la sección Gastos)
+}
+
+// CashExpenseView es un gasto atribuido a un corte (efectivo o no), para la sección "Gastos".
+type CashExpenseView struct {
+	ID            int64           `json:"id"`
+	Category      string          `json:"category"`
+	Supplier      *string         `json:"supplier"`
+	PaymentMethod *string         `json:"paymentMethod"`
+	Amount        decimal.Decimal `json:"amount"`
+	Currency      domain.Currency `json:"currency"`
+	Status        string          `json:"status"`
 }
 
 type SessionView struct {
@@ -109,6 +121,7 @@ type SessionView struct {
 	NetMovements decimal.Decimal    `json:"netMovements"` // entradas − salidas de efectivo
 	Totals       []MethodTotal      `json:"totals"`
 	Movements    []CashMovementView `json:"movements"`
+	Expenses     []CashExpenseView  `json:"expenses"`
 }
 
 // CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
@@ -136,6 +149,7 @@ type SessionDetailView struct {
 	Notes        *string            `json:"notes"`
 	Totals       []MethodTotal      `json:"totals"`
 	Movements    []CashMovementView `json:"movements"`
+	Expenses     []CashExpenseView  `json:"expenses"`
 }
 
 type SessionHistoryRow struct {
@@ -279,6 +293,23 @@ func (s *BackofficeService) CurrentByRegister(ctx context.Context, registerID in
 	return s.sessionWithExpected(ctx, sess, reg)
 }
 
+// sessionExpenses lista los gastos atribuidos a un corte para la sección "Gastos" del resumen.
+// Slice no-nil → en JSON va como [] (el front no revienta con .map).
+func (s *BackofficeService) sessionExpenses(ctx context.Context, sessionID int64) ([]CashExpenseView, error) {
+	rows, err := s.store.QC(ctx).ListExpensesBySession(ctx, &sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CashExpenseView, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, CashExpenseView{
+			ID: e.ID, Category: e.Category, Supplier: e.Supplier, PaymentMethod: e.PaymentMethod,
+			Amount: e.Amount, Currency: domain.Currency(e.Currency), Status: string(e.Status),
+		})
+	}
+	return out, nil
+}
+
 // sessionWithExpected arma la vista en vivo de una sesión. La caja PRIMARIA recibe las ventas del
 // POS (esperado por método = suma de order_payments desde la apertura); una caja SECUNDARIA no
 // vende: solo maneja efectivo (fondo + neto de entradas/salidas y traspasos), así que su único
@@ -297,12 +328,16 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	exps, err := s.sessionExpenses(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
 		ID: sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
 		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
-		Totals: []MethodTotal{}, Movements: []CashMovementView{},
+		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
 	}
 	for _, r := range rows {
 		// Caja secundaria: los métodos no-efectivo no aplican (no vende por ellos) → se omiten.
@@ -320,7 +355,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
-			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID,
+			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
 		})
 	}
 	return view, nil
@@ -519,11 +554,15 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	if err != nil {
 		return nil, err
 	}
+	exps, err := s.sessionExpenses(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	view := &SessionDetailView{
 		ID: sess.ID, RegisterName: sess.RegisterName, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, ClosedAt: tsPtr(sess.ClosedAt),
 		OpenedByName: sess.OpenedByName, ClosedByName: sess.ClosedByName, Notes: sess.Notes,
-		Totals: []MethodTotal{}, Movements: []CashMovementView{}, // no-nil → [] en JSON
+		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps, // no-nil → [] en JSON
 	}
 	for _, t := range totals {
 		view.Totals = append(view.Totals, MethodTotal{
@@ -533,7 +572,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
-			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID,
+			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
 		})
 	}
 	return view, nil
