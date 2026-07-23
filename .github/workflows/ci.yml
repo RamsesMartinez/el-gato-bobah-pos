@@ -147,12 +147,15 @@ jobs:
           bun-version: 1.3.7
       - name: Install
         run: bun install --frozen-lockfile --ignore-scripts
+      - name: Versión (SHA corto para el pie de sistema)
+        run: echo "APP_VERSION=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
       - name: Build
         run: bun run build
         env:
           # El frontend vive en Cloudflare Pages, la API en su propio subdominio (VM) — ya
           # no es mismo origen, ver web/src/api/client.ts.
           VITE_API_URL: https://api.elgatobobah.com/api/v1
+          VITE_APP_VERSION: ${{ env.APP_VERSION }}
       # Direct Upload (no hay integración Git nativa de Cloudflare Pages conectada): el propio
       # Action sube el build ya compilado. Sin action de terceros — wrangler ya es dependencia
       # del proyecto, se invoca directo.

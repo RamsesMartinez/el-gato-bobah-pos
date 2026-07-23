@@ -1,5 +1,6 @@
 import { registerSW } from 'virtual:pwa-register';
 import { toaster } from '../../components/ui/toaster';
+import { useAppUpdate } from '../../stores/appUpdate';
 import { captureInstallPrompt, promptInstall } from './installPrompt';
 
 // Marca (por pestaña) de que ya recargamos una vez por un cambio de service worker. Rompe el
@@ -45,6 +46,9 @@ export function initPwa(): void {
   // recarga la dispara el guard de arriba, una sola vez.
   const updateSW = registerSW({
     onNeedRefresh() {
+      // Indicador persistente en el pie de sistema (además del toast): si el operador cierra el
+      // toast, el aviso de "actualizar" sigue visible hasta que aplique la versión nueva.
+      useAppUpdate.getState().markNeedRefresh(() => void updateSW(false));
       toaster.create({
         title: 'Nueva versión disponible',
         type: 'info',

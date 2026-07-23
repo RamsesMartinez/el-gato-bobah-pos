@@ -67,6 +67,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 			// company_id del JWT (realtime.Broker + handlers_sse.go), no una conexión de tenant.
 			r.Get("/events", h.Events)
 
+			// Versión del backend (build SHA/fecha) para el pie de sistema del front. Autenticado
+			// pero sin tenant: es info global de despliegue, no toca datos de empresa.
+			r.Get("/version", h.Version)
+
 			r.Group(func(r chi.Router) {
 				r.Use(WithTenant(st)) // todo lo demás: conexión atada al tenant → RLS aísla cada query
 

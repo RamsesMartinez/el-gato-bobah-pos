@@ -1,6 +1,10 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
+// Inyectadas por vite.config.ts (define) en build: versión y fecha del frontend.
+declare const __APP_VERSION__: string;
+declare const __APP_BUILT_AT__: string;
+
 // @fontsource-* solo exporta CSS (side-effect), sin tipos propios.
 declare module '@fontsource-variable/inter';
 

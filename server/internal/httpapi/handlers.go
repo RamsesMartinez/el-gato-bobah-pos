@@ -33,6 +33,8 @@ const (
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
 	Cfg        config.Config
+	Version    string // SHA del build (ldflags); "dev" en local
+	BuiltAt    string // timestamp del build (ldflags); "" en local
 	JWT        *auth.Manager
 	Auth       *app.AuthService
 	Users      *app.UsersService
@@ -51,6 +53,8 @@ type Deps struct {
 
 type Handlers struct {
 	cfg        config.Config
+	version    string
+	builtAt    string
 	jwt        *auth.Manager
 	auth       *app.AuthService
 	users      *app.UsersService
@@ -71,7 +75,7 @@ type Handlers struct {
 
 func NewHandlers(d Deps) *Handlers {
 	return &Handlers{
-		cfg: d.Cfg, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
