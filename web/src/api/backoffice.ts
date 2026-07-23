@@ -18,6 +18,17 @@ export interface CashMovement {
   createdAt: string;
   userName: string;
   transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
+  expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
+}
+// Gasto atribuido a un corte (sección "Gastos" del resumen).
+export interface CashExpenseLine {
+  id: number;
+  category: string;
+  supplier: string | null;
+  paymentMethod: string | null;
+  amount: string;
+  currency: string;
+  status: string;
 }
 // Caja física (registro). La primaria recibe las ventas del POS.
 export interface CashRegister {
@@ -39,6 +50,7 @@ export interface CashSession {
   netMovements: string;
   totals: MethodTotal[];
   movements: CashMovement[];
+  expenses: CashExpenseLine[];
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {
@@ -68,6 +80,7 @@ export interface CashSessionDetail {
   notes: string | null;
   totals: MethodTotal[];
   movements: CashMovement[];
+  expenses: CashExpenseLine[];
 }
 export type FinancialGroup = 'operacional' | 'administrativo' | 'otro';
 export type ExpenseStatus = 'pendiente' | 'pagada' | 'cancelada';

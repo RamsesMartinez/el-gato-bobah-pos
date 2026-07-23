@@ -204,6 +204,51 @@ func TestTransferRequiresBothRegistersOpen(t *testing.T) {
 	}
 }
 
+// El resumen del corte incluye los gastos atribuidos (sección "Gastos") y la salida de efectivo
+// del gasto trae expenseId (el front la excluye de la tabla de movimientos para no duplicar).
+func TestSessionSummaryIncludesExpenses(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+
+	admin := makeUser(t, st, "admin_corte", "admin")
+	primaryID := registerID(t, st, "Caja principal")
+	cashID := paymentMethodID(t, st, "Efectivo")
+	var catID int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into expense_categories (name, financial_group) values ('Insumos corte', 'operacional') returning id`).Scan(&catID); err != nil {
+		t.Fatalf("categoria: %v", err)
+	}
+
+	sess, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, admin)
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	if _, err := backoffice.CreateExpense(ctx, app.ExpenseInput{
+		CategoryID: catID, Amount: decimal.RequireFromString("120"),
+		Status: domain.ExpensePagada, MethodID: &cashID, RegisterID: &primaryID, UserID: admin,
+	}); err != nil {
+		t.Fatalf("CreateExpense: %v", err)
+	}
+
+	detail, err := backoffice.SessionDetail(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("SessionDetail: %v", err)
+	}
+	if len(detail.Expenses) != 1 || !detail.Expenses[0].Amount.Equal(decimal.RequireFromString("120")) {
+		t.Fatalf("gastos del corte = %+v, want 1 de 120", detail.Expenses)
+	}
+	withExpense := 0
+	for _, m := range detail.Movements {
+		if m.ExpenseID != nil {
+			withExpense++
+		}
+	}
+	if withExpense != 1 {
+		t.Fatalf("movimientos con expenseId = %d, want 1", withExpense)
+	}
+}
+
 // Todo gasto PAGADO exige una caja abierta: sin caja abierta, ErrConflict (ya no hay fallback de
 // petty cash). Con la caja abierta y pago en efectivo, el gasto se liga a esa sesión y genera la
 // salida del cajón.

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
   Center, Spinner, Stat, Tabs, Badge, SimpleGrid,
@@ -6,7 +6,9 @@ import {
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { backofficeApi, type CashSession, type CashRegister } from '../../api/backoffice';
+import {
+  backofficeApi, type CashSession, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal,
+} from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
@@ -22,6 +24,123 @@ function diffColor(v: string) {
   if (n > 0.005) return 'green.500';
   if (n < -0.005) return 'red.500';
   return 'fg.muted';
+}
+
+function hhmm(iso: string) {
+  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+// Tipo del movimiento para la columna "Tipo": traspaso (azul) o entrada/salida (verde/rojo).
+function movementType(m: CashMovement): { label: string; palette: string } {
+  if (m.transferId !== null) return { label: 'Traspaso', palette: 'blue' };
+  return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
+}
+
+// ---- Tablas del resumen (compartidas entre caja en vivo, histórico y resumen post-cierre) ----
+
+// Totales por método: esperado vs declarado vs diferencia (solo lectura).
+function TotalsTable({ totals, currency }: { totals: MethodTotal[]; currency: string }) {
+  if (totals.length === 0) return null;
+  return (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm">
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Método</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Dif.</Table.ColumnHeader>
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {totals.map((t) => (
+            <Table.Row key={t.methodId}>
+              <Table.Cell>{t.name}</Table.Cell>
+              <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
+              <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">{money(t.difference, currency)}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+    </Box>
+  );
+}
+
+// Movimientos de efectivo en tabla: Hora · Tipo · Concepto · Usuario · Monto. Excluye las salidas
+// de gastos (van en su propia sección) para no contarlas dos veces.
+function MovementsTable({ movements, currency }: { movements: CashMovement[]; currency: string }) {
+  const rows = movements.filter((m) => m.expenseId === null);
+  if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
+  return (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm">
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Hora</Table.ColumnHeader>
+          <Table.ColumnHeader>Tipo</Table.ColumnHeader>
+          <Table.ColumnHeader>Concepto</Table.ColumnHeader>
+          <Table.ColumnHeader>Usuario</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Monto</Table.ColumnHeader>
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {rows.map((m) => {
+            const t = movementType(m);
+            return (
+              <Table.Row key={m.id}>
+                <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt)}</Table.Cell>
+                <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
+                <Table.Cell><Text truncate maxW="220px">{m.concept}</Text></Table.Cell>
+                <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
+                <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
+                  color={m.kind === 'entrada' ? 'green.500' : 'red.500'}>
+                  {m.kind === 'entrada' ? '+' : '−'}{money(m.amount, currency)}
+                </Table.Cell>
+              </Table.Row>
+            );
+          })}
+        </Table.Body>
+      </Table.Root>
+    </Box>
+  );
+}
+
+// Gastos del corte en tabla + total. No renderiza nada si no hay gastos (ahorra espacio).
+function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
+  if (expenses.length === 0) return null;
+  const total = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  return (
+    <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+      <Table.Root size="sm">
+        <Table.Header><Table.Row>
+          <Table.ColumnHeader>Categoría</Table.ColumnHeader>
+          <Table.ColumnHeader>Proveedor</Table.ColumnHeader>
+          <Table.ColumnHeader>Método</Table.ColumnHeader>
+          <Table.ColumnHeader textAlign="end">Monto</Table.ColumnHeader>
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {expenses.map((e) => (
+            <Table.Row key={e.id}>
+              <Table.Cell>{e.category}</Table.Cell>
+              <Table.Cell color="fg.muted">{e.supplier ?? '—'}</Table.Cell>
+              <Table.Cell color="fg.muted">{e.paymentMethod ?? '—'}</Table.Cell>
+              <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap">{money(e.amount, currency)}</Table.Cell>
+            </Table.Row>
+          ))}
+          <Table.Row fontWeight="700">
+            <Table.Cell colSpan={3}>Total gastos</Table.Cell>
+            <Table.Cell textAlign="end" whiteSpace="nowrap">{money(total, currency)}</Table.Cell>
+          </Table.Row>
+        </Table.Body>
+      </Table.Root>
+    </Box>
+  );
+}
+
+// Sección con título compacto para agrupar las tablas del resumen.
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Box>
+      <Text fontWeight="700" mb={2}>{title}</Text>
+      {children}
+    </Box>
+  );
 }
 
 export function CashPage() {
@@ -148,6 +267,12 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
           <MovementsPanel session={session} />
 
+          {(session.expenses ?? []).length > 0 && (
+            <Section title="Gastos del corte">
+              <ExpensesTable expenses={session.expenses ?? []} currency={session.currency} />
+            </Section>
+          )}
+
           <Box>
             <Text fontWeight="700" mb={2}>Cierre — declarado por método</Text>
             <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
@@ -198,26 +323,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DialogHeader><DialogTitle>Caja cerrada</DialogTitle></DialogHeader>
           <DialogCloseTrigger />
           <DialogBody pb={6}>
-            <Table.Root size="sm">
-              <Table.Header><Table.Row>
-                <Table.ColumnHeader>Método</Table.ColumnHeader>
-                <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
-                <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
-                <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
-              </Table.Row></Table.Header>
-              <Table.Body>
-                {(closed?.totals ?? []).map((t) => (
-                  <Table.Row key={t.methodId}>
-                    <Table.Cell>{t.name}</Table.Cell>
-                    <Table.Cell textAlign="end">{money(t.expected, closed!.currency)}</Table.Cell>
-                    <Table.Cell textAlign="end">{money(t.declared, closed!.currency)}</Table.Cell>
-                    <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">
-                      {money(t.difference, closed!.currency)}
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table.Root>
+            <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} />
           </DialogBody>
         </DialogContent>
       </DialogRoot>
@@ -244,8 +350,8 @@ function MovementsPanel({ session }: { session: CashSession }) {
   return (
     <Box>
       <Text fontWeight="700" mb={2}>Movimientos de efectivo</Text>
-      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" p={3}>
-        <HStack gap={2} mb={movements.length ? 3 : 0} flexWrap="wrap">
+      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" p={3} mb={3}>
+        <HStack gap={2} flexWrap="wrap">
           <Button size="sm" minH="44px" variant={kind === 'entrada' ? 'solid' : 'outline'}
             colorPalette={kind === 'entrada' ? 'green' : 'gray'} onClick={() => setKind('entrada')}>
             <LuArrowDownLeft /> Entrada
@@ -262,25 +368,8 @@ function MovementsPanel({ session }: { session: CashSession }) {
             Registrar
           </Button>
         </HStack>
-        {movements.length > 0 && (
-          <VStack align="stretch" gap={1}>
-            {movements.map((m) => (
-              <HStack key={m.id} justify="space-between" fontSize="sm" py={1} borderTopWidth="1px" borderColor="border.muted">
-                <HStack gap={2} minW={0}>
-                  <Badge colorPalette={m.transferId !== null ? 'blue' : m.kind === 'entrada' ? 'green' : 'red'}>
-                    {m.transferId !== null ? 'Traspaso' : m.kind === 'entrada' ? 'Entrada' : 'Salida'}
-                  </Badge>
-                  <Text truncate>{m.concept}</Text>
-                  <Text color="fg.subtle" flexShrink={0}>· {m.userName}</Text>
-                </HStack>
-                <Text fontWeight="600" flexShrink={0} color={m.kind === 'entrada' ? 'green.500' : 'red.500'}>
-                  {m.kind === 'entrada' ? '+' : '−'}{money(m.amount, session.currency)}
-                </Text>
-              </HStack>
-            ))}
-          </VStack>
-        )}
       </Box>
+      <MovementsTable movements={movements} currency={session.currency} />
     </Box>
   );
 }
@@ -488,45 +577,15 @@ function SessionDetailDialog({ id, onClose }: { id: number | null; onClose: () =
               </SimpleGrid>
 
               {(data.totals ?? []).length > 0 && (
-                <Table.Root size="sm">
-                  <Table.Header><Table.Row>
-                    <Table.ColumnHeader>Método</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
-                    <Table.ColumnHeader textAlign="end">Dif.</Table.ColumnHeader>
-                  </Table.Row></Table.Header>
-                  <Table.Body>
-                    {(data.totals ?? []).map((t) => (
-                      <Table.Row key={t.methodId}>
-                        <Table.Cell>{t.name}</Table.Cell>
-                        <Table.Cell textAlign="end">{money(t.expected, data.currency)}</Table.Cell>
-                        <Table.Cell textAlign="end">{money(t.declared, data.currency)}</Table.Cell>
-                        <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">{money(t.difference, data.currency)}</Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table.Root>
+                <Section title="Totales por método"><TotalsTable totals={data.totals ?? []} currency={data.currency} /></Section>
               )}
 
-              {(data.movements ?? []).length > 0 && (
-                <Box>
-                  <Text fontWeight="700" mb={1}>Movimientos</Text>
-                  <VStack align="stretch" gap={1}>
-                    {(data.movements ?? []).map((m) => (
-                      <HStack key={m.id} justify="space-between" fontSize="sm">
-                        <HStack gap={2} minW={0}>
-                          <Badge colorPalette={m.transferId !== null ? 'blue' : m.kind === 'entrada' ? 'green' : 'red'}>
-                            {m.transferId !== null ? 'Traspaso' : m.kind === 'entrada' ? 'Entrada' : 'Salida'}
-                          </Badge>
-                          <Text truncate>{m.concept}</Text>
-                        </HStack>
-                        <Text color={m.kind === 'entrada' ? 'green.500' : 'red.500'} flexShrink={0}>
-                          {m.kind === 'entrada' ? '+' : '−'}{money(m.amount, data.currency)}
-                        </Text>
-                      </HStack>
-                    ))}
-                  </VStack>
-                </Box>
+              <Section title="Movimientos de efectivo">
+                <MovementsTable movements={data.movements ?? []} currency={data.currency} />
+              </Section>
+
+              {(data.expenses ?? []).length > 0 && (
+                <Section title="Gastos"><ExpensesTable expenses={data.expenses ?? []} currency={data.currency} /></Section>
               )}
 
               {data.notes && (
