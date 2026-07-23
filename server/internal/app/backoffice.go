@@ -109,6 +109,100 @@ type CashExpenseView struct {
 	Status        string          `json:"status"`
 }
 
+// Descomposición del corte en ingresos/egresos → método → concepto, para el resumen jerárquico
+// (estilo arqueo). Explica cómo el sistema llegó a cada esperado; los movimientos/gastos
+// itemizados quedan como drill-down (Movements/Expenses).
+type CorteBucket struct {
+	Concept string          `json:"concept"`
+	Amount  decimal.Decimal `json:"amount"`
+}
+type CorteMethodBreakdown struct {
+	Method string          `json:"method"`
+	Total  decimal.Decimal `json:"total"`
+	Items  []CorteBucket   `json:"items"` // Ventas, Entradas, Traspasos recibidos, (Propinas)
+}
+type CorteBreakdown struct {
+	Ingresos      []CorteMethodBreakdown `json:"ingresos"` // por método
+	IngresosTotal decimal.Decimal        `json:"ingresosTotal"`
+	Egresos       []CorteBucket          `json:"egresos"` // salidas de efectivo (Gastos, Salidas, Traspasos)
+	EgresosTotal  decimal.Decimal        `json:"egresosTotal"`
+}
+
+// methodExpected: entrada para corteBreakdown (nombre, esperado del sistema y si toca el cajón).
+type methodExpected struct {
+	name        string
+	expected    decimal.Decimal
+	affectsCash bool
+}
+
+// corteBreakdown descompone un corte en ingresos (por método → concepto) y egresos de efectivo.
+// ventas de efectivo se derivan como esperado_efectivo − fondo − neto de movimientos (así una caja
+// secundaria, cuyo esperado = fondo + neto, da 0 ventas automáticamente); las demás = su esperado.
+func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
+	var entradas, traspasosIn, salidas, traspasosOut, gastos, net decimal.Decimal
+	for _, m := range moves {
+		if m.Kind == domain.CashEntrada {
+			net = net.Add(m.Amount)
+		} else {
+			net = net.Sub(m.Amount)
+		}
+		switch {
+		case m.ExpenseID != nil: // gasto en efectivo (siempre salida)
+			gastos = gastos.Add(m.Amount)
+		case m.TransferID != nil:
+			if m.Kind == domain.CashEntrada {
+				traspasosIn = traspasosIn.Add(m.Amount)
+			} else {
+				traspasosOut = traspasosOut.Add(m.Amount)
+			}
+		case m.Kind == domain.CashEntrada:
+			entradas = entradas.Add(m.Amount)
+		default:
+			salidas = salidas.Add(m.Amount)
+		}
+	}
+
+	out := CorteBreakdown{Ingresos: []CorteMethodBreakdown{}, Egresos: []CorteBucket{}}
+	for _, me := range methods {
+		var ventas decimal.Decimal
+		if me.affectsCash {
+			ventas = domain.Round2(me.expected.Sub(opening).Sub(net))
+		} else {
+			ventas = domain.Round2(me.expected)
+		}
+		items := []CorteBucket{}
+		total := decimal.Zero
+		add := func(concept string, amt decimal.Decimal) {
+			if amt.IsPositive() {
+				items = append(items, CorteBucket{Concept: concept, Amount: amt})
+				total = total.Add(amt)
+			}
+		}
+		add("Ventas", ventas)
+		if me.affectsCash {
+			add("Entradas", domain.Round2(entradas))
+			add("Traspasos recibidos", domain.Round2(traspasosIn))
+		}
+		if len(items) > 0 {
+			out.Ingresos = append(out.Ingresos, CorteMethodBreakdown{Method: me.name, Total: domain.Round2(total), Items: items})
+			out.IngresosTotal = out.IngresosTotal.Add(total)
+		}
+	}
+	for _, b := range []CorteBucket{
+		{Concept: "Gastos", Amount: domain.Round2(gastos)},
+		{Concept: "Salidas de efectivo", Amount: domain.Round2(salidas)},
+		{Concept: "Traspasos enviados", Amount: domain.Round2(traspasosOut)},
+	} {
+		if b.Amount.IsPositive() {
+			out.Egresos = append(out.Egresos, b)
+			out.EgresosTotal = out.EgresosTotal.Add(b.Amount)
+		}
+	}
+	out.IngresosTotal = domain.Round2(out.IngresosTotal)
+	out.EgresosTotal = domain.Round2(out.EgresosTotal)
+	return out
+}
+
 type SessionView struct {
 	ID           int64              `json:"id"`
 	RegisterID   int64              `json:"registerId"`
@@ -122,6 +216,7 @@ type SessionView struct {
 	Totals       []MethodTotal      `json:"totals"`
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
+	Breakdown    CorteBreakdown     `json:"breakdown"`
 }
 
 // CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
@@ -150,6 +245,7 @@ type SessionDetailView struct {
 	Totals       []MethodTotal      `json:"totals"`
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
+	Breakdown    CorteBreakdown     `json:"breakdown"`
 }
 
 type SessionHistoryRow struct {
@@ -339,6 +435,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
 	}
+	methods := []methodExpected{}
 	for _, r := range rows {
 		// Caja secundaria: los métodos no-efectivo no aplican (no vende por ellos) → se omiten.
 		if !reg.IsPrimary && !r.AffectsCashDrawer {
@@ -351,8 +448,11 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		if r.AffectsCashDrawer {
 			expected = expected.Add(sess.OpeningCash).Add(net) // fondo + neto de movimientos
 		}
-		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: domain.Round2(expected), AutoDeclare: r.AutoDeclare})
+		expected = domain.Round2(expected)
+		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, AutoDeclare: r.AutoDeclare})
+		methods = append(methods, methodExpected{name: r.Name, expected: expected, affectsCash: r.AffectsCashDrawer})
 	}
+	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
@@ -564,12 +664,15 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		OpenedByName: sess.OpenedByName, ClosedByName: sess.ClosedByName, Notes: sess.Notes,
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps, // no-nil → [] en JSON
 	}
+	methods := make([]methodExpected, 0, len(totals))
 	for _, t := range totals {
 		view.Totals = append(view.Totals, MethodTotal{
 			MethodID: int(t.PaymentMethodID), Name: t.Name,
 			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference,
 		})
+		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, affectsCash: t.AffectsCashDrawer})
 	}
+	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,

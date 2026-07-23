@@ -91,7 +91,7 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, t.expected, t.declared,
+select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id

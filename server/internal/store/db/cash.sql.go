@@ -619,7 +619,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 }
 
 const listSessionTotals = `-- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, t.expected, t.declared,
+select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -628,11 +628,12 @@ order by pm.sort_key
 `
 
 type ListSessionTotalsRow struct {
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Name            string          `json:"name"`
-	Expected        decimal.Decimal `json:"expected"`
-	Declared        decimal.Decimal `json:"declared"`
-	Difference      decimal.Decimal `json:"difference"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Name              string          `json:"name"`
+	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
+	Expected          decimal.Decimal `json:"expected"`
+	Declared          decimal.Decimal `json:"declared"`
+	Difference        decimal.Decimal `json:"difference"`
 }
 
 func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]ListSessionTotalsRow, error) {
@@ -647,6 +648,7 @@ func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]Lis
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
+			&i.AffectsCashDrawer,
 			&i.Expected,
 			&i.Declared,
 			&i.Difference,
