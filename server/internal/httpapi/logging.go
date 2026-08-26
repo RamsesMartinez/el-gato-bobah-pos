@@ -10,8 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const RequestIDHeader = "X-Request-Id"
@@ -40,7 +39,7 @@ func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.Header.Get(RequestIDHeader))
 		if id == "" {
-			id = uuid.NewString()
+			id = uuid.New().String()
 		}
 		w.Header().Set(RequestIDHeader, id)
 		ctx := context.WithValue(r.Context(), reqIDKey{}, id)

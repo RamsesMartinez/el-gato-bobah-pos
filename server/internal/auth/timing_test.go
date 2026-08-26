@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -59,7 +59,7 @@ func TestLoginBranches_ComparableTiming(t *testing.T) {
 			f()
 			ds[i] = time.Since(start)
 		}
-		sort.Slice(ds, func(a, b int) bool { return ds[a] < ds[b] })
+		slices.Sort(ds)
 		return ds[n/2]
 	}
 	notFound := median(func() { CheckDummySecret("intento") })

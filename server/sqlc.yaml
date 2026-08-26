@@ -53,7 +53,9 @@ sql:
             go_type: "time.Time"
           - db_type: "user_role"
             go_type: "string"
+          # uuid de la stdlib (Go 1.27): mismo [16]byte que google/uuid, una dependencia menos
+          # en el supply chain. pgx lo encodea por su codec de uuid igual que antes.
           - db_type: "uuid"
             go_type:
-              import: "github.com/google/uuid"
+              import: "uuid"
               type: "UUID"

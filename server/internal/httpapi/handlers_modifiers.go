@@ -42,10 +42,7 @@ func (h *Handlers) AdminListGroups(w http.ResponseWriter, r *http.Request) {
 		dir = "asc"
 	}
 	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100)
-	offset := atoiOr(q.Get("offset"), 0)
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(atoiOr(q.Get("offset"), 0), 0)
 	page, err := h.admin.ListGroups(r.Context(), status, q.Get("search"), sort, dir, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)

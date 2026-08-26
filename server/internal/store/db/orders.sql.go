@@ -9,9 +9,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
+	"uuid"
 )
 
 const cancelOrder = `-- name: CancelOrder :exec

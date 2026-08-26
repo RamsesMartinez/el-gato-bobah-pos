@@ -21,7 +21,7 @@ var commonPasswordsRaw string
 
 var commonPasswords = func() map[string]struct{} {
 	m := make(map[string]struct{})
-	for _, line := range strings.Split(commonPasswordsRaw, "\n") {
+	for line := range strings.SplitSeq(commonPasswordsRaw, "\n") {
 		if s := strings.TrimSpace(line); s != "" && !strings.HasPrefix(s, "#") {
 			m[strings.ToLower(s)] = struct{}{}
 		}

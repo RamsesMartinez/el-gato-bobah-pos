@@ -97,6 +97,20 @@ func TestRateKeyIP(t *testing.T) {
 	if got := rateKeyIP(rp, true); got != "198.51.100.9" {
 		t.Fatalf("proxied: expected the real (last) client IP, got %q", got)
 	}
+	// un solo salto: el XFF viene sin coma y la entrada única ES la que puso Caddy.
+	one := httptest.NewRequest(http.MethodPost, "/", nil)
+	one.RemoteAddr = "10.0.0.2:8080"
+	one.Header.Set("X-Forwarded-For", "198.51.100.9")
+	if got := rateKeyIP(one, true); got != "198.51.100.9" {
+		t.Fatalf("proxied single hop: got %q, want 198.51.100.9", got)
+	}
+	// XFF presente pero vacío: no hay IP que usar, cae a RemoteAddr sin puerto.
+	blank := httptest.NewRequest(http.MethodPost, "/", nil)
+	blank.RemoteAddr = "10.0.0.2:8080"
+	blank.Header.Set("X-Forwarded-For", " , ")
+	if got := rateKeyIP(blank, true); got != "10.0.0.2" {
+		t.Fatalf("proxied blank XFF: got %q, want the proxy host 10.0.0.2", got)
+	}
 }
 
 func TestRateLimiter_MapStaysBounded(t *testing.T) {

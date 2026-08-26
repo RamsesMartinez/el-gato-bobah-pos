@@ -164,8 +164,14 @@ func (rl *rateLimiter) retryAfter(ctx context.Context, key string) int {
 func rateKeyIP(r *http.Request, behindProxy bool) string {
 	if behindProxy {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.Split(xff, ",")
-			if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+			// CutLast (Go 1.27) deja el último elemento sin partir la lista completa: con un
+			// solo proxy de confianza esa es la única entrada que no puede falsear el cliente.
+			// Sin coma, `last` es el XFF entero — el caso de un salto único.
+			last := xff
+			if _, after, found := strings.CutLast(xff, ","); found {
+				last = after
+			}
+			if ip := strings.TrimSpace(last); ip != "" {
 				return ip
 			}
 		}
