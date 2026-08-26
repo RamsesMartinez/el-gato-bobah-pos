@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -80,7 +80,7 @@ type OrderModView struct {
 }
 
 func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderView, error) {
-	if cmd.ClientUUID == uuid.Nil {
+	if cmd.ClientUUID == uuid.Nil() {
 		return nil, domain.ErrValidation
 	}
 	if !validServiceType(cmd.ServiceType) {

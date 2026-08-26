@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 type Role string
 
@@ -21,12 +24,7 @@ func (r Role) Valid() bool {
 
 // In reports whether the role is one of the allowed roles.
 func (r Role) In(roles ...Role) bool {
-	for _, x := range roles {
-		if r == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(roles, r)
 }
 
 type User struct {

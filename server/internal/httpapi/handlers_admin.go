@@ -19,18 +19,12 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 		status = ""
 	}
 	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (POS modo edición)
-	offset := atoiOr(q.Get("offset"), 0)
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(atoiOr(q.Get("offset"), 0), 0)
 	groups := q.Get("groups") // ""=todos | "none"=sin grupos | "some"=con grupos
 	if groups != "none" && groups != "some" {
 		groups = ""
 	}
-	categoryID := int64(atoiOr(q.Get("categoryId"), 0)) // 0 = todas las categorías
-	if categoryID < 0 {
-		categoryID = 0
-	}
+	categoryID := max(int64(atoiOr(q.Get("categoryId"), 0)), 0) // 0 = todas las categorías
 	// Orden por columna: solo valores conocidos (lo demás → nombre asc, el default del query).
 	sort := q.Get("sort")
 	switch sort {
@@ -130,10 +124,7 @@ func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Reque
 		status = ""
 	}
 	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (el POS pide todas)
-	offset := atoiOr(q.Get("offset"), 0)
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(atoiOr(q.Get("offset"), 0), 0)
 	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)

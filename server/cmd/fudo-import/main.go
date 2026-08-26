@@ -648,10 +648,7 @@ func minMax(s string, def int) int16 {
 	if t == "" || strings.EqualFold(t, "nan") {
 		return int16(def)
 	}
-	v := int(pf(s))
-	if v < 0 {
-		v = 0
-	}
+	v := max(int(pf(s)), 0)
 	if v > 32767 {
 		v = 32767
 	}

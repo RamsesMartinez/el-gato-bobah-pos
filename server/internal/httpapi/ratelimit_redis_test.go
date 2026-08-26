@@ -1,6 +1,6 @@
 //go:build integration
 
-// Correr: TEST_REDIS_URL="redis://localhost:6380/0" go test -tags=integration ./internal/httpapi/...
+// Correr: TEST_REDIS_URL="redis://localhost:$REDIS_PORT/0" go test -tags=integration ./internal/httpapi/...
 // Sin la env se omite (Skip). Prueba el backend REAL de Redis — lo que los tests planos (sin
 // build tag) no pueden, porque ahí rl.rdb siempre es nil.
 package httpapi
