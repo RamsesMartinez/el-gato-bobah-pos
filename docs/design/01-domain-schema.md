@@ -1,5 +1,11 @@
 # El Gato Bobah POS — Domain Model & PostgreSQL Schema Plan
 
+> **HISTÓRICO — plan de la construcción inicial, ejecutado. No es el estado actual.**
+> Se conserva para entender *por qué* el diseño es como es. Para saber cómo está el sistema hoy:
+> el código, [`AGENTS.md`](../../AGENTS.md) y
+> [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md).
+> Índice de `docs/`: [../README.md](../README.md).
+
 Target: PostgreSQL 16 + Redis, Go backend, single location, CQRS-light (ledger + trigger-maintained caches + Redis read models — **no event sourcing**).
 
 ## 0. Conventions

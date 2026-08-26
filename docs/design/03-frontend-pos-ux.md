@@ -1,5 +1,11 @@
 # El Gato Bobah POS — Frontend Rebuild + Tablet POS UX Plan
 
+> **HISTÓRICO — plan de la construcción inicial, ejecutado. No es el estado actual.**
+> Se conserva para entender *por qué* el diseño es como es. Para saber cómo está el sistema hoy:
+> el código, [`AGENTS.md`](../../AGENTS.md) y
+> [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md).
+> Índice de `docs/`: [../README.md](../README.md).
+
 Repo: `/Users/ramses/Documents/git/ramthedev/el-gato-bobah-pos` · React 18 + TS + Chakra UI v2 kept · CRA→Vite · bun · Spanish UI · Target device: 8–10" tablets, portrait AND landscape.
 
 ---
