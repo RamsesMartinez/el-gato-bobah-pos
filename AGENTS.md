@@ -100,7 +100,7 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
 - **`overrides` en `web/package.json` = parches de CVE en deps TRANSITIVAS de dev.** Cuando un CVE
   high vive en una transitiva (`eslint`→`ajv`→`fast-uri`, `vite-plugin-pwa`→`workbox-build`→`glob`→
-  `brace-expansion`, `jsdom`→`undici`) y el padre pinea un rango que no alcanza el parche, se fuerza
+  `brace-expansion`, `jsdom`→`undici`, `vite`→`postcss`→`nanoid`) y el padre pinea un rango que no alcanza el parche, se fuerza
   la versión aquí — `bun audit --audit-level=high` es bloqueante y no se afloja. **Fija el piso REAL
   del aviso, no el primero que veas**: `brace-expansion: ">=2.1.3"` resolvía a 4.x, que tiene su
   propio rango vulnerable (el piso bueno es `>=5.0.8`). Y **acota el major cuando el consumidor
