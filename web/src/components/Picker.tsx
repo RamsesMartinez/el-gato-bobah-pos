@@ -95,6 +95,13 @@ export function Picker({
                 </Button>
               )}
               {filtered.length === 0 && !onCreate && <Text color="fg.muted" px={2} py={3}>Sin resultados.</Text>}
+              {/* Sin esto el alta inline es invisible: el botón «Crear» solo aparece al escribir, así
+                  que quien abre la hoja y no ve su proveedor asume que tiene que salirse a crearlo. */}
+              {onCreate && q.trim() === '' && (
+                <Text color="fg.subtle" fontSize="sm" px={2} py={3}>
+                  ¿No está en la lista? Escribe su nombre y podrás crearlo aquí.
+                </Text>
+              )}
             </VStack>
           </VStack>
         </DrawerContent>
