@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN mkdir -p /out/logs && chown 65532:65532 /out/logs
 
 # distroless: ca-certs + tzdata + usuario nonroot, imagen ~24MB.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 COPY --from=build /out/api /api
 COPY --from=build --chown=65532:65532 /out/logs /logs
 EXPOSE 8080
