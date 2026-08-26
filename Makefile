@@ -5,9 +5,15 @@
         prod-db-tunnel prod-reset-password
 .DEFAULT_GOAL := help
 
-# Puertos no estándar (5433/6380) para no chocar con otros contenedores locales.
-DEV_DATABASE_URL ?= postgres://gatobobah:gatobobah@localhost:5433/gatobobah?sslmode=disable
-DEV_REDIS_URL    ?= redis://localhost:6380
+# Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
+# antes chocaba con el postgres/redis de otros compose locales. Overridea con
+# `PG_PORT=… make db-migrate` si start.sh tuvo que mover el puerto.
+PG_PORT    ?= 5490
+REDIS_PORT ?= 6390
+export PG_PORT
+export REDIS_PORT
+DEV_DATABASE_URL ?= postgres://gatobobah:gatobobah@localhost:$(PG_PORT)/gatobobah?sslmode=disable
+DEV_REDIS_URL    ?= redis://localhost:$(REDIS_PORT)
 DEV_JWT_SECRET   ?= dev-secret-no-usar-en-prod
 # sqlc pinado (no @latest): el código generado y `sqlc vet` deben ser reproducibles entre local
 # y CI. Súbelo a mano aquí y en .github/workflows/ci.yml a la vez.
@@ -95,7 +101,7 @@ sqlc: ## Regenera el código sqlc
 	cd server && $(GOBIN)/sqlc generate
 sqlc-diff: ## Falla si el código sqlc generado no está al día (olvidaste `make sqlc`)
 	cd server && $(GOBIN)/sqlc diff
-db-migrate: deps-up ## Aplica las migraciones embebidas a la DB de dev (:5433)
+db-migrate: deps-up ## Aplica las migraciones embebidas a la DB de dev (:$(PG_PORT))
 	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/migrate
 sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) — atrapa drift esquema↔query
 	cd server && SQLC_DB_URI="$(DEV_DATABASE_URL)" $(GOBIN)/sqlc vet
