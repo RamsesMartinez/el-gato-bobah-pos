@@ -166,23 +166,90 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: e276d7cc7e74941f3843e3dd677cc748
 
-  deploy-backend:
-    name: Deploy backend (VPS)
+  # La imagen se compila AQUÍ, no en el VPS. La VM es un e2-micro (1 vCPU, 1 GB): compilar
+  # el módulo ahí tarda ~30 min con la caché caliente y arriesga OOM justo cuando el runner
+  # de Go cambia de versión (la subida a 1.27 invalidó todas las capas). El runner de Actions
+  # es gratis e ilimitado en repos públicos, así que el build vive aquí y el VPS solo baja.
+  image:
+    name: Build imagen API (ghcr.io)
     needs: [backend, integration]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write # publicar en ghcr.io; el resto del workflow sigue read-only
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN del propio workflow: no hace falta un PAT ni federación con GCP para
+          # publicar en ghcr.io, y el paquete público se baja sin credenciales.
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # El tag lleva el SHA del commit: el deploy referencia una imagen EXACTA en vez de un
+      # tag móvil, así que reintentar un deploy vuelve a poner el mismo binario.
+      - name: Etiquetas
+        id: meta
+        run: |
+          # ghcr.io EXIGE minúsculas y el owner es "RamsesMartinez": sin el tr el push falla.
+          repo="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${repo}/api:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "moving=ghcr.io/${repo}/api:develop" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: server
+          push: true
+          # El VPS es amd64; sin fijarlo buildx toma la del runner y coincide por casualidad.
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.moving }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILT_AT=${{ steps.meta.outputs.built_at }}
+          # Caché de capas entre corridas: sin esto cada push recompila el módulo entero.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-backend:
+    name: Deploy backend (VPS)
+    needs: [image]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Dos deploys simultáneos correrían `compose up` a la vez sobre la misma VM. Se encola en
+    # vez de cancelar: cancelar a media substitución de contenedor deja la API abajo.
+    concurrency:
+      group: deploy-vps
+      cancel-in-progress: false
     steps:
       # SSH directo (sin action de terceros): la VM ya acepta esta key vía metadata del
-      # proyecto GCP. `make deploy` reconstruye solo lo que cambió y hace `up -d`.
+      # proyecto GCP. Ya no compila nada: baja la imagen que publicó el job anterior y
+      # levanta. El `git pull` sigue porque el compose y el .env viven en el checkout.
       - name: Deploy por SSH
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          API_IMAGE: ${{ needs.image.outputs.image }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 34.68.178.107 >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key ramses_mtz96@34.68.178.107 \
-            "cd el-gato-bobah-pos && git pull && make deploy"
+            "cd el-gato-bobah-pos && git pull && API_IMAGE='$API_IMAGE' make deploy-image"
+      # Un deploy que deja la API caída y nadie se entera es peor que uno que falla ruidoso.
+      - name: Verifica que la API quedó arriba
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -m 10 https://api.elgatobobah.com/readyz | grep -q ready; then
+              echo "API lista"; exit 0
+            fi
+            sleep 10
+          done
+          echo "La API no respondió /readyz tras 5 min"; exit 1

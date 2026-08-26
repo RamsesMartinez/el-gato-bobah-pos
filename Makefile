@@ -2,7 +2,7 @@
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password
+        prod-db-tunnel prod-reset-password deploy-image
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
@@ -121,10 +121,15 @@ fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la
 build: ## Build de imágenes de producción (API + web, self-contained, sin bun en host)
 	GIT_SHA="$$(git rev-parse --short HEAD)" BUILT_AT="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 		docker compose -f deploy/docker-compose.yml build
-deploy: ## Deploy con docker compose (VPS)
+deploy: ## Deploy compilando en la máquina local (fallback; en el VPS usa deploy-image)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build
 	docker compose -f deploy/docker-compose.yml up -d
+deploy-image: ## Deploy bajando la imagen ya compilada por CI (API_IMAGE=ghcr.io/...:sha-xxxx)
+	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
+	docker compose -f deploy/docker-compose.yml pull api
+	docker compose -f deploy/docker-compose.yml up -d
+	@docker image prune -f >/dev/null 2>&1 || true
 
 # Túnel SSH a Postgres de la VPS, para inspeccionar con DataGrip/psql sin exponer el puerto a
 # internet. Resuelve la IP interna del contenedor en cada corrida (puede cambiar si se recrea).

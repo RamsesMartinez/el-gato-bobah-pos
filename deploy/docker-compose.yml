@@ -10,6 +10,12 @@ x-logging: &default-logging
 
 services:
   api:
+    # La imagen la compila y publica CI (job `image` en ci.yml) y el VPS solo la BAJA: en un
+    # e2-micro de 1 vCPU/1 GB compilar tarda ~30 min y puede morir por OOM. API_IMAGE lo pasa
+    # el deploy con el tag del commit exacto; el default sirve para levantar a mano.
+    image: ${API_IMAGE:-ghcr.io/ramsesmartinez/el-gato-bobah-pos/api:develop}
+    # `build:` se queda para el camino manual (`make build`/`make deploy`): compose lo usa solo
+    # cuando se lo pides explícitamente, y etiqueta el resultado como la imagen de arriba.
     build:
       context: ../server
       # Versión del build: la fija `make build` (GIT_SHA/BUILT_AT). Sin ellas → "dev".
