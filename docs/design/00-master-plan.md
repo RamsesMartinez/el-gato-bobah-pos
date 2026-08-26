@@ -1,5 +1,11 @@
 # El Gato Bobah POS — Sistema propio (plan maestro)
 
+> **HISTÓRICO — plan de la construcción inicial, ejecutado. No es el estado actual.**
+> Se conserva para entender *por qué* el diseño es como es. Para saber cómo está el sistema hoy:
+> el código, [`AGENTS.md`](../../AGENTS.md) y
+> [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md).
+> Índice de `docs/`: [../README.md](../README.md).
+
 ## Context
 
 El repo era un frontend React que reemplazaba la UI de FUDO (SaaS restaurantero). Decisión del dueño: **sistema 100% propio**. Se analizaron los exports reales de FUDO en `references/` (752 productos, 318 ingredientes, 620 líneas de receta, 53+ grupos de modificadores con 485 opciones, stock, ventas ~2,600 tickets/11 meses, gastos) y se hizo ingeniería inversa del modelo de dominio, incluyendo sus 10 debilidades a corregir (opciones de modificador como pseudo-productos, joins por nombre, sin sistema de unidades, stock negativo caótico, combos inútiles, strings libres para proveedores/medios de pago, etc.).

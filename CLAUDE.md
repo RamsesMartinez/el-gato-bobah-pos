@@ -2,7 +2,7 @@
 
 # Claude Code
 
-Las reglas de ingeniería viven en `AGENTS.md` (importado arriba). Esto es solo lo específico del harness.
+Los **principios** de ingeniería viven en `.specify/memory/constitution.md`; la **mecánica** del repo (stack, comandos, quirks de tooling) en `AGENTS.md`, que importa la constitución. Ambos entran por el import de arriba. Esto es solo lo específico del harness — no dupliques reglas aquí.
 
 ## CodeGraph (preguntas estructurales)
 
@@ -18,10 +18,10 @@ Este repo tiene un índice CodeGraph (`.codegraph/`). Para preguntas **estructur
 
 ## Skills
 
-Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa la §5 de `AGENTS.md`. Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`).
+Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución. Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`). Las features nuevas van por spec-kit (`/speckit-*`); `/speckit-analyze` corre siempre antes de `/speckit-implement`.
 
 ## Quirks
 
-- **Bun, nunca npm** (§2). No sugieras `npm install` ni generes `package-lock.json`.
+- **Bun, nunca npm** (`AGENTS.md` §2). No sugieras `npm install` ni generes `package-lock.json`.
 - Antes de dar por bueno un cambio de backend: `cd server && go build ./... && go test ./...` (= `make api-build && make api-test`).
-- No hagas `git commit`/`push` salvo que el usuario lo pida; los hooks de lefthook deben pasar (§10).
+- No hagas `git commit`/`push` salvo que el usuario lo pida; los hooks de lefthook deben pasar (`AGENTS.md` §4).

@@ -1,5 +1,11 @@
 # El Gato Bobah POS — Go Backend Service Architecture
 
+> **HISTÓRICO — plan de la construcción inicial, ejecutado. No es el estado actual.**
+> Se conserva para entender *por qué* el diseño es como es. Para saber cómo está el sistema hoy:
+> el código, [`AGENTS.md`](../../AGENTS.md) y
+> [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md).
+> Índice de `docs/`: [../README.md](../README.md).
+
 MVP-pragmatic design for a single-location cat café POS. Optimized for: one developer, one VPS, tablets on counter Wi-Fi, order-taking speed as priority #1. Everything below is deliberately boring where boring wins, and only clever where FUDO's weaknesses (fudo report §8) demand it.
 
 ---
