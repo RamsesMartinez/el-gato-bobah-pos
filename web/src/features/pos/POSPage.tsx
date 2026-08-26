@@ -4,7 +4,7 @@ import {
 } from '@chakra-ui/react';
 import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
 import { canAccess } from '../../app/roles';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerGrabber } from '../../components/ui/drawer';

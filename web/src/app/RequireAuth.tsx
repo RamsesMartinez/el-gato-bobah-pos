@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 import { Center, Spinner } from '@chakra-ui/react';
 import { useSessionStore } from '../stores/session';
 import { canAccess } from './roles';

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
 import { RequireAuth, RequireRole } from './app/RequireAuth';

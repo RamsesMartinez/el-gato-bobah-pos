@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Center, VStack, Heading, Input, Button, Text, Image, InputGroup, IconButton } from '@chakra-ui/react';
 import { LuEye, LuEyeOff } from 'react-icons/lu';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import logo from '../../assets/logo.webp';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';

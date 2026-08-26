@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Heading, Text, Input, Button, VStack, HStack } from '@chakra-ui/react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
 import { toaster } from '../../components/ui/toaster';
 import { useSessionStore } from '../../stores/session';
