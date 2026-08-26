@@ -87,6 +87,15 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.26.x sirve para cualquier toolchain 1.26.y), no por patch.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
+- **`overrides` en `web/package.json` = parches de CVE en deps TRANSITIVAS de dev.** Cuando un CVE
+  high vive en una transitiva (`eslint`→`ajv`→`fast-uri`, `vite-plugin-pwa`→`workbox-build`→`glob`→
+  `brace-expansion`, `jsdom`→`undici`) y el padre pinea un rango que no alcanza el parche, se fuerza
+  la versión aquí — `bun audit --audit-level=high` es bloqueante y no se afloja. **Fija el piso REAL
+  del aviso, no el primero que veas**: `brace-expansion: ">=2.1.3"` resolvía a 4.x, que tiene su
+  propio rango vulnerable (el piso bueno es `>=5.0.8`). Y **acota el major cuando el consumidor
+  depende de internals**: `undici: "^7.29.0"` y no `>=7.29.0`, porque la 8.x movió lo que jsdom
+  requiere y deja los tests en "no tests". Cada override se BORRA en cuanto el padre suba su rango
+  (lo trae Dependabot); son deuda, no configuración permanente.
 - **KNOWN NON-ISSUE (no lo "arregles"):** el aviso de deprecación de `golang.org/x/crypto/blowfish` que aparece dentro de `x/crypto/bcrypt` es **esperado** — bcrypt usa blowfish internamente. `bcrypt.GenerateFromPassword` ([auth.HashSecret](server/internal/auth/password.go)) es la forma correcta y vigente de hashear passwords y **no** está deprecada. No lo cambies por AES ni otro cifrado.
 
 ## 10. Commits / PR

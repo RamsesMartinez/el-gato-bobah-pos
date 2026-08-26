@@ -1,6 +1,6 @@
 import { Flex, Box, HStack, Button } from '@chakra-ui/react';
 import { LuTag, LuStar } from 'react-icons/lu';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 
 // Hub "Catálogo": agrupa Productos y Opciones (relacionados) bajo un solo item del menú,
 // con pestañas de 1 toque. Cada pestaña conserva su propia pantalla (Page fill).

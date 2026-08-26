@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Center, VStack, Heading, Input, Button, Text } from '@chakra-ui/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
 import { useUiStore } from '../../stores/ui';
 import { RADIUS } from '../../theme/ui';

@@ -1,5 +1,5 @@
 import { Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router';
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins,
   LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette, LuStore, LuUserCog,
