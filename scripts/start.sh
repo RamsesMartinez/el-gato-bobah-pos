@@ -57,7 +57,22 @@ export PORT="$BACK_PORT"
 export BACKEND_PORT="$BACK_PORT"
 export FRONTEND_PORT="$FRONT_PORT"
 
-echo "▶ Levantando postgres + redis…"
+# --- Puertos de la infra (postgres/redis/mailpit) ---------------------------
+# No son fijos: el 5433/6380 "no estándar" de antes igual chocaba con el postgres/redis de
+# otros compose de la misma máquina. Si el contenedor ya está vivo se reusa EL PUERTO QUE YA
+# PUBLICA (mover el puerto lo recrearía en cada arranque); si no, el primero libre desde el
+# default. El compose y dev-api.sh los leen de estas env.
+infra_port() { # $1=servicio compose  $2=puerto interno  $3=default
+  local pub
+  pub="$(docker compose -f deploy/docker-compose.dev.yml port "$1" "$2" 2>/dev/null | sed 's/.*://')"
+  if [ -n "$pub" ]; then echo "$pub"; else free_port "$3"; fi
+}
+export PG_PORT="${PG_PORT:-$(infra_port postgres 5432 5490)}"
+export REDIS_PORT="${REDIS_PORT:-$(infra_port redis 6379 6390)}"
+export MAILPIT_HTTP_PORT="${MAILPIT_HTTP_PORT:-$(infra_port mailpit 8025 8095)}"
+export MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-$(infra_port mailpit 1025 1095)}"
+
+echo "▶ Levantando postgres (:${PG_PORT}) + redis (:${REDIS_PORT}) + mailpit (:${MAILPIT_HTTP_PORT})…"
 docker compose -f deploy/docker-compose.dev.yml up -d
 
 echo "▶ Esperando a postgres…"

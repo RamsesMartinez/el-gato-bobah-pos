@@ -1,5 +1,9 @@
 # Dev: postgres + redis + mailpit (captura de correos local). La API corre en el host con air
 # y el frontend con `bun dev` (Vite proxy /api → localhost:8080). Inner loop más rápido.
+#
+# Los puertos publicados son env con default: un default fijo, por raro que sea, termina
+# chocando con el postgres/redis de otro compose de la misma máquina. scripts/start.sh los
+# resuelve (reusa el del contenedor vivo, o el primero libre) y los exporta.
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,7 +11,7 @@ services:
       POSTGRES_DB: gatobobah
       POSTGRES_USER: gatobobah
       POSTGRES_PASSWORD: gatobobah
-    ports: ["5433:5432"]
+    ports: ["${PG_PORT:-5490}:5432"]
     volumes: [pgdata_dev:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gatobobah -d gatobobah"]
@@ -17,12 +21,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports: ["6380:6379"]
+    ports: ["${REDIS_PORT:-6390}:6379"]
 
 
   mailpit:
     image: axllent/mailpit:latest
-    ports: ["8027:8025", "1026:1025"]
+    ports: ["${MAILPIT_HTTP_PORT:-8095}:8025", "${MAILPIT_SMTP_PORT:-1095}:1025"]
     restart: unless-stopped
 
 # Sin red custom: nadie habla contenedor-a-contenedor (la API corre en el host y llega a cada
