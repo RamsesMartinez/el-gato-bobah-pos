@@ -4,9 +4,10 @@ import {
   IconButton, HStack, VStack, Pagination, useDisclosure, Text,
 } from '@chakra-ui/react';
 import {
-  LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuArrowUp, LuArrowDown, LuPlus,
+  LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuPlus,
   LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy,
 } from 'react-icons/lu';
+import { SortHead } from '../../components/SortHead';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { adminApi, type AdminProduct, type Category, type ProductSort } from '../../api/admin';
@@ -252,29 +253,6 @@ export function ProductsAdminPage() {
         <DuplicateProductDialog key={duplicateSrc.id} source={duplicateSrc} onClose={() => setDuplicateSrc(null)} />
       )}
     </Page>
-  );
-}
-
-// Cabecera de columna ordenable: clic alterna asc/desc y muestra la flecha en la columna activa.
-function SortHead({ label, col, sort, dir, onSort, numeric, align }: {
-  label: string;
-  col: ProductSort;
-  sort: ProductSort;
-  dir: 'asc' | 'desc';
-  onSort: (col: ProductSort, numeric?: boolean) => void;
-  numeric?: boolean;
-  align?: 'end' | 'center';
-}) {
-  const active = sort === col;
-  const justify = align === 'end' ? 'end' : align === 'center' ? 'center' : 'start';
-  return (
-    <Table.ColumnHeader textAlign={align} cursor="pointer" userSelect="none" onClick={() => onSort(col, numeric)}
-      title={`Ordenar por ${label.toLowerCase()}`}>
-      <HStack gap={1} justify={justify}>
-        <Text as="span">{label}</Text>
-        {active && (dir === 'asc' ? <LuArrowUp size={12} /> : <LuArrowDown size={12} />)}
-      </HStack>
-    </Table.ColumnHeader>
   );
 }
 

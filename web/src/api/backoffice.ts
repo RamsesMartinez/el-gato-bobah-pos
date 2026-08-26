@@ -20,12 +20,14 @@ export interface CashMovement {
   transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
 }
-// Gasto atribuido a un corte (sección "Gastos" del resumen).
+// PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
+// uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.
 export interface CashExpenseLine {
-  id: number;
+  id: number;        // id del pago
+  expenseId: number;
   category: string;
   supplier: string | null;
-  paymentMethod: string | null;
+  paymentMethod: string;
   amount: string;
   currency: string;
   status: string;
@@ -95,6 +97,8 @@ export interface CashSessionDetail {
 }
 export type FinancialGroup = 'operacional' | 'administrativo' | 'otro';
 export type ExpenseStatus = 'pendiente' | 'pagada' | 'cancelada';
+// Columnas ordenables de la lista de gastos (whitelist espejo de la del handler).
+export type ExpenseSort = 'date' | 'status' | 'category' | 'supplier' | 'description' | 'amount';
 
 export interface ExpenseCategory {
   id: number;
@@ -111,7 +115,8 @@ export interface Supplier {
 }
 export interface Expense {
   id: number;
-  expenseDate: string; // YYYY-MM-DD
+  expenseDate: string;       // YYYY-MM-DD, fecha del DOCUMENTO
+  receivedAt: string | null; // null = mercancía sin recibir (no ha tocado el almacén)
   status: ExpenseStatus;
   category: string;
   financialGroup: FinancialGroup;
@@ -119,9 +124,162 @@ export interface Expense {
   amount: string;
   currency: string;
   description: string | null;
-  paymentMethod: string | null;
+  docKind: string | null;
+  docFolio: string | null;
+  paymentMethod: string | null; // "Tarjeta + Efectivo" cuando hubo varios
   paidAt: string | null;
   createdBy: string | null;
+  itemCount: number;
+}
+
+// ---- Detalle: mercancía y pagos ----
+
+export type ItemType = 'ingrediente' | 'producto';
+
+export interface ExpenseItem {
+  id: number;
+  itemType: ItemType | null; // null = línea no inventariable (bolsa, envío, IVA)
+  ingredientId: number | null;
+  productId: number | null;
+  itemName: string | null;
+  description: string;
+  quantity: string;
+  unitCode: string | null;
+  qtyReceived: string | null; // null = sin recibir; "0" = no llegó
+  unitCost: string;
+  amount: string;
+  packQtyInBase: string | null;
+}
+export interface ExpensePayment {
+  id: number;
+  methodId: number;
+  method: string;
+  amount: string;
+  paidOn: string;
+  inCashCount: boolean; // atribuido a un corte
+  reference: string | null;
+  affectsCashDrawer: boolean;
+}
+export interface ExpenseDetail extends Expense {
+  items: ExpenseItem[];
+  payments: ExpensePayment[];
+  paid: string;
+}
+
+// ---- Catálogo de artículos ----
+
+export interface Unit {
+  id: number;
+  code: string;
+  name: string;
+  kind: 'masa' | 'volumen' | 'pieza';
+  toBase: string;
+}
+export interface Ingredient {
+  id: number;
+  name: string;
+  isActive: boolean;
+  trackStock: boolean;
+  isPackaging: boolean;
+  minStock: string | null;
+  currentCost: string;
+  baseUnitId: number;
+  baseUnitCode: string;
+  baseUnitKind: string;
+  category: string | null;
+  onHand: string;
+}
+// Entrada del buscador único (ingredientes + productos con control de stock).
+export interface Article {
+  itemType: ItemType;
+  id: number;
+  name: string;
+  unitCode: string;
+  unitKind: string;
+}
+// Sugerencia de mapeo. source dice cuánto confiar: "aprendido" ya se confirmó con ese
+// proveedor (autollenar); los otros son parecidos y esperan confirmación.
+export interface ArticleSuggestion {
+  // 'personal' no es una sugerencia de artículo: es la respuesta "esto ya se decidió que es de
+  // la casa" y viene sin itemId.
+  source: 'aprendido' | 'otro_proveedor' | 'catalogo' | 'personal';
+  itemType: ItemType;
+  itemId: number;
+  itemName: string;
+  score: number;
+  matchedVia: string;
+  packQtyInBase: string | null;
+  unitId: number | null;
+}
+
+// Fila del catálogo aprendido por proveedor: qué decía el papel y a qué artículo se resolvió.
+export interface SupplierItem {
+  id: number;
+  supplierId: number;
+  supplier: string;
+  rawCode: string | null;
+  rawName: string;
+  status: 'pendiente' | 'mapeado' | 'ignorado' | 'personal';
+  itemType: ItemType | null;
+  itemName: string | null;
+  packQtyInBase: string | null;
+  lastCost: string | null;
+  lastSeenAt: string;
+}
+
+// ---- Extracción de documento ----
+
+export interface DocLine {
+  rawCode: string;
+  rawName: string;
+  qty: string;
+  unit: string;
+  unitPrice: string;
+  amount: string;
+  unitPriceAlt: string;
+  amountAlt: string;
+  status: '' | 'comprado' | 'no_disponible' | 'ajustado';
+  packQty: string;
+  packUnit: string;
+  suggestedName: string;
+  note: string;
+}
+export interface DocCharge { label: string; amount: string; affectsTotal: boolean }
+export interface DocPayment { method: string; amount: string; reference: string }
+export interface PurchaseDoc {
+  kind: string;
+  supplier: string;
+  folio: string;
+  issuedOn: string;
+  currency: string;
+  lines: DocLine[];
+  charges: DocCharge[];
+  payments: DocPayment[];
+  subtotal: string;
+  total: string;
+  extra: { key: string; value: string }[];
+  warnings: string[];
+}
+// Semáforo de confianza: dice si el documento se explica a sí mismo. Informativo — un pedido con
+// descuento a nivel documento no cuadra por línea y sigue siendo válido.
+export interface DocReconciliation {
+  linesSum: string;
+  chargesSum: string;
+  breakdownSum: string;
+  total: string;
+  diff: string;
+  balanced: boolean;
+  paymentsSum: string;
+  paymentsMatchTotal: boolean;
+  subtotal: string;
+  hasSubtotal: boolean;
+  linesMatchSubtotal: boolean;
+  unreadable: string[];
+}
+export interface ParsedDoc {
+  doc: PurchaseDoc;
+  raw: unknown; // extracción cruda: se reenvía en docRaw al crear el gasto
+  reconciliation: DocReconciliation;
 }
 export interface StockLevel {
   item_type: string;
@@ -138,6 +296,31 @@ export interface StockMovement {
   quantity: string;
   reason: string | null;
   created_at: string;
+}
+
+// Cuerpos de request del detalle del gasto (lo que se envía; distinto de lo que se lee).
+export interface ExpenseItemBody {
+  itemType?: ItemType | '';
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  unitId?: number;
+  qtyReceived?: string;
+  amount: string;
+  packQtyInBase?: string;
+  rawCode?: string;
+  rawName?: string;
+  // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
+  // como línea del gasto.
+  personal?: boolean;
+}
+export interface ExpensePaymentBody {
+  methodId: number;
+  amount: string;
+  paidOn?: string;
+  registerId?: number;
+  reference?: string;
 }
 
 export const backofficeApi = {
@@ -177,21 +360,75 @@ export const backofficeApi = {
   updateSupplier: (id: number, b: { name: string; phone?: string; notes?: string; isActive: boolean }) =>
     api.patch<Supplier>(`/suppliers/${id}`, b),
 
-  // Gastos (paginado)
-  expenses: (params?: { status?: ExpenseStatus; page?: number; pageSize?: number }) => {
+  // Gastos (paginado; el orden lo aplica el backend para que abarque todas las páginas)
+  expenses: (params?: {
+    status?: ExpenseStatus; page?: number; pageSize?: number; sort?: ExpenseSort; dir?: 'asc' | 'desc';
+  }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
     if (params?.page != null) q.set('page', String(params.page));
     if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
+    if (params?.sort) { q.set('sort', params.sort); q.set('dir', params.dir ?? 'asc'); }
     const qs = q.toString();
     return api.get<{ items: Expense[]; total: number; page: number; pageSize: number }>(`/expenses${qs ? `?${qs}` : ''}`);
   },
   createExpense: (b: {
-    categoryId: number; supplierId?: number; amount: number;
-    description?: string; status: ExpenseStatus; methodId?: number; registerId?: number;
+    expenseDate?: string;
+    receivedAt?: string;
+    categoryId: number;
+    supplierId?: number;
+    amount: string;
+    description?: string;
+    status: 'pendiente' | 'pagada';
+    items?: ExpenseItemBody[];
+    payments?: ExpensePaymentBody[];
+    docKind?: string;
+    docFolio?: string;
+    docRaw?: unknown;
   }) => api.post<{ id: number }>('/expenses', b),
-  payExpense: (id: number, methodId: number, registerId: number) => api.post<void>(`/expenses/${id}/pay`, { methodId, registerId }),
+  expenseDetail: (id: number) => api.get<ExpenseDetail>(`/expenses/${id}`),
+  // Agrega UN pago. Si con él los pagos cubren el importe, el gasto pasa a pagado.
+  payExpense: (id: number, b: ExpensePaymentBody) => api.post<void>(`/expenses/${id}/pay`, b),
+  // Marca la mercancía recibida y genera los movimientos de almacén. `received` mapea
+  // idLínea → cantidad que llegó (0 = no llegó).
+  receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
+    api.post<void>(`/expenses/${id}/receive`, b),
   cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
+
+  // Extracción del documento → borrador. NO escribe nada: el operador confirma.
+  parseDoc: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.postForm<ParsedDoc>('/expenses/parse-doc', fd);
+  },
+
+  // Catálogo de artículos (insumos) y buscador del detalle del gasto.
+  units: () => api.get<{ items: Unit[] }>('/units'),
+  ingredients: (onlyActive = false) =>
+    api.get<{ items: Ingredient[] }>(`/ingredients${onlyActive ? '?onlyActive=true' : ''}`),
+  createIngredient: (b: { name: string; baseUnitId: number; minStock?: string }) =>
+    api.post<Ingredient>('/ingredients', b),
+  searchArticles: (q: string) =>
+    api.get<{ items: Article[] }>(`/articles?q=${encodeURIComponent(q)}`),
+  // Catálogo aprendido: revisar qué mapeó el sistema y deshacer un mapeo equivocado.
+  supplierItems: (params?: { supplierId?: number; page?: number; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.supplierId) qs.set('supplierId', String(params.supplierId));
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    const q = qs.toString();
+    return api.get<{ items: SupplierItem[]; total: number }>(`/supplier-items${q ? `?${q}` : ''}`);
+  },
+  forgetSupplierItem: (id: number) => api.del<void>(`/supplier-items/${id}`),
+
+  // Sugerencias de mapeo para un renglón del documento. Solo sugiere.
+  suggestArticles: (b: { supplierId?: number; rawCode?: string; rawName: string }) => {
+    const qs = new URLSearchParams();
+    if (b.supplierId) qs.set('supplierId', String(b.supplierId));
+    if (b.rawCode) qs.set('rawCode', b.rawCode);
+    qs.set('rawName', b.rawName);
+    return api.get<{ items: ArticleSuggestion[] }>(`/articles/suggest?${qs}`);
+  },
 
   stockLevels: () => api.get<{ items: StockLevel[] }>('/stock/levels'),
   stockMovements: () => api.get<{ items: StockMovement[] }>('/stock/movements'),

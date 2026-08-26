@@ -62,8 +62,10 @@ test('TotalsTable con withTotalRow agrega la fila Total', () => {
 });
 
 test('ExpensesTable muestra filas y total (o nada si vacío)', () => {
+  // Cada fila es un PAGO, no un gasto: el importe es el del pago (un gasto liquidado con dos
+  // medios aparece en dos renglones, posiblemente en cortes distintos).
   const exps: CashExpenseLine[] = [
-    { id: 1, category: 'Insumos', supplier: 'Prov A', paymentMethod: 'Efectivo', amount: '46', currency: 'MXN', status: 'pagada' },
+    { id: 1, expenseId: 9, category: 'Insumos', supplier: 'Prov A', paymentMethod: 'Efectivo', amount: '46', currency: 'MXN', status: 'pagada' },
   ];
   const { rerender } = wrap(<ExpensesTable expenses={exps} currency="MXN" />);
   expect(screen.getByText('Insumos')).toBeInTheDocument();
