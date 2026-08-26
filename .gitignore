@@ -33,3 +33,5 @@ yarn-error.log*
 # logs con rotación
 logs/
 server/logs/
+docs/tickets/*
+!docs/tickets/.gitkeep
