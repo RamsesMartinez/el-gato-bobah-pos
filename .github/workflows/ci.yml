@@ -33,10 +33,11 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           # action v7+ soporta golangci-lint v2; la versión del linter debe estar compilada
-          # con Go >= el go directive del go.mod (1.25.7) o falla el self-check. Versión pinada
-          # (no `latest`): una release nueva no debe romper CI sin revisión. Dependabot no
-          # rastrea inputs `with:`, así que se sube a mano.
-          version: v2.12.2
+          # con Go >= el go directive del go.mod (1.27.0) o falla el self-check. Verifícalo con
+          # `go version $(which golangci-lint)` — v2.13.1 es go1.27.0. Versión pinada (no
+          # `latest`): una release nueva no debe romper CI sin revisión. Dependabot no rastrea
+          # inputs `with:`, así que se sube a mano.
+          version: v2.13.1
           working-directory: server
       - name: Vulnerabilities (govulncheck)
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1

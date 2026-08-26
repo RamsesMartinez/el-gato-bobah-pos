@@ -80,13 +80,24 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 
 ## 9. Dependencias y supply chain
 
-- **Siempre la última versión estable** (para tener los parches de seguridad). Runtimes con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.26.5`). Toma los bumps de Dependabot salvo que rompan el build (un major puede requerir revisión). Objetivo: no arrastrar versiones viejas con CVEs.
+- **Siempre la última versión estable** (para tener los parches de seguridad). Runtimes con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.0`). Toma los bumps de Dependabot salvo que rompan el build (un major puede requerir revisión). Objetivo: no arrastrar versiones viejas con CVEs.
 - **Un CVE BLOQUEA y nunca se mergea.** Go: `govulncheck` (pre-push lefthook **+** CI). Frontend: `bun audit --audit-level=high` (**bloqueante** en CI, sin `|| true`). Ya configurado — no lo aflojes.
 - **Frescura ≠ pre-commit.** Actualizar deps al día lo maneja **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)): github-actions, gomod (`/server`), **bun** (`/web`, no `npm`: es lo único que actualiza `bun.lock`) y docker (`/server`+`/deploy`), semanal. Chequeo manual: `go list -u -m all` (Go), `bun outdated` (web). **No** añadas un pre-commit de "deps desactualizadas" (ruidoso, bloquea cambios ajenos).
-- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (`toolchain go1.26.5`).
+- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.0`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
-  - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.26.x sirve para cualquier toolchain 1.26.y), no por patch.
+  - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
+- **Go 1.27 — lo que cambia para este repo.**
+  - `encoding/json` ahora corre sobre la implementación de v2, pero la **API v1 no cambió de
+    semántica**: verificado en 1.27.0 que sigue aceptando nombres duplicados (gana el último) y
+    UTF-8 inválido. La estrictez vive en `encoding/json/v2`, que es opt-in. Si algún día se quiere
+    rechazar duplicados en la frontera (§5) es cambiando de paquete a propósito, no algo que el
+    bump trajo gratis — no asumas que el 1.27 endureció el decode de los handlers.
+  - El `uuid` de la stdlib reemplazó a `github.com/google/uuid` (mismo `[16]byte`, pgx lo encodea
+    con su codec de uuid igual que antes; verificado contra Postgres real en los tests de
+    integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
+  - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
+  - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
 - **`overrides` en `web/package.json` = parches de CVE en deps TRANSITIVAS de dev.** Cuando un CVE
   high vive en una transitiva (`eslint`→`ajv`→`fast-uri`, `vite-plugin-pwa`→`workbox-build`→`glob`→
   `brace-expansion`, `jsdom`→`undici`) y el padre pinea un rango que no alcanza el parche, se fuerza
