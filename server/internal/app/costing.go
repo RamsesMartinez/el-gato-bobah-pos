@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -137,14 +136,12 @@ func (s *CostingService) loadGraph(ctx context.Context) (
 	return g, ingRows, prodRows, optRows, nil
 }
 
-// numF convierte un pgtype.Numeric (nullable) a float64 (0 si es null).
-func numF(n pgtype.Numeric) float64 {
-	if !n.Valid {
+// numF convierte un numeric nullable a float64 (0 si es null). El motor de costeo trabaja en
+// float64 a propósito (es un estimado con tolerancia de centavos, ver domain/costing.go); el
+// dinero cobrado sí es decimal exacto.
+func numF(n *decimal.Decimal) float64 {
+	if n == nil {
 		return 0
 	}
-	f, err := n.Float64Value()
-	if err != nil || !f.Valid {
-		return 0
-	}
-	return f.Float64
+	return n.InexactFloat64()
 }

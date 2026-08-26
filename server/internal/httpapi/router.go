@@ -145,12 +145,25 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Route("/expenses", func(r chi.Router) {
 						r.Get("/", h.ListExpenses)
 						r.Post("/", h.CreateExpense)
-						r.Post("/{id}/pay", h.PayExpense)
+						r.Get("/{id}", h.ExpenseDetail)
+						r.Post("/{id}/pay", h.PayExpense)         // agrega UN pago (el "+1 nuevo pago")
+						r.Post("/{id}/receive", h.ReceiveExpense) // entra al almacén
 						r.Post("/{id}/cancel", h.CancelExpense)
 						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
 						// devuelve las líneas para que el operador las confirme.
 						r.Post("/parse-doc", h.ExtractPurchaseDoc)
 					})
+					// Catálogo de insumos y buscador de artículos: sin esto el detalle del gasto no
+					// tiene contra qué buscar (los ingredientes solo entraban por el importador).
+					r.Get("/units", h.Units)
+					r.Get("/ingredients", h.ListIngredients)
+					r.Post("/ingredients", h.CreateIngredient)
+					r.Get("/articles", h.SearchArticles)
+					// Sugerencias de mapeo proveedor→inventario. Solo sugiere.
+					r.Get("/articles/suggest", h.SuggestArticles)
+					// Catálogo aprendido: revisar qué mapeó el sistema y deshacer un mapeo equivocado.
+					r.Get("/supplier-items", h.SupplierItems)
+					r.Delete("/supplier-items/{id}", h.ForgetSupplierItem)
 				})
 				// inventario: ajustes/mermas los hace gerencia
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/stock", func(r chi.Router) {

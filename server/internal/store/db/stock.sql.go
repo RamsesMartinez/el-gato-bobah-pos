@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
@@ -85,7 +84,7 @@ type InsertStockMovementParams struct {
 	ProductID    *int64            `json:"product_id"`
 	MovementType StockMovementType `json:"movement_type"`
 	Quantity     decimal.Decimal   `json:"quantity"`
-	UnitCost     pgtype.Numeric    `json:"unit_cost"`
+	UnitCost     *decimal.Decimal  `json:"unit_cost"`
 	OrderID      *int64            `json:"order_id"`
 	UserID       *int64            `json:"user_id"`
 	Reason       *string           `json:"reason"`
@@ -123,11 +122,11 @@ order by item_name
 `
 
 type ListStockLevelsRow struct {
-	ItemType StockItemType   `json:"item_type"`
-	ItemName string          `json:"item_name"`
-	OnHand   decimal.Decimal `json:"on_hand"`
-	MinStock pgtype.Numeric  `json:"min_stock"`
-	UnitCode string          `json:"unit_code"`
+	ItemType StockItemType    `json:"item_type"`
+	ItemName string           `json:"item_name"`
+	OnHand   decimal.Decimal  `json:"on_hand"`
+	MinStock *decimal.Decimal `json:"min_stock"`
+	UnitCode string           `json:"unit_code"`
 }
 
 // Almacén / niveles

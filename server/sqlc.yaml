@@ -33,6 +33,22 @@ sql:
             go_type:
               import: "github.com/shopspring/decimal"
               type: "Decimal"
+          # numeric NULABLE → *decimal.Decimal. Sin esto sqlc cae a pgtype.Numeric, que obliga a
+          # reconstruir el decimal a mano en cada lectura (y ahí es donde se cuela un float64).
+          # Importa donde el NULL significa algo distinto de 0: qty_received null = "no recibido",
+          # 0 = "no llegó".
+          - db_type: "pg_catalog.numeric"
+            nullable: true
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
+              pointer: true
+          - db_type: "numeric"
+            nullable: true
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
+              pointer: true
           - db_type: "timestamptz"
             go_type: "time.Time"
           - db_type: "user_role"
