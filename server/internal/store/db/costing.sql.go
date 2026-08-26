@@ -8,7 +8,6 @@ package db
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
@@ -52,13 +51,13 @@ from ingredients
 `
 
 type ListIngredientsForCostingRow struct {
-	ID          int64           `json:"id"`
-	IsPrep      bool            `json:"is_prep"`
-	RecipeID    *int64          `json:"recipe_id"`
-	YieldQty    pgtype.Numeric  `json:"yield_qty"`
-	WastePct    decimal.Decimal `json:"waste_pct"`
-	CurrentCost decimal.Decimal `json:"current_cost"`
-	CostSource  CostSource      `json:"cost_source"`
+	ID          int64            `json:"id"`
+	IsPrep      bool             `json:"is_prep"`
+	RecipeID    *int64           `json:"recipe_id"`
+	YieldQty    *decimal.Decimal `json:"yield_qty"`
+	WastePct    decimal.Decimal  `json:"waste_pct"`
+	CurrentCost decimal.Decimal  `json:"current_cost"`
+	CostSource  CostSource       `json:"cost_source"`
 }
 
 // Cargas para el motor de costeo (recompute batch).
@@ -125,11 +124,11 @@ select id, type, cost_source, manual_cost, recipe_id from products
 `
 
 type ListProductsForCostingRow struct {
-	ID         int64          `json:"id"`
-	Type       ProductType    `json:"type"`
-	CostSource CostSource     `json:"cost_source"`
-	ManualCost pgtype.Numeric `json:"manual_cost"`
-	RecipeID   *int64         `json:"recipe_id"`
+	ID         int64            `json:"id"`
+	Type       ProductType      `json:"type"`
+	CostSource CostSource       `json:"cost_source"`
+	ManualCost *decimal.Decimal `json:"manual_cost"`
+	RecipeID   *int64           `json:"recipe_id"`
 }
 
 func (q *Queries) ListProductsForCosting(ctx context.Context) ([]ListProductsForCostingRow, error) {

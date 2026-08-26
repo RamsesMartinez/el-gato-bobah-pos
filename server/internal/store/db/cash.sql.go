@@ -487,27 +487,33 @@ func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow
 }
 
 const listExpensesBySession = `-- name: ListExpensesBySession :many
-select e.id, ec.name as category, s.name as supplier, pm.name as payment_method,
-       e.amount, e.currency, e.status
-from expenses e
+select ep.id, e.id as expense_id, ec.name as category, s.name as supplier,
+       pm.name as payment_method, ep.amount, e.currency, e.status
+from expense_payments ep
+join expenses e on e.id = ep.expense_id
 join expense_categories ec on ec.id = e.category_id
+join payment_methods pm on pm.id = ep.payment_method_id
 left join suppliers s on s.id = e.supplier_id
-left join payment_methods pm on pm.id = e.payment_method_id
-where e.register_session_id = $1
-order by e.id
+where ep.register_session_id = $1
+order by ep.id
 `
 
 type ListExpensesBySessionRow struct {
 	ID            int64           `json:"id"`
+	ExpenseID     int64           `json:"expense_id"`
 	Category      string          `json:"category"`
 	Supplier      *string         `json:"supplier"`
-	PaymentMethod *string         `json:"payment_method"`
+	PaymentMethod string          `json:"payment_method"`
 	Amount        decimal.Decimal `json:"amount"`
 	Currency      string          `json:"currency"`
 	Status        ExpenseStatus   `json:"status"`
 }
 
 // Gastos atribuidos a un corte (efectivo y no-efectivo): sección "Gastos" del resumen del corte.
+//
+// La atribución al corte pasó del encabezado del gasto a CADA PAGO (0029): un gasto con pago
+// partido puede tocar dos cortes distintos, así que lo que se lista es el PAGO, y el importe
+// que se muestra es el del pago, no el del gasto completo.
 func (q *Queries) ListExpensesBySession(ctx context.Context, registerSessionID *int64) ([]ListExpensesBySessionRow, error) {
 	rows, err := q.db.Query(ctx, listExpensesBySession, registerSessionID)
 	if err != nil {
@@ -519,6 +525,7 @@ func (q *Queries) ListExpensesBySession(ctx context.Context, registerSessionID *
 		var i ListExpensesBySessionRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.ExpenseID,
 			&i.Category,
 			&i.Supplier,
 			&i.PaymentMethod,

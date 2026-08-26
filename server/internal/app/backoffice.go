@@ -99,12 +99,18 @@ type CashMovementView struct {
 	ExpenseID  *int64          `json:"expenseId"`  // no-nil si es la salida de un gasto (va en la sección Gastos)
 }
 
-// CashExpenseView es un gasto atribuido a un corte (efectivo o no), para la sección "Gastos".
+// CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
+// "Gastos" del resumen.
+//
+// Es el pago y no el gasto porque desde 0029 la atribución al corte vive en cada pago: un gasto
+// liquidado con tarjeta un día y efectivo otro toca dos cortes, y cada uno debe ver solo su
+// parte. Amount es el importe del PAGO, no el del gasto completo.
 type CashExpenseView struct {
-	ID            int64           `json:"id"`
+	ID            int64           `json:"id"` // id del pago
+	ExpenseID     int64           `json:"expenseId"`
 	Category      string          `json:"category"`
 	Supplier      *string         `json:"supplier"`
-	PaymentMethod *string         `json:"paymentMethod"`
+	PaymentMethod string          `json:"paymentMethod"`
 	Amount        decimal.Decimal `json:"amount"`
 	Currency      domain.Currency `json:"currency"`
 	Status        string          `json:"status"`
@@ -401,8 +407,9 @@ func (s *BackofficeService) sessionExpenses(ctx context.Context, sessionID int64
 	out := make([]CashExpenseView, 0, len(rows))
 	for _, e := range rows {
 		out = append(out, CashExpenseView{
-			ID: e.ID, Category: e.Category, Supplier: e.Supplier, PaymentMethod: e.PaymentMethod,
-			Amount: e.Amount, Currency: domain.Currency(e.Currency), Status: string(e.Status),
+			ID: e.ID, ExpenseID: e.ExpenseID, Category: e.Category, Supplier: e.Supplier,
+			PaymentMethod: e.PaymentMethod,
+			Amount:        e.Amount, Currency: domain.Currency(e.Currency), Status: string(e.Status),
 		})
 	}
 	return out, nil
@@ -696,199 +703,6 @@ func tsPtr(t pgtype.Timestamptz) *time.Time {
 		return nil
 	}
 	return &t.Time
-}
-
-// ---- Gastos ----
-
-type ExpenseView struct {
-	ID             int64           `json:"id"`
-	ExpenseDate    string          `json:"expenseDate"` // YYYY-MM-DD
-	Status         string          `json:"status"`
-	Category       string          `json:"category"`
-	FinancialGroup string          `json:"financialGroup"`
-	Supplier       *string         `json:"supplier"`
-	Amount         decimal.Decimal `json:"amount"`
-	Currency       domain.Currency `json:"currency"`
-	Description    *string         `json:"description"`
-	PaymentMethod  *string         `json:"paymentMethod"`
-	PaidAt         *time.Time      `json:"paidAt"`
-	CreatedBy      *string         `json:"createdBy"`
-}
-
-type ExpenseInput struct {
-	CategoryID  int64
-	SupplierID  *int64
-	Amount      decimal.Decimal
-	Description string
-	Status      string // pendiente | pagada
-	MethodID    *int16 // requerido si status == pagada
-	RegisterID  *int64 // caja contra la que se paga; requerida (y abierta) si status == pagada
-	UserID      int64
-}
-
-// CreateExpense registra un gasto pendiente o directamente pagado. Todo gasto PAGADO exige una
-// caja abierta (elegida en RegisterID): el gasto se liga a esa sesión y, si el método es efectivo,
-// genera la salida del cajón en el mismo tx (el corte cuadra solo). Un pendiente no toca caja.
-func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) (int64, error) {
-	amount := domain.Round2(in.Amount)
-	// Monto ya redondeado (sub-centavo/absurdo → 400, no 500), categoría y estado válidos.
-	if !domain.ValidMoney(amount, false) || in.CategoryID == 0 {
-		return 0, domain.ErrValidation
-	}
-	if in.Status != domain.ExpensePendiente && in.Status != domain.ExpensePagada {
-		return 0, domain.ErrValidation // no se crea directo como cancelada
-	}
-	var desc *string
-	if in.Description != "" {
-		desc = &in.Description
-	}
-
-	params := db.CreateExpenseParams{
-		ExpenseDate: pgtype.Date{Time: s.now(), Valid: true},
-		CategoryID:  in.CategoryID, SupplierID: in.SupplierID, Amount: amount,
-		Description: desc, CreatedBy: in.UserID, Status: db.ExpenseStatus(in.Status),
-	}
-	var sessionID *int64
-	var isCash bool
-	if in.Status == domain.ExpensePagada {
-		if in.MethodID == nil || in.RegisterID == nil {
-			return 0, domain.ErrValidation // pagar exige método y caja
-		}
-		sid, cash, err := s.resolveExpensePayment(ctx, *in.MethodID, *in.RegisterID)
-		if err != nil {
-			return 0, err
-		}
-		isCash, sessionID = cash, &sid
-		params.PaymentMethodID = in.MethodID
-		params.RegisterSessionID = sessionID
-		params.PaidAt = pgtype.Timestamptz{Time: s.now(), Valid: true}
-		params.PaidBy = &in.UserID
-	}
-
-	var id int64
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		var err error
-		if id, err = q.CreateExpense(ctx, params); err != nil {
-			return err
-		}
-		if isCash && sessionID != nil { // salida de efectivo ligada al gasto
-			return q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: *sessionID, Amount: amount, Concept: expenseConcept(in.Description), ExpenseID: &id, UserID: in.UserID,
-			})
-		}
-		return nil
-	})
-	return id, err
-}
-
-// PayExpense marca una pendiente como pagada contra una caja abierta (registerID); en efectivo
-// registra la salida del cajón en el mismo tx.
-func (s *BackofficeService) PayExpense(ctx context.Context, id int64, methodID int16, registerID int64, userID int64) error {
-	exp, err := s.store.QC(ctx).GetExpense(ctx, id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrNotFound
-		}
-		return err
-	}
-	if !domain.CanPayExpense(string(exp.Status)) {
-		return domain.ErrConflict // ya pagada/cancelada
-	}
-	sid, isCash, err := s.resolveExpensePayment(ctx, methodID, registerID)
-	if err != nil {
-		return err
-	}
-	sessionID := &sid
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		n, err := q.PayExpense(ctx, db.PayExpenseParams{ID: id, PaymentMethodID: &methodID, RegisterSessionID: sessionID, PaidBy: &userID})
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return domain.ErrConflict // carrera: alguien la cambió entre el GET y el UPDATE
-		}
-		if isCash {
-			return q.InsertExpenseCashMovement(ctx, db.InsertExpenseCashMovementParams{
-				SessionID: sid, Amount: exp.Amount, Concept: expenseConcept(derefStr(exp.Description)), ExpenseID: &id, UserID: userID,
-			})
-		}
-		return nil
-	})
-}
-
-// CancelExpense anula una pendiente (una pagada es terminal — ver domain.CanCancelExpense).
-func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason string, userID int64) error {
-	exp, err := s.store.QC(ctx).GetExpense(ctx, id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrNotFound
-		}
-		return err
-	}
-	if !domain.CanCancelExpense(string(exp.Status)) {
-		return domain.ErrConflict
-	}
-	var r *string
-	if reason != "" {
-		r = &reason
-	}
-	n, err := s.store.QC(ctx).CancelExpense(ctx, db.CancelExpenseParams{ID: id, CancelledBy: &userID, CancelReason: r})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return domain.ErrConflict
-	}
-	return nil
-}
-
-// ListExpenses devuelve una página de gastos + el total (para el paginador).
-func (s *BackofficeService) ListExpenses(ctx context.Context, status string, limit, offset int32) ([]ExpenseView, int64, error) {
-	var st *db.ExpenseStatus
-	if domain.ValidExpenseStatus(status) {
-		v := db.ExpenseStatus(status)
-		st = &v
-	}
-	total, err := s.store.QC(ctx).CountExpenses(ctx, st)
-	if err != nil {
-		return nil, 0, err
-	}
-	rows, err := s.store.QC(ctx).ListExpenses(ctx, db.ListExpensesParams{Status: st, Lim: limit, Off: offset})
-	if err != nil {
-		return nil, 0, err
-	}
-	out := make([]ExpenseView, len(rows))
-	for i, r := range rows {
-		out[i] = ExpenseView{
-			ID: r.ID, ExpenseDate: r.ExpenseDate.Time.Format("2006-01-02"), Status: string(r.Status),
-			Category: r.Category, FinancialGroup: string(r.FinancialGroup), Supplier: r.Supplier,
-			Amount: r.Amount, Currency: domain.Currency(r.Currency), Description: r.Description,
-			PaymentMethod: r.PaymentMethod, PaidAt: tsPtr(r.PaidAt), CreatedBy: r.CreatedByName,
-		}
-	}
-	return out, total, nil
-}
-
-// resolveExpensePayment valida el pago de un gasto contra una caja: TODO gasto pagado exige que la
-// caja elegida (registerID) tenga una sesión abierta — sin ella, ErrConflict (no hay caja abierta),
-// ya no hay fallback de "petty cash". Devuelve el id de esa sesión (para ligar el gasto) y si el
-// método toca el cajón (efectivo → salida de efectivo).
-func (s *BackofficeService) resolveExpensePayment(ctx context.Context, methodID int16, registerID int64) (int64, bool, error) {
-	m, err := s.store.QC(ctx).GetPaymentMethod(ctx, methodID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, false, domain.ErrValidation // método inexistente
-		}
-		return 0, false, err
-	}
-	sess, err := s.store.QC(ctx).GetOpenSessionByRegister(ctx, registerID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, false, domain.ErrConflict // la caja elegida no está abierta (o no existe)
-		}
-		return 0, false, err
-	}
-	return sess.ID, m.AffectsCashDrawer, nil
 }
 
 func expenseConcept(description string) string {

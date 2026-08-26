@@ -23,4 +23,11 @@ var (
 	// ErrResetInvalid: el enlace/token de recuperación no sirve (inexistente, ya usado o vencido).
 	// Distinto de ErrInvalidCredentials para dar un mensaje accionable en la pantalla de reset.
 	ErrResetInvalid = errors.New("el enlace de recuperación es inválido o expiró; solicita uno nuevo")
+	// ErrPaymentNeedsRegister: se pagó con un método que mueve el cajón sin decir de qué caja
+	// salió. Es obligatorio y no opcional: efectivo que sale sin movimiento de caja descuadra el
+	// corte, y el descuadre se descubre horas después sin saber de dónde vino.
+	ErrPaymentNeedsRegister = fmt.Errorf("%w: un pago en efectivo debe indicar la caja de la que sale", ErrValidation)
+	// ErrPaymentsBelowAmount: se intentó dar por pagado un gasto con pagos que no cubren el
+	// importe. Envuelve ErrValidation para llegar como 4xx con mensaje accionable.
+	ErrPaymentsBelowAmount = fmt.Errorf("%w: los pagos registrados no cubren el importe del gasto", ErrValidation)
 )

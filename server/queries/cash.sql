@@ -115,14 +115,19 @@ order by m.created_at;
 
 -- name: ListExpensesBySession :many
 -- Gastos atribuidos a un corte (efectivo y no-efectivo): sección "Gastos" del resumen del corte.
-select e.id, ec.name as category, s.name as supplier, pm.name as payment_method,
-       e.amount, e.currency, e.status
-from expenses e
+--
+-- La atribución al corte pasó del encabezado del gasto a CADA PAGO (0029): un gasto con pago
+-- partido puede tocar dos cortes distintos, así que lo que se lista es el PAGO, y el importe
+-- que se muestra es el del pago, no el del gasto completo.
+select ep.id, e.id as expense_id, ec.name as category, s.name as supplier,
+       pm.name as payment_method, ep.amount, e.currency, e.status
+from expense_payments ep
+join expenses e on e.id = ep.expense_id
 join expense_categories ec on ec.id = e.category_id
+join payment_methods pm on pm.id = ep.payment_method_id
 left join suppliers s on s.id = e.supplier_id
-left join payment_methods pm on pm.id = e.payment_method_id
-where e.register_session_id = $1
-order by e.id;
+where ep.register_session_id = $1
+order by ep.id;
 
 -- Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
 -- name: NetCashMovements :one
