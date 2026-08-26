@@ -97,6 +97,11 @@ reset-admin: deps-up ## Actualiza contraseña/PIN del admin desde deploy/.env (s
 reset-password: deps-up ## Resetea password de un usuario (prompt oculto): make reset-password user=admin@gatobobah
 	@bash scripts/dev-api.sh reset-password "$(user)"
 
+parse-doc: ## Extrae un ticket/factura de compra y lo imprime: make parse-doc f=docs/tickets/ticket.pdf
+	@cd server && ENV_FILE=../deploy/.env go run ./cmd/parse-doc "../$(f)"
+parse-docs: ## Corre la extracción sobre todos los documentos de docs/tickets/ (verificación)
+	@cd server && ENV_FILE=../deploy/.env go run ./cmd/parse-doc ../docs/tickets/*.pdf
+
 sqlc: ## Regenera el código sqlc
 	cd server && $(GOBIN)/sqlc generate
 sqlc-diff: ## Falla si el código sqlc generado no está al día (olvidaste `make sqlc`)

@@ -28,6 +28,11 @@ const refreshCookie = "refresh_token"
 const (
 	authFailMax    = 10
 	authFailWindow = 5 * time.Minute
+	// docExtractMax: extracciones de documento por hora y por usuario. Cada una es una llamada
+	// pagada a un modelo, así que el tope protege el presupuesto, no la seguridad: un local
+	// captura unas cuantas compras al día, y 60/hora deja margen de sobra para reintentar una
+	// foto borrosa sin que un bucle accidental en el front cueste dinero.
+	docExtractMax = 60
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -49,26 +54,33 @@ type Deps struct {
 	Company    *app.CompanyService
 	Reset      *app.ResetService
 	Broker     *realtime.Broker
+	// PurchaseDoc puede ser nil: la extracción de tickets es opcional (sin ANTHROPIC_API_KEY el
+	// POS opera capturando las líneas a mano).
+	PurchaseDoc *app.PurchaseDocService
 }
 
 type Handlers struct {
-	cfg        config.Config
-	version    string
-	builtAt    string
-	jwt        *auth.Manager
-	auth       *app.AuthService
-	users      *app.UsersService
-	menu       *app.MenuService
-	menuCache  *cache.MenuCache
-	suggest    *app.SuggestService
-	costing    *app.CostingService
-	orders     *app.OrdersService
-	backoffice *app.BackofficeService
-	admin      *app.AdminService
-	settings   *app.SettingsService
-	company    *app.CompanyService
-	reset      *app.ResetService
-	broker     *realtime.Broker
+	cfg         config.Config
+	version     string
+	builtAt     string
+	jwt         *auth.Manager
+	auth        *app.AuthService
+	users       *app.UsersService
+	menu        *app.MenuService
+	menuCache   *cache.MenuCache
+	suggest     *app.SuggestService
+	costing     *app.CostingService
+	orders      *app.OrdersService
+	backoffice  *app.BackofficeService
+	admin       *app.AdminService
+	settings    *app.SettingsService
+	company     *app.CompanyService
+	reset       *app.ResetService
+	broker      *realtime.Broker
+	purchaseDoc *app.PurchaseDocService
+	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
+	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
+	docExtract *rateLimiter
 	authFails  *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs    *rateLimiter // per-IP request throttle for the /auth group
 }
@@ -78,6 +90,8 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
+		purchaseDoc: d.PurchaseDoc,
+		docExtract:  newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.

@@ -147,6 +147,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Post("/", h.CreateExpense)
 						r.Post("/{id}/pay", h.PayExpense)
 						r.Post("/{id}/cancel", h.CancelExpense)
+						// Extracción del documento (ticket/factura/pedido) → borrador. NO escribe nada:
+						// devuelve las líneas para que el operador las confirme.
+						r.Post("/parse-doc", h.ExtractPurchaseDoc)
 					})
 				})
 				// inventario: ajustes/mermas los hace gerencia

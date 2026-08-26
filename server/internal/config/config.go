@@ -11,6 +11,11 @@ import (
 // short/guessable key means an attacker can forge admin tokens offline.
 const minSecretLen = 32
 
+// DefaultAnthropicModel es el modelo de extracción cuando ANTHROPIC_MODEL no está definido.
+// Debe coincidir con el envDefault del campo AnthropicModel (un tag de struct no acepta
+// constantes); las herramientas que no cargan Config completa lo usan desde aquí.
+const DefaultAnthropicModel = "claude-opus-5"
+
 // Config holds all runtime knobs, env-only (12-factor / Compose-friendly).
 type Config struct {
 	Port        string `env:"PORT" envDefault:"8080"`
@@ -44,7 +49,19 @@ type Config struct {
 	// Fail-open: si HIBP no responde, se permite (con evento de seguridad) para no bloquear el
 	// alta de usuarios cuando el POS está sin internet.
 	HIBPEnabled bool `env:"HIBP_ENABLED" envDefault:"true"`
+
+	// --- Extracción de tickets/facturas de compra (Anthropic API) ---
+	// Vacío = feature apagada: las líneas del gasto se capturan a mano. Es opcional a propósito
+	// para que el POS no dependa de un servicio externo (ni de internet) para operar.
+	AnthropicAPIKey string `env:"ANTHROPIC_API_KEY" envDefault:""`
+	// AnthropicModel es configurable porque el costo/calidad de la extracción se ajusta sin
+	// recompilar. No se manda thinking ni effort en la llamada justamente para que cualquier
+	// modelo del catálogo sea válido aquí (Haiku rechaza esos parámetros).
+	AnthropicModel string `env:"ANTHROPIC_MODEL" envDefault:"claude-opus-5"`
 }
+
+// DocExtractEnabled reports whether purchase-document extraction is configured.
+func (c Config) DocExtractEnabled() bool { return c.AnthropicAPIKey != "" }
 
 // AppDatabaseURLOrDefault devuelve la conexión de servicio (rol app) o, si no se configuró,
 // DATABASE_URL. En producción Validate exige APP_DATABASE_URL para que RLS no quede desactivado.
@@ -83,6 +100,16 @@ func Validate(c Config) error {
 	// y anularía el aislamiento en silencio. main.go además lo verifica en runtime (assertRLSEnforced).
 	if c.Env == "production" && c.AppDatabaseURL == "" {
 		return errors.New("APP_DATABASE_URL requerido en producción: el API debe conectarse como el rol de app (no-superusuario) para que RLS aísle los tenants")
+	}
+	// Una llave de Anthropic copiada del ejemplo, o con el prefijo equivocado, falla en la
+	// primera extracción y con un 401 opaco. Mejor no arrancar: es config, no un error de uso.
+	if c.AnthropicAPIKey != "" {
+		if IsPlaceholder(c.AnthropicAPIKey) || !strings.HasPrefix(c.AnthropicAPIKey, "sk-ant-") {
+			return errors.New("ANTHROPIC_API_KEY inválida: debe empezar con sk-ant- (o déjala vacía para desactivar la extracción de tickets)")
+		}
+		if c.AnthropicModel == "" {
+			return errors.New("ANTHROPIC_MODEL vacío: define el modelo (p. ej. claude-opus-5) o quita ANTHROPIC_API_KEY")
+		}
 	}
 	return nil
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -45,7 +44,7 @@ func main() {
 	resetPassword := flag.String("reset-password", "", "resetea la contraseña de username@slug (prompt interactivo, oculto) y sale")
 	flag.Parse()
 
-	loadEnvFile() // carga deploy/.env de forma literal (soporta # $ espacios, sin expansión de shell)
+	config.LoadEnvFile() // carga deploy/.env de forma literal (soporta # $ espacios, sin expansión de shell)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -164,6 +163,9 @@ func main() {
 		Company:    app.NewCompanyService(st),
 		Reset:      app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:     realtime.NewBroker(),
+		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
+		// funciona capturando las líneas del gasto a mano (el handler responde 501).
+		PurchaseDoc: app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
 
@@ -373,53 +375,6 @@ func checkAdminSecrets(password, pin string) error {
 		return fmt.Errorf("ADMIN_PIN es demasiado débil (evita 1234/0000/secuencias); usa uno menos obvio en deploy/.env")
 	}
 	return nil
-}
-
-// loadEnvFile carga variables desde un archivo .env con parseo 100% LITERAL: el valor
-// es todo lo que sigue al '=' hasta el fin de línea, SIN expansión de $ ni comentarios
-// inline (soporta cualquier contraseña: #, $, !, espacios, etc., como python-decouple).
-// Solo se quitan comillas envolventes opcionales. No sobrescribe variables ya definidas
-// (dev inyecta la conexión; prod usa compose).
-func loadEnvFile() {
-	var path string
-	for _, f := range []string{os.Getenv("ENV_FILE"), "deploy/.env", "../deploy/.env"} {
-		if f == "" {
-			continue
-		}
-		if _, err := os.Stat(f); err == nil {
-			path = f
-			break
-		}
-	}
-	if path == "" {
-		return
-	}
-	f, err := os.Open(path) //nolint:gosec // ruta de configuración conocida
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue // línea vacía o comentario (solo a inicio de línea)
-		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		val = strings.TrimSpace(val)
-		// quitar comillas envolventes opcionales, sin tocar el contenido
-		if len(val) >= 2 && (val[0] == '"' || val[0] == '\'') && val[len(val)-1] == val[0] {
-			val = val[1 : len(val)-1]
-		}
-		if _, exists := os.LookupEnv(key); !exists {
-			_ = os.Setenv(key, val)
-		}
-	}
 }
 
 // resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME) desde el
