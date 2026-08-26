@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
@@ -58,6 +59,10 @@ func Error(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrResetInvalid):
 		// enlace de recuperación inválido/usado/vencido: 410 Gone con mensaje accionable
 		status, code = http.StatusGone, "RESET_INVALID"
+	case errors.Is(err, app.ErrDocExtractDisabled):
+		// 501 y no 500: la extracción de documentos es opcional y no está configurada. Distinguirlo
+		// permite al front ofrecer la captura manual en vez de mostrar "error del servidor".
+		status, code = http.StatusNotImplemented, "NOT_CONFIGURED"
 	}
 
 	if status == http.StatusInternalServerError {

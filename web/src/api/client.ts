@@ -69,17 +69,21 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   const started = performance.now();
   const label = `${method} ${path}`;
 
+  // FormData (subir un ticket) va tal cual y SIN Content-Type: el navegador tiene que poner el
+  // suyo con el boundary del multipart. Se detecta aquí para reusar el resto de la ruta —
+  // token, refresh ante 401, trazas y el sobre de error — en vez de duplicarla.
+  const isForm = body instanceof FormData;
   let res: Response;
   try {
     res = await fetch(BASE + path, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         'X-Request-Id': requestId,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: 'include',
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
   } catch (err) {
     const ms = Math.round(performance.now() - started);
@@ -123,6 +127,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  postForm: <T>(path: string, form: FormData) => request<T>('POST', path, form),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   del: <T>(path: string) => request<T>('DELETE', path),
