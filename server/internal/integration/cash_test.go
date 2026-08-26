@@ -290,7 +290,10 @@ func TestSessionSummaryIncludesExpenses(t *testing.T) {
 	}
 	if _, err := backoffice.CreateExpense(ctx, app.ExpenseInput{
 		CategoryID: catID, Amount: decimal.RequireFromString("120"),
-		Status: domain.ExpensePagada, MethodID: &cashID, RegisterID: &primaryID, UserID: admin,
+		Status: domain.ExpensePagada, UserID: admin,
+		Payments: []app.ExpensePaymentInput{
+			{MethodID: cashID, Amount: decimal.RequireFromString("120"), RegisterID: &primaryID},
+		},
 	}); err != nil {
 		t.Fatalf("CreateExpense: %v", err)
 	}
@@ -332,7 +335,10 @@ func TestExpensePaidRequiresOpenRegister(t *testing.T) {
 
 	in := app.ExpenseInput{
 		CategoryID: catID, Amount: decimal.RequireFromString("150"),
-		Status: domain.ExpensePagada, MethodID: &cashID, RegisterID: &primaryID, UserID: admin,
+		Status: domain.ExpensePagada, UserID: admin,
+		Payments: []app.ExpensePaymentInput{
+			{MethodID: cashID, Amount: decimal.RequireFromString("150"), RegisterID: &primaryID},
+		},
 	}
 	// Sin caja abierta → ErrConflict.
 	if _, err := backoffice.CreateExpense(ctx, in); !errors.Is(err, domain.ErrConflict) {
