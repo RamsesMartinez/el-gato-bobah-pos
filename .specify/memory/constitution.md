@@ -79,6 +79,7 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
 - **Verificación de backend antes de dar algo por bueno**: `make api-build && make api-test`.
 - Commits pequeños y enfocados.
+- **Cada commit va firmado y con autoría única.** Firma GPG verificable (`git log -1 --pretty=%G?` → `G`) y **un solo autor**: el dueño del repo. **Ningún trailer `Co-Authored-By`**, tampoco cuando el commit lo escribió un agente — la firma responde por quién hizo el cambio y un co-autor que no puede firmar la contradice. (Llave, `git config` y ajuste del harness: `AGENTS.md`.)
 
 ## Governance
 
@@ -98,4 +99,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
+**Version**: 1.1.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
