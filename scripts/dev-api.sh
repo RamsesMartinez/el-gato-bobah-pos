@@ -26,9 +26,17 @@ export APP_BASE_URL="${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-3000}}"
 export ENV_FILE="$ROOT/deploy/.env"
 
 cd "$ROOT/server"
+
+if [ "${1:-}" = "air" ]; then exec "$(go env GOPATH)/bin/air"; fi
+
+# Se compila a ./tmp/api (la misma ruta que usa air) en vez de `go run`: el binario que `go run`
+# deja en %TEMP%\go-build… lo bloquea Smart App Control de Windows 11 —"Una directiva de Control
+# de aplicaciones bloqueó este archivo"— y la API muere al arrancar sin decir por qué. Desde una
+# ruta estable del repo pasa el filtro, y de paso el rebuild reusa la caché entre reinicios.
+go build -o ./tmp/api ./cmd/api
+
 case "${1:-}" in
-  air)            exec "$(go env GOPATH)/bin/air" ;;
-  reset-admin)    exec go run ./cmd/api -reset-admin ;;
-  reset-password) exec go run ./cmd/api -reset-password="${2:?uso: make reset-password user=usuario@slug}" ;;
-  *)              exec go run ./cmd/api ;;
+  reset-admin)    exec ./tmp/api -reset-admin ;;
+  reset-password) exec ./tmp/api -reset-password="${2:?uso: make reset-password user=usuario@slug}" ;;
+  *)              exec ./tmp/api ;;
 esac
