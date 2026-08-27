@@ -1,0 +1,17 @@
+# El working tree va en LF. Sin esto, el `core.autocrlf=true` que Git for Windows deja por
+# default checa out los .go en CRLF y `gofmt -l` —el hook de pre-commit— marca los 113 archivos
+# del server: no se puede commitear Go desde Windows sin --no-verify, que no se usa.
+* text=auto eol=lf
+
+# Exports históricos que se comparan byte a byte (docs/reorg/): quedan como se generaron.
+docs/reorg/*.csv -text
+
+# Fixtures binarios (docs/tickets/*.pdf los leen purchasedoc_test.go y expenseDraft.test.ts).
+*.pdf  binary
+*.xls  binary
+*.xlsx binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary

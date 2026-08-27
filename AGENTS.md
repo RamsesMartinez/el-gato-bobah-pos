@@ -70,6 +70,7 @@ mecánica:
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
+- **`make install` y lefthook con Go 1.27**: `github.com/evilmartians/lefthook@latest` (módulo v1) **ya no compila** — su dep `go-json-experiment/json` referencia `json.SkipFunc`/`json.DiscardUnknownMembers`, que `encoding/json/v2` movió al entrar a la stdlib. El módulo **`/v2`** sí compila y valida el `lefthook.yml` actual sin tocarlo (`lefthook validate` → *All good*), así que el Makefile instala `lefthook/v2@latest`. Si el hook deja de sincronizarse, revisa primero eso y no `--no-verify`.
 - **Go 1.27 — lo que cambia para este repo.**
   - `encoding/json` ahora corre sobre la implementación de v2, pero la **API v1 no cambió de
     semántica**: verificado en 1.27.0 que sigue aceptando nombres duplicados (gana el último) y
@@ -138,3 +139,21 @@ Los principios de la constitución son la vara con la que `analyze` mide spec, p
 
 Un documento nuevo: spec de feature → `specs/` (vía spec-kit); principio → la constitución;
 comando o quirk → este archivo; runbook operativo → `docs/` **y** su renglón en el índice.
+
+## 7. Windows (Git Bash) — quirks del entorno de dev
+
+La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
+
+- **Smart App Control bloquea binarios recién compilados.** Está **on por default** en Windows 11 y no se puede excluir un archivo: o se apaga entero (y volver a encenderlo exige reinstalar Windows) o se convive con él. Bloquea por reputación, así que es errático — el síntoma es *"Una directiva de Control de aplicaciones bloqueó este archivo"* y en `Microsoft-Windows-CodeIntegrity/Operational` un evento 3077/3118. Lo confirmado:
+  - El binario que `go run` deja en `%TEMP%\go-build…` **se bloquea** → la API moría al arrancar desde `make start`. Por eso [scripts/dev-api.sh](scripts/dev-api.sh) compila a `server/tmp/api` (ruta estable, la misma de air) en vez de usar `go run`. **No lo regreses a `go run`.**
+  - `govulncheck.exe` **se bloquea siempre**, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). El hook de pre-push muere ahí. Alternativa sin apagar SAC — corre el mismo scanner que CI, en contenedor:
+    ```bash
+    MSYS_NO_PATHCONV=1 docker run --rm -v "d:/git/el-gato-bobah-pos/server:/src" -w /src golang:1.27 \
+      sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..."
+    ```
+  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `golangci-lint`, `lefthook`) corren sin problema.
+- **El working tree va en LF y [.gitattributes](.gitattributes) lo fuerza** (`* text=auto eol=lf`). Sin él, el `core.autocrlf=true` que Git for Windows deja por default checa out los 113 `.go` en CRLF y `gofmt -l` —lo primero que corre el pre-commit— los marca todos: no se puede commitear Go sin `--no-verify`, que no se usa. Si te tocó un working tree ya en CRLF: `git config --local core.autocrlf false`, quítales el `\r` y corre `git add --renormalize .`. Ese último paso importa — el contenido queda idéntico pero el stat cache no se refresca solo, y `git status` se queda marcando cientos de archivos "modificados" que `git diff` ve iguales.
+- **`GOTOOLCHAIN` vacío se comporta como `local`**: con Go 1.26 instalado, `go build` falla con *"go.mod requires go >= 1.27.0"* en vez de bajar el toolchain. Se arregla con `go env -w GOTOOLCHAIN=auto` (baja go1.27.0 al module cache) o instalando Go 1.27.
+- **No hay `lsof`**, así que `scripts/start.sh` no detecta puertos ocupados ni `scripts/stop.sh` mata la API/web por puerto. Fija los puertos (`BACKEND_PORT=8080 FRONTEND_PORT=3000 make start`) y cierra a mano lo que quede vivo.
+- **`docker run -v` con rutas POSIX**: Git Bash reescribe `/src` a `C:/Program Files/Git/src`. Prefija `MSYS_NO_PATHCONV=1`.
+- **La firma GPG también topa con Windows**: ver `gpg.program` en §4.

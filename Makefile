@@ -18,7 +18,9 @@ DEV_JWT_SECRET   ?= dev-secret-no-usar-en-prod
 # sqlc pinado (no @latest): el código generado y `sqlc vet` deben ser reproducibles entre local
 # y CI. Súbelo a mano aquí y en .github/workflows/ci.yml a la vez.
 SQLC_VERSION     ?= v1.31.1
-GOBIN := $(shell go env GOPATH)/bin
+# En Windows `go env GOPATH` regresa la ruta con backslashes y el sh de make se los come
+# (C:\Users\… queda C:Users…), rompiendo lint/vuln/sqlc/goose. Normalizar a "/" es no-op fuera de ahí.
+GOBIN := $(subst \,/,$(shell go env GOPATH))/bin
 export DEV_DATABASE_URL DEV_REDIS_URL DEV_JWT_SECRET
 
 help: ## Lista los targets
@@ -43,7 +45,7 @@ install: ## Prepara TODO: valida entorno + variables, instala deps y herramienta
 	@GOBIN="$(GOBIN)" go install github.com/air-verse/air@latest
 	@GOBIN="$(GOBIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@GOBIN="$(GOBIN)" go install golang.org/x/vuln/cmd/govulncheck@latest
-	@GOBIN="$(GOBIN)" go install github.com/evilmartians/lefthook@latest
+	@GOBIN="$(GOBIN)" go install github.com/evilmartians/lefthook/v2@latest
 	@echo "▶ Instalando git hooks (lefthook)…"
 	@$(GOBIN)/lefthook install
 	@echo "▶ Bajando imágenes docker (postgres, redis)…"
