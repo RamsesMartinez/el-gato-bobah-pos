@@ -100,6 +100,26 @@ Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
 
 Que deban quedar verdes y que `--no-verify` no se use son quality gates de la constitución.
 
+### Identidad, firma y autoría
+
+Se clona y se pushea **por SSH** (`git@github.com:…`, nunca HTTPS) y **todo commit va firmado con
+GPG**. La config es **local a este repo** — la máquina tiene otros repos con otra identidad, así
+que no se toca `--global`:
+
+| clave | valor |
+|---|---|
+| `user.name` / `user.email` | `Ramses Martinez` / `ramses.mtz96@gmail.com` |
+| `user.signingkey` | `6B7243B7F63FCCA0A645AC7603570B54632AB5C1` (ed25519 `[SC]`, expira **2028-08-26**) |
+| `commit.gpgsign` / `tag.gpgsign` | `true` |
+| `gpg.program` | `C:/Program Files/Git/usr/bin/gpg.exe` (solo Windows; en Linux/mac basta el `gpg` del PATH) |
+| `core.sshCommand` | `ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes` |
+
+- **`gpg.program` con ruta de Windows**: el `git.exe` que corre desde PowerShell o VS Code no resuelve el `/usr/bin/gpg` de Git Bash y falla con *gpg failed to sign the data*.
+- **La llave no tiene passphrase, a propósito**: los hooks de lefthook y los agentes firman sin TTY y en Git Bash el pinentry no se renderiza — con passphrase el commit se queda colgado. La protección es la cuenta de Windows; el riesgo aceptado es una llave exportable si alguien ya tiene la sesión.
+- **Renuévala antes de 2028-08-26** (`gpg --quick-set-expire <fp> 2y`): una llave expirada hace fallar todo commit con `commit.gpgsign=true`, no lo firma sin avisar.
+- Verificar: `git log -1 --pretty="%G? %GK"` → `G` + el key id. El badge *Verified* de GitHub exige además tener la pública subida (`gh gpg-key add` con scope `admin:gpg_key`).
+- **Ningún commit lleva `Co-Authored-By`** — es quality gate de la constitución. Claude Code lo agrega por default: [.claude/settings.json](.claude/settings.json) lo apaga con `"includeCoAuthoredBy": false`. Otro harness que lo reinyecte, se borra del mensaje antes de commitear.
+
 ## 5. Spec-driven development
 
 Las features nuevas pasan por spec-kit: `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
