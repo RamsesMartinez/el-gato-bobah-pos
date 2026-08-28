@@ -120,7 +120,7 @@ el papel campo por campo ([quickstart.md](./quickstart.md) §US1).
 
 - [X] T024 [P] [US3] Escribir `server/internal/domain/logo_test.go` table-driven: tamaño sobre 256 KB, tipo real fuera de la lista blanca, JPEG renombrado a `.png` clasificado por contenido, SVG con `<script>` rechazado, y lado mayor a 1024 px
 - [X] T025 [P] [US3] Escribir los casos de `ValidateBusinessInfo` en `server/internal/domain/businessinfo_test.go`: nombre vacío, nombre de 61 caracteres y cada campo opcional en su límite
-- [X] T026 [P] [US3] Escribir `server/internal/httpapi/handlers_settings_test.go`: un cajero recibe 403 al subir logo o cambiar datos, y el rechazo deja el evento `forbidden`
+- [X] T026 [P] [US3] Escribir `server/internal/integration/ticketsettings_test.go` (sobre el router REAL: un test contra el handler pasaría igual si alguien mueve la ruta fuera del grupo con RequireRole): un cajero recibe 403 al subir logo o cambiar datos, y el rechazo deja el evento `forbidden`
 
 ### Implementation for User Story 3
 

@@ -100,9 +100,9 @@ server/
 │   │   └── settings.go                     # + SetBusinessInfo, SetLogo, Logo, ClearLogo
 │   ├── httpapi/
 │   │   ├── handlers_settings.go            # + UploadTicketLogo, TicketLogo, DeleteTicketLogo
-│   │   ├── handlers_settings_test.go       # NUEVO: authz + límites
 │   │   └── router.go                       # + rutas del logo bajo RequireRole
 │   └── store/db/                           # regenerado por `make sqlc` (no se edita)
+├── internal/integration/ticketsettings_test.go # NUEVO: authz sobre el ROUTER real
 
 web/src/
 ├── utils/
