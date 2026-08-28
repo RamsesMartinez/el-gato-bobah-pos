@@ -15,3 +15,14 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList;
 }
+
+// jsdom tampoco implementa ResizeObserver; lo usa useContainerWidth (POS y vista previa del
+// ticket). El stub no observa nada: en jsdom no hay layout, así que el ancho medido es 0 y los
+// componentes deben caer en su valor por defecto.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

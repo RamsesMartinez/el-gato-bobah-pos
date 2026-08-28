@@ -54,6 +54,18 @@ export const posApi = {
   cashStatus: () => api.get<{ open: boolean }>('/cash-status'),
 
   businessSettings: () => api.get<BusinessSettings>('/business-settings'),
+  // Binario del logo. Lanza ApiError 404 cuando el negocio no subió ninguno: quien llama cae al
+  // logo por default.
+  ticketLogo: () => api.getRaw('/business-settings/ticket-logo'),
+  // Configuración del ticket. Campos ausentes = no se tocan, así que esta pantalla no pisa el
+  // costo de envío que edita la de Negocio.
+  updateTicketSettings: (body: TicketSettingsInput) => api.put<BusinessSettings>('/business-settings', body),
+  uploadTicketLogo: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.putForm<BusinessSettings>('/business-settings/ticket-logo', fd);
+  },
+  deleteTicketLogo: () => api.del<BusinessSettings>('/business-settings/ticket-logo'),
   updateBusinessSettings: (deliveryFee: number) =>
     api.put<BusinessSettings>('/business-settings', { deliveryFee }),
 };
@@ -61,6 +73,20 @@ export const posApi = {
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
 export interface BusinessSettings {
   deliveryFee: string;
+  // Identidad que va en el encabezado del ticket. Los opcionales llegan como string vacío y no
+  // como null: el ticket omite el renglón cuando está vacío.
+  businessName: string;
+  address: string;
+  phone: string;
+  headerNote: string;
+  footerNote: string;
+  // Si el POS imprime el ticket solo al cerrar una venta. Lo lee cualquier autenticado porque
+  // quien tiene que obedecerlo es la caja, no el panel.
+  autoPrintOnClose: boolean;
+  // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
+  // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
+  hasLogo: boolean;
+  logoUpdatedAt: string | null;
 }
 
 export interface Company {
@@ -86,4 +112,14 @@ export interface CreateOrderBody {
   }>;
   // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
   payments?: Array<{ methodId: number; amount: number; tip?: number }>;
+}
+
+// Lo editable de la configuración del ticket. Todo opcional: se manda solo lo que cambió.
+export interface TicketSettingsInput {
+  businessName?: string;
+  address?: string;
+  phone?: string;
+  headerNote?: string;
+  footerNote?: string;
+  autoPrintOnClose?: boolean;
 }
