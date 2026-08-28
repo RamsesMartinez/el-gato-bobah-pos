@@ -112,6 +112,15 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Ajustes de negocio: GET lo necesita el cobro (costo de envío por defecto); PUT solo
 				// admin/gerente (es dinero autoritativo del negocio).
 				r.Get("/business-settings", h.BusinessSettings)
+				// El binario del logo va aparte de los ajustes: son hasta 256 KB con su propio
+				// caché, y el GET de ajustes corre en cada cobro.
+				r.Get("/business-settings/ticket-logo", h.TicketLogo)
+				// Escritura del ticket: identidad, textos y logo. Detrás de RequireRole en el
+				// servidor — el front no muestra la opción, pero eso es UX, no la barrera.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).
+					Put("/business-settings/ticket-logo", h.UploadTicketLogo)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).
+					Delete("/business-settings/ticket-logo", h.DeleteTicketLogo)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/business-settings", h.UpdateBusinessSettings)
 				// ¿hay caja abierta? aviso del POS — cualquier rol autenticado (incl. mesero); no es dato sensible
 				r.Get("/cash-status", h.CashStatus)

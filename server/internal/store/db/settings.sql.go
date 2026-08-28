@@ -7,22 +7,152 @@ package db
 
 import (
 	"context"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
-const getBusinessSettings = `-- name: GetBusinessSettings :one
-select delivery_fee, updated_at, updated_by from business_settings limit 1
+const clearTicketLogo = `-- name: ClearTicketLogo :exec
+update business_settings
+set logo_bytes = null, logo_mime = null, logo_updated_at = null, updated_at = now(), updated_by = $1
 `
+
+// Los tres a NULL juntos: el check business_settings_logo_pair no admite bytes sin mime.
+func (q *Queries) ClearTicketLogo(ctx context.Context, updatedBy *int64) error {
+	_, err := q.db.Exec(ctx, clearTicketLogo, updatedBy)
+	return err
+}
+
+const getBusinessSettings = `-- name: GetBusinessSettings :one
+select delivery_fee,
+       business_name,
+       address,
+       phone,
+       header_note,
+       footer_note,
+       auto_print_on_close,
+       (logo_bytes is not null)::boolean as has_logo,
+       logo_updated_at,
+       updated_at,
+       updated_by
+from business_settings
+limit 1
+`
+
+type GetBusinessSettingsRow struct {
+	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
+	BusinessName     string             `json:"business_name"`
+	Address          *string            `json:"address"`
+	Phone            *string            `json:"phone"`
+	HeaderNote       *string            `json:"header_note"`
+	FooterNote       *string            `json:"footer_note"`
+	AutoPrintOnClose bool               `json:"auto_print_on_close"`
+	HasLogo          bool               `json:"has_logo"`
+	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+	UpdatedBy        *int64             `json:"updated_by"`
+}
 
 // Una fila por empresa (la PK pasó a company_id en 0023); RLS ya la restringe al tenant actual,
 // así que basta con leer su única fila. (Antes: where id = true, con la columna id que 0023 quitó
 // → 42703 en runtime; sqlc no valida columnas del WHERE, por eso no lo atrapaba make sqlc.)
-func (q *Queries) GetBusinessSettings(ctx context.Context) (BusinessSetting, error) {
+//
+// NO selecciona logo_bytes a propósito: esta query corre en el camino del cobro (el POS la pide
+// para el costo de envío) y no tiene por qué mover 256 KB de imagen en cada pedido. El binario
+// se pide aparte con GetTicketLogo.
+func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsRow, error) {
 	row := q.db.QueryRow(ctx, getBusinessSettings)
-	var i BusinessSetting
-	err := row.Scan(&i.DeliveryFee, &i.UpdatedAt, &i.UpdatedBy)
+	var i GetBusinessSettingsRow
+	err := row.Scan(
+		&i.DeliveryFee,
+		&i.BusinessName,
+		&i.Address,
+		&i.Phone,
+		&i.HeaderNote,
+		&i.FooterNote,
+		&i.AutoPrintOnClose,
+		&i.HasLogo,
+		&i.LogoUpdatedAt,
+		&i.UpdatedAt,
+		&i.UpdatedBy,
+	)
 	return i, err
+}
+
+const getTicketLogo = `-- name: GetTicketLogo :one
+select logo_bytes, logo_mime, logo_updated_at
+from business_settings
+limit 1
+`
+
+type GetTicketLogoRow struct {
+	LogoBytes     []byte             `json:"logo_bytes"`
+	LogoMime      *string            `json:"logo_mime"`
+	LogoUpdatedAt pgtype.Timestamptz `json:"logo_updated_at"`
+}
+
+// La única query que trae el binario. Se sirve por su propio endpoint, con su propio caché.
+func (q *Queries) GetTicketLogo(ctx context.Context) (GetTicketLogoRow, error) {
+	row := q.db.QueryRow(ctx, getTicketLogo)
+	var i GetTicketLogoRow
+	err := row.Scan(&i.LogoBytes, &i.LogoMime, &i.LogoUpdatedAt)
+	return i, err
+}
+
+const setTicketLogo = `-- name: SetTicketLogo :exec
+update business_settings
+set logo_bytes = $1, logo_mime = $2, logo_updated_at = now(), updated_at = now(), updated_by = $3
+`
+
+type SetTicketLogoParams struct {
+	LogoBytes []byte  `json:"logo_bytes"`
+	LogoMime  *string `json:"logo_mime"`
+	UpdatedBy *int64  `json:"updated_by"`
+}
+
+func (q *Queries) SetTicketLogo(ctx context.Context, arg SetTicketLogoParams) error {
+	_, err := q.db.Exec(ctx, setTicketLogo, arg.LogoBytes, arg.LogoMime, arg.UpdatedBy)
+	return err
+}
+
+const updateBusinessInfo = `-- name: UpdateBusinessInfo :exec
+update business_settings
+set business_name       = $1,
+    address             = nullif($2::text, ''),
+    phone               = nullif($3::text, ''),
+    header_note         = nullif($4::text, ''),
+    footer_note         = nullif($5::text, ''),
+    auto_print_on_close = $6,
+    updated_at          = now(),
+    updated_by          = $7
+`
+
+type UpdateBusinessInfoParams struct {
+	BusinessName     string `json:"business_name"`
+	Address          string `json:"address"`
+	Phone            string `json:"phone"`
+	HeaderNote       string `json:"header_note"`
+	FooterNote       string `json:"footer_note"`
+	AutoPrintOnClose bool   `json:"auto_print_on_close"`
+	UpdatedBy        *int64 `json:"updated_by"`
+}
+
+// La identidad del ticket y el interruptor de impresión automática. Los strings vacíos se guardan
+// como NULL para que "sin dato" tenga una sola representación en la base.
+// Los ::text no son decorativos: sin ellos sqlc no infiere el tipo del argumento de nullif y
+// genera interface{}, que tira al piso el chequeo de tipos entre Go y la query.
+func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfoParams) error {
+	_, err := q.db.Exec(ctx, updateBusinessInfo,
+		arg.BusinessName,
+		arg.Address,
+		arg.Phone,
+		arg.HeaderNote,
+		arg.FooterNote,
+		arg.AutoPrintOnClose,
+		arg.UpdatedBy,
+	)
+	return err
 }
 
 const updateDeliveryFee = `-- name: UpdateDeliveryFee :one
@@ -36,10 +166,16 @@ type UpdateDeliveryFeeParams struct {
 	UpdatedBy   *int64          `json:"updated_by"`
 }
 
+type UpdateDeliveryFeeRow struct {
+	DeliveryFee decimal.Decimal `json:"delivery_fee"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	UpdatedBy   *int64          `json:"updated_by"`
+}
+
 // Sin WHERE: RLS acota el UPDATE a la fila de la empresa actual (hay exactamente una).
-func (q *Queries) UpdateDeliveryFee(ctx context.Context, arg UpdateDeliveryFeeParams) (BusinessSetting, error) {
+func (q *Queries) UpdateDeliveryFee(ctx context.Context, arg UpdateDeliveryFeeParams) (UpdateDeliveryFeeRow, error) {
 	row := q.db.QueryRow(ctx, updateDeliveryFee, arg.DeliveryFee, arg.UpdatedBy)
-	var i BusinessSetting
+	var i UpdateDeliveryFeeRow
 	err := row.Scan(&i.DeliveryFee, &i.UpdatedAt, &i.UpdatedBy)
 	return i, err
 }
