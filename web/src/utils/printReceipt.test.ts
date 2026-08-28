@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { buildReceiptHtml } from './printReceipt';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildReceiptHtml, printFrame, printHtmlOffscreen, sampleTicketOrder, type TicketBusinessInfo } from './printReceipt';
+import { money } from './format';
 import type { OrderView } from '../types/pos';
+
+const baseBusiness: TicketBusinessInfo = {
+  businessName: 'El Gato Bobah',
+  address: 'Av. Siempre Viva 742',
+  phone: '55 1234 5678',
+  headerNote: 'Wi-Fi: gatobobah',
+  footerNote: '¡Gracias por su compra!',
+  logoDataUri: 'data:image/webp;base64,QUFB',
+};
 
 const baseOrder: OrderView = {
   id: 1,
@@ -32,7 +42,7 @@ describe('buildReceiptHtml', () => {
         },
       ],
     };
-    const html = buildReceiptHtml(order);
+    const html = buildReceiptHtml(order, baseBusiness);
 
     // No live markup from user data
     expect(html).not.toContain('<img src=x');
@@ -49,9 +59,220 @@ describe('buildReceiptHtml', () => {
       customerName: 'María',
       lines: [{ productName: 'Boba fresa', quantity: '2', unitPrice: '2500', lineTotal: '5000', modifiers: [] }],
     };
-    const html = buildReceiptHtml(order);
+    const html = buildReceiptHtml(order, baseBusiness);
     expect(html).toContain('María');
     expect(html).toContain('Boba fresa');
     expect(html).toContain('Pedido #42');
+  });
+});
+
+describe('buildReceiptHtml — encabezado del negocio', () => {
+  it('imprime la identidad, el contacto y el logo', () => {
+    const html = buildReceiptHtml(baseOrder, baseBusiness);
+    expect(html).toContain('El Gato Bobah');
+    expect(html).toContain('Av. Siempre Viva 742');
+    expect(html).toContain('55 1234 5678');
+    expect(html).toContain('¡Gracias por su compra!');
+    // El logo va incrustado, no referenciado: un <img src> remoto lo bloquea la CSP de producción
+    // (img-src 'self' data:) y además puede no haber cargado cuando se dispara print().
+    expect(html).toContain('src="data:image/webp;base64,QUFB"');
+  });
+
+  it('omite los renglones opcionales vacíos en vez de dejar huecos', () => {
+    const html = buildReceiptHtml(baseOrder, { ...baseBusiness, address: '', phone: '', footerNote: '' });
+    expect(html).toContain('El Gato Bobah');
+    expect(html).not.toContain('Av. Siempre Viva');
+    expect(html).not.toContain('55 1234 5678');
+    // Sin leyenda propia, el ticket cierra con el saludo por default.
+    expect(html).toContain('¡Gracias!');
+  });
+
+  it('escapa los datos del negocio igual que los del pedido', () => {
+    // El documento del ticket vive en un iframe srcdoc, o sea MISMO ORIGEN: un onerror en el
+    // nombre del negocio correría con acceso al token en localStorage.
+    const html = buildReceiptHtml(baseOrder, {
+      ...baseBusiness,
+      businessName: '<img src=x onerror=alert(1)>',
+      footerNote: '<script>alert(2)</script>',
+    });
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('<script>alert(2)');
+    expect(html).toContain('&lt;img src=x');
+  });
+});
+
+describe('buildReceiptHtml — reimpresión', () => {
+  it('marca el papel cuando es reimpresión', () => {
+    expect(buildReceiptHtml(baseOrder, baseBusiness, { reprint: true })).toContain('REIMPRESIÓN');
+  });
+
+  it('no marca el ticket original', () => {
+    expect(buildReceiptHtml(baseOrder, baseBusiness)).not.toContain('REIMPRESIÓN');
+  });
+});
+
+describe('buildReceiptHtml — dinero', () => {
+  it('imprime los importes del pedido sin recalcularlos', () => {
+    // El total NO cuadra con las líneas a propósito: el servidor es la única fuente de verdad de
+    // los precios y el ticket no debe "corregirlo" (FR-014). Si el builder sumara, $999 no
+    // aparecería en ninguna parte del documento.
+    const order: OrderView = {
+      ...baseOrder,
+      subtotal: '100',
+      total: '999',
+      lines: [{ productName: 'Ramen', quantity: '1', unitPrice: '100', lineTotal: '100', modifiers: [] }],
+    };
+    expect(buildReceiptHtml(order, baseBusiness)).toContain(money('999'));
+  });
+});
+
+describe('printFrame', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    document.querySelectorAll('iframe').forEach((f) => f.remove());
+  });
+
+  function mountFrame() {
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const print = vi.fn();
+    // jsdom no implementa print(); se reemplaza para poder contar las llamadas.
+    Object.defineProperty(frame.contentWindow!, 'print', { value: print, writable: true });
+    Object.defineProperty(frame.contentWindow!, 'focus', { value: vi.fn(), writable: true });
+    return { frame, print };
+  }
+
+  it('imprime el documento del iframe que ya está montado', () => {
+    const { frame, print } = mountFrame();
+    expect(printFrame(frame)).toBe(true);
+    expect(print).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2000);
+  });
+
+  it('un segundo toque inmediato no manda un segundo trabajo', () => {
+    // Dos tickets por un doble toque son papel desperdiciado y un comprobante duplicado en la
+    // mano del cliente; el candado dura lo que tarda el diálogo del navegador en aparecer.
+    const { frame, print } = mountFrame();
+    expect(printFrame(frame)).toBe(true);
+    expect(printFrame(frame)).toBe(false);
+    expect(print).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2000);
+  });
+
+  it('vuelve a permitir imprimir cuando pasó la ventana del candado', () => {
+    const { frame, print } = mountFrame();
+    printFrame(frame);
+    vi.advanceTimersByTime(2000);
+    expect(printFrame(frame)).toBe(true);
+    expect(print).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(2000);
+  });
+
+  it('no revienta cuando todavía no hay iframe', () => {
+    expect(printFrame(null)).toBe(false);
+  });
+});
+
+describe('buildReceiptHtml — legibilidad en térmica', () => {
+  function css(html: string) {
+    return html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  }
+
+  it('no declara ningún color que no sea negro puro', () => {
+    // La impresora térmica es de 1 bit: cualquier gris se convierte en un patrón de puntos
+    // salteados y el texto sale desvaído. La jerarquía visual tiene que venir del tamaño y del
+    // peso, nunca del color.
+    const colores = [...css(buildReceiptHtml(baseOrder, baseBusiness)).matchAll(/[^-]color:\s*([^;]+);/g)]
+      .map((m) => m[1].trim());
+    expect(colores.length).toBeGreaterThan(0);
+    expect(colores.filter((c) => c !== '#000')).toEqual([]);
+  });
+
+  it('imprime en negritas: en térmica el trazo delgado no se distingue', () => {
+    expect(css(buildReceiptHtml(baseOrder, baseBusiness))).toMatch(/body\s*\{[^}]*font-weight:\s*bold/);
+  });
+});
+
+describe('buildReceiptHtml — texto superior', () => {
+  it('imprime el texto superior arriba del detalle del pedido', () => {
+    const html = buildReceiptHtml(baseOrder, { ...baseBusiness, headerNote: 'Wi-Fi: gatobobah' });
+    expect(html).toContain('Wi-Fi: gatobobah');
+    // Arriba del detalle, no en cualquier lado: va antes de la línea que separa el encabezado.
+    expect(html.indexOf('Wi-Fi: gatobobah')).toBeLessThan(html.indexOf('<table>'));
+  });
+
+  it('omite el renglón cuando no hay texto superior', () => {
+    expect(buildReceiptHtml(baseOrder, { ...baseBusiness, headerNote: '' })).not.toContain('class="note"');
+  });
+
+  it('escapa el texto superior', () => {
+    const html = buildReceiptHtml(baseOrder, { ...baseBusiness, headerNote: '<img src=x onerror=alert(1)>' });
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+});
+
+describe('printHtmlOffscreen', () => {
+  it('imprime el documento fuera de pantalla y no deja el iframe montado', async () => {
+    const doc = '<!doctype html><html><body>ticket</body></html>';
+    const promesa = printHtmlOffscreen(doc);
+
+    // El iframe se monta de forma síncrona: si no, no habría a qué engancharle el load.
+    const frame = document.querySelector('iframe');
+    expect(frame).not.toBeNull();
+    expect(frame!.getAttribute('srcdoc')).toBe(doc);
+
+    const print = vi.fn();
+    Object.defineProperty(frame!.contentWindow!, 'print', { value: print, writable: true });
+    Object.defineProperty(frame!.contentWindow!, 'focus', { value: vi.fn(), writable: true });
+
+    // Imprimir ANTES del load saca papel en blanco: el documento todavía no existe.
+    expect(print).not.toHaveBeenCalled();
+    frame!.dispatchEvent(new Event('load'));
+
+    await expect(promesa).resolves.toBe(true);
+    expect(print).toHaveBeenCalledTimes(1);
+    // Sin limpieza, cada venta deja un iframe colgado en el DOM del POS.
+    expect(document.querySelector('iframe')).toBeNull();
+  });
+});
+
+describe('buildReceiptHtml — textos de varios renglones', () => {
+  const bloque = '=============\nTICKET SIN VALOR FISCAL\n=============\nfacturacion@elgatobobah.com';
+
+  it('respeta los saltos de línea del texto inferior', () => {
+    const html = buildReceiptHtml(baseOrder, { ...baseBusiness, footerNote: bloque });
+    // Sin pre-line, el HTML colapsa los saltos y el aviso sale como un párrafo corrido.
+    expect(html).toMatch(/\.note[^}]*white-space:\s*pre-line/);
+    expect(html).toContain('TICKET SIN VALOR FISCAL');
+    expect(html).toContain('facturacion@elgatobobah.com');
+    // El texto conserva sus saltos: el navegador es quien los pinta como renglones.
+    expect(html).toContain(bloque);
+  });
+
+  it('sigue escapando aunque venga en varios renglones', () => {
+    const html = buildReceiptHtml(baseOrder, { ...baseBusiness, footerNote: 'linea 1\n<script>alert(1)</script>' });
+    expect(html).not.toContain('<script>alert(1)');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('buildReceiptHtml — ticket de prueba', () => {
+  it('marca el papel como prueba', () => {
+    // Un ticket de prueba que llega a manos de un cliente parece una venta. La marca es lo que
+    // lo distingue en el papel, igual que la de reimpresión.
+    expect(buildReceiptHtml(baseOrder, baseBusiness, { sample: true })).toContain('TICKET DE PRUEBA');
+  });
+
+  it('no marca un ticket normal', () => {
+    expect(buildReceiptHtml(baseOrder, baseBusiness)).not.toContain('TICKET DE PRUEBA');
+  });
+
+  it('el pedido de muestra ejercita el encabezado, las líneas y los totales', () => {
+    const html = buildReceiptHtml(sampleTicketOrder(), baseBusiness, { sample: true });
+    expect(html).toContain('El Gato Bobah');
+    expect(html).toMatch(/<tr><td>\d+x /); // al menos una línea con cantidad
+    expect(html).toContain('TOTAL');
   });
 });

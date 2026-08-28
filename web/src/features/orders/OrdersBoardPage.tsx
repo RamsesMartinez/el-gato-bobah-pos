@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
@@ -10,6 +11,7 @@ import { posApi } from '../../api/pos';
 import type { BoardOrder } from '../../types/pos';
 import { money } from '../../utils/format';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
+import { ReprintTicket } from '../tickets/ReprintTicket';
 import { useSessionStore } from '../../stores/session';
 
 const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
@@ -23,6 +25,8 @@ const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente'
 
 export function OrdersBoardPage() {
   const live = useOrderEvents();
+  // Pedido cuyo ticket se está viendo; null = ninguno.
+  const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
   const qc = useQueryClient();
   // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El
   // backend igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
@@ -72,6 +76,7 @@ export function OrdersBoardPage() {
     const reason = window.prompt(`Motivo de cancelación:\n(${CANCEL_REASONS.join(', ')})`, CANCEL_REASONS[0]);
     if (reason) cancelMut.mutate({ id: o.id, reason });
   };
+  const showTicket = (o: BoardOrder) => setTicketOrderID(o.id);
   const refund = (o: BoardOrder) => {
     const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
     if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
@@ -84,17 +89,20 @@ export function OrdersBoardPage() {
         <Badge colorPalette={live ? 'green' : 'gray'}>{live ? 'En vivo' : 'Sin conexión'}</Badge>
       </HStack>
       <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-        <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} advanceLabel="Marcar listo" />
-        <Column title="Listos" orders={listos} onAdvance={advance} onCancel={cancel} advanceLabel="Entregar" />
+        <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Marcar listo" />
+        <Column title="Listos" orders={listos} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Entregar" />
       </SimpleGrid>
-      {canRefund && <DeliveredSection orders={deliveredData?.items ?? []} onRefund={refund} />}
+      {canRefund && <DeliveredSection orders={deliveredData?.items ?? []} onRefund={refund} onTicket={showTicket} />}
+
+      {/* Reimpresión: el ticket sale marcado para que no pase por un comprobante distinto. */}
+      <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
     </Box>
   );
 }
 
 // Entregadas del día: solo admin/gerente, para reembolsar (devolución = pérdida). Compacta
 // para no competir con el flujo operativo de arriba.
-function DeliveredSection({ orders, onRefund }: { orders: BoardOrder[]; onRefund: (o: BoardOrder) => void }) {
+function DeliveredSection({ orders, onRefund, onTicket }: { orders: BoardOrder[]; onRefund: (o: BoardOrder) => void; onTicket: (o: BoardOrder) => void }) {
   return (
     <Box mt={6}>
       <HStack mb={3}>
@@ -116,6 +124,7 @@ function DeliveredSection({ orders, onRefund }: { orders: BoardOrder[]; onRefund
               </HStack>
               <HStack gap={3}>
                 <Text fontWeight="700">{money(o.total, o.currency)}</Text>
+                <Button size="sm" variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
                 <Button size="sm" variant="outline" colorPalette="red" onClick={() => onRefund(o)}>Reembolsar</Button>
               </HStack>
             </Flex>
@@ -132,9 +141,10 @@ interface ColProps {
   advanceLabel: string;
   onAdvance: (o: BoardOrder) => void;
   onCancel: (o: BoardOrder) => void;
+  onTicket: (o: BoardOrder) => void;
 }
 
-function Column({ title, orders, advanceLabel, onAdvance, onCancel }: ColProps) {
+function Column({ title, orders, advanceLabel, onAdvance, onCancel, onTicket }: ColProps) {
   return (
     <Box>
       <HStack mb={3}>
@@ -171,6 +181,7 @@ function Column({ title, orders, advanceLabel, onAdvance, onCancel }: ColProps) 
                   <IconButton aria-label="Más" variant="outline"><LuEllipsisVertical /></IconButton>
                 </MenuTrigger>
                 <MenuContent>
+                  <MenuItem value="ticket" onClick={() => onTicket(o)}>Ver ticket</MenuItem>
                   <MenuItem value="cancel" color="red.500" onClick={() => onCancel(o)}>Cancelar pedido</MenuItem>
                 </MenuContent>
               </MenuRoot>
