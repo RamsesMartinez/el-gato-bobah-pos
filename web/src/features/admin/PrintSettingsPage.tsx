@@ -10,7 +10,7 @@ import { Page } from '../../components/Page';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
 import { useTicketBusinessInfo } from '../tickets/ticketBusinessInfo';
 import { TicketPreview } from '../tickets/TicketPreview';
-import { sampleTicketOrder } from '../../utils/printReceipt';
+import { overflowingLines, sampleTicketOrder } from '../../utils/printReceipt';
 
 // Lo que sale impreso en el ticket y cómo se dispara la impresión. El backend es la autoridad
 // (el PUT exige rol y valida los largos); esta pantalla es la UX para editarlo.
@@ -143,10 +143,16 @@ export function PrintSettingsPage() {
             onChange={(e) => set({ address: e.target.value })} />
           <Input placeholder="Teléfono (opcional)" maxLength={30} value={field('phone')}
             onChange={(e) => set({ phone: e.target.value })} />
-          <Textarea placeholder="Texto superior: va arriba del detalle (opcional)" rows={3} maxLength={400}
-            value={field("headerNote")} onChange={(e) => set({ headerNote: e.target.value })} />
-          <Textarea placeholder="Texto inferior: cierra el ticket (opcional)" rows={8} maxLength={400}
-            value={field("footerNote")} onChange={(e) => set({ footerNote: e.target.value })} />
+          <Box>
+            <Textarea placeholder="Texto superior: va arriba del detalle (opcional)" rows={3} maxLength={400}
+              value={field('headerNote')} onChange={(e) => set({ headerNote: e.target.value })} />
+            <WrapWarning text={field('headerNote')} />
+          </Box>
+          <Box>
+            <Textarea placeholder="Texto inferior: cierra el ticket (opcional)" rows={8} maxLength={400}
+              value={field('footerNote')} onChange={(e) => set({ footerNote: e.target.value })} />
+            <WrapWarning text={field('footerNote')} />
+          </Box>
           <HStack gap={2}>
             <Button loading={save.isPending} disabled={!field('businessName').trim()}
               onClick={() => save.mutate()}>Guardar</Button>
@@ -241,5 +247,21 @@ function KioskStep({ n, title, children }: { n: number; title: string; children:
         <Box fontSize="sm" color="fg.muted">{children}</Box>
       </Box>
     </HStack>
+  );
+}
+
+// WrapWarning avisa MIENTRAS se escribe qué renglones no van a caber. Sin esto el operador se
+// entera imprimiendo: el renglón se parte en dos y desacomoda el bloque, y eso cuesta papel y una
+// visita a la impresora por cada intento.
+function WrapWarning({ text }: { text: string }) {
+  const largos = overflowingLines(text);
+  if (largos.length === 0) return null;
+  const cuales = largos.join(', ');
+  return (
+    <Text fontSize="xs" color="orange.fg" mt={1}>
+      {largos.length === 1
+        ? `El renglón ${cuales} se va a partir en dos: no cabe en el ancho del ticket.`
+        : `Los renglones ${cuales} se van a partir en dos: no caben en el ancho del ticket.`}
+    </Text>
   );
 }

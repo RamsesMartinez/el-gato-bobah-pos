@@ -158,6 +158,7 @@ el papel campo por campo ([quickstart.md](./quickstart.md) §US1).
 - [X] T056 [US3] Botón "Ticket de prueba" en `web/src/features/admin/PrintSettingsPage.tsx` que abre la vista previa con el pedido de muestra
 - [X] T057 [US1] Escalar la vista previa con `transform` en vez de comprimir el iframe, y dejar de cerrar el diálogo al tocar fuera: comprimirlo metía scroll horizontal y arrastrarlo cerraba el ticket a media revisión (`web/src/features/tickets/TicketPreview.tsx`)
 - [X] T058 Stub de `ResizeObserver` en `web/src/setupTests.ts`: jsdom no lo implementa y lo usa `useContainerWidth`
+- [X] T059 [US3] Avisar en la pantalla de Impresión qué renglones del encabezado o del pie no caben a lo ancho del papel, mientras se escriben (`overflowingLines` en `web/src/utils/printReceipt.ts` + `WrapWarning`), con sus tests
 
 ---
 

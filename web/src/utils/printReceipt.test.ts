@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildReceiptHtml, printFrame, printHtmlOffscreen, sampleTicketOrder, type TicketBusinessInfo } from './printReceipt';
+import { buildReceiptHtml, overflowingLines, printFrame, printHtmlOffscreen, sampleTicketOrder, TICKET_COLUMNS, type TicketBusinessInfo } from './printReceipt';
 import { money } from './format';
 import type { OrderView } from '../types/pos';
 
@@ -274,5 +274,26 @@ describe('buildReceiptHtml — ticket de prueba', () => {
     expect(html).toContain('El Gato Bobah');
     expect(html).toMatch(/<tr><td>\d+x /); // al menos una línea con cantidad
     expect(html).toContain('TOTAL');
+  });
+});
+
+describe('overflowingLines', () => {
+  it('señala los renglones que no caben a lo ancho del papel', () => {
+    const texto = ['corto', 'x'.repeat(TICKET_COLUMNS), 'y'.repeat(TICKET_COLUMNS + 1), 'otro corto'].join('\n');
+    // Renglón 3 (1-based): es el único que se pasa. El que mide justo el ancho SÍ cabe.
+    expect(overflowingLines(texto)).toEqual([3]);
+  });
+
+  it('no señala nada cuando todo cabe', () => {
+    expect(overflowingLines('uno\ndos\ntres')).toEqual([]);
+  });
+
+  it('texto vacío no señala nada', () => {
+    expect(overflowingLines('')).toEqual([]);
+  });
+
+  it('cuenta caracteres, no bytes: los acentos no acortan el renglón', () => {
+    // "ñ" ocupa dos bytes; medir en bytes marcaría como largo un renglón que sí cabe.
+    expect(overflowingLines('ñ'.repeat(TICKET_COLUMNS))).toEqual([]);
   });
 });
