@@ -186,3 +186,21 @@ export function sampleTicketOrder(): OrderView {
     ],
   };
 }
+
+// Ancho útil del ticket en caracteres. Sale de la geometría del documento: 80mm de papel menos
+// 4mm de margen por lado son 72mm ≈ 272px a 96dpi, y Courier New avanza 0.6em ≈ 7.8px a 13px, así
+// que caben ~34. Se deja en 32 para no quedar al filo: un renglón que se pasa por uno no "se ve
+// apretado", se parte en dos y desacomoda el bloque entero.
+export const TICKET_COLUMNS = 32;
+
+// overflowingLines devuelve los números de renglón (1-based) que no caben a lo ancho del papel.
+// Es lo que deja avisar al operador MIENTRAS escribe, en vez de que lo descubra imprimiendo.
+export function overflowingLines(text: string, width = TICKET_COLUMNS): number[] {
+  if (!text) return [];
+  return text
+    .split('\n')
+    // Array.from y no .length: "ñ" son dos bytes pero un carácter, y medir en bytes marcaría como
+    // largo un renglón que sí cabe.
+    .map((line, i) => (Array.from(line).length > width ? i + 1 : 0))
+    .filter((n) => n > 0);
+}
