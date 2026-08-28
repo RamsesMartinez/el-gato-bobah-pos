@@ -108,7 +108,7 @@ GPG**. La config es **local a este repo** — la máquina tiene otros repos con 
 que no se toca `--global`:
 
 | clave | valor |
-|---|---|
+| --- | --- |
 | `user.name` / `user.email` | `Ramses Martinez` / `ramses.mtz96@gmail.com` |
 | `user.signingkey` | `6B7243B7F63FCCA0A645AC7603570B54632AB5C1` (ed25519 `[SC]`, expira **2028-08-26**) |
 | `commit.gpgsign` / `tag.gpgsign` | `true` |
@@ -145,12 +145,27 @@ comando o quirk → este archivo; runbook operativo → `docs/` **y** su rengló
 La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
 
 - **Smart App Control bloquea binarios recién compilados.** Está **on por default** en Windows 11 y no se puede excluir un archivo: o se apaga entero (y volver a encenderlo exige reinstalar Windows) o se convive con él. Bloquea por reputación, así que es errático — el síntoma es *"Una directiva de Control de aplicaciones bloqueó este archivo"* y en `Microsoft-Windows-CodeIntegrity/Operational` un evento 3077/3118. Lo confirmado:
-  - El binario que `go run` deja en `%TEMP%\go-build…` **se bloquea** → la API moría al arrancar desde `make start`. Por eso [scripts/dev-api.sh](scripts/dev-api.sh) compila a `server/tmp/api` (ruta estable, la misma de air) en vez de usar `go run`. **No lo regreses a `go run`.**
+  - El binario que `go run` deja en `%TEMP%\go-build…` **se bloquea siempre** → la API moría al arrancar desde `make start`. Por eso [scripts/dev-api.sh](scripts/dev-api.sh) compila a `server/tmp/api` (ruta estable, la misma de air). **No lo regreses a `go run`** — pero tampoco lo tomes por arreglado: el veredicto es **por binario**, así que un `go build` nuevo puede quedar bloqueado aunque el anterior corriera desde esa misma ruta. Ya pasó: la API arrancó bien y, tras un cambio de código, el binario nuevo quedó bloqueado.
+  - **La salida confiable es levantar la API en contenedor** (Linux, fuera del alcance de SAC), contra el postgres/redis del compose dev. Es lo que hay que usar cuando `make start` muere con *Permission denied* en `server/tmp/api`:
+
+    ```bash
+    MSYS_NO_PATHCONV=1 docker run --rm --name gatobobah-api-dev --network deploy_default -p 8080:8080 \
+      -v "d:/git/el-gato-bobah-pos/server:/src" -v "d:/git/el-gato-bobah-pos/deploy/.env:/env/.env:ro" \
+      -v gatobobah_gocache:/root/.cache/go-build -v gatobobah_gomod:/go/pkg/mod -w /src \
+      -e DATABASE_URL='postgres://gatobobah:gatobobah@postgres:5432/gatobobah?sslmode=disable' \
+      -e REDIS_URL='redis://redis:6379' -e APP_ENV=development -e PORT=8080 -e ENV_FILE=/env/.env \
+      -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e APP_BASE_URL='http://localhost:3000' \
+      golang:1.27 go run ./cmd/api
+    ```
+
+    Los volúmenes de caché no son opcionales: sin ellos cada arranque vuelve a bajar el módulo entero. El front sigue corriendo en el host con `bun run dev` y su proxy a `:8080`.
   - `govulncheck.exe` **se bloquea siempre**, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). El hook de pre-push muere ahí. Alternativa sin apagar SAC — corre el mismo scanner que CI, en contenedor:
+
     ```bash
     MSYS_NO_PATHCONV=1 docker run --rm -v "d:/git/el-gato-bobah-pos/server:/src" -w /src golang:1.27 \
       sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..."
     ```
+
   - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `golangci-lint`, `lefthook`) corren sin problema.
 - **El working tree va en LF y [.gitattributes](.gitattributes) lo fuerza** (`* text=auto eol=lf`). Sin él, el `core.autocrlf=true` que Git for Windows deja por default checa out los 113 `.go` en CRLF y `gofmt -l` —lo primero que corre el pre-commit— los marca todos: no se puede commitear Go sin `--no-verify`, que no se usa. Si te tocó un working tree ya en CRLF: `git config --local core.autocrlf false`, quítales el `\r` y corre `git add --renormalize .`. Ese último paso importa — el contenido queda idéntico pero el stat cache no se refresca solo, y `git status` se queda marcando cientos de archivos "modificados" que `git diff` ve iguales.
 - **`GOTOOLCHAIN` vacío se comporta como `local`**: con Go 1.26 instalado, `go build` falla con *"go.mod requires go >= 1.27.0"* en vez de bajar el toolchain. Se arregla con `go env -w GOTOOLCHAIN=auto` (baja go1.27.0 al module cache) o instalando Go 1.27.
