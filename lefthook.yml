@@ -7,7 +7,7 @@ pre-commit:
     go-fmt:
       root: "server/"
       glob: "*.go"
-      run: "test -z \"$(gofmt -l {staged_files})\" || (gofmt -l {staged_files}; echo 'corre gofmt -w'; exit 1)"
+      run: bash ../scripts/hooks/gofmt-staged.sh {staged_files}
     go-lint:
       root: "server/"
       glob: "*.go"
@@ -25,7 +25,7 @@ pre-push:
       run: go test ./...
     go-vuln:
       root: "server/"
-      run: govulncheck ./...
+      run: bash ../scripts/hooks/govulncheck.sh
     web-build:
       root: "web/"
       run: bun run build

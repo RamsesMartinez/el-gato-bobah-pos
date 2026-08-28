@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
@@ -27,6 +28,7 @@ import (
 func main() {
 	dir := flag.String("dir", "../references", "carpeta con los exports FUDO (usa dir/csv/*.csv)")
 	force := flag.Bool("force", false, "reimportar aunque existan órdenes (borra el catálogo)")
+	company := flag.String("company", "", "slug de la empresa destino (obligatorio si hay más de una)")
 	flag.Parse()
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -34,11 +36,37 @@ func main() {
 		log.Fatal("DATABASE_URL requerido")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dbURL)
+
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		log.Fatalf("DATABASE_URL inválida: %v", err)
+	}
+	// Este comando escribe DIRECTO a las tablas, sin pasar por los servicios, así que tiene que
+	// sellar el tenant él mismo: desde 0023 company_id toma su valor de app.company_id y sin ese
+	// GUC todo insert entra con NULL y revienta el not-null. Va en AfterConnect y no una sola vez
+	// porque el GUC es de SESIÓN y el pool abre varias conexiones.
+	//
+	// El slug se resuelve dentro del set_config para no necesitar una conexión previa; si no
+	// existe, el GUC queda vacío y el primer insert falla ruidoso en vez de escribir en el tenant
+	// equivocado.
+	slug, err := resolveCompanySlug(ctx, dbURL, *company)
+	if err != nil {
+		log.Fatalf("empresa destino: %v", err)
+	}
+	cfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+		_, err := c.Exec(ctx,
+			"select set_config('app.company_id', (select id::text from companies where slug = $1), false)", slug)
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		log.Fatalf("conexión: %v", err)
 	}
 	defer pool.Close()
+	// El renglón importa: dice a qué empresa se está escribiendo antes de tocar nada.
+	//nolint:gosec // G706: el slug no viene del usuario, sale de companies y ya se validó contra
+	// esa lista en resolveCompanySlug; además %q lo entrecomilla.
+	log.Printf("importando al tenant %q", slug)
 
 	imp := &importer{pool: pool, csvDir: filepath.Join(*dir, "csv")}
 	if err := imp.run(ctx, *force); err != nil {
@@ -653,4 +681,38 @@ func minMax(s string, def int) int16 {
 		v = 32767
 	}
 	return int16(v)
+}
+
+// resolveCompanySlug elige el tenant destino. Con una sola empresa (el caso de hoy) no hace falta
+// pasar nada; con varias exige --company, porque importar el catálogo en la empresa equivocada se
+// nota semanas después y no hay rollback.
+func resolveCompanySlug(ctx context.Context, dbURL, want string) (string, error) {
+	conn, err := pgx.Connect(ctx, dbURL)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close(ctx) }()
+
+	rows, err := conn.Query(ctx, "select slug from companies order by id")
+	if err != nil {
+		return "", err
+	}
+	slugs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case len(slugs) == 0:
+		return "", fmt.Errorf("no hay empresas: corre las migraciones primero")
+	case want == "" && len(slugs) == 1:
+		return slugs[0], nil
+	case want == "":
+		return "", fmt.Errorf("hay %d empresas (%s): elige una con --company", len(slugs), strings.Join(slugs, ", "))
+	}
+	for _, s := range slugs {
+		if s == want {
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf("la empresa %q no existe (hay: %s)", want, strings.Join(slugs, ", "))
 }

@@ -62,7 +62,10 @@ export async function restoreSession(): Promise<boolean> {
   return true;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+// raw devuelve el Response sin parsear: no toda respuesta es JSON (el logo del ticket es un binario).
+// Se resuelve aquí y no con un fetch aparte para no abrir una segunda ruta que se olvide del token,
+// del refresh ante 401, de la traza o del sobre de error.
+async function request<T>(method: string, path: string, body?: unknown, retry = true, raw = false): Promise<T> {
   const token = useSessionStore.getState().token;
   // trazabilidad: mismo id en el header, en la consola y en logs/app.log del backend
   const requestId = uuid();
@@ -99,7 +102,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     // No intentamos refrescar sobre los propios endpoints de auth (un 401 ahí es real:
     // credenciales malas o refresh vencido) ni si ya reintentamos una vez.
     if (retry && !path.startsWith('/auth/') && (await tryRefresh())) {
-      return request<T>(method, path, body, false);
+      return request<T>(method, path, body, false, raw);
     }
     useSessionStore.getState().clear();
   }
@@ -120,14 +123,17 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   if (DEBUG) {
     console.debug(`[api] ✓ ${label} · ${res.status} · ${ms}ms · id=${traceId}`);
   }
+  if (raw) return res as T;
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
+  getRaw: (path: string) => request<Response>('GET', path, undefined, true, true),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   postForm: <T>(path: string, form: FormData) => request<T>('POST', path, form),
+  putForm: <T>(path: string, form: FormData) => request<T>('PUT', path, form),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   del: <T>(path: string) => request<T>('DELETE', path),
