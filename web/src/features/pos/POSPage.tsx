@@ -21,7 +21,8 @@ import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../admin/ProductEditDialog';
 import type { MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
 import { money, normalize } from '../../utils/format';
-import { printReceipt } from '../../utils/printReceipt';
+import { TicketPreview } from '../tickets/TicketPreview';
+import { AutoPrintTicket } from '../tickets/AutoPrintTicket';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
@@ -74,6 +75,7 @@ export function POSPage() {
   const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
   const [editing, setEditing] = useState<TicketLine | null>(null);
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
+  const [ticketOpen, setTicketOpen] = useState(false);
   // modo editar: reutiliza el grid del POS para editar productos (admin/gerente).
   const [editMode, setEditMode] = useState(false);
   const [editProduct, setEditProduct] = useState<AdminProduct | null>(null);
@@ -386,13 +388,24 @@ export function POSPage() {
               <Button size="lg" w="100%" onClick={() => setLastOrder(null)}>
                 Nuevo pedido
               </Button>
-              <Button size="md" variant="outline" w="100%" onClick={() => lastOrder && printReceipt(lastOrder)}>
-                <LuPrinter /> Imprimir ticket
+              {/* Antes esto imprimía a ciegas: el operador no sabía qué había salido hasta tener
+                  el papel en la mano, y un ticket equivocado ya costó papel y tiempo del cliente. */}
+              <Button size="md" variant="outline" w="100%" onClick={() => setTicketOpen(true)}>
+                <LuPrinter /> Ver ticket
               </Button>
             </VStack>
           </DialogBody>
         </DialogContent>
       </DialogRoot>
+
+      {/* Encima de la confirmación, no en lugar de ella: al cerrar el ticket el operador sigue
+          teniendo "Nuevo pedido" a un toque. reprint queda en false — la marca de reimpresión es
+          para los tickets que se sacan después, desde el tablero. */}
+      <TicketPreview order={lastOrder} isOpen={ticketOpen} onClose={() => setTicketOpen(false)} />
+
+      {/* Sin UI: si el negocio activó la impresión automática, el ticket sale al cerrar el pedido.
+          El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen disponibles. */}
+      <AutoPrintTicket order={lastOrder} />
     </Box>
   );
 }

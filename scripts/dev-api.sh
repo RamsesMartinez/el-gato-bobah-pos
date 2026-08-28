@@ -30,9 +30,13 @@ cd "$ROOT/server"
 if [ "${1:-}" = "air" ]; then exec "$(go env GOPATH)/bin/air"; fi
 
 # Se compila a ./tmp/api (la misma ruta que usa air) en vez de `go run`: el binario que `go run`
-# deja en %TEMP%\go-build… lo bloquea Smart App Control de Windows 11 —"Una directiva de Control
-# de aplicaciones bloqueó este archivo"— y la API muere al arrancar sin decir por qué. Desde una
-# ruta estable del repo pasa el filtro, y de paso el rebuild reusa la caché entre reinicios.
+# deja en %TEMP%\go-build… lo bloquea SIEMPRE Smart App Control de Windows 11 —"Una directiva de
+# Control de aplicaciones bloqueó este archivo"— y la API muere al arrancar sin decir por qué.
+#
+# OJO: compilar a una ruta del repo NO es un arreglo, solo mejora la probabilidad. Smart App
+# Control decide por reputación de CADA binario, así que una recompilación puede quedar bloqueada
+# aunque la anterior corriera desde esta misma ruta. Cuando pase, la salida es levantar la API en
+# contenedor (ver AGENTS.md §7), no seguir recompilando a ver si esta vez sí.
 go build -o ./tmp/api ./cmd/api
 
 case "${1:-}" in

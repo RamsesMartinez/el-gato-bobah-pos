@@ -116,7 +116,10 @@ migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
 fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la cache del menú)
 	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir ../references
-	@docker compose -f deploy/docker-compose.dev.yml exec -T redis redis-cli DEL pos:menu >/dev/null 2>&1 || true
+	@# Por patrón y no `DEL pos:menu`: desde 0022 la clave lleva el tenant (pos:menu:1, pos:popular:1,
+	@# ver internal/cache/menu.go). Borrar la clave vieja no invalidaba nada y el POS seguía
+	@# sirviendo el menú anterior — o vacío, si se importó con la base recién migrada.
+	@docker compose -f deploy/docker-compose.dev.yml exec -T redis sh -c "redis-cli --scan --pattern 'pos:*' | xargs -r redis-cli DEL" >/dev/null 2>&1 || true
 	@echo "cache del menú limpiada"
 
 # --- Producción ---

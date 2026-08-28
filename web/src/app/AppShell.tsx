@@ -2,7 +2,7 @@ import { Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import {
   LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins,
-  LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette, LuStore, LuUserCog,
+  LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter,
 } from 'react-icons/lu';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
@@ -22,6 +22,7 @@ const NAV = [
   { to: '/catalogo', icon: LuTag, label: 'Catálogo' },
   { to: '/empleados', icon: LuUsers, label: 'Empleados' },
   { to: '/negocio', icon: LuStore, label: 'Negocio' },
+  { to: '/impresion', icon: LuPrinter, label: 'Impresión' },
   { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
   { to: '/cuenta', icon: LuUserCog, label: 'Mi cuenta' },
 ];
