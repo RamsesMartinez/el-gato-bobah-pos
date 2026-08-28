@@ -578,9 +578,18 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 }
 
 type BusinessSetting struct {
-	DeliveryFee decimal.Decimal `json:"delivery_fee"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	UpdatedBy   *int64          `json:"updated_by"`
+	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+	UpdatedBy        *int64             `json:"updated_by"`
+	BusinessName     string             `json:"business_name"`
+	Address          *string            `json:"address"`
+	Phone            *string            `json:"phone"`
+	FooterNote       *string            `json:"footer_note"`
+	LogoBytes        []byte             `json:"logo_bytes"`
+	LogoMime         *string            `json:"logo_mime"`
+	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
+	HeaderNote       *string            `json:"header_note"`
+	AutoPrintOnClose bool               `json:"auto_print_on_close"`
 }
 
 type CashRegister struct {

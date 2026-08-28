@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
@@ -22,8 +24,22 @@ func NewSettingsService(s *store.Store) *SettingsService {
 	return &SettingsService{store: s}
 }
 
+// BusinessSettings son los ajustes del negocio y la identidad que va en el encabezado del ticket.
+// Los campos opcionales viajan como string vacío y no como null: el ticket omite el renglón cuando
+// está vacío, y así el front no tiene que distinguir null de "".
+//
+// HasLogo/LogoUpdatedAt describen el logo sin traerlo: el binario se pide por su propio endpoint.
+// Meterlo aquí serían 256 KB en cada lectura del costo de envío, que ocurre en cada cobro.
 type BusinessSettings struct {
-	DeliveryFee decimal.Decimal `json:"deliveryFee"`
+	DeliveryFee      decimal.Decimal `json:"deliveryFee"`
+	BusinessName     string          `json:"businessName"`
+	Address          string          `json:"address"`
+	Phone            string          `json:"phone"`
+	FooterNote       string          `json:"footerNote"`
+	HeaderNote       string          `json:"headerNote"`
+	AutoPrintOnClose bool            `json:"autoPrintOnClose"`
+	HasLogo          bool            `json:"hasLogo"`
+	LogoUpdatedAt    *time.Time      `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -36,7 +52,20 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		}
 		return BusinessSettings{}, err
 	}
-	return BusinessSettings{DeliveryFee: row.DeliveryFee}, nil
+	bs := BusinessSettings{
+		DeliveryFee:      row.DeliveryFee,
+		BusinessName:     row.BusinessName,
+		Address:          derefStr(row.Address),
+		Phone:            derefStr(row.Phone),
+		FooterNote:       derefStr(row.FooterNote),
+		HeaderNote:       derefStr(row.HeaderNote),
+		AutoPrintOnClose: row.AutoPrintOnClose,
+		HasLogo:          row.HasLogo,
+	}
+	if row.LogoUpdatedAt.Valid {
+		bs.LogoUpdatedAt = &row.LogoUpdatedAt.Time
+	}
+	return bs, nil
 }
 
 // SetDeliveryFee valida y guarda el costo de envío por defecto. allowZero: envío gratis es
@@ -51,4 +80,80 @@ func (s *SettingsService) SetDeliveryFee(ctx context.Context, fee decimal.Decima
 		return BusinessSettings{}, err
 	}
 	return BusinessSettings{DeliveryFee: row.DeliveryFee}, nil
+}
+
+// TicketLogo es el binario del logo del encabezado. Se lee aparte de BusinessSettings porque son
+// hasta 256 KB que no deben viajar en cada lectura del costo de envío.
+type TicketLogo struct {
+	Bytes     []byte
+	Mime      string
+	UpdatedAt time.Time
+}
+
+// Logo devuelve el logo subido. ok=false significa que el negocio no ha subido ninguno: es el
+// estado normal de un negocio recién dado de alta, no un error — el front cae a su logo default.
+func (s *SettingsService) Logo(ctx context.Context) (TicketLogo, bool, error) {
+	row, err := s.store.QC(ctx).GetTicketLogo(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return TicketLogo{}, false, nil
+		}
+		return TicketLogo{}, false, err
+	}
+	// El check business_settings_logo_pair garantiza que van juntos; se comprueban los dos de
+	// todos modos porque de aquí sale el Content-Type que se le promete al navegador.
+	if row.LogoBytes == nil || row.LogoMime == nil {
+		return TicketLogo{}, false, nil
+	}
+	logo := TicketLogo{Bytes: row.LogoBytes, Mime: *row.LogoMime}
+	if row.LogoUpdatedAt.Valid {
+		logo.UpdatedAt = row.LogoUpdatedAt.Time
+	}
+	return logo, true, nil
+}
+
+// SetBusinessInfo guarda la identidad que sale en el ticket y el interruptor de impresión
+// automática. Valida en domain ANTES de tocar el store: un texto que no cabe en 80mm se rechaza
+// como 400, no como un check violado de Postgres convertido en 500.
+func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, autoPrint bool, userID int64) (BusinessSettings, error) {
+	if err := info.Validate(); err != nil {
+		return BusinessSettings{}, err
+	}
+	err := s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
+		BusinessName:     strings.TrimSpace(info.Name),
+		Address:          strings.TrimSpace(info.Address),
+		Phone:            strings.TrimSpace(info.Phone),
+		HeaderNote:       strings.TrimSpace(info.HeaderNote),
+		FooterNote:       strings.TrimSpace(info.FooterNote),
+		AutoPrintOnClose: autoPrint,
+		UpdatedBy:        &userID,
+	})
+	if err != nil {
+		return BusinessSettings{}, err
+	}
+	return s.Get(ctx)
+}
+
+// SetLogo valida la imagen y la guarda. El mime que se persiste es el DETECTADO por contenido: es
+// el que después se le promete al navegador en el Content-Type.
+func (s *SettingsService) SetLogo(ctx context.Context, data []byte, userID int64) (BusinessSettings, error) {
+	mime, err := domain.ValidateLogo(data)
+	if err != nil {
+		return BusinessSettings{}, err
+	}
+	if err := s.store.QC(ctx).SetTicketLogo(ctx, db.SetTicketLogoParams{
+		LogoBytes: data, LogoMime: &mime, UpdatedBy: &userID,
+	}); err != nil {
+		return BusinessSettings{}, err
+	}
+	return s.Get(ctx)
+}
+
+// ClearLogo devuelve el ticket al logo por default. Idempotente: quitar un logo que no existe no
+// es un error, el operador quiere el estado final y no una lección sobre el estado previo.
+func (s *SettingsService) ClearLogo(ctx context.Context, userID int64) (BusinessSettings, error) {
+	if err := s.store.QC(ctx).ClearTicketLogo(ctx, &userID); err != nil {
+		return BusinessSettings{}, err
+	}
+	return s.Get(ctx)
 }
