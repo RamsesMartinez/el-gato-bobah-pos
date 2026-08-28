@@ -70,6 +70,10 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 ## Restricciones del producto
 
 - **Target: tablets de 7"** — el tamaño de los controles táctiles y la separación de las acciones destructivas son requisito funcional, no preferencia estética. La vara de UX del POS es **minimizar taps**: nunca obligar al operador a deshacer para rehacer.
+- **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
+  - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
+  - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
+  - Vara para revisar una pantalla: **si el renglón solo tiene sentido para alguien que leyó el código, no va.**
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
 - **Dependencias siempre en la última versión estable**, y **un CVE bloquea el merge**: `govulncheck` (Go) y `bun audit --audit-level=high` (web) son bloqueantes en CI y no se aflojan.
 
@@ -99,4 +103,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
+**Version**: 1.2.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-27
