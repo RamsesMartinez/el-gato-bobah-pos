@@ -52,7 +52,7 @@ Los tests que esta feature agrega y que deben aparecer en verde:
 | --- | --- |
 | `domain/logo_test.go` | tamaño, tipo por contenido, dimensiones, y que un JPEG renombrado a `.png` se clasifique por lo que es |
 | `domain/logo_test.go` (caso SVG) | un SVG con `<script>` se rechaza |
-| `httpapi/handlers_settings_test.go` | un cajero recibe 403 al subir logo, y queda el evento de seguridad |
+| `integration/ticketsettings_test.go` | sobre el ROUTER real: un cajero recibe 403 al escribir y 404 (no 403) al leer el logo; el admin hace el ciclo completo de identidad, textos y logo |
 | `utils/printReceipt.test.ts` | encabezado con y sin cada campo opcional; marca de reimpresión; el escape de XSS que ya existía sigue pasando |
 | `features/tickets/TicketPreview.test.tsx` | el modal monta el documento del ticket; el botón dispara una sola impresión aunque se toque dos veces |
 

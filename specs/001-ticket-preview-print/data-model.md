@@ -88,9 +88,9 @@ Sin `WHERE`: RLS acota a la fila de la empresa actual, igual que las dos que ya 
 | Nombre | Tipo | Para qué |
 | --- | --- | --- |
 | `GetBusinessSettings` | `:one` | Se amplía con los cuatro campos de identidad + `logo_mime` + `logo_updated_at`. **No** selecciona `logo_bytes` |
-| `UpdateBusinessInfo` | `:one` | Guarda nombre, dirección, teléfono y leyenda |
+| `UpdateBusinessInfo` | `:exec` | Guarda identidad, los dos textos y el interruptor de impresión automática. Los `::text` de los `nullif` no son decorativos: sin ellos sqlc genera `interface{}` |
 | `GetTicketLogo` | `:one` | `logo_bytes`, `logo_mime`, `logo_updated_at` — la única que trae el binario |
-| `SetTicketLogo` | `:one` | Guarda bytes + mime + `now()` |
+| `SetTicketLogo` | `:exec` | Guarda bytes + mime + `now()` |
 | `ClearTicketLogo` | `:exec` | Deja las tres columnas en nulo |
 
 Que `GetBusinessSettings` no traiga el binario es deliberado: esa query corre en el camino del cobro
@@ -99,12 +99,12 @@ no tiene por qué mover 256 KB por cada pedido.
 
 ## Tipos en el front
 
-`BusinessSettings` (en `web/src/types/pos.ts`) gana `businessName`, `address`, `phone`,
-`footerNote`, `hasLogo` y `logoUpdatedAt`. `hasLogo` y `logoUpdatedAt` son lo que le dice al front
+`BusinessSettings` (en `web/src/api/pos.ts`, no en `types/`) gana `businessName`, `address`,
+`phone`, `headerNote`, `footerNote`, `autoPrintOnClose`, `hasLogo` y `logoUpdatedAt`. `hasLogo` y `logoUpdatedAt` son lo que le dice al front
 si tiene que pedir el binario y si su copia en caché sigue vigente.
 
 `buildReceiptHtml` pasa a recibir tres argumentos: el pedido, la información del negocio (con el
-logo ya como data URI) y las opciones (`{ reprint: boolean }`). Sigue siendo pura y sin I/O, que es
+logo ya como data URI) y las opciones (`{ reprint?: boolean; sample?: boolean }`). Sigue siendo pura y sin I/O, que es
 lo que la hace reutilizable cuando la fase 2 emita los mismos datos como ESC/POS.
 
 ## Regla de la marca de reimpresión

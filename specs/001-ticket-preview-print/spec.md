@@ -206,6 +206,8 @@ apagarla y comprobar que vuelve a pedir el toque.
   verificar en papel cómo quedó el logo y los textos sin registrar una venta.
 - **FR-028**: El sistema MUST marcar en el papel los tickets de prueba, distinguibles de una venta
   real.
+- **FR-029**: Al capturar los textos del ticket, el sistema MUST avisar qué renglones no caben a lo
+  ancho del papel y se van a partir, antes de imprimirlos.
 - **FR-024**: El sistema MUST permitir activar que el ticket se imprima solo al cerrar una venta,
   sin que el operador toque nada.
 - **FR-025**: Con la impresión automática activada, el sistema MUST seguir permitiendo abrir el
