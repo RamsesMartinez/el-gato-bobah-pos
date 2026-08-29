@@ -214,6 +214,15 @@ describe('buildReceiptHtml — texto superior', () => {
 });
 
 describe('printHtmlOffscreen', () => {
+  // Relojes falsos y avance al final de cada caso: printFrame guarda su candado anti-doble-toque
+  // en el módulo, así que sin esto un test deja bloqueado al siguiente.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.advanceTimersByTime(60_000);
+    vi.useRealTimers();
+    document.querySelectorAll('iframe').forEach((f) => f.remove());
+  });
+
   it('imprime el documento fuera de pantalla y no deja el iframe montado', async () => {
     const doc = '<!doctype html><html><body>ticket</body></html>';
     const promesa = printHtmlOffscreen(doc);
@@ -229,12 +238,11 @@ describe('printHtmlOffscreen', () => {
 
     // Imprimir ANTES del load saca papel en blanco: el documento todavía no existe.
     expect(print).not.toHaveBeenCalled();
+    frame!.contentDocument!.body.innerHTML = '<p>ticket</p>';
     frame!.dispatchEvent(new Event('load'));
 
     await expect(promesa).resolves.toBe(true);
     expect(print).toHaveBeenCalledTimes(1);
-    // Sin limpieza, cada venta deja un iframe colgado en el DOM del POS.
-    expect(document.querySelector('iframe')).toBeNull();
   });
 });
 
@@ -295,5 +303,59 @@ describe('overflowingLines', () => {
   it('cuenta caracteres, no bytes: los acentos no acortan el renglón', () => {
     // "ñ" ocupa dos bytes; medir en bytes marcaría como largo un renglón que sí cabe.
     expect(overflowingLines('ñ'.repeat(TICKET_COLUMNS))).toEqual([]);
+  });
+});
+
+describe('printHtmlOffscreen — trampas del navegador real', () => {
+  beforeEach(() => vi.useFakeTimers());
+
+  function frameActual() {
+    return document.querySelector('iframe');
+  }
+  function stubPrint(frame: HTMLIFrameElement) {
+    const print = vi.fn();
+    Object.defineProperty(frame.contentWindow!, 'print', { value: print, writable: true });
+    Object.defineProperty(frame.contentWindow!, 'focus', { value: vi.fn(), writable: true });
+    return print;
+  }
+  function llenarDocumento(frame: HTMLIFrameElement) {
+    frame.contentDocument!.body.innerHTML = '<h1>El Gato Bobah</h1>';
+  }
+
+  afterEach(() => {
+    vi.advanceTimersByTime(60_000);
+    vi.useRealTimers();
+    document.querySelectorAll('iframe').forEach((f) => f.remove());
+  });
+
+  it('ignora el load del about:blank inicial y no imprime un documento vacío', () => {
+    // Un iframe recién insertado dispara `load` por su about:blank ANTES de cargar el srcdoc.
+    // Imprimir ahí saca papel en blanco y, peor, desmonta el iframe antes de que llegue el ticket.
+    void printHtmlOffscreen('<!doctype html><html><body>ticket</body></html>');
+    const frame = frameActual()!;
+    const print = stubPrint(frame);
+
+    frame.dispatchEvent(new Event('load')); // documento todavía vacío
+    expect(print).not.toHaveBeenCalled();
+    expect(frameActual()).not.toBeNull(); // sigue montado, esperando el documento de verdad
+
+    llenarDocumento(frame);
+    frame.dispatchEvent(new Event('load'));
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('no desmonta el iframe en el mismo tick en que imprime', async () => {
+    // Quitar el iframe justo después de print() cancela el trabajo en algunos navegadores: el
+    // diálogo alcanza a abrir pero se queda sin documento que imprimir.
+    const p = printHtmlOffscreen('<!doctype html><html><body>ticket</body></html>');
+    const frame = frameActual()!;
+    stubPrint(frame);
+    llenarDocumento(frame);
+    frame.dispatchEvent(new Event('load'));
+
+    expect(frameActual()).not.toBeNull();
+    vi.advanceTimersByTime(60_000);
+    await p;
+    expect(frameActual()).toBeNull();
   });
 });

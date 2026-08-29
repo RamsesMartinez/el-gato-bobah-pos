@@ -98,6 +98,12 @@ export function buildReceiptHtml(
 </body></html>`;
 }
 
+// Cuánto se deja el iframe en el DOM después de disparar la impresión, y cuánto se espera a que
+// cargue antes de rendirse. Generosos a propósito: el costo de esperar de más es un iframe
+// invisible unos segundos; el de quedarse corto es un ticket que no sale.
+const FRAME_CLEANUP_MS = 10000;
+const FRAME_LOAD_TIMEOUT_MS = 15000;
+
 // Ventana del candado anti-doble-toque. No es un número mágico: es cuánto tarda en aparecer el
 // diálogo (o el trabajo, con impresión directa) para que el operador vea que ya pasó algo.
 const PRINT_LOCK_MS = 1000;
@@ -139,11 +145,23 @@ export function printHtmlOffscreen(html: string): Promise<boolean> {
     frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
     frame.setAttribute('srcdoc', html);
 
+    let terminado = false;
     const cleanup = (printed: boolean) => {
-      frame.remove();
+      if (terminado) return;
+      terminado = true;
+      // El iframe NO se quita en el mismo tick en que se imprime: quitarlo ahí cancela el trabajo
+      // en algunos navegadores —el diálogo alcanza a abrir y se queda sin documento— y con
+      // impresión directa el trabajo se va a medias.
+      setTimeout(() => frame.remove(), FRAME_CLEANUP_MS);
       resolve(printed);
     };
+
     frame.addEventListener('load', () => {
+      // Un iframe recién insertado dispara `load` por su about:blank inicial ANTES de cargar el
+      // srcdoc. Imprimir en ese momento saca papel en blanco y desmonta el marco antes de que
+      // llegue el ticket, así que se espera hasta que el documento traiga contenido de verdad.
+      const doc = frame.contentDocument;
+      if (!doc?.body?.hasChildNodes()) return;
       try {
         cleanup(printFrame(frame));
       } catch {
@@ -152,6 +170,10 @@ export function printHtmlOffscreen(html: string): Promise<boolean> {
         cleanup(false);
       }
     });
+
+    // Red de seguridad: si el documento nunca carga (srcdoc bloqueado, navegador raro), no se deja
+    // un iframe colgado en el DOM del POS ni una promesa sin resolver por el resto del turno.
+    setTimeout(() => cleanup(false), FRAME_LOAD_TIMEOUT_MS);
     document.body.appendChild(frame);
   });
 }
