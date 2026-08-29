@@ -11,6 +11,7 @@ mecánica del repo en [`AGENTS.md`](../AGENTS.md).
 | [security-owasp.md](security-owasp.md) | Auditoría OWASP + ronda adversarial (2026-07-19) y los controles que dejó. Es el respaldo del **principio V** de la constitución y la vara del subagente `security-auditor`. Léelo antes de tocar auth, config, middleware o logging. |
 | [email-zoho.md](email-zoho.md) | Runbook de SMTP: Mailpit en local, Zoho en producción, y qué pasa cuando `SMTP_HOST` está vacío (hoy en prod lo está: la recuperación por correo está apagada). |
 | [impresion-tickets.md](impresion-tickets.md) | Runbook de impresión: ajustes del driver térmico, navegador en modo impresión directa y el catálogo de síntomas cuando el papel sale mal (en blanco, tenido, hoja larguísima). El contenido del ticket se configura dentro del sistema, en **Impresión**. |
+| [corte-produccion/](corte-produccion/) | Cómo quedaron partidas las dos empresas al pasar el POS a principal (`gatobobah` = producción, `bobah-pruebas` = histórico de pruebas), qué se copió y qué no, y los scripts con su rollback. Léelo antes de tocar datos de un tenant o de abrir otra sucursal: documenta los cuatro fallos que rompen un copiado de catálogo. |
 
 ## Histórico — se conserva, **no** se sigue
 
