@@ -5,15 +5,26 @@ import { uuid } from '../utils/uuid';
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const DEBUG = import.meta.env.DEV;
 
+// ApiErrorDetails es el motivo del fallo como DATO, tal como lo manda el backend. Existe para que
+// la pantalla no tenga que deducir nada del texto del mensaje: el servidor decide qué producto
+// tumbó el cobro y el front nada más lo pinta. `productName` puede venir vacío — el backend solo
+// nombra lo que el catálogo de la empresa conoce.
+export interface ApiErrorDetails {
+  productId?: number;
+  productName?: string;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
   requestId: string;
-  constructor(status: number, code: string, message: string, requestId: string) {
+  details?: ApiErrorDetails;
+  constructor(status: number, code: string, message: string, requestId: string, details?: ApiErrorDetails) {
     super(message);
     this.status = status;
     this.code = code;
     this.requestId = requestId;
+    this.details = details;
   }
 }
 
@@ -109,15 +120,17 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   if (!res.ok) {
     let code = 'ERROR';
     let message = `Error ${res.status}`;
+    let details: ApiErrorDetails | undefined;
     try {
       const data = await res.json();
       code = data?.error?.code ?? code;
       message = data?.error?.message ?? message;
+      details = data?.error?.details ?? undefined;
     } catch {
       /* respuesta sin cuerpo JSON */
     }
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
-    throw new ApiError(res.status, code, message, traceId);
+    throw new ApiError(res.status, code, message, traceId, details);
   }
 
   if (DEBUG) {

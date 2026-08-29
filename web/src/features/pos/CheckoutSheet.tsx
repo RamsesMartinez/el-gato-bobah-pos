@@ -157,8 +157,12 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       onDone(order);
     },
     onError: (e: unknown) => {
+      // El backend dice QUÉ producto tumbó el cobro; aquí solo se pinta. El nombre va en el título
+      // para que sea lo primero que se lee: con el carrito lleno, un mensaje que solo trae un id no
+      // le dice al operador qué renglón quitar.
+      const detalle = e instanceof ApiError ? e.details : undefined;
       toaster.create({
-        title: 'No se pudo crear el pedido',
+        title: detalle?.productName ? `No se pudo cobrar: ${detalle.productName}` : 'No se pudo crear el pedido',
         description: e instanceof ApiError ? e.message : String(e),
         type: 'error',
       });

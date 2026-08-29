@@ -103,6 +103,17 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
+	// Sin turno abierto no se cobra. Va ANTES de armar el pedido para no gastar consultas en algo
+	// que se va a rechazar, y después de la idempotencia para que un reintento de una venta que ya
+	// entró siga devolviéndola aunque entretanto se haya cerrado la caja.
+	sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNoOpenRegister
+		}
+		return nil, err
+	}
+
 	// cargar catálogo priceado (autoritativo)
 	prodIDs, optIDs := collectIDs(cmd.Lines)
 	prodRows, err := s.store.QC(ctx).GetPricedProducts(ctx, prodIDs)
@@ -157,6 +168,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			DeliveryPlatformID: cmd.DeliveryPlatformID,
 			CustomerName:       cmd.CustomerName,
 			Notes:              cmd.Notes,
+			RegisterSessionID:  &sess.ID,
 			OpenedBy:           cmd.OpenedBy,
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
@@ -202,12 +214,13 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				continue // línea vacía: se ignora (no crea filas de $0)
 			}
 			if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
-				OrderID:         ord.ID,
-				PaymentMethodID: p.MethodID,
-				Amount:          domain.Round2(p.Amount),
-				TipAmount:       domain.Round2(p.Tip),
-				ReceivedBy:      &cmd.OpenedBy,
-				Reference:       p.Reference,
+				OrderID:           ord.ID,
+				PaymentMethodID:   p.MethodID,
+				Amount:            domain.Round2(p.Amount),
+				TipAmount:         domain.Round2(p.Tip),
+				RegisterSessionID: &sess.ID,
+				ReceivedBy:        &cmd.OpenedBy,
+				Reference:         p.Reference,
 			}); err != nil {
 				return err
 			}

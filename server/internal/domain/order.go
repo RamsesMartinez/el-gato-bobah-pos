@@ -13,6 +13,30 @@ var (
 	ErrOptionNotFound = errors.New("opción de modificador no encontrada")
 )
 
+// ProductUnavailable dice CUÁL producto tumbó el cobro. Nace de que el mensaje anterior era
+// "producto no disponible (id 510)": el operador tiene el carrito enfrente y un número no le dice
+// qué renglón quitar.
+//
+// Name va vacío cuando el catálogo de la empresa no conoce ese id. Ahí el nombre NO se puede
+// averiguar: el producto o ya no existe, o es de otra empresa y la RLS lo esconde a propósito —
+// sacarlo convertiría este error en un oráculo para leer el menú ajeno probando ids. Por eso el
+// mensaje de ese caso no dice "no disponible" (que suena a que se agotó) sino que el producto no
+// está en este menú, que es lo que de verdad pasa y sí es accionable.
+type ProductUnavailable struct {
+	ProductID int64
+	Name      string
+}
+
+func (e ProductUnavailable) Error() string {
+	if e.Name != "" {
+		return fmt.Sprintf("%s: %s", ErrProductNotSell.Error(), e.Name)
+	}
+	return fmt.Sprintf("el producto ya no está en este menú (id %d)", e.ProductID)
+}
+
+// Unwrap mantiene el sentinel: httpapi.Error sigue mapeando esto a 422 por errors.Is.
+func (e ProductUnavailable) Unwrap() error { return ErrProductNotSell }
+
 // Estados de una orden. "paid" es un campo derivado, no un estado.
 const (
 	StatusAbierta   = "abierta"
@@ -119,10 +143,10 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 	for _, in := range lines {
 		p, ok := products[in.ProductID]
 		if !ok {
-			return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrProductNotSell, in.ProductID)
+			return BuiltOrder{}, ProductUnavailable{ProductID: in.ProductID}
 		}
 		if !p.Active {
-			return BuiltOrder{}, fmt.Errorf("%w: %s", ErrProductNotSell, p.Name)
+			return BuiltOrder{}, ProductUnavailable{ProductID: p.ID, Name: p.Name}
 		}
 		// Redondear a 2dp (order_lines.quantity es numeric(8,2)) y validar el valor ya
 		// redondeado: si no, un qty como 0.001 pasa la validación pero Postgres lo coacciona

@@ -156,3 +156,13 @@ left join order_payments op on op.payment_method_id = pm.id and op.created_at >=
 where pm.is_active
 group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key;
+
+-- name: GetOpenPrimarySession :one
+-- La sesión que habilita cobrar. Es SIEMPRE la de la caja principal: las secundarias (caja fuerte,
+-- caja externa) existen para traspasos y gastos, y si una de ellas bastara para vender el efectivo
+-- del mostrador caería en un arqueo que no es el suyo.
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1;

@@ -17,6 +17,16 @@ type errorEnvelope struct {
 type errorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Details lleva el error como DATO además de como prosa, para que el front pinte sin escarbar
+	// en el texto del mensaje. Se omite cuando no hay nada que detallar: la respuesta de siempre.
+	Details *errorDetails `json:"details,omitempty"`
+}
+
+// errorDetails son los campos estructurados que un error puede aportar. Hoy solo el producto que
+// tumbó el cobro; se agregan campos cuando otro error los necesite, no antes.
+type errorDetails struct {
+	ProductID   int64  `json:"productId,omitempty"`
+	ProductName string `json:"productName,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -44,6 +54,11 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusForbidden, "FORBIDDEN"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
+	case errors.Is(err, domain.ErrNoOpenRegister):
+		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
+		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
+		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
+		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):
@@ -68,8 +83,21 @@ func Error(w http.ResponseWriter, err error) {
 	if status == http.StatusInternalServerError {
 		slog.Error("request failed", "error", err)
 		msg = "Error interno del servidor"
+		// Sin details en un 500: el mensaje ya se ocultó por opaco, y adjuntar el interior del
+		// error por otra puerta lo desharía.
+		JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg}})
+		return
 	}
-	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg}})
+
+	// El producto que tumbó el cobro viaja también como dato. Ojo: ProductName va VACÍO cuando el
+	// catálogo de la empresa no conoce el id — ver domain.ProductUnavailable; rellenarlo ahí
+	// filtraría el menú de otra empresa.
+	var details *errorDetails
+	var pu domain.ProductUnavailable
+	if errors.As(err, &pu) {
+		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
+	}
+	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg, Details: details}})
 }
 
 // Decode parses a JSON request body into v, returning a validation error on failure.

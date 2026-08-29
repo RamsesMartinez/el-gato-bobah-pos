@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Box, Flex, VStack, HStack, Text, Button, Spinner, Center, IconButton, useDisclosure,
 } from '@chakra-ui/react';
-import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert } from 'react-icons/lu';
+import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert, LuWallet } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
@@ -58,8 +58,8 @@ export function POSPage() {
   const role = useSessionStore((s) => s.user?.role);
   const canEdit = role === 'admin' || role === 'gerente';
   const navigate = useNavigate();
-  // Aviso de caja: si no hay caja abierta, el POS lo anuncia (no bloquea el cobro). Poll suave
-  // por si otra tablet abre/cierra; al abrir caja desde /caja se invalida ['cash'] y refresca.
+  // Estado de caja: sin turno abierto la pantalla de venta no se muestra. Poll suave por si otra
+  // tablet abre/cierra; al abrir caja desde /caja se invalida ['cash'] y refresca al instante.
   const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
   const canOpenCash = canAccess(role, '/caja');
   const lines = useActiveTicket().lines;
@@ -219,21 +219,31 @@ export function POSPage() {
   if (isLoading) return <Center h="80vh"><Spinner size="xl" /></Center>;
   if (error) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
 
+  // Sin turno abierto la pantalla de venta no se muestra. El backend rechaza el cobro
+  // (NO_OPEN_REGISTER) y antes esto era solo un aviso: se podía armar el ticket completo y toparse
+  // con el error hasta el momento de cobrar, con el cliente enfrente. `open` viene del backend y
+  // ya significa "la caja principal tiene turno"; aquí no se decide nada, solo se pinta.
+  if (cashStatus.data && !cashStatus.data.open) {
+    return (
+      <Center h="80vh" px={6}>
+        <VStack gap={4} maxW="420px" textAlign="center">
+          <Box color="orange.500"><LuTriangleAlert size={44} /></Box>
+          <Text fontSize="xl" fontWeight="700">No hay caja abierta</Text>
+          <Text color="fg.muted">Abre el turno para empezar a vender.</Text>
+          {canOpenCash ? (
+            <Button size="lg" minH="52px" w="100%" onClick={() => navigate('/caja')}>
+              <LuWallet /> Abrir caja
+            </Button>
+          ) : (
+            <Text color="fg.muted" fontSize="sm">Pídele a un gerente que la abra.</Text>
+          )}
+        </VStack>
+      </Center>
+    );
+  }
+
   const catalog = (
     <VStack align="stretch" gap={2} h="100%" overflow="hidden">
-      {/* Aviso (no bloqueo): sin caja abierta las ventas en efectivo no cuadran el corte. */}
-      {cashStatus.data && !cashStatus.data.open && (
-        <Box mx={{ base: 3, md: 4 }} mt={2} px={3} py={2} borderRadius="md" bg="orange.500" color="white">
-          <HStack justify="space-between" gap={2}>
-            <HStack gap={2} minW={0}><LuTriangleAlert /><Text fontWeight="600" fontSize="sm" truncate>No hay caja abierta</Text></HStack>
-            {canOpenCash && (
-              <Button size="xs" minH="32px" variant="solid" colorPalette="whiteAlpha" flexShrink={0} onClick={() => navigate('/caja')}>
-                Abrir caja
-              </Button>
-            )}
-          </HStack>
-        </Box>
-      )}
       {/* Una sola fila (cuentas · buscador · toggles): recupera ~56px de alto en 7" landscape.
           Las cuentas scrollean solas; el buscador queda con ancho cómodo y fijo a la derecha. */}
       <Box px={{ base: 3, md: 4 }} pt={3}>

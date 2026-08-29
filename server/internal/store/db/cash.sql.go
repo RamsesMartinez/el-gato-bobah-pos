@@ -166,6 +166,30 @@ func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegiste
 	return i, err
 }
 
+const getOpenPrimarySession = `-- name: GetOpenPrimarySession :one
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1
+`
+
+type GetOpenPrimarySessionRow struct {
+	ID           int64       `json:"id"`
+	RegisterID   int64       `json:"register_id"`
+	BusinessDate pgtype.Date `json:"business_date"`
+}
+
+// La sesión que habilita cobrar. Es SIEMPRE la de la caja principal: las secundarias (caja fuerte,
+// caja externa) existen para traspasos y gastos, y si una de ellas bastara para vender el efectivo
+// del mostrador caería en un arqueo que no es el suyo.
+func (q *Queries) GetOpenPrimarySession(ctx context.Context) (GetOpenPrimarySessionRow, error) {
+	row := q.db.QueryRow(ctx, getOpenPrimarySession)
+	var i GetOpenPrimarySessionRow
+	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
+	return i, err
+}
+
 const getOpenSessionByRegister = `-- name: GetOpenSessionByRegister :one
 
 select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id from register_sessions where register_id = $1 and status = 'abierta' limit 1

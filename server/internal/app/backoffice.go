@@ -691,10 +691,22 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	return view, nil
 }
 
-// HasAnyOpenSession: ¿hay alguna caja abierta? Chequeo ligero para el aviso del POS, sin calcular
-// esperados. Disponible a cualquier rol autenticado: saber si el negocio opera no es dato sensible.
-func (s *BackofficeService) HasAnyOpenSession(ctx context.Context) (bool, error) {
-	return s.store.QC(ctx).AnyOpenSession(ctx)
+// SellingRegisterOpen: ¿se puede cobrar ahora mismo? Contesta EXACTAMENTE la misma pregunta que
+// hace OrdersService.Create antes de aceptar una venta (la caja PRINCIPAL con turno abierto), y no
+// "¿hay alguna caja abierta?" como antes: con la caja fuerte abierta el POS decía que sí y el cobro
+// tronaba hasta el final, con el ticket ya armado.
+//
+// Chequeo ligero, sin calcular esperados. Disponible a cualquier rol autenticado: saber si el
+// negocio está operando no es dato sensible.
+func (s *BackofficeService) SellingRegisterOpen(ctx context.Context) (bool, error) {
+	_, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // tsPtr convierte un timestamptz anulable de pgx a *time.Time (nil si NULL).

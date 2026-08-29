@@ -1,6 +1,12 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/shopspring/decimal"
+)
 
 func TestCanTransition(t *testing.T) {
 	ok := [][2]string{
@@ -124,5 +130,56 @@ func TestApplyDeliveryFee(t *testing.T) {
 	}
 	if _, err := ApplyDeliveryFee(base(), MaxMoney.Add(d("1")), true); err == nil {
 		t.Error("fee > MaxMoney debe rechazarse")
+	}
+}
+
+// El error de producto no vendible debe decir QUÉ producto es, no solo un número: el operador
+// tiene el carrito enfrente y "producto no disponible (id 510)" no le dice cuál quitar.
+func TestProductoNoDisponibleNombraElProducto(t *testing.T) {
+	prods := map[int64]PricedProduct{
+		7: {ID: 7, Name: "Chococino", Price: decimal.NewFromInt(50), Active: false},
+	}
+	lines := []OrderLineInput{{ProductID: 7, Qty: decimal.NewFromInt(1)}}
+
+	_, err := BuildOrder(lines, prods, map[int64]PricedOption{})
+	if !errors.Is(err, ErrProductNotSell) {
+		t.Fatalf("debe seguir siendo ErrProductNotSell, fue %v", err)
+	}
+	var pu ProductUnavailable
+	if !errors.As(err, &pu) {
+		t.Fatalf("debe poder desempaquetarse como ProductUnavailable, fue %T", err)
+	}
+	if pu.ProductID != 7 || pu.Name != "Chococino" {
+		t.Fatalf("id/nombre incorrectos: %+v", pu)
+	}
+	if !strings.Contains(err.Error(), "Chococino") {
+		t.Fatalf("el mensaje debe nombrar el producto: %q", err.Error())
+	}
+}
+
+// Un id que el catálogo del tenant no conoce no se puede nombrar sin leer el catálogo de otra
+// empresa — la RLS lo impide a propósito. El error lleva el id y un mensaje que sí le dice al
+// operador qué hacer, en vez de un "no disponible" que suena a que el producto se acabó.
+func TestProductoFueraDelMenuLlevaElIdYUnMensajeAccionable(t *testing.T) {
+	lines := []OrderLineInput{{ProductID: 510, Qty: decimal.NewFromInt(1)}}
+
+	_, err := BuildOrder(lines, map[int64]PricedProduct{}, map[int64]PricedOption{})
+	if !errors.Is(err, ErrProductNotSell) {
+		t.Fatalf("debe seguir siendo ErrProductNotSell, fue %v", err)
+	}
+	var pu ProductUnavailable
+	if !errors.As(err, &pu) {
+		t.Fatalf("debe poder desempaquetarse como ProductUnavailable, fue %T", err)
+	}
+	if pu.ProductID != 510 || pu.Name != "" {
+		t.Fatalf("sin nombre y con el id: %+v", pu)
+	}
+	if !strings.Contains(err.Error(), "510") {
+		t.Fatalf("el mensaje debe llevar el id: %q", err.Error())
+	}
+	// No debe decir solo "no disponible": ese texto hace pensar que se agotó, cuando lo que pasa
+	// es que el menú de la pantalla no es el de la empresa en la que está la sesión.
+	if !strings.Contains(err.Error(), "menú") {
+		t.Fatalf("el mensaje debe explicar que no está en este menú: %q", err.Error())
 	}
 }
