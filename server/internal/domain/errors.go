@@ -30,4 +30,9 @@ var (
 	// ErrPaymentsBelowAmount: se intentó dar por pagado un gasto con pagos que no cubren el
 	// importe. Envuelve ErrValidation para llegar como 4xx con mensaje accionable.
 	ErrPaymentsBelowAmount = fmt.Errorf("%w: los pagos registrados no cubren el importe del gasto", ErrValidation)
+	// ErrNoOpenRegister: se quiso cobrar sin la caja principal abierta. No es una validación de
+	// forma sino una regla del negocio: una venta cobrada fuera de un arqueo es dinero que el corte
+	// no ve, y el faltante se descubre al cerrar sin manera de reconstruir de dónde salió.
+	// Solo la caja PRINCIPAL habilita el cobro — las secundarias existen para traspasos y gastos.
+	ErrNoOpenRegister = errors.New("no hay una caja abierta: abre el turno antes de cobrar")
 )

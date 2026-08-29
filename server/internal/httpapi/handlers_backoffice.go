@@ -191,9 +191,10 @@ func (h *Handlers) CashTransfer(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
-// GET /cash-status — ¿hay alguna caja abierta? Ligero, para el aviso del POS (cualquier rol).
+// GET /cash-status — ¿se puede cobrar? (la caja principal con turno abierto). El POS lo usa para
+// mostrar o bloquear la pantalla de venta, así que responde la misma regla que el cobro.
 func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
-	open, err := h.backoffice.HasAnyOpenSession(r.Context())
+	open, err := h.backoffice.SellingRegisterOpen(r.Context())
 	if err != nil {
 		Error(w, err)
 		return

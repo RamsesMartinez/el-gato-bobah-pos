@@ -27,6 +27,7 @@ func TestRefundFlow(t *testing.T) {
 	cashier := makeUser(t, st, "cajero_refund", "cajero")
 	admin := makeUser(t, st, "admin_refund", "admin")
 	prod := makeProduct(t, st, "Crepa Nutella", decimal.RequireFromString("50"), true) // con stock
+	abrirCajaPrincipal(t, st, cashier)
 
 	// Crear orden (2 × 50 = 100) y entregarla.
 	ov, err := svc.Create(ctx, app.CreateOrderCmd{
@@ -103,6 +104,7 @@ func TestRefundRejectsNonDelivered(t *testing.T) {
 	cashier := makeUser(t, st, "cajero_nd", "cajero")
 	admin := makeUser(t, st, "admin_nd", "admin")
 	prod := makeProduct(t, st, "Café", decimal.RequireFromString("30"), false)
+	abrirCajaPrincipal(t, st, cashier)
 
 	ov, err := svc.Create(ctx, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),

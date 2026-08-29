@@ -177,3 +177,23 @@ func countOrderMovements(t *testing.T, st *store.Store, orderID int64) int {
 	}
 	return n
 }
+
+// abrirCajaPrincipal deja la caja principal con turno abierto. Desde que cobrar exige caja abierta
+// (domain.ErrNoOpenRegister) es precondición de cualquier test que cree una venta, así que vive
+// aquí y no copiada en cada archivo.
+func abrirCajaPrincipal(t *testing.T, st *store.Store, por int64) int64 {
+	t.Helper()
+	ctx := context.Background()
+	var regID int64
+	if err := st.Pool.QueryRow(ctx,
+		`select id from cash_registers where is_primary and is_active limit 1`).Scan(&regID); err != nil {
+		t.Fatalf("caja principal: %v", err)
+	}
+	var sessID int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into register_sessions (business_date, opening_cash, opened_by, register_id)
+		 values (current_date, 0, $1, $2) returning id`, por, regID).Scan(&sessID); err != nil {
+		t.Fatalf("abrir caja principal: %v", err)
+	}
+	return sessID
+}

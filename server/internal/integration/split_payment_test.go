@@ -24,6 +24,7 @@ func TestSplitPayment(t *testing.T) {
 	prod := makeProduct(t, st, "Combo", decimal.RequireFromString("100"), false)
 	cash := paymentMethodID(t, st, "Efectivo")
 	card := paymentMethodID(t, st, "Tarjeta débito")
+	abrirCajaPrincipal(t, st, cashier)
 
 	ov, err := svc.Create(ctx, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
