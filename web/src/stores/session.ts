@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { empresaRecordada, hayQueLimpiar, recordarEmpresa } from '../app/tenantSwitch';
+
 export interface SessionUser {
   id: number;
   companyId: number;
@@ -23,10 +25,29 @@ interface SessionState {
   clear: () => void;
 }
 
+// Qué tirar cuando el dispositivo entra con una empresa distinta a la anterior. Lo registra
+// main.tsx con la caché de queries y el carrito; el store no los importa para no amarrar el
+// estado de sesión a React Query. Sin registrar es un no-op (tests que montan el store solo).
+let limpiarDatosDelTenant: () => void = () => {};
+
+export function registrarLimpiezaDeTenant(fn: () => void): void {
+  limpiarDatosDelTenant = fn;
+}
+
 export const useSessionStore = create<SessionState>()((set) => ({
   token: null,
   user: null,
   status: 'loading',
-  setSession: (token, user) => set({ token, user, status: 'authed' }),
+  // setSession es el único punto por el que se entra (login, y el canje del refresh al arrancar),
+  // así que es donde se decide si lo que quedó en el dispositivo es de otra empresa. Se hace al
+  // ENTRAR y no al salir: cerrar sesión también pasa cuando el refresh falla por un hipo de red, y
+  // limpiar ahí le borraría el ticket a medias a un cajero que va a volver a la misma empresa.
+  setSession: (token, user) => {
+    if (hayQueLimpiar(empresaRecordada(), user.companyId)) {
+      limpiarDatosDelTenant();
+    }
+    recordarEmpresa(user.companyId);
+    set({ token, user, status: 'authed' });
+  },
   clear: () => set({ token: null, user: null, status: 'anon' }),
 }));
