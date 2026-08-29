@@ -11,7 +11,7 @@ pre-commit:
     go-lint:
       root: "server/"
       glob: "*.go"
-      run: golangci-lint run ./...
+      run: bash ../scripts/hooks/golangci-lint.sh
     web-lint:
       root: "web/"
       glob: "*.{ts,tsx}"
