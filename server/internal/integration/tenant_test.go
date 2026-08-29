@@ -128,3 +128,36 @@ func TestLoginIsScopedByCompany(t *testing.T) {
 }
 
 func strptr(s string) *string { return &s }
+
+// Dos empresas deben poder tener una categoría raíz con el MISMO nombre. Suena obvio y no lo era:
+// `categories_name_scope` nació en 0004, antes del multi-tenant, como único sobre
+// (coalesce(parent_id,0), name) SIN company_id. Para una categoría raíz el coalesce da 0 en las dos
+// empresas, así que la segunda empresa que quisiera su propia "Bebidas" chocaba contra la primera —
+// un tenant nuevo era imposible de poblar aunque la RLS lo aislara perfecto.
+func TestCategoriaRaizPuedeRepetirNombreEntreEmpresas(t *testing.T) {
+	owner := newTestStore(t)
+	otra := makeCompany(t, owner, "otra-empresa")
+	ctx := context.Background()
+
+	var idA int64
+	if err := owner.Pool.QueryRow(ctx,
+		`insert into categories (company_id, name) values ($1, 'Bebidas') returning id`,
+		defaultCompanyID).Scan(&idA); err != nil {
+		t.Fatalf("categoría en la empresa por defecto: %v", err)
+	}
+	var idB int64
+	if err := owner.Pool.QueryRow(ctx,
+		`insert into categories (company_id, name) values ($1, 'Bebidas') returning id`,
+		otra).Scan(&idB); err != nil {
+		t.Fatalf("misma categoría raíz en otra empresa: %v", err)
+	}
+	if idA == idB {
+		t.Fatal("deben ser dos categorías distintas")
+	}
+
+	// El índice sigue sirviendo para lo suyo: DENTRO de una empresa el nombre raíz no se repite.
+	if _, err := owner.Pool.Exec(ctx,
+		`insert into categories (company_id, name) values ($1, 'Bebidas')`, otra); err == nil {
+		t.Fatal("duplicar el nombre dentro de la MISMA empresa debe seguir prohibido")
+	}
+}
