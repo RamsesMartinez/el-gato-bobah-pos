@@ -35,7 +35,10 @@ order by 1;
 \echo '=== D) usuarios que van a poder entrar en la empresa nueva con su MISMA contraseña ==='
 select username, role, is_active, must_change_password from users order by id;
 
-\echo '=== E) el id más alto del catálogo: el offset de 1,000,000 debe quedar muy por encima ==='
+-- El offset de cada tabla vale su propio max(id), así que los ids copiados caen en (max, 2*max].
+-- Este número sirve para confirmar de un vistazo que el doble sigue cabiendo en el tipo de la
+-- columna — importa en `channels`, `delivery_platforms` y `payment_methods`, que usan smallint.
+\echo '=== E) el id más alto del catálogo ==='
 select max(m) as max_id_catalogo from (
   select max(id) m from products union all select max(id) from categories
   union all select max(id) from modifier_options union all select max(id) from ingredients

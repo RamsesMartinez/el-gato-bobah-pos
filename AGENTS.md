@@ -159,14 +159,12 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
     ```
 
     Los volúmenes de caché no son opcionales: sin ellos cada arranque vuelve a bajar el módulo entero. El front sigue corriendo en el host con `bun run dev` y su proxy a `:8080`.
-  - `govulncheck.exe` **se bloquea siempre**, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). El hook de pre-push muere ahí. Alternativa sin apagar SAC — corre el mismo scanner que CI, en contenedor:
+  - **`govulncheck` y `golangci-lint` ya no se ejecutan en el host.** `govulncheck.exe` se bloquea siempre, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). `golangci-lint` corrió sin problema desde el 26-ago y el 29-ago empezó a dar *Permission denied* sin que nada cambiara: **el veredicto de SAC se mueve solo**, así que ninguna herramienta está a salvo por haber corrido ayer. Los dos hooks ya traen la salida y **no hay nada que hacer a mano** — si el binario local no arranca, el mismo escáner/linter corre en contenedor con la versión que usa CI:
+    - [scripts/hooks/govulncheck.sh](scripts/hooks/govulncheck.sh) → `golang:1.27`.
+    - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golangci/golangci-lint:v2.13.1`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
 
-    ```bash
-    MSYS_NO_PATHCONV=1 docker run --rm -v "d:/git/el-gato-bobah-pos/server:/src" -w /src golang:1.27 \
-      sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..."
-    ```
-
-  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `golangci-lint`, `lefthook`) corren sin problema.
+    Lo que **no** se hace es `--no-verify`: el gate no se afloja, se corre en otro lado.
+  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `lefthook`) corren sin problema **hoy** — con la advertencia de arriba: eso puede cambiar de un día para otro.
 - **El working tree va en LF y [.gitattributes](.gitattributes) lo fuerza** (`* text=auto eol=lf`). Sin él, el `core.autocrlf=true` que Git for Windows deja por default checa out los 113 `.go` en CRLF y `gofmt -l` —lo primero que corre el pre-commit— los marca todos: no se puede commitear Go sin `--no-verify`, que no se usa. Si te tocó un working tree ya en CRLF: `git config --local core.autocrlf false`, quítales el `\r` y corre `git add --renormalize .`. Ese último paso importa — el contenido queda idéntico pero el stat cache no se refresca solo, y `git status` se queda marcando cientos de archivos "modificados" que `git diff` ve iguales.
 - **`GOTOOLCHAIN` vacío se comporta como `local`**: con Go 1.26 instalado, `go build` falla con *"go.mod requires go >= 1.27.0"* en vez de bajar el toolchain. Se arregla con `go env -w GOTOOLCHAIN=auto` (baja go1.27.0 al module cache) o instalando Go 1.27.
 - **No hay `lsof`**, así que `scripts/start.sh` no detecta puertos ocupados ni `scripts/stop.sh` mata la API/web por puerto. Fija los puertos (`BACKEND_PORT=8080 FRONTEND_PORT=3000 make start`) y cierra a mano lo que quede vivo.
