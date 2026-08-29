@@ -130,11 +130,11 @@ jobs:
       - name: Audit
         run: bun audit --audit-level=high
 
-  # --- Deploy (solo push directo a develop, nunca en PRs) ---
+  # --- Deploy (solo push directo a main, nunca en PRs) ---
   deploy-frontend:
     name: Deploy frontend (Cloudflare Pages)
     needs: [frontend]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -173,7 +173,7 @@ jobs:
   image:
     name: Build imagen API (ghcr.io)
     needs: [backend, integration]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -198,7 +198,7 @@ jobs:
           # ghcr.io EXIGE minúsculas y el owner es "RamsesMartinez": sin el tr el push falla.
           repo="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
           echo "image=ghcr.io/${repo}/api:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "moving=ghcr.io/${repo}/api:develop" >> "$GITHUB_OUTPUT"
+          echo "moving=ghcr.io/${repo}/api:main" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -219,7 +219,7 @@ jobs:
   deploy-backend:
     name: Deploy backend (VPS)
     needs: [image]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
