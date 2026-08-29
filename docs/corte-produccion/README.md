@@ -8,10 +8,17 @@ arrancar en limpio sin perder nada de eso.
 **Cómo se resolvió**: no se borró nada. Se abrió una **empresa nueva** que nace vacía y se le copió
 el catálogo completo; la vieja se quedó con su histórico y cambió de nombre.
 
+**Aplicado en producción el 2026-08-29.** Así quedó:
+
 | | Empresa |
 |---|---|
-| **Producción** (la que se usa) | slug `gatobobah`, nombre *El Gato Bobah*. Catálogo copiado, cero ventas. |
-| **Pruebas** (histórico) | slug `bobah-pruebas`, nombre *Bobah Pruebas*. Conserva las 58 ventas, los cortes y los gastos de prueba. Sigue activa: se entra con `usuario@bobah-pruebas`. |
+| **Producción** (la que se usa) | `id 2`, slug `gatobobah`, nombre *El Gato Bobah*. Catálogo copiado, cero ventas. |
+| **Pruebas** (histórico) | `id 1`, slug `bobah-pruebas`, nombre *Bobah Pruebas*. Conserva las 58 ventas, los cortes y los gastos de prueba. Sigue activa: se entra con `usuario@bobah-pruebas`. |
+
+> **Una sesión abierta de antes del corte sigue en la empresa de pruebas.** El `company_id` viaja
+> dentro del JWT, así que un dispositivo que no cerró sesión sigue cobrando en *Bobah Pruebas* hasta
+> que alguien salga y vuelva a entrar. Al aplicar el corte hay que cerrar sesión en todas las
+> tablets.
 
 El slug se intercambió a propósito. El slug es la mitad derecha del identificador de login, así que
 dejando `gatobobah` en la empresa nueva **los operadores siguen entrando con `admin@gatobobah`** y no
