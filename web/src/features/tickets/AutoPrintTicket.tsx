@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { buildReceiptHtml, printHtmlOffscreen } from '../../utils/printReceipt';
+import { toaster } from '../../components/ui/toaster';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
 import type { OrderView } from '../../types/pos';
 
@@ -18,9 +19,17 @@ export function AutoPrintTicket({ order }: { order: OrderView | null }) {
     if (!order || !business || !autoPrintOnClose) return;
     if (printedOrderID.current === order.id) return;
     printedOrderID.current = order.id;
-    // Sin await ni manejo de error a propósito: el pedido YA está registrado, y una impresora
-    // apagada no debe trabar la pantalla ni perder la venta. Se reimprime desde el tablero.
-    void printHtmlOffscreen(buildReceiptHtml(order, business, {}));
+    // Sin await a propósito: el pedido YA está registrado, y una impresora apagada no debe trabar
+    // la pantalla ni perder la venta. Pero tampoco puede fallar en silencio — que no salga papel y
+    // nadie se entere es justo el modo de fallo que esta feature vino a quitar.
+    void printHtmlOffscreen(buildReceiptHtml(order, business, {})).then((printed) => {
+      if (printed) return;
+      toaster.create({
+        title: 'No se pudo imprimir el ticket',
+        description: 'Ábrelo con «Ver ticket» e imprímelo desde ahí. La venta ya quedó registrada.',
+        type: 'warning',
+      });
+    });
   }, [order, business, autoPrintOnClose]);
 
   return null;

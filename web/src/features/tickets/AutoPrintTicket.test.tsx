@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AutoPrintTicket } from './AutoPrintTicket';
 import type { OrderView } from '../../types/pos';
@@ -8,6 +8,9 @@ vi.mock('../../utils/printReceipt', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../utils/printReceipt')>()),
   printHtmlOffscreen,
 }));
+
+const toast = vi.hoisted(() => vi.fn());
+vi.mock('../../components/ui/toaster', () => ({ toaster: { create: toast } }));
 
 const info = vi.hoisted(() => ({
   current: { autoPrintOnClose: false } as { autoPrintOnClose: boolean },
@@ -42,7 +45,11 @@ const order: OrderView = {
   lines: [{ productName: 'Ramen', quantity: '1', unitPrice: '100', lineTotal: '100', modifiers: [] }],
 };
 
-beforeEach(() => printHtmlOffscreen.mockClear());
+beforeEach(() => {
+  printHtmlOffscreen.mockClear();
+  printHtmlOffscreen.mockResolvedValue(true);
+  toast.mockClear();
+});
 
 test('apagado no imprime nada', () => {
   info.current.autoPrintOnClose = false;
@@ -77,4 +84,14 @@ test('sin pedido no imprime', () => {
   info.current.autoPrintOnClose = true;
   render(<AutoPrintTicket order={null} />);
   expect(printHtmlOffscreen).not.toHaveBeenCalled();
+});
+
+test('si la impresión no sale, el operador se entera', async () => {
+  // El modo de fallo que costó esta ronda: no salía nada y no había forma de saberlo. Un aviso
+  // convierte el silencio en algo accionable — el ticket sigue disponible en "Ver ticket".
+  info.current.autoPrintOnClose = true;
+  printHtmlOffscreen.mockResolvedValueOnce(false);
+  render(<AutoPrintTicket order={order} />);
+  await waitFor(() => expect(toast).toHaveBeenCalled());
+  expect(String(toast.mock.calls[0][0].title)).toMatch(/no se pudo imprimir/i);
 });
