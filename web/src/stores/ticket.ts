@@ -41,6 +41,10 @@ interface TicketState {
   newTab: () => void;
   switchTab: (id: string) => void;
   closeTab: (id: string) => void; // al cobrar/cancelar; siempre queda ≥1 cuenta
+  // descartarTodo tira TODAS las cuentas y arranca de cero. Lo usa el cambio de empresa: un ticket
+  // armado con el catálogo de otro tenant no se puede cobrar y no debe quedarse esperando a que
+  // alguien lo intente.
+  descartarTodo: () => void;
 }
 
 const first = emptyTab(1);
@@ -122,6 +126,12 @@ export const useTicketStore = create<TicketState>()(
               return { tabs: [t], activeId: t.id, seq: s.seq + 1 };
             }
             return { tabs, activeId: s.activeId === id ? tabs[0].id : s.activeId };
+          }),
+
+        descartarTodo: () =>
+          set(() => {
+            const t = emptyTab(1);
+            return { tabs: [t], activeId: t.id, seq: 2 };
           }),
       };
     },
