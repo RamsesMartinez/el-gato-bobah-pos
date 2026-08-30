@@ -693,9 +693,11 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 
 const listSessionTotals = `-- name: ListSessionTotals :many
 select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+       coalesce(dp.name, '') as platform_name,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
+left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 where t.session_id = $1
 order by pm.sort_key
 `
@@ -708,9 +710,14 @@ type ListSessionTotalsRow struct {
 	Expected          decimal.Decimal `json:"expected"`
 	Declared          decimal.Decimal `json:"declared"`
 	Tips              decimal.Decimal `json:"tips"`
+	PlatformName      string          `json:"platform_name"`
 	Difference        decimal.Decimal `json:"difference"`
 }
 
+// platform_name viaja igual que en ExpectedByMethodForSession, y por el mismo motivo: es lo que
+// permite subtotalizar por plataforma. Faltaba aquí, así que el subtotal existía en el turno vivo y
+// desaparecía en el histórico — justo cuando llega el depósito de la plataforma y sirve para
+// conciliar.
 func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]ListSessionTotalsRow, error) {
 	rows, err := q.db.Query(ctx, listSessionTotals, sessionID)
 	if err != nil {
@@ -728,6 +735,7 @@ func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]Lis
 			&i.Expected,
 			&i.Declared,
 			&i.Tips,
+			&i.PlatformName,
 			&i.Difference,
 		); err != nil {
 			return nil, err

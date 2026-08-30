@@ -93,10 +93,16 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
+-- platform_name viaja igual que en ExpectedByMethodForSession, y por el mismo motivo: es lo que
+-- permite subtotalizar por plataforma. Faltaba aquí, así que el subtotal existía en el turno vivo y
+-- desaparecía en el histórico — justo cuando llega el depósito de la plataforma y sirve para
+-- conciliar.
 select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+       coalesce(dp.name, '') as platform_name,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
+left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 where t.session_id = $1
 order by pm.sort_key;
 

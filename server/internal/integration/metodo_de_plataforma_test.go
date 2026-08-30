@@ -34,7 +34,6 @@ func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 
 	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
-	didi := platformID(t, st, defaultCompanyID, "Didi")
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	uberEnLinea := paymentMethodID(t, st, "Uber Eats en línea")
 	uberEfectivo := paymentMethodID(t, st, "Uber Eats efectivo")
@@ -105,6 +104,4 @@ func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
 			t.Fatalf("un método ajeno en el pago dividido debe rechazar todo, fue: %v", err)
 		}
 	})
-
-	_ = didi
 }
