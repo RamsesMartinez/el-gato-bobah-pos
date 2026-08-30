@@ -183,3 +183,20 @@ func TestTicketSettingsAdminFlow(t *testing.T) {
 		t.Errorf("tras borrar, hasLogo = %v (err %v)", got.HasLogo, err)
 	}
 }
+
+// El interruptor de adicionales sin costo nace ENCENDIDO. Un ticket que de pronto deja de listar
+// lo que el cliente pidió sin costo es una regresión silenciosa: cocina lo usa para preparar y el
+// cliente para reclamar.
+func TestAdicionalesSinCostoSeImprimenPorDefault(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	var imprime bool
+	if err := st.Pool.QueryRow(ctx,
+		`select print_free_modifiers from business_settings limit 1`).Scan(&imprime); err != nil {
+		t.Fatalf("leer el interruptor: %v", err)
+	}
+	if !imprime {
+		t.Fatal("los adicionales sin costo deben imprimirse por default")
+	}
+}

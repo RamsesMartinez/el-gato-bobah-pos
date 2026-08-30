@@ -35,3 +35,7 @@ logs/
 server/logs/
 docs/tickets/*
 !docs/tickets/.gitkeep
+
+# Respaldos de producción: datos reales del negocio, nunca se versionan (ver backups/README.md).
+backups/prod/*
+!backups/prod/.gitkeep

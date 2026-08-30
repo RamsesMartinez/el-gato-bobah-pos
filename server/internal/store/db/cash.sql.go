@@ -93,41 +93,52 @@ func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransfer
 	return id, err
 }
 
-const expectedByMethodSince = `-- name: ExpectedByMethodSince :many
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
+const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
+select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
-left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
+left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
+group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key
 `
 
-type ExpectedByMethodSinceRow struct {
+type ExpectedByMethodForSessionRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
+	Kind              PaymentKind     `json:"kind"`
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 	AutoDeclare       bool            `json:"auto_declare"`
 	Expected          decimal.Decimal `json:"expected"`
 	Tips              decimal.Decimal `json:"tips"`
 }
 
-// Totales esperados por método desde la apertura de la sesión (ventana temporal).
+// Totales esperados por método, del TURNO indicado.
 // expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 // dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
-func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time) ([]ExpectedByMethodSinceRow, error) {
-	rows, err := q.db.Query(ctx, expectedByMethodSince, createdAt)
+// kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
+// ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
+// y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
+// caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
+// Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
+// resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+// suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
+// que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
+// dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+func (q *Queries) ExpectedByMethodForSession(ctx context.Context, registerSessionID *int64) ([]ExpectedByMethodForSessionRow, error) {
+	rows, err := q.db.Query(ctx, expectedByMethodForSession, registerSessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ExpectedByMethodSinceRow{}
+	items := []ExpectedByMethodForSessionRow{}
 	for rows.Next() {
-		var i ExpectedByMethodSinceRow
+		var i ExpectedByMethodForSessionRow
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
+			&i.Kind,
 			&i.AffectsCashDrawer,
 			&i.AutoDeclare,
 			&i.Expected,
@@ -141,6 +152,19 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 		return nil, err
 	}
 	return items, nil
+}
+
+const getBusinessTimezone = `-- name: GetBusinessTimezone :one
+select timezone from business_settings limit 1
+`
+
+// Zona horaria del local, para calcular la FECHA de negocio. La base guarda instantes en UTC; la
+// fecha es una decisión de calendario y depende de dónde está el negocio.
+func (q *Queries) GetBusinessTimezone(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, getBusinessTimezone)
+	var timezone string
+	err := row.Scan(&timezone)
+	return timezone, err
 }
 
 const getCashRegister = `-- name: GetCashRegister :one
@@ -655,7 +679,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 }
 
 const listSessionTotals = `-- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -666,6 +690,7 @@ order by pm.sort_key
 type ListSessionTotalsRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
+	Kind              PaymentKind     `json:"kind"`
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 	Expected          decimal.Decimal `json:"expected"`
 	Declared          decimal.Decimal `json:"declared"`
@@ -685,6 +710,7 @@ func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]Lis
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
+			&i.Kind,
 			&i.AffectsCashDrawer,
 			&i.Expected,
 			&i.Declared,
@@ -832,6 +858,28 @@ func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalPara
 		arg.Declared,
 		arg.Tips,
 	)
+	return err
+}
+
+const seedBasePaymentMethods = `-- name: SeedBasePaymentMethods :exec
+insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+values
+  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+on conflict (company_id, name) do nothing
+`
+
+// Métodos de pago base para una empresa recién creada. Desde 0037 la tabla es per-tenant, así que
+// una empresa nueva nace SIN NINGUNO y no podría cobrar: /payment-methods devolvería vacío y el
+// checkout se quedaría sin botones. Antes los heredaba por ser una tabla global.
+//
+// Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
+// hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
+// contratadas es peor que no darle ninguna.
+func (q *Queries) SeedBasePaymentMethods(ctx context.Context, companyID int64) error {
+	_, err := q.db.Exec(ctx, seedBasePaymentMethods, companyID)
 	return err
 }
 

@@ -38,6 +38,39 @@ Dinero = `float64` en **pesos**, redondeado en cada frontera con [`domain.Round2
 - **Toda lógica no trivial deja un check runnable.** Si un comentario describe un comportamiento, ese comportamiento **debe** tener test (o el comentario miente cuando el código cambie).
 - Un task de implementación sin su task de test antes está mal ordenado.
 
+#### Todo defecto encontrado deja su test de regresión
+
+**Un bug arreglado sin test no está arreglado**: está esperando a que alguien lo reintroduzca. Aplica
+venga de donde venga —producción, una revisión, un subagente, un ensayo— y el test se escribe **antes**
+del arreglo, viéndolo fallar por la razón correcta. Un test que nunca se vio en rojo no prueba nada.
+
+El test se escribe contra **el fallo concreto**, no contra la función en abstracto: el nombre y el
+mensaje de error dicen qué se rompía y por qué importaba. Ej.: [`TestElFondoDeCajaSeCuentaUnaSolaVez`](../../server/internal/integration/corte_plataformas_test.go)
+falla diciendo en cuántos métodos apareció el fondo, no "esperaba X obtuve Y".
+
+#### Unitario o de integración: qué cubre cada uno
+
+La lógica pura va a **unitarios** en `domain`, sin base de datos. Pero hay una familia de fallos que
+un unitario **no puede** ver, y que además es invisible en local, porque la API de desarrollo se
+conecta como owner y sin `APP_DATABASE_URL`: ahí RLS y los grants sencillamente no aplican. Esos
+exigen **test de integración contra Postgres real**, y varios bajo `appRoleStore` (el rol
+`gatobobah_app`, no el owner):
+
+| Qué se prueba | Por qué el unitario no basta |
+|---|---|
+| Un `grant` de una tabla nueva | El `grant` de `0024` fue puntual, sin default privileges. Falta uno y en producción sale `42501` en el primer request; en dev nunca |
+| Aislamiento entre empresas (RLS) | Las políticas no existen para el owner. Una fuga entre tenants no se ve hasta que hay un segundo cliente |
+| Que una FK no cruce empresas | Los chequeos de integridad referencial de Postgres **saltan RLS** por diseño |
+| Una migración | Su efecto es un cambio de esquema y de datos; no hay función que llamar |
+| El corte de caja y cualquier aritmética de dinero sobre datos reales | El error aparece al combinar filas, no en una función aislada |
+
+**Una migración se prueba con su test, no después.** El test corre contra una base restaurada de un
+respaldo real y con **al menos dos empresas**: con una sola, todo camino "por cada otra empresa" es
+un no-op y la migración pasa verde para romper en producción.
+
+- Un defecto que el ensayo manual encontró y el test no habría encontrado significa que falta ese
+  test, no que el ensayo baste.
+
 ### V. Seguridad verificada adversarialmente (NO NEGOCIABLE)
 
 Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/security-owasp.md](../../docs/security-owasp.md)). Estos helpers **ya existen**: úsalos, no reinventes.
@@ -103,4 +136,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-27
+**Version**: 1.3.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-30

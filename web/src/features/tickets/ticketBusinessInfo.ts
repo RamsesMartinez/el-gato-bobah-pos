@@ -41,6 +41,9 @@ export function useTicketBusinessInfo(): {
   data: TicketBusinessInfo | undefined;
   isLoading: boolean;
   autoPrintOnClose: boolean;
+  // Si el ticket lista los adicionales sin costo. Sale del ajuste del negocio, con true como
+  // valor seguro mientras la consulta no responde: el ticket completo es el comportamiento viejo.
+  printFreeModifiers: boolean;
 } {
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
 
@@ -57,12 +60,15 @@ export function useTicketBusinessInfo(): {
     },
   });
 
-  if (!settings.data) return { data: undefined, isLoading: settings.isLoading, autoPrintOnClose: false };
+  if (!settings.data) {
+    return { data: undefined, isLoading: settings.isLoading, autoPrintOnClose: false, printFreeModifiers: true };
+  }
   // No se espera al logo subido: si tarda o falla, el ticket sale con el default en vez de dejar
   // al operador esperando frente al cliente.
   return {
     data: toTicketBusinessInfo(settings.data, logo.data),
     isLoading: false,
     autoPrintOnClose: settings.data.autoPrintOnClose,
+    printFreeModifiers: settings.data.printFreeModifiers,
   };
 }

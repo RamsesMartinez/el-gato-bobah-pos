@@ -578,18 +578,20 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 }
 
 type BusinessSetting struct {
-	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
-	UpdatedAt        time.Time          `json:"updated_at"`
-	UpdatedBy        *int64             `json:"updated_by"`
-	BusinessName     string             `json:"business_name"`
-	Address          *string            `json:"address"`
-	Phone            *string            `json:"phone"`
-	FooterNote       *string            `json:"footer_note"`
-	LogoBytes        []byte             `json:"logo_bytes"`
-	LogoMime         *string            `json:"logo_mime"`
-	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
-	HeaderNote       *string            `json:"header_note"`
-	AutoPrintOnClose bool               `json:"auto_print_on_close"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	UpdatedBy          *int64             `json:"updated_by"`
+	BusinessName       string             `json:"business_name"`
+	Address            *string            `json:"address"`
+	Phone              *string            `json:"phone"`
+	FooterNote         *string            `json:"footer_note"`
+	LogoBytes          []byte             `json:"logo_bytes"`
+	LogoMime           *string            `json:"logo_mime"`
+	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
+	HeaderNote         *string            `json:"header_note"`
+	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
+	Timezone           string             `json:"timezone"`
+	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 }
 
 type CashRegister struct {
@@ -659,9 +661,10 @@ type Company struct {
 }
 
 type DeliveryPlatform struct {
-	ID       int16  `json:"id"`
-	Name     string `json:"name"`
-	IsActive bool   `json:"is_active"`
+	ID             int16           `json:"id"`
+	Name           string          `json:"name"`
+	IsActive       bool            `json:"is_active"`
+	PriceMarkupPct decimal.Decimal `json:"price_markup_pct"`
 }
 
 type Expense struct {
@@ -791,6 +794,15 @@ type ModifierOption struct {
 	IsFavorite      bool            `json:"is_favorite"`
 }
 
+type ModifierOptionPlatformPrice struct {
+	OptionID   int64           `json:"option_id"`
+	PlatformID int16           `json:"platform_id"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	UpdatedBy  int64           `json:"updated_by"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	CompanyID  int64           `json:"company_id"`
+}
+
 type Order struct {
 	ID                 int64              `json:"id"`
 	ClientUuid         uuid.UUID          `json:"client_uuid"`
@@ -878,13 +890,15 @@ type PasswordResetToken struct {
 }
 
 type PaymentMethod struct {
-	ID                int16           `json:"id"`
-	Name              string          `json:"name"`
-	Kind              PaymentKind     `json:"kind"`
-	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
-	IsActive          bool            `json:"is_active"`
-	SortKey           decimal.Decimal `json:"sort_key"`
-	AutoDeclare       bool            `json:"auto_declare"`
+	ID                 int16           `json:"id"`
+	Name               string          `json:"name"`
+	Kind               PaymentKind     `json:"kind"`
+	AffectsCashDrawer  bool            `json:"affects_cash_drawer"`
+	IsActive           bool            `json:"is_active"`
+	SortKey            decimal.Decimal `json:"sort_key"`
+	AutoDeclare        bool            `json:"auto_declare"`
+	CompanyID          int64           `json:"company_id"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
 }
 
 type Product struct {
@@ -927,6 +941,15 @@ type ProductModifierGroup struct {
 	MinSelect *int16  `json:"min_select"`
 	MaxSelect *int16  `json:"max_select"`
 	Position  int32   `json:"position"`
+}
+
+type ProductPlatformPrice struct {
+	ProductID  int64           `json:"product_id"`
+	PlatformID int16           `json:"platform_id"`
+	Price      decimal.Decimal `json:"price"`
+	UpdatedBy  int64           `json:"updated_by"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	CompanyID  int64           `json:"company_id"`
 }
 
 type Recipe struct {

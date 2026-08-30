@@ -39,14 +39,32 @@ export interface TicketBusinessInfo {
 export function buildReceiptHtml(
   order: OrderView,
   business: TicketBusinessInfo,
-  opts: { reprint?: boolean; sample?: boolean } = {},
+  opts: { reprint?: boolean; sample?: boolean; printFreeModifiers?: boolean } = {},
 ): string {
+  // El renglón del producto muestra su BASE (cantidad × unitario) y cada adicional con costo lleva
+  // el suyo debajo, así los números suman a la vista. Antes el renglón traía el total con los
+  // extras adentro y el cliente no tenía cómo explicarse por qué pagó de más.
   const rows = (order.lines ?? [])
     .map((l) => {
+      const qty = Number(l.quantity) || 0;
+      const unit = Number(l.unitPrice) || 0;
       const mods = (l.modifiers ?? [])
-        .map((m) => `<div class="mod">+ ${esc(m.name)}${m.quantity > 1 ? ` x${m.quantity}` : ''}</div>`)
+        .map((m) => {
+          const delta = Number(m.priceDelta) || 0;
+          const veces = m.quantity > 1 ? ` x${m.quantity}` : '';
+          // Sin costo: se lista sin cifra. La ausencia de número es lo que hace que los que sí
+          // cuestan salten a la vista, y el negocio puede apagarlos para no alargar el papel.
+          if (delta === 0) {
+            if (opts.printFreeModifiers === false) return '';
+            return `<tr><td class="mod">+ ${esc(m.name)}${veces}</td><td class="r mod"></td></tr>`;
+          }
+          const importe = delta * m.quantity * qty;
+          return `<tr><td class="mod">+ ${esc(m.name)}${veces} @${money(delta)}</td>` +
+                 `<td class="r mod">${money(importe)}</td></tr>`;
+        })
         .join('');
-      return `<tr><td>${l.quantity}x ${esc(l.productName)}${mods}</td><td class="r">${money(l.lineTotal)}</td></tr>`;
+      return `<tr><td>${l.quantity}x ${esc(l.productName)} @${money(unit)}</td>` +
+             `<td class="r">${money(qty * unit)}</td></tr>${mods}`;
     })
     .join('');
 

@@ -7,6 +7,7 @@ import { toaster } from '../../components/ui/toaster';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { InstallAppSection } from '../pwa/InstallAppSection';
+import { ZONAS_MEXICO } from './zonas';
 
 // Ajustes de negocio (admin/gerente). Hoy solo el costo de envío por defecto; el backend es
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
@@ -18,6 +19,8 @@ export function BusinessSettingsPage() {
   // (cascading renders) para sincronizar el input con la query.
   const [fee, setFee] = useState<string | null>(null);
   const feeValue = fee ?? data?.deliveryFee ?? '';
+  const [tz, setTz] = useState<string | null>(null);
+  const tzValue = tz ?? data?.timezone ?? 'America/Mexico_City';
 
   const { data: company } = useQuery({ queryKey: ['company'], queryFn: posApi.company });
   const [coName, setCoName] = useState<string | null>(null);
@@ -39,6 +42,19 @@ export function BusinessSettingsPage() {
       backofficeApi.setPaymentMethodAutoDeclare(v.id, v.autoDeclare),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payment-methods'] }),
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+  });
+
+  const saveTz = useMutation({
+    mutationFn: () => posApi.updateTimezone(tzValue),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['business-settings'] });
+      toaster.create({ title: 'Zona horaria guardada', type: 'success' });
+    },
+    onError: (e: unknown) => toaster.create({
+      title: 'No se pudo guardar la zona',
+      description: e instanceof Error ? e.message : String(e),
+      type: 'error',
+    }),
   });
 
   const save = useMutation({
@@ -91,6 +107,30 @@ export function BusinessSettingsPage() {
           </Box>
           <Button size="lg" loading={save.isPending} onClick={() => save.mutate()}>
             Guardar
+          </Button>
+        </HStack>
+      </Box>
+
+      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Zona horaria</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          Define a qué día pertenece cada venta, corte y gasto. Cámbiala solo si el negocio opera
+          en otro huso.
+        </Text>
+        <HStack gap={2} align="end" flexWrap="wrap">
+          <Box flex="1" minW="260px">
+            <select
+              value={tzValue}
+              onChange={(e) => setTz(e.target.value)}
+              style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}
+            >
+              {ZONAS_MEXICO.map((z) => (
+                <option key={z.value} value={z.value}>{z.label}</option>
+              ))}
+            </select>
+          </Box>
+          <Button size="lg" loading={saveTz.isPending} onClick={() => saveTz.mutate()}>
+            Guardar zona
           </Button>
         </HStack>
       </Box>

@@ -13,6 +13,8 @@ select delivery_fee,
        header_note,
        footer_note,
        auto_print_on_close,
+       timezone,
+       print_free_modifiers,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -38,6 +40,10 @@ set business_name       = sqlc.arg(business_name),
     header_note         = nullif(sqlc.arg(header_note)::text, ''),
     footer_note         = nullif(sqlc.arg(footer_note)::text, ''),
     auto_print_on_close = sqlc.arg(auto_print_on_close),
+    -- La zona decide la FECHA de negocio: de qué día es una venta, un corte o un gasto. Se valida
+    -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
+    timezone            = sqlc.arg(timezone),
+    print_free_modifiers = sqlc.arg(print_free_modifiers),
     updated_at          = now(),
     updated_by          = sqlc.arg(updated_by);
 
@@ -55,3 +61,17 @@ set logo_bytes = $1, logo_mime = $2, logo_updated_at = now(), updated_at = now()
 -- Los tres a NULL juntos: el check business_settings_logo_pair no admite bytes sin mime.
 update business_settings
 set logo_bytes = null, logo_mime = null, logo_updated_at = null, updated_at = now(), updated_by = $1;
+
+-- name: SeedBusinessSettings :exec
+-- Fila de ajustes para una empresa recién creada. Sin ella el negocio nace sin zona horaria y sus
+-- fechas se calcularían en UTC, que es el bug que arregló 0038.
+--
+-- company_id NO se lista: lo pone el DEFAULT desde el GUC del tenant, igual que el resto del repo.
+-- Y no se puede listar aunque se quisiera — 0023 agregó esa columna con SQL dinámico, que sqlc no
+-- parsea, así que para sqlc la columna no existe. Corre dentro de WithTenant o entra NULL.
+--
+-- `on conflict do nothing` sin destino: sirve para cualquier restricción y no depende de conocer
+-- el nombre de la PK, que también cambió en 0023.
+insert into business_settings (business_name, delivery_fee)
+values ($1, 0)
+on conflict do nothing;

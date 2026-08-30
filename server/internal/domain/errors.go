@@ -35,4 +35,8 @@ var (
 	// no ve, y el faltante se descubre al cerrar sin manera de reconstruir de dónde salió.
 	// Solo la caja PRINCIPAL habilita el cobro — las secundarias existen para traspasos y gastos.
 	ErrNoOpenRegister = errors.New("no hay una caja abierta: abre el turno antes de cobrar")
+	// ErrInvalidTimezone: la zona horaria capturada no es un nombre IANA real. Se rechaza al
+	// GUARDAR y no al usar: donde se usa está el camino de una venta, que cae a UTC antes que
+	// tumbar un cobro, y sin este rechazo ese fallback correría las fechas en silencio.
+	ErrInvalidTimezone = fmt.Errorf("%w: la zona horaria no existe (usa un nombre como America/Mexico_City)", ErrValidation)
 )
