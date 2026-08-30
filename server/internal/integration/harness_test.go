@@ -132,6 +132,11 @@ func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 		`insert into companies (slug, name) values ($1, $2) returning id`, slug, "Test "+slug).Scan(&id); err != nil {
 		t.Fatalf("makeCompany(%s): %v", slug, err)
 	}
+	// Espeja a provisionCompany: una empresa sin métodos de pago no puede cobrar, así que un test
+	// que la creara pelada estaría probando un mundo que el sistema no produce.
+	if err := st.Q.SeedBasePaymentMethods(context.Background(), id); err != nil {
+		t.Fatalf("sembrar métodos de %s: %v", slug, err)
+	}
 	return id
 }
 

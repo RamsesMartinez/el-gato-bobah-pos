@@ -304,8 +304,13 @@ func provisionCompany(ctx context.Context, st *store.Store) error {
 		params.PinHash = &pinHash
 	}
 	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
-		_, err := q.CreateUser(ctx, params)
-		return err
+		if _, err := q.CreateUser(ctx, params); err != nil {
+			return err
+		}
+		// Sin esto la empresa nace sin poder cobrar: desde 0037 payment_methods es per-tenant y ya
+		// no se heredan por ser una tabla global. Los de plataforma NO se siembran — ese negocio
+		// tiene que hacer su propia vinculación con Uber/DiDi/Rappi antes de cobrar por ahí.
+		return q.SeedBasePaymentMethods(ctx, co.ID)
 	}); err != nil {
 		return err
 	}

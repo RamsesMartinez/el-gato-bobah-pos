@@ -170,3 +170,19 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
 limit 1;
+
+-- name: SeedBasePaymentMethods :exec
+-- Métodos de pago base para una empresa recién creada. Desde 0037 la tabla es per-tenant, así que
+-- una empresa nueva nace SIN NINGUNO y no podría cobrar: /payment-methods devolvería vacío y el
+-- checkout se quedaría sin botones. Antes los heredaba por ser una tabla global.
+--
+-- Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
+-- hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
+-- contratadas es peor que no darle ninguna.
+insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+values
+  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+on conflict (company_id, name) do nothing;
