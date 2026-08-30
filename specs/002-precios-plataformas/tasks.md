@@ -97,24 +97,24 @@ los precios sean los de esa lista, cobrar y confirmar que el ticket impreso los 
 
 ### Dominio (lógica pura, sin I/O)
 
-- [ ] T029 **[test]** [P] [US1] `server/internal/domain/platform_price_test.go` table-driven para `PlatformPrice(base, markupPct, manual)`: sin manual aplica margen; con manual lo devuelve tal cual; margen 0 devuelve el base; **caso obligatorio 434.98 @ 35% → 587.22** (no 587.223) y `398.98 @ 35% → 538.62`; delta 0 con margen sigue en 0
-- [ ] T030 [US1] Implementar `PlatformPrice` en `server/internal/domain/platform_price.go`, con `Round2` sobre el **unitario** y el comentario de por qué ahí y no en el total de línea
-- [ ] T031 **[test]** [P] [US1] Test del sentinel `ErrPlatformNotFound` y de que se mapea a 422
-- [ ] T032 [US1] Agregar `ErrPlatformNotFound` en `server/internal/domain/errors.go` y su mapeo a `422 PLATFORM_NOT_FOUND` en `server/internal/httpapi/respond.go`
+- [x] T029 **[test]** [P] [US1] `server/internal/domain/platform_price_test.go` table-driven para `PlatformPrice(base, markupPct, manual)`: sin manual aplica margen; con manual lo devuelve tal cual; margen 0 devuelve el base; **caso obligatorio 434.98 @ 35% → 587.22** (no 587.223) y `398.98 @ 35% → 538.62`; delta 0 con margen sigue en 0
+- [x] T030 [US1] Implementar `PlatformPrice` en `server/internal/domain/platform_price.go`, con `Round2` sobre el **unitario** y el comentario de por qué ahí y no en el total de línea
+- [x] T031 **[test]** [P] [US1] Test del sentinel `ErrPlatformNotFound` y de que se mapea a 422
+- [x] T032 [US1] Agregar `ErrPlatformNotFound` en `server/internal/domain/errors.go` y su mapeo a `422 PLATFORM_NOT_FOUND` en `server/internal/httpapi/respond.go`
 
 ### Datos y servicio
 
-- [~] T033 [US1] (queries escritas y generadas; falta cablearlas) Escribir `server/queries/platform_prices.sql`: `GetPlatformByID` (bajo RLS), `GetProductPlatformPrices` y `GetOptionPlatformPrices` por lista de ids, y correr `make sqlc`
-- [ ] T034 **[test]** [US1] Test de integración: `Create` con `deliveryPlatformId` **inexistente en la empresa** devuelve `ErrPlatformNotFound`, no crea la orden y **no** cae a margen 0
-- [ ] T035 **[test]** [US1] Test de integración: una venta con plataforma valúa cada línea con el precio de esa lista (calculado y manual), y `order_lines.unit_price` guarda ese precio, no el base
-- [ ] T036 [US1] En `server/internal/app/orders.go`, resolver la plataforma bajo RLS antes de armar el pedido y construir el mapa de `PricedProduct`/`PricedOption` con el precio efectivo ya redondeado
-- [ ] T037 **[test]** [US1] Test de integración: con plataforma, `deliveryFee` queda en 0 aunque el cliente mande otra cosa
-- [ ] T038 [US1] Forzar `deliveryFee = 0` cuando la venta trae plataforma
+- [x] T033 [US1] (queries escritas y generadas; falta cablearlas) Escribir `server/queries/platform_prices.sql`: `GetPlatformByID` (bajo RLS), `GetProductPlatformPrices` y `GetOptionPlatformPrices` por lista de ids, y correr `make sqlc`
+- [x] T034 **[test]** [US1] Test de integración: `Create` con `deliveryPlatformId` **inexistente en la empresa** devuelve `ErrPlatformNotFound`, no crea la orden y **no** cae a margen 0
+- [x] T035 **[test]** [US1] Test de integración: una venta con plataforma valúa cada línea con el precio de esa lista (calculado y manual), y `order_lines.unit_price` guarda ese precio, no el base
+- [x] T036 [US1] En `server/internal/app/orders.go`, resolver la plataforma bajo RLS antes de armar el pedido y construir el mapa de `PricedProduct`/`PricedOption` con el precio efectivo ya redondeado
+- [x] T037 **[test]** [US1] Test de integración: con plataforma, `deliveryFee` queda en 0 aunque el cliente mande otra cosa
+- [x] T038 [US1] Forzar `deliveryFee = 0` cuando la venta trae plataforma
 - [ ] T039 **[test]** [US1] Test de integración: cobrar un pedido de plataforma con un método que no es de esa plataforma devuelve 422; con **cualquiera de los dos** (en línea o efectivo) pasa
 - [ ] T040 [US1] Validar el método de pago contra `delivery_platform_id` del método, no contra su nombre
-- [ ] T041 **[test]** [US1] Test de integración: vender el mismo producto con receta en mostrador y en las 3 plataformas descuenta **el mismo** inventario (FR-017)
-- [ ] T042 **[test]** [US1] Test de integración: la venta queda con su `delivery_platform_id` (FR-013)
-- [ ] T043 **[test]** [US1] Test de que un producto **sin** precio manual se agrega y se cobra sin bloquear nada (FR-004)
+- [x] T041 **[test]** [US1] Test de integración: vender el mismo producto con receta en mostrador y en las 3 plataformas descuenta **el mismo** inventario (FR-017)
+- [x] T042 **[test]** [US1] Test de integración: la venta queda con su `delivery_platform_id` (FR-013)
+- [x] T043 **[test]** [US1] Test de que un producto **sin** precio manual se agrega y se cobra sin bloquear nada (FR-004)
 
 ### Menú
 

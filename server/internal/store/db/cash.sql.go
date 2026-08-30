@@ -883,6 +883,27 @@ func (q *Queries) SeedBasePaymentMethods(ctx context.Context, companyID int64) e
 	return err
 }
 
+const seedDeliveryPlatforms = `-- name: SeedDeliveryPlatforms :exec
+insert into delivery_platforms (name, price_markup_pct)
+values ('Didi', 0), ('Uber Eats', 0), ('Rappi', 0), ('Propio', 0)
+on conflict do nothing
+`
+
+// Plataformas de reparto de una empresa nueva. Son etiquetas: sin ellas la venta no puede registrar
+// por dónde entró, y ni siquiera existe "Propio" para el reparto del propio negocio.
+//
+// El margen nace en 0, NO en 35%. El margen es la decisión de negocio que viene con la vinculación:
+// ese local todavía no tiene contrato con Uber, y estrenarlo cobrando 35% más sería una sorpresa
+// cara. El dueño del sistema lo configura cuando ese negocio lo pide, junto con sus métodos de pago
+// de plataforma — que por la misma razón tampoco se siembran.
+//
+// company_id NO se lista: lo pone el DEFAULT desde el GUC del tenant. Tampoco se podría — 0023
+// agregó esa columna con SQL dinámico y para sqlc no existe. Corre dentro de WithTenant.
+func (q *Queries) SeedDeliveryPlatforms(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, seedDeliveryPlatforms)
+	return err
+}
+
 const updateCashRegister = `-- name: UpdateCashRegister :one
 update cash_registers set name = $2, is_active = $3 where id = $1
 returning id, name, is_primary, is_active

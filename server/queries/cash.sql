@@ -196,3 +196,18 @@ on conflict (company_id, name) do nothing;
 -- Zona horaria del local, para calcular la FECHA de negocio. La base guarda instantes en UTC; la
 -- fecha es una decisión de calendario y depende de dónde está el negocio.
 select timezone from business_settings limit 1;
+
+-- name: SeedDeliveryPlatforms :exec
+-- Plataformas de reparto de una empresa nueva. Son etiquetas: sin ellas la venta no puede registrar
+-- por dónde entró, y ni siquiera existe "Propio" para el reparto del propio negocio.
+--
+-- El margen nace en 0, NO en 35%. El margen es la decisión de negocio que viene con la vinculación:
+-- ese local todavía no tiene contrato con Uber, y estrenarlo cobrando 35% más sería una sorpresa
+-- cara. El dueño del sistema lo configura cuando ese negocio lo pide, junto con sus métodos de pago
+-- de plataforma — que por la misma razón tampoco se siembran.
+--
+-- company_id NO se lista: lo pone el DEFAULT desde el GUC del tenant. Tampoco se podría — 0023
+-- agregó esa columna con SQL dinámico y para sqlc no existe. Corre dentro de WithTenant.
+insert into delivery_platforms (name, price_markup_pct)
+values ('Didi', 0), ('Uber Eats', 0), ('Rappi', 0), ('Propio', 0)
+on conflict do nothing;

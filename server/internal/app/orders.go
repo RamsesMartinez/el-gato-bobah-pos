@@ -145,21 +145,38 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if err != nil {
 		return nil, err
 	}
+	// La lista de precios de la venta. Sin plataforma es la de mostrador (margen 0, sin
+	// excepciones), que es el caso de todos los días y no toca la base ni una vez más.
+	lista, err := s.listaDePrecios(ctx, cmd.DeliveryPlatformID)
+	if err != nil {
+		return nil, err
+	}
+
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
-		products[p.ID] = domain.PricedProduct{ID: p.ID, Name: p.Name, Price: p.Price, Cost: p.CurrentCost, Active: p.IsActive}
+		products[p.ID] = domain.PricedProduct{
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			// El costo NO lleva margen: el margen es de precio de VENTA. Vender por Uber consume
+			// exactamente el mismo inventario, y el margen extra es lo que se va en comisión.
+			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
+		}
 	}
 	options := map[int64]domain.PricedOption{}
 	for _, o := range optRows {
-		options[o.ID] = domain.PricedOption{ID: o.ID, Name: o.Name, PriceDelta: o.PriceDelta, Cost: o.CurrentCost, GroupTitle: o.GroupTitle}
+		options[o.ID] = domain.PricedOption{
+			ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
+			PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
+		}
 	}
 
 	built, err := domain.BuildOrder(cmd.Lines, products, options)
 	if err != nil {
 		return nil, err
 	}
-	// El costo de envío solo aplica a domicilio; para el resto queda en 0 aunque el cliente lo mande.
-	built, err = domain.ApplyDeliveryFee(built, cmd.DeliveryFee, cmd.ServiceType == "domicilio")
+	// El costo de envío solo aplica a domicilio Y sin plataforma: el reparto de Uber/DiDi/Rappi lo
+	// cobra la plataforma, así que sumarle el envío del negocio le carga $20 de más a cada pedido.
+	cobraEnvio := cmd.ServiceType == "domicilio" && cmd.DeliveryPlatformID == nil
+	built, err = domain.ApplyDeliveryFee(built, cmd.DeliveryFee, cobraEnvio)
 	if err != nil {
 		return nil, err
 	}
@@ -546,4 +563,53 @@ func derefStr(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// listaDePrecios: el margen de la plataforma y sus excepciones capturadas. Sin plataforma devuelve
+// la lista de mostrador — margen 0 y sin excepciones — para que el camino de todos los días no
+// gaste consultas.
+type listaDePrecios struct {
+	margen   decimal.Decimal
+	producto map[int64]*decimal.Decimal
+	opcion   map[int64]*decimal.Decimal
+}
+
+func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (listaDePrecios, error) {
+	lista := listaDePrecios{
+		producto: map[int64]*decimal.Decimal{},
+		opcion:   map[int64]*decimal.Decimal{},
+	}
+	if platformID == nil {
+		return lista, nil
+	}
+	// BAJO RLS y con rechazo explícito: los chequeos de llave foránea de Postgres saltan RLS, así
+	// que un id de otra empresa pasaría el insert. Si aquí se cayera a margen 0, la venta se
+	// cobraría a precio de mostrador en Uber con el ticket bien impreso, y el descuadre aparecería
+	// semanas después al conciliar el depósito.
+	plat, err := s.store.QC(ctx).GetPlatformByID(ctx, *platformID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return lista, domain.ErrPlatformNotFound
+		}
+		return lista, err
+	}
+	lista.margen = plat.PriceMarkupPct
+
+	precios, err := s.store.QC(ctx).GetProductPlatformPrices(ctx, *platformID)
+	if err != nil {
+		return lista, err
+	}
+	for _, p := range precios {
+		precio := p.Price
+		lista.producto[p.ProductID] = &precio
+	}
+	deltas, err := s.store.QC(ctx).GetOptionPlatformPrices(ctx, *platformID)
+	if err != nil {
+		return lista, err
+	}
+	for _, d := range deltas {
+		delta := d.PriceDelta
+		lista.opcion[d.OptionID] = &delta
+	}
+	return lista, nil
 }

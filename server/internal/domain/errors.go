@@ -39,4 +39,10 @@ var (
 	// GUARDAR y no al usar: donde se usa está el camino de una venta, que cae a UTC antes que
 	// tumbar un cobro, y sin este rechazo ese fallback correría las fechas en silencio.
 	ErrInvalidTimezone = fmt.Errorf("%w: la zona horaria no existe (usa un nombre como America/Mexico_City)", ErrValidation)
+	// ErrPlatformNotFound: la plataforma de reparto que mandó el cliente no es de esta empresa.
+	// Se resuelve bajo RLS y se rechaza: los chequeos de llave foránea de Postgres saltan RLS, así
+	// que un id ajeno pasaría y —si el código cayera a margen 0— la venta se cobraría a precio de
+	// mostrador en Uber, con el ticket bien impreso y el descuadre apareciendo semanas después al
+	// conciliar el depósito.
+	ErrPlatformNotFound = errors.New("esa plataforma de reparto no existe en este negocio")
 )
