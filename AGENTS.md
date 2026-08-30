@@ -96,7 +96,7 @@ mecánica:
 
 Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
 
-- **pre-commit**: `gofmt`, golangci-lint (+ gosec), web lint + typecheck.
+- **pre-commit**: `gofmt`, golangci-lint (+ gosec), web lint + typecheck, y **migración nueva sin su test de integración** ([migracion-con-test.sh](scripts/hooks/migracion-con-test.sh)). Este último existe porque la regla ya estaba en la constitución y aun así se rompió: la migración 0037 se escribió antes que sus tests, y los tests encontraron después un defecto real. Un recordatorio se olvida; un commit que falla, no.
 - **pre-push**: `go test ./...`, `govulncheck`, `bun run build`.
 
 Que deban quedar verdes y que `--no-verify` no se use son quality gates de la constitución.
