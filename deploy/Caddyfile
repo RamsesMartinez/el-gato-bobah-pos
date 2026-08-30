@@ -1,6 +1,10 @@
 # Solo API: el frontend ahora vive en Cloudflare Pages (su propio dominio/CSP, ver
-# web/public/_headers). Reemplaza el dominio por el real si cambia. TLS automático.
-api.elgatobobah.com {
+# web/public/_headers). TLS automático.
+#
+# El dominio entra por variable para que este mismo archivo sirva en producción y en el ambiente
+# de pruebas: sin API_DOMAIN cae en el de producción, así que el VPS no necesita ningún cambio.
+# La VM de pruebas lo define en su .env como api-dev.elgatobobah.com.
+{$API_DOMAIN:api.elgatobobah.com} {
 	# Headers de seguridad (subset razonable para una API JSON, no una SPA).
 	header {
 		# HSTS: fuerza HTTPS en el navegador (1 año, subdominios).
