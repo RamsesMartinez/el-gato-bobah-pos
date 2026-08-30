@@ -16,6 +16,10 @@ pre-commit:
       root: "web/"
       glob: "*.{ts,tsx}"
       run: bun run lint && bun run typecheck
+    # Una migración nueva sin su test de integración no pasa. La regla ya estaba escrita en la
+    # constitución y aun así se rompió: un recordatorio se olvida, un commit que falla no.
+    migracion-con-test:
+      run: bash scripts/hooks/migracion-con-test.sh
 
 pre-push:
   parallel: true
