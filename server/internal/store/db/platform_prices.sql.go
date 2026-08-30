@@ -23,7 +23,7 @@ func (q *Queries) CountProductPlatformPrices(ctx context.Context) (int64, error)
 	return count, err
 }
 
-const deleteOptionPlatformPrice = `-- name: DeleteOptionPlatformPrice :exec
+const deleteOptionPlatformPrice = `-- name: DeleteOptionPlatformPrice :execrows
 delete from modifier_option_platform_prices where option_id = $1 and platform_id = $2
 `
 
@@ -32,12 +32,15 @@ type DeleteOptionPlatformPriceParams struct {
 	PlatformID int16 `json:"platform_id"`
 }
 
-func (q *Queries) DeleteOptionPlatformPrice(ctx context.Context, arg DeleteOptionPlatformPriceParams) error {
-	_, err := q.db.Exec(ctx, deleteOptionPlatformPrice, arg.OptionID, arg.PlatformID)
-	return err
+func (q *Queries) DeleteOptionPlatformPrice(ctx context.Context, arg DeleteOptionPlatformPriceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOptionPlatformPrice, arg.OptionID, arg.PlatformID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteProductPlatformPrice = `-- name: DeleteProductPlatformPrice :exec
+const deleteProductPlatformPrice = `-- name: DeleteProductPlatformPrice :execrows
 delete from product_platform_prices where product_id = $1 and platform_id = $2
 `
 
@@ -46,9 +49,15 @@ type DeleteProductPlatformPriceParams struct {
 	PlatformID int16 `json:"platform_id"`
 }
 
-func (q *Queries) DeleteProductPlatformPrice(ctx context.Context, arg DeleteProductPlatformPriceParams) error {
-	_, err := q.db.Exec(ctx, deleteProductPlatformPrice, arg.ProductID, arg.PlatformID)
-	return err
+// :execrows y no :exec para distinguir "se borró" de "no había nada". El handler invalida el menú
+// cacheado y publica menu.updated, que hace refetch a todas las tablets; sin el conteo, peticiones
+// que no cambian nada provocan esa tormenta en bucle.
+func (q *Queries) DeleteProductPlatformPrice(ctx context.Context, arg DeleteProductPlatformPriceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProductPlatformPrice, arg.ProductID, arg.PlatformID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getOptionPlatformPrices = `-- name: GetOptionPlatformPrices :many

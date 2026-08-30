@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -128,5 +129,54 @@ func TestRateLimiter_MapStaysBounded(t *testing.T) {
 	rl.mu.Unlock()
 	if n > rlSweepEvery {
 		t.Fatalf("map should be swept, has %d entries", n)
+	}
+}
+
+// rateLimitUser cuenta por USUARIO, no por IP: todo el local sale por la misma dirección, así que
+// un tope por IP castigaría al segundo cajero por lo que hizo el primero.
+func TestRateLimitUsuario_CuentaPorUsuarioYNoPorIP(t *testing.T) {
+	rl := newRateLimiter("", "rl-user:", 2, time.Minute)
+	h := rateLimitUser(rl)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	do := func(userID int64) int {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/platform-prices/product", nil)
+		req.RemoteAddr = "10.0.0.9:5555" // la MISMA IP para los dos usuarios
+		req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: userID}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if c1, c2 := do(7), do(7); c1 != http.StatusOK || c2 != http.StatusOK {
+		t.Fatalf("las primeras dos del usuario 7 deben pasar, dieron %d y %d", c1, c2)
+	}
+	if code := do(7); code != http.StatusTooManyRequests {
+		t.Fatalf("la tercera del usuario 7 debe frenarse, dio %d", code)
+	}
+	// Mismo equipo, otro cajero: su contador arranca en cero.
+	if code := do(8); code != http.StatusOK {
+		t.Fatalf("el usuario 8 no debe pagar el tope del 7, dio %d", code)
+	}
+}
+
+// Sin usuario en el contexto no hay clave que contar. Devolver 401 y no "pasar de largo" evita que
+// una ruta mal cableada —el limitador antes de RequireAuth— quede sin tope y sin que nada avise.
+func TestRateLimitUsuario_SinUsuarioEs401(t *testing.T) {
+	rl := newRateLimiter("", "rl-user:", 2, time.Minute)
+	llamado := false
+	h := rateLimitUser(rl)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		llamado = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/platform-prices/product", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("sin usuario debe ser 401, dio %d", rec.Code)
+	}
+	if llamado {
+		t.Fatal("el handler no debe correr sin usuario")
 	}
 }

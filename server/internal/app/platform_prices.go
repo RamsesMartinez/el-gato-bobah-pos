@@ -48,18 +48,23 @@ func (s *PlatformPricesService) SetProductPrice(ctx context.Context, productID i
 	return nil
 }
 
-// DeleteProductPrice quita la excepción: el producto vuelve al precio calculado.
+// DeleteProductPrice quita la excepción: el producto vuelve al precio calculado. Devuelve si
+// realmente había una fila que borrar.
 //
 // Existe porque un precio equivocado pero PLAUSIBLE —$14.90 donde iban $149.00— pasa todas las
 // validaciones, y el check `price > 0` cierra el idioma "pon 0 para limpiar". Sin esto habría que
 // entrar a la base a mano.
-func (s *PlatformPricesService) DeleteProductPrice(ctx context.Context, productID int64, platformID int16) error {
-	if err := s.store.QC(ctx).DeleteProductPlatformPrice(ctx, db.DeleteProductPlatformPriceParams{
+//
+// El bool importa: quien llama invalida el menú cacheado y despierta a todas las tablets. Borrar lo
+// que no existe no cambió nada, así que tampoco debe costar un refetch a todo el local.
+func (s *PlatformPricesService) DeleteProductPrice(ctx context.Context, productID int64, platformID int16) (bool, error) {
+	n, err := s.store.QC(ctx).DeleteProductPlatformPrice(ctx, db.DeleteProductPlatformPriceParams{
 		ProductID: productID, PlatformID: platformID,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return false, err
 	}
-	return nil
+	return n > 0, nil
 }
 
 // SetOptionDelta hace lo mismo para el cargo de una opción de modificador.
@@ -84,13 +89,14 @@ func (s *PlatformPricesService) SetOptionDelta(ctx context.Context, optionID int
 	return nil
 }
 
-func (s *PlatformPricesService) DeleteOptionDelta(ctx context.Context, optionID int64, platformID int16) error {
-	if err := s.store.QC(ctx).DeleteOptionPlatformPrice(ctx, db.DeleteOptionPlatformPriceParams{
+func (s *PlatformPricesService) DeleteOptionDelta(ctx context.Context, optionID int64, platformID int16) (bool, error) {
+	n, err := s.store.QC(ctx).DeleteOptionPlatformPrice(ctx, db.DeleteOptionPlatformPriceParams{
 		OptionID: optionID, PlatformID: platformID,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return false, err
 	}
-	return nil
+	return n > 0, nil
 }
 
 // Comprobaciones de PERTENENCIA, bajo RLS y antes de escribir.

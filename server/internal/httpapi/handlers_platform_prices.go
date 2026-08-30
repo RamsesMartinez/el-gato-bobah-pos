@@ -72,13 +72,19 @@ func (h *Handlers) DeleteProductPlatformPrice(w http.ResponseWriter, r *http.Req
 		Error(w, err)
 		return
 	}
-	if err := h.platformPrices.DeleteProductPrice(r.Context(), productID, int16(platformID)); err != nil {
+	borro, err := h.platformPrices.DeleteProductPrice(r.Context(), productID, int16(platformID))
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	logging.SecurityEvent(r.Context(), "platform_price_removed",
-		"user_id", u.ID, "product_id", productID, "platform_id", platformID, "ip", clientIP(r))
-	h.invalidarMenu(r, u.CompanyID)
+	// El evento y la invalidación solo cuando algo cambió: sin esa condición, un bucle de borrados
+	// que no borran nada hace refetch del menú en todas las tablets y llena la bitácora de
+	// seguridad de ruido que esconde los cambios reales.
+	if borro {
+		logging.SecurityEvent(r.Context(), "platform_price_removed",
+			"user_id", u.ID, "product_id", productID, "platform_id", platformID, "ip", clientIP(r))
+		h.invalidarMenu(r, u.CompanyID)
+	}
 	// 204 también cuando no había fila: borrar lo que no existe deja el mundo como se pidió.
 	JSON(w, http.StatusNoContent, nil)
 }
@@ -128,13 +134,16 @@ func (h *Handlers) DeleteOptionPlatformPrice(w http.ResponseWriter, r *http.Requ
 		Error(w, err)
 		return
 	}
-	if err := h.platformPrices.DeleteOptionDelta(r.Context(), optionID, int16(platformID)); err != nil {
+	borro, err := h.platformPrices.DeleteOptionDelta(r.Context(), optionID, int16(platformID))
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	logging.SecurityEvent(r.Context(), "platform_price_removed",
-		"user_id", u.ID, "option_id", optionID, "platform_id", platformID, "ip", clientIP(r))
-	h.invalidarMenu(r, u.CompanyID)
+	if borro {
+		logging.SecurityEvent(r.Context(), "platform_price_removed",
+			"user_id", u.ID, "option_id", optionID, "platform_id", platformID, "ip", clientIP(r))
+		h.invalidarMenu(r, u.CompanyID)
+	}
 	JSON(w, http.StatusNoContent, nil)
 }
 

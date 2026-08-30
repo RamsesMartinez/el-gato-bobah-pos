@@ -141,7 +141,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// pedido de la plataforma ya llegó y hay que imprimirlo; mandar al cajero a buscar
 				// un gerente cuesta más de lo que protege. La mitigación es el rastro de quién lo
 				// cambió (updated_by, not null) y que la captura equivocada se pueda quitar.
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Group(func(r chi.Router) {
+				// El tope por usuario va DESPUÉS de RequireRole: cuenta al que sí tenía permiso,
+				// que es de quien hay que acotar la ráfaga (el resto ya rebota en 403).
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero),
+					rateLimitUser(h.platformPriceWrites)).Group(func(r chi.Router) {
 					r.Put("/platform-prices/product", h.SetProductPlatformPrice)
 					r.Delete("/platform-prices/product", h.DeleteProductPlatformPrice)
 					r.Put("/platform-prices/modifier-option", h.SetOptionPlatformPrice)
