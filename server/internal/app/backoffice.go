@@ -135,12 +135,18 @@ type CorteBreakdown struct {
 	EgresosTotal  decimal.Decimal        `json:"egresosTotal"`
 }
 
-// methodExpected: entrada para corteBreakdown (nombre, esperado del sistema, propinas y si toca cajón).
+// methodExpected: entrada para corteBreakdown (nombre, esperado del sistema, propinas y si es el
+// método dueño del fondo de caja).
 type methodExpected struct {
-	name        string
-	expected    decimal.Decimal // ventas + propinas (+ fondo/neto en efectivo)
-	tips        decimal.Decimal
-	affectsCash bool
+	name     string
+	expected decimal.Decimal // ventas + propinas (+ fondo/neto en efectivo)
+	tips     decimal.Decimal
+	// duenoDelFondo: el ÚNICO método al que pertenecen el fondo de apertura y los movimientos de
+	// caja, que son un solo montón de billetes. NO es lo mismo que `affects_cash_drawer`: el
+	// efectivo que entrega un repartidor de Uber también se cuenta en el arqueo, pero el fondo no
+	// es suyo. Mientras el efectivo del mostrador fue el único método de cajón las dos ideas
+	// coincidían; desde 0037 hay cuatro y confundirlas reportaba el fondo una vez por método.
+	duenoDelFondo bool
 }
 
 // corteBreakdown descompone un corte en ingresos (por método → concepto) y egresos de efectivo.
@@ -173,7 +179,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 	out := CorteBreakdown{Ingresos: []CorteMethodBreakdown{}, Egresos: []CorteBucket{}}
 	for _, me := range methods {
 		ventas := me.expected.Sub(me.tips)
-		if me.affectsCash {
+		if me.duenoDelFondo {
 			ventas = ventas.Sub(opening).Sub(net)
 		}
 		ventas = domain.Round2(ventas)
@@ -187,7 +193,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		}
 		add("Ventas", ventas)
 		add("Propinas", domain.Round2(me.tips))
-		if me.affectsCash {
+		if me.duenoDelFondo {
 			add("Entradas", domain.Round2(entradas))
 			add("Traspasos recibidos", domain.Round2(traspasosIn))
 		}
@@ -455,12 +461,21 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 			ventas, tips = decimal.Zero, decimal.Zero // secundaria: sin ventas ni propinas
 		}
 		expected := ventas.Add(tips) // ventas + propinas: ambas son dinero recibido en el corte
-		if r.AffectsCashDrawer {
+		// El fondo de apertura y el neto de movimientos son UN solo montón de billetes, así que se
+		// suman a UN solo método: el efectivo del mostrador. Antes la condición era
+		// `AffectsCashDrawer`, que funcionaba de casualidad mientras ese fuera el único método de
+		// cajón; desde que cada plataforma tiene su variante en efectivo hay cuatro, y sumarlo a
+		// cada uno reportaba el fondo tantas veces como métodos — un turno con $1,500 y cero
+		// ventas salía con $4,500 de faltante que nadie podía explicar.
+		//
+		// `kind` y no el nombre: los métodos de plataforma en efectivo también tocan el cajón (su
+		// dinero se cuenta), pero el fondo no es suyo.
+		if r.Kind == db.PaymentKindEfectivo {
 			expected = expected.Add(sess.OpeningCash).Add(net) // + fondo + neto de movimientos
 		}
 		expected, tips = domain.Round2(expected), domain.Round2(tips)
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
-		methods = append(methods, methodExpected{name: r.Name, expected: expected, tips: tips, affectsCash: r.AffectsCashDrawer})
+		methods = append(methods, methodExpected{name: r.Name, expected: expected, tips: tips, duenoDelFondo: r.Kind == db.PaymentKindEfectivo})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
@@ -680,7 +695,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			MethodID: int(t.PaymentMethodID), Name: t.Name,
 			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
 		})
-		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, tips: t.Tips, affectsCash: t.AffectsCashDrawer})
+		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, tips: t.Tips, duenoDelFondo: t.Kind == db.PaymentKindEfectivo})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {

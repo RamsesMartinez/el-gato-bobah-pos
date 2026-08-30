@@ -91,7 +91,7 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -148,13 +148,17 @@ values ($1, $2, $3, $4, $5, $6);
 -- name: ExpectedByMethodSince :many
 -- expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 -- dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
+-- kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
+-- ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
+-- y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
+-- caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
+select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
 left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
+group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key;
 
 -- name: GetOpenPrimarySession :one

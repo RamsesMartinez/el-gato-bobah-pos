@@ -25,8 +25,8 @@ func TestCorteBreakdown(t *testing.T) {
 	// Esperado = ventas + propinas (+ fondo/neto en efectivo).
 	// Efectivo: 180 = fondo 100 + neto 25 + ventas 50 + propina 5. Tarjeta: 50 = ventas 40 + propina 10.
 	methods := []methodExpected{
-		{name: "Efectivo", expected: mustDec("180"), tips: mustDec("5"), affectsCash: true},
-		{name: "Tarjeta", expected: mustDec("50"), tips: mustDec("10"), affectsCash: false},
+		{name: "Efectivo", expected: mustDec("180"), tips: mustDec("5"), duenoDelFondo: true},
+		{name: "Tarjeta", expected: mustDec("50"), tips: mustDec("10"), duenoDelFondo: false},
 	}
 
 	b := corteBreakdown(mustDec("100"), methods, moves)

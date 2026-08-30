@@ -94,19 +94,20 @@ func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransfer
 }
 
 const expectedByMethodSince = `-- name: ExpectedByMethodSince :many
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
+select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
 left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
+group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key
 `
 
 type ExpectedByMethodSinceRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
+	Kind              PaymentKind     `json:"kind"`
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 	AutoDeclare       bool            `json:"auto_declare"`
 	Expected          decimal.Decimal `json:"expected"`
@@ -116,6 +117,10 @@ type ExpectedByMethodSinceRow struct {
 // Totales esperados por método desde la apertura de la sesión (ventana temporal).
 // expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 // dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
+// kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
+// ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
+// y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
+// caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
 func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time) ([]ExpectedByMethodSinceRow, error) {
 	rows, err := q.db.Query(ctx, expectedByMethodSince, createdAt)
 	if err != nil {
@@ -128,6 +133,7 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
+			&i.Kind,
 			&i.AffectsCashDrawer,
 			&i.AutoDeclare,
 			&i.Expected,
@@ -655,7 +661,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 }
 
 const listSessionTotals = `-- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -666,6 +672,7 @@ order by pm.sort_key
 type ListSessionTotalsRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
+	Kind              PaymentKind     `json:"kind"`
 	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 	Expected          decimal.Decimal `json:"expected"`
 	Declared          decimal.Decimal `json:"declared"`
@@ -685,6 +692,7 @@ func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]Lis
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
+			&i.Kind,
 			&i.AffectsCashDrawer,
 			&i.Expected,
 			&i.Declared,
