@@ -35,8 +35,8 @@ plataforma y confirmar que el ticket impreso trae esos precios.
    **Then** entra con el precio calculado a partir del base y el margen de la plataforma,
    redondeado a 2 decimales, sin pedir captura ni bloquear nada.
 3. **Given** un ticket armado en una plataforma, **When** el operador cobra, **Then** solo puede
-   usar el método de pago de esa plataforma, y la venta queda registrada como pedido de esa
-   plataforma.
+   elegir entre los dos métodos de esa plataforma —en línea o en efectivo— y la venta queda
+   registrada como pedido de esa plataforma.
 4. **Given** un ticket armado en una plataforma, **When** se imprime, **Then** el ticket muestra los
    precios de la plataforma, no los de mostrador.
 
@@ -84,8 +84,11 @@ que cada plataforma aparece con su total y que no se suman al efectivo esperado 
 
 1. **Given** ventas cobradas por distintas plataformas en un turno, **When** se cierra la caja,
    **Then** el corte muestra el total de cada plataforma en su propia línea.
-2. **Given** una venta cobrada por plataforma, **When** se cierra la caja, **Then** ese importe no
-   cuenta como efectivo a contar en el cajón.
+2. **Given** una venta cobrada **en línea** por una plataforma, **When** se cierra la caja,
+   **Then** ese importe no cuenta como efectivo a contar en el cajón y se autodeclara.
+3. **Given** una venta de plataforma cobrada **en efectivo** al repartidor, **When** se cierra la
+   caja, **Then** ese importe sí cuenta como efectivo a contar, y exige conteo físico como
+   cualquier otro efectivo.
 
 ---
 
@@ -152,10 +155,16 @@ verificar que persiste ahí y que no cambia ni en mostrador ni en las demás pla
 - **FR-012**: El servidor DEBE recalcular de forma autoritativa el precio de cada línea según la
   lista de la venta, ignorando cualquier precio que mande el cliente.
 - **FR-013**: Una venta capturada en una plataforma DEBE registrarse asociada a esa plataforma.
-- **FR-014**: Una venta capturada en una plataforma DEBE cobrarse con el método de pago de esa
-  plataforma.
-- **FR-015**: El corte de caja DEBE mostrar el total cobrado por cada plataforma en su propia línea,
-  sin sumarlo al efectivo a contar en el cajón.
+- **FR-014**: Una venta capturada en una plataforma DEBE cobrarse con uno de los dos métodos de esa
+  plataforma: **en línea** (la plataforma deposita) o **en efectivo** (el repartidor entrega el
+  dinero en el mostrador). Cualquier otro método se rechaza.
+- **FR-015**: El corte de caja DEBE mostrar cada método de plataforma en su propia línea.
+- **FR-015a**: Lo cobrado **en efectivo** por una plataforma DEBE contar como dinero a contar en el
+  cajón; lo cobrado **en línea**, no. Sin esta distinción, el efectivo que entrega el repartidor
+  aparece como un sobrante inexplicable al cerrar el turno.
+- **FR-015b**: Los métodos de plataforma **en efectivo** DEBEN exigir conteo físico al cerrar (no se
+  autodeclaran), igual que el efectivo de mostrador. Los de **en línea** sí se autodeclaran: no hay
+  nada que contar, el monto lo reporta la plataforma.
 - **FR-016**: El ticket impreso de una venta de plataforma DEBE mostrar los precios de esa lista.
 - **FR-017**: El descuento de inventario de una venta de plataforma DEBE ser idéntico al de una
   venta de mostrador: mismos productos, mismas recetas, mismas cantidades.
@@ -202,12 +211,23 @@ verificar que persiste ahí y que no cambia ni en mostrador ni en las demás pla
 
 ## Assumptions
 
-- **Las 3 plataformas y sus métodos de pago ya existen** en el sistema (Didi, Uber Eats, Rappi, con
-  método de pago propio que no afecta el cajón). Esta feature no los crea.
+- **Las 3 plataformas ya existen**; sus métodos de pago **se desdoblan en dos cada uno** (en línea y
+  en efectivo), porque los repartidores de las tres a veces pagan en efectivo en el mostrador. Los
+  tres métodos actuales no tienen ni un pago real registrado, así que se renombran a "en línea" sin
+  romper histórico.
+- **"Propio" queda fuera del selector de plataformas.** Es reparto del propio negocio: no hay
+  comisión que absorber ni depósito que conciliar, y se sigue vendiendo como hoy (domicilio, precio
+  base, cobrado en efectivo o tarjeta). Meterla obligaría a inventarle un método de pago que
+  escondería en qué se cobró de verdad.
+- **Cada ticket nuevo arranca en mostrador**, incluso después de cobrar uno de plataforma. Es un tap
+  extra por pedido de plataforma, a cambio de que sea imposible cobrar precio de Uber en mostrador
+  por inercia.
 - **El margen por default es 35% para las tres.** Se carga por migración. La pantalla para
   configurarlo queda **fuera de alcance**: el dueño la pidió para después.
 - **Un pedido de plataforma es a domicilio.** El reparto lo hace la plataforma, así que el costo de
   envío del negocio no aplica a estas ventas.
+- **El método de pago en efectivo de una plataforma es dinero real del cajón.** No es un truco de
+  reporte: el repartidor entrega billetes que se cuentan al cerrar.
 - **El precio manual es un precio final**, no un ajuste sobre el margen: lo que se captura es lo que
   se cobra.
 - **No hay conciliación automática** contra lo que la plataforma deposita. El corte solo separa lo
