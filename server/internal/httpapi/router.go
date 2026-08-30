@@ -136,6 +136,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+
+				// Precios por plataforma: los captura quien vende, desde la pantalla de venta. El
+				// pedido de la plataforma ya llegó y hay que imprimirlo; mandar al cajero a buscar
+				// un gerente cuesta más de lo que protege. La mitigación es el rastro de quién lo
+				// cambió (updated_by, not null) y que la captura equivocada se pueda quitar.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Group(func(r chi.Router) {
+					r.Put("/platform-prices/product", h.SetProductPlatformPrice)
+					r.Delete("/platform-prices/product", h.DeleteProductPlatformPrice)
+					r.Put("/platform-prices/modifier-option", h.SetOptionPlatformPrice)
+					r.Delete("/platform-prices/modifier-option", h.DeleteOptionPlatformPrice)
+				})
 				// Gestión del catálogo de cajas (alta/renombrar/activar) = configuración → admin/gerente.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/cash-registers/all", h.AllCashRegisters)

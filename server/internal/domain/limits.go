@@ -21,6 +21,9 @@ var (
 // cerrar). Pásale el valor ya redondeado (Round2) para que un sub-centavo que redondea a 0 se
 // rechace igual que el 0 explícito. decimal es exacto → no hay NaN/Inf que filtrar.
 func ValidMoney(v decimal.Decimal, allowZero bool) bool {
+	if !escalaSana(v) {
+		return false
+	}
 	if v.IsNegative() || v.GreaterThan(MaxMoney) {
 		return false
 	}
@@ -33,6 +36,9 @@ func ValidMoney(v decimal.Decimal, allowZero bool) bool {
 // ValidQty: cantidad distinta de 0 y con |v| ≤ max. allowNegative admite deltas negativos
 // (mermas/ajustes de stock); las líneas de venta y modificadores exigen > 0.
 func ValidQty(v, max decimal.Decimal, allowNegative bool) bool {
+	if !escalaSana(v) {
+		return false
+	}
 	if v.IsZero() || v.GreaterThan(max) || v.LessThan(max.Neg()) {
 		return false
 	}
@@ -40,4 +46,24 @@ func ValidQty(v, max decimal.Decimal, allowNegative bool) bool {
 		return true
 	}
 	return v.IsPositive()
+}
+
+// maxExponente acota el exponente decimal que se acepta de la frontera. 20 deja lugar de sobra:
+// MaxMoney tiene 8 dígitos y el stock se guarda a 4 decimales.
+const maxExponente = 20
+
+// escalaSana rechaza un número cuyo exponente sea absurdo, ANTES de que nadie lo redondee.
+//
+// No es teoría: `decimal.Round` calcula 10^|exponente| como big.Int, así que redondear el literal
+// "1e100000000" —47 bytes de cuerpo JSON— quema ~25 segundos de CPU y 279 MiB de heap, y
+// "1e2000000000" pide ~830 MB, que en el gigabyte del VPS es OOM del contenedor. El límite de 1 MiB
+// del body no ayuda porque el payload es diminuto, y el ReadTimeout tampoco porque el gasto ocurre
+// DESPUÉS de leer; la goroutine además sigue corriendo aunque el cliente corte.
+//
+// Mirar el exponente es O(1) y no escala el valor, así que la guarda es gratis. Va aquí, en las dos
+// validaciones de frontera, y no en cada llamador: el mismo patrón entra por POST /orders (la
+// cantidad de una línea, sin exigir rol) y por el alta de productos.
+func escalaSana(v decimal.Decimal) bool {
+	e := v.Exponent()
+	return e <= maxExponente && e >= -maxExponente
 }

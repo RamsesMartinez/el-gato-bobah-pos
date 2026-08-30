@@ -148,17 +148,17 @@ los precios sean los de esa lista, cobrar y confirmar que el ticket impreso los 
 **Independent Test**: sobrescribir un precio, cerrar la venta, empezar otra en la misma plataforma y
 ver el precio corregido.
 
-- [ ] T059 [US2] Agregar el upsert y el delete de precio de producto a `server/queries/platform_prices.sql`, y correr `make sqlc`
-- [ ] T060 **[test]** [US2] Test de integración: el `PUT` persiste con `updated_by`; el mismo producto en otra plataforma y en mostrador **no cambia** (FR-007)
-- [ ] T061 **[test]** [US2] Test de integración: precio ≤ 0 o fuera de `ValidMoney` → 422; producto o plataforma de otra empresa → 404
-- [ ] T062 [US2] Implementar `server/internal/app/platform_prices.go` (upsert + delete) con `ValidMoney` en la frontera
-- [ ] T063 **[test]** [US2] Test de que escribir o borrar un precio **invalida** `pos:menu:<companyID>` (FR-020)
-- [ ] T064 [US2] Invalidar el caché del menú en las dos rutas de escritura
-- [ ] T065 **[test]** [US2] Test del `DELETE`: quitar la excepción devuelve el producto al precio calculado, y borrar lo inexistente responde 204 (FR-019)
-- [ ] T066 [US2] `server/internal/httpapi/handlers_platform_prices.go` + rutas en `router.go`
+- [x] T059 [US2] Agregar el upsert y el delete de precio de producto a `server/queries/platform_prices.sql`, y correr `make sqlc`
+- [x] T060 **[test]** [US2] Test de integración: el `PUT` persiste con `updated_by`; el mismo producto en otra plataforma y en mostrador **no cambia** (FR-007)
+- [x] T061 **[test]** [US2] Test de integración: precio ≤ 0 o fuera de `ValidMoney` → 422; producto o plataforma de otra empresa → 404
+- [x] T062 [US2] Implementar `server/internal/app/platform_prices.go` (upsert + delete) con `ValidMoney` en la frontera
+- [x] T063 **[test]** [US2] Test de que escribir o borrar un precio **invalida** `pos:menu:<companyID>` (FR-020)
+- [x] T064 [US2] Invalidar el caché del menú en las dos rutas de escritura
+- [x] T065 **[test]** [US2] Test del `DELETE`: quitar la excepción devuelve el producto al precio calculado, y borrar lo inexistente responde 204 (FR-019)
+- [x] T066 [US2] `server/internal/httpapi/handlers_platform_prices.go` + rutas en `router.go`
 - [ ] T067 **[test]** [P] [US2] Test de que el diálogo de captura solo aparece con una plataforma activa
 - [ ] T068 [US2] UI para capturar y quitar el precio sin perder el ticket en curso
-- [ ] T069 **Pasar el subagente `security-auditor`**: endpoint de escritura nuevo accesible a cajero (principio V)
+- [x] T069 **Pasar el subagente `security-auditor`**: endpoint de escritura nuevo accesible a cajero (principio V)
 
 **Checkpoint**: US2 completa.
 

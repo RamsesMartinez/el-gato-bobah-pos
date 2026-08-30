@@ -60,3 +60,57 @@ func TestValidQty(t *testing.T) {
 		})
 	}
 }
+
+// Un exponente absurdo no puede costar CPU. `decimal.Round` calcula 10^|exp| como big.Int, así que
+// redondear "1e100000000" quema ~25 s y 279 MiB: un cuerpo de 47 bytes tumba la API. El límite de
+// 1 MiB del body no ayuda (el payload es diminuto) ni el ReadTimeout (el gasto es después de leer).
+//
+// Por eso la guarda va ANTES de tocar big.Int y mira solo el exponente, que es O(1).
+func TestValidMoneyRechazaExponentesAbsurdosSinGastarCPU(t *testing.T) {
+	absurdos := []string{"1e1000", "1e1000000", "1e100000000", "1e-1000000", "-1e100000000"}
+	for _, s := range absurdos {
+		v := decimal.RequireFromString(s)
+		if ValidMoney(v, true) {
+			t.Fatalf("%s debe rechazarse", s)
+		}
+		if ValidQty(v, MaxOrderQty, true) {
+			t.Fatalf("%s debe rechazarse como cantidad", s)
+		}
+	}
+}
+
+// Y los valores normales siguen pasando: la guarda no puede volverse un rechazo sorpresa.
+func TestValidMoneySigueAceptandoLoNormal(t *testing.T) {
+	buenos := []string{"0", "0.01", "1", "434.98", "9999999.99", "-0.01"}
+	for _, s := range buenos {
+		v := decimal.RequireFromString(s)
+		if !ValidMoney(v, true) && !v.IsNegative() {
+			t.Fatalf("%s debe aceptarse", s)
+		}
+	}
+	// El tope sigue siendo el tope.
+	if ValidMoney(decimal.RequireFromString("10000000.01"), true) {
+		t.Fatal("por encima de MaxMoney debe rechazarse")
+	}
+}
+
+// El redondeo tampoco puede colgarse: todas las fronteras del repo redondean ANTES de validar
+// (POST /orders con la cantidad de una línea, el alta de productos, los precios de plataforma), así
+// que una guarda que solo viviera en ValidMoney llegaría tarde.
+func TestRound2NoSeCuelgaConExponentesAbsurdos(t *testing.T) {
+	for _, s := range []string{"1e100000000", "1e-100000000", "-1e100000000"} {
+		v := decimal.RequireFromString(s)
+		got := Round2(v)
+		// Se devuelve sin redondear, y por lo tanto sigue siendo inválido.
+		if ValidMoney(got, true) {
+			t.Fatalf("%s no debe pasar la validación después de Round2", s)
+		}
+		if ValidQty(Round4(v), MaxOrderQty, true) {
+			t.Fatalf("%s no debe pasar como cantidad después de Round4", s)
+		}
+	}
+	// Y el redondeo normal sigue funcionando.
+	if got := Round2(decimal.RequireFromString("587.223")); !got.Equal(decimal.RequireFromString("587.22")) {
+		t.Fatalf("Round2(587.223) = %s", got)
+	}
+}

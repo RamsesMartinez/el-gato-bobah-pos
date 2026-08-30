@@ -41,3 +41,12 @@ delete from modifier_option_platform_prices where option_id = $1 and platform_id
 -- name: CountProductPlatformPrices :one
 -- Para los tests de aislamiento: cuenta lo que la empresa activa alcanza a ver.
 select count(*) from product_platform_prices;
+
+-- name: ProductExists :one
+-- Comprobación de PERTENENCIA bajo RLS antes de escribir un precio. La llave foránea no alcanza:
+-- sus chequeos saltan RLS por diseño, así que un product_id de otra empresa entraba y ocupaba la
+-- PK global (product_id, platform_id) — dejando al dueño legítimo sin poder capturar ni borrar.
+select exists(select 1 from products where id = $1);
+
+-- name: OptionExists :one
+select exists(select 1 from modifier_options where id = $1);
