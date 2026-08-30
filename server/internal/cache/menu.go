@@ -15,9 +15,21 @@ const menuTTL = 24 * time.Hour
 // así un POS abierto ve el "Top" al día en minutos.
 const popularTTL = 5 * time.Minute
 
+// menuSchema: versión de la FORMA del documento del menú. Se sube cuando el documento gana o
+// cambia campos, y eso basta para que el caché viejo quede huérfano y expire solo.
+//
+// Sin esto, un deploy que agrega un campo sigue sirviendo el documento viejo hasta que venza el
+// TTL — 24 horas de un POS sin el campo nuevo, sin nada que lo delate. Pasó al agregar las listas
+// de precios por plataforma: el selector no aparecía y la base sí tenía las plataformas.
+//
+// v2: agrega platforms, platformPrices y platformModPrices (spec 002).
+const menuSchema = "v2"
+
 // Claves namespaced por empresa: el menú/popularidad de una empresa NUNCA se sirve a otra
 // (aislamiento multi-tenant también en la caché). company_id viene del JWT, no del cliente.
-func menuKey(companyID int64) string    { return fmt.Sprintf("pos:menu:%d", companyID) }
+func menuKey(companyID int64) string {
+	return fmt.Sprintf("pos:menu:%s:%d", menuSchema, companyID)
+}
 func popularKey(companyID int64) string { return fmt.Sprintf("pos:popular:%d", companyID) }
 
 // MenuCache guarda el documento del menú ya serializado. Si rdb es nil (Redis no
