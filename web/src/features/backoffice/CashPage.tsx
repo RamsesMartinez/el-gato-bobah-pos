@@ -173,6 +173,7 @@ function SummaryLine({ label, amount, indent = 0, weight = '400', color, top }: 
 export function IngresosEgresosCard({ openingCash, breakdown, currency }: { openingCash: string; breakdown: CorteBreakdown; currency: string }) {
   const ingresos = breakdown?.ingresos ?? [];
   const egresos = breakdown?.egresos ?? [];
+  const plataformas = breakdown?.plataformas ?? [];
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflow="hidden">
       <SummaryLine label="Monto inicial" amount={money(openingCash, currency)} weight="600" />
@@ -191,6 +192,18 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
         <SummaryLine key={it.concept} label={it.concept} amount={`−${money(it.amount, currency)}`} indent={1} color="fg.muted" />
       ))}
       {egresos.length === 0 && <SummaryLine label="Sin egresos" indent={1} color="fg.muted" />}
+      {/* Cada plataforma cobra por dos métodos —en línea y efectivo—, así que su total no se lee de
+          un renglón de arriba. Es el número que se concilia contra el depósito que la plataforma
+          manda después. Solo salen las que vendieron: un renglón en $0 por cada una configurada
+          llena el corte de ruido justo donde se está buscando un descuadre. */}
+      {plataformas.length > 0 && (
+        <>
+          <SummaryLine label="Por plataforma" weight="700" top />
+          {plataformas.map((p) => (
+            <SummaryLine key={p.platform} label={p.platform} amount={money(p.total, currency)} indent={1} weight="600" />
+          ))}
+        </>
+      )}
     </Box>
   );
 }
