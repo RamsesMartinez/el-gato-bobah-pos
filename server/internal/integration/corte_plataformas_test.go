@@ -6,9 +6,12 @@ import (
 	"context"
 	"testing"
 
+	"uuid"
+
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // El fondo de apertura y los movimientos de efectivo se cuentan UNA sola vez en el corte, no una
@@ -90,6 +93,65 @@ func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
 		if !dif.IsZero() {
 			t.Fatalf("%q cerró con diferencia de %s (esperado %s, declarado %s) sin haber vendido nada",
 				tot.Name, dif, tot.Expected, tot.Declared)
+		}
+	}
+}
+
+// El corte suma lo cobrado EN ESTE TURNO, no lo cobrado desde una hora. La query lo hacía por
+// ventana de tiempo (created_at >= apertura) y funcionaba de casualidad: solo la caja principal
+// vende y no puede haber dos turnos suyos abiertos, así que la ventana y la sesión coincidían.
+//
+// Correcto por coincidencia no es correcto. Ahora que cada pago guarda su register_session_id, el
+// vínculo es explícito: un pago de otro turno no puede colarse aunque caiga dentro de la ventana.
+func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	ordersSvc := app.NewOrdersService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_turnos", "cajero")
+	prod := makeProduct(t, st, "Café", decimal.RequireFromString("100"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	principal := registerID(t, st, "Caja principal")
+
+	vender := func() {
+		t.Helper()
+		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+			ClientUUID:  uuid.New(),
+			ServiceType: "mostrador",
+			OpenedBy:    cajero,
+			Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+			Payments:    []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}},
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	// Turno 1: una venta de $100, y se cierra declarando lo que hay.
+	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+		t.Fatalf("OpenSession 1: %v", err)
+	}
+	vender()
+	if _, err := backoffice.CloseSession(ctx, principal, cajero,
+		map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")}, ""); err != nil {
+		t.Fatalf("CloseSession 1: %v", err)
+	}
+
+	// Turno 2, el mismo día y con el mismo reloj: debe esperar SOLO su propia venta.
+	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+		t.Fatalf("OpenSession 2: %v", err)
+	}
+	vender()
+	segunda, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("CurrentByRegister: %v", err)
+	}
+	for _, tot := range segunda.Totals {
+		if tot.Name != "Efectivo" {
+			continue
+		}
+		if !tot.Expected.Equal(decimal.RequireFromString("100")) {
+			t.Fatalf("el segundo turno espera %s: se le coló la venta del turno anterior", tot.Expected)
 		}
 	}
 }

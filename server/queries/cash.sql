@@ -144,8 +144,8 @@ returning id;
 insert into register_cash_movements (session_id, kind, amount, concept, user_id, transfer_id)
 values ($1, $2, $3, $4, $5, $6);
 
--- Totales esperados por método desde la apertura de la sesión (ventana temporal).
--- name: ExpectedByMethodSince :many
+-- Totales esperados por método, del TURNO indicado.
+-- name: ExpectedByMethodForSession :many
 -- expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 -- dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
 -- kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
@@ -156,7 +156,12 @@ select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
-left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
+-- Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
+-- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+-- suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
+-- que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
+-- dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
 where pm.is_active
 group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key;

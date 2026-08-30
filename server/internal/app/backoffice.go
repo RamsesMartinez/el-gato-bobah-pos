@@ -426,7 +426,7 @@ func (s *BackofficeService) sessionExpenses(ctx context.Context, sessionID int64
 // vende: solo maneja efectivo (fondo + neto de entradas/salidas y traspasos), así que su único
 // esperado es el del método que toca cajón.
 func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.RegisterSession, reg db.GetCashRegisterRow) (*SessionView, error) {
-	rows, err := s.store.QC(ctx).ExpectedByMethodSince(ctx, sess.OpenedAt)
+	rows, err := s.store.QC(ctx).ExpectedByMethodForSession(ctx, &sess.ID)
 	if err != nil {
 		return nil, err
 	}
