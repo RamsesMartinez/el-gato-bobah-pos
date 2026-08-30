@@ -56,28 +56,30 @@ type Deps struct {
 	Broker     *realtime.Broker
 	// PurchaseDoc puede ser nil: la extracción de tickets es opcional (sin ANTHROPIC_API_KEY el
 	// POS opera capturando las líneas a mano).
-	PurchaseDoc *app.PurchaseDocService
+	PurchaseDoc    *app.PurchaseDocService
+	PlatformPrices *app.PlatformPricesService
 }
 
 type Handlers struct {
-	cfg         config.Config
-	version     string
-	builtAt     string
-	jwt         *auth.Manager
-	auth        *app.AuthService
-	users       *app.UsersService
-	menu        *app.MenuService
-	menuCache   *cache.MenuCache
-	suggest     *app.SuggestService
-	costing     *app.CostingService
-	orders      *app.OrdersService
-	backoffice  *app.BackofficeService
-	admin       *app.AdminService
-	settings    *app.SettingsService
-	company     *app.CompanyService
-	reset       *app.ResetService
-	broker      *realtime.Broker
-	purchaseDoc *app.PurchaseDocService
+	cfg            config.Config
+	version        string
+	builtAt        string
+	jwt            *auth.Manager
+	auth           *app.AuthService
+	users          *app.UsersService
+	menu           *app.MenuService
+	menuCache      *cache.MenuCache
+	suggest        *app.SuggestService
+	costing        *app.CostingService
+	orders         *app.OrdersService
+	backoffice     *app.BackofficeService
+	admin          *app.AdminService
+	settings       *app.SettingsService
+	company        *app.CompanyService
+	reset          *app.ResetService
+	broker         *realtime.Broker
+	purchaseDoc    *app.PurchaseDocService
+	platformPrices *app.PlatformPricesService
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
@@ -90,8 +92,9 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
-		purchaseDoc: d.PurchaseDoc,
-		docExtract:  newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
+		purchaseDoc:    d.PurchaseDoc,
+		platformPrices: d.PlatformPrices,
+		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.

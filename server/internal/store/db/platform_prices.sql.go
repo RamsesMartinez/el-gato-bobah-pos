@@ -172,6 +172,31 @@ func (q *Queries) ListPlatformsWithMarkup(ctx context.Context) ([]ListPlatformsW
 	return items, nil
 }
 
+const optionExists = `-- name: OptionExists :one
+select exists(select 1 from modifier_options where id = $1)
+`
+
+func (q *Queries) OptionExists(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, optionExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const productExists = `-- name: ProductExists :one
+select exists(select 1 from products where id = $1)
+`
+
+// Comprobación de PERTENENCIA bajo RLS antes de escribir un precio. La llave foránea no alcanza:
+// sus chequeos saltan RLS por diseño, así que un product_id de otra empresa entraba y ocupaba la
+// PK global (product_id, platform_id) — dejando al dueño legítimo sin poder capturar ni borrar.
+func (q *Queries) ProductExists(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, productExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const upsertOptionPlatformPrice = `-- name: UpsertOptionPlatformPrice :exec
 insert into modifier_option_platform_prices (option_id, platform_id, price_delta, updated_by)
 values ($1, $2, $3, $4)

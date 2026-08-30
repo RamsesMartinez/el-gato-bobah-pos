@@ -165,7 +165,8 @@ func main() {
 		Broker:     realtime.NewBroker(),
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
-		PurchaseDoc: app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
+		PurchaseDoc:    app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
+		PlatformPrices: app.NewPlatformPricesService(st),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
 
