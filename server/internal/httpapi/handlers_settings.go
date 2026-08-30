@@ -35,6 +35,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		HeaderNote       *string          `json:"headerNote"`
 		FooterNote       *string          `json:"footerNote"`
 		AutoPrintOnClose *bool            `json:"autoPrintOnClose"`
+		Timezone         *string          `json:"timezone"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -55,7 +56,8 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 	}
 
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
-		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil {
+		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
+		body.Timezone != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -72,7 +74,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		if body.AutoPrintOnClose != nil {
 			autoPrint = *body.AutoPrintOnClose
 		}
-		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, u.ID); err != nil {
+		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
 			Error(w, err)
 			return
 		}
