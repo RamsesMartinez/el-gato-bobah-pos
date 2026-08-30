@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    participant C as Cliente
+    participant H as Handler HTTP
+    participant S as Servicio
+    participant D as decimal.Round
+    participant B as big.Int
+
+    C->>H: PUT price 1e100000000 (47 bytes)
+    Note over H: decodifica el JSON<br/>valor=1, exp=100000000<br/>rapido y diminuto
+    H->>S: SetProductPrice(price)
+    S->>D: Round2(price)
+    D->>B: calcular 10^100000000
+    Note over B: reserva memoria para<br/>100 millones de digitos
+    B-->>B: 25 s de CPU · 279 MiB
+    Note over C,B: el cliente ya corto,<br/>la goroutine sigue trabajando
+    B--xS: o el SO mata el contenedor (OOM)
+    Note over S: ValidMoney nunca<br/>llego a ejecutarse

@@ -25,7 +25,8 @@ import { TicketPreview } from '../tickets/TicketPreview';
 import { AutoPrintTicket } from '../tickets/AutoPrintTicket';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
-import { precioDeLista } from './precioPlataforma';
+import { PlatformPriceDialog } from './PlatformPriceDialog';
+import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
 import { ProductGrid } from './ProductGrid';
@@ -187,6 +188,14 @@ export function POSPage() {
   const total = ticketTotal(lines);
   const count = ticketCount(lines);
 
+  // Producto cuyo precio de plataforma se está corrigiendo. Solo con una lista activa: en
+  // mostrador el precio se edita en el catálogo, y confundir las dos listas es el error que esta
+  // pantalla no puede permitir.
+  const [editandoPrecio, setEditandoPrecio] = useState<MenuProduct | null>(null);
+  const desgloseEnEdicion = editandoPrecio
+    ? desglosePrecio(menu, lista, editandoPrecio.id, Number(editandoPrecio.price))
+    : null;
+
   const tapProduct = (p: MenuProduct) => {
     if (editMode && canEdit) {
       const ap = adminProducts?.items.find((x) => x.id === p.id);
@@ -295,7 +304,15 @@ export function POSPage() {
         {!search && <CategoryRail categories={allCategories} selection={selection} onSelect={setSelection} />}
       </Box>
       <Box flex="1" overflowY="auto" px={{ base: 3, md: 4 }} css={{ overscrollBehavior: 'contain' }}>
-        <ProductGrid products={products} counts={counts} onTap={tapProduct} showPrice={showPrices} />
+        <ProductGrid
+          products={products}
+          counts={counts}
+          onTap={tapProduct}
+          showPrice={showPrices}
+          menu={menu}
+          lista={lista}
+          onEditPrice={lista !== null && !editMode ? setEditandoPrecio : undefined}
+        />
       </Box>
     </VStack>
   );
@@ -401,6 +418,21 @@ export function POSPage() {
         isOpen={editProduct !== null}
         onClose={() => setEditProduct(null)}
       />
+
+      {/* Corregir el precio de un producto en la lista activa. Se remonta por producto (`key`) para
+          que el campo arranque con el precio de ESE producto en cada apertura. */}
+      {editandoPrecio && desgloseEnEdicion && lista !== null && (
+        <PlatformPriceDialog
+          key={editandoPrecio.id}
+          productId={editandoPrecio.id}
+          productName={editandoPrecio.name}
+          plataforma={nombreDeLista(menu, lista)}
+          plataformaId={lista}
+          desglose={desgloseEnEdicion}
+          isOpen
+          onClose={() => setEditandoPrecio(null)}
+        />
+      )}
 
       {/* Confirmación — modal compacto centrado (no full-screen; ocupa lo mínimo) */}
       <DialogRoot open={lastOrder !== null} onOpenChange={(e) => { if (!e.open) setLastOrder(null); }} placement="center" size="xs">

@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant C as Cliente
+    participant H as Handler HTTP
+    participant S as Servicio
+    participant D as Round2
+    participant G as escalaSana
+
+    C->>H: PUT price 1e100000000 (47 bytes)
+    Note over H: decodifica el JSON<br/>valor=1, exp=100000000
+    H->>S: SetProductPrice(price)
+    S->>D: Round2(price)
+    D->>G: exponente entre -20 y 20?
+    G-->>D: no (es 100000000)
+    Note over D: devuelve el valor SIN redondear<br/>cero calculo, cero memoria
+    D-->>S: valor intacto
+    S->>S: ValidMoney lo rechaza
+    S-->>H: ErrValidation
+    H-->>C: 400 en 0 s
