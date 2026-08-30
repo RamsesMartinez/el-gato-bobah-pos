@@ -28,14 +28,15 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 	// Punteros para distinguir "no vino" de "vino vacío": la pantalla de envío y la del ticket
 	// guardan por separado, y una no debe borrar lo que capturó la otra.
 	var body struct {
-		DeliveryFee      *decimal.Decimal `json:"deliveryFee"`
-		BusinessName     *string          `json:"businessName"`
-		Address          *string          `json:"address"`
-		Phone            *string          `json:"phone"`
-		HeaderNote       *string          `json:"headerNote"`
-		FooterNote       *string          `json:"footerNote"`
-		AutoPrintOnClose *bool            `json:"autoPrintOnClose"`
-		Timezone         *string          `json:"timezone"`
+		DeliveryFee        *decimal.Decimal `json:"deliveryFee"`
+		BusinessName       *string          `json:"businessName"`
+		Address            *string          `json:"address"`
+		Phone              *string          `json:"phone"`
+		HeaderNote         *string          `json:"headerNote"`
+		FooterNote         *string          `json:"footerNote"`
+		AutoPrintOnClose   *bool            `json:"autoPrintOnClose"`
+		Timezone           *string          `json:"timezone"`
+		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -57,7 +58,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
-		body.Timezone != nil {
+		body.Timezone != nil || body.PrintFreeModifiers != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -74,7 +75,11 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		if body.AutoPrintOnClose != nil {
 			autoPrint = *body.AutoPrintOnClose
 		}
-		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
+		printFreeMods := cur.PrintFreeModifiers
+		if body.PrintFreeModifiers != nil {
+			printFreeMods = *body.PrintFreeModifiers
+		}
+		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, orCurrent(body.Timezone, cur.Timezone), printFreeMods, u.ID); err != nil {
 			Error(w, err)
 			return
 		}

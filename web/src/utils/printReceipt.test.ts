@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildReceiptHtml, overflowingLines, printFrame, printHtmlOffscreen, sampleTicketOrder, TICKET_COLUMNS, type TicketBusinessInfo } from './printReceipt';
 import { money } from './format';
 import type { OrderView } from '../types/pos';
@@ -357,5 +357,60 @@ describe('printHtmlOffscreen — trampas del navegador real', () => {
     vi.advanceTimersByTime(60_000);
     await p;
     expect(frameActual()).toBeNull();
+  });
+});
+
+describe('desglose de precio en el ticket', () => {
+  const conExtras: OrderView = {
+    ...baseOrder,
+    lines: [{
+      productName: 'Café Americano',
+      quantity: '2',
+      unitPrice: '50',
+      lineTotal: '120',
+      modifiers: [
+        { name: 'Leche deslactosada', quantity: 1, priceDelta: '10' },
+        { name: 'Canela', quantity: 1, priceDelta: '0' },
+      ],
+    }],
+  };
+
+  // El cliente tiene que poder explicarse el número. Antes el renglón mostraba 120.00 con los
+  // extras listados sin precio, y no había forma de saber de dónde salían los 20 de más.
+  test('el producto muestra su precio unitario y su base, no el total con extras', () => {
+    const html = buildReceiptHtml(conExtras, baseBusiness, {});
+    // Se comparan contra money() y no contra un literal: el formato del repo omite los decimales
+    // cuando son cero ($50, no $50.00), y clavar el literal ataría el test al formato en vez de al
+    // comportamiento.
+    expect(html).toContain(`@${money('50')}`);
+    expect(html).toContain(money('100')); // 2 × 50 base, sin los extras
+  });
+
+  test('un extra que cuesta lleva su unitario y su importe', () => {
+    const html = buildReceiptHtml(conExtras, baseBusiness, {});
+    expect(html).toContain('Leche deslactosada');
+    expect(html).toContain(`@${money('10')}`);
+    expect(html).toContain(money('20')); // 2 cafés × 10 de delta
+  });
+
+  test('un extra sin costo se lista sin cifra', () => {
+    const html = buildReceiptHtml(conExtras, baseBusiness, {});
+    // El renglón de Canela llega hasta el cierre de su fila: no debe traer ninguna cifra.
+    const desde = html.indexOf('Canela');
+    const canela = html.slice(desde, html.indexOf('</tr>', desde));
+    expect(canela).not.toMatch(/\$\s?[\d,]+/);
+  });
+
+  // El negocio puede apagar los gratuitos para no alargar el papel. Los que cuestan nunca se
+  // ocultan: son la explicación del total.
+  test('con el interruptor apagado, los gratuitos desaparecen y los que cuestan no', () => {
+    const html = buildReceiptHtml(conExtras, baseBusiness, { printFreeModifiers: false });
+    expect(html).not.toContain('Canela');
+    expect(html).toContain('Leche deslactosada');
+  });
+
+  test('el total del ticket no cambia por desglosar', () => {
+    const html = buildReceiptHtml(conExtras, baseBusiness, {});
+    expect(html).toContain(money(conExtras.total));
   });
 });

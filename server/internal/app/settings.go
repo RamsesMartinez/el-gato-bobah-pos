@@ -40,9 +40,12 @@ type BusinessSettings struct {
 	AutoPrintOnClose bool            `json:"autoPrintOnClose"`
 	// Timezone: nombre IANA. Decide de qué DÍA es una venta, un corte o un gasto — la base guarda
 	// instantes en UTC, pero la fecha es una decisión de calendario y depende de dónde está el local.
-	Timezone      string     `json:"timezone"`
-	HasLogo       bool       `json:"hasLogo"`
-	LogoUpdatedAt *time.Time `json:"logoUpdatedAt"`
+	Timezone string `json:"timezone"`
+	// PrintFreeModifiers: si el ticket lista los adicionales que no cuestan. Encendido por default
+	// — cocina los usa para preparar y el cliente para reclamar; apagarlo solo acorta el papel.
+	PrintFreeModifiers bool       `json:"printFreeModifiers"`
+	HasLogo            bool       `json:"hasLogo"`
+	LogoUpdatedAt      *time.Time `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -53,20 +56,21 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Sin zona, las fechas se calcularían en UTC y la cena caería en el día siguiente: el
 			// default acompaña al de la columna en vez de dejar el campo vacío.
-			return BusinessSettings{DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone}, nil
+			return BusinessSettings{DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true}, nil
 		}
 		return BusinessSettings{}, err
 	}
 	bs := BusinessSettings{
-		DeliveryFee:      row.DeliveryFee,
-		BusinessName:     row.BusinessName,
-		Address:          derefStr(row.Address),
-		Phone:            derefStr(row.Phone),
-		FooterNote:       derefStr(row.FooterNote),
-		HeaderNote:       derefStr(row.HeaderNote),
-		AutoPrintOnClose: row.AutoPrintOnClose,
-		Timezone:         row.Timezone,
-		HasLogo:          row.HasLogo,
+		DeliveryFee:        row.DeliveryFee,
+		BusinessName:       row.BusinessName,
+		Address:            derefStr(row.Address),
+		Phone:              derefStr(row.Phone),
+		FooterNote:         derefStr(row.FooterNote),
+		HeaderNote:         derefStr(row.HeaderNote),
+		AutoPrintOnClose:   row.AutoPrintOnClose,
+		Timezone:           row.Timezone,
+		PrintFreeModifiers: row.PrintFreeModifiers,
+		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
 		bs.LogoUpdatedAt = &row.LogoUpdatedAt.Time
@@ -121,7 +125,7 @@ func (s *SettingsService) Logo(ctx context.Context) (TicketLogo, bool, error) {
 // SetBusinessInfo guarda la identidad que sale en el ticket y el interruptor de impresión
 // automática. Valida en domain ANTES de tocar el store: un texto que no cabe en 80mm se rechaza
 // como 400, no como un check violado de Postgres convertido en 500.
-func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, autoPrint bool, timezone string, userID int64) (BusinessSettings, error) {
+func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, autoPrint bool, timezone string, printFreeMods bool, userID int64) (BusinessSettings, error) {
 	if err := info.Validate(); err != nil {
 		return BusinessSettings{}, err
 	}
@@ -132,14 +136,15 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 		return BusinessSettings{}, domain.ErrInvalidTimezone
 	}
 	err := s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
-		Timezone:         timezone,
-		BusinessName:     strings.TrimSpace(info.Name),
-		Address:          strings.TrimSpace(info.Address),
-		Phone:            strings.TrimSpace(info.Phone),
-		HeaderNote:       strings.TrimSpace(info.HeaderNote),
-		FooterNote:       strings.TrimSpace(info.FooterNote),
-		AutoPrintOnClose: autoPrint,
-		UpdatedBy:        &userID,
+		Timezone:           timezone,
+		PrintFreeModifiers: printFreeMods,
+		BusinessName:       strings.TrimSpace(info.Name),
+		Address:            strings.TrimSpace(info.Address),
+		Phone:              strings.TrimSpace(info.Phone),
+		HeaderNote:         strings.TrimSpace(info.HeaderNote),
+		FooterNote:         strings.TrimSpace(info.FooterNote),
+		AutoPrintOnClose:   autoPrint,
+		UpdatedBy:          &userID,
 	})
 	if err != nil {
 		return BusinessSettings{}, err

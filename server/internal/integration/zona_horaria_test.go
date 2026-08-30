@@ -156,11 +156,11 @@ func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
 	}
 	info := domain.BusinessInfo{Name: cur.BusinessName, Address: cur.Address, Phone: cur.Phone}
 
-	if _, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "Marte/Olympus", admin); err == nil {
+	if _, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "Marte/Olympus", cur.PrintFreeModifiers, admin); err == nil {
 		t.Fatal("una zona inventada debe rechazarse al guardar")
 	}
 
-	nueva, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "America/Tijuana", admin)
+	nueva, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "America/Tijuana", cur.PrintFreeModifiers, admin)
 	if err != nil {
 		t.Fatalf("una zona válida debe guardarse: %v", err)
 	}

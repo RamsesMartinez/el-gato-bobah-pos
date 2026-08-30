@@ -14,6 +14,7 @@ select delivery_fee,
        footer_note,
        auto_print_on_close,
        timezone,
+       print_free_modifiers,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -42,6 +43,7 @@ set business_name       = sqlc.arg(business_name),
     -- La zona decide la FECHA de negocio: de qué día es una venta, un corte o un gasto. Se valida
     -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
     timezone            = sqlc.arg(timezone),
+    print_free_modifiers = sqlc.arg(print_free_modifiers),
     updated_at          = now(),
     updated_by          = sqlc.arg(updated_by);
 

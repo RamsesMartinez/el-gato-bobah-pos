@@ -9,7 +9,7 @@ import type { OrderView } from '../../types/pos';
 // la impresión automática. Vive como componente y no como llamada suelta para que el efecto se
 // cancele solo si el POS se desmonta a media venta.
 export function AutoPrintTicket({ order }: { order: OrderView | null }) {
-  const { data: business, autoPrintOnClose } = useTicketBusinessInfo();
+  const { data: business, autoPrintOnClose, printFreeModifiers } = useTicketBusinessInfo();
   // Se recuerda el pedido ya impreso, no un simple "ya imprimí": React puede re-renderizar por
   // cualquier motivo, y cada re-render que imprimiera sería un ticket duplicado en la mano del
   // cliente.
@@ -22,7 +22,7 @@ export function AutoPrintTicket({ order }: { order: OrderView | null }) {
     // Sin await a propósito: el pedido YA está registrado, y una impresora apagada no debe trabar
     // la pantalla ni perder la venta. Pero tampoco puede fallar en silencio — que no salga papel y
     // nadie se entere es justo el modo de fallo que esta feature vino a quitar.
-    void printHtmlOffscreen(buildReceiptHtml(order, business, {})).then((printed) => {
+    void printHtmlOffscreen(buildReceiptHtml(order, business, { printFreeModifiers })).then((printed) => {
       if (printed) return;
       toaster.create({
         title: 'No se pudo imprimir el ticket',
@@ -30,7 +30,7 @@ export function AutoPrintTicket({ order }: { order: OrderView | null }) {
         type: 'warning',
       });
     });
-  }, [order, business, autoPrintOnClose]);
+  }, [order, business, autoPrintOnClose, printFreeModifiers]);
 
   return null;
 }
