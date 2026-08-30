@@ -1,5 +1,5 @@
 import { describe, expect, test, it } from 'vitest';
-import { precioDeLista, deltaDeLista, desglosePrecio, nombreDeLista, repreciador, MOSTRADOR } from './precioPlataforma';
+import { precioDeLista, deltaDeLista, desglosePrecio, desgloseDelta, nombreDeLista, repreciador, MOSTRADOR } from './precioPlataforma';
 import type { TicketLine } from '../../types/pos';
 import type { Menu } from '../../types/pos';
 
@@ -114,3 +114,17 @@ describe('repreciador', () => {
     expect(r.modifiers[0].priceDelta).toBe(20);
   });
 })
+
+// El mismo desglose para el cargo de un extra. Se separa de desglosePrecio porque un extra SÍ puede
+// costar 0 ("sin cebolla") y un producto en 0 siempre es un error de captura: la validación de los
+// dos no puede ser la misma.
+test('desgloseDelta distingue el calculado del capturado', () => {
+  expect(desgloseDelta(menu, 5, 301, 20)).toEqual({ base: 20, calculado: 27, vigente: 27, esManual: false });
+  expect(desgloseDelta(menu, 5, 300, 20)).toEqual({ base: 20, calculado: 27, vigente: 30, esManual: true });
+  expect(desgloseDelta(menu, MOSTRADOR, 300, 20)).toBeNull();
+});
+
+// Un extra sin costo sigue sin costo por más margen que tenga la plataforma: 35% de 0 es 0.
+test('un extra sin costo no gana margen', () => {
+  expect(desgloseDelta(menu, 5, 999, 0)).toEqual({ base: 0, calculado: 0, vigente: 0, esManual: false });
+});

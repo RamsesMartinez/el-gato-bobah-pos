@@ -17,7 +17,8 @@ import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
-import { deltaDeLista } from './precioPlataforma';
+import { deltaDeLista, desgloseDelta, nombreDeLista, precioDeLista } from './precioPlataforma';
+import { OptionPriceFields } from './OptionPriceFields';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket } from '../../stores/ticket';
 
@@ -53,7 +54,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const swipe = useSwipeDownToClose(onClose);
 
   // Gestionar una opción (mantener presionado / clic derecho): desactivar para quitar basura.
-  const [manageOpt, setManageOpt] = useState<{ id: number; name: string } | null>(null);
+  const [manageOpt, setManageOpt] = useState<{ id: number; name: string; priceDelta: number } | null>(null);
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
   const suppressClick = useRef(false);
   const pressTimer = useRef<number | undefined>(undefined);
@@ -108,20 +109,30 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
 
-  const openManage = (o: MenuOption) => { if (canManage) setManageOpt({ id: o.id, name: o.name }); };
+  // El diálogo se abre para archivar (admin/gerente) O para corregir el cargo en la plataforma
+  // activa (cualquiera que pueda vender). Son dos cosas distintas detrás del mismo gesto porque el
+  // gesto ya existía y agregar un segundo sería una cosa más que aprender.
+  const puedeAbrirDialogo = canManage || lista !== null;
+  const openManage = (o: MenuOption) => {
+    if (puedeAbrirDialogo) setManageOpt({ id: o.id, name: o.name, priceDelta: Number(o.priceDelta) });
+  };
   const pressStart = (o: MenuOption) => {
-    if (!canManage) return;
+    if (!puedeAbrirDialogo) return;
     suppressClick.current = false;
     pressTimer.current = window.setTimeout(() => { suppressClick.current = true; openManage(o); }, 500);
   };
   const pressCancel = () => { if (pressTimer.current) window.clearTimeout(pressTimer.current); };
-  const manageHandlers = (o: MenuOption) => (canManage ? {
+  const manageHandlers = (o: MenuOption) => (puedeAbrirDialogo ? {
     onContextMenu: (e: MouseEvent) => { e.preventDefault(); openManage(o); },
     onPointerDown: () => pressStart(o),
     onPointerUp: pressCancel,
     onPointerLeave: pressCancel,
     onPointerCancel: pressCancel,
   } : {});
+
+  const desgloseEnEdicion = manageOpt
+    ? desgloseDelta(menu, lista, manageOpt.id, manageOpt.priceDelta)
+    : null;
 
   // orden de inserción de picks multi-select (las claves numéricas de sel no lo conservan),
   // para expulsar la más antigua al llegar al tope (FIFO).
@@ -399,7 +410,15 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             el grip), no el body: ahí abajo hay scroll y hay que dejarlo libre. */}
         <DrawerHeader pb={2} style={{ touchAction: 'none' }} {...swipe.handlers}>
           <Text fontSize="lg" fontWeight="700">{product.name}</Text>
-          <Text fontSize="sm" color="fg.muted">{money(product.price)} base</Text>
+          {/* Con una plataforma activa se cobra su lista, así que mostrar el precio base aquí
+              contradecía al ticket. El operador tiene que ver el número que va a cobrar. */}
+          {lista === null ? (
+            <Text fontSize="sm" color="fg.muted">{money(product.price)} base</Text>
+          ) : (
+            <Text fontSize="sm" fontWeight="600" color="orange.fg">
+              {money(precioDeLista(menu, lista, product.id, Number(product.price)))} en {nombreDeLista(menu, lista)}
+            </Text>
+          )}
           {showSearch && (
             <HStack mt={2} px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
               <LuSearch />
@@ -414,6 +433,12 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
               colorPalette={showInactive ? 'orange' : 'gray'} onClick={() => setShowInactive((v) => !v)}>
               <LuArchiveRestore /> {showInactive ? 'Ocultar archivadas' : 'Ver archivadas'}
             </Button>
+          )}
+          {/* Misma pista que en el catálogo: el gesto es el mismo y uno que nadie ve no existe. */}
+          {lista !== null && (
+            <Text fontSize="xs" color="fg.muted" mt={1}>
+              Mantén presionado un extra para corregir su cargo.
+            </Text>
           )}
         </DrawerHeader>
         <DrawerBody>
@@ -479,15 +504,30 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
       <DialogBackdrop />
       <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
         <DialogBody py={5}>
-          <Text fontWeight="700" fontSize="lg" mb={1}>{manageOpt?.name}</Text>
-          <Text fontSize="sm" color="fg.muted" mb={4}>
-            Se ocultará de esta lista en el POS. Puedes reactivarla en Admin → Opciones.
-          </Text>
-          <VStack align="stretch" gap={2}>
-            <Button size="lg" colorPalette="red" loading={deactivate.isPending}
-              onClick={() => manageOpt && deactivate.mutate(manageOpt.id)}>
-              Archivar opción
-            </Button>
+          <Text fontWeight="700" fontSize="lg" mb={desgloseEnEdicion ? 3 : 1}>{manageOpt?.name}</Text>
+          {desgloseEnEdicion && manageOpt && lista !== null && (
+            <OptionPriceFields
+              key={manageOpt.id}
+              optionId={manageOpt.id}
+              optionName={manageOpt.name}
+              plataforma={nombreDeLista(menu, lista)}
+              plataformaId={lista}
+              desglose={desgloseEnEdicion}
+              onDone={() => setManageOpt(null)}
+            />
+          )}
+          <VStack align="stretch" gap={2} mt={desgloseEnEdicion ? 5 : 0}>
+            {canManage && (
+              <>
+                <Text fontSize="sm" color="fg.muted">
+                  Archivarla la oculta de esta lista. Puedes reactivarla en Admin → Opciones.
+                </Text>
+                <Button size="lg" colorPalette="red" loading={deactivate.isPending}
+                  onClick={() => manageOpt && deactivate.mutate(manageOpt.id)}>
+                  Archivar opción
+                </Button>
+              </>
+            )}
             <Button size="lg" variant="ghost" onClick={() => setManageOpt(null)}>Cancelar</Button>
           </VStack>
         </DialogBody>
