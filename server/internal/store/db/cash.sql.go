@@ -93,18 +93,18 @@ func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransfer
 	return id, err
 }
 
-const expectedByMethodSince = `-- name: ExpectedByMethodSince :many
+const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
-left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
+left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
 where pm.is_active
 group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key
 `
 
-type ExpectedByMethodSinceRow struct {
+type ExpectedByMethodForSessionRow struct {
 	PaymentMethodID   int16           `json:"payment_method_id"`
 	Name              string          `json:"name"`
 	Kind              PaymentKind     `json:"kind"`
@@ -114,22 +114,27 @@ type ExpectedByMethodSinceRow struct {
 	Tips              decimal.Decimal `json:"tips"`
 }
 
-// Totales esperados por método desde la apertura de la sesión (ventana temporal).
+// Totales esperados por método, del TURNO indicado.
 // expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 // dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
 // kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
 // ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
 // y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
 // caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
-func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time) ([]ExpectedByMethodSinceRow, error) {
-	rows, err := q.db.Query(ctx, expectedByMethodSince, createdAt)
+// Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
+// resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+// suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
+// que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
+// dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+func (q *Queries) ExpectedByMethodForSession(ctx context.Context, registerSessionID *int64) ([]ExpectedByMethodForSessionRow, error) {
+	rows, err := q.db.Query(ctx, expectedByMethodForSession, registerSessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ExpectedByMethodSinceRow{}
+	items := []ExpectedByMethodForSessionRow{}
 	for rows.Next() {
-		var i ExpectedByMethodSinceRow
+		var i ExpectedByMethodForSessionRow
 		if err := rows.Scan(
 			&i.PaymentMethodID,
 			&i.Name,
