@@ -32,3 +32,16 @@ export function primerMetodoLibre(metodos: PaymentMethod[], usados: number[]): n
   const yaUsados = new Set(usados);
   return (metodos.find((m) => !yaUsados.has(m.id)) ?? metodos[0]).id;
 }
+
+// metodosDeLaLista deja solo los métodos con los que se puede cobrar la lista activa: espejo exacto
+// de la regla del servidor (domain.MetodoCorrespondeALaPlataforma).
+//
+// Una plataforma trae DOS —en línea y efectivo—: el repartidor a veces paga en efectivo, y ese es
+// el motivo de que exista el segundo. Y una plataforma sin métodos propios devuelve vacío en vez de
+// caer a los de mostrador: cobrar un pedido de Uber con el efectivo del mostrador hace que el
+// sistema espere en el cajón billetes que la plataforma pagó por transferencia, y el turno cierra
+// con un faltante por el monto exacto.
+export function metodosDeLaLista(metodos: PaymentMethod[], lista: number | null): PaymentMethod[] {
+  if (lista === null) return metodos.filter((m) => m.deliveryPlatformId == null);
+  return metodos.filter((m) => m.deliveryPlatformId === lista);
+}

@@ -24,7 +24,9 @@ func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
 
 	cajero := makeUser(t, st, "cajero_plat", "cajero")
 	prod := makeProduct(t, st, "Boneless", decimal.RequireFromString("100"), false)
-	efectivo := paymentMethodID(t, st, "Efectivo")
+	// El método de la plataforma, no el efectivo de mostrador: un pedido de Uber cobrado con el
+	// efectivo del cajón deja al turno esperando billetes que Uber pagó por transferencia.
+	uberEfectivo := paymentMethodID(t, st, "Uber Eats efectivo")
 	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
 	abrirCajaPrincipal(t, st, cajero)
 
@@ -35,7 +37,7 @@ func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
 		DeliveryPlatformID: &uber,
 		OpenedBy:           cajero,
 		Lines:              []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payments:           []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("135")}},
+		Payments:           []app.PaymentInput{{MethodID: uberEfectivo, Amount: decimal.RequireFromString("135")}},
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -58,6 +60,7 @@ func TestPrecioManualGanaYPersiste(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_manual", "cajero")
 	prod := makeProduct(t, st, "Alitas", decimal.RequireFromString("100"), false)
 	efectivo := paymentMethodID(t, st, "Efectivo")
+	rappiEnLinea := paymentMethodID(t, st, "Rappi en línea")
 	rappi := platformID(t, st, defaultCompanyID, "Rappi")
 	abrirCajaPrincipal(t, st, cajero)
 
@@ -73,7 +76,7 @@ func TestPrecioManualGanaYPersiste(t *testing.T) {
 		DeliveryPlatformID: &rappi,
 		OpenedBy:           cajero,
 		Lines:              []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payments:           []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("149")}},
+		Payments:           []app.PaymentInput{{MethodID: rappiEnLinea, Amount: decimal.RequireFromString("149")}},
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -142,7 +145,7 @@ func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
 
 	cajero := makeUser(t, st, "cajero_envio", "cajero")
 	prod := makeProduct(t, st, "Pizza", decimal.RequireFromString("200"), false)
-	efectivo := paymentMethodID(t, st, "Efectivo")
+	didiEnLinea := paymentMethodID(t, st, "Didi en línea")
 	didi := platformID(t, st, defaultCompanyID, "Didi")
 	abrirCajaPrincipal(t, st, cajero)
 
@@ -153,7 +156,7 @@ func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
 		DeliveryFee:        decimal.RequireFromString("20"), // el cliente lo manda; se ignora
 		OpenedBy:           cajero,
 		Lines:              []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payments:           []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("270")}},
+		Payments:           []app.PaymentInput{{MethodID: didiEnLinea, Amount: decimal.RequireFromString("270")}},
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)

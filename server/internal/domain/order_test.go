@@ -183,3 +183,26 @@ func TestProductoFueraDelMenuLlevaElIdYUnMensajeAccionable(t *testing.T) {
 		t.Fatalf("el mensaje debe explicar que no está en este menú: %q", err.Error())
 	}
 }
+
+func TestMetodoCorrespondeALaPlataforma(t *testing.T) {
+	uber := int16(5)
+	didi := int16(8)
+	casos := []struct {
+		nombre         string
+		metodo, pedido *int16
+		quiere         bool
+	}{
+		{"mostrador con efectivo: el caso de todos los días", nil, nil, true},
+		{"Uber con el método de Uber", &uber, &uber, true},
+		{"Uber con el método de Didi", &didi, &uber, false},
+		{"Uber con el efectivo de mostrador deja faltante", nil, &uber, false},
+		{"mostrador con método de Uber deja sobrante", &uber, nil, false},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := MetodoCorrespondeALaPlataforma(c.metodo, c.pedido); got != c.quiere {
+				t.Fatalf("quiere %v, obtuvo %v", c.quiere, got)
+			}
+		})
+	}
+}

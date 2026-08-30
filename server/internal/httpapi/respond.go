@@ -59,6 +59,11 @@ func Error(w http.ResponseWriter, err error) {
 		// precios que no es de este negocio. Nunca se cae a margen 0 — eso cobraría precio de
 		// mostrador en una plataforma sin que nada avise.
 		status, code = http.StatusUnprocessableEntity, "PLATFORM_NOT_FOUND"
+	case errors.Is(err, domain.ErrPaymentMethodPlatform):
+		// 422 y código propio: el pedido y el método existen, lo que no cuadra es la combinación.
+		// El front lo necesita distinguible para decir con cuál sí se puede cobrar, en vez de un
+		// "datos inválidos" que no dice qué corregir.
+		status, code = http.StatusUnprocessableEntity, "PAYMENT_METHOD_PLATFORM"
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a

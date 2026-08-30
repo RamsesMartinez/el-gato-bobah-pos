@@ -230,3 +230,22 @@ func ApplyDeliveryFee(o BuiltOrder, fee decimal.Decimal, isDelivery bool) (Built
 	}
 	return o, nil
 }
+
+// MetodoCorrespondeALaPlataforma dice si un método de pago puede cobrar un pedido: los dos tienen
+// que apuntar a la misma plataforma, o ninguno a ninguna.
+//
+// Las dos direcciones importan y por motivos distintos:
+//
+//   - Un pedido de plataforma cobrado con el efectivo de mostrador hace que el sistema espere en el
+//     cajón billetes que la plataforma pagó por transferencia: el turno cierra con FALTANTE.
+//   - Un pedido de mostrador cobrado con un método de plataforma saca de la cuenta del cajón dinero
+//     que sí estaba ahí: cierra con SOBRANTE.
+//
+// En los dos casos el operador ve un descuadre por el monto exacto y nada que lo explique. La regla
+// vive aquí y no en el handler porque es aritmética de dinero, no forma del request.
+func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
+	if delMetodo == nil || delPedido == nil {
+		return delMetodo == nil && delPedido == nil
+	}
+	return *delMetodo == *delPedido
+}
