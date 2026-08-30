@@ -26,3 +26,22 @@ export function usePlatformPrice() {
 
   return { guardar, quitar };
 }
+
+// Lo mismo para el cargo de un extra en una plataforma.
+export function usePlatformOptionPrice() {
+  const invalidar = useReprecio();
+
+  const guardar = useMutation({
+    mutationFn: ({ optionId, platformId, priceDelta }: { optionId: number; platformId: number; priceDelta: number }) =>
+      posApi.setPlatformOptionPrice(optionId, platformId, priceDelta),
+    onSuccess: invalidar,
+  });
+
+  const quitar = useMutation({
+    mutationFn: ({ optionId, platformId }: { optionId: number; platformId: number }) =>
+      posApi.removePlatformOptionPrice(optionId, platformId),
+    onSuccess: invalidar,
+  });
+
+  return { guardar, quitar };
+}

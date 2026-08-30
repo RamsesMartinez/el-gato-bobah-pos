@@ -72,6 +72,26 @@ export function desglosePrecio(
   return { base, calculado, vigente: redondea2(Number(manual)), esManual: true };
 }
 
+// desgloseDelta: lo mismo para el cargo de un extra. Va aparte de desglosePrecio y no como un
+// parámetro porque las dos cosas se validan distinto —un extra SÍ puede costar 0 ("sin cebolla") y
+// un producto en 0 siempre es un error de captura— y juntarlas obligaría a que quien llama recuerde
+// pasar el flag correcto.
+export function desgloseDelta(
+  menu: Menu | undefined,
+  lista: ListaActiva,
+  optionId: number,
+  base: number,
+): DesglosePrecio | null {
+  if (lista === null || !menu) return null;
+  const margen = Number(menu.platforms?.find((p) => p.id === lista)?.markupPct ?? 0);
+  const calculado = margen === 0 ? base : redondea2(base * (100 + margen) / 100);
+  const manual = menu.platformModPrices?.[lista]?.[optionId];
+  if (manual === undefined) {
+    return { base, calculado, vigente: calculado, esManual: false };
+  }
+  return { base, calculado, vigente: redondea2(Number(manual)), esManual: true };
+}
+
 // repreciador devuelve la función que el store usa al cambiar de lista: toma una línea y dice cuál
 // es su precio y el de sus modificadores en la lista nueva.
 //

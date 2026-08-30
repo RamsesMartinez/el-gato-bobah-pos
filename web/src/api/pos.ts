@@ -34,6 +34,14 @@ export const posApi = {
   removePlatformPrice: (productId: number, platformId: number) =>
     api.del<void>(`/platform-prices/product?productId=${productId}&platformId=${platformId}`),
 
+  // Lo mismo para el cargo de un extra. El delta SÍ admite 0 —"sin cebolla" es un extra normal sin
+  // costo—, a diferencia del precio de un producto.
+  setPlatformOptionPrice: (optionId: number, platformId: number, priceDelta: number) =>
+    api.put<{ optionId: number; platformId: number; priceDelta: string }>(
+      '/platform-prices/modifier-option', { optionId, platformId, priceDelta }),
+  removePlatformOptionPrice: (optionId: number, platformId: number) =>
+    api.del<void>(`/platform-prices/modifier-option?optionId=${optionId}&platformId=${platformId}`),
+
   // Empresa (tenant). GET cualquiera; PATCH solo admin/gerente (backend aplica el 403).
   company: () => api.get<Company>('/company'),
   updateCompany: (name: string, slug: string) => api.patch<Company>('/company', { name, slug }),
