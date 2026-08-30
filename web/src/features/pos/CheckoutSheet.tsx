@@ -22,7 +22,7 @@ import type { OrderView, ServiceType } from '../../types/pos';
 import { money } from '../../utils/format';
 import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
-import { esEfectivo, metodoPorDefecto, primerMetodoLibre } from './metodosDePago';
+import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
 
 // El icono se elige por la NATURALEZA del método, no por su id: desde que payment_methods es
 // per-tenant cada empresa tiene los suyos y los ids ya no son estables entre negocios.
@@ -71,11 +71,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const { data: methodsData } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
   // Con una plataforma activa solo se ofrecen SUS métodos —en línea y efectivo—: el servidor
   // rechaza cualquier otro, y ofrecerlos sería dejar armar un cobro que va a fallar.
-  const methods = useMemo(() => {
-    const todos = methodsData?.items ?? [];
-    if (lista === null) return todos.filter((m) => m.deliveryPlatformId == null);
-    return todos.filter((m) => m.deliveryPlatformId === lista);
-  }, [methodsData, lista]);
+  const methods = useMemo(() => metodosDeLaLista(methodsData?.items ?? [], lista), [methodsData, lista]);
   // null hasta que llega el catálogo; en cuanto llega, el default sale de la regla probada.
   const [methodId, setMethodId] = useState<number | null>(null);
   const metodoActivo = methodId ?? metodoPorDefecto(methods);
