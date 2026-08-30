@@ -26,7 +26,10 @@ values ($1, $2, $3, $4)
 on conflict (product_id, platform_id)
 do update set price = excluded.price, updated_by = excluded.updated_by;
 
--- name: DeleteProductPlatformPrice :exec
+-- name: DeleteProductPlatformPrice :execrows
+-- :execrows y no :exec para distinguir "se borró" de "no había nada". El handler invalida el menú
+-- cacheado y publica menu.updated, que hace refetch a todas las tablets; sin el conteo, peticiones
+-- que no cambian nada provocan esa tormenta en bucle.
 delete from product_platform_prices where product_id = $1 and platform_id = $2;
 
 -- name: UpsertOptionPlatformPrice :exec
@@ -35,7 +38,7 @@ values ($1, $2, $3, $4)
 on conflict (option_id, platform_id)
 do update set price_delta = excluded.price_delta, updated_by = excluded.updated_by;
 
--- name: DeleteOptionPlatformPrice :exec
+-- name: DeleteOptionPlatformPrice :execrows
 delete from modifier_option_platform_prices where option_id = $1 and platform_id = $2;
 
 -- name: CountProductPlatformPrices :one

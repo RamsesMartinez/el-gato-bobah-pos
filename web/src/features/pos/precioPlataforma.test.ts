@@ -1,4 +1,4 @@
-import { precioDeLista, deltaDeLista, nombreDeLista, MOSTRADOR } from './precioPlataforma';
+import { precioDeLista, deltaDeLista, desglosePrecio, nombreDeLista, MOSTRADOR } from './precioPlataforma';
 import type { Menu } from '../../types/pos';
 
 const menu = {
@@ -49,4 +49,28 @@ test('el indicador nunca queda vacío', () => {
 
 test('sin menú cargado todavía, el precio es el base', () => {
   expect(precioDeLista(undefined, 5, 77, 100)).toBe(100);
+});
+
+// desglosePrecio alimenta el diálogo de captura: el operador tiene que ver de dónde sale el número
+// que va a corregir, o corrige a ciegas.
+test('desglosePrecio distingue el calculado del capturado a mano', () => {
+  const calculado = desglosePrecio(menu, 5, 999, 434.98);
+  expect(calculado).toEqual({ base: 434.98, calculado: 587.22, vigente: 587.22, esManual: false });
+
+  const manual = desglosePrecio(menu, 5, 77, 100);
+  expect(manual).toEqual({ base: 100, calculado: 135, vigente: 149, esManual: true });
+});
+
+// Un precio manual IGUAL al calculado sigue siendo manual: si no se distinguiera, el botón de
+// quitarlo desaparecería y la excepción quedaría atrapada en la base.
+test('un precio manual que coincide con el calculado se sigue viendo como manual', () => {
+  const conIgual = {
+    ...menu,
+    platformPrices: { 5: { 999: '587.22' } },
+  } as unknown as Menu;
+  expect(desglosePrecio(conIgual, 5, 999, 434.98)?.esManual).toBe(true);
+});
+
+test('en mostrador no hay nada que capturar', () => {
+  expect(desglosePrecio(menu, MOSTRADOR, 77, 100)).toBeNull();
 });

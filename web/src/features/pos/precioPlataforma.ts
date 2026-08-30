@@ -42,3 +42,32 @@ export function nombreDeLista(menu: Menu | undefined, lista: ListaActiva): strin
   if (lista === null) return 'Mostrador';
   return menu?.platforms?.find((p) => p.id === lista)?.name ?? 'Mostrador';
 }
+
+// Qué se muestra en el diálogo de captura. `null` en mostrador: la lista base se edita en el
+// catálogo, no aquí, y confundir las dos es justo el error que esta feature no puede permitirse.
+export interface DesglosePrecio {
+  base: number;      // el de mostrador, que este diálogo nunca toca
+  calculado: number; // base + margen de la plataforma
+  vigente: number;   // lo que se cobra hoy: el manual si existe, si no el calculado
+  esManual: boolean;
+}
+
+// desglosePrecio abre el número en sus partes para que el operador vea de dónde sale antes de
+// corregirlo. `esManual` sale de que EXISTA la fila, no de comparar contra el calculado: un precio
+// capturado que coincide con el calculado sigue siendo una excepción guardada, y si no se
+// distinguiera, el botón de quitarla desaparecería y quedaría atrapada en la base.
+export function desglosePrecio(
+  menu: Menu | undefined,
+  lista: ListaActiva,
+  productId: number,
+  base: number,
+): DesglosePrecio | null {
+  if (lista === null || !menu) return null;
+  const margen = Number(menu.platforms?.find((p) => p.id === lista)?.markupPct ?? 0);
+  const calculado = margen === 0 ? base : redondea2(base * (100 + margen) / 100);
+  const manual = menu.platformPrices?.[lista]?.[productId];
+  if (manual === undefined) {
+    return { base, calculado, vigente: calculado, esManual: false };
+  }
+  return { base, calculado, vigente: redondea2(Number(manual)), esManual: true };
+}

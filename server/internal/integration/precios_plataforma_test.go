@@ -248,8 +248,8 @@ func TestCapturarYQuitarUnPrecioDePlataforma(t *testing.T) {
 	}
 
 	// Quitarlo devuelve el producto al calculado.
-	if err := svc.DeleteProductPrice(ctx, prod, uber); err != nil {
-		t.Fatalf("quitar: %v", err)
+	if borro, err := svc.DeleteProductPrice(ctx, prod, uber); err != nil || !borro {
+		t.Fatalf("quitar: borro=%v err=%v", borro, err)
 	}
 	if err := st.Pool.QueryRow(ctx,
 		`select count(*) from product_platform_prices where product_id=$1 and platform_id=$2`, prod, uber).Scan(&n); err != nil {
@@ -258,9 +258,9 @@ func TestCapturarYQuitarUnPrecioDePlataforma(t *testing.T) {
 	if n != 0 {
 		t.Fatal("el precio capturado debe desaparecer")
 	}
-	// Borrar lo que no existe deja el mundo como se pidió: no es un error.
-	if err := svc.DeleteProductPrice(ctx, prod, uber); err != nil {
-		t.Fatalf("borrar lo inexistente no debe fallar: %v", err)
+	// Borrar lo que no existe deja el mundo como se pidió: no es un error, pero tampoco un borrado.
+	if borro, err := svc.DeleteProductPrice(ctx, prod, uber); err != nil || borro {
+		t.Fatalf("borrar lo inexistente: borro=%v err=%v", borro, err)
 	}
 }
 
