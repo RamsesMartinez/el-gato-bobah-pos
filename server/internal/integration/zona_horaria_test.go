@@ -140,3 +140,49 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 			d1.Format("2006-01-02"), d2.Format("2006-01-02"))
 	}
 }
+
+// La zona se puede cambiar desde la configuración del local, y una inválida se rechaza AHÍ. Donde
+// se usa cae a UTC para no tumbar un cobro, así que si nunca se rechazara al guardar, ese fallback
+// correría las fechas de los cortes en silencio durante meses.
+func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	settings := app.NewSettingsService(st)
+	admin := makeUser(t, st, "admin_zona", "admin")
+
+	cur, err := settings.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	info := domain.BusinessInfo{Name: cur.BusinessName, Address: cur.Address, Phone: cur.Phone}
+
+	if _, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "Marte/Olympus", admin); err == nil {
+		t.Fatal("una zona inventada debe rechazarse al guardar")
+	}
+
+	nueva, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "America/Tijuana", admin)
+	if err != nil {
+		t.Fatalf("una zona válida debe guardarse: %v", err)
+	}
+	if nueva.Timezone != "America/Tijuana" {
+		t.Fatalf("la zona quedó en %q", nueva.Timezone)
+	}
+
+	// Y manda de verdad: Tijuana es UTC-7, así que un instante que en México es del 29 a las 20:28
+	// allá es del 29 a las 19:28 — mismo día, pero la frontera se mueve.
+	sess := time.Date(2026, 8, 30, 6, 30, 0, 0, time.UTC) // 00:30 del 30 en CDMX, 23:30 del 29 en Tijuana
+	backoffice := app.NewBackofficeService(st, func() time.Time { return sess })
+	cajero := makeUser(t, st, "cajero_tj", "cajero")
+	principal := registerID(t, st, "Caja principal")
+	abierta, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+	var fecha time.Time
+	if err := st.Pool.QueryRow(ctx, `select business_date from register_sessions where id = $1`, abierta.ID).Scan(&fecha); err != nil {
+		t.Fatal(err)
+	}
+	if got := fecha.Format("2006-01-02"); got != "2026-08-29" {
+		t.Fatalf("con Tijuana el turno debía abrir el 2026-08-29, abrió el %s", got)
+	}
+}

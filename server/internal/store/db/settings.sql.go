@@ -32,6 +32,7 @@ select delivery_fee,
        header_note,
        footer_note,
        auto_print_on_close,
+       timezone,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -48,6 +49,7 @@ type GetBusinessSettingsRow struct {
 	HeaderNote       *string            `json:"header_note"`
 	FooterNote       *string            `json:"footer_note"`
 	AutoPrintOnClose bool               `json:"auto_print_on_close"`
+	Timezone         string             `json:"timezone"`
 	HasLogo          bool               `json:"has_logo"`
 	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt        time.Time          `json:"updated_at"`
@@ -72,6 +74,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.HeaderNote,
 		&i.FooterNote,
 		&i.AutoPrintOnClose,
+		&i.Timezone,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -100,6 +103,26 @@ func (q *Queries) GetTicketLogo(ctx context.Context) (GetTicketLogoRow, error) {
 	return i, err
 }
 
+const seedBusinessSettings = `-- name: SeedBusinessSettings :exec
+insert into business_settings (business_name, delivery_fee)
+values ($1, 0)
+on conflict do nothing
+`
+
+// Fila de ajustes para una empresa recién creada. Sin ella el negocio nace sin zona horaria y sus
+// fechas se calcularían en UTC, que es el bug que arregló 0038.
+//
+// company_id NO se lista: lo pone el DEFAULT desde el GUC del tenant, igual que el resto del repo.
+// Y no se puede listar aunque se quisiera — 0023 agregó esa columna con SQL dinámico, que sqlc no
+// parsea, así que para sqlc la columna no existe. Corre dentro de WithTenant o entra NULL.
+//
+// `on conflict do nothing` sin destino: sirve para cualquier restricción y no depende de conocer
+// el nombre de la PK, que también cambió en 0023.
+func (q *Queries) SeedBusinessSettings(ctx context.Context, businessName string) error {
+	_, err := q.db.Exec(ctx, seedBusinessSettings, businessName)
+	return err
+}
+
 const setTicketLogo = `-- name: SetTicketLogo :exec
 update business_settings
 set logo_bytes = $1, logo_mime = $2, logo_updated_at = now(), updated_at = now(), updated_by = $3
@@ -124,8 +147,11 @@ set business_name       = $1,
     header_note         = nullif($4::text, ''),
     footer_note         = nullif($5::text, ''),
     auto_print_on_close = $6,
+    -- La zona decide la FECHA de negocio: de qué día es una venta, un corte o un gasto. Se valida
+    -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
+    timezone            = $7,
     updated_at          = now(),
-    updated_by          = $7
+    updated_by          = $8
 `
 
 type UpdateBusinessInfoParams struct {
@@ -135,6 +161,7 @@ type UpdateBusinessInfoParams struct {
 	HeaderNote       string `json:"header_note"`
 	FooterNote       string `json:"footer_note"`
 	AutoPrintOnClose bool   `json:"auto_print_on_close"`
+	Timezone         string `json:"timezone"`
 	UpdatedBy        *int64 `json:"updated_by"`
 }
 
@@ -150,6 +177,7 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.HeaderNote,
 		arg.FooterNote,
 		arg.AutoPrintOnClose,
+		arg.Timezone,
 		arg.UpdatedBy,
 	)
 	return err
