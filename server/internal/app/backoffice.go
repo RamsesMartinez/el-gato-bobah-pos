@@ -743,7 +743,11 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			MethodID: int(t.PaymentMethodID), Name: t.Name,
 			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
 		})
-		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, tips: t.Tips, duenoDelFondo: t.Kind == db.PaymentKindEfectivo})
+		methods = append(methods, methodExpected{
+			name: t.Name, expected: t.Expected, tips: t.Tips,
+			duenoDelFondo: t.Kind == db.PaymentKindEfectivo,
+			plataforma:    t.PlatformName,
+		})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {

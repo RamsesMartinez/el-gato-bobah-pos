@@ -236,3 +236,71 @@ func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
 		t.Fatalf("la suma de plataformas = %s, quiere 405: el mostrador o el fondo se colaron", suma)
 	}
 }
+
+// El subtotal por plataforma tiene que seguir ahí DESPUÉS de cerrar el turno.
+//
+// Es cuando de verdad sirve: el depósito de la plataforma llega días después del cierre, y ese
+// número es contra el que se concilia. Salía en la sesión viva y desaparecía en el histórico —sin
+// error, sin renglón, sin nada que avisara— porque la consulta del turno cerrado es otra y no
+// traía la plataforma del método.
+func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	ordersSvc := app.NewOrdersService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_cierre_plat", "cajero")
+	prod := makeProduct(t, st, "Boneless cierre", decimal.RequireFromString("100"), false)
+	principal := registerID(t, st, "Caja principal")
+	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
+	uberEnLinea := paymentMethodID(t, st, "Uber Eats en línea")
+	uberEfectivo := paymentMethodID(t, st, "Uber Eats efectivo")
+	efectivo := paymentMethodID(t, st, "Efectivo")
+
+	sess, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	if err != nil {
+		t.Fatalf("OpenSession: %v", err)
+	}
+
+	vender := func(metodo int16, monto string) {
+		t.Helper()
+		tipo, plataforma := "mostrador", (*int16)(nil)
+		if metodo != efectivo {
+			tipo, plataforma = "domicilio", &uber
+		}
+		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+			ClientUUID:         uuid.New(),
+			ServiceType:        tipo,
+			DeliveryPlatformID: plataforma,
+			OpenedBy:           cajero,
+			Lines:              []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+			Payments:           []app.PaymentInput{{MethodID: metodo, Amount: decimal.RequireFromString(monto)}},
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+	vender(uberEnLinea, "135")
+	vender(uberEfectivo, "135")
+	vender(efectivo, "100")
+
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, map[int]decimal.Decimal{
+		int(efectivo):     decimal.RequireFromString("100"),
+		int(uberEnLinea):  decimal.RequireFromString("135"),
+		int(uberEfectivo): decimal.RequireFromString("135"),
+	}, ""); err != nil {
+		t.Fatalf("CloseSession: %v", err)
+	}
+
+	detalle, err := backoffice.SessionDetail(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("SessionDetail: %v", err)
+	}
+	if len(detalle.Breakdown.Plataformas) != 1 {
+		t.Fatalf("el turno cerrado debe conservar el subtotal por plataforma, trajo %d: %+v",
+			len(detalle.Breakdown.Plataformas), detalle.Breakdown.Plataformas)
+	}
+	p := detalle.Breakdown.Plataformas[0]
+	if p.Platform != "Uber Eats" || !p.Total.Equal(decimal.RequireFromString("270")) {
+		t.Fatalf("subtotal del histórico = %+v, quiere Uber Eats 270", p)
+	}
+}
