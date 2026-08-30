@@ -161,6 +161,17 @@ verificar que persiste ahí y que no cambia ni en mostrador ni en las demás pla
   venta de mostrador: mismos productos, mismas recetas, mismas cantidades.
 - **FR-018**: El sistema DEBE rechazar un precio de plataforma inválido (negativo, cero o fuera de
   los topes de dinero del sistema) con un mensaje que diga qué pasó.
+- **FR-019**: El sistema DEBE permitir quitar un precio capturado, devolviendo ese producto u opción
+  al precio calculado. Sin esto, un precio equivocado pero plausible ($14.90 donde iban $149.00)
+  pasa todas las validaciones y se cobra así indefinidamente, porque la pantalla de configuración
+  está fuera de alcance y un precio en cero no se acepta.
+- **FR-020**: Escribir o quitar un precio de plataforma DEBE reflejarse de inmediato en las demás
+  tablas del negocio. Una pantalla que siga mostrando el precio anterior imprime un total distinto
+  del que se cobra.
+- **FR-021**: El sistema DEBE registrar quién capturó cada precio de plataforma. Es lo que permite
+  dejar que un cajero los edite sin perder el rastro de una captura equivocada.
+- **FR-022**: El sistema DEBE rechazar una venta cuya plataforma no pertenezca a la empresa de la
+  sesión, en lugar de cobrarla a precio de mostrador.
 
 ### Key Entities *(include if feature involves data)*
 
