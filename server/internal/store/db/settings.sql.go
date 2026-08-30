@@ -33,6 +33,7 @@ select delivery_fee,
        footer_note,
        auto_print_on_close,
        timezone,
+       print_free_modifiers,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -42,18 +43,19 @@ limit 1
 `
 
 type GetBusinessSettingsRow struct {
-	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
-	BusinessName     string             `json:"business_name"`
-	Address          *string            `json:"address"`
-	Phone            *string            `json:"phone"`
-	HeaderNote       *string            `json:"header_note"`
-	FooterNote       *string            `json:"footer_note"`
-	AutoPrintOnClose bool               `json:"auto_print_on_close"`
-	Timezone         string             `json:"timezone"`
-	HasLogo          bool               `json:"has_logo"`
-	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
-	UpdatedAt        time.Time          `json:"updated_at"`
-	UpdatedBy        *int64             `json:"updated_by"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	BusinessName       string             `json:"business_name"`
+	Address            *string            `json:"address"`
+	Phone              *string            `json:"phone"`
+	HeaderNote         *string            `json:"header_note"`
+	FooterNote         *string            `json:"footer_note"`
+	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
+	Timezone           string             `json:"timezone"`
+	PrintFreeModifiers bool               `json:"print_free_modifiers"`
+	HasLogo            bool               `json:"has_logo"`
+	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	UpdatedBy          *int64             `json:"updated_by"`
 }
 
 // Una fila por empresa (la PK pasó a company_id en 0023); RLS ya la restringe al tenant actual,
@@ -75,6 +77,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.FooterNote,
 		&i.AutoPrintOnClose,
 		&i.Timezone,
+		&i.PrintFreeModifiers,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -150,19 +153,21 @@ set business_name       = $1,
     -- La zona decide la FECHA de negocio: de qué día es una venta, un corte o un gasto. Se valida
     -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
     timezone            = $7,
+    print_free_modifiers = $8,
     updated_at          = now(),
-    updated_by          = $8
+    updated_by          = $9
 `
 
 type UpdateBusinessInfoParams struct {
-	BusinessName     string `json:"business_name"`
-	Address          string `json:"address"`
-	Phone            string `json:"phone"`
-	HeaderNote       string `json:"header_note"`
-	FooterNote       string `json:"footer_note"`
-	AutoPrintOnClose bool   `json:"auto_print_on_close"`
-	Timezone         string `json:"timezone"`
-	UpdatedBy        *int64 `json:"updated_by"`
+	BusinessName       string `json:"business_name"`
+	Address            string `json:"address"`
+	Phone              string `json:"phone"`
+	HeaderNote         string `json:"header_note"`
+	FooterNote         string `json:"footer_note"`
+	AutoPrintOnClose   bool   `json:"auto_print_on_close"`
+	Timezone           string `json:"timezone"`
+	PrintFreeModifiers bool   `json:"print_free_modifiers"`
+	UpdatedBy          *int64 `json:"updated_by"`
 }
 
 // La identidad del ticket y el interruptor de impresión automática. Los strings vacíos se guardan
@@ -178,6 +183,7 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.FooterNote,
 		arg.AutoPrintOnClose,
 		arg.Timezone,
+		arg.PrintFreeModifiers,
 		arg.UpdatedBy,
 	)
 	return err

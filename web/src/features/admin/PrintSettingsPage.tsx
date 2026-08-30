@@ -70,6 +70,12 @@ export function PrintSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
+  const setFreeMods = useMutation({
+    mutationFn: (v: boolean) => posApi.updateTicketSettings({ printFreeModifiers: v }),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
   const uploadLogo = useMutation({
     mutationFn: (file: File) => posApi.uploadTicketLogo(file),
     onSuccess: (bs) => {
@@ -180,6 +186,23 @@ export function PrintSettingsPage() {
             checked={data?.autoPrintOnClose ?? false}
             disabled={setAutoPrint.isPending}
             onCheckedChange={(e) => setAutoPrint.mutate(e.checked)}
+          />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Imprimir adicionales sin costo</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Los que sí cuestan siempre salen con su precio. Apágalo para acortar el ticket cuando
+              los pedidos llevan muchos adicionales gratis.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.printFreeModifiers ?? true}
+            disabled={setFreeMods.isPending}
+            onCheckedChange={(e) => setFreeMods.mutate(e.checked)}
           />
         </HStack>
       </Box>

@@ -11,6 +11,7 @@ const settings: BusinessSettings = {
   footerNote: '¡Vuelve pronto!',
   autoPrintOnClose: false,
   timezone: 'America/Mexico_City',
+  printFreeModifiers: true,
   hasLogo: false,
   logoUpdatedAt: null,
 };
