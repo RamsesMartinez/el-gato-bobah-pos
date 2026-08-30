@@ -372,7 +372,7 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, o
 		return nil, err
 	}
 	sess, err := s.store.QC(ctx).OpenSession(ctx, db.OpenSessionParams{
-		BusinessDate: pgtype.Date{Time: s.now(), Valid: true},
+		BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
 		OpeningCash:  domain.Round2(openingCash),
 		OpenedBy:     userID,
 		RegisterID:   registerID,
@@ -484,6 +484,17 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		})
 	}
 	return view, nil
+}
+
+// businessDate: el día de negocio de AHORA, en la zona del local. Si la zona no se puede leer cae a
+// UTC en vez de fallar: abrir caja no se detiene por un ajuste mal escrito, y el peor caso es la
+// fecha corrida que ya se tenía antes de que esto existiera.
+func (s *BackofficeService) businessDate(ctx context.Context) time.Time {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		return domain.BusinessDate(s.now(), time.UTC)
+	}
+	return domain.BusinessDate(s.now(), domain.LoadBusinessLocation(tz))
 }
 
 // CloseSession cierra la sesión abierta de una caja, guarda esperado vs declarado por método.

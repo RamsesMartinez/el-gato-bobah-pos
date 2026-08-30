@@ -590,6 +590,7 @@ type BusinessSetting struct {
 	LogoUpdatedAt    pgtype.Timestamptz `json:"logo_updated_at"`
 	HeaderNote       *string            `json:"header_note"`
 	AutoPrintOnClose bool               `json:"auto_print_on_close"`
+	Timezone         string             `json:"timezone"`
 }
 
 type CashRegister struct {

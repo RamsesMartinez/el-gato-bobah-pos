@@ -149,6 +149,19 @@ func (q *Queries) ExpectedByMethodSince(ctx context.Context, createdAt time.Time
 	return items, nil
 }
 
+const getBusinessTimezone = `-- name: GetBusinessTimezone :one
+select timezone from business_settings limit 1
+`
+
+// Zona horaria del local, para calcular la FECHA de negocio. La base guarda instantes en UTC; la
+// fecha es una decisión de calendario y depende de dónde está el negocio.
+func (q *Queries) GetBusinessTimezone(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, getBusinessTimezone)
+	var timezone string
+	err := row.Scan(&timezone)
+	return timezone, err
+}
+
 const getCashRegister = `-- name: GetCashRegister :one
 select id, name, is_primary, is_active from cash_registers where id = $1
 `

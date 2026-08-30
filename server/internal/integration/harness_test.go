@@ -195,9 +195,12 @@ func abrirCajaPrincipal(t *testing.T, st *store.Store, por int64) int64 {
 		t.Fatalf("caja principal: %v", err)
 	}
 	var sessID int64
+	// La fecha del turno sale del RELOJ DE LOS TESTS, no de current_date. Desde que la venta hereda
+	// su fecha de negocio del turno (para que uno que cruce la medianoche no reinicie el folio), un
+	// turno abierto en la fecha real dejaría las ventas fuera del rango que consultan los reportes.
 	if err := st.Pool.QueryRow(ctx,
 		`insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-		 values (current_date, 0, $1, $2) returning id`, por, regID).Scan(&sessID); err != nil {
+		 values ($3, 0, $1, $2) returning id`, por, regID, fixedNow).Scan(&sessID); err != nil {
 		t.Fatalf("abrir caja principal: %v", err)
 	}
 	return sessID
