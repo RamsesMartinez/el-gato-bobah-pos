@@ -91,6 +91,35 @@ Lo mismo para los extras, con las mismas correcciones.
 - **`>= 0` aquí y `> 0` en productos**: un extra sin costo ("sin cebolla") es normal y su delta es 0;
   un producto en $0 no lo es. Son reglas distintas a propósito.
 
+## 3b. Métodos de pago: cada plataforma se desdobla en dos
+
+Los repartidores de las tres plataformas **a veces pagan en efectivo en el mostrador**. Ese dinero
+entra al cajón físico, y los tres métodos actuales tienen `affects_cash_drawer = false`: cobrarlo
+así deja un sobrante que nadie sabe explicar al cerrar el turno.
+
+Los tres métodos existentes (ids 4, 5, 6) tienen **0 pagos reales** —solo aparecen en $0 en dos
+cortes viejos de la empresa de pruebas—, así que se pueden renombrar sin romper histórico.
+
+| Método | `kind` | `affects_cash_drawer` | `auto_declare` |
+|---|---|---|---|
+| Didi en línea *(renombra id 4)* | `plataforma` | `false` | `true` |
+| Uber Eats en línea *(renombra id 5)* | `plataforma` | `false` | `true` |
+| Rappi en línea *(renombra id 6)* | `plataforma` | `false` | `true` |
+| **Didi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
+| **Uber Eats efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
+| **Rappi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
+
+- **`kind` sigue siendo `plataforma` también en los de efectivo**: describe por dónde entró la venta,
+  no en qué se pagó. Verificado que **nada en el código ramifica por `kind`** — todo decide con
+  `affects_cash_drawer`, que es el campo que mueve el arqueo.
+- **`auto_declare = false` en los de efectivo** es obligatorio, no preferencia: son billetes que se
+  cuentan. `SetPaymentMethodAutoDeclare` ya rechaza autodeclarar un método que toca el cajón, así
+  que sembrarlo en `true` sería incoherente con una regla que el sistema ya defiende.
+- **`payment_methods` es una tabla GLOBAL** (sin `company_id`): el cambio aplica a todas las
+  empresas. Hoy hay una real, pero hay que decirlo en el comentario de la migración.
+- Renombrar y no borrar: los ids se conservan, así que los dos cortes viejos que los referencian
+  siguen siendo válidos.
+
 ## 4. [rev] RLS **y grants** — el hallazgo crítico
 
 Las dos tablas nuevas llevan `company_id`, su índice y la política `tenant_isolation` (`using` +

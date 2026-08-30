@@ -95,8 +95,10 @@ pinta y elige la lista, coherente con que el servidor es autoritativo en dinero.
 
 Por historia, para que cada corte deje algo usable (el orden de tareas lo detalla `/speckit-tasks`):
 
-1. **Esquema** — migración 0037 tal como la dejó la revisión, **con los grants**, más el test de
-   integración bajo el rol de app que los fija. Sin esto, todo lo demás se cae solo en producción.
+1. **Esquema** — migración 0037 tal como la dejó la revisión, **con los grants**, más el desdoble de
+   los métodos de pago (tres "en línea" renombrados + tres "efectivo" nuevos que sí tocan el cajón),
+   más el test de integración bajo el rol de app que fija los grants. Sin esto, todo lo demás se cae
+   solo en producción.
 2. **US1** (P1) — regla pura en `domain` + resolución en `app` + el POS con selector. Al terminar,
    ya se puede capturar un pedido de plataforma completo.
 3. **US2** (P1) — capturar y quitar un precio desde la pantalla de venta, con invalidación del
@@ -118,3 +120,4 @@ Sin desviaciones de la constitución que justificar.
 | **El envío de $20 se cuela en un pedido de plataforma** | El POS no ofrece envío cuando hay plataforma, y el servidor lo fuerza a 0 |
 | **Un cajero captura $14.90 donde iban $149.00** | FR-019 (quitar la excepción) + `updated_by not null` para saber quién |
 | **Redondeo a tres decimales en 12 productos reales** | `Round2` en el unitario, con esos productos como caso de test |
+| **El efectivo del repartidor aparece como sobrante en el arqueo** | Métodos "<plataforma> efectivo" con `affects_cash_drawer=true` y `auto_declare=false`, y un test de corte que lo fije |

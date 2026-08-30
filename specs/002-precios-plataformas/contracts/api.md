@@ -16,8 +16,9 @@ excepciones.
   "platforms": [
     { "id": 5, "name": "Didi",      "markupPct": 35 },
     { "id": 6, "name": "Uber Eats", "markupPct": 35 },
-    { "id": 7, "name": "Rappi",     "markupPct": 35 },
-    { "id": 8, "name": "Propio",    "markupPct": 0 }
+    { "id": 7, "name": "Rappi",     "markupPct": 35 }
+    // "Propio" NO se lista: es reparto del propio negocio, sin comisión que absorber ni depósito
+    // que conciliar. Se sigue vendiendo como domicilio a precio base, cobrado en efectivo o tarjeta.
   ],
   // Solo las EXCEPCIONES. Un producto ausente usa base × (1 + markupPct/100), redondeado a 2dp.
   "platformPrices":   { "5": { "512": 149.00 }, "7": { "512": 155.00 } },
@@ -80,14 +81,19 @@ precios**, así que el servidor lo resuelve en vez de confiarlo:
   unitario**, antes de tocar `numeric(10,2)`.
 - Los precios que mande el cliente se siguen ignorando, igual que hoy.
 - Con plataforma, `deliveryFee` se fuerza a **0**: el reparto lo cobra la plataforma.
-- El método de pago debe ser el de esa plataforma → si no, `422`.
+- El método de pago debe ser uno de los **dos** de esa plataforma —en línea o en efectivo— → si no,
+  `422`. El de efectivo existe porque los repartidores a veces pagan en el mostrador, y ese dinero
+  sí entra al cajón.
 
 Sin `deliveryPlatformId` el comportamiento es idéntico al actual: precio base, mostrador.
 
 ## Lo que NO cambia
 
-- `GET /payment-methods` — los tres métodos de plataforma ya existen.
-- `POST /cash-sessions/close` — el corte ya agrupa por método activo, así que cada plataforma ya
-  sale en su renglón sin contar como efectivo del cajón. Se cubre con un test, no con código.
+- `GET /payment-methods` — el contrato no cambia; lo que cambia son los **datos**: los tres métodos
+  de plataforma se renombran a "en línea" y se agregan sus tres gemelos "efectivo", que sí afectan
+  el cajón y no se autodeclaran. El POS los descubre por la misma llamada de siempre.
+- `POST /cash-sessions/close` — el corte ya agrupa por método activo, así que los seis métodos ya
+  salen en su renglón, y los de efectivo ya cuentan al cajón por su `affects_cash_drawer`. Se cubre
+  con un test, no con código.
 - El ticket impreso — ya usa el `unitPrice` que viene del pedido, que es el de la lista con la que
   se cobró.
