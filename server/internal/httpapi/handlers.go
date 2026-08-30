@@ -33,6 +33,13 @@ const (
 	// captura unas cuantas compras al día, y 60/hora deja margen de sobra para reintentar una
 	// foto borrosa sin que un bucle accidental en el front cueste dinero.
 	docExtractMax = 60
+	// platformPriceMax/Window: escrituras de precio de plataforma por usuario. No es un tope de
+	// presupuesto como el de arriba, es de amplificación: cada escritura invalida el menú cacheado
+	// y publica un `menu.updated` que hace refetch a TODAS las tablets conectadas, así que un bucle
+	// convierte un request en una tormenta en todo el local. 120 en 5 minutos deja capturar una
+	// lista completa a mano —un producto cada dos segundos y medio, sostenido— y acota el script.
+	platformPriceMax    = 120
+	platformPriceWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -83,8 +90,10 @@ type Handlers struct {
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
-	authFails  *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs    *rateLimiter // per-IP request throttle for the /auth group
+	// platformPrices limita las ESCRITURAS de precio por usuario (ver platformPriceMax).
+	platformPriceWrites *rateLimiter
+	authFails           *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs             *rateLimiter // per-IP request throttle for the /auth group
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -100,6 +109,8 @@ func NewHandlers(d Deps) *Handlers {
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.
 		authFails: newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-fails:", authFailMax, authFailWindow),
 		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", 60, time.Minute),
+		platformPriceWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-price:",
+			platformPriceMax, platformPriceWindow),
 	}
 }
 

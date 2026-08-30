@@ -201,6 +201,35 @@ func rateLimit(rl *rateLimiter, behindProxy bool) func(http.Handler) http.Handle
 	}
 }
 
+// rateLimitUser acota un grupo de rutas POR USUARIO autenticado, no por IP.
+//
+// Por IP no sirve aquí: todo el local sale por la misma dirección, así que el segundo cajero
+// pagaría el tope del primero. La clave es el id del usuario, que ya viene del token.
+//
+// Sin usuario en el contexto responde 401 en vez de dejar pasar: si alguien cablea el limitador
+// antes de RequireAuth, la ruta queda sin tope y nada lo delata. Fallar cerrado hace que ese error
+// de orden se note en el primer request.
+func rateLimitUser(rl *rateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			u, ok := userFrom(ctx)
+			if !ok {
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			key := strconv.FormatInt(u.ID, 10)
+			if rl.blocked(ctx, key) {
+				logging.SecurityEvent(ctx, "rate_limited_user", "user_id", u.ID, "path", r.URL.Path, "ip", clientIP(r))
+				tooManyRequests(w, rl.retryAfter(ctx, key))
+				return
+			}
+			rl.record(ctx, key)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // maxBody caps every request body so a huge payload can't exhaust memory. SSE and
 // other GETs carry no body, so this is transparent to them. 1 MiB is ample for POS
 // orders (the biggest payload).

@@ -1,0 +1,21 @@
+flowchart TD
+    A["JSON: 1e100000000<br/>47 bytes"] --> B["Decodificar<br/>shopspring/decimal"]
+    B --> C["Guardado en 2 piezas:<br/>value = 1 (big.Int)<br/>exp = 100000000 (int32)<br/><br/>~16 bytes en memoria"]
+    C --> D{"Redondear a 2 decimales"}
+    D --> E["Para redondear hay que llevar<br/>el numero a exponente -2"]
+    E --> F["Eso obliga a ESCRIBIR<br/>el numero completo:<br/>10 elevado a 100000000"]
+    F --> G["big.Int con<br/>100,000,001 digitos<br/><br/>25 s de CPU · 279 MiB"]
+
+    C -.-> H["El numero es CHICO de escribir<br/>y ENORME de materializar.<br/>Igual que una bomba zip."]
+
+    G --> I["El limite de 1 MiB del body no ayuda:<br/>el payload es diminuto"]
+    G --> J["El ReadTimeout no ayuda:<br/>el gasto ocurre DESPUES de leer"]
+    G --> K["Cortar la conexion no ayuda:<br/>la goroutine sigue trabajando"]
+
+    style A fill:#E4F0F2,stroke:#1D6E7E,color:#14212B
+    style C fill:#E4F0F2,stroke:#1D6E7E,color:#14212B
+    style G fill:#F6EAE6,stroke:#B24A3B,color:#14212B
+    style H fill:#FFFFFF,stroke:#5C6E7A,color:#14212B
+    style I fill:#F6EAE6,stroke:#B24A3B,color:#14212B
+    style J fill:#F6EAE6,stroke:#B24A3B,color:#14212B
+    style K fill:#F6EAE6,stroke:#B24A3B,color:#14212B

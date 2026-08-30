@@ -43,9 +43,17 @@ export function PlatformPicker() {
         ))}
       </HStack>
       {enPlataforma && (
-        <Text fontSize="sm" fontWeight="700" color="orange.fg" mt={1}>
-          Cobrando con precios de {nombreDeLista(menu, activa)}
-        </Text>
+        <>
+          <Text fontSize="sm" fontWeight="700" color="orange.fg" mt={1}>
+            Cobrando con precios de {nombreDeLista(menu, activa)}
+          </Text>
+          {/* La corrección de precio vive en una pulsación larga para no gastar un tap del flujo
+              normal ni espacio del mosaico. Un gesto que nadie ve no existe, así que el renglón lo
+              enseña; va aquí y no en un icono de ayuda porque es una instrucción de una línea. */}
+          <Text fontSize="xs" color="fg.muted">
+            Mantén presionado un producto para corregir su precio.
+          </Text>
+        </>
       )}
     </Box>
   );

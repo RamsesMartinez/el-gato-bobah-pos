@@ -27,8 +27,21 @@ registro DNS de `api-dev` se rompería en cada arranque.
 |---|---|
 | Instancia | `pos-vps-dev`, zona `us-central1-a`, proyecto `el-gato-bobah-pos` |
 | IP fija | `34.61.175.194` |
-| Subdominios | `api-dev.elgatobobah.com` · `app-dev.elgatobobah.com` |
+| API de pruebas | `api-dev.elgatobobah.com` (la sirve esta VM) |
+| Front de pruebas | `https://staging.el-gato-bobah-pos.pages.dev` |
 | Producción (NO tocar) | `pos-vps`, IP `34.68.178.107` |
+
+> **`app-dev.elgatobobah.com` todavía no sirve** (responde 522). El front de pruebas se publica en
+> Cloudflare Pages como *preview* de la rama `staging`, y un dominio propio en Pages solo puede
+> apuntar al deploy de **producción** del proyecto — que es el front del negocio. Para que el
+> subdominio funcione hace falta un **segundo proyecto de Pages** (`el-gato-bobah-pos-dev`) con
+> `app-dev` como su dominio; el token de Cloudflare que hay solo tiene permisos de DNS, no de Pages.
+> Mientras tanto se prueba en la URL de arriba, que sirve exactamente el mismo build y apunta a
+> `api-dev`.
+>
+> No se sirve desde el Caddy de esta VM a propósito: producción entrega el front desde Pages con el
+> CSP de `web/public/_headers`, y servirlo con otro stack haría que el ambiente de pruebas dejara de
+> probar lo que producción hace.
 
 ## Qué hacer según el argumento
 

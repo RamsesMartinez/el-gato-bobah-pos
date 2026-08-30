@@ -1,21 +1,34 @@
 import { Box, Text, Badge } from '@chakra-ui/react';
+import { LuPencil } from 'react-icons/lu';
 import type { MenuProduct } from '../../types/pos';
 import { money, categoryColor } from '../../utils/format';
 import { RADIUS, BORDER_W, ACCENT_W } from '../../theme/ui';
+import { useLongPress } from '../../hooks/useLongPress';
 
 interface Props {
   product: MenuProduct;
   count: number; // cuántos hay en el ticket
   onTap: (p: MenuProduct) => void;
   showPrice: boolean;
+  // Precio de la lista activa. En mostrador es el base; con una plataforma elegida, el de esa
+  // lista. Va calculado desde arriba porque el mosaico no conoce el menú completo.
+  price: number;
+  // Precio capturado a mano en la lista activa: se marca para que se distinga del calculado.
+  esManual: boolean;
+  // Mantener presionado para corregir el precio. undefined en mostrador o sin permiso.
+  onEditPrice?: (p: MenuProduct) => void;
 }
 
-export function ProductTile({ product, count, onTap, showPrice }: Props) {
+export function ProductTile({ product, count, onTap, showPrice, price, esManual, onEditPrice }: Props) {
   const hue = categoryColor(product.categoryId);
+  const press = useLongPress(
+    onEditPrice ? () => onEditPrice(product) : undefined,
+    () => onTap(product),
+  );
   return (
     <Box
       as="button"
-      onClick={() => onTap(product)}
+      {...press}
       position="relative"
       textAlign="left"
       bg="bg.panel"
@@ -49,8 +62,9 @@ export function ProductTile({ product, count, onTap, showPrice }: Props) {
         )}
       </Box>
       {showPrice && (
-        <Text fontWeight="700" fontSize="lg" mt={2}>
-          {money(product.price)}
+        <Text fontWeight="700" fontSize="lg" mt={2} display="flex" alignItems="center" gap={1}>
+          {money(price)}
+          {esManual && <Box as="span" color="fg.muted" fontSize="sm"><LuPencil /></Box>}
         </Text>
       )}
     </Box>
