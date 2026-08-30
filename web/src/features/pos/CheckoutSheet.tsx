@@ -49,7 +49,7 @@ interface Props {
 
 export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const swipe = useSwipeDownToClose(onClose);
-  const { id: activeId, lines, serviceType, customerName } = useActiveTicket();
+  const { id: activeId, lines, serviceType, customerName, platformId: lista } = useActiveTicket();
   const setServiceType = useTicketStore((s) => s.setServiceType);
   const setCustomerName = useTicketStore((s) => s.setCustomerName);
   const removeLine = useTicketStore((s) => s.removeLine);
@@ -69,7 +69,13 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   // Los métodos los manda el servidor: son los de ESTA empresa. Antes eran cuatro ids quemados y
   // cualquier negocio que no fuera el primero se quedaba sin poder cobrar.
   const { data: methodsData } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
-  const methods = useMemo(() => methodsData?.items ?? [], [methodsData]);
+  // Con una plataforma activa solo se ofrecen SUS métodos —en línea y efectivo—: el servidor
+  // rechaza cualquier otro, y ofrecerlos sería dejar armar un cobro que va a fallar.
+  const methods = useMemo(() => {
+    const todos = methodsData?.items ?? [];
+    if (lista === null) return todos.filter((m) => m.deliveryPlatformId == null);
+    return todos.filter((m) => m.deliveryPlatformId === lista);
+  }, [methodsData, lista]);
   // null hasta que llega el catálogo; en cuanto llega, el default sale de la regla probada.
   const [methodId, setMethodId] = useState<number | null>(null);
   const metodoActivo = methodId ?? metodoPorDefecto(methods);
@@ -140,9 +146,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
 
   const build = (withPayment: boolean): CreateOrderBody => ({
     clientUuid: uuid(),
-    serviceType,
+    // Un pedido de plataforma ES a domicilio: lo reparte la plataforma. El servidor lo exige por
+    // el check de la tabla, así que la pantalla no puede mandar otra cosa.
+    serviceType: lista !== null ? 'domicilio' : serviceType,
     customerName: customerName || undefined,
-    deliveryFee,
+    // El envío del negocio no aplica: lo cobra la plataforma. El servidor también lo fuerza a 0,
+    // pero mandarlo ya en 0 evita que la pantalla muestre un total que el servidor no va a cobrar.
+    deliveryFee: lista !== null ? 0 : deliveryFee,
+    deliveryPlatformId: lista ?? undefined,
     lines: chargeLines.map((l) => ({
       productId: l.productId,
       qty: l.qty,

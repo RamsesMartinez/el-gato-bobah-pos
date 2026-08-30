@@ -240,15 +240,16 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 }
 
 const getPaymentMethod = `-- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where id = $1
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1
 `
 
 type GetPaymentMethodRow struct {
-	ID                int16       `json:"id"`
-	Name              string      `json:"name"`
-	Kind              PaymentKind `json:"kind"`
-	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
-	AutoDeclare       bool        `json:"auto_declare"`
+	ID                 int16       `json:"id"`
+	Name               string      `json:"name"`
+	Kind               PaymentKind `json:"kind"`
+	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
+	AutoDeclare        bool        `json:"auto_declare"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
 }
 
 func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMethodRow, error) {
@@ -260,6 +261,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 		&i.Kind,
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
+		&i.DeliveryPlatformID,
 	)
 	return i, err
 }
@@ -640,18 +642,21 @@ func (q *Queries) ListOpenSessions(ctx context.Context) ([]ListOpenSessionsRow, 
 
 const listPaymentMethods = `-- name: ListPaymentMethods :many
 
-select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where is_active order by sort_key, name
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name
 `
 
 type ListPaymentMethodsRow struct {
-	ID                int16       `json:"id"`
-	Name              string      `json:"name"`
-	Kind              PaymentKind `json:"kind"`
-	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
-	AutoDeclare       bool        `json:"auto_declare"`
+	ID                 int16       `json:"id"`
+	Name               string      `json:"name"`
+	Kind               PaymentKind `json:"kind"`
+	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
+	AutoDeclare        bool        `json:"auto_declare"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
 }
 
 // Medios de pago (lookup)
+// delivery_platform_id: a qué plataforma pertenece el método, o NULL si no es de plataforma. Es
+// lo que deja al POS ofrecer solo los dos de la plataforma activa sin comparar nombres.
 func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsRow, error) {
 	rows, err := q.db.Query(ctx, listPaymentMethods)
 	if err != nil {
@@ -667,6 +672,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 			&i.Kind,
 			&i.AffectsCashDrawer,
 			&i.AutoDeclare,
+			&i.DeliveryPlatformID,
 		); err != nil {
 			return nil, err
 		}

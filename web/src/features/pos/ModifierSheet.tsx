@@ -17,6 +17,9 @@ import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
+import { deltaDeLista } from './precioPlataforma';
+import { useMenu } from '../../hooks/useMenu';
+import { useActiveTicket } from '../../stores/ticket';
 
 interface Props {
   product: MenuProduct | null;
@@ -40,6 +43,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const [optQuery, setOptQuery] = useState('');
   const palette = useUiStore((s) => s.palette);
   const recStrategy = useUiStore((s) => s.recStrategy);
+  // Los cargos de los extras siguen la lista de precios de la cuenta, igual que el producto: si
+  // aquí se mostrara el delta base, el total de pantalla no cuadraría con el cobrado.
+  const { data: menu } = useMenu();
+  const lista = useActiveTicket().platformId;
   const role = useSessionStore((s) => s.user?.role);
   const canManage = role === 'admin' || role === 'gerente';
   const qc = useQueryClient();
@@ -234,7 +241,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   for (const picks of Object.values(sel)) {
     for (const [oid, q] of Object.entries(picks)) {
       const o = optById.get(Number(oid));
-      if (o) perUnitDelta += Number(o.priceDelta) * q;
+      if (o) perUnitDelta += deltaDeLista(menu, lista, o.id, Number(o.priceDelta)) * q;
     }
   }
   const unit = Number(product.price) + perUnitDelta;
@@ -256,7 +263,8 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
       for (const o of optsOf(g)) {
         if (picks[o.id]) {
           modifiers.push({
-            optionId: o.id, groupId: g.id, name: o.name, priceDelta: Number(o.priceDelta),
+            optionId: o.id, groupId: g.id, name: o.name,
+            priceDelta: deltaDeLista(menu, lista, o.id, Number(o.priceDelta)),
             qty: picks[o.id],
           });
         }
@@ -296,9 +304,9 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
                 {pct}%
               </Text>
             )}
-            {Number(o.priceDelta) !== 0 && (
+            {deltaDeLista(menu, lista, o.id, Number(o.priceDelta)) !== 0 && (
               <Text as="span" ml={1} fontSize="xs" opacity={0.8}>
-                {Number(o.priceDelta) > 0 ? '+' : ''}{money(o.priceDelta)}
+                {deltaDeLista(menu, lista, o.id, Number(o.priceDelta)) > 0 ? '+' : ''}{money(deltaDeLista(menu, lista, o.id, Number(o.priceDelta)))}
               </Text>
             )}
           </Button>

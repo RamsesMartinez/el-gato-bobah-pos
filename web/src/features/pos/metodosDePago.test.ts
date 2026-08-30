@@ -5,9 +5,9 @@ import type { PaymentMethod } from '../../types/pos';
 // tras volver payment_methods per-tenant. Con la lógica vieja (ids 1/2/3/7 quemados) todo esto
 // fallaba en silencio.
 const metodos: PaymentMethod[] = [
-  { id: 9, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, autoDeclare: false },
-  { id: 10, name: 'Tarjeta débito', kind: 'tarjeta', affectsCashDrawer: false, autoDeclare: true },
-  { id: 12, name: 'Transferencia SPEI', kind: 'transferencia', affectsCashDrawer: false, autoDeclare: true },
+  { id: 9, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, autoDeclare: false, deliveryPlatformId: null },
+  { id: 10, name: 'Tarjeta débito', kind: 'tarjeta', affectsCashDrawer: false, autoDeclare: true, deliveryPlatformId: null },
+  { id: 12, name: 'Transferencia SPEI', kind: 'transferencia', affectsCashDrawer: false, autoDeclare: true, deliveryPlatformId: null },
 ];
 
 test('el efectivo se reconoce por su naturaleza, no por su id', () => {

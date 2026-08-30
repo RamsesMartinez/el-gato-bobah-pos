@@ -56,6 +56,19 @@ export interface Menu {
   version: number;
   categories: MenuCategory[];
   products: MenuProduct[];
+  // Listas de precios que el operador puede elegir. "Propio" no viene: es reparto del propio
+  // negocio, a precio base y sin método de pago propio.
+  platforms: MenuPlatform[];
+  // Solo las EXCEPCIONES capturadas a mano, indexadas por plataforma y luego por producto/opción.
+  // Un id ausente usa base × (1 + margen). El dinero viaja como string decimal exacto.
+  platformPrices: Record<number, Record<number, string>>;
+  platformModPrices: Record<number, Record<number, string>>;
+}
+
+export interface MenuPlatform {
+  id: number;
+  name: string;
+  markupPct: string;
 }
 
 export type ServiceType = 'mostrador' | 'para_llevar' | 'domicilio';
@@ -66,6 +79,9 @@ export interface PaymentMethod {
   kind: string;
   affectsCashDrawer: boolean;
   autoDeclare: boolean;
+  // A qué plataforma pertenece, o null si no es de plataforma. Deja filtrar los métodos de la
+  // lista activa sin compararlos por nombre.
+  deliveryPlatformId: number | null;
 }
 
 // --- Ticket (estado local del cajero) ---

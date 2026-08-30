@@ -15,6 +15,25 @@ type MenuDoc struct {
 	Version    int64          `json:"version"`
 	Categories []MenuCategory `json:"categories"`
 	Products   []MenuProduct  `json:"products"`
+	// Todo lo que el POS necesita para pintar CUALQUIER lista de precios sin volver a pedir nada:
+	// cambiar de plataforma tiene que ser instantáneo, y una llamada por cambio haría lento justo
+	// el momento que esta feature vino a acelerar.
+	//
+	// La llave del caché sigue siendo pos:menu:<companyID>, sin la plataforma: con ella serían
+	// cuatro entradas y cuatro invalidaciones para el mismo catálogo.
+	Platforms []MenuPlatform `json:"platforms"`
+	// Solo las EXCEPCIONES, por plataforma. Un producto ausente usa base × (1 + margen).
+	PlatformPrices    map[int16]map[int64]decimal.Decimal `json:"platformPrices"`
+	PlatformModPrices map[int16]map[int64]decimal.Decimal `json:"platformModPrices"`
+}
+
+// MenuPlatform: una lista de precios que el operador puede elegir. "Propio" NO se incluye — es
+// reparto del propio negocio, sin comisión que absorber ni depósito que conciliar, y no tiene
+// método de pago propio: se vende como domicilio a precio base.
+type MenuPlatform struct {
+	ID        int16           `json:"id"`
+	Name      string          `json:"name"`
+	MarkupPct decimal.Decimal `json:"markupPct"`
 }
 
 type MenuCategory struct {
@@ -90,9 +109,42 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 
 	// slices vacías (no nil) → el JSON siempre es [] y el front nunca recibe null
 	doc := &MenuDoc{
-		Version:    s.now().UnixMilli(),
-		Categories: []MenuCategory{},
-		Products:   []MenuProduct{},
+		Version:           s.now().UnixMilli(),
+		Categories:        []MenuCategory{},
+		Products:          []MenuProduct{},
+		Platforms:         []MenuPlatform{},
+		PlatformPrices:    map[int16]map[int64]decimal.Decimal{},
+		PlatformModPrices: map[int16]map[int64]decimal.Decimal{},
+	}
+
+	platRows, err := s.store.QC(ctx).ListPlatformsWithMarkup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, pl := range platRows {
+		doc.Platforms = append(doc.Platforms, MenuPlatform{ID: pl.ID, Name: pl.Name, MarkupPct: pl.PriceMarkupPct})
+		precios, err := s.store.QC(ctx).GetProductPlatformPrices(ctx, pl.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(precios) > 0 {
+			m := map[int64]decimal.Decimal{}
+			for _, x := range precios {
+				m[x.ProductID] = x.Price
+			}
+			doc.PlatformPrices[pl.ID] = m
+		}
+		deltas, err := s.store.QC(ctx).GetOptionPlatformPrices(ctx, pl.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(deltas) > 0 {
+			m := map[int64]decimal.Decimal{}
+			for _, x := range deltas {
+				m[x.OptionID] = x.PriceDelta
+			}
+			doc.PlatformModPrices[pl.ID] = m
+		}
 	}
 	for _, c := range catRows {
 		doc.Categories = append(doc.Categories, MenuCategory{

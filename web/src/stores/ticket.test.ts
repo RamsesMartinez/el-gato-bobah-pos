@@ -76,3 +76,21 @@ describe('addLine — merge de productos directos', () => {
     expect(lines.find((l) => l.productId === 1)?.qty).toBe(2);
   });
 });
+
+test('cada cuenta lleva su propia lista de precios y una nueva arranca en mostrador', () => {
+  const st = useTicketStore.getState();
+  st.descartarTodo();
+  expect(useTicketStore.getState().tabs[0].platformId).toBeNull();
+
+  useTicketStore.getState().setPlatform(5);
+  expect(useTicketStore.getState().tabs[0].platformId).toBe(5);
+
+  // Una cuenta nueva no hereda la plataforma: sería la forma de cobrar precio de Uber en
+  // mostrador por inercia.
+  useTicketStore.getState().newTab();
+  const activa = useTicketStore.getState().tabs.find((t) => t.id === useTicketStore.getState().activeId);
+  expect(activa?.platformId).toBeNull();
+
+  // Y la anterior conserva la suya: se pueden tener las dos abiertas a la vez.
+  expect(useTicketStore.getState().tabs[0].platformId).toBe(5);
+});

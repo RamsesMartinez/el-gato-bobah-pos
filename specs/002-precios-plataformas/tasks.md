@@ -118,21 +118,21 @@ los precios sean los de esa lista, cobrar y confirmar que el ticket impreso los 
 
 ### Menú
 
-- [ ] T044 **[test]** [US1] Test de que `GET /pos/menu` incluye `platforms` (con `markupPct`), `platformPrices` y `platformModPrices`, y que **"Propio" NO aparece**
-- [ ] T045 [US1] Extender el documento del menú en `server/internal/app/menu.go` y sus queries; **la llave del caché sigue siendo `pos:menu:<companyID>`**, sin la plataforma
+- [x] T044 **[test]** [US1] Test de que `GET /pos/menu` incluye `platforms` (con `markupPct`), `platformPrices` y `platformModPrices`, y que **"Propio" NO aparece**
+- [x] T045 [US1] Extender el documento del menú en `server/internal/app/menu.go` y sus queries; **la llave del caché sigue siendo `pos:menu:<companyID>`**, sin la plataforma
 
 ### Frontend
 
-- [ ] T046 **[test]** [P] [US1] `web/src/features/pos/precioPlataforma.test.ts`: espejo de la regla del servidor, con los mismos casos de redondeo
-- [ ] T047 [US1] Implementar `web/src/features/pos/precioPlataforma.ts`
-- [ ] T048 **[test]** [P] [US1] Test del store: la plataforma activa vive en la **cuenta** y una cuenta nueva arranca en mostrador
-- [ ] T049 [US1] Agregar la plataforma activa a `web/src/stores/ticket.ts`, con `null` = mostrador
-- [ ] T050 **[test]** [P] [US1] Test del selector: muestra las 3 plataformas y mostrador, e indica siempre con cuál se está cobrando
-- [ ] T051 [US1] `web/src/features/pos/PlatformPicker.tsx`
-- [ ] T052 **[test]** [P] [US1] Test de que el grid y el detalle de modificadores pintan los precios de la lista activa
-- [ ] T053 [US1] Pintar los precios de la lista activa en `ProductGrid`/`ProductTile` y `ModifierSheet`
-- [ ] T054 **[test]** [P] [US1] Test de `CheckoutSheet`: con plataforma ofrece **solo** sus dos métodos y **no** muestra costo de envío
-- [ ] T055 [US1] En `CheckoutSheet.tsx`: mandar `deliveryPlatformId`, filtrar métodos por plataforma y ocultar el envío
+- [x] T046 **[test]** [P] [US1] `web/src/features/pos/precioPlataforma.test.ts`: espejo de la regla del servidor, con los mismos casos de redondeo
+- [x] T047 [US1] Implementar `web/src/features/pos/precioPlataforma.ts`
+- [x] T048 **[test]** [P] [US1] Test del store: la plataforma activa vive en la **cuenta** y una cuenta nueva arranca en mostrador
+- [x] T049 [US1] Agregar la plataforma activa a `web/src/stores/ticket.ts`, con `null` = mostrador
+- [x] T050 **[test]** [P] [US1] Test del selector: muestra las 3 plataformas y mostrador, e indica siempre con cuál se está cobrando
+- [x] T051 [US1] `web/src/features/pos/PlatformPicker.tsx`
+- [x] T052 **[test]** [P] [US1] Test de que el grid y el detalle de modificadores pintan los precios de la lista activa
+- [x] T053 [US1] Pintar los precios de la lista activa en `ProductGrid`/`ProductTile` y `ModifierSheet`
+- [x] T054 **[test]** [P] [US1] Test de `CheckoutSheet`: con plataforma ofrece **solo** sus dos métodos y **no** muestra costo de envío
+- [x] T055 [US1] En `CheckoutSheet.tsx`: mandar `deliveryPlatformId`, filtrar métodos por plataforma y ocultar el envío
 - [ ] T056 **[test]** [US1] **El riesgo #1**: armar un ticket en mostrador, cambiar a plataforma **con líneas ya agregadas**, y verificar que el total de pantalla coincide con el que devuelve el servidor al cobrar (FR-011 + FR-012)
 - [ ] T057 [US1] Re-preciar las líneas ya agregadas al cambiar de lista
 - [ ] T058 **[test]** [US1] Test de que el ticket impreso de una venta de plataforma trae los precios de la lista (FR-016)

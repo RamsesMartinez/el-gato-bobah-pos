@@ -35,6 +35,9 @@ type PaymentMethodView struct {
 	Kind              string `json:"kind"`
 	AffectsCashDrawer bool   `json:"affectsCashDrawer"`
 	AutoDeclare       bool   `json:"autoDeclare"`
+	// DeliveryPlatformID: a qué plataforma pertenece, o nil si no es de plataforma. Es lo que deja
+	// al POS ofrecer solo los dos métodos de la plataforma activa sin compararlos por nombre.
+	DeliveryPlatformID *int16 `json:"deliveryPlatformId"`
 }
 
 func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethodView, error) {
@@ -44,7 +47,7 @@ func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethod
 	}
 	out := make([]PaymentMethodView, len(rows))
 	for i, r := range rows {
-		out[i] = PaymentMethodView{ID: int(r.ID), Name: r.Name, Kind: string(r.Kind), AffectsCashDrawer: r.AffectsCashDrawer, AutoDeclare: r.AutoDeclare}
+		out[i] = PaymentMethodView{ID: int(r.ID), Name: r.Name, Kind: string(r.Kind), AffectsCashDrawer: r.AffectsCashDrawer, AutoDeclare: r.AutoDeclare, DeliveryPlatformID: r.DeliveryPlatformID}
 	}
 	return out, nil
 }

@@ -114,6 +114,9 @@ export interface CreateOrderBody {
   customerName?: string;
   notes?: string;
   deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
+  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
+  // lo que va aquí es el id, nunca los precios.
+  deliveryPlatformId?: number;
   lines: Array<{
     productId: number;
     qty: number;

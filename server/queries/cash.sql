@@ -1,10 +1,12 @@
 -- Medios de pago (lookup)
 
 -- name: ListPaymentMethods :many
-select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where is_active order by sort_key, name;
+-- delivery_platform_id: a qué plataforma pertenece el método, o NULL si no es de plataforma. Es
+-- lo que deja al POS ofrecer solo los dos de la plataforma activa sin comparar nombres.
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name;
 
 -- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare from payment_methods where id = $1;
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1;
 
 -- name: UpdatePaymentMethodAutoDeclare :one
 update payment_methods set auto_declare = $2 where id = $1
