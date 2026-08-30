@@ -90,6 +90,10 @@ services:
     image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     logging: *default-logging
     ports: ["80:80", "443:443"]
+    environment:
+      # Sin definirlo, el Caddyfile cae en el dominio de producción: el VPS sigue igual y el
+      # ambiente de pruebas lo sobrescribe en su .env.
+      API_DOMAIN: ${API_DOMAIN:-api.elgatobobah.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
