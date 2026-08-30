@@ -24,6 +24,8 @@ import { money, normalize } from '../../utils/format';
 import { TicketPreview } from '../tickets/TicketPreview';
 import { AutoPrintTicket } from '../tickets/AutoPrintTicket';
 import { CategoryRail, type Selection } from './CategoryRail';
+import { PlatformPicker } from './PlatformPicker';
+import { precioDeLista } from './precioPlataforma';
 import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
 import { ProductGrid } from './ProductGrid';
@@ -62,7 +64,12 @@ export function POSPage() {
   // tablet abre/cierra; al abrir caja desde /caja se invalida ['cash'] y refresca al instante.
   const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
   const canOpenCash = canAccess(role, '/caja');
-  const lines = useActiveTicket().lines;
+  const cuenta = useActiveTicket();
+  const lines = cuenta.lines;
+  // La lista de precios de ESTA cuenta. El servidor recalcula todo al cobrar; esto es para que la
+  // pantalla muestre el mismo número, o el operador entrega un ticket con un total que no es el
+  // cobrado.
+  const lista = cuenta.platformId;
   const addLine = useTicketStore((s) => s.addLine);
   const updateLineModifiers = useTicketStore((s) => s.updateLineModifiers);
 
@@ -191,7 +198,10 @@ export function POSPage() {
       setModProduct(p);
       modSheet.onOpen();
     } else {
-      addLine({ productId: p.id, name: p.name, unitPrice: Number(p.price), qty: 1, modifiers: [] });
+      addLine({
+        productId: p.id, name: p.name, qty: 1, modifiers: [],
+        unitPrice: precioDeLista(menu, lista, p.id, Number(p.price)),
+      });
     }
   };
 
@@ -209,7 +219,10 @@ export function POSPage() {
       updateLineModifiers(editing.lineId, modifiers, notes || undefined);
     } else {
       for (let i = 0; i < qty; i++) {
-        addLine({ productId: modProduct.id, name: modProduct.name, unitPrice: Number(modProduct.price), qty: 1, modifiers, notes: notes || undefined });
+        addLine({
+          productId: modProduct.id, name: modProduct.name, qty: 1, modifiers, notes: notes || undefined,
+          unitPrice: precioDeLista(menu, lista, modProduct.id, Number(modProduct.price)),
+        });
       }
     }
     setEditing(null);
@@ -247,6 +260,9 @@ export function POSPage() {
       {/* Una sola fila (cuentas · buscador · toggles): recupera ~56px de alto en 7" landscape.
           Las cuentas scrollean solas; el buscador queda con ancho cómodo y fijo a la derecha. */}
       <Box px={{ base: 3, md: 4 }} pt={3}>
+        <PlatformPicker />
+      </Box>
+      <Box px={{ base: 3, md: 4 }} pt={2}>
         <HStack gap={2} align="center">
           <Box flex="1" minW={0}><TicketTabs /></Box>
           <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>

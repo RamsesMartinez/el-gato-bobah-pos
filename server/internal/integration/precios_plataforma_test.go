@@ -165,3 +165,47 @@ func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
 		t.Fatalf("total = %s, quería 270 (200 + 35%%)", ord.Total)
 	}
 }
+
+// El menú trae todo lo que el POS necesita para pintar cualquier lista sin volver a pedir nada:
+// cambiar de plataforma tiene que ser instantáneo. Y "Propio" NO se ofrece — es reparto del propio
+// negocio, sin comisión que absorber ni método de pago propio.
+func TestElMenuTraeLasListasDePrecios(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	menu := app.NewMenuService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_menu", "cajero")
+	prod := makeProduct(t, st, "Boneless", decimal.RequireFromString("100"), false)
+	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
+	if err := st.Q.UpsertProductPlatformPrice(ctx, db.UpsertProductPlatformPriceParams{
+		ProductID: prod, PlatformID: uber, Price: decimal.RequireFromString("149"), UpdatedBy: cajero,
+	}); err != nil {
+		t.Fatalf("capturar el precio: %v", err)
+	}
+
+	doc, err := menu.Build(ctx)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	nombres := map[string]bool{}
+	for _, p := range doc.Platforms {
+		nombres[p.Name] = true
+		if p.Name != "Propio" && !p.MarkupPct.Equal(decimal.RequireFromString("35")) {
+			t.Fatalf("%s debe traer su margen de 35%%, trajo %s", p.Name, p.MarkupPct)
+		}
+	}
+	if nombres["Propio"] {
+		t.Fatal("\"Propio\" no debe ofrecerse como lista de precios")
+	}
+	for _, esperada := range []string{"Didi", "Uber Eats", "Rappi"} {
+		if !nombres[esperada] {
+			t.Fatalf("falta la plataforma %s en el menú", esperada)
+		}
+	}
+
+	// Solo las excepciones: el producto con precio capturado, y nada más.
+	if got := doc.PlatformPrices[uber][prod]; !got.Equal(decimal.RequireFromString("149")) {
+		t.Fatalf("el precio capturado debe venir en el menú, vino %s", got)
+	}
+}

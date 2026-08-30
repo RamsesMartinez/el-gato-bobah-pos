@@ -18,10 +18,17 @@ export interface TicketTab {
   lines: TicketLine[];
   serviceType: ServiceType;
   customerName: string;
+  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
+  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
+  // cada una tiene que conservar su lista.
+  platformId: number | null;
 }
 
 function emptyTab(num: number): TicketTab {
-  return { id: uuid(), num, lines: [], serviceType: 'mostrador', customerName: '' };
+  // Cada cuenta nueva arranca en MOSTRADOR, aunque la anterior haya sido de plataforma: un tap de
+  // más por pedido de plataforma, a cambio de que sea imposible cobrar precio de Uber en mostrador
+  // por inercia.
+  return { id: uuid(), num, lines: [], serviceType: 'mostrador', customerName: '', platformId: null };
 }
 
 interface TicketState {
@@ -41,6 +48,9 @@ interface TicketState {
   newTab: () => void;
   switchTab: (id: string) => void;
   closeTab: (id: string) => void; // al cobrar/cancelar; siempre queda ≥1 cuenta
+  // setPlatform cambia la lista de precios de la cuenta activa. Los precios de las líneas ya
+  // agregadas los re-calcula la pantalla al pintar, así que aquí solo se guarda cuál es.
+  setPlatform: (platformId: number | null) => void;
   // descartarTodo tira TODAS las cuentas y arranca de cero. Lo usa el cambio de empresa: un ticket
   // armado con el catálogo de otro tenant no se puede cobrar y no debe quedarse esperando a que
   // alguien lo intente.
@@ -127,6 +137,9 @@ export const useTicketStore = create<TicketState>()(
             }
             return { tabs, activeId: s.activeId === id ? tabs[0].id : s.activeId };
           }),
+
+        setPlatform: (platformId) =>
+          set((s) => onActive(s, (t) => ({ ...t, platformId }))),
 
         descartarTodo: () =>
           set(() => {
