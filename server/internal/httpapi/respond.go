@@ -54,6 +54,11 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusForbidden, "FORBIDDEN"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
+	case errors.Is(err, domain.ErrPlatformNotFound):
+		// 422 y no 404: el pedido en sí es válido, lo que no se puede es valuarlo con una lista de
+		// precios que no es de este negocio. Nunca se cae a margen 0 — eso cobraría precio de
+		// mostrador en una plataforma sin que nada avise.
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_NOT_FOUND"
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a

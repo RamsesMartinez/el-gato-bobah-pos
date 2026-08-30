@@ -315,7 +315,12 @@ func provisionCompany(ctx context.Context, st *store.Store) error {
 		}
 		// Y sin fila de ajustes nace sin zona horaria, así que sus fechas se calcularían en UTC y
 		// la cena caería en el día siguiente (el bug que arregló 0038).
-		return q.SeedBusinessSettings(ctx, name)
+		if err := q.SeedBusinessSettings(ctx, name); err != nil {
+			return err
+		}
+		// Las plataformas de reparto son etiquetas: sin ellas la venta no puede registrar por dónde
+		// entró. Nacen con margen 0 — el margen llega con la vinculación de ese negocio.
+		return q.SeedDeliveryPlatforms(ctx)
 	}); err != nil {
 		return err
 	}

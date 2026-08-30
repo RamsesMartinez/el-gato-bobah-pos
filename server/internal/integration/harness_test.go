@@ -18,6 +18,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
 // Reloj fijo: fechas de negocio deterministas para asertar sobre reportes por día.
@@ -136,6 +137,12 @@ func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 	// que la creara pelada estaría probando un mundo que el sistema no produce.
 	if err := st.Q.SeedBasePaymentMethods(context.Background(), id); err != nil {
 		t.Fatalf("sembrar métodos de %s: %v", slug, err)
+	}
+	// Por WithTenant: el seed toma company_id del GUC, no de un parámetro.
+	if err := st.WithTenant(context.Background(), id, func(q *db.Queries) error {
+		return q.SeedDeliveryPlatforms(context.Background())
+	}); err != nil {
+		t.Fatalf("sembrar plataformas de %s: %v", slug, err)
 	}
 	return id
 }
