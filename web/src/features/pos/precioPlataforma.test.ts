@@ -1,4 +1,6 @@
-import { precioDeLista, deltaDeLista, desglosePrecio, nombreDeLista, MOSTRADOR } from './precioPlataforma';
+import { describe, expect, test, it } from 'vitest';
+import { precioDeLista, deltaDeLista, desglosePrecio, desgloseDelta, nombreDeLista, repreciador, MOSTRADOR } from './precioPlataforma';
+import type { TicketLine } from '../../types/pos';
 import type { Menu } from '../../types/pos';
 
 const menu = {
@@ -73,4 +75,56 @@ test('un precio manual que coincide con el calculado se sigue viendo como manual
 
 test('en mostrador no hay nada que capturar', () => {
   expect(desglosePrecio(menu, MOSTRADOR, 77, 100)).toBeNull();
+});
+
+// El re-precio de una línea completa al cambiar de lista. Se prueba aquí y no en el store porque la
+// regla es esta, no el guardado: el store solo aplica lo que esta función devuelve.
+describe('repreciador', () => {
+  const menuConProducto = {
+    ...menu,
+    products: [
+      { id: 77, price: '100' },
+      { id: 999, price: '434.98' },
+    ],
+  } as unknown as Menu;
+
+  const linea = (over: Partial<TicketLine>): TicketLine => ({
+    lineId: 'l1', productId: 999, name: 'Boneless', unitPrice: 434.98, qty: 1,
+    modifiers: [{ optionId: 300, groupId: 1, name: 'BBQ', priceDelta: 20, qty: 1 }],
+    ...over,
+  });
+
+  it('lleva el precio y los modificadores a la lista nueva', () => {
+    const r = repreciador(menuConProducto, 5)(linea({}));
+    expect(r.unitPrice).toBe(587.22);       // 434.98 con 35%
+    expect(r.modifiers[0].priceDelta).toBe(30); // el manual de la opción 300 gana
+  });
+
+  it('de vuelta a mostrador devuelve los precios base del menú', () => {
+    const r = repreciador(menuConProducto, MOSTRADOR)(linea({ unitPrice: 587.22 }));
+    expect(r.unitPrice).toBe(434.98);
+  });
+
+  // Un producto que ya no está en el menú —lo desactivaron mientras el ticket estaba abierto— deja
+  // su precio como está. Ponerlo en 0 cobraría de menos sin que nadie lo note; dejarlo obliga a que
+  // el servidor lo rechace al cobrar, que es ruidoso y no pierde dinero.
+  it('una línea cuyo producto ya no está en el menú se queda como está', () => {
+    const r = repreciador(menuConProducto, 5)(linea({ productId: 4242, unitPrice: 88 }));
+    expect(r.unitPrice).toBe(88);
+    expect(r.modifiers[0].priceDelta).toBe(20);
+  });
+})
+
+// El mismo desglose para el cargo de un extra. Se separa de desglosePrecio porque un extra SÍ puede
+// costar 0 ("sin cebolla") y un producto en 0 siempre es un error de captura: la validación de los
+// dos no puede ser la misma.
+test('desgloseDelta distingue el calculado del capturado', () => {
+  expect(desgloseDelta(menu, 5, 301, 20)).toEqual({ base: 20, calculado: 27, vigente: 27, esManual: false });
+  expect(desgloseDelta(menu, 5, 300, 20)).toEqual({ base: 20, calculado: 27, vigente: 30, esManual: true });
+  expect(desgloseDelta(menu, MOSTRADOR, 300, 20)).toBeNull();
+});
+
+// Un extra sin costo sigue sin costo por más margen que tenga la plataforma: 35% de 0 es 0.
+test('un extra sin costo no gana margen', () => {
+  expect(desgloseDelta(menu, 5, 999, 0)).toEqual({ base: 0, calculado: 0, vigente: 0, esManual: false });
 });

@@ -19,6 +19,7 @@ test('IngresosEgresosCard renderiza la jerarquía con Ventas y Propinas', () => 
     ingresosTotal: '115',
     egresos: [{ concept: 'Gastos', amount: '20' }],
     egresosTotal: '20',
+    plataformas: [],
   };
   wrap(<IngresosEgresosCard openingCash="100" breakdown={breakdown} currency="MXN" />);
   for (const label of ['Monto inicial', 'Ingresos', 'Efectivo', 'Ventas', 'Propinas', 'Egresos', 'Gastos']) {
@@ -73,4 +74,36 @@ test('ExpensesTable muestra filas y total (o nada si vacío)', () => {
   // Vacío → no renderiza nada (ahorra espacio).
   rerender(<Provider><ExpensesTable expenses={[]} currency="MXN" /></Provider>);
   expect(screen.queryByText('Total gastos')).not.toBeInTheDocument();
+});
+
+// El subtotal por plataforma suma sus DOS métodos, y ese total no está en ningún renglón de arriba:
+// es el número que se concilia contra el depósito que la plataforma manda después.
+test('IngresosEgresosCard muestra el subtotal por plataforma', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [
+      { method: 'Uber Eats en línea', total: '270', items: [{ concept: 'Ventas', amount: '270' }] },
+      { method: 'Uber Eats efectivo', total: '135', items: [{ concept: 'Ventas', amount: '135' }] },
+    ],
+    ingresosTotal: '405',
+    egresos: [],
+    egresosTotal: '0',
+    plataformas: [{ platform: 'Uber Eats', total: '405' }],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  expect(screen.getByText('Por plataforma')).toBeInTheDocument();
+  expect(screen.getByText('Uber Eats')).toBeInTheDocument();
+});
+
+// Un turno sin ventas de plataforma no muestra la sección: un encabezado vacío en el corte es una
+// pregunta más que el operador se hace mientras busca un descuadre.
+test('sin ventas de plataforma la sección no aparece', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Efectivo', total: '100', items: [{ concept: 'Ventas', amount: '100' }] }],
+    ingresosTotal: '100',
+    egresos: [],
+    egresosTotal: '0',
+    plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  expect(screen.queryByText('Por plataforma')).not.toBeInTheDocument();
 });

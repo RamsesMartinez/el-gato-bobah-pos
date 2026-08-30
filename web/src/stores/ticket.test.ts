@@ -94,3 +94,84 @@ test('cada cuenta lleva su propia lista de precios y una nueva arranca en mostra
   // Y la anterior conserva la suya: se pueden tener las dos abiertas a la vez.
   expect(useTicketStore.getState().tabs[0].platformId).toBe(5);
 });
+
+// EL RIESGO PRINCIPAL DE LOS PRECIOS POR PLATAFORMA. El precio se congela en la línea al agregarla,
+// y el servidor recalcula por lista al cobrar. Sin volver a precisar lo ya agregado, armar el
+// pedido en mostrador y cambiar a Uber deja la pantalla —y el ticket impreso— mostrando un total
+// distinto del que se cobra. El operador lo descubre con el cliente enfrente.
+describe('cambiar de lista de precios con líneas ya agregadas', () => {
+  const reprecia = (l: TicketLine) => ({
+    unitPrice: l.unitPrice * 1.35,
+    modifiers: l.modifiers.map((m) => ({ ...m, priceDelta: m.priceDelta * 1.35 })),
+  });
+
+  it('vuelve a precisar las líneas y sus modificadores', () => {
+    useTicketStore.getState().descartarTodo();
+    useTicketStore.getState().addLine({
+      productId: 7, name: 'Boneless', unitPrice: 100, qty: 2,
+      modifiers: [{ optionId: 3, groupId: 1, name: 'BBQ', priceDelta: 20, qty: 1 }],
+    });
+    expect(ticketTotal(activeLines())).toBe(240); // (100 + 20) * 2
+
+    useTicketStore.getState().setPlatform(5, reprecia);
+
+    const l = activeLines()[0];
+    expect(l.unitPrice).toBe(135);
+    expect(l.modifiers[0].priceDelta).toBe(27);
+    expect(ticketTotal(activeLines())).toBe(324); // (135 + 27) * 2
+  });
+
+  it('sin función de re-precio la lista cambia y los precios se quedan', () => {
+    useTicketStore.getState().descartarTodo();
+    useTicketStore.getState().addLine({ productId: 7, name: 'Boneless', unitPrice: 100, qty: 1, modifiers: [] });
+    useTicketStore.getState().setPlatform(5);
+    expect(activeLines()[0].unitPrice).toBe(100);
+  });
+
+  // Cada cuenta tiene su lista, así que re-precisar una no puede tocar a la otra: un local con una
+  // cuenta de mostrador y una de Uber abiertas al mismo tiempo es el caso normal, no el raro.
+  it('solo re-precia la cuenta activa', () => {
+    useTicketStore.getState().descartarTodo();
+    useTicketStore.getState().addLine({ productId: 7, name: 'Mostrador', unitPrice: 100, qty: 1, modifiers: [] });
+    const mostrador = useTicketStore.getState().activeId;
+
+    useTicketStore.getState().newTab();
+    useTicketStore.getState().addLine({ productId: 8, name: 'Uber', unitPrice: 200, qty: 1, modifiers: [] });
+    useTicketStore.getState().setPlatform(5, reprecia);
+
+    const s = useTicketStore.getState();
+    expect(s.tabs.find((t) => t.id === mostrador)?.lines[0].unitPrice).toBe(100);
+    expect(activeLines()[0].unitPrice).toBe(270);
+  });
+});
+
+// Corregir un precio desde la pantalla de venta tiene el mismo problema que cambiar de lista: la
+// línea ya agregada conserva el precio viejo. Y aquí es peor, porque el operador acaba de corregirlo
+// a propósito y da por hecho que ya quedó.
+describe('repreciarTodas', () => {
+  it('vuelve a precisar TODAS las cuentas, cada una con la regla de su lista', () => {
+    useTicketStore.getState().descartarTodo();
+    useTicketStore.getState().setPlatform(5);
+    useTicketStore.getState().addLine({ productId: 7, name: 'Uber A', unitPrice: 135, qty: 1, modifiers: [] });
+    const uberA = useTicketStore.getState().activeId;
+
+    useTicketStore.getState().newTab();
+    useTicketStore.getState().setPlatform(5);
+    useTicketStore.getState().addLine({ productId: 7, name: 'Uber B', unitPrice: 135, qty: 1, modifiers: [] });
+
+    useTicketStore.getState().newTab();
+    useTicketStore.getState().addLine({ productId: 7, name: 'Mostrador', unitPrice: 100, qty: 1, modifiers: [] });
+    const mostrador = useTicketStore.getState().activeId;
+
+    // El precio de Uber del producto 7 se corrigió a 149; el de mostrador no se toca nunca.
+    useTicketStore.getState().repreciarTodas((tab) => (l) =>
+      tab.platformId === 5 ? { unitPrice: 149, modifiers: l.modifiers } : { unitPrice: l.unitPrice, modifiers: l.modifiers },
+    );
+
+    const s = useTicketStore.getState();
+    const de = (id: string) => s.tabs.find((t) => t.id === id)?.lines[0].unitPrice;
+    expect(de(uberA)).toBe(149);
+    expect(de(mostrador)).toBe(100);
+    expect(s.tabs.filter((t) => t.platformId === 5).every((t) => t.lines[0].unitPrice === 149)).toBe(true);
+  });
+});

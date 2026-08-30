@@ -136,6 +136,17 @@ type CorteBreakdown struct {
 	IngresosTotal decimal.Decimal        `json:"ingresosTotal"`
 	Egresos       []CorteBucket          `json:"egresos"` // salidas de efectivo (Gastos, Salidas, Traspasos)
 	EgresosTotal  decimal.Decimal        `json:"egresosTotal"`
+	// Plataformas: lo que entró por cada plataforma, sumando sus DOS métodos (en línea y efectivo).
+	// Por método solo se ve la mitad de cada una, y quien cierra caja a las once de la noche
+	// termina sumando dos renglones a mano. Es además el número contra el que se concilia el
+	// depósito que la plataforma manda después. Vacío cuando no hubo ventas de plataforma.
+	Plataformas []CortePlatformSubtotal `json:"plataformas"`
+}
+
+// CortePlatformSubtotal: cuánto entró por una plataforma en el turno.
+type CortePlatformSubtotal struct {
+	Platform string          `json:"platform"`
+	Total    decimal.Decimal `json:"total"`
 }
 
 // methodExpected: entrada para corteBreakdown (nombre, esperado del sistema, propinas y si es el
@@ -150,6 +161,9 @@ type methodExpected struct {
 	// es suyo. Mientras el efectivo del mostrador fue el único método de cajón las dos ideas
 	// coincidían; desde 0037 hay cuatro y confundirlas reportaba el fondo una vez por método.
 	duenoDelFondo bool
+	// plataforma: nombre de la plataforma a la que pertenece el método, vacío si es de mostrador.
+	// Es lo que permite subtotalizar sin comparar nombres de método.
+	plataforma string
 }
 
 // corteBreakdown descompone un corte en ingresos (por método → concepto) y egresos de efectivo.
@@ -179,7 +193,12 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		}
 	}
 
-	out := CorteBreakdown{Ingresos: []CorteMethodBreakdown{}, Egresos: []CorteBucket{}}
+	out := CorteBreakdown{Ingresos: []CorteMethodBreakdown{}, Egresos: []CorteBucket{}, Plataformas: []CortePlatformSubtotal{}}
+	// Subtotal por plataforma. El orden es el de los métodos —que viene de sort_key— y no
+	// alfabético: así el corte lista las plataformas en el mismo orden en que aparecen sus métodos
+	// arriba, y los dos bloques se leen juntos sin buscar.
+	porPlataforma := map[string]decimal.Decimal{}
+	ordenPlataformas := []string{}
 	for _, me := range methods {
 		ventas := me.expected.Sub(me.tips)
 		if me.duenoDelFondo {
@@ -204,6 +223,17 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 			out.Ingresos = append(out.Ingresos, CorteMethodBreakdown{Method: me.name, Total: domain.Round2(total), Items: items})
 			out.IngresosTotal = out.IngresosTotal.Add(total)
 		}
+		if me.plataforma != "" && total.IsPositive() {
+			if _, visto := porPlataforma[me.plataforma]; !visto {
+				ordenPlataformas = append(ordenPlataformas, me.plataforma)
+			}
+			porPlataforma[me.plataforma] = porPlataforma[me.plataforma].Add(total)
+		}
+	}
+	// Solo las que vendieron: un renglón en $0 por cada plataforma configurada llena el corte de
+	// ruido justo donde se está buscando un descuadre.
+	for _, nombre := range ordenPlataformas {
+		out.Plataformas = append(out.Plataformas, CortePlatformSubtotal{Platform: nombre, Total: domain.Round2(porPlataforma[nombre])})
 	}
 	for _, b := range []CorteBucket{
 		{Concept: "Gastos", Amount: domain.Round2(gastos)},
@@ -478,7 +508,11 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		}
 		expected, tips = domain.Round2(expected), domain.Round2(tips)
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
-		methods = append(methods, methodExpected{name: r.Name, expected: expected, tips: tips, duenoDelFondo: r.Kind == db.PaymentKindEfectivo})
+		methods = append(methods, methodExpected{
+			name: r.Name, expected: expected, tips: tips,
+			duenoDelFondo: r.Kind == db.PaymentKindEfectivo,
+			plataforma:    r.PlatformName,
+		})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
@@ -709,7 +743,11 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			MethodID: int(t.PaymentMethodID), Name: t.Name,
 			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
 		})
-		methods = append(methods, methodExpected{name: t.Name, expected: t.Expected, tips: t.Tips, duenoDelFondo: t.Kind == db.PaymentKindEfectivo})
+		methods = append(methods, methodExpected{
+			name: t.Name, expected: t.Expected, tips: t.Tips,
+			duenoDelFondo: t.Kind == db.PaymentKindEfectivo,
+			plataforma:    t.PlatformName,
+		})
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {

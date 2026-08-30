@@ -93,10 +93,16 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
+-- platform_name viaja igual que en ExpectedByMethodForSession, y por el mismo motivo: es lo que
+-- permite subtotalizar por plataforma. Faltaba aquí, así que el subtotal existía en el turno vivo y
+-- desaparecía en el histórico — justo cuando llega el depósito de la plataforma y sirve para
+-- conciliar.
 select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+       coalesce(dp.name, '') as platform_name,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
+left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 where t.session_id = $1
 order by pm.sort_key;
 
@@ -154,10 +160,15 @@ values ($1, $2, $3, $4, $5, $6);
 -- ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
 -- y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
 -- caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
+-- El nombre de la plataforma viaja para poder subtotalizar por ella sin comparar nombres de
+-- método: "Uber Eats en línea" y "Uber Eats efectivo" son la misma plataforma, y deducirlo del
+-- texto se rompe el día que alguien renombre un método.
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
+       coalesce(dp.name, '') as platform_name,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
+left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 -- Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
 -- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
 -- suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
@@ -165,7 +176,7 @@ from payment_methods pm
 -- dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
 left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
 where pm.is_active
-group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
+group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare, dp.name
 order by pm.sort_key;
 
 -- name: GetOpenPrimarySession :one

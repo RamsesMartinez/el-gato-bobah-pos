@@ -45,4 +45,13 @@ var (
 	// mostrador en Uber, con el ticket bien impreso y el descuadre apareciendo semanas después al
 	// conciliar el depósito.
 	ErrPlatformNotFound = errors.New("esa plataforma de reparto no existe en este negocio")
+	// ErrPaymentMethodPlatform: se cobró un pedido con un método que no corresponde a su
+	// plataforma — el de otra plataforma, uno de plataforma en una venta de mostrador, o el
+	// efectivo de mostrador en un pedido de plataforma.
+	//
+	// Es un error de DINERO, no de forma: el corte agrupa por método y el método decide si el
+	// importe entra al cajón. Un pedido de Uber cobrado con el efectivo de mostrador hace que el
+	// sistema espere billetes que la plataforma pagó por transferencia, y el turno cierra con un
+	// faltante por el monto exacto sin nada que lo explique.
+	ErrPaymentMethodPlatform = errors.New("ese método de pago no corresponde a la plataforma del pedido")
 )

@@ -1,4 +1,5 @@
-import { esEfectivo, metodoPorDefecto, primerMetodoLibre } from './metodosDePago';
+import { describe, expect, it, test } from 'vitest';
+import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
 import type { PaymentMethod } from '../../types/pos';
 
 // Ids deliberadamente ALTOS y desordenados: son los que recibiría una empresa que no es la primera
@@ -34,4 +35,31 @@ test('el pago dividido no repite método', () => {
 
 test('si ya se usaron todos, cae al primero en vez de quedarse sin método', () => {
   expect(primerMetodoLibre(metodos, [9, 10, 12])).toBe(9);
+});
+
+// El filtro por lista de precios. Es el espejo de la regla del servidor
+// (domain.MetodoCorrespondeALaPlataforma): ofrecer un método que el backend va a rechazar deja al
+// operador armando un cobro que falla con el cliente enfrente.
+describe('metodosDeLaLista', () => {
+  const metodos = [
+    { id: 1, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, deliveryPlatformId: null },
+    { id: 2, name: 'Tarjeta', kind: 'tarjeta', affectsCashDrawer: false, deliveryPlatformId: null },
+    { id: 3, name: 'Uber Eats en línea', kind: 'plataforma', affectsCashDrawer: false, deliveryPlatformId: 5 },
+    { id: 4, name: 'Uber Eats efectivo', kind: 'plataforma', affectsCashDrawer: true, deliveryPlatformId: 5 },
+    { id: 5, name: 'Didi en línea', kind: 'plataforma', affectsCashDrawer: false, deliveryPlatformId: 8 },
+  ] as unknown as PaymentMethod[];
+
+  it('en mostrador solo los que no son de plataforma', () => {
+    expect(metodosDeLaLista(metodos, null).map((m) => m.id)).toEqual([1, 2]);
+  });
+
+  // Los DOS de la plataforma: el repartidor a veces paga en efectivo, y ese es el motivo de que
+  // exista el segundo.
+  it('en una plataforma, los suyos y solo los suyos', () => {
+    expect(metodosDeLaLista(metodos, 5).map((m) => m.id)).toEqual([3, 4]);
+  });
+
+  it('una plataforma sin métodos propios no cae a los de mostrador', () => {
+    expect(metodosDeLaLista(metodos, 99)).toEqual([]);
+  });
 });

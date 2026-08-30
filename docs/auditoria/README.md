@@ -90,3 +90,21 @@ Ese razonamiento **era falso mientras existía el agujero anterior**: el dueño 
 su borrado no veía la fila intrusa, y el sistema respondía "listo" con el precio todavía puesto.
 Cerrado el agujero, el único caso de cero filas es que la excepción no existiera, y la respuesta
 vuelve a coincidir con la realidad.
+
+## Los tres pendientes que quedaban, cerrados
+
+| Hallazgo | Cómo se cerró |
+|---|---|
+| Las rutas de escritura no tenían tope | `rateLimitUser` por **usuario** (120 en 5 min). Por IP no servía: el local entero sale por la misma dirección. Cada escritura invalida el menú y despierta a todas las tablets, así que el bucle no era caro para la base sino para el local. |
+| El borrado invalidaba el caché aunque no borrara nada | Las dos queries pasan a `:execrows`; el servicio devuelve si hubo fila y el handler solo invalida —y solo registra el evento— cuando algo cambió. |
+| La pertenencia dependía del servicio | Llave foránea compuesta `(id, company_id)` en el esquema ([0040](../../server/migrations/0040_platform_prices_fk_compuesta.sql)). |
+
+## Lo que la revisión de esquema encontró de paso
+
+El mismo hueco pesaba mucho más fuera de las tablas de precios, que están vacías: `order_lines.product_id`,
+`order_line_modifiers.modifier_option_id` y `orders.delivery_platform_id` son cada renglón de cada
+ticket vendido y también referenciaban tablas per-tenant por id simple. Se cerraron esas y las nueve
+restantes de la misma forma en [0041](../../server/migrations/0041_fk_compuesta_tenant.sql), con un
+chequeo previo que recorre las doce y reporta todo lo cruzado antes de tocar nada. Contra los datos
+de producción de hoy salió limpio, y el ensayo sobre una restauración del respaldo dejó los totales
+por empresa idénticos (60 pedidos / $14,375.00 y 4 / $729.00, antes y después).
