@@ -8,6 +8,8 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
@@ -181,4 +183,109 @@ func TestNingunPagoApuntaAlMetodoDeOtraEmpresa(t *testing.T) {
 	if cruzados != 0 {
 		t.Fatalf("%d filas apuntan al método de pago de otra empresa", cruzados)
 	}
+}
+
+// El ESQUEMA, y no solo el servicio, tiene que rechazar un precio sobre el producto de otra
+// empresa. Es la diferencia entre una regla que se puede olvidar en el próximo endpoint y una que
+// Postgres no deja violar.
+//
+// Se inserta como OWNER a propósito: el owner salta RLS, igual que lo saltan los chequeos de
+// integridad referencial de Postgres. Si la única defensa fuera la política de RLS o la validación
+// del servicio, esta fila entraría; con la llave foránea compuesta (product_id, company_id) no hay
+// forma de que entre, venga de donde venga.
+func TestElEsquemaRechazaUnPrecioSobreProductoAjeno(t *testing.T) {
+	owner := newTestStore(t)
+	ctx := context.Background()
+
+	otra := makeCompany(t, owner, "otra-fk")
+	cajero := makeUser(t, owner, "cajero_fk", "cajero")
+	// El producto es de la empresa por default; el precio se intenta insertar a nombre de `otra`.
+	prod := makeProduct(t, owner, "Costillas", decimal.RequireFromString("289.00"), false)
+	plataforma := platformID(t, owner, defaultCompanyID, "Rappi")
+
+	_, err := owner.Pool.Exec(ctx,
+		`insert into product_platform_prices (product_id, platform_id, price, updated_by, company_id)
+		 values ($1, $2, $3, $4, $5)`, prod, plataforma, "390.15", cajero, otra)
+	if !esViolacionDeLlave(err) {
+		t.Fatalf("el esquema debe rechazar un precio cuyo producto es de otra empresa, fue: %v", err)
+	}
+
+	// La misma trampa por el lado de la plataforma: producto de `otra`, plataforma de la default.
+	otroProd := productoDeEmpresa(t, owner, otra, "Costillas otra")
+	_, err = owner.Pool.Exec(ctx,
+		`insert into product_platform_prices (product_id, platform_id, price, updated_by, company_id)
+		 values ($1, $2, $3, $4, $5)`, otroProd, plataforma, "390.15", cajero, otra)
+	if !esViolacionDeLlave(err) {
+		t.Fatalf("el esquema debe rechazar un precio cuya plataforma es de otra empresa, fue: %v", err)
+	}
+}
+
+// Lo mismo para las opciones de modificador: son la otra mitad del precio de un pedido.
+func TestElEsquemaRechazaUnDeltaSobreOpcionAjena(t *testing.T) {
+	owner := newTestStore(t)
+	ctx := context.Background()
+
+	otra := makeCompany(t, owner, "otra-fk-opcion")
+	cajero := makeUser(t, owner, "cajero_fk_op", "cajero")
+	opcion := optionID(t, owner, defaultCompanyID)
+	plataforma := platformID(t, owner, defaultCompanyID, "Uber Eats")
+
+	if _, err := owner.Pool.Exec(ctx,
+		`insert into modifier_option_platform_prices (option_id, platform_id, price_delta, updated_by, company_id)
+		 values ($1, $2, $3, $4, $5)`, opcion, plataforma, "33.75", cajero, otra); !esViolacionDeLlave(err) {
+		t.Fatalf("el esquema debe rechazar un delta cuya opción es de otra empresa, fue: %v", err)
+	}
+}
+
+// Borrar un precio que no existe no debe verse como un borrado: el handler invalida el menú y
+// publica `menu.updated`, que hace refetch a todas las tablets. Sin distinguir el caso, cualquiera
+// con permiso de vender puede provocar esa tormenta en bucle con peticiones que no cambian nada.
+func TestBorrarUnPrecioInexistenteNoReportaBorrado(t *testing.T) {
+	owner := newTestStore(t)
+	ctx := context.Background()
+
+	cajero := makeUser(t, owner, "cajero_noop", "cajero")
+	prod := makeProduct(t, owner, "Papas", decimal.RequireFromString("89.00"), false)
+	plataforma := platformID(t, owner, defaultCompanyID, "Didi")
+	svc := app.NewPlatformPricesService(owner)
+
+	borro, err := svc.DeleteProductPrice(ctx, prod, plataforma)
+	if err != nil {
+		t.Fatalf("borrar sin fila previa: %v", err)
+	}
+	if borro {
+		t.Fatal("no había precio: no debe reportar que borró")
+	}
+
+	if err := svc.SetProductPrice(ctx, prod, plataforma, decimal.RequireFromString("120.15"), cajero); err != nil {
+		t.Fatalf("capturar el precio: %v", err)
+	}
+	borro, err = svc.DeleteProductPrice(ctx, prod, plataforma)
+	if err != nil {
+		t.Fatalf("borrar la fila existente: %v", err)
+	}
+	if !borro {
+		t.Fatal("había precio: debe reportar que borró")
+	}
+}
+
+// productoDeEmpresa siembra un producto en una empresa DISTINTA de la default. makeProduct escribe
+// siempre en la empresa 1 (el GUC del ALTER DATABASE), y estos tests necesitan justo la fila que
+// cruza.
+func productoDeEmpresa(t *testing.T, st *store.Store, companyID int64, name string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	var catID int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into categories (company_id, name) values ($1, $2) returning id`,
+		companyID, "cat-"+name).Scan(&catID); err != nil {
+		t.Fatalf("categoría de %d: %v", companyID, err)
+	}
+	var id int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into products (company_id, name, category_id, price, track_stock)
+		 values ($1, $2, $3, 100, false) returning id`, companyID, name, catID).Scan(&id); err != nil {
+		t.Fatalf("producto de %d: %v", companyID, err)
+	}
+	return id
 }
