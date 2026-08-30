@@ -104,9 +104,9 @@ export function TicketPreview({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const { data: business } = useTicketBusinessInfo();
+  const { data: business, printFreeModifiers } = useTicketBusinessInfo();
   // html vacío = el diálogo abre con un spinner en vez de no abrir. Un toque que no hace nada es
   // exactamente el fallo silencioso que esta feature vino a quitar.
-  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample }) : '';
+  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample, printFreeModifiers }) : '';
   return <TicketPreviewDialog html={html} isOpen={isOpen} onClose={onClose} />;
 }

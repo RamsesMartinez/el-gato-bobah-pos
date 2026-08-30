@@ -18,8 +18,13 @@ import (
 func paymentMethodID(t *testing.T, st *store.Store, name string) int16 {
 	t.Helper()
 	var id int16
+	// company_id en el where, no solo el nombre: payment_methods es per-tenant desde 0037 y cada
+	// empresa tiene su propio "Efectivo". Sin el filtro, QueryRow devuelve la fila que el plan
+	// decida —sin error— y la venta queda con el método de otra empresa: el corte da 0 y el test
+	// falla con un mensaje que no apunta a la causa.
 	if err := st.Pool.QueryRow(context.Background(),
-		`select id from payment_methods where name = $1`, name).Scan(&id); err != nil {
+		`select id from payment_methods where name = $1 and company_id = $2`,
+		name, defaultCompanyID).Scan(&id); err != nil {
 		t.Fatalf("paymentMethodID(%s): %v", name, err)
 	}
 	return id

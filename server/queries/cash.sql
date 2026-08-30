@@ -91,7 +91,7 @@ left join users cb on cb.id = s.closed_by
 where s.id = $1;
 
 -- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
 join payment_methods pm on pm.id = t.payment_method_id
@@ -144,17 +144,26 @@ returning id;
 insert into register_cash_movements (session_id, kind, amount, concept, user_id, transfer_id)
 values ($1, $2, $3, $4, $5, $6);
 
--- Totales esperados por método desde la apertura de la sesión (ventana temporal).
--- name: ExpectedByMethodSince :many
+-- Totales esperados por método, del TURNO indicado.
+-- name: ExpectedByMethodForSession :many
 -- expected = ventas (amount); tips = propinas (tip_amount) por método desde la apertura. Ambas son
 -- dinero recibido: entran al esperado del corte, pero se muestran como líneas separadas (Ventas / Propinas).
-select pm.id as payment_method_id, pm.name, pm.affects_cash_drawer, pm.auto_declare,
+-- kind viaja además de affects_cash_drawer porque distinguen cosas distintas: el segundo dice si
+-- ese dinero se cuenta en el arqueo (lo cumplen el efectivo del mostrador Y el de las plataformas),
+-- y el primero identifica al ÚNICO al que pertenecen el fondo de apertura y los movimientos de
+-- caja. Sumar el fondo a todo lo que toca el cajón lo contaba una vez por método.
+select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
        coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
 from payment_methods pm
-left join order_payments op on op.payment_method_id = pm.id and op.created_at >= $1
+-- Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
+-- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+-- suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
+-- que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
+-- dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
 where pm.is_active
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.auto_declare
+group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare
 order by pm.sort_key;
 
 -- name: GetOpenPrimarySession :one
@@ -166,3 +175,24 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
 limit 1;
+
+-- name: SeedBasePaymentMethods :exec
+-- Métodos de pago base para una empresa recién creada. Desde 0037 la tabla es per-tenant, así que
+-- una empresa nueva nace SIN NINGUNO y no podría cobrar: /payment-methods devolvería vacío y el
+-- checkout se quedaría sin botones. Antes los heredaba por ser una tabla global.
+--
+-- Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
+-- hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
+-- contratadas es peor que no darle ninguna.
+insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+values
+  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+on conflict (company_id, name) do nothing;
+
+-- name: GetBusinessTimezone :one
+-- Zona horaria del local, para calcular la FECHA de negocio. La base guarda instantes en UTC; la
+-- fecha es una decisión de calendario y depende de dónde está el negocio.
+select timezone from business_settings limit 1;

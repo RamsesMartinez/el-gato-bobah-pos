@@ -132,6 +132,11 @@ func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 		`insert into companies (slug, name) values ($1, $2) returning id`, slug, "Test "+slug).Scan(&id); err != nil {
 		t.Fatalf("makeCompany(%s): %v", slug, err)
 	}
+	// Espeja a provisionCompany: una empresa sin métodos de pago no puede cobrar, así que un test
+	// que la creara pelada estaría probando un mundo que el sistema no produce.
+	if err := st.Q.SeedBasePaymentMethods(context.Background(), id); err != nil {
+		t.Fatalf("sembrar métodos de %s: %v", slug, err)
+	}
 	return id
 }
 
@@ -190,10 +195,27 @@ func abrirCajaPrincipal(t *testing.T, st *store.Store, por int64) int64 {
 		t.Fatalf("caja principal: %v", err)
 	}
 	var sessID int64
+	// La fecha del turno sale del RELOJ DE LOS TESTS, no de current_date. Desde que la venta hereda
+	// su fecha de negocio del turno (para que uno que cruce la medianoche no reinicie el folio), un
+	// turno abierto en la fecha real dejaría las ventas fuera del rango que consultan los reportes.
 	if err := st.Pool.QueryRow(ctx,
 		`insert into register_sessions (business_date, opening_cash, opened_by, register_id)
-		 values (current_date, 0, $1, $2) returning id`, por, regID).Scan(&sessID); err != nil {
+		 values ($3, 0, $1, $2) returning id`, por, regID, fixedNow).Scan(&sessID); err != nil {
 		t.Fatalf("abrir caja principal: %v", err)
 	}
 	return sessID
+}
+
+// platformID resuelve una plataforma de reparto DENTRO de una empresa. El filtro por empresa no es
+// decorativo: delivery_platforms es per-tenant y cada empresa tiene su propia "Uber Eats", así que
+// buscar solo por nombre devolvería la del tenant equivocado sin dar error.
+func platformID(t *testing.T, st *store.Store, companyID int64, name string) int16 {
+	t.Helper()
+	var id int16
+	if err := st.Pool.QueryRow(context.Background(),
+		`select id from delivery_platforms where company_id = $1 and name = $2`,
+		companyID, name).Scan(&id); err != nil {
+		t.Fatalf("platformID(%d, %s): %v", companyID, name, err)
+	}
+	return id
 }

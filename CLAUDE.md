@@ -18,7 +18,7 @@ Este repo tiene un índice CodeGraph (`.codegraph/`). Para preguntas **estructur
 
 ## Skills
 
-Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución. Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`). Las features nuevas van por spec-kit (`/speckit-*`); `/speckit-analyze` corre siempre antes de `/speckit-implement`.
+Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución. Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`, `db-architect`). El **`db-architect` corre ANTES de aplicar una migración nueva** y ante cualquier cambio en `server/migrations/` o `server/queries/`: llaves foráneas y su `ON DELETE`, tipos, índices únicos que deben incluir `company_id`, índices faltantes y migraciones reversibles. Las features nuevas van por spec-kit (`/speckit-*`); `/speckit-analyze` corre siempre antes de `/speckit-implement`.
 
 ## Quirks
 

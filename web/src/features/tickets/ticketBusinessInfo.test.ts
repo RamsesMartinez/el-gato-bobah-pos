@@ -10,6 +10,8 @@ const settings: BusinessSettings = {
   headerNote: 'Wi-Fi: gatobobah',
   footerNote: '¡Vuelve pronto!',
   autoPrintOnClose: false,
+  timezone: 'America/Mexico_City',
+  printFreeModifiers: true,
   hasLogo: false,
   logoUpdatedAt: null,
 };
