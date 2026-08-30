@@ -114,6 +114,27 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
+	// Cada método de pago se resuelve BAJO RLS. La llave foránea no alcanza: los chequeos de
+	// integridad referencial de Postgres saltan RLS por diseño, así que el id de otra empresa
+	// entraría sin protestar. El daño sería silencioso — el corte hace join con payment_methods
+	// bajo RLS, así que ese pago no saldría en ningún renglón, desaparecería del reporte de ventas,
+	// y el cajero encontraría un faltante por el monto exacto sin nada que lo explique.
+	//
+	// Se deduplica porque un pago dividido repite métodos y no vale la pena consultar dos veces.
+	vistos := map[int16]bool{}
+	for _, p := range cmd.Payments {
+		if vistos[p.MethodID] {
+			continue
+		}
+		vistos[p.MethodID] = true
+		if _, err := s.store.QC(ctx).GetPaymentMethod(ctx, p.MethodID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, domain.ErrNotFound
+			}
+			return nil, err
+		}
+	}
+
 	// cargar catálogo priceado (autoritativo)
 	prodIDs, optIDs := collectIDs(cmd.Lines)
 	prodRows, err := s.store.QC(ctx).GetPricedProducts(ctx, prodIDs)

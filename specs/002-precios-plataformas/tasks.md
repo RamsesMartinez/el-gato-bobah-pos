@@ -62,13 +62,13 @@ RLS y grants no aplican. Lo que dependa de eso se prueba con test de integració
 - [x] T015 **[test]** Test de integración del faltante fantasma: caja con fondo de $1,500, sin ventas, con los seis métodos activos → el corte debe dar diferencia **0**, no −$1,500 por cada método de cajón
 - [x] T016 Corregir [server/internal/app/backoffice.go](../../server/internal/app/backoffice.go): el fondo de apertura y el neto de movimientos se suman **una sola vez**, al método de `kind='efectivo'`, y no a cada `affects_cash_drawer`. Sin esto el desdoble reporta $4,500 de faltante inexistente y cuenta las entradas de efectivo cuatro veces
 - [x] T017 **[test]** Test de integración: en una caja secundaria solo sobrevive el método de efectivo al filtro de `backoffice.go`, no los cuatro de cajón
-- [ ] T018 **[test]** Test de integración con **dos empresas**: `Create` con un `payment_method_id` de otra empresa devuelve 422 y no crea el pago
-- [ ] T019 Validar cada `MethodID` con `GetPaymentMethod` bajo RLS en `OrdersService.Create`, antes de la tx. Hoy no se valida: la FK salta RLS y un id cruzado hace que el pago **desaparezca** del corte y de los reportes, con el cajero viendo un faltante por el monto exacto
+- [x] T018 **[test]** Test de integración con **dos empresas**: `Create` con un `payment_method_id` de otra empresa devuelve 422 y no crea el pago
+- [x] T019 Validar cada `MethodID` con `GetPaymentMethod` bajo RLS en `OrdersService.Create`, antes de la tx. Hoy no se valida: la FK salta RLS y un id cruzado hace que el pago **desaparezca** del corte y de los reportes, con el cajero viendo un faltante por el monto exacto
 
 ### Para que una empresa nueva pueda cobrar
 
-- [ ] T020 **[test]** Test de integración: una empresa recién aprovisionada tiene sus cuatro métodos base y puede cobrar
-- [ ] T021 Sembrar Efectivo, Tarjeta débito, Tarjeta crédito y Transferencia SPEI en `provisionCompany` ([server/cmd/api/main.go](../../server/cmd/api/main.go)), dentro del `WithTenant` que ya abre. Los de plataforma **no**: esos se dan de alta cuando ese negocio hace su propia vinculación
+- [x] T020 **[test]** Test de integración: una empresa recién aprovisionada tiene sus cuatro métodos base y puede cobrar
+- [x] T021 Sembrar Efectivo, Tarjeta débito, Tarjeta crédito y Transferencia SPEI en `provisionCompany` ([server/cmd/api/main.go](../../server/cmd/api/main.go)), dentro del `WithTenant` que ya abre. Los de plataforma **no**: esos se dan de alta cuando ese negocio hace su propia vinculación
 
 ### El POS deja de asumir ids fijos
 
