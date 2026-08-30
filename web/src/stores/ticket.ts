@@ -11,6 +11,11 @@ export function lineTotal(line: TicketLine): number {
   return Math.round(lineUnitPrice(line) * line.qty * 100) / 100;
 }
 
+// RepreciarLinea devuelve el precio unitario y los modificadores de una línea en la lista nueva.
+// Devuelve solo esas dos cosas y no la línea entera para que no pueda cambiar de producto ni de
+// cantidad por accidente: cambiar de lista mueve precios, nada más.
+export type RepreciarLinea = (line: TicketLine) => Pick<TicketLine, 'unitPrice' | 'modifiers'>;
+
 // Una "cuenta" abierta: un pedido en curso que el cajero puede dejar y retomar.
 export interface TicketTab {
   id: string;
@@ -48,9 +53,24 @@ interface TicketState {
   newTab: () => void;
   switchTab: (id: string) => void;
   closeTab: (id: string) => void; // al cobrar/cancelar; siempre queda ≥1 cuenta
-  // setPlatform cambia la lista de precios de la cuenta activa. Los precios de las líneas ya
-  // agregadas los re-calcula la pantalla al pintar, así que aquí solo se guarda cuál es.
-  setPlatform: (platformId: number | null) => void;
+  // setPlatform cambia la lista de precios de la cuenta activa Y vuelve a precisar lo que ya está
+  // en el ticket.
+  //
+  // Re-precisar no es opcional: el precio se congela en la línea al agregarla y el servidor
+  // recalcula por lista al cobrar, así que sin esto armar el pedido en mostrador y cambiar a Uber
+  // deja la pantalla y el ticket impreso mostrando un total distinto del que se cobra — y el
+  // operador lo descubre con el cliente enfrente.
+  //
+  // La función viene de afuera porque la regla de precios necesita el menú, que vive en el caché de
+  // la pantalla y no aquí. Es opcional para que quien solo quiera fijar la lista de una cuenta
+  // vacía no tenga que inventarse una.
+  setPlatform: (platformId: number | null, reprecia?: RepreciarLinea) => void;
+  // repreciarTodas vuelve a precisar TODAS las cuentas cuando el catálogo cambió bajo los pies:
+  // alguien corrigió un precio desde esta tablet o desde otra. Cada cuenta se re-precia con la
+  // regla de SU lista, por eso la función recibe la cuenta y devuelve el re-precio.
+  //
+  // Es la versión "el mundo cambió" de setPlatform, que es "yo cambié de lista".
+  repreciarTodas: (hacer: (tab: TicketTab) => RepreciarLinea) => void;
   // descartarTodo tira TODAS las cuentas y arranca de cero. Lo usa el cambio de empresa: un ticket
   // armado con el catálogo de otro tenant no se puede cobrar y no debe quedarse esperando a que
   // alguien lo intente.
@@ -138,8 +158,20 @@ export const useTicketStore = create<TicketState>()(
             return { tabs, activeId: s.activeId === id ? tabs[0].id : s.activeId };
           }),
 
-        setPlatform: (platformId) =>
-          set((s) => onActive(s, (t) => ({ ...t, platformId }))),
+        setPlatform: (platformId, reprecia) =>
+          set((s) => onActive(s, (t) => ({
+            ...t,
+            platformId,
+            lines: reprecia ? t.lines.map((l) => ({ ...l, ...reprecia(l) })) : t.lines,
+          }))),
+
+        repreciarTodas: (hacer) =>
+          set((s) => ({
+            tabs: s.tabs.map((t) => {
+              const reprecia = hacer(t);
+              return { ...t, lines: t.lines.map((l) => ({ ...l, ...reprecia(l) })) };
+            }),
+          })),
 
         descartarTodo: () =>
           set(() => {

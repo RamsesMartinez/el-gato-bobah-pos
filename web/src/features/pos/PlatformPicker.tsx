@@ -3,7 +3,7 @@ import { LuStore, LuSmartphone } from 'react-icons/lu';
 
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
-import { nombreDeLista } from './precioPlataforma';
+import { nombreDeLista, repreciador } from './precioPlataforma';
 
 // Selector de lista de precios. Siempre visible y siempre diciendo con cuál se está cobrando: el
 // riesgo de esta feature no es equivocarse al elegir, es no darse cuenta de que quedó elegida.
@@ -14,6 +14,10 @@ export function PlatformPicker() {
   const activa = useActiveTicket().platformId;
   const setPlatform = useTicketStore((s) => s.setPlatform);
   const plataformas = menu?.platforms ?? [];
+
+  // El selector es quien tiene el menú, así que es quien puede volver a precisar lo ya agregado.
+  // Sin esto, cambiar de lista a media cuenta deja el ticket cobrando los precios de la anterior.
+  const cambiarLista = (id: number | null) => setPlatform(id, repreciador(menu, id));
 
   // Un negocio sin plataformas configuradas no ve el selector: sería un control que no hace nada.
   if (plataformas.length === 0) return null;
@@ -27,7 +31,7 @@ export function PlatformPicker() {
           size="sm" minH="40px" px={3}
           variant={activa === null ? 'solid' : 'outline'}
           colorPalette={activa === null ? undefined : 'gray'}
-          onClick={() => setPlatform(null)}
+          onClick={() => cambiarLista(null)}
         >
           <LuStore /> Mostrador
         </Button>
@@ -36,7 +40,7 @@ export function PlatformPicker() {
             key={p.id} size="sm" minH="40px" px={3}
             variant={activa === p.id ? 'solid' : 'outline'}
             colorPalette={activa === p.id ? 'orange' : 'gray'}
-            onClick={() => setPlatform(p.id)}
+            onClick={() => cambiarLista(p.id)}
           >
             <LuSmartphone /> {p.name}
           </Button>
