@@ -28,19 +28,16 @@ registro DNS de `api-dev` se rompería en cada arranque.
 | Instancia | `pos-vps-dev`, zona `us-central1-a`, proyecto `el-gato-bobah-pos` |
 | IP fija | `34.61.175.194` |
 | API de pruebas | `api-dev.elgatobobah.com` (la sirve esta VM) |
-| Front de pruebas | `https://staging.el-gato-bobah-pos.pages.dev` |
+| Front de pruebas | `app-dev.elgatobobah.com` (proyecto de Pages `el-gato-bobah-pos-dev`) |
 | Producción (NO tocar) | `pos-vps`, IP `34.68.178.107` |
 
-> **`app-dev.elgatobobah.com` todavía no sirve** (responde 522). El front de pruebas se publica en
-> Cloudflare Pages como *preview* de la rama `staging`, y un dominio propio en Pages solo puede
-> apuntar al deploy de **producción** del proyecto — que es el front del negocio. Para que el
-> subdominio funcione hace falta un **segundo proyecto de Pages** (`el-gato-bobah-pos-dev`) con
-> `app-dev` como su dominio; el token de Cloudflare que hay solo tiene permisos de DNS, no de Pages.
-> Mientras tanto se prueba en la URL de arriba, que sirve exactamente el mismo build y apunta a
-> `api-dev`.
+> El ambiente de pruebas tiene su **propio proyecto de Pages** (`el-gato-bobah-pos-dev`), no una
+> preview del de producción: en Pages un dominio propio siempre sirve el deploy de *producción* del
+> proyecto, así que una preview nunca podría responder en `app-dev`. La rama de producción de ese
+> proyecto se llama `staging` y es lo que CI publica en cada push a `develop`.
 >
-> No se sirve desde el Caddy de esta VM a propósito: producción entrega el front desde Pages con el
-> CSP de `web/public/_headers`, y servirlo con otro stack haría que el ambiente de pruebas dejara de
+> Tampoco se sirve desde el Caddy de esta VM, que sería lo fácil: producción entrega el front desde
+> Pages con el CSP de `web/public/_headers`, y con otro stack el ambiente de pruebas dejaría de
 > probar lo que producción hace.
 
 ## Qué hacer según el argumento
