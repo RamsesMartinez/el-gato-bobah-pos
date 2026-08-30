@@ -25,6 +25,15 @@ export const posApi = {
     api.post<void>('/me/password', { currentPassword, newPassword }),
   setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
 
+  // Precios por plataforma: solo las EXCEPCIONES. Quitar una devuelve el producto al calculado.
+  // El servidor valida que el producto y la plataforma sean de la empresa antes de escribir, así
+  // que aquí van ids pelones.
+  setPlatformPrice: (productId: number, platformId: number, price: number) =>
+    api.put<{ productId: number; platformId: number; price: string }>(
+      '/platform-prices/product', { productId, platformId, price }),
+  removePlatformPrice: (productId: number, platformId: number) =>
+    api.del<void>(`/platform-prices/product?productId=${productId}&platformId=${platformId}`),
+
   // Empresa (tenant). GET cualquiera; PATCH solo admin/gerente (backend aplica el 403).
   company: () => api.get<Company>('/company'),
   updateCompany: (name: string, slug: string) => api.patch<Company>('/company', { name, slug }),
