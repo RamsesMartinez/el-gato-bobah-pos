@@ -12,6 +12,7 @@ import {
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
+import { faltanPorContar } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
 import {
@@ -330,6 +331,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   });
   const [opening, setOpening] = useState('');
   const [declared, setDeclared] = useState<Record<string, string>>({});
+  // Lo que todavía no se cuenta. La regla vive fuera del componente y con test propio: es la que
+  // evita registrar un faltante inventado, y ese fallo ya costó un corte con $1,662 de descuadre.
+  const porContar = faltanPorContar(session?.totals ?? [], declared);
   const [notes, setNotes] = useState('');
   const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   const [transferOpen, setTransferOpen] = useState(false);
@@ -434,7 +438,18 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
             value={notes} onChange={(e) => setNotes(e.target.value)} />
 
-          <Button colorPalette="red" size="lg" loading={closeMut.isPending}
+          {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
+              que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
+              puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
+          {porContar.length > 0 && (
+            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
+              <Text fontSize="sm" fontWeight="600">
+                Falta capturar lo contado en: {porContar.map((m) => m.name).join(', ')}
+              </Text>
+            </Box>
+          )}
+
+          <Button colorPalette="red" size="lg" loading={closeMut.isPending} disabled={porContar.length > 0}
             onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
             Cerrar caja
           </Button>
