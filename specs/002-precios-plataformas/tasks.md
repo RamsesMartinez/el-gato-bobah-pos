@@ -72,8 +72,8 @@ RLS y grants no aplican. Lo que dependa de eso se prueba con test de integració
 
 ### El POS deja de asumir ids fijos
 
-- [ ] T022 **[test]** [P] Test de que la pantalla de cobro arma sus métodos desde la API y decide el default y la rama de efectivo por `kind`/`affectsCashDrawer`, no por id
-- [ ] T023 Quitar `METHODS` con ids quemados de [web/src/features/pos/CheckoutSheet.tsx](../../web/src/features/pos/CheckoutSheet.tsx): salen de `posApi.paymentMethods()`. Reemplazar `useState(2)` y los dos `methodId === 1` por decisiones sobre `kind`. **Va en el mismo release que la migración**: la empresa 1 conserva sus ids y no lo nota, pero cualquier otra recibe ids nuevos y se queda sin poder cobrar
+- [x] T022 **[test]** [P] Test de que la pantalla de cobro arma sus métodos desde la API y decide el default y la rama de efectivo por `kind`/`affectsCashDrawer`, no por id
+- [x] T023 Quitar `METHODS` con ids quemados de [web/src/features/pos/CheckoutSheet.tsx](../../web/src/features/pos/CheckoutSheet.tsx): salen de `posApi.paymentMethods()`. Reemplazar `useState(2)` y los dos `methodId === 1` por decisiones sobre `kind`. **Va en el mismo release que la migración**: la empresa 1 conserva sus ids y no lo nota, pero cualquier otra recibe ids nuevos y se queda sin poder cobrar
 - [x] T024 Corregir el harness: `paymentMethodID` resuelve por `name` **y `company_id`** ([server/internal/integration/cash_test.go](../../server/internal/integration/cash_test.go)). Con dos empresas habrá dos filas "Efectivo" y hoy `QueryRow` toma la que devuelva el plan, sin error
 
 ### Verificación del esquema

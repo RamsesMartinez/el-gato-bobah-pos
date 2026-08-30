@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Button, VStack, HStack, SimpleGrid, Text, Input, Box, Flex, IconButton,
 } from '@chakra-ui/react';
@@ -8,7 +8,7 @@ import {
 } from '../../components/ui/drawer';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import {
-  LuBanknote, LuCreditCard, LuLandmark, LuStore, LuShoppingBag, LuBike, LuX, LuTriangleAlert,
+  LuBanknote, LuCreditCard, LuLandmark, LuSmartphone, LuStore, LuShoppingBag, LuBike, LuX, LuTriangleAlert,
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
@@ -22,14 +22,17 @@ import type { OrderView, ServiceType } from '../../types/pos';
 import { money } from '../../utils/format';
 import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
+import { esEfectivo, metodoPorDefecto, primerMetodoLibre } from './metodosDePago';
 
-// IDs de medios de pago según seeds/migraciones (0010 + 0013). MVP: ids fijos.
-const METHODS: Array<{ id: number; label: string; icon: IconType }> = [
-  { id: 2, label: 'Débito', icon: LuCreditCard },       // default
-  { id: 7, label: 'Crédito', icon: LuCreditCard },
-  { id: 1, label: 'Efectivo', icon: LuBanknote },
-  { id: 3, label: 'Transferencia', icon: LuLandmark },
-];
+// El icono se elige por la NATURALEZA del método, no por su id: desde que payment_methods es
+// per-tenant cada empresa tiene los suyos y los ids ya no son estables entre negocios.
+const ICONO_POR_TIPO: Record<string, IconType> = {
+  efectivo: LuBanknote,
+  tarjeta: LuCreditCard,
+  transferencia: LuLandmark,
+  plataforma: LuSmartphone,
+};
+const iconoDe = (kind: string): IconType => ICONO_POR_TIPO[kind] ?? LuCreditCard;
 const SERVICE: Array<{ v: ServiceType; label: string; icon: IconType }> = [
   { v: 'mostrador', label: 'Mostrador', icon: LuStore },
   { v: 'para_llevar', label: 'Para llevar', icon: LuShoppingBag },
@@ -63,7 +66,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const total = ticketTotal(chargeLines);
 
   const palette = useUiStore((s) => s.palette);
-  const [methodId, setMethodId] = useState(2);  // Tarjeta débito por default
+  // Los métodos los manda el servidor: son los de ESTA empresa. Antes eran cuatro ids quemados y
+  // cualquier negocio que no fuera el primero se quedaba sin poder cobrar.
+  const { data: methodsData } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
+  const methods = useMemo(() => methodsData?.items ?? [], [methodsData]);
+  // null hasta que llega el catálogo; en cuanto llega, el default sale de la regla probada.
+  const [methodId, setMethodId] = useState<number | null>(null);
+  const metodoActivo = methodId ?? metodoPorDefecto(methods);
+  const metodoElegido = methods.find((m) => m.id === metodoActivo);
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
   const [tip, setTip] = useState('');
   // Pago dividido: cada línea es {método, monto}. Se activa con "Dividir pago".
@@ -87,7 +97,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const isExact = tendered === '';
   const received = isExact ? grandTotal : (parseFloat(tendered) || 0);
   const change = Math.max(0, received - grandTotal);
-  const cashShort = !splitMode && methodId === 1 && !isExact && received < grandTotal;
+  const cashShort = !splitMode && esEfectivo(metodoElegido) && !isExact && received < grandTotal;
 
   // --- Pago dividido ---
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -98,15 +108,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
 
   const enableSplit = () => {
     // arranca con una línea = método actual y el monto completo (editable); dividir = ir bajando.
-    setSplits([{ methodId, amount: String(orderTotal) }]);
+    setSplits([{ methodId: metodoActivo ?? 0, amount: String(orderTotal) }]);
     setTendered('');
     setSplitMode(true);
   };
-  const firstUnusedMethod = (xs: Array<{ methodId: number }>) => {
-    const used = new Set(xs.map((s) => s.methodId));
-    return (METHODS.find((m) => !used.has(m.id)) ?? METHODS[0]).id;
-  };
-  const addSplit = () => setSplits((xs) => [...xs, { methodId: firstUnusedMethod(xs), amount: '' }]);
+  const addSplit = () => setSplits((xs) => [
+    ...xs,
+    { methodId: primerMetodoLibre(methods, xs.map((x) => x.methodId)) ?? 0, amount: '' },
+  ]);
   const removeSplit = (i: number) => setSplits((xs) => xs.filter((_, j) => j !== i));
   const setSplitMethod = (i: number, id: number) => setSplits((xs) => xs.map((s, j) => (j === i ? { ...s, methodId: id } : s)));
   const setSplitAmount = (i: number, v: string) => setSplits((xs) => xs.map((s, j) => (j === i ? { ...s, amount: v } : s)));
@@ -126,7 +135,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
         .filter((p) => p.amount > 0)
         .map((p, i) => (i === 0 && tipAmount > 0 ? { ...p, tip: tipAmount } : p));
     }
-    return [{ methodId, amount: orderTotal, ...(tipAmount > 0 ? { tip: tipAmount } : {}) }];
+    return [{ methodId: metodoActivo ?? 0, amount: orderTotal, ...(tipAmount > 0 ? { tip: tipAmount } : {}) }];
   };
 
   const build = (withPayment: boolean): CreateOrderBody => ({
@@ -259,15 +268,15 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
 
               {!splitMode ? (
                 <SimpleGrid columns={2} gap={2}>
-                  {METHODS.map((m) => {
-                    const Icon = m.icon;
-                    const on = methodId === m.id;
+                  {methods.map((m) => {
+                    const Icon = iconoDe(m.kind);
+                    const on = metodoActivo === m.id;
                     return (
                       <Button key={m.id} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
                         variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                         onClick={() => setMethodId(m.id)}>
                         <Icon size={20} />
-                        {m.label}
+                        {m.name}
                       </Button>
                     );
                   })}
@@ -284,13 +293,13 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                         )}
                       </HStack>
                       <SimpleGrid columns={4} gap={1} mb={2}>
-                        {METHODS.map((m) => {
+                        {methods.map((m) => {
                           const on = s.methodId === m.id;
                           return (
                             <Button key={m.id} h="44px" px={1} fontSize="xs" whiteSpace="normal"
                               variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                               onClick={() => setSplitMethod(i, m.id)}>
-                              {m.label}
+                              {m.name}
                             </Button>
                           );
                         })}
@@ -357,7 +366,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
             )}
 
             {/* Efectivo (modo simple): recibido + billetes rápidos + cambio */}
-            {!splitMode && methodId === 1 && (
+            {!splitMode && esEfectivo(metodoElegido) && (
               <Box>
                 <HStack justify="space-between" mb={2}>
                   <Text fontWeight="600">Recibido</Text>
