@@ -68,6 +68,10 @@ export const posApi = {
   deleteTicketLogo: () => api.del<BusinessSettings>('/business-settings/ticket-logo'),
   updateBusinessSettings: (deliveryFee: number) =>
     api.put<BusinessSettings>('/business-settings', { deliveryFee }),
+  // La zona decide de qué DÍA es una venta, un corte o un gasto. Va sola en su llamada porque
+  // los campos ausentes no se tocan: guardarla no debe pisar el costo de envío ni el ticket.
+  updateTimezone: (timezone: string) =>
+    api.put<BusinessSettings>('/business-settings', { timezone }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -83,6 +87,9 @@ export interface BusinessSettings {
   // Si el POS imprime el ticket solo al cerrar una venta. Lo lee cualquier autenticado porque
   // quien tiene que obedecerlo es la caja, no el panel.
   autoPrintOnClose: boolean;
+  // Nombre IANA de la zona del local. La base guarda instantes en UTC; esta zona es la que decide
+  // de qué DÍA es cada venta, corte y gasto. El servidor rechaza un nombre que no exista.
+  timezone: string;
   // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
   // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
   hasLogo: boolean;
