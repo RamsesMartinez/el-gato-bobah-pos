@@ -170,10 +170,10 @@ ver el precio corregido.
 
 **Independent Test**: cobrar por cada plataforma y en las dos formas, cerrar caja y leer.
 
-- [ ] T070 **[test]** [US3] Test de integración: ventas por las 3 plataformas → el corte muestra cada método en su renglón con su total (FR-015)
-- [ ] T071 **[test]** [US3] Test de integración: lo cobrado **en línea** no cuenta al efectivo esperado y se autodeclara; lo cobrado **en efectivo** sí cuenta y **exige conteo** (FR-015a, FR-015b). Es el que atrapa el sobrante inexplicable del efectivo del repartidor
-- [ ] T072 **[test]** [US3] Test del subtotal por plataforma: agrupa por `delivery_platform_id`, **no** por nombre
-- [ ] T073 [US3] Agrupar por plataforma en el cierre (backend) y mostrarlo en la pantalla de corte
+- [x] T070 **[test]** [US3] Test de integración: ventas por las 3 plataformas → el corte muestra cada método en su renglón con su total (FR-015)
+- [x] T071 **[test]** [US3] Test de integración: lo cobrado **en línea** no cuenta al efectivo esperado y se autodeclara; lo cobrado **en efectivo** sí cuenta y **exige conteo** (FR-015a, FR-015b). Es el que atrapa el sobrante inexplicable del efectivo del repartidor
+- [x] T072 **[test]** [US3] Test del subtotal por plataforma: agrupa por `delivery_platform_id`, **no** por nombre
+- [ ] T073 [US3] Agrupar por plataforma en el cierre (backend) y mostrarlo en la pantalla de corte — PENDIENTE: los renglones ya salen separados y correctos; falta el subtotal por plataforma
 
 **Checkpoint**: US3 completa.
 
