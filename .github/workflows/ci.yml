@@ -192,10 +192,12 @@ jobs:
           # apuntara a la API de producción, el ambiente de pruebas escribiría en el negocio.
           VITE_API_URL: https://api-dev.elgatobobah.com/api/v1
           VITE_APP_VERSION: ${{ env.APP_VERSION }}
-      # --branch=staging lo publica como PREVIEW, no como producción: el alias de producción de
-      # este proyecto de Pages es `develop` y pisarlo mandaría el build de pruebas a app.
-      - name: Deploy a Cloudflare Pages (preview)
-        run: bunx wrangler pages deploy dist --project-name=el-gato-bobah-pos --branch=staging --commit-dirty=true
+      # Proyecto de Pages PROPIO del ambiente de pruebas, no una preview del de producción. Una
+      # preview no puede tener dominio propio —en Pages el dominio propio siempre sirve el deploy
+      # de producción del proyecto— así que app-dev necesitaba su proyecto. `--branch=staging` es
+      # la rama de producción de ESTE proyecto: es lo que app-dev.elgatobobah.com entrega.
+      - name: Deploy a Cloudflare Pages (ambiente de pruebas)
+        run: bunx wrangler pages deploy dist --project-name=el-gato-bobah-pos-dev --branch=staging --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: e276d7cc7e74941f3843e3dd677cc748

@@ -35,11 +35,15 @@ export interface CashExpenseLine {
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
 export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[] }
+// plataformas: lo que entró por cada plataforma, sumando sus DOS métodos (en línea y efectivo).
+// Viene del servidor y no se calcula aquí: es el número contra el que se concilia el depósito.
+export interface CortePlatformSubtotal { platform: string; total: string }
 export interface CorteBreakdown {
   ingresos: CorteMethodBreakdown[];
   ingresosTotal: string;
   egresos: CorteBucket[];
   egresosTotal: string;
+  plataformas: CortePlatformSubtotal[];
 }
 // Caja física (registro). La primaria recibe las ventas del POS.
 export interface CashRegister {

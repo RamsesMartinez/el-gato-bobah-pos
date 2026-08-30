@@ -114,6 +114,17 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
+	// La lista de precios de la venta, ANTES que los métodos de pago: si la plataforma no es de
+	// esta empresa hay que decir eso y no "el método no corresponde a la plataforma", que compara
+	// contra una plataforma que no existe y manda al operador a revisar lo que no es.
+	//
+	// Sin plataforma es la de mostrador (margen 0, sin excepciones): el caso de todos los días, que
+	// no toca la base ni una vez más.
+	lista, err := s.listaDePrecios(ctx, cmd.DeliveryPlatformID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Cada método de pago se resuelve BAJO RLS. La llave foránea no alcanza: los chequeos de
 	// integridad referencial de Postgres saltan RLS por diseño, así que el id de otra empresa
 	// entraría sin protestar. El daño sería silencioso — el corte hace join con payment_methods
@@ -127,11 +138,15 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			continue
 		}
 		vistos[p.MethodID] = true
-		if _, err := s.store.QC(ctx).GetPaymentMethod(ctx, p.MethodID); err != nil {
+		m, err := s.store.QC(ctx).GetPaymentMethod(ctx, p.MethodID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, domain.ErrNotFound
 			}
 			return nil, err
+		}
+		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, cmd.DeliveryPlatformID) {
+			return nil, domain.ErrPaymentMethodPlatform
 		}
 	}
 
@@ -142,12 +157,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 	optRows, err := s.store.QC(ctx).GetPricedOptions(ctx, optIDs)
-	if err != nil {
-		return nil, err
-	}
-	// La lista de precios de la venta. Sin plataforma es la de mostrador (margen 0, sin
-	// excepciones), que es el caso de todos los días y no toca la base ni una vez más.
-	lista, err := s.listaDePrecios(ctx, cmd.DeliveryPlatformID)
 	if err != nil {
 		return nil, err
 	}

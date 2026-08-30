@@ -81,3 +81,43 @@ func TestCorteBreakdown(t *testing.T) {
 		}
 	}
 }
+
+// Subtotal por plataforma: lo que entró por Uber, por Didi y por Rappi, cada uno sumando sus DOS
+// métodos (en línea y efectivo).
+//
+// Por método solo se ve la mitad de cada plataforma, y para saber cuánto facturó Uber en el turno
+// hay que sumar dos renglones a mano — que es justo donde alguien se equivoca cuando está cerrando
+// caja a las once de la noche. Es también el número con el que se concilia contra el depósito que
+// la plataforma manda después.
+func TestCorteSubtotalPorPlataforma(t *testing.T) {
+	methods := []methodExpected{
+		{name: "Efectivo", expected: mustDec("500"), tips: decimal.Zero, duenoDelFondo: true},
+		{name: "Uber Eats en línea", expected: mustDec("270"), tips: decimal.Zero, plataforma: "Uber Eats"},
+		{name: "Uber Eats efectivo", expected: mustDec("135"), tips: decimal.Zero, plataforma: "Uber Eats"},
+		{name: "Didi en línea", expected: mustDec("81"), tips: decimal.Zero, plataforma: "Didi"},
+		{name: "Rappi en línea", expected: decimal.Zero, tips: decimal.Zero, plataforma: "Rappi"},
+	}
+
+	b := corteBreakdown(mustDec("500"), methods, nil)
+
+	if len(b.Plataformas) != 2 {
+		t.Fatalf("plataformas = %d, quiere 2 (Rappi no vendió y no se lista): %+v", len(b.Plataformas), b.Plataformas)
+	}
+	if b.Plataformas[0].Platform != "Uber Eats" || !b.Plataformas[0].Total.Equal(mustDec("405")) {
+		t.Fatalf("Uber = %+v, quiere 405 (270 en línea + 135 efectivo)", b.Plataformas[0])
+	}
+	if b.Plataformas[1].Platform != "Didi" || !b.Plataformas[1].Total.Equal(mustDec("81")) {
+		t.Fatalf("Didi = %+v, quiere 81", b.Plataformas[1])
+	}
+}
+
+// Un turno sin ventas de plataforma no muestra la sección: un renglón en $0 por cada plataforma
+// configurada llena el corte de ruido justo donde se busca un descuadre.
+func TestCorteSinPlataformasNoListaNada(t *testing.T) {
+	methods := []methodExpected{
+		{name: "Efectivo", expected: mustDec("100"), tips: decimal.Zero, duenoDelFondo: true},
+	}
+	if b := corteBreakdown(mustDec("100"), methods, nil); len(b.Plataformas) != 0 {
+		t.Fatalf("sin ventas de plataforma no debe listarse nada, listó %+v", b.Plataformas)
+	}
+}
