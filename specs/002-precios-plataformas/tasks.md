@@ -36,26 +36,26 @@ RLS y grants no aplican. Lo que dependa de eso se prueba con test de integració
 
 ### Respaldo, antes de nada
 
-- [ ] T001 Tomar respaldo de producción a `backups/prod/` siguiendo [backups/README.md](../../backups/README.md) y **verificar el sha256 en los dos lados**. Un respaldo no comparado no cuenta
-- [ ] T002 Restaurar ese respaldo en una base `gatobobah_ensayo` local y **crear ahí una segunda empresa de prueba**: sin ella la migración pasa verde y rompe en producción
+- [x] T001 Tomar respaldo de producción a `backups/prod/` siguiendo [backups/README.md](../../backups/README.md) y **verificar el sha256 en los dos lados**. Un respaldo no comparado no cuenta
+- [x] T002 Restaurar ese respaldo en una base `gatobobah_ensayo` local y **crear ahí una segunda empresa de prueba**: sin ella la migración pasa verde y rompe en producción
 
 ### Migración 0037 — precios de plataforma
 
-- [ ] T003 `price_markup_pct numeric(5,2) not null default 0` con check 0..500 en `delivery_platforms`, y sembrar 35.00 en Didi/Uber Eats/Rappi (0 en Propio) **solo para las empresas que existen hoy**
-- [ ] T004 Crear `product_platform_prices` y `modifier_option_platform_prices` según [data-model.md](data-model.md): FK sin cascade hacia `delivery_platforms`, `updated_by bigint not null`, checks, índices `(platform_id, …)` y `(company_id)`, triggers `set_updated_at`, RLS con `tenant_isolation`, y **los dos `grant … to gatobobah_app`**
+- [x] T003 `price_markup_pct numeric(5,2) not null default 0` con check 0..500 en `delivery_platforms`, y sembrar 35.00 en Didi/Uber Eats/Rappi (0 en Propio) **solo para las empresas que existen hoy**
+- [x] T004 Crear `product_platform_prices` y `modifier_option_platform_prices` según [data-model.md](data-model.md): FK sin cascade hacia `delivery_platforms`, `updated_by bigint not null`, checks, índices `(platform_id, …)` y `(company_id)`, triggers `set_updated_at`, RLS con `tenant_isolation`, y **los dos `grant … to gatobobah_app`**
 
 ### Migración 0037 — `payment_methods` per-tenant (la parte con dinero)
 
-- [ ] T005 Antes de escribir el SQL, correr `select company_id, name from delivery_platforms order by 1,2` contra producción: el alta de los seis métodos depende de qué plataformas tiene cada empresa
-- [ ] T006 `add column company_id bigint` **nullable**, backfill a la empresa con `slug='gatobobah'` (el criterio que ya usa `0023`, no `min(created_at)`), con `raise exception` si sale NULL
-- [ ] T007 **Cambiar `unique(name)` por `unique(company_id, name)` AQUÍ**, antes de copiar nada. Al revés, la migración aborta con `23505` en la primera empresa extra — y no se ve en local, donde no hay una segunda
-- [ ] T008 Copiar los métodos por empresa con una columna temporal `src_id`, **sin listar `id`**: es `generated always as identity` y listarlo da `428C9` sin `overriding system value`
-- [ ] T009 Remapear `order_payments`, `expense_payments` y `register_session_totals` con join por `(company_id, src_id)`, **nunca por nombre**: `citext` ignora mayúsculas pero **no** acentos ni espacios, y el match de hoy funciona solo porque las copias son idénticas byte a byte
-- [ ] T010 Enumerar las tablas dependientes desde `pg_constraint` en vez de una lista fija de tres, y verificar **antes y después**: mismo `count(*)` por tabla, misma `sum(amount)`, mismo número de métodos por empresa, y cero filas apuntando al método de otra. Cualquier diferencia → `raise exception` y la transacción entera se va para atrás
-- [ ] T011 `set not null` + `set default current_setting('app.company_id', true)::bigint`, `create index payment_methods_company on payment_methods (company_id)` (el `grant` de `0024` **ya existe**; el índice no), RLS + política `tenant_isolation`, y `drop column src_id`
-- [ ] T012 `add column delivery_platform_id smallint` nullable sin `on delete`, más `unique (id, company_id)` en `delivery_platforms` y **FK compuesta** `(delivery_platform_id, company_id)`. Aquí sí vale la pena, a diferencia del riesgo residual del resto: esta columna **agrupa dinero real en el corte** y una fila cruzada rompe el subtotal sin dar error
-- [ ] T013 Renombrar los tres métodos a "en línea" y dar de alta los tres "efectivo" (`affects_cash_drawer=true`, `auto_declare=false`), **después del remapeo y para todas las empresas**, con `sort_key` 400/450, 500/550, 600/650 para que cada par no quede en orden indeterminado. El `delivery_platform_id` sale de `delivery_platforms` **de esa misma empresa**
-- [ ] T014 Escribir el `-- +goose Down` completo (remapear de vuelta por `src_id`, borrar copias y los tres nuevos, renombrar, revertir el unique, quitar columnas y RLS) **con el comentario de que solo es válido hasta el primer cobro con un método nuevo**: después, las FK `no action` lo hacen fallar y revertir pasa a ser un data-fix a mano con rollback gemelo
+- [x] T005 Antes de escribir el SQL, correr `select company_id, name from delivery_platforms order by 1,2` contra producción: el alta de los seis métodos depende de qué plataformas tiene cada empresa
+- [x] T006 `add column company_id bigint` **nullable**, backfill a la empresa con `slug='gatobobah'` (el criterio que ya usa `0023`, no `min(created_at)`), con `raise exception` si sale NULL
+- [x] T007 **Cambiar `unique(name)` por `unique(company_id, name)` AQUÍ**, antes de copiar nada. Al revés, la migración aborta con `23505` en la primera empresa extra — y no se ve en local, donde no hay una segunda
+- [x] T008 Copiar los métodos por empresa con una columna temporal `src_id`, **sin listar `id`**: es `generated always as identity` y listarlo da `428C9` sin `overriding system value`
+- [x] T009 Remapear `order_payments`, `expense_payments` y `register_session_totals` con join por `(company_id, src_id)`, **nunca por nombre**: `citext` ignora mayúsculas pero **no** acentos ni espacios, y el match de hoy funciona solo porque las copias son idénticas byte a byte
+- [x] T010 Enumerar las tablas dependientes desde `pg_constraint` en vez de una lista fija de tres, y verificar **antes y después**: mismo `count(*)` por tabla, misma `sum(amount)`, mismo número de métodos por empresa, y cero filas apuntando al método de otra. Cualquier diferencia → `raise exception` y la transacción entera se va para atrás
+- [x] T011 `set not null` + `set default current_setting('app.company_id', true)::bigint`, `create index payment_methods_company on payment_methods (company_id)` (el `grant` de `0024` **ya existe**; el índice no), RLS + política `tenant_isolation`, y `drop column src_id`
+- [x] T012 `add column delivery_platform_id smallint` nullable sin `on delete`, más `unique (id, company_id)` en `delivery_platforms` y **FK compuesta** `(delivery_platform_id, company_id)`. Aquí sí vale la pena, a diferencia del riesgo residual del resto: esta columna **agrupa dinero real en el corte** y una fila cruzada rompe el subtotal sin dar error
+- [x] T013 Renombrar los tres métodos a "en línea" y dar de alta los tres "efectivo" (`affects_cash_drawer=true`, `auto_declare=false`), **después del remapeo y para todas las empresas**, con `sort_key` 400/450, 500/550, 600/650 para que cada par no quede en orden indeterminado. El `delivery_platform_id` sale de `delivery_platforms` **de esa misma empresa**
+- [x] T014 Escribir el `-- +goose Down` completo (remapear de vuelta por `src_id`, borrar copias y los tres nuevos, renombrar, revertir el unique, quitar columnas y RLS) **con el comentario de que solo es válido hasta el primer cobro con un método nuevo**: después, las FK `no action` lo hacen fallar y revertir pasa a ser un data-fix a mano con rollback gemelo
 
 ### El dinero que el desdoble rompe si no se toca el código
 
@@ -74,13 +74,13 @@ RLS y grants no aplican. Lo que dependa de eso se prueba con test de integració
 
 - [ ] T022 **[test]** [P] Test de que la pantalla de cobro arma sus métodos desde la API y decide el default y la rama de efectivo por `kind`/`affectsCashDrawer`, no por id
 - [ ] T023 Quitar `METHODS` con ids quemados de [web/src/features/pos/CheckoutSheet.tsx](../../web/src/features/pos/CheckoutSheet.tsx): salen de `posApi.paymentMethods()`. Reemplazar `useState(2)` y los dos `methodId === 1` por decisiones sobre `kind`. **Va en el mismo release que la migración**: la empresa 1 conserva sus ids y no lo nota, pero cualquier otra recibe ids nuevos y se queda sin poder cobrar
-- [ ] T024 Corregir el harness: `paymentMethodID` resuelve por `name` **y `company_id`** ([server/internal/integration/cash_test.go](../../server/internal/integration/cash_test.go)). Con dos empresas habrá dos filas "Efectivo" y hoy `QueryRow` toma la que devuelva el plan, sin error
+- [x] T024 Corregir el harness: `paymentMethodID` resuelve por `name` **y `company_id`** ([server/internal/integration/cash_test.go](../../server/internal/integration/cash_test.go)). Con dos empresas habrá dos filas "Efectivo" y hoy `QueryRow` toma la que devuelva el plan, sin error
 
 ### Verificación del esquema
 
-- [ ] T025 **[test]** Test de integración que, **bajo `appRoleStore`** (rol `gatobobah_app`, RLS real), hace `select`/`insert` sobre las tablas nuevas. Es el que atrapa un `grant` faltante y corre en CI
-- [ ] T026 **[test]** Test de integración de aislamiento: una empresa no ve los precios de plataforma ni los métodos de pago de la otra, y no puede insertar marcando el `company_id` ajeno
-- [ ] T027 Aplicar la migración sobre el ensayo (con sus dos empresas), correr el Down y el Up otra vez. Luego `make sqlc`; ojo con `sqlc vet`, que valida contra la Postgres local y falla si no está migrada
+- [x] T025 **[test]** Test de integración que, **bajo `appRoleStore`** (rol `gatobobah_app`, RLS real), hace `select`/`insert` sobre las tablas nuevas. Es el que atrapa un `grant` faltante y corre en CI
+- [x] T026 **[test]** Test de integración de aislamiento: una empresa no ve los precios de plataforma ni los métodos de pago de la otra, y no puede insertar marcando el `company_id` ajeno
+- [x] T027 Aplicar la migración sobre el ensayo (con sus dos empresas), correr el Down y el Up otra vez. Luego `make sqlc`; ojo con `sqlc vet`, que valida contra la Postgres local y falla si no está migrada
 - [ ] T028 **Pasar el subagente `db-architect` sobre la migración final** antes de aplicarla en producción
 
 **Checkpoint**: esquema y dinero listos, verificados con dos empresas y bajo el rol de app.
@@ -104,7 +104,7 @@ los precios sean los de esa lista, cobrar y confirmar que el ticket impreso los 
 
 ### Datos y servicio
 
-- [ ] T033 [US1] Escribir `server/queries/platform_prices.sql`: `GetPlatformByID` (bajo RLS), `GetProductPlatformPrices` y `GetOptionPlatformPrices` por lista de ids, y correr `make sqlc`
+- [~] T033 [US1] (queries escritas y generadas; falta cablearlas) Escribir `server/queries/platform_prices.sql`: `GetPlatformByID` (bajo RLS), `GetProductPlatformPrices` y `GetOptionPlatformPrices` por lista de ids, y correr `make sqlc`
 - [ ] T034 **[test]** [US1] Test de integración: `Create` con `deliveryPlatformId` **inexistente en la empresa** devuelve `ErrPlatformNotFound`, no crea la orden y **no** cae a margen 0
 - [ ] T035 **[test]** [US1] Test de integración: una venta con plataforma valúa cada línea con el precio de esa lista (calculado y manual), y `order_lines.unit_price` guarda ese precio, no el base
 - [ ] T036 [US1] En `server/internal/app/orders.go`, resolver la plataforma bajo RLS antes de armar el pedido y construir el mapa de `PricedProduct`/`PricedOption` con el precio efectivo ya redondeado

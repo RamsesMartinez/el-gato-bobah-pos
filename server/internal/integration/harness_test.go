@@ -197,3 +197,17 @@ func abrirCajaPrincipal(t *testing.T, st *store.Store, por int64) int64 {
 	}
 	return sessID
 }
+
+// platformID resuelve una plataforma de reparto DENTRO de una empresa. El filtro por empresa no es
+// decorativo: delivery_platforms es per-tenant y cada empresa tiene su propia "Uber Eats", así que
+// buscar solo por nombre devolvería la del tenant equivocado sin dar error.
+func platformID(t *testing.T, st *store.Store, companyID int64, name string) int16 {
+	t.Helper()
+	var id int16
+	if err := st.Pool.QueryRow(context.Background(),
+		`select id from delivery_platforms where company_id = $1 and name = $2`,
+		companyID, name).Scan(&id); err != nil {
+		t.Fatalf("platformID(%d, %s): %v", companyID, name, err)
+	}
+	return id
+}
