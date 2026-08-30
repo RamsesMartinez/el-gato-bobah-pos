@@ -19,8 +19,8 @@ type MenuDoc struct {
 	// cambiar de plataforma tiene que ser instantáneo, y una llamada por cambio haría lento justo
 	// el momento que esta feature vino a acelerar.
 	//
-	// La llave del caché sigue siendo pos:menu:<companyID>, sin la plataforma: con ella serían
-	// cuatro entradas y cuatro invalidaciones para el mismo catálogo.
+	// La llave del caché no lleva la plataforma —solo la empresa y la versión del documento—: con
+	// ella serían cuatro entradas y cuatro invalidaciones para el mismo catálogo.
 	Platforms []MenuPlatform `json:"platforms"`
 	// Solo las EXCEPCIONES, por plataforma. Un producto ausente usa base × (1 + margen).
 	PlatformPrices    map[int16]map[int64]decimal.Decimal `json:"platformPrices"`
