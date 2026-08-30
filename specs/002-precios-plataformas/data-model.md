@@ -26,11 +26,10 @@ en uno de $600 y el error se ve hasta el ticket.
 **Por qué default 0 y no 35**: el default aplica a las plataformas que alguien cree después, y una
 plataforma nueva que empieza cobrando 35% más sin que nadie lo pidiera es una sorpresa cara.
 
-**[rev] El `update` de la semilla corre como owner, así que RLS NO aplica** y siembra las filas de
-todas las empresas — que es justo lo buscado hoy. Hay que decirlo en el comentario o el siguiente
-lector asume que está acotado al tenant. **Y no cubre empresas futuras**: `provisionCompany` no
-siembra lookups per-tenant, así que una empresa creada después toma el default 0. FR-003 se cumple
-para el tenant actual; no es una garantía general.
+**[rev] El `update` de la semilla corre como owner, así que RLS NO aplica** y alcanza a las empresas
+que existen hoy. Hay que decirlo en el comentario o el siguiente lector asume que está acotado al
+tenant. **Una empresa creada después toma el default 0, y eso es lo correcto**: el margen de
+plataforma se define cuando ese negocio hace su propia vinculación con Uber/DiDi/Rappi, no antes.
 
 **Sin desbordamiento** (verificado con el catálogo real): al tope de 500%, el producto más caro
 (434.98) llega a 2,609.88 y el delta más caro (1,510.00) a 9,060.00. `numeric(10,2)` topa en
@@ -91,34 +90,92 @@ Lo mismo para los extras, con las mismas correcciones.
 - **`>= 0` aquí y `> 0` en productos**: un extra sin costo ("sin cebolla") es normal y su delta es 0;
   un producto en $0 no lo es. Son reglas distintas a propósito.
 
-## 3b. Métodos de pago: cada plataforma se desdobla en dos
+## 3b. Métodos de pago: per-tenant, ligados a su plataforma, y desdoblados en dos
 
-Los repartidores de las tres plataformas **a veces pagan en efectivo en el mostrador**. Ese dinero
-entra al cajón físico, y los tres métodos actuales tienen `affects_cash_drawer = false`: cobrarlo
-así deja un sobrante que nadie sabe explicar al cerrar el turno.
+Tres cambios que van juntos, y el más delicado de la feature: `payment_methods` es la única tabla
+de esta migración que ya tiene **dinero real apuntándole**.
 
-Los tres métodos existentes (ids 4, 5, 6) tienen **0 pagos reales** —solo aparecen en $0 en dos
-cortes viejos de la empresa de pruebas—, así que se pueden renombrar sin romper histórico.
+### Por qué per-tenant (hallazgo C1 del análisis)
 
-| Método | `kind` | `affects_cash_drawer` | `auto_declare` |
-|---|---|---|---|
-| Didi en línea *(renombra id 4)* | `plataforma` | `false` | `true` |
-| Uber Eats en línea *(renombra id 5)* | `plataforma` | `false` | `true` |
-| Rappi en línea *(renombra id 6)* | `plataforma` | `false` | `true` |
-| **Didi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
-| **Uber Eats efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
-| **Rappi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** |
+`payment_methods` es **global** y `delivery_platforms` es **por empresa**, así que hoy no existe
+forma de contestar "¿qué métodos son de Uber Eats?" salvo comparando nombres — frágil y en silencio:
+renombrar una plataforma rompe la validación del cobro sin que nada avise.
+
+La tabla pasa a ser per-tenant y gana `delivery_platform_id` nullable. Con las dos tablas del mismo
+lado de la frontera, la liga es una FK de verdad.
+
+Beneficio que ya se necesitaba: cada empresa puede tener sus propios métodos. Hoy las dos comparten
+los 7, así que "Tarjeta débito" no se puede desactivar en una sin desactivarla en la otra.
+
+### Lo que hay que mover (medido, no estimado)
+
+| Tabla que apunta | Filas empresa 1 | Filas empresa 2 |
+|---|---|---|
+| `order_payments` | 55 | **1** (pedido #1, $159 en efectivo, venta real) |
+| `register_session_totals` | 15 | 0 |
+| `expense_payments` | 2 | 0 |
+
+El único remapeo con dinero es esa fila de la empresa 2. Se remapea **por nombre dentro de la
+transacción**, y la migración verifica que no quede ninguna fila apuntando a un método de otra
+empresa antes de terminar.
+
+### El orden de la migración
+
+1. `add column company_id bigint` **nullable** (sin default todavía).
+2. Backfill: las 7 filas existentes quedan en la empresa **más antigua** (la que las venía usando).
+3. Por cada otra empresa, **copiar** las 7 con su `company_id`, conservando `kind`,
+   `affects_cash_drawer`, `auto_declare` y `sort_key`.
+4. **Remapear** `order_payments`, `expense_payments` y `register_session_totals`: cada fila apunta
+   al método **de su propia empresa**, emparejado por nombre.
+5. Verificar con un `select` que no queda ni una fila cruzada; si queda, `raise exception` y la
+   transacción entera se va para atrás.
+6. `set not null` + `set default current_setting('app.company_id', true)::bigint`.
+7. **Reemplazar `unique(name)` por `unique(company_id, name)`.** Es obligatorio: dejarlo global
+   impediría que dos empresas tengan su propio "Efectivo" — exactamente el bug de
+   `categories_name_scope` que arregló la migración 0036.
+8. `add column delivery_platform_id smallint references delivery_platforms(id)`, nullable, **sin
+   `on delete`**: borrar una plataforma no debe llevarse un método al que apuntan pagos.
+9. RLS + política `tenant_isolation` + **grant a `gatobobah_app`** (la tabla no lo tenía porque
+   `0024` la cubrió como global; al volverse per-tenant necesita la política y hay que revisar que
+   el grant siga vigente).
+
+### Los seis métodos de plataforma
+
+Los tres actuales tienen **0 pagos reales** —solo aparecen en $0 en dos cortes viejos de la empresa
+de pruebas—, así que se renombran sin romper histórico.
+
+| Método | `kind` | `affects_cash_drawer` | `auto_declare` | `delivery_platform_id` |
+|---|---|---|---|---|
+| Didi en línea *(renombra)* | `plataforma` | `false` | `true` | Didi |
+| Uber Eats en línea *(renombra)* | `plataforma` | `false` | `true` | Uber Eats |
+| Rappi en línea *(renombra)* | `plataforma` | `false` | `true` | Rappi |
+| **Didi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** | Didi |
+| **Uber Eats efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** | Uber Eats |
+| **Rappi efectivo** *(nuevo)* | `plataforma` | **`true`** | **`false`** | Rappi |
 
 - **`kind` sigue siendo `plataforma` también en los de efectivo**: describe por dónde entró la venta,
   no en qué se pagó. Verificado que **nada en el código ramifica por `kind`** — todo decide con
   `affects_cash_drawer`, que es el campo que mueve el arqueo.
-- **`auto_declare = false` en los de efectivo** es obligatorio, no preferencia: son billetes que se
-  cuentan. `SetPaymentMethodAutoDeclare` ya rechaza autodeclarar un método que toca el cajón, así
-  que sembrarlo en `true` sería incoherente con una regla que el sistema ya defiende.
-- **`payment_methods` es una tabla GLOBAL** (sin `company_id`): el cambio aplica a todas las
-  empresas. Hoy hay una real, pero hay que decirlo en el comentario de la migración.
-- Renombrar y no borrar: los ids se conservan, así que los dos cortes viejos que los referencian
-  siguen siendo válidos.
+- **`auto_declare = false` en los de efectivo** no es preferencia: son billetes que se cuentan.
+  `SetPaymentMethodAutoDeclare` ya rechaza autodeclarar un método que toca el cajón, así que
+  sembrarlo en `true` contradiría una regla que el sistema ya defiende.
+- Los métodos que **no** son de plataforma dejan `delivery_platform_id` en NULL.
+
+### Una empresa nueva NO recibe nada de esto automáticamente
+
+La migración siembra el margen y los seis métodos **solo para las empresas que existen hoy**. Una
+empresa creada después nace sin métodos de plataforma y con margen 0, **a propósito**: vender por
+Uber requiere que ese negocio haya hecho su propia vinculación con la plataforma, y el dueño del
+sistema le da de alta sus métodos cuando lo pide. Sembrarlos por default le pondría a un negocio
+nuevo tres formas de cobro que no tiene contratadas, y un margen del 35% que nadie decidió.
+
+Es coherente con `provisionCompany`, que tampoco siembra lookups per-tenant.
+
+### Subtotal por plataforma en el corte (hallazgo H4)
+
+Con el desdoble, cada plataforma ocupa dos renglones. El cierre los **agrupa** y muestra el subtotal
+de la plataforma además de sus dos renglones. El agrupamiento sale de `delivery_platform_id`, no de
+comparar nombres — es el mismo vínculo que ya se necesitaba para C1.
 
 ## 4. [rev] RLS **y grants** — el hallazgo crítico
 

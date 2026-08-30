@@ -181,6 +181,21 @@ verificar que persiste ahí y que no cambia ni en mostrador ni en las demás pla
   dejar que un cajero los edite sin perder el rastro de una captura equivocada.
 - **FR-022**: El sistema DEBE rechazar una venta cuya plataforma no pertenezca a la empresa de la
   sesión, en lugar de cobrarla a precio de mostrador.
+- **FR-023**: El sistema DEBE rechazar una venta cuyo método de pago no pertenezca a la empresa de la
+  sesión. Hoy no se valida: un método ajeno entra por la llave foránea y ese pago **desaparece** del
+  corte y de los reportes, dejando un faltante por el monto exacto.
+- **FR-024**: Cada empresa DEBE tener sus propios métodos de pago, ligados a su plataforma cuando
+  corresponda. Es lo que permite saber qué métodos son de Uber sin compararlos por nombre, y lo que
+  impide que el administrador de una empresa cambie la configuración de cobro de otra.
+- **FR-025**: Una empresa recién creada DEBE poder cobrar desde el primer minuto, con sus métodos
+  base ya disponibles. Los métodos de plataforma no: esos se dan de alta cuando ese negocio hace su
+  propia vinculación con la plataforma.
+- **FR-026**: El fondo de caja y los movimientos de efectivo DEBEN contarse **una sola vez** en el
+  corte, aunque existan varios métodos que entren al cajón. Sumarlos por método reporta un faltante
+  que no existe.
+- **FR-027**: La pantalla de cobro DEBE tomar los métodos de pago del servidor y distinguir el
+  efectivo por su naturaleza, no por un identificador fijo. Con identificadores fijos, cualquier
+  empresa que no sea la primera se queda sin poder cobrar.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -204,8 +219,8 @@ verificar que persiste ahí y que no cambia ni en mostrador ni en las demás pla
   de venta y sin perder el ticket en curso.
 - **SC-004**: Un precio corregido no se vuelve a corregir: la siguiente venta ya lo trae.
 - **SC-005**: El total de mostrador de un turno no cambia por haber vendido por plataformas.
-- **SC-006**: Al cerrar el turno se puede leer, sin hacer cuentas, cuánto se cobró por cada
-  plataforma.
+- **SC-006**: Al cerrar el turno se lee el subtotal de cada plataforma sin sumar nada a mano, y por
+  debajo el desglose de cuánto entró en línea y cuánto en efectivo.
 - **SC-007**: Vender el mismo producto en mostrador y en las 3 plataformas descuenta exactamente el
   mismo inventario en los 4 casos.
 
