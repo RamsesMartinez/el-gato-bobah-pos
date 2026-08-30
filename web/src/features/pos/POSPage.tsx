@@ -11,6 +11,7 @@ import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerGrabber } from '../../
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
 import { useMenu } from '../../hooks/useMenu';
+import { useMenuEvents } from '../../hooks/useMenuEvents';
 import { usePopular } from '../../hooks/usePopular';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
@@ -55,6 +56,10 @@ export function POSPage() {
   const { data: modifierDefaults } = useModifierDefaults();
   const { ref, width } = useContainerWidth<HTMLDivElement>();
   const wide = width >= 900;
+
+  // Un precio que corrigieron en otra tablet tiene que llegar a esta ANTES de cobrar, no cinco
+  // minutos después: el servidor cobra por la lista, no por lo que muestra la pantalla.
+  useMenuEvents();
 
   const palette = useUiStore((s) => s.palette);
   const topCount = useUiStore((s) => s.topCount);
