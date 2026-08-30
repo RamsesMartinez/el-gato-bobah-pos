@@ -186,3 +186,8 @@ values
   ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
   ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
 on conflict (company_id, name) do nothing;
+
+-- name: GetBusinessTimezone :one
+-- Zona horaria del local, para calcular la FECHA de negocio. La base guarda instantes en UTC; la
+-- fecha es una decisión de calendario y depende de dónde está el negocio.
+select timezone from business_settings limit 1;

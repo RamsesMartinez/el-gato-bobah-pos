@@ -174,7 +174,13 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
-	bizDate := pgtype.Date{Time: s.now(), Valid: true}
+	// La fecha de negocio la HEREDA del turno, no la recalcula. Dos razones:
+	//
+	// 1. El turno ya la resolvió en la zona del local, así que la venta no vuelve a consultarla.
+	// 2. Un turno que cruza la medianoche (abre 11pm, cierra 3am) numera corrido en vez de
+	//    partirse: recalcular por reloj reiniciaba el folio a mitad del turno y dejaba dos
+	//    tickets #1 en la misma noche.
+	bizDate := sess.BusinessDate
 	var orderID int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		num, err := q.NextDailyNumber(ctx, bizDate)
