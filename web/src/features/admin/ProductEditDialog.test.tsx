@@ -43,21 +43,21 @@ describe('cambiar la categoría de un producto', () => {
 
   // Hasta ahora la categoría solo se fijaba al crear el producto: reacomodar el menú exigía entrar
   // a la base a mano.
+  // El selector es un Picker táctil, no un <select> nativo: en una tablet de 7" el desplegable del
+  // sistema tapa la pantalla con renglones de 20px.
   it('el selector arranca en la categoría actual del producto', async () => {
     montar();
-    const sel = (await screen.findByRole('combobox')) as HTMLSelectElement;
-    // Antes de que lleguen las categorías ya muestra la actual, no un campo vacío.
-    expect(sel.value).toBe('88');
-    await waitFor(() => expect(screen.getByRole('option', { name: /Bebidas/ })).toBeInTheDocument());
-    expect(sel.value).toBe('88');
+    // Antes de que lleguen las categorías ya muestra la actual, no un botón vacío.
+    expect(await screen.findByRole('button', { name: /Snacks/ })).toBeInTheDocument();
   });
 
   it('guardar manda la categoría elegida', async () => {
     montar();
-    const sel = await screen.findByRole('combobox');
-    await waitFor(() => expect(screen.getByRole('option', { name: /Bebidas/ })).toBeInTheDocument());
+    // Un tap abre la hoja; otro elige. Las subcategorías se leen con su padre para desambiguar.
+    fireEvent.click(await screen.findByRole('button', { name: /Snacks/ }));
+    fireEvent.click(await screen.findByText('Bebidas'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Bebidas/ })).toBeInTheDocument());
 
-    fireEvent.change(sel, { target: { value: '40' } });
     fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
 
     await waitFor(() => expect(api.updateProduct).toHaveBeenCalled());
@@ -68,7 +68,7 @@ describe('cambiar la categoría de un producto', () => {
   // cambio de precio hecho en la misma pasada se perdería en silencio.
   it('la categoría no reemplaza al resto de los campos', async () => {
     montar();
-    await screen.findByRole('combobox');
+    await screen.findByRole('button', { name: /Snacks/ });
     fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
     await waitFor(() => expect(api.updateProduct).toHaveBeenCalled());
     expect(api.updateProduct.mock.calls[0][1]).toMatchObject({

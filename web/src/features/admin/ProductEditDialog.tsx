@@ -10,7 +10,8 @@ import { Field } from '../../components/ui/field';
 import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, type AdminProduct } from '../../api/admin';
+import { adminApi, type AdminProduct, type Category } from '../../api/admin';
+import { Picker, type PickerOption } from '../../components/Picker';
 import { useUiStore } from '../../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
 
@@ -71,23 +72,15 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
                 <Field label="Categoría">
-                  {/* Nativo a propósito: en una tablet abre el selector del sistema, que es más
-                      cómodo con el dedo que una lista propia y no se sale de la pantalla. */}
-                  <select
-                    value={edit.categoryId || ''}
-                    onChange={(e) => setEdit({ ...edit, categoryId: Number(e.target.value) })}
-                    style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}
-                  >
-                    {/* Mientras llegan las categorías se pinta la actual: un <select> cuyo valor
-                        no coincide con ninguna opción se ve VACÍO, y un campo que parpadea en
-                        blanco sobre el producto que estás editando parece que lo borró. */}
-                    {categorias.length === 0 && <option value={edit.categoryId}>{edit.category}</option>}
-                    {categorias.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.parentId ? '   ' : ''}{c.name}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
+                      sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
+                  <Picker
+                    value={String(edit.categoryId || '')}
+                    onChange={(v) => setEdit({ ...edit, categoryId: Number(v) })}
+                    options={opcionesDeCategoria(categorias, edit)}
+                    placeholder="Sin categoría"
+                    title="Mover a la categoría"
+                  />
                 </Field>
                 <HStack justify="space-between">
                   <Text>Favorito</Text>
@@ -127,4 +120,16 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// Las subcategorías se leen con su padre ("Bebidas › Calientes") para desambiguar dos "Calientes".
+// Mientras el catálogo no llega se pinta la categoría ACTUAL del producto: un picker vacío sobre el
+// producto que estás editando parece que lo borró.
+function opcionesDeCategoria(cats: Category[], producto: AdminProduct): PickerOption[] {
+  if (cats.length === 0) return [{ value: String(producto.categoryId), label: producto.category }];
+  const nombrePorId = new Map(cats.map((c) => [c.id, c.name]));
+  return cats.map((c) => ({
+    value: String(c.id),
+    label: c.parentId ? `${nombrePorId.get(c.parentId) ?? '—'} › ${c.name}` : c.name,
+  }));
 }

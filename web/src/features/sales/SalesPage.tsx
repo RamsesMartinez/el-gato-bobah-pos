@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { salesApi, type SalesPreset, type SalesSort, type SaleRow } from '../../api/sales';
 import { Page } from '../../components/Page';
+import { Picker, type PickerOption } from '../../components/Picker';
 import { SortHead } from '../../components/SortHead';
 import { money } from '../../utils/format';
 import { SaleDetailDialog } from './SaleDetailDialog';
@@ -17,8 +18,10 @@ const PRESETS: Array<{ id: SalesPreset; label: string }> = [
   { id: 'mes', label: 'Mes' },
 ];
 
-const ESTADOS = ['', 'abierta', 'lista', 'entregada', 'cancelada', 'reembolsada'];
-const TIPOS = ['', 'mostrador', 'para_llevar', 'domicilio'];
+const OPCIONES_ESTADO: PickerOption[] = ['abierta', 'lista', 'entregada', 'cancelada', 'reembolsada']
+  .map((s) => ({ value: s, label: etiquetaEstado(s) }));
+const OPCIONES_TIPO: PickerOption[] = ['mostrador', 'para_llevar', 'domicilio']
+  .map((s) => ({ value: s, label: etiquetaTipo(s) }));
 
 const PAGE_SIZE = 20;
 
@@ -88,18 +91,18 @@ export function SalesPage() {
 
       <SalesSummaryTiles resumen={resumen.data} cargando={resumen.isLoading} />
 
+      {/* Pickers táctiles, no <select> nativos: en una tablet de 7" el desplegable del sistema
+          tapa la pantalla con renglones de 20px. Ver la constitución. */}
       <HStack gap={2} my={3} flexWrap="wrap">
-        <Box minW="170px">
-          <select value={status} onChange={(e) => cambiar(setStatus)(e.target.value)}
-            style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}>
-            {ESTADOS.map((s) => <option key={s} value={s}>{s === '' ? 'Todos los estados' : etiquetaEstado(s)}</option>)}
-          </select>
+        <Box flex="1 1 170px" minW="150px" maxW="240px">
+          <Picker size="sm" value={status} onChange={cambiar(setStatus)}
+            options={OPCIONES_ESTADO} placeholder="Todos los estados"
+            title="Filtrar por estado" clearable clearLabel="Todos los estados" />
         </Box>
-        <Box minW="170px">
-          <select value={serviceType} onChange={(e) => cambiar(setServiceType)(e.target.value)}
-            style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}>
-            {TIPOS.map((s) => <option key={s} value={s}>{s === '' ? 'Todos los tipos' : etiquetaTipo(s)}</option>)}
-          </select>
+        <Box flex="1 1 170px" minW="150px" maxW="240px">
+          <Picker size="sm" value={serviceType} onChange={cambiar(setServiceType)}
+            options={OPCIONES_TIPO} placeholder="Todos los tipos"
+            title="Filtrar por tipo de venta" clearable clearLabel="Todos los tipos" />
         </Box>
       </HStack>
 
