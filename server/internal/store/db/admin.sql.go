@@ -113,10 +113,10 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.category, q.group_count, q.override_count, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.category, q.category_id, q.group_count, q.override_count, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
-         p.available_from, p.available_until, c.name as category,
+         p.available_from, p.available_until, c.name as category, p.category_id,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -171,6 +171,7 @@ type AdminListProductsRow struct {
 	AvailableFrom  pgtype.Date     `json:"available_from"`
 	AvailableUntil pgtype.Date     `json:"available_until"`
 	Category       string          `json:"category"`
+	CategoryID     int64           `json:"category_id"`
 	GroupCount     int32           `json:"group_count"`
 	OverrideCount  int32           `json:"override_count"`
 	Total          int64           `json:"total"`
@@ -210,6 +211,7 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.AvailableFrom,
 			&i.AvailableUntil,
 			&i.Category,
+			&i.CategoryID,
 			&i.GroupCount,
 			&i.OverrideCount,
 			&i.Total,
@@ -322,6 +324,38 @@ func (q *Queries) AdminUpdateProduct(ctx context.Context, arg AdminUpdateProduct
 		arg.AvailableUntil,
 	)
 	return err
+}
+
+const adminUpdateProductCategory = `-- name: AdminUpdateProductCategory :exec
+update products set category_id = $2, updated_at = now() where id = $1
+`
+
+type AdminUpdateProductCategoryParams struct {
+	ID         int64 `json:"id"`
+	CategoryID int64 `json:"category_id"`
+}
+
+// Va aparte del update general para que la categoría solo se toque cuando de verdad se pidió: una
+// petición sin categoría no debe mover el producto, y un cliente viejo que no manda el campo no
+// puede terminar mandándolos todos a la categoría 0.
+func (q *Queries) AdminUpdateProductCategory(ctx context.Context, arg AdminUpdateProductCategoryParams) error {
+	_, err := q.db.Exec(ctx, adminUpdateProductCategory, arg.ID, arg.CategoryID)
+	return err
+}
+
+const categoryExists = `-- name: CategoryExists :one
+select exists(select 1 from categories where id = $1)
+`
+
+// Comprobación de PERTENENCIA bajo RLS antes de mover un producto de categoría. La llave foránea
+// no alcanza: sus chequeos saltan RLS por diseño, así que un category_id de otra empresa entraría
+// sin protestar y el producto desaparecería de su propio menú —el join sí corre bajo RLS y no
+// encontraría la categoría— sin que nada avise y sin forma de arreglarlo desde la pantalla.
+func (q *Queries) CategoryExists(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, categoryExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const cloneComboSlot = `-- name: CloneComboSlot :one
