@@ -2,7 +2,10 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // animales son los nombres con los que se canta un pedido en cocina, en lugar de su número.
@@ -86,4 +89,54 @@ func siguiente(estado *uint64) uint64 {
 	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
 	z = (z ^ (z >> 27)) * 0x94D049BB133111EB
 	return z ^ (z >> 31)
+}
+
+// maxFolio es el largo máximo de un nombre de folio. Sale del papel: a 46 px en un ticket de 58 mm
+// caben unas nueve letras, y el sufijo de vuelta ("Tigre 10") suma tres más.
+const maxFolio = 12
+
+// SanitizarFolio limpia el nombre que propone la pantalla, o devuelve "" si no sirve.
+//
+// La pantalla propone el nombre al abrir la cuenta —así el operador lo ve desde el primer producto
+// y no solo al cobrar— pero lo que se guarda pasa por aquí: ese texto se imprime en el ticket del
+// cliente y en la comanda, así que no puede llevar lo que a alguien se le ocurra mandar.
+//
+// Valida FORMA y no pertenencia a la lista de animales a propósito: la pantalla tiene su propia
+// copia de la lista, y exigir que coincidan haría que agregar un animal de un lado renombrara en
+// silencio los pedidos del otro. Con la forma, una lista que se adelanta sigue funcionando.
+func SanitizarFolio(propuesto string) string {
+	limpio := strings.TrimSpace(propuesto)
+	if n := utf8.RuneCountInString(limpio); n < 3 || n > maxFolio {
+		return ""
+	}
+	for _, r := range limpio {
+		if !unicode.IsLetter(r) {
+			return ""
+		}
+	}
+	return limpio
+}
+
+// SiguienteFolioLibre devuelve el nombre propuesto, o con su número de vuelta si ya se usó hoy.
+//
+// Es la misma regla que cuando el servidor reparte los nombres: al repetirse, el nombre lleva
+// número ("Tigre 2"). Se conserva el animal en vez de saltar a otro porque quien pidió ya oyó
+// "Tigre", y cambiárselo por "Zorro" a media espera es peor que agregarle un número.
+func SiguienteFolioLibre(base string, usadosHoy []string) string {
+	usados := make(map[string]bool, len(usadosHoy))
+	for _, u := range usadosHoy {
+		usados[u] = true
+	}
+	if !usados[base] {
+		return base
+	}
+	// El tope no es defensivo: con 100 animales, llegar a la vuelta 99 del MISMO animal exigiría
+	// ~9,900 pedidos en un día. Si pasa, gana el nombre con número alto antes que un ciclo infinito.
+	for vuelta := 2; vuelta < 100; vuelta++ {
+		cand := fmt.Sprintf("%s %d", base, vuelta)
+		if !usados[cand] {
+			return cand
+		}
+	}
+	return ""
 }

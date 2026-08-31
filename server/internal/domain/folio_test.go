@@ -132,3 +132,57 @@ func sinAcentos(s string) string {
 	)
 	return r.Replace(strings.ToLower(s))
 }
+
+func TestSanitizarFolio(t *testing.T) {
+	casos := []struct {
+		nombre, entra, quiere string
+	}{
+		{"un animal normal", "Tigre", "Tigre"},
+		{"con acento", "Búho", "Búho"},
+		{"con eñe", "Ñandú", "Ñandú"},
+		{"espacios alrededor", "  Tigre  ", "Tigre"},
+		{"el más largo que cabe", "Cocodrilooo", "Cocodrilooo"},
+
+		{"vacío", "", ""},
+		{"demasiado corto", "Ti", ""},
+		{"no cabe en el papel", "Rinoceronteee", ""},
+		// Este texto se imprime en el ticket del cliente y en la comanda. Sin el filtro, la
+		// pantalla podría mandar cualquier cosa y saldría en papel con el nombre del negocio.
+		{"con dígitos", "Tigre2", ""},
+		{"con símbolos", "Tigre!", ""},
+		{"con salto de línea", "Tigre\nMESA GRATIS", ""},
+		{"con espacio en medio", "Tigre Blanco", ""},
+		{"solo espacios", "     ", ""},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := SanitizarFolio(c.entra); got != c.quiere {
+				t.Errorf("SanitizarFolio(%q) = %q, quiere %q", c.entra, got, c.quiere)
+			}
+		})
+	}
+}
+
+func TestSiguienteFolioLibre(t *testing.T) {
+	casos := []struct {
+		nombre string
+		base   string
+		usados []string
+		quiere string
+	}{
+		{"nadie lo ha usado", "Tigre", nil, "Tigre"},
+		{"otros animales no estorban", "Tigre", []string{"Zorro", "Búho"}, "Tigre"},
+		// Se conserva el animal en vez de saltar a otro: quien pidió ya oyó "Tigre", y cambiárselo
+		// a media espera es peor que agregarle un número.
+		{"ya se usó hoy", "Tigre", []string{"Tigre"}, "Tigre 2"},
+		{"ya van dos vueltas", "Tigre", []string{"Tigre", "Tigre 2"}, "Tigre 3"},
+		{"con un hueco en medio", "Tigre", []string{"Tigre", "Tigre 3"}, "Tigre 2"},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := SiguienteFolioLibre(c.base, c.usados); got != c.quiere {
+				t.Errorf("SiguienteFolioLibre(%q, %v) = %q, quiere %q", c.base, c.usados, got, c.quiere)
+			}
+		})
+	}
+}

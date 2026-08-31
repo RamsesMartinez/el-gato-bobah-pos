@@ -144,6 +144,9 @@ export interface CreateOrderBody {
   serviceType: string;
   customerName?: string;
   notes?: string;
+  // Nombre con el que la pantalla ya bautizó la cuenta. El servidor lo sanea y resuelve los
+  // choques del día, así que proponerlo no es decidirlo.
+  folioName?: string;
   deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
   // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
   // lo que va aquí es el id, nunca los precios.

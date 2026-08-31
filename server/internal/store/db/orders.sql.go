@@ -257,6 +257,36 @@ func (q *Queries) DeliverOrderLine(ctx context.Context, arg DeliverOrderLinePara
 	return result.RowsAffected(), nil
 }
 
+const folioNamesUsedToday = `-- name: FolioNamesUsedToday :many
+select folio_name from orders
+where business_date = $1 and folio_name is not null
+`
+
+// Los nombres ya repartidos hoy, para no repetir uno cuando la pantalla propone el suyo.
+//
+// Se lee dentro de la MISMA transacción que toma NextDailyNumber, y eso es lo que la hace segura:
+// ese insert bloquea la fila del contador del día hasta el commit, así que dos ventas de la misma
+// empresa y fecha no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
+func (q *Queries) FolioNamesUsedToday(ctx context.Context, businessDate pgtype.Date) ([]*string, error) {
+	rows, err := q.db.Query(ctx, folioNamesUsedToday, businessDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*string{}
+	for rows.Next() {
+		var folio_name *string
+		if err := rows.Scan(&folio_name); err != nil {
+			return nil, err
+		}
+		items = append(items, folio_name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getOrder = `-- name: GetOrder :one
 select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name from orders where id = $1
 `

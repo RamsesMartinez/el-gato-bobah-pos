@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ServiceType, TicketLine, TicketModifier } from '../types/pos';
 import { uuid } from '../utils/uuid';
+import { nombreLibre } from '../features/pos/folio';
 
 export function lineUnitPrice(line: TicketLine): number {
   const mods = line.modifiers.reduce((s, m) => s + m.priceDelta * m.qty, 0);
@@ -20,6 +21,11 @@ export type RepreciarLinea = (line: TicketLine) => Pick<TicketLine, 'unitPrice' 
 export interface TicketTab {
   id: string;
   num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
+  // El animal con el que se va a cantar este pedido en cocina. Se elige al ABRIR la cuenta y no al
+  // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
+  // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
+  // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
+  folioName: string;
   lines: TicketLine[];
   serviceType: ServiceType;
   customerName: string;
@@ -29,11 +35,14 @@ export interface TicketTab {
   platformId: number | null;
 }
 
-function emptyTab(num: number): TicketTab {
+function emptyTab(num: number, tomados: string[] = []): TicketTab {
   // Cada cuenta nueva arranca en MOSTRADOR, aunque la anterior haya sido de plataforma: un tap de
   // más por pedido de plataforma, a cambio de que sea imposible cobrar precio de Uber en mostrador
   // por inercia.
-  return { id: uuid(), num, lines: [], serviceType: 'mostrador', customerName: '', platformId: null };
+  return {
+    id: uuid(), num, folioName: nombreLibre(tomados), lines: [],
+    serviceType: 'mostrador', customerName: '', platformId: null,
+  };
 }
 
 interface TicketState {
@@ -144,7 +153,7 @@ export const useTicketStore = create<TicketState>()(
 
         newTab: () =>
           set((s) => {
-            const t = emptyTab(s.seq);
+            const t = emptyTab(s.seq, s.tabs.map((x) => x.folioName));
             return { tabs: [...s.tabs, t], activeId: t.id, seq: s.seq + 1 };
           }),
         switchTab: (id) => set({ activeId: id }),
@@ -152,7 +161,7 @@ export const useTicketStore = create<TicketState>()(
           set((s) => {
             const tabs = s.tabs.filter((t) => t.id !== id);
             if (tabs.length === 0) {
-              const t = emptyTab(s.seq);
+              const t = emptyTab(s.seq, s.tabs.map((x) => x.folioName));
               return { tabs: [t], activeId: t.id, seq: s.seq + 1 };
             }
             return { tabs, activeId: s.activeId === id ? tabs[0].id : s.activeId };
@@ -180,7 +189,22 @@ export const useTicketStore = create<TicketState>()(
           }),
       };
     },
-    { name: 'egb:ticket:v2' }, // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
+    {
+      name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
+      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen animal. Se les pone
+      // uno al rehidratar en vez de subir la versión del almacén: subirla borraría cuentas con
+      // productos capturados, y perder el pedido de un cliente por un deploy no es negociable.
+      merge: (persisted, current) => {
+        const prev = (persisted ?? {}) as Partial<TicketState>;
+        const tomados: string[] = [];
+        const tabs = (prev.tabs ?? current.tabs).map((t) => {
+          const folioName = t.folioName || nombreLibre(tomados);
+          tomados.push(folioName);
+          return { ...t, folioName };
+        });
+        return { ...current, ...prev, tabs };
+      },
+    },
   ),
 );
 

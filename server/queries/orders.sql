@@ -188,3 +188,12 @@ update order_lines
 -- del tablero sin traerse los renglones.
 select count(*) from order_lines
 where order_id = $1 and cancelled_at is null and delivered_qty < quantity;
+
+-- name: FolioNamesUsedToday :many
+-- Los nombres ya repartidos hoy, para no repetir uno cuando la pantalla propone el suyo.
+--
+-- Se lee dentro de la MISMA transacción que toma NextDailyNumber, y eso es lo que la hace segura:
+-- ese insert bloquea la fila del contador del día hasta el commit, así que dos ventas de la misma
+-- empresa y fecha no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
+select folio_name from orders
+where business_date = $1 and folio_name is not null;
