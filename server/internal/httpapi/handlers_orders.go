@@ -195,3 +195,53 @@ func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, order)
 }
+
+type addLinesBody struct {
+	Lines []struct {
+		ProductID int64           `json:"productId"`
+		Qty       decimal.Decimal `json:"qty"`
+		Notes     string          `json:"notes"`
+		Modifiers []struct {
+			OptionID int64 `json:"optionId"`
+			Qty      int   `json:"qty"`
+		} `json:"modifiers"`
+	} `json:"lines"`
+}
+
+// POST /orders/{id}/lines — agrega renglones a un pedido en curso.
+//
+// Ruta propia y no un PATCH del pedido: lo que se manda es un DELTA —lo que el cliente pidió de
+// más—, no el pedido completo. Un PATCH invitaría a mandar la lista entera, y entonces el servidor
+// tendría que adivinar qué renglón es nuevo y cuál ya estaba para no volver a descontar su stock.
+func (h *Handlers) AddOrderLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body addLinesBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+
+	lines := make([]domain.OrderLineInput, 0, len(body.Lines))
+	for _, l := range body.Lines {
+		in := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}
+		for _, m := range l.Modifiers {
+			in.Modifiers = append(in.Modifiers, domain.OrderModInput{OptionID: m.OptionID, Qty: m.Qty})
+		}
+		lines = append(lines, in)
+	}
+
+	order, err := h.orders.AddLines(r.Context(), id, lines, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// El tablero tiene que enterarse: el pedido cambió de total y de contenido, y quien cocina lo
+	// está mirando.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, order)
+}

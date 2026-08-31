@@ -270,3 +270,12 @@ func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
 func PagosCubren(pagado, total decimal.Decimal) bool {
 	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
 }
+
+// PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
+//
+// Solo lo que sigue en curso. Un pedido entregado ya tiene su venta contada en el corte y su ticket
+// en manos del cliente; cancelado y reembolsado son terminales. Cambiarle el total a cualquiera de
+// esos es mover dinero que ya se cerró.
+func PuedeRecibirLineas(estado string) bool {
+	return estado == StatusAbierta || estado == StatusLista
+}

@@ -25,6 +25,12 @@ export const posApi = {
     api.post<void>('/me/password', { currentPassword, newPassword }),
   setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
 
+  // Agregar renglones a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos más".
+  // Se manda el DELTA, no el pedido completo — mandar la lista entera obligaría al servidor a
+  // adivinar qué renglón es nuevo para no volver a descontar su stock.
+  addOrderLines: (orderId: number, lines: CreateOrderBody['lines']) =>
+    api.post<OrderView>(`/orders/${orderId}/lines`, { lines }),
+
   // Precios por plataforma: solo las EXCEPCIONES. Quitar una devuelve el producto al calculado.
   // El servidor valida que el producto y la plataforma sean de la empresa antes de escribir, así
   // que aquí van ids pelones.
