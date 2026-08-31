@@ -25,6 +25,8 @@ export interface ResumenPorCobrar {
 
 export function resumenPorCobrar(ordenes: BoardOrder[]): ResumenPorCobrar {
   const pendientes = porCobrar(ordenes);
-  const monto = pendientes.reduce((s, o) => s + (Number(o.total) || 0), 0);
+  // Lo que falta, no el total: un pedido abonado debe menos de lo que costó, y sumar el total
+  // mandaría al operador a cobrar dos veces la parte que el cliente ya dejó.
+  const monto = pendientes.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
   return { cuantos: pendientes.length, monto: Math.round(monto * 100) / 100 };
 }

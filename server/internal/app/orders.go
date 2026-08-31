@@ -399,20 +399,41 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 }
 
 type BoardOrder struct {
-	ID           int64           `json:"id"`
-	Number       int             `json:"number"`
-	FolioName    string          `json:"folioName"`
-	Status       string          `json:"status"`
-	ServiceType  string          `json:"serviceType"`
-	CustomerName *string         `json:"customerName"`
-	Total        decimal.Decimal `json:"total"`
-	Currency     domain.Currency `json:"currency"`
-	Paid         bool            `json:"paid"`
-	OpenedAt     time.Time       `json:"openedAt"`
-	// Avance de la entrega, en renglones vivos. El tablero lo pinta como "3 de 5 entregados" sin
-	// tener que traerse las líneas de cada tarjeta.
-	Lines          int `json:"lines"`
-	LinesDelivered int `json:"linesDelivered"`
+	ID          int64  `json:"id"`
+	Number      int    `json:"number"`
+	FolioName   string `json:"folioName"`
+	Status      string `json:"status"`
+	ServiceType string `json:"serviceType"`
+	// DeliveryPlatformID deja que el tablero ofrezca solo los métodos con los que ese pedido se
+	// puede cobrar. Sin él, cobrar un pedido de Uber con el efectivo del mostrador hace que el
+	// sistema espere en el cajón billetes que la plataforma pagó por transferencia.
+	DeliveryPlatformID *int16          `json:"deliveryPlatformId"`
+	CustomerName       *string         `json:"customerName"`
+	Total              decimal.Decimal `json:"total"`
+	Currency           domain.Currency `json:"currency"`
+	Paid               bool            `json:"paid"`
+	// Outstanding es lo que falta por cobrar. Viaja aparte de Paid porque un pedido puede estar
+	// ABONADO —el cliente dejó algo al pedir y termina al recoger—, y en ese caso derivar el
+	// pendiente del total, como hacía la pantalla, cobra de más y descuadra el aviso del tablero.
+	Outstanding decimal.Decimal `json:"outstanding"`
+	OpenedAt    time.Time       `json:"openedAt"`
+	// Los renglones vivos con lo que falta de cada uno. El tablero los pinta desplegados: lo que
+	// falta por entregar ES lo que el operador vino a leer, no algo que deba destapar con un tap.
+	// Vacío en las entregadas, que ya no tienen nada pendiente.
+	Lines []BoardLine `json:"lines"`
+}
+
+// BoardLine es un renglón visto desde el tablero. No trae precio: entregar no mueve dinero, y en
+// una pantalla de 600 px una columna que no se usa le quita renglones a la que sí.
+type BoardLine struct {
+	ID        int64           `json:"id"`
+	Name      string          `json:"name"`
+	Qty       decimal.Decimal `json:"qty"`
+	Delivered decimal.Decimal `json:"delivered"`
+	// Notes y Modifiers son lo que vuelve utilizable el tablero en una cocina: "Alitas" y "Alitas
+	// BBQ sin cebolla" son platillos distintos.
+	Notes     string   `json:"notes,omitempty"`
+	Modifiers []string `json:"modifiers,omitempty"`
 }
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
@@ -421,15 +442,22 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 	if err != nil {
 		return nil, err
 	}
+	porPedido, err := s.lineasDelTablero(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]BoardOrder, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, BoardOrder{
 			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
 			Status:      string(r.Status),
-			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
-			Total: r.Total, Currency: domain.Currency(r.Currency),
-			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
-			Lines: int(r.LineasVivas), LinesDelivered: int(r.LineasEntregadas),
+			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
+			CustomerName: r.CustomerName,
+			Total:        r.Total, Currency: domain.Currency(r.Currency),
+			Paid:        r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(),
+			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			OpenedAt:    r.OpenedAt,
+			Lines:       porPedido[r.ID],
 		})
 	}
 	return out, nil
@@ -446,10 +474,12 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 		out = append(out, BoardOrder{
 			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
 			Status:      string(r.Status),
-			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
-			Total: r.Total, Currency: domain.Currency(r.Currency),
-			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
-			Lines: int(r.LineasVivas), LinesDelivered: int(r.LineasEntregadas),
+			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
+			CustomerName: r.CustomerName,
+			Total:        r.Total, Currency: domain.Currency(r.Currency),
+			Paid:        r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(),
+			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			OpenedAt:    r.OpenedAt,
 		})
 	}
 	return out, nil
@@ -976,4 +1006,111 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDa
 		return libre, nil
 	}
 	return domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num), nil
+}
+
+// lineasDelTablero trae los renglones de TODOS los pedidos activos en dos consultas y los agrupa.
+//
+// Dos consultas y no una por tarjeta: el tablero se refresca solo cada diez segundos, así que
+// pedir el detalle pedido por pedido serían N peticiones cada diez segundos en la pantalla que la
+// cocina deja abierta todo el turno.
+func (s *OrdersService) lineasDelTablero(ctx context.Context) (map[int64][]BoardLine, error) {
+	q := s.store.QC(ctx)
+	filas, err := q.ListLinesOfActiveOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mods, err := q.ListModifiersOfActiveOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	porLinea := map[int64][]string{}
+	for _, m := range mods {
+		nombre := m.OptionName
+		// La cantidad solo se dice cuando repite: "Ranch" y no "1× Ranch", que es ruido en una
+		// tarjeta que se lee de un vistazo.
+		if m.Quantity > 1 {
+			nombre = fmt.Sprintf("%d× %s", m.Quantity, m.OptionName)
+		}
+		porLinea[m.OrderLineID] = append(porLinea[m.OrderLineID], nombre)
+	}
+	porPedido := map[int64][]BoardLine{}
+	for _, l := range filas {
+		porPedido[l.OrderID] = append(porPedido[l.OrderID], BoardLine{
+			ID: l.ID, Name: l.ProductName, Qty: l.Quantity, Delivered: l.DeliveredQty,
+			Notes: derefStr(l.Notes), Modifiers: porLinea[l.ID],
+		})
+	}
+	return porPedido, nil
+}
+
+// ChargeCmd es un cobro sobre un pedido que ya existe.
+type ChargeCmd struct {
+	OrderID   int64
+	MethodID  int16
+	Amount    decimal.Decimal
+	Tip       decimal.Decimal
+	Reference *string
+	ActorID   int64
+}
+
+// Charge cobra un pedido que se mandó a cocina sin cobrar.
+//
+// Existía el hueco al revés: el tablero marcaba "POR COBRAR" y no había forma de saldarlo — el
+// único lugar del sistema que registraba un pago de pedido era la creación. El operador veía la
+// deuda y su única salida era levantar un pedido nuevo con los mismos productos, que descuenta el
+// inventario dos veces y reporta una venta que no ocurrió.
+//
+// El pago entra en el turno ABIERTO AHORA, no en el del pedido: el dinero cae en el cajón de hoy,
+// y meterlo en un arqueo ya firmado dejaría ese turno cuadrando contra efectivo que no estaba.
+func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
+	if !domain.ValidMoney(domain.Round2(cmd.Amount), false) || !domain.ValidMoney(domain.Round2(cmd.Tip), true) {
+		return domain.ErrValidation
+	}
+	sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNoOpenRegister
+		}
+		return err
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// FOR UPDATE: entre leer lo cobrado y escribir el pago cabe otro cajero haciendo lo mismo,
+		// y sin el lock los dos verían el pedido a cero y registrarían el total completo cada uno.
+		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		pagado, err := q.SumOrderPayments(ctx, cmd.OrderID)
+		if err != nil {
+			return err
+		}
+		if err := domain.ValidarCobro(string(o.Status), o.Total, pagado, cmd.Amount); err != nil {
+			return err
+		}
+		// El método se resuelve BAJO RLS y contra la plataforma del pedido, igual que al crearlo:
+		// un método de otra empresa entraría por la llave foránea (sus chequeos saltan RLS) y el
+		// pago desaparecería del corte, dejando un faltante por el monto exacto sin explicación.
+		m, err := q.GetPaymentMethod(ctx, cmd.MethodID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.DeliveryPlatformID) {
+			return domain.ErrPaymentMethodPlatform
+		}
+		return q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
+			OrderID:           cmd.OrderID,
+			PaymentMethodID:   cmd.MethodID,
+			Amount:            domain.Round2(cmd.Amount),
+			TipAmount:         domain.Round2(cmd.Tip),
+			RegisterSessionID: &sess.ID,
+			ReceivedBy:        &cmd.ActorID,
+			Reference:         cmd.Reference,
+		})
+	})
 }

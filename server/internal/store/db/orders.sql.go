@@ -328,16 +328,17 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-select id, status, service_type, delivery_platform_id
+select id, status, service_type, delivery_platform_id, total
 from orders where id = $1
 for update
 `
 
 type GetOrderForUpdateRow struct {
-	ID                 int64       `json:"id"`
-	Status             OrderStatus `json:"status"`
-	ServiceType        ServiceType `json:"service_type"`
-	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	Total              decimal.Decimal `json:"total"`
 }
 
 // El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
@@ -351,6 +352,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (GetOrderForU
 		&i.Status,
 		&i.ServiceType,
 		&i.DeliveryPlatformID,
+		&i.Total,
 	)
 	return i, err
 }
@@ -457,7 +459,8 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 
 const listActiveOrders = `-- name: ListActiveOrders :many
 
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -470,19 +473,20 @@ order by o.opened_at
 `
 
 type ListActiveOrdersRow struct {
-	ID               int64              `json:"id"`
-	DailyNumber      int32              `json:"daily_number"`
-	FolioName        *string            `json:"folio_name"`
-	Status           OrderStatus        `json:"status"`
-	ServiceType      ServiceType        `json:"service_type"`
-	CustomerName     *string            `json:"customer_name"`
-	Total            decimal.Decimal    `json:"total"`
-	Currency         string             `json:"currency"`
-	OpenedAt         time.Time          `json:"opened_at"`
-	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
-	Paid             decimal.Decimal    `json:"paid"`
-	LineasVivas      int32              `json:"lineas_vivas"`
-	LineasEntregadas int32              `json:"lineas_entregadas"`
+	ID                 int64              `json:"id"`
+	DailyNumber        int32              `json:"daily_number"`
+	FolioName          *string            `json:"folio_name"`
+	Status             OrderStatus        `json:"status"`
+	ServiceType        ServiceType        `json:"service_type"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	CustomerName       *string            `json:"customer_name"`
+	Total              decimal.Decimal    `json:"total"`
+	Currency           string             `json:"currency"`
+	OpenedAt           time.Time          `json:"opened_at"`
+	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
+	Paid               decimal.Decimal    `json:"paid"`
+	LineasVivas        int32              `json:"lineas_vivas"`
+	LineasEntregadas   int32              `json:"lineas_entregadas"`
 }
 
 // Board / detalle
@@ -501,6 +505,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.FolioName,
 			&i.Status,
 			&i.ServiceType,
+			&i.DeliveryPlatformID,
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
@@ -521,7 +526,8 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 }
 
 const listDeliveredToday = `-- name: ListDeliveredToday :many
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -534,19 +540,20 @@ order by o.completed_at desc nulls last, o.id desc
 `
 
 type ListDeliveredTodayRow struct {
-	ID               int64              `json:"id"`
-	DailyNumber      int32              `json:"daily_number"`
-	FolioName        *string            `json:"folio_name"`
-	Status           OrderStatus        `json:"status"`
-	ServiceType      ServiceType        `json:"service_type"`
-	CustomerName     *string            `json:"customer_name"`
-	Total            decimal.Decimal    `json:"total"`
-	Currency         string             `json:"currency"`
-	OpenedAt         time.Time          `json:"opened_at"`
-	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
-	Paid             decimal.Decimal    `json:"paid"`
-	LineasVivas      int32              `json:"lineas_vivas"`
-	LineasEntregadas int32              `json:"lineas_entregadas"`
+	ID                 int64              `json:"id"`
+	DailyNumber        int32              `json:"daily_number"`
+	FolioName          *string            `json:"folio_name"`
+	Status             OrderStatus        `json:"status"`
+	ServiceType        ServiceType        `json:"service_type"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	CustomerName       *string            `json:"customer_name"`
+	Total              decimal.Decimal    `json:"total"`
+	Currency           string             `json:"currency"`
+	OpenedAt           time.Time          `json:"opened_at"`
+	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
+	Paid               decimal.Decimal    `json:"paid"`
+	LineasVivas        int32              `json:"lineas_vivas"`
+	LineasEntregadas   int32              `json:"lineas_entregadas"`
 }
 
 // Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
@@ -566,6 +573,7 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, businessDate pgtype.Da
 			&i.FolioName,
 			&i.Status,
 			&i.ServiceType,
+			&i.DeliveryPlatformID,
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
@@ -618,6 +626,92 @@ func (q *Queries) ListLinesForDelivery(ctx context.Context, orderID int64) ([]Li
 			&i.DeliveredQty,
 			&i.CancelledAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinesOfActiveOrders = `-- name: ListLinesOfActiveOrders :many
+select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes
+from order_lines l
+join orders o on o.id = l.order_id
+where o.status in ('abierta','lista') and l.cancelled_at is null
+order by l.order_id, l.id
+`
+
+type ListLinesOfActiveOrdersRow struct {
+	ID           int64           `json:"id"`
+	OrderID      int64           `json:"order_id"`
+	ProductName  string          `json:"product_name"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	DeliveredQty decimal.Decimal `json:"delivered_qty"`
+	Notes        *string         `json:"notes"`
+}
+
+// Los renglones de TODOS los pedidos del tablero, en una consulta.
+//
+// El tablero los muestra desplegados —lo que falta por entregar es lo que el operador vino a leer,
+// no algo que deba destapar con un tap—, y pedirlos pedido por pedido serían N peticiones en cada
+// refresco de una pantalla que se refresca sola cada diez segundos.
+func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfActiveOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listLinesOfActiveOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinesOfActiveOrdersRow{}
+	for rows.Next() {
+		var i ListLinesOfActiveOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.ProductName,
+			&i.Quantity,
+			&i.DeliveredQty,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listModifiersOfActiveOrders = `-- name: ListModifiersOfActiveOrders :many
+select olm.order_line_id, olm.option_name, olm.quantity
+from order_line_modifiers olm
+join order_lines l on l.id = olm.order_line_id
+join orders o on o.id = l.order_id
+where o.status in ('abierta','lista') and l.cancelled_at is null
+order by olm.order_line_id, olm.id
+`
+
+type ListModifiersOfActiveOrdersRow struct {
+	OrderLineID int64  `json:"order_line_id"`
+	OptionName  string `json:"option_name"`
+	Quantity    int16  `json:"quantity"`
+}
+
+// Los modificadores de esos renglones. En una cocina "Alitas" y "Alitas BBQ" son platillos
+// distintos, así que sin esto el tablero no alcanza a reemplazar la libreta.
+func (q *Queries) ListModifiersOfActiveOrders(ctx context.Context) ([]ListModifiersOfActiveOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listModifiersOfActiveOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListModifiersOfActiveOrdersRow{}
+	for rows.Next() {
+		var i ListModifiersOfActiveOrdersRow
+		if err := rows.Scan(&i.OrderLineID, &i.OptionName, &i.Quantity); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -899,4 +993,17 @@ type SetOrderStatusParams struct {
 func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) error {
 	_, err := q.db.Exec(ctx, setOrderStatus, arg.ID, arg.Status)
 	return err
+}
+
+const sumOrderPayments = `-- name: SumOrderPayments :one
+select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_id = $1
+`
+
+// Lo ya cobrado de un pedido. Se lee dentro de la tx del cobro y con el pedido bloqueado, que es
+// lo que impide que dos cajeros cobrando a la vez registren cada uno el total completo.
+func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, sumOrderPayments, orderID)
+	var column_1 decimal.Decimal
+	err := row.Scan(&column_1)
+	return column_1, err
 }

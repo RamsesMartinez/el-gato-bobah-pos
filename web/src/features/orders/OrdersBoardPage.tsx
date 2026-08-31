@@ -4,26 +4,33 @@ import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
 } from '@chakra-ui/react';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem } from '../../components/ui/menu';
-import { LuStore, LuShoppingBag, LuBike, LuEllipsisVertical, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
-import type { BoardOrder } from '../../types/pos';
+import type { BoardLine, BoardOrder } from '../../types/pos';
 import { resumenPorCobrar } from './porCobrar';
+import { entregados, faltante, pendientes } from './entrega';
 import { money } from '../../utils/format';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../tickets/ReprintTicket';
-import { EntregaPanel } from './EntregaPanel';
+import { CobrarSheet } from './CobrarSheet';
 import { useSessionStore } from '../../stores/session';
 
+// para_llevar ya no se ofrece al cobrar, pero hay pedidos históricos con ese tipo y sin su etiqueta
+// la tarjeta los mostraría como "para_llevar", con guion bajo.
 const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
   mostrador: { label: 'Mostrador', icon: LuStore },
   para_llevar: { label: 'Llevar', icon: LuShoppingBag },
   domicilio: { label: 'Domicilio', icon: LuBike },
 };
 
-// Cuántas entregadas se listan. El resto vive en la pantalla de Ventas, que es la que existe para
-// mirar el histórico; aquí estorbarían lo que falta por atender.
+// Alto mínimo de todo lo que se toca. Por debajo el dedo falla, y aquí fallar significa dar por
+// entregado o por cobrado lo que no fue.
+const TAP = '44px';
+
+// Cuántas entregadas se listan. El resto vive en Ventas, que es la pantalla del histórico; aquí
+// estorbarían lo que falta por atender.
 const ENTREGADAS_VISIBLES = 5;
 
 const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', 'Otro'];
@@ -31,11 +38,11 @@ const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente'
 
 export function OrdersBoardPage() {
   const live = useOrderEvents();
-  // Pedido cuyo ticket se está viendo; null = ninguno.
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
+  const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
   const qc = useQueryClient();
-  // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El
-  // backend igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
+  // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
+  // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
   const role = useSessionStore((s) => s.user?.role);
   const canRefund = role === 'admin' || role === 'gerente';
 
@@ -51,33 +58,35 @@ export function OrdersBoardPage() {
     refetchInterval: 15_000, // SSE solo invalida 'active'; refrescamos entregadas aparte
   });
 
-  const invalidateActive = () => qc.invalidateQueries({ queryKey: ['orders', 'active'] });
   const invalidateAll = () => {
-    invalidateActive();
+    qc.invalidateQueries({ queryKey: ['orders', 'active'] });
     qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
   };
-  const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) => posApi.setOrderStatus(id, status),
-    onSuccess: invalidateAll, // entregar mueve la orden a la sección de entregadas
-    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+  const conError = (titulo: string) => (e: unknown) =>
+    toaster.create({ title: titulo, description: String(e), type: 'error' });
+
+  const entregarLinea = useMutation({
+    mutationFn: ({ id, lineId, qty }: { id: number; lineId: number; qty: number }) =>
+      posApi.deliverLine(id, lineId, qty),
+    onSuccess: invalidateAll,
+    onError: conError('No se pudo entregar'),
+  });
+  const entregarTodo = useMutation({
+    mutationFn: (id: number) => posApi.deliverOrder(id),
+    onSuccess: invalidateAll,
+    onError: conError('No se pudo entregar'),
   });
   const cancelMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.cancelOrder(id, reason),
-    onSuccess: invalidateActive,
-    // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
-    // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué,
-    // porque desde la tarjeta no se ve qué renglones ya salieron.
-    onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
-  });
-  const entregarTodoMut = useMutation({
-    mutationFn: (id: number) => posApi.deliverOrder(id),
     onSuccess: invalidateAll,
-    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+    // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
+    // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué.
+    onError: conError('No se pudo cancelar'),
   });
   const refundMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.refundOrder(id, reason),
     onSuccess: () => { invalidateAll(); toaster.create({ title: 'Reembolso registrado', type: 'success' }); },
-    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+    onError: conError('Error'),
   });
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
@@ -89,182 +98,264 @@ export function OrdersBoardPage() {
   // ya se fue con la comida.
   const pendiente = resumenPorCobrar([...orders, ...entregadas]);
 
-  const advance = (o: BoardOrder) =>
-    statusMut.mutate({ id: o.id, status: o.status === 'abierta' ? 'lista' : 'entregada' });
   const cancel = (o: BoardOrder) => {
     const reason = window.prompt(`Motivo de cancelación:\n(${CANCEL_REASONS.join(', ')})`, CANCEL_REASONS[0]);
     if (reason) cancelMut.mutate({ id: o.id, reason });
   };
-  const showTicket = (o: BoardOrder) => setTicketOrderID(o.id);
-  const entregarTodo = (o: BoardOrder) => entregarTodoMut.mutate(o.id);
   const refund = (o: BoardOrder) => {
     const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
     if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
   };
 
+  const acciones: Acciones = {
+    entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
+    entregarTodo: (o) => entregarTodo.mutate(o.id),
+    cobrar: setCobrando,
+    ticket: (o) => setTicketOrderID(o.id),
+    cancelar: cancel,
+  };
+
   return (
-    <Box p={4} h="100%" overflowY="auto">
-      <HStack mb={4} flexWrap="wrap">
-        <Text fontSize="xl" fontWeight="800">Pedidos activos</Text>
+    // p={3} y no p={4}: cada píxel de margen es un píxel menos de comida a la vista, y esta
+    // pantalla vive en 600 px de alto.
+    <Box p={3} h="100%" overflowY="auto">
+      {/* Encabezado de un solo renglón. Antes ocupaba dos con el título en xl. */}
+      <HStack mb={3} gap={2} flexWrap="wrap">
+        <Text fontSize="lg" fontWeight="800">Pedidos</Text>
         <Badge colorPalette={live ? 'green' : 'gray'}>{live ? 'En vivo' : 'Sin conexión'}</Badge>
-        {/* El sistema deja mandar a cocina sin cobrar, que es correcto cuando el cliente paga al
-            recoger. Lo que faltaba era el aviso: sin él, un pedido se entrega sin cobrar y nadie se
-            entera hasta el corte. */}
         {pendiente.cuantos > 0 && (
-          <Badge colorPalette="orange" px={2} py={1} fontSize="sm">
+          <Badge colorPalette="orange" px={2} py={1}>
             {pendiente.cuantos} por cobrar · {money(String(pendiente.monto))}
           </Badge>
         )}
       </HStack>
-      {/* "A entregar" y no "Listos": lo primero dice qué falta hacer, lo segundo qué hizo cocina.
-          En una cafetería sin pantalla de cocina, quien mira este tablero busca lo que le falta.
 
-          Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
-          columnas dejan tarjetas de ~300 px donde el nombre del cliente ya no cabe. */}
-      <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-        <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel}
-          onTicket={showTicket} onEntregarTodo={entregarTodo} onRefrescar={invalidateAll}
-          advanceLabel="Marcar listo" />
-        <Column title="A entregar" orders={listos} onAdvance={advance} onCancel={cancel}
-          onTicket={showTicket} onEntregarTodo={entregarTodo} onRefrescar={invalidateAll}
-          advanceLabel="Entregar todo" />
+      {/* Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
+          columnas dejan tarjetas donde el nombre del producto ya no cabe. */}
+      <SimpleGrid columns={{ base: 1, md: 2 }} gap={3} alignItems="start">
+        <Columna titulo="En preparación" orders={preparando} acciones={acciones} />
+        <Columna titulo="A entregar" orders={listos} acciones={acciones} />
       </SimpleGrid>
-      {canRefund && <DeliveredSection orders={entregadas} onRefund={refund} onTicket={showTicket} />}
 
-      {/* Reimpresión: el ticket sale marcado para que no pase por un comprobante distinto. */}
+      {canRefund && (
+        <Entregadas orders={entregadas} onRefund={refund} onTicket={acciones.ticket} onCobrar={setCobrando} />
+      )}
+
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
+      <CobrarSheet order={cobrando} onClose={() => setCobrando(null)} onCobrado={invalidateAll} />
     </Box>
   );
 }
 
-// Entregadas del día: solo admin/gerente, para reembolsar (devolución = pérdida). Compacta y
-// TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas, y
-// una lista que crece todo el día empuja fuera de la pantalla lo que sí hay que atender.
-function DeliveredSection({ orders, onRefund, onTicket }: { orders: BoardOrder[]; onRefund: (o: BoardOrder) => void; onTicket: (o: BoardOrder) => void }) {
+interface Acciones {
+  entregarLinea: (id: number, lineId: number, qty: number) => void;
+  entregarTodo: (o: BoardOrder) => void;
+  cobrar: (o: BoardOrder) => void;
+  ticket: (o: BoardOrder) => void;
+  cancelar: (o: BoardOrder) => void;
+}
+
+function Columna({ titulo, orders, acciones }: { titulo: string; orders: BoardOrder[]; acciones: Acciones }) {
   return (
-    <Box mt={6}>
-      <HStack mb={3}>
-        <Text fontWeight="700" fontSize="lg">Entregadas hoy</Text>
+    <Box>
+      <HStack mb={2} gap={2}>
+        <Text fontWeight="700">{titulo}</Text>
+        <Badge borderRadius="full" px={2}>{orders.length}</Badge>
+      </HStack>
+      <VStack align="stretch" gap={2}>
+        {orders.length === 0 && <Text color="fg.subtle" fontSize="sm">Sin pedidos</Text>}
+        {orders.map((o) => <Tarjeta key={o.id} o={o} acciones={acciones} />)}
+      </VStack>
+    </Box>
+  );
+}
+
+// La tarjeta de un pedido, con sus productos SIEMPRE a la vista.
+//
+// Antes venían plegados detrás de un tap. Lo que falta por entregar es justo lo que el operador
+// vino a leer: esconderlo le cobraba un tap por pedido y dejaba la tarjeta llena de encabezado.
+function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
+  const Svc = SERVICE_META[o.serviceType]?.icon;
+  const faltan = pendientes(o);
+  const listo = faltan.length === 0;
+  const debe = Number(o.outstanding) > 0;
+
+  return (
+    <Box bg="bg.panel" borderWidth="1px" borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg" p={2.5}>
+      <Flex justify="space-between" align="start" gap={2} mb={2}>
+        <Box minW={0}>
+          {/* El nombre manda: es con lo que se canta el pedido. El número queda en el renglón de
+              abajo, junto a lo demás que solo se consulta. */}
+          <Text fontWeight="800" fontSize="lg" lineHeight="1.2" lineClamp={1}>
+            {o.folioName || `#${o.number}`}
+          </Text>
+          <HStack fontSize="xs" color="fg.muted" gap={1}>
+            {Svc && <Svc size={12} />}
+            <Text as="span" lineClamp={1}>
+              #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}
+              {o.customerName ? ` · ${o.customerName}` : ''}
+              {o.lines.length > 1 ? ` · ${entregados(o)}/${o.lines.length}` : ''}
+            </Text>
+          </HStack>
+        </Box>
+        <VStack align="end" gap={0} flexShrink={0}>
+          <Text fontWeight="700" lineHeight="1.2">{money(o.total, o.currency)}</Text>
+          {debe && (
+            <Text fontSize="xs" fontWeight="700" color="orange.600">
+              debe {money(o.outstanding, o.currency)}
+            </Text>
+          )}
+        </VStack>
+      </Flex>
+
+      <VStack align="stretch" gap={1} mb={2}>
+        {faltan.map((l) => (
+          // La clave lleva lo ya entregado a propósito: el contador del renglón es estado local, y
+          // sin esto seguiría en 3 después de entregar 3 de 5 — el botón mandaría al servidor una
+          // cantidad mayor a la que falta y el operador vería un error por haber acertado.
+          <Renglon key={`${l.id}-${l.delivered}`} l={l}
+            onEntregar={(qty) => acciones.entregarLinea(o.id, l.id, qty)} />
+        ))}
+        {listo && (
+          <HStack color="green.600" py={1} gap={1}>
+            <LuCheck size={16} />
+            <Text fontSize="sm" fontWeight="600">Todo entregado</Text>
+          </HStack>
+        )}
+      </VStack>
+
+      <HStack gap={2}>
+        {/* Entregar todo desaparece cuando ya no falta nada: un botón que no hace nada enseña a
+            ignorar el que sí hace. */}
+        {!listo && (
+          <Button flex="1" minH={TAP} colorPalette="green" onClick={() => acciones.entregarTodo(o)}>
+            Entregar todo
+          </Button>
+        )}
+        {debe && (
+          <Button flex="1" minH={TAP} colorPalette="orange" variant={listo ? 'solid' : 'outline'}
+            onClick={() => acciones.cobrar(o)}>
+            Cobrar
+          </Button>
+        )}
+        <MenuRoot>
+          <MenuTrigger asChild>
+            <IconButton aria-label="Más" variant="outline" minH={TAP} minW={TAP}>
+              <LuEllipsisVertical />
+            </IconButton>
+          </MenuTrigger>
+          <MenuContent>
+            <MenuItem value="ticket" onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
+            <MenuItem value="cancel" color="red.500" onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
+          </MenuContent>
+        </MenuRoot>
+      </HStack>
+    </Box>
+  );
+}
+
+// Un producto que todavía debe salir.
+//
+// El botón verde entrega TODO lo que falta con un tap, que es el caso de siempre. El contador solo
+// aparece cuando falta más de uno: es la excepción —salen 3 de 5 alitas y las otras 2 siguen en la
+// freidora— y cobrarle un tap al caso común para servir a la excepción está al revés.
+function Renglon({ l, onEntregar }: { l: BoardLine; onEntregar: (qty: number) => void }) {
+  const falta = faltante(l);
+  const [cantidad, setCantidad] = useState(falta);
+  const parcial = falta > 1;
+  const extras = [...(l.modifiers ?? []), ...(l.notes ? [l.notes] : [])];
+
+  return (
+    <HStack gap={1.5} align="center" borderWidth="1px" borderColor="border" borderRadius="md" px={1.5} py={1}>
+      <Text fontWeight="800" fontSize="sm" minW="1.75rem" textAlign="center" flexShrink={0}>
+        {Number(l.qty)}
+      </Text>
+      <Box flex="1" minW={0}>
+        <Text fontWeight="600" fontSize="sm" lineHeight="1.25" lineClamp={1}>{l.name}</Text>
+        {/* En una cocina "Alitas" y "Alitas BBQ sin cebolla" son platillos distintos. Sin esto la
+            tarjeta no alcanza a reemplazar la libreta. */}
+        {extras.length > 0 && (
+          <Text fontSize="2xs" color="fg.muted" lineHeight="1.25" lineClamp={1}>{extras.join(' · ')}</Text>
+        )}
+        {Number(l.delivered) > 0 && (
+          <Text fontSize="2xs" color="orange.600" lineHeight="1.25">
+            salieron {Number(l.delivered)} de {Number(l.qty)}
+          </Text>
+        )}
+      </Box>
+      {parcial && (
+        <HStack gap={0.5} flexShrink={0}>
+          <IconButton aria-label="Uno menos" size="sm" variant="ghost" minH={TAP} minW="2rem"
+            disabled={cantidad <= 1} onClick={() => setCantidad((c) => Math.max(1, c - 1))}>
+            <LuMinus />
+          </IconButton>
+          <Text minW="1.25rem" textAlign="center" fontWeight="700" fontSize="sm">{cantidad}</Text>
+          <IconButton aria-label="Uno más" size="sm" variant="ghost" minH={TAP} minW="2rem"
+            disabled={cantidad >= falta} onClick={() => setCantidad((c) => Math.min(falta, c + 1))}>
+            <LuPlus />
+          </IconButton>
+        </HStack>
+      )}
+      <Button size="sm" minH={TAP} px={3} colorPalette="green" flexShrink={0}
+        onClick={() => onEntregar(parcial ? cantidad : falta)}>
+        <LuCheck />
+      </Button>
+    </HStack>
+  );
+}
+
+// Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
+// TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
+function Entregadas({ orders, onRefund, onTicket, onCobrar }: {
+  orders: BoardOrder[];
+  onRefund: (o: BoardOrder) => void;
+  onTicket: (o: BoardOrder) => void;
+  onCobrar: (o: BoardOrder) => void;
+}) {
+  return (
+    <Box mt={4}>
+      <HStack mb={2} gap={2}>
+        <Text fontWeight="700">Entregadas hoy</Text>
         <Badge borderRadius="full" px={2}>{orders.length}</Badge>
         {orders.length > ENTREGADAS_VISIBLES && (
-          <Text fontSize="sm" color="fg.muted">últimas {ENTREGADAS_VISIBLES}</Text>
+          <Text fontSize="xs" color="fg.muted">últimas {ENTREGADAS_VISIBLES}</Text>
         )}
       </HStack>
       {orders.length === 0 ? (
-        <Text color="fg.subtle">Sin entregas hoy</Text>
+        <Text color="fg.subtle" fontSize="sm">Sin entregas hoy</Text>
       ) : (
-        <VStack align="stretch" gap={2}>
-          {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => (
-            <Flex key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg"
-              px={4} py={2} justify="space-between" align="center">
-              <HStack gap={3}>
-                <Text fontWeight="800">{o.folioName || `#${o.number}`}</Text>
-                <Text fontSize="sm" color="fg.muted">
-                  #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
-                </Text>
-              </HStack>
-              <HStack gap={3}>
-                {/* Aquí es donde importa: entregado y sin cobrar significa que el cliente ya se
-                    fue. En las columnas activas todavía está enfrente. */}
-                {!o.paid && <Badge colorPalette="orange">POR COBRAR</Badge>}
-                <Text fontWeight="700">{money(o.total, o.currency)}</Text>
-                <Button size="sm" variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
-                <Button size="sm" variant="outline" colorPalette="red" onClick={() => onRefund(o)}>Reembolsar</Button>
-              </HStack>
-            </Flex>
-          ))}
+        <VStack align="stretch" gap={1.5}>
+          {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => {
+            const debe = Number(o.outstanding) > 0;
+            return (
+              <Flex key={o.id} bg="bg.panel" borderWidth="1px"
+                borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg"
+                px={3} py={1.5} justify="space-between" align="center" gap={2}>
+                <Box minW={0}>
+                  <Text fontWeight="700" lineHeight="1.2" lineClamp={1}>{o.folioName || `#${o.number}`}</Text>
+                  <Text fontSize="xs" color="fg.muted" lineClamp={1}>
+                    #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}
+                    {o.customerName ? ` · ${o.customerName}` : ''}
+                  </Text>
+                </Box>
+                <HStack gap={2} flexShrink={0}>
+                  <Text fontWeight="700">{money(o.total, o.currency)}</Text>
+                  {/* Aquí es donde el pendiente deja de tener remedio: el cliente ya se fue con la
+                      comida. Por eso el botón de cobrar vive junto al aviso y no en otra pantalla. */}
+                  {debe && (
+                    <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onCobrar(o)}>
+                      Cobrar {money(o.outstanding, o.currency)}
+                    </Button>
+                  )}
+                  <Button size="sm" minH={TAP} variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
+                  <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
+                    onClick={() => onRefund(o)}>Reembolsar</Button>
+                </HStack>
+              </Flex>
+            );
+          })}
         </VStack>
       )}
-    </Box>
-  );
-}
-
-interface ColProps {
-  title: string;
-  orders: BoardOrder[];
-  advanceLabel: string;
-  onAdvance: (o: BoardOrder) => void;
-  onCancel: (o: BoardOrder) => void;
-  onTicket: (o: BoardOrder) => void;
-  onEntregarTodo: (o: BoardOrder) => void;
-  onRefrescar: () => void;
-}
-
-function Column({ title, orders, advanceLabel, onAdvance, onCancel, onTicket, onEntregarTodo, onRefrescar }: ColProps) {
-  // Qué tarjeta tiene abierto su detalle de productos. Una sola a la vez: en 600 px de alto, dos
-  // paneles desplegados dejan fuera de pantalla el resto de la columna.
-  const [abierta, setAbierta] = useState<number | null>(null);
-
-  return (
-    <Box>
-      <HStack mb={3}>
-        <Text fontWeight="700" fontSize="lg">{title}</Text>
-        <Badge borderRadius="full" px={2}>{orders.length}</Badge>
-      </HStack>
-      <VStack align="stretch" gap={3}>
-        {orders.length === 0 && <Text color="fg.subtle">Sin pedidos</Text>}
-        {orders.map((o) => {
-          const Svc = SERVICE_META[o.serviceType]?.icon;
-          const expandida = abierta === o.id;
-          const parcial = o.linesDelivered > 0 && o.linesDelivered < o.lines;
-          return (
-          <Box key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg" p={4}>
-            <Flex justify="space-between" align="start" mb={3} gap={3}>
-              <Box minW={0}>
-                {/* El nombre manda sobre el número: es con lo que se canta el pedido y lo que el
-                    cliente recuerda. El número se queda para cruzarlo con el ticket y el corte. */}
-                <Text fontWeight="800" fontSize="xl" lineClamp={1}>
-                  {o.folioName || `#${o.number}`}
-                </Text>
-                <HStack fontSize="sm" color="fg.muted" gap={1}>
-                  {Svc && <Svc size={14} />}
-                  <Text as="span" lineClamp={1}>
-                    #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
-                  </Text>
-                </HStack>
-              </Box>
-              <VStack align="end" gap={1} flexShrink={0}>
-                <Text fontWeight="700">{money(o.total, o.currency)}</Text>
-                {!o.paid && <Badge colorPalette="orange">POR COBRAR</Badge>}
-              </VStack>
-            </Flex>
-
-            <HStack mb={o.lines > 1 ? 2 : 0}>
-              <Button flex="1" size="md" minH="44px" colorPalette={o.status === 'lista' ? 'green' : undefined}
-                onClick={() => (o.status === 'lista' ? onEntregarTodo(o) : onAdvance(o))}>
-                {advanceLabel}
-              </Button>
-              <MenuRoot>
-                <MenuTrigger asChild>
-                  <IconButton aria-label="Más" variant="outline" minH="44px" minW="44px"><LuEllipsisVertical /></IconButton>
-                </MenuTrigger>
-                <MenuContent>
-                  {o.status !== 'lista' && (
-                    <MenuItem value="entregar" onClick={() => onEntregarTodo(o)}>Entregar todo</MenuItem>
-                  )}
-                  <MenuItem value="ticket" onClick={() => onTicket(o)}>Ver ticket</MenuItem>
-                  <MenuItem value="cancel" color="red.500" onClick={() => onCancel(o)}>Cancelar pedido</MenuItem>
-                </MenuContent>
-              </MenuRoot>
-            </HStack>
-
-            {/* Solo con más de un producto: en un pedido de un renglón, "0 de 1 entregados" y el
-                botón de arriba dicen exactamente lo mismo. */}
-            {o.lines > 1 && (
-              <>
-                <Button variant="ghost" size="sm" minH="44px" w="100%" justifyContent="space-between"
-                  color={parcial ? 'orange.600' : 'fg.muted'} fontWeight={parcial ? '700' : '500'}
-                  onClick={() => setAbierta(expandida ? null : o.id)}>
-                  <Text as="span">{o.linesDelivered} de {o.lines} entregados</Text>
-                  {expandida ? <LuChevronUp /> : <LuChevronDown />}
-                </Button>
-                {expandida && <EntregaPanel orderId={o.id} onEntregado={onRefrescar} />}
-              </>
-            )}
-          </Box>
-          );
-        })}
-      </VStack>
     </Box>
   );
 }

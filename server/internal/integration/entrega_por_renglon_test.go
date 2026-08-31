@@ -205,8 +205,25 @@ func TestElTableroTraeElAvanceDeEntrega(t *testing.T) {
 	if vista == nil {
 		t.Fatal("el pedido no salió en el tablero")
 	}
-	if vista.Lines != 2 || vista.LinesDelivered != 1 {
-		t.Errorf("avance = %d de %d, quiere 1 de 2", vista.LinesDelivered, vista.Lines)
+	if len(vista.Lines) != 2 {
+		t.Fatalf("el tablero trajo %d renglones, quiere 2", len(vista.Lines))
+	}
+	// El tablero los trae DESPLEGADOS con lo que falta de cada uno: es lo que el operador vino a
+	// leer, no algo que deba destapar con un tap.
+	var completos int
+	for _, l := range vista.Lines {
+		if l.Delivered.GreaterThanOrEqual(l.Qty) {
+			completos++
+		}
+	}
+	if completos != 1 {
+		t.Errorf("avance = %d de %d completos, quiere 1 de 2", completos, len(vista.Lines))
+	}
+	// Y con su nombre, o la tarjeta no sirve para preparar nada.
+	for _, l := range vista.Lines {
+		if l.Name == "" {
+			t.Error("un renglón del tablero llegó sin nombre de producto")
+		}
 	}
 }
 

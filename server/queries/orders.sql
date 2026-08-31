@@ -56,7 +56,8 @@ values ($1,$2,$3,$4,$5,$6,$7);
 -- Board / detalle
 
 -- name: ListActiveOrders :many
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -104,7 +105,8 @@ where id = $1;
 -- name: ListDeliveredToday :many
 -- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
 -- fecha de negocio para no arrastrar todo el histórico.
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -152,7 +154,7 @@ where o.id = $1;
 -- El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
 -- la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
 -- agregados desaparecería del importe.
-select id, status, service_type, delivery_platform_id
+select id, status, service_type, delivery_platform_id, total
 from orders where id = $1
 for update;
 
@@ -197,3 +199,30 @@ where order_id = $1 and cancelled_at is null and delivered_qty < quantity;
 -- empresa y fecha no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
 select folio_name from orders
 where business_date = $1 and folio_name is not null;
+
+-- name: ListLinesOfActiveOrders :many
+-- Los renglones de TODOS los pedidos del tablero, en una consulta.
+--
+-- El tablero los muestra desplegados —lo que falta por entregar es lo que el operador vino a leer,
+-- no algo que deba destapar con un tap—, y pedirlos pedido por pedido serían N peticiones en cada
+-- refresco de una pantalla que se refresca sola cada diez segundos.
+select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes
+from order_lines l
+join orders o on o.id = l.order_id
+where o.status in ('abierta','lista') and l.cancelled_at is null
+order by l.order_id, l.id;
+
+-- name: ListModifiersOfActiveOrders :many
+-- Los modificadores de esos renglones. En una cocina "Alitas" y "Alitas BBQ" son platillos
+-- distintos, así que sin esto el tablero no alcanza a reemplazar la libreta.
+select olm.order_line_id, olm.option_name, olm.quantity
+from order_line_modifiers olm
+join order_lines l on l.id = olm.order_line_id
+join orders o on o.id = l.order_id
+where o.status in ('abierta','lista') and l.cancelled_at is null
+order by olm.order_line_id, olm.id;
+
+-- name: SumOrderPayments :one
+-- Lo ya cobrado de un pedido. Se lee dentro de la tx del cobro y con el pedido bloqueado, que es
+-- lo que impide que dos cajeros cobrando a la vez registren cada uno el total completo.
+select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_id = $1;

@@ -158,12 +158,30 @@ export interface BoardOrder {
   folioName: string;
   status: string;
   serviceType: string;
+  // Con qué lista se cobró. Deja ofrecer solo los métodos con los que ese pedido se puede cobrar.
+  deliveryPlatformId: number | null;
   customerName: string | null;
   total: string;
   currency: Currency;
   paid: boolean;
+  // Lo que falta por cobrar. Viaja aparte de `paid` porque un pedido puede estar ABONADO, y
+  // derivar el pendiente del total cobraría de más.
+  outstanding: string;
   openedAt: string;
-  // Avance de la entrega en renglones vivos, para pintar "3 de 5" sin traerse las líneas.
-  lines: number;
-  linesDelivered: number;
+  // Los renglones vivos con lo que falta de cada uno. Vienen en la misma respuesta del tablero:
+  // se pintan desplegados, y pedirlos por tarjeta serían N peticiones cada diez segundos.
+  // Vacío en las entregadas, que ya no tienen nada pendiente.
+  lines: BoardLine[];
+}
+
+// Un renglón visto desde el tablero. Sin precio: entregar no mueve dinero, y en 600 px de alto una
+// columna que no se usa le quita renglones a la que sí.
+export interface BoardLine {
+  id: number;
+  name: string;
+  qty: string;
+  delivered: string;
+  notes?: string;
+  // "Alitas" y "Alitas BBQ sin cebolla" son platillos distintos en una cocina.
+  modifiers?: string[];
 }
