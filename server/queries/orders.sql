@@ -28,9 +28,13 @@ returning last_number;
 select id from orders where client_uuid = $1;
 
 -- name: CreateOrder :one
+-- status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
+-- acto —el refresco de mostrador— nace entregado y nunca pasa por el tablero. El resto nace abierto.
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
-                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
+                    status, completed_at)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+        @status, case when @status::order_status = 'entregada' then now() end)
 returning *;
 
 -- name: CreateOrderLine :one

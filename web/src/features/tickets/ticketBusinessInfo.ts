@@ -44,6 +44,9 @@ export function useTicketBusinessInfo(): {
   // Si el ticket lista los adicionales sin costo. Sale del ajuste del negocio, con true como
   // valor seguro mientras la consulta no responde: el ticket completo es el comportamiento viejo.
   printFreeModifiers: boolean;
+  // Si al mandar el pedido sale la comanda de cocina. false como valor seguro mientras carga: en
+  // duda, no se imprime papel de más.
+  printKitchenTicket: boolean;
 } {
   const settings = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
 
@@ -61,7 +64,10 @@ export function useTicketBusinessInfo(): {
   });
 
   if (!settings.data) {
-    return { data: undefined, isLoading: settings.isLoading, autoPrintOnClose: false, printFreeModifiers: true };
+    return {
+      data: undefined, isLoading: settings.isLoading,
+      autoPrintOnClose: false, printFreeModifiers: true, printKitchenTicket: false,
+    };
   }
   // No se espera al logo subido: si tarda o falla, el ticket sale con el default en vez de dejar
   // al operador esperando frente al cliente.
@@ -70,5 +76,6 @@ export function useTicketBusinessInfo(): {
     isLoading: false,
     autoPrintOnClose: settings.data.autoPrintOnClose,
     printFreeModifiers: settings.data.printFreeModifiers,
+    printKitchenTicket: settings.data.printKitchenTicket,
   };
 }

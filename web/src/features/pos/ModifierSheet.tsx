@@ -19,6 +19,7 @@ import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
 import { deltaDeLista, desgloseDelta, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { cabeOtra, cantidadDe, sumarUna } from './seleccionModificadores';
+import { combinacionGuardada, completarConLaUltima, guardarCombinacion } from './ultimaCombinacion';
 import { OptionPriceFields } from './OptionPriceFields';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket } from '../../stores/ticket';
@@ -193,7 +194,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
         }
       }
     }
-    setSel(s);
+    // Lo que el pre-marcado por historial no alcanzó a cubrir lo completa la última combinación de
+    // ESTA tableta. Rompe el círculo: sin ventas capturadas no hay ranking, y sin ranking capturar
+    // cuesta los taps que hacen que no se capture.
+    setSel(completarConLaUltima(s, combinacionGuardada(product.id), product.groups));
     setNotes(initialNotes ?? '');
     setQty(1);
     setOptQuery('');
@@ -282,6 +286,9 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
         }
       }
     }
+    // Se recuerda lo CONFIRMADO, no lo pre-marcado: es la combinación que el operador dio por
+    // buena, con sus correcciones.
+    guardarCombinacion(product.id, sel);
     onConfirm(modifiers, notes.trim(), qty);
     onClose();
   };

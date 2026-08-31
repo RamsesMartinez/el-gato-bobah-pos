@@ -40,7 +40,12 @@ function montar(onConfirm: (m: TicketModifier[], n: string, q: number) => void) 
 }
 
 describe('elegir dos veces la misma salsa', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // La hoja recuerda la última combinación por producto en el navegador. Sin limpiar, cada caso
+    // arrancaría con lo que confirmó el anterior y estaríamos probando el residuo.
+    localStorage.clear();
+  });
 
   // El caso reportado: el grupo pide dos salsas y el cliente las quiere las dos de mango.
   it('el "+" aparece al elegir una salsa repetible y manda cantidad 2', () => {
@@ -95,5 +100,49 @@ describe('elegir dos veces la misma salsa', () => {
     fireEvent.click(chip());
     expect(screen.queryByRole('button', { name: /Mango habaneros*×2/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Otra vez Mango habanero')).not.toBeInTheDocument();
+  });
+});
+
+// La memoria de la última combinación es lo que rompe el círculo: sin ventas capturadas no hay
+// ranking que pre-marque, y sin pre-marcado capturar cuesta los taps que hacen que no se capture.
+describe('recordar cómo se pidió la última vez', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('la segunda vez la hoja abre con las salsas de la vez pasada', () => {
+    const primera = vi.fn();
+    const { unmount } = montar(primera);
+    fireEvent.click(screen.getByRole('button', { name: /^Mango habanero/ }));
+    fireEvent.click(screen.getByLabelText('Otra vez Mango habanero'));
+    fireEvent.click(screen.getByRole('button', { name: /agregar|confirmar|listo/i }));
+    unmount();
+
+    // Al reabrir, el grupo ya está cumplido: se puede confirmar sin tocar una salsa.
+    const segunda = vi.fn();
+    montar(segunda);
+    fireEvent.click(screen.getByRole('button', { name: /agregar|confirmar|listo/i }));
+    expect(segunda).toHaveBeenCalled();
+    const mods = segunda.mock.calls[0][0] as TicketModifier[];
+    expect(mods).toEqual([expect.objectContaining({ optionId: 10, qty: 2 })]);
+  });
+
+  // La hoja SIGUE abriendo y las marcas se ven: el operador puede corregirlas de un toque. Eso es
+  // lo que separa esto de agregar la línea a ciegas.
+  it('lo recordado se puede corregir antes de confirmar', () => {
+    const primera = vi.fn();
+    const { unmount } = montar(primera);
+    fireEvent.click(screen.getByRole('button', { name: /^Mango habanero/ }));
+    fireEvent.click(screen.getByLabelText('Otra vez Mango habanero'));
+    fireEvent.click(screen.getByRole('button', { name: /agregar|confirmar|listo/i }));
+    unmount();
+
+    const segunda = vi.fn();
+    montar(segunda);
+    // Se ve marcado, y tocarlo lo quita.
+    expect(screen.getByRole('button', { name: /Mango habanero\s*×2/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Mango habanero/ }));
+    expect(screen.queryByRole('button', { name: /Mango habanero\s*×2/ })).not.toBeInTheDocument();
   });
 });

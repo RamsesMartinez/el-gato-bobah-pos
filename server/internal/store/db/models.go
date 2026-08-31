@@ -592,6 +592,7 @@ type BusinessSetting struct {
 	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
+	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
 }
 
 type CashRegister struct {

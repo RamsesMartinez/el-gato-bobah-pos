@@ -37,6 +37,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		AutoPrintOnClose   *bool            `json:"autoPrintOnClose"`
 		Timezone           *string          `json:"timezone"`
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
+		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -58,7 +59,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
-		body.Timezone != nil || body.PrintFreeModifiers != nil {
+		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -71,15 +72,14 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			HeaderNote: orCurrent(body.HeaderNote, cur.HeaderNote),
 			FooterNote: orCurrent(body.FooterNote, cur.FooterNote),
 		}
-		autoPrint := cur.AutoPrintOnClose
-		if body.AutoPrintOnClose != nil {
-			autoPrint = *body.AutoPrintOnClose
+		// Cada ajuste ausente conserva su valor actual: el PATCH manda solo lo que cambió, y un
+		// booleano ausente que se leyera como false apagaría lo que nadie tocó.
+		print := domain.PrintSettings{
+			AutoPrintOnClose:   orBool(body.AutoPrintOnClose, cur.AutoPrintOnClose),
+			PrintFreeModifiers: orBool(body.PrintFreeModifiers, cur.PrintFreeModifiers),
+			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
 		}
-		printFreeMods := cur.PrintFreeModifiers
-		if body.PrintFreeModifiers != nil {
-			printFreeMods = *body.PrintFreeModifiers
-		}
-		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, orCurrent(body.Timezone, cur.Timezone), printFreeMods, u.ID); err != nil {
+		if _, err := h.settings.SetBusinessInfo(ctx, info, print, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
 			Error(w, err)
 			return
 		}
@@ -191,4 +191,13 @@ func (h *Handlers) TicketLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.Itoa(len(logo.Bytes)))
 	_, _ = w.Write(logo.Bytes)
+}
+
+// orBool: el ajuste ausente conserva su valor actual. Un PATCH manda solo lo que cambió, y leer un
+// booleano ausente como false apagaría lo que nadie tocó.
+func orBool(v *bool, actual bool) bool {
+	if v == nil {
+		return actual
+	}
+	return *v
 }

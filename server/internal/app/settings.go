@@ -43,7 +43,11 @@ type BusinessSettings struct {
 	Timezone string `json:"timezone"`
 	// PrintFreeModifiers: si el ticket lista los adicionales que no cuestan. Encendido por default
 	// — cocina los usa para preparar y el cliente para reclamar; apagarlo solo acorta el papel.
-	PrintFreeModifiers bool       `json:"printFreeModifiers"`
+	PrintFreeModifiers bool `json:"printFreeModifiers"`
+	// PrintKitchenTicket: si al mandar el pedido sale una comanda SIN precios para cocina. Apagado
+	// por default: en un local donde la cocina está pegada al mostrador sería papel que duplica lo
+	// que el cocinero ya ve. Lo enciende el negocio que tiene la cocina en otro cuarto.
+	PrintKitchenTicket bool       `json:"printKitchenTicket"`
 	HasLogo            bool       `json:"hasLogo"`
 	LogoUpdatedAt      *time.Time `json:"logoUpdatedAt"`
 }
@@ -70,6 +74,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		AutoPrintOnClose:   row.AutoPrintOnClose,
 		Timezone:           row.Timezone,
 		PrintFreeModifiers: row.PrintFreeModifiers,
+		PrintKitchenTicket: row.PrintKitchenTicket,
 		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
@@ -125,7 +130,7 @@ func (s *SettingsService) Logo(ctx context.Context) (TicketLogo, bool, error) {
 // SetBusinessInfo guarda la identidad que sale en el ticket y el interruptor de impresión
 // automática. Valida en domain ANTES de tocar el store: un texto que no cabe en 80mm se rechaza
 // como 400, no como un check violado de Postgres convertido en 500.
-func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, autoPrint bool, timezone string, printFreeMods bool, userID int64) (BusinessSettings, error) {
+func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, print domain.PrintSettings, timezone string, userID int64) (BusinessSettings, error) {
 	if err := info.Validate(); err != nil {
 		return BusinessSettings{}, err
 	}
@@ -137,13 +142,14 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	}
 	err := s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
 		Timezone:           timezone,
-		PrintFreeModifiers: printFreeMods,
+		PrintFreeModifiers: print.PrintFreeModifiers,
+		PrintKitchenTicket: print.PrintKitchenTicket,
 		BusinessName:       strings.TrimSpace(info.Name),
 		Address:            strings.TrimSpace(info.Address),
 		Phone:              strings.TrimSpace(info.Phone),
 		HeaderNote:         strings.TrimSpace(info.HeaderNote),
 		FooterNote:         strings.TrimSpace(info.FooterNote),
-		AutoPrintOnClose:   autoPrint,
+		AutoPrintOnClose:   print.AutoPrintOnClose,
 		UpdatedBy:          &userID,
 	})
 	if err != nil {

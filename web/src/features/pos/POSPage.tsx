@@ -23,7 +23,7 @@ import { ProductEditDialog } from '../admin/ProductEditDialog';
 import type { MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
 import { money } from '../../utils/format';
 import { TicketPreview } from '../tickets/TicketPreview';
-import { AutoPrintTicket } from '../tickets/AutoPrintTicket';
+import { AutoPrintTicket, KitchenTicket } from '../tickets/AutoPrintTicket';
 import { buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
@@ -467,6 +467,10 @@ export function POSPage() {
       {/* Sin UI: si el negocio activó la impresión automática, el ticket sale al cerrar el pedido.
           El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen disponibles. */}
       <AutoPrintTicket order={lastOrder} />
+
+      {/* La comanda de cocina, si el negocio la activó. Sale del MISMO pedido recién mandado: son
+          dos papeles distintos para dos personas distintas, y cada uno con su propio ajuste. */}
+      <KitchenTicket order={lastOrder} />
     </Box>
   );
 }

@@ -12,6 +12,7 @@ import {
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMenu } from '../../hooks/useMenu';
@@ -74,6 +75,9 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const methods = useMemo(() => metodosDeLaLista(methodsData?.items ?? [], lista), [methodsData, lista]);
   // null hasta que llega el catálogo; en cuanto llega, el default sale de la regla probada.
   const [methodId, setMethodId] = useState<number | null>(null);
+  // "Ya se lo llevó": el pedido nace entregado y no pasa por Pedidos. Apagado por default — el caso
+  // común sí pasa por cocina, y encenderlo por inercia escondería pedidos que faltan por preparar.
+  const [entregaInmediata, setEntregaInmediata] = useState(false);
   const metodoActivo = methodId ?? metodoPorDefecto(methods);
   const metodoElegido = methods.find((m) => m.id === metodoActivo);
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
@@ -157,6 +161,10 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       modifiers: l.modifiers.map((m) => ({ optionId: m.optionId, qty: m.qty })),
     })),
     payments: withPayment ? buildPayments() : undefined,
+    // Solo al cobrar: entregar sin cobrar sería regalar comida sin dejar rastro, porque el pedido
+    // nace terminado y no vuelve a aparecer en ninguna pantalla operativa. El servidor lo rechaza
+    // igual; esto evita el viaje.
+    delivered: withPayment && entregaInmediata,
   });
 
   const mutation = useMutation({
@@ -408,6 +416,15 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                 </Flex>
               </Box>
             )}
+            <HStack justify="space-between" borderTopWidth="1px" pt={3}>
+              <Box>
+                <Text fontWeight="600">Ya se lo llevó</Text>
+                <Text fontSize="xs" color="fg.muted">
+                  Queda entregado y no pasa a Pedidos.
+                </Text>
+              </Box>
+              <Switch checked={entregaInmediata} onCheckedChange={(e) => setEntregaInmediata(e.checked)} />
+            </HStack>
           </VStack>
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px">
