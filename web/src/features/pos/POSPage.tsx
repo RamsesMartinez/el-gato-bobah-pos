@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Box, Flex, VStack, HStack, Text, Button, Spinner, Center, IconButton, useDisclosure,
 } from '@chakra-ui/react';
-import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert, LuWallet } from 'react-icons/lu';
+import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuCircleAlert, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert, LuWallet } from 'react-icons/lu';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
@@ -442,9 +442,23 @@ export function POSPage() {
         <DialogBackdrop />
         <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
           <DialogBody py={6} textAlign="center">
-            <Center color="green.500" mb={2}><LuCircleCheck size={56} /></Center>
-            <Text fontSize="xl" fontWeight="800">Pedido #{lastOrder?.number}</Text>
-            <Text color="fg.muted" mb={5}>Registrado correctamente</Text>
+            {/* El color y el texto distinguen cobrado de pendiente. Antes los dos casos decían
+                "Registrado correctamente": quien mandaba a cocina sin cobrar cerraba la cuenta,
+                el pedido desaparecía de la pantalla y nada volvía a recordarle que faltaba el
+                dinero hasta el corte. */}
+            <Center color={lastOrder?.paid ? 'green.500' : 'orange.500'} mb={2}>
+              {lastOrder?.paid ? <LuCircleCheck size={56} /> : <LuCircleAlert size={56} />}
+            </Center>
+            <Text fontSize="xl" fontWeight="800">
+              {lastOrder?.folioName || `Pedido #${lastOrder?.number}`}
+            </Text>
+            {lastOrder?.paid ? (
+              <Text color="fg.muted" mb={5}>Cobrado · #{lastOrder?.number}</Text>
+            ) : (
+              <Text color="orange.600" fontWeight="700" mb={5}>
+                Falta cobrar {money(Number(lastOrder?.total ?? 0))} · #{lastOrder?.number}
+              </Text>
+            )}
             <VStack gap={2}>
               <Button size="lg" w="100%" onClick={() => setLastOrder(null)}>
                 Nuevo pedido

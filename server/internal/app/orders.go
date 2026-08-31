@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 	"uuid"
 
@@ -47,17 +48,18 @@ type CreateOrderCmd struct {
 	// Payments: 0..N líneas de pago (pago dividido). Vacío = enviar a cocina sin cobrar.
 	// La orden queda "pagada" cuando la suma de amounts cubre el total (ver load()).
 	Payments []PaymentInput
-	// Delivered: el pedido se cobró y se entregó en el mismo acto, así que nace ENTREGADO y no
-	// pasa por el tablero. Es el refresco de mostrador: nada va a cocina y el cliente se va con él
-	// en la mano. Exige que los pagos cubran el total — entregar sin cobrar sería regalar comida
-	// sin dejar rastro, porque el pedido nace terminado y no vuelve a aparecer en ninguna pantalla
-	// operativa.
-	Delivered bool
+	// CompanyID identifica al negocio; solo se usa para barajar los nombres de folio, de modo que
+	// dos locales de la misma cadena no canten "Tigre" a la misma hora.
+	CompanyID int64
 }
 
 type OrderView struct {
-	ID           int64           `json:"id"`
-	Number       int             `json:"number"`
+	ID     int64 `json:"id"`
+	Number int   `json:"number"`
+	// FolioName es el nombre con el que se canta el pedido ("Tigre"). Vacío en los pedidos
+	// anteriores a que existieran: a esos no se les inventa uno, porque el ticket que se imprimió
+	// en su día llevaba solo el número.
+	FolioName    string          `json:"folioName"`
 	Status       string          `json:"status"`
 	ServiceType  string          `json:"serviceType"`
 	CustomerName *string         `json:"customerName"`
@@ -72,12 +74,17 @@ type OrderView struct {
 }
 
 type OrderLineView struct {
+	ID          int64           `json:"id"`
 	ProductName string          `json:"productName"`
 	Quantity    decimal.Decimal `json:"quantity"`
-	UnitPrice   decimal.Decimal `json:"unitPrice"`
-	LineTotal   decimal.Decimal `json:"lineTotal"`
-	Notes       string          `json:"notes,omitempty"`
-	Modifiers   []OrderModView  `json:"modifiers,omitempty"`
+	// Delivered: cuánto de este renglón ya se le dio al cliente. Es cantidad y no un booleano
+	// porque la comida sale por tandas: de cinco alitas salen tres y dos siguen en la freidora.
+	Delivered decimal.Decimal `json:"delivered"`
+	Cancelled bool            `json:"cancelled"`
+	UnitPrice decimal.Decimal `json:"unitPrice"`
+	LineTotal decimal.Decimal `json:"lineTotal"`
+	Notes     string          `json:"notes,omitempty"`
+	Modifiers []OrderModView  `json:"modifiers,omitempty"`
 }
 
 type OrderModView struct {
@@ -168,6 +175,19 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
+	// Si algo del pedido necesita prepararse. Lo dice el CATÁLOGO, no la pantalla: preguntárselo al
+	// operador en cada cobro era pedirle que decidiera algo que el sistema ya sabe, y equivocarse
+	// salía caro — un ticket con un refresco y unas alitas marcado "no pasa por cocina" escondía
+	// las alitas del tablero y nadie las preparaba. Basta un producto que sí para que el pedido
+	// entero viaje.
+	algoVaACocina := false
+	for _, p := range prodRows {
+		if p.NeedsPrep {
+			algoVaACocina = true
+			break
+		}
+	}
+
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
@@ -189,12 +209,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	built, err := domain.BuildOrder(cmd.Lines, products, options)
 	if err != nil {
 		return nil, err
-	}
-	// Entregar en el acto exige que la venta quede saldada. Se valida aquí, contra el total que el
-	// SERVIDOR calculó, y no en la pantalla: el pedido nace terminado y ya no aparece en ninguna
-	// pantalla operativa, así que un faltante solo se vería hasta el corte.
-	if cmd.Delivered && !domain.PagosCubren(cmd.pagado(), built.Total.Add(built.DeliveryFee)) {
-		return nil, fmt.Errorf("%w: no se puede entregar un pedido que no se cobró completo", domain.ErrValidation)
 	}
 	// El costo de envío solo aplica a domicilio Y sin plataforma: el reparto de Uber/DiDi/Rappi lo
 	// cobra la plataforma, así que sumarle el envío del negocio le carga $20 de más a cada pedido.
@@ -221,6 +235,13 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	//    partirse: recalcular por reloj reiniciaba el folio a mitad del turno y dejaba dos
 	//    tickets #1 en la misma noche.
 	bizDate := sess.BusinessDate
+
+	// Nace entregado solo si no hay nada que preparar Y la venta quedó saldada. Lo segundo no es
+	// redundante: un pedido que nace terminado no vuelve a aparecer en ninguna pantalla operativa,
+	// así que si además no se cobró, el faltante no se vería hasta el corte.
+	naceEntregada := !algoVaACocina &&
+		domain.PagosCubren(cmd.pagado(), built.Total.Add(built.DeliveryFee))
+
 	var orderID int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		num, err := q.NextDailyNumber(ctx, bizDate)
@@ -240,7 +261,8 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
 			DeliveryFee:        built.DeliveryFee,
-			Status:             estadoInicial(cmd.Delivered),
+			FolioName:          strPtr(domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, int(num))),
+			Status:             estadoInicial(naceEntregada),
 		})
 		if err != nil {
 			return err
@@ -257,6 +279,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				UnitCost:       l.UnitCost,
 				LineTotal:      l.LineTotal,
 				Notes:          strPtr(l.Notes),
+				NaceEntregada:  naceEntregada,
 			})
 			if err != nil {
 				return err
@@ -348,7 +371,8 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		paid = paid.Add(pmt.Amount)
 	}
 	view := &OrderView{
-		ID: o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
+		FolioName: derefStr(o.FolioName),
+		ID:        o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
 		ServiceType: string(o.ServiceType), CustomerName: o.CustomerName, Notes: o.Notes,
 		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:     paid.GreaterThanOrEqual(o.Total) && o.Total.IsPositive(),
@@ -356,8 +380,10 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 	}
 	for _, l := range lines {
 		view.Lines = append(view.Lines, OrderLineView{
-			ProductName: l.ProductName, Quantity: l.Quantity, UnitPrice: l.UnitPrice,
-			LineTotal: l.LineTotal, Notes: derefStr(l.Notes), Modifiers: modsByLine[l.ID],
+			ID: l.ID, ProductName: l.ProductName, Quantity: l.Quantity,
+			Delivered: l.DeliveredQty, Cancelled: l.CancelledAt.Valid,
+			UnitPrice: l.UnitPrice, LineTotal: l.LineTotal,
+			Notes: derefStr(l.Notes), Modifiers: modsByLine[l.ID],
 		})
 	}
 	return view, nil
@@ -366,6 +392,7 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 type BoardOrder struct {
 	ID           int64           `json:"id"`
 	Number       int             `json:"number"`
+	FolioName    string          `json:"folioName"`
 	Status       string          `json:"status"`
 	ServiceType  string          `json:"serviceType"`
 	CustomerName *string         `json:"customerName"`
@@ -373,6 +400,10 @@ type BoardOrder struct {
 	Currency     domain.Currency `json:"currency"`
 	Paid         bool            `json:"paid"`
 	OpenedAt     time.Time       `json:"openedAt"`
+	// Avance de la entrega, en renglones vivos. El tablero lo pinta como "3 de 5 entregados" sin
+	// tener que traerse las líneas de cada tarjeta.
+	Lines          int `json:"lines"`
+	LinesDelivered int `json:"linesDelivered"`
 }
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
@@ -384,10 +415,12 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 	out := make([]BoardOrder, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, BoardOrder{
-			ID: r.ID, Number: int(r.DailyNumber), Status: string(r.Status),
+			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
+			Status:      string(r.Status),
 			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
 			Total: r.Total, Currency: domain.Currency(r.Currency),
 			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
+			Lines: int(r.LineasVivas), LinesDelivered: int(r.LineasEntregadas),
 		})
 	}
 	return out, nil
@@ -402,10 +435,12 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 	out := make([]BoardOrder, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, BoardOrder{
-			ID: r.ID, Number: int(r.DailyNumber), Status: string(r.Status),
+			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
+			Status:      string(r.Status),
 			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName,
 			Total: r.Total, Currency: domain.Currency(r.Currency),
 			Paid: r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(), OpenedAt: r.OpenedAt,
+			Lines: int(r.LineasVivas), LinesDelivered: int(r.LineasEntregadas),
 		})
 	}
 	return out, nil
@@ -462,6 +497,17 @@ func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reaso
 		}
 		if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
 			return domain.ErrConflict
+		}
+		// Cancelar repone el stock de TODAS las líneas, así que un pedido del que ya salió comida
+		// no se puede cancelar: reponer lo que el cliente se llevó le inventaría al almacén
+		// existencias que no están. Lo que queda por hacer se cancela renglón a renglón; lo que ya
+		// se entregó se reembolsa.
+		lineas, err := lineasDeEntrega(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		if domain.HayEntregaParcial(lineas) {
+			return domain.ErrCancelarConEntregas
 		}
 		if err := q.CancelOrder(ctx, db.CancelOrderParams{ID: id, CancelledBy: &actor, CancelReason: &reason}); err != nil {
 			return err
@@ -792,4 +838,105 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 	}
 
 	return s.load(ctx, orderID)
+}
+
+// lineasDeEntrega traduce los renglones del pedido a lo que el dominio necesita para razonar sobre
+// su entrega. Bloquea las filas: de esto cuelga el cierre automático del pedido, y dos personas
+// marcando renglones a la vez podrían dejarlo abierto con todo entregado.
+func lineasDeEntrega(ctx context.Context, q *db.Queries, orderID int64) ([]domain.LineaEntrega, error) {
+	rows, err := q.ListLinesForDelivery(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.LineaEntrega, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.LineaEntrega{
+			ID:        r.ID,
+			Cantidad:  r.Quantity,
+			Entregado: r.DeliveredQty,
+			Cancelada: r.CancelledAt.Valid,
+		})
+	}
+	return out, nil
+}
+
+// DeliverLine registra que se le dio al cliente `cantidad` de un renglón.
+//
+// Existe con cantidad —y no como un "listo/no listo"— porque en un pedido grande la comida sale
+// por tandas: de cinco alitas salen tres y las otras dos siguen en la freidora. Con un booleano el
+// operador tendría que elegir entre mentir y olvidar lo que sí entregó.
+func (s *OrdersService) DeliverLine(ctx context.Context, orderID, lineID int64, cantidad decimal.Decimal) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrderForUpdate(ctx, orderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.PuedeRecibirLineas(string(o.Status)) {
+			return fmt.Errorf("%w: este pedido ya está cerrado", domain.ErrConflict)
+		}
+
+		lineas, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(lineas, func(l domain.LineaEntrega) bool { return l.ID == lineID })
+		if i < 0 {
+			return domain.ErrNotFound
+		}
+		if err := domain.ValidarEntrega(lineas[i], cantidad); err != nil {
+			return err
+		}
+
+		// La base repite el tope que el dominio ya validó: entre leer y escribir cabe otra
+		// transacción entregando lo mismo. Si no tocó ninguna fila, eso fue lo que pasó.
+		n, err := q.DeliverOrderLine(ctx, db.DeliverOrderLineParams{
+			LineID: lineID, OrderID: orderID, Cantidad: cantidad,
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: alguien más entregó ese producto mientras tanto", domain.ErrConflict)
+		}
+
+		lineas[i].Entregado = lineas[i].Entregado.Add(cantidad)
+		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
+	})
+}
+
+// DeliverAll marca el pedido completo como entregado, que es el caso común y el de un solo tap.
+// Marca también sus renglones: si quedaran en desacuerdo, la pantalla mostraría comida pendiente
+// de un pedido ya cerrado y nadie sabría cuál de los dos datos creer.
+func (s *OrdersService) DeliverAll(ctx context.Context, orderID int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrderForUpdate(ctx, orderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if !domain.CanTransition(string(o.Status), domain.StatusEntregada) {
+			return domain.ErrConflict
+		}
+		if err := q.DeliverAllOrderLines(ctx, orderID); err != nil {
+			return err
+		}
+		return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada})
+	})
+}
+
+// cerrarSiYaSeEntregoTodo cierra el pedido cuando ya no le falta nada por entregar.
+//
+// Lo hace el servidor y no el operador: obligarlo a marcar el último renglón y además el pedido
+// es pedirle dos veces lo mismo, y la segunda es la que se olvida — el pedido se quedaría abierto
+// toda la tarde con la comida ya entregada, y el cierre de caja lo reclamaría al final del turno.
+func cerrarSiYaSeEntregoTodo(ctx context.Context, q *db.Queries, orderID int64, lineas []domain.LineaEntrega) error {
+	if !domain.TodoEntregado(lineas) {
+		return nil
+	}
+	return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada})
 }

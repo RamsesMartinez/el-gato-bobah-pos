@@ -13,7 +13,6 @@ import {
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { Picker } from '../../components/Picker';
-import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMenu } from '../../hooks/useMenu';
@@ -78,7 +77,6 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const [methodId, setMethodId] = useState<number | null>(null);
   // "Ya se lo llevó": el pedido nace entregado y no pasa por Pedidos. Apagado por default — el caso
   // común sí pasa por cocina, y encenderlo por inercia escondería pedidos que faltan por preparar.
-  const [entregaInmediata, setEntregaInmediata] = useState(false);
   // A qué pedido en curso se agrega lo que está en la cuenta. Vacío = pedido nuevo, que es el caso
   // de siempre. Es la libreta que vuelve de la mesa con "la 3 pidió dos más".
   const [agregarA, setAgregarA] = useState('');
@@ -174,7 +172,6 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     // Solo al cobrar: entregar sin cobrar sería regalar comida sin dejar rastro, porque el pedido
     // nace terminado y no vuelve a aparecer en ninguna pantalla operativa. El servidor lo rechaza
     // igual; esto evita el viaje.
-    delivered: withPayment && entregaInmediata,
   });
 
   const mutation = useMutation({
@@ -448,21 +445,6 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               </Box>
             )}
 
-            {/* Entregar en el acto solo aplica a un pedido nuevo: uno en curso ya tiene su estado y
-                su camino por el tablero. */}
-            <HStack justify="space-between" borderTopWidth="1px" pt={3} display={agregarA ? 'none' : undefined}>
-              <Box>
-                {/* "No pasa por cocina" y no "Ya se lo llevó": lo segundo suena igual que el tipo
-                    de venta "Para llevar" y se confunden. Son cosas distintas — unas alitas para
-                    llevar SÍ las prepara cocina y tienen que aparecer en Pedidos; un refresco de la
-                    nevera no. El ejemplo va en el texto porque es lo que hace obvia la diferencia. */}
-                <Text fontWeight="600">No pasa por cocina</Text>
-                <Text fontSize="xs" color="fg.muted">
-                  Queda entregado y no aparece en Pedidos. Para lo que el cliente toma de la nevera.
-                </Text>
-              </Box>
-              <Switch checked={entregaInmediata} onCheckedChange={(e) => setEntregaInmediata(e.checked)} />
-            </HStack>
           </VStack>
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px">

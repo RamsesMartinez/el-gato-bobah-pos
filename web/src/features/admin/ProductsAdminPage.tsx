@@ -86,6 +86,7 @@ export function ProductsAdminPage() {
     mutationFn: ({ p, active }: { p: AdminProduct; active: boolean }) =>
       adminApi.updateProduct(p.id, {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active,
+        needsPrep: p.needsPrep,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: (_d, { p, active }) => {

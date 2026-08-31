@@ -1,4 +1,4 @@
-import type { OrderView } from '../types/pos';
+import type { ReceiptOrder } from '../types/pos';
 
 // La comanda de cocina: el papel que reemplaza a la libreta.
 //
@@ -14,7 +14,7 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 }
 
-export function buildKitchenHtml(order: OrderView): string {
+export function buildKitchenHtml(order: ReceiptOrder): string {
   const hora = new Date(order.openedAt);
   const horaTxt = Number.isNaN(hora.getTime())
     ? ''
@@ -39,6 +39,7 @@ export function buildKitchenHtml(order: OrderView): string {
   @page { margin: 4mm; }
   body { font-family: 'Courier New', monospace; font-size: 15px; margin: 0; }
   .folio { font-size: 46px; font-weight: 800; line-height: 1; }
+  .num { font-size: 15px; font-weight: 600; color: #444; }
   .cab { display: flex; justify-content: space-between; align-items: baseline;
          border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 8px; }
   .hora { font-size: 16px; }
@@ -48,7 +49,13 @@ export function buildKitchenHtml(order: OrderView): string {
   .mod { font-size: 16px; padding-left: 14px; }
   .nota { font-size: 16px; font-weight: 700; padding-left: 14px; text-transform: uppercase; }
 </style></head><body>
-<div class="cab"><div class="folio">#${order.number}</div><div class="hora">${horaTxt}</div></div>
+<div class="cab">
+  <div>
+    <div class="folio">${order.folioName || `#${order.number}`}</div>
+    ${order.folioName ? `<div class="num">#${order.number}</div>` : ''}
+  </div>
+  <div class="hora">${horaTxt}</div>
+</div>
 ${quien}${lineas}
 </body></html>`;
 }

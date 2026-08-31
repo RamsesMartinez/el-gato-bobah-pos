@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -26,6 +25,7 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 
 	cajero := makeUser(t, st, "cajero_inmediato", "cajero")
 	prod := makeProduct(t, st, "Refresco", decimal.RequireFromString("25"), false)
+	sinPreparacion(t, st, prod)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
@@ -33,7 +33,6 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
-		Delivered:   true,
 		Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments:    []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("25")}},
 	})
@@ -88,43 +87,5 @@ func TestSinLaMarcaElPedidoSigueNaciendoAbierto(t *testing.T) {
 	}
 	if ord.Status != domain.StatusAbierta {
 		t.Fatalf("estado = %s, quiere abierta", ord.Status)
-	}
-}
-
-// Entregar en el acto algo que NO se cobró sería regalar comida sin dejar rastro: el pedido nace
-// terminado, no vuelve a aparecer en ninguna pantalla operativa, y el faltante solo se ve en el
-// corte. Se rechaza en el servidor, no en la pantalla.
-func TestNoSePuedeEntregarEnElActoSinCobrar(t *testing.T) {
-	st := newTestStore(t)
-	ctx := context.Background()
-	svc := app.NewOrdersService(st, clock)
-
-	cajero := makeUser(t, st, "cajero_regalo", "cajero")
-	prod := makeProduct(t, st, "Café regalado", decimal.RequireFromString("50"), false)
-	efectivo := paymentMethodID(t, st, "Efectivo")
-	abrirCajaPrincipal(t, st, cajero)
-
-	_, err := svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID:  uuid.New(),
-		ServiceType: "mostrador",
-		OpenedBy:    cajero,
-		Delivered:   true,
-		Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-	})
-	if !errors.Is(err, domain.ErrValidation) {
-		t.Fatalf("entregar sin cobrar debe rechazarse, fue: %v", err)
-	}
-
-	// Y un pago parcial tampoco alcanza: la venta no está saldada.
-	_, err = svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID:  uuid.New(),
-		ServiceType: "mostrador",
-		OpenedBy:    cajero,
-		Delivered:   true,
-		Lines:       []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payments:    []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("20")}},
-	})
-	if !errors.Is(err, domain.ErrValidation) {
-		t.Fatalf("entregar con pago parcial debe rechazarse, fue: %v", err)
 	}
 }

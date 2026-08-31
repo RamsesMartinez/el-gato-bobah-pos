@@ -4,12 +4,12 @@ import { buildKitchenHtml } from '../../utils/printKitchen';
 import { buildReceiptHtml, printHtmlOffscreen } from '../../utils/printReceipt';
 import { toaster } from '../../components/ui/toaster';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
-import type { OrderView } from '../../types/pos';
+import type { ReceiptOrder } from '../../types/pos';
 
 // AutoPrintTicket no dibuja nada: saca el ticket del pedido recién cerrado cuando el negocio activó
 // la impresión automática. Vive como componente y no como llamada suelta para que el efecto se
 // cancele solo si el POS se desmonta a media venta.
-export function AutoPrintTicket({ order }: { order: OrderView | null }) {
+export function AutoPrintTicket({ order }: { order: ReceiptOrder | null }) {
   const { data: business, autoPrintOnClose, printFreeModifiers } = useTicketBusinessInfo();
   // Se recuerda el pedido ya impreso, no un simple "ya imprimí": React puede re-renderizar por
   // cualquier motivo, y cada re-render que imprimiera sería un ticket duplicado en la mano del
@@ -40,7 +40,7 @@ export function AutoPrintTicket({ order }: { order: OrderView | null }) {
 // activó. Va aparte de AutoPrintTicket y no como una bandera dentro: son dos documentos distintos,
 // para dos personas distintas, con dos ajustes que se encienden por separado. Meterlos en el mismo
 // componente obligaría a leer un `if` para saber cuál sale.
-export function KitchenTicket({ order }: { order: OrderView | null }) {
+export function KitchenTicket({ order }: { order: ReceiptOrder | null }) {
   const { printKitchenTicket } = useTicketBusinessInfo();
   // Igual que el ticket del cliente: se recuerda el pedido ya impreso, porque cada re-render que
   // imprimiera sería una comanda duplicada en la plancha.

@@ -832,6 +832,7 @@ type Order struct {
 	RefundReason       *string            `json:"refund_reason"`
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	FolioName          *string            `json:"folio_name"`
 }
 
 type OrderCounter struct {
@@ -855,6 +856,7 @@ type OrderLine struct {
 	CancelledBy    *int64             `json:"cancelled_by"`
 	CancelReason   *string            `json:"cancel_reason"`
 	CreatedAt      time.Time          `json:"created_at"`
+	DeliveredQty   decimal.Decimal    `json:"delivered_qty"`
 }
 
 type OrderLineModifier struct {
@@ -926,6 +928,7 @@ type Product struct {
 	UpdatedAt      time.Time        `json:"updated_at"`
 	AvailableFrom  pgtype.Date      `json:"available_from"`
 	AvailableUntil pgtype.Date      `json:"available_until"`
+	NeedsPrep      bool             `json:"needs_prep"`
 }
 
 type ProductChannel struct {

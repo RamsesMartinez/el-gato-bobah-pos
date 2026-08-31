@@ -1,4 +1,4 @@
-import type { OrderView } from '../types/pos';
+import type { ReceiptOrder } from '../types/pos';
 import { money } from './format';
 
 const SERVICE: Record<string, string> = {
@@ -37,7 +37,7 @@ export interface TicketBusinessInfo {
 // buildReceiptHtml arma el HTML del ticket (función pura y testeable). Todo string de
 // datos pasa por esc(); los numéricos van por money() y son seguros.
 export function buildReceiptHtml(
-  order: OrderView,
+  order: ReceiptOrder,
   business: TicketBusinessInfo,
   opts: { reprint?: boolean; sample?: boolean; printFreeModifiers?: boolean } = {},
 ): string {
@@ -102,7 +102,7 @@ export function buildReceiptHtml(
   ${business.address ? `<div class="center muted">${esc(business.address)}</div>` : ''}
   ${business.phone ? `<div class="center muted">Tel. ${esc(business.phone)}</div>` : ''}
   ${business.headerNote ? `<div class="center note">${esc(business.headerNote)}</div>` : ''}
-  <div class="center muted">Pedido #${order.number}</div>
+  <div class="center muted">${order.folioName ? `${order.folioName} &middot; ` : ''}Pedido #${order.number}</div>
   <div class="center muted">${new Date(order.openedAt).toLocaleString('es-MX')}</div>
   <div class="center muted">${esc(SERVICE[order.serviceType] ?? order.serviceType)}${order.customerName ? ` · ${esc(order.customerName)}` : ''}</div>
   ${opts.reprint ? '<div class="center reprint">** REIMPRESIÓN **</div>' : ''}
@@ -199,7 +199,7 @@ export function printHtmlOffscreen(html: string): Promise<boolean> {
 // sampleTicketOrder arma un pedido de muestra para el ticket de prueba de la pantalla de
 // configuración: sirve para ver en papel cómo quedó el logo y los textos sin tener que cobrar una
 // venta de mentiras, que ensuciaría los reportes y el corte de caja.
-export function sampleTicketOrder(): OrderView {
+export function sampleTicketOrder(): ReceiptOrder {
   return {
     id: 0,
     number: 0,
@@ -210,6 +210,7 @@ export function sampleTicketOrder(): OrderView {
     deliveryFee: '0',
     total: '250',
     currency: 'MXN',
+    folioName: 'Tigre',
     paid: true,
     // Fecha fija: el ticket de prueba se compara contra el papel anterior al ajustar la impresora,
     // y una hora que cambia en cada impresión estorba esa comparación.
