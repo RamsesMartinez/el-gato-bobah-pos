@@ -46,8 +46,10 @@ type MenuCategory struct {
 }
 
 type MenuProduct struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// SKU: el código del producto, para buscar por él en la pantalla de venta.
+	SKU         *string         `json:"sku"`
 	Description *string         `json:"description"`
 	Price       decimal.Decimal `json:"price"`
 	Cost        decimal.Decimal `json:"cost"`
@@ -179,7 +181,7 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 			groups = []MenuGroup{}
 		}
 		doc.Products = append(doc.Products, MenuProduct{
-			ID: pr.ID, Name: pr.Name, Description: pr.Description,
+			ID: pr.ID, Name: pr.Name, SKU: pr.Sku, Description: pr.Description,
 			Price:      domain.Round2(pr.Price),
 			Cost:       domain.Round2(pr.CurrentCost),
 			Margin:     domain.Round2(pr.Price.Sub(pr.CurrentCost)),

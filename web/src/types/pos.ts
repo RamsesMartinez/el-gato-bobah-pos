@@ -40,6 +40,8 @@ export interface MenuCategory {
 export interface MenuProduct {
   id: number;
   name: string;
+  // Código del producto. La mayoría del catálogo migrado de FUDO no tiene, por eso es nullable.
+  sku: string | null;
   description: string | null;
   price: string;
   cost: string;

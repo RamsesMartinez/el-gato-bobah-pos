@@ -23,7 +23,7 @@ const popularTTL = 5 * time.Minute
 // de precios por plataforma: el selector no aparecía y la base sí tenía las plataformas.
 //
 // v2: agrega platforms, platformPrices y platformModPrices (spec 002).
-const menuSchema = "v2"
+const menuSchema = "v3"
 
 // Claves namespaced por empresa: el menú/popularidad de una empresa NUNCA se sirve a otra
 // (aislamiento multi-tenant también en la caché). company_id viene del JWT, no del cliente.

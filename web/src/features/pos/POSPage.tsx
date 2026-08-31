@@ -21,9 +21,10 @@ import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../admin/ProductEditDialog';
 import type { MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
-import { money, normalize } from '../../utils/format';
+import { money } from '../../utils/format';
 import { TicketPreview } from '../tickets/TicketPreview';
 import { AutoPrintTicket } from '../tickets/AutoPrintTicket';
+import { buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
@@ -154,10 +155,7 @@ export function POSPage() {
   }, [allCategories]);
 
   const products = useMemo(() => {
-    if (search.trim()) {
-      const q = normalize(search);
-      return allProducts.filter((p) => normalize(p.name).includes(q));
-    }
+    if (search.trim()) return buscarProductos(allProducts, search);
     if (selection.kind === 'top') {
       // más vendidos (orden del backend). Fallback: favoritos, luego los primeros del catálogo,
       // para que un negocio recién estrenado no vea la pestaña vacía.
