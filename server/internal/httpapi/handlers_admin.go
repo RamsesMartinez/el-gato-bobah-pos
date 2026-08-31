@@ -189,12 +189,14 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name           string          `json:"name"`
-		Price          decimal.Decimal `json:"price"`
-		Favorite       bool            `json:"favorite"`
-		Active         bool            `json:"active"`
-		AvailableFrom  *string         `json:"availableFrom"`
-		AvailableUntil *string         `json:"availableUntil"`
+		Name     string          `json:"name"`
+		Price    decimal.Decimal `json:"price"`
+		Favorite bool            `json:"favorite"`
+		Active   bool            `json:"active"`
+		// categoryId ausente o en 0 = no mover el producto de categoría.
+		CategoryID     int64   `json:"categoryId"`
+		AvailableFrom  *string `json:"availableFrom"`
+		AvailableUntil *string `json:"availableUntil"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -202,6 +204,7 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.admin.UpdateProduct(r.Context(), app.UpdateProductInput{
 		ID: id, Name: body.Name, Price: body.Price, Favorite: body.Favorite, Active: body.Active,
+		CategoryID:    body.CategoryID,
 		AvailableFrom: body.AvailableFrom, AvailableUntil: body.AvailableUntil,
 	}); err != nil {
 		Error(w, err)

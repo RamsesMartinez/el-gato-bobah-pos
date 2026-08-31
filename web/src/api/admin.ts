@@ -18,6 +18,7 @@ export interface AdminProduct {
   is_active: boolean;
   is_favorite: boolean;
   category: string;
+  categoryId: number;
   availableFrom: string | null;  // "YYYY-MM-DD" o null (temporada)
   availableUntil: string | null;
   groupCount: number;    // grupos de modificadores activos ligados al producto
@@ -56,6 +57,9 @@ export interface UpdateProductBody {
   price: number;
   favorite: boolean;
   active: boolean;
+  // Ausente o 0 = no mover el producto de categoría. El servidor valida que sea de esta empresa
+  // antes de escribirla; mandar la de otra devuelve el mismo error que una que no existe.
+  categoryId?: number;
   availableFrom?: string | null;
   availableUntil?: string | null;
 }

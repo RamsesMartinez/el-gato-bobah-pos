@@ -9,7 +9,7 @@ import {
 import { Field } from '../../components/ui/field';
 import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
@@ -27,11 +27,21 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const palette = useUiStore((s) => s.palette);
   const [edit, setEdit] = useState<AdminProduct | null>(product);
   useEffect(() => { setEdit(product); }, [product]);
+  // Solo se piden al abrir el diálogo: es un catálogo chico que casi nunca cambia y no vale un
+  // viaje por cada producto que se lista.
+  const { data: cats } = useQuery({
+    queryKey: ['admin', 'categories'],
+    queryFn: adminApi.categories,
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+  const categorias = cats?.items ?? [];
 
   const save = useMutation({
     mutationFn: (p: AdminProduct) =>
       adminApi.updateProduct(p.id, {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
+        categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: () => {
@@ -59,6 +69,25 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 <Field label="Precio">
                   <Input type="number" value={edit.price}
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
+                </Field>
+                <Field label="Categoría">
+                  {/* Nativo a propósito: en una tablet abre el selector del sistema, que es más
+                      cómodo con el dedo que una lista propia y no se sale de la pantalla. */}
+                  <select
+                    value={edit.categoryId || ''}
+                    onChange={(e) => setEdit({ ...edit, categoryId: Number(e.target.value) })}
+                    style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}
+                  >
+                    {/* Mientras llegan las categorías se pinta la actual: un <select> cuyo valor
+                        no coincide con ninguna opción se ve VACÍO, y un campo que parpadea en
+                        blanco sobre el producto que estás editando parece que lo borró. */}
+                    {categorias.length === 0 && <option value={edit.categoryId}>{edit.category}</option>}
+                    {categorias.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.parentId ? '   ' : ''}{c.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <HStack justify="space-between">
                   <Text>Favorito</Text>
