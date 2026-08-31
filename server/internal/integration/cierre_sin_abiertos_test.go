@@ -62,9 +62,19 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	}
 
 	// El mensaje tiene que decir CUÁLES, o el operador queda con un error que no puede accionar.
+	// Y tiene que decirlo con el NOMBRE del pedido: es lo que se lee en el tablero y lo que se
+	// canta, así que un error con solo el número manda a comparar números contra una pantalla que
+	// muestra animales, justo cuando se está cerrando y con prisa.
 	_, err = backoffice.CloseSession(ctx, principal, cajero, declarado, "")
-	if msg := err.Error(); !contiene(msg, "#") {
+	msg := err.Error()
+	if !contiene(msg, "#") {
 		t.Fatalf("el error debe nombrar los folios pendientes, dijo: %s", msg)
+	}
+	if pedido.FolioName == "" {
+		t.Fatal("el pedido nació sin nombre de folio")
+	}
+	if !contiene(msg, pedido.FolioName) {
+		t.Fatalf("el error debe nombrar el pedido como %q, dijo: %s", pedido.FolioName, msg)
 	}
 
 	// Entregada: ya cierra.

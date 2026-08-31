@@ -122,7 +122,10 @@ export function SalesPage() {
           <Table.Body>
             {items.map((v) => (
               <Table.Row key={v.id} cursor="pointer" onClick={() => setDetalle(v)}>
-                <Table.Cell fontWeight="700">#{v.dailyNumber}</Table.Cell>
+                <Table.Cell>
+                  <Text fontWeight="700" lineHeight="1.2">{v.folioName || `#${v.dailyNumber}`}</Text>
+                  {v.folioName && <Text fontSize="xs" color="fg.muted">#{v.dailyNumber}</Text>}
+                </Table.Cell>
                 <Table.Cell whiteSpace="nowrap">{hora(v.openedAt)}</Table.Cell>
                 <Table.Cell>{etiquetaEstado(v.status)}</Table.Cell>
                 <Table.Cell>{v.platform || etiquetaTipo(v.serviceType)}</Table.Cell>

@@ -973,7 +973,14 @@ func (s *BackofficeService) sinPedidosPendientes(ctx context.Context, sessionID 
 	}
 	partes := make([]string, 0, len(folios))
 	for _, f := range folios {
-		partes = append(partes, "#"+strconv.FormatInt(int64(f), 10))
+		// El nombre primero porque es lo que se lee en el tablero y lo que se canta; el número va
+		// entre paréntesis para quien busque por ticket. Los pedidos viejos no tienen nombre.
+		num := "#" + strconv.FormatInt(int64(f.DailyNumber), 10)
+		if f.FolioName != nil && *f.FolioName != "" {
+			partes = append(partes, *f.FolioName+" ("+num+")")
+			continue
+		}
+		partes = append(partes, num)
 	}
 	return fmt.Errorf("%w: %s. Entrégalos o cancélalos antes de cerrar",
 		domain.ErrOpenOrders, strings.Join(partes, ", "))

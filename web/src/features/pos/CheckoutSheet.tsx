@@ -434,7 +434,9 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                   onChange={setAgregarA}
                   options={pedidosAbiertos.map((o) => ({
                     value: String(o.id),
-                    label: `#${o.number}${o.customerName ? ` · ${o.customerName}` : ''}`,
+                    // Nombre primero (es lo que se ve en el tablero y lo que dice el cliente),
+                    // número después para quien busque por ticket.
+                    label: `${o.folioName ? `${o.folioName} · #${o.number}` : `#${o.number}`}${o.customerName ? ` · ${o.customerName}` : ''}`,
                     hint: money(o.total, o.currency),
                   }))}
                   placeholder="Pedido nuevo"
@@ -453,7 +455,10 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
           {agregarA ? (
             <Button w="100%" size="lg" disabled={chargeLines.length === 0} loading={sending || charging}
               onClick={() => mutation.mutate(false)}>
-              Agregar a #{pedidosAbiertos.find((o) => String(o.id) === agregarA)?.number ?? ''}
+              Agregar a {(() => {
+                const o = pedidosAbiertos.find((p) => String(p.id) === agregarA);
+                return o?.folioName || `#${o?.number ?? ''}`;
+              })()}
             </Button>
           ) : (
             <HStack w="100%">

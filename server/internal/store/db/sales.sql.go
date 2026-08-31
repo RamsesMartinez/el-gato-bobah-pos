@@ -42,7 +42,7 @@ func (q *Queries) CountSales(ctx context.Context, arg CountSalesParams) (int64, 
 
 const listSales = `-- name: ListSales :many
 
-select o.id, o.daily_number, o.business_date, o.opened_at, o.completed_at,
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
        dp.name as platform,
        u.name as opened_by_name,
@@ -84,6 +84,7 @@ type ListSalesParams struct {
 type ListSalesRow struct {
 	ID           int64              `json:"id"`
 	DailyNumber  int32              `json:"daily_number"`
+	FolioName    *string            `json:"folio_name"`
 	BusinessDate pgtype.Date        `json:"business_date"`
 	OpenedAt     time.Time          `json:"opened_at"`
 	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
@@ -138,6 +139,7 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 		if err := rows.Scan(
 			&i.ID,
 			&i.DailyNumber,
+			&i.FolioName,
 			&i.BusinessDate,
 			&i.OpenedAt,
 			&i.CompletedAt,
