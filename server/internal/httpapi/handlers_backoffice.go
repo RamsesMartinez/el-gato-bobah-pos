@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -617,8 +618,16 @@ func (h *Handlers) CreateStockMovement(w http.ResponseWriter, r *http.Request) {
 // ---- Reportes ----
 
 func (h *Handlers) ReportSales(w http.ResponseWriter, r *http.Request) {
-	to := parseDate(r.URL.Query().Get("to"), time.Now())
-	from := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	rows, err := h.backoffice.SalesByDay(r.Context(), from, to)
 	if err != nil {
 		Error(w, err)
@@ -634,8 +643,16 @@ func (h *Handlers) ReportSales(w http.ResponseWriter, r *http.Request) {
 
 // GET /reports/tips?from=&to= — propinas por empleado (para repartir) y por día.
 func (h *Handlers) ReportTips(w http.ResponseWriter, r *http.Request) {
-	to := parseDate(r.URL.Query().Get("to"), time.Now())
-	from := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), from, to)
 	if err != nil {
 		Error(w, err)
@@ -650,7 +667,11 @@ func (h *Handlers) ReportTips(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
-	since := parseDate(r.URL.Query().Get("since"), time.Now().AddDate(0, 0, -30))
+	since, err := parseDate(r.URL.Query().Get("since"), time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	rows, err := h.backoffice.ProductMargins(r.Context(), since, queryLimit(r, 50))
 	if err != nil {
 		Error(w, err)
@@ -661,15 +682,21 @@ func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
 
 // ---- helpers ----
 
-func parseDate(s string, fallback time.Time) time.Time {
+// parseDate lee una fecha de la frontera. El default aplica al parámetro AUSENTE; uno presente y
+// malformado se RECHAZA.
+//
+// Antes caía al default en los dos casos, y esa es la peor forma de fallar: un `from` mal escrito
+// —o un front con un bug de formato— hacía que el reporte contestara otros 30 días con la pantalla
+// viéndose perfecta. Un error se nota; una pantalla correcta que responde lo que nadie pidió, no.
+func parseDate(s string, fallback time.Time) (time.Time, error) {
 	if s == "" {
-		return fallback
+		return fallback, nil
 	}
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
-		return fallback
+		return time.Time{}, fmt.Errorf("%w: la fecha %q no tiene el formato AAAA-MM-DD", domain.ErrValidation, s)
 	}
-	return t
+	return t, nil
 }
 
 func queryLimit(r *http.Request, def int32) int32 {
