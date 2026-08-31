@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 	"uuid"
 
@@ -46,6 +47,12 @@ type CreateOrderCmd struct {
 	// Payments: 0..N líneas de pago (pago dividido). Vacío = enviar a cocina sin cobrar.
 	// La orden queda "pagada" cuando la suma de amounts cubre el total (ver load()).
 	Payments []PaymentInput
+	// Delivered: el pedido se cobró y se entregó en el mismo acto, así que nace ENTREGADO y no
+	// pasa por el tablero. Es el refresco de mostrador: nada va a cocina y el cliente se va con él
+	// en la mano. Exige que los pagos cubran el total — entregar sin cobrar sería regalar comida
+	// sin dejar rastro, porque el pedido nace terminado y no vuelve a aparecer en ninguna pantalla
+	// operativa.
+	Delivered bool
 }
 
 type OrderView struct {
@@ -183,6 +190,12 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if err != nil {
 		return nil, err
 	}
+	// Entregar en el acto exige que la venta quede saldada. Se valida aquí, contra el total que el
+	// SERVIDOR calculó, y no en la pantalla: el pedido nace terminado y ya no aparece en ninguna
+	// pantalla operativa, así que un faltante solo se vería hasta el corte.
+	if cmd.Delivered && !domain.PagosCubren(cmd.pagado(), built.Total.Add(built.DeliveryFee)) {
+		return nil, fmt.Errorf("%w: no se puede entregar un pedido que no se cobró completo", domain.ErrValidation)
+	}
 	// El costo de envío solo aplica a domicilio Y sin plataforma: el reparto de Uber/DiDi/Rappi lo
 	// cobra la plataforma, así que sumarle el envío del negocio le carga $20 de más a cada pedido.
 	cobraEnvio := cmd.ServiceType == "domicilio" && cmd.DeliveryPlatformID == nil
@@ -227,6 +240,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
 			DeliveryFee:        built.DeliveryFee,
+			Status:             estadoInicial(cmd.Delivered),
 		})
 		if err != nil {
 			return err
@@ -622,4 +636,23 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 		lista.opcion[d.OptionID] = &delta
 	}
 	return lista, nil
+}
+
+// pagado suma lo que traen las líneas de pago del comando.
+func (c CreateOrderCmd) pagado() decimal.Decimal {
+	total := decimal.Zero
+	for _, p := range c.Payments {
+		if p.Amount.IsPositive() {
+			total = total.Add(p.Amount)
+		}
+	}
+	return total
+}
+
+// estadoInicial: entregado en el acto, o abierto para que pase por el tablero.
+func estadoInicial(entregado bool) db.OrderStatus {
+	if entregado {
+		return db.OrderStatus(domain.StatusEntregada)
+	}
+	return db.OrderStatus(domain.StatusAbierta)
 }

@@ -32,8 +32,10 @@ func (q *Queries) CancelOrder(ctx context.Context, arg CancelOrderParams) error 
 
 const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
-                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                    customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
+                    status, completed_at)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+        $13, case when $13::order_status = 'entregada' then now() end)
 returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee
 `
 
@@ -50,8 +52,11 @@ type CreateOrderParams struct {
 	Subtotal           decimal.Decimal `json:"subtotal"`
 	Total              decimal.Decimal `json:"total"`
 	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Status             OrderStatus     `json:"status"`
 }
 
+// status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
+// acto —el refresco de mostrador— nace entregado y nunca pasa por el tablero. El resto nace abierto.
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
 	row := q.db.QueryRow(ctx, createOrder,
 		arg.ClientUuid,
@@ -66,6 +71,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.Subtotal,
 		arg.Total,
 		arg.DeliveryFee,
+		arg.Status,
 	)
 	var i Order
 	err := row.Scan(

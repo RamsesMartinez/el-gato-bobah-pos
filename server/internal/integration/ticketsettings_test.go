@@ -200,3 +200,44 @@ func TestAdicionalesSinCostoSeImprimenPorDefault(t *testing.T) {
 		t.Fatal("los adicionales sin costo deben imprimirse por default")
 	}
 }
+
+// El interruptor de la comanda de cocina nace APAGADO y se puede encender por empresa.
+//
+// Apagado por default no es la elección tímida: donde la cocina está pegada al mostrador, la
+// comanda sería papel que duplica lo que el cocinero ya ve en la pantalla. Lo enciende el negocio
+// que tiene la cocina en otro cuarto, y por eso es un ajuste y no una constante — el mismo binario
+// sirve a los dos.
+func TestLaComandaDeCocinaNaceApagadaYSeEnciendePorEmpresa(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	settings := app.NewSettingsService(st)
+	admin := makeUser(t, st, "admin_comanda", "admin")
+
+	cur, err := settings.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if cur.PrintKitchenTicket {
+		t.Fatal("la comanda debe nacer apagada")
+	}
+
+	if _, err := settings.SetBusinessInfo(ctx, domain.BusinessInfo{Name: "El Gato Bobah"},
+		domain.PrintSettings{PrintKitchenTicket: true, PrintFreeModifiers: true},
+		domain.DefaultTimezone, admin); err != nil {
+		t.Fatalf("encender la comanda: %v", err)
+	}
+	got, err := settings.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get tras encender: %v", err)
+	}
+	if !got.PrintKitchenTicket {
+		t.Fatal("la comanda debía quedar encendida")
+	}
+	// Y no arrastró a los otros ajustes de impresión: cada uno se enciende por separado.
+	if got.AutoPrintOnClose {
+		t.Fatal("encender la comanda no debe encender la impresión automática del ticket")
+	}
+	if !got.PrintFreeModifiers {
+		t.Fatal("encender la comanda no debe apagar los adicionales sin costo")
+	}
+}

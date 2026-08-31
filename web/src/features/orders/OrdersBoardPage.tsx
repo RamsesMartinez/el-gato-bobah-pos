@@ -21,6 +21,10 @@ const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
   domicilio: { label: 'Domicilio', icon: LuBike },
 };
 
+// Cuántas entregadas se listan. El resto vive en la pantalla de Ventas, que es la que existe para
+// mirar el histórico; aquí estorbarían lo que falta por atender.
+const ENTREGADAS_VISIBLES = 5;
+
 const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', 'Otro'];
 const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente', 'Cobro erróneo', 'Otro'];
 
@@ -101,9 +105,14 @@ export function OrdersBoardPage() {
           </Badge>
         )}
       </HStack>
+      {/* "A entregar" y no "Listos": lo primero dice qué falta hacer, lo segundo qué hizo cocina.
+          En una cafetería sin pantalla de cocina, quien mira este tablero busca lo que le falta.
+
+          Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
+          columnas dejan tarjetas de ~300 px donde el nombre del cliente ya no cabe. */}
       <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
         <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Marcar listo" />
-        <Column title="Listos" orders={listos} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Entregar" />
+        <Column title="A entregar" orders={listos} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Entregar" />
       </SimpleGrid>
       {canRefund && <DeliveredSection orders={entregadas} onRefund={refund} onTicket={showTicket} />}
 
@@ -113,20 +122,24 @@ export function OrdersBoardPage() {
   );
 }
 
-// Entregadas del día: solo admin/gerente, para reembolsar (devolución = pérdida). Compacta
-// para no competir con el flujo operativo de arriba.
+// Entregadas del día: solo admin/gerente, para reembolsar (devolución = pérdida). Compacta y
+// TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas, y
+// una lista que crece todo el día empuja fuera de la pantalla lo que sí hay que atender.
 function DeliveredSection({ orders, onRefund, onTicket }: { orders: BoardOrder[]; onRefund: (o: BoardOrder) => void; onTicket: (o: BoardOrder) => void }) {
   return (
     <Box mt={6}>
       <HStack mb={3}>
         <Text fontWeight="700" fontSize="lg">Entregadas hoy</Text>
         <Badge borderRadius="full" px={2}>{orders.length}</Badge>
+        {orders.length > ENTREGADAS_VISIBLES && (
+          <Text fontSize="sm" color="fg.muted">últimas {ENTREGADAS_VISIBLES}</Text>
+        )}
       </HStack>
       {orders.length === 0 ? (
         <Text color="fg.subtle">Sin entregas hoy</Text>
       ) : (
         <VStack align="stretch" gap={2}>
-          {orders.map((o) => (
+          {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => (
             <Flex key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg"
               px={4} py={2} justify="space-between" align="center">
               <HStack gap={3}>

@@ -54,3 +54,20 @@ func (b BusinessInfo) Validate() error {
 	}
 	return nil
 }
+
+// PrintSettings agrupa lo que el negocio decide sobre la impresión.
+//
+// Van juntos y no como parámetros sueltos por dos razones. Una es de forma: cuatro booleanos en fila
+// en una firma se confunden entre sí y el compilador no ayuda. La otra es de fondo: la intención
+// declarada es que a medio plazo estos ajustes se vendan como paquetes, y un paquete es un
+// conjunto con nombre. Tenerlo nombrado hoy es lo que evita desenredarlo después.
+type PrintSettings struct {
+	// AutoPrintOnClose: el ticket del cliente sale solo al cerrar el pedido.
+	AutoPrintOnClose bool
+	// PrintFreeModifiers: el ticket lista los adicionales que no cuestan.
+	PrintFreeModifiers bool
+	// PrintKitchenTicket: al mandar el pedido sale una comanda SIN precios para cocina. Apagado por
+	// default: donde la cocina está pegada al mostrador, sería papel que duplica lo que el cocinero
+	// ya ve en la pantalla.
+	PrintKitchenTicket bool
+}

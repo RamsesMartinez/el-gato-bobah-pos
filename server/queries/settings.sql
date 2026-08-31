@@ -15,6 +15,7 @@ select delivery_fee,
        auto_print_on_close,
        timezone,
        print_free_modifiers,
+       print_kitchen_ticket,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -44,6 +45,7 @@ set business_name       = sqlc.arg(business_name),
     -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
     timezone            = sqlc.arg(timezone),
     print_free_modifiers = sqlc.arg(print_free_modifiers),
+    print_kitchen_ticket = sqlc.arg(print_kitchen_ticket),
     updated_at          = now(),
     updated_by          = sqlc.arg(updated_by);
 

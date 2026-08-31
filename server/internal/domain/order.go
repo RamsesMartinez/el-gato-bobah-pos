@@ -263,3 +263,10 @@ func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
 	}
 	return *delMetodo == *delPedido
 }
+
+// PagosCubren dice si lo pagado salda el total. Tolera un centavo de diferencia por el mismo motivo
+// que la pantalla de cobro: el redondeo a dos decimales de varias líneas de pago puede dejar un
+// centavo de sobra o de falta, y rechazar una venta saldada por eso deja al cliente esperando.
+func PagosCubren(pagado, total decimal.Decimal) bool {
+	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
+}

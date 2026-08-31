@@ -110,6 +110,9 @@ export interface BusinessSettings {
   // Si el ticket lista los adicionales que no cuestan. Encendido por default: cocina los usa para
   // preparar y el cliente para reclamar; apagarlo solo acorta el papel.
   printFreeModifiers: boolean;
+  // Si al mandar el pedido sale una comanda SIN precios para cocina. Apagado por default: donde la
+  // cocina está pegada al mostrador sería papel que duplica lo que el cocinero ya ve.
+  printKitchenTicket: boolean;
   // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
   // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
   hasLogo: boolean;
@@ -134,6 +137,9 @@ export interface CreateOrderBody {
   // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
   // lo que va aquí es el id, nunca los precios.
   deliveryPlatformId?: number;
+  // delivered: se cobró y se entregó en el mismo acto, así que el pedido nace entregado y no pasa
+  // por Pedidos. El servidor exige que los pagos cubran el total.
+  delivered?: boolean;
   lines: Array<{
     productId: number;
     qty: number;
@@ -153,4 +159,5 @@ export interface TicketSettingsInput {
   footerNote?: string;
   autoPrintOnClose?: boolean;
   printFreeModifiers?: boolean;
+  printKitchenTicket?: boolean;
 }

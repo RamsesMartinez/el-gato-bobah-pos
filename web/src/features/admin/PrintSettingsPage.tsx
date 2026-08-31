@@ -76,6 +76,12 @@ export function PrintSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
+  const setComanda = useMutation({
+    mutationFn: (v: boolean) => posApi.updateTicketSettings({ printKitchenTicket: v }),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
   const uploadLogo = useMutation({
     mutationFn: (file: File) => posApi.uploadTicketLogo(file),
     onSuccess: (bs) => {
@@ -203,6 +209,23 @@ export function PrintSettingsPage() {
             checked={data?.printFreeModifiers ?? true}
             disabled={setFreeMods.isPending}
             onCheckedChange={(e) => setFreeMods.mutate(e.checked)}
+          />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Imprimir comanda para cocina</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Al mandar un pedido sale un papel sin precios, con el número grande y lo que hay que
+              preparar. Enciéndelo si quien cocina no alcanza a ver la pantalla.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.printKitchenTicket ?? false}
+            disabled={setComanda.isPending}
+            onCheckedChange={(e) => setComanda.mutate(e.checked)}
           />
         </HStack>
       </Box>

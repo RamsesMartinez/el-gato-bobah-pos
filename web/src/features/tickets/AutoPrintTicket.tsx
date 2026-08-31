@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 
+import { buildKitchenHtml } from '../../utils/printKitchen';
 import { buildReceiptHtml, printHtmlOffscreen } from '../../utils/printReceipt';
 import { toaster } from '../../components/ui/toaster';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
@@ -31,6 +32,35 @@ export function AutoPrintTicket({ order }: { order: OrderView | null }) {
       });
     });
   }, [order, business, autoPrintOnClose, printFreeModifiers]);
+
+  return null;
+}
+
+// KitchenTicket saca la COMANDA —el papel sin precios— del pedido recién mandado, si el negocio la
+// activó. Va aparte de AutoPrintTicket y no como una bandera dentro: son dos documentos distintos,
+// para dos personas distintas, con dos ajustes que se encienden por separado. Meterlos en el mismo
+// componente obligaría a leer un `if` para saber cuál sale.
+export function KitchenTicket({ order }: { order: OrderView | null }) {
+  const { printKitchenTicket } = useTicketBusinessInfo();
+  // Igual que el ticket del cliente: se recuerda el pedido ya impreso, porque cada re-render que
+  // imprimiera sería una comanda duplicada en la plancha.
+  const impreso = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!order || !printKitchenTicket) return;
+    if (impreso.current === order.id) return;
+    impreso.current = order.id;
+    void printHtmlOffscreen(buildKitchenHtml(order)).then((printed) => {
+      if (printed) return;
+      // Que no salga la comanda y nadie se entere es el modo de fallo que esto vino a quitar: sin
+      // el aviso, cocina no prepara el pedido y nadie sabe por qué.
+      toaster.create({
+        title: 'No salió la comanda',
+        description: 'Revisa la impresora. El pedido ya está registrado y se ve en Pedidos.',
+        type: 'warning',
+      });
+    });
+  }, [order, printKitchenTicket]);
 
   return null;
 }
