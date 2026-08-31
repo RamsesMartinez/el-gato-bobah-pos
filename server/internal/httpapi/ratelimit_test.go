@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 func TestRateLimiter_BlocksAfterMax(t *testing.T) {
@@ -178,5 +181,27 @@ func TestRateLimitUsuario_SinUsuarioEs401(t *testing.T) {
 	}
 	if llamado {
 		t.Fatal("el handler no debe correr sin usuario")
+	}
+}
+
+// Una fecha malformada en la frontera NO puede caer al default en silencio.
+//
+// Antes `parseDate("2026-13-45", hace30dias)` devolvía el fallback sin avisar: un `from` mal
+// escrito —o un front con un bug de formato— hacía que el reporte contestara OTROS 30 días con la
+// pantalla viéndose perfecta. Es peor que un error, porque nadie audita una pantalla que se ve
+// bien. El default aplica al parámetro AUSENTE, nunca al presente y malformado.
+func TestUnaFechaMalformadaNoCaeAlDefault(t *testing.T) {
+	base := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+
+	if got, err := parseDate("", base); err != nil || !got.Equal(base) {
+		t.Fatalf("ausente debe usar el default: %v, %v", got, err)
+	}
+	if got, err := parseDate("2026-08-01", base); err != nil || got.Format("2006-01-02") != "2026-08-01" {
+		t.Fatalf("una fecha buena debe parsearse: %v, %v", got, err)
+	}
+	for _, malo := range []string{"2026-13-45", "ayer", "30/08/2026", "2026-08-01T00:00:00Z"} {
+		if _, err := parseDate(malo, base); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("%q debe rechazarse como validación, fue %v", malo, err)
+		}
 	}
 }
