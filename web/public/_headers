@@ -1,3 +1,14 @@
+# CUIDADO AL CAMBIAR ESTOS ENCABEZADOS: no llegan al navegador hasta que el operador ACEPTA la
+# actualización. El service worker precachea index.html con los encabezados que traía cuando lo
+# guardó, y `registerType: 'prompt'` (vite.config.ts) espera a que alguien toque "Actualizar" —a
+# propósito: un POS no puede recargarse solo a media venta. Así que una tableta con la app abierta
+# sigue aplicando el CSP viejo aunque el servidor ya mande el nuevo, y el síntoma es un fetch
+# bloqueado contra un dominio que el CSP nuevo sí permite. Ya pasó una vez: al apuntar el ambiente
+# de pruebas a api-dev, el login siguió roto hasta aceptar la actualización.
+#
+# El host de la API lo REESCRIBE CI para el ambiente de pruebas (ver .github/workflows/ci.yml): aquí
+# va el de producción, porque el CSP de producción debe listar solo lo que producción necesita.
+
 # Cloudflare Pages headers (sintaxis propia, no un Caddyfile). Antes vivían en deploy/Caddyfile,
 # pero el frontend ya no lo sirve Caddy — ahora Cloudflare Pages. connect-src debe listar el
 # dominio de la API explícitamente: ya no es mismo-origen.
