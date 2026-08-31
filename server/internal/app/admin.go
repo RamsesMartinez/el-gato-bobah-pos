@@ -30,7 +30,9 @@ type AdminProductView struct {
 	Type        string          `json:"type"`
 	IsActive    bool            `json:"is_active"`
 	IsFavorite  bool            `json:"is_favorite"`
-	Category    string          `json:"category"`
+	// NeedsPrep decide si un pedido con este producto va al tablero de Pedidos.
+	NeedsPrep bool   `json:"needsPrep"`
+	Category  string `json:"category"`
 	// CategoryID además del nombre: la pantalla de edición necesita el id para preseleccionar la
 	// categoría actual en el selector, y el nombre para mostrarla en la lista sin otra consulta.
 	CategoryID     int64   `json:"categoryId"`
@@ -193,7 +195,8 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 		out = append(out, AdminProductView{
 			ID: r.ID, Name: r.Name, Price: r.Price, CurrentCost: r.CurrentCost,
 			Type: string(r.Type), IsActive: r.IsActive, IsFavorite: r.IsFavorite,
-			Category: r.Category, CategoryID: r.CategoryID,
+			NeedsPrep: r.NeedsPrep,
+			Category:  r.Category, CategoryID: r.CategoryID,
 			AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 		})
@@ -217,6 +220,9 @@ type UpdateProductInput struct {
 	CategoryID     int64
 	AvailableFrom  *string
 	AvailableUntil *string
+	// NeedsPrep: si el producto necesita prepararse, que es lo que decide si su pedido va al
+	// tablero. Viaja sin puntero porque la pantalla siempre manda el valor del interruptor.
+	NeedsPrep bool
 }
 
 // AdminOptionView: opción de modificador con su grupo, para gestionar (favorito/activo) en el admin.
@@ -309,6 +315,7 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 		IsActive:       in.Active,
 		AvailableFrom:  from,
 		AvailableUntil: until,
+		NeedsPrep:      in.NeedsPrep,
 	})
 	if isUniqueViolation(err) { // renombrar a un nombre ya usado → 409 accionable
 		return domain.ErrDuplicateName

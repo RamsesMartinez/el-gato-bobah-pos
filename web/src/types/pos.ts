@@ -111,6 +111,9 @@ export interface TicketLine {
 export interface OrderView {
   id: number;
   number: number;
+  // Nombre con el que se canta el pedido en cocina ("Tigre"). Vacío en los pedidos anteriores a
+  // que existiera: a esos no se les inventa uno.
+  folioName: string;
   status: string;
   serviceType: string;
   customerName: string | null;
@@ -120,19 +123,39 @@ export interface OrderView {
   currency: Currency;
   paid: boolean;
   openedAt: string;
-  lines?: Array<{
-    productName: string;
-    quantity: string;
-    unitPrice: string;
-    lineTotal: string;
-    notes?: string;
-    modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
-  }>;
+  lines?: OrderLine[];
 }
+
+// OrderLine es un renglón tal como lo manda el servidor.
+//
+// Los campos de entrega van en un tipo aparte de los que imprime el ticket porque el ticket de
+// ejemplo de Ajustes no tiene un pedido real detrás: exigirle un id y un `delivered` obligaría a
+// inventarlos, y un dato inventado en un tipo es el que después alguien lee como verdadero.
+export interface OrderLine extends ReceiptLine {
+  id: number;
+  // Cuánto de este renglón ya se le dio al cliente. Es cantidad y no un booleano porque la comida
+  // sale por tandas: de cinco alitas salen tres y dos siguen en la freidora.
+  delivered: string;
+  cancelled: boolean;
+}
+
+// ReceiptLine es lo único que necesita saber quien imprime.
+export interface ReceiptLine {
+  productName: string;
+  quantity: string;
+  unitPrice: string;
+  lineTotal: string;
+  notes?: string;
+  modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
+}
+
+// ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva.
+export type ReceiptOrder = Omit<OrderView, 'lines'> & { lines?: ReceiptLine[] };
 
 export interface BoardOrder {
   id: number;
   number: number;
+  folioName: string;
   status: string;
   serviceType: string;
   customerName: string | null;
@@ -140,4 +163,7 @@ export interface BoardOrder {
   currency: Currency;
   paid: boolean;
   openedAt: string;
+  // Avance de la entrega en renglones vivos, para pintar "3 de 5" sin traerse las líneas.
+  lines: number;
+  linesDelivered: number;
 }

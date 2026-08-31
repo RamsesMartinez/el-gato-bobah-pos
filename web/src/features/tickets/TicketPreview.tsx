@@ -6,7 +6,7 @@ import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogFooter } f
 import { buildReceiptHtml, printFrame } from '../../utils/printReceipt';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
-import type { OrderView } from '../../types/pos';
+import type { ReceiptOrder } from '../../types/pos';
 
 // Ancho real del papel: 80mm a 96dpi. La vista previa se muestra a ese tamaño para que lo que el
 // operador aprueba sea literalmente lo que sale por la impresora.
@@ -98,7 +98,7 @@ export function TicketPreview({
   isOpen,
   onClose,
 }: {
-  order: OrderView | null;
+  order: ReceiptOrder | null;
   reprint?: boolean;
   sample?: boolean;
   isOpen: boolean;

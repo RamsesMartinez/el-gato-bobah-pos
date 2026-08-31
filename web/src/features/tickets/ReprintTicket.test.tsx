@@ -2,9 +2,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
 import { ReprintTicket } from './ReprintTicket';
-import type { OrderView } from '../../types/pos';
+import type { ReceiptOrder } from '../../types/pos';
 
-const order: OrderView = {
+const order: ReceiptOrder = {
+  folioName: 'Tigre',
   id: 12,
   number: 12,
   status: 'entregada',
@@ -45,7 +46,7 @@ test('pide el pedido COMPLETO: la lista del tablero no trae las líneas', async 
   wrap(<ReprintTicket orderId={12} onClose={vi.fn()} />);
   await waitFor(() => expect(getOrder).toHaveBeenCalledWith(12));
   await screen.findByTestId('preview');
-  expect((previewProps.current as { order: OrderView }).order.lines).toHaveLength(1);
+  expect((previewProps.current as { order: ReceiptOrder }).order.lines).toHaveLength(1);
 });
 
 test('marca el papel como reimpresión', async () => {

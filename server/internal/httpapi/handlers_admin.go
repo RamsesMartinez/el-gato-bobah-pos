@@ -197,6 +197,7 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		CategoryID     int64   `json:"categoryId"`
 		AvailableFrom  *string `json:"availableFrom"`
 		AvailableUntil *string `json:"availableUntil"`
+		NeedsPrep      bool    `json:"needsPrep"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -206,6 +207,7 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		ID: id, Name: body.Name, Price: body.Price, Favorite: body.Favorite, Active: body.Active,
 		CategoryID:    body.CategoryID,
 		AvailableFrom: body.AvailableFrom, AvailableUntil: body.AvailableUntil,
+		NeedsPrep: body.NeedsPrep,
 	}); err != nil {
 		Error(w, err)
 		return

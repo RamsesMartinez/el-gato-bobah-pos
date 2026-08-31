@@ -42,7 +42,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
     mutationFn: (p: AdminProduct) =>
       adminApi.updateProduct(p.id, {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
-        categoryId: p.categoryId,
+        needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: () => {
@@ -89,6 +89,19 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                 <HStack justify="space-between">
                   <Text>Activo</Text>
                   <Switch checked={edit.is_active} onCheckedChange={(e) => setEdit({ ...edit, is_active: e.checked })} />
+                </HStack>
+                {/* Lo que decide si el producto manda su pedido al tablero de Pedidos. Nace
+                    encendido, así que apagarlo es la excepción y no hay que revisar 1004 fichas. */}
+                <HStack justify="space-between" align="start">
+                  <Box pr={3}>
+                    <Text>Pasa por cocina</Text>
+                    <Text fontSize="xs" color="fg.muted">
+                      Apágalo para lo que se toma tal cual, como una bebida de la nevera. Un pedido
+                      que solo lleve cosas apagadas se cobra y ya, sin pasar por Pedidos.
+                    </Text>
+                  </Box>
+                  <Switch checked={edit.needsPrep}
+                    onCheckedChange={(e) => setEdit({ ...edit, needsPrep: e.checked })} />
                 </HStack>
                 <Box>
                   <Text fontSize="sm" fontWeight="600" mb={1}>Disponibilidad (temporada) — opcional</Text>

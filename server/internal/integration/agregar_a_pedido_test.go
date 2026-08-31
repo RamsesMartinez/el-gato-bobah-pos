@@ -109,11 +109,12 @@ func TestNoSeAgregaAUnPedidoTerminado(t *testing.T) {
 
 	cajero := makeUser(t, st, "cajero_terminado", "cajero")
 	prod := makeProduct(t, st, "Café terminado", decimal.RequireFromString("50"), false)
+	sinPreparacion(t, st, prod)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
 	ord, err := svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero, Delivered: true,
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
 	})

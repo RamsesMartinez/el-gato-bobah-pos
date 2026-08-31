@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"uuid"
@@ -21,10 +22,7 @@ type createOrderBody struct {
 	CustomerName       *string         `json:"customerName"`
 	Notes              *string         `json:"notes"`
 	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
-	// delivered: se cobró y se entregó en el mismo acto, así que el pedido nace entregado y no
-	// pasa por el tablero. El servidor exige que los pagos cubran el total.
-	Delivered bool `json:"delivered"`
-	Lines     []struct {
+	Lines              []struct {
 		ProductID int64           `json:"productId"`
 		Qty       decimal.Decimal `json:"qty"`
 		Notes     string          `json:"notes"`
@@ -65,7 +63,7 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Notes:              body.Notes,
 		OpenedBy:           u.ID,
 		DeliveryFee:        body.DeliveryFee,
-		Delivered:          body.Delivered,
+		CompanyID:          u.CompanyID,
 	}
 	for _, l := range body.Lines {
 		line := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}
@@ -244,4 +242,53 @@ func (h *Handlers) AddOrderLines(w http.ResponseWriter, r *http.Request) {
 	// está mirando.
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, order)
+}
+
+type deliverLineBody struct {
+	Qty decimal.Decimal `json:"qty"`
+}
+
+// POST /orders/{id}/lines/{lineId}/deliver
+func (h *Handlers) DeliverOrderLine(w http.ResponseWriter, r *http.Request) {
+	orderID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	lineID, err := strconv.ParseInt(chi.URLParam(r, "lineId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body deliverLineBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	// La cantidad lleva el mismo tope que una línea de venta: entregar cierra comida contra un
+	// renglón, y un valor absurdo aquí llega a una columna numeric igual que en el cobro. Sin esto
+	// un NaN o un 1e300 saldrían como 500 en vez de 400.
+	if !domain.ValidQty(body.Qty, domain.MaxOrderQty, false) {
+		Error(w, fmt.Errorf("%w: la cantidad a entregar no es válida", domain.ErrValidation))
+		return
+	}
+	if err := h.orders.DeliverLine(r.Context(), orderID, lineID, body.Qty); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// POST /orders/{id}/deliver
+func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
+	orderID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.orders.DeliverAll(r.Context(), orderID); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

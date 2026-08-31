@@ -1,7 +1,7 @@
 import { render, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AutoPrintTicket } from './AutoPrintTicket';
-import type { OrderView } from '../../types/pos';
+import type { ReceiptOrder } from '../../types/pos';
 
 const printHtmlOffscreen = vi.hoisted(() => vi.fn((_html: string) => Promise.resolve(true)));
 vi.mock('../../utils/printReceipt', async (importOriginal) => ({
@@ -30,7 +30,8 @@ vi.mock('./ticketBusinessInfo', () => ({
   }),
 }));
 
-const order: OrderView = {
+const order: ReceiptOrder = {
+  folioName: 'Tigre',
   id: 7,
   number: 7,
   status: 'entregada',

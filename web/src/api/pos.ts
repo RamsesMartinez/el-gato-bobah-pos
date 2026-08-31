@@ -70,6 +70,11 @@ export const posApi = {
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
+  // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
+  // la tarjeta, y "salieron 3 de 5 alitas" es sobre un renglón.
+  deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
+  deliverLine: (id: number, lineId: number, qty: number) =>
+    api.post<void>(`/orders/${id}/lines/${lineId}/deliver`, { qty }),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
@@ -143,9 +148,6 @@ export interface CreateOrderBody {
   // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
   // lo que va aquí es el id, nunca los precios.
   deliveryPlatformId?: number;
-  // delivered: se cobró y se entregó en el mismo acto, así que el pedido nace entregado y no pasa
-  // por Pedidos. El servidor exige que los pagos cubran el total.
-  delivered?: boolean;
   lines: Array<{
     productId: number;
     qty: number;

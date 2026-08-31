@@ -3,8 +3,9 @@ import { porCobrar, resumenPorCobrar } from './porCobrar';
 import type { BoardOrder } from '../../types/pos';
 
 const orden = (o: Partial<BoardOrder>): BoardOrder => ({
-  id: 1, number: 1, status: 'abierta', serviceType: 'mostrador', customerName: null,
-  total: '100', currency: 'MXN', paid: true, openedAt: '2026-08-31T18:00:00Z', ...o,
+  id: 1, number: 1, folioName: 'Tigre', status: 'abierta', serviceType: 'mostrador',
+  customerName: null, total: '100', currency: 'MXN', paid: true,
+  openedAt: '2026-08-31T18:00:00Z', lines: 1, linesDelivered: 0, ...o,
 });
 
 describe('lo que falta cobrar', () => {

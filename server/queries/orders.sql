@@ -1,7 +1,7 @@
 -- Pricing (autoritativo en el servidor)
 
 -- name: GetPricedProducts :many
-select id, name, price, current_cost, is_active
+select id, name, price, current_cost, is_active, needs_prep
 from products where id = any($1::bigint[]);
 
 -- name: GetPricedOptions :many
@@ -32,15 +32,16 @@ select id from orders where client_uuid = $1;
 -- acto —el refresco de mostrador— nace entregado y nunca pasa por el tablero. El resto nace abierto.
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
-                    status, completed_at)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+                    folio_name, status, completed_at)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,@folio_name,
         @status, case when @status::order_status = 'entregada' then now() end)
 returning *;
 
 -- name: CreateOrderLine :one
 insert into order_lines (order_id, product_id, product_name, quantity, unit_price,
-                         modifiers_total, unit_cost, line_total, notes)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                         modifiers_total, unit_cost, line_total, notes, delivered_qty)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+        case when sqlc.arg(nace_entregada)::boolean then $4::numeric else 0::numeric end)
 returning id;
 
 -- name: CreateOrderLineModifier :exec
@@ -55,9 +56,13 @@ values ($1,$2,$3,$4,$5,$6,$7);
 -- Board / detalle
 
 -- name: ListActiveOrders :many
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null)::int as lineas_vivas,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
 where o.status in ('abierta','lista')
 order by o.opened_at;
@@ -66,7 +71,8 @@ order by o.opened_at;
 select * from orders where id = $1;
 
 -- name: ListOrderLines :many
-select id, product_id, product_name, quantity, unit_price, modifiers_total, line_total, notes
+select id, product_id, product_name, quantity, unit_price, modifiers_total, line_total, notes,
+       delivered_qty, cancelled_at
 from order_lines where order_id = $1 order by id;
 
 -- name: ListOrderLineModifiers :many
@@ -98,9 +104,13 @@ where id = $1;
 -- name: ListDeliveredToday :many
 -- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
 -- fecha de negocio para no arrastrar todo el histórico.
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null)::int as lineas_vivas,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
 where o.status = 'entregada' and o.business_date = $1
 order by o.completed_at desc nulls last, o.id desc;
@@ -145,3 +155,36 @@ where o.id = $1;
 select id, status, service_type, delivery_platform_id
 from orders where id = $1
 for update;
+
+-- name: ListLinesForDelivery :many
+-- Lo mínimo para razonar sobre la entrega de un pedido: ni precio ni producto, porque entregar no
+-- mueve dinero. `for update` porque de esto cuelga el cierre automático del pedido, y dos personas
+-- marcando renglones a la vez podrían dejarlo abierto con todo entregado.
+select id, quantity, delivered_qty, cancelled_at
+from order_lines
+where order_id = $1
+order by id
+for update;
+
+-- name: DeliverOrderLine :execrows
+-- Suma a lo ya entregado de un renglón. El tope contra `quantity` lo repite aquí la base aunque el
+-- dominio ya lo validó: entre validar y escribir cabe otra transacción entregando lo mismo, y el
+-- resultado sería un renglón con más entregado de lo que se pidió.
+update order_lines
+   set delivered_qty = delivered_qty + sqlc.arg(cantidad)::numeric
+ where id = sqlc.arg(line_id)
+   and order_id = sqlc.arg(order_id)
+   and cancelled_at is null
+   and delivered_qty + sqlc.arg(cantidad)::numeric <= quantity;
+
+-- name: DeliverAllOrderLines :exec
+-- "Entregar todo": el camino de un tap, que es el caso común. Lo cancelado se queda como está.
+update order_lines
+   set delivered_qty = quantity
+ where order_id = $1 and cancelled_at is null;
+
+-- name: CountLinesPendingDelivery :one
+-- Cuántos productos vivos le faltan al pedido. Alimenta la guardia del cierre de caja y el resumen
+-- del tablero sin traerse los renglones.
+select count(*) from order_lines
+where order_id = $1 and cancelled_at is null and delivered_qty < quantity;

@@ -4,7 +4,7 @@ import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
 } from '@chakra-ui/react';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem } from '../../components/ui/menu';
-import { LuStore, LuShoppingBag, LuBike, LuEllipsisVertical } from 'react-icons/lu';
+import { LuStore, LuShoppingBag, LuBike, LuEllipsisVertical, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
@@ -13,6 +13,7 @@ import { resumenPorCobrar } from './porCobrar';
 import { money } from '../../utils/format';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../tickets/ReprintTicket';
+import { EntregaPanel } from './EntregaPanel';
 import { useSessionStore } from '../../stores/session';
 
 const SERVICE_META: Record<string, { label: string; icon: IconType }> = {
@@ -63,6 +64,15 @@ export function OrdersBoardPage() {
   const cancelMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.cancelOrder(id, reason),
     onSuccess: invalidateActive,
+    // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
+    // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué,
+    // porque desde la tarjeta no se ve qué renglones ya salieron.
+    onError: (e) => toaster.create({ title: 'No se pudo cancelar', description: String(e), type: 'error' }),
+  });
+  const entregarTodoMut = useMutation({
+    mutationFn: (id: number) => posApi.deliverOrder(id),
+    onSuccess: invalidateAll,
+    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
   const refundMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.refundOrder(id, reason),
@@ -86,6 +96,7 @@ export function OrdersBoardPage() {
     if (reason) cancelMut.mutate({ id: o.id, reason });
   };
   const showTicket = (o: BoardOrder) => setTicketOrderID(o.id);
+  const entregarTodo = (o: BoardOrder) => entregarTodoMut.mutate(o.id);
   const refund = (o: BoardOrder) => {
     const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
     if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
@@ -111,8 +122,12 @@ export function OrdersBoardPage() {
           Dos columnas en pantalla ancha, una sola abajo de 900 px: en una tableta de 7" dos
           columnas dejan tarjetas de ~300 px donde el nombre del cliente ya no cabe. */}
       <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-        <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Marcar listo" />
-        <Column title="A entregar" orders={listos} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Entregar" />
+        <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel}
+          onTicket={showTicket} onEntregarTodo={entregarTodo} onRefrescar={invalidateAll}
+          advanceLabel="Marcar listo" />
+        <Column title="A entregar" orders={listos} onAdvance={advance} onCancel={cancel}
+          onTicket={showTicket} onEntregarTodo={entregarTodo} onRefrescar={invalidateAll}
+          advanceLabel="Entregar todo" />
       </SimpleGrid>
       {canRefund && <DeliveredSection orders={entregadas} onRefund={refund} onTicket={showTicket} />}
 
@@ -143,9 +158,9 @@ function DeliveredSection({ orders, onRefund, onTicket }: { orders: BoardOrder[]
             <Flex key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg"
               px={4} py={2} justify="space-between" align="center">
               <HStack gap={3}>
-                <Text fontWeight="800">#{o.number}</Text>
+                <Text fontWeight="800">{o.folioName || `#${o.number}`}</Text>
                 <Text fontSize="sm" color="fg.muted">
-                  {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
+                  #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
                 </Text>
               </HStack>
               <HStack gap={3}>
@@ -171,9 +186,15 @@ interface ColProps {
   onAdvance: (o: BoardOrder) => void;
   onCancel: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
+  onEntregarTodo: (o: BoardOrder) => void;
+  onRefrescar: () => void;
 }
 
-function Column({ title, orders, advanceLabel, onAdvance, onCancel, onTicket }: ColProps) {
+function Column({ title, orders, advanceLabel, onAdvance, onCancel, onTicket, onEntregarTodo, onRefrescar }: ColProps) {
+  // Qué tarjeta tiene abierto su detalle de productos. Una sola a la vez: en 600 px de alto, dos
+  // paneles desplegados dejan fuera de pantalla el resto de la columna.
+  const [abierta, setAbierta] = useState<number | null>(null);
+
   return (
     <Box>
       <HStack mb={3}>
@@ -184,37 +205,62 @@ function Column({ title, orders, advanceLabel, onAdvance, onCancel, onTicket }: 
         {orders.length === 0 && <Text color="fg.subtle">Sin pedidos</Text>}
         {orders.map((o) => {
           const Svc = SERVICE_META[o.serviceType]?.icon;
+          const expandida = abierta === o.id;
+          const parcial = o.linesDelivered > 0 && o.linesDelivered < o.lines;
           return (
           <Box key={o.id} bg="bg.panel" borderWidth="1px" borderColor="border" borderRadius="lg" p={4}>
-            <Flex justify="space-between" align="start" mb={3}>
-              <Box>
-                <Text fontWeight="800" fontSize="lg">#{o.number}</Text>
+            <Flex justify="space-between" align="start" mb={3} gap={3}>
+              <Box minW={0}>
+                {/* El nombre manda sobre el número: es con lo que se canta el pedido y lo que el
+                    cliente recuerda. El número se queda para cruzarlo con el ticket y el corte. */}
+                <Text fontWeight="800" fontSize="xl" lineClamp={1}>
+                  {o.folioName || `#${o.number}`}
+                </Text>
                 <HStack fontSize="sm" color="fg.muted" gap={1}>
                   {Svc && <Svc size={14} />}
-                  <Text as="span">
-                    {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
+                  <Text as="span" lineClamp={1}>
+                    #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}{o.customerName ? ` · ${o.customerName}` : ''}
                   </Text>
                 </HStack>
               </Box>
-              <VStack align="end" gap={1}>
+              <VStack align="end" gap={1} flexShrink={0}>
                 <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                 {!o.paid && <Badge colorPalette="orange">POR COBRAR</Badge>}
               </VStack>
             </Flex>
-            <HStack>
-              <Button flex="1" size="md" onClick={() => onAdvance(o)}>
+
+            <HStack mb={o.lines > 1 ? 2 : 0}>
+              <Button flex="1" size="md" minH="44px" colorPalette={o.status === 'lista' ? 'green' : undefined}
+                onClick={() => (o.status === 'lista' ? onEntregarTodo(o) : onAdvance(o))}>
                 {advanceLabel}
               </Button>
               <MenuRoot>
                 <MenuTrigger asChild>
-                  <IconButton aria-label="Más" variant="outline"><LuEllipsisVertical /></IconButton>
+                  <IconButton aria-label="Más" variant="outline" minH="44px" minW="44px"><LuEllipsisVertical /></IconButton>
                 </MenuTrigger>
                 <MenuContent>
+                  {o.status !== 'lista' && (
+                    <MenuItem value="entregar" onClick={() => onEntregarTodo(o)}>Entregar todo</MenuItem>
+                  )}
                   <MenuItem value="ticket" onClick={() => onTicket(o)}>Ver ticket</MenuItem>
                   <MenuItem value="cancel" color="red.500" onClick={() => onCancel(o)}>Cancelar pedido</MenuItem>
                 </MenuContent>
               </MenuRoot>
             </HStack>
+
+            {/* Solo con más de un producto: en un pedido de un renglón, "0 de 1 entregados" y el
+                botón de arriba dicen exactamente lo mismo. */}
+            {o.lines > 1 && (
+              <>
+                <Button variant="ghost" size="sm" minH="44px" w="100%" justifyContent="space-between"
+                  color={parcial ? 'orange.600' : 'fg.muted'} fontWeight={parcial ? '700' : '500'}
+                  onClick={() => setAbierta(expandida ? null : o.id)}>
+                  <Text as="span">{o.linesDelivered} de {o.lines} entregados</Text>
+                  {expandida ? <LuChevronUp /> : <LuChevronDown />}
+                </Button>
+                {expandida && <EntregaPanel orderId={o.id} onEntregado={onRefrescar} />}
+              </>
+            )}
           </Box>
           );
         })}

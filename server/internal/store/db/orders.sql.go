@@ -30,13 +30,27 @@ func (q *Queries) CancelOrder(ctx context.Context, arg CancelOrderParams) error 
 	return err
 }
 
+const countLinesPendingDelivery = `-- name: CountLinesPendingDelivery :one
+select count(*) from order_lines
+where order_id = $1 and cancelled_at is null and delivered_qty < quantity
+`
+
+// Cuántos productos vivos le faltan al pedido. Alimenta la guardia del cierre de caja y el resumen
+// del tablero sin traerse los renglones.
+func (q *Queries) CountLinesPendingDelivery(ctx context.Context, orderID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countLinesPendingDelivery, orderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
-                    status, completed_at)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-        $13, case when $13::order_status = 'entregada' then now() end)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee
+                    folio_name, status, completed_at)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+        $14, case when $14::order_status = 'entregada' then now() end)
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name
 `
 
 type CreateOrderParams struct {
@@ -52,6 +66,7 @@ type CreateOrderParams struct {
 	Subtotal           decimal.Decimal `json:"subtotal"`
 	Total              decimal.Decimal `json:"total"`
 	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	FolioName          *string         `json:"folio_name"`
 	Status             OrderStatus     `json:"status"`
 }
 
@@ -71,6 +86,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.Subtotal,
 		arg.Total,
 		arg.DeliveryFee,
+		arg.FolioName,
 		arg.Status,
 	)
 	var i Order
@@ -102,14 +118,16 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.RefundReason,
 		&i.RefundAmount,
 		&i.DeliveryFee,
+		&i.FolioName,
 	)
 	return i, err
 }
 
 const createOrderLine = `-- name: CreateOrderLine :one
 insert into order_lines (order_id, product_id, product_name, quantity, unit_price,
-                         modifiers_total, unit_cost, line_total, notes)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                         modifiers_total, unit_cost, line_total, notes, delivered_qty)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+        case when $10::boolean then $4::numeric else 0::numeric end)
 returning id
 `
 
@@ -123,6 +141,7 @@ type CreateOrderLineParams struct {
 	UnitCost       decimal.Decimal `json:"unit_cost"`
 	LineTotal      decimal.Decimal `json:"line_total"`
 	Notes          *string         `json:"notes"`
+	NaceEntregada  bool            `json:"nace_entregada"`
 }
 
 func (q *Queries) CreateOrderLine(ctx context.Context, arg CreateOrderLineParams) (int64, error) {
@@ -136,6 +155,7 @@ func (q *Queries) CreateOrderLine(ctx context.Context, arg CreateOrderLineParams
 		arg.UnitCost,
 		arg.LineTotal,
 		arg.Notes,
+		arg.NaceEntregada,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -199,8 +219,46 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 	return err
 }
 
+const deliverAllOrderLines = `-- name: DeliverAllOrderLines :exec
+update order_lines
+   set delivered_qty = quantity
+ where order_id = $1 and cancelled_at is null
+`
+
+// "Entregar todo": el camino de un tap, que es el caso común. Lo cancelado se queda como está.
+func (q *Queries) DeliverAllOrderLines(ctx context.Context, orderID int64) error {
+	_, err := q.db.Exec(ctx, deliverAllOrderLines, orderID)
+	return err
+}
+
+const deliverOrderLine = `-- name: DeliverOrderLine :execrows
+update order_lines
+   set delivered_qty = delivered_qty + $1::numeric
+ where id = $2
+   and order_id = $3
+   and cancelled_at is null
+   and delivered_qty + $1::numeric <= quantity
+`
+
+type DeliverOrderLineParams struct {
+	Cantidad decimal.Decimal `json:"cantidad"`
+	LineID   int64           `json:"line_id"`
+	OrderID  int64           `json:"order_id"`
+}
+
+// Suma a lo ya entregado de un renglón. El tope contra `quantity` lo repite aquí la base aunque el
+// dominio ya lo validó: entre validar y escribir cabe otra transacción entregando lo mismo, y el
+// resultado sería un renglón con más entregado de lo que se pidió.
+func (q *Queries) DeliverOrderLine(ctx context.Context, arg DeliverOrderLineParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deliverOrderLine, arg.Cantidad, arg.LineID, arg.OrderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -234,6 +292,7 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.RefundReason,
 		&i.RefundAmount,
 		&i.DeliveryFee,
+		&i.FolioName,
 	)
 	return i, err
 }
@@ -325,7 +384,7 @@ func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]Get
 
 const getPricedProducts = `-- name: GetPricedProducts :many
 
-select id, name, price, current_cost, is_active
+select id, name, price, current_cost, is_active, needs_prep
 from products where id = any($1::bigint[])
 `
 
@@ -335,6 +394,7 @@ type GetPricedProductsRow struct {
 	Price       decimal.Decimal `json:"price"`
 	CurrentCost decimal.Decimal `json:"current_cost"`
 	IsActive    bool            `json:"is_active"`
+	NeedsPrep   bool            `json:"needs_prep"`
 }
 
 // Pricing (autoritativo en el servidor)
@@ -353,6 +413,7 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 			&i.Price,
 			&i.CurrentCost,
 			&i.IsActive,
+			&i.NeedsPrep,
 		); err != nil {
 			return nil, err
 		}
@@ -366,25 +427,32 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 
 const listActiveOrders = `-- name: ListActiveOrders :many
 
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null)::int as lineas_vivas,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
 where o.status in ('abierta','lista')
 order by o.opened_at
 `
 
 type ListActiveOrdersRow struct {
-	ID           int64              `json:"id"`
-	DailyNumber  int32              `json:"daily_number"`
-	Status       OrderStatus        `json:"status"`
-	ServiceType  ServiceType        `json:"service_type"`
-	CustomerName *string            `json:"customer_name"`
-	Total        decimal.Decimal    `json:"total"`
-	Currency     string             `json:"currency"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ReadyAt      pgtype.Timestamptz `json:"ready_at"`
-	Paid         decimal.Decimal    `json:"paid"`
+	ID               int64              `json:"id"`
+	DailyNumber      int32              `json:"daily_number"`
+	FolioName        *string            `json:"folio_name"`
+	Status           OrderStatus        `json:"status"`
+	ServiceType      ServiceType        `json:"service_type"`
+	CustomerName     *string            `json:"customer_name"`
+	Total            decimal.Decimal    `json:"total"`
+	Currency         string             `json:"currency"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	Paid             decimal.Decimal    `json:"paid"`
+	LineasVivas      int32              `json:"lineas_vivas"`
+	LineasEntregadas int32              `json:"lineas_entregadas"`
 }
 
 // Board / detalle
@@ -400,6 +468,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 		if err := rows.Scan(
 			&i.ID,
 			&i.DailyNumber,
+			&i.FolioName,
 			&i.Status,
 			&i.ServiceType,
 			&i.CustomerName,
@@ -408,6 +477,8 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
+			&i.LineasVivas,
+			&i.LineasEntregadas,
 		); err != nil {
 			return nil, err
 		}
@@ -420,25 +491,32 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 }
 
 const listDeliveredToday = `-- name: ListDeliveredToday :many
-select o.id, o.daily_number, o.status, o.service_type, o.customer_name, o.total, o.currency,
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.customer_name, o.total, o.currency,
        o.opened_at, o.ready_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null)::int as lineas_vivas,
+       (select count(*) from order_lines l
+         where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
 where o.status = 'entregada' and o.business_date = $1
 order by o.completed_at desc nulls last, o.id desc
 `
 
 type ListDeliveredTodayRow struct {
-	ID           int64              `json:"id"`
-	DailyNumber  int32              `json:"daily_number"`
-	Status       OrderStatus        `json:"status"`
-	ServiceType  ServiceType        `json:"service_type"`
-	CustomerName *string            `json:"customer_name"`
-	Total        decimal.Decimal    `json:"total"`
-	Currency     string             `json:"currency"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ReadyAt      pgtype.Timestamptz `json:"ready_at"`
-	Paid         decimal.Decimal    `json:"paid"`
+	ID               int64              `json:"id"`
+	DailyNumber      int32              `json:"daily_number"`
+	FolioName        *string            `json:"folio_name"`
+	Status           OrderStatus        `json:"status"`
+	ServiceType      ServiceType        `json:"service_type"`
+	CustomerName     *string            `json:"customer_name"`
+	Total            decimal.Decimal    `json:"total"`
+	Currency         string             `json:"currency"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	Paid             decimal.Decimal    `json:"paid"`
+	LineasVivas      int32              `json:"lineas_vivas"`
+	LineasEntregadas int32              `json:"lineas_entregadas"`
 }
 
 // Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
@@ -455,6 +533,7 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, businessDate pgtype.Da
 		if err := rows.Scan(
 			&i.ID,
 			&i.DailyNumber,
+			&i.FolioName,
 			&i.Status,
 			&i.ServiceType,
 			&i.CustomerName,
@@ -463,6 +542,51 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, businessDate pgtype.Da
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
+			&i.LineasVivas,
+			&i.LineasEntregadas,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinesForDelivery = `-- name: ListLinesForDelivery :many
+select id, quantity, delivered_qty, cancelled_at
+from order_lines
+where order_id = $1
+order by id
+for update
+`
+
+type ListLinesForDeliveryRow struct {
+	ID           int64              `json:"id"`
+	Quantity     decimal.Decimal    `json:"quantity"`
+	DeliveredQty decimal.Decimal    `json:"delivered_qty"`
+	CancelledAt  pgtype.Timestamptz `json:"cancelled_at"`
+}
+
+// Lo mínimo para razonar sobre la entrega de un pedido: ni precio ni producto, porque entregar no
+// mueve dinero. `for update` porque de esto cuelga el cierre automático del pedido, y dos personas
+// marcando renglones a la vez podrían dejarlo abierto con todo entregado.
+func (q *Queries) ListLinesForDelivery(ctx context.Context, orderID int64) ([]ListLinesForDeliveryRow, error) {
+	rows, err := q.db.Query(ctx, listLinesForDelivery, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinesForDeliveryRow{}
+	for rows.Next() {
+		var i ListLinesForDeliveryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Quantity,
+			&i.DeliveredQty,
+			&i.CancelledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -516,19 +640,22 @@ func (q *Queries) ListOrderLineModifiers(ctx context.Context, orderID int64) ([]
 }
 
 const listOrderLines = `-- name: ListOrderLines :many
-select id, product_id, product_name, quantity, unit_price, modifiers_total, line_total, notes
+select id, product_id, product_name, quantity, unit_price, modifiers_total, line_total, notes,
+       delivered_qty, cancelled_at
 from order_lines where order_id = $1 order by id
 `
 
 type ListOrderLinesRow struct {
-	ID             int64           `json:"id"`
-	ProductID      int64           `json:"product_id"`
-	ProductName    string          `json:"product_name"`
-	Quantity       decimal.Decimal `json:"quantity"`
-	UnitPrice      decimal.Decimal `json:"unit_price"`
-	ModifiersTotal decimal.Decimal `json:"modifiers_total"`
-	LineTotal      decimal.Decimal `json:"line_total"`
-	Notes          *string         `json:"notes"`
+	ID             int64              `json:"id"`
+	ProductID      int64              `json:"product_id"`
+	ProductName    string             `json:"product_name"`
+	Quantity       decimal.Decimal    `json:"quantity"`
+	UnitPrice      decimal.Decimal    `json:"unit_price"`
+	ModifiersTotal decimal.Decimal    `json:"modifiers_total"`
+	LineTotal      decimal.Decimal    `json:"line_total"`
+	Notes          *string            `json:"notes"`
+	DeliveredQty   decimal.Decimal    `json:"delivered_qty"`
+	CancelledAt    pgtype.Timestamptz `json:"cancelled_at"`
 }
 
 func (q *Queries) ListOrderLines(ctx context.Context, orderID int64) ([]ListOrderLinesRow, error) {
@@ -549,6 +676,8 @@ func (q *Queries) ListOrderLines(ctx context.Context, orderID int64) ([]ListOrde
 			&i.ModifiersTotal,
 			&i.LineTotal,
 			&i.Notes,
+			&i.DeliveredQty,
+			&i.CancelledAt,
 		); err != nil {
 			return nil, err
 		}
