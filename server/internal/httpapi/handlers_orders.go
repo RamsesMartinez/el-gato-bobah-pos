@@ -305,3 +305,36 @@ func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) FolioNames(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string][]string{"items": domain.FolioNames()})
 }
+
+type chargeOrderBody struct {
+	MethodID  int16           `json:"methodId"`
+	Amount    decimal.Decimal `json:"amount"`
+	Tip       decimal.Decimal `json:"tip"`
+	Reference *string         `json:"reference"`
+}
+
+// POST /orders/{id}/pay
+//
+// Cobra un pedido que se mandó a cocina sin cobrar. El tablero lo marcaba "POR COBRAR" y no había
+// con qué saldarlo: el único lugar que registraba un pago de pedido era la creación.
+func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body chargeOrderBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.orders.Charge(r.Context(), app.ChargeCmd{
+		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
+		Reference: body.Reference, ActorID: u.ID,
+	}); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}

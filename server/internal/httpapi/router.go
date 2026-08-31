@@ -109,6 +109,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// buscar al gerente en la hora pico — que es cuando el tablero importa.
 					r.Post("/{id}/deliver", h.DeliverOrder)
 					r.Post("/{id}/lines/{lineId}/deliver", h.DeliverOrderLine)
+					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
+					// uno nuevo: es la misma operación, movida en el tiempo.
+					r.Post("/{id}/pay", h.ChargeOrder)
 					r.Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)

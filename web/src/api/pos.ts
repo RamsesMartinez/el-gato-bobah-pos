@@ -78,6 +78,9 @@ export const posApi = {
   deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
   deliverLine: (id: number, lineId: number, qty: number) =>
     api.post<void>(`/orders/${id}/lines/${lineId}/deliver`, { qty }),
+  // Cobrar un pedido que se mandó a cocina sin cobrar.
+  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number }) =>
+    api.post<void>(`/orders/${id}/pay`, body),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
