@@ -4,6 +4,7 @@ import {
   Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
 } from '@chakra-ui/react';
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -364,7 +365,15 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
       return backofficeApi.cashClose(register.id, d, notes || undefined);
     },
     onSuccess: (s) => { setClosed(s); setDeclared({}); setNotes(''); invalidate(); },
-    onError: (e) => toaster.create({ title: 'No se pudo cerrar la caja', description: String(e), type: 'error' }),
+    // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
+    // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
+    // pendiente, y el operador tiene que saber que la puede resolver y volver.
+    onError: (e) => toaster.create({
+      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar' : 'No se pudo cerrar la caja',
+      description: e instanceof ApiError ? e.message : String(e),
+      type: 'error',
+      duration: 8000,
+    }),
   });
 
   if (isLoading) return <Center h="30vh"><Spinner size="xl" /></Center>;

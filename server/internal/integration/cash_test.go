@@ -74,6 +74,10 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
+	// La caja no cierra con pedidos sin terminar, así que se entrega lo vendido — igual que haría
+	// el operador antes de cerrar.
+	entregarPendientes(t, st)
+
 	// Cierre con un declarado FALSEADO (1, muy por debajo del esperado) para ese método.
 	declared := map[int]decimal.Decimal{int(cardID): decimal.RequireFromString("1")}
 	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, declared, "")

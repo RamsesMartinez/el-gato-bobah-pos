@@ -224,3 +224,16 @@ select timezone from business_settings limit 1;
 insert into delivery_platforms (name, price_markup_pct)
 values ('Didi', 0), ('Uber Eats', 0), ('Rappi', 0), ('Propio', 0)
 on conflict do nothing;
+
+-- name: OpenOrdersInSession :many
+-- Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
+-- comida que va a salir y dinero que no se decidió, y si el turno cierra con esos pendientes su
+-- venta cae en un arqueo ya firmado y el corte deja de poder cuadrar.
+--
+-- Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
+-- "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
+select o.daily_number
+from orders o
+where o.register_session_id = $1
+  and o.status in ('abierta', 'lista')
+order by o.daily_number;

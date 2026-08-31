@@ -246,3 +246,18 @@ func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
 	}
 	return id
 }
+
+// entregarPendientes marca como entregados todos los pedidos sin terminar de la empresa.
+//
+// Existe porque cerrar la caja YA NO admite pedientes (domain.ErrOpenOrders): un pedido abierto es
+// comida que va a salir y dinero sin decidir, y dejarlo colgado de un arqueo ya firmado hace que
+// ese corte no pueda volver a cuadrar. Los tests que cierran un turno tienen que terminar sus
+// ventas primero, igual que el operador real.
+func entregarPendientes(t *testing.T, st *store.Store) {
+	t.Helper()
+	if _, err := st.Pool.Exec(context.Background(),
+		`update orders set status = 'entregada', completed_at = now()
+		  where status in ('abierta', 'lista')`); err != nil {
+		t.Fatalf("entregar pendientes: %v", err)
+	}
+}

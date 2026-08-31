@@ -821,6 +821,40 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 	return net, err
 }
 
+const openOrdersInSession = `-- name: OpenOrdersInSession :many
+select o.daily_number
+from orders o
+where o.register_session_id = $1
+  and o.status in ('abierta', 'lista')
+order by o.daily_number
+`
+
+// Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
+// comida que va a salir y dinero que no se decidió, y si el turno cierra con esos pendientes su
+// venta cae en un arqueo ya firmado y el corte deja de poder cuadrar.
+//
+// Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
+// "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
+func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]int32, error) {
+	rows, err := q.db.Query(ctx, openOrdersInSession, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var daily_number int32
+		if err := rows.Scan(&daily_number); err != nil {
+			return nil, err
+		}
+		items = append(items, daily_number)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const openSession = `-- name: OpenSession :one
 insert into register_sessions (business_date, opening_cash, opened_by, register_id)
 values ($1, $2, $3, $4)

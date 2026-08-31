@@ -58,4 +58,8 @@ var (
 	// en una línea (`modifier_options.max_per_line`). Envuelve el nombre y los dos números para
 	// que el mensaje diga qué corregir y no solo que algo está mal.
 	ErrOptionOverMax = errors.New("esa opción no se puede repetir tantas veces en una línea")
+	// ErrOpenOrders: se quiso cerrar la caja con pedidos sin terminar. No es un error de lo que
+	// mandó el cliente sino del estado del negocio, y llega envuelto con los folios pendientes
+	// para que el operador sepa cuáles resolver — un error que no dice cuáles no se puede accionar.
+	ErrOpenOrders = errors.New("hay pedidos sin terminar")
 )
