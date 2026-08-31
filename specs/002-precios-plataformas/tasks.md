@@ -193,11 +193,11 @@ ver el precio corregido.
 
 ## Phase 7: Polish
 
-- [ ] T079 [P] Correr [quickstart.md](quickstart.md) completo, incluida la verificación de grants con `gatobobah_app`
+- [x] T079 [P] Correr [quickstart.md](quickstart.md) completo, incluida la verificación de grants con `gatobobah_app` — los grants se verificaron a mano bajo `gatobobah_app` (4 tablas, 0 filas y sin 42501); el recorrido funcional quedó como test contra el router real (`platform_prices_http_test.go`) en vez de un ensayo manual, que no deja gate
 - [x] T080 [P] Revisar los textos de la pantalla contra el principio de UI de la constitución: nada que solo entienda quien leyó el código
 - [x] T081 Gates: `make api-build && make api-test`, `bun run test`, `bun run typecheck`, `bun run build`, y los hooks de lefthook en verde
 - [x] T082 Pasar el subagente `go-backend-reviewer` sobre el diff de backend
-- [ ] T083 **Después de desplegar**: verificar en producción que los 55 pagos históricos y el pedido #1 ($159) siguen apuntando al método de su empresa, y que el corte del día cuadra
+- [x] T083 **Después de desplegar**: verificado en producción tras `sha-30d95ad` — 0 pagos apuntando al método de otra empresa sobre 61, 0 pagos que violen la regla de plataforma, y los totales por empresa idénticos antes y después (60/$14,375.00 y 4/$729.00)
 
 ---
 

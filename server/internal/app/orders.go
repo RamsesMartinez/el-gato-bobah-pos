@@ -174,6 +174,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	for _, o := range optRows {
 		options[o.ID] = domain.PricedOption{
 			ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
+			MaxPerLine: int(o.MaxPerLine),
 			PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
 		}
 	}

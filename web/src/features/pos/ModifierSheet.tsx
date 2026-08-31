@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Wrap, WrapItem, Input, Textarea, Flex,
 } from '@chakra-ui/react';
-import { LuSearch, LuArchiveRestore } from 'react-icons/lu';
+import { LuSearch, LuArchiveRestore, LuPlus } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
   DrawerCloseTrigger, DrawerGrabber,
@@ -18,6 +18,7 @@ import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
 import { deltaDeLista, desgloseDelta, nombreDeLista, precioDeLista } from './precioPlataforma';
+import { cabeOtra, cantidadDe, sumarUna } from './seleccionModificadores';
 import { OptionPriceFields } from './OptionPriceFields';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket } from '../../stores/ticket';
@@ -295,14 +296,23 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     const rankedIds = new Set(ranked.map((r) => r.id));
 
     const btn = (o: MenuOption) => {
-      const on = !!picks[o.id];
+      const veces = cantidadDe(picks, o.id);
+      const on = veces > 0;
       const pct = pctById.get(o.id);
+      // El "+" solo aparece cuando de verdad cabe otra de ESTA opción, así que presionarlo nunca
+      // le quita nada a otra. Es lo que faltaba para pedir dos del mismo sabor: el grupo pide dos
+      // salsas y el cliente quiere las dos de mango habanero.
+      const repetible = !single && cabeOtra(picks, o, g.max);
       return (
         <WrapItem key={o.id}>
+          {/* Envoltura, no botón: el "+" es un control aparte y un botón dentro de otro no es HTML
+              válido — el navegador lo desanida y el toque deja de caer donde se ve. */}
+          <HStack gap={0}>
           <Button
             size="lg" minH="48px"
             variant={on ? 'solid' : 'outline'}
             colorPalette={on ? undefined : 'gray'}
+            borderRightRadius={repetible ? 0 : undefined}
             onClick={() => {
               if (suppressClick.current) { suppressClick.current = false; return; } // fue long-press
               if (single) setSingle(g.id, o.id); else toggleMulti(g.id, o.id, g.max);
@@ -310,6 +320,11 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             {...manageHandlers(o)}
           >
             {o.name}
+            {veces > 1 && (
+              <Text as="span" ml={1.5} fontSize="sm" fontWeight="800">
+                ×{veces}
+              </Text>
+            )}
             {pct !== undefined && (
               <Text as="span" ml={1.5} fontSize="xs" fontWeight="700" color={on ? 'whiteAlpha.800' : 'colorPalette.500'}>
                 {pct}%
@@ -321,6 +336,17 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
               </Text>
             )}
           </Button>
+          {repetible && (
+            <Button
+              aria-label={`Otra vez ${o.name}`}
+              size="lg" minH="48px" minW="48px" px={0}
+              borderLeftRadius={0} borderLeftWidth="1px" borderLeftColor="bg.panel"
+              onClick={() => setSel((st) => ({ ...st, [g.id]: sumarUna(st[g.id] ?? {}, o.id) }))}
+            >
+              <LuPlus />
+            </Button>
+          )}
+          </HStack>
         </WrapItem>
       );
     };

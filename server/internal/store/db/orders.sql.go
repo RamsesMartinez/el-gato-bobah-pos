@@ -244,7 +244,7 @@ func (q *Queries) GetOrderIDByClientUUID(ctx context.Context, clientUuid uuid.UU
 }
 
 const getPricedOptions = `-- name: GetPricedOptions :many
-select mo.id, mo.name, mo.price_delta, mo.current_cost, mg.name as group_title
+select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mo.id = any($1::bigint[])
@@ -255,9 +255,13 @@ type GetPricedOptionsRow struct {
 	Name        string          `json:"name"`
 	PriceDelta  decimal.Decimal `json:"price_delta"`
 	CurrentCost decimal.Decimal `json:"current_cost"`
+	MaxPerLine  int16           `json:"max_per_line"`
 	GroupTitle  string          `json:"group_title"`
 }
 
+// max_per_line viaja porque el servidor lo valida: es el tope de veces que una opción puede ir en
+// la misma línea, y desde que la pantalla deja pedir dos salsas del mismo sabor deja de ser un
+// valor que nadie ejercía.
 func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]GetPricedOptionsRow, error) {
 	rows, err := q.db.Query(ctx, getPricedOptions, dollar_1)
 	if err != nil {
@@ -272,6 +276,7 @@ func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]Get
 			&i.Name,
 			&i.PriceDelta,
 			&i.CurrentCost,
+			&i.MaxPerLine,
 			&i.GroupTitle,
 		); err != nil {
 			return nil, err
