@@ -30,6 +30,17 @@ Todo plan debe declarar en qué capa aterriza cada pieza.
 
 Dinero = `float64` en **pesos**, redondeado en cada frontera con [`domain.Round2`](../../server/internal/domain/money.go) (2dp) / `Round4` (stock, 4dp) y validado con `domain.ValidMoney` antes de tocar una columna `numeric`. No son centavos enteros; el techo conocido está documentado en `money.go` (migrar a `int64` si el redondeo falla en sumas grandes). El servidor **siempre** recalcula precios; los que manda el cliente se ignoran ([`BuildOrder`](../../server/internal/domain/order.go)).
 
+**Cada peso se clasifica una sola vez, y lo que no es ingreso no entra al total.** La propina es
+dinero del personal que pasa por la caja; la venta cancelada y la reembolsada son ingreso que no
+ocurrió; el costo de envío ya está **dentro** de `orders.total`. Un resumen que los pone como
+renglones hermanos sin decirlo invita a sumarlos y a reportar dinero que el negocio no tuvo. Toda
+cifra agregada declara qué incluye y qué excluye, y esa clasificación deja un test que falla
+**nombrando el concepto que se duplicó**, como
+[`TestElFondoDeCajaSeCuentaUnaSolaVez`](../../server/internal/integration/corte_plataformas_test.go).
+Corolario: la lista y el resumen de una misma pantalla se derivan del **mismo** predicado — si
+divergen, uno de los dos miente y quien lo lee no tiene forma de saber cuál. Ya costó un turno con
+$4,500 de faltante inexplicable.
+
 ### IV. Test-first, con la lógica extraída a `domain` (NO NEGOCIABLE)
 
 - **TDD**: primero el test que falla, luego el código.
@@ -82,6 +93,13 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 - **Anti-enumeración: iguala la latencia.** En ramas "usuario no encontrado / sin password" corre [`auth.CheckDummySecret`](../../server/internal/auth/password.go) para no filtrar existencia por temporización.
 - **Refresh reuse-detection fail-closed.** [`domain.ClassifyRefresh`](../../server/internal/domain/refresh.go): si el veredicto es `RefreshReused`, **revoca toda la familia** del usuario + evento de seguridad.
 - **Rechaza entradas absurdas como 400, no 500.** [`domain.ValidQty`/`ValidMoney`](../../server/internal/domain/limits.go) con topes (`MaxOrderQty`, `MaxMoney`) en la frontera: NaN/±Inf, overflow de `numeric`, wrap de `int16` → todos caen como 400/422 limpio.
+- **Un parámetro de frontera inválido se RECHAZA; nunca cae a un default en silencio.** Un `from`
+  mal escrito que se convierte en "los últimos 30 días" devuelve una pantalla que se ve correcta y
+  reporta un número que nadie pidió — peor que un error, porque nadie la audita. Aplica a fechas,
+  rangos, columnas de orden, tamaños de página y presets: valor conocido o `domain.ErrValidation`.
+  El default es para el parámetro **ausente**, nunca para el presente y malformado. Ej.:
+  [`parseDate`](../../server/internal/httpapi/handlers_backoffice.go) y
+  [`domain.SalesFilter.Validate`](../../server/internal/domain/sales.go).
 - **CORS fail-closed.** `CORS_ORIGIN` vacío = solo mismo origen; `*` solo en dev ([`cors`](../../server/internal/httpapi/router.go)).
 - **Ningún control de seguridad se mergea sin su test** y sin haber respondido "¿un atacante lo evade?" con un caso concreto, no con teoría.
 
@@ -136,4 +154,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.3.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-30
+**Version**: 1.4.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-31

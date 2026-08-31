@@ -26,6 +26,30 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
 - **`references/`** — exports reales de FUDO (fuente del importador de catálogo).
 
+### Listas filtradas, ordenables y paginadas
+
+El patrón ya está resuelto y se **copia**, no se reinventa. Referencias: `ListExpenses`/`CountExpenses`
+en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
+[server/queries/sales.sql](server/queries/sales.sql).
+
+- Filtro opcional = `sqlc.narg('x')`, nunca SQL concatenado.
+- Orden por columna = `case when @sort::text = … and @dir::text = …`, con **whitelist en el dominio**
+  y su espejo de tipos en el front ([SortHead](web/src/components/SortHead.tsx)). Un `sort`
+  desconocido se rechaza; ignorarlo deja la tabla ordenada por algo distinto de lo que dice su
+  encabezado.
+- Toda lista paginada trae su `Count…` gemela **con el mismo `where`**, y ese `where` y el del
+  resumen viven en el mismo archivo y se editan juntos.
+- **El índice de soporte empieza por `company_id`**: RLS agrega ese predicado a toda consulta del rol
+  `gatobobah_app`, y un índice que arranca por la fecha se queda descartando filas de otras empresas
+  dentro del scan. Ver [0042](server/migrations/0042_sales_index.sql).
+- **Un agregado no se une a dos tablas 1:N en la misma consulta.** `order_payments` y `order_lines`
+  son las dos 1:N con `orders`: unirlas multiplica las filas (2 pagos × 3 líneas = 6) y duplica las
+  sumas. Se pre-agrega cada rama por `order_id`, o se hacen consultas separadas.
+- **sqlc NO conoce `company_id`** en las ~30 tablas a las que se lo agregó
+  [0023](server/migrations/0023_tenant_columns.sql) con `EXECUTE format()`: su parser no lee DDL
+  dinámico. Nombrar esa columna en una consulta rompe `sqlc generate` con "column does not exist"
+  por una columna que sí existe en Postgres. No hace falta: RLS la aplica sola.
+
 ## 2. Comandos (todos en `Makefile`; `make help` los lista)
 
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.

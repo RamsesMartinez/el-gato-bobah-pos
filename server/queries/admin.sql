@@ -7,7 +7,7 @@
 select q.*, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
-         p.available_from, p.available_until, c.name as category,
+         p.available_from, p.available_until, c.name as category, p.category_id,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -139,3 +139,16 @@ update modifier_options set is_favorite = $2 where id = $1;
 
 -- name: AdminSetOptionActive :exec
 update modifier_options set is_active = $2 where id = $1;
+
+-- name: CategoryExists :one
+-- Comprobación de PERTENENCIA bajo RLS antes de mover un producto de categoría. La llave foránea
+-- no alcanza: sus chequeos saltan RLS por diseño, así que un category_id de otra empresa entraría
+-- sin protestar y el producto desaparecería de su propio menú —el join sí corre bajo RLS y no
+-- encontraría la categoría— sin que nada avise y sin forma de arreglarlo desde la pantalla.
+select exists(select 1 from categories where id = $1);
+
+-- name: AdminUpdateProductCategory :exec
+-- Va aparte del update general para que la categoría solo se toque cuando de verdad se pidió: una
+-- petición sin categoría no debe mover el producto, y un cliente viejo que no manda el campo no
+-- puede terminar mandándolos todos a la categoría 0.
+update products set category_id = $2, updated_at = now() where id = $1;

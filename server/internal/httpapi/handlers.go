@@ -65,6 +65,7 @@ type Deps struct {
 	// POS opera capturando las líneas a mano).
 	PurchaseDoc    *app.PurchaseDocService
 	PlatformPrices *app.PlatformPricesService
+	Sales          *app.SalesService
 }
 
 type Handlers struct {
@@ -87,6 +88,7 @@ type Handlers struct {
 	broker         *realtime.Broker
 	purchaseDoc    *app.PurchaseDocService
 	platformPrices *app.PlatformPricesService
+	sales          *app.SalesService
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
@@ -103,6 +105,7 @@ func NewHandlers(d Deps) *Handlers {
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:    d.PurchaseDoc,
 		platformPrices: d.PlatformPrices,
+		sales:          d.Sales,
 		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos

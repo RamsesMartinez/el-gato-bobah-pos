@@ -23,18 +23,21 @@ func NewAdminService(s *store.Store) *AdminService { return &AdminService{store:
 // AdminProductView expone las fechas de disponibilidad como "YYYY-MM-DD" o null
 // (JSON limpio para el front) en vez del pgtype.Date crudo.
 type AdminProductView struct {
-	ID             int64           `json:"id"`
-	Name           string          `json:"name"`
-	Price          decimal.Decimal `json:"price"`
-	CurrentCost    decimal.Decimal `json:"current_cost"`
-	Type           string          `json:"type"`
-	IsActive       bool            `json:"is_active"`
-	IsFavorite     bool            `json:"is_favorite"`
-	Category       string          `json:"category"`
-	AvailableFrom  *string         `json:"availableFrom"`
-	AvailableUntil *string         `json:"availableUntil"`
-	GroupCount     int             `json:"groupCount"`    // grupos de modificadores activos ligados al producto
-	OverrideCount  int             `json:"overrideCount"` // grupos con min/max personalizado en este producto
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Price       decimal.Decimal `json:"price"`
+	CurrentCost decimal.Decimal `json:"current_cost"`
+	Type        string          `json:"type"`
+	IsActive    bool            `json:"is_active"`
+	IsFavorite  bool            `json:"is_favorite"`
+	Category    string          `json:"category"`
+	// CategoryID además del nombre: la pantalla de edición necesita el id para preseleccionar la
+	// categoría actual en el selector, y el nombre para mostrarla en la lista sin otra consulta.
+	CategoryID     int64   `json:"categoryId"`
+	AvailableFrom  *string `json:"availableFrom"`
+	AvailableUntil *string `json:"availableUntil"`
+	GroupCount     int     `json:"groupCount"`    // grupos de modificadores activos ligados al producto
+	OverrideCount  int     `json:"overrideCount"` // grupos con min/max personalizado en este producto
 }
 
 const dateFmt = "2006-01-02"
@@ -190,7 +193,8 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 		out = append(out, AdminProductView{
 			ID: r.ID, Name: r.Name, Price: r.Price, CurrentCost: r.CurrentCost,
 			Type: string(r.Type), IsActive: r.IsActive, IsFavorite: r.IsFavorite,
-			Category: r.Category, AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
+			Category: r.Category, CategoryID: r.CategoryID,
+			AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 		})
 	}
@@ -202,11 +206,15 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 }
 
 type UpdateProductInput struct {
-	ID             int64
-	Name           string
-	Price          decimal.Decimal
-	Favorite       bool
-	Active         bool
+	ID       int64
+	Name     string
+	Price    decimal.Decimal
+	Favorite bool
+	Active   bool
+	// CategoryID en 0 significa "no la muevas". Es lo que deja que renombrar, cambiar precio o
+	// activar sigan funcionando sin mandarla, y que un cliente que no conoce el campo no termine
+	// mandando todos los productos a la categoría 0 por omisión.
+	CategoryID     int64
 	AvailableFrom  *string
 	AvailableUntil *string
 }
@@ -274,6 +282,25 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	if err != nil {
 		return err
 	}
+	// La categoría se valida y se escribe ANTES del resto: si la categoría no es de esta empresa,
+	// el producto no debe quedar renombrado ni con otro precio "a medias". Se devuelve el mismo
+	// ErrNotFound que un id inexistente — distinguir "no existe" de "no es tuya" convertiría el
+	// endpoint en un censo de los menús ajenos.
+	if in.CategoryID != 0 {
+		ok, err := s.store.QC(ctx).CategoryExists(ctx, in.CategoryID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return domain.ErrNotFound
+		}
+		if err := s.store.QC(ctx).AdminUpdateProductCategory(ctx, db.AdminUpdateProductCategoryParams{
+			ID: in.ID, CategoryID: in.CategoryID,
+		}); err != nil {
+			return err
+		}
+	}
+
 	err = s.store.QC(ctx).AdminUpdateProduct(ctx, db.AdminUpdateProductParams{
 		ID:             in.ID,
 		Name:           in.Name,
