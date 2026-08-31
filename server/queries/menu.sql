@@ -7,7 +7,10 @@ where is_active
 order by parent_id nulls first, sort_key, name;
 
 -- name: MenuProducts :many
-select p.id, p.name, p.description, p.price, p.current_cost,
+-- El sku viaja para que la pantalla de venta pueda buscar por código además de por nombre: en una
+-- tableta táctil, escribir tres letras en el teclado de pantalla es más rápido que bajar por
+-- categorías, y quien transcribe de una libreta se sabe los códigos.
+select p.id, p.name, p.sku, p.description, p.price, p.current_cost,
        p.category_id, p.type, p.is_favorite, p.image_url, p.track_stock
 from products p
 where p.is_active
