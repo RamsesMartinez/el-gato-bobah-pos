@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { posApi } from '../../api/pos';
 import { backofficeApi } from '../../api/backoffice';
 import { toaster } from '../../components/ui/toaster';
+import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { InstallAppSection } from '../pwa/InstallAppSection';
@@ -119,15 +120,14 @@ export function BusinessSettingsPage() {
         </Text>
         <HStack gap={2} align="end" flexWrap="wrap">
           <Box flex="1" minW="260px">
-            <select
+            {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
+                sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
+            <Picker
               value={tzValue}
-              onChange={(e) => setTz(e.target.value)}
-              style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}
-            >
-              {ZONAS_MEXICO.map((z) => (
-                <option key={z.value} value={z.value}>{z.label}</option>
-              ))}
-            </select>
+              onChange={setTz}
+              options={ZONAS_MEXICO.map((z) => ({ value: z.value, label: z.label }))}
+              title="Zona horaria del negocio"
+            />
           </Box>
           <Button size="lg" loading={saveTz.isPending} onClick={() => saveTz.mutate()}>
             Guardar zona
