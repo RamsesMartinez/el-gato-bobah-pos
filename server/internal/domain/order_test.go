@@ -206,3 +206,51 @@ func TestMetodoCorrespondeALaPlataforma(t *testing.T) {
 		})
 	}
 }
+
+// El tope de veces que una opción puede ir en la MISMA línea lo pone el negocio en `max_per_line`
+// (las 64 salsas están en 2; 818 opciones donde repetir no tiene sentido están en 1). Hasta que la
+// pantalla dejó pedir dos iguales, ese tope nunca se ejercía: todo llegaba en 1.
+//
+// Se valida en el servidor y no solo en la pantalla porque la pantalla es espejo, no barrera. Un
+// cliente que mande 40 salsas en una línea no es un ataque —se le cobrarían— pero manda a cocina un
+// ticket que el negocio nunca aceptó, y lo hace sin que nada avise.
+func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
+	products := map[int64]PricedProduct{
+		1: {ID: 1, Name: "Boneless", Price: d("200"), Cost: d("80"), Active: true},
+	}
+	options := map[int64]PricedOption{
+		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 2},
+		12: {ID: 12, Name: "Sin salsa", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 1},
+	}
+	linea := func(optID int64, q int) []OrderLineInput {
+		return []OrderLineInput{{ProductID: 1, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: optID, Qty: q}}}}
+	}
+
+	// Dos del mismo sabor: el caso que la feature vino a permitir.
+	got, err := BuildOrder(linea(10, 2), products, options)
+	if err != nil {
+		t.Fatalf("dos salsas iguales deben pasar: %v", err)
+	}
+	if n := got.Lines[0].Modifiers[0].Qty; n != 2 {
+		t.Fatalf("cantidad persistida = %d, quiere 2", n)
+	}
+
+	// Una tercera ya no: el negocio dijo dos.
+	if _, err := BuildOrder(linea(10, 3), products, options); !errors.Is(err, ErrOptionOverMax) {
+		t.Fatalf("tres del mismo sabor debe rechazarse, fue %v", err)
+	}
+
+	// Y una opción que no se repite se rechaza en la segunda.
+	if _, err := BuildOrder(linea(12, 2), products, options); !errors.Is(err, ErrOptionOverMax) {
+		t.Fatalf("repetir una opción que no lo admite debe rechazarse, fue %v", err)
+	}
+
+	// max_per_line en 0 significa "sin configurar", no "ninguna": el default de la columna es 1 y
+	// un 0 solo puede venir de datos viejos. Tratarlo como tope haría irrepetible TODO.
+	sinConfigurar := map[int64]PricedOption{
+		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 0},
+	}
+	if _, err := BuildOrder(linea(10, 1), products, sinConfigurar); err != nil {
+		t.Fatalf("una opción sin tope configurado debe aceptar la primera: %v", err)
+	}
+}
