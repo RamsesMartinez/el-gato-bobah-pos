@@ -167,6 +167,7 @@ func main() {
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
 		PurchaseDoc:    app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 		PlatformPrices: app.NewPlatformPricesService(st),
+		Sales:          app.NewSalesService(st, nil),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
 

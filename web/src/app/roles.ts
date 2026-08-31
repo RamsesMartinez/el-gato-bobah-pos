@@ -8,6 +8,7 @@ export const ROUTE_ROLES: Record<string, Role[]> = {
   '/caja': ['admin', 'gerente', 'cajero'],
   '/gastos': ['admin', 'gerente'],
   '/almacen': ['admin', 'gerente'],
+  '/ventas': ['admin', 'gerente'],
   '/reportes': ['admin', 'gerente'],
   '/catalogo': ['admin', 'gerente'],
   '/empleados': ['admin'],
