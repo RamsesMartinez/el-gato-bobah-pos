@@ -77,6 +77,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Get("/pos/menu", h.PosMenu)
 				r.Get("/pos/popular", h.PosPopular)
 				r.Get("/pos/modifier-defaults", h.ModifierDefaults)
+				// Los nombres con los que se cantan los pedidos. Es estático dentro de un
+				// despliegue, así que la pantalla lo pide una vez por carga; vive aquí y no en
+				// una copia del front para que la lista tenga un solo dueño.
+				r.Get("/pos/folio-names", h.FolioNames)
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 

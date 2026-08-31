@@ -21,10 +21,13 @@ export type RepreciarLinea = (line: TicketLine) => Pick<TicketLine, 'unitPrice' 
 export interface TicketTab {
   id: string;
   num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
-  // El animal con el que se va a cantar este pedido en cocina. Se elige al ABRIR la cuenta y no al
+  // El animal con el que se va a cantar este pedido en cocina. Se pone al ABRIR la cuenta y no al
   // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
   // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
   // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
+  //
+  // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
+  // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
   folioName: string;
   lines: TicketLine[];
   serviceType: ServiceType;
@@ -35,12 +38,14 @@ export interface TicketTab {
   platformId: number | null;
 }
 
-function emptyTab(num: number, tomados: string[] = []): TicketTab {
+function emptyTab(num: number): TicketTab {
   // Cada cuenta nueva arranca en MOSTRADOR, aunque la anterior haya sido de plataforma: un tap de
   // más por pedido de plataforma, a cambio de que sea imposible cobrar precio de Uber en mostrador
   // por inercia.
+  // Sin folioName: la lista vive en el servidor y esto corre también al importar el módulo, antes
+  // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
   return {
-    id: uuid(), num, folioName: nombreLibre(tomados), lines: [],
+    id: uuid(), num, folioName: '', lines: [],
     serviceType: 'mostrador', customerName: '', platformId: null,
   };
 }
@@ -84,6 +89,8 @@ interface TicketState {
   // armado con el catálogo de otro tenant no se puede cobrar y no debe quedarse esperando a que
   // alguien lo intente.
   descartarTodo: () => void;
+  // Le pone nombre a las cuentas que todavía no lo tienen, en cuanto la lista llega del servidor.
+  bautizarCuentas: (animales: string[]) => void;
 }
 
 const first = emptyTab(1);
@@ -153,7 +160,7 @@ export const useTicketStore = create<TicketState>()(
 
         newTab: () =>
           set((s) => {
-            const t = emptyTab(s.seq, s.tabs.map((x) => x.folioName));
+            const t = emptyTab(s.seq);
             return { tabs: [...s.tabs, t], activeId: t.id, seq: s.seq + 1 };
           }),
         switchTab: (id) => set({ activeId: id }),
@@ -161,7 +168,7 @@ export const useTicketStore = create<TicketState>()(
           set((s) => {
             const tabs = s.tabs.filter((t) => t.id !== id);
             if (tabs.length === 0) {
-              const t = emptyTab(s.seq, s.tabs.map((x) => x.folioName));
+              const t = emptyTab(s.seq);
               return { tabs: [t], activeId: t.id, seq: s.seq + 1 };
             }
             return { tabs, activeId: s.activeId === id ? tabs[0].id : s.activeId };
@@ -182,6 +189,22 @@ export const useTicketStore = create<TicketState>()(
             }),
           })),
 
+        // Bautiza solo lo que falta: una cuenta que ya tiene animal NO se renombra, porque el
+        // operador puede haberle dicho ese nombre al cliente hace diez minutos.
+        bautizarCuentas: (animales) =>
+          set((s) => {
+            if (animales.length === 0 || s.tabs.every((t) => t.folioName)) return s;
+            const tomados = s.tabs.map((t) => t.folioName).filter(Boolean);
+            return {
+              tabs: s.tabs.map((t) => {
+                if (t.folioName) return t;
+                const folioName = nombreLibre(animales, tomados);
+                tomados.push(folioName);
+                return { ...t, folioName };
+              }),
+            };
+          }),
+
         descartarTodo: () =>
           set(() => {
             const t = emptyTab(1);
@@ -191,17 +214,13 @@ export const useTicketStore = create<TicketState>()(
     },
     {
       name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
-      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen animal. Se les pone
-      // uno al rehidratar en vez de subir la versión del almacén: subirla borraría cuentas con
-      // productos capturados, y perder el pedido de un cliente por un deploy no es negociable.
+      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen animal, y quedan
+      // con folioName vacío hasta que bautizarCuentas() corra. No se sube la versión del almacén
+      // para forzar el campo: subirla borraría cuentas con productos ya capturados, y perder el
+      // pedido de un cliente por un deploy no es negociable.
       merge: (persisted, current) => {
         const prev = (persisted ?? {}) as Partial<TicketState>;
-        const tomados: string[] = [];
-        const tabs = (prev.tabs ?? current.tabs).map((t) => {
-          const folioName = t.folioName || nombreLibre(tomados);
-          tomados.push(folioName);
-          return { ...t, folioName };
-        });
+        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '' }));
         return { ...current, ...prev, tabs };
       },
     },

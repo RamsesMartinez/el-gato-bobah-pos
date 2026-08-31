@@ -186,3 +186,21 @@ func TestSiguienteFolioLibre(t *testing.T) {
 		})
 	}
 }
+
+// FolioNames es lo que la pantalla pide para proponer un nombre al abrir la cuenta. Devuelve una
+// COPIA: si entregara el arreglo interno, quien lo recibiera podría reordenarlo y con él el
+// barajado por día, que sale de ese mismo orden.
+func TestFolioNamesEsUnaCopia(t *testing.T) {
+	lista := FolioNames()
+	if len(lista) != len(animales) {
+		t.Fatalf("FolioNames devolvió %d nombres, quiere %d", len(lista), len(animales))
+	}
+	original := animales[0]
+	lista[0] = "Manipulado"
+	if animales[0] != original {
+		t.Fatalf("tocar la copia cambió la lista del servidor: quedó en %q", animales[0])
+	}
+	if FolioNames()[0] != original {
+		t.Fatal("la siguiente llamada ya salió contaminada")
+	}
+}
