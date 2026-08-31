@@ -45,9 +45,11 @@ export function TicketTabs() {
               <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap" lineHeight="1.15">
                 {t.customerName || `Cuenta ${t.num}`}{count > 0 ? ` · ${count}` : ''}
               </Text>
+              {/* El espacio duro sostiene el renglón mientras la lista de animales llega del
+                  servidor: sin él la pestaña se recentra sola al aparecer el nombre. */}
               <Text fontSize="2xs" whiteSpace="nowrap" lineHeight="1.15"
                 color={active ? 'whiteAlpha.700' : 'fg.subtle'}>
-                {t.folioName}
+                {t.folioName || ' '}
               </Text>
             </VStack>
             {/* la ✕ solo en la cuenta activa → no se cierra por error una de fondo al cambiar.

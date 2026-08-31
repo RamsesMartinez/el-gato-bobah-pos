@@ -296,3 +296,12 @@ func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// GET /pos/folio-names
+//
+// Sin caché HTTP a propósito: la lista cambia con el binario, y un max-age dejaría tabletas
+// proponiendo un animal que el despliegue ya quitó. El cliente la guarda por sesión, que es
+// exactamente lo que dura un binario para una tableta encendida.
+func (h *Handlers) FolioNames(w http.ResponseWriter, r *http.Request) {
+	JSON(w, http.StatusOK, map[string][]string{"items": domain.FolioNames()})
+}

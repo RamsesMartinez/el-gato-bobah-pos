@@ -35,6 +35,18 @@ var animales = [...]string{
 	"Emú", "Yegua", "Wallaby", "Orangután",
 }
 
+// FolioNames devuelve la lista de nombres, para que la pantalla proponga uno al abrir la cuenta.
+//
+// La sirve el servidor y no una copia en el front: son la MISMA lista, y tenerla dos veces hacía
+// que agregar un animal de un lado dejara al otro sin poder mostrarlo o sin poder repartirlo. Se
+// pide una vez por carga de la aplicación —es estática dentro de un despliegue—, no por cuenta.
+//
+// Devuelve una copia: quien la reciba no puede reordenar la del servidor, de la que cuelga el
+// barajado por día.
+func FolioNames() []string {
+	return append([]string(nil), animales[:]...)
+}
+
 // NombreDeFolio devuelve el nombre con el que se canta el pedido dailyNumber de ese día.
 //
 // El orden se revuelve por día y por empresa: si fuera secuencial, "Águila" sería siempre el

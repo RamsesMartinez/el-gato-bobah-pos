@@ -57,6 +57,9 @@ export const posApi = {
   popular: () => api.get<{ items: number[] }>('/pos/popular'),
   // producto → grupo → [optionId rankeadas] por probabilidad contextual. Claves string (JSON).
   modifierDefaults: () => api.get<ModifierDefaults>('/pos/modifier-defaults'),
+  // Los nombres con los que se cantan los pedidos. Es la única copia de la lista y es
+  // estática dentro de un despliegue, así que se pide una vez por carga, no por cuenta.
+  folioNames: () => api.get<{ items: string[] }>('/pos/folio-names'),
   paymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods'),
 
   createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
