@@ -132,6 +132,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 		t.Fatalf("OpenSession 1: %v", err)
 	}
 	vender()
+	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero,
 		map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")}, ""); err != nil {
 		t.Fatalf("CloseSession 1: %v", err)
@@ -283,6 +284,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 	vender(uberEfectivo, "135")
 	vender(efectivo, "100")
 
+	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero, map[int]decimal.Decimal{
 		int(efectivo):     decimal.RequireFromString("100"),
 		int(uberEnLinea):  decimal.RequireFromString("135"),

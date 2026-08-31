@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -556,6 +559,14 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		}
 		return nil, err
 	}
+	// Ningún pedido sin terminar sobrevive al cierre. Va ANTES de calcular nada: si el turno se
+	// cierra con pendientes, esos pedidos quedan colgados de un arqueo ya firmado y su venta cae en
+	// un corte que nadie puede volver a cuadrar. Cerrar es además el momento en que el operador SÍ
+	// puede resolverlos: está frente a la caja y el local está vacío.
+	if err := s.sinPedidosPendientes(ctx, sess.ID); err != nil {
+		return nil, err
+	}
+
 	view, err := s.sessionWithExpected(ctx, sess, reg)
 	if err != nil {
 		return nil, err
@@ -946,4 +957,24 @@ func (s *BackofficeService) TipsByDay(ctx context.Context, from, to time.Time) (
 	return s.store.QC(ctx).TipsByDay(ctx, db.TipsByDayParams{
 		BusinessDate: pgtype.Date{Time: from, Valid: true}, BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
+}
+
+// sinPedidosPendientes falla nombrando los folios que faltan por terminar.
+//
+// Los folios van en el mensaje a propósito: un "hay pedidos sin terminar" a secas manda al operador
+// a recorrer el tablero comparando, justo cuando está cerrando y con prisa.
+func (s *BackofficeService) sinPedidosPendientes(ctx context.Context, sessionID int64) error {
+	folios, err := s.store.QC(ctx).OpenOrdersInSession(ctx, &sessionID)
+	if err != nil {
+		return err
+	}
+	if len(folios) == 0 {
+		return nil
+	}
+	partes := make([]string, 0, len(folios))
+	for _, f := range folios {
+		partes = append(partes, "#"+strconv.FormatInt(int64(f), 10))
+	}
+	return fmt.Errorf("%w: %s. Entrégalos o cancélalos antes de cerrar",
+		domain.ErrOpenOrders, strings.Join(partes, ", "))
 }
