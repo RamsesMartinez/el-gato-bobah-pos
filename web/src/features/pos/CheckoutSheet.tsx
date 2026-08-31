@@ -452,9 +452,13 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                 su camino por el tablero. */}
             <HStack justify="space-between" borderTopWidth="1px" pt={3} display={agregarA ? 'none' : undefined}>
               <Box>
-                <Text fontWeight="600">Ya se lo llevó</Text>
+                {/* "No pasa por cocina" y no "Ya se lo llevó": lo segundo suena igual que el tipo
+                    de venta "Para llevar" y se confunden. Son cosas distintas — unas alitas para
+                    llevar SÍ las prepara cocina y tienen que aparecer en Pedidos; un refresco de la
+                    nevera no. El ejemplo va en el texto porque es lo que hace obvia la diferencia. */}
+                <Text fontWeight="600">No pasa por cocina</Text>
                 <Text fontSize="xs" color="fg.muted">
-                  Queda entregado y no pasa a Pedidos.
+                  Queda entregado y no aparece en Pedidos. Para lo que el cliente toma de la nevera.
                 </Text>
               </Box>
               <Switch checked={entregaInmediata} onCheckedChange={(e) => setEntregaInmediata(e.checked)} />
