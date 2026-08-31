@@ -37,7 +37,9 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader>
-          <DialogTitle>Venta #{venta.dailyNumber} · {money(venta.total)}</DialogTitle>
+          <DialogTitle>
+            {venta.folioName ? `${venta.folioName} · #${venta.dailyNumber}` : `Venta #${venta.dailyNumber}`} · {money(venta.total)}
+          </DialogTitle>
         </DialogHeader>
         <DialogCloseTrigger />
         <DialogBody>

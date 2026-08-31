@@ -32,8 +32,11 @@ func NewSalesService(s *store.Store, now func() time.Time) *SalesService {
 // SaleRow es un renglón de la tabla. Los montos van como decimal para que el JSON lleve el string
 // exacto y el cliente no los pase por float.
 type SaleRow struct {
-	ID          int64           `json:"id"`
-	DailyNumber int32           `json:"dailyNumber"`
+	ID          int64 `json:"id"`
+	DailyNumber int32 `json:"dailyNumber"`
+	// FolioName es el nombre con el que se cantó el pedido. Es como el cliente pide su ticket
+	// para facturar —recuerda "Tigre", no "#187"—, así que viaja en la lista y no solo en el detalle.
+	FolioName   string          `json:"folioName"`
 	Date        string          `json:"date"`
 	OpenedAt    time.Time       `json:"openedAt"`
 	CompletedAt *time.Time      `json:"completedAt"`
@@ -109,7 +112,8 @@ func (s *SalesService) List(ctx context.Context, f domain.SalesFilter) (*SalesPa
 	out := make([]SaleRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, SaleRow{
-			ID: r.ID, DailyNumber: r.DailyNumber, Date: r.BusinessDate.Time.Format("2006-01-02"),
+			ID: r.ID, DailyNumber: r.DailyNumber, FolioName: derefStr(r.FolioName),
+			Date:     r.BusinessDate.Time.Format("2006-01-02"),
 			OpenedAt: r.OpenedAt, CompletedAt: momento(r.CompletedAt),
 			Status: string(r.Status), ServiceType: string(r.ServiceType),
 			Customer: texto(r.CustomerName), Total: domain.Round2(r.Total),

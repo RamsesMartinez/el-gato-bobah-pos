@@ -822,12 +822,17 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 }
 
 const openOrdersInSession = `-- name: OpenOrdersInSession :many
-select o.daily_number
+select o.daily_number, o.folio_name
 from orders o
 where o.register_session_id = $1
   and o.status in ('abierta', 'lista')
 order by o.daily_number
 `
+
+type OpenOrdersInSessionRow struct {
+	DailyNumber int32   `json:"daily_number"`
+	FolioName   *string `json:"folio_name"`
+}
 
 // Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
 // comida que va a salir y dinero que no se decidió, y si el turno cierra con esos pendientes su
@@ -835,19 +840,19 @@ order by o.daily_number
 //
 // Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
 // "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
-func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]int32, error) {
+func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]OpenOrdersInSessionRow, error) {
 	rows, err := q.db.Query(ctx, openOrdersInSession, registerSessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int32{}
+	items := []OpenOrdersInSessionRow{}
 	for rows.Next() {
-		var daily_number int32
-		if err := rows.Scan(&daily_number); err != nil {
+		var i OpenOrdersInSessionRow
+		if err := rows.Scan(&i.DailyNumber, &i.FolioName); err != nil {
 			return nil, err
 		}
-		items = append(items, daily_number)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

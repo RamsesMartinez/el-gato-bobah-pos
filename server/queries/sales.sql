@@ -18,7 +18,7 @@
 -- cliente porque la lista está paginada: ordenar solo las 20 filas visibles daría un orden falso.
 -- El desempate fijo (opened_at desc, id desc) evita que dos ventas del mismo total bailen entre
 -- páginas.
-select o.id, o.daily_number, o.business_date, o.opened_at, o.completed_at,
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
        dp.name as platform,
        u.name as opened_by_name,

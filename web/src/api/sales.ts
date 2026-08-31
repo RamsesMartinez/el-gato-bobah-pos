@@ -12,6 +12,8 @@ import { api } from './client';
 export interface SaleRow {
   id: number;
   dailyNumber: number;
+  // Nombre con el que se cantó el pedido. Es como el cliente pide su ticket para facturar.
+  folioName: string;
   date: string;
   openedAt: string;
   completedAt: string | null;
