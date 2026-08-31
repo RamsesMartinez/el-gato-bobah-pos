@@ -5,7 +5,10 @@ select id, name, price, current_cost, is_active
 from products where id = any($1::bigint[]);
 
 -- name: GetPricedOptions :many
-select mo.id, mo.name, mo.price_delta, mo.current_cost, mg.name as group_title
+-- max_per_line viaja porque el servidor lo valida: es el tope de veces que una opción puede ir en
+-- la misma línea, y desde que la pantalla deja pedir dos salsas del mismo sabor deja de ser un
+-- valor que nadie ejercía.
+select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mo.id = any($1::bigint[]);

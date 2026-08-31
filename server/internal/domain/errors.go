@@ -54,4 +54,8 @@ var (
 	// sistema espere billetes que la plataforma pagó por transferencia, y el turno cierra con un
 	// faltante por el monto exacto sin nada que lo explique.
 	ErrPaymentMethodPlatform = errors.New("ese método de pago no corresponde a la plataforma del pedido")
+	// ErrOptionOverMax: se pidió una opción de modificador más veces de las que el negocio permite
+	// en una línea (`modifier_options.max_per_line`). Envuelve el nombre y los dos números para
+	// que el mensaje diga qué corregir y no solo que algo está mal.
+	ErrOptionOverMax = errors.New("esa opción no se puede repetir tantas veces en una línea")
 )
