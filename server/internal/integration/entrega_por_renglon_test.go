@@ -228,3 +228,33 @@ func TestCadaPedidoNaceConSuNombre(t *testing.T) {
 		t.Errorf("al releer el folio es %q y al crear era %q", tras.FolioName, ord.FolioName)
 	}
 }
+
+// Un pedido reembolsado SALIÓ de la cocina: solo se reembolsa lo que ya se entregó, y por eso
+// reembolsar no repone stock. Sus renglones tienen que decirlo.
+//
+// La migración 0045 los dejó en cero —afirmando lo contrario de lo que pasó— y 0048 lo corrige en
+// lo histórico; esto fija el comportamiento hacia adelante para que no vuelva a abrirse el hueco.
+func TestUnPedidoReembolsadoTieneSusRenglonesEntregados(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, _, _ := pedidoDeAlitas(t, st, svc, "reembolso")
+	gerente := makeUser(t, st, "gerente_reemb", "gerente")
+
+	if err := svc.DeliverAll(ctx, ord.ID); err != nil {
+		t.Fatalf("DeliverAll: %v", err)
+	}
+	if err := svc.Refund(ctx, ord.ID, gerente, "producto mal"); err != nil {
+		t.Fatalf("Refund: %v", err)
+	}
+
+	tras, err := svc.Detail(ctx, ord.ID)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	for _, l := range tras.Lines {
+		if !l.Delivered.Equal(l.Quantity) {
+			t.Errorf("%s quedó en %s de %s entregado: esa comida sí salió", l.ProductName, l.Delivered, l.Quantity)
+		}
+	}
+}
