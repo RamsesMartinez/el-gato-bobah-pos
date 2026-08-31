@@ -101,6 +101,10 @@ type PricedOption struct {
 	PriceDelta decimal.Decimal
 	Cost       decimal.Decimal
 	GroupTitle string
+	// MaxPerLine: cuántas veces admite esta opción en la MISMA línea. Lo configura el negocio por
+	// opción (las salsas están en 2 para poder pedir dos del mismo sabor; las que no tiene sentido
+	// repetir, en 1). Un 0 significa "sin configurar" y se trata como 1.
+	MaxPerLine int
 }
 
 // --- Resultado priceado (snapshots que van a order_lines) ---
@@ -172,6 +176,16 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			q := m.Qty
 			if q <= 0 {
 				q = 1
+			}
+			// El tope que puso el negocio por opción. Se valida aquí y no solo en la pantalla
+			// porque la pantalla es espejo, no barrera: un cliente que mande 40 salsas en una
+			// línea manda a cocina un ticket que el negocio nunca aceptó, y lo hace en silencio.
+			tope := o.MaxPerLine
+			if tope <= 0 {
+				tope = 1 // 0 es "sin configurar" (el default de la columna es 1), no "ninguna"
+			}
+			if q > tope {
+				return BuiltOrder{}, fmt.Errorf("%w: %s admite %d por línea y se pidieron %d", ErrOptionOverMax, o.Name, tope, q)
 			}
 			qd := decimal.NewFromInt(int64(q))
 			// Cota superior: el modificador se persiste como int16; sin esto un Qty enorme

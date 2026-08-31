@@ -64,6 +64,11 @@ func Error(w http.ResponseWriter, err error) {
 		// El front lo necesita distinguible para decir con cuál sí se puede cobrar, en vez de un
 		// "datos inválidos" que no dice qué corregir.
 		status, code = http.StatusUnprocessableEntity, "PAYMENT_METHOD_PLATFORM"
+	case errors.Is(err, domain.ErrOptionOverMax):
+		// 422 y código propio: los ids son válidos y lo que no cuadra es cuántas veces se pidió una
+		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
+		// corregir en vez de un "datos inválidos" que no dice nada.
+		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
