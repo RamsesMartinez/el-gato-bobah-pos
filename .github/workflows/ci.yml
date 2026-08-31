@@ -196,6 +196,22 @@ jobs:
       # preview no puede tener dominio propio —en Pages el dominio propio siempre sirve el deploy
       # de producción del proyecto— así que app-dev necesitaba su proyecto. `--branch=staging` es
       # la rama de producción de ESTE proyecto: es lo que app-dev.elgatobobah.com entrega.
+      # El CSP de web/public/_headers lista la API de PRODUCCIÓN en connect-src. Sin esto, el front
+      # de pruebas se construye apuntando a api-dev y el navegador le bloquea el login con
+      # "Refused to connect because it violates the document's Content Security Policy" — que fue
+      # exactamente lo que pasó.
+      #
+      # Se reescribe aquí y no se agregan los dos dominios al archivo: el CSP de producción debe
+      # listar solo lo que producción necesita. Lo que cambia entre ambientes es el host de la API,
+      # no la FORMA de la política, así que el ambiente de pruebas sigue probando el mismo CSP.
+      - name: Apuntar el CSP a la API de pruebas
+        run: |
+          sed -i 's|https://api\.elgatobobah\.com|https://api-dev.elgatobobah.com|g' dist/_headers
+          # Falla ruidoso si el sed no encontró nada: un rename del dominio dejaría el CSP viejo y
+          # el login volvería a romperse en silencio hasta que alguien lo probara a mano.
+          grep -q 'connect-src .*https://api-dev\.elgatobobah\.com' dist/_headers
+          ! grep -q 'https://api\.elgatobobah\.com' dist/_headers
+
       - name: Deploy a Cloudflare Pages (ambiente de pruebas)
         run: bunx wrangler pages deploy dist --project-name=el-gato-bobah-pos-dev --branch=staging --commit-dirty=true
         env:
