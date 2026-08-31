@@ -25,15 +25,18 @@ echo "$salida"
 echo
 echo "Smart App Control bloqueó un binario de test; corriendo la misma suite en contenedor…"
 
-dir="$(pwd)"
-# Docker no entiende la ruta POSIX de Git Bash (/d/git/…); cygpath la traduce a D:/git/…
+# Se monta el REPO, no solo server/: folio_espejo_test.go compara la lista de animales del
+# servidor contra su copia en web/, y con el módulo suelto no encontraría el archivo — se
+# saltaría en silencio, que es justo el modo de fallar que ese test existe para evitar.
+raiz="$(git rev-parse --show-toplevel)"
 if command -v cygpath >/dev/null 2>&1; then
-  dir="$(cygpath -m "$(pwd)")"
+  # Docker no entiende la ruta POSIX de Git Bash (/d/git/…); cygpath la traduce a D:/git/…
+  raiz="$(cygpath -m "$raiz")"
 fi
 
 # Los volúmenes de caché no son opcionales: sin ellos cada push vuelve a bajar el módulo entero.
 MSYS_NO_PATHCONV=1 exec docker run --rm \
-  -v "$dir:/src" -w /src \
+  -v "$raiz:/repo" -w /repo/server \
   -v gatobobah_gocache:/root/.cache/go-build \
   -v gatobobah_gomod:/go/pkg/mod \
   golang:1.27 go test ./...

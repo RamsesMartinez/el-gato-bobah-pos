@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function Ticket({ onCheckout, onEditLine, onHide, swipeHandlers }: Props) {
-  const { lines, customerName } = useActiveTicket();
+  const { lines, customerName, folioName } = useActiveTicket();
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
   const remove = useTicketStore((s) => s.removeLine);
@@ -37,7 +37,11 @@ export function Ticket({ onCheckout, onEditLine, onHide, swipeHandlers }: Props)
             </IconButton>
           )}
           <Text fontWeight="700" fontSize="lg" truncate>
-            Pedido {customerName && <Text as="span" color="fg.muted" fontWeight="500">· {customerName}</Text>}
+            Pedido{' '}
+            {/* Tenue y detrás de "Pedido": es con lo que se va a cantar en cocina, y se ve desde
+                aquí para poder decírselo al cliente al tomarle el pedido. */}
+            <Text as="span" color="fg.subtle" fontWeight="500">{folioName}</Text>
+            {customerName && <Text as="span" color="fg.muted" fontWeight="500"> · {customerName}</Text>}
           </Text>
         </HStack>
         {lines.length > 0 && (

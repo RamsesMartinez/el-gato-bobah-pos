@@ -8,7 +8,7 @@ import {
 } from '../../components/ui/drawer';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import {
-  LuBanknote, LuCreditCard, LuLandmark, LuSmartphone, LuStore, LuShoppingBag, LuBike, LuX, LuTriangleAlert,
+  LuBanknote, LuCreditCard, LuLandmark, LuSmartphone, LuStore, LuBike, LuX, LuTriangleAlert,
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
@@ -34,9 +34,13 @@ const ICONO_POR_TIPO: Record<string, IconType> = {
   plataforma: LuSmartphone,
 };
 const iconoDe = (kind: string): IconType => ICONO_POR_TIPO[kind] ?? LuCreditCard;
+// "Para llevar" salió del selector: no cambiaba nada —ni el costo de envío, que solo aplica a
+// domicilio, ni la lista de precios, ni qué pasa por cocina— y ningún reporte agrupaba por él. Era
+// un tap que solo cambiaba una palabra en el ticket, y en el cobro compite con los dos que sí
+// deciden algo. El valor sigue vivo en el enum y en las etiquetas: hay pedidos viejos con ese tipo
+// y sin su etiqueta la pantalla los mostraría como "para_llevar", con guion bajo.
 const SERVICE: Array<{ v: ServiceType; label: string; icon: IconType }> = [
   { v: 'mostrador', label: 'Mostrador', icon: LuStore },
-  { v: 'para_llevar', label: 'Para llevar', icon: LuShoppingBag },
   { v: 'domicilio', label: 'Domicilio', icon: LuBike },
 ];
 // Billetes MXN para pago rápido en efectivo (además de "Exacto").
@@ -50,7 +54,7 @@ interface Props {
 
 export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const swipe = useSwipeDownToClose(onClose);
-  const { id: activeId, lines, serviceType, customerName, platformId: lista } = useActiveTicket();
+  const { id: activeId, lines, serviceType, customerName, folioName, platformId: lista } = useActiveTicket();
   const setServiceType = useTicketStore((s) => s.setServiceType);
   const setCustomerName = useTicketStore((s) => s.setCustomerName);
   const removeLine = useTicketStore((s) => s.removeLine);
@@ -154,6 +158,10 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
 
   const build = (withPayment: boolean): CreateOrderBody => ({
     clientUuid: uuid(),
+    // El animal que la cuenta lleva mostrando desde que se abrió. Se manda para que el ticket
+    // salga con el mismo nombre que el operador ya le dijo al cliente; el servidor lo sanea y le
+    // agrega la vuelta si otro pedido del día se le adelantó.
+    folioName,
     // Un pedido de plataforma ES a domicilio: lo reparte la plataforma. El servidor lo exige por
     // el check de la tabla, así que la pantalla no puede mandar otra cosa.
     serviceType: lista !== null ? 'domicilio' : serviceType,

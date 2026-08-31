@@ -51,6 +51,11 @@ type CreateOrderCmd struct {
 	// CompanyID identifica al negocio; solo se usa para barajar los nombres de folio, de modo que
 	// dos locales de la misma cadena no canten "Tigre" a la misma hora.
 	CompanyID int64
+	// FolioName es el nombre que la pantalla ya le puso a la cuenta. Viene del cliente para que el
+	// operador vea el mismo nombre desde que agrega el primer producto hasta que imprime el
+	// ticket; el servidor lo sanea y resuelve los choques, así que proponerlo no es decidirlo.
+	// Vacío = que lo reparta el servidor (clientes de API, tests).
+	FolioName string
 }
 
 type OrderView struct {
@@ -248,6 +253,10 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		if err != nil {
 			return err
 		}
+		folio, err := resolverFolio(ctx, q, cmd, bizDate, int(num))
+		if err != nil {
+			return err
+		}
 		ord, err := q.CreateOrder(ctx, db.CreateOrderParams{
 			ClientUuid:         cmd.ClientUUID,
 			BusinessDate:       bizDate,
@@ -261,7 +270,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
 			DeliveryFee:        built.DeliveryFee,
-			FolioName:          strPtr(domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, int(num))),
+			FolioName:          strPtr(folio),
 			Status:             estadoInicial(naceEntregada),
 		})
 		if err != nil {
@@ -939,4 +948,32 @@ func cerrarSiYaSeEntregoTodo(ctx context.Context, q *db.Queries, orderID int64, 
 		return nil
 	}
 	return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada})
+}
+
+// resolverFolio decide con qué nombre se canta el pedido.
+//
+// Gana el que propuso la pantalla, porque es el que el operador lleva viendo desde que abrió la
+// cuenta y el que ya le dijo al cliente; el servidor solo lo sanea y le agrega la vuelta si otro
+// pedido del día se le adelantó. Sin propuesta —clientes de API, tests— reparte el suyo.
+func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDate pgtype.Date, num int) (string, error) {
+	propuesto := domain.SanitizarFolio(cmd.FolioName)
+	if propuesto == "" {
+		return domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num), nil
+	}
+	usados, err := q.FolioNamesUsedToday(ctx, bizDate)
+	if err != nil {
+		return "", err
+	}
+	nombres := make([]string, 0, len(usados))
+	for _, u := range usados {
+		if u != nil {
+			nombres = append(nombres, *u)
+		}
+	}
+	// Con las 100 vueltas agotadas del mismo animal cae al nombre del servidor, que sale del folio
+	// numérico y por lo tanto no puede chocar.
+	if libre := domain.SiguienteFolioLibre(propuesto, nombres); libre != "" {
+		return libre, nil
+	}
+	return domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num), nil
 }

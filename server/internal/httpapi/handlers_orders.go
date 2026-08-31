@@ -22,7 +22,10 @@ type createOrderBody struct {
 	CustomerName       *string         `json:"customerName"`
 	Notes              *string         `json:"notes"`
 	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
-	Lines              []struct {
+	// folioName: el nombre que la pantalla ya le puso a la cuenta. El servidor lo sanea y resuelve
+	// los choques del día, así que proponerlo no es decidirlo.
+	FolioName string `json:"folioName"`
+	Lines     []struct {
 		ProductID int64           `json:"productId"`
 		Qty       decimal.Decimal `json:"qty"`
 		Notes     string          `json:"notes"`
@@ -64,6 +67,7 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		OpenedBy:           u.ID,
 		DeliveryFee:        body.DeliveryFee,
 		CompanyID:          u.CompanyID,
+		FolioName:          body.FolioName,
 	}
 	for _, l := range body.Lines {
 		line := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}
