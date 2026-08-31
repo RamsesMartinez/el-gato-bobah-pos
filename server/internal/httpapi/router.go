@@ -97,6 +97,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/", h.ListOrders)
 					r.Get("/{id}", h.GetOrder)
 					r.Post("/{id}/status", h.SetOrderStatus)
+					// Agregar a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos
+					// más". Mismo gate que crear — quien puede levantar el pedido puede ampliarlo.
+					r.Post("/{id}/lines", h.AddOrderLines)
 					r.Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)

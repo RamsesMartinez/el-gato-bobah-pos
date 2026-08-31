@@ -120,3 +120,28 @@ where id = $1;
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, user_id, reason)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sqlc.arg(actor_id), 'cancelación de orden'
 from stock_movements sm where sm.order_id = sqlc.arg(oid) and sm.movement_type = 'venta';
+
+-- name: RecalcOrderTotals :exec
+-- Recalcula el total del pedido desde SUS renglones, después de agregarle más.
+--
+-- Se suma en la base y no en Go a propósito: los renglones ya guardados son la verdad, y volver a
+-- calcularlos desde el comando obligaría a traerlos, re-precisarlos con la lista de precios de HOY
+-- —que puede haber cambiado— y reescribirlos. Un pedido de ayer cambiaría de precio por agregarle
+-- un café.
+--
+-- El envío no se toca: se decidió al crear el pedido y agregar renglones no lo cambia.
+update orders o
+set subtotal = coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0),
+    total    = coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0) + o.delivery_fee,
+    updated_at = now()
+where o.id = $1;
+
+-- name: GetOrderForUpdate :one
+-- El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
+-- la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
+-- agregados desaparecería del importe.
+select id, status, service_type, delivery_platform_id
+from orders where id = $1
+for update;

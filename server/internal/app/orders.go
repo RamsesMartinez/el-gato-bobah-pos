@@ -656,3 +656,140 @@ func estadoInicial(entregado bool) db.OrderStatus {
 	}
 	return db.OrderStatus(domain.StatusAbierta)
 }
+
+// AddLines agrega renglones a un pedido que sigue en curso.
+//
+// Es el caso de todos los días: la libreta vuelve de la mesa con "la 3 pidió dos más". Sin esto, la
+// única salida era abrir un segundo pedido —dos folios y dos tickets para el mismo cliente, y el
+// corte contando dos ventas donde hubo una— o cancelar y rehacer.
+//
+// Tres cuidados, cada uno por un fallo distinto:
+//
+//   - Solo a pedidos en curso. Uno entregado ya tiene su venta en el corte y su ticket en manos del
+//     cliente; cambiarle el total después es mover dinero que ya se contó.
+//   - El stock se descuenta SOLO de lo nuevo. Recalcularlo sobre el pedido entero volvería a
+//     descontar lo que ya se descontó, y el inventario se iría al piso sin explicación.
+//   - El total se recalcula desde los renglones GUARDADOS, en la base. Rearmarlo desde el comando
+//     obligaría a re-precisar lo viejo con la lista de precios de hoy, y un pedido de ayer
+//     cambiaría de precio por agregarle un café.
+func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []domain.OrderLineInput, actor int64) (*OrderView, error) {
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("%w: no hay nada que agregar", domain.ErrValidation)
+	}
+
+	ord, err := s.store.QC(ctx).GetOrder(ctx, orderID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	if !domain.PuedeRecibirLineas(string(ord.Status)) {
+		return nil, fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
+			domain.ErrConflict, ord.DailyNumber, ord.Status)
+	}
+
+	// La lista de precios es la del PEDIDO, no la de la pantalla: un agregado a un pedido de Uber se
+	// cobra con los precios de Uber aunque quien captura tenga el mostrador seleccionado.
+	lista, err := s.listaDePrecios(ctx, ord.DeliveryPlatformID)
+	if err != nil {
+		return nil, err
+	}
+
+	prodIDs, optIDs := collectIDs(lines)
+	prodRows, err := s.store.QC(ctx).GetPricedProducts(ctx, prodIDs)
+	if err != nil {
+		return nil, err
+	}
+	optRows, err := s.store.QC(ctx).GetPricedOptions(ctx, optIDs)
+	if err != nil {
+		return nil, err
+	}
+	products := map[int64]domain.PricedProduct{}
+	for _, p := range prodRows {
+		products[p.ID] = domain.PricedProduct{
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
+		}
+	}
+	options := map[int64]domain.PricedOption{}
+	for _, o := range optRows {
+		options[o.ID] = domain.PricedOption{
+			ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
+			MaxPerLine: int(o.MaxPerLine),
+			PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
+		}
+	}
+
+	// Se valúa SOLO lo nuevo: es lo que se va a insertar y lo único de lo que se descuenta stock.
+	built, err := domain.BuildOrder(lines, products, options)
+	if err != nil {
+		return nil, err
+	}
+
+	qtyByProduct := map[int64]decimal.Decimal{}
+	for _, l := range built.Lines {
+		qtyByProduct[l.ProductID] = qtyByProduct[l.ProductID].Add(l.Qty)
+	}
+	depletion, err := s.loadDepletion(ctx, prodIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Bloquea el pedido: dos capturas simultáneas sobre la misma cuenta recalcularían el total
+		// sobre el estado viejo y uno de los dos agregados desaparecería del importe.
+		if _, err := q.GetOrderForUpdate(ctx, orderID); err != nil {
+			return err
+		}
+		for _, l := range built.Lines {
+			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
+				OrderID:        orderID,
+				ProductID:      l.ProductID,
+				ProductName:    l.ProductName,
+				Quantity:       l.Qty,
+				UnitPrice:      l.UnitPrice,
+				ModifiersTotal: l.ModifiersTotal,
+				UnitCost:       l.UnitCost,
+				LineTotal:      l.LineTotal,
+				Notes:          strPtr(l.Notes),
+			})
+			if err != nil {
+				return err
+			}
+			for _, m := range l.Modifiers {
+				if err := q.CreateOrderLineModifier(ctx, db.CreateOrderLineModifierParams{
+					OrderLineID:      lineID,
+					ModifierOptionID: m.OptionID,
+					GroupTitle:       m.GroupTitle,
+					OptionName:       m.OptionName,
+					Quantity:         int16(m.Qty),
+					PriceDelta:       m.PriceDelta,
+					UnitCost:         m.UnitCost,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+		for pid, qty := range qtyByProduct {
+			if depletion.trackStock[pid] {
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(orderID, actor, "venta", "producto", nil, &pid, qty.Neg())); err != nil {
+					return err
+				}
+				continue
+			}
+			for _, it := range depletion.recipe[pid] {
+				ingID := it.ingredientID
+				if err := insertDepletion(ctx, q, movementIngredientOrProduct(orderID, actor, "venta", "ingrediente", &ingID, nil, it.qtyBase.Mul(qty).Neg())); err != nil {
+					return err
+				}
+			}
+		}
+		return q.RecalcOrderTotals(ctx, orderID)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return s.load(ctx, orderID)
+}

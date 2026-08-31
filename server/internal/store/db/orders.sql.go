@@ -238,6 +238,34 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 	return i, err
 }
 
+const getOrderForUpdate = `-- name: GetOrderForUpdate :one
+select id, status, service_type, delivery_platform_id
+from orders where id = $1
+for update
+`
+
+type GetOrderForUpdateRow struct {
+	ID                 int64       `json:"id"`
+	Status             OrderStatus `json:"status"`
+	ServiceType        ServiceType `json:"service_type"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+}
+
+// El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
+// la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
+// agregados desaparecería del importe.
+func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (GetOrderForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForUpdate, id)
+	var i GetOrderForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.ServiceType,
+		&i.DeliveryPlatformID,
+	)
+	return i, err
+}
+
 const getOrderIDByClientUUID = `-- name: GetOrderIDByClientUUID :one
 select id from orders where client_uuid = $1
 `
@@ -587,6 +615,29 @@ func (q *Queries) NextDailyNumber(ctx context.Context, businessDate pgtype.Date)
 	var last_number int32
 	err := row.Scan(&last_number)
 	return last_number, err
+}
+
+const recalcOrderTotals = `-- name: RecalcOrderTotals :exec
+update orders o
+set subtotal = coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0),
+    total    = coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0) + o.delivery_fee,
+    updated_at = now()
+where o.id = $1
+`
+
+// Recalcula el total del pedido desde SUS renglones, después de agregarle más.
+//
+// Se suma en la base y no en Go a propósito: los renglones ya guardados son la verdad, y volver a
+// calcularlos desde el comando obligaría a traerlos, re-precisarlos con la lista de precios de HOY
+// —que puede haber cambiado— y reescribirlos. Un pedido de ayer cambiaría de precio por agregarle
+// un café.
+//
+// El envío no se toca: se decidió al crear el pedido y agregar renglones no lo cambia.
+func (q *Queries) RecalcOrderTotals(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, recalcOrderTotals, id)
+	return err
 }
 
 const recentModifierPicks = `-- name: RecentModifierPicks :many

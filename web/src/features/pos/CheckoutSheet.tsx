@@ -12,6 +12,7 @@ import {
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -78,6 +79,15 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   // "Ya se lo llevó": el pedido nace entregado y no pasa por Pedidos. Apagado por default — el caso
   // común sí pasa por cocina, y encenderlo por inercia escondería pedidos que faltan por preparar.
   const [entregaInmediata, setEntregaInmediata] = useState(false);
+  // A qué pedido en curso se agrega lo que está en la cuenta. Vacío = pedido nuevo, que es el caso
+  // de siempre. Es la libreta que vuelve de la mesa con "la 3 pidió dos más".
+  const [agregarA, setAgregarA] = useState('');
+  const { data: enCurso } = useQuery({
+    queryKey: ['orders', 'active'],
+    queryFn: posApi.activeOrders,
+    enabled: isOpen,
+  });
+  const pedidosAbiertos = (enCurso?.items ?? []).filter((o) => o.status === 'abierta' || o.status === 'lista');
   const metodoActivo = methodId ?? metodoPorDefecto(methods);
   const metodoElegido = methods.find((m) => m.id === metodoActivo);
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
@@ -168,7 +178,10 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   });
 
   const mutation = useMutation({
-    mutationFn: (withPayment: boolean) => posApi.createOrder(build(withPayment)),
+    mutationFn: (withPayment: boolean) =>
+      agregarA
+        ? posApi.addOrderLines(Number(agregarA), build(false).lines)
+        : posApi.createOrder(build(withPayment)),
     onSuccess: (order) => {
       closeTab(activeId); // la cuenta se envió/cobró: se cierra y queda la siguiente activa
       setTendered('');
@@ -416,7 +429,28 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                 </Flex>
               </Box>
             )}
-            <HStack justify="space-between" borderTopWidth="1px" pt={3}>
+            {pedidosAbiertos.length > 0 && (
+              <Box borderTopWidth="1px" pt={3}>
+                <Text fontWeight="600" mb={1}>Agregar a un pedido en curso</Text>
+                <Picker
+                  value={agregarA}
+                  onChange={setAgregarA}
+                  options={pedidosAbiertos.map((o) => ({
+                    value: String(o.id),
+                    label: `#${o.number}${o.customerName ? ` · ${o.customerName}` : ''}`,
+                    hint: money(o.total, o.currency),
+                  }))}
+                  placeholder="Pedido nuevo"
+                  title="¿A qué pedido se agrega?"
+                  clearable
+                  clearLabel="Pedido nuevo"
+                />
+              </Box>
+            )}
+
+            {/* Entregar en el acto solo aplica a un pedido nuevo: uno en curso ya tiene su estado y
+                su camino por el tablero. */}
+            <HStack justify="space-between" borderTopWidth="1px" pt={3} display={agregarA ? 'none' : undefined}>
               <Box>
                 <Text fontWeight="600">Ya se lo llevó</Text>
                 <Text fontSize="xs" color="fg.muted">
@@ -428,17 +462,26 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
           </VStack>
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px">
-          <HStack w="100%">
-            <Button flex="1" size="lg" variant="outline" colorPalette="gray"
-              disabled={chargeLines.length === 0} loading={sending} onClick={() => mutation.mutate(false)}>
-              Enviar a cocina
+          {/* Con un pedido elegido hay UN solo camino: agregarle lo de la cuenta. Cobrar es del
+              pedido completo y se hace cuando el cliente se va, no por cada agregado. */}
+          {agregarA ? (
+            <Button w="100%" size="lg" disabled={chargeLines.length === 0} loading={sending || charging}
+              onClick={() => mutation.mutate(false)}>
+              Agregar a #{pedidosAbiertos.find((o) => String(o.id) === agregarA)?.number ?? ''}
             </Button>
-            <Button flex="1.4" size="lg" colorPalette="green"
-              disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
-              loading={charging} onClick={() => mutation.mutate(true)}>
-              COBRAR {money(grandTotal)}
-            </Button>
-          </HStack>
+          ) : (
+            <HStack w="100%">
+              <Button flex="1" size="lg" variant="outline" colorPalette="gray"
+                disabled={chargeLines.length === 0} loading={sending} onClick={() => mutation.mutate(false)}>
+                Enviar a cocina
+              </Button>
+              <Button flex="1.4" size="lg" colorPalette="green"
+                disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
+                loading={charging} onClick={() => mutation.mutate(true)}>
+                COBRAR {money(grandTotal)}
+              </Button>
+            </HStack>
+          )}
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
