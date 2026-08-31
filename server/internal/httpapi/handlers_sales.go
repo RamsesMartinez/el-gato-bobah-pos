@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -55,7 +56,14 @@ func (h *Handlers) SalesSummary(w http.ResponseWriter, r *http.Request) {
 // se rechazan como 400: una pantalla que se ve correcta y responde algo que nadie pidió es peor que
 // un error, porque nadie la audita.
 func (h *Handlers) filtroDeVentas(r *http.Request) (domain.SalesFilter, error) {
-	q := r.URL.Query()
+	// url.Query() DESCARTA en silencio lo que no pudo parsear y devuelve el resto: un query string
+	// con un punto y coma —que Go dejó de aceptar como separador— haría que todos los filtros se
+	// perdieran y la pantalla contestara los defaults como si nadie hubiera pedido nada. Parsear a
+	// mano es lo que convierte eso en un 400.
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return domain.SalesFilter{}, fmt.Errorf("%w: los filtros de la petición no se pudieron leer", domain.ErrValidation)
+	}
 
 	desde, err := parseDate(q.Get("from"), time.Time{})
 	if err != nil {
