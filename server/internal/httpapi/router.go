@@ -150,6 +150,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Put("/platform-prices/modifier-option", h.SetOptionPlatformPrice)
 					r.Delete("/platform-prices/modifier-option", h.DeleteOptionPlatformPrice)
 				})
+				// Pantalla de Ventas: análisis de lo que ya pasó, con dinero del negocio a la
+				// vista. Admin y gerente; el cajero tiene su tablero de pedidos, que es la
+				// operación del turno y no el histórico del mes.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
+					r.Get("/sales", h.ListSales)
+					r.Get("/sales/summary", h.SalesSummary)
+				})
 				// Gestión del catálogo de cajas (alta/renombrar/activar) = configuración → admin/gerente.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/cash-registers/all", h.AllCashRegisters)

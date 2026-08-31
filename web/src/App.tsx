@@ -9,6 +9,7 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { AccountPage } from './features/auth/AccountPage';
 import { POSPage } from './features/pos/POSPage';
 import { OrdersBoardPage } from './features/orders/OrdersBoardPage';
+import { SalesPage } from './features/sales/SalesPage';
 import { CashPage } from './features/backoffice/CashPage';
 import { ExpensesPage } from './features/backoffice/ExpensesPage';
 import { StockPage } from './features/backoffice/StockPage';
@@ -44,6 +45,7 @@ export const App = () => {
       >
         <Route path="/pos" element={<POSPage />} />
         <Route path="/pedidos" element={<OrdersBoardPage />} />
+        <Route path="/ventas" element={<RequireRole path="/ventas"><SalesPage /></RequireRole>} />
         <Route path="/caja" element={<RequireRole path="/caja"><CashPage /></RequireRole>} />
         <Route path="/gastos" element={<RequireRole path="/gastos"><ExpensesPage /></RequireRole>} />
         <Route path="/almacen" element={<RequireRole path="/almacen"><StockPage /></RequireRole>} />
