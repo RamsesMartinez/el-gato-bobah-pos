@@ -9,6 +9,7 @@ import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
 import type { BoardOrder } from '../../types/pos';
+import { resumenPorCobrar } from './porCobrar';
 import { money } from '../../utils/format';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../tickets/ReprintTicket';
@@ -69,6 +70,10 @@ export function OrdersBoardPage() {
   const orders = data?.items ?? [];
   const preparando = orders.filter((o) => o.status === 'abierta');
   const listos = orders.filter((o) => o.status === 'lista');
+  const entregadas = deliveredData?.items ?? [];
+  // Cuenta las entregadas también: es donde un pendiente deja de tener remedio, porque el cliente
+  // ya se fue con la comida.
+  const pendiente = resumenPorCobrar([...orders, ...entregadas]);
 
   const advance = (o: BoardOrder) =>
     statusMut.mutate({ id: o.id, status: o.status === 'abierta' ? 'lista' : 'entregada' });
@@ -84,15 +89,23 @@ export function OrdersBoardPage() {
 
   return (
     <Box p={4} h="100%" overflowY="auto">
-      <HStack mb={4}>
+      <HStack mb={4} flexWrap="wrap">
         <Text fontSize="xl" fontWeight="800">Pedidos activos</Text>
         <Badge colorPalette={live ? 'green' : 'gray'}>{live ? 'En vivo' : 'Sin conexión'}</Badge>
+        {/* El sistema deja mandar a cocina sin cobrar, que es correcto cuando el cliente paga al
+            recoger. Lo que faltaba era el aviso: sin él, un pedido se entrega sin cobrar y nadie se
+            entera hasta el corte. */}
+        {pendiente.cuantos > 0 && (
+          <Badge colorPalette="orange" px={2} py={1} fontSize="sm">
+            {pendiente.cuantos} por cobrar · {money(String(pendiente.monto))}
+          </Badge>
+        )}
       </HStack>
       <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
         <Column title="En preparación" orders={preparando} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Marcar listo" />
         <Column title="Listos" orders={listos} onAdvance={advance} onCancel={cancel} onTicket={showTicket} advanceLabel="Entregar" />
       </SimpleGrid>
-      {canRefund && <DeliveredSection orders={deliveredData?.items ?? []} onRefund={refund} onTicket={showTicket} />}
+      {canRefund && <DeliveredSection orders={entregadas} onRefund={refund} onTicket={showTicket} />}
 
       {/* Reimpresión: el ticket sale marcado para que no pase por un comprobante distinto. */}
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -123,6 +136,9 @@ function DeliveredSection({ orders, onRefund, onTicket }: { orders: BoardOrder[]
                 </Text>
               </HStack>
               <HStack gap={3}>
+                {/* Aquí es donde importa: entregado y sin cobrar significa que el cliente ya se
+                    fue. En las columnas activas todavía está enfrente. */}
+                {!o.paid && <Badge colorPalette="orange">POR COBRAR</Badge>}
                 <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                 <Button size="sm" variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
                 <Button size="sm" variant="outline" colorPalette="red" onClick={() => onRefund(o)}>Reembolsar</Button>
