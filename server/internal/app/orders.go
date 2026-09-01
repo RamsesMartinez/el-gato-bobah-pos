@@ -1139,7 +1139,25 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 //
 // Se llamaba Unpaid, y el nombre mentía en cuanto la lista dejó de ser solo de impagos.
 func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal, error) {
-	rows, err := s.store.QC(ctx).ListOpenOrders(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	// La fecha sale del TURNO abierto, no del reloj del servidor.
+	//
+	// El pedido hereda la fecha de negocio del turno —así una noche que abre a las 4pm y cierra a
+	// las 10pm numera corrido en vez de partirse a medianoche—, y filtrar por el reloj hacía que en
+	// cuanto el día cambiara los dos dejaran de coincidir: todos los pedidos en curso desaparecían
+	// de la pantalla, vivos y sin forma de llegar a ellos. El servidor corre en UTC y el local
+	// cierra a las 22:00 de México, así que la medianoche UTC cae a las 18:00 locales: se vaciaba
+	// todas las noches, en plena hora pico.
+	//
+	// Sin turno abierto se cae al día del servidor: no hay pedidos que mostrar, pero la pantalla
+	// tiene que poder abrirse sin error.
+	fecha := pgtype.Date{Time: s.now(), Valid: true}
+	if sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx); err == nil {
+		fecha = sess.BusinessDate
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, decimal.Zero, err
+	}
+
+	rows, err := s.store.QC(ctx).ListOpenOrders(ctx, fecha)
 	if err != nil {
 		return nil, decimal.Zero, err
 	}

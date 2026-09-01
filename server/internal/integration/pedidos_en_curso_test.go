@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"uuid"
@@ -118,4 +119,49 @@ func TestConsultarUnPedidoQueNoExisteEsNoEncontrado(t *testing.T) {
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Detail de un id inexistente = %v, quiere ErrNotFound: un 500 manda a revisar logs por un pedido que simplemente no está", err)
 	}
+}
+
+// EL TURNO QUE CRUZA LA MEDIANOCHE NO PUEDE VACIAR LA BARRA.
+//
+// El pedido hereda la fecha de negocio del TURNO —así los tickets numeran corrido en una noche que
+// abre a las 4pm y cierra a las 10pm, en vez de partirse a medianoche— pero la barra filtraba por la
+// fecha del SERVIDOR. En cuanto el reloj cruza la medianoche con el turno abierto, los dos dejan de
+// coincidir y todos los pedidos en curso desaparecen de la pantalla.
+//
+// El servidor corre en UTC y el local cierra a las 22:00 hora de México: la medianoche UTC cae a las
+// 18:00 locales, o sea que la barra se vaciaba TODAS las noches en plena hora pico, con los pedidos
+// vivos y el operador sin forma de llegar a ellos. Lo encontré verificando el despliegue en el
+// ambiente de pruebas, con un turno abierto el día anterior.
+func TestLaBarraSigueMostrandoElTurnoQueCruzoLaMedianoche(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	// El turno abrió AYER y sigue abierto; el reloj del servidor ya es de hoy.
+	ayer := fixedNow
+	hoy := fixedNow.Add(26 * time.Hour)
+	svcDeAyer := app.NewOrdersService(st, func() time.Time { return ayer })
+	svcDeHoy := app.NewOrdersService(st, func() time.Time { return hoy })
+
+	cajero := makeUser(t, st, "cajero_medianoche", "cajero")
+	prod := makeProduct(t, st, "Café medianoche", decimal.RequireFromString("100"), false)
+	abrirCajaPrincipal(t, st, cajero)
+
+	ord, err := svcDeAyer.Create(ctx, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+	})
+	if err != nil {
+		t.Fatalf("confirmar: %v", err)
+	}
+
+	lista, _, err := svcDeHoy.Open(ctx)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	for _, o := range lista {
+		if o.ID == ord.ID {
+			return
+		}
+	}
+	t.Errorf("el pedido del turno abierto desapareció de la barra al cruzar la medianoche: los pedidos siguen vivos y el operador no tiene cómo llegar a ellos")
 }
