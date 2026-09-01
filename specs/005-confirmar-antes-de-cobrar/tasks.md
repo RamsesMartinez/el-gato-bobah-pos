@@ -29,15 +29,15 @@ Monorepo: backend en `server/`, frontend en `web/`. Migraciones goose embebidas 
 **Propósito**: la columna, el default y las reglas puras. Nada de esto cambia comportamiento por sí
 solo, y todo lo demás depende de ello.
 
-- [ ] T001 Escribir el test de integración de la columna nueva en `server/internal/integration/renglon_enviado_a_cocina_test.go`: con **dos empresas**, verifica que los renglones que ya existían quedan en `NULL` tras la migración y que un renglón nuevo también nace en `NULL`. Verlo fallar antes de T002.
-- [ ] T002 Crear `server/migrations/0053_renglon_enviado_a_cocina.sql`: `order_lines.enviado_a_cocina_at timestamptz` nullable, con su `Down`. El comentario explica por qué va en el renglón y no en el pedido, y por qué el backfill NO marca nada. Va en el **mismo commit** que T001.
-- [ ] T003 Escribir el test unitario de `RenglonesSinEnviar` en `server/internal/domain/order_test.go`: table-driven, incluyendo pedido sin renglones, todos enviados, y ninguno enviado.
-- [ ] T004 Implementar `domain.RenglonesSinEnviar` en `server/internal/domain/order.go`: función pura que devuelve los renglones con `enviado_a_cocina_at` vacío.
-- [ ] T005 Escribir el test unitario de `PuedeAgregar` en `server/internal/domain/order_test.go`: acepta `abierta` y `lista`, rechaza `entregada`, `cancelada` y `reembolsada`.
-- [ ] T006 Implementar `domain.PuedeAgregar` en `server/internal/domain/order.go`, junto a `CanTransition` — es la misma pregunta: qué se puede hacer según el estado.
-- [ ] T007 Agregar el sentinel `domain.ErrPedidoTerminal` en `server/internal/domain/order.go` y su mapeo a `409 CONFLICT` en `server/internal/httpapi/respond.go`.
-- [ ] T008 Agregar el sentinel `domain.ErrCobroFueraDeLugar` en `server/internal/domain/order.go` (crear un pedido ya cobrado) y su mapeo a `422` en `server/internal/httpapi/respond.go`.
-- [ ] T009 Escribir en `server/queries/orders.sql` las tres consultas nuevas —pedidos en curso (la unión de no-terminales y con-saldo), renglones sin enviar de un pedido, y marcar renglones como enviados— y correr `make sqlc`. El `where` de la lista y el del total pendiente viven en el mismo archivo y se editan juntos.
+- [X] T001 Escribir el test de integración de la columna nueva en `server/internal/integration/renglon_enviado_a_cocina_test.go`: con **dos empresas**, verifica que los renglones que ya existían quedan en `NULL` tras la migración y que un renglón nuevo también nace en `NULL`. Verlo fallar antes de T002.
+- [X] T002 Crear `server/migrations/0053_renglon_enviado_a_cocina.sql`: `order_lines.enviado_a_cocina_at timestamptz` nullable, con su `Down`. El comentario explica por qué va en el renglón y no en el pedido, y por qué el backfill NO marca nada. Va en el **mismo commit** que T001.
+- [X] T003 Escribir el test unitario de `RenglonesSinEnviar` en `server/internal/domain/order_test.go`: table-driven, incluyendo pedido sin renglones, todos enviados, y ninguno enviado.
+- [X] T004 Implementar `domain.RenglonesSinEnviar` en `server/internal/domain/order.go`: función pura que devuelve los renglones con `enviado_a_cocina_at` vacío.
+- [X] T005 Escribir el test unitario de `PuedeAgregar` en `server/internal/domain/order_test.go`: acepta `abierta` y `lista`, rechaza `entregada`, `cancelada` y `reembolsada`.
+- [X] T006 ~~Implementar `domain.PuedeAgregar`~~ — **la regla ya existía** como `domain.PuedeRecibirLineas`, sin test. Se borró la duplicada que había planeado y la que ya estaba se quedó con la cobertura de T005.
+- [X] T007 ~~Agregar `domain.ErrPedidoTerminal`~~ — **innecesario**: `AddLines` ya envuelve `ErrConflict` con el número y el estado del pedido, que es lo que FR-010 pide. Un sentinel más no respondía ninguna pregunta nueva.
+- [X] T008 Agregar el sentinel `domain.ErrCobroFueraDeLugar` en `server/internal/domain/order.go` (crear un pedido ya cobrado) y su mapeo a `422` en `server/internal/httpapi/respond.go`.
+- [X] T009 Escribir en `server/queries/orders.sql` las tres consultas nuevas —pedidos en curso (la unión de no-terminales y con-saldo), renglones sin enviar de un pedido, y marcar renglones como enviados— y correr `make sqlc`. El `where` de la lista y el del total pendiente viven en el mismo archivo y se editan juntos.
 
 **Checkpoint**: `go build ./...` y `go test ./...` en verde; la migración aplicada contra la base de pruebas.
 
@@ -52,9 +52,9 @@ producto — todo sin abrir la pantalla de cobro.
 
 ### Tests primero
 
-- [ ] T010 [P] [US1] Test de integración en `server/internal/integration/pedidos_en_curso_test.go`: la lista de en curso trae un pedido `abierta` sin pagos, trae uno `entregada` con saldo, y **no** trae uno cancelado ni uno entregado y pagado. Con dos empresas: la de una no ve la de la otra.
-- [ ] T011 [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido `entregada` devuelve `ErrPedidoTerminal`; agregar a uno `abierta` suma los renglones; **dos agregados seguidos suman los dos**, que es la propiedad de la que depende FR-011. La concurrencia real no se prueba aquí —un test de goroutines pasaría por el número de núcleos, no por el código— sino a mano en el quickstart.
-- [ ] T011b [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido **ya cobrado por completo** lo deja con saldo pendiente, y ese saldo aparece en la lista de pedidos en curso. Es FR-009 y es la regla que el dueño puso — si se cobró, no puede quedar deuda escondida.
+- [X] T010 [P] [US1] Test de integración en `server/internal/integration/pedidos_en_curso_test.go`: la lista de en curso trae un pedido `abierta` sin pagos, trae uno `entregada` con saldo, y **no** trae uno cancelado ni uno entregado y pagado. Con dos empresas: la de una no ve la de la otra.
+- [X] T011 [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido `entregada` devuelve `ErrPedidoTerminal`; agregar a uno `abierta` suma los renglones; **dos agregados seguidos suman los dos**, que es la propiedad de la que depende FR-011. La concurrencia real no se prueba aquí —un test de goroutines pasaría por el número de núcleos, no por el código— sino a mano en el quickstart.
+- [X] T011b [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido **ya cobrado por completo** lo deja con saldo pendiente, y ese saldo aparece en la lista de pedidos en curso. Es FR-009 y es la regla que el dueño puso — si se cobró, no puede quedar deuda escondida.
 - [ ] T012 [P] [US1] Test en `web/src/features/pos/useMandarPedido.test.ts`: al confirmar, la cuenta local queda vacía; y **el mismo uuid se manda en el reintento** — es el defecto que hoy produce dos pedidos tras un corte de red.
 - [ ] T013 [P] [US1] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: pinta un chip por pedido con su folio y su monto, con altura de 44 px, y no pinta nada cuando no hay ninguno.
 
@@ -62,9 +62,9 @@ producto — todo sin abrir la pantalla de cobro.
 
 - [ ] T014 [US1] Mover el `clientUuid` del intento a la cuenta en `web/src/stores/ticket.ts`: se genera al abrir la cuenta y sobrevive al reintento.
 - [ ] T015 [US1] Consumir ese uuid en `web/src/features/pos/useMandarPedido.ts` en vez de llamar a `uuid()` dentro de `mutationFn`.
-- [ ] T016 [US1] Implementar el servicio de pedidos en curso en `server/internal/app/orders.go` sobre la consulta de T009, devolviendo por pedido el grupo al que pertenece y el saldo.
-- [ ] T017 [US1] Cambiar la ruta `/orders/unpaid` por `/orders/open` en `server/internal/httpapi/router.go` y su handler en `server/internal/httpapi/handlers_orders.go`. El nombre viejo miente —la lista ya no es solo de impagos— y el nuevo va en inglés como todas las demás rutas del router.
-- [ ] T018 [US1] Aplicar `domain.PuedeAgregar` en `AddOrderLines` (`server/internal/app/orders.go`) y mapear el rechazo con el estado en el mensaje.
+- [X] T016 [US1] Implementar el servicio de pedidos en curso en `server/internal/app/orders.go` sobre la consulta de T009, devolviendo por pedido el grupo al que pertenece y el saldo.
+- [X] T017 [US1] Cambiar la ruta `/orders/unpaid` por `/orders/open` en `server/internal/httpapi/router.go` y su handler en `server/internal/httpapi/handlers_orders.go`. El nombre viejo miente —la lista ya no es solo de impagos— y el nuevo va en inglés como todas las demás rutas del router.
+- [X] T018 [US1] Aplicar `domain.PuedeAgregar` en `AddOrderLines` (`server/internal/app/orders.go`) y mapear el rechazo con el estado en el mensaje.
 - [ ] T019 [US1] Crear `web/src/features/pos/PedidosEnCurso.tsx`: chips de 44 px con folio y monto, desplazamiento horizontal, y el total pendiente a la vista. Absorbe lo que hacía `PorCobrarPill`.
 - [ ] T020 [US1] Montar los chips en la fila que ya existe de `web/src/features/pos/POSPage.tsx`, junto a `TicketTabs`, y quitar `PorCobrarPill`. **No se agrega alto**: es el presupuesto de SC-005.
 - [ ] T021 [US1] Crear `web/src/features/pos/useAgregarAPedido.ts`: tocar un chip abre el pedido y los productos que se agreguen entran por `POST /orders/{id}/lines`.
