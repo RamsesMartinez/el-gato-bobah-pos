@@ -38,6 +38,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		Timezone           *string          `json:"timezone"`
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
 		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
+		CorteDeVista       *string          `json:"corteDeVista"`
 		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
 		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
 		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
@@ -64,6 +65,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
 		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
+		body.CorteDeVista != nil ||
 		body.KitchenCanCharge != nil || body.PinOnlyUnlock != nil ||
 		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
@@ -84,7 +86,10 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			AutoPrintOnClose:   orBool(body.AutoPrintOnClose, cur.AutoPrintOnClose),
 			PrintFreeModifiers: orBool(body.PrintFreeModifiers, cur.PrintFreeModifiers),
 			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
-			KitchenCanCharge:   orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
+			// El default es para el campo AUSENTE. Un valor presente y desconocido lo rechaza el
+			// servicio: caer al default ahí dejaría al dueño creyendo que configuró algo que no.
+			CorteDeVista:     orStr(body.CorteDeVista, cur.CorteDeVista),
+			KitchenCanCharge: orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
 		}
 		ident := domain.IdentitySettings{
 			PinOnlyUnlock:    orBool(body.PinOnlyUnlock, cur.PinOnlyUnlock),
@@ -217,6 +222,15 @@ func orBool(v *bool, actual bool) bool {
 // orInt: igual que orBool, para los tiempos. Un entero ausente conserva el actual; leerlo como 0
 // dejaría la tableta bloqueada a cada instante o la sesión sin duración válida.
 func orInt(v *int, actual int) int {
+	if v == nil {
+		return actual
+	}
+	return *v
+}
+
+// orStr: el valor que llegó, o el que ya estaba. Es el mismo criterio que orBool — un campo ausente
+// conserva lo configurado, en vez de reescribirlo con un cero que nadie pidió.
+func orStr(v *string, actual string) string {
 	if v == nil {
 		return actual
 	}

@@ -597,6 +597,7 @@ type BusinessSetting struct {
 	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
 	SessionHours       int32              `json:"session_hours"`
+	CorteDeVista       string             `json:"corte_de_vista"`
 }
 
 type CashRegister struct {

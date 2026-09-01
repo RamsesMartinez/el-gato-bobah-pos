@@ -77,6 +77,11 @@ type PrintSettings struct {
 	// default: donde la cocina está pegada al mostrador, sería papel que duplica lo que el cocinero
 	// ya ve en la pantalla.
 	PrintKitchenTicket bool
+
+	// CorteDeVista: hasta cuándo se sigue viendo un pedido ya entregado. No decide de qué día es una
+	// venta —eso lo hace el turno— y por eso vive aquí, entre los ajustes de pantalla, y no cerca de
+	// nada que toque dinero.
+	CorteDeVista string
 }
 
 // IdentitySettings: cómo se identifica quien opera una estación, y cada cuánto deja de estarlo.

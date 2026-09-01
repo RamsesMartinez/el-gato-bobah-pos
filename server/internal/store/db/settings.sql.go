@@ -35,6 +35,7 @@ select delivery_fee,
        timezone,
        print_free_modifiers,
        print_kitchen_ticket,
+       corte_de_vista,
        kitchen_can_charge,
        pin_only_unlock,
        lock_after_seconds,
@@ -58,6 +59,7 @@ type GetBusinessSettingsRow struct {
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
+	CorteDeVista       string             `json:"corte_de_vista"`
 	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
@@ -89,6 +91,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.Timezone,
 		&i.PrintFreeModifiers,
 		&i.PrintKitchenTicket,
+		&i.CorteDeVista,
 		&i.KitchenCanCharge,
 		&i.PinOnlyUnlock,
 		&i.LockAfterSeconds,
@@ -170,12 +173,13 @@ set business_name       = $1,
     timezone            = $7,
     print_free_modifiers = $8,
     print_kitchen_ticket = $9,
-    kitchen_can_charge = $10,
-    pin_only_unlock = $11,
-    lock_after_seconds = $12,
-    session_hours = $13,
+    corte_de_vista = $10,
+    kitchen_can_charge = $11,
+    pin_only_unlock = $12,
+    lock_after_seconds = $13,
+    session_hours = $14,
     updated_at          = now(),
-    updated_by          = $14
+    updated_by          = $15
 `
 
 type UpdateBusinessInfoParams struct {
@@ -188,6 +192,7 @@ type UpdateBusinessInfoParams struct {
 	Timezone           string `json:"timezone"`
 	PrintFreeModifiers bool   `json:"print_free_modifiers"`
 	PrintKitchenTicket bool   `json:"print_kitchen_ticket"`
+	CorteDeVista       string `json:"corte_de_vista"`
 	KitchenCanCharge   bool   `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool   `json:"pin_only_unlock"`
 	LockAfterSeconds   int32  `json:"lock_after_seconds"`
@@ -210,6 +215,7 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.Timezone,
 		arg.PrintFreeModifiers,
 		arg.PrintKitchenTicket,
+		arg.CorteDeVista,
 		arg.KitchenCanCharge,
 		arg.PinOnlyUnlock,
 		arg.LockAfterSeconds,

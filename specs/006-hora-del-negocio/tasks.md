@@ -37,11 +37,11 @@ arqueo equivocado— es peor que todo lo demás junto.
 
 ## Phase 2: Fundacional (bloquea las historias 3 y 4)
 
-- [ ] T003 Test unitario en `server/internal/domain/businessdate_test.go` de `DesdeCuandoSeVen(modo, ahora, zona, turno)`: table-driven con los tres modos, **incluyendo el día del cambio de horario en `America/Tijuana`** — ahí la distancia entre dos medianoches es de 23 o 25 horas y un cálculo que resta 24 se desfasa.
-- [ ] T004 Implementar `domain.DesdeCuandoSeVen` en `server/internal/domain/businessdate.go`: función pura que devuelve desde qué instante se ven los entregados. La medianoche se calcula EN la zona, nunca restando horas.
-- [ ] T005 Test de integración en `server/internal/integration/corte_de_vista_test.go`: el ajuste nace en `medianoche`, acepta los tres valores y **rechaza** cualquier otro. Con dos empresas, verificando que el de una no cambia el de la otra. Verlo fallar antes de T006.
-- [ ] T006 Crear `server/migrations/0055_corte_de_vista.sql`: `business_settings.corte_de_vista text not null default 'medianoche'` con su check de los tres valores y su `Down`. El comentario dice que decide solo QUÉ SE MUESTRA, nunca de qué día es una venta. Mismo commit que T005.
-- [ ] T007 Exponer el ajuste en `server/internal/app/settings.go` y `server/internal/httpapi/handlers_settings.go`: un valor fuera de los tres es `domain.ErrValidation`. El default es para el campo **ausente**, nunca para el presente y malformado.
+- [X] T003 Test unitario en `server/internal/domain/businessdate_test.go` de `DesdeCuandoSeVen(modo, ahora, zona, turno)`: table-driven con los tres modos, **incluyendo el día del cambio de horario en `America/Tijuana`** — ahí la distancia entre dos medianoches es de 23 o 25 horas y un cálculo que resta 24 se desfasa.
+- [X] T004 Implementar `domain.DesdeCuandoSeVen` en `server/internal/domain/businessdate.go`: función pura que devuelve desde qué instante se ven los entregados. La medianoche se calcula EN la zona, nunca restando horas.
+- [X] T005 Test de integración en `server/internal/integration/corte_de_vista_test.go`: el ajuste nace en `medianoche`, acepta los tres valores y **rechaza** cualquier otro. Con dos empresas, verificando que el de una no cambia el de la otra. Verlo fallar antes de T006.
+- [X] T006 Crear `server/migrations/0055_corte_de_vista.sql`: `business_settings.corte_de_vista text not null default 'medianoche'` con su check de los tres valores y su `Down`. El comentario dice que decide solo QUÉ SE MUESTRA, nunca de qué día es una venta. Mismo commit que T005.
+- [X] T007 Exponer el ajuste en `server/internal/app/settings.go` y `server/internal/httpapi/handlers_settings.go`: un valor fuera de los tres es `domain.ErrValidation`. El default es para el campo **ausente**, nunca para el presente y malformado.
 
 **Checkpoint**: el ajuste se guarda y se lee; ninguna pantalla lo usa todavía.
 
