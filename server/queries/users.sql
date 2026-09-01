@@ -64,3 +64,36 @@ update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_a
 
 -- name: RevokeUserRefreshTokens :exec
 update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null;
+
+-- name: UnlockCandidates :many
+-- Quiénes pueden desbloquear una estación con su PIN.
+--
+-- SOLO id y nombre: esta lista se pinta en una tableta a la vista del público, así que el correo,
+-- el rol y el teléfono no tienen por qué salir del servidor.
+--
+-- Solo activos y CON PIN: quien no lo tiene configurado no entraría aunque lo tocara, y ofrecerlo
+-- sería mandarlo a un callejón. Esa persona entra con usuario y contraseña, que sigue funcionando.
+select id, name from users
+where is_active and pin_hash is not null
+order by name;
+
+-- name: LatestLiveRefreshExpiry :one
+-- Cuándo vence la sesión que la estación viene usando.
+--
+-- La usa el cambio de operador para CONSERVAR ese vencimiento en vez de reponerlo. Sin esto, cada
+-- desbloqueo emitiría un plazo completo nuevo y una tableta usada cada veinte minutos no caducaría
+-- nunca — el límite de horas del turno sería decorativo.
+select expires_at from refresh_tokens
+where user_id = $1 and revoked_at is null and expires_at > $2
+order by expires_at desc
+limit 1;
+
+-- name: RevokeUserRefreshTokensExcept :exec
+-- Revoca las sesiones vivas de una persona MENOS la recién emitida.
+--
+-- La usa el cambio de operador: sin esto, cada relevo dejaría viva la credencial de quien entregó
+-- la estación. Es lo que produjo los 4 refresh tokens vivos que se encontraron en producción, el
+-- más viejo de tres días antes.
+update refresh_tokens
+set revoked_at = now()
+where user_id = @user_id and revoked_at is null and token_hash <> @token_hash;

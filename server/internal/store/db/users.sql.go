@@ -176,6 +176,30 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 	return value, err
 }
 
+const latestLiveRefreshExpiry = `-- name: LatestLiveRefreshExpiry :one
+select expires_at from refresh_tokens
+where user_id = $1 and revoked_at is null and expires_at > $2
+order by expires_at desc
+limit 1
+`
+
+type LatestLiveRefreshExpiryParams struct {
+	UserID    int64     `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// Cuándo vence la sesión que la estación viene usando.
+//
+// La usa el cambio de operador para CONSERVAR ese vencimiento en vez de reponerlo. Sin esto, cada
+// desbloqueo emitiría un plazo completo nuevo y una tableta usada cada veinte minutos no caducaría
+// nunca — el límite de horas del turno sería decorativo.
+func (q *Queries) LatestLiveRefreshExpiry(ctx context.Context, arg LatestLiveRefreshExpiryParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, latestLiveRefreshExpiry, arg.UserID, arg.ExpiresAt)
+	var expires_at time.Time
+	err := row.Scan(&expires_at)
+	return expires_at, err
+}
+
 const listActiveUsers = `-- name: ListActiveUsers :many
 select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where is_active order by name
 `
@@ -242,6 +266,27 @@ update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at i
 
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID int64) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
+	return err
+}
+
+const revokeUserRefreshTokensExcept = `-- name: RevokeUserRefreshTokensExcept :exec
+update refresh_tokens
+set revoked_at = now()
+where user_id = $1 and revoked_at is null and token_hash <> $2
+`
+
+type RevokeUserRefreshTokensExceptParams struct {
+	UserID    int64  `json:"user_id"`
+	TokenHash string `json:"token_hash"`
+}
+
+// Revoca las sesiones vivas de una persona MENOS la recién emitida.
+//
+// La usa el cambio de operador: sin esto, cada relevo dejaría viva la credencial de quien entregó
+// la estación. Es lo que produjo los 4 refresh tokens vivos que se encontraron en producción, el
+// más viejo de tres días antes.
+func (q *Queries) RevokeUserRefreshTokensExcept(ctx context.Context, arg RevokeUserRefreshTokensExceptParams) error {
+	_, err := q.db.Exec(ctx, revokeUserRefreshTokensExcept, arg.UserID, arg.TokenHash)
 	return err
 }
 
@@ -323,6 +368,44 @@ func (q *Queries) SetUserSecretsByUsername(ctx context.Context, arg SetUserSecre
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unlockCandidates = `-- name: UnlockCandidates :many
+select id, name from users
+where is_active and pin_hash is not null
+order by name
+`
+
+type UnlockCandidatesRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Quiénes pueden desbloquear una estación con su PIN.
+//
+// SOLO id y nombre: esta lista se pinta en una tableta a la vista del público, así que el correo,
+// el rol y el teléfono no tienen por qué salir del servidor.
+//
+// Solo activos y CON PIN: quien no lo tiene configurado no entraría aunque lo tocara, y ofrecerlo
+// sería mandarlo a un callejón. Esa persona entra con usuario y contraseña, que sigue funcionando.
+func (q *Queries) UnlockCandidates(ctx context.Context) ([]UnlockCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, unlockCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnlockCandidatesRow{}
+	for rows.Next() {
+		var i UnlockCandidatesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateUser = `-- name: UpdateUser :one

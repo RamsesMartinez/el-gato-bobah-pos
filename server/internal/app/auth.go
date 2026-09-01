@@ -84,7 +84,7 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 // PinSwitch re-mints a session for a different operator via their PIN, DENTRO de la misma
 // empresa: corre bajo el tenant del request (QC/WithTx), así RLS impide cambiar a un usuario
 // de otra empresa (el userID de otra empresa simplemente no existe para esta sesión).
-func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (*Session, error) {
+func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string, actorID int64) (*Session, error) {
 	var sess *Session
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		u, err := q.GetUserByID(ctx, userID)
@@ -104,8 +104,29 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (
 		if !auth.CheckSecret(*u.PinHash, pin) {
 			return domain.ErrInvalidCredentials
 		}
-		sess, err = s.issue(ctx, q, u)
-		return err
+		// El vencimiento de la sesión del DISPOSITIVO se conserva; no se repone.
+		//
+		// Emitir un plazo completo en cada relevo haría que una tableta usada cada veinte minutos
+		// no caducara nunca, y el límite de horas del turno sería decorativo. Se toma el de la
+		// sesión viva de quien estaba, que es la que la estación viene rotando.
+		vence, err := q.LatestLiveRefreshExpiry(ctx, db.LatestLiveRefreshExpiryParams{
+			UserID: actorID, ExpiresAt: s.now(),
+		})
+		if err != nil {
+			// Sin sesión viva de quien estaba —un pin-switch desde un dispositivo recién
+			// autenticado por otra vía— se cae al plazo completo. Es el comportamiento anterior y
+			// el único seguro: negar el relevo dejaría al operador fuera con el cliente enfrente.
+			vence = s.now().Add(RefreshTokenTTL)
+		}
+		sess, err = s.issueUntil(ctx, q, u, vence)
+		if err != nil {
+			return err
+		}
+		// Y se revoca la de quien estaba: si siguiera viva, cada relevo dejaría una credencial más
+		// suelta. Es lo que produjo las 4 sesiones vivas que se encontraron en producción.
+		return q.RevokeUserRefreshTokensExcept(ctx, db.RevokeUserRefreshTokensExceptParams{
+			UserID: actorID, TokenHash: auth.HashToken(sess.RefreshToken),
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -182,7 +203,14 @@ func (s *AuthService) Logout(ctx context.Context, companyID int64, refreshToken 
 // issue firma el access token y crea el refresh token usando la Queries YA scopeada al tenant
 // (q): CreateRefreshToken auto-sella company_id desde el GUC. Rellena el slug consultando la
 // propia empresa (para mostrar user@slug en el front) — barato y evita threading del slug.
+// issue arranca una sesión NUEVA con el plazo completo. Es el camino del login.
 func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Session, error) {
+	return s.issueUntil(ctx, q, u, s.now().Add(RefreshTokenTTL))
+}
+
+// issueUntil arma la sesión con un vencimiento DADO. Existe para que el cambio de operador conserve
+// el reloj del turno en vez de reponerlo.
+func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, vence time.Time) (*Session, error) {
 	du := toDomainUser(u)
 	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
 		du.CompanySlug = co.Slug
@@ -198,7 +226,7 @@ func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Ses
 	if _, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hash,
-		ExpiresAt: s.now().Add(RefreshTokenTTL),
+		ExpiresAt: vence,
 	}); err != nil {
 		return nil, err
 	}
@@ -217,4 +245,40 @@ func toDomainUser(u db.User) domain.User {
 		MustChangePassword: u.MustChangePassword,
 		CreatedAt:          u.CreatedAt,
 	}
+}
+
+// UnlockOption es una persona que puede desbloquear una estación con su PIN.
+// Solo id y nombre: la rejilla se pinta en una tableta a la vista del público.
+type UnlockOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// UnlockOptions describe qué debe pedir la pantalla de bloqueo.
+type UnlockOptions struct {
+	PinOnly bool           `json:"pinOnly"`
+	Users   []UnlockOption `json:"users"`
+}
+
+// UnlockOptions dice quiénes pueden desbloquear esta estación.
+//
+// Con el modo de solo-PIN encendido la lista viaja VACÍA: listar nombres le quitaría al modo su
+// única ventaja —el tap que ahorra— y expondría la plantilla del negocio sin necesidad.
+func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) {
+	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
+	// Sin fila de ajustes el negocio es nuevo: se cae al modo SEGURO, que pide elegir persona.
+	pinOnly := err == nil && ajustes.PinOnlyUnlock
+
+	out := UnlockOptions{PinOnly: pinOnly, Users: []UnlockOption{}}
+	if pinOnly {
+		return out, nil
+	}
+	filas, err := s.store.QC(ctx).UnlockCandidates(ctx)
+	if err != nil {
+		return UnlockOptions{}, err
+	}
+	for _, f := range filas {
+		out.Users = append(out.Users, UnlockOption{ID: f.ID, Name: f.Name})
+	}
+	return out, nil
 }

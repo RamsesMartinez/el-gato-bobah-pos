@@ -206,26 +206,47 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 // POST /auth/pin-switch (requires a valid device session)
 func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		UserID int64  `json:"userId"`
+		// Puntero: con el modo de solo-PIN el cliente NO manda a quién, y el servidor lo deduce.
+		// Con el modo apagado, su ausencia se rechaza — no se cae al modo permisivo en silencio,
+		// que aquí significaría aceptar cualquier PIN sin saber de quién es.
+		UserID *int64 `json:"userId"`
 		PIN    string `json:"pin"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
+	actor, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	// Un parámetro de frontera ausente se RECHAZA. Caer al modo permisivo aquí significaría aceptar
+	// cualquier PIN sin saber de quién es, y con eso la atribución del arqueo dejaría de valer.
+	//
+	// Se rechaza SIN consultar la base: la deducción por PIN llega con el modo de solo-PIN (US4), y
+	// mientras no exista, este camino no tiene otra salida. Consultar ajustes aquí le daría a quien
+	// inunda el endpoint una consulta gratis por golpe, que es lo que el lockout viene a evitar.
+	if body.UserID == nil {
+		Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
+		return
+	}
+	objetivo := *body.UserID
 	// PIN keyspace is tiny (4 digits) — lock per target user id, which the caller
 	// controls in the body, so guessing any operator's PIN is throttled.
-	key := "pin:" + strconv.FormatInt(body.UserID, 10)
+	key := "pin:" + strconv.FormatInt(objetivo, 10)
 	if h.authFails.blocked(r.Context(), key) {
-		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", body.UserID, "ip", clientIP(r))
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", objetivo, "ip", clientIP(r))
 		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
 		return
 	}
-	s, err := h.auth.PinSwitch(r.Context(), body.UserID, body.PIN)
+	s, err := h.auth.PinSwitch(r.Context(), objetivo, body.PIN, actor.ID)
 	if err != nil {
 		h.authFails.record(r.Context(), key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", body.UserID, "ip", clientIP(r))
+			// El evento lleva a QUIÉN se intentó desbloquear, nunca el PIN: un secreto en un log
+			// es peor que no tener el log.
+			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", objetivo, "ip", clientIP(r))
 		}
 		Error(w, err)
 		return
@@ -319,4 +340,17 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{
 		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
 	})
+}
+
+// GET /auth/unlock-options
+//
+// Qué debe pedir la pantalla de bloqueo, y a quiénes puede ofrecer. Solo id y nombre: la rejilla se
+// pinta en una tableta a la vista del público.
+func (h *Handlers) UnlockOptions(w http.ResponseWriter, r *http.Request) {
+	opciones, err := h.auth.UnlockOptions(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, opciones)
 }
