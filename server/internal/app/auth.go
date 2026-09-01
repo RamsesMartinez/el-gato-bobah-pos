@@ -164,6 +164,11 @@ func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, act
 			TokenHash: auth.HashToken(refreshActual), ExpiresAt: s.now(), UserID: actorID,
 		})
 		if err != nil {
+			// Deja rastro: el relevo también presenta un refresh, así que un token muerto que
+			// reaparece aquí es la misma señal que /auth/refresh persigue. NO revoca la familia
+			// como allá —un doble toque en la pantalla táctil presenta dos veces la misma cookie y
+			// echaría al operador con el cliente enfrente—, pero deja de ser invisible.
+			logging.SecurityEvent(ctx, "estacion_sin_sesion", "actor_user_id", actorID)
 			return domain.ErrUnauthorized
 		}
 		sess, err = s.issueUntil(ctx, q, u, vence)
@@ -326,9 +331,14 @@ type UnlockOptions struct {
 // Con el modo de solo-PIN encendido la lista viaja VACÍA: listar nombres le quitaría al modo su
 // única ventaja —el tap que ahorra— y expondría la plantilla del negocio sin necesidad.
 func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) {
-	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
-	// Sin fila de ajustes el negocio es nuevo: se cae al modo SEGURO, que pide elegir persona.
-	pinOnly := err == nil && ajustes.PinOnlyUnlock
+	// Un error de lectura se PROPAGA. Caía a "no es solo-PIN", así que un hipo de la consulta le
+	// mostraba al mostrador la plantilla completa —que es justo lo que el modo esconde— y abría el
+	// camino de elegir persona, que ahí se cierra a propósito. La empresa sin fila de ajustes es
+	// otra cosa: `modoSoloPin` responde con el default del negocio, que es el modo seguro.
+	pinOnly, err := s.modoSoloPin(ctx)
+	if err != nil {
+		return UnlockOptions{}, err
+	}
 
 	out := UnlockOptions{PinOnly: pinOnly, Users: []UnlockOption{}}
 	if pinOnly {
