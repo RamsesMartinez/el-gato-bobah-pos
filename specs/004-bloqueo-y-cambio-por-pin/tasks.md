@@ -178,7 +178,7 @@ desbloqueen mutuamente.
       segundos y es la única forma de verificarlo.
 - [X] T039 [P] Correr `tablet-ui-reviewer` sobre `LockScreen.tsx` y la pantalla de ajustes: es
       pantalla nueva y el subagente corre ante cualquier pantalla nueva.
-- [ ] T040 [P] Correr `security-auditor` sobre el cambio: toca autenticación, sesión y logging, que
+- [X] T040 [P] Correr `security-auditor` sobre el cambio: toca autenticación, sesión y logging, que
       es exactamente su disparador.
 - [X] T041 Actualizar `docs/security-owasp.md` con la política de sesión nueva — hoy documenta la de
       30 días.
