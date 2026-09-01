@@ -97,15 +97,19 @@ where token_hash = $1 and revoked_at is null;
 
 
 -- name: ClearAllPins :exec
--- Borra los PINs de todas las personas activas de la empresa.
+-- Borra los PINs de TODAS las personas de la empresa, activas o no.
 --
 -- Lo usa el encendido del modo de solo-PIN: los PINs de antes son de 4 dígitos y sin garantía de ser
 -- distintos, y de lo guardado no se puede saber ni una cosa ni la otra. Obligar a recapturarlos es
 -- el único momento en que el PIN está en claro y se puede validar largo y unicidad.
 --
+-- También a quien está dado de baja: decía `where is_active` y a esa persona le quedaba su PIN de
+-- cuatro dígitos intacto, así que reactivarla metía en un negocio de seis dígitos un PIN de cuatro
+-- que abre la caja — 10,000 combinaciones en vez de un millón, y sin nada que lo delatara.
+--
 -- Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña, que sigue funcionando.
 update users set pin_hash = null, pin_lookup = null, updated_at = now()
-where is_active;
+where pin_hash is not null or pin_lookup is not null;
 
 -- name: UserByPinLookup :one
 -- De quién es este PIN. Solo tiene sentido con el modo de solo-PIN, donde el PIN identifica.
