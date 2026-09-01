@@ -67,6 +67,16 @@ export interface CashSession {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
+  // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
+  pending: PendingOrder[];
+}
+
+// Un pedido que sigue sin salir. Aparece aunque ya esté cobrado: cobrado y entregado son cosas
+// distintas, y lo que impide cerrar es la comida que no ha salido, no el dinero.
+export interface PendingOrder {
+  number: number;
+  name: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {
