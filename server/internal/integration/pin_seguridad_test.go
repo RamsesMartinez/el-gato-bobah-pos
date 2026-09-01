@@ -32,7 +32,7 @@ func TestElDesbloqueoNoDistingueIdInexistenteDePinMalo(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := svcConPin(t, st)
-	users := app.NewUsersService(st, nil, false)
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
 
 	ana := makeUser(t, st, "ana_seg", "cajero")
 	if err := users.SetPIN(ctx, ana, "4827"); err != nil {
@@ -79,7 +79,7 @@ func TestDosPersonasEnLaMismaEstacionSeSeparanEnElArqueo(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := svcConPin(t, st)
-	users := app.NewUsersService(st, nil, false)
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
 	orders := app.NewOrdersService(st, clock)
 	backoffice := app.NewBackofficeService(st, clock)
 

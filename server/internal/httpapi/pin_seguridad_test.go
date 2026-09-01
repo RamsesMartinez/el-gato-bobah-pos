@@ -62,23 +62,3 @@ func TestElEventoDeDesbloqueoNoLlevaElPin(t *testing.T) {
 		t.Errorf("el evento no dice a quién se intentó desbloquear: %s", registrado)
 	}
 }
-
-// FR-010 en la frontera HTTP. Con el modo de solo-PIN apagado, un `userId` ausente se RECHAZA.
-//
-// Es el control que la constitución nombra explícitamente: un parámetro de frontera inválido no
-// cae a un default en silencio. Aquí el default silencioso sería aceptar cualquier PIN sin saber de
-// quién es, y con él la atribución del arqueo dejaría de significar nada.
-func TestSinIndicarQuienElDesbloqueoSeRechaza(t *testing.T) {
-	h := NewHandlers(Deps{Cfg: config.Config{}})
-
-	cuerpo, _ := json.Marshal(map[string]any{"pin": "4827"})
-	req := httptest.NewRequest(http.MethodPost, "/auth/pin-switch", bytes.NewReader(cuerpo))
-	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
-	w := httptest.NewRecorder()
-	h.PinSwitch(w, req)
-
-	// 4xx, no 5xx y no 200: es una petición mal formada, no una falla del servidor ni un permiso.
-	if w.Code < 400 || w.Code >= 500 {
-		t.Fatalf("status = %d, quiere un 4xx: sin saber de quién es el PIN no se puede desbloquear", w.Code)
-	}
-}

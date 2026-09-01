@@ -74,10 +74,22 @@ Un negocio con mucha rotación decide que tocar el nombre antes del PIN le sobra
 
 ---
 
+### Por qué FR-007 obliga a recapturar
+
+Se descubrió al implementar, no al diseñar: el PIN se guarda con un algoritmo que **saliniza**, así
+que de lo guardado no se puede leer el largo, ni saber si dos personas tienen el mismo, ni averiguar
+de quién es uno. Las tres cosas son justo lo que el modo de solo-PIN necesita.
+
+La versión anterior del spec pedía "verificar que los PINs actuales cumplan", y eso **no se puede
+hacer** contra lo que ya está guardado. Pedir que se recapturen es lo que pone el texto del PIN
+enfrente una vez, que es el único momento en que se puede validar largo y unicidad.
+
 ### Edge Cases
 
 - **Se bloquea con el cliente enfrente y una cuenta a medias.** Lo capturado no puede perderse; si se pierde, el operador aprende a no dejar que se bloquee y desactiva la protección de facto.
 - **Una persona sin PIN configurado.** Hoy 2 de 8 usuarios activos no tienen. No pueden quedar encerrados fuera del sistema por una funcionalidad que no eligieron.
+- **Se enciende el modo y nadie ha recapturado su PIN todavía.** Nadie puede desbloquear con PIN
+  hasta hacerlo; todos entran con usuario y contraseña, que sigue funcionando (FR-012).
 - **La única persona con acceso olvidó su PIN** a media noche. Tiene que existir una salida que no dependa de que alguien más esté presente.
 - **Encender el modo de solo-PIN en un negocio cuyos PINs no cumplen.** Los 6 usuarios con PIN hoy los tienen de 4 dígitos y sin garantía de ser únicos: el cambio no puede dejar el negocio en un estado donde dos personas se desbloqueen la una a la otra.
 - **Sesión caducada a medio cobro.** El operador no puede quedarse con el dinero en la mano y la pantalla muerta.
@@ -94,8 +106,14 @@ Un negocio con mucha rotación decide que tocar el nombre antes del PIN le sobra
 - **FR-004**: Por default, desbloquear MUST pedir elegir a la persona y después su PIN.
 - **FR-005**: El sistema MUST permitir, por negocio, que desbloquear pida SOLO el PIN y deduzca la persona.
 - **FR-006**: El modo de solo-PIN MUST exigir PINs de al menos 6 dígitos y ÚNICOS entre las personas activas del negocio.
-- **FR-007**: El sistema MUST impedir activar el modo de solo-PIN mientras existan PINs que no cumplan, nombrando a quiénes hay que corregir.
-- **FR-008**: Con el modo de solo-PIN activo, el sistema MUST rechazar un PIN nuevo que coincida con el de otra persona activa del negocio.
+- **FR-007**: Activar el modo de solo-PIN MUST obligar a que cada persona vuelva a capturar su PIN.
+  Los PINs anteriores dejan de servir en el momento del cambio.
+- **FR-008**: Con el modo de solo-PIN activo, el sistema MUST rechazar un PIN nuevo que coincida con
+  el de otra persona activa del negocio, sin decir de quién es.
+- **FR-017**: El sistema MUST poder comparar dos PINs por igualdad y encontrar a quién pertenece uno,
+  sin guardar el PIN de forma reversible.
+- **FR-018**: Si falta el secreto que hace posible FR-017, el modo de solo-PIN MUST NO poder
+  activarse. Nunca se activa en un estado donde no se pueda garantizar la unicidad.
 - **FR-009**: Una sesión iniciada MUST caducar tras un periodo del orden de un turno, exigiendo credenciales completas y no solo un PIN.
 - **FR-010**: Un intento fallido de desbloqueo MUST frenarse con el mismo control que frena un login fallido, y MUST NOT revelar si falló la persona o el PIN.
 - **FR-011**: El sistema MUST ofrecer una salida cuando alguien olvida su PIN, que no dependa de que otra persona esté presente en el local.

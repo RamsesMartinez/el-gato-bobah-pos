@@ -18,10 +18,13 @@ import (
 // (§8): un solo consumidor, sin interfaz especulativa.
 type SettingsService struct {
 	store *store.Store
+	// pinPepper: sin él el modo de solo-PIN no se puede encender, porque no habría forma de
+	// garantizar que dos personas no compartan PIN.
+	pinPepper string
 }
 
-func NewSettingsService(s *store.Store) *SettingsService {
-	return &SettingsService{store: s}
+func NewSettingsService(s *store.Store, pinPepper string) *SettingsService {
+	return &SettingsService{store: s, pinPepper: pinPepper}
 }
 
 // BusinessSettings son los ajustes del negocio y la identidad que va en el encabezado del ticket.
@@ -149,13 +152,28 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	if err := ident.Validate(); err != nil {
 		return BusinessSettings{}, err
 	}
+	// Encender el modo de solo-PIN tiene COMPUERTA; apagarlo nunca, porque volver al modo seguro
+	// siempre se puede.
+	//
+	// Ahí el PIN deja de PROBAR quién eres y pasa a DECIRLO, así que dos personas con el mismo se
+	// desbloquearían la una a la otra y el desglose por cajero del arqueo empezaría a mentir.
+	actual, err := s.Get(ctx)
+	encendiendo := ident.PinOnlyUnlock && (err != nil || !actual.PinOnlyUnlock)
+	if encendiendo {
+		// Sin el secreto no se puede comparar dos PINs por igualdad, así que no hay forma de
+		// garantizar que nadie repita. Fail-closed: no se enciende un modo cuya única protección
+		// no se puede aplicar.
+		if s.pinPepper == "" {
+			return BusinessSettings{}, domain.ErrSinPepper
+		}
+	}
 	// La zona se valida AQUÍ y no donde se usa: donde se usa está el camino de una venta, y ahí un
 	// nombre mal escrito cae a UTC para no tumbar el cobro. Si nunca se rechazara al guardar, ese
 	// fallback silencioso correría los cortes durante meses sin que nadie lo notara.
 	if !domain.ValidTimezone(timezone) {
 		return BusinessSettings{}, domain.ErrInvalidTimezone
 	}
-	err := s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
+	err = s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
 		Timezone:           timezone,
 		PrintFreeModifiers: print.PrintFreeModifiers,
 		PrintKitchenTicket: print.PrintKitchenTicket,
@@ -173,6 +191,17 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	})
 	if err != nil {
 		return BusinessSettings{}, err
+	}
+	if encendiendo {
+		// Los PINs de antes son de cuatro dígitos y sin garantía de ser distintos, y de lo guardado
+		// no se puede saber ni una cosa ni la otra: bcrypt saliniza. Borrarlos obliga a
+		// recapturarlos, que es el único momento en que el PIN está en claro y se puede validar
+		// largo y unicidad.
+		//
+		// Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña.
+		if err := s.store.QC(ctx).ClearAllPins(ctx); err != nil {
+			return BusinessSettings{}, err
+		}
 	}
 	return s.Get(ctx)
 }

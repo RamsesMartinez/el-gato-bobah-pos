@@ -40,7 +40,7 @@ func TestCambiarDeOperadorConservaElRelojDeLaSesion(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `update users set password_hash = $2 where id = $1`, ana, hash); err != nil {
 		t.Fatalf("set password: %v", err)
 	}
-	users := app.NewUsersService(st, nil, false)
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
 	if err := users.SetPIN(ctx, luis, "4827"); err != nil {
 		t.Fatalf("SetPIN: %v", err)
 	}

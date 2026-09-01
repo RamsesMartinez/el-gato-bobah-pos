@@ -150,21 +150,21 @@ tableta deja de quedarse abierta— aunque desbloquear sea todavía con la misma
 
 **Solo si se pide.** Es donde está el riesgo y el menor beneficio.
 
-- [ ] T031 [US4] Escribir `server/internal/domain/pin_test.go` **antes**: el largo mínimo sube a 6
+- [X] T031 [US4] Escribir `server/internal/domain/pin_test.go` **antes**: el largo mínimo sube a 6
       con solo-PIN y se queda en 4 sin él; se mantienen las reglas actuales contra secuencias y
       todo-iguales.
-- [ ] T032 [US4] Implementar esas reglas como funciones puras en `server/internal/domain/pin.go`.
-- [ ] T033 [US4] Escribir `server/internal/integration/pin_unico_test.go`: no se puede encender
+- [X] T032 [US4] Implementar esas reglas como funciones puras en `server/internal/domain/pin.go`.
+- [X] T033 [US4] Escribir `server/internal/integration/pin_unico_test.go`: no se puede encender
       solo-PIN con PINs cortos o repetidos, y el error **nombra a quiénes** hay que corregir.
-- [ ] T034 [US4] Implementar la compuerta en `server/internal/app/settings.go`, comparando el PIN
+- [X] T034 [US4] Implementar la compuerta en `server/internal/app/settings.go`, comparando el PIN
       candidato contra los hashes de las personas activas — bcrypt saliniza, así que un índice único
       sobre el hash no detectaría nada.
-- [ ] T035 [US4] Validar la unicidad al fijar un PIN en `server/internal/app/users.go`. El rechazo
+- [X] T035 [US4] Validar la unicidad al fijar un PIN en `server/internal/app/users.go`. El rechazo
       **no dice de quién** es el PIN repetido: diría el oráculo para averiguarlo probando.
-- [ ] T036 [US4] Deducir la persona por el PIN en `PinSwitch` cuando el modo está activo, sin
+- [X] T036 [US4] Deducir la persona por el PIN en `PinSwitch` cuando el modo está activo, sin
       cambiar la respuesta ni la latencia entre "no existe" y "PIN incorrecto" — el test de T019
       tiene que seguir pasando con el modo encendido.
-- [ ] T037 [US4] Ocultar la rejilla de nombres en `LockScreen.tsx` cuando el modo está activo.
+- [X] T037 [US4] Ocultar la rejilla de nombres en `LockScreen.tsx` cuando el modo está activo.
 
 **Checkpoint**: un negocio puede elegir el modo rápido sin quedar en un estado donde dos personas se
 desbloqueen mutuamente.

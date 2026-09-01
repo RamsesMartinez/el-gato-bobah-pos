@@ -23,7 +23,7 @@ import (
 func TestBusinessSettingsGetAndUpdate(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_settings", "admin")
 
 	// GET no debe reventar (antes: column "id" does not exist).
@@ -51,7 +51,7 @@ func TestBusinessSettingsGetAndUpdate(t *testing.T) {
 func TestBusinessSettingsIncludesTicketHeader(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 
 	got, err := settings.Get(ctx)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestBusinessSettingsIncludesTicketHeader(t *testing.T) {
 func TestTicketLogoEndpoint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	h := httpapi.NewHandlers(httpapi.Deps{Settings: app.NewSettingsService(st)})
+	h := httpapi.NewHandlers(httpapi.Deps{Settings: app.NewSettingsService(st, "pepper-de-prueba")})
 
 	// Sin logo subido: 404, no 500. El front cae al logo por default y eso NO es un error.
 	w := httptest.NewRecorder()

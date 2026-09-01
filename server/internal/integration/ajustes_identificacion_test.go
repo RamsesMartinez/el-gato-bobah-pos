@@ -18,7 +18,7 @@ import (
 // haberlo elegido.
 func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
 	st := newTestStore(t)
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 
 	ajustes, err := settings.Get(context.Background())
 	if err != nil {
@@ -40,7 +40,7 @@ func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
 func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_ident", "admin")
 
 	antes, err := settings.Get(ctx)
@@ -81,7 +81,7 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 func TestLosTiemposAbsurdosSeRechazan(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_tiempos", "admin")
 
 	antes, _ := settings.Get(ctx)

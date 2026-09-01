@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -33,10 +32,13 @@ type UsersService struct {
 	store       *store.Store
 	hibp        *hibp.Client
 	hibpEnabled bool
+	// pinPepper: secreto con el que se calcula la huella determinista del PIN. Vacío = el modo de
+	// solo-PIN no se puede encender, y no se guarda huella.
+	pinPepper string
 }
 
-func NewUsersService(s *store.Store, hibpClient *hibp.Client, hibpEnabled bool) *UsersService {
-	return &UsersService{store: s, hibp: hibpClient, hibpEnabled: hibpEnabled}
+func NewUsersService(s *store.Store, hibpClient *hibp.Client, hibpEnabled bool, pinPepper string) *UsersService {
+	return &UsersService{store: s, hibp: hibpClient, hibpEnabled: hibpEnabled, pinPepper: pinPepper}
 }
 
 func (s *UsersService) checkPassword(ctx context.Context, pw string) error {
@@ -44,9 +46,6 @@ func (s *UsersService) checkPassword(ctx context.Context, pw string) error {
 }
 
 func hashPIN(pin string) (*string, error) {
-	if auth.IsWeakPin(pin) {
-		return nil, fmt.Errorf("%w: PIN demasiado débil (evita 1234/0000/secuencias)", domain.ErrValidation)
-	}
 	h, err := auth.HashSecret(pin)
 	if err != nil {
 		return nil, err
@@ -179,9 +178,42 @@ func (s *UsersService) ChangeOwnPassword(ctx context.Context, userID int64, curr
 // SetPIN fija/actualiza el PIN de un usuario (admin sobre cualquiera, o el propio empleado).
 // PIN opcional en el sistema, pero si se establece debe pasar el filtro de PIN débil.
 func (s *UsersService) SetPIN(ctx context.Context, userID int64, pin string) error {
+	// El largo exigido depende del modo del negocio: con solo-PIN el PIN ES la identidad y necesita
+	// seis dígitos; sin él, el nombre ya identifica y bastan cuatro.
+	soloPin, pepper := s.politicaDePin(ctx)
+	if err := domain.ValidarPin(pin, soloPin); err != nil {
+		return err
+	}
 	pinHash, err := hashPIN(pin)
 	if err != nil {
 		return err
 	}
-	return s.store.QC(ctx).SetUserPin(ctx, db.SetUserPinParams{ID: userID, PinHash: pinHash})
+
+	// La huella determinista solo se guarda si hay secreto. Sin él no se puede comparar por
+	// igualdad, y guardar un HMAC con clave vacía sería una huella invertible por cualquiera.
+	var lookup *string
+	if pepper != "" {
+		l := domain.PinLookup(pin, pepper)
+		lookup = &l
+	}
+
+	err = s.store.QC(ctx).SetUserPin(ctx, db.SetUserPinParams{
+		ID: userID, PinHash: pinHash, PinLookup: lookup,
+	})
+	// El índice único de la base es quien decide: entre validar y escribir cabe otra transacción
+	// poniendo el mismo PIN. El mensaje NO dice de quién es — si lo dijera, este formulario sería
+	// un oráculo para averiguar el PIN de un compañero probando números.
+	if isUniqueViolation(err) {
+		return domain.ErrPinRepetido
+	}
+	return err
+}
+
+// politicaDePin: si el negocio usa solo-PIN, y con qué secreto se calcula la huella.
+func (s *UsersService) politicaDePin(ctx context.Context) (bool, string) {
+	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
+	if err != nil {
+		return false, s.pinPepper
+	}
+	return ajustes.PinOnlyUnlock, s.pinPepper
 }

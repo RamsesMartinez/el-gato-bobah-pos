@@ -18,7 +18,7 @@ import (
 // el local donde cocina y mostrador son la misma persona.
 func TestCobrarDesdePedidosNaceApagado(t *testing.T) {
 	st := newTestStore(t)
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 
 	ajustes, err := settings.Get(context.Background())
 	if err != nil {
@@ -34,7 +34,7 @@ func TestCobrarDesdePedidosNaceApagado(t *testing.T) {
 func TestElAjusteDeCobroNoPisaLosDelTicket(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_kcc", "admin")
 
 	antes, err := settings.Get(ctx)

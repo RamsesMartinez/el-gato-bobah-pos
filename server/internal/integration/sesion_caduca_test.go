@@ -20,7 +20,7 @@ import (
 func TestLaSesionCaducaAlTerminarElTurno(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_caduca", "admin")
 
 	// Turno de 8 horas, que es el default del negocio.
@@ -69,7 +69,7 @@ func TestLaSesionCaducaAlTerminarElTurno(t *testing.T) {
 func TestElPlazoDeLaSesionSaleDelAjusteDelNegocio(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_plazo", "admin")
 
 	antes, _ := settings.Get(ctx)

@@ -150,8 +150,8 @@ func main() {
 		Version:    version,
 		BuiltAt:    builtAt,
 		JWT:        jm,
-		Auth:       app.NewAuthService(st, jm, nil),
-		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled),
+		Auth:       app.NewAuthServiceConPepper(st, jm, nil, cfg.PinPepper),
+		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled, cfg.PinPepper),
 		Menu:       app.NewMenuService(st, nil),
 		MenuCache:  cache.NewMenuCache(cfg.RedisURL),
 		Suggest:    app.NewSuggestService(st, nil),
@@ -159,7 +159,7 @@ func main() {
 		Orders:     app.NewOrdersService(st, nil),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
-		Settings:   app.NewSettingsService(st),
+		Settings:   app.NewSettingsService(st, "pepper-de-prueba"),
 		Company:    app.NewCompanyService(st),
 		Reset:      app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:     realtime.NewBroker(),
@@ -485,7 +485,7 @@ func runResetPassword(ctx context.Context, cfg config.Config, st *store.Store, i
 		return fmt.Errorf("los passwords no coinciden")
 	}
 
-	users := app.NewUsersService(st, hibp.New(nil), cfg.HIBPEnabled)
+	users := app.NewUsersService(st, hibp.New(nil), cfg.HIBPEnabled, cfg.PinPepper)
 	return users.AdminSetPassword(tenantCtx, u.ID, pw)
 }
 
