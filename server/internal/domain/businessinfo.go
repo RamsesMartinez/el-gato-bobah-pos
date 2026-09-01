@@ -66,6 +66,13 @@ type PrintSettings struct {
 	AutoPrintOnClose bool
 	// PrintFreeModifiers: el ticket lista los adicionales que no cuestan.
 	PrintFreeModifiers bool
+	// KitchenCanCharge: si el tablero de Pedidos puede cobrar, además de preparar y entregar.
+	// Apagado por default porque cobrar es del punto de venta, y una pantalla de cocina con botón de
+	// cobrar le da acceso al dinero a quien solo tiene que preparar comida. Se enciende donde la
+	// cocina y el mostrador son la misma persona en la misma máquina, que es el caso del local que
+	// estrena el sistema.
+	KitchenCanCharge bool
+
 	// PrintKitchenTicket: al mandar el pedido sale una comanda SIN precios para cocina. Apagado por
 	// default: donde la cocina está pegada al mostrador, sería papel que duplica lo que el cocinero
 	// ya ve en la pantalla.

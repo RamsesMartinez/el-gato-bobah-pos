@@ -16,6 +16,7 @@ import { usePopular } from '../../hooks/usePopular';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
+import { useMandarPedido } from './useMandarPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminProduct } from '../../api/admin';
@@ -31,6 +32,7 @@ import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
+import { PorCobrarPill } from './PorCobrarPill';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
@@ -118,6 +120,14 @@ export function POSPage() {
   const ticketDrawer = useDisclosure();
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
   const checkout = useDisclosure();
+  // Mandar a cocina sin cobrar vive aquí y no en la hoja de cobro: es una decisión sobre el
+  // pedido, no sobre el dinero. Tenerlo dentro del cobro hacía que la pantalla pidiera método de
+  // pago y propina para algo que después se descartaba.
+  const { mandar, enviando } = useMandarPedido((order) => {
+    ticketDrawer.onClose();
+    setLastOrder(order);
+  });
+  const enviarACocina = () => mandar({});
   const modSheet = useDisclosure();
   // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado
   // y el grid ocupa todo. La píldora flotante lo reabre y mantiene el total visible. En tablets
@@ -293,6 +303,9 @@ export function POSPage() {
         <HStack gap={2} align="center">
           <Box flex="1" minW={0}><TicketTabs /></Box>
           <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
+          {/* Solo aparece cuando hay algo pendiente: un contador en cero le quitaría ancho a la
+              barra sin decir nada. */}
+          <PorCobrarPill />
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}
@@ -342,7 +355,8 @@ export function POSPage() {
           <Box flex="1" minW={0}>{catalog}</Box>
           {!panelHidden && (
             <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
-              <Ticket onCheckout={checkout.onOpen} onEditLine={editLine} onHide={() => setPanelHidden(true)} />
+              <Ticket onCheckout={checkout.onOpen} onEnviar={enviarACocina} enviando={enviando}
+                onEditLine={editLine} onHide={() => setPanelHidden(true)} />
             </Box>
           )}
         </Flex>
@@ -406,7 +420,8 @@ export function POSPage() {
             {/* onHide = cerrar el sheet: a size=full el backdrop queda tapado, sin esto no hay cómo cerrarlo */}
             <Box flex="1" minH={0}>
               <Ticket
-                onCheckout={() => { ticketDrawer.onClose(); checkout.onOpen(); }} onEditLine={editLine}
+                onCheckout={() => { ticketDrawer.onClose(); checkout.onOpen(); }}
+                onEnviar={enviarACocina} enviando={enviando} onEditLine={editLine}
                 onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers}
               />
             </Box>

@@ -338,3 +338,13 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// GET /orders/unpaid
+func (h *Handlers) UnpaidOrders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.orders.Unpaid(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}

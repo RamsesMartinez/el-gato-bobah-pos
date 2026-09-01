@@ -1114,3 +1114,29 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 		})
 	})
 }
+
+// Unpaid lista los pedidos del día que todavía deben dinero.
+//
+// Alimenta el aviso del POS: sin él, "mandar a cocina sin cobrar" es una deuda que solo se ve
+// entrando al tablero, y el pedido ya entregado —donde el cliente se fue con la comida— no lo
+// puede ni ver quien está en la caja, porque la lista de entregadas es de admin/gerente.
+func (s *OrdersService) Unpaid(ctx context.Context) ([]BoardOrder, error) {
+	rows, err := s.store.QC(ctx).ListUnpaidOrders(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BoardOrder, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, BoardOrder{
+			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
+			Status:      string(r.Status),
+			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
+			CustomerName: r.CustomerName,
+			Total:        r.Total, Currency: domain.Currency(r.Currency),
+			Paid:        false,
+			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			OpenedAt:    r.OpenedAt,
+		})
+	}
+	return out, nil
+}

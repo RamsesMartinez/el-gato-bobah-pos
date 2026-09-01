@@ -38,6 +38,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		Timezone           *string          `json:"timezone"`
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
 		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
+		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -59,7 +60,8 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
-		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil {
+		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
+		body.KitchenCanCharge != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -78,6 +80,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			AutoPrintOnClose:   orBool(body.AutoPrintOnClose, cur.AutoPrintOnClose),
 			PrintFreeModifiers: orBool(body.PrintFreeModifiers, cur.PrintFreeModifiers),
 			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
+			KitchenCanCharge:   orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
 		}
 		if _, err := h.settings.SetBusinessInfo(ctx, info, print, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
 			Error(w, err)
