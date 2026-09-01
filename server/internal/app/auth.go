@@ -96,7 +96,7 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 // PinSwitch re-mints a session for a different operator via their PIN, DENTRO de la misma
 // empresa: corre bajo el tenant del request (QC/WithTx), así RLS impide cambiar a un usuario
 // de otra empresa (el userID de otra empresa simplemente no existe para esta sesión).
-func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string, actorID int64) (*Session, error) {
+func (s *AuthService) PinSwitchEnEstacion(ctx context.Context, userID int64, pin string, actorID int64, refreshActual string) (*Session, error) {
 	var sess *Session
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		u, err := q.GetUserByID(ctx, userID)
@@ -116,29 +116,29 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string, a
 		if !auth.CheckSecret(*u.PinHash, pin) {
 			return domain.ErrInvalidCredentials
 		}
-		// El vencimiento de la sesión del DISPOSITIVO se conserva; no se repone.
+		// El vencimiento sale del token que ESTA estación viene presentando, y no se repone.
 		//
-		// Emitir un plazo completo en cada relevo haría que una tableta usada cada veinte minutos
-		// no caducara nunca, y el límite de horas del turno sería decorativo. Se toma el de la
-		// sesión viva de quien estaba, que es la que la estación viene rotando.
-		vence, err := q.LatestLiveRefreshExpiry(ctx, db.LatestLiveRefreshExpiryParams{
-			UserID: actorID, ExpiresAt: s.now(),
+		// Por token y no por persona: buscar por user_id tomaba el vencimiento más lejano de
+		// cualquiera de sus tabletas, así que entrar fresco en una le regalaba horas a la otra.
+		// Y reponer el plazo completo haría que una tableta usada cada veinte minutos no caducara
+		// nunca, con lo que el límite del turno sería decorativo.
+		hashActual := auth.HashToken(refreshActual)
+		vence, err := q.LiveRefreshExpiry(ctx, db.LiveRefreshExpiryParams{
+			TokenHash: hashActual, ExpiresAt: s.now(),
 		})
 		if err != nil {
-			// Sin sesión viva de quien estaba —un relevo desde un dispositivo recién autenticado
-			// por otra vía— se arranca un plazo nuevo del negocio. Negar el relevo dejaría al
-			// operador fuera con el cliente enfrente, así que el modo de fallo deja trabajar.
-			vence = s.now().Add(s.duracionDeSesion(ctx, q))
+			// Sin sesión viva en esta estación no hay reloj que conservar, y arrancar uno nuevo
+			// sería regalar un turno completo a cambio de un PIN. Se niega: la salida es entrar con
+			// usuario y contraseña, que la pantalla de bloqueo ofrece a la vista.
+			return domain.ErrUnauthorized
 		}
 		sess, err = s.issueUntil(ctx, q, u, vence)
 		if err != nil {
 			return err
 		}
-		// Y se revoca la de quien estaba: si siguiera viva, cada relevo dejaría una credencial más
-		// suelta. Es lo que produjo las 4 sesiones vivas que se encontraron en producción.
-		return q.RevokeUserRefreshTokensExcept(ctx, db.RevokeUserRefreshTokensExceptParams{
-			UserID: actorID, TokenHash: auth.HashToken(sess.RefreshToken),
-		})
+		// Se revoca SOLO la de esta estación. Revocar todas las de la persona tumbaba sus otras
+		// tabletas: entregar una dejaba al compañero de la otra fuera a media venta.
+		return q.RevokeRefreshTokenByHash(ctx, hashActual)
 	})
 	if err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) 
 //
 // La respuesta y la latencia son las mismas que las del camino normal: un PIN que no existe corre
 // igual el bcrypt de descarte, para que no se pueda averiguar cuáles están en uso.
-func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID int64) (*Session, error) {
+func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID int64, refreshActual string) (*Session, error) {
 	if s.pinPepper == "" {
 		return nil, domain.ErrSinPepper
 	}
@@ -326,7 +326,7 @@ func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID 
 		auth.CheckDummySecret(pin)
 		return nil, domain.ErrInvalidCredentials
 	}
-	return s.PinSwitch(ctx, fila.ID, pin, actorID)
+	return s.PinSwitchEnEstacion(ctx, fila.ID, pin, actorID, refreshActual)
 }
 
 func ptr[T any](v T) *T { return &v }

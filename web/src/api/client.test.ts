@@ -38,3 +38,35 @@ test('un error sin detalles deja details en undefined', async () => {
   expect(err).toBeInstanceOf(ApiError);
   expect(err.details).toBeUndefined();
 });
+
+// UN DEDAZO EN EL PIN NO PUEDE TIRAR LA SESIÓN DE LA ESTACIÓN.
+//
+// El 401 de la pantalla de bloqueo es "ese PIN no es", no "se acabó el turno". El cliente barría
+// los dos con el mismo `clear('caducada')`, así que teclear un dígito de más mandaba al operador a
+// escribir usuario y contraseña — el toque que la pantalla de bloqueo viene justo a quitar. Y con
+// prisa eso enseña a no bloquear la tableta.
+test('un PIN incorrecto no cierra la sesión de la estación', async () => {
+  const { useSessionStore } = await import('../stores/session');
+  useSessionStore.getState().setSession('token-vivo', {
+    id: 7, name: 'Ana', role: 'cajero', companyId: 1, companyName: 'Gato',
+  } as never);
+
+  respondeCon(401, { error: { code: 'INVALID_CREDENTIALS', message: 'credenciales inválidas' } });
+  await api.post('/auth/pin-switch', { userId: 9, pin: '0000' }).catch(() => {});
+
+  expect(useSessionStore.getState().token).toBe('token-vivo');
+});
+
+// Pero el turno vencido SÍ la cierra, y con el motivo puesto: la pantalla de login tiene que poder
+// decir "terminó el turno" en vez de un "no autorizado" que se lee como algo roto.
+test('un turno vencido sí cierra la sesión', async () => {
+  const { useSessionStore } = await import('../stores/session');
+  useSessionStore.getState().setSession('token-vivo', {
+    id: 7, name: 'Ana', role: 'cajero', companyId: 1, companyName: 'Gato',
+  } as never);
+
+  respondeCon(401, { error: { code: 'UNAUTHORIZED', message: 'no autenticado' } });
+  await api.post('/auth/pin-switch', { userId: 9, pin: '0000' }).catch(() => {});
+
+  expect(useSessionStore.getState().token).toBeNull();
+});

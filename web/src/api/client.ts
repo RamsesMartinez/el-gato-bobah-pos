@@ -109,18 +109,14 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   // el backend devuelve el mismo id (o el que generó si no lo mandamos)
   const traceId = res.headers.get('X-Request-Id') || requestId;
 
-  if (res.status === 401) {
-    // No intentamos refrescar sobre los propios endpoints de auth (un 401 ahí es real:
-    // credenciales malas o refresh vencido) ni si ya reintentamos una vez.
-    if (retry && !path.startsWith('/auth/') && (await tryRefresh())) {
-      return request<T>(method, path, body, false, raw);
-    }
-    // El refresh no se pudo canjear: la sesión terminó. Se dice POR QUÉ para que la pantalla de
-    // login no muestre un error genérico — quien llega en la mañana con la tableta caducada
-    // vería "no autorizado" y creería que algo se rompió.
-    useSessionStore.getState().clear('caducada');
+  if (res.status === 401 && retry && !path.startsWith('/auth/') && (await tryRefresh())) {
+    // No se reintenta sobre los propios endpoints de auth (un 401 ahí es real: credenciales malas
+    // o refresh vencido) ni si ya se reintentó una vez.
+    return request<T>(method, path, body, false, raw);
   }
   if (!res.ok) {
+    // El cuerpo se lee UNA sola vez y antes de decidir qué hacer con el 401: el código del error es
+    // lo que distingue un 401 de otro, y `res.json()` no se puede volver a leer.
     let code = 'ERROR';
     let message = `Error ${res.status}`;
     let details: ApiErrorDetails | undefined;
@@ -131,6 +127,16 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
       details = data?.error?.details ?? undefined;
     } catch {
       /* respuesta sin cuerpo JSON */
+    }
+    // "Ese PIN no es" NO es "se acabó el turno". Los dos llegan como 401, y barrerlos juntos hacía
+    // que un dedazo en la pantalla de bloqueo mandara al operador a escribir usuario y contraseña
+    // — el toque que esa pantalla viene justo a quitar, y con prisa eso enseña a no bloquear la
+    // tableta.
+    if (res.status === 401 && code !== 'INVALID_CREDENTIALS') {
+      // La sesión terminó. Se dice POR QUÉ para que la pantalla de login no muestre un error
+      // genérico — quien llega en la mañana con la tableta caducada vería "no autorizado" y
+      // creería que algo se rompió.
+      useSessionStore.getState().clear('caducada');
     }
     console.error(`[api] ✗ ${label} · ${res.status} ${code} · ${ms}ms · id=${traceId}`);
     throw new ApiError(res.status, code, message, traceId, details);

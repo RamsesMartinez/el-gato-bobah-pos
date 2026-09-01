@@ -56,7 +56,7 @@ func TestCambiarDeOperadorConservaElRelojDeLaSesion(t *testing.T) {
 	ahora = ahora.Add(time.Hour)
 
 	// Ana le pasa la estación a Luis: él se identifica con su PIN.
-	tras, err := svc.PinSwitch(ctx, luis, "4827", ana)
+	tras, err := svc.PinSwitchEnEstacion(ctx, luis, "4827", ana, sesion.RefreshToken)
 	if err != nil {
 		t.Fatalf("PinSwitch: %v", err)
 	}
@@ -92,4 +92,98 @@ func venceDe(t *testing.T, st *store.Store, refresh string) time.Time {
 		t.Fatalf("leer el vencimiento: %v", err)
 	}
 	return v
+}
+
+// EL RELOJ ES DE LA ESTACIÓN, NO DE LA PERSONA.
+//
+// `LatestLiveRefreshExpiry` tomaba el vencimiento MÁS LEJANO de cualquier sesión viva de esa
+// persona, así que una tableta heredaba el reloj de otra. Caso concreto: Ana entra a las 08:00 en
+// la estación 1 (vence 16:00) y a las 15:00 entra fresca en la estación 2 (vence 23:00). Al
+// desbloquear la estación 1 a las 15:30, esa estación saltaba de 16:00 a 23:00 — siete horas de
+// sesión regaladas con un PIN, y repetible.
+func TestElRelojEsDeLaEstacionYNoDeLaPersona(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ahora := fixedNow
+	reloj := func() time.Time { return ahora }
+	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", reloj)
+	svc := app.NewAuthService(st, jm, reloj)
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+
+	ana := makeUser(t, st, "ana_dos_estaciones", "cajero")
+	luis := makeUser(t, st, "luis_dos_estaciones", "cajero")
+	hash, _ := auth.HashSecret("Contrasena-Larga-1!")
+	if _, err := st.Pool.Exec(ctx, `update users set password_hash = $2 where id = $1`, ana, hash); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	if err := users.SetPIN(ctx, luis, "4827"); err != nil {
+		t.Fatalf("SetPIN: %v", err)
+	}
+
+	// Estación 1, temprano.
+	estacion1, err := svc.Login(ctx, "ana_dos_estaciones", "gatobobah", "Contrasena-Larga-1!")
+	if err != nil {
+		t.Fatalf("Login estación 1: %v", err)
+	}
+	vence1 := venceDe(t, st, estacion1.RefreshToken)
+
+	// Siete horas después, la misma persona entra fresca en la estación 2: su sesión vence mucho
+	// más tarde.
+	ahora = ahora.Add(7 * time.Hour)
+	if _, err := svc.Login(ctx, "ana_dos_estaciones", "gatobobah", "Contrasena-Larga-1!"); err != nil {
+		t.Fatalf("Login estación 2: %v", err)
+	}
+
+	// Media hora después Ana entrega la ESTACIÓN 1 a Luis.
+	ahora = ahora.Add(30 * time.Minute)
+	tras, err := svc.PinSwitchEnEstacion(ctx, luis, "4827", ana, estacion1.RefreshToken)
+	if err != nil {
+		t.Fatalf("PinSwitch: %v", err)
+	}
+
+	if nuevo := venceDe(t, st, tras.RefreshToken); !nuevo.Equal(vence1) {
+		t.Errorf("la estación 1 pasó de vencer %s a %s: heredó el reloj de la otra tableta",
+			vence1.Format(time.RFC3339), nuevo.Format(time.RFC3339))
+	}
+}
+
+// Y el relevo en UNA estación no puede tumbar la sesión de esa persona en las DEMÁS.
+//
+// Se revocaban todos los refresh vivos del actor, así que entregar la estación 1 dejaba al
+// compañero de la estación 2 con "Terminó el turno" a media venta. El modo de fallo del resto de
+// la feature es "deja trabajar"; este era el contrario.
+func TestEntregarUnaEstacionNoTumbaLasDemas(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ahora := fixedNow
+	reloj := func() time.Time { return ahora }
+	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", reloj)
+	svc := app.NewAuthService(st, jm, reloj)
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+
+	ana := makeUser(t, st, "ana_no_tumba", "cajero")
+	luis := makeUser(t, st, "luis_no_tumba", "cajero")
+	hash, _ := auth.HashSecret("Contrasena-Larga-1!")
+	if _, err := st.Pool.Exec(ctx, `update users set password_hash = $2 where id = $1`, ana, hash); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	if err := users.SetPIN(ctx, luis, "4827"); err != nil {
+		t.Fatalf("SetPIN: %v", err)
+	}
+
+	estacion1, _ := svc.Login(ctx, "ana_no_tumba", "gatobobah", "Contrasena-Larga-1!")
+	estacion2, _ := svc.Login(ctx, "ana_no_tumba", "gatobobah", "Contrasena-Larga-1!")
+
+	if _, err := svc.PinSwitchEnEstacion(ctx, luis, "4827", ana, estacion1.RefreshToken); err != nil {
+		t.Fatalf("PinSwitch: %v", err)
+	}
+
+	// La estación 2 sigue viva: Ana sigue trabajando ahí.
+	if _, err := svc.Refresh(ctx, defaultCompanyID, estacion2.RefreshToken); err != nil {
+		t.Errorf("entregar la estación 1 tumbó la sesión de la estación 2: %v", err)
+	}
+	// Y la 1 sí quedó revocada: era la que se entregó.
+	if _, err := svc.Refresh(ctx, defaultCompanyID, estacion1.RefreshToken); err == nil {
+		t.Error("la sesión de la estación entregada sigue viva")
+	}
 }

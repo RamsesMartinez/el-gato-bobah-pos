@@ -39,8 +39,8 @@ func TestElDesbloqueoNoDistingueIdInexistenteDePinMalo(t *testing.T) {
 		t.Fatalf("SetPIN: %v", err)
 	}
 
-	_, errPinMalo := svc.PinSwitch(ctx, ana, "0000", ana)
-	_, errNoExiste := svc.PinSwitch(ctx, 999999, "4827", ana)
+	_, errPinMalo := svc.PinSwitchEnEstacion(ctx, ana, "0000", ana, "")
+	_, errNoExiste := svc.PinSwitchEnEstacion(ctx, 999999, "4827", ana, "")
 
 	if !errors.Is(errPinMalo, domain.ErrInvalidCredentials) {
 		t.Fatalf("PIN incorrecto = %v, quiere ErrInvalidCredentials", errPinMalo)
@@ -56,10 +56,10 @@ func TestElDesbloqueoNoDistingueIdInexistenteDePinMalo(t *testing.T) {
 	// Y la latencia tampoco los distingue: sin el bcrypt de descarte, el id inexistente vuelve
 	// mucho más rápido y eso solo basta para enumerar.
 	t0 := time.Now()
-	_, _ = svc.PinSwitch(ctx, ana, "0000", ana)
+	_, _ = svc.PinSwitchEnEstacion(ctx, ana, "0000", ana, "")
 	conBcrypt := time.Since(t0)
 	t0 = time.Now()
-	_, _ = svc.PinSwitch(ctx, 999999, "4827", ana)
+	_, _ = svc.PinSwitchEnEstacion(ctx, 999999, "4827", ana, "")
 	sinUsuario := time.Since(t0)
 
 	// El umbral es holgado a propósito: lo que se detecta es un orden de magnitud —bcrypt contra
@@ -88,6 +88,19 @@ func TestDosPersonasEnLaMismaEstacionSeSeparanEnElArqueo(t *testing.T) {
 	if err := users.SetPIN(ctx, luis, "4827"); err != nil {
 		t.Fatalf("SetPIN: %v", err)
 	}
+	// Ana entra con su contraseña: el relevo hereda el reloj de ESTA estación, así que hace falta
+	// que la estación tenga una sesión viva que entregar.
+	hashAna, err := auth.HashSecret("Contrasena-Larga-1!")
+	if err != nil {
+		t.Fatalf("HashSecret: %v", err)
+	}
+	if _, err := st.Pool.Exec(ctx, `update users set password_hash = $2 where id = $1`, ana, hashAna); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	estacion, err := svc.Login(ctx, "ana_estacion", "gatobobah", "Contrasena-Larga-1!")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
 	prod := makeProduct(t, st, "Café estación", decimal.RequireFromString("100"), false)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	principal := registerID(t, st, "Caja principal")
@@ -110,7 +123,7 @@ func TestDosPersonasEnLaMismaEstacionSeSeparanEnElArqueo(t *testing.T) {
 
 	cobrar(ana)
 	// La estación se bloquea y la desbloquea Luis con su PIN: a partir de aquí él es el operador.
-	sesion, err := svc.PinSwitch(ctx, luis, "4827", ana)
+	sesion, err := svc.PinSwitchEnEstacion(ctx, luis, "4827", ana, estacion.RefreshToken)
 	if err != nil {
 		t.Fatalf("PinSwitch: %v", err)
 	}

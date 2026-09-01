@@ -77,26 +77,23 @@ select id, name from users
 where is_active and pin_hash is not null
 order by name;
 
--- name: LatestLiveRefreshExpiry :one
--- Cuándo vence la sesión que la estación viene usando.
+-- name: LiveRefreshExpiry :one
+-- Cuándo vence la sesión que ESTA estación viene presentando.
 --
--- La usa el cambio de operador para CONSERVAR ese vencimiento en vez de reponerlo. Sin esto, cada
--- desbloqueo emitiría un plazo completo nuevo y una tableta usada cada veinte minutos no caducaría
--- nunca — el límite de horas del turno sería decorativo.
+-- Se busca por el HASH del token, no por user_id. Buscar por persona tomaba el vencimiento más
+-- lejano de cualquiera de sus tabletas, así que una estación heredaba el reloj de otra: entrar
+-- fresco en la segunda le regalaba horas a la primera, con un PIN y de forma repetible.
 select expires_at from refresh_tokens
-where user_id = $1 and revoked_at is null and expires_at > $2
-order by expires_at desc
-limit 1;
+where token_hash = $1 and revoked_at is null and expires_at > $2;
 
--- name: RevokeUserRefreshTokensExcept :exec
--- Revoca las sesiones vivas de una persona MENOS la recién emitida.
+-- name: RevokeRefreshTokenByHash :exec
+-- Revoca UNA sesión: la que la estación venía presentando antes del relevo.
 --
--- La usa el cambio de operador: sin esto, cada relevo dejaría viva la credencial de quien entregó
--- la estación. Es lo que produjo los 4 refresh tokens vivos que se encontraron en producción, el
--- más viejo de tres días antes.
-update refresh_tokens
-set revoked_at = now()
-where user_id = @user_id and revoked_at is null and token_hash <> @token_hash;
+-- Solo esa. Revocar todas las de la persona tumbaba sus otras tabletas: entregar la estación 1
+-- dejaba al compañero de la estación 2 con "terminó el turno" a media venta. El modo de fallo del
+-- resto de la feature es dejar trabajar.
+update refresh_tokens set revoked_at = now()
+where token_hash = $1 and revoked_at is null;
 
 
 -- name: ClearAllPins :exec

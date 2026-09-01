@@ -42,8 +42,10 @@ func TestElEventoDeDesbloqueoNoLlevaElPin(t *testing.T) {
 
 	cuerpo, _ := json.Marshal(map[string]any{"userId": objetivo, "pin": secreto})
 	req := httptest.NewRequest(http.MethodPost, "/auth/pin-switch", bytes.NewReader(cuerpo))
-	// La sesión del dispositivo: el handler la exige antes de cualquier otra cosa.
+	// La sesión del dispositivo: el handler exige el token de acceso Y la cookie de refresh, porque
+	// el relevo hereda el reloj de ESA estación.
 	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	req.AddCookie(&http.Cookie{Name: refreshCookie, Value: "1.token-de-la-estacion"})
 	w := httptest.NewRecorder()
 	h.PinSwitch(w, req)
 
@@ -84,11 +86,31 @@ func TestElDesbloqueoSoloPinTambienSeFrena(t *testing.T) {
 	cuerpo, _ := json.Marshal(map[string]any{"pin": "482715"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/pin-switch", bytes.NewReader(cuerpo))
 	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	req.AddCookie(&http.Cookie{Name: refreshCookie, Value: "1.token-de-la-estacion"})
 	w := httptest.NewRecorder()
 	h.PinSwitch(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, quiere 429: sin límite se puede recorrer el espacio de PINs entero", w.Code)
+	}
+}
+
+// Y sin la cookie de la estación el relevo se RECHAZA, sin tocar la base.
+//
+// Es lo que impide que el relevo arranque un turno nuevo: si al no encontrar sesión de estación se
+// emitiera un plazo completo, bastaría borrar la cookie para renovar ocho horas con un PIN, tantas
+// veces como se quisiera. El límite del turno sería decorativo.
+func TestElRelevoSinSesionDeEstacionSeRechaza(t *testing.T) {
+	h := NewHandlers(Deps{Cfg: config.Config{}})
+
+	cuerpo, _ := json.Marshal(map[string]any{"userId": 42, "pin": "4827"})
+	req := httptest.NewRequest(http.MethodPost, "/auth/pin-switch", bytes.NewReader(cuerpo))
+	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	w := httptest.NewRecorder()
+	h.PinSwitch(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, quiere 401: sin cookie de estación no hay reloj que heredar", w.Code)
 	}
 }
 
