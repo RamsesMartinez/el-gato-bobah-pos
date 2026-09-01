@@ -83,43 +83,43 @@ tableta deja de quedarse abierta— aunque desbloquear sea todavía con la misma
 
 **Depende de US2**: la pantalla de bloqueo es donde se cambia de operador.
 
-- [ ] T013 [US1] Agregar a `server/queries/users.sql` la consulta de personas **activas y con PIN**
+- [X] T013 [US1] Agregar a `server/queries/users.sql` la consulta de personas **activas y con PIN**
       para la rejilla, devolviendo **solo id y nombre** (contrato: es una lista que se pinta en un
       mostrador a la vista del público).
-- [ ] T014 [US1] Escribir el test de `GET /auth/unlock-options` en
+- [X] T014 [US1] Escribir el test de `GET /auth/unlock-options` en
       `server/internal/integration/unlock_options_test.go`: no lista a quien no tiene PIN ni a los
       inactivos, no devuelve correo ni rol, y con solo-PIN encendido devuelve la lista **vacía**.
-- [ ] T015 [US1] Escribir el test de FR-012 en el mismo archivo: **quien no tiene PIN sigue pudiendo
+- [X] T015 [US1] Escribir el test de FR-012 en el mismo archivo: **quien no tiene PIN sigue pudiendo
       entrar con usuario y contraseña**. No basta con verificar que no sale en la rejilla — hoy 2 de
       8 usuarios activos no tienen PIN y no pueden quedar encerrados fuera por una funcionalidad que
       no eligieron.
-- [ ] T016 [US1] Implementar el endpoint en `server/internal/httpapi/handlers.go` y su ruta.
-- [ ] T017 [US1] Escribir `server/internal/integration/pin_switch_conserva_reloj_test.go`
+- [X] T016 [US1] Implementar el endpoint en `server/internal/httpapi/handlers.go` y su ruta.
+- [X] T017 [US1] Escribir `server/internal/integration/pin_switch_conserva_reloj_test.go`
       **antes** de tocar el servicio: al cambiar de operador, el `expires_at` de la sesión se
       **conserva** y el refresh de quien estaba queda revocado. Es el hallazgo 2 de la investigación
       y lo que hace que `session_hours` signifique algo.
-- [ ] T018 [US1] Modificar `PinSwitch` en `server/internal/app/auth.go` para que cambie el operador
+- [X] T018 [US1] Modificar `PinSwitch` en `server/internal/app/auth.go` para que cambie el operador
       conservando el vencimiento, en vez de emitir una sesión nueva con el plazo completo.
-- [ ] T019 [US1] Escribir el test de FR-010 **antes** de tocar el handler: un id que no existe y un
+- [X] T019 [US1] Escribir el test de FR-010 **antes** de tocar el handler: un id que no existe y un
       PIN incorrecto devuelven **la misma respuesta**, y la latencia no los distingue. La igualación
       ya existe con `auth.CheckDummySecret`; el test es lo que impide que un refactor la quite sin
       que nadie note que el endpoint pasó a ser un enumerador de usuarios.
-- [ ] T020 [US1] Escribir el test del control de frontera de T021: con solo-PIN **apagado**, un
+- [X] T020 [US1] Escribir el test del control de frontera de T021: con solo-PIN **apagado**, un
       `userId` ausente se **rechaza**. La constitución lo pide explícitamente — un parámetro de
       frontera inválido no cae a un default en silencio, y aquí el default silencioso sería aceptar
       cualquier PIN sin saber de quién.
-- [ ] T021 [US1] Aceptar `userId` opcional en el handler de `pin-switch`, rechazando su ausencia
+- [X] T021 [US1] Aceptar `userId` opcional en el handler de `pin-switch`, rechazando su ausencia
       cuando el negocio NO tiene solo-PIN.
-- [ ] T022 [US1] Escribir el test de FR-015 **antes**: un desbloqueo fallido deja un evento de
+- [X] T022 [US1] Escribir el test de FR-015 **antes**: un desbloqueo fallido deja un evento de
       seguridad con clave estable, y ese evento **no contiene el PIN** ni datos personales. El
       principio V no deja mergear un control de seguridad sin su test, y un evento que filtre el
       secreto es peor que no tenerlo.
-- [ ] T023 [US1] Registrar el desbloqueo fallido con `logging.SecurityEvent`.
-- [ ] T024 [US1] Conectar la rejilla y el teclado de PIN en `LockScreen.tsx` contra
+- [X] T023 [US1] Registrar el desbloqueo fallido con `logging.SecurityEvent`.
+- [X] T024 [US1] Conectar la rejilla y el teclado de PIN en `LockScreen.tsx` contra
       `posApi.pinSwitch`, que ya existe y nadie usa.
-- [ ] T025 [US1] Hacer que `web/src/stores/session.ts` cambie de operador sin recargar la
+- [X] T025 [US1] Hacer que `web/src/stores/session.ts` cambie de operador sin recargar la
       aplicación, conservando las cuentas abiertas (FR-013).
-- [ ] T026 [US1] Escribir el test de integración que cierra la historia: dos personas cobran en la
+- [X] T026 [US1] Escribir el test de integración que cierra la historia: dos personas cobran en la
       misma estación identificándose por PIN, y el arqueo las separa. Reusa la tabla "Cobrado por"
       que ya existe.
 

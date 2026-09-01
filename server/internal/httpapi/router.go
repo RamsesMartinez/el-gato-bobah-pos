@@ -55,6 +55,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Use(RequireAuth(jm))
 				r.Use(WithTenant(st)) // pin-switch corre bajo el tenant del dispositivo
 				r.Post("/pin-switch", h.PinSwitch)
+				// Quiénes pueden desbloquear la estación. Autenticado: es la sesión del dispositivo la
+				// que pregunta, no un anónimo — de otro modo sería la plantilla del negocio en abierto.
+				r.Get("/unlock-options", h.UnlockOptions)
 				r.Get("/me", h.Me)
 			})
 		})
