@@ -9,10 +9,17 @@
 -- Ordenable por nombre / #opciones / #productos (@sort) en @dir (asc|desc); subquery para poder
 -- ordenar por los conteos calculados.
 select g.id, g.name, g.is_active, g.default_min_select, g.default_max_select,
-       g.option_count, g.product_count, g.override_count, g.total
+       g.option_count, g.option_preview, g.product_count, g.override_count, g.total
 from (
   select mg.id, mg.name, mg.is_active, mg.default_min_select, mg.default_max_select,
          (select count(*) from modifier_options mo where mo.group_id = mg.id and mo.is_active)::int as option_count,
+         -- Las primeras opciones por su orden real, para que la tarjeta diga QUÉ tiene el grupo y
+         -- no solo cuántas. Antes había que expandir cada uno para saber si era el que buscabas.
+         -- Se topa a 4: en una tarjeta de 7" el quinto nombre ya no cabe en el renglón.
+         (select string_agg(t.name, ' · ' order by t.sort_key, t.name)
+            from (select mo.name, mo.sort_key from modifier_options mo
+                   where mo.group_id = mg.id and mo.is_active
+                   order by mo.sort_key, mo.name limit 4) t)::text as option_preview,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id)::int as product_count,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id and pmg.min_select is not null)::int as override_count,
          count(*) over() as total
@@ -66,8 +73,14 @@ from unnest(@ids::bigint[]) with ordinality as t(id, ord)
 where mo.id = t.id and mo.group_id = @group_id;
 
 -- name: AdminCreateOption :one
-insert into modifier_options (group_id, name, price_delta, max_per_line)
-values (@group_id, @name, @price_delta, @max_per_line)
+-- La opción nueva se va AL FINAL de su grupo.
+--
+-- Sin el sort_key explícito tomaba el default y empataba con todas las demás, que también lo
+-- tienen: el desempate lo hacía el nombre, así que "Ajo" aparecía primero y la recién creada se
+-- metía en medio de la lista. El operador la agregaba y no la encontraba donde la dejó.
+insert into modifier_options (group_id, name, price_delta, max_per_line, sort_key)
+values (@group_id, @name, @price_delta, @max_per_line,
+        (select coalesce(max(mo.sort_key), 0) + 1 from modifier_options mo where mo.group_id = @group_id))
 returning id;
 
 -- name: AdminUpdateOptionFields :exec

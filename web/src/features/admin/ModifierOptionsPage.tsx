@@ -216,6 +216,17 @@ function GroupCard({ group, search, open, hideInactiveOpts, onToggle, onEdit, on
               {!group.isActive && <Badge>inactivo</Badge>}
               {group.overrideCount > 0 && <Badge colorPalette="purple">{group.overrideCount} personaliz.</Badge>}
             </HStack>
+            {/* QUÉ tiene el grupo, no solo cuántas: sin esto había que expandir uno por uno
+                para dar con el que se buscaba. Truncado a un renglón — en una tarjeta de 7" el
+                quinto nombre ya no cabe. */}
+            {group.optionPreview && (
+              <Text fontSize="sm" color="fg.default" mt={0.5} lineClamp={1}>
+                {group.optionPreview}
+                {group.optionCount > 4 && (
+                  <Text as="span" color="fg.muted"> · y {group.optionCount - 4} más</Text>
+                )}
+              </Text>
+            )}
             <Text fontSize="xs" color="fg.muted" mt={0.5}>
               {group.optionCount} opciones · por defecto elige {group.defaultMin}–{group.defaultMax}
             </Text>
