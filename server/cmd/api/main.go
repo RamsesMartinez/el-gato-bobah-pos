@@ -28,6 +28,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/term"
+
+	// La base de zonas horarias, DENTRO del binario.
+	//
+	// Sin ella `time.LoadLocation` falla y toda zona cae a UTC — el mismo corrimiento de seis horas
+	// que el fallback de la fecha de negocio vino a quitar, pero por la otra puerta y sin nada que
+	// lo delate. La imagen de producción es distroless y hoy la trae; eso es una propiedad de la
+	// imagen base que cambia en cualquier bump. Embeberla cuesta ~450KB y quita la dependencia.
+	_ "time/tzdata"
 )
 
 // Inyectadas por ldflags en el build de producción (server/Dockerfile: -X main.version / main.builtAt).
