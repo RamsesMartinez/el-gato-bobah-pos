@@ -109,6 +109,9 @@ export interface TicketLine {
 // --- Órdenes (respuesta del backend) ---
 
 export interface OrderView {
+  // Los renglones que ACABAN de entrar, para imprimir la comanda del agregado sin volver a
+  // preguntar cuáles eran. Vacío en cualquier otra respuesta.
+  agregados?: number[];
   id: number;
   number: number;
   // Nombre con el que se canta el pedido en cocina ("Tigre"). Vacío en los pedidos anteriores a
@@ -141,6 +144,9 @@ export interface OrderLine extends ReceiptLine {
 
 // ReceiptLine es lo único que necesita saber quien imprime.
 export interface ReceiptLine {
+  // El id del renglón: es con lo que la comanda del agregado sabe cuáles imprimir. Opcional porque
+  // el ticket del cliente no lo necesita y los pedidos que ya existían no lo traen.
+  id?: number;
   productName: string;
   quantity: string;
   unitPrice: string;
@@ -153,6 +159,11 @@ export interface ReceiptLine {
 export type ReceiptOrder = Omit<OrderView, 'lines'> & { lines?: ReceiptLine[] };
 
 export interface BoardOrder {
+  // Si a este pedido todavía se le puede AGREGAR. Viene del servidor y no se deduce del estado
+  // aquí: la regla quedaría implementada en dos lados y se separarían al primer cambio.
+  enPreparacion: boolean;
+  // Renglones vivos, para que el chip diga de un vistazo qué tan grande es el pedido.
+  renglones: number;
   id: number;
   number: number;
   folioName: string;

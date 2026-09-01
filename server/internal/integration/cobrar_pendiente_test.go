@@ -24,7 +24,7 @@ func pedidoSinCobrar(t *testing.T, st *store.Store, svc *app.OrdersService, sufi
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(context.Background(), app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, context.Background(), svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 	})

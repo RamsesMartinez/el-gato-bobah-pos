@@ -17,6 +17,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -260,4 +261,33 @@ func entregarPendientes(t *testing.T, st *store.Store) {
 		  where status in ('abierta', 'lista')`); err != nil {
 		t.Fatalf("entregar pendientes: %v", err)
 	}
+}
+
+// crearYCobrar confirma el pedido y luego lo cobra, que es el flujo real desde que confirmar es
+// obligatorio (feature 005).
+//
+// Antes esto era UNA llamada con `Payments`, y ese camino ya no existe: era el atajo por el que se
+// cobraba sin que cocina se enterara, y por ser el corto era el que se usaba. Los tests lo usaban
+// para armar escenarios, así que el helper conserva la forma de la llamada y hace los dos pasos.
+//
+// Devuelve error para que los tests que comprueban un rechazo sigan escribiéndose igual.
+func crearYCobrar(t *testing.T, ctx context.Context, svc *app.OrdersService, cmd app.CreateOrderCmd) (*app.OrderView, error) {
+	t.Helper()
+	pagos := cmd.Payments
+	cmd.Payments = nil
+
+	ord, err := svc.Create(ctx, cmd)
+	if err != nil || len(pagos) == 0 {
+		return ord, err
+	}
+	for _, p := range pagos {
+		if err := svc.Charge(ctx, app.ChargeCmd{
+			OrderID: ord.ID, MethodID: p.MethodID, Amount: p.Amount, Tip: p.Tip,
+			Reference: p.Reference, ActorID: cmd.OpenedBy,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	// Se relee: tras el cobro cambian el estado y lo pagado, y los tests miran eso.
+	return svc.Detail(ctx, ord.ID)
 }

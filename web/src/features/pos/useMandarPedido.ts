@@ -6,7 +6,6 @@ import type { CreateOrderBody } from '../../api/pos';
 import type { OrderView } from '../../types/pos';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
-import { uuid } from '../../utils/uuid';
 import { armarPedido } from './armarPedido';
 
 // Manda la cuenta activa al servidor, con pagos o sin ellos.
@@ -38,7 +37,14 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
       const body = armarPedido({
         cuenta,
         lineas: cobrables,
-        clientUuid: uuid(),
+        // El identificador es el de la CUENTA, no uno por intento.
+        //
+        // El servidor tiene idempotencia por este campo —la columna es única y devuelve el pedido
+        // que ya existe—, pero generándolo aquí adentro cada reintento mandaba uno distinto y esa
+        // protección nunca se disparaba: un corte de red al confirmar dejaba dos pedidos idénticos,
+        // el operador cobraba uno, y el otro se quedaba abierto pidiendo comida que nadie preparó.
+        // El id de la cuenta ya es un uuid, ya se persiste, y muere cuando la cuenta se cierra.
+        clientUuid: cuenta.id,
         deliveryFee: cuenta.serviceType === 'domicilio' ? (deliveryFee ?? defaultFee) : 0,
         payments,
       });

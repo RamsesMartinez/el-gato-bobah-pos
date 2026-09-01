@@ -66,7 +66,7 @@ func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
 		t.Fatalf("el turno abrió con fecha %s, quería 2026-08-29 (20:28 hora de México)", got)
 	}
 
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -109,7 +109,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 	venta := func(now time.Time) *app.OrderView {
 		t.Helper()
 		svc := app.NewOrdersService(st, func() time.Time { return now })
-		o, err := svc.Create(ctx, app.CreateOrderCmd{
+		o, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID:  uuid.New(),
 			ServiceType: "mostrador",
 			OpenedBy:    cajero,

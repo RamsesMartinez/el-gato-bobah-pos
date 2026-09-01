@@ -30,7 +30,7 @@ func TestRefundFlow(t *testing.T) {
 	abrirCajaPrincipal(t, st, cashier)
 
 	// Crear orden (2 × 50 = 100) y entregarla.
-	ov, err := svc.Create(ctx, app.CreateOrderCmd{
+	ov, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
@@ -106,7 +106,7 @@ func TestRefundRejectsNonDelivered(t *testing.T) {
 	prod := makeProduct(t, st, "Café", decimal.RequireFromString("30"), false)
 	abrirCajaPrincipal(t, st, cashier)
 
-	ov, err := svc.Create(ctx, app.CreateOrderCmd{
+	ov, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,

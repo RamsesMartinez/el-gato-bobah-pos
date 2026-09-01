@@ -17,11 +17,12 @@ import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
 import { useMandarPedido } from './useMandarPedido';
+import { useAgregarAPedido } from './useAgregarAPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../admin/ProductEditDialog';
-import type { MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
+import type { BoardOrder, MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
 import { money } from '../../utils/format';
 import { TicketPreview } from '../tickets/TicketPreview';
 import { AutoPrintTicket, KitchenTicket } from '../tickets/AutoPrintTicket';
@@ -32,7 +33,7 @@ import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
-import { PorCobrarPill } from './PorCobrarPill';
+import { PedidosEnCurso } from './PedidosEnCurso';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
@@ -123,11 +124,31 @@ export function POSPage() {
   // Mandar a cocina sin cobrar vive aquí y no en la hoja de cobro: es una decisión sobre el
   // pedido, no sobre el dinero. Tenerlo dentro del cobro hacía que la pantalla pidiera método de
   // pago y propina para algo que después se descartaba.
+  // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
+  // solo con lo agregado.
+  const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
   const { mandar, enviando } = useMandarPedido((order) => {
     ticketDrawer.onClose();
+    // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
+    setAgregados(undefined);
     setLastOrder(order);
   });
   const enviarACocina = () => mandar({});
+
+  // Agregarle a un pedido que ya está en cocina, desde el chip de la barra. Es el camino que la
+  // feature 005 viene a abrir: antes existía enterrado en la hoja de cobro —armar el carrito,
+  // abrir Cobrar, bajar hasta un selector, elegir el pedido— y en producción no se usó nunca.
+  const { agregar } = useAgregarAPedido((order, nuevos) => {
+    ticketDrawer.onClose();
+    setAgregados(nuevos);
+    setLastOrder(order);
+  });
+  // Con la cuenta vacía, tocar el chip no tiene nada que agregar: se abre el pedido para verlo.
+  // Con productos capturados, se los lleva.
+  const abrirPedidoEnCurso = (pedido: BoardOrder) => {
+    if (cuenta.lines.length === 0) return;
+    agregar(pedido);
+  };
   const modSheet = useDisclosure();
   // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado
   // y el grid ocupa todo. La píldora flotante lo reabre y mantiene el total visible. En tablets
@@ -303,9 +324,11 @@ export function POSPage() {
         <HStack gap={2} align="center">
           <Box flex="1" minW={0}><TicketTabs /></Box>
           <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
-          {/* Solo aparece cuando hay algo pendiente: un contador en cero le quitaría ancho a la
-              barra sin decir nada. */}
-          <PorCobrarPill />
+          {/* Los pedidos que ya se mandaron a cocina, en la MISMA fila que las cuentas sin mandar.
+              No cuesta alto nuevo —la fila ya existía— y absorbe la píldora de "Por cobrar", que
+              mostraba esto mismo en otro lugar. Un toque en un chip vuelve a abrir el pedido; antes
+              recuperarlo costaba cinco por un camino enterrado en la hoja de cobro. */}
+          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} />
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}
@@ -514,7 +537,7 @@ export function POSPage() {
 
       {/* La comanda de cocina, si el negocio la activó. Sale del MISMO pedido recién mandado: son
           dos papeles distintos para dos personas distintas, y cada uno con su propio ajuste. */}
-      <KitchenTicket order={lastOrder} />
+      <KitchenTicket order={lastOrder} soloLineas={agregados} />
     </Box>
   );
 }

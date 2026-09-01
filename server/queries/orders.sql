@@ -269,6 +269,15 @@ from order_lines l
 where l.order_id = $1 and l.enviado_a_cocina_at is null and l.cancelled_at is null
 order by l.id;
 
+-- name: MarcarTodoElPedidoEnviadoACocina :exec
+-- Marca como salidos en comanda TODOS los renglones vivos de un pedido.
+--
+-- Lo usa el CONFIRMAR: ahí sale la comanda del pedido completo, así que ningún renglón queda
+-- pendiente. Sin esto, el primer agregado sacaría una comanda con el pedido entero y cocina
+-- prepararía dos veces lo que ya tenía en la plancha.
+update order_lines set enviado_a_cocina_at = now()
+where order_id = $1 and enviado_a_cocina_at is null and cancelled_at is null;
+
 -- name: MarcarRenglonesEnviadosACocina :exec
 -- Marca como salidos en comanda los renglones dados de un pedido.
 --
@@ -276,4 +285,17 @@ order by l.id;
 -- mira la lista deja la puerta abierta a marcar renglones de otro pedido si algún día esa lista se
 -- arma desde otro lado. Es el mismo predicado que ya usa el resto del archivo.
 update order_lines set enviado_a_cocina_at = now()
-where order_id = $1 and id = any($2::bigint[]);
+where order_id = @order_id and id = any(@ids::bigint[]);
+
+-- name: PedidoNecesitaPreparacion :one
+-- Si a este pedido le queda algo que cocina tenga que preparar.
+--
+-- Lo usa el cobro para cerrar en el acto el pedido que no pasa por cocina y quedó saldado —una
+-- embotellada en el mostrador—, que antes nacía entregado porque crear y cobrar eran una sola
+-- llamada. Al separarlos, ese pedido se quedaba abierto para siempre en la barra y el operador
+-- tenía que entregarlo a mano: un toque por cada refresco, en la venta más frecuente del día.
+select exists (
+  select 1 from order_lines l
+  join products p on p.id = l.product_id
+  where l.order_id = $1 and l.cancelled_at is null and p.needs_prep
+)::boolean;

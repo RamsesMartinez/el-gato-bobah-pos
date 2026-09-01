@@ -40,17 +40,22 @@ export function AutoPrintTicket({ order }: { order: ReceiptOrder | null }) {
 // activó. Va aparte de AutoPrintTicket y no como una bandera dentro: son dos documentos distintos,
 // para dos personas distintas, con dos ajustes que se encienden por separado. Meterlos en el mismo
 // componente obligaría a leer un `if` para saber cuál sale.
-export function KitchenTicket({ order }: { order: ReceiptOrder | null }) {
+// `soloLineas` hace que salga la comanda de un AGREGADO en vez del pedido completo. Se llena con
+// los renglones que el servidor dice que acaban de entrar; sin ella sale el pedido entero, que es
+// la comanda del confirmado.
+export function KitchenTicket({ order, soloLineas }: { order: ReceiptOrder | null; soloLineas?: number[] }) {
   const { printKitchenTicket } = useTicketBusinessInfo();
-  // Igual que el ticket del cliente: se recuerda el pedido ya impreso, porque cada re-render que
-  // imprimiera sería una comanda duplicada en la plancha.
-  const impreso = useRef<number | null>(null);
+  // Se recuerda lo ya impreso, porque cada re-render que imprimiera sería una comanda duplicada en
+  // la plancha. La marca incluye QUÉ renglones salieron: recordando solo el id del pedido, un
+  // agregado al mismo pedido no volvería a imprimir nunca y cocina no se enteraría de lo nuevo.
+  const impreso = useRef<string | null>(null);
 
   useEffect(() => {
     if (!order || !printKitchenTicket) return;
-    if (impreso.current === order.id) return;
-    impreso.current = order.id;
-    void printHtmlOffscreen(buildKitchenHtml(order)).then((printed) => {
+    const marca = `${order.id}:${(soloLineas ?? []).join(',')}`;
+    if (impreso.current === marca) return;
+    impreso.current = marca;
+    void printHtmlOffscreen(buildKitchenHtml(order, soloLineas)).then((printed) => {
       if (printed) return;
       // Que no salga la comanda y nadie se entere es el modo de fallo que esto vino a quitar: sin
       // el aviso, cocina no prepara el pedido y nadie sabe por qué.
@@ -60,7 +65,7 @@ export function KitchenTicket({ order }: { order: ReceiptOrder | null }) {
         type: 'warning',
       });
     });
-  }, [order, printKitchenTicket]);
+  }, [order, printKitchenTicket, soloLineas]);
 
   return null;
 }

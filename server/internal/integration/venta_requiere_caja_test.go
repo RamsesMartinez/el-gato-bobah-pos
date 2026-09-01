@@ -26,7 +26,7 @@ func TestVentaSinCajaAbiertaSeRechaza(t *testing.T) {
 	prod := makeProduct(t, st, "Café", decimal.RequireFromString("80"), false)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 
-	_, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	_, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -64,7 +64,7 @@ func TestVentaConCajaPrincipalQuedaAtadaALaSesion(t *testing.T) {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -114,7 +114,7 @@ func TestCajaSecundariaAbiertaNoHabilitaVender(t *testing.T) {
 		t.Fatalf("OpenSession(secundaria): %v", err)
 	}
 
-	_, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	_, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -203,7 +203,7 @@ func TestPagoConMetodoDeOtraEmpresaSeRechaza(t *testing.T) {
 	}
 	defer release()
 
-	_, err = ordersSvc.Create(tenantCtx, app.CreateOrderCmd{
+	_, err = crearYCobrar(t, tenantCtx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -225,8 +225,8 @@ func TestPagoConMetodoDeOtraEmpresaSeRechaza(t *testing.T) {
 
 // Y el camino feliz sigue funcionando: el método propio pasa.
 func TestPagoConMetodoPropioPasa(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_metodo_ok", "cajero")
@@ -234,7 +234,7 @@ func TestPagoConMetodoPropioPasa(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,

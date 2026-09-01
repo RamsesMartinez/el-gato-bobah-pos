@@ -43,7 +43,7 @@ func TestLaListaDeEnCursoEsLaUnionDeLosDosConjuntos(t *testing.T) {
 		if pagar {
 			cmd.Payments = []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}}
 		}
-		o, err := svc.Create(ctx, cmd)
+		o, err := crearYCobrar(t, ctx, svc, cmd)
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}

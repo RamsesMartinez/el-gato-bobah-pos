@@ -25,8 +25,8 @@ import (
 // El caso contrario importa igual: un pedido de mostrador cobrado con "Uber Eats en línea" saca del
 // cajón dinero que sí estaba ahí, y el turno cierra con sobrante.
 func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_metodo_plat", "cajero")
@@ -41,7 +41,7 @@ func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
 
 	// El precio de la lista de Uber: 100 con el 35% sembrado = 135.
 	pedido := func(plataforma *int16, metodo int16, monto string) error {
-		_, err := svc.Create(ctx, app.CreateOrderCmd{
+		_, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        "domicilio",
 			OpenedBy:           cajero,
@@ -89,7 +89,7 @@ func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
 	// Un pago dividido con un método bueno y uno malo se rechaza entero. Aceptar la mitad dejaría
 	// el pedido pagado a medias con dinero en el método equivocado, que es peor que no cobrarlo.
 	t.Run("en un pago dividido basta un método ajeno para rechazar todo", func(t *testing.T) {
-		_, err := svc.Create(ctx, app.CreateOrderCmd{
+		_, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        "domicilio",
 			OpenedBy:           cajero,

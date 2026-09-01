@@ -15,7 +15,7 @@ import (
 
 func ventaConFolio(t *testing.T, svc *app.OrdersService, cajero, prod int64, metodo int16, folio string) *app.OrderView {
 	t.Helper()
-	ord, err := svc.Create(context.Background(), app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, context.Background(), svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero, FolioName: folio,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: metodo, Amount: decimal.RequireFromString("50")}},
@@ -37,7 +37,7 @@ func TestElNombreQueProponeLaPantallaEsElQueSeGuarda(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(context.Background(), app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, context.Background(), svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero, FolioName: "Ajolote",
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},

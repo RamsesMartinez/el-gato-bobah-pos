@@ -18,15 +18,15 @@ import (
 // pedidoDeAlitas deja un pedido abierto con un renglón de 5 y otro de 2, que es la forma del caso
 // real: comida que sale por tandas.
 func pedidoDeAlitas(t *testing.T, st *store.Store, svc *app.OrdersService, sufijo string) (*app.OrderView, int64, int64) {
-	t.Helper()
 	ctx := context.Background()
+	t.Helper()
 	cajero := makeUser(t, st, "cajero_"+sufijo, "cajero")
 	alitas := makeProduct(t, st, "Alitas "+sufijo, decimal.RequireFromString("200"), false)
 	papas := makeProduct(t, st, "Papas "+sufijo, decimal.RequireFromString("60"), false)
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{
 			{ProductID: alitas, Qty: decimal.RequireFromString("5")},

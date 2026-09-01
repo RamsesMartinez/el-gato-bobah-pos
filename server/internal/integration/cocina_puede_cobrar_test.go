@@ -90,7 +90,7 @@ func TestElAvisoDelPOSListaLoQueFaltaPorCobrar(t *testing.T) {
 
 	nuevo := func(pagos []app.PaymentInput) *app.OrderView {
 		t.Helper()
-		o, err := svc.Create(ctx, app.CreateOrderCmd{
+		o, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 			Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 			Payments: pagos,

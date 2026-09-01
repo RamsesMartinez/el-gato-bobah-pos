@@ -18,8 +18,8 @@ import (
 // Una venta por plataforma se valúa con la lista de ESA plataforma, y el servidor la recalcula: el
 // precio que mande el cliente se ignora, igual que en mostrador.
 func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_plat", "cajero")
@@ -31,7 +31,7 @@ func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 
 	// Uber trae 35% sembrado por la migración: 100 → 135.
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:         uuid.New(),
 		ServiceType:        "domicilio",
 		DeliveryPlatformID: &uber,
@@ -70,7 +70,7 @@ func TestPrecioManualGanaYPersiste(t *testing.T) {
 		t.Fatalf("capturar el precio: %v", err)
 	}
 
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:         uuid.New(),
 		ServiceType:        "domicilio",
 		DeliveryPlatformID: &rappi,
@@ -86,7 +86,7 @@ func TestPrecioManualGanaYPersiste(t *testing.T) {
 	}
 
 	// Y no contamina: en mostrador el mismo producto sigue en su base.
-	enMostrador, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	enMostrador, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -123,7 +123,7 @@ func TestPlataformaAjenaSeRechaza(t *testing.T) {
 	}
 	defer release()
 
-	_, err = ordersSvc.Create(tenantCtx, app.CreateOrderCmd{
+	_, err = crearYCobrar(t, tenantCtx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:         uuid.New(),
 		ServiceType:        "domicilio",
 		DeliveryPlatformID: &ajena,
@@ -139,8 +139,8 @@ func TestPlataformaAjenaSeRechaza(t *testing.T) {
 // El reparto lo cobra la plataforma: el costo de envío del negocio se fuerza a 0 aunque el cliente
 // mande otra cosa. Sin esto, cada pedido de Uber saldría con $20 de más.
 func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_envio", "cajero")
@@ -149,7 +149,7 @@ func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
 	didi := platformID(t, st, defaultCompanyID, "Didi")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:         uuid.New(),
 		ServiceType:        "domicilio",
 		DeliveryPlatformID: &didi,
