@@ -109,7 +109,7 @@ server/
 │   │   └── orders.go                          # Create rechaza pagos; AddLines marca y devuelve lo agregado
 │   ├── httpapi/
 │   │   ├── handlers_orders.go                 # 422 al crear con pagos; 409 al agregar a terminal
-│   │   └── router.go                          # /orders/unpaid → /orders/en-curso
+│   │   └── router.go                          # /orders/unpaid → /orders/open
 │   └── integration/
 │       ├── cobrar_exige_confirmar_test.go
 │       ├── comanda_del_agregado_test.go
