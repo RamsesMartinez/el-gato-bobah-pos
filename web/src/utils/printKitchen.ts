@@ -1,4 +1,6 @@
 import type { ReceiptOrder } from '../types/pos';
+import { soloHora } from './horaDelNegocio';
+import { DEFAULT_TIMEZONE } from './zonaPorDefecto';
 
 // La comanda de cocina: el papel que reemplaza a la libreta.
 //
@@ -18,11 +20,11 @@ function esc(s: string): string {
 //
 // Cocina ya está preparando lo anterior, así que reimprimir el pedido entero la haría preparar dos
 // veces lo mismo. El folio es el mismo en los dos papeles: es con lo que los junta.
-export function buildKitchenHtml(order: ReceiptOrder, soloLineas?: number[]): string {
+export function buildKitchenHtml(order: ReceiptOrder, soloLineas?: number[], zona?: string): string {
   const hora = new Date(order.openedAt);
-  const horaTxt = Number.isNaN(hora.getTime())
-    ? ''
-    : hora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  // La hora del NEGOCIO, no la de la tableta: dos estaciones con el reloj distinto sacarían
+  // comandas con horas distintas del mismo pedido, y cocina las junta por hora.
+  const horaTxt = Number.isNaN(hora.getTime()) ? '' : soloHora(hora, zona ?? DEFAULT_TIMEZONE);
 
   const esAgregado = soloLineas !== undefined && soloLineas.length > 0;
   const aImprimir = esAgregado

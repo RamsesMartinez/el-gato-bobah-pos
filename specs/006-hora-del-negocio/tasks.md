@@ -56,20 +56,20 @@ pantalla.
 
 ### Tests primero
 
-- [ ] T008 [P] [US1] Test en `web/src/hooks/useHoraDelNegocio.test.tsx`: con la zona del negocio en `America/Mexico_City` y el entorno en otra, formatea en la del negocio; sin ajustes cargados **no devuelve una hora**; con una zona que el navegador rechaza cae al default y no lanza.
-- [ ] T009 [P] [US1] Test en `web/src/utils/printReceipt.test.ts`: el ticket lleva la hora de la zona que se le pasa, no la del entorno.
-- [ ] T010 [P] [US1] Test en `web/src/utils/printKitchen.test.ts`: lo mismo para la comanda.
-- [ ] T011 [P] [US1] Test de guardia en `web/src/utils/formateoUnico.test.ts`: recorre `web/src` y **falla si algún archivo llama a `toLocaleString`/`toLocaleTimeString`/`toLocaleDateString` fuera del helper**. **El helper se recorta antes de buscar**: ahí llamarlo es su trabajo, y sin recortarlo el test falla contra su propia implementación — el mismo tropiezo que ya costó una corrección en el guardia equivalente de Go. Es lo que impide que el problema vuelva por una pantalla nueva; sin él, la migración de hoy se deshace sola en tres meses.
+- [X] T008 [P] [US1] Test en `web/src/hooks/useHoraDelNegocio.test.tsx`: con la zona del negocio en `America/Mexico_City` y el entorno en otra, formatea en la del negocio; sin ajustes cargados **no devuelve una hora**; con una zona que el navegador rechaza cae al default y no lanza.
+- [X] T009 [P] [US1] Test en `web/src/utils/printReceipt.test.ts`: el ticket lleva la hora de la zona que se le pasa, no la del entorno.
+- [X] T010 [P] [US1] Test en `web/src/utils/printKitchen.test.ts`: lo mismo para la comanda.
+- [X] T011 [P] [US1] Test de guardia en `web/src/utils/formateoUnico.test.ts`: recorre `web/src` y **falla si algún archivo llama a `toLocaleString`/`toLocaleTimeString`/`toLocaleDateString` fuera del helper**. **El helper se recorta antes de buscar**: ahí llamarlo es su trabajo, y sin recortarlo el test falla contra su propia implementación — el mismo tropiezo que ya costó una corrección en el guardia equivalente de Go. Es lo que impide que el problema vuelva por una pantalla nueva; sin él, la migración de hoy se deshace sola en tres meses.
 
 ### Implementación
 
-- [ ] T012 [US1] Crear `web/src/hooks/useHoraDelNegocio.ts`: **el único lugar** que convierte. Lee la zona de los ajustes, cae al default del producto si no hay, y devuelve un indicador de "todavía no sé la zona" para que nadie pinte una hora que después se corrija.
-- [ ] T012b [US1] Dejar constancia cuando la zona guardada no se puede aplicar (FR-006), con su test en `web/src/hooks/useHoraDelNegocio.test.tsx`. Sin esto, un negocio con la zona rota se comporta bien y nadie se entera nunca: la pantalla cae al default en silencio, que es el modo de fallo que esta feature vino a quitar.
-- [ ] T013 [US1] Mover el formateo de fecha y hora de `web/src/utils/format.ts` a que reciba la zona. Es la pieza de la que cuelgan las demás.
-- [ ] T014 [US1] Pasar la zona a `web/src/utils/printReceipt.ts` y `web/src/utils/printKitchen.ts`. `toTicketBusinessInfo` ya arma el encabezado desde los ajustes: la zona entra por ahí.
-- [ ] T015 [P] [US1] Migrar `web/src/features/backoffice/CashPage.tsx` (5 sitios).
-- [ ] T016 [P] [US1] Migrar `web/src/features/sales/SalesPage.tsx` y `web/src/features/sales/SaleDetailDialog.tsx`.
-- [ ] T017 [P] [US1] Migrar `web/src/features/backoffice/StockPage.tsx` y `web/src/app/SystemInfo.tsx`.
+- [X] T012 [US1] Crear `web/src/hooks/useHoraDelNegocio.ts`: **el único lugar** que convierte. Lee la zona de los ajustes, cae al default del producto si no hay, y devuelve un indicador de "todavía no sé la zona" para que nadie pinte una hora que después se corrija.
+- [X] T012b [US1] Dejar constancia cuando la zona guardada no se puede aplicar (FR-006), con su test en `web/src/hooks/useHoraDelNegocio.test.tsx`. Sin esto, un negocio con la zona rota se comporta bien y nadie se entera nunca: la pantalla cae al default en silencio, que es el modo de fallo que esta feature vino a quitar.
+- [X] T013 [US1] Mover el formateo de fecha y hora de `web/src/utils/format.ts` a que reciba la zona. Es la pieza de la que cuelgan las demás.
+- [X] T014 [US1] Pasar la zona a `web/src/utils/printReceipt.ts` y `web/src/utils/printKitchen.ts`. `toTicketBusinessInfo` ya arma el encabezado desde los ajustes: la zona entra por ahí.
+- [X] T015 [P] [US1] Migrar `web/src/features/backoffice/CashPage.tsx` (5 sitios).
+- [X] T016 [P] [US1] Migrar `web/src/features/sales/SalesPage.tsx` y `web/src/features/sales/SaleDetailDialog.tsx`.
+- [X] T017 [P] [US1] Migrar `web/src/features/backoffice/StockPage.tsx` y `web/src/app/SystemInfo.tsx`.
 - [ ] T018 [US1] Que ninguna pantalla pinte una hora antes de conocer la zona (SC-003). Una hora que se corrige sola enseña al operador a no confiar en lo que lee.
 
 **Checkpoint**: US1 entregable sola. El ticket deja de mentir sobre cuándo fue la venta.

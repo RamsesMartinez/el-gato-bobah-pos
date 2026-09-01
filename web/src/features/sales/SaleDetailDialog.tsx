@@ -10,6 +10,8 @@ import {
 import { useUiStore } from '../../stores/ui';
 import { money } from '../../utils/format';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
+import { fechaYHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 // El detalle de una venta: sus renglones con modificadores y de dónde salió el dinero.
 //
@@ -25,6 +27,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const horaNegocio = useHoraDelNegocio();
   const palette = useUiStore((s) => s.palette);
   const { data, isLoading } = useQuery({
     queryKey: ['order', venta.id],
@@ -47,8 +50,8 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
             <VStack align="stretch" gap={1}>
               <Dato k="Estado" v={etiquetaEstado(venta.status)} />
               <Dato k="Tipo" v={venta.platform || etiquetaTipo(venta.serviceType)} />
-              <Dato k="Abierta" v={fechaHora(venta.openedAt)} />
-              {venta.completedAt && <Dato k="Cerrada" v={fechaHora(venta.completedAt)} />}
+              <Dato k="Abierta" v={fechaHora(venta.openedAt, horaNegocio.zona)} />
+              {venta.completedAt && <Dato k="Cerrada" v={fechaHora(venta.completedAt, horaNegocio.zona)} />}
               {venta.openedBy && <Dato k="Atendió" v={venta.openedBy} />}
               {venta.customer && <Dato k="Cliente" v={venta.customer} />}
               <Dato k="Medio de pago" v={venta.methods || 'Sin cobrar'} />
@@ -101,7 +104,7 @@ function Dato({ k, v }: { k: string; v: string }) {
   );
 }
 
-function fechaHora(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+// La zona llega como parámetro: esta es una función de módulo y el hook solo vive en un componente.
+function fechaHora(iso: string, zona: string): string {
+  return fechaYHora(iso, zona);
 }

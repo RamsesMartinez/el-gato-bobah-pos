@@ -3,6 +3,8 @@ import { Box, Text, HStack, VStack, Button, Circle } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { systemApi, frontendVersion } from '../api/system';
 import { useAppUpdate } from '../stores/appUpdate';
+import { fechaYHora } from '../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../hooks/useHoraDelNegocio';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../components/ui/dialog';
@@ -11,10 +13,11 @@ import {
 function short(sha: string) {
   return sha.length > 7 ? sha.slice(0, 7) : sha;
 }
-function fmtDate(iso: string) {
+// La zona llega como parámetro y no se lee aquí: esta es una función de módulo y el hook solo
+// existe dentro de un componente.
+function fmtDate(iso: string, zona: string) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+  return fechaYHora(iso, zona) || '—';
 }
 
 // Pie de sistema: marca de agua tenue con la versión del frontend (siempre visible en el sidebar);
@@ -69,12 +72,13 @@ export function SystemInfo() {
 }
 
 function VersionRow({ label, version, builtAt }: { label: string; version: string; builtAt: string }) {
+  const horaNegocio = useHoraDelNegocio();
   return (
     <HStack justify="space-between" align="start" borderBottomWidth="1px" borderColor="border.muted" pb={2}>
       <Text color="fg.muted" fontSize="sm">{label}</Text>
       <VStack align="end" gap={0}>
         <Text fontFamily="mono" fontWeight="600" fontSize="sm">{version === '—' ? '—' : short(version)}</Text>
-        <Text fontSize="xs" color="fg.subtle">{fmtDate(builtAt)}</Text>
+        <Text fontSize="xs" color="fg.subtle">{fmtDate(builtAt, horaNegocio.zona)}</Text>
       </VStack>
     </HStack>
   );

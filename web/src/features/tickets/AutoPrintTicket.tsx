@@ -44,7 +44,7 @@ export function AutoPrintTicket({ order }: { order: ReceiptOrder | null }) {
 // los renglones que el servidor dice que acaban de entrar; sin ella sale el pedido entero, que es
 // la comanda del confirmado.
 export function KitchenTicket({ order, soloLineas }: { order: ReceiptOrder | null; soloLineas?: number[] }) {
-  const { printKitchenTicket } = useTicketBusinessInfo();
+  const { printKitchenTicket, data: business } = useTicketBusinessInfo();
   // Se recuerda lo ya impreso, porque cada re-render que imprimiera sería una comanda duplicada en
   // la plancha. La marca incluye QUÉ renglones salieron: recordando solo el id del pedido, un
   // agregado al mismo pedido no volvería a imprimir nunca y cocina no se enteraría de lo nuevo.
@@ -55,7 +55,7 @@ export function KitchenTicket({ order, soloLineas }: { order: ReceiptOrder | nul
     const marca = `${order.id}:${(soloLineas ?? []).join(',')}`;
     if (impreso.current === marca) return;
     impreso.current = marca;
-    void printHtmlOffscreen(buildKitchenHtml(order, soloLineas)).then((printed) => {
+    void printHtmlOffscreen(buildKitchenHtml(order, soloLineas, business?.timezone)).then((printed) => {
       if (printed) return;
       // Que no salga la comanda y nadie se entere es el modo de fallo que esto vino a quitar: sin
       // el aviso, cocina no prepara el pedido y nadie sabe por qué.
@@ -65,7 +65,7 @@ export function KitchenTicket({ order, soloLineas }: { order: ReceiptOrder | nul
         type: 'warning',
       });
     });
-  }, [order, printKitchenTicket, soloLineas]);
+  }, [order, printKitchenTicket, soloLineas, business?.timezone]);
 
   return null;
 }
