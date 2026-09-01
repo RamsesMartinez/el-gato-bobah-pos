@@ -6,6 +6,7 @@ import logo from '../../assets/logo.webp';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
 import { useSessionStore } from '../../stores/session';
+import { limpiarBloqueo } from './inactividad';
 import { useUiStore } from '../../stores/ui';
 import { ApiError } from '../../api/client';
 import { RADIUS } from '../../theme/ui';
@@ -26,6 +27,17 @@ export function LoginPage() {
     try {
       // Un solo campo usuario@empresa; el backend separa el @.
       const { accessToken, user } = await posApi.login(identifier, password);
+      // Entrar con usuario y contraseña LEVANTA el bloqueo de pantalla.
+      //
+      // La marca vive en sessionStorage para sobrevivir a un F5 —si no, bastaría recargar para
+      // saltarse el bloqueo— pero sobrevivía también a salir y volver a entrar con credenciales. El
+      // operador que olvidó su PIN tocaba "Entrar con usuario y contraseña", se autenticaba, y la
+      // pantalla lo volvía a bloquear pidiéndole justo el PIN que no recuerda: quedaba encerrado
+      // con el local abierto, que es el escenario que ese botón existe para evitar.
+      //
+      // No debilita el bloqueo: identificarse con usuario y contraseña es la forma MÁS fuerte que
+      // el sistema tiene de saber quién está usando la tableta.
+      limpiarBloqueo(window.sessionStorage);
       setSession(accessToken, user);
       // Tras alta/reset por admin: obligar a cambiar la contraseña antes de operar.
       navigate(user.mustChangePassword ? '/cuenta?forzar=1' : '/pos');
