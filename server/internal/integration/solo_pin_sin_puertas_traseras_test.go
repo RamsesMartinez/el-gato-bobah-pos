@@ -89,3 +89,57 @@ func TestConSoloPinNoSePuedeDesbloquearEligiendoPersona(t *testing.T) {
 		t.Errorf("el camino de elegir persona sigue abierto con solo-PIN (err=%v): son dos lockouts para el mismo desbloqueo", err)
 	}
 }
+
+// SI NO SE PUEDE SABER EN QUÉ MODO ESTÁ EL NEGOCIO, NO SE ACEPTA UN PIN CORTO.
+//
+// `politicaDePin` devolvía "no es solo-PIN" ante CUALQUIER error de lectura, así que un hipo de la
+// consulta —un timeout de sentencia, una conexión que se cae— hacía que el negocio en modo de seis
+// dígitos aceptara uno de cuatro y le calculara su huella de búsqueda, que en ese modo es
+// directamente desbloqueable. El modo de fallo de un control tiene que ser proteger.
+func TestSiNoSePuedeLeerElModoNoSeAceptaUnPinCorto(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+
+	dueno := makeUser(t, st, "dueno_hipo", "admin")
+	ana := makeUser(t, st, "ana_hipo", "cajero")
+	if err := encenderSoloPin(t, st, dueno); err != nil {
+		t.Fatalf("encender solo-PIN: %v", err)
+	}
+
+	// El hipo: leer los ajustes falla. No es "no hay fila" —eso es una empresa nueva, tiene su
+	// default seguro y no debe rechazar nada—, es que la lectura no se pudo hacer.
+	if _, err := st.Pool.Exec(ctx, `drop table business_settings cascade`); err != nil {
+		t.Fatalf("provocar el fallo de lectura: %v", err)
+	}
+
+	if err := users.SetPIN(ctx, ana, "4827"); err == nil {
+		t.Error("se aceptó un PIN de cuatro dígitos sin poder leer el modo del negocio: en solo-PIN ese PIN abre la caja")
+	}
+}
+
+// EL CAMINO DE SOLO-PIN NO PUEDE FUNCIONAR CON EL MODO APAGADO.
+//
+// `PinSwitchSoloPin` es exportada y solo comprobaba que hubiera secreto; el gate del modo vivía en
+// el handler. Con el modo apagado, ese camino identifica a la persona POR SU PIN, que es justo lo
+// que el modo por default no hace: ahí el PIN solo prueba, y por eso basta con cuatro dígitos.
+// Deducir de quién es un PIN de cuatro dígitos con el modo apagado abre lo que el mínimo de seis
+// existe para cerrar. Hoy lo tapa el handler; un segundo llamador lo destapa.
+func TestConElModoApagadoElCaminoDeSoloPinSeNiega(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
+	svc := app.NewAuthServiceConPepper(st, jm, clock, "pepper-de-prueba")
+
+	ana := makeUser(t, st, "ana_apagado", "cajero")
+	luis := makeUser(t, st, "luis_apagado", "cajero")
+	if err := users.SetPIN(ctx, luis, "4827"); err != nil {
+		t.Fatalf("SetPIN: %v", err)
+	}
+
+	// El modo está apagado: es el default y no se tocó.
+	if _, err := svc.PinSwitchSoloPin(ctx, "4827", ana, "lo-que-sea"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("el camino de solo-PIN funcionó con el modo apagado (err=%v): deduce de quién es un PIN de cuatro dígitos", err)
+	}
+}

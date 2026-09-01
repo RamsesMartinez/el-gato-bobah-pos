@@ -104,14 +104,28 @@ func (s *AuthService) PinSwitchEnEstacion(ctx context.Context, userID int64, pin
 	// desbloqueo con lockouts separados —`pin:<objetivo>` y `pinsolo:<quien pide>`—, así que quien
 	// agota una pasa a la otra y duplica su presupuesto de intentos. Y el modo existe para que la
 	// plantilla no se muestre; dejar la ruta que nombra a la persona lo contradice.
-	opciones, err := s.UnlockOptions(ctx)
+	soloPin, err := s.modoSoloPin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if opciones.PinOnly {
+	if soloPin {
 		return nil, fmt.Errorf("%w: este negocio se desbloquea solo con el PIN", domain.ErrValidation)
 	}
 	return s.relevar(ctx, userID, pin, actorID, refreshActual)
+}
+
+// modoSoloPin dice si el negocio se desbloquea con el PIN solo. Un error de lectura se PROPAGA:
+// caer a "no" degradaría el negocio al modo de elegir persona, que es la puerta que el modo cierra
+// a propósito.
+func (s *AuthService) modoSoloPin(ctx context.Context) (bool, error) {
+	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DefaultIdentity().PinOnlyUnlock, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return ajustes.PinOnlyUnlock, nil
 }
 
 // relevar es el relevo en sí, común a los dos modos. Privado a propósito: los dos caminos públicos
@@ -136,29 +150,24 @@ func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, act
 		if !auth.CheckSecret(*u.PinHash, pin) {
 			return domain.ErrInvalidCredentials
 		}
-		// El vencimiento sale del token que ESTA estación viene presentando, y no se repone.
+		// Se TOMA la sesión de esta estación: una sola sentencia la revoca y devuelve su
+		// vencimiento, que es el que hereda el relevo.
 		//
 		// Por token y no por persona: buscar por user_id tomaba el vencimiento más lejano de
-		// cualquiera de sus tabletas, así que entrar fresco en una le regalaba horas a la otra.
-		// Y reponer el plazo completo haría que una tableta usada cada veinte minutos no caducara
+		// cualquiera de sus tabletas, así que entrar fresco en una le regalaba horas a la otra. Y
+		// reponer el plazo completo haría que una tableta usada cada veinte minutos no caducara
 		// nunca, con lo que el límite del turno sería decorativo.
-		hashActual := auth.HashToken(refreshActual)
-		vence, err := q.LiveRefreshExpiry(ctx, db.LiveRefreshExpiryParams{
-			TokenHash: hashActual, ExpiresAt: s.now(),
+		//
+		// Sin filas no hay sesión viva en esta estación, y ahí el relevo se niega: la salida es
+		// entrar con usuario y contraseña, que la pantalla de bloqueo ofrece a la vista.
+		vence, err := q.TomarSesionDeEstacion(ctx, db.TomarSesionDeEstacionParams{
+			TokenHash: auth.HashToken(refreshActual), ExpiresAt: s.now(), UserID: actorID,
 		})
 		if err != nil {
-			// Sin sesión viva en esta estación no hay reloj que conservar, y arrancar uno nuevo
-			// sería regalar un turno completo a cambio de un PIN. Se niega: la salida es entrar con
-			// usuario y contraseña, que la pantalla de bloqueo ofrece a la vista.
 			return domain.ErrUnauthorized
 		}
 		sess, err = s.issueUntil(ctx, q, u, vence)
-		if err != nil {
-			return err
-		}
-		// Se revoca SOLO la de esta estación. Revocar todas las de la persona tumbaba sus otras
-		// tabletas: entregar una dejaba al compañero de la otra fuera a media venta.
-		return q.RevokeRefreshTokenByHash(ctx, hashActual)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -212,7 +221,13 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 		if !u.IsActive {
 			return domain.ErrUnauthorized
 		}
-		sess, err = s.issue(ctx, q, u)
+		// La rotación CONSERVA el fin del turno; no acuña uno nuevo.
+		//
+		// Reponer el plazo completo en cada rotación corría el vencimiento hacia adelante solo: el
+		// front rota al volver el foco a la ventana, así que una tableta que alguien toca cada rato
+		// no caducaba nunca y `session_hours` era decorativo. Es el mismo defecto que se corrigió
+		// en el relevo por PIN, y quedó vivo en esta otra puerta.
+		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt)
 		return err
 	})
 	if reusedUserID != 0 {
@@ -340,6 +355,24 @@ func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) 
 func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID int64, refreshActual string) (*Session, error) {
 	if s.pinPepper == "" {
 		return nil, domain.ErrSinPepper
+	}
+	// La comprobación del modo vive AQUÍ y no solo en el handler: con el modo apagado este camino
+	// identificaría a la persona por su PIN, que es justo lo que el modo por default no hace —ahí
+	// el PIN solo prueba, y por eso bastan cuatro dígitos. Deducir de quién es un PIN de cuatro
+	// abre lo que el mínimo de seis existe para cerrar.
+	soloPin, err := s.modoSoloPin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !soloPin {
+		return nil, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation)
+	}
+	// El largo se exige también AL DESBLOQUEAR, no solo al capturar: el mínimo de seis lo aplicaba
+	// el botón de la pantalla, que es front y no barrera. Un PIN corto que quedara guardado por
+	// cualquier vía sería desbloqueable tecleándolo.
+	if err := domain.ValidarPin(pin, true); err != nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
 	}
 	fila, err := s.store.QC(ctx).UserByPinLookup(ctx, ptr(domain.PinLookup(pin, s.pinPepper)))
 	if err != nil {
