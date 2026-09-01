@@ -7,8 +7,15 @@ export const posApi = {
   // resuelve la empresa por su slug.
   login: (identifier: string, password: string) =>
     api.post<{ accessToken: string; user: SessionUser }>('/auth/login', { username: identifier, password }),
-  pinSwitch: (userId: number, pin: string) =>
-    api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch', { userId, pin }),
+  // userId va en null cuando el negocio usa solo-PIN: ahí el servidor deduce quién es. Con el
+  // ajuste apagado, un userId ausente se RECHAZA — no se cae al modo permisivo en silencio.
+  pinSwitch: (userId: number | null, pin: string) =>
+    api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch',
+      userId === null ? { pin } : { userId, pin }),
+  // Quiénes pueden desbloquear esta estación. Solo id y nombre: se pinta en un mostrador a la
+  // vista del público.
+  unlockOptions: () =>
+    api.get<{ pinOnly: boolean; users: Array<{ id: number; name: string }> }>('/auth/unlock-options'),
   // Revoca el refresh token y borra la cookie en el server. Sin esto, "Salir" solo limpia
   // memoria y la sesión revive tras un reload (el arranque canjea la cookie que sobrevive).
   logout: () => api.post<void>('/auth/logout'),
@@ -136,6 +143,10 @@ export interface BusinessSettings {
   // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
   // vive donde le toca, en el punto de venta.
   kitchenCanCharge: boolean;
+  // Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
+  pinOnlyUnlock: boolean;
+  lockAfterSeconds: number;
+  sessionHours: number;
   // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
   // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
   hasLogo: boolean;
@@ -184,4 +195,7 @@ export interface TicketSettingsInput {
   printFreeModifiers?: boolean;
   printKitchenTicket?: boolean;
   kitchenCanCharge?: boolean;
+  pinOnlyUnlock?: boolean;
+  lockAfterSeconds?: number;
+  sessionHours?: number;
 }

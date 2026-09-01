@@ -88,6 +88,13 @@ export function PrintSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
+  const setIdentidad = useMutation({
+    mutationFn: (v: { pinOnlyUnlock?: boolean; lockAfterSeconds?: number; sessionHours?: number }) =>
+      posApi.updateTicketSettings(v),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
   const uploadLogo = useMutation({
     mutationFn: (file: File) => posApi.uploadTicketLogo(file),
     onSuccess: (bs) => {
@@ -251,6 +258,37 @@ export function PrintSettingsPage() {
             disabled={setCocinaCobra.isPending}
             onCheckedChange={(e) => setCocinaCobra.mutate(e.checked)}
           />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <Text fontWeight="700" mb={1}>Bloqueo de la pantalla</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          La tableta se bloquea sola y pide identificarse para seguir. Lo capturado no se pierde.
+        </Text>
+        <HStack gap={4} flexWrap="wrap">
+          <Box>
+            <Text fontSize="sm" fontWeight="600" mb={1}>Se bloquea a los</Text>
+            <HStack>
+              <Input w="6rem" minH="44px" type="number" inputMode="numeric"
+                value={String(data?.lockAfterSeconds ?? 180)}
+                onChange={(e) => setIdentidad.mutate({ lockAfterSeconds: Number(e.target.value) })} />
+              <Text fontSize="sm" color="fg.muted">segundos</Text>
+            </HStack>
+            {/* 0 es una elección válida, no un error: una caja en una oficina cerrada no necesita
+                bloquearse. Se dice para que nadie lo lea como "roto". */}
+            <Text fontSize="xs" color="fg.muted" mt={1}>0 = no se bloquea</Text>
+          </Box>
+          <Box>
+            <Text fontSize="sm" fontWeight="600" mb={1}>La sesión dura</Text>
+            <HStack>
+              <Input w="6rem" minH="44px" type="number" inputMode="numeric"
+                value={String(data?.sessionHours ?? 8)}
+                onChange={(e) => setIdentidad.mutate({ sessionHours: Number(e.target.value) })} />
+              <Text fontSize="sm" color="fg.muted">horas</Text>
+            </HStack>
+            <Text fontSize="xs" color="fg.muted" mt={1}>Después pide usuario y contraseña</Text>
+          </Box>
         </HStack>
       </Box>
 

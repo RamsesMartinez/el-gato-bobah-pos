@@ -29,21 +29,21 @@ tres lugares y `/speckit-analyze` lo marcó como HIGH.
 **Desbloquea todo lo demás.** Por sí sola no cambia comportamiento: los defaults dejan el sistema
 como está hoy.
 
-- [ ] T001 Crear la migración de los ajustes en `server/migrations/`, con las tres columnas de
+- [X] T001 Crear la migración de los ajustes en `server/migrations/`, con las tres columnas de
       [data-model.md](./data-model.md) sobre `business_settings`: `pin_only_unlock` (default
       `false`), `lock_after_seconds` (default `180`) y `session_hours` (default `8`). Reversible,
       con su `Down`.
       **El número se asigna al implementar, no ahora**: el spec 003 también va a agregar migraciones
       y la que aterrice segunda tiene que tomar el siguiente libre.
-- [ ] T002 Escribir `server/internal/integration/ajustes_identificacion_test.go`: los tres nacen con
+- [X] T002 Escribir `server/internal/integration/ajustes_identificacion_test.go`: los tres nacen con
       su default, y guardarlos NO pisa los demás ajustes del ticket que viven en la misma fila
       (`print_kitchen_ticket`, `kitchen_can_charge`). Es el fallo clásico de esa tabla y ya mordió una vez.
-- [ ] T003 Agregar las tres columnas al `select` y al `update` de `server/queries/settings.sql` y
+- [X] T003 Agregar las tres columnas al `select` y al `update` de `server/queries/settings.sql` y
       correr `make sqlc`.
-- [ ] T004 Exponerlas en `server/internal/app/settings.go` y `server/internal/httpapi/handlers_settings.go`
+- [X] T004 Exponerlas en `server/internal/app/settings.go` y `server/internal/httpapi/handlers_settings.go`
       según [contracts/api.md](./contracts/api.md).
-- [ ] T005 [P] Reflejarlas en `web/src/api/pos.ts` (tipo `BusinessSettings` y el cuerpo del PUT).
-- [ ] T006 [P] Agregar los controles a `web/src/features/admin/BusinessSettingsPage.tsx`: el
+- [X] T005 [P] Reflejarlas en `web/src/api/pos.ts` (tipo `BusinessSettings` y el cuerpo del PUT).
+- [X] T006 [P] Agregar los controles a `web/src/features/admin/BusinessSettingsPage.tsx`: el
       interruptor de solo-PIN y los dos tiempos. El texto dice **qué hace**, no por qué — el porqué
       vive en la migración.
 
@@ -56,22 +56,22 @@ como está hoy.
 **Independiente**: se puede probar y entregar sin el cambio de operador. Ya entrega valor —la
 tableta deja de quedarse abierta— aunque desbloquear sea todavía con la misma persona.
 
-- [ ] T007 [US2] Escribir `web/src/features/auth/inactividad.test.ts` **antes** del código: el
+- [X] T007 [US2] Escribir `web/src/features/auth/inactividad.test.ts` **antes** del código: el
       temporizador vence tras el tiempo configurado, cualquier interacción lo reinicia, y un tiempo
       de 0 o negativo se trata como "no bloquear" en vez de bloquear a cada instante.
-- [ ] T008 [US2] Implementar `web/src/features/auth/useInactividad.ts`: temporizador del CLIENTE,
+- [X] T008 [US2] Implementar `web/src/features/auth/useInactividad.ts`: temporizador del CLIENTE,
       reiniciado por interacción. No habla con el servidor — ver hallazgo 7 de
       [research.md](./research.md).
-- [ ] T009 [US2] Escribir el test que fija FR-011 y SC-006 **antes** de pintar la pantalla: desde el
+- [X] T009 [US2] Escribir el test que fija FR-011 y SC-006 **antes** de pintar la pantalla: desde el
       bloqueo se puede llegar a entrar con usuario y contraseña. Sin ese camino, quien olvida su PIN
       a media noche queda encerrado fuera del punto de venta con el local abierto, y es la clase de
       salida que se cae en un refactor sin que nadie lo note hasta esa noche.
-- [ ] T010 [US2] Crear `web/src/features/auth/LockScreen.tsx`: cubre la aplicación cuando está
+- [X] T010 [US2] Crear `web/src/features/auth/LockScreen.tsx`: cubre la aplicación cuando está
       bloqueada. Controles de 44 px, sin `<select>` nativo, y el camino de "entrar con usuario y
       contraseña" **visible**, no escondido.
-- [ ] T011 [US2] Montarla en `web/src/App.tsx` de modo que cubra el POS sin desmontarlo: lo
+- [X] T011 [US2] Montarla en `web/src/App.tsx` de modo que cubra el POS sin desmontarlo: lo
       capturado tiene que seguir ahí al desbloquear.
-- [ ] T012 [US2] Escribir el test que fija FR-002: con una cuenta capturada, bloquear y desbloquear
+- [X] T012 [US2] Escribir el test que fija FR-002: con una cuenta capturada, bloquear y desbloquear
       la deja intacta. Va contra el store `egb:ticket:v2`, que ya sobrevive a una recarga — el test
       existe para que nadie rompa esa garantía moviendo el estado a memoria.
 

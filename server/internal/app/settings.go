@@ -49,7 +49,11 @@ type BusinessSettings struct {
 	// que el cocinero ya ve. Lo enciende el negocio que tiene la cocina en otro cuarto.
 	PrintKitchenTicket bool `json:"printKitchenTicket"`
 	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
-	KitchenCanCharge bool       `json:"kitchenCanCharge"`
+	KitchenCanCharge bool `json:"kitchenCanCharge"`
+	// Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
+	PinOnlyUnlock    bool       `json:"pinOnlyUnlock"`
+	LockAfterSeconds int        `json:"lockAfterSeconds"`
+	SessionHours     int        `json:"sessionHours"`
 	HasLogo          bool       `json:"hasLogo"`
 	LogoUpdatedAt    *time.Time `json:"logoUpdatedAt"`
 }
@@ -78,6 +82,9 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		PrintFreeModifiers: row.PrintFreeModifiers,
 		PrintKitchenTicket: row.PrintKitchenTicket,
 		KitchenCanCharge:   row.KitchenCanCharge,
+		PinOnlyUnlock:      row.PinOnlyUnlock,
+		LockAfterSeconds:   int(row.LockAfterSeconds),
+		SessionHours:       int(row.SessionHours),
 		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
@@ -133,8 +140,13 @@ func (s *SettingsService) Logo(ctx context.Context) (TicketLogo, bool, error) {
 // SetBusinessInfo guarda la identidad que sale en el ticket y el interruptor de impresión
 // automática. Valida en domain ANTES de tocar el store: un texto que no cabe en 80mm se rechaza
 // como 400, no como un check violado de Postgres convertido en 500.
-func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, print domain.PrintSettings, timezone string, userID int64) (BusinessSettings, error) {
+func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, print domain.PrintSettings, ident domain.IdentitySettings, timezone string, userID int64) (BusinessSettings, error) {
 	if err := info.Validate(); err != nil {
+		return BusinessSettings{}, err
+	}
+	// Los tiempos se validan AQUÍ y no donde se usan: donde se usan está el arranque del POS, y
+	// ahí un valor absurdo dejaría la tableta bloqueada para siempre sin nada que lo explique.
+	if err := ident.Validate(); err != nil {
 		return BusinessSettings{}, err
 	}
 	// La zona se valida AQUÍ y no donde se usa: donde se usa está el camino de una venta, y ahí un
@@ -148,6 +160,9 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 		PrintFreeModifiers: print.PrintFreeModifiers,
 		PrintKitchenTicket: print.PrintKitchenTicket,
 		KitchenCanCharge:   print.KitchenCanCharge,
+		PinOnlyUnlock:      ident.PinOnlyUnlock,
+		LockAfterSeconds:   int32(ident.LockAfterSeconds),
+		SessionHours:       int32(ident.SessionHours),
 		BusinessName:       strings.TrimSpace(info.Name),
 		Address:            strings.TrimSpace(info.Address),
 		Phone:              strings.TrimSpace(info.Phone),

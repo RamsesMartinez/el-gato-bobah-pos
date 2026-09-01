@@ -39,6 +39,9 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
 		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
 		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
+		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
+		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
+		SessionHours       *int             `json:"sessionHours"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -61,7 +64,8 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
 		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
-		body.KitchenCanCharge != nil {
+		body.KitchenCanCharge != nil || body.PinOnlyUnlock != nil ||
+		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -82,7 +86,12 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
 			KitchenCanCharge:   orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
 		}
-		if _, err := h.settings.SetBusinessInfo(ctx, info, print, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
+		ident := domain.IdentitySettings{
+			PinOnlyUnlock:    orBool(body.PinOnlyUnlock, cur.PinOnlyUnlock),
+			LockAfterSeconds: orInt(body.LockAfterSeconds, cur.LockAfterSeconds),
+			SessionHours:     orInt(body.SessionHours, cur.SessionHours),
+		}
+		if _, err := h.settings.SetBusinessInfo(ctx, info, print, ident, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
 			Error(w, err)
 			return
 		}
@@ -199,6 +208,15 @@ func (h *Handlers) TicketLogo(w http.ResponseWriter, r *http.Request) {
 // orBool: el ajuste ausente conserva su valor actual. Un PATCH manda solo lo que cambió, y leer un
 // booleano ausente como false apagaría lo que nadie tocó.
 func orBool(v *bool, actual bool) bool {
+	if v == nil {
+		return actual
+	}
+	return *v
+}
+
+// orInt: igual que orBool, para los tiempos. Un entero ausente conserva el actual; leerlo como 0
+// dejaría la tableta bloqueada a cada instante o la sesión sin duración válida.
+func orInt(v *int, actual int) int {
 	if v == nil {
 		return actual
 	}
