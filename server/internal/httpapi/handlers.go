@@ -226,6 +226,16 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	// significaría aceptar cualquier PIN sin saber de quién, y con eso la atribución del arqueo
 	// dejaría de valer.
 	if body.UserID == nil {
+		// El limitador cuelga de QUIEN PIDE, no de a quién se busca: en este modo no hay a quién
+		// buscar, y sin llave la rama nacía sin ninguna protección. Como aquí el PIN IDENTIFICA,
+		// cada intento se prueba contra toda la plantilla a la vez —con 8 personas la esperanza
+		// baja a ~62,500 intentos— y si cae el del admin, quien ataca recibe rol de admin.
+		llave := "pinsolo:" + strconv.FormatInt(actor.ID, 10)
+		if h.authFails.blocked(r.Context(), llave) {
+			logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin_solo", "ip", clientIP(r))
+			tooManyRequests(w, h.authFails.retryAfter(r.Context(), llave))
+			return
+		}
 		opciones, err := h.auth.UnlockOptions(r.Context())
 		if err != nil || !opciones.PinOnly {
 			Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
@@ -233,12 +243,14 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 		}
 		s, err := h.auth.PinSwitchSoloPin(r.Context(), body.PIN, actor.ID)
 		if err != nil {
+			h.authFails.record(r.Context(), llave)
 			// El evento no puede decir a quién se intentó desbloquear: en este modo justamente no
 			// se sabe. Lleva solo el origen.
 			logging.SecurityEvent(r.Context(), "pin_failed", "modo", "solo_pin", "ip", clientIP(r))
 			Error(w, err)
 			return
 		}
+		h.authFails.reset(r.Context(), llave)
 		h.writeSession(w, s, http.StatusOK)
 		return
 	}

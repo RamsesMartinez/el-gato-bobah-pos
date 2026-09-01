@@ -62,3 +62,57 @@ func TestElEventoDeDesbloqueoNoLlevaElPin(t *testing.T) {
 		t.Errorf("el evento no dice a quién se intentó desbloquear: %s", registrado)
 	}
 }
+
+// FR-010 en el camino de SOLO-PIN, que nació sin ninguna protección.
+//
+// La llave del lockout se construía con el `userId` que en ese modo NO existe, y no inventé otra:
+// la rama llamaba a PinSwitchSoloPin sin `blocked`, sin `record`, y /pin-switch tampoco tiene
+// throttle per-IP. Cualquier empleado autenticado podía probar PINs sin límite — y como ahí el PIN
+// IDENTIFICA, cada intento se prueba contra toda la plantilla a la vez: con 8 personas la
+// esperanza baja a ~62,500 intentos, y si cae el del admin, el atacante recibe rol de admin.
+//
+// La llave cuelga de QUIEN PIDE, no de a quién se busca, porque en este modo no hay a quién buscar.
+func TestElDesbloqueoSoloPinTambienSeFrena(t *testing.T) {
+	h := NewHandlers(Deps{Cfg: config.Config{}})
+	ctx := context.Background()
+
+	// Se agota el limitador del dispositivo que pide.
+	for i := 0; i < authFailMax+1; i++ {
+		h.authFails.record(ctx, "pinsolo:7")
+	}
+
+	cuerpo, _ := json.Marshal(map[string]any{"pin": "482715"})
+	req := httptest.NewRequest(http.MethodPost, "/auth/pin-switch", bytes.NewReader(cuerpo))
+	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	w := httptest.NewRecorder()
+	h.PinSwitch(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, quiere 429: sin límite se puede recorrer el espacio de PINs entero", w.Code)
+	}
+}
+
+// FR-008 por el lado que no se veía: `POST /me/pin` era un ORÁCULO de existencia.
+//
+// El rechazo por PIN repetido no dice de quién es, pero decir "alguien lo usa" ya basta: cualquier
+// autenticado recorre el espacio con su propio formulario, recolecta PINs válidos, y después los
+// usa contra el desbloqueo. Cambiar el PIN legítimamente pasa dos o tres veces al año, así que el
+// límite no estorba a nadie que lo use como se debe.
+func TestCambiarElPropioPinTambienSeFrena(t *testing.T) {
+	h := NewHandlers(Deps{Cfg: config.Config{}})
+	ctx := context.Background()
+
+	for i := 0; i < authFailMax+1; i++ {
+		h.authFails.record(ctx, "setpin:7")
+	}
+
+	cuerpo, _ := json.Marshal(map[string]any{"pin": "482715"})
+	req := httptest.NewRequest(http.MethodPost, "/me/pin", bytes.NewReader(cuerpo))
+	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1}))
+	w := httptest.NewRecorder()
+	h.SetOwnPIN(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, quiere 429: sin límite el formulario es un oráculo de PINs", w.Code)
+	}
+}
