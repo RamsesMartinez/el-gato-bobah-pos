@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, HStack, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
 import { LuWallet } from 'react-icons/lu';
+import {
+  DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
+} from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import type { BoardOrder } from '../../types/pos';
 import { CobrarSheet } from '../orders/CobrarSheet';
@@ -29,6 +32,7 @@ const TAP = '44px';
 export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => void }) {
   const qc = useQueryClient();
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
+  const [listaDeSaldos, setListaDeSaldos] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['orders', 'open'],
@@ -43,7 +47,17 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
     qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
   };
 
-  // Sin pedidos no se pinta nada: un contador en cero es chrome que le quita ancho a la barra.
+  // EN PREPARACIÓN va como chip; CON SALDO va contado en la píldora.
+  //
+  // Los dos estaban inline y se comían la barra: en la tableta real, tres pedidos entregados sin
+  // cobrar dejaban la cuenta activa cortada a la izquierda y el último chip truncado a media
+  // palabra. Y no son la misma cosa: al chip en preparación se le TOCA para agregarle, mientras que
+  // el entregado sin cobrar es un aviso de dinero — exactamente lo que la píldora que esto
+  // reemplazó hacía bien, y que se perdió al ponerlos todos como chips.
+  const enPreparacion = pedidos.filter((o) => o.enPreparacion);
+  const conSaldo = pedidos.filter((o) => !o.enPreparacion);
+
+  // Sin nada que mostrar no se pinta: un contador en cero es chrome que le quita ancho a la barra.
   if (pedidos.length === 0) return null;
 
   return (
@@ -55,12 +69,12 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
           locales, que son lo único elástico de la fila, se aplastaban a cero. */}
       <HStack
         gap={2}
-        maxW="clamp(120px, 34%, 420px)"
+        maxW="clamp(110px, 26%, 340px)"
         overflowX="auto"
         py={1}
         css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
       >
-      {pedidos.map((o) => (
+      {enPreparacion.map((o) => (
         <Button
           key={o.id}
           flexShrink={0}
@@ -69,10 +83,8 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
           borderRadius={RADIUS}
           borderWidth={BORDER_W}
           variant="outline"
-          // El que sigue en cocina se abre para agregarle; el entregado sin cobrar solo se cobra.
-          // Son dos acciones distintas y el color las separa antes de leer el renglón chico.
-          colorPalette={o.enPreparacion ? 'blue' : 'orange'}
-          onClick={() => (o.enPreparacion ? onAbrir(o) : setCobrando(o))}
+          colorPalette="blue"
+          onClick={() => onAbrir(o)}
         >
           <VStack gap={0} align="start">
             {/* El animal primero: es lo que se canta en cocina y lo que dice el cliente.
@@ -80,12 +92,12 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
                 dinero que se fue con el cliente, y depender del color para verlo lo deja invisible
                 para quien no distingue naranja de azul — y para cualquiera con prisa, porque el
                 renglón de abajo es el que menos se lee. */}
+            {/* El animal primero: es lo que se canta en cocina y lo que dice el cliente. */}
             <Text fontWeight="700" fontSize="sm" lineHeight="1.15" whiteSpace="nowrap">
-              {o.enPreparacion ? '' : '⚠ '}{o.folioName || `#${o.number}`}
+              {o.folioName || `#${o.number}`}
             </Text>
             <Text fontSize="2xs" color="fg.muted" lineHeight="1.15" whiteSpace="nowrap">
-              {money(o.outstanding, o.currency)}
-              {o.enPreparacion ? ` · ${o.renglones}` : ' · ya se entregó'}
+              {o.renglones} · {money(o.total, o.currency)}
             </Text>
           </VStack>
         </Button>
@@ -93,19 +105,80 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
 
       </HStack>
 
-      {/* El total en riesgo, que es lo que la píldora dejaba leer de un vistazo. Va FUERA de la caja
-          que scrollea: es la cifra que no se puede perder de vista, y adentro se iría con el
-          desplazamiento justo cuando hay muchos pedidos, que es cuando más importa. */}
-      {Number(data?.outstanding ?? 0) > 0 && (
-        <HStack flexShrink={0} gap={1} color="orange.600" px={1}>
+      {/* Lo que se debe, en UNA píldora que abre la lista. Es dinero en riesgo, no algo a lo que se
+          le agregue: ponerlo como chips lo mezclaba con los pedidos en curso y se comía el ancho de
+          la barra. Va fuera de la caja que scrollea porque es la cifra que no se puede perder de
+          vista, y adentro se iría con el desplazamiento justo cuando hay muchos pedidos. */}
+      {conSaldo.length > 0 && (
+        <Button
+          flexShrink={0} minH={TAP} px={3} colorPalette="orange" variant="solid"
+          onClick={() => setListaDeSaldos(true)}
+        >
           <LuWallet />
-          <Text fontWeight="800" fontSize="sm" whiteSpace="nowrap">
+          <Text as="span" ml={1} fontWeight="800" whiteSpace="nowrap">
             {money(String(data?.outstanding ?? '0'))}
           </Text>
-        </HStack>
+          <Text as="span" ml={1} fontSize="xs" opacity={0.9}>({conSaldo.length})</Text>
+        </Button>
       )}
+
+      <SaldosPendientes
+        abierto={listaDeSaldos}
+        pedidos={conSaldo}
+        onCerrar={() => setListaDeSaldos(false)}
+        onCobrar={(o) => { setListaDeSaldos(false); setCobrando(o); }}
+      />
 
       <CobrarSheet order={cobrando} onClose={() => setCobrando(null)} onCobrado={refrescar} />
     </>
+  );
+}
+
+// La lista de lo que se debe, detrás de la píldora.
+//
+// Es la hoja que tenía "Por cobrar" y que se había perdido al volver todo chips inline. El pedido
+// ENTREGADO y sin cobrar es el caso caro —el cliente ya se fue con la comida— y necesita decirse con
+// todas sus letras, no caber en un chip de 150 px.
+function SaldosPendientes({ abierto, pedidos, onCerrar, onCobrar }: {
+  abierto: boolean;
+  pedidos: BoardOrder[];
+  onCerrar: () => void;
+  onCobrar: (o: BoardOrder) => void;
+}) {
+  const total = pedidos.reduce((s, o) => s + Number(o.outstanding), 0);
+  return (
+    <DrawerRoot open={abierto} placement="bottom" size="md"
+      onOpenChange={(e) => { if (!e.open) onCerrar(); }}>
+      <DrawerBackdrop />
+      <DrawerContent borderTopRadius="2xl">
+        <DrawerHeader borderBottomWidth="1px" py={3}>
+          <HStack justify="space-between">
+            <Text fontWeight="800" fontSize="lg">Por cobrar</Text>
+            <Text fontWeight="800" fontSize="lg">{money(String(total))}</Text>
+          </HStack>
+        </DrawerHeader>
+        <DrawerBody py={3}>
+          <VStack align="stretch" gap={2}>
+            {pedidos.map((o) => (
+              <Flex key={o.id} borderWidth="1px" borderColor="orange.300" borderRadius="lg"
+                px={3} py={2} align="center" justify="space-between" gap={3}>
+                <Box minW={0}>
+                  <Text fontWeight="700" lineClamp={1}>{o.folioName || `#${o.number}`}</Text>
+                  <Text fontSize="xs" color="fg.muted" lineClamp={1}>
+                    #{o.number}
+                    {o.customerName ? ` · ${o.customerName}` : ''}
+                    {/* El cliente ya se fue con la comida: se dice, no se deja adivinar. */}
+                    {o.enPreparacion ? '' : ' · ya se entregó'}
+                  </Text>
+                </Box>
+                <Button minH={TAP} colorPalette="orange" flexShrink={0} onClick={() => onCobrar(o)}>
+                  Cobrar {money(o.outstanding, o.currency)}
+                </Button>
+              </Flex>
+            ))}
+          </VStack>
+        </DrawerBody>
+      </DrawerContent>
+    </DrawerRoot>
   );
 }

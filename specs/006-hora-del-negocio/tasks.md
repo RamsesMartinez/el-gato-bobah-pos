@@ -70,7 +70,7 @@ pantalla.
 - [X] T015 [P] [US1] Migrar `web/src/features/backoffice/CashPage.tsx` (5 sitios).
 - [X] T016 [P] [US1] Migrar `web/src/features/sales/SalesPage.tsx` y `web/src/features/sales/SaleDetailDialog.tsx`.
 - [X] T017 [P] [US1] Migrar `web/src/features/backoffice/StockPage.tsx` y `web/src/app/SystemInfo.tsx`.
-- [ ] T018 [US1] Que ninguna pantalla pinte una hora antes de conocer la zona (SC-003). Una hora que se corrige sola enseña al operador a no confiar en lo que lee.
+- [X] T018 [US1] Que ninguna pantalla pinte una hora antes de conocer la zona (SC-003). Una hora que se corrige sola enseña al operador a no confiar en lo que lee.
 
 **Checkpoint**: US1 entregable sola. El ticket deja de mentir sobre cuándo fue la venta.
 
@@ -84,14 +84,14 @@ pantalla.
 
 ### Tests primero
 
-- [ ] T019 [P] [US2] Test de integración en `server/internal/integration/pedidos_viejos_se_ven_test.go`: un pedido abierto de hace dos meses sale en la lista; uno entregado y pagado no; uno entregado sin pagar sí. Con dos empresas: la de una no ve la de la otra.
-- [ ] T020 [P] [US2] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: un pedido de un día anterior se distingue a la vista de los de hoy.
+- [X] T019 [P] [US2] Test de integración en `server/internal/integration/pedidos_viejos_se_ven_test.go`: un pedido abierto de hace dos meses sale en la lista; uno entregado y pagado no; uno entregado sin pagar sí. Con dos empresas: la de una no ve la de la otra.
+- [X] T020 [P] [US2] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: un pedido de un día anterior se distingue a la vista de los de hoy.
 
 ### Implementación
 
-- [ ] T021 [US2] Quitar el filtro de fecha de `ListOpenOrders` en `server/queries/orders.sql` y devolver la fecha de negocio de cada pedido. **Retira el arreglo parcial de la feature 005**, que ató la lista al turno abierto; no se acumulan los dos. Revisar qué pasa con `TestLaBarraSigueMostrandoElTurnoQueCruzoLaMedianoche`, que fijó ese comportamiento: si sobrevive afirmando lo viejo, es un verde que engaña — o se reescribe contra la regla nueva, o se dice por qué sigue valiendo.
-- [ ] T022 [US2] Ajustar `OrdersService.Open` en `server/internal/app/orders.go`: sin fecha, y quitar la consulta del turno que ya no hace falta.
-- [ ] T023 [US2] Marcar en `web/src/features/pos/PedidosEnCurso.tsx` los pedidos de días anteriores, para que el rezago se note en vez de confundirse con el trabajo de hoy.
+- [X] T021 [US2] Quitar el filtro de fecha de `ListOpenOrders` en `server/queries/orders.sql` y devolver la fecha de negocio de cada pedido. **Retira el arreglo parcial de la feature 005**, que ató la lista al turno abierto; no se acumulan los dos. Revisar qué pasa con `TestLaBarraSigueMostrandoElTurnoQueCruzoLaMedianoche`, que fijó ese comportamiento: si sobrevive afirmando lo viejo, es un verde que engaña — o se reescribe contra la regla nueva, o se dice por qué sigue valiendo.
+- [X] T022 [US2] Ajustar `OrdersService.Open` en `server/internal/app/orders.go`: sin fecha, y quitar la consulta del turno que ya no hace falta.
+- [X] T023 [US2] Marcar en `web/src/features/pos/PedidosEnCurso.tsx` los pedidos de días anteriores, para que el rezago se note en vez de confundirse con el trabajo de hoy.
 
 **Checkpoint**: los once pedidos de julio de la cuenta de pruebas vuelven a ser visibles y cerrables.
 

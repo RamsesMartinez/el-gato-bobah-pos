@@ -724,7 +724,7 @@ func (q *Queries) ListModifiersOfActiveOrders(ctx context.Context) ([]ListModifi
 
 const listOpenOrders = `-- name: ListOpenOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.opened_at,
+       o.customer_name, o.total, o.currency, o.opened_at, o.business_date,
        pagos.paid::numeric(10,2) as paid,
        (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
@@ -732,9 +732,16 @@ from orders o
 left join lateral (
   select coalesce(sum(p.amount), 0) as paid from order_payments p where p.order_id = o.id
 ) pagos on true
-where o.business_date = $1
-  and o.status not in ('cancelada', 'reembolsada')
-  and (o.status in ('abierta', 'lista') or pagos.paid < o.total)
+where o.status not in ('cancelada', 'reembolsada')
+  and (
+    -- SIN filtro de fecha en los que siguen en curso, a propósito: un pedido abierto se ve hasta que
+    -- alguien lo cierre, sin importar de qué día sea. Es el mecanismo con el que se limpia el
+    -- rezago — un pedido que nadie ve es un pedido que nadie cierra, y así había once desde julio.
+    o.status in ('abierta', 'lista')
+    -- Los que deben dinero sí se acotan al día en curso: el pendiente de hace tres meses ya no es
+    -- algo que el cajero de hoy pueda cobrar, y traerlos convertiría la barra en un histórico.
+    or (pagos.paid < o.total and o.business_date = $1)
+  )
 order by o.opened_at
 `
 
@@ -749,6 +756,7 @@ type ListOpenOrdersRow struct {
 	Total              decimal.Decimal `json:"total"`
 	Currency           string          `json:"currency"`
 	OpenedAt           time.Time       `json:"opened_at"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
 	Paid               decimal.Decimal `json:"paid"`
 	EnPreparacion      bool            `json:"en_preparacion"`
 	Renglones          int32           `json:"renglones"`
@@ -792,6 +800,7 @@ func (q *Queries) ListOpenOrders(ctx context.Context, businessDate pgtype.Date) 
 			&i.Total,
 			&i.Currency,
 			&i.OpenedAt,
+			&i.BusinessDate,
 			&i.Paid,
 			&i.EnPreparacion,
 			&i.Renglones,

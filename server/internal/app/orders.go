@@ -387,6 +387,9 @@ type BoardOrder struct {
 	// Renglones vivos, para que el chip diga de un vistazo qué tan grande es el pedido sin traerse
 	// la lista entera de cada uno.
 	Renglones int `json:"renglones"`
+	// BusinessDate: de qué día es el pedido. La pantalla lo usa para distinguir el rezago del
+	// trabajo de hoy — sin filtro de fecha, un pedido de julio se ve igual que uno de hace un rato.
+	BusinessDate string `json:"businessDate"`
 	// Los renglones vivos con lo que falta de cada uno. El tablero los pinta desplegados: lo que
 	// falta por entregar ES lo que el operador vino a leer, no algo que deba destapar con un tap.
 	// Vacío en las entregadas, que ya no tienen nada pendiente.
@@ -1178,6 +1181,7 @@ func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal
 			OpenedAt:      r.OpenedAt,
 			EnPreparacion: r.EnPreparacion,
 			Renglones:     int(r.Renglones),
+			BusinessDate:  r.BusinessDate.Time.Format("2006-01-02"),
 		})
 		pendiente = pendiente.Add(out[len(out)-1].Outstanding)
 	}

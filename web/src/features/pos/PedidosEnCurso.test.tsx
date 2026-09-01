@@ -49,15 +49,24 @@ test('no pinta nada cuando no hay pedidos en curso', async () => {
   expect(container.querySelector('button')).toBeNull();
 });
 
-// El pedido ENTREGADO y sin cobrar es el caro: el cliente ya se fue con la comida. Se dice en el
-// chip y no se deja adivinar — es lo que la píldora que esto reemplaza existía para gritar.
-test('el entregado sin cobrar se distingue del que sigue en cocina', async () => {
+// EL ENTREGADO SIN COBRAR NO ES UN CHIP: ES UNA PÍLDORA DE DINERO.
+//
+// Los dos estaban inline y se comían la barra — en la tableta real, tres de éstos dejaban la cuenta
+// activa cortada y el último chip truncado a media palabra. Y no son la misma cosa: al chip en
+// preparación se le TOCA para agregarle, mientras que el entregado sin cobrar es un aviso de dinero
+// que ya se fue con el cliente. Se cuenta en la píldora y se detalla al abrirla.
+test('el entregado sin cobrar se cuenta en la píldora, no ocupa un chip', async () => {
   openOrders.mockResolvedValue({
     items: [pedido({ id: 2, folioName: 'Lobo', status: 'entregada', enPreparacion: false })],
     outstanding: '250',
   });
   pinta(<PedidosEnCurso onAbrir={() => {}} />);
-  expect(await screen.findByText(/ya se entregó/i)).toBeInTheDocument();
+
+  // No hay chip con su nombre: no es algo a lo que se le agregue.
+  await screen.findByRole('button', { name: /250/ });
+  expect(screen.queryByRole('button', { name: /Lobo/ })).toBeNull();
+  // Pero el monto sí está a la vista, que es lo que la píldora existe para gritar.
+  expect(screen.getByText(/\(1\)/)).toBeInTheDocument();
 });
 
 // CON MUCHOS PEDIDOS, LA FILA NO PUEDE EMPUJAR NADA FUERA DE LA PANTALLA.

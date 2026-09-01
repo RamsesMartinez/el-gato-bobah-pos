@@ -322,7 +322,11 @@ export function POSPage() {
       </Box>
       <Box px={{ base: 3, md: 4 }} pt={2}>
         <HStack gap={2} align="center">
-          <Box flex="1" minW={0}><TicketTabs /></Box>
+          {/* minW: las cuentas son lo único elástico de la fila, así que sin un piso se aplastan a
+              cero en cuanto entra algo más — en la tableta real la cuenta activa quedó cortada por
+              la mitad. Con el piso, lo que se recorta es el desplazamiento de las cuentas, que ya
+              scrollean solas. */}
+          <Box flex="1" minW="140px"><TicketTabs /></Box>
           <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
           {/* Los pedidos que ya se mandaron a cocina, en la MISMA fila que las cuentas sin mandar.
               No cuesta alto nuevo —la fila ya existía— y absorbe la píldora de "Por cobrar", que
