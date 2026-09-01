@@ -138,6 +138,8 @@ export interface Group {
   defaultMin: number;
   defaultMax: number;
   optionCount: number;
+  // Las primeras opciones por su orden real: la tarjeta dice QUÉ tiene el grupo, no solo cuántas.
+  optionPreview: string;
   productCount: number;
   overrideCount: number; // productos que sobrescriben el default
 }

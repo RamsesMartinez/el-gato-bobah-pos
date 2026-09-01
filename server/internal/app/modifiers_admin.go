@@ -21,12 +21,16 @@ func isUniqueViolation(err error) bool {
 // --- Grupos (catálogo global reutilizable) ---------------------------------
 
 type GroupView struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	IsActive      bool   `json:"isActive"`
-	DefaultMin    int    `json:"defaultMin"`
-	DefaultMax    int    `json:"defaultMax"`
-	OptionCount   int    `json:"optionCount"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	IsActive    bool   `json:"isActive"`
+	DefaultMin  int    `json:"defaultMin"`
+	DefaultMax  int    `json:"defaultMax"`
+	OptionCount int    `json:"optionCount"`
+	// OptionPreview son las primeras opciones por su orden real, para que la tarjeta diga QUÉ
+	// tiene el grupo y no solo cuántas: antes había que expandir cada uno para saber si era el
+	// que se buscaba.
+	OptionPreview string `json:"optionPreview"`
 	ProductCount  int    `json:"productCount"`
 	OverrideCount int    `json:"overrideCount"` // productos que sobrescriben el default
 }
@@ -54,7 +58,8 @@ func (s *AdminService) ListGroups(ctx context.Context, status, search, sort, dir
 		out = append(out, GroupView{
 			ID: r.ID, Name: r.Name, IsActive: r.IsActive,
 			DefaultMin: int(r.DefaultMinSelect), DefaultMax: int(r.DefaultMaxSelect),
-			OptionCount: int(r.OptionCount), ProductCount: int(r.ProductCount), OverrideCount: int(r.OverrideCount),
+			OptionCount: int(r.OptionCount), OptionPreview: r.OptionPreview,
+			ProductCount: int(r.ProductCount), OverrideCount: int(r.OverrideCount),
 		})
 	}
 	c, err := s.store.QC(ctx).AdminGroupCounts(ctx)

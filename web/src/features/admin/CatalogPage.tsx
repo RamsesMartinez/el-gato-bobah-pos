@@ -6,7 +6,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 // con pestañas de 1 toque. Cada pestaña conserva su propia pantalla (Page fill).
 const TABS = [
   { to: '/catalogo/productos', label: 'Productos', icon: LuTag },
-  { to: '/catalogo/opciones', label: 'Opciones', icon: LuStar },
+  { to: '/catalogo/opciones', label: 'Grupos y opciones', icon: LuStar },
 ];
 
 export function CatalogPage() {
