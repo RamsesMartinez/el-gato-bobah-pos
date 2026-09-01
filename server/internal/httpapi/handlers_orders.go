@@ -95,7 +95,9 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SetOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -118,7 +120,9 @@ func (h *Handlers) SetOrderStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -151,7 +155,9 @@ func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -186,7 +192,9 @@ func (h *Handlers) ListOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	order, err := h.orders.Detail(r.Context(), id)
