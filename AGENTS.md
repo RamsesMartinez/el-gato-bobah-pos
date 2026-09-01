@@ -197,7 +197,26 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
     - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golangci/golangci-lint:v2.13.1`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
 
     Lo que **no** se hace es `--no-verify`: el gate no se afloja, se corre en otro lado.
-  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `lefthook`) corren sin problema **hoy** — con la advertencia de arriba: eso puede cambiar de un día para otro.
+  - **`lefthook` TAMBIÉN se bloquea, y cuando pasa los hooks no corren y casi no se nota.** El
+    síntoma es una línea suelta entre la salida de git: *Can't find lefthook in PATH*, aunque
+    `which lefthook` lo encuentre — el shim de `.git/hooks/` no distingue "no está" de "el sistema
+    no me deja ejecutarlo", y el commit y el push siguen adelante **sin gates**. Confírmalo
+    corriendo `lefthook version`: si dice *Permission denied* sobre el binario, es SAC.
+    Reinstalarlo NO ayuda: el binario recién compilado es el peor caso posible para SAC, porque no
+    tiene reputación ninguna (probado con `go install …/lefthook/v2@latest`, bloqueado al primer
+    intento).
+
+    Mientras dure, los gates se corren a mano antes de cada commit y CI queda de respaldo real —
+    corre la suite completa, incluida la de integración, sobre lo que subiste:
+
+    ```bash
+    cd server && bash ../scripts/hooks/golangci-lint.sh && go build ./...
+    cd ../web && bun run lint && bun run vitest run && bun run build
+    ```
+
+    Lo que **no** se hace es dar por buenos los gates porque "el commit pasó": con lefthook
+    bloqueado, que el commit pase no significa nada.
+  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`) corren sin problema **hoy** — con la advertencia de arriba: eso puede cambiar de un día para otro.
 - **El working tree va en LF y [.gitattributes](.gitattributes) lo fuerza** (`* text=auto eol=lf`). Sin él, el `core.autocrlf=true` que Git for Windows deja por default checa out los 113 `.go` en CRLF y `gofmt -l` —lo primero que corre el pre-commit— los marca todos: no se puede commitear Go sin `--no-verify`, que no se usa. Si te tocó un working tree ya en CRLF: `git config --local core.autocrlf false`, quítales el `\r` y corre `git add --renormalize .`. Ese último paso importa — el contenido queda idéntico pero el stat cache no se refresca solo, y `git status` se queda marcando cientos de archivos "modificados" que `git diff` ve iguales.
 - **`GOTOOLCHAIN` vacío se comporta como `local`**: con Go 1.26 instalado, `go build` falla con *"go.mod requires go >= 1.27.0"* en vez de bajar el toolchain. Se arregla con `go env -w GOTOOLCHAIN=auto` (baja go1.27.0 al module cache) o instalando Go 1.27.
 - **No hay `lsof`**, así que `scripts/start.sh` no detecta puertos ocupados ni `scripts/stop.sh` mata la API/web por puerto. Fija los puertos (`BACKEND_PORT=8080 FRONTEND_PORT=3000 make start`) y cierra a mano lo que quede vivo.
