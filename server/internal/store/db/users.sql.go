@@ -198,30 +198,6 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 	return value, err
 }
 
-const latestLiveRefreshExpiry = `-- name: LatestLiveRefreshExpiry :one
-select expires_at from refresh_tokens
-where user_id = $1 and revoked_at is null and expires_at > $2
-order by expires_at desc
-limit 1
-`
-
-type LatestLiveRefreshExpiryParams struct {
-	UserID    int64     `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
-// Cuándo vence la sesión que la estación viene usando.
-//
-// La usa el cambio de operador para CONSERVAR ese vencimiento en vez de reponerlo. Sin esto, cada
-// desbloqueo emitiría un plazo completo nuevo y una tableta usada cada veinte minutos no caducaría
-// nunca — el límite de horas del turno sería decorativo.
-func (q *Queries) LatestLiveRefreshExpiry(ctx context.Context, arg LatestLiveRefreshExpiryParams) (time.Time, error) {
-	row := q.db.QueryRow(ctx, latestLiveRefreshExpiry, arg.UserID, arg.ExpiresAt)
-	var expires_at time.Time
-	err := row.Scan(&expires_at)
-	return expires_at, err
-}
-
 const listActiveUsers = `-- name: ListActiveUsers :many
 select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where is_active order by name
 `
@@ -260,12 +236,49 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const liveRefreshExpiry = `-- name: LiveRefreshExpiry :one
+select expires_at from refresh_tokens
+where token_hash = $1 and revoked_at is null and expires_at > $2
+`
+
+type LiveRefreshExpiryParams struct {
+	TokenHash string    `json:"token_hash"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// Cuándo vence la sesión que ESTA estación viene presentando.
+//
+// Se busca por el HASH del token, no por user_id. Buscar por persona tomaba el vencimiento más
+// lejano de cualquiera de sus tabletas, así que una estación heredaba el reloj de otra: entrar
+// fresco en la segunda le regalaba horas a la primera, con un PIN y de forma repetible.
+func (q *Queries) LiveRefreshExpiry(ctx context.Context, arg LiveRefreshExpiryParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, liveRefreshExpiry, arg.TokenHash, arg.ExpiresAt)
+	var expires_at time.Time
+	err := row.Scan(&expires_at)
+	return expires_at, err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 update refresh_tokens set revoked_at = now() where token_hash = $1
 `
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshToken, tokenHash)
+	return err
+}
+
+const revokeRefreshTokenByHash = `-- name: RevokeRefreshTokenByHash :exec
+update refresh_tokens set revoked_at = now()
+where token_hash = $1 and revoked_at is null
+`
+
+// Revoca UNA sesión: la que la estación venía presentando antes del relevo.
+//
+// Solo esa. Revocar todas las de la persona tumbaba sus otras tabletas: entregar la estación 1
+// dejaba al compañero de la estación 2 con "terminó el turno" a media venta. El modo de fallo del
+// resto de la feature es dejar trabajar.
+func (q *Queries) RevokeRefreshTokenByHash(ctx context.Context, tokenHash string) error {
+	_, err := q.db.Exec(ctx, revokeRefreshTokenByHash, tokenHash)
 	return err
 }
 
@@ -289,27 +302,6 @@ update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at i
 
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID int64) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
-	return err
-}
-
-const revokeUserRefreshTokensExcept = `-- name: RevokeUserRefreshTokensExcept :exec
-update refresh_tokens
-set revoked_at = now()
-where user_id = $1 and revoked_at is null and token_hash <> $2
-`
-
-type RevokeUserRefreshTokensExceptParams struct {
-	UserID    int64  `json:"user_id"`
-	TokenHash string `json:"token_hash"`
-}
-
-// Revoca las sesiones vivas de una persona MENOS la recién emitida.
-//
-// La usa el cambio de operador: sin esto, cada relevo dejaría viva la credencial de quien entregó
-// la estación. Es lo que produjo los 4 refresh tokens vivos que se encontraron en producción, el
-// más viejo de tres días antes.
-func (q *Queries) RevokeUserRefreshTokensExcept(ctx context.Context, arg RevokeUserRefreshTokensExceptParams) error {
-	_, err := q.db.Exec(ctx, revokeUserRefreshTokensExcept, arg.UserID, arg.TokenHash)
 	return err
 }
 

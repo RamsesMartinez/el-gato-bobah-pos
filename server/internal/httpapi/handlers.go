@@ -221,6 +221,19 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
+	// El relevo conserva el reloj de ESTA estación, así que hace falta el refresh que la estación
+	// viene presentando. Sin cookie no hay sesión de dispositivo que heredar, y arrancar una nueva
+	// sería regalar un turno completo a cambio de un PIN.
+	ck, err := r.Cookie(refreshCookie)
+	if err != nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	_, refreshActual := parseRefreshCookie(ck.Value)
+	if refreshActual == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
 	// Sin userId, el negocio tiene que estar en modo de solo-PIN: ahí el PIN identifica y el
 	// servidor deduce de quién es. Con el modo apagado se RECHAZA — caer al modo permisivo aquí
 	// significaría aceptar cualquier PIN sin saber de quién, y con eso la atribución del arqueo
@@ -241,7 +254,7 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 			Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
 			return
 		}
-		s, err := h.auth.PinSwitchSoloPin(r.Context(), body.PIN, actor.ID)
+		s, err := h.auth.PinSwitchSoloPin(r.Context(), body.PIN, actor.ID, refreshActual)
 		if err != nil {
 			h.authFails.record(r.Context(), llave)
 			// El evento no puede decir a quién se intentó desbloquear: en este modo justamente no
@@ -263,7 +276,7 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
 		return
 	}
-	s, err := h.auth.PinSwitch(r.Context(), objetivo, body.PIN, actor.ID)
+	s, err := h.auth.PinSwitchEnEstacion(r.Context(), objetivo, body.PIN, actor.ID, refreshActual)
 	if err != nil {
 		h.authFails.record(r.Context(), key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
