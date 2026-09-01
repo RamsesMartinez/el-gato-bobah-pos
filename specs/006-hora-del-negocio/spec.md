@@ -13,13 +13,13 @@ antes de este spec y aquí se implementan, no se reabren.
 
 | Qué | Cuánto |
 | --- | --- |
-| Lugares del frontend que formatean fecha u hora | **12** |
+| Lugares del frontend que formatean fecha u hora | **11** |
 | De ésos, que usan la zona del negocio | **0** |
 | Zona configurada del negocio | `America/Mexico_City`, desde la migración 0038 |
 | Diferencia con el reloj del servidor | 6 horas (el servidor corre en UTC) |
 
 El negocio ya tiene su zona horaria guardada y validada, y el backend la usa para decidir de qué día
-es una venta o un corte. Ninguna pantalla la usa: las doce dicen la hora del **navegador de esa
+es una venta o un corte. Ninguna pantalla la usa: los once dicen la hora del **navegador de esa
 tableta**. Dos Surface con la hora del sistema distinta muestran horas distintas del mismo pedido, y
 el ticket que se le entrega al cliente lleva la hora de la tableta, no la del local.
 

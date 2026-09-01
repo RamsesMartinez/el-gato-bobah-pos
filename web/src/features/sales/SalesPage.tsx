@@ -10,6 +10,8 @@ import { money } from '../../utils/format';
 import { SaleDetailDialog } from './SaleDetailDialog';
 import { SalesSummaryTiles } from './SalesSummaryTiles';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
+import { soloHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 const PRESETS: Array<{ id: SalesPreset; label: string }> = [
   { id: 'hoy', label: 'Hoy' },
@@ -31,6 +33,7 @@ const PAGE_SIZE = 20;
 // hay acciones de dinero —cancelar, reembolsar— sobre la tabla. Meterlas aquí duplicaría el permiso
 // y el rastro que ya viven en el tablero, y un tap equivocado en una tabla densa cuesta caro.
 export function SalesPage() {
+  const horaNegocio = useHoraDelNegocio();
   const [preset, setPreset] = useState<SalesPreset>('hoy');
   const [status, setStatus] = useState('');
   const [serviceType, setServiceType] = useState('');
@@ -126,7 +129,7 @@ export function SalesPage() {
                   <Text fontWeight="700" lineHeight="1.2">{v.folioName || `#${v.dailyNumber}`}</Text>
                   {v.folioName && <Text fontSize="xs" color="fg.muted">#{v.dailyNumber}</Text>}
                 </Table.Cell>
-                <Table.Cell whiteSpace="nowrap">{hora(v.openedAt)}</Table.Cell>
+                <Table.Cell whiteSpace="nowrap">{hora(v.openedAt, horaNegocio.zona)}</Table.Cell>
                 <Table.Cell>{etiquetaEstado(v.status)}</Table.Cell>
                 <Table.Cell>{v.platform || etiquetaTipo(v.serviceType)}</Table.Cell>
                 <Table.Cell color="fg.muted">{v.customer || '—'}</Table.Cell>
@@ -167,7 +170,7 @@ export function SalesPage() {
 
 // Solo la hora: la fecha ya la dice el rango de arriba, y repetirla en cada renglón gasta el ancho
 // que en una tablet de 7 pulgadas hace falta para el medio de pago.
-function hora(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+// La zona llega como parámetro: esta es una función de módulo.
+function hora(iso: string, zona: string): string {
+  return soloHora(iso, zona);
 }

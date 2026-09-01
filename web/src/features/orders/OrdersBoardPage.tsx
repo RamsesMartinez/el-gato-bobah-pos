@@ -18,6 +18,7 @@ import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../tickets/ReprintTicket';
 import { CobrarSheet } from './CobrarSheet';
 import { useSessionStore } from '../../stores/session';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 // para_llevar ya no se ofrece al cobrar, pero hay pedidos históricos con ese tipo y sin su etiqueta
 // la tarjeta los mostraría como "para_llevar", con guion bajo.
@@ -39,6 +40,7 @@ const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', '
 const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente', 'Cobro erróneo', 'Otro'];
 
 export function OrdersBoardPage() {
+  const horaNegocio = useHoraDelNegocio();
   const live = useOrderEvents();
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
@@ -121,7 +123,7 @@ export function OrdersBoardPage() {
   // a diario: por eso tiene su test.
   const reimprimirComanda = async (o: BoardOrder) => {
     const detalle = await posApi.order(o.id);
-    const salio = await printHtmlOffscreen(buildKitchenHtml(detalle as never));
+    const salio = await printHtmlOffscreen(buildKitchenHtml(detalle as never, undefined, horaNegocio.zona));
     if (!salio) {
       toaster.create({
         title: 'No salió la comanda',

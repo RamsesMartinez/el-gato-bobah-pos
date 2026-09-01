@@ -10,6 +10,7 @@ const baseBusiness: TicketBusinessInfo = {
   headerNote: 'Wi-Fi: gatobobah',
   footerNote: '¡Gracias por su compra!',
   logoDataUri: 'data:image/webp;base64,QUFB',
+  timezone: 'America/Mexico_City',
 };
 
 const baseOrder: ReceiptOrder = {

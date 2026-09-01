@@ -1,4 +1,6 @@
 import type { ReceiptOrder } from '../types/pos';
+import { fechaYHora } from './horaDelNegocio';
+import { DEFAULT_TIMEZONE } from './zonaPorDefecto';
 import { money } from './format';
 
 const SERVICE: Record<string, string> = {
@@ -32,6 +34,10 @@ export interface TicketBusinessInfo {
   // sitio publicado; y una carga de red puede no haber terminado cuando se dispara print(), que
   // saca el ticket con un hueco blanco donde iba el logo. Vacío = sin logo.
   logoDataUri: string;
+  // La zona del negocio. Va en la identidad y no como parámetro suelto porque es lo mismo que el
+  // nombre y el domicilio: parte de quién emite el papel. Sin ella, el ticket que se lleva el
+  // cliente lleva la hora de la tableta que lo imprimió.
+  timezone: string;
 }
 
 // buildReceiptHtml arma el HTML del ticket (función pura y testeable). Todo string de
@@ -103,7 +109,7 @@ export function buildReceiptHtml(
   ${business.phone ? `<div class="center muted">Tel. ${esc(business.phone)}</div>` : ''}
   ${business.headerNote ? `<div class="center note">${esc(business.headerNote)}</div>` : ''}
   <div class="center muted">${order.folioName ? `${order.folioName} &middot; ` : ''}Pedido #${order.number}</div>
-  <div class="center muted">${new Date(order.openedAt).toLocaleString('es-MX')}</div>
+  <div class="center muted">${fechaYHora(order.openedAt, business.timezone ?? DEFAULT_TIMEZONE)}</div>
   <div class="center muted">${esc(SERVICE[order.serviceType] ?? order.serviceType)}${order.customerName ? ` · ${esc(order.customerName)}` : ''}</div>
   ${opts.reprint ? '<div class="center reprint">** REIMPRESIÓN **</div>' : ''}
   ${opts.sample ? '<div class="center reprint">** TICKET DE PRUEBA **</div>' : ''}

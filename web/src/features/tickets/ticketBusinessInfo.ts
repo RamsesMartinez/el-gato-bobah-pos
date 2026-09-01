@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import defaultLogo from '../../assets/logo.webp?inline';
 import { posApi, type BusinessSettings } from '../../api/pos';
 import type { TicketBusinessInfo } from '../../utils/printReceipt';
+import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
 
 // toTicketBusinessInfo arma el encabezado a partir de los ajustes. Pura: la única decisión real es
 // qué logo va, y por eso vive aquí y no dentro del hook.
@@ -21,6 +22,9 @@ export function toTicketBusinessInfo(
     // El `||` y no `??` a propósito: una conversión fallida deja string vacío, y un
     // <img src=""> en el ticket es peor que el logo por default.
     logoDataUri: uploadedLogoDataUri || defaultLogo,
+    // Sin zona guardada, el default del PRODUCTO: nunca la del navegador, o dos tabletas imprimen
+    // horas distintas del mismo pedido.
+    timezone: settings.timezone || DEFAULT_TIMEZONE,
   };
 }
 

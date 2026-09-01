@@ -16,6 +16,9 @@ import { money } from '../../utils/format';
 import { faltanPorContar } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
+import { soloHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
@@ -28,8 +31,9 @@ function diffColor(v: string) {
   return 'fg.muted';
 }
 
-function hhmm(iso: string) {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+// La zona llega como parámetro: esta es una función de módulo.
+function hhmm(iso: string, zona: string) {
+  return soloHora(iso, zona);
 }
 // Tipo del movimiento para la columna "Tipo": traspaso (azul) o entrada/salida (verde/rojo).
 function movementType(m: CashMovement): { label: string; palette: string } {
@@ -79,7 +83,14 @@ export function TotalsTable({ totals, currency, withTotalRow }: { totals: Method
 
 // Movimientos de efectivo en tabla: Hora · Tipo · Concepto · Usuario · Monto. Excluye las salidas
 // de gastos (van en su propia sección) para no contarlas dos veces.
-export function MovementsTable({ movements, currency }: { movements: CashMovement[]; currency: string }) {
+// La zona llega como PROP y no del hook: esto es una tabla de presentación, y que pidiera los
+// ajustes por su cuenta la vuelve imposible de pintar sin montar media aplicación alrededor. Quien
+// la usa ya tiene la zona a la mano.
+export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }: {
+  movements: CashMovement[];
+  currency: string;
+  zona?: string;
+}) {
   const rows = (movements ?? []).filter((m) => m.expenseId === null);
   if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
   return (
@@ -97,7 +108,7 @@ export function MovementsTable({ movements, currency }: { movements: CashMovemen
             const t = movementType(m);
             return (
               <Table.Row key={m.id}>
-                <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt)}</Table.Cell>
+                <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt, zona)}</Table.Cell>
                 <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
                 <Table.Cell><Text truncate maxW="220px">{m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
@@ -235,6 +246,7 @@ interface CorteData {
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
 function CorteSummary({ data }: { data: CorteData }) {
+  const horaNegocio = useHoraDelNegocio();
   const cur = data.currency;
   const totals = data.totals ?? [];
   const movements = data.movements ?? [];
@@ -248,7 +260,7 @@ function CorteSummary({ data }: { data: CorteData }) {
         </Section>
       )}
       <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
-        <MovementsTable movements={movements} currency={cur} />
+        <MovementsTable movements={movements} currency={cur} zona={horaNegocio.zona} />
       </Collapsible>
       {expenses.length > 0 && (
         <Collapsible title={`Gastos (${expenses.length})`}>
@@ -262,16 +274,17 @@ function CorteSummary({ data }: { data: CorteData }) {
 // Detalle completo de un corte (carga por id): cabecera + resumen + notas. Lo usan el diálogo (7")
 // y el panel lateral (pantallas grandes).
 function CorteDetail({ id }: { id: number }) {
+  const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id) });
   if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
   return (
     <VStack align="stretch" gap={4}>
       <SimpleGrid columns={2} gap={2} fontSize="sm">
         <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
-        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {new Date(data.openedAt).toLocaleString('es-MX')}</Text>
+        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {horaNegocio.fechaYHora(data.openedAt)}</Text>
         {data.closedAt && (<>
           <Text color="fg.muted">Cerró</Text>
-          <Text textAlign="end">{data.closedByName ?? '—'} · {new Date(data.closedAt).toLocaleString('es-MX')}</Text>
+          <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
         </>)}
       </SimpleGrid>
       <CorteSummary data={data} />
@@ -338,6 +351,7 @@ function RegistersTab() {
 
 // ---- Panel de una caja: abrir (si cerrada) u operar/cerrar (si abierta) ----
 function RegisterPanel({ register, openRegisters }: { register: CashRegister; openRegisters: CashRegister[] }) {
+  const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const { data: session, isLoading } = useQuery({
     queryKey: ['cash', 'current', register.id],
@@ -411,7 +425,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Stat.Root>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Abierta desde</Stat.Label>
-              <Stat.ValueText fontSize="sm">{new Date(session.openedAt).toLocaleString('es-MX')}</Stat.ValueText>
+              <Stat.ValueText fontSize="sm">{horaNegocio.fechaYHora(session.openedAt)}</Stat.ValueText>
             </Stat.Root>
           </SimpleGrid>
 
@@ -551,6 +565,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
 // ---- Movimientos de efectivo (entrada/salida) de la sesión abierta ----
 function MovementsPanel({ session }: { session: CashSession }) {
+  const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const [kind, setKind] = useState<'entrada' | 'salida'>('salida');
   const [amount, setAmount] = useState('');
@@ -587,7 +602,7 @@ function MovementsPanel({ session }: { session: CashSession }) {
           </Button>
         </HStack>
       </Box>
-      <MovementsTable movements={movements} currency={session.currency} />
+      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona} />
     </Box>
   );
 }
@@ -722,6 +737,7 @@ function ManageRegistersTab() {
 
 // ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
 function HistoryTab() {
+  const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'history'], queryFn: backofficeApi.cashHistory });
   const [detailId, setDetailId] = useState<number | null>(null);
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
@@ -747,7 +763,7 @@ function HistoryTab() {
             <Table.Row key={r.id} cursor="pointer" onClick={() => setDetailId(r.id)}
               bg={wide && detailId === r.id ? 'bg.muted' : undefined}>
               <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
-              <Table.Cell whiteSpace="nowrap">{new Date(r.openedAt).toLocaleString('es-MX')}</Table.Cell>
+              <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(r.openedAt)}</Table.Cell>
               <Table.Cell>
                 <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
                   {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}

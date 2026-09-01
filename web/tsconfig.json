@@ -15,7 +15,9 @@
     "strict": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+    // "node": el guardia de formateo lee el árbol de `src` para comprobar que nadie
+    // formatea fechas por su cuenta; es un test que necesita el sistema de archivos.
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
   },
   "include": ["src"]
 }
