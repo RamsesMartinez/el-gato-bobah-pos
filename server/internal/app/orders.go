@@ -313,6 +313,12 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) {
 	o, err := s.store.QC(ctx).GetOrder(ctx, id)
 	if err != nil {
+		// Un id que no existe es NO ENCONTRADO, no un error interno: el `pgx.ErrNoRows` crudo no lo
+		// reconoce `httpapi.Error` y sale como 500, que dice "el servidor se rompió" y manda a
+		// revisar logs por un pedido que simplemente no está.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	lines, err := s.store.QC(ctx).ListOrderLines(ctx, id)
