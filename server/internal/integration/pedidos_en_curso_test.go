@@ -65,7 +65,7 @@ func TestLaListaDeEnCursoEsLaUnionDeLosDosConjuntos(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	lista, err := svc.Open(ctx)
+	lista, _, err := svc.Open(ctx)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
