@@ -274,6 +274,19 @@ type SessionView struct {
 	// Se listan aunque ya estén cobrados: cobrado y entregado son cosas distintas, y lo que impide
 	// cerrar es la comida que no ha salido, no el dinero.
 	Pending []PendingOrder `json:"pending"`
+	// Cashiers: cuánto cobró cada persona en el turno. Dos estaciones cobran contra el MISMO
+	// cajón —partirlo en dos daría dos arqueos contando el mismo dinero—, así que la
+	// responsabilidad se rastrea por quien cobró y no por el mueble.
+	Cashiers []CashierTotal `json:"cashiers"`
+}
+
+// CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
+// es lo único que está físicamente en el cajón: una diferencia de arqueo solo puede venir de ahí.
+type CashierTotal struct {
+	Name     string          `json:"name"`
+	Cash     decimal.Decimal `json:"cash"`
+	Other    decimal.Decimal `json:"other"`
+	Payments int             `json:"payments"`
 }
 
 // PendingOrder es un pedido del turno que sigue sin entregarse.
@@ -498,10 +511,15 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	porCajero, err := s.cobradoPorCajero(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
-		Pending: pendientes,
-		ID:      sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
+		Pending:  pendientes,
+		Cashiers: porCajero,
+		ID:       sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
 		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
@@ -1021,6 +1039,26 @@ func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID in
 	out := make([]PendingOrder, 0, len(filas))
 	for _, f := range filas {
 		out = append(out, PendingOrder{Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
+	}
+	return out, nil
+}
+
+// cobradoPorCajero: cuánto cobró cada persona en el turno.
+//
+// Es la respuesta a "dos estaciones, un solo cajón". Crear una caja por Surface daría dos arqueos
+// contando el mismo dinero físico —dos cifras inventadas—, así que la caja sigue siendo una y lo
+// que se separa es quién cobró. El dato existía desde el principio en received_by y solo lo usaba
+// el reparto de propinas.
+func (s *BackofficeService) cobradoPorCajero(ctx context.Context, sessionID int64) ([]CashierTotal, error) {
+	filas, err := s.store.QC(ctx).SessionCashByCashier(ctx, &sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CashierTotal, 0, len(filas))
+	for _, f := range filas {
+		out = append(out, CashierTotal{
+			Name: f.Cashier, Cash: f.Cash, Other: f.Other, Payments: int(f.Payments),
+		})
 	}
 	return out, nil
 }

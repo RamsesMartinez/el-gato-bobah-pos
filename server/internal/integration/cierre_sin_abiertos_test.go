@@ -186,3 +186,67 @@ func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
 		t.Fatalf("con la lista vacía el cierre debe pasar, fue: %v", err)
 	}
 }
+
+// Dos personas cobrando contra el MISMO cajón: el arqueo tiene que decir cuánto cobró cada una.
+//
+// Es la alternativa a partir la caja en dos cuando hay dos estaciones. Dos arqueos contando el
+// mismo dinero físico serían dos cifras inventadas; lo que sí se puede separar es quién cobró, y
+// ese dato ya existía en received_by.
+func TestElArqueoSeparaLoCobradoPorCadaPersona(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordersSvc := app.NewOrdersService(st, clock)
+	backoffice := app.NewBackofficeService(st, clock)
+
+	ana := makeUser(t, st, "ana_caja", "cajero")
+	luis := makeUser(t, st, "luis_caja", "cajero")
+	prod := makeProduct(t, st, "Café dos cajeros", decimal.RequireFromString("100"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	tarjeta := paymentMethodID(t, st, "Tarjeta débito")
+	principal := registerID(t, st, "Caja principal")
+	abrirCajaPrincipal(t, st, ana)
+
+	venta := func(quien int64, metodo int16, monto string) {
+		t.Helper()
+		o, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+			ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: quien,
+			Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+			Payments: []app.PaymentInput{{MethodID: metodo, Amount: decimal.RequireFromString(monto)}},
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := ordersSvc.DeliverAll(ctx, o.ID); err != nil {
+			t.Fatalf("DeliverAll: %v", err)
+		}
+	}
+	venta(ana, efectivo, "100")
+	venta(ana, efectivo, "100")
+	venta(luis, efectivo, "100")
+	// El no-efectivo va aparte: no está en el cajón, así que no puede explicar una diferencia.
+	venta(luis, tarjeta, "100")
+
+	vista, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("CurrentByRegister: %v", err)
+	}
+	por := map[string]app.CashierTotal{}
+	for _, c := range vista.Cashiers {
+		por[c.Name] = c
+	}
+	if len(por) != 2 {
+		t.Fatalf("el arqueo separa %d personas, quiere 2: %v", len(por), vista.Cashiers)
+	}
+	if got := por["Test ana_caja"].Cash.String(); got != "200" {
+		t.Errorf("efectivo de Ana = %s, quiere 200", got)
+	}
+	if got := por["Test luis_caja"].Cash.String(); got != "100" {
+		t.Errorf("efectivo de Luis = %s, quiere 100", got)
+	}
+	if got := por["Test luis_caja"].Other.String(); got != "100" {
+		t.Errorf("no-efectivo de Luis = %s, quiere 100", got)
+	}
+	if got := por["Test ana_caja"].Other.String(); got != "0" {
+		t.Errorf("no-efectivo de Ana = %s, quiere 0", got)
+	}
+}

@@ -471,6 +471,35 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
+          {/* Quién cobró qué. Con dos estaciones contra el mismo cajón, es lo único que separa la
+              responsabilidad: partir la caja daría dos arqueos contando el mismo dinero. Solo se
+              pinta si hubo más de una persona — con una sola, repite el total de arriba. */}
+          {session.cashiers.length > 1 && (
+            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+              <Text fontWeight="700" mb={2}>Cobrado por</Text>
+              <Table.Root size="sm">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeader>Persona</Table.ColumnHeader>
+                    <Table.ColumnHeader textAlign="end">Efectivo</Table.ColumnHeader>
+                    <Table.ColumnHeader textAlign="end">Otros</Table.ColumnHeader>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {session.cashiers.map((c) => (
+                    <Table.Row key={c.name}>
+                      <Table.Cell>{c.name}</Table.Cell>
+                      {/* El efectivo con más peso: es lo que está en el cajón y lo único de donde
+                          puede salir una diferencia. */}
+                      <Table.Cell textAlign="end" fontWeight="700">{money(c.cash)}</Table.Cell>
+                      <Table.Cell textAlign="end" color="fg.muted">{money(c.other)}</Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table.Root>
+            </Box>
+          )}
+
           {/* Lo que falta por entregar, ANTES de intentar cerrar. Antes solo se sabía al presionar
               el botón y recibir el error: el operador terminaba de contar el efectivo para
               enterarse entonces de que le faltaba sacar comida. */}
