@@ -125,3 +125,64 @@ func contiene(s, sub string) bool {
 	}
 	return false
 }
+
+// El arqueo tiene que MOSTRAR lo que falta por entregar, no solo rebotar al presionar cerrar: el
+// operador terminaba de contar el efectivo para enterarse entonces de que le faltaba sacar comida.
+//
+// Y la lista tiene que salir del mismo predicado que la guardia. Si se derivaran por separado, la
+// pantalla podría decir "todo listo" mientras el botón rebota, y quien lo lee no tendría cómo
+// saber cuál de las dos miente.
+func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordersSvc := app.NewOrdersService(st, clock)
+	backoffice := app.NewBackofficeService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_arqueo", "cajero")
+	prod := makeProduct(t, st, "Café arqueo", decimal.RequireFromString("50"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	principal := registerID(t, st, "Caja principal")
+	abrirCajaPrincipal(t, st, cajero)
+
+	// COBRADO pero sin entregar: aparece igual. Cobrado y entregado son cosas distintas, y lo que
+	// impide cerrar es la comida que no ha salido.
+	pedido, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	vista, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if len(vista.Pending) != 1 {
+		t.Fatalf("el arqueo lista %d pendientes, quiere 1 (el pedido está cobrado pero no entregado)", len(vista.Pending))
+	}
+	if vista.Pending[0].Number != pedido.Number {
+		t.Errorf("pendiente #%d, quiere #%d", vista.Pending[0].Number, pedido.Number)
+	}
+	if vista.Pending[0].Name != pedido.FolioName {
+		t.Errorf("pendiente %q, quiere %q", vista.Pending[0].Name, pedido.FolioName)
+	}
+
+	// Al entregarlo, la lista se vacía Y el cierre deja de rebotar: las dos cosas se mueven juntas
+	// porque salen del mismo predicado.
+	if err := ordersSvc.DeliverAll(ctx, pedido.ID); err != nil {
+		t.Fatalf("DeliverAll: %v", err)
+	}
+	tras, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("Session tras entregar: %v", err)
+	}
+	if len(tras.Pending) != 0 {
+		t.Fatalf("tras entregar quedan %d pendientes", len(tras.Pending))
+	}
+	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+		t.Fatalf("con la lista vacía el cierre debe pasar, fue: %v", err)
+	}
+}

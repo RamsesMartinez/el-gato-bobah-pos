@@ -209,7 +209,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
         colorPalette={palette}
         borderTopRadius={{ base: 0, md: '2xl' }}
         maxH={{ base: '100dvh', md: '94vh' }}
-        maxW={{ base: '100%', md: '640px' }}
+        maxW={{ base: '100%', md: '640px', lg: '920px' }}
         mx="auto"
         style={{
           transform: swipe.offset ? `translateY(${swipe.offset}px)` : undefined,
@@ -220,7 +220,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
         <DrawerCloseTrigger />
         <DrawerHeader style={{ touchAction: 'none' }} {...swipe.handlers}><DrawerTitle>Cobrar · {money(total)}</DrawerTitle></DrawerHeader>
         <DrawerBody>
-          <VStack align="stretch" gap={5}>
+          <VStack align="stretch" gap={4}>
             {/* Advertencia: productos que ya no están en el menú activo */}
             {unavailable.length > 0 && (
               <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
@@ -246,181 +246,193 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               </Box>
             )}
 
-            {/* Envío: solo a domicilio. Pre-llenado con el ajuste de negocio, editable (0 = gratis). */}
-            {isDelivery && (
-              <Box>
-                <Text fontWeight="600" mb={2}>Costo de envío</Text>
-                <Input size="lg" type="number" inputMode="decimal" placeholder={money(Number(defaultFee))}
-                  value={feeInput} onChange={(e) => setFeeOverride(e.target.value)} />
-                <Text fontSize="xs" color="fg.muted" mt={1}>0 = envío gratis</Text>
-              </Box>
-            )}
+            {/* Dos columnas en pantalla ancha. En una sola, esta hoja mide más de lo que cabe en
+                600 px de alto: el operador tiene que desplazarse para llegar al total, con el
+                cliente enfrente, mientras el modal ocupa 640 px de 1024 y deja 384 sin usar. */}
+            <SimpleGrid columns={{ base: 1, lg: 2 }} gap={{ base: 4, lg: 6 }} alignItems="start">
+              {/* Columna del dinero: con qué paga y cuánto entrega. */}
+              <VStack align="stretch" gap={4}>
+                {/* Método de pago */}
+                <Box>
+                  <HStack justify="space-between" mb={2}>
+                    <Text fontWeight="600">Método de pago</Text>
+                    <Button size="xs" minH="36px" variant="ghost" colorPalette={splitMode ? undefined : 'gray'}
+                      onClick={() => (splitMode ? setSplitMode(false) : enableSplit())}>
+                      <LuSplit /> {splitMode ? 'Un solo método' : 'Dividir pago'}
+                    </Button>
+                  </HStack>
 
-            {/* Método de pago */}
-            <Box>
-              <HStack justify="space-between" mb={2}>
-                <Text fontWeight="600">Método de pago</Text>
-                <Button size="xs" minH="36px" variant="ghost" colorPalette={splitMode ? undefined : 'gray'}
-                  onClick={() => (splitMode ? setSplitMode(false) : enableSplit())}>
-                  <LuSplit /> {splitMode ? 'Un solo método' : 'Dividir pago'}
-                </Button>
-              </HStack>
-
-              {!splitMode ? (
-                <SimpleGrid columns={2} gap={2}>
-                  {methods.map((m) => {
-                    const Icon = iconoDe(m.kind);
-                    const on = metodoActivo === m.id;
-                    return (
-                      <Button key={m.id} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
-                        variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
-                        onClick={() => setMethodId(m.id)}>
-                        <Icon size={20} />
-                        {m.name}
-                      </Button>
-                    );
-                  })}
-                </SimpleGrid>
-              ) : (
-                <VStack align="stretch" gap={3}>
-                  {splits.map((s, i) => (
-                    <Box key={i} borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
-                      <HStack justify="space-between" mb={2}>
-                        <Text fontSize="sm" color="fg.muted">Pago {i + 1}</Text>
-                        {splits.length > 1 && (
-                          <IconButton aria-label="Quitar pago" size="xs" variant="ghost" colorPalette="red"
-                            onClick={() => removeSplit(i)}><LuTrash2 /></IconButton>
-                        )}
-                      </HStack>
-                      <SimpleGrid columns={4} gap={1} mb={2}>
-                        {methods.map((m) => {
-                          const on = s.methodId === m.id;
-                          return (
-                            <Button key={m.id} h="44px" px={1} fontSize="xs" whiteSpace="normal"
-                              variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
-                              onClick={() => setSplitMethod(i, m.id)}>
-                              {m.name}
+                  {!splitMode ? (
+                    <SimpleGrid columns={2} gap={2}>
+                      {methods.map((m) => {
+                        const Icon = iconoDe(m.kind);
+                        const on = metodoActivo === m.id;
+                        return (
+                          <Button key={m.id} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
+                            variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
+                            onClick={() => setMethodId(m.id)}>
+                            <Icon size={20} />
+                            {m.name}
+                          </Button>
+                        );
+                      })}
+                    </SimpleGrid>
+                  ) : (
+                    <VStack align="stretch" gap={3}>
+                      {splits.map((s, i) => (
+                        <Box key={i} borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontSize="sm" color="fg.muted">Pago {i + 1}</Text>
+                            {splits.length > 1 && (
+                              <IconButton aria-label="Quitar pago" size="xs" variant="ghost" colorPalette="red"
+                                onClick={() => removeSplit(i)}><LuTrash2 /></IconButton>
+                            )}
+                          </HStack>
+                          <SimpleGrid columns={4} gap={1} mb={2}>
+                            {methods.map((m) => {
+                              const on = s.methodId === m.id;
+                              return (
+                                <Button key={m.id} h="44px" px={1} fontSize="xs" whiteSpace="normal"
+                                  variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
+                                  onClick={() => setSplitMethod(i, m.id)}>
+                                  {m.name}
+                                </Button>
+                              );
+                            })}
+                          </SimpleGrid>
+                          <HStack>
+                            <Input flex="1" size="lg" type="number" inputMode="decimal" placeholder="0.00"
+                              value={s.amount} onChange={(e) => setSplitAmount(i, e.target.value)} />
+                            <Button size="sm" minH="40px" variant="outline" colorPalette="gray" onClick={() => fillRest(i)}>
+                              Resto
                             </Button>
-                          );
-                        })}
-                      </SimpleGrid>
-                      <HStack>
-                        <Input flex="1" size="lg" type="number" inputMode="decimal" placeholder="0.00"
-                          value={s.amount} onChange={(e) => setSplitAmount(i, e.target.value)} />
-                        <Button size="sm" minH="40px" variant="outline" colorPalette="gray" onClick={() => fillRest(i)}>
-                          Resto
-                        </Button>
-                      </HStack>
-                    </Box>
-                  ))}
-                  <Button variant="outline" colorPalette="gray" onClick={addSplit}>
-                    <LuPlus /> Agregar método
-                  </Button>
-                  <Flex justify="space-between" align="baseline">
-                    <Text color="fg.muted">Restante</Text>
-                    <Text fontSize="xl" fontWeight="800" color={splitValid ? 'green.500' : 'orange.500'}>
-                      {money(splitRemaining)}
-                    </Text>
-                  </Flex>
-                  {splitRemaining < -0.005 && (
-                    <Text fontSize="xs" color="red.400">Los pagos superan el total del pedido.</Text>
-                  )}
-                </VStack>
-              )}
-            </Box>
-
-            {/* Propina */}
-            <Box>
-              <Text fontWeight="600" mb={2}>Propina</Text>
-              <HStack mb={2}>
-                {[0, 0.1, 0.15, 0.2].map((pct) => {
-                  const amt = Math.round(total * pct * 100) / 100;
-                  const active = tipAmount === amt;
-                  return (
-                    <Button key={pct} flex="1"
-                      variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}
-                      onClick={() => setTip(amt ? String(amt) : '')}>
-                      {pct === 0 ? 'Sin' : `${pct * 100}%`}
-                    </Button>
-                  );
-                })}
-              </HStack>
-              <Input size="lg" type="number" inputMode="decimal" placeholder="Otra cantidad"
-                value={tip} onChange={(e) => setTip(e.target.value)} />
-            </Box>
-
-            {(deliveryFee > 0 || tipAmount > 0) && (
-              <Box>
-                <Flex justify="space-between"><Text color="fg.muted">Subtotal</Text><Text>{money(total)}</Text></Flex>
-                {deliveryFee > 0 && (
-                  <Flex justify="space-between"><Text color="fg.muted">Envío</Text><Text>{money(deliveryFee)}</Text></Flex>
-                )}
-                {tipAmount > 0 && (
-                  <Flex justify="space-between"><Text color="fg.muted">Propina</Text><Text>{money(tipAmount)}</Text></Flex>
-                )}
-                <Flex justify="space-between" align="baseline" mt={1}>
-                  <Text fontWeight="700">Total</Text>
-                  <Text fontSize="xl" fontWeight="800">{money(grandTotal)}</Text>
-                </Flex>
-              </Box>
-            )}
-
-            {/* Efectivo (modo simple): recibido + billetes rápidos + cambio */}
-            {!splitMode && esEfectivo(metodoElegido) && (
-              <Box>
-                <HStack justify="space-between" mb={2}>
-                  <Text fontWeight="600">Recibido</Text>
-                  {!isExact && (
-                    <Button size="sm" minH="40px" variant="ghost" colorPalette="gray" onClick={() => setTendered('')}>
-                      <LuX /> Borrar
-                    </Button>
-                  )}
-                </HStack>
-                <SimpleGrid columns={3} gap={2} mb={2}>
-                  <Button h="52px" variant={isExact ? 'solid' : 'outline'} colorPalette={isExact ? undefined : 'gray'}
-                    onClick={() => setTendered('')}>
-                    Exacto
-                  </Button>
-                  {BILLS.map((v) => {
-                    const active = tendered === String(v);
-                    return (
-                      <Button key={v} h="52px" variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}
-                        onClick={() => setTendered(String(v))}>
-                        {money(v)}
+                          </HStack>
+                        </Box>
+                      ))}
+                      <Button variant="outline" colorPalette="gray" onClick={addSplit}>
+                        <LuPlus /> Agregar método
                       </Button>
-                    );
-                  })}
-                </SimpleGrid>
-                <Input size="lg" type="number" inputMode="decimal" placeholder={money(grandTotal)}
-                  value={tendered} onChange={(e) => setTendered(e.target.value)} />
-                <Flex justify="space-between" mt={3} align="baseline">
-                  <Text color="fg.muted">Cambio</Text>
-                  <Text fontSize="4xl" fontWeight="800" color={cashShort ? 'red.400' : 'green.500'}>
-                    {money(change)}
-                  </Text>
-                </Flex>
-              </Box>
-            )}
-            {pedidosAbiertos.length > 0 && (
-              <Box borderTopWidth="1px" pt={3}>
-                <Text fontWeight="600" mb={1}>Agregar a un pedido en curso</Text>
-                <Picker
-                  value={agregarA}
-                  onChange={setAgregarA}
-                  options={pedidosAbiertos.map((o) => ({
-                    value: String(o.id),
-                    // Nombre primero (es lo que se ve en el tablero y lo que dice el cliente),
-                    // número después para quien busque por ticket.
-                    label: `${o.folioName ? `${o.folioName} · #${o.number}` : `#${o.number}`}${o.customerName ? ` · ${o.customerName}` : ''}`,
-                    hint: money(o.total, o.currency),
-                  }))}
-                  placeholder="Pedido nuevo"
-                  title="¿A qué pedido se agrega?"
-                  clearable
-                  clearLabel="Pedido nuevo"
-                />
-              </Box>
-            )}
+                      <Flex justify="space-between" align="baseline">
+                        <Text color="fg.muted">Restante</Text>
+                        <Text fontSize="xl" fontWeight="800" color={splitValid ? 'green.500' : 'orange.500'}>
+                          {money(splitRemaining)}
+                        </Text>
+                      </Flex>
+                      {splitRemaining < -0.005 && (
+                        <Text fontSize="xs" color="red.400">Los pagos superan el total del pedido.</Text>
+                      )}
+                    </VStack>
+                  )}
+                </Box>
+
+                {/* Propina */}
+                <Box>
+                  <Text fontWeight="600" mb={2}>Propina</Text>
+                  <HStack mb={2}>
+                    {[0, 0.1, 0.15, 0.2].map((pct) => {
+                      const amt = Math.round(total * pct * 100) / 100;
+                      const active = tipAmount === amt;
+                      return (
+                        <Button key={pct} flex="1"
+                          variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}
+                          onClick={() => setTip(amt ? String(amt) : '')}>
+                          {pct === 0 ? 'Sin' : `${pct * 100}%`}
+                        </Button>
+                      );
+                    })}
+                  </HStack>
+                  <Input size="lg" type="number" inputMode="decimal" placeholder="Otra cantidad"
+                    value={tip} onChange={(e) => setTip(e.target.value)} />
+                </Box>
+
+                {/* Efectivo (modo simple): recibido + billetes rápidos + cambio */}
+                {!splitMode && esEfectivo(metodoElegido) && (
+                  <Box>
+                    <HStack justify="space-between" mb={2}>
+                      <Text fontWeight="600">Recibido</Text>
+                      {!isExact && (
+                        <Button size="sm" minH="40px" variant="ghost" colorPalette="gray" onClick={() => setTendered('')}>
+                          <LuX /> Borrar
+                        </Button>
+                      )}
+                    </HStack>
+                    <SimpleGrid columns={3} gap={2} mb={2}>
+                      <Button h="52px" variant={isExact ? 'solid' : 'outline'} colorPalette={isExact ? undefined : 'gray'}
+                        onClick={() => setTendered('')}>
+                        Exacto
+                      </Button>
+                      {BILLS.map((v) => {
+                        const active = tendered === String(v);
+                        return (
+                          <Button key={v} h="52px" variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}
+                            onClick={() => setTendered(String(v))}>
+                            {money(v)}
+                          </Button>
+                        );
+                      })}
+                    </SimpleGrid>
+                    <Input size="lg" type="number" inputMode="decimal" placeholder={money(grandTotal)}
+                      value={tendered} onChange={(e) => setTendered(e.target.value)} />
+                    <Flex justify="space-between" mt={3} align="baseline">
+                      <Text color="fg.muted">Cambio</Text>
+                      <Text fontSize="4xl" fontWeight="800" color={cashShort ? 'red.400' : 'green.500'}>
+                        {money(change)}
+                      </Text>
+                    </Flex>
+                  </Box>
+                )}
+              </VStack>
+
+              {/* Columna del pedido: lo que se le ajusta antes de cobrarlo. */}
+              <VStack align="stretch" gap={4}>
+                {/* Envío: solo a domicilio. Pre-llenado con el ajuste de negocio, editable (0 = gratis). */}
+                {isDelivery && (
+                  <Box>
+                    <Text fontWeight="600" mb={2}>Costo de envío</Text>
+                    <Input size="lg" type="number" inputMode="decimal" placeholder={money(Number(defaultFee))}
+                      value={feeInput} onChange={(e) => setFeeOverride(e.target.value)} />
+                    <Text fontSize="xs" color="fg.muted" mt={1}>0 = envío gratis</Text>
+                  </Box>
+                )}
+
+                {(deliveryFee > 0 || tipAmount > 0) && (
+                  <Box>
+                    <Flex justify="space-between"><Text color="fg.muted">Subtotal</Text><Text>{money(total)}</Text></Flex>
+                    {deliveryFee > 0 && (
+                      <Flex justify="space-between"><Text color="fg.muted">Envío</Text><Text>{money(deliveryFee)}</Text></Flex>
+                    )}
+                    {tipAmount > 0 && (
+                      <Flex justify="space-between"><Text color="fg.muted">Propina</Text><Text>{money(tipAmount)}</Text></Flex>
+                    )}
+                    <Flex justify="space-between" align="baseline" mt={1}>
+                      <Text fontWeight="700">Total</Text>
+                      <Text fontSize="xl" fontWeight="800">{money(grandTotal)}</Text>
+                    </Flex>
+                  </Box>
+                )}
+
+                {pedidosAbiertos.length > 0 && (
+                  <Box borderTopWidth="1px" pt={3}>
+                    <Text fontWeight="600" mb={1}>Agregar a un pedido en curso</Text>
+                    <Picker
+                      value={agregarA}
+                      onChange={setAgregarA}
+                      options={pedidosAbiertos.map((o) => ({
+                        value: String(o.id),
+                        // Nombre primero (es lo que se ve en el tablero y lo que dice el cliente),
+                        // número después para quien busque por ticket.
+                        label: `${o.folioName ? `${o.folioName} · #${o.number}` : `#${o.number}`}${o.customerName ? ` · ${o.customerName}` : ''}`,
+                        hint: money(o.total, o.currency),
+                      }))}
+                      placeholder="Pedido nuevo"
+                      title="¿A qué pedido se agrega?"
+                      clearable
+                      clearLabel="Pedido nuevo"
+                    />
+                  </Box>
+                )}
+              </VStack>
+            </SimpleGrid>
 
           </VStack>
         </DrawerBody>

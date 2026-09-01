@@ -267,6 +267,19 @@ type SessionView struct {
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
 	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Pending son los pedidos del turno que todavía no se terminan de entregar. Salen del MISMO
+	// predicado que bloquea el cierre, no de una consulta parecida: si la pantalla y la guardia se
+	// derivaran por separado, una de las dos mentiría y quien la lee no tendría cómo saber cuál.
+	//
+	// Se listan aunque ya estén cobrados: cobrado y entregado son cosas distintas, y lo que impide
+	// cerrar es la comida que no ha salido, no el dinero.
+	Pending []PendingOrder `json:"pending"`
+}
+
+// PendingOrder es un pedido del turno que sigue sin entregarse.
+type PendingOrder struct {
+	Number int    `json:"number"`
+	Name   string `json:"name"`
 }
 
 // CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
@@ -479,9 +492,16 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	// Lo que falta por entregar del turno. Sale del mismo predicado que la guardia del cierre, así
+	// que la pantalla del arqueo no puede decir "todo listo" mientras el botón rebota.
+	pendientes, err := s.pedidosSinEntregar(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
-		ID: sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
+		Pending: pendientes,
+		ID:      sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
 		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
@@ -964,24 +984,43 @@ func (s *BackofficeService) TipsByDay(ctx context.Context, from, to time.Time) (
 // Los folios van en el mensaje a propósito: un "hay pedidos sin terminar" a secas manda al operador
 // a recorrer el tablero comparando, justo cuando está cerrando y con prisa.
 func (s *BackofficeService) sinPedidosPendientes(ctx context.Context, sessionID int64) error {
-	folios, err := s.store.QC(ctx).OpenOrdersInSession(ctx, &sessionID)
+	pendientes, err := s.pedidosSinEntregar(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	if len(folios) == 0 {
+	if len(pendientes) == 0 {
 		return nil
 	}
-	partes := make([]string, 0, len(folios))
-	for _, f := range folios {
+	partes := make([]string, 0, len(pendientes))
+	for _, p := range pendientes {
 		// El nombre primero porque es lo que se lee en el tablero y lo que se canta; el número va
 		// entre paréntesis para quien busque por ticket. Los pedidos viejos no tienen nombre.
-		num := "#" + strconv.FormatInt(int64(f.DailyNumber), 10)
-		if f.FolioName != nil && *f.FolioName != "" {
-			partes = append(partes, *f.FolioName+" ("+num+")")
+		num := "#" + strconv.Itoa(p.Number)
+		if p.Name != "" {
+			partes = append(partes, p.Name+" ("+num+")")
 			continue
 		}
 		partes = append(partes, num)
 	}
 	return fmt.Errorf("%w: %s. Entrégalos o cancélalos antes de cerrar",
 		domain.ErrOpenOrders, strings.Join(partes, ", "))
+}
+
+// pedidosSinEntregar lista los pedidos del turno que todavía no salen.
+//
+// Es la fuente ÚNICA de esa lista: la usa el resumen del arqueo y la usa la guardia que impide
+// cerrar. Derivarlas por separado dejaría a la pantalla diciendo una cosa y al botón haciendo otra,
+// y quien lo lee no tendría cómo saber cuál de las dos miente.
+//
+// Cobrado no entra en la cuenta: lo que impide cerrar es la comida que no ha salido, no el dinero.
+func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID int64) ([]PendingOrder, error) {
+	filas, err := s.store.QC(ctx).OpenOrdersInSession(ctx, &sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingOrder, 0, len(filas))
+	for _, f := range filas {
+		out = append(out, PendingOrder{Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
+	}
+	return out, nil
 }

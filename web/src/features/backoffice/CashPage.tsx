@@ -1,7 +1,7 @@
 import { useState, Fragment, type ReactNode } from 'react';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, Wrap, useBreakpointValue,
 } from '@chakra-ui/react';
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 import { ApiError } from '../../api/client';
@@ -471,7 +471,31 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
-          <Button colorPalette="red" size="lg" loading={closeMut.isPending} disabled={porContar.length > 0}
+          {/* Lo que falta por entregar, ANTES de intentar cerrar. Antes solo se sabía al presionar
+              el botón y recibir el error: el operador terminaba de contar el efectivo para
+              enterarse entonces de que le faltaba sacar comida. */}
+          {session.pending.length > 0 && (
+            <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
+              _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
+              <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
+                Falta entregar {session.pending.length === 1 ? '1 pedido' : `${session.pending.length} pedidos`}
+              </Text>
+              <Text fontSize="sm" color="fg.muted" mb={2}>
+                La caja no cierra hasta que salgan o se cancelen. Estar cobrado no cuenta: lo que
+                falta es la comida.
+              </Text>
+              <Wrap gap={2}>
+                {session.pending.map((o) => (
+                  <Badge key={o.number} colorPalette="orange" px={2} py={1} fontSize="sm">
+                    {o.name ? `${o.name} · #${o.number}` : `#${o.number}`}
+                  </Badge>
+                ))}
+              </Wrap>
+            </Box>
+          )}
+
+          <Button colorPalette="red" size="lg" loading={closeMut.isPending}
+            disabled={porContar.length > 0 || session.pending.length > 0}
             onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
             Cerrar caja
           </Button>
