@@ -20,8 +20,8 @@ import (
 // interruptor en el cobro, y equivocarse era caro: un ticket con un refresco y unas alitas marcado
 // a mano escondía las alitas del tablero y nadie las preparaba. Ahora lo sabe el catálogo.
 func TestUnPedidoSinNadaQuePrepararNaceEntregado(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_prep", "cajero")
@@ -30,7 +30,7 @@ func TestUnPedidoSinNadaQuePrepararNaceEntregado(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: refresco, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("25")}},
@@ -53,8 +53,8 @@ func TestUnPedidoSinNadaQuePrepararNaceEntregado(t *testing.T) {
 // EL CASO QUE ROMPÍA EL INTERRUPTOR: un ticket mezclado. Basta un producto que sí necesita cocina
 // para que el pedido entero vaya al tablero — si no, ese producto desaparece y nadie lo prepara.
 func TestUnPedidoMEZCLADOVaAlTablero(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_mezcla", "cajero")
@@ -64,7 +64,7 @@ func TestUnPedidoMEZCLADOVaAlTablero(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{
 			{ProductID: refresco, Qty: decimal.RequireFromString("1")},
@@ -83,8 +83,8 @@ func TestUnPedidoMEZCLADOVaAlTablero(t *testing.T) {
 // El default es "sí pasa por cocina", así que el catálogo migrado se comporta exactamente igual que
 // antes hasta que alguien apague un producto a propósito.
 func TestElDefaultEsQueSiPasaPorCocina(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_default", "cajero")
@@ -92,7 +92,7 @@ func TestElDefaultEsQueSiPasaPorCocina(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
@@ -108,8 +108,8 @@ func TestElDefaultEsQueSiPasaPorCocina(t *testing.T) {
 // Un pedido sin preparación que NO se cobró completo no puede nacer entregado: sería regalar comida
 // sin dejar rastro, porque el pedido nace terminado y no vuelve a aparecer en ninguna pantalla.
 func TestSinPreparacionPeroSinCobrarVaAlTablero(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_sincobrar", "cajero")
@@ -117,7 +117,7 @@ func TestSinPreparacionPeroSinCobrarVaAlTablero(t *testing.T) {
 	sinPreparacion(t, st, refresco)
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{{ProductID: refresco, Qty: decimal.RequireFromString("1")}},
 	})

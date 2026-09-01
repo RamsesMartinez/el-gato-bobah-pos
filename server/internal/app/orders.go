@@ -59,8 +59,15 @@ type CreateOrderCmd struct {
 }
 
 type OrderView struct {
-	ID     int64 `json:"id"`
-	Number int   `json:"number"`
+	// Agregados: los ids de los renglones que ACABAN de entrar, para que la estación imprima la
+	// comanda del agregado sin volver a preguntar cuáles eran. Vacío en cualquier otra respuesta.
+	//
+	// Viaja en la respuesta y no se deduce comparando contra lo que la pantalla tenía: dos
+	// estaciones pueden estar agregando al mismo pedido, y la diferencia contra el estado local
+	// incluiría lo que agregó la otra — cocina prepararía dos veces lo que el compañero ya mandó.
+	Agregados []int64 `json:"agregados,omitempty"`
+	ID        int64   `json:"id"`
+	Number    int     `json:"number"`
 	// FolioName es el nombre con el que se canta el pedido ("Tigre"). Vacío en los pedidos
 	// anteriores a que existieran: a esos no se les inventa uno, porque el ticket que se imprimió
 	// en su día llevaba solo el número.
@@ -104,6 +111,15 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	}
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
+	}
+	// Crear un pedido YA COBRADO se rechaza: era el camino corto que se saltaba la cocina por
+	// completo, y por ser el corto era el que se usaba. Confirmar y cobrar son dos momentos, y el
+	// segundo entra por Charge.
+	//
+	// La barrera vive AQUÍ y no en la pantalla. Esconder el botón deja el endpoint abierto a
+	// cualquiera con una petición a mano, y el front es espejo del backend, nunca la barrera.
+	if len(cmd.Payments) > 0 {
+		return nil, domain.ErrCobroFueraDeLugar
 	}
 	// A04: acota cada línea de pago/propina antes de la tx. Un monto sobre el tope desbordaría
 	// el numeric(10,2) (→ 500); una propina negativa violaría el check de la columna.
@@ -343,6 +359,12 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 					return err
 				}
 			}
+		}
+		// El pedido nace con todos sus renglones ya en cocina: la comanda del confirmado sale con el
+		// pedido completo. Sin marcarlos, el primer agregado sacaría otra vez el pedido entero y
+		// cocina prepararía dos veces lo que ya tenía en la plancha.
+		if err := q.MarcarTodoElPedidoEnviadoACocina(ctx, ord.ID); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -827,12 +849,19 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		return nil, err
 	}
 
+	// Los renglones que entran en ESTA llamada. Es lo que la comanda del agregado imprime, y por eso
+	// se recogen aquí y no se deducen después comparando contra lo que la pantalla tenía: dos
+	// estaciones pueden estar agregando al mismo pedido, y esa diferencia incluiría lo que agregó la
+	// otra — cocina prepararía dos veces lo que el compañero ya mandó.
+	var agregados []int64
+
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		// Bloquea el pedido: dos capturas simultáneas sobre la misma cuenta recalcularían el total
 		// sobre el estado viejo y uno de los dos agregados desaparecería del importe.
 		if _, err := q.GetOrderForUpdate(ctx, orderID); err != nil {
 			return err
 		}
+		agregados = agregados[:0]
 		for _, l := range built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 				OrderID:        orderID,
@@ -848,6 +877,7 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 			if err != nil {
 				return err
 			}
+			agregados = append(agregados, lineID)
 			for _, m := range l.Modifiers {
 				if err := q.CreateOrderLineModifier(ctx, db.CreateOrderLineModifierParams{
 					OrderLineID:      lineID,
@@ -876,13 +906,26 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 				}
 			}
 		}
+		// Marcados como salidos a cocina EN LA MISMA transacción que los inserta: si se marcaran
+		// después y la petición muriera en medio, quedarían renglones que la comanda del agregado ya
+		// no volvería a considerar y cocina nunca sabría de ellos.
+		if err := q.MarcarRenglonesEnviadosACocina(ctx, db.MarcarRenglonesEnviadosACocinaParams{
+			OrderID: orderID, Ids: agregados,
+		}); err != nil {
+			return err
+		}
 		return q.RecalcOrderTotals(ctx, orderID)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return s.load(ctx, orderID)
+	vista, err := s.load(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	vista.Agregados = agregados
+	return vista, nil
 }
 
 // lineasDeEntrega traduce los renglones del pedido a lo que el dominio necesita para razonar sobre
@@ -1109,7 +1152,7 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.DeliveryPlatformID) {
 			return domain.ErrPaymentMethodPlatform
 		}
-		return q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
+		if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
 			OrderID:           cmd.OrderID,
 			PaymentMethodID:   cmd.MethodID,
 			Amount:            domain.Round2(cmd.Amount),
@@ -1117,6 +1160,36 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 			RegisterSessionID: &sess.ID,
 			ReceivedBy:        &cmd.ActorID,
 			Reference:         cmd.Reference,
+		}); err != nil {
+			return err
+		}
+
+		// El pedido que no pasa por cocina y queda SALDADO se cierra aquí mismo.
+		//
+		// Antes nacía entregado, porque crear y cobrar eran una sola llamada. Al separarlos —que es
+		// lo que obliga a que cocina vea todo— esa regla se quedó sin dónde correr, y una embotellada
+		// del mostrador se habría quedado abierta para siempre en la barra: el operador tendría que
+		// entregarla a mano en la venta más frecuente del día. La regla no se perdió, se movió al
+		// momento en que ahora ocurre.
+		//
+		// Las dos condiciones siguen siendo necesarias: cerrar algo que cocina tiene que preparar lo
+		// borraría del tablero antes de hacerlo, y cerrar algo sin saldar escondería el faltante
+		// hasta el corte.
+		if !domain.PagosCubren(pagado.Add(domain.Round2(cmd.Amount)), o.Total) {
+			return nil
+		}
+		necesita, err := q.PedidoNecesitaPreparacion(ctx, cmd.OrderID)
+		if err != nil {
+			return err
+		}
+		if necesita || !domain.CanTransition(string(o.Status), domain.StatusEntregada) {
+			return nil
+		}
+		if err := q.DeliverAllOrderLines(ctx, cmd.OrderID); err != nil {
+			return err
+		}
+		return q.SetOrderStatus(ctx, db.SetOrderStatusParams{
+			ID: cmd.OrderID, Status: db.OrderStatusEntregada,
 		})
 	})
 }

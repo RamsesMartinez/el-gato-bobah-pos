@@ -37,7 +37,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
-	pedido, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
@@ -101,7 +101,7 @@ func TestUnPedidoCanceladoNoBloqueaElCierre(t *testing.T) {
 	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
-	pedido, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 	})
@@ -146,7 +146,7 @@ func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
 
 	// COBRADO pero sin entregar: aparece igual. Cobrado y entregado son cosas distintas, y lo que
 	// impide cerrar es la comida que no ha salido.
-	pedido, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
@@ -208,7 +208,7 @@ func TestElArqueoSeparaLoCobradoPorCadaPersona(t *testing.T) {
 
 	venta := func(quien int64, metodo int16, monto string) {
 		t.Helper()
-		o, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		o, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: quien,
 			Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 			Payments: []app.PaymentInput{{MethodID: metodo, Amount: decimal.RequireFromString(monto)}},

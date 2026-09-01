@@ -20,8 +20,8 @@ import (
 
 // pedidoEnCurso deja un pedido confirmado de un café, cobrado o no, y devuelve con qué agregarle.
 func pedidoEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, sufijo string, pagado bool) (*app.OrderView, int64, int64) {
-	t.Helper()
 	ctx := context.Background()
+	t.Helper()
 	cajero := makeUser(t, st, "cajero_"+sufijo, "cajero")
 	cafe := makeProduct(t, st, "Café "+sufijo, decimal.RequireFromString("100"), false)
 	efectivo := paymentMethodID(t, st, "Efectivo")
@@ -34,7 +34,7 @@ func pedidoEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, sufijo
 	if pagado {
 		cmd.Payments = []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}}
 	}
-	ord, err := svc.Create(ctx, cmd)
+	ord, err := crearYCobrar(t, ctx, svc, cmd)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

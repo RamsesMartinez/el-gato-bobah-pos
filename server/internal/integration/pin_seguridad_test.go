@@ -108,7 +108,7 @@ func TestDosPersonasEnLaMismaEstacionSeSeparanEnElArqueo(t *testing.T) {
 
 	cobrar := func(quien int64) {
 		t.Helper()
-		o, err := orders.Create(ctx, app.CreateOrderCmd{
+		o, err := crearYCobrar(t, ctx, orders, app.CreateOrderCmd{
 			ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: quien,
 			Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 			Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}},

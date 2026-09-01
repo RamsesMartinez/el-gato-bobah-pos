@@ -14,13 +14,22 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 }
 
-export function buildKitchenHtml(order: ReceiptOrder): string {
+// `soloLineas` limita el papel a esos renglones: es la comanda de un AGREGADO.
+//
+// Cocina ya está preparando lo anterior, así que reimprimir el pedido entero la haría preparar dos
+// veces lo mismo. El folio es el mismo en los dos papeles: es con lo que los junta.
+export function buildKitchenHtml(order: ReceiptOrder, soloLineas?: number[]): string {
   const hora = new Date(order.openedAt);
   const horaTxt = Number.isNaN(hora.getTime())
     ? ''
     : hora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
-  const lineas = (order.lines ?? [])
+  const esAgregado = soloLineas !== undefined && soloLineas.length > 0;
+  const aImprimir = esAgregado
+    ? (order.lines ?? []).filter((l) => l.id !== undefined && soloLineas.includes(l.id))
+    : (order.lines ?? []);
+
+  const lineas = aImprimir
     .map((l) => {
       const mods = (l.modifiers ?? [])
         .map((m) => `<div class="mod">+ ${esc(m.name)}${m.quantity > 1 ? ` x${m.quantity}` : ''}</div>`)
@@ -34,7 +43,7 @@ export function buildKitchenHtml(order: ReceiptOrder): string {
 
   // Tipografía grande y de ancho fijo: se lee de lejos, con las manos ocupadas y bajo la luz de una
   // cocina. El folio es lo más grande del papel porque es con lo que se canta el pedido.
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Comanda ${order.number}</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Comanda ${esAgregado ? 'agregado ' : ''}${order.number}</title>
 <style>
   @page { margin: 4mm; }
   body { font-family: 'Courier New', monospace; font-size: 15px; margin: 0; }
@@ -48,9 +57,13 @@ export function buildKitchenHtml(order: ReceiptOrder): string {
   .prod { font-size: 20px; font-weight: 700; }
   .mod { font-size: 16px; padding-left: 14px; }
   .nota { font-size: 16px; font-weight: 700; padding-left: 14px; text-transform: uppercase; }
+  /* Lo primero que se lee del papel: sin esto, cocina no distingue un agregado de un pedido nuevo
+     con el mismo nombre y prepara dos veces. */
+  .agregado { font-size: 22px; font-weight: 800; letter-spacing: 2px; }
 </style></head><body>
 <div class="cab">
   <div>
+    ${esAgregado ? '<div class="agregado">AGREGADO</div>' : ''}
     <div class="folio">${order.folioName || `#${order.number}`}</div>
     ${order.folioName ? `<div class="num">#${order.number}</div>` : ''}
   </div>

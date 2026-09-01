@@ -55,20 +55,20 @@ producto — todo sin abrir la pantalla de cobro.
 - [X] T010 [P] [US1] Test de integración en `server/internal/integration/pedidos_en_curso_test.go`: la lista de en curso trae un pedido `abierta` sin pagos, trae uno `entregada` con saldo, y **no** trae uno cancelado ni uno entregado y pagado. Con dos empresas: la de una no ve la de la otra.
 - [X] T011 [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido `entregada` devuelve `ErrPedidoTerminal`; agregar a uno `abierta` suma los renglones; **dos agregados seguidos suman los dos**, que es la propiedad de la que depende FR-011. La concurrencia real no se prueba aquí —un test de goroutines pasaría por el número de núcleos, no por el código— sino a mano en el quickstart.
 - [X] T011b [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido **ya cobrado por completo** lo deja con saldo pendiente, y ese saldo aparece en la lista de pedidos en curso. Es FR-009 y es la regla que el dueño puso — si se cobró, no puede quedar deuda escondida.
-- [ ] T012 [P] [US1] Test en `web/src/features/pos/useMandarPedido.test.ts`: al confirmar, la cuenta local queda vacía; y **el mismo uuid se manda en el reintento** — es el defecto que hoy produce dos pedidos tras un corte de red.
-- [ ] T013 [P] [US1] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: pinta un chip por pedido con su folio y su monto, con altura de 44 px, y no pinta nada cuando no hay ninguno.
+- [X] T012 [P] [US1] Test en `web/src/features/pos/useMandarPedido.test.ts`: al confirmar, la cuenta local queda vacía; y **el mismo uuid se manda en el reintento** — es el defecto que hoy produce dos pedidos tras un corte de red.
+- [X] T013 [P] [US1] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: pinta un chip por pedido con su folio y su monto, con altura de 44 px, y no pinta nada cuando no hay ninguno.
 
 ### Implementación
 
-- [ ] T014 [US1] Mover el `clientUuid` del intento a la cuenta en `web/src/stores/ticket.ts`: se genera al abrir la cuenta y sobrevive al reintento.
-- [ ] T015 [US1] Consumir ese uuid en `web/src/features/pos/useMandarPedido.ts` en vez de llamar a `uuid()` dentro de `mutationFn`.
+- [X] T014 [US1] Mover el `clientUuid` del intento a la cuenta en `web/src/stores/ticket.ts`: se genera al abrir la cuenta y sobrevive al reintento.
+- [X] T015 [US1] Consumir ese uuid en `web/src/features/pos/useMandarPedido.ts` en vez de llamar a `uuid()` dentro de `mutationFn`.
 - [X] T016 [US1] Implementar el servicio de pedidos en curso en `server/internal/app/orders.go` sobre la consulta de T009, devolviendo por pedido el grupo al que pertenece y el saldo.
 - [X] T017 [US1] Cambiar la ruta `/orders/unpaid` por `/orders/open` en `server/internal/httpapi/router.go` y su handler en `server/internal/httpapi/handlers_orders.go`. El nombre viejo miente —la lista ya no es solo de impagos— y el nuevo va en inglés como todas las demás rutas del router.
 - [X] T018 [US1] Aplicar `domain.PuedeAgregar` en `AddOrderLines` (`server/internal/app/orders.go`) y mapear el rechazo con el estado en el mensaje.
-- [ ] T019 [US1] Crear `web/src/features/pos/PedidosEnCurso.tsx`: chips de 44 px con folio y monto, desplazamiento horizontal, y el total pendiente a la vista. Absorbe lo que hacía `PorCobrarPill`.
-- [ ] T020 [US1] Montar los chips en la fila que ya existe de `web/src/features/pos/POSPage.tsx`, junto a `TicketTabs`, y quitar `PorCobrarPill`. **No se agrega alto**: es el presupuesto de SC-005.
-- [ ] T021 [US1] Crear `web/src/features/pos/useAgregarAPedido.ts`: tocar un chip abre el pedido y los productos que se agreguen entran por `POST /orders/{id}/lines`.
-- [ ] T022 [US1] Quitar el selector "Agregar a un pedido en curso" de `web/src/features/pos/CheckoutSheet.tsx`. Dos caminos para lo mismo, uno escondido, es de donde salen los defectos.
+- [X] T019 [US1] Crear `web/src/features/pos/PedidosEnCurso.tsx`: chips de 44 px con folio y monto, desplazamiento horizontal, y el total pendiente a la vista. Absorbe lo que hacía `PorCobrarPill`.
+- [X] T020 [US1] Montar los chips en la fila que ya existe de `web/src/features/pos/POSPage.tsx`, junto a `TicketTabs`, y quitar `PorCobrarPill`. **No se agrega alto**: es el presupuesto de SC-005.
+- [X] T021 [US1] Crear `web/src/features/pos/useAgregarAPedido.ts`: tocar un chip abre el pedido y los productos que se agreguen entran por `POST /orders/{id}/lines`.
+- [X] T022 [US1] Quitar el selector "Agregar a un pedido en curso" de `web/src/features/pos/CheckoutSheet.tsx`. Dos caminos para lo mismo, uno escondido, es de donde salen los defectos.
 
 **Checkpoint**: US1 entregable sola. El POS ya no pierde el pedido y agregar cuesta un toque.
 
@@ -83,17 +83,17 @@ hoy — la feature empeoraría el POS.
 
 ### Tests primero
 
-- [ ] T023 [P] [US2] Test de integración en `server/internal/integration/cobrar_exige_confirmar_test.go`: `CreateOrder` con pagos devuelve `ErrCobroFueraDeLugar`; sin pagos crea el pedido; y cobrar ese pedido con el camino de `/pay` funciona.
-- [ ] T024 [P] [US2] Test de integración en el mismo archivo: crear un pedido con `lines` vacío se rechaza — un pedido de cero renglones ocuparía folio y sacaría una comanda en blanco.
-- [ ] T025 [P] [US2] Test de integración en el mismo archivo: **los pedidos que ya existían** siguen siendo cobrables y entregables. Es FR-020 y protege a producción.
+- [X] T023 [P] [US2] Test de integración en `server/internal/integration/cobrar_exige_confirmar_test.go`: `CreateOrder` con pagos devuelve `ErrCobroFueraDeLugar`; sin pagos crea el pedido; y cobrar ese pedido con el camino de `/pay` funciona.
+- [X] T024 [P] [US2] Test de integración en el mismo archivo: crear un pedido con `lines` vacío se rechaza — un pedido de cero renglones ocuparía folio y sacaría una comanda en blanco.
+- [X] T025 [P] [US2] Test de integración en el mismo archivo: **los pedidos que ya existían** siguen siendo cobrables y entregables. Es FR-020 y protege a producción.
 - [ ] T026 [P] [US2] Test en `web/src/features/pos/CheckoutSheet.test.tsx`: la hoja de cobro ya no puede crear un pedido; con una cuenta sin confirmar, cobrar no está disponible.
 
 ### Implementación
 
-- [ ] T027 [US2] Rechazar `Payments` no vacío en `CreateOrder` (`server/internal/app/orders.go`), envuelto con `%w` sobre el sentinel de T008, con un mensaje que nombra el camino correcto.
-- [ ] T028 [US2] Rechazar `lines` vacío en la misma ruta, con `domain.ErrValidation`.
-- [ ] T029 [US2] Quitar `payments` del cuerpo aceptado en `server/internal/httpapi/handlers_orders.go` y de `web/src/api/pos.ts`.
-- [ ] T030 [US2] Dejar `CheckoutSheet` cobrando **solo** pedidos que existen, por `POST /orders/{id}/pay` (`web/src/features/pos/CheckoutSheet.tsx`).
+- [X] T027 [US2] Rechazar `Payments` no vacío en `CreateOrder` (`server/internal/app/orders.go`), envuelto con `%w` sobre el sentinel de T008, con un mensaje que nombra el camino correcto.
+- [X] T028 [US2] Rechazar `lines` vacío en la misma ruta, con `domain.ErrValidation`.
+- [X] T029 [US2] Quitar `payments` del cuerpo aceptado en `server/internal/httpapi/handlers_orders.go` y de `web/src/api/pos.ts`.
+- [X] T030 [US2] Dejar `CheckoutSheet` cobrando **solo** pedidos que existen, por `POST /orders/{id}/pay` (`web/src/features/pos/CheckoutSheet.tsx`).
 - [ ] T031 [US2] Renombrar la acción del panel del pedido a **Confirmar** en `web/src/features/pos/POSPage.tsx`, y dejar cobrar disponible solo desde un pedido en curso.
 - [ ] T032 [US2] Comprobar que cobrar desde el tablero `/pedidos` sigue funcionando y no quedó pidiendo una confirmación que ahí no aplica (`web/src/features/orders/CobrarSheet.tsx`).
 
@@ -112,16 +112,16 @@ hoy — la feature empeoraría el POS.
 
 ### Tests primero
 
-- [ ] T033 [P] [US3] Test de integración en `server/internal/integration/comanda_del_agregado_test.go`: tras agregar, **solo** los renglones agregados quedan marcados como enviados, y la respuesta los identifica.
-- [ ] T034 [P] [US3] Test en `web/src/utils/printKitchen.test.ts`: la comanda de agregado lleva solo los renglones nuevos, el mismo folio, la marca de agregado, y **sin precios**.
+- [X] T033 [P] [US3] Test de integración en `server/internal/integration/comanda_del_agregado_test.go`: tras agregar, **solo** los renglones agregados quedan marcados como enviados, y la respuesta los identifica.
+- [X] T034 [P] [US3] Test en `web/src/utils/printKitchen.test.ts`: la comanda de agregado lleva solo los renglones nuevos, el mismo folio, la marca de agregado, y **sin precios**.
 - [ ] T035 [P] [US3] Test en `web/src/features/pos/useAgregarAPedido.test.ts`: si la impresión falla, el renglón queda agregado igual y sale un aviso. Es el modo de fallo que la feature 001 ya quitó del ticket del cliente.
 
 ### Implementación
 
-- [ ] T036 [US3] Marcar los renglones agregados como enviados dentro de la misma transacción de `AddOrderLines` (`server/internal/app/orders.go`), y devolver cuáles son.
-- [ ] T037 [US3] Marcar como enviados los renglones del pedido al crearlo, cuando la comanda está encendida (`server/internal/app/orders.go`).
-- [ ] T038 [US3] Agregar la variante de agregado a `web/src/utils/printKitchen.ts`: mismo documento, encabezado marcando **AGREGADO**, solo los renglones nuevos.
-- [ ] T039 [US3] Disparar esa comanda desde `useAgregarAPedido`, con el aviso no bloqueante si no sale (`web/src/features/pos/useAgregarAPedido.ts`).
+- [X] T036 [US3] Marcar los renglones agregados como enviados dentro de la misma transacción de `AddOrderLines` (`server/internal/app/orders.go`), y devolver cuáles son.
+- [X] T037 [US3] Marcar como enviados los renglones del pedido al crearlo, cuando la comanda está encendida (`server/internal/app/orders.go`).
+- [X] T038 [US3] Agregar la variante de agregado a `web/src/utils/printKitchen.ts`: mismo documento, encabezado marcando **AGREGADO**, solo los renglones nuevos.
+- [X] T039 [US3] Disparar esa comanda desde `useAgregarAPedido`, con el aviso no bloqueante si no sale (`web/src/features/pos/useAgregarAPedido.ts`).
 - [ ] T040b [P] [US3] Test en `web/src/features/orders/` de la reimpresión completa: sale la comanda con **todos** los renglones del pedido, incluidos los que ya habían salido. Es el camino de recuperación cuando la impresora falló, y el que nadie ejercita a diario.
 - [ ] T040 [US3] Dejar la reimpresión de la comanda **completa** como acción explícita en el tablero de pedidos (`web/src/features/orders/`).
 
@@ -131,8 +131,8 @@ hoy — la feature empeoraría el POS.
 
 ## Phase 5: User Story 4 — La empresa nueva nace imprimiendo (P3)
 
-- [ ] T041 [P] [US4] Test de integración en `server/internal/integration/comanda_por_default_test.go`: una empresa provisionada después de la migración nace con la comanda encendida, y una que ya existía con el ajuste apagado **no cambia**. Con dos empresas. Verlo fallar antes de T042.
-- [ ] T042 [US4] Crear `server/migrations/0054_comanda_por_default.sql`: cambia el `DEFAULT` de `business_settings.print_kitchen_ticket` a `true`, con su `Down`. El comentario explica que no toca ninguna fila existente. Mismo commit que T041.
+- [X] T041 [P] [US4] Test de integración en `server/internal/integration/comanda_por_default_test.go`: una empresa provisionada después de la migración nace con la comanda encendida, y una que ya existía con el ajuste apagado **no cambia**. Con dos empresas. Verlo fallar antes de T042.
+- [X] T042 [US4] Crear `server/migrations/0054_comanda_por_default.sql`: cambia el `DEFAULT` de `business_settings.print_kitchen_ticket` a `true`, con su `Down`. El comentario explica que no toca ninguna fila existente. Mismo commit que T041.
 
 ---
 

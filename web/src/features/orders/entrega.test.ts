@@ -9,7 +9,7 @@ const linea = (l: Partial<BoardLine>): BoardLine => ({
 const pedido = (lines: BoardLine[]): BoardOrder => ({
   id: 1, number: 1, folioName: 'Tigre', status: 'abierta', serviceType: 'mostrador',
   deliveryPlatformId: null, customerName: null, total: '0', outstanding: '0',
-  currency: 'MXN', paid: true,
+  currency: 'MXN', paid: true, enPreparacion: false, renglones: 1,
   openedAt: '2026-08-31T18:00:00Z', lines,
 });
 

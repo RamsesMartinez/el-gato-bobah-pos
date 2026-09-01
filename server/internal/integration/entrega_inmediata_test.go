@@ -29,7 +29,7 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -66,8 +66,8 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 // Sin la marca, el pedido sigue naciendo abierto y pasa por el tablero. Es el caso de todos los
 // días y no puede cambiar por agregar la opción.
 func TestSinLaMarcaElPedidoSigueNaciendoAbierto(t *testing.T) {
-	st := newTestStore(t)
 	ctx := context.Background()
+	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
 	cajero := makeUser(t, st, "cajero_normal", "cajero")
@@ -75,7 +75,7 @@ func TestSinLaMarcaElPedidoSigueNaciendoAbierto(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,

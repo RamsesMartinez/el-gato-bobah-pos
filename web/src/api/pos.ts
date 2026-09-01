@@ -80,7 +80,10 @@ export const posApi = {
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
   // la caja es quien tiene que poder saldarlo.
-  unpaidOrders: () => api.get<{ items: BoardOrder[] }>('/orders/unpaid'),
+  // La barra de pedidos en curso: los que siguen en cocina y los que deben dinero. El total
+  // pendiente lo manda el SERVIDOR junto a la lista — sumarlo aquí dejaría el encabezado diciendo
+  // una cifra y la lista otra en cuanto el predicado cambie, y quien la lee no sabría cuál miente.
+  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre

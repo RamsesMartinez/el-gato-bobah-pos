@@ -12,7 +12,6 @@ import {
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
-import { Picker } from '../../components/Picker';
 import { toaster } from '../../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMenu } from '../../hooks/useMenu';
@@ -21,7 +20,6 @@ import { useUiStore } from '../../stores/ui';
 import { posApi, type CreateOrderBody } from '../../api/pos';
 import type { OrderView } from '../../types/pos';
 import { money } from '../../utils/format';
-import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
 import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
 
@@ -70,15 +68,6 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const [methodId, setMethodId] = useState<number | null>(null);
   // "Ya se lo llevó": el pedido nace entregado y no pasa por Pedidos. Apagado por default — el caso
   // común sí pasa por cocina, y encenderlo por inercia escondería pedidos que faltan por preparar.
-  // A qué pedido en curso se agrega lo que está en la cuenta. Vacío = pedido nuevo, que es el caso
-  // de siempre. Es la libreta que vuelve de la mesa con "la 3 pidió dos más".
-  const [agregarA, setAgregarA] = useState('');
-  const { data: enCurso } = useQuery({
-    queryKey: ['orders', 'active'],
-    queryFn: posApi.activeOrders,
-    enabled: isOpen,
-  });
-  const pedidosAbiertos = (enCurso?.items ?? []).filter((o) => o.status === 'abierta' || o.status === 'lista');
   const metodoActivo = methodId ?? metodoPorDefecto(methods);
   const metodoElegido = methods.find((m) => m.id === metodoActivo);
   const [tendered, setTendered] = useState('');  // '' = Exacto (sin cambio)
@@ -145,8 +134,8 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     return [{ methodId: metodoActivo ?? 0, amount: orderTotal, ...(tipAmount > 0 ? { tip: tipAmount } : {}) }];
   };
 
-  const build = (withPayment: boolean): CreateOrderBody => ({
-    clientUuid: uuid(),
+  const build = (): CreateOrderBody => ({
+    clientUuid: activeId,
     // El animal que la cuenta lleva mostrando desde que se abrió. Se manda para que el ticket
     // salga con el mismo nombre que el operador ya le dijo al cliente; el servidor lo sanea y le
     // agrega la vuelta si otro pedido del día se le adelantó.
@@ -165,17 +154,22 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       notes: l.notes,
       modifiers: l.modifiers.map((m) => ({ optionId: m.optionId, qty: m.qty })),
     })),
-    payments: withPayment ? buildPayments() : undefined,
-    // Solo al cobrar: entregar sin cobrar sería regalar comida sin dejar rastro, porque el pedido
-    // nace terminado y no vuelve a aparecer en ninguna pantalla operativa. El servidor lo rechaza
-    // igual; esto evita el viaje.
   });
 
   const mutation = useMutation({
-    mutationFn: (withPayment: boolean) =>
-      agregarA
-        ? posApi.addOrderLines(Number(agregarA), build(false).lines)
-        : posApi.createOrder(build(withPayment)),
+    // CONFIRMAR y luego COBRAR: son dos llamadas porque son dos momentos. El servidor ya no acepta
+    // crear un pedido ya cobrado — ese atajo era por donde se cobraba sin que cocina se enterara.
+    //
+    // Confirmar primero también significa que si el cobro falla —la red, un método que no cuadra
+    // con la plataforma— el pedido YA existe y aparece en la barra de en curso con su saldo. Antes
+    // se perdía entero y había que recapturarlo con el cliente enfrente.
+    mutationFn: async () => {
+      const order = await posApi.createOrder(build());
+      for (const p of buildPayments()) {
+        await posApi.chargeOrder(order.id, { methodId: p.methodId, amount: p.amount, tip: p.tip });
+      }
+      return order;
+    },
     onSuccess: (order) => {
       closeTab(activeId); // la cuenta se envió/cobró: se cierra y queda la siguiente activa
       setTendered('');
@@ -199,8 +193,9 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       });
     },
   });
-  const charging = mutation.isPending && mutation.variables === true;
-  const sending = mutation.isPending && mutation.variables === false;
+  // Una sola salida: ya no hay dos variantes que distinguir. Confirmar sin cobrar vive en el panel
+  // del pedido.
+  const charging = mutation.isPending;
 
   return (
     <DrawerRoot open={isOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose() }} size="full">
@@ -411,52 +406,20 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                   </Box>
                 )}
 
-                {pedidosAbiertos.length > 0 && (
-                  <Box borderTopWidth="1px" pt={3}>
-                    <Text fontWeight="600" mb={1}>Agregar a un pedido en curso</Text>
-                    <Picker
-                      value={agregarA}
-                      onChange={setAgregarA}
-                      options={pedidosAbiertos.map((o) => ({
-                        value: String(o.id),
-                        // Nombre primero (es lo que se ve en el tablero y lo que dice el cliente),
-                        // número después para quien busque por ticket.
-                        label: `${o.folioName ? `${o.folioName} · #${o.number}` : `#${o.number}`}${o.customerName ? ` · ${o.customerName}` : ''}`,
-                        hint: money(o.total, o.currency),
-                      }))}
-                      placeholder="Pedido nuevo"
-                      title="¿A qué pedido se agrega?"
-                      clearable
-                      clearLabel="Pedido nuevo"
-                    />
-                  </Box>
-                )}
               </VStack>
             </SimpleGrid>
 
           </VStack>
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px">
-          {/* Con un pedido elegido hay UN solo camino: agregarle lo de la cuenta. Cobrar es del
-              pedido completo y se hace cuando el cliente se va, no por cada agregado. */}
-          {agregarA ? (
-            <Button w="100%" size="lg" disabled={chargeLines.length === 0} loading={sending || charging}
-              onClick={() => mutation.mutate(false)}>
-              Agregar a {(() => {
-                const o = pedidosAbiertos.find((p) => String(p.id) === agregarA);
-                return o?.folioName || `#${o?.number ?? ''}`;
-              })()}
-            </Button>
-          ) : (
-            /* Una sola salida. Mandar a cocina sin cobrar vive en el panel del pedido: teniéndolo
-               aquí, esta pantalla pedía método de pago y propina para algo que después descartaba,
-               y las dos salidas se veían igual de definitivas. */
-            <Button w="100%" size="lg" colorPalette="green" fontWeight="800"
-              disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
-              loading={charging} onClick={() => mutation.mutate(true)}>
-              COBRAR {money(grandTotal)}
-            </Button>
-          )}
+          {/* Una sola salida. Confirmar sin cobrar vive en el panel del pedido: teniéndolo aquí,
+              esta pantalla pedía método de pago y propina para algo que después descartaba, y las
+              dos salidas se veían igual de definitivas. */}
+          <Button w="100%" size="lg" colorPalette="green" fontWeight="800"
+            disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
+            loading={charging} onClick={() => mutation.mutate()}>
+            COBRAR {money(grandTotal)}
+          </Button>
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>

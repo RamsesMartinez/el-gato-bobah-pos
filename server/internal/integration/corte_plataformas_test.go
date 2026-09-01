@@ -116,7 +116,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 
 	vender := func() {
 		t.Helper()
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:  uuid.New(),
 			ServiceType: "mostrador",
 			OpenedBy:    cajero,
@@ -190,7 +190,7 @@ func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
 		if plataforma != nil {
 			st = "domicilio"
 		}
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        st,
 			DeliveryPlatformID: plataforma,
@@ -269,7 +269,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 		if metodo != efectivo {
 			tipo, plataforma = "domicilio", &uber
 		}
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        tipo,
 			DeliveryPlatformID: plataforma,

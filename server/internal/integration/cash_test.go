@@ -64,7 +64,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	}
 
 	// Venta de 80 con tarjeta (método auto_declare).
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
@@ -230,7 +230,7 @@ func TestTipFlowsIntoCorte(t *testing.T) {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	// Venta de 100 en efectivo con 15 de propina.
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
