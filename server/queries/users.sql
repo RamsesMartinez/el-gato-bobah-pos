@@ -13,8 +13,8 @@ select * from users where is_active order by name;
 
 -- name: CreateUser :one
 -- company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
-insert into users (name, username, role, pin_hash, password_hash, recovery_email, must_change_password)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into users (name, username, role, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
+values ($1, $2, $3, $4, sqlc.narg(pin_lookup), $5, $6, $7)
 returning *;
 
 -- name: UpdateUser :one

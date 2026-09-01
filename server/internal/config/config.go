@@ -97,6 +97,14 @@ func Validate(c Config) error {
 	if IsPlaceholder(c.JWTSecret) || len(c.JWTSecret) < minSecretLen {
 		return errors.New("JWT_SECRET débil o de ejemplo: usa 32+ caracteres aleatorios (openssl rand -base64 48)")
 	}
+	// PIN_PEPPER es OPCIONAL: sin él el sistema arranca igual y solo el modo de solo-PIN queda
+	// bloqueado. Lo que no se acepta es que esté PUESTO y sea basura: la huella del PIN cubre un
+	// espacio de un millón, así que con una llave adivinable quien tenga la base lo recorre en
+	// segundos — y peor, con la falsa sensación de que hay protección.
+	if c.PinPepper != "" && (IsPlaceholder(c.PinPepper) || len(c.PinPepper) < minSecretLen ||
+		strings.Contains(strings.ToLower(c.PinPepper), "prueba")) {
+		return errors.New("PIN_PEPPER débil o de ejemplo: usa 32+ caracteres aleatorios (openssl rand -base64 48), o déjalo vacío")
+	}
 	if c.Env == "production" && c.CORSOrigin == "*" {
 		return errors.New("CORS_ORIGIN=* no está permitido en producción: define el origen exacto (https://tu-dominio)")
 	}

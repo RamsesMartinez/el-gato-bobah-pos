@@ -176,3 +176,56 @@ func TestSinIndicarQuienYSinSoloPinSeRechaza(t *testing.T) {
 		t.Fatalf("status = %d, quiere un 4xx: sin saber de quién es el PIN no se puede desbloquear", w.Code)
 	}
 }
+
+// EL ATAQUE QUE ESTO CIERRA: dar de alta a alguien con el PIN de otra persona y recibir SU sesión.
+//
+// `Create` llamaba a `hashPIN` pelado, sin validar y sin calcular la huella. Como el índice único es
+// parcial (`where pin_lookup is not null`), la fila del nuevo no chocaba con nadie. Después, en modo
+// de solo-PIN, `UserByPinLookup` encontraba a la persona ORIGINAL —la única con huella— y bcrypt
+// coincidía, así que el recién dado de alta recibía la sesión y el ROL de la otra.
+//
+// Es exactamente lo que la feature dice impedir: cada venta suya quedaba a nombre de la otra y el
+// desglose por cajero del arqueo mentía en silencio.
+func TestNoSePuedeDarDeAltaConElPinDeOtro(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+	admin := makeUser(t, st, "admin_alta", "admin")
+
+	if err := encenderSoloPin(t, st, admin); err != nil {
+		t.Fatalf("encender: %v", err)
+	}
+	ana := makeUser(t, st, "ana_alta", "cajero")
+	if err := users.SetPIN(ctx, ana, "482715"); err != nil {
+		t.Fatalf("SetPIN: %v", err)
+	}
+
+	_, err := users.Create(ctx, app.CreateUserInput{
+		Name: "Beto", Username: ptrDePrueba("beto_alta"), Role: "cajero",
+		Password: "Contrasena-Larga-1!", PIN: "482715",
+	})
+	if !errors.Is(err, domain.ErrPinRepetido) {
+		t.Fatalf("alta con el PIN de otro = %v, quiere ErrPinRepetido", err)
+	}
+}
+
+// Y el filtro de PIN débil sigue valiendo al dar de alta. Se había perdido al mover la validación a
+// SetPIN sin tocar Create: volvía a aceptarse 1234, que es uno de los tres bloqueadores originales
+// del lanzamiento según docs/security-owasp.md.
+func TestNoSePuedeDarDeAltaConUnPinTrivial(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
+
+	for _, pin := range []string{"1234", "0000", "4321"} {
+		_, err := users.Create(ctx, app.CreateUserInput{
+			Name: "Trivial", Username: ptrDePrueba("trivial_" + pin), Role: "cajero",
+			Password: "Contrasena-Larga-1!", PIN: pin,
+		})
+		if err == nil {
+			t.Errorf("se aceptó el PIN trivial %q al dar de alta", pin)
+		}
+	}
+}
+
+func ptrDePrueba(s string) *string { return &s }

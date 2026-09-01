@@ -65,8 +65,8 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (name, username, role, pin_hash, password_hash, recovery_email, must_change_password)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into users (name, username, role, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
+values ($1, $2, $3, $4, $8, $5, $6, $7)
 returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup
 `
 
@@ -78,6 +78,7 @@ type CreateUserParams struct {
 	PasswordHash       *string `json:"password_hash"`
 	RecoveryEmail      *string `json:"recovery_email"`
 	MustChangePassword bool    `json:"must_change_password"`
+	PinLookup          *string `json:"pin_lookup"`
 }
 
 // company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
@@ -90,6 +91,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.PasswordHash,
 		arg.RecoveryEmail,
 		arg.MustChangePassword,
+		arg.PinLookup,
 	)
 	var i User
 	err := row.Scan(
