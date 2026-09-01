@@ -12,6 +12,8 @@ import type { BoardLine, BoardOrder } from '../../types/pos';
 import { resumenPorCobrar } from './porCobrar';
 import { entregados, faltante, pendientes } from './entrega';
 import { money } from '../../utils/format';
+import { buildKitchenHtml } from '../../utils/printKitchen';
+import { printHtmlOffscreen } from '../../utils/printReceipt';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../tickets/ReprintTicket';
 import { CobrarSheet } from './CobrarSheet';
@@ -113,12 +115,29 @@ export function OrdersBoardPage() {
     if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
   };
 
+  // La comanda COMPLETA, como acción explícita. La que sale sola al agregar lleva solo lo nuevo
+  // —cocina ya está preparando lo anterior—, así que cuando un papel se pierde o la impresora falla
+  // hace falta poder pedir el pedido entero. Es el camino de recuperación, y el que nadie ejercita
+  // a diario: por eso tiene su test.
+  const reimprimirComanda = async (o: BoardOrder) => {
+    const detalle = await posApi.order(o.id);
+    const salio = await printHtmlOffscreen(buildKitchenHtml(detalle as never));
+    if (!salio) {
+      toaster.create({
+        title: 'No salió la comanda',
+        description: 'Revisa la impresora e inténtalo otra vez.',
+        type: 'warning',
+      });
+    }
+  };
+
   const acciones: Acciones = {
     puedeCobrar,
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     entregarTodo: (o) => entregarTodo.mutate(o.id),
     cobrar: setCobrando,
     ticket: (o) => setTicketOrderID(o.id),
+    comanda: reimprimirComanda,
     cancelar: cancel,
   };
 
@@ -162,6 +181,7 @@ interface Acciones {
   entregarTodo: (o: BoardOrder) => void;
   cobrar: (o: BoardOrder) => void;
   ticket: (o: BoardOrder) => void;
+  comanda: (o: BoardOrder) => void;
   cancelar: (o: BoardOrder) => void;
 }
 
@@ -256,6 +276,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
           </MenuTrigger>
           <MenuContent>
             <MenuItem value="ticket" onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
+            <MenuItem value="comanda" onClick={() => acciones.comanda(o)}>Reimprimir comanda</MenuItem>
             <MenuItem value="cancel" color="red.500" onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
           </MenuContent>
         </MenuRoot>

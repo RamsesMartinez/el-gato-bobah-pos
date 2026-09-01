@@ -86,7 +86,7 @@ hoy — la feature empeoraría el POS.
 - [X] T023 [P] [US2] Test de integración en `server/internal/integration/cobrar_exige_confirmar_test.go`: `CreateOrder` con pagos devuelve `ErrCobroFueraDeLugar`; sin pagos crea el pedido; y cobrar ese pedido con el camino de `/pay` funciona.
 - [X] T024 [P] [US2] Test de integración en el mismo archivo: crear un pedido con `lines` vacío se rechaza — un pedido de cero renglones ocuparía folio y sacaría una comanda en blanco.
 - [X] T025 [P] [US2] Test de integración en el mismo archivo: **los pedidos que ya existían** siguen siendo cobrables y entregables. Es FR-020 y protege a producción.
-- [ ] T026 [P] [US2] Test en `web/src/features/pos/CheckoutSheet.test.tsx`: la hoja de cobro ya no puede crear un pedido; con una cuenta sin confirmar, cobrar no está disponible.
+- [X] T026 [P] [US2] Test en `web/src/features/pos/CheckoutSheet.test.tsx`: la hoja de cobro ya no puede crear un pedido; con una cuenta sin confirmar, cobrar no está disponible.
 
 ### Implementación
 
@@ -94,8 +94,8 @@ hoy — la feature empeoraría el POS.
 - [X] T028 [US2] Rechazar `lines` vacío en la misma ruta, con `domain.ErrValidation`.
 - [X] T029 [US2] Quitar `payments` del cuerpo aceptado en `server/internal/httpapi/handlers_orders.go` y de `web/src/api/pos.ts`.
 - [X] T030 [US2] Dejar `CheckoutSheet` cobrando **solo** pedidos que existen, por `POST /orders/{id}/pay` (`web/src/features/pos/CheckoutSheet.tsx`).
-- [ ] T031 [US2] Renombrar la acción del panel del pedido a **Confirmar** en `web/src/features/pos/POSPage.tsx`, y dejar cobrar disponible solo desde un pedido en curso.
-- [ ] T032 [US2] Comprobar que cobrar desde el tablero `/pedidos` sigue funcionando y no quedó pidiendo una confirmación que ahí no aplica (`web/src/features/orders/CobrarSheet.tsx`).
+- [X] T031 [US2] Renombrar la acción del panel del pedido a **Confirmar** en `web/src/features/pos/POSPage.tsx`, y dejar cobrar disponible solo desde un pedido en curso.
+- [X] T032 [US2] Comprobar que cobrar desde el tablero `/pedidos` sigue funcionando y no quedó pidiendo una confirmación que ahí no aplica (`web/src/features/orders/CobrarSheet.tsx`).
 
 **Checkpoint**: ningún pedido llega al cobro sin haber pasado por cocina, y el servidor lo sostiene.
 
@@ -114,7 +114,7 @@ hoy — la feature empeoraría el POS.
 
 - [X] T033 [P] [US3] Test de integración en `server/internal/integration/comanda_del_agregado_test.go`: tras agregar, **solo** los renglones agregados quedan marcados como enviados, y la respuesta los identifica.
 - [X] T034 [P] [US3] Test en `web/src/utils/printKitchen.test.ts`: la comanda de agregado lleva solo los renglones nuevos, el mismo folio, la marca de agregado, y **sin precios**.
-- [ ] T035 [P] [US3] Test en `web/src/features/pos/useAgregarAPedido.test.ts`: si la impresión falla, el renglón queda agregado igual y sale un aviso. Es el modo de fallo que la feature 001 ya quitó del ticket del cliente.
+- [X] T035 [P] [US3] Test en `web/src/features/pos/useAgregarAPedido.test.ts`: si la impresión falla, el renglón queda agregado igual y sale un aviso. Es el modo de fallo que la feature 001 ya quitó del ticket del cliente.
 
 ### Implementación
 
@@ -122,8 +122,8 @@ hoy — la feature empeoraría el POS.
 - [X] T037 [US3] Marcar como enviados los renglones del pedido al crearlo, cuando la comanda está encendida (`server/internal/app/orders.go`).
 - [X] T038 [US3] Agregar la variante de agregado a `web/src/utils/printKitchen.ts`: mismo documento, encabezado marcando **AGREGADO**, solo los renglones nuevos.
 - [X] T039 [US3] Disparar esa comanda desde `useAgregarAPedido`, con el aviso no bloqueante si no sale (`web/src/features/pos/useAgregarAPedido.ts`).
-- [ ] T040b [P] [US3] Test en `web/src/features/orders/` de la reimpresión completa: sale la comanda con **todos** los renglones del pedido, incluidos los que ya habían salido. Es el camino de recuperación cuando la impresora falló, y el que nadie ejercita a diario.
-- [ ] T040 [US3] Dejar la reimpresión de la comanda **completa** como acción explícita en el tablero de pedidos (`web/src/features/orders/`).
+- [X] T040b [P] [US3] Test en `web/src/features/orders/` de la reimpresión completa: sale la comanda con **todos** los renglones del pedido, incluidos los que ya habían salido. Es el camino de recuperación cuando la impresora falló, y el que nadie ejercita a diario.
+- [X] T040 [US3] Dejar la reimpresión de la comanda **completa** como acción explícita en el tablero de pedidos (`web/src/features/orders/`).
 
 **Checkpoint**: cocina nunca prepara dos veces el mismo renglón.
 
