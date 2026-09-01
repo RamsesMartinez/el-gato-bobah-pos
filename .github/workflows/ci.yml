@@ -101,7 +101,11 @@ jobs:
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
-        run: go test -tags=integration ./internal/integration/... ./internal/httpapi/...
+        # -timeout 20m: el default de `go test` son 10, y la suite los pasó cuando confirmar y cobrar
+        # dejaron de ser una sola llamada (feature 005) — cada pedido sembrado hace ahora dos viajes
+        # a la base, y el runner es varias veces más lento que una máquina local. Un timeout que
+        # revienta se lee como "un test se colgó" y manda a buscar un defecto que no existe.
+        run: go test -timeout 20m -tags=integration ./internal/integration/... ./internal/httpapi/...
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379/0
