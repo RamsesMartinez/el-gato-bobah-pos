@@ -851,6 +851,71 @@ func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListO
 	return items, nil
 }
 
+const listUnpaidOrders = `-- name: ListUnpaidOrders :many
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency, o.opened_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.business_date = $1
+  and o.status not in ('cancelada', 'reembolsada')
+  and coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
+order by o.opened_at
+`
+
+type ListUnpaidOrdersRow struct {
+	ID                 int64           `json:"id"`
+	DailyNumber        int32           `json:"daily_number"`
+	FolioName          *string         `json:"folio_name"`
+	Status             OrderStatus     `json:"status"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	CustomerName       *string         `json:"customer_name"`
+	Total              decimal.Decimal `json:"total"`
+	Currency           string          `json:"currency"`
+	OpenedAt           time.Time       `json:"opened_at"`
+	Paid               decimal.Decimal `json:"paid"`
+}
+
+// Los pedidos del día que todavía deben dinero, en cualquier estado que siga siendo cobrable.
+//
+// Existe aparte de ListDeliveredToday porque esa está restringida a admin/gerente (sirve para
+// reembolsar, que es salida de dinero) y el pendiente más caro —entregado y sin cobrar, el cliente
+// ya se fue— tiene que poder saldarlo quien está en el mostrador.
+//
+// Cancelada y reembolsada quedan fuera: su dinero ya se decidió, y listarlas mandaría al operador
+// a perseguir cobros que nadie debe.
+func (q *Queries) ListUnpaidOrders(ctx context.Context, businessDate pgtype.Date) ([]ListUnpaidOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listUnpaidOrders, businessDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnpaidOrdersRow{}
+	for rows.Next() {
+		var i ListUnpaidOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Status,
+			&i.ServiceType,
+			&i.DeliveryPlatformID,
+			&i.CustomerName,
+			&i.Total,
+			&i.Currency,
+			&i.OpenedAt,
+			&i.Paid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextDailyNumber = `-- name: NextDailyNumber :one
 
 insert into order_counters (business_date, last_number)

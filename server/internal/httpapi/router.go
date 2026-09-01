@@ -112,6 +112,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
+					// Lo que falta por cobrar: sin gate de rol, porque quien está en la caja es quien
+					// tiene que poder saldarlo. La lista de entregadas sí es de admin/gerente, pero
+					// esa existe para reembolsar, que es salida de dinero.
+					r.Get("/unpaid", h.UnpaidOrders)
 					r.Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)

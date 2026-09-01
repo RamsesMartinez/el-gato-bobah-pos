@@ -226,3 +226,21 @@ order by olm.order_line_id, olm.id;
 -- Lo ya cobrado de un pedido. Se lee dentro de la tx del cobro y con el pedido bloqueado, que es
 -- lo que impide que dos cajeros cobrando a la vez registren cada uno el total completo.
 select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_id = $1;
+
+-- name: ListUnpaidOrders :many
+-- Los pedidos del día que todavía deben dinero, en cualquier estado que siga siendo cobrable.
+--
+-- Existe aparte de ListDeliveredToday porque esa está restringida a admin/gerente (sirve para
+-- reembolsar, que es salida de dinero) y el pendiente más caro —entregado y sin cobrar, el cliente
+-- ya se fue— tiene que poder saldarlo quien está en el mostrador.
+--
+-- Cancelada y reembolsada quedan fuera: su dinero ya se decidió, y listarlas mandaría al operador
+-- a perseguir cobros que nadie debe.
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency, o.opened_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.business_date = $1
+  and o.status not in ('cancelada', 'reembolsada')
+  and coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
+order by o.opened_at;

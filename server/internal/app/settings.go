@@ -47,9 +47,11 @@ type BusinessSettings struct {
 	// PrintKitchenTicket: si al mandar el pedido sale una comanda SIN precios para cocina. Apagado
 	// por default: en un local donde la cocina está pegada al mostrador sería papel que duplica lo
 	// que el cocinero ya ve. Lo enciende el negocio que tiene la cocina en otro cuarto.
-	PrintKitchenTicket bool       `json:"printKitchenTicket"`
-	HasLogo            bool       `json:"hasLogo"`
-	LogoUpdatedAt      *time.Time `json:"logoUpdatedAt"`
+	PrintKitchenTicket bool `json:"printKitchenTicket"`
+	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
+	KitchenCanCharge bool       `json:"kitchenCanCharge"`
+	HasLogo          bool       `json:"hasLogo"`
+	LogoUpdatedAt    *time.Time `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -75,6 +77,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		Timezone:           row.Timezone,
 		PrintFreeModifiers: row.PrintFreeModifiers,
 		PrintKitchenTicket: row.PrintKitchenTicket,
+		KitchenCanCharge:   row.KitchenCanCharge,
 		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
@@ -144,6 +147,7 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 		Timezone:           timezone,
 		PrintFreeModifiers: print.PrintFreeModifiers,
 		PrintKitchenTicket: print.PrintKitchenTicket,
+		KitchenCanCharge:   print.KitchenCanCharge,
 		BusinessName:       strings.TrimSpace(info.Name),
 		Address:            strings.TrimSpace(info.Address),
 		Phone:              strings.TrimSpace(info.Phone),

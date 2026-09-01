@@ -46,6 +46,12 @@ export function OrdersBoardPage() {
   const role = useSessionStore((s) => s.user?.role);
   const canRefund = role === 'admin' || role === 'gerente';
 
+  // Cobrar es del punto de venta. Este tablero prepara y entrega, y solo recupera el botón donde
+  // el negocio lo enciende a propósito: en un local donde cocina y mostrador son la misma persona
+  // en la misma máquina, mandarla a otra pantalla por un pedido que tiene enfrente no compra nada.
+  const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
+  const puedeCobrar = settings?.kitchenCanCharge === true;
+
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
     queryFn: posApi.activeOrders,
@@ -108,6 +114,7 @@ export function OrdersBoardPage() {
   };
 
   const acciones: Acciones = {
+    puedeCobrar,
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     entregarTodo: (o) => entregarTodo.mutate(o.id),
     cobrar: setCobrando,
@@ -138,7 +145,8 @@ export function OrdersBoardPage() {
       </SimpleGrid>
 
       {canRefund && (
-        <Entregadas orders={entregadas} onRefund={refund} onTicket={acciones.ticket} onCobrar={setCobrando} />
+        <Entregadas orders={entregadas} onRefund={refund} onTicket={acciones.ticket}
+          onCobrar={setCobrando} puedeCobrar={puedeCobrar} />
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -148,6 +156,8 @@ export function OrdersBoardPage() {
 }
 
 interface Acciones {
+  // puedeCobrar viene del ajuste del negocio: apagado, este tablero no toca dinero.
+  puedeCobrar: boolean;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   entregarTodo: (o: BoardOrder) => void;
   cobrar: (o: BoardOrder) => void;
@@ -232,7 +242,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Entregar todo
           </Button>
         )}
-        {debe && (
+        {debe && acciones.puedeCobrar && (
           <Button flex="1" minH={TAP} colorPalette="orange" variant={listo ? 'solid' : 'outline'}
             onClick={() => acciones.cobrar(o)}>
             Cobrar
@@ -306,11 +316,12 @@ function Renglon({ l, onEntregar }: { l: BoardLine; onEntregar: (qty: number) =>
 
 // Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
-function Entregadas({ orders, onRefund, onTicket, onCobrar }: {
+function Entregadas({ orders, onRefund, onTicket, onCobrar, puedeCobrar }: {
   orders: BoardOrder[];
   onRefund: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
   onCobrar: (o: BoardOrder) => void;
+  puedeCobrar: boolean;
 }) {
   return (
     <Box mt={4}>
@@ -342,7 +353,7 @@ function Entregadas({ orders, onRefund, onTicket, onCobrar }: {
                   <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                   {/* Aquí es donde el pendiente deja de tener remedio: el cliente ya se fue con la
                       comida. Por eso el botón de cobrar vive junto al aviso y no en otra pantalla. */}
-                  {debe && (
+                  {debe && puedeCobrar && (
                     <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onCobrar(o)}>
                       Cobrar {money(o.outstanding, o.currency)}
                     </Button>

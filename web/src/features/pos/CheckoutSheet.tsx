@@ -8,7 +8,7 @@ import {
 } from '../../components/ui/drawer';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import {
-  LuBanknote, LuCreditCard, LuLandmark, LuSmartphone, LuStore, LuBike, LuX, LuTriangleAlert,
+  LuBanknote, LuCreditCard, LuLandmark, LuSmartphone, LuX, LuTriangleAlert,
   LuSplit, LuPlus, LuTrash2,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
@@ -19,7 +19,7 @@ import { useMenu } from '../../hooks/useMenu';
 import { useTicketStore, useActiveTicket, ticketTotal } from '../../stores/ticket';
 import { useUiStore } from '../../stores/ui';
 import { posApi, type CreateOrderBody } from '../../api/pos';
-import type { OrderView, ServiceType } from '../../types/pos';
+import type { OrderView } from '../../types/pos';
 import { money } from '../../utils/format';
 import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
@@ -34,15 +34,6 @@ const ICONO_POR_TIPO: Record<string, IconType> = {
   plataforma: LuSmartphone,
 };
 const iconoDe = (kind: string): IconType => ICONO_POR_TIPO[kind] ?? LuCreditCard;
-// "Para llevar" salió del selector: no cambiaba nada —ni el costo de envío, que solo aplica a
-// domicilio, ni la lista de precios, ni qué pasa por cocina— y ningún reporte agrupaba por él. Era
-// un tap que solo cambiaba una palabra en el ticket, y en el cobro compite con los dos que sí
-// deciden algo. El valor sigue vivo en el enum y en las etiquetas: hay pedidos viejos con ese tipo
-// y sin su etiqueta la pantalla los mostraría como "para_llevar", con guion bajo.
-const SERVICE: Array<{ v: ServiceType; label: string; icon: IconType }> = [
-  { v: 'mostrador', label: 'Mostrador', icon: LuStore },
-  { v: 'domicilio', label: 'Domicilio', icon: LuBike },
-];
 // Billetes MXN para pago rápido en efectivo (además de "Exacto").
 const BILLS = [50, 100, 200, 500, 1000];
 
@@ -55,8 +46,6 @@ interface Props {
 export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const swipe = useSwipeDownToClose(onClose);
   const { id: activeId, lines, serviceType, customerName, folioName, platformId: lista } = useActiveTicket();
-  const setServiceType = useTicketStore((s) => s.setServiceType);
-  const setCustomerName = useTicketStore((s) => s.setCustomerName);
   const removeLine = useTicketStore((s) => s.removeLine);
   const closeTab = useTicketStore((s) => s.closeTab);
   const qc = useQueryClient();
@@ -257,28 +246,6 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               </Box>
             )}
 
-            {/* Tipo de pedido — 'mostrador' viene pre-seleccionado, no obliga a un paso extra */}
-            <Box>
-              <Text fontWeight="600" mb={2}>Tipo de pedido</Text>
-              <SimpleGrid columns={3} gap={2}>
-                {SERVICE.map((s) => {
-                  const Icon = s.icon;
-                  const on = serviceType === s.v;
-                  return (
-                    <Button key={s.v} h="56px" flexDir="column" gap={1} whiteSpace="normal" fontSize="sm"
-                      variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
-                      onClick={() => setServiceType(s.v)}>
-                      <Icon size={20} />
-                      {s.label}
-                    </Button>
-                  );
-                })}
-              </SimpleGrid>
-            </Box>
-
-            <Input size="lg" placeholder="Nombre del cliente (opcional)"
-              value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-
             {/* Envío: solo a domicilio. Pre-llenado con el ajuste de negocio, editable (0 = gratis). */}
             {isDelivery && (
               <Box>
@@ -469,17 +436,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
               })()}
             </Button>
           ) : (
-            <HStack w="100%">
-              <Button flex="1" size="lg" variant="outline" colorPalette="gray"
-                disabled={chargeLines.length === 0} loading={sending} onClick={() => mutation.mutate(false)}>
-                Enviar a cocina
-              </Button>
-              <Button flex="1.4" size="lg" colorPalette="green"
-                disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
-                loading={charging} onClick={() => mutation.mutate(true)}>
-                COBRAR {money(grandTotal)}
-              </Button>
-            </HStack>
+            /* Una sola salida. Mandar a cocina sin cobrar vive en el panel del pedido: teniéndolo
+               aquí, esta pantalla pedía método de pago y propina para algo que después descartaba,
+               y las dos salidas se veían igual de definitivas. */
+            <Button w="100%" size="lg" colorPalette="green" fontWeight="800"
+              disabled={chargeLines.length === 0 || (splitMode ? !splitValid : cashShort)}
+              loading={charging} onClick={() => mutation.mutate(true)}>
+              COBRAR {money(grandTotal)}
+            </Button>
           )}
         </DrawerFooter>
       </DrawerContent>

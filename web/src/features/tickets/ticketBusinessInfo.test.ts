@@ -12,7 +12,7 @@ const settings: BusinessSettings = {
   autoPrintOnClose: false,
   timezone: 'America/Mexico_City',
   printFreeModifiers: true,
-  printKitchenTicket: false,
+  printKitchenTicket: false, kitchenCanCharge: false,
   hasLogo: false,
   logoUpdatedAt: null,
 };

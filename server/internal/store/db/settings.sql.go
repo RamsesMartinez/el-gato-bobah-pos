@@ -35,6 +35,7 @@ select delivery_fee,
        timezone,
        print_free_modifiers,
        print_kitchen_ticket,
+       kitchen_can_charge,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -54,6 +55,7 @@ type GetBusinessSettingsRow struct {
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
+	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
 	HasLogo            bool               `json:"has_logo"`
 	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt          time.Time          `json:"updated_at"`
@@ -81,6 +83,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.Timezone,
 		&i.PrintFreeModifiers,
 		&i.PrintKitchenTicket,
+		&i.KitchenCanCharge,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -158,8 +161,9 @@ set business_name       = $1,
     timezone            = $7,
     print_free_modifiers = $8,
     print_kitchen_ticket = $9,
+    kitchen_can_charge = $10,
     updated_at          = now(),
-    updated_by          = $10
+    updated_by          = $11
 `
 
 type UpdateBusinessInfoParams struct {
@@ -172,6 +176,7 @@ type UpdateBusinessInfoParams struct {
 	Timezone           string `json:"timezone"`
 	PrintFreeModifiers bool   `json:"print_free_modifiers"`
 	PrintKitchenTicket bool   `json:"print_kitchen_ticket"`
+	KitchenCanCharge   bool   `json:"kitchen_can_charge"`
 	UpdatedBy          *int64 `json:"updated_by"`
 }
 
@@ -190,6 +195,7 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.Timezone,
 		arg.PrintFreeModifiers,
 		arg.PrintKitchenTicket,
+		arg.KitchenCanCharge,
 		arg.UpdatedBy,
 	)
 	return err

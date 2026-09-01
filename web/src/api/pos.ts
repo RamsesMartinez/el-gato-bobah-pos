@@ -71,6 +71,9 @@ export const posApi = {
     api.post<void>(`/orders/${id}/cancel`, { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
+  // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
+  // la caja es quien tiene que poder saldarlo.
+  unpaidOrders: () => api.get<{ items: BoardOrder[] }>('/orders/unpaid'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
@@ -130,6 +133,9 @@ export interface BusinessSettings {
   // Si al mandar el pedido sale una comanda SIN precios para cocina. Apagado por default: donde la
   // cocina está pegada al mostrador sería papel que duplica lo que el cocinero ya ve.
   printKitchenTicket: boolean;
+  // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
+  // vive donde le toca, en el punto de venta.
+  kitchenCanCharge: boolean;
   // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
   // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
   hasLogo: boolean;
@@ -177,4 +183,5 @@ export interface TicketSettingsInput {
   autoPrintOnClose?: boolean;
   printFreeModifiers?: boolean;
   printKitchenTicket?: boolean;
+  kitchenCanCharge?: boolean;
 }

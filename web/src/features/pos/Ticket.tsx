@@ -1,14 +1,20 @@
 import {
-  Box, Flex, HStack, VStack, Text, Button, IconButton, Separator, Center,
+  Box, Flex, HStack, VStack, Text, Button, IconButton, Separator, Center, Input,
 } from '@chakra-ui/react';
-import { LuTrash2, LuStickyNote, LuPanelRightClose } from 'react-icons/lu';
+import { LuTrash2, LuStickyNote, LuPanelRightClose, LuStore, LuBike } from 'react-icons/lu';
 import { useTicketStore, useActiveTicket, lineTotal, ticketTotal } from '../../stores/ticket';
 import type { TicketLine } from '../../types/pos';
 import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
 
+// Los dos destinos de una cuenta. Se ofrecen aquí y no dentro de la hoja de cobro porque son
+// decisiones sobre el PEDIDO, no sobre el dinero: mandar a cocina no cobra nada, y tenerlo junto al
+// método de pago hacía que la pantalla pidiera propina para algo que podía no cobrarse.
 interface Props {
   onCheckout: () => void;
+  // Manda a cocina sin cobrar. Queda por cobrar y el tablero lo marca.
+  onEnviar: () => void;
+  enviando?: boolean;
   onEditLine: (line: TicketLine) => void;
   onHide?: () => void; // ocultar el panel lateral (solo modo ancho)
   // solo cuando Ticket vive dentro del bottom sheet (modo angosto): arrastrar el header
@@ -16,8 +22,16 @@ interface Props {
   swipeHandlers?: SwipeHandlers;
 }
 
-export function Ticket({ onCheckout, onEditLine, onHide, swipeHandlers }: Props) {
-  const { lines, customerName, folioName } = useActiveTicket();
+// para_llevar salió del selector: no cambiaba nada y ningún reporte agrupaba por él.
+const TIPOS = [
+  { v: 'mostrador' as const, label: 'Mostrador', icon: LuStore },
+  { v: 'domicilio' as const, label: 'Domicilio', icon: LuBike },
+];
+
+export function Ticket({ onCheckout, onEnviar, enviando, onEditLine, onHide, swipeHandlers }: Props) {
+  const { lines, customerName, folioName, serviceType, platformId } = useActiveTicket();
+  const setServiceType = useTicketStore((s) => s.setServiceType);
+  const setCustomerName = useTicketStore((s) => s.setCustomerName);
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
   const remove = useTicketStore((s) => s.removeLine);
@@ -91,14 +105,44 @@ export function Ticket({ onCheckout, onEditLine, onHide, swipeHandlers }: Props)
       </VStack>
 
       <Separator />
-      <Box p={4}>
-        <Flex justify="space-between" mb={3}>
+      <Box p={3}>
+        <Flex justify="space-between" align="center" mb={2}>
           <Text fontSize="lg" fontWeight="600">Total</Text>
           <Text fontSize="2xl" fontWeight="800">{money(total)}</Text>
         </Flex>
-        <Button w="100%" size="lg" h="56px" disabled={lines.length === 0} onClick={onCheckout}>
-          COBRAR
-        </Button>
+
+        {/* Tipo y cliente son del PEDIDO, así que se capturan mientras se toma, no al cobrar. Un
+            pedido de plataforma ya es a domicilio por definición y no admite otro tipo. */}
+        {platformId === null && (
+          <HStack gap={2} mb={2}>
+            <HStack gap={1} flexShrink={0}>
+              {TIPOS.map((t) => (
+                <Button key={t.v} size="sm" minH="44px" px={2.5}
+                  variant={serviceType === t.v ? 'solid' : 'outline'}
+                  colorPalette={serviceType === t.v ? undefined : 'gray'}
+                  onClick={() => setServiceType(t.v)}>
+                  <t.icon /> {t.label}
+                </Button>
+              ))}
+            </HStack>
+            <Input flex="1" minW={0} minH="44px" placeholder="Cliente"
+              value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+          </HStack>
+        )}
+
+        <HStack gap={2}>
+          {/* Enviar es secundario y COBRAR domina: cobrar es lo que pasa en casi toda venta, y dos
+              botones con el mismo peso invitan al toque equivocado — que aquí significa creer que
+              se cobró algo que no se cobró. */}
+          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="gray"
+            disabled={lines.length === 0} loading={enviando} onClick={onEnviar}>
+            Enviar a cocina
+          </Button>
+          <Button flex="1.3" size="lg" h="56px" colorPalette="green" fontWeight="800"
+            disabled={lines.length === 0} onClick={onCheckout}>
+            COBRAR
+          </Button>
+        </HStack>
       </Box>
     </Flex>
   );

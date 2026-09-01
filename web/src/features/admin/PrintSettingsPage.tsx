@@ -82,6 +82,12 @@ export function PrintSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
+  const setCocinaCobra = useMutation({
+    mutationFn: (v: boolean) => posApi.updateTicketSettings({ kitchenCanCharge: v }),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
   const uploadLogo = useMutation({
     mutationFn: (file: File) => posApi.uploadTicketLogo(file),
     onSuccess: (bs) => {
@@ -226,6 +232,24 @@ export function PrintSettingsPage() {
             checked={data?.printKitchenTicket ?? false}
             disabled={setComanda.isPending}
             onCheckedChange={(e) => setComanda.mutate(e.checked)}
+          />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Cobrar desde Pedidos</Text>
+            {/* Qué hace, no por qué: el porqué del default vive en la migración y en el dominio. */}
+            <Text fontSize="sm" color="fg.muted">
+              Agrega el botón de cobrar en la pantalla de Pedidos. Enciéndelo si quien prepara es
+              la misma persona que cobra. Apagado, los pedidos se cobran desde el punto de venta.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.kitchenCanCharge ?? false}
+            disabled={setCocinaCobra.isPending}
+            onCheckedChange={(e) => setCocinaCobra.mutate(e.checked)}
           />
         </HStack>
       </Box>
