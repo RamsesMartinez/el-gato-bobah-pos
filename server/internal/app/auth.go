@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -14,10 +15,9 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
-// RefreshTokenTTL es el RESPALDO cuando el negocio no tiene ajustes todavía. La duración real sale
-// de business_settings.session_hours; esta constante era el valor único antes de que el ajuste
-// existiera, y quedarse en 30 días es lo que hacía que una tableta olvidada siguiera autenticada
-// durante un mes.
+// RefreshTokenTTL era el plazo único antes de que existiera `session_hours`, y quedarse en 30 días
+// es lo que hacía que una tableta olvidada siguiera autenticada durante un mes. Se conserva solo
+// como cota superior de lo que el ajuste puede pedir; NO es el respaldo de nada.
 const RefreshTokenTTL = 30 * 24 * time.Hour
 
 type AuthService struct {
@@ -50,6 +50,9 @@ type Session struct {
 	RefreshToken string      `json:"refreshToken"`
 	CompanyID    int64       `json:"-"`
 	User         domain.User `json:"user"`
+	// Cuándo muere el refresh. Va aquí para que la cookie se ponga con ESTE vencimiento: fijarla a
+	// 30 días dejaba a la tableta mandando durante un mes una credencial muerta desde el día dos.
+	RefreshExpiresAt time.Time `json:"-"`
 }
 
 // Login authenticates a user by username + company slug + password. El identificador de login
@@ -97,6 +100,23 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 // empresa: corre bajo el tenant del request (QC/WithTx), así RLS impide cambiar a un usuario
 // de otra empresa (el userID de otra empresa simplemente no existe para esta sesión).
 func (s *AuthService) PinSwitchEnEstacion(ctx context.Context, userID int64, pin string, actorID int64, refreshActual string) (*Session, error) {
+	// Con solo-PIN encendido, ELEGIR PERSONA no es un camino válido: son dos rutas al mismo
+	// desbloqueo con lockouts separados —`pin:<objetivo>` y `pinsolo:<quien pide>`—, así que quien
+	// agota una pasa a la otra y duplica su presupuesto de intentos. Y el modo existe para que la
+	// plantilla no se muestre; dejar la ruta que nombra a la persona lo contradice.
+	opciones, err := s.UnlockOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if opciones.PinOnly {
+		return nil, fmt.Errorf("%w: este negocio se desbloquea solo con el PIN", domain.ErrValidation)
+	}
+	return s.relevar(ctx, userID, pin, actorID, refreshActual)
+}
+
+// relevar es el relevo en sí, común a los dos modos. Privado a propósito: los dos caminos públicos
+// llegan con su propia comprobación hecha, y un tercer llamador se la saltaría.
+func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, actorID int64, refreshActual string) (*Session, error) {
 	var sess *Session
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		u, err := q.GetUserByID(ctx, userID)
@@ -223,13 +243,13 @@ func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Ses
 // duracionDeSesion: cuánto vive una sesión en este negocio.
 //
 // Sale del ajuste y no de una constante porque un local con turnos de 12 horas lo sube y otro que
-// quiera más control lo baja. Sin fila de ajustes —empresa recién creada— cae a RefreshTokenTTL,
-// que es el comportamiento que había antes de que el ajuste existiera: el modo de fallo deja
-// entrar, no deja fuera.
+// quiera más control lo baja. Sin fila de ajustes —empresa recién creada— cae al MISMO default que
+// trae la columna, no a los 30 días de antes: caer al plazo viejo le daba a un negocio nuevo un mes
+// de sesión sin que nada lo dijera, y su pantalla de ajustes mostrando ceros tampoco.
 func (s *AuthService) duracionDeSesion(ctx context.Context, q *db.Queries) time.Duration {
 	ajustes, err := q.GetBusinessSettings(ctx)
 	if err != nil || ajustes.SessionHours <= 0 {
-		return RefreshTokenTTL
+		return time.Duration(domain.DefaultIdentity().SessionHours) * time.Hour
 	}
 	return time.Duration(ajustes.SessionHours) * time.Hour
 }
@@ -256,7 +276,7 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	}); err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du}, nil
+	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence}, nil
 }
 
 func toDomainUser(u db.User) domain.User {
@@ -326,7 +346,7 @@ func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID 
 		auth.CheckDummySecret(pin)
 		return nil, domain.ErrInvalidCredentials
 	}
-	return s.PinSwitchEnEstacion(ctx, fila.ID, pin, actorID, refreshActual)
+	return s.relevar(ctx, fila.ID, pin, actorID, refreshActual)
 }
 
 func ptr[T any](v T) *T { return &v }

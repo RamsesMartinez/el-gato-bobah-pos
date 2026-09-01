@@ -125,7 +125,7 @@ type sessionResponse struct {
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
 // empresa (para RLS) ANTES de conocer al usuario. cid no es secreto (solo dice qué empresa);
 // la autenticación real es el token aleatorio. Ver AuthService.Refresh.
-func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, token string) {
+func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, token string, vence time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookie,
 		Value:    strconv.FormatInt(companyID, 10) + "." + token,
@@ -133,7 +133,10 @@ func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, toke
 		HttpOnly: true,
 		Secure:   h.cfg.Env == "production",
 		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(app.RefreshTokenTTL),
+		// El vencimiento de la cookie es el del refresh que lleva dentro, no un plazo fijo: una
+		// cookie que sobrevive a su credencial hace que cada arranque canjee algo muerto y el
+		// operador vea "terminó el turno" en vez de la pantalla de entrar.
+		Expires: vence,
 	})
 }
 
@@ -158,7 +161,7 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
-	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken)
+	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
 	JSON(w, status, sessionResponse{AccessToken: s.AccessToken, User: s.User})
 }
 

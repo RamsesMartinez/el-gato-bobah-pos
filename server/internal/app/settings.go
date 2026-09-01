@@ -69,7 +69,16 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Sin zona, las fechas se calcularían en UTC y la cena caería en el día siguiente: el
 			// default acompaña al de la columna en vez de dejar el campo vacío.
-			return BusinessSettings{DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true}, nil
+			// Los tiempos de identidad van con el default de la columna y no en cero: en cero la
+			// pantalla dice "sin bloqueo, sin caducidad" —que es falso— y además no se puede
+			// guardar hasta escribirlos a mano, porque el cero se rechaza en la frontera.
+			ident := domain.DefaultIdentity()
+			return BusinessSettings{
+				DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true,
+				PinOnlyUnlock:    ident.PinOnlyUnlock,
+				LockAfterSeconds: ident.LockAfterSeconds,
+				SessionHours:     ident.SessionHours,
+			}, nil
 		}
 		return BusinessSettings{}, err
 	}
