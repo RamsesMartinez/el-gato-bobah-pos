@@ -180,7 +180,7 @@ desbloqueen mutuamente.
       pantalla nueva y el subagente corre ante cualquier pantalla nueva.
 - [ ] T040 [P] Correr `security-auditor` sobre el cambio: toca autenticación, sesión y logging, que
       es exactamente su disparador.
-- [ ] T041 Actualizar `docs/security-owasp.md` con la política de sesión nueva — hoy documenta la de
+- [X] T041 Actualizar `docs/security-owasp.md` con la política de sesión nueva — hoy documenta la de
       30 días.
 
 ---
