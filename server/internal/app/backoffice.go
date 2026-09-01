@@ -565,12 +565,19 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 }
 
 // businessDate: el día de negocio de AHORA, en la zona del local. Si la zona no se puede leer cae a
-// UTC en vez de fallar: abrir caja no se detiene por un ajuste mal escrito, y el peor caso es la
-// fecha corrida que ya se tenía antes de que esto existiera.
+// El default del producto en vez de fallar: abrir caja no se detiene por un ajuste que no se pudo
+// leer. Pero el valor del fallback importa tanto como el hecho de tener uno.
+//
+// Caía a UTC, y eso corre la fecha SEIS HORAS sin avisar: un turno abierto después de las 18:00
+// locales queda fechado al día siguiente y todo su dinero entra al arqueo equivocado. Ya pasó — los
+// pedidos 61 y 62 de la cuenta de pruebas, del 29 de agosto a las 20:50, están fechados el 30.
+//
+// El producto se vende en México y nace en `America/Mexico_City`: ese es el fallback que se parece a
+// la verdad. UTC no se parece a nada.
 func (s *BackofficeService) businessDate(ctx context.Context) time.Time {
 	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
 	if err != nil {
-		return domain.BusinessDate(s.now(), time.UTC)
+		tz = domain.DefaultTimezone
 	}
 	return domain.BusinessDate(s.now(), domain.LoadBusinessLocation(tz))
 }
