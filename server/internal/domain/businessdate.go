@@ -50,3 +50,48 @@ func ValidTimezone(name string) bool {
 	_, err := time.LoadLocation(name)
 	return err == nil
 }
+
+// Los modos de corte de la VISTA: hasta cuándo se ve en pantalla un pedido ya entregado.
+//
+// No tienen nada que ver con el día al que pertenece una venta. Ese lo decide el turno y lo guarda
+// `orders.business_date`; esto solo decide qué se sigue mostrando.
+const (
+	// CorteMedianoche: la medianoche del día local. Es el default porque es lo que un operador
+	// espera sin que nadie se lo explique, y el único que no depende de que alguien se acuerde de
+	// cerrar la caja.
+	CorteMedianoche = "medianoche"
+	// CorteTurno: desde que abrió el turno vigente.
+	CorteTurno = "turno"
+	// CorteCierreDeCaja: desde el último cierre.
+	CorteCierreDeCaja = "cierre_de_caja"
+)
+
+// CorteDeVistaValido dice si el modo es uno de los tres. La frontera lo usa para rechazar cualquier
+// otro: un valor desconocido que caiga al default en silencio deja la pantalla mostrando algo que
+// nadie configuró.
+func CorteDeVistaValido(modo string) bool {
+	return modo == CorteMedianoche || modo == CorteTurno || modo == CorteCierreDeCaja
+}
+
+// DesdeCuandoSeVen devuelve el instante a partir del cual un pedido entregado sigue en pantalla.
+//
+// La medianoche se calcula EN la zona, nunca restando 24 horas al día anterior. México quitó el
+// horario de verano en 2022, pero `America/Tijuana` sigue cambiando —va con la costa oeste de
+// Estados Unidos— y está en la lista de zonas que el producto ofrece: ese día la distancia entre dos
+// medianoches es de 23 o 25 horas, y un cálculo que resta 24 se desfasa justo cuando nadie mira.
+//
+// Un modo desconocido se comporta como el default en vez de devolver un cero que mostraría todo el
+// histórico. La frontera ya rechaza los valores inválidos; esto es la última red.
+func DesdeCuandoSeVen(modo string, ahora time.Time, zona *time.Location, abrioElTurno, cerroLaCaja time.Time) time.Time {
+	switch modo {
+	case CorteTurno:
+		return abrioElTurno
+	case CorteCierreDeCaja:
+		return cerroLaCaja
+	}
+	if zona == nil {
+		zona = LoadBusinessLocation(DefaultTimezone)
+	}
+	y, m, d := ahora.In(zona).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, zona)
+}

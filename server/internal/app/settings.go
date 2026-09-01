@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -51,6 +52,9 @@ type BusinessSettings struct {
 	// por default: en un local donde la cocina está pegada al mostrador sería papel que duplica lo
 	// que el cocinero ya ve. Lo enciende el negocio que tiene la cocina en otro cuarto.
 	PrintKitchenTicket bool `json:"printKitchenTicket"`
+	// CorteDeVista: hasta cuándo se ve un entregado en pantalla. `medianoche` (default), `turno` o
+	// `cierre_de_caja`. No mueve el día de ninguna venta.
+	CorteDeVista string `json:"corteDeVista"`
 	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
 	KitchenCanCharge bool `json:"kitchenCanCharge"`
 	// Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
@@ -75,6 +79,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 			ident := domain.DefaultIdentity()
 			return BusinessSettings{
 				DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true,
+				CorteDeVista:     domain.CorteMedianoche,
 				PinOnlyUnlock:    ident.PinOnlyUnlock,
 				LockAfterSeconds: ident.LockAfterSeconds,
 				SessionHours:     ident.SessionHours,
@@ -93,6 +98,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		Timezone:           row.Timezone,
 		PrintFreeModifiers: row.PrintFreeModifiers,
 		PrintKitchenTicket: row.PrintKitchenTicket,
+		CorteDeVista:       row.CorteDeVista,
 		KitchenCanCharge:   row.KitchenCanCharge,
 		PinOnlyUnlock:      row.PinOnlyUnlock,
 		LockAfterSeconds:   int(row.LockAfterSeconds),
@@ -182,6 +188,18 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	if !domain.ValidTimezone(timezone) {
 		return BusinessSettings{}, domain.ErrInvalidTimezone
 	}
+	// El default es para el campo AUSENTE; un valor presente y desconocido se RECHAZA.
+	//
+	// Vacío significa "no lo estoy configurando" y conserva el default. Un modo inventado no: caer
+	// al default ahí dejaría al dueño creyendo que configuró algo que no configuró, que es
+	// exactamente el fallback silencioso que el principio V prohíbe.
+	corte := print.CorteDeVista
+	if corte == "" {
+		corte = domain.CorteMedianoche
+	}
+	if !domain.CorteDeVistaValido(corte) {
+		return BusinessSettings{}, fmt.Errorf("%w: ese momento de corte no existe", domain.ErrValidation)
+	}
 	// Guardar el ajuste y borrar los PINs van en la MISMA transacción.
 	//
 	// Eran dos autocommits, y el reintento no reparaba: al segundo intento el ajuste ya decía que
@@ -193,6 +211,7 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 			Timezone:           timezone,
 			PrintFreeModifiers: print.PrintFreeModifiers,
 			PrintKitchenTicket: print.PrintKitchenTicket,
+			CorteDeVista:       corte,
 			KitchenCanCharge:   print.KitchenCanCharge,
 			PinOnlyUnlock:      ident.PinOnlyUnlock,
 			LockAfterSeconds:   int32(ident.LockAfterSeconds),
