@@ -13,8 +13,8 @@ que dice qué hacer: el pedido se crea primero y se cobra con `POST /orders/{id}
 | Caso | Respuesta |
 | --- | --- |
 | Cuerpo válido sin `payments` | `201` con el pedido |
-| Cuerpo con `payments` no vacío | `422 UNPROCESSABLE` — cobrar es de `/pay` |
-| Cuerpo con `lines` vacío | `400 VALIDATION` — un pedido sin renglones ocuparía folio y sacaría una comanda en blanco |
+| Cuerpo con `payments` no vacío | `422 CONFIRMAR_PRIMERO` — cobrar es de `/pay` |
+| Cuerpo con `lines` vacío | `422 UNPROCESSABLE` — ya lo rechaza `domain.ErrEmptyOrder`; un pedido sin renglones ocuparía folio y sacaría una comanda en blanco |
 | Mismo `clientUuid` que un pedido que ya existe | `201` con **ese mismo** pedido, sin crear otro |
 
 **El rechazo es un `422` y no un `400`** porque el cuerpo está bien formado; lo que no se puede es la

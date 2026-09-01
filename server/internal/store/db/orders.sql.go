@@ -722,6 +722,87 @@ func (q *Queries) ListModifiersOfActiveOrders(ctx context.Context) ([]ListModifi
 	return items, nil
 }
 
+const listOpenOrders = `-- name: ListOpenOrders :many
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.currency, o.opened_at,
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
+from orders o
+where o.business_date = $1
+  and o.status not in ('cancelada', 'reembolsada')
+  and (
+    o.status in ('abierta', 'lista')
+    or coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
+  )
+order by o.opened_at
+`
+
+type ListOpenOrdersRow struct {
+	ID                 int64           `json:"id"`
+	DailyNumber        int32           `json:"daily_number"`
+	FolioName          *string         `json:"folio_name"`
+	Status             OrderStatus     `json:"status"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	CustomerName       *string         `json:"customer_name"`
+	Total              decimal.Decimal `json:"total"`
+	Currency           string          `json:"currency"`
+	OpenedAt           time.Time       `json:"opened_at"`
+	Paid               decimal.Decimal `json:"paid"`
+	EnPreparacion      bool            `json:"en_preparacion"`
+	Renglones          int32           `json:"renglones"`
+}
+
+// Los pedidos que el punto de venta tiene que seguir viendo: la barra de pedidos en curso.
+//
+// Es la UNIÓN de dos conjuntos que no son el mismo, y confundirlos ya costó una vez:
+//
+//   - en preparación — `abierta` o `lista`: se les puede AGREGAR y cobrar. Es al que el cliente le
+//     pide algo más, y el que antes desaparecía de la pantalla al mandarlo a cocina.
+//   - con saldo — debe dinero y no está cancelada ni reembolsada. Incluye el pedido ENTREGADO y sin
+//     cobrar, que es el caro: el cliente ya se fue. Esa es la razón de ser de la píldora que esta
+//     lista reemplaza, y quedarse solo con "en preparación" lo habría borrado del encabezado.
+//
+// `en_preparacion` viaja como dato y no se deduce del estado en el front: la pantalla tiene que
+// poder decir cuál se puede ampliar sin volver a implementar la regla.
+//
+// Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
+// operador a perseguir cobros que nadie debe.
+func (q *Queries) ListOpenOrders(ctx context.Context, businessDate pgtype.Date) ([]ListOpenOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listOpenOrders, businessDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenOrdersRow{}
+	for rows.Next() {
+		var i ListOpenOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Status,
+			&i.ServiceType,
+			&i.DeliveryPlatformID,
+			&i.CustomerName,
+			&i.Total,
+			&i.Currency,
+			&i.OpenedAt,
+			&i.Paid,
+			&i.EnPreparacion,
+			&i.Renglones,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrderLineModifiers = `-- name: ListOrderLineModifiers :many
 select olm.order_line_id, olm.group_title, olm.option_name, olm.quantity, olm.price_delta
 from order_line_modifiers olm
@@ -851,69 +932,24 @@ func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListO
 	return items, nil
 }
 
-const listUnpaidOrders = `-- name: ListUnpaidOrders :many
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.opened_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
-from orders o
-where o.business_date = $1
-  and o.status not in ('cancelada', 'reembolsada')
-  and coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
-order by o.opened_at
+const marcarRenglonesEnviadosACocina = `-- name: MarcarRenglonesEnviadosACocina :exec
+update order_lines set enviado_a_cocina_at = now()
+where order_id = $1 and id = any($2::bigint[])
 `
 
-type ListUnpaidOrdersRow struct {
-	ID                 int64           `json:"id"`
-	DailyNumber        int32           `json:"daily_number"`
-	FolioName          *string         `json:"folio_name"`
-	Status             OrderStatus     `json:"status"`
-	ServiceType        ServiceType     `json:"service_type"`
-	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
-	CustomerName       *string         `json:"customer_name"`
-	Total              decimal.Decimal `json:"total"`
-	Currency           string          `json:"currency"`
-	OpenedAt           time.Time       `json:"opened_at"`
-	Paid               decimal.Decimal `json:"paid"`
+type MarcarRenglonesEnviadosACocinaParams struct {
+	OrderID int64   `json:"order_id"`
+	Column2 []int64 `json:"column_2"`
 }
 
-// Los pedidos del día que todavía deben dinero, en cualquier estado que siga siendo cobrable.
+// Marca como salidos en comanda los renglones dados de un pedido.
 //
-// Existe aparte de ListDeliveredToday porque esa está restringida a admin/gerente (sirve para
-// reembolsar, que es salida de dinero) y el pendiente más caro —entregado y sin cobrar, el cliente
-// ya se fue— tiene que poder saldarlo quien está en el mostrador.
-//
-// Cancelada y reembolsada quedan fuera: su dinero ya se decidió, y listarlas mandaría al operador
-// a perseguir cobros que nadie debe.
-func (q *Queries) ListUnpaidOrders(ctx context.Context, businessDate pgtype.Date) ([]ListUnpaidOrdersRow, error) {
-	rows, err := q.db.Query(ctx, listUnpaidOrders, businessDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListUnpaidOrdersRow{}
-	for rows.Next() {
-		var i ListUnpaidOrdersRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.DailyNumber,
-			&i.FolioName,
-			&i.Status,
-			&i.ServiceType,
-			&i.DeliveryPlatformID,
-			&i.CustomerName,
-			&i.Total,
-			&i.Currency,
-			&i.OpenedAt,
-			&i.Paid,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+// Acotado por `order_id` además de por los ids: los ids vienen del servicio, pero un filtro que solo
+// mira la lista deja la puerta abierta a marcar renglones de otro pedido si algún día esa lista se
+// arma desde otro lado. Es el mismo predicado que ya usa el resto del archivo.
+func (q *Queries) MarcarRenglonesEnviadosACocina(ctx context.Context, arg MarcarRenglonesEnviadosACocinaParams) error {
+	_, err := q.db.Exec(ctx, marcarRenglonesEnviadosACocina, arg.OrderID, arg.Column2)
+	return err
 }
 
 const nextDailyNumber = `-- name: NextDailyNumber :one
@@ -1024,6 +1060,51 @@ func (q *Queries) RefundOrder(ctx context.Context, arg RefundOrderParams) error 
 		arg.RefundAmount,
 	)
 	return err
+}
+
+const renglonesSinEnviarACocina = `-- name: RenglonesSinEnviarACocina :many
+select l.id, l.product_name, l.quantity, l.notes
+from order_lines l
+where l.order_id = $1 and l.enviado_a_cocina_at is null and l.cancelled_at is null
+order by l.id
+`
+
+type RenglonesSinEnviarACocinaRow struct {
+	ID          int64           `json:"id"`
+	ProductName string          `json:"product_name"`
+	Quantity    decimal.Decimal `json:"quantity"`
+	Notes       *string         `json:"notes"`
+}
+
+// Los renglones de un pedido que todavía no han salido en ninguna comanda.
+//
+// Es lo que hace posible imprimir SOLO lo agregado, y recuperar una impresión que falló sin volver
+// a sacar el pedido entero — que haría que cocina prepare dos veces lo mismo.
+//
+// El cancelado queda fuera: mandarlo sería pedirle a cocina que prepare algo que el cliente quitó.
+func (q *Queries) RenglonesSinEnviarACocina(ctx context.Context, orderID int64) ([]RenglonesSinEnviarACocinaRow, error) {
+	rows, err := q.db.Query(ctx, renglonesSinEnviarACocina, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RenglonesSinEnviarACocinaRow{}
+	for rows.Next() {
+		var i RenglonesSinEnviarACocinaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductName,
+			&i.Quantity,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec

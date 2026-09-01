@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -252,5 +253,83 @@ func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	}
 	if _, err := BuildOrder(linea(10, 1), products, sinConfigurar); err != nil {
 		t.Fatalf("una opción sin tope configurado debe aceptar la primera: %v", err)
+	}
+}
+
+// A un pedido terminado no se le agregan renglones.
+//
+// La regla ya existía sin test. La tableta que estuvo suspendida media hora vuelve creyendo que el
+// pedido sigue abierto, y mientras dormía la otra estación pudo entregarlo o cancelarlo: sin esto,
+// el renglón entra sobre un pedido que nadie va a preparar y que ya cuadró su dinero. Con la barra
+// de pedidos en curso ese camino deja de ser teórico — el chip sigue ahí hasta el siguiente
+// refresco.
+func TestPuedeRecibirLineas(t *testing.T) {
+	casos := []struct {
+		estado string
+		quiere bool
+	}{
+		{StatusAbierta, true},
+		{StatusLista, true}, // sigue en cocina: el cliente todavía puede pedir más
+		{StatusEntregada, false},
+		{StatusCancelada, false},
+		{StatusReembolsada, false},
+		{"", false}, // un estado que no existe no abre la puerta
+	}
+	for _, c := range casos {
+		t.Run(c.estado, func(t *testing.T) {
+			if got := PuedeRecibirLineas(c.estado); got != c.quiere {
+				t.Errorf("PuedeRecibirLineas(%q) = %v, quiere %v", c.estado, got, c.quiere)
+			}
+		})
+	}
+}
+
+// Qué renglones no han salido en una comanda.
+//
+// Es lo que decide qué imprime la comanda del agregado. Sin esto solo se puede saber en el instante
+// del agregado, y una impresión que falla se pierde sin dejar rastro de qué faltó.
+func TestRenglonesSinEnviar(t *testing.T) {
+	salio := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	casos := []struct {
+		nombre    string
+		renglones []RenglonEnviable
+		quiere    []int64
+	}{
+		{"sin renglones", nil, nil},
+		{
+			"ninguno ha salido",
+			[]RenglonEnviable{{ID: 1}, {ID: 2}},
+			[]int64{1, 2},
+		},
+		{
+			"todos salieron",
+			[]RenglonEnviable{{ID: 1, EnviadoACocina: &salio}, {ID: 2, EnviadoACocina: &salio}},
+			nil,
+		},
+		{
+			"solo el agregado",
+			[]RenglonEnviable{{ID: 1, EnviadoACocina: &salio}, {ID: 2}},
+			[]int64{2},
+		},
+		{
+			// El renglón cancelado no se manda a preparar aunque nunca haya salido: sería mandar a
+			// cocina algo que el cliente ya quitó.
+			"el cancelado no cuenta",
+			[]RenglonEnviable{{ID: 1, Cancelado: true}, {ID: 2}},
+			[]int64{2},
+		},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			got := RenglonesSinEnviar(c.renglones)
+			if len(got) != len(c.quiere) {
+				t.Fatalf("RenglonesSinEnviar = %v, quiere %v", got, c.quiere)
+			}
+			for i := range got {
+				if got[i].ID != c.quiere[i] {
+					t.Errorf("posición %d = %d, quiere %d", i, got[i].ID, c.quiere[i])
+				}
+			}
+		})
 	}
 }

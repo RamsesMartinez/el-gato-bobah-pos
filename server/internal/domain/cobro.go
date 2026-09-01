@@ -13,6 +13,12 @@ var (
 	ErrCobroExcede = fmt.Errorf("%w: no puedes cobrar más de lo que falta de ese pedido", ErrValidation)
 	// ErrPedidoNoCobrable: el pedido se canceló o se reembolsó; su dinero ya se decidió.
 	ErrPedidoNoCobrable = fmt.Errorf("%w: ese pedido ya no se puede cobrar", ErrConflict)
+	// ErrCobroFueraDeLugar: se intentó crear un pedido ya cobrado.
+	//
+	// Crear y cobrar de un golpe se saltaba la cocina por completo, y era el camino corto: el que
+	// se usaba. El mensaje NOMBRA el camino correcto porque un error que solo dice "no" manda al
+	// operador —o a quien integre contra la API— a adivinar cuál es.
+	ErrCobroFueraDeLugar = fmt.Errorf("%w: el pedido se confirma primero y se cobra después, con /pay", ErrValidation)
 )
 
 // PorCobrar es lo que falta de un pedido, nunca negativo.
