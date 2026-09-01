@@ -173,7 +173,7 @@ desbloqueen mutuamente.
 
 ## Fase 6: Cierre
 
-- [ ] T038 Verificar el recorrido completo de [quickstart.md](./quickstart.md) contra el ambiente de
+- [X] T038 Verificar el recorrido completo de [quickstart.md](./quickstart.md) contra el ambiente de
       pruebas, en 1024×600 real. **Cronometrar el cambio de operador** — SC-001 dice menos de 5
       segundos y es la única forma de verificarlo.
 - [X] T039 [P] Correr `tablet-ui-reviewer` sobre `LockScreen.tsx` y la pantalla de ajustes: es
