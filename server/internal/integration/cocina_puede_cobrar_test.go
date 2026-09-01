@@ -109,7 +109,7 @@ func TestElAvisoDelPOSListaLoQueFaltaPorCobrar(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	items, err := svc.Open(ctx)
+	items, _, err := svc.Open(ctx)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

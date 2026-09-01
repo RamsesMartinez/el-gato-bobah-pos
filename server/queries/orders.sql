@@ -243,31 +243,22 @@ select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_i
 --
 -- Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
 -- operador a perseguir cobros que nadie debe.
+-- Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where. Escrito
+-- como dos subconsultas iguales, Postgres no las deduplica: en el plan real salían dos SubPlan y el
+-- mismo agregado se recorría dos veces por cada pedido entregado sin cobrar.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
        o.customer_name, o.total, o.currency, o.opened_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       pagos.paid::numeric(10,2) as paid,
        (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
+left join lateral (
+  select coalesce(sum(p.amount), 0) as paid from order_payments p where p.order_id = o.id
+) pagos on true
 where o.business_date = $1
   and o.status not in ('cancelada', 'reembolsada')
-  and (
-    o.status in ('abierta', 'lista')
-    or coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
-  )
+  and (o.status in ('abierta', 'lista') or pagos.paid < o.total)
 order by o.opened_at;
-
--- name: RenglonesSinEnviarACocina :many
--- Los renglones de un pedido que todavía no han salido en ninguna comanda.
---
--- Es lo que hace posible imprimir SOLO lo agregado, y recuperar una impresión que falló sin volver
--- a sacar el pedido entero — que haría que cocina prepare dos veces lo mismo.
---
--- El cancelado queda fuera: mandarlo sería pedirle a cocina que prepare algo que el cliente quitó.
-select l.id, l.product_name, l.quantity, l.notes
-from order_lines l
-where l.order_id = $1 and l.enviado_a_cocina_at is null and l.cancelled_at is null
-order by l.id;
 
 -- name: MarcarTodoElPedidoEnviadoACocina :exec
 -- Marca como salidos en comanda TODOS los renglones vivos de un pedido.

@@ -121,16 +121,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if len(cmd.Payments) > 0 {
 		return nil, domain.ErrCobroFueraDeLugar
 	}
-	// A04: acota cada línea de pago/propina antes de la tx. Un monto sobre el tope desbordaría
-	// el numeric(10,2) (→ 500); una propina negativa violaría el check de la columna.
-	// allowZero en la propina (0 es válido), no en el monto (una línea de pago cobra algo).
-	for _, p := range cmd.Payments {
-		if !domain.ValidMoney(domain.Round2(p.Amount), false) ||
-			!domain.ValidMoney(domain.Round2(p.Tip), true) {
-			return nil, domain.ErrValidation
-		}
-	}
-
 	// idempotencia: si ya existe una orden con ese client_uuid, devolverla
 	if id, err := s.store.QC(ctx).GetOrderIDByClientUUID(ctx, cmd.ClientUUID); err == nil {
 		return s.load(ctx, id)
@@ -165,26 +155,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	// entraría sin protestar. El daño sería silencioso — el corte hace join con payment_methods
 	// bajo RLS, así que ese pago no saldría en ningún renglón, desaparecería del reporte de ventas,
 	// y el cajero encontraría un faltante por el monto exacto sin nada que lo explique.
-	//
-	// Se deduplica porque un pago dividido repite métodos y no vale la pena consultar dos veces.
-	vistos := map[int16]bool{}
-	for _, p := range cmd.Payments {
-		if vistos[p.MethodID] {
-			continue
-		}
-		vistos[p.MethodID] = true
-		m, err := s.store.QC(ctx).GetPaymentMethod(ctx, p.MethodID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, domain.ErrNotFound
-			}
-			return nil, err
-		}
-		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, cmd.DeliveryPlatformID) {
-			return nil, domain.ErrPaymentMethodPlatform
-		}
-	}
-
 	// cargar catálogo priceado (autoritativo)
 	prodIDs, optIDs := collectIDs(cmd.Lines)
 	prodRows, err := s.store.QC(ctx).GetPricedProducts(ctx, prodIDs)
@@ -197,18 +167,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	}
 
 	// Si algo del pedido necesita prepararse. Lo dice el CATÁLOGO, no la pantalla: preguntárselo al
-	// operador en cada cobro era pedirle que decidiera algo que el sistema ya sabe, y equivocarse
-	// salía caro — un ticket con un refresco y unas alitas marcado "no pasa por cocina" escondía
-	// las alitas del tablero y nadie las preparaba. Basta un producto que sí para que el pedido
-	// entero viaje.
-	algoVaACocina := false
-	for _, p := range prodRows {
-		if p.NeedsPrep {
-			algoVaACocina = true
-			break
-		}
-	}
-
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
@@ -257,12 +215,9 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	//    tickets #1 en la misma noche.
 	bizDate := sess.BusinessDate
 
-	// Nace entregado solo si no hay nada que preparar Y la venta quedó saldada. Lo segundo no es
-	// redundante: un pedido que nace terminado no vuelve a aparecer en ninguna pantalla operativa,
-	// así que si además no se cobró, el faltante no se vería hasta el corte.
-	naceEntregada := !algoVaACocina &&
-		domain.PagosCubren(cmd.pagado(), built.Total.Add(built.DeliveryFee))
-
+	// El pedido SIEMPRE nace abierto. Nacía entregado cuando no había nada que preparar y la venta
+	// quedaba saldada, pero eso dependía de que crear y cobrar fueran una sola llamada — y esa vía
+	// se cerró para que cocina vea todo. La regla vive ahora en Charge, que es donde ocurre.
 	var orderID int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		num, err := q.NextDailyNumber(ctx, bizDate)
@@ -287,7 +242,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			Total:              built.Total,
 			DeliveryFee:        built.DeliveryFee,
 			FolioName:          strPtr(folio),
-			Status:             estadoInicial(naceEntregada),
+			Status:             db.OrderStatusAbierta,
 		})
 		if err != nil {
 			return err
@@ -304,7 +259,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				UnitCost:       l.UnitCost,
 				LineTotal:      l.LineTotal,
 				Notes:          strPtr(l.Notes),
-				NaceEntregada:  naceEntregada,
+				NaceEntregada:  false,
 			})
 			if err != nil {
 				return err
@@ -323,25 +278,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 				}
 			}
 		}
-		// Pago dividido: una fila order_payments por método. La suma de amounts determina si
-		// la orden queda pagada (load() la compara con el total).
-		for _, p := range cmd.Payments {
-			if !p.Amount.IsPositive() {
-				continue // línea vacía: se ignora (no crea filas de $0)
-			}
-			if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
-				OrderID:           ord.ID,
-				PaymentMethodID:   p.MethodID,
-				Amount:            domain.Round2(p.Amount),
-				TipAmount:         domain.Round2(p.Tip),
-				RegisterSessionID: &sess.ID,
-				ReceivedBy:        &cmd.OpenedBy,
-				Reference:         p.Reference,
-			}); err != nil {
-				return err
-			}
-		}
-
 		// depleción de stock: producto con stock directo → descuenta el producto;
 		// con receta → descuenta cada ingrediente × cantidad vendida (el trigger
 		// mantiene stock_levels). Negativos permitidos (verdad contable).
@@ -751,25 +687,6 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 	return lista, nil
 }
 
-// pagado suma lo que traen las líneas de pago del comando.
-func (c CreateOrderCmd) pagado() decimal.Decimal {
-	total := decimal.Zero
-	for _, p := range c.Payments {
-		if p.Amount.IsPositive() {
-			total = total.Add(p.Amount)
-		}
-	}
-	return total
-}
-
-// estadoInicial: entregado en el acto, o abierto para que pase por el tablero.
-func estadoInicial(entregado bool) db.OrderStatus {
-	if entregado {
-		return db.OrderStatus(domain.StatusEntregada)
-	}
-	return db.OrderStatus(domain.StatusAbierta)
-}
-
 // AddLines agrega renglones a un pedido que sigue en curso.
 //
 // Es el caso de todos los días: la libreta vuelve de la mesa con "la 3 pidió dos más". Sin esto, la
@@ -858,8 +775,21 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		// Bloquea el pedido: dos capturas simultáneas sobre la misma cuenta recalcularían el total
 		// sobre el estado viejo y uno de los dos agregados desaparecería del importe.
-		if _, err := q.GetOrderForUpdate(ctx, orderID); err != nil {
+		o, err := q.GetOrderForUpdate(ctx, orderID)
+		if err != nil {
 			return err
+		}
+		// Y se REVALIDA el estado sobre la fila ya bloqueada, no solo sobre la lectura de arriba.
+		//
+		// Entre las dos cabe que la otra estación entregue o cancele el pedido, y con la barra de
+		// pedidos en curso ese hueco dejó de ser teórico: el chip sigue en pantalla hasta el
+		// siguiente refresco, y ahora un cobro que salda un pedido sin preparación lo entrega SOLO,
+		// que es el caso más común del mostrador. Sin esto entra un renglón sobre un pedido ya
+		// entregado y `RecalcOrderTotals` le sube el total — mover dinero que ya se contó, que es
+		// justo lo que el comentario de esta función dice que nunca debe pasar.
+		if !domain.PuedeRecibirLineas(string(o.Status)) {
+			return fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
+				domain.ErrConflict, ord.DailyNumber, o.Status)
 		}
 		agregados = agregados[:0]
 		for _, l := range built.Lines {
@@ -1202,11 +1132,15 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 // los impagos borraría el primero; solo con los no terminados, el segundo.
 //
 // Se llamaba Unpaid, y el nombre mentía en cuanto la lista dejó de ser solo de impagos.
-func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, error) {
+func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal, error) {
 	rows, err := s.store.QC(ctx).ListOpenOrders(ctx, pgtype.Date{Time: s.now(), Valid: true})
 	if err != nil {
-		return nil, err
+		return nil, decimal.Zero, err
 	}
+	// El total pendiente se suma AQUÍ y no en el handler: sumar dinero de varias filas es agregación,
+	// no formateo, y del mismo predicado que la lista para que el encabezado y el detalle no puedan
+	// decir cosas distintas.
+	pendiente := decimal.Zero
 	out := make([]BoardOrder, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, BoardOrder{
@@ -1221,6 +1155,7 @@ func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, error) {
 			EnPreparacion: r.EnPreparacion,
 			Renglones:     int(r.Renglones),
 		})
+		pendiente = pendiente.Add(out[len(out)-1].Outstanding)
 	}
-	return out, nil
+	return out, domain.Round2(pendiente), nil
 }

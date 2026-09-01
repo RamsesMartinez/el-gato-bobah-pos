@@ -37,7 +37,7 @@ solo, y todo lo demás depende de ello.
 - [X] T006 ~~Implementar `domain.PuedeAgregar`~~ — **la regla ya existía** como `domain.PuedeRecibirLineas`, sin test. Se borró la duplicada que había planeado y la que ya estaba se quedó con la cobertura de T005.
 - [X] T007 ~~Agregar `domain.ErrPedidoTerminal`~~ — **innecesario**: `AddLines` ya envuelve `ErrConflict` con el número y el estado del pedido, que es lo que FR-010 pide. Un sentinel más no respondía ninguna pregunta nueva.
 - [X] T008 Agregar el sentinel `domain.ErrCobroFueraDeLugar` en `server/internal/domain/order.go` (crear un pedido ya cobrado) y su mapeo a `422` en `server/internal/httpapi/respond.go`.
-- [X] T009 Escribir en `server/queries/orders.sql` las tres consultas nuevas —pedidos en curso (la unión de no-terminales y con-saldo), renglones sin enviar de un pedido, y marcar renglones como enviados— y correr `make sqlc`. El `where` de la lista y el del total pendiente viven en el mismo archivo y se editan juntos.
+- [X] T009 Escribir en `server/queries/orders.sql` las consultas nuevas —pedidos en curso (la unión de no-terminales y con-saldo), renglones sin enviar de un pedido, y marcar renglones como enviados— y correr `make sqlc`. El `where` de la lista y el del total pendiente viven en el mismo archivo y se editan juntos.
 
 **Checkpoint**: `go build ./...` y `go test ./...` en verde; la migración aplicada contra la base de pruebas.
 
@@ -139,8 +139,8 @@ hoy — la feature empeoraría el POS.
 ## Phase 6: Cierre
 
 - [X] T043 Correr el `tablet-ui-reviewer` sobre `web/src/features/pos/`: la barra cambia la pantalla más usada del sistema y el presupuesto de alto es lo primero que se pierde.
-- [ ] T044 Correr el `db-architect` sobre las migraciones 0053 y 0054 y las consultas nuevas de `server/queries/orders.sql`, antes de aplicarlas a producción.
-- [ ] T045 Correr el `go-backend-reviewer` sobre los cambios de `server/internal/app/orders.go` y `server/internal/httpapi/handlers_orders.go`.
+- [X] T044 Correr el `db-architect` sobre las migraciones 0053 y 0054 y las consultas nuevas de `server/queries/orders.sql`, antes de aplicarlas a producción.
+- [X] T045 Correr el `go-backend-reviewer` sobre los cambios de `server/internal/app/orders.go` y `server/internal/httpapi/handlers_orders.go`.
 - [ ] T046 Recorrer [quickstart.md](./quickstart.md) completo contra el ambiente de pruebas, en una ventana de **1024×600**, incluyendo los cinco bordes a mano.
 - [ ] T047b Contar los toques de punta a punta de una venta de dos renglones, antes y después de la feature. **Máximo uno más** (SC-003). Si son dos o más, el diseño de la barra o el de confirmar está cobrando toques que no le tocan.
 - [ ] T047 Contar los renglones de productos visibles antes y después con seis pedidos en curso (SC-005). Si bajaron, la barra se está comiendo alto que no le toca.

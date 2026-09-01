@@ -3,7 +3,6 @@ package domain
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -69,34 +68,6 @@ func CanTransition(current, next string) bool {
 	default: // entregada, cancelada = terminal
 		return false
 	}
-}
-
-// RenglonEnviable es lo mínimo que hace falta para decidir si un renglón tiene que salir a cocina.
-//
-// Es un tipo del dominio y no la fila de la base para que la regla se pruebe sin base de datos, que
-// es la razón de que `domain` no tenga I/O.
-type RenglonEnviable struct {
-	ID             int64
-	EnviadoACocina *time.Time
-	Cancelado      bool
-}
-
-// RenglonesSinEnviar devuelve los renglones que todavía no han salido en ninguna comanda.
-//
-// Es lo que decide qué imprime la comanda del agregado. Calcularlo aquí y no en el instante del
-// agregado es lo que permite recuperar una impresión que falló: si solo se supiera "lo que acabo de
-// agregar", un papel que no sale se pierde sin dejar rastro de qué faltó.
-//
-// El cancelado queda fuera aunque nunca haya salido: mandarlo sería pedirle a cocina que prepare
-// algo que el cliente ya quitó.
-func RenglonesSinEnviar(renglones []RenglonEnviable) []RenglonEnviable {
-	var faltan []RenglonEnviable
-	for _, r := range renglones {
-		if r.EnviadoACocina == nil && !r.Cancelado {
-			faltan = append(faltan, r)
-		}
-	}
-	return faltan
 }
 
 // --- Entradas del cliente (solo IDs + cantidades; los precios los pone el servidor) ---

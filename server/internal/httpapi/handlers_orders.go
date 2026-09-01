@@ -344,14 +344,10 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 // por su cuenta, un cambio en el predicado dejaría la cifra del encabezado diciendo una cosa y la
 // lista otra, y quien la lee no tiene forma de saber cuál miente.
 func (h *Handlers) OpenOrders(w http.ResponseWriter, r *http.Request) {
-	items, err := h.orders.Open(r.Context())
+	items, pendiente, err := h.orders.Open(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
-	}
-	pendiente := decimal.Zero
-	for _, o := range items {
-		pendiente = pendiente.Add(o.Outstanding)
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": items, "outstanding": pendiente})
 }
