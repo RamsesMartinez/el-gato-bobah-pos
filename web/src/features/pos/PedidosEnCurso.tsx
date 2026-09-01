@@ -48,6 +48,18 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
 
   return (
     <>
+      {/* Los chips scrollean DENTRO de su propia caja, con el ancho acotado.
+          Sin esto, cada chip mide ~150px y no encoge, así que con seis pedidos —el máximo de un día
+          en producción— la fila crecía hasta empujar los botones de precios y edición fuera del
+          `overflow="hidden"` del contenedor: no se veían y tampoco se podían tocar. Y las cuentas
+          locales, que son lo único elástico de la fila, se aplastaban a cero. */}
+      <HStack
+        gap={2}
+        maxW="clamp(120px, 34%, 420px)"
+        overflowX="auto"
+        py={1}
+        css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
+      >
       {pedidos.map((o) => (
         <Button
           key={o.id}
@@ -63,22 +75,27 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
           onClick={() => (o.enPreparacion ? onAbrir(o) : setCobrando(o))}
         >
           <VStack gap={0} align="start">
-            {/* El animal primero: es lo que se canta en cocina y lo que dice el cliente. */}
+            {/* El animal primero: es lo que se canta en cocina y lo que dice el cliente.
+                "Ya se fue" va en ESTE renglón y no en el chico de abajo: el entregado sin cobrar es
+                dinero que se fue con el cliente, y depender del color para verlo lo deja invisible
+                para quien no distingue naranja de azul — y para cualquiera con prisa, porque el
+                renglón de abajo es el que menos se lee. */}
             <Text fontWeight="700" fontSize="sm" lineHeight="1.15" whiteSpace="nowrap">
-              {o.folioName || `#${o.number}`}
+              {o.enPreparacion ? '' : '⚠ '}{o.folioName || `#${o.number}`}
             </Text>
             <Text fontSize="2xs" color="fg.muted" lineHeight="1.15" whiteSpace="nowrap">
               {money(o.outstanding, o.currency)}
-              {/* Entregado y sin cobrar es el caso caro: el cliente ya se fue con la comida, así
-                  que se dice y no se deja adivinar. */}
               {o.enPreparacion ? ` · ${o.renglones}` : ' · ya se entregó'}
             </Text>
           </VStack>
         </Button>
       ))}
 
-      {/* El total en riesgo, que es lo que la píldora dejaba leer de un vistazo. Va al final de los
-          chips para que no se confunda con el monto de un pedido. */}
+      </HStack>
+
+      {/* El total en riesgo, que es lo que la píldora dejaba leer de un vistazo. Va FUERA de la caja
+          que scrollea: es la cifra que no se puede perder de vista, y adentro se iría con el
+          desplazamiento justo cuando hay muchos pedidos, que es cuando más importa. */}
       {Number(data?.outstanding ?? 0) > 0 && (
         <HStack flexShrink={0} gap={1} color="orange.600" px={1}>
           <LuWallet />

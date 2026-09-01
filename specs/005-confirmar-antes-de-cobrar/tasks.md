@@ -138,7 +138,7 @@ hoy — la feature empeoraría el POS.
 
 ## Phase 6: Cierre
 
-- [ ] T043 Correr el `tablet-ui-reviewer` sobre `web/src/features/pos/`: la barra cambia la pantalla más usada del sistema y el presupuesto de alto es lo primero que se pierde.
+- [X] T043 Correr el `tablet-ui-reviewer` sobre `web/src/features/pos/`: la barra cambia la pantalla más usada del sistema y el presupuesto de alto es lo primero que se pierde.
 - [ ] T044 Correr el `db-architect` sobre las migraciones 0053 y 0054 y las consultas nuevas de `server/queries/orders.sql`, antes de aplicarlas a producción.
 - [ ] T045 Correr el `go-backend-reviewer` sobre los cambios de `server/internal/app/orders.go` y `server/internal/httpapi/handlers_orders.go`.
 - [ ] T046 Recorrer [quickstart.md](./quickstart.md) completo contra el ambiente de pruebas, en una ventana de **1024×600**, incluyendo los cinco bordes a mano.

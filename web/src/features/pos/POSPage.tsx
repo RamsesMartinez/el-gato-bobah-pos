@@ -328,7 +328,9 @@ export function POSPage() {
               No cuesta alto nuevo —la fila ya existía— y absorbe la píldora de "Por cobrar", que
               mostraba esto mismo en otro lugar. Un toque en un chip vuelve a abrir el pedido; antes
               recuperarlo costaba cinco por un camino enterrado en la hoja de cobro. */}
-          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} />
+          <HStack gap={2} flexShrink={0} minW={0}>
+            <PedidosEnCurso onAbrir={abrirPedidoEnCurso} />
+          </HStack>
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}
