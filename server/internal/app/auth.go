@@ -14,6 +14,10 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
+// RefreshTokenTTL es el RESPALDO cuando el negocio no tiene ajustes todavía. La duración real sale
+// de business_settings.session_hours; esta constante era el valor único antes de que el ajuste
+// existiera, y quedarse en 30 días es lo que hacía que una tableta olvidada siguiera autenticada
+// durante un mes.
 const RefreshTokenTTL = 30 * 24 * time.Hour
 
 type AuthService struct {
@@ -113,10 +117,10 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string, a
 			UserID: actorID, ExpiresAt: s.now(),
 		})
 		if err != nil {
-			// Sin sesión viva de quien estaba —un pin-switch desde un dispositivo recién
-			// autenticado por otra vía— se cae al plazo completo. Es el comportamiento anterior y
-			// el único seguro: negar el relevo dejaría al operador fuera con el cliente enfrente.
-			vence = s.now().Add(RefreshTokenTTL)
+			// Sin sesión viva de quien estaba —un relevo desde un dispositivo recién autenticado
+			// por otra vía— se arranca un plazo nuevo del negocio. Negar el relevo dejaría al
+			// operador fuera con el cliente enfrente, así que el modo de fallo deja trabajar.
+			vence = s.now().Add(s.duracionDeSesion(ctx, q))
 		}
 		sess, err = s.issueUntil(ctx, q, u, vence)
 		if err != nil {
@@ -203,9 +207,23 @@ func (s *AuthService) Logout(ctx context.Context, companyID int64, refreshToken 
 // issue firma el access token y crea el refresh token usando la Queries YA scopeada al tenant
 // (q): CreateRefreshToken auto-sella company_id desde el GUC. Rellena el slug consultando la
 // propia empresa (para mostrar user@slug en el front) — barato y evita threading del slug.
-// issue arranca una sesión NUEVA con el plazo completo. Es el camino del login.
+// issue arranca una sesión NUEVA con el plazo del negocio. Es el camino del login.
 func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Session, error) {
-	return s.issueUntil(ctx, q, u, s.now().Add(RefreshTokenTTL))
+	return s.issueUntil(ctx, q, u, s.now().Add(s.duracionDeSesion(ctx, q)))
+}
+
+// duracionDeSesion: cuánto vive una sesión en este negocio.
+//
+// Sale del ajuste y no de una constante porque un local con turnos de 12 horas lo sube y otro que
+// quiera más control lo baja. Sin fila de ajustes —empresa recién creada— cae a RefreshTokenTTL,
+// que es el comportamiento que había antes de que el ajuste existiera: el modo de fallo deja
+// entrar, no deja fuera.
+func (s *AuthService) duracionDeSesion(ctx context.Context, q *db.Queries) time.Duration {
+	ajustes, err := q.GetBusinessSettings(ctx)
+	if err != nil || ajustes.SessionHours <= 0 {
+		return RefreshTokenTTL
+	}
+	return time.Duration(ajustes.SessionHours) * time.Hour
 }
 
 // issueUntil arma la sesión con un vencimiento DADO. Existe para que el cambio de operador conserve

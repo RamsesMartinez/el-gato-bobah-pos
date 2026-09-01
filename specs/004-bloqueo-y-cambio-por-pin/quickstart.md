@@ -51,13 +51,38 @@ Este no se puede esperar 8 horas en una prueba manual. Se verifica de dos manera
 **Falla si**: basta el PIN. Significa que el desbloqueo está emitiendo sesión nueva y reiniciando el
 reloj — el hallazgo 2 de la investigación.
 
-### Y lo que hay que revisar en el despliegue
+### Y lo que hay que decidir en el despliegue
 
-Los refresh tokens **ya emitidos** traen 30 días por delante y bajar el ajuste no los acorta. Al
-desplegar hay que decidir a propósito qué se hace con ellos; si se dejan, la protección no aplica
-hasta que cada tableta vuelva a entrar, que pueden ser semanas.
+**Los refresh tokens ya emitidos traen 30 días por delante y bajar el ajuste NO los acorta.** El
+plazo se fija al crear el token, no al usarlo. Si se dejan, la protección no aplica hasta que cada
+tableta vuelva a entrar — que pueden ser semanas, y son justo las tabletas que llevan más tiempo
+abiertas.
 
-Se comprueba mirando cuántos tokens vivos quedan con vencimiento más allá del nuevo plazo.
+Cuántos son, antes de decidir:
+
+```sql
+select count(*) as vivos,
+       count(*) filter (where expires_at > now() + interval '8 hours') as mas_alla_del_plazo
+from refresh_tokens
+where revoked_at is null and expires_at > now();
+```
+
+Dos caminos, y hay que elegir uno **a propósito**:
+
+| | Qué pasa | Cuándo conviene |
+| --- | --- | --- |
+| **Revocarlos todos al desplegar** | Todas las tabletas piden usuario y contraseña una vez. La protección aplica desde el minuto uno | Es lo recomendado: son dos o tres tabletas y un solo login |
+| **Dejarlos morir solos** | Nadie nota el despliegue, pero las sesiones viejas siguen vivas hasta un mes | Solo si el despliegue cae en hora pico y no se puede pedir a nadie que vuelva a entrar |
+
+Para revocarlos, dentro del mismo despliegue:
+
+```sql
+update refresh_tokens set revoked_at = now() where revoked_at is null;
+```
+
+**No va como migración**: revocar sesiones es una operación de despliegue, no un cambio de esquema,
+y meterla en una migración la haría correr también en cada ambiente de pruebas y en cada base
+restaurada de un respaldo, cerrando sesiones que nadie pidió cerrar.
 
 ## US4 — El modo de solo-PIN
 

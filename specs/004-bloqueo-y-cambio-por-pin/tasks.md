@@ -131,14 +131,14 @@ tableta deja de quedarse abierta— aunque desbloquear sea todavía con la misma
 
 **Lo más delicado**: toca la política de sesión. Se hace con lo anterior estable.
 
-- [ ] T027 [US3] Escribir `server/internal/integration/sesion_caduca_test.go` **antes**: pasado el
+- [X] T027 [US3] Escribir `server/internal/integration/sesion_caduca_test.go` **antes**: pasado el
       plazo, el refresh se rechaza y hace falta usuario y contraseña; dentro del plazo, sigue
       funcionando.
-- [ ] T028 [US3] Hacer que el vencimiento del refresh salga de `session_hours` del negocio en vez de
+- [X] T028 [US3] Hacer que el vencimiento del refresh salga de `session_hours` del negocio en vez de
       la constante de 30 días, en `server/internal/app/auth.go`.
-- [ ] T029 [US3] Manejar en el cliente el refresh rechazado por caducidad: mandar al login completo
+- [X] T029 [US3] Manejar en el cliente el refresh rechazado por caducidad: mandar al login completo
       con un mensaje que diga que la sesión terminó, no un error genérico.
-- [ ] T030 [US3] Documentar en [quickstart.md](./quickstart.md) qué se hace con los refresh tokens
+- [X] T030 [US3] Documentar en [quickstart.md](./quickstart.md) qué se hace con los refresh tokens
       **ya emitidos**, que traen 30 días y no se acortan solos. Es decisión de despliegue y tiene
       que quedar escrita antes de desplegar, no después.
 
