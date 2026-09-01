@@ -18,6 +18,22 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   const [error, setError] = useState('');
   const setSession = useSessionStore((s) => s.setSession);
   const clear = useSessionStore((s) => s.clear);
+  const [saliendo, setSaliendo] = useState(false);
+
+  // Salir REVOCA la cookie de refresh en el servidor antes de limpiar el estado local.
+  //
+  // Con solo limpiar en memoria, la cookie sobrevive y una recarga entre el tap y el login la
+  // canjea: la tableta vuelve sola a la sesión de quien se estaba yendo. En esta pantalla eso es
+  // peor que en el logout normal, porque es la salida de quien no puede entrar de otra forma.
+  const salir = async () => {
+    setSaliendo(true);
+    try {
+      await posApi.logout();
+    } catch {
+      /* red caída: se cierra localmente de todos modos */
+    }
+    clear();
+  };
 
   const { data } = useQuery({ queryKey: ['auth', 'unlock-options'], queryFn: posApi.unlockOptions });
   const pinOnly = data?.pinOnly ?? false;
@@ -106,7 +122,7 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
             ve, la única persona con acceso a media noche queda encerrada fuera con el local
             abierto, y no puede esperar a que otra llegue. */}
         <Box pt={2}>
-          <Button variant="outline" minH="44px" onClick={() => clear()}>
+          <Button variant="outline" minH="44px" loading={saliendo} onClick={salir}>
             Entrar con usuario y contraseña
           </Button>
         </Box>
