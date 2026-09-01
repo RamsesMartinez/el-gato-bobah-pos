@@ -49,6 +49,34 @@ $4,500 de faltante inexplicable.
 - **Toda lógica no trivial deja un check runnable.** Si un comentario describe un comportamiento, ese comportamiento **debe** tener test (o el comentario miente cuando el código cambie).
 - Un task de implementación sin su task de test antes está mal ordenado.
 
+#### Los casos de borde se piensan ANTES de escribir el código
+
+**Primero se enumeran las formas de fallar, después se escribe el test, y hasta el final el
+código.** No es un paso de revisión: es el primero, y saltárselo produce código que funciona en el
+camino feliz y se rompe en el único que importaba.
+
+Antes de tocar el editor, la pregunta es *"¿de cuántas formas puede salir mal esto?"* y la respuesta
+se escribe. Cuatro familias que en este repo ya han costado caro:
+
+- **El valor vacío que significa algo.** `Number('')` es `0`, y `0` es un tiempo de bloqueo válido:
+  borrar el campo para reescribirlo apagaba la protección del negocio a media captura.
+- **El estado que no sobrevive.** Una pantalla de bloqueo en memoria de React se evade con F5.
+  Pregunta obligada: *¿qué pasa si se recarga, si se cae la red, si la tableta se suspende?*
+- **El camino nuevo que se salta el control viejo.** Al agregar una rama a un handler, hereda cero
+  protecciones: el desbloqueo por PIN sin `userId` nació sin limitador porque la llave del lockout
+  se construía con el id que ahí ya no existe.
+- **El hermano que no se movió.** Al cambiar dónde vive una validación hay que buscar a todos los
+  que llamaban a lo viejo: mover el filtro de PIN débil a `SetPIN` dejó a `Create` aceptando `1234`.
+
+**El test se escribe contra el borde, no contra el caso feliz.** Un test que solo prueba que lo
+normal funciona no es TDD, es documentación optimista. La pregunta que decide si un test vale es:
+*¿qué defecto concreto atrapa?* Si la respuesta es "ninguno que se me ocurra", el test sobra y el
+borde sigue sin cubrir.
+
+Y **el borde que se descubre tarde se documenta donde se pensó demasiado tarde**: en el spec si el
+requisito estaba mal, en el plan si el diseño no lo vio, en el código si fue un descuido. Un borde
+arreglado en silencio vuelve.
+
 #### Todo defecto encontrado deja su test de regresión
 
 **Un bug arreglado sin test no está arreglado**: está esperando a que alguien lo reintroduzca. Aplica
@@ -165,4 +193,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.5.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-31
+**Version**: 1.6.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-01
