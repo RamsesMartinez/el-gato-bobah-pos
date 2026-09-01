@@ -24,7 +24,7 @@ where id = $1
 returning *;
 
 -- name: SetUserPin :exec
-update users set pin_hash = $2, updated_at = now() where id = $1;
+update users set pin_hash = $2, pin_lookup = sqlc.narg(pin_lookup), updated_at = now() where id = $1;
 
 -- name: SetUserPassword :exec
 -- must_change_password lo fija quien llama (true tras reset por admin, false en cambio propio).
@@ -97,3 +97,20 @@ limit 1;
 update refresh_tokens
 set revoked_at = now()
 where user_id = @user_id and revoked_at is null and token_hash <> @token_hash;
+
+
+-- name: ClearAllPins :exec
+-- Borra los PINs de todas las personas activas de la empresa.
+--
+-- Lo usa el encendido del modo de solo-PIN: los PINs de antes son de 4 dígitos y sin garantía de ser
+-- distintos, y de lo guardado no se puede saber ni una cosa ni la otra. Obligar a recapturarlos es
+-- el único momento en que el PIN está en claro y se puede validar largo y unicidad.
+--
+-- Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña, que sigue funcionando.
+update users set pin_hash = null, pin_lookup = null, updated_at = now()
+where is_active;
+
+-- name: UserByPinLookup :one
+-- De quién es este PIN. Solo tiene sentido con el modo de solo-PIN, donde el PIN identifica.
+select id, name from users
+where is_active and pin_lookup = $1;

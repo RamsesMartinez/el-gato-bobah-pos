@@ -147,7 +147,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_zona", "admin")
 
 	cur, err := settings.Get(ctx)

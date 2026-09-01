@@ -221,14 +221,25 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
-	// Un parámetro de frontera ausente se RECHAZA. Caer al modo permisivo aquí significaría aceptar
-	// cualquier PIN sin saber de quién es, y con eso la atribución del arqueo dejaría de valer.
-	//
-	// Se rechaza SIN consultar la base: la deducción por PIN llega con el modo de solo-PIN (US4), y
-	// mientras no exista, este camino no tiene otra salida. Consultar ajustes aquí le daría a quien
-	// inunda el endpoint una consulta gratis por golpe, que es lo que el lockout viene a evitar.
+	// Sin userId, el negocio tiene que estar en modo de solo-PIN: ahí el PIN identifica y el
+	// servidor deduce de quién es. Con el modo apagado se RECHAZA — caer al modo permisivo aquí
+	// significaría aceptar cualquier PIN sin saber de quién, y con eso la atribución del arqueo
+	// dejaría de valer.
 	if body.UserID == nil {
-		Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
+		opciones, err := h.auth.UnlockOptions(r.Context())
+		if err != nil || !opciones.PinOnly {
+			Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
+			return
+		}
+		s, err := h.auth.PinSwitchSoloPin(r.Context(), body.PIN, actor.ID)
+		if err != nil {
+			// El evento no puede decir a quién se intentó desbloquear: en este modo justamente no
+			// se sabe. Lleva solo el origen.
+			logging.SecurityEvent(r.Context(), "pin_failed", "modo", "solo_pin", "ip", clientIP(r))
+			Error(w, err)
+			return
+		}
+		h.writeSession(w, s, http.StatusOK)
 		return
 	}
 	objetivo := *body.UserID

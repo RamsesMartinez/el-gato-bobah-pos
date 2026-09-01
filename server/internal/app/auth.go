@@ -21,16 +21,24 @@ import (
 const RefreshTokenTTL = 30 * 24 * time.Hour
 
 type AuthService struct {
-	store *store.Store
-	jwt   *auth.Manager
-	now   func() time.Time
+	// pinPepper: secreto de la huella determinista. Vacío = no se puede deducir de quién es un PIN.
+	pinPepper string
+	store     *store.Store
+	jwt       *auth.Manager
+	now       func() time.Time
 }
 
 func NewAuthService(s *store.Store, jm *auth.Manager, now func() time.Time) *AuthService {
+	return NewAuthServiceConPepper(s, jm, now, "")
+}
+
+// NewAuthServiceConPepper: igual, con el secreto de la huella determinista del PIN. Sin él el modo
+// de solo-PIN no puede deducir de quién es un PIN, y por eso tampoco se deja encender.
+func NewAuthServiceConPepper(s *store.Store, jm *auth.Manager, now func() time.Time, pinPepper string) *AuthService {
 	if now == nil {
 		now = time.Now
 	}
-	return &AuthService{store: s, jwt: jm, now: now}
+	return &AuthService{store: s, jwt: jm, now: now, pinPepper: pinPepper}
 }
 
 // Session is the result of a successful auth: an access token, an opaque refresh
@@ -300,3 +308,25 @@ func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) 
 	}
 	return out, nil
 }
+
+// PinSwitchSoloPin cambia de operador SIN que la pantalla diga quién es: lo deduce del PIN.
+//
+// Solo tiene sentido con el modo de solo-PIN encendido, donde el PIN identifica en vez de solo
+// probar. La deducción usa la huella determinista; bcrypt no puede hacerla porque saliniza, y
+// probar su hash contra cada usuario sería lento y filtraría por tiempo cuántos hay.
+//
+// La respuesta y la latencia son las mismas que las del camino normal: un PIN que no existe corre
+// igual el bcrypt de descarte, para que no se pueda averiguar cuáles están en uso.
+func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID int64) (*Session, error) {
+	if s.pinPepper == "" {
+		return nil, domain.ErrSinPepper
+	}
+	fila, err := s.store.QC(ctx).UserByPinLookup(ctx, ptr(domain.PinLookup(pin, s.pinPepper)))
+	if err != nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
+	}
+	return s.PinSwitch(ctx, fila.ID, pin, actorID)
+}
+
+func ptr[T any](v T) *T { return &v }

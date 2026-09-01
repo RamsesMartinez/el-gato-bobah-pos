@@ -1091,6 +1091,7 @@ type User struct {
 	CompanyID          int64     `json:"company_id"`
 	RecoveryEmail      *string   `json:"recovery_email"`
 	MustChangePassword bool      `json:"must_change_password"`
+	PinLookup          *string   `json:"pin_lookup"`
 }
 
 type UserPreference struct {

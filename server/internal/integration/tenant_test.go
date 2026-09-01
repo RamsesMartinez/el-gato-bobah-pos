@@ -76,7 +76,7 @@ func TestLoginIsScopedByCompany(t *testing.T) {
 	owner := newTestStore(t)
 	acme := makeCompany(t, owner, "acme")
 	appSt := appRoleStore(t)
-	users := app.NewUsersService(appSt, nil, false) // HIBP off en test
+	users := app.NewUsersService(appSt, nil, false, "pepper-de-prueba") // HIBP off en test
 	jm := auth.NewManager("0123456789abcdef0123456789abcdef", nil)
 	authSvc := app.NewAuthService(appSt, jm, clock)
 

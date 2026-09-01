@@ -28,7 +28,7 @@ func newTicketAPI(t *testing.T) (http.Handler, func(username, role string) strin
 	t.Helper()
 	st := newTestStore(t)
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
-	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Settings: app.NewSettingsService(st)})
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Settings: app.NewSettingsService(st, "pepper-de-prueba")})
 	r := httpapi.Router(config.Config{}, jm, h, st)
 
 	token := func(username, role string) string {
@@ -210,7 +210,7 @@ func TestAdicionalesSinCostoSeImprimenPorDefault(t *testing.T) {
 func TestLaComandaDeCocinaNaceApagadaYSeEnciendePorEmpresa(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_comanda", "admin")
 
 	cur, err := settings.Get(ctx)

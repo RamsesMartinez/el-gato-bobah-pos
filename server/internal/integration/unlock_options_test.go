@@ -14,7 +14,7 @@ import (
 
 func conPIN(t *testing.T, st *store.Store, userID int64, pin string) {
 	t.Helper()
-	users := app.NewUsersService(st, nil, false) // HIBP off en test
+	users := app.NewUsersService(st, nil, false, "pepper-de-prueba") // HIBP off en test
 	if err := users.SetPIN(context.Background(), userID, pin); err != nil {
 		t.Fatalf("SetPIN: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestConSoloPinLaRejillaVaVacia(t *testing.T) {
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
 	svc := app.NewAuthService(st, jm, clock)
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_rejilla", "admin")
 
 	u := makeUser(t, st, "ana_solopin", "cajero")

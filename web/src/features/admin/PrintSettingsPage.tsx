@@ -292,6 +292,28 @@ export function PrintSettingsPage() {
         </HStack>
       </Box>
 
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Desbloquear solo con el PIN</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Ahorra tocar el nombre antes de teclear. Al encenderlo, <b>todos vuelven a capturar su
+              PIN</b> y a partir de ahí necesita 6 dígitos y no se puede repetir entre personas.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.pinOnlyUnlock ?? false}
+            disabled={setIdentidad.isPending}
+            onCheckedChange={(e) => {
+              if (e.checked && !confirm(
+                'Al encenderlo, todos tendrán que capturar su PIN de nuevo. Mientras tanto entran con usuario y contraseña. ¿Continuar?',
+              )) return;
+              setIdentidad.mutate({ pinOnlyUnlock: e.checked });
+            }}
+          />
+        </HStack>
+      </Box>
+
       {/* Ticket de prueba: se ve antes de imprimir, y sale marcado para que no se confunda con
           una venta si acaba en manos de un cliente. */}
       <TicketPreview order={sampleOrder} sample isOpen={sample} onClose={() => setSample(false)} />
