@@ -34,7 +34,10 @@ update users set password_hash = $2, must_change_password = $3, updated_at = now
 update users set recovery_email = $2, updated_at = now() where id = $1;
 
 -- name: SetUserSecretsByUsername :execrows
-update users set password_hash = $2, pin_hash = $3, is_active = true, updated_at = now()
+-- La huella va JUNTO al hash, siempre. Reiniciar el admin dejaba el pin_hash nuevo y la huella
+-- vieja, así que el índice único que impide dos PINs iguales seguía comparando contra un PIN que
+-- ya no existe, y con el modo de solo-PIN encendido el admin no podía desbloquear con el suyo.
+update users set password_hash = $2, pin_hash = $3, pin_lookup = $4, is_active = true, updated_at = now()
 where username = $1;
 
 -- name: GetUserPreference :one
@@ -77,23 +80,27 @@ select id, name from users
 where is_active and pin_hash is not null
 order by name;
 
--- name: LiveRefreshExpiry :one
--- Cuándo vence la sesión que ESTA estación viene presentando.
+-- name: TomarSesionDeEstacion :one
+-- Toma la sesión que la estación viene presentando: la revoca y devuelve su vencimiento.
 --
--- Se busca por el HASH del token, no por user_id. Buscar por persona tomaba el vencimiento más
--- lejano de cualquiera de sus tabletas, así que una estación heredaba el reloj de otra: entrar
--- fresco en la segunda le regalaba horas a la primera, con un PIN y de forma repetible.
-select expires_at from refresh_tokens
-where token_hash = $1 and revoked_at is null and expires_at > $2;
-
--- name: RevokeRefreshTokenByHash :exec
--- Revoca UNA sesión: la que la estación venía presentando antes del relevo.
+-- REVOCAR Y LEER EN LA MISMA SENTENCIA, no un select y luego un update. Separados, dos relevos con
+-- la misma cookie ven las dos el token vivo en la lectura, las dos emiten sesión, y el update de la
+-- perdedora toca cero filas sin error: de un refresh salen dos vivos, y cerrar sesión revoca uno y
+-- deja el otro. Es el estado que motivó la feature — un usuario de producción con 4 sesiones vivas.
 --
--- Solo esa. Revocar todas las de la persona tumbaba sus otras tabletas: entregar la estación 1
--- dejaba al compañero de la estación 2 con "terminó el turno" a media venta. El modo de fallo del
--- resto de la feature es dejar trabajar.
+-- Sin filas = no hay sesión viva en esta estación, y ahí el relevo se niega: emitir un plazo nuevo
+-- sería renovar el turno entero a cambio de un PIN.
+--
+-- Solo esta sesión. Revocar todas las de la persona tumbaba sus otras tabletas: entregar la
+-- estación 1 dejaba al compañero de la estación 2 con "terminó el turno" a media venta.
+--
+-- Y tiene que ser de QUIEN VIENE OPERANDO la estación ($3, que sale del token de acceso): sin ese
+-- predicado servía cualquier refresh vivo de la empresa, así que un token filtrado por otro lado
+-- —un respaldo, un log— tomaba la estación ajena, heredaba su reloj y se la revocaba de paso.
 update refresh_tokens set revoked_at = now()
-where token_hash = $1 and revoked_at is null;
+where token_hash = $1 and revoked_at is null and expires_at > $2 and user_id = $3
+returning expires_at;
+
 
 
 -- name: ClearAllPins :exec

@@ -214,7 +214,10 @@ func (s *UsersService) SetPIN(ctx context.Context, userID int64, pin string) err
 func (s *UsersService) prepararPin(ctx context.Context, pin string) (*string, *string, error) {
 	// El largo exigido depende del modo del negocio: con solo-PIN el PIN ES la identidad y necesita
 	// seis dígitos; sin él, el nombre ya identifica y bastan cuatro.
-	soloPin, pepper := s.politicaDePin(ctx)
+	soloPin, pepper, err := s.politicaDePin(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := domain.ValidarPin(pin, soloPin); err != nil {
 		return nil, nil, err
 	}
@@ -233,10 +236,19 @@ func (s *UsersService) prepararPin(ctx context.Context, pin string) (*string, *s
 }
 
 // politicaDePin: si el negocio usa solo-PIN, y con qué secreto se calcula la huella.
-func (s *UsersService) politicaDePin(ctx context.Context) (bool, string) {
+//
+// Un error de lectura se PROPAGA en vez de caer a "no es solo-PIN". Caía al modo permisivo, así que
+// un hipo de la consulta —un timeout de sentencia, una conexión que se cae— hacía que un negocio de
+// seis dígitos aceptara un PIN de cuatro y le calculara su huella, que en ese modo es directamente
+// desbloqueable. La empresa sin fila de ajustes es otra cosa: ahí el default del negocio es la
+// respuesta correcta, no un fallo.
+func (s *UsersService) politicaDePin(ctx context.Context) (bool, string, error) {
 	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
-	if err != nil {
-		return false, s.pinPepper
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DefaultIdentity().PinOnlyUnlock, s.pinPepper, nil
 	}
-	return ajustes.PinOnlyUnlock, s.pinPepper
+	if err != nil {
+		return false, "", err
+	}
+	return ajustes.PinOnlyUnlock, s.pinPepper, nil
 }

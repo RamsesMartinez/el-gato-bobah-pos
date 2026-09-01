@@ -182,35 +182,43 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	if !domain.ValidTimezone(timezone) {
 		return BusinessSettings{}, domain.ErrInvalidTimezone
 	}
-	err = s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
-		Timezone:           timezone,
-		PrintFreeModifiers: print.PrintFreeModifiers,
-		PrintKitchenTicket: print.PrintKitchenTicket,
-		KitchenCanCharge:   print.KitchenCanCharge,
-		PinOnlyUnlock:      ident.PinOnlyUnlock,
-		LockAfterSeconds:   int32(ident.LockAfterSeconds),
-		SessionHours:       int32(ident.SessionHours),
-		BusinessName:       strings.TrimSpace(info.Name),
-		Address:            strings.TrimSpace(info.Address),
-		Phone:              strings.TrimSpace(info.Phone),
-		HeaderNote:         strings.TrimSpace(info.HeaderNote),
-		FooterNote:         strings.TrimSpace(info.FooterNote),
-		AutoPrintOnClose:   print.AutoPrintOnClose,
-		UpdatedBy:          &userID,
-	})
-	if err != nil {
-		return BusinessSettings{}, err
-	}
-	if encendiendo {
+	// Guardar el ajuste y borrar los PINs van en la MISMA transacción.
+	//
+	// Eran dos autocommits, y el reintento no reparaba: al segundo intento el ajuste ya decía que
+	// el modo estaba encendido, así que `encendiendo` daba falso y el borrado no volvía a correr
+	// nunca. El negocio se quedaba en un modo de seis dígitos con los PINs de cuatro de antes —que
+	// además ya traen su huella de búsqueda— y nada en la pantalla lo delataba.
+	if err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
+			Timezone:           timezone,
+			PrintFreeModifiers: print.PrintFreeModifiers,
+			PrintKitchenTicket: print.PrintKitchenTicket,
+			KitchenCanCharge:   print.KitchenCanCharge,
+			PinOnlyUnlock:      ident.PinOnlyUnlock,
+			LockAfterSeconds:   int32(ident.LockAfterSeconds),
+			SessionHours:       int32(ident.SessionHours),
+			BusinessName:       strings.TrimSpace(info.Name),
+			Address:            strings.TrimSpace(info.Address),
+			Phone:              strings.TrimSpace(info.Phone),
+			HeaderNote:         strings.TrimSpace(info.HeaderNote),
+			FooterNote:         strings.TrimSpace(info.FooterNote),
+			AutoPrintOnClose:   print.AutoPrintOnClose,
+			UpdatedBy:          &userID,
+		}); err != nil {
+			return err
+		}
+		if !encendiendo {
+			return nil
+		}
 		// Los PINs de antes son de cuatro dígitos y sin garantía de ser distintos, y de lo guardado
 		// no se puede saber ni una cosa ni la otra: bcrypt saliniza. Borrarlos obliga a
 		// recapturarlos, que es el único momento en que el PIN está en claro y se puede validar
 		// largo y unicidad.
 		//
 		// Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña.
-		if err := s.store.QC(ctx).ClearAllPins(ctx); err != nil {
-			return BusinessSettings{}, err
-		}
+		return q.ClearAllPins(ctx)
+	}); err != nil {
+		return BusinessSettings{}, err
 	}
 	return s.Get(ctx)
 }
