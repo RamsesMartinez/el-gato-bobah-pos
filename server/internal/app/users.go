@@ -81,13 +81,21 @@ func (s *UsersService) Create(ctx context.Context, in CreateUserInput) (domain.U
 		PasswordHash: &pwHash, RecoveryEmail: in.RecoveryEmail, MustChangePassword: true,
 	}
 	if in.PIN != "" {
-		pinHash, err := hashPIN(in.PIN)
+		// La MISMA ruta que SetPIN, no `hashPIN` pelado. Cuando la validación se mudó a SetPIN,
+		// esto se quedó atrás y volvió a aceptar "1234"; peor, no calculaba la huella, así que el
+		// índice único —que es parcial sobre las filas con huella— no veía esta fila y se podía dar
+		// de alta a alguien con el PIN de otro para recibir su sesión y su rol.
+		pinHash, lookup, err := s.prepararPin(ctx, in.PIN)
 		if err != nil {
 			return domain.User{}, err
 		}
 		params.PinHash = pinHash
+		params.PinLookup = lookup
 	}
 	u, err := s.store.QC(ctx).CreateUser(ctx, params)
+	if isUniqueViolation(err) {
+		return domain.User{}, domain.ErrPinRepetido
+	}
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -180,21 +188,9 @@ func (s *UsersService) ChangeOwnPassword(ctx context.Context, userID int64, curr
 func (s *UsersService) SetPIN(ctx context.Context, userID int64, pin string) error {
 	// El largo exigido depende del modo del negocio: con solo-PIN el PIN ES la identidad y necesita
 	// seis dígitos; sin él, el nombre ya identifica y bastan cuatro.
-	soloPin, pepper := s.politicaDePin(ctx)
-	if err := domain.ValidarPin(pin, soloPin); err != nil {
-		return err
-	}
-	pinHash, err := hashPIN(pin)
+	pinHash, lookup, err := s.prepararPin(ctx, pin)
 	if err != nil {
 		return err
-	}
-
-	// La huella determinista solo se guarda si hay secreto. Sin él no se puede comparar por
-	// igualdad, y guardar un HMAC con clave vacía sería una huella invertible por cualquiera.
-	var lookup *string
-	if pepper != "" {
-		l := domain.PinLookup(pin, pepper)
-		lookup = &l
 	}
 
 	err = s.store.QC(ctx).SetUserPin(ctx, db.SetUserPinParams{
@@ -207,6 +203,33 @@ func (s *UsersService) SetPIN(ctx context.Context, userID int64, pin string) err
 		return domain.ErrPinRepetido
 	}
 	return err
+}
+
+// prepararPin valida un PIN y devuelve lo que hay que guardar: el hash con el que se verifica y la
+// huella con la que se compara.
+//
+// Es la ÚNICA ruta por la que un PIN entra al sistema. Tenerla partida entre el alta y el cambio ya
+// costó caro: la validación vivía en una y no en la otra, y el alta acabó aceptando PINs triviales
+// y sin huella —lo que dejaba dar de alta a alguien con el PIN de otro para recibir su sesión.
+func (s *UsersService) prepararPin(ctx context.Context, pin string) (*string, *string, error) {
+	// El largo exigido depende del modo del negocio: con solo-PIN el PIN ES la identidad y necesita
+	// seis dígitos; sin él, el nombre ya identifica y bastan cuatro.
+	soloPin, pepper := s.politicaDePin(ctx)
+	if err := domain.ValidarPin(pin, soloPin); err != nil {
+		return nil, nil, err
+	}
+	pinHash, err := hashPIN(pin)
+	if err != nil {
+		return nil, nil, err
+	}
+	// La huella solo se guarda si hay secreto. Sin él no se puede comparar por igualdad, y un HMAC
+	// con clave vacía sería una huella invertible por cualquiera.
+	var lookup *string
+	if pepper != "" {
+		l := domain.PinLookup(pin, pepper)
+		lookup = &l
+	}
+	return pinHash, lookup, nil
 }
 
 // politicaDePin: si el negocio usa solo-PIN, y con qué secreto se calcula la huella.

@@ -159,7 +159,7 @@ func main() {
 		Orders:     app.NewOrdersService(st, nil),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
-		Settings:   app.NewSettingsService(st, "pepper-de-prueba"),
+		Settings:   app.NewSettingsService(st, cfg.PinPepper),
 		Company:    app.NewCompanyService(st),
 		Reset:      app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:     realtime.NewBroker(),
