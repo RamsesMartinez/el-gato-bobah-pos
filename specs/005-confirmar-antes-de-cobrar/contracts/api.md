@@ -38,10 +38,11 @@ para que la estación imprima la comanda del agregado sin volver a preguntar.
 **El `409` lleva el estado adentro** porque quien lo recibe es una tableta que estuvo suspendida
 media hora: necesita saber que el pedido se entregó, no solo que "no se pudo".
 
-## `GET /orders/unpaid` → `GET /orders/en-curso`
+## `GET /orders/unpaid` → `GET /orders/open`
 
 Cambia el conjunto, así que cambia el nombre: seguir llamándole "unpaid" a una lista que incluye
-pedidos pagados es un nombre que miente.
+pedidos pagados es un nombre que miente. En inglés como el resto del router —`/delivered`,
+`/current`, `/close`—: un endpoint en español obligaría a recordar cuál es la excepción.
 
 Devuelve la **unión** de dos grupos, cada fila diciendo a cuál pertenece:
 
