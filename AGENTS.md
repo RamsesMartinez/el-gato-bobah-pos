@@ -195,6 +195,12 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
   - **`go test`, `govulncheck` y `golangci-lint` ya no se ejecutan en el host.** El binario que `go test` deja en `%TEMP%` es NUEVO en cada corrida, así que es el peor caso posible para SAC: bloquea un paquete al azar —hoy `internal/cache`, mañana otro— con el resto de la suite en verde. No es un test que falle, es un proceso que no arranca. `govulncheck.exe` se bloquea siempre, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). `golangci-lint` corrió sin problema desde el 26-ago y el 29-ago empezó a dar *Permission denied* sin que nada cambiara: **el veredicto de SAC se mueve solo**, así que ninguna herramienta está a salvo por haber corrido ayer. Los dos hooks ya traen la salida y **no hay nada que hacer a mano** — si el binario local no arranca, el mismo escáner/linter corre en contenedor con la versión que usa CI:
     - [scripts/hooks/govulncheck.sh](scripts/hooks/govulncheck.sh) → `golang:1.27`.
     - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golangci/golangci-lint:v2.13.1`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
+    - [scripts/hooks/web-lint.sh](scripts/hooks/web-lint.sh) → `oven/bun:1`. **Con bun el síntoma es
+      distinto**: no sale el mensaje de SAC sino un lacónico `bun: unknown error:` y un exit 1, sin
+      decir qué script falló — mientras `tsc` y `eslint` corridos a mano pasan limpios. `node_modules`
+      va en un volumen y no en el bind mount: las deps con binarios nativos (esbuild, rolldown) se
+      instalan para Linux dentro del contenedor y montarlas encima dejaría al host sin poder correr
+      nada.
 
     Lo que **no** se hace es `--no-verify`: el gate no se afloja, se corre en otro lado.
   - **`lefthook` TAMBIÉN se bloquea, y cuando pasa los hooks no corren y casi no se nota.** El
