@@ -964,6 +964,65 @@ func (q *Queries) SeedDeliveryPlatforms(ctx context.Context) error {
 	return err
 }
 
+const sessionCashByCashier = `-- name: SessionCashByCashier :many
+select coalesce(u.name, 'Sin asignar') as cashier,
+       coalesce(sum(op.amount) filter (where pm.kind = 'efectivo'), 0)::numeric(12,2) as cash,
+       coalesce(sum(op.amount) filter (where pm.kind <> 'efectivo'), 0)::numeric(12,2) as other,
+       count(*)::int as payments
+from order_payments op
+join orders o on o.id = op.order_id
+join payment_methods pm on pm.id = op.payment_method_id
+left join users u on u.id = op.received_by
+where op.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+group by u.name
+order by cash desc, other desc
+`
+
+type SessionCashByCashierRow struct {
+	Cashier  string          `json:"cashier"`
+	Cash     decimal.Decimal `json:"cash"`
+	Other    decimal.Decimal `json:"other"`
+	Payments int32           `json:"payments"`
+}
+
+// Cuánto cobró cada persona en el turno, separando efectivo de lo demás.
+//
+// Existe porque dos estaciones cobran contra el MISMO cajón: partir la caja en dos no serviría —
+// dos arqueos contando el mismo dinero son dos cifras inventadas—, así que la responsabilidad se
+// rastrea por quien cobró, no por el mueble. El dato ya estaba en received_by desde el principio y
+// solo lo usaba el reparto de propinas.
+//
+// El efectivo va aparte de lo demás porque es lo único que está físicamente en el cajón: una
+// diferencia de arqueo solo puede venir de esa columna.
+//
+// Cancelada y reembolsada quedan fuera: su dinero no entró al cajón. Las propinas también, que son
+// del personal y no ingreso del negocio (ver el principio de dinero de la constitución).
+func (q *Queries) SessionCashByCashier(ctx context.Context, registerSessionID *int64) ([]SessionCashByCashierRow, error) {
+	rows, err := q.db.Query(ctx, sessionCashByCashier, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SessionCashByCashierRow{}
+	for rows.Next() {
+		var i SessionCashByCashierRow
+		if err := rows.Scan(
+			&i.Cashier,
+			&i.Cash,
+			&i.Other,
+			&i.Payments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateCashRegister = `-- name: UpdateCashRegister :one
 update cash_registers set name = $2, is_active = $3 where id = $1
 returning id, name, is_primary, is_active

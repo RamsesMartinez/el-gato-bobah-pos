@@ -70,6 +70,18 @@ export interface CashSession {
   // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
   // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
   pending: PendingOrder[];
+  // Cuánto cobró cada persona. Dos estaciones cobran contra el mismo cajón, así que la
+  // responsabilidad se rastrea por quien cobró y no por el mueble.
+  cashiers: CashierTotal[];
+}
+
+// El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
+// puede venir de esa columna.
+export interface CashierTotal {
+  name: string;
+  cash: string;
+  other: string;
+  payments: number;
 }
 
 // Un pedido que sigue sin salir. Aparece aunque ya esté cobrado: cobrado y entregado son cosas
