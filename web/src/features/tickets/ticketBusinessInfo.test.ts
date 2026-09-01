@@ -13,6 +13,7 @@ const settings: BusinessSettings = {
   timezone: 'America/Mexico_City',
   printFreeModifiers: true,
   printKitchenTicket: false, kitchenCanCharge: false,
+  pinOnlyUnlock: false, lockAfterSeconds: 180, sessionHours: 8,
   hasLogo: false,
   logoUpdatedAt: null,
 };

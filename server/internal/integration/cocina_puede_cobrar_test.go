@@ -52,7 +52,14 @@ func TestElAjusteDeCobroNoPisaLosDelTicket(t *testing.T) {
 		Name: antes.BusinessName, Address: antes.Address, Phone: antes.Phone,
 		HeaderNote: antes.HeaderNote, FooterNote: antes.FooterNote,
 	}
-	if _, err := settings.SetBusinessInfo(ctx, info, print, antes.Timezone, admin); err != nil {
+	// Los ajustes de identificación se pasan como están: este test es de los del ticket y no debe
+	// moverlos de paso.
+	ident := domain.IdentitySettings{
+		PinOnlyUnlock:    antes.PinOnlyUnlock,
+		LockAfterSeconds: antes.LockAfterSeconds,
+		SessionHours:     antes.SessionHours,
+	}
+	if _, err := settings.SetBusinessInfo(ctx, info, print, ident, antes.Timezone, admin); err != nil {
 		t.Fatalf("SetBusinessInfo: %v", err)
 	}
 

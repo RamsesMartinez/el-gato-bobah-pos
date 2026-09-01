@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
 import { RequireAuth, RequireRole } from './app/RequireAuth';
+import { BloqueoPorInactividad } from './features/auth/BloqueoPorInactividad';
 import { LoginPage } from './features/auth/LoginPage';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
@@ -39,7 +40,12 @@ export const App = () => {
       <Route
         element={
           <RequireAuth>
-            <AppShell />
+            {/* El bloqueo va POR ENCIMA del shell, no en su lugar: si desmontara la aplicación se
+                perderían las cuentas abiertas, y el operador aprendería a impedir que se bloquee.
+                Con eso se cae toda la protección. */}
+            <BloqueoPorInactividad>
+              <AppShell />
+            </BloqueoPorInactividad>
           </RequireAuth>
         }
       >

@@ -223,7 +223,7 @@ func TestLaComandaDeCocinaNaceApagadaYSeEnciendePorEmpresa(t *testing.T) {
 
 	if _, err := settings.SetBusinessInfo(ctx, domain.BusinessInfo{Name: "El Gato Bobah"},
 		domain.PrintSettings{PrintKitchenTicket: true, PrintFreeModifiers: true},
-		domain.DefaultTimezone, admin); err != nil {
+		domain.DefaultIdentity(), domain.DefaultTimezone, admin); err != nil {
 		t.Fatalf("encender la comanda: %v", err)
 	}
 	got, err := settings.Get(ctx)

@@ -78,3 +78,54 @@ type PrintSettings struct {
 	// ya ve en la pantalla.
 	PrintKitchenTicket bool
 }
+
+// IdentitySettings: cómo se identifica quien opera una estación, y cada cuánto deja de estarlo.
+//
+// Los tres viven juntos porque se capturan en la misma pantalla y se guardan con el mismo UPDATE.
+type IdentitySettings struct {
+	// PinOnlyUnlock: desbloquear pide SOLO el PIN y el sistema deduce quién es. Apagado por
+	// default — un dedazo que caiga en el PIN de otro atribuye la venta a quien no fue, en
+	// silencio. Encenderlo exige PINs de 6 dígitos y únicos, y eso lo verifica el servicio.
+	PinOnlyUnlock bool
+	// LockAfterSeconds: segundos sin actividad antes de bloquear la pantalla. Cero = no bloquear,
+	// que es una elección válida para una caja en una oficina cerrada.
+	LockAfterSeconds int
+	// SessionHours: horas que dura una sesión antes de exigir usuario y contraseña otra vez.
+	SessionHours int
+}
+
+// Validate rechaza tiempos con los que la tableta quedaría inutilizable.
+//
+// Se rechazan en vez de ajustarse a un default: un bloqueo negativo o una sesión de cero horas son
+// errores de captura, y "corregirlos" en silencio deja al negocio operando con un valor que nadie
+// eligió — el mismo fallo que la constitución señala para los parámetros de frontera.
+func (i IdentitySettings) Validate() error {
+	if i.LockAfterSeconds < 0 {
+		return fmt.Errorf("%w: el tiempo de bloqueo no puede ser negativo", ErrValidation)
+	}
+	// El tope alto no es defensivo: sin él, un dedazo de un cero de más deja la tableta bloqueada
+	// para siempre y a nadie se le ocurriría buscar la causa en los ajustes.
+	if i.LockAfterSeconds > maxLockSeconds {
+		return fmt.Errorf("%w: el tiempo de bloqueo no puede pasar de una hora", ErrValidation)
+	}
+	// Una sesión de cero horas dejaría la tableta pidiendo credenciales a cada instante; el tope
+	// alto (30 días) es el comportamiento que había antes de esta funcionalidad.
+	if i.SessionHours < 1 || i.SessionHours > maxSessionHours {
+		return fmt.Errorf("%w: la sesión debe durar entre 1 hora y 30 días", ErrValidation)
+	}
+	return nil
+}
+
+const (
+	maxLockSeconds  = 3600
+	maxSessionHours = 720
+)
+
+// DefaultIdentity son los valores con los que nace un negocio.
+//
+// Duplican los DEFAULT de la migración a propósito: los callers que no tocan estos ajustes —tests
+// de otras cosas, o un alta de empresa— necesitan algo que pasar, y pasar el cero de Go dejaría la
+// sesión en 0 horas. Si se cambian aquí, se cambian también en la migración.
+func DefaultIdentity() IdentitySettings {
+	return IdentitySettings{PinOnlyUnlock: false, LockAfterSeconds: 180, SessionHours: 8}
+}
