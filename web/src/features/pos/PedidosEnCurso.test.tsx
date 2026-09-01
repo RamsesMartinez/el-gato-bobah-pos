@@ -59,3 +59,25 @@ test('el entregado sin cobrar se distingue del que sigue en cocina', async () =>
   pinta(<PedidosEnCurso onAbrir={() => {}} />);
   expect(await screen.findByText(/ya se entregó/i)).toBeInTheDocument();
 });
+
+// CON MUCHOS PEDIDOS, LA FILA NO PUEDE EMPUJAR NADA FUERA DE LA PANTALLA.
+//
+// Cada chip mide ~150px y no encoge. Sin una caja propia que scrollee, seis pedidos —el máximo de
+// un día en producción— empujaban los botones de precios y edición fuera del `overflow: hidden` del
+// contenedor: no se veían Y no se podían tocar. Y las cuentas locales, lo único elástico de la
+// fila, se aplastaban a cero: el operador dejaba de poder cambiar de cuenta.
+test('los chips scrollean dentro de su propia caja acotada', async () => {
+  openOrders.mockResolvedValue({
+    items: Array.from({ length: 6 }, (_, i) => pedido({ id: i + 1, folioName: `Animal${i}` })),
+    outstanding: '1500',
+  });
+  const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} />);
+
+  await screen.findByText('Animal0');
+  const caja = container.querySelector('[class*="css-"]') as HTMLElement | null;
+  const conScroll = Array.from(container.querySelectorAll('*')).find(
+    (el) => getComputedStyle(el as HTMLElement).overflowX === 'auto',
+  );
+  expect(conScroll, 'los chips necesitan su propia caja con overflowX auto').toBeTruthy();
+  expect(caja).toBeTruthy();
+});
