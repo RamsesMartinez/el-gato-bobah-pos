@@ -52,6 +52,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnauthorized, "UNAUTHORIZED"
 	case errors.Is(err, domain.ErrForbidden):
 		status, code = http.StatusForbidden, "FORBIDDEN"
+	case errors.Is(err, domain.ErrCobroFueraDeLugar):
+		// 422 y no 400: el cuerpo está bien formado, lo que no se puede es la operación — crear un
+		// pedido ya cobrado se salta la cocina. Va ANTES del caso de ErrValidation, que lo envuelve
+		// y se lo llevaría a 400. El código propio deja que la pantalla diga qué hacer en vez de un
+		// "datos inválidos" que no nombra el camino correcto.
+		status, code = http.StatusUnprocessableEntity, "CONFIRMAR_PRIMERO"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):

@@ -7,12 +7,11 @@ import (
 	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/shopspring/decimal"
-
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/shopspring/decimal"
 )
 
 type createOrderBody struct {
@@ -339,12 +338,20 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// GET /orders/unpaid
-func (h *Handlers) UnpaidOrders(w http.ResponseWriter, r *http.Request) {
-	items, err := h.orders.Unpaid(r.Context())
+// GET /orders/open — la barra de pedidos en curso del POS.
+//
+// El total pendiente viaja junto a la lista y NO se suma en la pantalla: si cada lado lo calculara
+// por su cuenta, un cambio en el predicado dejaría la cifra del encabezado diciendo una cosa y la
+// lista otra, y quien la lee no tiene forma de saber cuál miente.
+func (h *Handlers) OpenOrders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.orders.Open(r.Context())
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": items})
+	pendiente := decimal.Zero
+	for _, o := range items {
+		pendiente = pendiente.Add(o.Outstanding)
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items, "outstanding": pendiente})
 }

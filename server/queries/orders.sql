@@ -227,20 +227,53 @@ order by olm.order_line_id, olm.id;
 -- lo que impide que dos cajeros cobrando a la vez registren cada uno el total completo.
 select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_id = $1;
 
--- name: ListUnpaidOrders :many
--- Los pedidos del día que todavía deben dinero, en cualquier estado que siga siendo cobrable.
+-- name: ListOpenOrders :many
+-- Los pedidos que el punto de venta tiene que seguir viendo: la barra de pedidos en curso.
 --
--- Existe aparte de ListDeliveredToday porque esa está restringida a admin/gerente (sirve para
--- reembolsar, que es salida de dinero) y el pendiente más caro —entregado y sin cobrar, el cliente
--- ya se fue— tiene que poder saldarlo quien está en el mostrador.
+-- Es la UNIÓN de dos conjuntos que no son el mismo, y confundirlos ya costó una vez:
 --
--- Cancelada y reembolsada quedan fuera: su dinero ya se decidió, y listarlas mandaría al operador
--- a perseguir cobros que nadie debe.
+--   * en preparación — `abierta` o `lista`: se les puede AGREGAR y cobrar. Es al que el cliente le
+--     pide algo más, y el que antes desaparecía de la pantalla al mandarlo a cocina.
+--   * con saldo — debe dinero y no está cancelada ni reembolsada. Incluye el pedido ENTREGADO y sin
+--     cobrar, que es el caro: el cliente ya se fue. Esa es la razón de ser de la píldora que esta
+--     lista reemplaza, y quedarse solo con "en preparación" lo habría borrado del encabezado.
+--
+-- `en_preparacion` viaja como dato y no se deduce del estado en el front: la pantalla tiene que
+-- poder decir cuál se puede ampliar sin volver a implementar la regla.
+--
+-- Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
+-- operador a perseguir cobros que nadie debe.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
        o.customer_name, o.total, o.currency, o.opened_at,
-       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+       coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
 where o.business_date = $1
   and o.status not in ('cancelada', 'reembolsada')
-  and coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
+  and (
+    o.status in ('abierta', 'lista')
+    or coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0) < o.total
+  )
 order by o.opened_at;
+
+-- name: RenglonesSinEnviarACocina :many
+-- Los renglones de un pedido que todavía no han salido en ninguna comanda.
+--
+-- Es lo que hace posible imprimir SOLO lo agregado, y recuperar una impresión que falló sin volver
+-- a sacar el pedido entero — que haría que cocina prepare dos veces lo mismo.
+--
+-- El cancelado queda fuera: mandarlo sería pedirle a cocina que prepare algo que el cliente quitó.
+select l.id, l.product_name, l.quantity, l.notes
+from order_lines l
+where l.order_id = $1 and l.enviado_a_cocina_at is null and l.cancelled_at is null
+order by l.id;
+
+-- name: MarcarRenglonesEnviadosACocina :exec
+-- Marca como salidos en comanda los renglones dados de un pedido.
+--
+-- Acotado por `order_id` además de por los ids: los ids vienen del servicio, pero un filtro que solo
+-- mira la lista deja la puerta abierta a marcar renglones de otro pedido si algún día esa lista se
+-- arma desde otro lado. Es el mismo predicado que ya usa el resto del archivo.
+update order_lines set enviado_a_cocina_at = now()
+where order_id = $1 and id = any($2::bigint[]);

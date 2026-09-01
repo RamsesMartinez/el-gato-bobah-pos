@@ -109,17 +109,21 @@ func TestElAvisoDelPOSListaLoQueFaltaPorCobrar(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	items, err := svc.Unpaid(ctx)
+	items, err := svc.Open(ctx)
 	if err != nil {
-		t.Fatalf("Unpaid: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
 	falta := map[int64]string{}
 	for _, o := range items {
 		falta[o.ID] = o.Outstanding.String()
 	}
 
-	if _, hay := falta[pagado.ID]; hay {
-		t.Error("un pedido ya cobrado salió en la lista de pendientes")
+	// El pedido ya cobrado SÍ sale, y debe cero. La lista dejó de ser solo de impagos cuando pasó a
+	// alimentar la barra de pedidos en curso: el pedido cobrado que sigue en cocina es justo al que
+	// el cliente le pide algo más, y esconderlo lo devolvería al agujero del que esta feature lo
+	// sacó. Lo que no puede es aparecer debiendo dinero que ya se pagó.
+	if falta[pagado.ID] != "0" {
+		t.Errorf("el pedido cobrado y todavía en cocina dice deber %q, quiere 0", falta[pagado.ID])
 	}
 	// Su dinero ya se decidió: listarlo mandaría al operador a perseguir un cobro que nadie debe.
 	if _, hay := falta[cancelado.ID]; hay {

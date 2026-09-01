@@ -4,200 +4,139 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"net/http"
+	"strings"
 	"testing"
 
-	"github.com/shopspring/decimal"
 	"uuid"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
-// Agregar renglones a un pedido que ya está en curso.
-//
-// Es el caso de todos los días en el local: la libreta vuelve de la mesa con "la 3 pidió dos más".
-// Hasta ahora obligaba a abrir un segundo pedido —dos folios y dos tickets para el mismo cliente,
-// y el corte contando dos ventas donde hubo una— o a cancelar y rehacer.
-func TestAgregarRenglonesAUnPedidoEnCurso(t *testing.T) {
-	st := newTestStore(t)
+// pedidoEnCurso deja un pedido confirmado de un café, cobrado o no, y devuelve con qué agregarle.
+func pedidoEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, sufijo string, pagado bool) (*app.OrderView, int64, int64) {
+	t.Helper()
 	ctx := context.Background()
-	svc := app.NewOrdersService(st, clock)
-
-	cajero := makeUser(t, st, "cajero_agregar", "cajero")
-	prod := makeProduct(t, st, "Café agregar", decimal.RequireFromString("50"), false)
-	otro := makeProduct(t, st, "Pan agregar", decimal.RequireFromString("30"), false)
+	cajero := makeUser(t, st, "cajero_"+sufijo, "cajero")
+	cafe := makeProduct(t, st, "Café "+sufijo, decimal.RequireFromString("100"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
+	cmd := app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
-		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-	})
+		Lines: []domain.OrderLineInput{{ProductID: cafe, Qty: decimal.RequireFromString("1")}},
+	}
+	if pagado {
+		cmd.Payments = []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}}
+	}
+	ord, err := svc.Create(ctx, cmd)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	return ord, cafe, cajero
+}
 
-	act, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
-		{ProductID: otro, Qty: decimal.RequireFromString("2")},
-	}, cajero)
+// A UN PEDIDO TERMINADO NO SE LE AGREGA, Y AGREGAR ES APPEND.
+//
+// Las dos propiedades de las que depende la barra de pedidos en curso:
+//
+//   - el chip sigue en pantalla hasta el siguiente refresco, así que la tableta que estuvo
+//     suspendida puede intentar agregarle a un pedido que la otra estación ya entregó;
+//   - dos agregados NO se pisan. Es lo que hace que dos estaciones puedan trabajar sobre el mismo
+//     pedido sin perder una venta — la concurrencia real se ensaya a mano, porque un test de
+//     goroutines aquí pasaría por el número de núcleos y no por el código.
+func TestAgregarAUnPedidoEnCurso(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, cafe, cajero := pedidoEnCurso(t, st, svc, "agrega", false)
+
+	uno := []domain.OrderLineInput{{ProductID: cafe, Qty: decimal.RequireFromString("1")}}
+
+	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero); err != nil {
+		t.Fatalf("primer agregado: %v", err)
+	}
+	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero); err != nil {
+		t.Fatalf("segundo agregado: %v", err)
+	}
+	tras, err := svc.Detail(ctx, ord.ID)
 	if err != nil {
-		t.Fatalf("AddLines: %v", err)
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(tras.Lines) != 3 {
+		t.Errorf("el pedido quedó con %d renglones, quiere 3: un agregado pisó al otro y se perdió una venta",
+			len(tras.Lines))
 	}
 
-	// 50 + 30×2 = 110. El total lo recalcula el SERVIDOR sobre lo que quedó en el pedido.
-	if !act.Total.Equal(decimal.RequireFromString("110")) {
-		t.Fatalf("total = %s, quiere 110", act.Total)
+	// Y al pedido entregado ya no.
+	if err := svc.DeliverAll(ctx, ord.ID); err != nil {
+		t.Fatalf("DeliverAll: %v", err)
 	}
-	if len(act.Lines) != 2 {
-		t.Fatalf("renglones = %d, quiere 2", len(act.Lines))
+	err = func() error { _, e := svc.AddLines(ctx, ord.ID, uno, cajero); return e }()
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("agregar a un entregado = %v, quiere conflicto: entraría un renglón sobre un pedido que nadie va a preparar", err)
 	}
-	// Mismo folio: es el mismo cliente y la misma cuenta.
-	if act.Number != ord.Number {
-		t.Fatalf("el folio cambió de %d a %d", ord.Number, act.Number)
+	if !contieneEstado(err.Error()) {
+		t.Errorf("el error no dice en qué estado quedó el pedido (%q): la tableta suspendida no se entera de qué pasó", err)
 	}
 }
 
-// El stock se descuenta SOLO de lo nuevo. Si se recalculara sobre el pedido entero, cada agregado
-// descontaría otra vez lo que ya se había descontado y el inventario se iría al piso sin que nadie
-// entendiera por qué.
-func TestAgregarDescuentaSoloElStockDeLoNuevo(t *testing.T) {
+func contieneEstado(msg string) bool {
+	for _, e := range []string{"entregada", "cancelada", "reembolsada", "lista", "abierta"} {
+		if strings.Contains(msg, e) {
+			return true
+		}
+	}
+	return false
+}
+
+// SI SE COBRÓ, NO PUEDE QUEDAR DEUDA ESCONDIDA.
+//
+// Agregarle a un pedido ya saldado es legítimo —el cliente pidió más— y deja un saldo nuevo. Lo que
+// no puede pasar es que ese saldo no se vea: el pedido tiene que REAPARECER en la barra, que es
+// donde el operador lo lee. Es la regla que el dueño puso cuando encontró un pedido cobrado que
+// seguía apareciendo como deuda.
+func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
+	ord, cafe, cajero := pedidoEnCurso(t, st, svc, "cobrado", true)
 
-	cajero := makeUser(t, st, "cajero_stock_agregar", "cajero")
-	prod := makeProduct(t, st, "Refresco stock", decimal.RequireFromString("25"), true)
-	abrirCajaPrincipal(t, st, cajero)
-
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
-		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	// Saldado: no debe nada. Sigue en la barra porque sigue en cocina.
+	antes := buscarEnCurso(t, svc, ord.ID)
+	if !antes.Outstanding.IsZero() {
+		t.Fatalf("el pedido nace debiendo %s y se cobró completo", antes.Outstanding)
 	}
+
 	if _, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
-		{ProductID: prod, Qty: decimal.RequireFromString("3")},
+		{ProductID: cafe, Qty: decimal.RequireFromString("2")},
 	}, cajero); err != nil {
 		t.Fatalf("AddLines: %v", err)
 	}
 
-	// Cuatro en total, no cinco: uno del original más tres del agregado.
-	var salidas decimal.Decimal
-	if err := st.Pool.QueryRow(ctx,
-		`select coalesce(-sum(quantity), 0) from stock_movements where order_id = $1`, ord.ID).Scan(&salidas); err != nil {
-		t.Fatalf("leer movimientos: %v", err)
-	}
-	if !salidas.Equal(decimal.RequireFromString("4")) {
-		t.Fatalf("stock descontado = %s, quiere 4: se recalculó sobre el pedido entero", salidas)
+	tras := buscarEnCurso(t, svc, ord.ID)
+	if !tras.Outstanding.Equal(decimal.RequireFromString("200")) {
+		t.Errorf("saldo = %s, quiere 200: el agregado a un pedido cobrado quedó como deuda invisible",
+			tras.Outstanding)
 	}
 }
 
-// A un pedido terminado no se le agrega nada: su venta ya entró al corte y su ticket ya está en
-// manos del cliente. Cambiarle el total después es mover dinero que ya se contó.
-func TestNoSeAgregaAUnPedidoTerminado(t *testing.T) {
-	st := newTestStore(t)
-	ctx := context.Background()
-	svc := app.NewOrdersService(st, clock)
-
-	cajero := makeUser(t, st, "cajero_terminado", "cajero")
-	prod := makeProduct(t, st, "Café terminado", decimal.RequireFromString("50"), false)
-	sinPreparacion(t, st, prod)
-	efectivo := paymentMethodID(t, st, "Efectivo")
-	abrirCajaPrincipal(t, st, cajero)
-
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
-		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
-	})
+func buscarEnCurso(t *testing.T, svc *app.OrdersService, id int64) app.BoardOrder {
+	t.Helper()
+	lista, err := svc.Open(context.Background())
 	if err != nil {
-		t.Fatalf("Create: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
-
-	_, err = svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
-		{ProductID: prod, Qty: decimal.RequireFromString("1")},
-	}, cajero)
-	if !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("agregar a un pedido entregado debe rechazarse, fue: %v", err)
+	for _, o := range lista {
+		if o.ID == id {
+			return o
+		}
 	}
-}
-
-// Sin renglones no hay nada que agregar: un cuerpo vacío que pasara dejaría el pedido intacto y la
-// pantalla creyendo que agregó algo.
-func TestAgregarSinRenglonesSeRechaza(t *testing.T) {
-	st := newTestStore(t)
-	ctx := context.Background()
-	svc := app.NewOrdersService(st, clock)
-
-	cajero := makeUser(t, st, "cajero_vacio", "cajero")
-	prod := makeProduct(t, st, "Café vacío", decimal.RequireFromString("50"), false)
-	abrirCajaPrincipal(t, st, cajero)
-
-	ord, err := svc.Create(ctx, app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
-		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if _, err := svc.AddLines(ctx, ord.ID, nil, cajero); !errors.Is(err, domain.ErrValidation) {
-		t.Fatalf("agregar nada debe rechazarse, fue: %v", err)
-	}
-}
-
-// La ruta, por el ROUTER real: que exista, que exija sesión y que el delta llegue completo.
-//
-// Es una ruta propia y no un PATCH del pedido porque lo que se manda es lo que el cliente pidió de
-// MÁS. Un PATCH invitaría a mandar la lista entera, y el servidor tendría que adivinar qué renglón
-// es nuevo para no volver a descontar su stock.
-func TestLaRutaDeAgregarRenglones(t *testing.T) {
-	st := newTestStore(t)
-	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
-	h := httpapi.NewHandlers(httpapi.Deps{
-		JWT: jm, Orders: app.NewOrdersService(st, clock), Broker: realtime.NewBroker(),
-	})
-	r := httpapi.Router(config.Config{}, jm, h, st)
-
-	cajeroID := makeUser(t, st, "cajero_ruta_agregar", "cajero")
-	tok, err := jm.Issue(domain.User{ID: cajeroID, CompanyID: defaultCompanyID, Name: "cajero", Role: domain.RoleCajero})
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-	prod := makeProduct(t, st, "Café ruta", decimal.RequireFromString("50"), false)
-	abrirCajaPrincipal(t, st, cajeroID)
-
-	ord, err := app.NewOrdersService(st, clock).Create(context.Background(), app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajeroID,
-		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
-	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	ruta := fmt.Sprintf("/api/v1/orders/%d/lines", ord.ID)
-	cuerpo := []byte(fmt.Sprintf(`{"lines":[{"productId":%d,"qty":2,"modifiers":[]}]}`, prod))
-
-	if w := do(t, r, http.MethodPost, ruta, "", cuerpo, "application/json"); w.Code != http.StatusUnauthorized {
-		t.Fatalf("sin token = %d, quiere 401", w.Code)
-	}
-
-	w := do(t, r, http.MethodPost, ruta, tok, cuerpo, "application/json")
-	if w.Code != http.StatusOK {
-		t.Fatalf("agregar = %d: %s", w.Code, w.Body.String())
-	}
-	var view app.OrderView
-	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
-		t.Fatalf("respuesta: %v (%s)", err, w.Body.String())
-	}
-	// 50 + 50×2 = 150, recalculado por el servidor sobre los renglones guardados.
-	if !view.Total.Equal(decimal.RequireFromString("150")) {
-		t.Fatalf("total = %s, quiere 150", view.Total)
-	}
+	t.Fatalf("el pedido %d no está en la barra de en curso", id)
+	return app.BoardOrder{}
 }

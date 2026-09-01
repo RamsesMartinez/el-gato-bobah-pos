@@ -845,22 +845,23 @@ type OrderCounter struct {
 }
 
 type OrderLine struct {
-	ID             int64              `json:"id"`
-	OrderID        int64              `json:"order_id"`
-	ProductID      int64              `json:"product_id"`
-	ParentLineID   *int64             `json:"parent_line_id"`
-	ProductName    string             `json:"product_name"`
-	Quantity       decimal.Decimal    `json:"quantity"`
-	UnitPrice      decimal.Decimal    `json:"unit_price"`
-	ModifiersTotal decimal.Decimal    `json:"modifiers_total"`
-	UnitCost       decimal.Decimal    `json:"unit_cost"`
-	LineTotal      decimal.Decimal    `json:"line_total"`
-	Notes          *string            `json:"notes"`
-	CancelledAt    pgtype.Timestamptz `json:"cancelled_at"`
-	CancelledBy    *int64             `json:"cancelled_by"`
-	CancelReason   *string            `json:"cancel_reason"`
-	CreatedAt      time.Time          `json:"created_at"`
-	DeliveredQty   decimal.Decimal    `json:"delivered_qty"`
+	ID               int64              `json:"id"`
+	OrderID          int64              `json:"order_id"`
+	ProductID        int64              `json:"product_id"`
+	ParentLineID     *int64             `json:"parent_line_id"`
+	ProductName      string             `json:"product_name"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	UnitPrice        decimal.Decimal    `json:"unit_price"`
+	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	UnitCost         decimal.Decimal    `json:"unit_cost"`
+	LineTotal        decimal.Decimal    `json:"line_total"`
+	Notes            *string            `json:"notes"`
+	CancelledAt      pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy      *int64             `json:"cancelled_by"`
+	CancelReason     *string            `json:"cancel_reason"`
+	CreatedAt        time.Time          `json:"created_at"`
+	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
+	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 }
 
 type OrderLineModifier struct {

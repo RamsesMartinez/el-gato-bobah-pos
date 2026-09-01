@@ -417,6 +417,12 @@ type BoardOrder struct {
 	// pendiente del total, como hacía la pantalla, cobra de más y descuadra el aviso del tablero.
 	Outstanding decimal.Decimal `json:"outstanding"`
 	OpenedAt    time.Time       `json:"openedAt"`
+	// EnPreparacion: si a este pedido todavía se le puede AGREGAR. Viaja como dato y no se deduce
+	// del estado en la pantalla, para que la regla no quede implementada en dos lados y se separen.
+	EnPreparacion bool `json:"enPreparacion"`
+	// Renglones vivos, para que el chip diga de un vistazo qué tan grande es el pedido sin traerse
+	// la lista entera de cada uno.
+	Renglones int `json:"renglones"`
 	// Los renglones vivos con lo que falta de cada uno. El tablero los pinta desplegados: lo que
 	// falta por entregar ES lo que el operador vino a leer, no algo que deba destapar con un tap.
 	// Vacío en las entregadas, que ya no tienen nada pendiente.
@@ -1115,13 +1121,16 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 	})
 }
 
-// Unpaid lista los pedidos del día que todavía deben dinero.
+// Open lista los pedidos que el punto de venta tiene que seguir viendo: la barra de en curso.
 //
-// Alimenta el aviso del POS: sin él, "mandar a cocina sin cobrar" es una deuda que solo se ve
-// entrando al tablero, y el pedido ya entregado —donde el cliente se fue con la comida— no lo
-// puede ni ver quien está en la caja, porque la lista de entregadas es de admin/gerente.
-func (s *OrdersService) Unpaid(ctx context.Context) ([]BoardOrder, error) {
-	rows, err := s.store.QC(ctx).ListUnpaidOrders(ctx, pgtype.Date{Time: s.now(), Valid: true})
+// Es la UNIÓN de dos conjuntos, y confundirlos pierde uno de los dos. Los que siguen en cocina son
+// a los que el cliente le pide algo más —incluidos los YA COBRADOS—, y los que deben dinero
+// incluyen el ENTREGADO sin cobrar, que es el caro porque el cliente ya se fue. Quedarse solo con
+// los impagos borraría el primero; solo con los no terminados, el segundo.
+//
+// Se llamaba Unpaid, y el nombre mentía en cuanto la lista dejó de ser solo de impagos.
+func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, error) {
+	rows, err := s.store.QC(ctx).ListOpenOrders(ctx, pgtype.Date{Time: s.now(), Valid: true})
 	if err != nil {
 		return nil, err
 	}
@@ -1133,9 +1142,11 @@ func (s *OrdersService) Unpaid(ctx context.Context) ([]BoardOrder, error) {
 			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
-			Paid:        false,
-			Outstanding: domain.PorCobrar(r.Total, r.Paid),
-			OpenedAt:    r.OpenedAt,
+			Paid:          false,
+			Outstanding:   domain.PorCobrar(r.Total, r.Paid),
+			OpenedAt:      r.OpenedAt,
+			EnPreparacion: r.EnPreparacion,
+			Renglones:     int(r.Renglones),
 		})
 	}
 	return out, nil
