@@ -176,7 +176,7 @@ desbloqueen mutuamente.
 - [ ] T038 Verificar el recorrido completo de [quickstart.md](./quickstart.md) contra el ambiente de
       pruebas, en 1024×600 real. **Cronometrar el cambio de operador** — SC-001 dice menos de 5
       segundos y es la única forma de verificarlo.
-- [ ] T039 [P] Correr `tablet-ui-reviewer` sobre `LockScreen.tsx` y la pantalla de ajustes: es
+- [X] T039 [P] Correr `tablet-ui-reviewer` sobre `LockScreen.tsx` y la pantalla de ajustes: es
       pantalla nueva y el subagente corre ante cualquier pantalla nueva.
 - [ ] T040 [P] Correr `security-auditor` sobre el cambio: toca autenticación, sesión y logging, que
       es exactamente su disparador.

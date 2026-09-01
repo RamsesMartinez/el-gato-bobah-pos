@@ -7,7 +7,7 @@ import { posApi, type BusinessSettings, type TicketSettingsInput } from '../../a
 import { toaster } from '../../components/ui/toaster';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
-import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
+import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { useTicketBusinessInfo } from '../tickets/ticketBusinessInfo';
 import { TicketPreview } from '../tickets/TicketPreview';
 import { overflowingLines, sampleTicketOrder } from '../../utils/printReceipt';
@@ -25,6 +25,7 @@ export function PrintSettingsPage() {
   // null = sin edición local todavía: el input refleja lo cargado sin un useEffect que sincronice.
   const [draft, setDraft] = useState<TicketSettingsInput | null>(null);
   const [help, setHelp] = useState(false);
+  const [confirmarSoloPin, setConfirmarSoloPin] = useState(false);
   const [sample, setSample] = useState(false);
   // El pedido de muestra es fijo: se arma una vez y no cambia entre renders.
   const sampleOrder = useMemo(() => sampleTicketOrder(), []);
@@ -88,10 +89,28 @@ export function PrintSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
+  // Borrador de los tiempos, como texto: un campo vacío a media captura es un estado legítimo de
+  // la pantalla, y convertirlo a número antes de guardar lo volvería un cero que sí significa algo.
+  const [tiempos, setTiempos] = useState<{ lockAfterSeconds?: string; sessionHours?: string }>({});
+  const tiempo = (k: 'lockAfterSeconds' | 'sessionHours', porDefecto: number): string =>
+    tiempos[k] ?? String(data?.[k] ?? porDefecto);
+  const tiemposSinCambios = tiempos.lockAfterSeconds === undefined && tiempos.sessionHours === undefined;
+  const guardarTiempos = () => {
+    const n = (v: string | undefined, actual: number): number => {
+      const x = Number(v);
+      // Un campo vacío o basura conserva lo que había. No cae a cero, que es un valor real.
+      return v === undefined || v.trim() === '' || Number.isNaN(x) ? actual : x;
+    };
+    setIdentidad.mutate({
+      lockAfterSeconds: n(tiempos.lockAfterSeconds, data?.lockAfterSeconds ?? 180),
+      sessionHours: n(tiempos.sessionHours, data?.sessionHours ?? 8),
+    });
+  };
+
   const setIdentidad = useMutation({
     mutationFn: (v: { pinOnlyUnlock?: boolean; lockAfterSeconds?: number; sessionHours?: number }) =>
       posApi.updateTicketSettings(v),
-    onSuccess: applied,
+    onSuccess: (bs) => { applied(bs); setTiempos({}); },
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
@@ -266,13 +285,17 @@ export function PrintSettingsPage() {
         <Text fontSize="sm" color="fg.muted" mb={3}>
           La tableta se bloquea sola y pide identificarse para seguir. Lo capturado no se pierde.
         </Text>
-        <HStack gap={4} flexWrap="wrap">
+        {/* Los tiempos van a un BORRADOR y se guardan con un botón, como el resto de esta página.
+            Guardando en cada tecla, borrar el campo para reescribirlo mandaba lo que Number('')
+            devuelve —cero— y cero es un valor VÁLIDO: el bloqueo quedaba apagado a media captura,
+            sin que nadie lo hubiera decidido. */}
+        <HStack gap={4} flexWrap="wrap" align="start">
           <Box>
             <Text fontSize="sm" fontWeight="600" mb={1}>Se bloquea a los</Text>
             <HStack>
               <Input w="6rem" minH="44px" type="number" inputMode="numeric"
-                value={String(data?.lockAfterSeconds ?? 180)}
-                onChange={(e) => setIdentidad.mutate({ lockAfterSeconds: Number(e.target.value) })} />
+                value={tiempo('lockAfterSeconds', 180)}
+                onChange={(e) => setTiempos((t) => ({ ...t, lockAfterSeconds: e.target.value }))} />
               <Text fontSize="sm" color="fg.muted">segundos</Text>
             </HStack>
             {/* 0 es una elección válida, no un error: una caja en una oficina cerrada no necesita
@@ -283,11 +306,17 @@ export function PrintSettingsPage() {
             <Text fontSize="sm" fontWeight="600" mb={1}>La sesión dura</Text>
             <HStack>
               <Input w="6rem" minH="44px" type="number" inputMode="numeric"
-                value={String(data?.sessionHours ?? 8)}
-                onChange={(e) => setIdentidad.mutate({ sessionHours: Number(e.target.value) })} />
+                value={tiempo('sessionHours', 8)}
+                onChange={(e) => setTiempos((t) => ({ ...t, sessionHours: e.target.value }))} />
               <Text fontSize="sm" color="fg.muted">horas</Text>
             </HStack>
             <Text fontSize="xs" color="fg.muted" mt={1}>Después pide usuario y contraseña</Text>
+          </Box>
+          <Box alignSelf="end">
+            <Button minH="44px" loading={setIdentidad.isPending}
+              disabled={tiemposSinCambios} onClick={guardarTiempos}>
+              Guardar tiempos
+            </Button>
           </Box>
         </HStack>
       </Box>
@@ -301,14 +330,15 @@ export function PrintSettingsPage() {
               PIN</b> y a partir de ahí necesita 6 dígitos y no se puede repetir entre personas.
             </Text>
           </Box>
+          {/* Sin confirm() del navegador: lo pinta el sistema operativo con botones fuera del
+              control del producto, igual que un <select> nativo. La página ya tiene diálogos
+              propios (el de ayuda, abajo). */}
           <Switch
             checked={data?.pinOnlyUnlock ?? false}
             disabled={setIdentidad.isPending}
             onCheckedChange={(e) => {
-              if (e.checked && !confirm(
-                'Al encenderlo, todos tendrán que capturar su PIN de nuevo. Mientras tanto entran con usuario y contraseña. ¿Continuar?',
-              )) return;
-              setIdentidad.mutate({ pinOnlyUnlock: e.checked });
+              if (e.checked) { setConfirmarSoloPin(true); return; }
+              setIdentidad.mutate({ pinOnlyUnlock: false });
             }}
           />
         </HStack>
@@ -317,6 +347,34 @@ export function PrintSettingsPage() {
       {/* Ticket de prueba: se ve antes de imprimir, y sale marcado para que no se confunda con
           una venta si acaba en manos de un cliente. */}
       <TicketPreview order={sampleOrder} sample isOpen={sample} onClose={() => setSample(false)} />
+
+      <DialogRoot open={confirmarSoloPin} onOpenChange={(e) => setConfirmarSoloPin(e.open)}
+        placement="center" size="sm">
+        <DialogBackdrop />
+        <DialogContent mx={4} borderRadius="2xl">
+          <DialogHeader><DialogTitle>Desbloquear solo con el PIN</DialogTitle></DialogHeader>
+          <DialogBody>
+            <Text>
+              Al encenderlo, <b>todos tendrán que capturar su PIN de nuevo</b>, y el nuevo necesita
+              6 dígitos y no se puede repetir entre personas.
+            </Text>
+            <Text mt={2} color="fg.muted">
+              Mientras tanto entran con su usuario y contraseña.
+            </Text>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" minH="44px" onClick={() => setConfirmarSoloPin(false)}>
+              Cancelar
+            </Button>
+            <Button minH="44px" colorPalette="orange" onClick={() => {
+              setConfirmarSoloPin(false);
+              setIdentidad.mutate({ pinOnlyUnlock: true });
+            }}>
+              Encender
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
 
       <DialogRoot open={help} onOpenChange={(e) => setHelp(e.open)} placement="center" size="sm">
         <DialogBackdrop />

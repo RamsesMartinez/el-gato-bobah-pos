@@ -8,11 +8,13 @@ const opciones = vi.hoisted(() => ({
   current: { pinOnly: false, users: [{ id: 1, name: 'Ana' }, { id: 2, name: 'Luis' }] },
 }));
 const pinSwitch = vi.hoisted(() => vi.fn());
+const logout = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock('../../api/pos', () => ({
   posApi: {
     unlockOptions: () => Promise.resolve(opciones.current),
     pinSwitch: (...a: unknown[]) => pinSwitch(...a),
+    logout: () => logout(),
   },
 }));
 
@@ -34,6 +36,7 @@ beforeEach(() => {
   opciones.current = { pinOnly: false, users: [{ id: 1, name: 'Ana' }, { id: 2, name: 'Luis' }] };
   pinSwitch.mockReset();
   salir.mockReset();
+  logout.mockClear();
 });
 
 // FR-011 y SC-006. Sin este camino, quien olvida su PIN a media noche queda encerrado fuera del
@@ -47,6 +50,10 @@ test('ofrece entrar con usuario y contraseña a quien olvidó su PIN', async () 
   fireEvent.click(salida);
   // Cerrar la sesión es lo que devuelve a la pantalla de login: la salida existe y funciona.
   await waitFor(() => expect(salir).toHaveBeenCalled());
+  // Y REVOCA la cookie en el servidor. Con solo limpiar en memoria, una recarga entre el tap y el
+  // login canjea la cookie viva y la tableta vuelve sola a la sesión de quien se estaba yendo —
+  // justo en la pantalla que existe para quien no puede entrar de otra forma.
+  expect(logout).toHaveBeenCalled();
 });
 
 // FR-004: por default se elige a la persona y después se teclea el PIN. Elegir primero es lo que
