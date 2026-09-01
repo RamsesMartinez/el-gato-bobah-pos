@@ -29,6 +29,7 @@ arqueo equivocado— es peor que todo lo demás junto.
 
 - [ ] T001 Test de integración en `server/internal/integration/fecha_de_negocio_sin_zona_test.go`: abrir caja cuando no se puede leer la zona debe fechar el turno con el default del producto, no con UTC. Se provoca borrando la fila de ajustes y se verifica a una hora que en UTC ya sea del día siguiente. Con **dos empresas**. Verlo fallar antes de T002.
 - [ ] T002 Cambiar el fallback de `BackofficeService.businessDate` en `server/internal/app/backoffice.go`: de `time.UTC` a `domain.LoadBusinessLocation(domain.DefaultTimezone)`. El comentario explica que la intención del fallback era correcta —no tumbar la apertura de caja— pero el valor no: seis horas de corrimiento silencioso metían el turno en el día siguiente.
+- [ ] T002b Test de integración en `server/internal/integration/el_dia_de_la_venta_no_cambia_test.go`: sembrar pedidos con su fecha de negocio, correr todo lo que esta feature toca —abrir caja, listar en curso, listar entregados, cambiar la zona del negocio— y verificar que **ninguna `business_date` cambió**. Es FR-015, la invariante que hace segura toda la feature, y hasta ahora solo se verificaba a mano.
 
 **Checkpoint**: `go test ./...` en verde. Nada visible cambió; dejó de moverse dinero de día.
 
@@ -58,11 +59,12 @@ pantalla.
 - [ ] T008 [P] [US1] Test en `web/src/hooks/useHoraDelNegocio.test.tsx`: con la zona del negocio en `America/Mexico_City` y el entorno en otra, formatea en la del negocio; sin ajustes cargados **no devuelve una hora**; con una zona que el navegador rechaza cae al default y no lanza.
 - [ ] T009 [P] [US1] Test en `web/src/utils/printReceipt.test.ts`: el ticket lleva la hora de la zona que se le pasa, no la del entorno.
 - [ ] T010 [P] [US1] Test en `web/src/utils/printKitchen.test.ts`: lo mismo para la comanda.
-- [ ] T011 [P] [US1] Test de guardia en `web/src/utils/formateoUnico.test.ts`: recorre `web/src` y **falla si algún archivo llama a `toLocaleString`/`toLocaleTimeString`/`toLocaleDateString` fuera del helper**. Es lo que impide que el problema vuelva por una pantalla nueva; sin él, la migración de hoy se deshace sola en tres meses.
+- [ ] T011 [P] [US1] Test de guardia en `web/src/utils/formateoUnico.test.ts`: recorre `web/src` y **falla si algún archivo llama a `toLocaleString`/`toLocaleTimeString`/`toLocaleDateString` fuera del helper**. **El helper se recorta antes de buscar**: ahí llamarlo es su trabajo, y sin recortarlo el test falla contra su propia implementación — el mismo tropiezo que ya costó una corrección en el guardia equivalente de Go. Es lo que impide que el problema vuelva por una pantalla nueva; sin él, la migración de hoy se deshace sola en tres meses.
 
 ### Implementación
 
 - [ ] T012 [US1] Crear `web/src/hooks/useHoraDelNegocio.ts`: **el único lugar** que convierte. Lee la zona de los ajustes, cae al default del producto si no hay, y devuelve un indicador de "todavía no sé la zona" para que nadie pinte una hora que después se corrija.
+- [ ] T012b [US1] Dejar constancia cuando la zona guardada no se puede aplicar (FR-006), con su test en `web/src/hooks/useHoraDelNegocio.test.tsx`. Sin esto, un negocio con la zona rota se comporta bien y nadie se entera nunca: la pantalla cae al default en silencio, que es el modo de fallo que esta feature vino a quitar.
 - [ ] T013 [US1] Mover el formateo de fecha y hora de `web/src/utils/format.ts` a que reciba la zona. Es la pieza de la que cuelgan las demás.
 - [ ] T014 [US1] Pasar la zona a `web/src/utils/printReceipt.ts` y `web/src/utils/printKitchen.ts`. `toTicketBusinessInfo` ya arma el encabezado desde los ajustes: la zona entra por ahí.
 - [ ] T015 [P] [US1] Migrar `web/src/features/backoffice/CashPage.tsx` (5 sitios).
@@ -87,7 +89,7 @@ pantalla.
 
 ### Implementación
 
-- [ ] T021 [US2] Quitar el filtro de fecha de `ListOpenOrders` en `server/queries/orders.sql` y devolver la fecha de negocio de cada pedido. **Retira el arreglo parcial de la feature 005**, que ató la lista al turno abierto; no se acumulan los dos.
+- [ ] T021 [US2] Quitar el filtro de fecha de `ListOpenOrders` en `server/queries/orders.sql` y devolver la fecha de negocio de cada pedido. **Retira el arreglo parcial de la feature 005**, que ató la lista al turno abierto; no se acumulan los dos. Revisar qué pasa con `TestLaBarraSigueMostrandoElTurnoQueCruzoLaMedianoche`, que fijó ese comportamiento: si sobrevive afirmando lo viejo, es un verde que engaña — o se reescribe contra la regla nueva, o se dice por qué sigue valiendo.
 - [ ] T022 [US2] Ajustar `OrdersService.Open` en `server/internal/app/orders.go`: sin fecha, y quitar la consulta del turno que ya no hace falta.
 - [ ] T023 [US2] Marcar en `web/src/features/pos/PedidosEnCurso.tsx` los pedidos de días anteriores, para que el rezago se note en vez de confundirse con el trabajo de hoy.
 
@@ -107,8 +109,10 @@ pantalla.
 
 - [ ] T027 [US3] Cambiar `ListDeliveredToday` en `server/queries/orders.sql` para filtrar desde un instante en vez de por fecha del servidor.
 - [ ] T028 [US3] Usar `domain.DesdeCuandoSeVen` en `OrdersService.DeliveredToday` (`server/internal/app/orders.go`).
+- [ ] T028b [US3] Test de integración: las cifras de un arqueo **ya cerrado** son idénticas antes y después de cambiar el `corte_de_vista` y la zona del negocio (FR-016, SC-006). El corte de vista es de pantalla; si toca una cifra de dinero, está mal construido.
 - [ ] T029 [US3] Agregar el selector de corte a `web/src/features/admin/BusinessSettingsPage.tsx` con `Picker`. El texto dice qué hace en un renglón; el porqué de cada modo va en el diálogo de ayuda, no en la pantalla.
 - [ ] T030 [US3] Que la lista refleje el corte sin recargar (FR-014).
+- [ ] T030b [P] [US3] Test de que la lista se vacía al cruzar el corte **sin recargar**: se avanza el reloj y se comprueba que la lista cambia sola. Sin él, FR-014 queda implementado y sin nadie que lo mire.
 
 ---
 
