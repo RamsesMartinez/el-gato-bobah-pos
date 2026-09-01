@@ -1,0 +1,172 @@
+---
+
+description: "Tareas de la feature 005 — confirmar antes de cobrar, y el pedido en curso"
+---
+
+# Tasks: Confirmar el pedido antes de cobrar, y verlo en curso
+
+**Input**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
+[data-model.md](./data-model.md), [contracts/api.md](./contracts/api.md),
+[quickstart.md](./quickstart.md)
+
+**Tests**: sí, y **antes** del código. Es no negociable en este repo (constitución, principio IV):
+primero el test que falla, viéndolo fallar por la razón correcta, luego el código. Una migración sin
+su test de integración la rechaza el pre-commit.
+
+## Format: `[ID] [P?] [Story] Descripción con la ruta`
+
+`[P]` = puede correr en paralelo (archivos distintos, sin dependencias pendientes).
+
+## Path Conventions
+
+Monorepo: backend en `server/`, frontend en `web/`. Migraciones goose embebidas en
+`server/migrations/`; SQL solo por sqlc (`server/queries/` + `make sqlc`).
+
+---
+
+## Phase 1: Fundacional (bloquea todo lo demás)
+
+**Propósito**: la columna, el default y las reglas puras. Nada de esto cambia comportamiento por sí
+solo, y todo lo demás depende de ello.
+
+- [ ] T001 Escribir el test de integración de la columna nueva en `server/internal/integration/renglon_enviado_a_cocina_test.go`: con **dos empresas**, verifica que los renglones que ya existían quedan en `NULL` tras la migración y que un renglón nuevo también nace en `NULL`. Verlo fallar antes de T002.
+- [ ] T002 Crear `server/migrations/0053_renglon_enviado_a_cocina.sql`: `order_lines.enviado_a_cocina_at timestamptz` nullable, con su `Down`. El comentario explica por qué va en el renglón y no en el pedido, y por qué el backfill NO marca nada. Va en el **mismo commit** que T001.
+- [ ] T003 [P] Escribir el test unitario de `RenglonesSinEnviar` en `server/internal/domain/order_test.go`: table-driven, incluyendo pedido sin renglones, todos enviados, y ninguno enviado.
+- [ ] T004 Implementar `domain.RenglonesSinEnviar` en `server/internal/domain/order.go`: función pura que devuelve los renglones con `enviado_a_cocina_at` vacío.
+- [ ] T005 [P] Escribir el test unitario de `PuedeAgregar` en `server/internal/domain/order_test.go`: acepta `abierta` y `lista`, rechaza `entregada`, `cancelada` y `reembolsada`.
+- [ ] T006 Implementar `domain.PuedeAgregar` en `server/internal/domain/order.go`, junto a `CanTransition` — es la misma pregunta: qué se puede hacer según el estado.
+- [ ] T007 Agregar el sentinel `domain.ErrPedidoTerminal` en `server/internal/domain/order.go` y su mapeo a `409 CONFLICT` en `server/internal/httpapi/respond.go`.
+- [ ] T008 Agregar el sentinel `domain.ErrCobroFueraDeLugar` en `server/internal/domain/order.go` (crear un pedido ya cobrado) y su mapeo a `422` en `server/internal/httpapi/respond.go`.
+- [ ] T009 Escribir en `server/queries/orders.sql` las tres consultas nuevas —pedidos en curso (la unión de no-terminales y con-saldo), renglones sin enviar de un pedido, y marcar renglones como enviados— y correr `make sqlc`. El `where` de la lista y el del total pendiente viven en el mismo archivo y se editan juntos.
+
+**Checkpoint**: `go build ./...` y `go test ./...` en verde; la migración aplicada contra la base de pruebas.
+
+---
+
+## Phase 2: User Story 1 — El pedido confirmado sigue a la vista (P1) 🎯 MVP
+
+**Meta**: el pedido deja de desaparecer y agregarle cuesta **un toque** en vez de cinco.
+
+**Prueba independiente**: confirmar un pedido, verlo como chip con su folio, tocarlo, agregarle un
+producto — todo sin abrir la pantalla de cobro.
+
+### Tests primero
+
+- [ ] T010 [P] [US1] Test de integración en `server/internal/integration/pedidos_en_curso_test.go`: la lista de en curso trae un pedido `abierta` sin pagos, trae uno `entregada` con saldo, y **no** trae uno cancelado ni uno entregado y pagado. Con dos empresas: la de una no ve la de la otra.
+- [ ] T011 [P] [US1] Test de integración en `server/internal/integration/agregar_a_pedido_test.go`: agregar a un pedido `entregada` devuelve `ErrPedidoTerminal`; agregar a uno `abierta` suma los renglones; dos agregados seguidos suman los dos, no se pisan.
+- [ ] T012 [P] [US1] Test en `web/src/features/pos/useMandarPedido.test.ts`: al confirmar, la cuenta local queda vacía; y **el mismo uuid se manda en el reintento** — es el defecto que hoy produce dos pedidos tras un corte de red.
+- [ ] T013 [P] [US1] Test en `web/src/features/pos/PedidosEnCurso.test.tsx`: pinta un chip por pedido con su folio y su monto, con altura de 44 px, y no pinta nada cuando no hay ninguno.
+
+### Implementación
+
+- [ ] T014 [US1] Mover el `clientUuid` del intento a la cuenta en `web/src/stores/ticket.ts`: se genera al abrir la cuenta y sobrevive al reintento.
+- [ ] T015 [US1] Consumir ese uuid en `web/src/features/pos/useMandarPedido.ts` en vez de llamar a `uuid()` dentro de `mutationFn`.
+- [ ] T016 [US1] Implementar el servicio de pedidos en curso en `server/internal/app/orders.go` sobre la consulta de T009, devolviendo por pedido el grupo al que pertenece y el saldo.
+- [ ] T017 [US1] Cambiar la ruta `/orders/unpaid` por `/orders/en-curso` en `server/internal/httpapi/router.go` y su handler en `server/internal/httpapi/handlers_orders.go`. El nombre viejo miente: la lista ya no es solo de impagos.
+- [ ] T018 [US1] Aplicar `domain.PuedeAgregar` en `AddOrderLines` (`server/internal/app/orders.go`) y mapear el rechazo con el estado en el mensaje.
+- [ ] T019 [US1] Crear `web/src/features/pos/PedidosEnCurso.tsx`: chips de 44 px con folio y monto, desplazamiento horizontal, y el total pendiente a la vista. Absorbe lo que hacía `PorCobrarPill`.
+- [ ] T020 [US1] Montar los chips en la fila que ya existe de `web/src/features/pos/POSPage.tsx`, junto a `TicketTabs`, y quitar `PorCobrarPill`. **No se agrega alto**: es el presupuesto de SC-005.
+- [ ] T021 [US1] Crear `web/src/features/pos/useAgregarAPedido.ts`: tocar un chip abre el pedido y los productos que se agreguen entran por `POST /orders/{id}/lines`.
+- [ ] T022 [US1] Quitar el selector "Agregar a un pedido en curso" de `web/src/features/pos/CheckoutSheet.tsx`. Dos caminos para lo mismo, uno escondido, es de donde salen los defectos.
+
+**Checkpoint**: US1 entregable sola. El POS ya no pierde el pedido y agregar cuesta un toque.
+
+---
+
+## Phase 3: User Story 2 — Cobrar exige haber confirmado (P1)
+
+**Meta**: no se puede cobrar un pedido que cocina no vio. La barrera vive en el servidor.
+
+**Depende de US1**: sin ella, confirmar hace desaparecer el pedido y cobrarlo cuesta más toques que
+hoy — la feature empeoraría el POS.
+
+### Tests primero
+
+- [ ] T023 [P] [US2] Test de integración en `server/internal/integration/cobrar_exige_confirmar_test.go`: `CreateOrder` con pagos devuelve `ErrCobroFueraDeLugar`; sin pagos crea el pedido; y cobrar ese pedido con el camino de `/pay` funciona.
+- [ ] T024 [P] [US2] Test de integración en el mismo archivo: crear un pedido con `lines` vacío se rechaza — un pedido de cero renglones ocuparía folio y sacaría una comanda en blanco.
+- [ ] T025 [P] [US2] Test de integración en el mismo archivo: **los pedidos que ya existían** siguen siendo cobrables y entregables. Es FR-020 y protege a producción.
+- [ ] T026 [P] [US2] Test en `web/src/features/pos/CheckoutSheet.test.tsx`: la hoja de cobro ya no puede crear un pedido; con una cuenta sin confirmar, cobrar no está disponible.
+
+### Implementación
+
+- [ ] T027 [US2] Rechazar `Payments` no vacío en `CreateOrder` (`server/internal/app/orders.go`), envuelto con `%w` sobre el sentinel de T008, con un mensaje que nombra el camino correcto.
+- [ ] T028 [US2] Rechazar `lines` vacío en la misma ruta, con `domain.ErrValidation`.
+- [ ] T029 [US2] Quitar `payments` del cuerpo aceptado en `server/internal/httpapi/handlers_orders.go` y de `web/src/api/pos.ts`.
+- [ ] T030 [US2] Dejar `CheckoutSheet` cobrando **solo** pedidos que existen, por `POST /orders/{id}/pay` (`web/src/features/pos/CheckoutSheet.tsx`).
+- [ ] T031 [US2] Renombrar la acción del panel del pedido a **Confirmar** en `web/src/features/pos/POSPage.tsx`, y dejar cobrar disponible solo desde un pedido en curso.
+- [ ] T032 [US2] Comprobar que cobrar desde el tablero `/pedidos` sigue funcionando y no quedó pidiendo una confirmación que ahí no aplica (`web/src/features/orders/CobrarSheet.tsx`).
+
+**Checkpoint**: ningún pedido llega al cobro sin haber pasado por cocina, y el servidor lo sostiene.
+
+---
+
+## Phase 4: User Story 3 — Lo agregado sale a cocina solo, marcado (P2)
+
+**Meta**: cocina recibe únicamente lo nuevo, con el mismo folio.
+
+### Tests primero
+
+- [ ] T033 [P] [US3] Test de integración en `server/internal/integration/comanda_del_agregado_test.go`: tras agregar, **solo** los renglones agregados quedan marcados como enviados, y la respuesta los identifica.
+- [ ] T034 [P] [US3] Test en `web/src/utils/printKitchen.test.ts`: la comanda de agregado lleva solo los renglones nuevos, el mismo folio, la marca de agregado, y **sin precios**.
+- [ ] T035 [P] [US3] Test en `web/src/features/pos/useAgregarAPedido.test.ts`: si la impresión falla, el renglón queda agregado igual y sale un aviso. Es el modo de fallo que la feature 001 ya quitó del ticket del cliente.
+
+### Implementación
+
+- [ ] T036 [US3] Marcar los renglones agregados como enviados dentro de la misma transacción de `AddOrderLines` (`server/internal/app/orders.go`), y devolver cuáles son.
+- [ ] T037 [US3] Marcar como enviados los renglones del pedido al crearlo, cuando la comanda está encendida (`server/internal/app/orders.go`).
+- [ ] T038 [US3] Agregar la variante de agregado a `web/src/utils/printKitchen.ts`: mismo documento, encabezado marcando **AGREGADO**, solo los renglones nuevos.
+- [ ] T039 [US3] Disparar esa comanda desde `useAgregarAPedido`, con el aviso no bloqueante si no sale (`web/src/features/pos/useAgregarAPedido.ts`).
+- [ ] T040 [US3] Dejar la reimpresión de la comanda **completa** como acción explícita en el tablero de pedidos (`web/src/features/orders/`).
+
+**Checkpoint**: cocina nunca prepara dos veces el mismo renglón.
+
+---
+
+## Phase 5: User Story 4 — La empresa nueva nace imprimiendo (P3)
+
+- [ ] T041 [P] [US4] Test de integración en `server/internal/integration/comanda_por_default_test.go`: una empresa provisionada después de la migración nace con la comanda encendida, y una que ya existía con el ajuste apagado **no cambia**. Con dos empresas. Verlo fallar antes de T042.
+- [ ] T042 [US4] Crear `server/migrations/0054_comanda_por_default.sql`: cambia el `DEFAULT` de `business_settings.print_kitchen_ticket` a `true`, con su `Down`. El comentario explica que no toca ninguna fila existente. Mismo commit que T041.
+
+---
+
+## Phase 6: Cierre
+
+- [ ] T043 Correr el `tablet-ui-reviewer` sobre `web/src/features/pos/`: la barra cambia la pantalla más usada del sistema y el presupuesto de alto es lo primero que se pierde.
+- [ ] T044 Correr el `db-architect` sobre las migraciones 0053 y 0054 y las consultas nuevas de `server/queries/orders.sql`, antes de aplicarlas a producción.
+- [ ] T045 Correr el `go-backend-reviewer` sobre los cambios de `server/internal/app/orders.go` y `server/internal/httpapi/handlers_orders.go`.
+- [ ] T046 Recorrer [quickstart.md](./quickstart.md) completo contra el ambiente de pruebas, en una ventana de **1024×600**, incluyendo los cinco bordes a mano.
+- [ ] T047 Contar los renglones de productos visibles antes y después con seis pedidos en curso (SC-005). Si bajaron, la barra se está comiendo alto que no le toca.
+
+---
+
+## Dependencias
+
+```text
+Fase 1 (T001–T009)  ← bloquea todo
+      ↓
+Fase 2 · US1 (T010–T022)  🎯 MVP, entregable sola
+      ↓
+Fase 3 · US2 (T023–T032)  ← DEBE ir después de US1
+      ↓
+Fase 4 · US3 (T033–T040)  ← necesita la columna y US1
+Fase 5 · US4 (T041–T042)  ← independiente; puede ir en cualquier momento tras la Fase 1
+      ↓
+Fase 6 (T043–T047)
+```
+
+**La única dependencia que no se puede romper**: US2 después de US1. Entregar "cobrar exige
+confirmar" con el pedido desapareciendo deja el POS peor de lo que está.
+
+## Paralelismo
+
+- Fase 1: T003 y T005 juntos (tests unitarios, mismo archivo pero secciones distintas — cuidado al
+  editar); T001 va antes que T002 por el hook de migración.
+- Fase 2: T010–T013 los cuatro juntos, son archivos distintos.
+- Fase 3: T023–T026 juntos.
+- Fase 4: T033–T035 juntos.
+- Fase 5 corre en paralelo a las fases 2–4 en cuanto la Fase 1 esté.
+
+## Alcance mínimo
+
+**US1 sola ya entrega valor**: el POS deja de perder el pedido y agregarle baja de cinco toques a
+uno, que es el número que hoy está en cero usos.
