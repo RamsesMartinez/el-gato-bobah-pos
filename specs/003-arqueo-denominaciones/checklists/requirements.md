@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — **2 abiertos** (FR-014, FR-015), ver Notas
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,19 +31,20 @@
 
 ## Notas
 
-Dos decisiones quedaron abiertas a propósito, porque las dos cambian el alcance y ninguna tiene un
-default defendible sin el dueño:
+Las cuatro decisiones del prompt original quedaron resueltas:
 
-- **FR-014** (Q2): si se puede seguir escribiendo el total a mano o el conteo por denominaciones es
-  el único camino.
-- **FR-015** (Q3): qué manda cuando el conteo y un total escrito a mano no coinciden. Solo aplica si
-  FR-014 admite las dos vías.
+1. **El desglose se guarda** (FR-007, US3). Sin él, un corte con faltante vuelve a ser un número sin
+   historia, que es el problema que este spec existe para cerrar.
+2. **Dos caminos excluyentes** (FR-014): contar por denominaciones, o escribir el total con un
+   motivo obligatorio. Nunca los dos.
+3. **No pueden coexistir** (FR-015), así que no hay nada que reconciliar. Es la lectura estricta de
+   "no deja continuar hasta que cuadren": no deja que existan dos cifras. La alternativa —dejarlos
+   convivir y bloquear si difieren— haría inútil el campo de total, porque su única razón de ser es
+   expresar lo que el conteo no puede.
+4. **La disposición en 1024×600** queda como requisito verificable (FR-013), no como solución: el
+   cómo es trabajo de `/speckit-plan`.
 
-La decisión 1 del prompt original —si el desglose se guarda— **sí** se resolvió: se guarda (FR-007,
-US3). Sin él, un corte con faltante vuelve a ser un número sin historia, que es el problema que este
-spec existe para cerrar.
+De ahí sale FR-016, que es lo que las tres primeras compran juntas: **ningún arqueo queda con una
+cifra suelta**. O tiene desglose, o tiene el motivo de por qué no lo tiene.
 
-La decisión 4 —cómo se ve en 1024×600— se dejó como requisito verificable (FR-013) y no como
-solución: la disposición concreta es trabajo de `/speckit-plan`, no del spec.
-
-Ambos marcadores deben resolverse antes de `/speckit-plan`.
+Listo para `/speckit-plan`.

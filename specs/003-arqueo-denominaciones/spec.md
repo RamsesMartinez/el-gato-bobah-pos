@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-31
 
-**Status**: Draft
+**Status**: Listo para plan
 
 **Input**: Conteo de efectivo por denominaciones en la apertura y el cierre de caja, para que el operador no tenga que sumar el cajón a mano.
 
@@ -83,13 +83,20 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **FR-011**: El catálogo de denominaciones MUST depender de la moneda del turno; las denominaciones de una moneda no se ofrecen para otra.
 - **FR-012**: El sistema MUST permitir abrir o cerrar con cero piezas de una denominación sin obligar a capturarla.
 - **FR-013**: La captura MUST caber en una pantalla de ~1024×600 sin empujar fuera de vista el resumen del corte.
-- **FR-014**: El sistema MUST permitir declarar el efectivo escribiendo el total directamente, sin capturar denominaciones [NEEDS CLARIFICATION: ver Q2].
-- **FR-015**: Cuando existan un conteo por piezas y un total escrito a mano que no coinciden, el sistema MUST [NEEDS CLARIFICATION: ver Q3].
+- **FR-014**: El sistema MUST ofrecer dos caminos EXCLUYENTES para declarar el efectivo: contar por
+  denominaciones, o escribir el total directamente. Escribir el total directamente MUST exigir un
+  motivo, que se guarda con el arqueo.
+- **FR-015**: Los dos caminos MUST NO poder coexistir en un mismo arqueo. Elegir uno descarta lo
+  capturado en el otro, y la pantalla MUST advertirlo antes de descartarlo. Así nunca hay dos cifras
+  de efectivo compitiendo, que era el caso donde no había forma de saber cuál era la buena.
+- **FR-016**: Todo arqueo MUST quedar explicado: o tiene desglose por denominaciones, o tiene el
+  motivo de por qué se capturó el total a mano. Nunca una cifra suelta sin ninguna de las dos.
 
 ### Key Entities
 
 - **Denominación**: una pieza de dinero de un valor fijo en una moneda — moneda de $10 en MXN, billete de $50 en MXN. Tiene valor, moneda, si es moneda o billete, y un orden para presentarla.
-- **Conteo de efectivo**: cuántas piezas de cada denominación se contaron en un momento del turno. Pertenece a un turno y a un momento (apertura o cierre). Su total es derivado, nunca capturado.
+- **Conteo de efectivo**: cuántas piezas de cada denominación se contaron en un momento del turno. Pertenece a un turno y a un momento (apertura o cierre). Su total es derivado, nunca capturado. Un turno puede no tener conteo si se declaró el total a mano; en ese caso tiene un motivo en su lugar.
+- **Motivo de captura manual**: por qué este arqueo no se contó por denominaciones. Es lo que hace auditable un corte sin desglose.
 - **Turno de caja** *(ya existe)*: gana la relación con sus dos conteos, el de apertura y el de cierre.
 - **Total declarado por método** *(ya existe)*: para el efectivo pasa a alimentarse del conteo; para los demás métodos no cambia.
 
@@ -100,7 +107,8 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **SC-001**: El operador abre o cierra la caja **sin usar calculadora ni libreta** para sumar el efectivo.
 - **SC-002**: El total mostrado durante la captura coincide **siempre** con la suma de piezas × valor; no existe un estado en que el operador vea un total desactualizado.
 - **SC-003**: Contar y capturar un cajón típico (menos de 60 piezas) toma **menos de 2 minutos**.
-- **SC-004**: Ante un corte con diferencia, quien lo revisa puede ver **cuántas piezas de cada denominación** se declararon, sin pedirle nada al operador que lo cerró.
+- **SC-004**: Ante un corte con diferencia, quien lo revisa puede ver **cuántas piezas de cada denominación** se declararon —o, si se capturó el total a mano, **por qué**— sin pedirle nada al operador que lo cerró.
+- **SC-007**: **Ningún** arqueo queda con una cifra de efectivo sin desglose y sin motivo.
 - **SC-005**: Las diferencias de arqueo atribuibles a error de suma bajan a **cero**: una diferencia solo puede venir de dinero que no está o de una pieza mal contada, nunca de una suma.
 - **SC-006**: Los cortes cerrados antes de esta funcionalidad se siguen consultando **sin cambios en sus cifras**.
 
@@ -110,7 +118,10 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - Hoy toda la operación es en MXN. USD existe en el sistema pero ningún negocio lo usa todavía, así que el catálogo arranca con MXN; lo que el spec exige es que agregar otra moneda no obligue a rehacer el modelo.
 - El conteo lo hace la misma persona que abre o cierra el turno; no hay un flujo de "un segundo par de ojos" que valide el conteo.
 - El esperado contra el que se compara el efectivo lo calcula el sistema como hoy; esta funcionalidad no cambia cómo se llega a esa cifra.
-- El arqueo sigue siendo por turno y por caja: esta funcionalidad no introduce conteos parciales a media jornada.
+- El arqueo sigue siendo por turno y por caja, como ya lo es hoy: el negocio tiene varias cajas
+  (principal, clip, externa) y cada una lleva su propio turno. El conteo por denominaciones aplica a
+  cada caja que maneje efectivo, sin cambiar esa estructura.
+- Esta funcionalidad no introduce conteos parciales a media jornada.
 - El cierre sigue bloqueado por pedidos sin entregar, como hoy. Un faltante NO bloquea el cierre.
 
 ## Out of Scope
