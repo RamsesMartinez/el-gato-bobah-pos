@@ -32,4 +32,4 @@ pre-push:
       run: bash ../scripts/hooks/govulncheck.sh
     web-build:
       root: "web/"
-      run: bun run build
+      run: bash ../scripts/hooks/web-build.sh
