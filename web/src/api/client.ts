@@ -115,7 +115,10 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     if (retry && !path.startsWith('/auth/') && (await tryRefresh())) {
       return request<T>(method, path, body, false, raw);
     }
-    useSessionStore.getState().clear();
+    // El refresh no se pudo canjear: la sesión terminó. Se dice POR QUÉ para que la pantalla de
+    // login no muestre un error genérico — quien llega en la mañana con la tableta caducada
+    // vería "no autorizado" y creería que algo se rompió.
+    useSessionStore.getState().clear('caducada');
   }
   if (!res.ok) {
     let code = 'ERROR';

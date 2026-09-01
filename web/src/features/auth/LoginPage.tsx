@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client';
 import { RADIUS } from '../../theme/ui';
 
 export function LoginPage() {
+  const motivo = useSessionStore((s) => s.motivo);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -48,6 +49,13 @@ export function LoginPage() {
             <Heading size="lg">El Gato Bobah</Heading>
             <Text color="fg.muted">Punto de venta</Text>
           </Box>
+          {/* Por qué hay que volver a entrar. Sin esto, quien llega en la mañana con la tableta
+              caducada ve la pantalla de login sin explicación y cree que algo se rompió. */}
+          {motivo === 'caducada' && (
+            <Box borderWidth="1px" borderColor="orange.300" borderRadius="lg" px={3} py={2}>
+              <Text fontSize="sm">Terminó el turno. Vuelve a entrar para seguir.</Text>
+            </Box>
+          )}
           <Input size="lg" placeholder="usuario@empresa" value={identifier}
             onChange={(e) => setIdentifier(e.target.value)} autoCapitalize="none" autoFocus />
           <InputGroup endElement={

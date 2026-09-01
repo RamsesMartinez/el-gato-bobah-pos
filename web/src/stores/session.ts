@@ -20,9 +20,12 @@ interface SessionState {
   // robarlo del disco (A02/A05). Se re-emite con la cookie HttpOnly de refresh al recargar.
   token: string | null;
   user: SessionUser | null;
+  // Por qué terminó la última sesión: 'caducada' cuando pasó el plazo del turno, null si se salió
+  // a propósito o nunca hubo una.
+  motivo: 'caducada' | null;
   status: SessionStatus;
   setSession: (token: string, user: SessionUser) => void;
-  clear: () => void;
+  clear: (motivo?: 'caducada') => void;
 }
 
 // Qué tirar cuando el dispositivo entra con una empresa distinta a la anterior. Lo registra
@@ -37,6 +40,7 @@ export function registrarLimpiezaDeTenant(fn: () => void): void {
 export const useSessionStore = create<SessionState>()((set) => ({
   token: null,
   user: null,
+  motivo: null,
   status: 'loading',
   // setSession es el único punto por el que se entra (login, y el canje del refresh al arrancar),
   // así que es donde se decide si lo que quedó en el dispositivo es de otra empresa. Se hace al
@@ -49,5 +53,8 @@ export const useSessionStore = create<SessionState>()((set) => ({
     recordarEmpresa(user.companyId);
     set({ token, user, status: 'authed' });
   },
-  clear: () => set({ token: null, user: null, status: 'anon' }),
+  // motivo dice POR QUÉ se cerró la sesión, para que la pantalla de login no muestre un error
+  // genérico cuando lo que pasó fue que el turno terminó. Sin esto, quien llega en la mañana ve
+  // "no autorizado" y cree que algo se rompió.
+  clear: (motivo) => set({ token: null, user: null, status: 'anon', motivo: motivo ?? null }),
 }));
