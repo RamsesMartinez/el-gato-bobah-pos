@@ -436,9 +436,47 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 	return out, nil
 }
 
-// DeliveredToday lista las órdenes entregadas del día (para la sección de reembolsos).
+// desdeCuandoSeVenLosEntregados resuelve el corte de la vista con el modo que eligió el negocio.
+//
+// Va aquí y no en la consulta porque depende de tres cosas que solo el servicio tiene juntas: el
+// ajuste, la zona y los momentos del turno. La regla en sí es pura y vive en `domain`.
+//
+// Cualquier cosa que falle cae al corte por MEDIANOCHE: es el único de los tres que no depende de
+// que alguien se acuerde de cerrar la caja, así que es el que siempre puede responder.
+func (s *OrdersService) desdeCuandoSeVenLosEntregados(ctx context.Context) (time.Time, error) {
+	modo := domain.CorteMedianoche
+	zona := domain.LoadBusinessLocation(domain.DefaultTimezone)
+	if ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx); err == nil {
+		modo = ajustes.CorteDeVista
+		zona = domain.LoadBusinessLocation(ajustes.Timezone)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, err
+	}
+
+	var abrio, cerro time.Time
+	if m, err := s.store.QC(ctx).MomentosDelTurnoPrincipal(ctx); err == nil {
+		abrio = m.AbrioElTurno
+		if m.CerroLaCaja.Valid {
+			cerro = m.CerroLaCaja.Time
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, err
+	}
+	// Sin turno abierto o sin cierre previo no hay instante que usar, y devolver el cero mostraría
+	// todo el histórico. Se cae al corte que siempre puede responder.
+	if (modo == domain.CorteTurno && abrio.IsZero()) || (modo == domain.CorteCierreDeCaja && cerro.IsZero()) {
+		modo = domain.CorteMedianoche
+	}
+	return domain.DesdeCuandoSeVen(modo, s.now(), zona, abrio, cerro), nil
+}
+
+// DeliveredToday lista las órdenes entregadas desde el corte que configuró el negocio.
 func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error) {
-	rows, err := s.store.QC(ctx).ListDeliveredToday(ctx, pgtype.Date{Time: s.now(), Valid: true})
+	desde, err := s.desdeCuandoSeVenLosEntregados(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.QC(ctx).ListDeliveredToday(ctx, desde)
 	if err != nil {
 		return nil, err
 	}
