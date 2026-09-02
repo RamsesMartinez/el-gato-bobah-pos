@@ -143,8 +143,9 @@ export function POSPage() {
     setAgregados(nuevos);
     setLastOrder(order);
   });
-  // Con la cuenta vacía, tocar el chip no tiene nada que agregar: se abre el pedido para verlo.
-  // Con productos capturados, se los lleva.
+  // La lista solo ofrece "Agregar" con productos capturados, así que aquí siempre hay algo que
+  // llevar. La guarda queda porque el `return` mudo que había antes —un control de 44 px que no
+  // hacía nada ni decía por qué— es exactamente lo que no debe volver.
   const abrirPedidoEnCurso = (pedido: BoardOrder) => {
     if (cuenta.lines.length === 0) return;
     agregar(pedido);
@@ -331,13 +332,11 @@ export function POSPage() {
               a la fila le quedan ~610 y el buscador es el que más margen sobrante tiene. Con 280 los
               chips de pedidos en curso se comprimían a una rendija donde no se ve ninguno completo. */}
           <Box w="clamp(150px, 26%, 240px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
-          {/* Los pedidos que ya se mandaron a cocina, en la MISMA fila que las cuentas sin mandar.
-              No cuesta alto nuevo —la fila ya existía— y absorbe la píldora de "Por cobrar", que
-              mostraba esto mismo en otro lugar. Un toque en un chip vuelve a abrir el pedido; antes
-              recuperarlo costaba cinco por un camino enterrado en la hoja de cobro. */}
-          <HStack gap={2} flexShrink={0} minW={0}>
-            <PedidosEnCurso onAbrir={abrirPedidoEnCurso} />
-          </HStack>
+          {/* Los pedidos ya mandados a cocina, detrás de UN botón. Eran un chip por pedido más una
+              píldora de dinero, y medido en 1024x600 con el panel abierto la fila pedía 667.6 px de
+              los 612.6 que hay: se desbordaba con CERO chips, y el `overflow: hidden` del padre se
+              comía los botones de la derecha. Un botón cabe siempre. */}
+          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} hayQueAgregar={cuenta.lines.length > 0} />
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}

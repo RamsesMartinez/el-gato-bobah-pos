@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { BoardOrder, Menu, OrderView, PaymentMethod, RankedOption } from '../types/pos';
+import type { BoardOrder, CobroHecho, Menu, OrderView, PaymentMethod, RankedOption } from '../types/pos';
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -91,9 +91,17 @@ export const posApi = {
   deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
   deliverLine: (id: number, lineId: number, qty: number) =>
     api.post<void>(`/orders/${id}/lines/${lineId}/deliver`, { qty }),
-  // Cobrar un pedido que se mandó a cocina sin cobrar.
-  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number }) =>
-    api.post<void>(`/orders/${id}/pay`, body),
+  // Cobrar un pedido que se mandó a cocina sin cobrar. Cobra UN pedazo: dividir la cuenta son N
+  // llamadas, una por comensal, cada una con su llave.
+  //
+  // `clientUuid` identifica ESTE cobro y se genera una sola vez, no por intento: es lo que vuelve
+  // inocuo reintentar cuando la respuesta se perdió. El servidor la sella contra el método y el
+  // monto, así que un renglón que se edita antes de reintentar se rechaza en vez de darse por hecho.
+  //
+  // Devuelve lo que queda del pedido. Restarlo en la pantalla sería una segunda implementación de
+  // la misma cifra.
+  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string }) =>
+    api.post<CobroHecho>(`/orders/${id}/pay`, body),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.

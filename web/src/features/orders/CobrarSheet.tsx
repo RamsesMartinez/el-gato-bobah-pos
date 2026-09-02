@@ -1,18 +1,20 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../../components/ui/drawer';
-import { Box, Button, HStack, VStack, Text, Input, SimpleGrid } from '@chakra-ui/react';
+import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
+import { LuCheck, LuSplit } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
+import { ApiError } from '../../api/client';
 import type { BoardOrder } from '../../types/pos';
 import { money } from '../../utils/format';
+import { uuid } from '../../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../pos/metodosDePago';
-
-// Billetes para cobrar en efectivo sin teclear. Los mismos del cobro normal: quien cobra aquí ya
-// tiene el gesto aprendido de la otra pantalla.
-const BILLETES = [50, 100, 200, 500, 1000];
+import {
+  billetesUtiles, presetsDePropina, sugerenciasDeMonto, validarCobro, round2,
+} from '../pos/cobro';
 
 interface Props {
   order: BoardOrder | null;
@@ -20,73 +22,289 @@ interface Props {
   onCobrado: () => void;
 }
 
-// Cobra un pedido que se mandó a cocina sin cobrar.
+// Traduce el error del servidor a lo que necesita leer quien está cobrando.
 //
-// Es una hoja aparte y no el cobro completo: aquí no se eligen productos ni se divide la cuenta —
-// eso ya pasó cuando se levantó el pedido. Lo único que falta es el dinero.
+// Antes salía `String(e)` — el objeto de error crudo — justo en los momentos en que el operador
+// tiene el dinero del cliente en la mano y necesita saber qué hacer a continuación.
+function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boolean } {
+  const msg = e instanceof ApiError ? e.message : String(e);
+  const codigo = e instanceof ApiError ? e.code : undefined;
+  if (/caja/i.test(msg) || codigo === 'NO_OPEN_REGISTER') {
+    return { titulo: 'No hay caja abierta', detalle: 'Ábrela y vuelve a cobrar.', recargar: false };
+  }
+  if (/ya está cobrado|ya está pagado|no puedes cobrar más/i.test(msg)) {
+    return { titulo: 'Otra caja acaba de cobrar este pedido', recargar: true };
+  }
+  if (/ya se registró/i.test(msg)) {
+    return {
+      titulo: 'Ese cobro ya entró con otro método o monto',
+      detalle: 'Revisa el pedido antes de volver a cobrar.',
+      recargar: true,
+    };
+  }
+  if (/plataforma/i.test(msg)) {
+    return { titulo: 'Con ese método no se puede cobrar este pedido', recargar: false };
+  }
+  return { titulo: 'No se pudo cobrar', detalle: msg, recargar: true };
+}
+
+// Cobra un pedido que se mandó a cocina sin cobrar, entero o por pedazos.
+//
+// UN PEDAZO A LA VEZ, y de ahí sale toda la forma de la pantalla. Capturar tres pagos y mandarlos de
+// un golpe registra dinero que todavía no se recibió: si la terminal declina la tarjeta del segundo
+// comensal DESPUÉS de que el servidor acusó, el sistema ya lo dio por cobrado y no hay forma de
+// deshacer un pago — no existe endpoint que lo quite y el reembolso es de la cuenta entera, con los
+// tres comensales parados enfrente. Cobrando de a uno, el registro coincide con el instante en que
+// el dinero está en la mano, y lo que falta lo dice el servidor entre uno y otro.
+//
+// Lo que se elige aquí es CUÁNTO se cobra ahora; el resto de la hoja es el mismo cobro simple de
+// siempre. No hay un "modo dividido" con su propio estado que reconstruir tras una recarga: el
+// estado entero es el faltante, y ese vive en el servidor.
 export function CobrarSheet({ order, onClose, onCobrado }: Props) {
+  const qc = useQueryClient();
   const [metodo, setMetodo] = useState<number | null>(null);
   const [recibido, setRecibido] = useState('');
+  // null = "todo lo que falta". No es un string vacío ni un efecto que lo rellene: el faltante baja
+  // del servidor y cambia con cada pedazo cobrado, así que sembrarlo en el estado obligaría a
+  // resincronizarlo, y esa resincronización es de donde salen las dos cifras que divergen.
+  const [montoElegido, setMontoElegido] = useState<string | null>(null);
+  const [propina, setPropina] = useState('');
+  // Lo que ESTA hoja lleva cobrado, para que el operador vea qué pedazos ya entraron sin tener que
+  // acordarse. No se pide al servidor: es la sesión de esta pantalla.
+  const [yaCobrado, setYaCobrado] = useState<Array<{ monto: number; metodo: string }>>([]);
+  // El último rebote del servidor, EN LA HOJA y no solo en un toast: el toast se va solo, y esto se
+  // lee justo cuando el operador tiene el dinero del cliente en la mano y necesita decidir qué hacer.
+  const [rebote, setRebote] = useState<{ titulo: string; detalle?: string } | null>(null);
+
+  // El pedido VIVO, no la foto que traía el prop.
+  //
+  // La hoja recibía el objeto que la lista tenía al abrirla y nunca se actualizaba, así que un
+  // pedido que otra caja cobró entretanto seguía diciendo "Falta $500" indefinidamente. Ahora la
+  // cifra baja del servidor, y cobrar emite su evento SSE, que invalida esta query.
+  const { data: vivo } = useQuery({
+    queryKey: ['orders', order?.id],
+    queryFn: () => posApi.order(order!.id),
+    enabled: order !== null,
+  });
 
   const { data: metodos } = useQuery({
     queryKey: ['payment-methods'],
     queryFn: posApi.paymentMethods,
     enabled: order !== null,
+    // Una tableta encendida lleva horas con el catálogo en caché y puede estar ofreciendo un método
+    // que el negocio ya desactivó. Al abrir la hoja se vuelve a preguntar.
+    refetchOnMount: 'always',
+  });
+
+  const falta = vivo ? Number(vivo.outstanding) : Number(order?.outstanding ?? 0);
+  const totalDelPedido = vivo ? Number(vivo.total) : Number(order?.total ?? 0);
+
+  // Cobrar completo es el caso de casi todos los pedidos y no puede costar un tap: sin elección
+  // explícita, el monto ES lo que falta.
+  const monto = montoElegido ?? String(falta);
+
+  const elegibles = useMemo(
+    // Espejo de domain.MetodoCorrespondeALaPlataforma: ofrecer un método que va a rebotar manda al
+    // operador a adivinar cuál sirve, con el cliente enfrente.
+    () => metodosDeLaLista(metodos?.items ?? [], order?.deliveryPlatformId ?? null),
+    [metodos, order?.deliveryPlatformId],
+  );
+  const elegido = elegibles.find((m) => m.id === metodo);
+  const efectivo = esEfectivo(elegido);
+
+  const v = validarCobro({
+    monto, metodoId: metodo, propina, recibido, esEfectivo: efectivo,
+    falta, totalDelPedido,
   });
 
   const cobrar = useMutation({
-    mutationFn: ({ id, methodId, amount }: { id: number; methodId: number; amount: number }) =>
-      posApi.chargeOrder(id, { methodId, amount }),
-    onSuccess: () => {
-      toaster.create({ title: 'Cobrado', type: 'success' });
+    mutationFn: async () => {
+      // La llave se genera al mandar y NO se reusa entre cobros distintos. Un reintento del MISMO
+      // pedazo la conserva porque la mutación se reintenta con el mismo cierre; un pedazo nuevo trae
+      // llave nueva. El servidor la sella contra el método y el monto, así que si el operador
+      // corrige la cifra antes de reintentar, el cobro se rechaza en vez de darse por hecho.
+      const clientUuid = uuid();
+      return posApi.chargeOrder(order!.id, {
+        methodId: metodo!, amount: v.monto,
+        ...(v.propina > 0 ? { tip: v.propina } : {}),
+        clientUuid,
+      });
+    },
+    onSuccess: (res) => {
+      setRebote(null);
+      if (res.yaEstaba) {
+        // El cobro ya estaba registrado: esta llamada no movió dinero y decirlo evita que el
+        // operador crea que cobró dos veces, o que cobre otra vez creyendo que no entró.
+        toaster.create({ title: 'Ese cobro ya estaba registrado', type: 'info' });
+      } else {
+        setYaCobrado((xs) => [...xs, { monto: v.monto, metodo: elegido?.name ?? '' }]);
+      }
+      const resta = Number(res.outstanding);
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      onCobrado();
+      if (res.paid || resta <= 0) {
+        toaster.create({ title: 'Cobrado', type: 'success' });
+        onClose();
+        return;
+      }
+      // Queda saldo: la hoja NO se cierra. Se prepara para el siguiente comensal con lo que falta.
+      setMontoElegido(null);
       setMetodo(null);
       setRecibido('');
-      onCobrado();
-      onClose();
+      setPropina('');
     },
-    onError: (e) => toaster.create({ title: 'No se pudo cobrar', description: String(e), type: 'error' }),
+    onError: (e) => {
+      const { titulo, detalle, recargar } = loQueLee(e);
+      setRebote({ titulo, detalle });
+      toaster.create({ title: titulo, description: detalle, type: 'error' });
+      // Tras un error la cifra de la pantalla puede estar vieja: se vuelve a preguntar en vez de
+      // congelar la última buena.
+      if (recargar) qc.invalidateQueries({ queryKey: ['orders'] });
+    },
   });
 
   if (!order) return null;
 
-  const falta = Number(order.outstanding);
-  // Misma regla que el cobro normal, y por eso el mismo helper: es el espejo de
-  // domain.MetodoCorrespondeALaPlataforma en el servidor. Ofrecer un método que va a rebotar manda
-  // al operador a adivinar cuál sirve, con el cliente enfrente.
-  const elegibles = metodosDeLaLista(metodos?.items ?? [], order.deliveryPlatformId);
-  const efectivo = esEfectivo(elegibles.find((m) => m.id === metodo));
-  const entregado = Number(recibido || 0);
-  const cambio = efectivo && entregado > falta ? entregado - falta : 0;
+  const moneda = order.currency;
+  const sugerencias = sugerenciasDeMonto(falta);
+  const aCubrirEnEfectivo = round2(v.monto + v.propina);
+  const billetes = billetesUtiles(aCubrirEnEfectivo);
+  // El cambio que sobra se puede dejar como propina de un toque, en vez de que el operador teclee la
+  // resta. Sin este gesto, "quédese con el cambio" obligaba a capturar el total recibido como monto
+  // y eso rebota con ErrCobroExcede: el operador quedaba atorado con el cliente enfrente.
+  const cambioComoPropina = efectivo && v.cambio > 0 && v.propina === 0
+    && round2(v.propina + v.cambio) <= totalDelPedido ? v.cambio : 0;
+
+  const aviso = {
+    'sin-monto': 'Escribe cuánto vas a cobrar.',
+    'monto-invalido': 'Escribe el monto solo con números y punto, sin comas.',
+    'sin-metodo': 'Falta con qué paga.',
+    excede: `Es más de lo que falta (${money(String(falta), moneda)}).`,
+    'propina-excede': 'La propina no puede ser mayor que la cuenta.',
+    'falta-efectivo': `Faltan ${money(String(v.faltaEfectivo), moneda)}.`,
+  }[v.motivo ?? 'sin-monto'];
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
       <DrawerBackdrop />
-      <DrawerContent borderTopRadius="2xl">
+      <DrawerContent borderTopRadius="2xl" maxW={{ base: '100%', lg: '960px' }} mx="auto">
         <DrawerHeader borderBottomWidth="1px" py={3}>
-          <HStack justify="space-between">
-            <Box>
-              <Text fontWeight="800" fontSize="lg">{order.folioName || `#${order.number}`}</Text>
+          <HStack justify="space-between" align="start">
+            <Box minW={0}>
+              <Text fontWeight="800" fontSize="lg" lineClamp={1}>
+                {order.folioName || `#${order.number}`}
+              </Text>
               <Text fontSize="sm" color="fg.muted">#{order.number}</Text>
             </Box>
-            <Text fontWeight="800" fontSize="2xl">{money(String(falta))}</Text>
+            {/* Las DOS cifras. Pintando solo el faltante donde el operador espera el total, un
+                pedido de $500 con $300 abonados se veía idéntico a uno de $200. */}
+            <Box textAlign="right" flexShrink={0}>
+              <Text fontSize="xs" color="fg.muted">Total {money(String(totalDelPedido), moneda)}</Text>
+              <Text fontWeight="800" fontSize="2xl" lineHeight="1.1">
+                Falta {money(String(falta), moneda)}
+              </Text>
+            </Box>
           </HStack>
         </DrawerHeader>
 
         <DrawerBody py={3}>
           <VStack align="stretch" gap={3}>
+            {yaCobrado.length > 0 && (
+              <HStack gap={2} flexWrap="wrap">
+                {yaCobrado.map((c, i) => (
+                  <HStack key={i} gap={1} px={2} py={1} borderRadius="md" bg="green.subtle" color="green.fg">
+                    <LuCheck size={14} />
+                    <Text fontSize="sm" fontWeight="600">
+                      {money(String(c.monto), moneda)} {c.metodo}
+                    </Text>
+                  </HStack>
+                ))}
+              </HStack>
+            )}
+
+            {/* Cuánto se cobra ahora. Los atajos existen para que dividir NO cueste teclear: el
+                teclado del sistema come 250 de los 600 px de alto de la tableta y tapa la cifra que
+                decide si el botón se enciende. */}
+            {falta > 0 && sugerencias.length > 1 && (
+              <Box>
+                <HStack mb={2} gap={2}>
+                  <LuSplit size={16} />
+                  <Text fontSize="sm" fontWeight="600">¿Cuánto cobras ahora?</Text>
+                </HStack>
+                <HStack gap={2} flexWrap="wrap">
+                  {sugerencias.map((s) => {
+                    const on = monto === String(s.monto);
+                    return (
+                      <Button key={s.etiqueta} minH="52px" flex="1" minW="90px"
+                        variant={on ? 'solid' : 'outline'} colorPalette={on ? 'green' : 'gray'}
+                        onClick={() => { setMontoElegido(String(s.monto)); setRecibido(''); }}>
+                        <VStack gap={0}>
+                          <Text fontSize="2xs" opacity={0.8}>{s.etiqueta}</Text>
+                          <Text fontWeight="700">{money(String(s.monto), moneda)}</Text>
+                        </VStack>
+                      </Button>
+                    );
+                  })}
+                  <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otro"
+                    aria-label="Otro monto"
+                    value={monto} onChange={(e) => setMontoElegido(e.target.value)} />
+                </HStack>
+              </Box>
+            )}
+
             <Box>
               <Text fontSize="sm" fontWeight="600" mb={2}>¿Con qué paga?</Text>
-              {/* Botones y no un desplegable: son pocos y se tocan con el dedo. */}
-              <SimpleGrid columns={{ base: 2, sm: 3 }} gap={2}>
-                {elegibles.map((m) => (
-                  <Button key={m.id} minH="52px" variant={metodo === m.id ? 'solid' : 'outline'}
-                    colorPalette={metodo === m.id ? 'green' : 'gray'}
-                    onClick={() => setMetodo(m.id)}>
-                    {m.name}
-                  </Button>
-                ))}
-              </SimpleGrid>
+              {/* Botones y no un desplegable: son pocos y se tocan con el dedo.
+                  Y NINGUNO viene preseleccionado, a propósito: aquí el pedido ya existe y un dedo
+                  que va directo a Cobrar registraría con tarjeta dinero que entró en efectivo,
+                  descuadrando el corte en los dos métodos a la vez. El tap es la confirmación. */}
+              {elegibles.length === 0 ? (
+                <Text fontSize="sm" color="fg.muted">
+                  Este pedido no tiene métodos de pago configurados. Agrégalos en Ajustes para poder
+                  cobrarlo.
+                </Text>
+              ) : (
+                <SimpleGrid columns={{ base: 2, sm: 3 }} gap={2}>
+                  {elegibles.map((m) => (
+                    <Button key={m.id} minH="52px" variant={metodo === m.id ? 'solid' : 'outline'}
+                      colorPalette={metodo === m.id ? 'green' : 'gray'}
+                      onClick={() => { setMetodo(m.id); setRecibido(''); }}>
+                      {m.name}
+                    </Button>
+                  ))}
+                </SimpleGrid>
+              )}
             </Box>
+
+            {/* Propina. El porcentaje es de lo que se cobra AHORA: sobre el total del pedido, un
+                "15%" salía siendo 37.5% de la cifra que la pantalla tiene enfrente. */}
+            {metodo !== null && v.monto > 0 && (
+              <Box>
+                <Text fontSize="sm" fontWeight="600" mb={2}>Propina</Text>
+                <HStack gap={2} flexWrap="wrap">
+                  <Button minH="52px" variant={propina === '' ? 'solid' : 'outline'}
+                    colorPalette={propina === '' ? 'green' : 'gray'} onClick={() => setPropina('')}>
+                    Sin
+                  </Button>
+                  {presetsDePropina(v.monto).map((p) => {
+                    const on = propina === String(p.monto);
+                    return (
+                      <Button key={p.etiqueta} minH="52px"
+                        variant={on ? 'solid' : 'outline'} colorPalette={on ? 'green' : 'gray'}
+                        onClick={() => setPropina(String(p.monto))}>
+                        <VStack gap={0}>
+                          <Text fontSize="2xs" opacity={0.8}>{p.etiqueta}</Text>
+                          <Text fontWeight="700">{money(String(p.monto), moneda)}</Text>
+                        </VStack>
+                      </Button>
+                    );
+                  })}
+                  <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otra"
+                    aria-label="Otra propina"
+                    value={propina} onChange={(e) => setPropina(e.target.value)} />
+                </HStack>
+              </Box>
+            )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}
             {efectivo && (
@@ -98,33 +316,51 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
                     onClick={() => setRecibido('')}>
                     Exacto
                   </Button>
-                  {BILLETES.filter((b) => b >= falta).map((b) => (
+                  {billetes.map((b) => (
                     <Button key={b} minH="52px" variant={recibido === String(b) ? 'solid' : 'outline'}
                       colorPalette={recibido === String(b) ? 'green' : 'gray'}
                       onClick={() => setRecibido(String(b))}>
-                      {money(String(b))}
+                      {money(String(b), moneda)}
                     </Button>
                   ))}
                   <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otro"
+                    aria-label="Con cuánto paga"
                     value={recibido} onChange={(e) => setRecibido(e.target.value)} />
                 </HStack>
-                {cambio > 0 && (
-                  <Text mt={2} fontWeight="700" fontSize="lg" color="orange.600">
-                    Cambio {money(String(cambio))}
-                  </Text>
+                {v.cambio > 0 && (
+                  <Flex mt={2} align="center" justify="space-between" gap={2}>
+                    <Text fontWeight="700" fontSize="lg" color="orange.600">
+                      Cambio {money(String(v.cambio), moneda)}
+                    </Text>
+                    {cambioComoPropina > 0 && (
+                      <Button minH="44px" size="sm" variant="outline" colorPalette="green"
+                        onClick={() => setPropina(String(cambioComoPropina))}>
+                        El cambio es propina
+                      </Button>
+                    )}
+                  </Flex>
                 )}
               </Box>
             )}
           </VStack>
         </DrawerBody>
 
-        <DrawerFooter borderTopWidth="1px">
-          {/* Se cobra lo que FALTA, no lo que entregó el cliente: el excedente es cambio, no
+        <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch">
+          {rebote && (
+            <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
+              <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
+              {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
+            </Box>
+          )}
+          {!v.ok && aviso && (
+            <Text fontSize="sm" color="fg.muted" textAlign="center">{aviso}</Text>
+          )}
+          {/* Se cobra el MONTO capturado, no lo que entregó el cliente: el excedente es cambio, no
               ingreso. Registrarlo como ingreso inflaría la venta y descuadraría el corte. */}
           <Button w="100%" size="lg" minH="56px" colorPalette="green"
-            disabled={metodo === null} loading={cobrar.isPending}
-            onClick={() => metodo !== null && cobrar.mutate({ id: order.id, methodId: metodo, amount: falta })}>
-            Cobrar {money(String(falta))}
+            disabled={!v.ok} loading={cobrar.isPending}
+            onClick={() => cobrar.mutate()}>
+            Cobrar {money(String(round2(v.monto + v.propina)), moneda)}
           </Button>
         </DrawerFooter>
       </DrawerContent>
