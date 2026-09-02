@@ -43,17 +43,25 @@ func TestBusinessDate(t *testing.T) {
 	}
 }
 
-// Una zona inválida no puede tumbar una venta: se cae a UTC y el pedido entra. Un negocio con la
-// configuración mal escrita prefiere una fecha corrida a no poder cobrar.
+// Una zona inválida no puede tumbar una venta: se cae al DEFAULT DEL PRODUCTO y el pedido entra.
+//
+// Caía a UTC, y eso corre la fecha seis horas sin avisar. La intención era la correcta —un negocio
+// con la configuración mal escrita prefiere seguir cobrando— pero el valor no: seis horas de
+// corrimiento se ven plausibles, y una fecha plausible y equivocada es peor que un error, porque
+// nadie la audita. El producto se vende en México; ese es el fallback que se parece a la verdad.
 func TestLoadBusinessLocation(t *testing.T) {
 	if loc := LoadBusinessLocation("America/Mexico_City"); loc == nil || loc.String() != "America/Mexico_City" {
 		t.Fatalf("una zona válida debe cargarse, dio %v", loc)
 	}
-	if loc := LoadBusinessLocation("Marte/Olympus"); loc != time.UTC {
-		t.Fatalf("una zona inválida debe caer a UTC, dio %v", loc)
+	if loc := LoadBusinessLocation("Marte/Olympus"); loc == nil || loc.String() != DefaultTimezone {
+		t.Fatalf("una zona inválida debe caer al default del producto, dio %v", loc)
 	}
-	if loc := LoadBusinessLocation(""); loc != time.UTC {
-		t.Fatalf("vacío debe caer a UTC, dio %v", loc)
+	if loc := LoadBusinessLocation(""); loc == nil || loc.String() != DefaultTimezone {
+		t.Fatalf("vacío debe caer al default del producto, dio %v", loc)
+	}
+	// Y nunca devuelve nil: quien la llama la usa sin comprobar.
+	if LoadBusinessLocation("Marte/Olympus") == nil {
+		t.Fatal("LoadBusinessLocation devolvió nil")
 	}
 }
 

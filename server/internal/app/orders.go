@@ -453,12 +453,16 @@ func (s *OrdersService) desdeCuandoSeVenLosEntregados(ctx context.Context) (time
 		return time.Time{}, err
 	}
 
+	// Sin turno abierto o sin cierre previo, la consulta no devuelve filas y el instante queda en
+	// cero: es lo que la rama de abajo usa para caer al corte por medianoche.
 	var abrio, cerro time.Time
-	if m, err := s.store.QC(ctx).MomentosDelTurnoPrincipal(ctx); err == nil {
-		abrio = m.AbrioElTurno
-		if m.CerroLaCaja.Valid {
-			cerro = m.CerroLaCaja.Time
-		}
+	if t, err := s.store.QC(ctx).AbrioElTurnoPrincipal(ctx); err == nil {
+		abrio = t
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, err
+	}
+	if t, err := s.store.QC(ctx).CerroLaCajaPrincipal(ctx); err == nil {
+		cerro = t.Time
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, err
 	}
@@ -476,7 +480,7 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.store.QC(ctx).ListDeliveredToday(ctx, desde)
+	rows, err := s.store.QC(ctx).ListDeliveredToday(ctx, pgtype.Timestamptz{Time: desde, Valid: true})
 	if err != nil {
 		return nil, err
 	}

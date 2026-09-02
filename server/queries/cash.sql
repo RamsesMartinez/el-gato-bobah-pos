@@ -264,22 +264,27 @@ where op.register_session_id = $1
 group by u.name
 order by cash desc, other desc;
 
--- name: MomentosDelTurnoPrincipal :one
--- Cuándo abrió el turno vigente y cuándo se cerró el anterior, en la caja principal.
+-- name: AbrioElTurnoPrincipal :one
+-- Cuándo abrió el turno vigente de la caja principal. Sin filas si no hay ninguno abierto.
 --
--- Los dos son candidatos a "desde cuándo se ven los entregados", según el modo que eligió el
--- negocio. Van en UNA consulta y no en dos porque el corte los compara entre sí: pedirlos por
--- separado deja la puerta abierta a que un cierre entre medias y las dos respuestas describan
--- momentos distintos del mismo turno.
+-- Dos consultas y no una: escritas juntas, la ausencia de turno viaja como NULL dentro de una fila
+-- que siempre existe, y sqlc infiere la nulabilidad copiando la de la COLUMNA —`opened_at` es not
+-- null— generando un tipo que no acepta NULL. El escaneo tronaba con la caja cerrada: todas las
+-- noches, y en cualquier negocio recién instalado. Así, "no hay turno" es cero filas, que el
+-- llamador ya sabe leer.
 --
--- Nulos cuando no hay turno abierto o cuando nunca se ha cerrado uno. El llamador cae al corte por
--- medianoche, que es el único que no depende de que alguien se acuerde de cerrar la caja.
-select
-  (select s.opened_at from register_sessions s
-    join cash_registers r on r.id = s.register_id
-    where r.is_primary and s.status = 'abierta'
-    order by s.opened_at desc limit 1) as abrio_el_turno,
-  (select s.closed_at from register_sessions s
-    join cash_registers r on r.id = s.register_id
-    where r.is_primary and s.closed_at is not null
-    order by s.closed_at desc limit 1) as cerro_la_caja;
+-- El costo de separarlas: entre las dos cabe un cierre de caja, y las respuestas describirían
+-- momentos distintos del mismo turno. Se acepta porque esto decide UNA VISTA —hasta cuándo se ve un
+-- pedido entregado— y no una transacción; el peor caso es que la lista se recorte un refresco antes
+-- o después.
+select s.opened_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.status = 'abierta'
+order by s.opened_at desc limit 1;
+
+-- name: CerroLaCajaPrincipal :one
+-- Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+select s.closed_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.closed_at is not null
+order by s.closed_at desc limit 1;

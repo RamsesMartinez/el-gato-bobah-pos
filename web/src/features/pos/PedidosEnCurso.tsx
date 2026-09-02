@@ -69,6 +69,9 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
           locales, que son lo único elástico de la fila, se aplastaban a cero. */}
       <HStack
         gap={2}
+        // minW: sin un piso, la caja se comprimía a ~30px y no se veía ni un chip completo — el
+        // operador tenía que descubrir por scroll que hay pedidos en cocina. Un chip mide ~100px.
+        minW="104px"
         maxW="clamp(110px, 26%, 340px)"
         overflowX="auto"
         py={1}
