@@ -1027,11 +1027,15 @@ func cerrarSiYaSeEntregoTodo(ctx context.Context, q *db.Queries, orderID int64, 
 // Gana el que propuso la pantalla, porque es el que el operador lleva viendo desde que abrió la
 // cuenta y el que ya le dijo al cliente; el servidor solo lo sanea y le agrega la vuelta si otro
 // pedido del día se le adelantó. Sin propuesta —clientes de API, tests— reparte el suyo.
+//
+// LOS DOS CAMINOS SE VERIFICAN CONTRA LO YA USADO, y el que faltaba costó caro. El nombre que el
+// servidor reparte sale del folio numérico, y mientras la pantalla no proponía nombres eso bastaba
+// para que fuera único. Al empezar a proponerlos, las cuentas bautizadas por la pantalla empezaron a
+// ocupar lugares de esa misma lista: en cuanto se consume a medias, el animal que al servidor le
+// toca por número ya está tomado. Medido, el pedido 24 de un día así tumbaba la venta con un 500 y
+// el operador se quedaba sin poder cobrar hasta el día siguiente — un choque de NOMBRE impidiendo
+// una venta, cuando el nombre existe para cantar el pedido, no para autorizarlo.
 func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDate pgtype.Date, num int) (string, error) {
-	propuesto := domain.SanitizarFolio(cmd.FolioName)
-	if propuesto == "" {
-		return domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num), nil
-	}
 	usados, err := q.FolioNamesUsedToday(ctx, bizDate)
 	if err != nil {
 		return "", err
@@ -1042,12 +1046,27 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDa
 			nombres = append(nombres, *u)
 		}
 	}
-	// Con las 100 vueltas agotadas del mismo animal cae al nombre del servidor, que sale del folio
-	// numérico y por lo tanto no puede chocar.
-	if libre := domain.SiguienteFolioLibre(propuesto, nombres); libre != "" {
+
+	// El propuesto por la pantalla; si no hay, el que reparte el servidor por folio numérico.
+	base := domain.SanitizarFolio(cmd.FolioName)
+	if base == "" {
+		base = domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num)
+	}
+	if libre := domain.SiguienteFolioLibre(base, nombres); libre != "" {
 		return libre, nil
 	}
-	return domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num), nil
+
+	// Agotadas las cien vueltas del mismo animal, se recorre la lista. Un pedido SIN nombre no es
+	// una opción: es con lo que cocina lo canta.
+	for _, otro := range domain.FolioNames() {
+		if libre := domain.SiguienteFolioLibre(otro, nombres); libre != "" {
+			return libre, nil
+		}
+	}
+	// Miles de pedidos en un día con la lista entera agotada cien veces. Antes de inventar un
+	// nombre que pueda volver a chocar, se dice qué pasó: el índice único es la última red y un
+	// 500 crudo aquí deja al operador sin saber por qué no puede vender.
+	return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
 }
 
 // lineasDelTablero trae los renglones de TODOS los pedidos activos en dos consultas y los agrupa.
