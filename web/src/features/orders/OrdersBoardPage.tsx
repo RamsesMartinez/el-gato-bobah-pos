@@ -68,10 +68,9 @@ export function OrdersBoardPage() {
     refetchInterval: 15_000, // SSE solo invalida 'active'; refrescamos entregadas aparte
   });
 
-  const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ['orders', 'active'] });
-    qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
-  };
+  // El prefijo entero: `active`, `delivered` y también `open`, que es la barra del POS. Cobrar
+  // desde aquí dejaba a esa barra contando el dinero ya cobrado hasta su siguiente refresco.
+  const invalidateAll = () => qc.invalidateQueries({ queryKey: ['orders'] });
   const conError = (titulo: string) => (e: unknown) =>
     toaster.create({ title: titulo, description: String(e), type: 'error' });
 
@@ -171,7 +170,9 @@ export function OrdersBoardPage() {
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
-      <CobrarSheet order={cobrando} onClose={() => setCobrando(null)} onCobrado={invalidateAll} />
+      {/* `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      <CobrarSheet key={cobrando?.id} order={cobrando}
+        onClose={() => setCobrando(null)} onCobrado={invalidateAll} />
     </Box>
   );
 }

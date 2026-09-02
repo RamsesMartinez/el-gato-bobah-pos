@@ -20,8 +20,10 @@ import { useUiStore } from '../../stores/ui';
 import { posApi, type CreateOrderBody } from '../../api/pos';
 import type { OrderView } from '../../types/pos';
 import { money } from '../../utils/format';
+import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
 import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
+import { billetesUtiles, cambioDeEfectivo, parseMonto, round2 } from './cobro';
 
 // El icono se elige por la NATURALEZA del método, no por su id: desde que payment_methods es
 // per-tenant cada empresa tiene los suyos y los ids ya no son estables entre negocios.
@@ -32,8 +34,6 @@ const ICONO_POR_TIPO: Record<string, IconType> = {
   plataforma: LuSmartphone,
 };
 const iconoDe = (kind: string): IconType => ICONO_POR_TIPO[kind] ?? LuCreditCard;
-// Billetes MXN para pago rápido en efectivo (además de "Exacto").
-const BILLS = [50, 100, 200, 500, 1000];
 
 interface Props {
   isOpen: boolean;
@@ -82,25 +82,36 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const isDelivery = serviceType === 'domicilio';
   const defaultFee = settings ? settings.deliveryFee : '20';
   const feeInput = feeOverride ?? defaultFee;
-  const deliveryFee = isDelivery ? Math.max(0, Math.round((parseFloat(feeInput) || 0) * 100) / 100) : 0;
+  const montoDelEnvio = parseMonto(feeInput);
+  const deliveryFee = isDelivery && montoDelEnvio.estado === 'valido' ? montoDelEnvio.valor : 0;
 
-  const tipAmount = Math.max(0, Math.round((parseFloat(tip) || 0) * 100) / 100);
+  const propinaCapturada = parseMonto(tip);
+  const tipAmount = propinaCapturada.estado === 'valido' ? propinaCapturada.valor : 0;
   // orderTotal = lo que cubren los pagos (subtotal + envío); la propina va aparte, en la 1ª línea.
-  const orderTotal = Math.round((total + deliveryFee) * 100) / 100;
-  const grandTotal = Math.round((orderTotal + tipAmount) * 100) / 100;
+  const orderTotal = round2(total + deliveryFee);
+  const grandTotal = round2(orderTotal + tipAmount);
 
   // "Exacto" es el default: campo vacío ⇒ el cliente pagó justo, sin cambio.
-  const isExact = tendered === '';
-  const received = isExact ? grandTotal : (parseFloat(tendered) || 0);
-  const change = Math.max(0, received - grandTotal);
-  const cashShort = !splitMode && esEfectivo(metodoElegido) && !isExact && received < grandTotal;
+  //
+  // El cálculo vive en `cobro.ts` con su test: escrito aquí, `parseFloat` leía '1,000' como 1 y
+  // 'abc' como 0, así que una captura mal escrita cobraba de menos sin que nada lo delatara.
+  const vuelto = cambioDeEfectivo(tendered, grandTotal);
+  const isExact = vuelto.exacto;
+  const change = vuelto.cambio;
+  const cashShort = !splitMode && esEfectivo(metodoElegido)
+    && (vuelto.falta > 0 || vuelto.invalido === true);
 
   // --- Pago dividido ---
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-  const splitSum = round2(splits.reduce((a, s) => a + (parseFloat(s.amount) || 0), 0));
+  const montoDeLinea = (s: { amount: string }) => {
+    const m = parseMonto(s.amount);
+    return m.estado === 'valido' ? m.valor : 0;
+  };
+  const lineaMalEscrita = splits.some((s) => parseMonto(s.amount).estado === 'invalido');
+  const splitSum = round2(splits.reduce((a, s) => a + montoDeLinea(s), 0));
   const splitRemaining = round2(orderTotal - splitSum);
   // Válido cuando la suma cubre EXACTO el total del pedido (tolerancia de 1 centavo).
-  const splitValid = splits.length > 0 && splitSum > 0 && Math.abs(splitRemaining) < 0.005;
+  const splitValid = splits.length > 0 && splitSum > 0 && !lineaMalEscrita
+    && Math.abs(splitRemaining) < 0.005;
 
   const enableSplit = () => {
     // arranca con una línea = método actual y el monto completo (editable); dividir = ir bajando.
@@ -117,7 +128,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const setSplitAmount = (i: number, v: string) => setSplits((xs) => xs.map((s, j) => (j === i ? { ...s, amount: v } : s)));
   // Rellena esta línea con lo que falta para cubrir el total (un tap para cuadrar el resto).
   const fillRest = (i: number) => setSplits((xs) => {
-    const others = xs.reduce((a, s, j) => a + (j === i ? 0 : parseFloat(s.amount) || 0), 0);
+    const others = xs.reduce((a, s, j) => a + (j === i ? 0 : montoDeLinea(s)), 0);
     return xs.map((s, j) => (j === i ? { ...s, amount: String(Math.max(0, round2(orderTotal - others))) } : s));
   });
 
@@ -127,7 +138,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   const buildPayments = (): NonNullable<CreateOrderBody['payments']> => {
     if (splitMode) {
       return splits
-        .map((s) => ({ methodId: s.methodId, amount: round2(parseFloat(s.amount) || 0) }))
+        .map((s) => ({ methodId: s.methodId, amount: montoDeLinea(s) }))
         .filter((p) => p.amount > 0)
         .map((p, i) => (i === 0 && tipAmount > 0 ? { ...p, tip: tipAmount } : p));
     }
@@ -166,7 +177,12 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     mutationFn: async () => {
       const order = await posApi.createOrder(build());
       for (const p of buildPayments()) {
-        await posApi.chargeOrder(order.id, { methodId: p.methodId, amount: p.amount, tip: p.tip });
+        // Su propia llave por pago: si la respuesta se pierde y el operador reintenta, el servidor
+        // reconoce el que ya entró en vez de cobrarlo dos veces. Con la cuenta dividida es lo único
+        // que distingue dos mitades iguales entre sí.
+        await posApi.chargeOrder(order.id, {
+          methodId: p.methodId, amount: p.amount, tip: p.tip, clientUuid: uuid(),
+        });
       }
       // Se relee DESPUÉS de cobrar. Devolver el pedido recién creado dejaba la confirmación
       // diciendo "Falta cobrar $95" justo después de que el operador tocó COBRAR: la respuesta del
@@ -360,7 +376,10 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                         onClick={() => setTendered('')}>
                         Exacto
                       </Button>
-                      {BILLS.map((v) => {
+                      {/* Filtrados contra lo que hay que cubrir: pintarlos todos deja tocar un $50
+                          sobre $175, que mete la pantalla en "falta efectivo" y deshabilita el
+                          cobro — un tap que solo sirve para trabar la pantalla. */}
+                      {billetesUtiles(grandTotal).map((v) => {
                         const active = tendered === String(v);
                         return (
                           <Button key={v} h="52px" variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}

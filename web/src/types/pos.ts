@@ -125,8 +125,22 @@ export interface OrderView {
   total: string;
   currency: Currency;
   paid: boolean;
+  // Lo que falta por cobrar, tal como lo calcula el servidor. La hoja de cobro lo necesita entre
+  // pedazo y pedazo de una cuenta dividida: restarlo aquí sería una segunda implementación de la
+  // misma cifra, que es lo que ya dejó a la barra del POS diciendo $2,141 y a su lista $1,928.
+  outstanding: string;
   openedAt: string;
   lines?: OrderLine[];
+}
+
+// CobroHecho es lo que responde cobrar: qué quedó del pedido, no un "ok".
+export interface CobroHecho {
+  outstanding: string;
+  paid: boolean;
+  // yaEstaba: este cobro ya se había registrado y esta llamada no movió dinero. Es el reintento de
+  // una llamada cuya respuesta se perdió. La pantalla lo necesita para no cantar un cobro que no
+  // ocurrió y para no volver a contar su propina.
+  yaEstaba: boolean;
 }
 
 // OrderLine es un renglón tal como lo manda el servidor.
@@ -155,8 +169,9 @@ export interface ReceiptLine {
   modifiers?: Array<{ name: string; quantity: number; priceDelta: string }>;
 }
 
-// ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva.
-export type ReceiptOrder = Omit<OrderView, 'lines'> & { lines?: ReceiptLine[] };
+// ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva,
+// y sin el saldo pendiente, que es asunto de la caja y no del cliente que se lleva el ticket.
+export type ReceiptOrder = Omit<OrderView, 'lines' | 'outstanding'> & { lines?: ReceiptLine[] };
 
 export interface BoardOrder {
   // Si a este pedido todavía se le puede AGREGAR. Viene del servidor y no se deduce del estado
