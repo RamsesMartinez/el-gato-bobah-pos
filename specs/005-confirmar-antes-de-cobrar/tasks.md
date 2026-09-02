@@ -178,3 +178,42 @@ confirmar" con el pedido desapareciendo deja el POS peor de lo que está.
 
 **US1 sola ya entrega valor**: el POS deja de perder el pedido y agregarle baja de cinco toques a
 uno, que es el número que hoy está en cero usos.
+
+## Fase 6 — US5: cobrar un pedido en curso, entero o por pedazos
+
+Nació de un reporte del dueño desde la tableta: *"le faltan varios elementos al cobro, no veo los
+demás elementos de dividir la cuenta o la propina"*. Es un hueco que abrió esta misma feature al
+mover el cobro a un pedido que ya existe.
+
+Los cuatro primeros son de servidor y van antes: sin ellos la división en la pantalla no se puede
+hacer segura, y los cuatro se midieron contra Postgres real antes de escribir nada.
+
+- [X] T051 [US5] Test de integración: dos llamadas idénticas de media cuenta no cobran dos veces la
+      misma mitad, en `server/internal/integration/dividir_la_cuenta_test.go`
+- [X] T052 [US5] Llave de idempotencia del cobro: `order_payments.client_uuid` con índice único por
+      `(company_id, client_uuid)`, en `server/migrations/0057_cobro_idempotente.sql`
+- [X] T053 [US5] La llave se sella contra la CARGA del pago (método, monto, propina): un reintento
+      con otro método se rechaza, en `server/internal/app/orders.go`
+- [X] T054 [US5] Tope de propina contra el total de la cuenta, por pago, en
+      `server/internal/domain/cobro.go`
+- [X] T055 [US5] Un solo predicado de "pedido saldado": `domain.PedidoSaldado`, y `PorCobrar` y
+      `ListOpenOrders` responden a él (el centavo del residuo dejaba deuda fantasma)
+- [X] T056 [US5] La caja abierta se lee y se bloquea DENTRO de la transacción del cobro, y la llave
+      se consulta antes que ella, en `server/internal/app/orders.go`
+- [X] T057 [US5] El cobro devuelve lo que falta en vez de `{"ok":true}`; `OrderView` trae
+      `outstanding`, en `server/internal/httpapi/handlers_orders.go`
+- [X] T058 [US5] Cobrar emite su evento SSE — era la única mutación de pedido que no avisaba
+- [X] T059 [US5] Módulo puro de aritmética del cobro con su test ANTES: `web/src/features/pos/cobro.ts`
+      y `cobro.test.ts` (parser que distingue ausente de inválido, reparto con residuo en la última
+      parte, billetes filtrados, cambio, presets de propina)
+- [X] T060 [US5] `CobrarSheet` cobra un pedazo a la vez, con propina, atajos de reparto, "el cambio
+      es propina", errores traducidos y el faltante del pedido vivo, en
+      `web/src/features/orders/CobrarSheet.tsx` y su `.test.tsx`
+- [X] T061 [US5] `CheckoutSheet` migrado al módulo compartido, en el MISMO cambio: dejarlo con su
+      copia repetiría el precedente de `build()` contra `armarPedido.ts`
+- [X] T062 [US5] La barra del POS pierde los chips y la lista pasa a una hoja con "Agregar" y
+      "Cobrar" por renglón, en `web/src/features/pos/PedidosEnCurso.tsx`
+- [X] T063 [US5] `invalidateAll` y el SSE invalidan el prefijo `['orders']` completo, no solo
+      `active`
+- [ ] T064 [US5] Ensayo en dev: cobrar una cuenta repartida entre tres y comparar el corte contra el
+      efectivo, con las propinas separadas por método (SC-009)
