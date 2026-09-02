@@ -35,9 +35,24 @@ function pintar() {
 beforeEach(() => {
   opciones.current = { pinOnly: false, users: [{ id: 1, name: 'Ana' }, { id: 2, name: 'Luis' }] };
   pinSwitch.mockReset();
+  pinSwitch.mockResolvedValue({ accessToken: 'tok', user: { id: 1, name: 'Ana' } });
   salir.mockReset();
   logout.mockClear();
 });
+
+// Teclea el PIN con el teclado FÍSICO y devuelve los puntos que quedaron en pantalla.
+async function elegirYTeclear(quien: string, teclas: string[]) {
+  fireEvent.click(await screen.findByRole('button', { name: quien }));
+  for (const k of teclas) fireEvent.keyDown(window, { key: k });
+}
+
+// Un "no llamó al servidor" se afirma DESPUÉS de darle su turno a la mutación. Sin esta espera el
+// test pasa por llegar antes que la llamada, no por haberla impedido: se comprobó quitando la
+// guarda y el test seguía verde.
+async function noIntentoEntrar() {
+  await new Promise((r) => setTimeout(r, 0));
+  expect(pinSwitch).not.toHaveBeenCalled();
+}
 
 // FR-011 y SC-006. Sin este camino, quien olvida su PIN a media noche queda encerrado fuera del
 // punto de venta con el local abierto, y no puede esperar a que otra persona llegue.
@@ -71,4 +86,64 @@ test('con solo-PIN no muestra a nadie', async () => {
   pintar();
   await screen.findByRole('button', { name: /usuario y contraseña/i });
   expect(screen.queryByRole('button', { name: 'Ana' })).toBeNull();
+});
+
+
+// EL TECLADO FÍSICO TECLEA EL PIN.
+//
+// Varias tabletas del local trabajan con teclado conectado, y el PIN solo se podía marcar con el
+// dedo: quien tenía las manos en el teclado tenía que soltarlo y apuntarle a la pantalla.
+test('los números del teclado marcan el PIN y Enter entra', async () => {
+  pintar();
+  await elegirYTeclear('Ana', ['1', '2', '3', '4', 'Enter']);
+  await waitFor(() => expect(pinSwitch).toHaveBeenCalledWith(1, '1234'));
+});
+
+test('Backspace borra el último dígito', async () => {
+  pintar();
+  await elegirYTeclear('Ana', ['1', '2', '3', '9', 'Backspace', '4', 'Enter']);
+  await waitFor(() => expect(pinSwitch).toHaveBeenCalledWith(1, '1234'));
+});
+
+// UN ENTER ANTICIPADO NO PUEDE GASTAR UN INTENTO.
+//
+// El servidor bloquea la cuenta tras varios fallos seguidos, así que mandar un PIN a medias no es
+// inofensivo: acerca al operador al lockout por una tecla de más. El botón ya está apagado con el
+// PIN corto y el teclado tiene que respetar la misma condición.
+test('Enter con el PIN corto no intenta entrar', async () => {
+  pintar();
+  await elegirYTeclear('Ana', ['1', '2', 'Enter']);
+  await noIntentoEntrar();
+});
+
+// Antes de elegir persona no hay PIN que llenar. Acumular dígitos ahí los mandaría con la persona
+// que se elija DESPUÉS, y en esta pantalla eso es atribuirle una venta a quien no fue.
+test('antes de elegir a la persona el teclado no acumula nada', async () => {
+  pintar();
+  const ana = await screen.findByRole('button', { name: 'Ana' });
+  for (const k of ['1', '2', '3', '4']) fireEvent.keyDown(window, { key: k });
+  fireEvent.click(ana);
+  expect(screen.getByRole('button', { name: 'Entrar' })).toBeDisabled();
+});
+
+// Ctrl+1 cambia de pestaña y Alt+F4 cierra: una combinación no es teclear un PIN, y tomarla como
+// dígito deja al operador con un PIN que no escribió y un intento fallido.
+test('una combinación con Ctrl no teclea', async () => {
+  pintar();
+  fireEvent.click(await screen.findByRole('button', { name: 'Ana' }));
+  fireEvent.keyDown(window, { key: '1', ctrlKey: true });
+  expect(screen.queryByText('•')).toBeNull();
+});
+
+// CON EL FOCO EN UN BOTÓN, ENTER ES DE ESE BOTÓN.
+//
+// Es como se sale por "Entrar con usuario y contraseña" sin ratón — la única salida de quien olvidó
+// su PIN a media noche. Robarle la tecla al botón enfocado la dejaría sin camino de teclado y, peor,
+// mandaría el PIN cuando el operador creía estar activando otra cosa.
+test('Enter con el foco en un botón no manda el PIN', async () => {
+  pintar();
+  await elegirYTeclear('Ana', ['1', '2', '3', '4']);
+  screen.getByRole('button', { name: /usuario y contraseña/i }).focus();
+  fireEvent.keyDown(window, { key: 'Enter' });
+  await noIntentoEntrar();
 });

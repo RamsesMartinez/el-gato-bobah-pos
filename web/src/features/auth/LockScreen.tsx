@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Box, Button, Center, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { LuDelete, LuLock } from 'react-icons/lu';
@@ -60,13 +60,64 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   const pidiendoPin = pinOnly || persona !== null;
   const largoMinimo = pinOnly ? 6 : 4;
 
-  const teclear = (d: string) => {
+  const teclear = useCallback((d: string) => {
     setError('');
     setPin((p) => (p.length >= 12 ? p : p + d));
-  };
+  }, []);
+  const borrar = useCallback(() => {
+    setError('');
+    setPin((p) => p.slice(0, -1));
+  }, []);
+
+  // El foco se trae a esta pantalla al montarla.
+  //
+  // La hoja de bloqueo va ENCIMA de la app sin desmontarla, así que sin esto el foco se queda en lo
+  // último que se tocó antes de que la tableta se durmiera. Con teclado eso es grave de dos maneras:
+  // Enter activaría un botón que ya no se ve, y el PIN se iría escribiendo dentro del campo que
+  // quedó atrás.
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => { caja.current?.focus(); }, []);
+
+  // El teclado físico marca el PIN igual que la pantalla.
+  //
+  // Varias tabletas del local trabajan con teclado conectado y el PIN solo se podía marcar con el
+  // dedo. Se consume la tecla con preventDefault para que no llegue también a lo que haya debajo.
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      // Ctrl+1 cambia de pestaña y Alt+F4 cierra: una combinación no es teclear un PIN.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Sin persona elegida no hay PIN que llenar, y acumular dígitos aquí los mandaría con quien se
+      // elija después: en esta pantalla eso es atribuirle la venta a quien no fue.
+      if (!pidiendoPin) return;
+
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        teclear(e.key);
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        borrar();
+        return;
+      }
+      if (e.key === 'Enter') {
+        // Con el foco en un botón, Enter es DE ese botón: es como se sale por "Entrar con usuario y
+        // contraseña" sin ratón, y esa es la única salida de quien olvidó su PIN.
+        if (document.activeElement instanceof HTMLButtonElement) return;
+        // La misma condición que apaga el botón. El servidor bloquea la cuenta tras varios fallos
+        // seguidos, así que mandar un PIN a medias acerca al operador al lockout por una tecla.
+        if (pin.length < largoMinimo || desbloquear.isPending) return;
+        e.preventDefault();
+        desbloquear.mutate();
+      }
+    };
+    window.addEventListener('keydown', alTeclear);
+    return () => window.removeEventListener('keydown', alTeclear);
+  }, [pidiendoPin, pin, largoMinimo, teclear, borrar, desbloquear]);
 
   return (
-    <Center position="fixed" inset={0} zIndex={2000} bg="bg.subtle" p={4}>
+    <Center ref={caja} tabIndex={-1} outline="none"
+      position="fixed" inset={0} zIndex={2000} bg="bg.subtle" p={4}>
       <VStack gap={4} w="100%" maxW="480px">
         <HStack color="fg.muted">
           <LuLock />
@@ -97,8 +148,7 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
                 <Button key={d} minH={TAP} fontSize="xl" onClick={() => teclear(d)}>{d}</Button>
               ))}
-              <Button minH={TAP} variant="ghost" aria-label="Borrar"
-                onClick={() => setPin((p) => p.slice(0, -1))}>
+              <Button minH={TAP} variant="ghost" aria-label="Borrar" onClick={borrar}>
                 <LuDelete />
               </Button>
               <Button minH={TAP} fontSize="xl" onClick={() => teclear('0')}>0</Button>
