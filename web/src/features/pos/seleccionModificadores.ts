@@ -36,3 +36,19 @@ export function cabeOtra(picks: Picks, option: MenuOption, maxDelGrupo: number):
 export function sumarUna(picks: Picks, optionId: number): Picks {
   return { ...picks, [optionId]: cantidadDe(picks, optionId) + 1 };
 }
+
+// alTocarUnaSola resuelve el toque sobre una opción de un grupo de UNA SOLA (max = 1).
+//
+// Tocar la que ya está elegida la QUITA, pero solo donde el grupo admite quedarse vacío. El caso
+// que lo pidió es el aderezo de cortesía: marcado por error, no había forma de desmarcarlo y la
+// línea se iba a cocina con algo que el cliente no pidió — el toque repetido volvía a elegir lo
+// mismo.
+//
+// En un grupo OBLIGATORIO el toque repetido no hace nada, a propósito: vaciarlo no lleva a ningún
+// lado —hay que elegir algo de todos modos y cambiar de opción ya cuesta un solo toque—, así que
+// lo único que produciría es una línea inválida que el operador tiene que deshacer. Además la hoja
+// nunca abre un grupo obligatorio vacío: siempre lo pre-marca.
+export function alTocarUnaSola(picks: Picks, optionId: number, minDelGrupo: number): Picks {
+  if (minDelGrupo === 0 && cantidadDe(picks, optionId) > 0) return {};
+  return { [optionId]: 1 };
+}

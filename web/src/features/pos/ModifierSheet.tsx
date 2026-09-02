@@ -19,7 +19,7 @@ import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
 import { deltaDeLista, desgloseDelta, nombreDeLista, precioDeLista } from './precioPlataforma';
-import { cabeOtra, cantidadDe, sumarUna } from './seleccionModificadores';
+import { alTocarUnaSola, cabeOtra, cantidadDe, sumarUna } from './seleccionModificadores';
 import { combinacionGuardada, completarConLaUltima, guardarCombinacion } from './ultimaCombinacion';
 import { OptionPriceFields } from './OptionPriceFields';
 import { useMenu } from '../../hooks/useMenu';
@@ -217,8 +217,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const countIn = (gid: number) =>
     Object.values(sel[gid] ?? {}).reduce((a, b) => a + b, 0);
 
-  const setSingle = (gid: number, oid: number) =>
-    setSel((s) => ({ ...s, [gid]: { [oid]: 1 } }));
+  // El toque en un grupo de UNA SOLA. Se llamaba setSingle y el nombre mentía desde que tocar la
+  // elegida la quita: la regla —y por qué el grupo obligatorio no se vacía— vive en el módulo puro.
+  const tocarUnaSola = (gid: number, oid: number, min: number) =>
+    setSel((s) => ({ ...s, [gid]: alTocarUnaSola(s[gid] ?? {}, oid, min) }));
 
   const toggleMulti = (gid: number, oid: number, max: number) =>
     setSel((s) => {
@@ -323,7 +325,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             borderRightRadius={repetible ? 0 : undefined}
             onClick={() => {
               if (suppressClick.current) { suppressClick.current = false; return; } // fue long-press
-              if (single) setSingle(g.id, o.id); else toggleMulti(g.id, o.id, g.max);
+              if (single) tocarUnaSola(g.id, o.id, g.min); else toggleMulti(g.id, o.id, g.max);
             }}
             {...manageHandlers(o)}
           >
