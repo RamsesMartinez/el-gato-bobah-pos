@@ -168,7 +168,11 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       for (const p of buildPayments()) {
         await posApi.chargeOrder(order.id, { methodId: p.methodId, amount: p.amount, tip: p.tip });
       }
-      return order;
+      // Se relee DESPUÉS de cobrar. Devolver el pedido recién creado dejaba la confirmación
+      // diciendo "Falta cobrar $95" justo después de que el operador tocó COBRAR: la respuesta del
+      // create trae el pedido sin pagos, porque los pagos entran en la llamada siguiente. El
+      // operador leía que faltaba dinero de una venta que acababa de cobrar.
+      return posApi.order(order.id);
     },
     onSuccess: (order) => {
       closeTab(activeId); // la cuenta se envió/cobró: se cierra y queda la siguiente activa
