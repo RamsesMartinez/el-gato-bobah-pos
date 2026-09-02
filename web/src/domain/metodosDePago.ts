@@ -1,4 +1,4 @@
-import type { PaymentMethod } from '../../types/pos';
+import type { PaymentMethod } from '../types/pos';
 
 // Cómo la pantalla de cobro decide qué método usar, sin depender de ningún id fijo.
 //

@@ -7,7 +7,7 @@ import {
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import type { BoardOrder } from '../../types/pos';
-import { CobrarSheet } from '../orders/CobrarSheet';
+import { CobrarSheet } from '../../shared/CobrarSheet';
 import { money } from '../../utils/format';
 
 // Alto mínimo de todo lo que se toca. Por debajo el dedo falla y la siguiente venta cae en el

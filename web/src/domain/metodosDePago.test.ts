@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from 'vitest';
 import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
-import type { PaymentMethod } from '../../types/pos';
+import type { PaymentMethod } from '../types/pos';
 
 // Ids deliberadamente ALTOS y desordenados: son los que recibiría una empresa que no es la primera
 // tras volver payment_methods per-tenant. Con la lógica vieja (ids 1/2/3/7 quemados) todo esto

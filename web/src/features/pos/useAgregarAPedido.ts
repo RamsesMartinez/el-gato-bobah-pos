@@ -4,7 +4,7 @@ import { ApiError } from '../../api/client';
 import { posApi } from '../../api/pos';
 import type { BoardOrder, OrderView } from '../../types/pos';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
-import { armarPedido } from './armarPedido';
+import { armarPedido } from '../../domain/pedido';
 
 // Agregarle renglones a un pedido que ya está en cocina.
 //

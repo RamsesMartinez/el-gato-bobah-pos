@@ -15,8 +15,8 @@ import { money } from '../../utils/format';
 import { buildKitchenHtml } from '../../utils/printKitchen';
 import { printHtmlOffscreen } from '../../utils/printReceipt';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
-import { ReprintTicket } from '../tickets/ReprintTicket';
-import { CobrarSheet } from './CobrarSheet';
+import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
+import { CobrarSheet } from '../../shared/CobrarSheet';
 import { useSessionStore } from '../../stores/session';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 

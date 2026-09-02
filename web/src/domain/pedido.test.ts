@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { armarPedido } from './armarPedido';
-import type { TicketLine } from '../../types/pos';
-import type { TicketTab } from '../../stores/ticket';
+import { armarPedido, cobraEnvio } from './pedido';
+import type { TicketLine } from '../types/pos';
+import type { TicketTab } from '../types/pos';
 
 const linea = (l: Partial<TicketLine>): TicketLine => ({
   lineId: 'a', productId: 10, name: 'Alitas', unitPrice: 200, qty: 1, modifiers: [], ...l,
@@ -58,5 +58,44 @@ describe('armarPedido', () => {
       cuenta: cuenta({ customerName: '' }), lineas: [linea({})], clientUuid: 'u1', deliveryFee: 0,
     });
     expect(body.customerName).toBeUndefined();
+  });
+});
+
+// EL DEFECTO QUE ESTO CIERRA: la pantalla ofrecía cobrar un envío que el servidor no cobra.
+//
+// Secuencia real y alcanzable hoy: cuenta nueva -> se marca "Domicilio" -> después se le asigna una
+// plataforma. `setPlatform` no toca el tipo de servicio, y el panel del pedido esconde los botones
+// de tipo cuando hay plataforma, así que el operador ya no lo ve ni lo puede corregir. La cuenta se
+// queda en 'domicilio' con plataforma, la pantalla suma $20 de envío, y el servidor los fuerza a 0.
+// Resultado: la hoja pinta COBRAR $115 sobre un pedido de $95, el cobro rebota por exceso, y el
+// pedido queda CREADO Y SIN COBRAR.
+//
+// `armarPedido` ya aplicaba la regla al armar el cuerpo. Lo que faltaba era que la MISMA regla
+// decidiera lo que la pantalla muestra, en vez de que cada lugar la volviera a deducir.
+describe('cobraEnvio', () => {
+  it('un domicilio propio sí cobra envío', () => {
+    expect(cobraEnvio(cuenta({ serviceType: 'domicilio', platformId: null }))).toBe(true);
+  });
+
+  it('mostrador no cobra envío', () => {
+    expect(cobraEnvio(cuenta({ serviceType: 'mostrador', platformId: null }))).toBe(false);
+  });
+
+  it('con plataforma NO cobra envío, aunque la cuenta diga domicilio', () => {
+    // Es el caso caro: el reparto lo cobra la plataforma, no el negocio.
+    expect(cobraEnvio(cuenta({ serviceType: 'domicilio', platformId: 3 }))).toBe(false);
+  });
+
+  it('lo que decide la pantalla y lo que viaja al servidor no pueden divergir', () => {
+    // La garantía de que son la misma regla: si alguien cambia una, este test truena.
+    for (const c of [
+      cuenta({ serviceType: 'domicilio', platformId: null }),
+      cuenta({ serviceType: 'domicilio', platformId: 3 }),
+      cuenta({ serviceType: 'mostrador', platformId: null }),
+      cuenta({ serviceType: 'mostrador', platformId: 3 }),
+    ]) {
+      const body = armarPedido({ cuenta: c, lineas: [], clientUuid: 'u', deliveryFee: 20 });
+      expect(Number(body.deliveryFee) > 0).toBe(cobraEnvio(c));
+    }
   });
 });

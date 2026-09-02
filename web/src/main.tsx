@@ -7,7 +7,7 @@ import { Toaster } from './components/ui/toaster';
 import { App } from './App';
 import { registrarLimpiezaDeTenant } from './stores/session';
 import { useTicketStore } from './stores/ticket';
-import { initPwa } from './features/pwa/registerPwa';
+import { initPwa } from './shared/pwa/registerPwa';
 import './index.css';
 
 const queryClient = new QueryClient();

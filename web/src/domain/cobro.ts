@@ -12,39 +12,16 @@
 // entera. Cobrando de a un pedazo, el registro coincide con el instante en que el dinero está en la
 // mano, y lo que falta lo dice el servidor entre uno y otro en vez de una resta local.
 
+import { parseMonto, round2 } from './numeros';
+import type { Numero } from './numeros';
+
+// Se re-exportan porque media docena de pantallas los importan de aquí y son la misma decisión: el
+// dinero se lee y se redondea en un solo lugar.
+export { parseMonto, round2 };
+export type { Numero as Monto };
+
 // Billetes MXN que el operador toca en vez de teclear.
 const BILLETES = [50, 100, 200, 500, 1000];
-
-export function round2(n: number): number {
-  // El +Number.EPSILON corrige el caso clásico de los binarios: 1.005*100 es 100.49999999999999 y
-  // Math.round lo baja a 1.00, un centavo que en un corte de caja no se explica.
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-export type Monto =
-  | { estado: 'ausente' }
-  | { estado: 'valido'; valor: number }
-  | { estado: 'invalido'; motivo: 'formato' | 'negativo' };
-
-// parseMonto distingue las TRES cosas que un campo de dinero puede ser, y esa es toda su razón de
-// existir.
-//
-// - AUSENTE no es cero. El campo de "con cuánto paga" vacío significa "pagó justo", y tratarlo como
-//   $0 recibidos deja el aviso de efectivo insuficiente encendido para siempre: el botón de cobrar
-//   muerto en el caso más común.
-// - INVÁLIDO no es cero. `Number('abc')` da NaN y se disolvía en un cambio de $0 con el botón
-//   todavía cobrable; `parseFloat('1,000')` da 1, así que la coma de millar que el operador teclea
-//   por costumbre cobraba $999 de menos. Se rechaza en vez de adivinar: no hay forma de saber si
-//   "1,000" quiso decir mil o uno.
-export function parseMonto(texto: string): Monto {
-  const s = texto.trim();
-  if (s === '') return { estado: 'ausente' };
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return { estado: 'invalido', motivo: 'formato' };
-  const n = Number(s);
-  if (!Number.isFinite(n)) return { estado: 'invalido', motivo: 'formato' };
-  if (n < 0) return { estado: 'invalido', motivo: 'negativo' };
-  return { estado: 'valido', valor: round2(n) };
-}
 
 // dividirEnPartes reparte un monto en N, con el RESIDUO en la última.
 //

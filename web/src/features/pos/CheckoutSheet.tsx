@@ -22,8 +22,11 @@ import type { OrderView } from '../../types/pos';
 import { money } from '../../utils/format';
 import { uuid } from '../../utils/uuid';
 import { ApiError } from '../../api/client';
-import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from './metodosDePago';
-import { billetesUtiles, cambioDeEfectivo, parseMonto, round2 } from './cobro';
+import { esEfectivo, metodoPorDefecto, metodosDeLaLista, primerMetodoLibre } from '../../domain/metodosDePago';
+import {
+  billetesUtiles, cambioDeEfectivo, parseMonto, presetsDePropina, round2,
+} from '../../domain/cobro';
+import { cobraEnvio } from '../../domain/pedido';
 
 // El icono se elige por la NATURALEZA del método, no por su id: desde que payment_methods es
 // per-tenant cada empresa tiene los suyos y los ids ya no son estables entre negocios.
@@ -93,7 +96,11 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     llavesDePago.current.set(k, nueva);
     return nueva;
   };
-  const isDelivery = serviceType === 'domicilio';
+  // La regla del envío la contesta el dominio, no esta pantalla. Deducirla aquí con
+  // `serviceType === 'domicilio'` ignoraba la plataforma: una cuenta marcada a domicilio y después
+  // asignada a Uber sumaba $20 que el servidor no cobra, y el cobro rebotaba dejando el pedido
+  // creado y sin cobrar.
+  const isDelivery = cobraEnvio({ serviceType, platformId: lista });
   const defaultFee = settings ? settings.deliveryFee : '20';
   const feeInput = feeOverride ?? defaultFee;
   const montoDelEnvio = parseMonto(feeInput);
@@ -357,23 +364,31 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
                   )}
                 </Box>
 
-                {/* Propina */}
+                {/* Propina. Los porcentajes salen de `presetsDePropina`, no de un cálculo local:
+                    escrito aquí eran `Math.round` sin EPSILON y sobre el SUBTOTAL, así que en un
+                    domicilio el mismo "15%" daba una cifra en esta pantalla y otra en la de cobro.
+                    La base es lo que el cliente va a pagar —consumo más envío—, que es lo mismo que
+                    usa la otra hoja. */}
                 <Box>
                   <Text fontWeight="600" mb={2}>Propina</Text>
                   <HStack mb={2}>
-                    {[0, 0.1, 0.15, 0.2].map((pct) => {
-                      const amt = Math.round(total * pct * 100) / 100;
-                      const active = tipAmount === amt;
+                    <Button flex="1" variant={tip === '' ? 'solid' : 'outline'}
+                      colorPalette={tip === '' ? undefined : 'gray'} onClick={() => setTip('')}>
+                      Sin
+                    </Button>
+                    {presetsDePropina(orderTotal).map((p) => {
+                      const active = tip === String(p.monto);
                       return (
-                        <Button key={pct} flex="1"
+                        <Button key={p.etiqueta} flex="1"
                           variant={active ? 'solid' : 'outline'} colorPalette={active ? undefined : 'gray'}
-                          onClick={() => setTip(amt ? String(amt) : '')}>
-                          {pct === 0 ? 'Sin' : `${pct * 100}%`}
+                          onClick={() => setTip(String(p.monto))}>
+                          {p.etiqueta}
                         </Button>
                       );
                     })}
                   </HStack>
-                  <Input size="lg" type="number" inputMode="decimal" placeholder="Otra cantidad"
+                  <Input size="lg" inputMode="decimal" placeholder="Otra cantidad"
+                    aria-label="Otra propina"
                     value={tip} onChange={(e) => setTip(e.target.value)} />
                 </Box>
 

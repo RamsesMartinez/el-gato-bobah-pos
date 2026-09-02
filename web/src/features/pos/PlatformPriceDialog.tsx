@@ -11,6 +11,7 @@ import { usePlatformPrice } from '../../hooks/usePlatformPrice';
 import { useUiStore } from '../../stores/ui';
 import { money } from '../../utils/format';
 import type { DesglosePrecio } from './precioPlataforma';
+import { montoTecleado } from '../../domain/numeros';
 
 // Corregir el precio de UN producto en UNA plataforma, desde la pantalla de venta.
 //
@@ -31,10 +32,12 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
   const { guardar, quitar } = usePlatformPrice();
   const [precio, setPrecio] = useState(String(desglose.vigente));
 
-  const valor = parseFloat(precio);
-  const valido = Number.isFinite(valor) && valor > 0;
+  // undefined = lo escrito no es un monto. Con `parseFloat`, "1,000" se guardaba como $1.
+  const valor = montoTecleado(precio);
+  const valido = valor !== undefined && valor > 0;
 
-  const onGuardar = () =>
+  const onGuardar = () => {
+    if (valor === undefined) return;
     guardar.mutate({ productId, platformId: plataformaId, price: valor }, {
       onSuccess: () => {
         toaster.create({ title: `${productName}: ${money(valor)} en ${plataforma}`, type: 'success' });
@@ -42,6 +45,7 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
       },
       onError: (e) => toaster.create({ title: 'No se pudo guardar', description: String(e), type: 'error' }),
     });
+  };
 
   const onQuitar = () =>
     quitar.mutate({ productId, platformId: plataformaId }, {

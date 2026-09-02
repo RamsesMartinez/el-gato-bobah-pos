@@ -19,13 +19,14 @@ import { ConfirmPopover } from '../../components/ui/confirm-popover';
 import {
   MenuRoot, MenuTrigger, MenuContent, MenuItemGroup, MenuRadioItemGroup, MenuRadioItem, MenuSeparator,
 } from '../../components/ui/menu';
-import { ProductEditDialog } from './ProductEditDialog';
+import { ProductEditDialog } from '../../shared/ProductEditDialog';
 import { ProductGroupsDialog } from './ProductGroupsDialog';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
   DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
 import { Field } from '../../components/ui/field';
+import { montoTecleado } from '../../domain/numeros';
 
 const PAGE_SIZE = 25;
 
@@ -314,7 +315,7 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
   const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); };
   const create = useMutation({
     mutationFn: () => adminApi.createProduct({
-      name: name.trim(), categoryId: Number(categoryId), price: parseFloat(price) || 0, favorite,
+      name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
@@ -324,7 +325,7 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
     },
     onError: (e) => toaster.create({ title: 'No se pudo crear', description: String(e), type: 'error' }),
   });
-  const canCreate = name.trim().length > 0 && !!categoryId && (parseFloat(price) || 0) >= 0 && price !== '';
+  const canCreate = name.trim().length > 0 && !!categoryId && montoTecleado(price) !== undefined && price !== '';
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }}>

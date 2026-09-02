@@ -1,4 +1,5 @@
 import type { BoardOrder } from '../../types/pos';
+import { round2 } from '../../domain/cobro';
 
 // Lo que se entregó o se está preparando y todavía nadie pagó.
 //
@@ -28,5 +29,5 @@ export function resumenPorCobrar(ordenes: BoardOrder[]): ResumenPorCobrar {
   // Lo que falta, no el total: un pedido abonado debe menos de lo que costó, y sumar el total
   // mandaría al operador a cobrar dos veces la parte que el cliente ya dejó.
   const monto = pendientes.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
-  return { cuantos: pendientes.length, monto: Math.round(monto * 100) / 100 };
+  return { cuantos: pendientes.length, monto: round2(monto) };
 }

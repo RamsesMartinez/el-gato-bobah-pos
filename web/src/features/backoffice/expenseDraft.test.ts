@@ -103,3 +103,26 @@ describe('splitTotals', () => {
     expect(splitTotals([{ amount: '0.1', personal: false }, { amount: '0.2', personal: false }]).local).toBe(0.3);
   });
 });
+
+// EL DEFECTO QUE ESTO CIERRA: `parseFloat('1,000')` devuelve 1, y es un número finito, así que la
+// guarda de `Number.isFinite` que había no lo atrapaba. El operador teclea la coma de millar por
+// costumbre y el contenido del empaque entra mil veces más chico — el stock queda corrupto y nadie
+// se entera hasta el inventario.
+test('una cantidad con coma de millar se rechaza, no se lee como 1', () => {
+  const unidades = [{ code: 'kg', toBase: '1000' }];
+  expect(packToBase('1,000', 'kg', unidades)).toBe('');
+  // Y la misma cantidad bien escrita sí pasa: la regla rechaza el formato, no el número.
+  expect(packToBase('1000', 'kg', unidades)).toBe('1000000');
+});
+
+// `parseFloat('12kg')` devuelve 12: la unidad tecleada dentro del campo se descartaba en silencio.
+test('un número con la unidad pegada se rechaza en vez de tirar la cola', () => {
+  expect(packToBase('12kg', 'kg', [{ code: 'kg', toBase: '1000' }])).toBe('');
+});
+
+// El importe de un renglón mal escrito NO se cuenta en el total del documento: sumarlo como otra
+// cifra dejaría el cuadre contra el total impreso fallando sin decir por cuál renglón.
+test('un importe con coma no se suma al total del documento', () => {
+  const { local } = splitTotals([{ amount: '1,000', personal: false }, { amount: '250', personal: false }]);
+  expect(local).toBe(250);
+});

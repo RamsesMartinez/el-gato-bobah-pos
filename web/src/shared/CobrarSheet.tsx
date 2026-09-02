@@ -2,19 +2,19 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
-} from '../../components/ui/drawer';
+} from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
 import { LuCheck, LuSplit } from 'react-icons/lu';
-import { toaster } from '../../components/ui/toaster';
-import { posApi } from '../../api/pos';
-import { ApiError } from '../../api/client';
-import type { BoardOrder, OrderView } from '../../types/pos';
-import { money } from '../../utils/format';
-import { uuid } from '../../utils/uuid';
-import { esEfectivo, metodosDeLaLista } from '../pos/metodosDePago';
+import { toaster } from '../components/ui/toaster';
+import { posApi } from '../api/pos';
+import { ApiError } from '../api/client';
+import type { BoardOrder, OrderView } from '../types/pos';
+import { money } from '../utils/format';
+import { uuid } from '../utils/uuid';
+import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
 import {
   billetesUtiles, presetsDePropina, sugerenciasDeMonto, validarCobro, round2,
-} from '../pos/cobro';
+} from '../domain/cobro';
 
 interface Props {
   order: BoardOrder | null;

@@ -6,7 +6,7 @@ import type { CreateOrderBody } from '../../api/pos';
 import type { OrderView } from '../../types/pos';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
-import { armarPedido } from './armarPedido';
+import { armarPedido } from '../../domain/pedido';
 
 // Manda la cuenta activa al servidor, con pagos o sin ellos.
 //
@@ -45,7 +45,9 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
         // el operador cobraba uno, y el otro se quedaba abierto pidiendo comida que nadie preparó.
         // El id de la cuenta ya es un uuid, ya se persiste, y muere cuando la cuenta se cierra.
         clientUuid: cuenta.id,
-        deliveryFee: cuenta.serviceType === 'domicilio' ? (deliveryFee ?? defaultFee) : 0,
+        // `armarPedido` vuelve a aplicar `cobraEnvio`; aquí solo se decide CUÁNTO cuesta el envío
+        // cuando aplica, no SI aplica. Deducirlo también aquí era la segunda copia de la regla.
+        deliveryFee: deliveryFee ?? defaultFee,
         payments,
       });
       return agregarA ? posApi.addOrderLines(agregarA, body.lines) : posApi.createOrder(body);

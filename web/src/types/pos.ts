@@ -211,3 +211,51 @@ export interface BoardLine {
   // "Alitas" y "Alitas BBQ sin cebolla" son platillos distintos en una cocina.
   modifiers?: string[];
 }
+
+// --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---
+//
+// `domain` es puro: no importa de `api/`, de `stores/` ni de React. Estos dos tipos vivían en esos
+// dos lugares, así que una función de dominio que los necesitara tenía que alcanzar hacia arriba —
+// y eso es exactamente la puerta por la que se cuela el acoplamiento que este árbol quiere cerrar.
+
+export interface TicketTab {
+  id: string;
+  num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
+  // El animal con el que se va a cantar este pedido en cocina. Se pone al ABRIR la cuenta y no al
+  // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
+  // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
+  // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
+  //
+  // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
+  // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
+  folioName: string;
+  lines: TicketLine[];
+  serviceType: ServiceType;
+  customerName: string;
+  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
+  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
+  // cada una tiene que conservar su lista.
+  platformId: number | null;
+}
+
+export interface CreateOrderBody {
+  clientUuid: string;
+  serviceType: string;
+  customerName?: string;
+  notes?: string;
+  // Nombre con el que la pantalla ya bautizó la cuenta. El servidor lo sanea y resuelve los
+  // choques del día, así que proponerlo no es decidirlo.
+  folioName?: string;
+  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
+  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
+  // lo que va aquí es el id, nunca los precios.
+  deliveryPlatformId?: number;
+  lines: Array<{
+    productId: number;
+    qty: number;
+    notes?: string;
+    modifiers: Array<{ optionId: number; qty: number }>;
+  }>;
+  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
+  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
+}

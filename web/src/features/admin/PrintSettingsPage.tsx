@@ -8,8 +8,8 @@ import { toaster } from '../../components/ui/toaster';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
-import { useTicketBusinessInfo } from '../tickets/ticketBusinessInfo';
-import { TicketPreview } from '../tickets/TicketPreview';
+import { useTicketBusinessInfo } from '../../shared/tickets/ticketBusinessInfo';
+import { TicketPreview } from '../../shared/tickets/TicketPreview';
 import { overflowingLines, sampleTicketOrder } from '../../utils/printReceipt';
 
 // Lo que sale impreso en el ticket y cómo se dispara la impresión. El backend es la autoridad

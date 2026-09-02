@@ -1,15 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ServiceType, TicketLine, TicketModifier } from '../types/pos';
+import type { ServiceType, TicketLine, TicketModifier, TicketTab } from '../types/pos';
+
+// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos
+// porque `domain` la necesita y no puede importar de `stores/`.
+export type { TicketTab };
 import { uuid } from '../utils/uuid';
 import { nombreLibre } from '../features/pos/folio';
+import { round2 } from '../domain/numeros';
 
 export function lineUnitPrice(line: TicketLine): number {
   const mods = line.modifiers.reduce((s, m) => s + m.priceDelta * m.qty, 0);
   return line.unitPrice + mods;
 }
 export function lineTotal(line: TicketLine): number {
-  return Math.round(lineUnitPrice(line) * line.qty * 100) / 100;
+  return round2(lineUnitPrice(line) * line.qty);
 }
 
 // RepreciarLinea devuelve el precio unitario y los modificadores de una línea en la lista nueva.
@@ -18,25 +23,6 @@ export function lineTotal(line: TicketLine): number {
 export type RepreciarLinea = (line: TicketLine) => Pick<TicketLine, 'unitPrice' | 'modifiers'>;
 
 // Una "cuenta" abierta: un pedido en curso que el cajero puede dejar y retomar.
-export interface TicketTab {
-  id: string;
-  num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
-  // El animal con el que se va a cantar este pedido en cocina. Se pone al ABRIR la cuenta y no al
-  // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
-  // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
-  // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
-  //
-  // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
-  // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
-  folioName: string;
-  lines: TicketLine[];
-  serviceType: ServiceType;
-  customerName: string;
-  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
-  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
-  // cada una tiene que conservar su lista.
-  platformId: number | null;
-}
 
 function emptyTab(num: number): TicketTab {
   // Cada cuenta nueva arranca en MOSTRADOR, aunque la anterior haya sido de plataforma: un tap de
@@ -232,7 +218,7 @@ export const useActiveTicket = (): TicketTab =>
   useTicketStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);
 
 export function ticketTotal(lines: TicketLine[]): number {
-  return Math.round(lines.reduce((s, l) => s + lineTotal(l), 0) * 100) / 100;
+  return round2(lines.reduce((s, l) => s + lineTotal(l), 0));
 }
 export function ticketCount(lines: TicketLine[]): number {
   return lines.reduce((s, l) => s + l.qty, 0);
