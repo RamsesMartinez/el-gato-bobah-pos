@@ -849,6 +849,41 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 	return items, nil
 }
 
+const lockOpenPrimarySession = `-- name: LockOpenPrimarySession :one
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1
+for share of s
+`
+
+type LockOpenPrimarySessionRow struct {
+	ID           int64       `json:"id"`
+	RegisterID   int64       `json:"register_id"`
+	BusinessDate pgtype.Date `json:"business_date"`
+}
+
+// La misma sesión, pero BLOQUEADA hasta que la transacción del cobro termine.
+//
+// Sin el lock, entre leer la sesión y escribir el pago cabe un cierre de caja completo: el corte
+// calcula su esperado, lo persiste en register_session_totals —que es una foto, no se recalcula— y
+// el pago aterriza con el id de esa sesión ya cerrada. Ese dinero no lo espera NINGÚN arqueo: el
+// cerrado ya está escrito, y el siguiente filtra los pagos por su propia sesión. El efectivo está
+// físicamente en el cajón y no figura en los libros.
+//
+// `for share` y no `for update`: el cobro no modifica la sesión, solo necesita que nadie la cierre
+// mientras escribe. El cierre sí la actualiza, así que queda esperando en vez de adelantarse.
+//
+// El `of s` es obligatorio: sin él Postgres intentaría bloquear también cash_registers, que este
+// cobro no tiene por qué tocar.
+func (q *Queries) LockOpenPrimarySession(ctx context.Context) (LockOpenPrimarySessionRow, error) {
+	row := q.db.QueryRow(ctx, lockOpenPrimarySession)
+	var i LockOpenPrimarySessionRow
+	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
+	return i, err
+}
+
 const netCashMovements = `-- name: NetCashMovements :one
 select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1

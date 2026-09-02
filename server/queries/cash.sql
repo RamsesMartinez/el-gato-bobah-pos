@@ -189,6 +189,27 @@ join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
 limit 1;
 
+-- name: LockOpenPrimarySession :one
+-- La misma sesión, pero BLOQUEADA hasta que la transacción del cobro termine.
+--
+-- Sin el lock, entre leer la sesión y escribir el pago cabe un cierre de caja completo: el corte
+-- calcula su esperado, lo persiste en register_session_totals —que es una foto, no se recalcula— y
+-- el pago aterriza con el id de esa sesión ya cerrada. Ese dinero no lo espera NINGÚN arqueo: el
+-- cerrado ya está escrito, y el siguiente filtra los pagos por su propia sesión. El efectivo está
+-- físicamente en el cajón y no figura en los libros.
+--
+-- `for share` y no `for update`: el cobro no modifica la sesión, solo necesita que nadie la cierre
+-- mientras escribe. El cierre sí la actualiza, así que queda esperando en vez de adelantarse.
+--
+-- El `of s` es obligatorio: sin él Postgres intentaría bloquear también cash_registers, que este
+-- cobro no tiene por qué tocar.
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1
+for share of s;
+
 -- name: SeedBasePaymentMethods :exec
 -- Métodos de pago base para una empresa recién creada. Desde 0037 la tabla es per-tenant, así que
 -- una empresa nueva nace SIN NINGUNO y no podría cobrar: /payment-methods devolvería vacío y el

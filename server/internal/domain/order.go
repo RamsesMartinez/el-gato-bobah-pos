@@ -271,6 +271,22 @@ func PagosCubren(pagado, total decimal.Decimal) bool {
 	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
 }
 
+// PedidoSaldado dice si un pedido ya no debe nada. Es EL predicado: quien cierra el pedido, quien
+// lo marca pagado en cada lista y quien calcula lo que falta responden todos a esta función.
+//
+// Estaba escrito cuatro veces, y dos de esas cuatro no toleraban el centavo del redondeo: dividir
+// $100 en tres partes de $33.33 cerraba el pedido —con la versión tolerante— y al mismo tiempo lo
+// seguía mostrando con $0.01 de deuda en la barra del POS y en el detalle, con la versión exacta.
+// El operador no tenía cómo cobrar ese centavo y al día siguiente el pedido salía de la vista con
+// la deuda abierta. Es el corolario del principio III: la lista y el resumen de la misma pantalla
+// salen del mismo predicado, o uno de los dos miente y nadie sabe cuál.
+//
+// El total positivo es parte de la definición: un pedido de $0 no está "pagado", no tiene nada que
+// pagar.
+func PedidoSaldado(pagado, total decimal.Decimal) bool {
+	return total.IsPositive() && PagosCubren(pagado, total)
+}
+
 // PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
 //
 // Solo lo que sigue en curso. Un pedido entregado ya tiene su venta contada en el corte y su ticket

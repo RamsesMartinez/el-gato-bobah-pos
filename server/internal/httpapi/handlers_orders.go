@@ -314,10 +314,14 @@ func (h *Handlers) FolioNames(w http.ResponseWriter, r *http.Request) {
 }
 
 type chargeOrderBody struct {
-	MethodID  int16           `json:"methodId"`
-	Amount    decimal.Decimal `json:"amount"`
-	Tip       decimal.Decimal `json:"tip"`
-	Reference *string         `json:"reference"`
+	MethodID int16           `json:"methodId"`
+	Amount   decimal.Decimal `json:"amount"`
+	Tip      decimal.Decimal `json:"tip"`
+	// ClientUuid identifica ESTE cobro. Opcional: sin él el pago se registra igual, pero se pierde
+	// la red que hace inocuo el reenvío — y al dividir la cuenta esa red es lo único que impide
+	// que el reenvío de una mitad deje el pedido saldado con la otra sin cobrar.
+	ClientUuid uuid.UUID `json:"clientUuid"`
+	Reference  *string   `json:"reference"`
 }
 
 // POST /orders/{id}/pay
@@ -336,14 +340,23 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.orders.Charge(r.Context(), app.ChargeCmd{
+	// Se devuelve lo que QUEDA del pedido, no un "ok": con la cuenta dividida la pantalla tendría
+	// que restar por su cuenta después de cada comensal, y dos implementaciones de la misma cifra
+	// son de donde salió la barra diciendo $2,141 mientras su lista decía $1,928.
+	res, err := h.orders.Charge(r.Context(), app.ChargeCmd{
 		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
-		Reference: body.Reference, ActorID: u.ID,
-	}); err != nil {
+		ClientUUID: body.ClientUuid, Reference: body.Reference, ActorID: u.ID,
+	})
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+	// Cobrar era la ÚNICA mutación de pedido que no avisaba, y con la cuenta dividida eso deja de
+	// ser un retraso y pasa a ser dinero: la caja B cobra el pedido entero y la hoja abierta en la
+	// caja A sigue diciendo "Falta $500" indefinidamente —su lista se refresca por otra llave— hasta
+	// que el operador de A cobra el primer pedazo y rebota con el efectivo del cliente en la mano.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
 }
 
 // GET /orders/open — la barra de pedidos en curso del POS.

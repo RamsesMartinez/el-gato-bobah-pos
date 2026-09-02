@@ -47,7 +47,7 @@ func TestCrearUnPedidoYaCobradoSeRechaza(t *testing.T) {
 	if err != nil {
 		t.Fatalf("confirmar: %v", err)
 	}
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("100"),
 		Tip: decimal.Zero, ActorID: cajero,
 	}); err != nil {
@@ -102,7 +102,7 @@ func TestUnPedidoAnteriorSigueSiendoCobrableYEntregable(t *testing.T) {
 		t.Fatalf("sembrar el renglón viejo: %v", err)
 	}
 
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: orderID, MethodID: efectivo, Amount: decimal.RequireFromString("100"),
 		Tip: decimal.Zero, ActorID: cajero,
 	}); err != nil {
