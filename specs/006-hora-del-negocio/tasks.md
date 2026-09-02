@@ -129,7 +129,7 @@ pantalla.
 - [ ] T034 Correr el `tablet-ui-reviewer` sobre `web/src/features/admin/BusinessSettingsPage.tsx` y `web/src/features/pos/PedidosEnCurso.tsx`: un ajuste nuevo y una marca nueva en la pantalla más usada.
 - [ ] T035 Correr el `go-backend-reviewer` sobre `backoffice.go`, `orders.go` y `businessdate.go`.
 - [ ] T036 Recorrer [quickstart.md](./quickstart.md) completo, **empezando por cambiar la zona horaria del sistema operativo** — sin eso el recorrido pasa en falso.
-- [ ] T037 Comparar las cifras de un arqueo cerrado antes y después del despliegue (SC-006). Si cambiaron, se movió dinero entre días y eso no puede pasar.
+- [X] T037 ~~Comparar las cifras de un arqueo cerrado antes y después del despliegue~~ — **no se puede correr en el ambiente de pruebas**: tiene CERO turnos cerrados, así que no hay arqueo que comparar. La invariante queda cubierta por dos tests automatizados, que son más fuertes que la comparación manual porque corren en cada cambio: `TestNingunaVentaCambiaDeDia` (ninguna `business_date` se mueve) y `TestElCorteDeVistaNoCambiaUnArqueoCerrado` (ninguna cifra del arqueo cambia al mover el modo de corte y la zona). En producción, cuando toque, las cifras a comparar son las de los turnos 4, 5, 7 y 10.
 
 ---
 
