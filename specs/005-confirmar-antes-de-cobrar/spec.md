@@ -120,6 +120,34 @@ encendido, y que el de una empresa existente no cambió.
 
 ---
 
+### User Story 5 - Cobrar un pedido en curso, entero o por pedazos (Priority: P1)
+
+Quien cobra abre un pedido en curso y elige **cuánto cobra ahora**: todo, o el pedazo que le toca al
+comensal que está pagando. Elige con qué paga, deja propina si la hay, y cobra. Si queda saldo, la
+hoja no se cierra: se prepara para el siguiente comensal con lo que falta.
+
+**Why this priority**: es P1 porque **esta feature lo rompió**. Al mover el cobro a un pedido que ya
+existe, el camino principal quedó con la hoja mínima —método de pago y con cuánto paga— y perdió
+dividir la cuenta y la propina, que solo existían en la pantalla del carrito. No es una carencia
+heredada: es un hueco que abrió el cambio de flujo, y el dueño lo reportó desde la tableta.
+
+**Independent Test**: se confirma un pedido de $500, se cobra la mitad con tarjeta y la otra mitad en
+efectivo con propina, y se verifica que el pedido queda saldado, que las dos propinas quedaron
+atribuidas a su método, y que el corte de caja las separa del ingreso.
+
+**Acceptance Scenarios**:
+
+1. **Given** un pedido en curso de $500 sin cobrar, **When** quien cobra elige "Entre 2" y cobra con
+   tarjeta, **Then** el pedido queda con $250 de saldo, la hoja sigue abierta y ofrece cobrar $250.
+2. **Given** ese mismo pedido con $250 de saldo, **When** se cobra en efectivo con $300 recibidos,
+   **Then** la pantalla dice cuánto es el cambio y el pedido queda saldado.
+3. **Given** un cobro en efectivo donde el cliente dice "quédese con el cambio", **When** quien cobra
+   toca ese botón, **Then** el excedente se registra como propina y no como venta.
+4. **Given** que otra caja cobró el mismo pedido mientras esta hoja estaba abierta, **When** se
+   intenta cobrar, **Then** la pantalla lo dice con palabras del operador y muestra el estado real.
+5. **Given** un cobro cuya respuesta se perdió, **When** quien cobra vuelve a tocar, **Then** el
+   sistema reconoce que ese cobro ya entró y no lo registra dos veces.
+
 ### Edge Cases
 
 Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
@@ -237,6 +265,23 @@ Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
 - **FR-023**: La barra MUST seguir siendo usable con más pedidos de los que caben a lo ancho, sin
   desplegables del sistema operativo.
 
+**Lo que la US5 agrega a los requisitos:**
+
+- **FR-018**: Al cobrar un pedido en curso se puede cobrar **una parte**, no solo el total. Lo que
+  falta lo dice el servidor entre pedazo y pedazo; la pantalla no lo calcula por su cuenta.
+- **FR-019**: Repartir la cuenta entre dos, tres o cuatro se ofrece como atajo de un toque. El
+  residuo del redondeo se cobra en el último pedazo, nunca queda un centavo colgando.
+- **FR-020**: Cada cobro puede llevar propina, y esa propina queda atribuida **al método con el que
+  entró**. Nunca se monta en un pago que se hizo con otro instrumento.
+- **FR-021**: Un cobro **no se registra dos veces** aunque se reintente. Si el reintento cambia el
+  método o el monto, se rechaza en vez de darse por hecho: no es un reintento, es otro cobro.
+- **FR-022**: Un pedido que ya se cobró **sigue pudiendo recibir renglones** mientras esté en cocina.
+  Es el caso más común de "agrégame una más".
+- **FR-023**: La propina no puede superar el total de la cuenta. El tope es de cordura contra un
+  error de captura, y se aplica por cobro.
+- **FR-024**: Cobrar avisa a las demás pantallas en el momento, igual que confirmar, agregar,
+  entregar y cancelar.
+
 ### Key Entities
 
 - **Pedido en curso**: un pedido confirmado que todavía no se entregó ni se canceló. Lo identifica
@@ -265,6 +310,13 @@ Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
   conserva la misma cantidad de renglones visibles que antes de la feature, en 1024×600.
 - **SC-006**: Cocina nunca recibe dos veces el mismo renglón: verificable contando renglones entre
   las comandas de un pedido con agregados.
+- **SC-007**: Cobrar una cuenta de $500 repartida entre tres comensales toma como máximo **tres
+  toques por comensal** (cuánto, con qué, cobrar) y **cero capturas de teclado** cuando el reparto
+  es parejo.
+- **SC-008**: Ningún cobro se registra dos veces: verificable mandando el mismo cobro dos veces y
+  contando las filas de pago.
+- **SC-009**: El corte de caja de un turno con cuentas divididas cuadra contra el efectivo real, con
+  las propinas separadas del ingreso y atribuidas a su método.
 
 ## Assumptions
 
@@ -280,3 +332,11 @@ Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
 - Las dos estaciones son de confianza y del mismo negocio: no hace falta bloqueo pesimista de
   pedidos, basta con que los agregados se sumen.
 - El tablero de pedidos (`/pedidos`) sigue siendo la pantalla de cocina y no cambia de propósito.
+- **Un cobro es un acto físico y se registra de a uno.** Capturar N pagos y mandarlos de un golpe
+  registraría dinero que todavía no se recibió: si la terminal declina la tarjeta del segundo
+  comensal después de que el servidor acusó, no hay forma de deshacer ese pago —no existe la
+  operación— y el reembolso es de la cuenta entera. Por eso no hay un formulario de N renglones.
+- **La barra del POS deja de tener un chip por pedido.** Se midió contra el presupuesto real de la
+  tableta y la fila no cabía ni vacía: pedía 667.6 px sobre 612.6, y lo que se salía lo recortaba el
+  contenedor. La US1 sigue cumpliéndose —agregarle a un pedido en curso cuesta dos toques en vez de
+  uno— y a cambio deja de haber controles que no se pueden tocar.
