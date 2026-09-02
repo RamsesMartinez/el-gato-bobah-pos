@@ -6,7 +6,11 @@
 select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name;
 
 -- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1;
+-- Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
+-- apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
+-- ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1;
 
 -- name: UpdatePaymentMethodAutoDeclare :one
 update payment_methods set auto_declare = $2 where id = $1

@@ -13,6 +13,12 @@ var (
 	ErrCobroExcede = fmt.Errorf("%w: no puedes cobrar más de lo que falta de ese pedido", ErrValidation)
 	// ErrPedidoNoCobrable: el pedido se canceló o se reembolsó; su dinero ya se decidió.
 	ErrPedidoNoCobrable = fmt.Errorf("%w: ese pedido ya no se puede cobrar", ErrConflict)
+	// ErrMetodoInactivo: el método de pago existe pero el negocio lo apagó.
+	//
+	// El negocio desactiva un método justamente para dejar de recibir por ahí. Aceptarlo igual manda
+	// ese dinero a un renglón del corte que nadie está contando, y la única barrera era que el front
+	// no lo listara — con una tableta encendida llevando horas con el catálogo en caché.
+	ErrMetodoInactivo = fmt.Errorf("%w: ese método de pago ya no está activo", ErrValidation)
 	// ErrPropinaExcede: la propina capturada es mayor que la cuenta entera.
 	ErrPropinaExcede = fmt.Errorf("%w: la propina no puede ser mayor que la cuenta", ErrValidation)
 	// ErrCobroFueraDeLugar: se intentó crear un pedido ya cobrado.
