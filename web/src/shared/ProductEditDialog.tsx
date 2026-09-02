@@ -5,14 +5,14 @@ import { Box, VStack, HStack, Text, Button, Input } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
   DialogTitle, DialogCloseTrigger,
-} from '../../components/ui/dialog';
-import { Field } from '../../components/ui/field';
-import { Switch } from '../../components/ui/switch';
-import { toaster } from '../../components/ui/toaster';
+} from '../components/ui/dialog';
+import { Field } from '../components/ui/field';
+import { Switch } from '../components/ui/switch';
+import { toaster } from '../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, type AdminProduct, type Category } from '../../api/admin';
-import { Picker, type PickerOption } from '../../components/Picker';
-import { useUiStore } from '../../stores/ui';
+import { adminApi, type AdminProduct, type Category } from '../api/admin';
+import { Picker, type PickerOption } from '../components/Picker';
+import { useUiStore } from '../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
 
 interface Props {

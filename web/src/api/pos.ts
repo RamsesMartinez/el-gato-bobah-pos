@@ -1,5 +1,10 @@
 import { api } from './client';
-import type { BoardOrder, CobroHecho, Menu, OrderView, PaymentMethod, RankedOption } from '../types/pos';
+import type {
+  BoardOrder, CobroHecho, CreateOrderBody, Menu, OrderView, PaymentMethod, RankedOption,
+} from '../types/pos';
+
+// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
+export type { CreateOrderBody };
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -178,27 +183,6 @@ export interface Company {
 
 export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;
 
-export interface CreateOrderBody {
-  clientUuid: string;
-  serviceType: string;
-  customerName?: string;
-  notes?: string;
-  // Nombre con el que la pantalla ya bautizó la cuenta. El servidor lo sanea y resuelve los
-  // choques del día, así que proponerlo no es decidirlo.
-  folioName?: string;
-  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
-  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
-  // lo que va aquí es el id, nunca los precios.
-  deliveryPlatformId?: number;
-  lines: Array<{
-    productId: number;
-    qty: number;
-    notes?: string;
-    modifiers: Array<{ optionId: number; qty: number }>;
-  }>;
-  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
-  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
-}
 
 // Lo editable de la configuración del ticket. Todo opcional: se manda solo lo que cambió.
 export interface TicketSettingsInput {

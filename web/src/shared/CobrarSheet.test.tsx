@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import type { ReactNode } from 'react';
-import type { BoardOrder } from '../../types/pos';
+import type { BoardOrder } from '../types/pos';
 
 const order = vi.hoisted(() => vi.fn());
 const paymentMethods = vi.hoisted(() => vi.fn());
 const chargeOrder = vi.hoisted(() => vi.fn());
-vi.mock('../../api/pos', () => ({ posApi: { order, paymentMethods, chargeOrder } }));
+vi.mock('../api/pos', () => ({ posApi: { order, paymentMethods, chargeOrder } }));
 
 import { CobrarSheet } from './CobrarSheet';
 

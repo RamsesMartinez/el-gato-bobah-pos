@@ -22,10 +22,12 @@ import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
+import { montoTecleado } from '../../domain/numeros';
 
 // Sobrante (>0) verde, faltante (<0) rojo, cuadrado gris.
 function diffColor(v: string) {
-  const n = parseFloat(v);
+  // Del servidor, no de un teclado: Number() alcanza y no hay formato que validar.
+  const n = Number(v);
   if (n > 0.005) return 'green.500';
   if (n < -0.005) return 'red.500';
   return 'fg.muted';
@@ -47,7 +49,7 @@ function movementType(m: CashMovement): { label: string; palette: string } {
 // withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
 export function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
   if (!totals?.length) return null;
-  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (parseFloat(pick(t)) || 0), 0);
+  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
   const diffTotal = sum((t) => t.difference);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -128,7 +130,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
 // Gastos del corte en tabla + total. No renderiza nada si no hay gastos (ahorra espacio).
 export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
   if (!expenses?.length) return null;
-  const total = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const total = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
@@ -368,14 +370,14 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const openMut = useMutation({
-    mutationFn: () => backofficeApi.cashOpen(register.id, parseFloat(opening) || 0),
+    mutationFn: () => backofficeApi.cashOpen(register.id, montoTecleado(opening) ?? 0),
     onSuccess: () => { setOpening(''); invalidate(); },
     onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
   });
   const closeMut = useMutation({
     mutationFn: () => {
       const d: Record<string, number> = {};
-      Object.entries(declared).forEach(([k, v]) => (d[k] = parseFloat(v) || 0));
+      Object.entries(declared).forEach(([k, v]) => (d[k] = montoTecleado(v) ?? 0));
       return backofficeApi.cashClose(register.id, d, notes || undefined);
     },
     onSuccess: (s) => { setClosed(s); setDeclared({}); setNotes(''); invalidate(); },
@@ -572,11 +574,11 @@ function MovementsPanel({ session }: { session: CashSession }) {
   const [concept, setConcept] = useState('');
 
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, parseFloat(amount) || 0, concept.trim()),
+    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, montoTecleado(amount) ?? 0, concept.trim()),
     onSuccess: () => { setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] }); },
     onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
   });
-  const canAdd = (parseFloat(amount) || 0) > 0 && concept.trim().length > 0;
+  const canAdd = (montoTecleado(amount) ?? 0) > 0 && concept.trim().length > 0;
   // Go serializa un slice vacío como null; sin esta guarda, `.length`/`.map` revienta el render.
   const movements = session.movements ?? [];
 
@@ -618,11 +620,11 @@ function TransferDialog({ open, onClose, from, openRegisters, onDone }: {
 
   const reset = () => { setToId(''); setAmount(''); setNote(''); };
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashTransfer(from.id, Number(toId), parseFloat(amount) || 0, note || undefined),
+    mutationFn: () => backofficeApi.cashTransfer(from.id, Number(toId), montoTecleado(amount) ?? 0, note || undefined),
     onSuccess: () => { reset(); onDone(); },
     onError: (e) => toaster.create({ title: 'No se pudo traspasar', description: String(e), type: 'error' }),
   });
-  const canSend = !!toId && (parseFloat(amount) || 0) > 0;
+  const canSend = !!toId && (montoTecleado(amount) ?? 0) > 0;
 
   return (
     <DialogRoot open={open} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="sm">

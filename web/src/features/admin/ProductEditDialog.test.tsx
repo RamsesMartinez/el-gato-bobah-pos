@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../../components/ui/provider';
-import { ProductEditDialog } from './ProductEditDialog';
+import { ProductEditDialog } from '../../shared/ProductEditDialog';
 import type { AdminProduct } from '../../api/admin';
 
 const api = vi.hoisted(() => ({

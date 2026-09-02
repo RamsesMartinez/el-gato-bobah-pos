@@ -7,8 +7,9 @@ import { toaster } from '../../components/ui/toaster';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
-import { InstallAppSection } from '../pwa/InstallAppSection';
+import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
 import { ZONAS_MEXICO } from './zonas';
+import { montoTecleado } from '../../domain/numeros';
 
 // Los tres momentos en los que se puede limpiar la lista de entregados. El texto dice QUÉ pasa, no
 // por qué: el porqué de cada uno es una decisión del dueño, no algo que el operador tenga que leer
@@ -85,7 +86,7 @@ export function BusinessSettingsPage() {
   });
 
   const save = useMutation({
-    mutationFn: () => posApi.updateBusinessSettings(Math.max(0, parseFloat(feeValue) || 0)),
+    mutationFn: () => posApi.updateBusinessSettings(Math.max(0, montoTecleado(feeValue) ?? 0)),
     onSuccess: (bs) => {
       qc.setQueryData(['business-settings'], bs);
       qc.invalidateQueries({ queryKey: ['business-settings'] });

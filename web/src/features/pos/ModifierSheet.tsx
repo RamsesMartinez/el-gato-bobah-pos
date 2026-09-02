@@ -1,3 +1,4 @@
+import { round2 } from '../../domain/cobro';
 // Reinicia el estado del sheet cuando se abre para otro producto/edición.
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
@@ -261,7 +262,7 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     }
   }
   const unit = Number(product.price) + perUnitDelta;
-  const total = Math.round(unit * qty * 100) / 100;
+  const total = round2(unit * qty);
 
   const unmet = orderedGroups.filter((g) => countIn(g.id) < g.min);
   const canConfirm = unmet.length === 0;

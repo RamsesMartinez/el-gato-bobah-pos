@@ -4,11 +4,11 @@ import {
 } from '@chakra-ui/react';
 import { LuPencil, LuTrash2, LuPlus, LuRotateCcw, LuSearch, LuCheck } from 'react-icons/lu';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminApi, type ProductGroup } from '../../api/admin';
-import { normalize } from '../../utils/format';
-import { Field } from '../../components/ui/field';
-import { Switch } from '../../components/ui/switch';
-import { toaster } from '../../components/ui/toaster';
+import { adminApi, type ProductGroup } from '../api/admin';
+import { normalize } from '../utils/format';
+import { Field } from '../components/ui/field';
+import { Switch } from '../components/ui/switch';
+import { toaster } from '../components/ui/toaster';
 
 interface AttachBody {
   groupId: number; title: string; override: boolean; minSelect: number; maxSelect: number; position: number;
