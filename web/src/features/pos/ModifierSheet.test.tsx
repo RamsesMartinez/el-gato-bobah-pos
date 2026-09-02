@@ -26,14 +26,26 @@ const producto = {
   }],
 } as unknown as MenuProduct;
 
-function montar(onConfirm: (m: TicketModifier[], n: string, q: number) => void) {
+// "Dedos de Queso" tal como está en producción: un aderezo de cortesía que es OPCIONAL y de una
+// sola, más un grupo obligatorio de una sola para contrastar los dos comportamientos.
+const conCortesia = {
+  id: 2, name: 'Dedos de Queso', price: '12', categoryId: 1, description: '', imageUrl: null, trackStock: false,
+  groups: [
+    { id: 20, title: 'Aderezo de cortesía', min: 0, max: 1,
+      options: [salsa(30, 'Blue Cheese', 1), salsa(31, 'Ranch Cremoso', 1)] },
+    { id: 21, title: 'Término', min: 1, max: 1,
+      options: [salsa(40, 'Normal', 1), salsa(41, 'Bien dorado', 1)] },
+  ],
+} as unknown as MenuProduct;
+
+function montar(onConfirm: (m: TicketModifier[], n: string, q: number) => void, p: MenuProduct = producto) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero' } as never });
   useTicketStore.getState().descartarTodo();
   return render(
     <QueryClientProvider client={qc}>
       <Provider>
-        <ModifierSheet product={producto} isOpen onClose={() => {}} onConfirm={onConfirm} />
+        <ModifierSheet product={p} isOpen onClose={() => {}} onConfirm={onConfirm} />
       </Provider>
     </QueryClientProvider>,
   );
@@ -144,5 +156,59 @@ describe('recordar cómo se pidió la última vez', () => {
     expect(screen.getByRole('button', { name: /Mango habanero\s*×2/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Mango habanero/ }));
     expect(screen.queryByRole('button', { name: /Mango habanero\s*×2/ })).not.toBeInTheDocument();
+  });
+});
+
+// EL ADEREZO DE CORTESÍA MARCADO POR ERROR NO SE PODÍA QUITAR.
+//
+// El grupo dice "opcional" y aun así, una vez tocado, el toque repetido volvía a elegir lo mismo:
+// la única salida era borrar el renglón de la cuenta y recapturarlo. La línea se iba a cocina con
+// un aderezo que el cliente no pidió.
+describe('un grupo de una sola opción', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('siendo opcional, tocar la elegida la quita y no manda nada', () => {
+    const onConfirm = vi.fn();
+    montar(onConfirm, conCortesia);
+    const blue = () => screen.getByRole('button', { name: /^Blue Cheese/ });
+
+    fireEvent.click(blue());
+    fireEvent.click(blue());
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar|confirmar|listo/i }));
+    const mods = onConfirm.mock.calls[0][0] as TicketModifier[];
+    expect(mods.some((m) => m.optionId === 30), 'el aderezo desmarcado no puede viajar a cocina').toBe(false);
+  });
+
+  it('siendo opcional, tocar otra la reemplaza sin dejar dos', () => {
+    const onConfirm = vi.fn();
+    montar(onConfirm, conCortesia);
+    fireEvent.click(screen.getByRole('button', { name: /^Blue Cheese/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ranch Cremoso/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar|confirmar|listo/i }));
+    const mods = onConfirm.mock.calls[0][0] as TicketModifier[];
+    expect(mods.filter((m) => m.groupId === 20)).toHaveLength(1);
+    expect(mods.find((m) => m.groupId === 20)?.optionId).toBe(31);
+  });
+
+  // En el OBLIGATORIO el toque repetido no vacía: hay que elegir algo de todos modos, y dejarlo en
+  // blanco solo apaga el botón de agregar y obliga a deshacer. Cambiar de opción sigue costando un
+  // toque, que es lo que ahí se necesita.
+  it('siendo obligatorio, tocar la elegida no lo deja vacío', () => {
+    const onConfirm = vi.fn();
+    montar(onConfirm, conCortesia);
+    // La hoja pre-marca el obligatorio al abrir; se toca esa misma.
+    fireEvent.click(screen.getByRole('button', { name: /^Normal/ }));
+
+    const agregar = screen.getByRole('button', { name: /agregar|falta/i });
+    expect(agregar, 'vaciar el grupo obligatorio apagaría el botón').toBeEnabled();
+    fireEvent.click(agregar);
+    expect(onConfirm.mock.calls[0][0] as TicketModifier[]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ groupId: 21 })]),
+    );
   });
 });
