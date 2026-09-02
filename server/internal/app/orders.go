@@ -1323,7 +1323,10 @@ func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal
 			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
-			Paid:          false,
+			// Con el mismo predicado que las otras dos listas. Estaba quemado en `false`, y desde que
+			// esta lista incluye los pedidos en cocina YA COBRADOS eso es sencillamente falso: el
+			// primer consumidor que mire `paid` en vez de `outstanding` cobraría algo ya pagado.
+			Paid:          domain.PedidoSaldado(r.Paid, r.Total),
 			Outstanding:   domain.PorCobrar(r.Total, r.Paid),
 			OpenedAt:      r.OpenedAt,
 			EnPreparacion: r.EnPreparacion,
