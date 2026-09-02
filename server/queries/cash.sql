@@ -263,3 +263,23 @@ where op.register_session_id = $1
   and o.status not in ('cancelada', 'reembolsada')
 group by u.name
 order by cash desc, other desc;
+
+-- name: MomentosDelTurnoPrincipal :one
+-- Cuándo abrió el turno vigente y cuándo se cerró el anterior, en la caja principal.
+--
+-- Los dos son candidatos a "desde cuándo se ven los entregados", según el modo que eligió el
+-- negocio. Van en UNA consulta y no en dos porque el corte los compara entre sí: pedirlos por
+-- separado deja la puerta abierta a que un cierre entre medias y las dos respuestas describan
+-- momentos distintos del mismo turno.
+--
+-- Nulos cuando no hay turno abierto o cuando nunca se ha cerrado uno. El llamador cae al corte por
+-- medianoche, que es el único que no depende de que alguien se acuerde de cerrar la caja.
+select
+  (select s.opened_at from register_sessions s
+    join cash_registers r on r.id = s.register_id
+    where r.is_primary and s.status = 'abierta'
+    order by s.opened_at desc limit 1) as abrio_el_turno,
+  (select s.closed_at from register_sessions s
+    join cash_registers r on r.id = s.register_id
+    where r.is_primary and s.closed_at is not null
+    order by s.closed_at desc limit 1) as cerro_la_caja;

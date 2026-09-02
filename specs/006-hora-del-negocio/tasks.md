@@ -101,25 +101,25 @@ pantalla.
 
 ### Tests primero
 
-- [ ] T024 [P] [US3] Test de integración en `server/internal/integration/corte_de_vista_test.go`: con el corte en `medianoche`, un pedido entregado a las 23:00 locales sigue en la lista y a las 00:01 ya no — **con el reloj del servidor en UTC**, que es lo que hoy la vacía a las 18:00.
-- [ ] T025 [P] [US3] Test en el mismo archivo para `turno` y `cierre_de_caja`.
-- [ ] T026 [P] [US3] Test en `web/src/features/admin/BusinessSettingsPage.test.tsx`: el selector de corte usa `Picker`, no `<select>` nativo, y sus opciones miden al menos 44 px.
+- [X] T024 [P] [US3] Test de integración en `server/internal/integration/corte_de_vista_test.go`: con el corte en `medianoche`, un pedido entregado a las 23:00 locales sigue en la lista y a las 00:01 ya no — **con el reloj del servidor en UTC**, que es lo que hoy la vacía a las 18:00.
+- [X] T025 [P] [US3] Test en el mismo archivo para `turno` y `cierre_de_caja`.
+- [X] T026 [P] [US3] Test en `web/src/features/admin/BusinessSettingsPage.test.tsx`: el selector de corte usa `Picker`, no `<select>` nativo, y sus opciones miden al menos 44 px.
 
 ### Implementación
 
-- [ ] T027 [US3] Cambiar `ListDeliveredToday` en `server/queries/orders.sql` para filtrar desde un instante en vez de por fecha del servidor.
-- [ ] T028 [US3] Usar `domain.DesdeCuandoSeVen` en `OrdersService.DeliveredToday` (`server/internal/app/orders.go`).
-- [ ] T028b [US3] Test de integración: las cifras de un arqueo **ya cerrado** son idénticas antes y después de cambiar el `corte_de_vista` y la zona del negocio (FR-016, SC-006). El corte de vista es de pantalla; si toca una cifra de dinero, está mal construido.
-- [ ] T029 [US3] Agregar el selector de corte a `web/src/features/admin/BusinessSettingsPage.tsx` con `Picker`. El texto dice qué hace en un renglón; el porqué de cada modo va en el diálogo de ayuda, no en la pantalla.
-- [ ] T030 [US3] Que la lista refleje el corte sin recargar (FR-014).
-- [ ] T030b [P] [US3] Test de que la lista se vacía al cruzar el corte **sin recargar**: se avanza el reloj y se comprueba que la lista cambia sola. Sin él, FR-014 queda implementado y sin nadie que lo mire.
+- [X] T027 [US3] Cambiar `ListDeliveredToday` en `server/queries/orders.sql` para filtrar desde un instante en vez de por fecha del servidor.
+- [X] T028 [US3] Usar `domain.DesdeCuandoSeVen` en `OrdersService.DeliveredToday` (`server/internal/app/orders.go`).
+- [X] T028b [US3] Test de integración: las cifras de un arqueo **ya cerrado** son idénticas antes y después de cambiar el `corte_de_vista` y la zona del negocio (FR-016, SC-006). El corte de vista es de pantalla; si toca una cifra de dinero, está mal construido.
+- [X] T029 [US3] Agregar el selector de corte a `web/src/features/admin/BusinessSettingsPage.tsx` con `Picker`. El texto dice qué hace en un renglón; el porqué de cada modo va en el diálogo de ayuda, no en la pantalla.
+- [X] T030 [US3] Que la lista refleje el corte sin recargar (FR-014).
+- [X] T030b [P] [US3] Test de que la lista se vacía al cruzar el corte **sin recargar**: se avanza el reloj y se comprueba que la lista cambia sola. Sin él, FR-014 queda implementado y sin nadie que lo mire.
 
 ---
 
 ## Phase 6: User Story 4 — Cambiar la zona no asusta (P3)
 
-- [ ] T031 [P] [US4] Test en `web/src/features/admin/BusinessSettingsPage.test.tsx`: al elegir otra zona aparece el aviso, y dice **las dos cosas** — las horas mostradas cambian, las ventas ya registradas no se mueven de día.
-- [ ] T032 [US4] Implementar ese aviso en `web/src/features/admin/BusinessSettingsPage.tsx`. Informativo, no una confirmación de doble paso: cambiar la zona no destruye nada.
+- [X] T031 [P] [US4] Test en `web/src/features/admin/BusinessSettingsPage.test.tsx`: al elegir otra zona aparece el aviso, y dice **las dos cosas** — las horas mostradas cambian, las ventas ya registradas no se mueven de día.
+- [X] T032 [US4] Implementar ese aviso en `web/src/features/admin/BusinessSettingsPage.tsx`. Informativo, no una confirmación de doble paso: cambiar la zona no destruye nada.
 
 ---
 

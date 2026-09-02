@@ -10,6 +10,15 @@ import { Page } from '../../components/Page';
 import { InstallAppSection } from '../pwa/InstallAppSection';
 import { ZONAS_MEXICO } from './zonas';
 
+// Los tres momentos en los que se puede limpiar la lista de entregados. El texto dice QUÉ pasa, no
+// por qué: el porqué de cada uno es una decisión del dueño, no algo que el operador tenga que leer
+// cada vez que abre los ajustes.
+const CORTES = [
+  { value: 'medianoche', label: 'A medianoche' },
+  { value: 'turno', label: 'Al abrir el siguiente turno' },
+  { value: 'cierre_de_caja', label: 'Al cerrar la caja' },
+];
+
 // Ajustes de negocio (admin/gerente). Hoy solo el costo de envío por defecto; el backend es
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
 export function BusinessSettingsPage() {
@@ -22,6 +31,7 @@ export function BusinessSettingsPage() {
   const feeValue = fee ?? data?.deliveryFee ?? '';
   const [tz, setTz] = useState<string | null>(null);
   const tzValue = tz ?? data?.timezone ?? 'America/Mexico_City';
+  const [corte, setCorte] = useState<string | null>(null);
 
   const { data: company } = useQuery({ queryKey: ['company'], queryFn: posApi.company });
   const [coName, setCoName] = useState<string | null>(null);
@@ -53,6 +63,22 @@ export function BusinessSettingsPage() {
     },
     onError: (e: unknown) => toaster.create({
       title: 'No se pudo guardar la zona',
+      description: e instanceof Error ? e.message : String(e),
+      type: 'error',
+    }),
+  });
+
+  const saveCorte = useMutation({
+    mutationFn: () => posApi.updateCorteDeVista(corte ?? data?.corteDeVista ?? 'medianoche'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['business-settings'] });
+      // Y la lista de entregados, que es lo que el ajuste acaba de cambiar: sin esto el operador
+      // guarda y no ve nada distinto hasta el siguiente refresco.
+      qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
+      toaster.create({ title: 'Guardado', type: 'success' });
+    },
+    onError: (e: unknown) => toaster.create({
+      title: 'No se pudo guardar',
       description: e instanceof Error ? e.message : String(e),
       type: 'error',
     }),
@@ -131,6 +157,37 @@ export function BusinessSettingsPage() {
           </Box>
           <Button size="lg" loading={saveTz.isPending} onClick={() => saveTz.mutate()}>
             Guardar zona
+          </Button>
+        </HStack>
+        {/* El aviso solo aparece cuando de verdad se está cambiando. Todas las horas de todas las
+            pantallas se mueven de golpe, y sin decirlo antes se lee como que los datos se
+            corrompieron. Las dos frases importan: la primera explica lo que se va a ver, la segunda
+            desactiva el miedo de que se haya movido dinero. */}
+        {tz && tz !== data?.timezone && (
+          <Text mt={3} fontSize="sm" color="orange.600">
+            Al guardar, las horas que muestran las pantallas y los tickets cambian a la nueva zona.
+            Las ventas ya registradas no cambian de día ni de corte.
+          </Text>
+        )}
+      </Box>
+
+      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Pedidos entregados en pantalla</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          Hasta cuándo se siguen viendo los pedidos que ya entregaste. No cambia de qué día es una
+          venta.
+        </Text>
+        <HStack gap={2} align="end" flexWrap="wrap">
+          <Box flex="1" minW="260px">
+            <Picker
+              value={corte ?? data?.corteDeVista ?? 'medianoche'}
+              onChange={setCorte}
+              options={CORTES}
+              title="¿Cuándo se limpian los entregados?"
+            />
+          </Box>
+          <Button size="lg" loading={saveCorte.isPending} onClick={() => saveCorte.mutate()}>
+            Guardar
           </Button>
         </HStack>
       </Box>

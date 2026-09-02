@@ -808,6 +808,39 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 	return items, nil
 }
 
+const momentosDelTurnoPrincipal = `-- name: MomentosDelTurnoPrincipal :one
+select
+  (select s.opened_at from register_sessions s
+    join cash_registers r on r.id = s.register_id
+    where r.is_primary and s.status = 'abierta'
+    order by s.opened_at desc limit 1) as abrio_el_turno,
+  (select s.closed_at from register_sessions s
+    join cash_registers r on r.id = s.register_id
+    where r.is_primary and s.closed_at is not null
+    order by s.closed_at desc limit 1) as cerro_la_caja
+`
+
+type MomentosDelTurnoPrincipalRow struct {
+	AbrioElTurno time.Time          `json:"abrio_el_turno"`
+	CerroLaCaja  pgtype.Timestamptz `json:"cerro_la_caja"`
+}
+
+// Cuándo abrió el turno vigente y cuándo se cerró el anterior, en la caja principal.
+//
+// Los dos son candidatos a "desde cuándo se ven los entregados", según el modo que eligió el
+// negocio. Van en UNA consulta y no en dos porque el corte los compara entre sí: pedirlos por
+// separado deja la puerta abierta a que un cierre entre medias y las dos respuestas describan
+// momentos distintos del mismo turno.
+//
+// Nulos cuando no hay turno abierto o cuando nunca se ha cerrado uno. El llamador cae al corte por
+// medianoche, que es el único que no depende de que alguien se acuerde de cerrar la caja.
+func (q *Queries) MomentosDelTurnoPrincipal(ctx context.Context) (MomentosDelTurnoPrincipalRow, error) {
+	row := q.db.QueryRow(ctx, momentosDelTurnoPrincipal)
+	var i MomentosDelTurnoPrincipalRow
+	err := row.Scan(&i.AbrioElTurno, &i.CerroLaCaja)
+	return i, err
+}
+
 const netCashMovements = `-- name: NetCashMovements :one
 select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1

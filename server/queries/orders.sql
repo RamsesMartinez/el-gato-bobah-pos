@@ -114,7 +114,13 @@ select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_
        (select count(*) from order_lines l
          where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
-where o.status = 'entregada' and o.business_date = $1
+-- Desde un INSTANTE, no por fecha del servidor.
+--
+-- Filtraba `business_date = <hoy según el reloj del servidor>`, que corre en UTC: en México la
+-- medianoche UTC cae a las 18:00 locales, así que la lista se vaciaba a media hora pico con los
+-- pedidos del día todavía frescos. Ahora el instante lo decide el negocio — medianoche local, inicio
+-- del turno o último cierre de caja.
+where o.status = 'entregada' and o.opened_at >= $1
 order by o.completed_at desc nulls last, o.id desc;
 
 -- name: RefundOrder :exec

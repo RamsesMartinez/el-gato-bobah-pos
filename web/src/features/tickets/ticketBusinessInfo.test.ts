@@ -10,7 +10,7 @@ const settings: BusinessSettings = {
   headerNote: 'Wi-Fi: gatobobah',
   footerNote: '¡Vuelve pronto!',
   autoPrintOnClose: false,
-  timezone: 'America/Mexico_City',
+  timezone: 'America/Mexico_City', corteDeVista: 'medianoche',
   printFreeModifiers: true,
   printKitchenTicket: false, kitchenCanCharge: false,
   pinOnlyUnlock: false, lockAfterSeconds: 180, sessionHours: 8,

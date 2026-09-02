@@ -119,6 +119,10 @@ export const posApi = {
   // los campos ausentes no se tocan: guardarla no debe pisar el costo de envío ni el ticket.
   updateTimezone: (timezone: string) =>
     api.put<BusinessSettings>('/business-settings', { timezone }),
+  // Hasta cuándo se ven los pedidos entregados. Es un ajuste de PANTALLA: no cambia de qué día es
+  // una venta ni en qué arqueo cae su dinero.
+  updateCorteDeVista: (corteDeVista: string) =>
+    api.put<BusinessSettings>('/business-settings', { corteDeVista }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -137,6 +141,7 @@ export interface BusinessSettings {
   // Nombre IANA de la zona del local. La base guarda instantes en UTC; esta zona es la que decide
   // de qué DÍA es cada venta, corte y gasto. El servidor rechaza un nombre que no exista.
   timezone: string;
+  corteDeVista: string;
   // Si el ticket lista los adicionales que no cuestan. Encendido por default: cocina los usa para
   // preparar y el cliente para reclamar; apagarlo solo acorta el papel.
   printFreeModifiers: boolean;
