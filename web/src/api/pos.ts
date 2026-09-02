@@ -85,10 +85,13 @@ export const posApi = {
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
   // la caja es quien tiene que poder saldarlo.
-  // La barra de pedidos en curso: los que siguen en cocina y los que deben dinero. El total
-  // pendiente lo manda el SERVIDOR junto a la lista — sumarlo aquí dejaría el encabezado diciendo
-  // una cifra y la lista otra en cuanto el predicado cambie, y quien la lee no sabría cuál miente.
-  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open'),
+  // La barra de pedidos en curso. `porCobrar=true` deja fuera lo ya saldado: quien abre esa hoja
+  // viene a cobrar, y en el ambiente de pruebas abría con 30 renglones —14 ya cobrados— sobre una
+  // pantalla donde caben cinco.
+  //
+  // El filtro va en el SERVIDOR y no aquí, igual que la suma: el total pendiente sale del mismo
+  // recorrido que la lista, y recortar de este lado lo dejaría contando filas que no se muestran.
+  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open?porCobrar=true'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre

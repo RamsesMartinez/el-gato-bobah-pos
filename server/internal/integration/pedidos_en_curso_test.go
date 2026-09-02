@@ -67,7 +67,7 @@ func TestLaListaDeEnCursoEsLaUnionDeLosDosConjuntos(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	lista, _, err := svc.Open(ctx)
+	lista, _, err := svc.Open(ctx, false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestLaBarraSigueMostrandoElTurnoQueCruzoLaMedianoche(t *testing.T) {
 		t.Fatalf("confirmar: %v", err)
 	}
 
-	lista, _, err := svcDeHoy.Open(ctx)
+	lista, _, err := svcDeHoy.Open(ctx, false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

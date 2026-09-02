@@ -189,8 +189,8 @@ export function POSPage() {
     setLastOrder(await posApi.order(orderId));
   };
 
-  // Agregarle a un pedido que ya está en cocina, desde el chip de la barra. Es el camino que la
-  // feature 005 viene a abrir: antes existía enterrado en la hoja de cobro —armar el carrito,
+  // Agregarle a un pedido que ya está en cocina, desde la hoja del botón naranja. Es el camino que
+  // la feature 005 viene a abrir: antes existía enterrado en la hoja de cobro —armar el carrito,
   // abrir Cobrar, bajar hasta un selector, elegir el pedido— y en producción no se usó nunca.
   const { agregar } = useAgregarAPedido((order, nuevos) => {
     ticketDrawer.onClose();
@@ -384,13 +384,12 @@ export function POSPage() {
               scrollean solas. */}
           <Box flex="1" minW="140px"><TicketTabs /></Box>
           {/* Techo bajado de 280 a 240: en la tableta real el panel del ticket se lleva ~300px, así que
-              a la fila le quedan ~610 y el buscador es el que más margen sobrante tiene. Con 280 los
-              chips de pedidos en curso se comprimían a una rendija donde no se ve ninguno completo. */}
+              a la fila le quedan ~610 y el buscador es el que más margen sobrante tiene. */}
           <Box w="clamp(150px, 26%, 240px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
-          {/* Los pedidos ya mandados a cocina, detrás de UN botón. Eran un chip por pedido más una
-              píldora de dinero, y medido en 1024x600 con el panel abierto la fila pedía 667.6 px de
-              los 612.6 que hay: se desbordaba con CERO chips, y el `overflow: hidden` del padre se
-              comía los botones de la derecha. Un botón cabe siempre. */}
+          {/* Lo que falta por cobrar, detrás de UN botón. Con un control por pedido, medido en
+              1024x600 con el panel abierto, la fila pedía 667.6 px de los 612.6 que hay: se
+              desbordaba estando vacía y el overflow oculto del padre se comía los botones de la
+              derecha. Un botón cabe siempre. */}
           <PedidosEnCurso onAbrir={abrirPedidoEnCurso} hayQueAgregar={cuenta.lines.length > 0} />
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}

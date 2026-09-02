@@ -128,7 +128,7 @@ func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
 
 func buscarEnCurso(t *testing.T, svc *app.OrdersService, id int64) app.BoardOrder {
 	t.Helper()
-	lista, _, err := svc.Open(context.Background())
+	lista, _, err := svc.Open(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

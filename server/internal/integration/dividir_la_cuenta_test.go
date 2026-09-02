@@ -182,7 +182,7 @@ func sumaDePagos(t *testing.T, st *store.Store, orderID int64) (decimal.Decimal,
 // píldora y su total, no el campo Paid del detalle.
 func abiertosDelTablero(t *testing.T, svc *app.OrdersService) []app.BoardOrder {
 	t.Helper()
-	items, _, err := svc.Open(context.Background())
+	items, _, err := svc.Open(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

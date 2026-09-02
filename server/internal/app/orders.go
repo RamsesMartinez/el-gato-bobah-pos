@@ -1313,7 +1313,12 @@ func llaveDeCobro(u uuid.UUID) *uuid.UUID {
 // los impagos borraría el primero; solo con los no terminados, el segundo.
 //
 // Se llamaba Unpaid, y el nombre mentía en cuanto la lista dejó de ser solo de impagos.
-func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal, error) {
+//
+// `soloPorCobrar` recorta esa unión a lo que todavía debe dinero. Es lo que pide la hoja del POS:
+// quien la abre viene a cobrar, y mezclarle lo ya saldado le hacía leer treinta renglones para
+// encontrar los dieciséis suyos. El precio de ese recorte se paga en la pantalla y hay que decirlo:
+// al pedido YA PAGADO que sigue en cocina se le podía agregar desde ahí, y ese era su único camino.
+func (s *OrdersService) Open(ctx context.Context, soloPorCobrar bool) ([]BoardOrder, decimal.Decimal, error) {
 	// La fecha sale del TURNO abierto, no del reloj del servidor.
 	//
 	// El pedido hereda la fecha de negocio del turno —así una noche que abre a las 4pm y cierra a
@@ -1342,7 +1347,7 @@ func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal
 	pendiente := decimal.Zero
 	out := make([]BoardOrder, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, BoardOrder{
+		bo := BoardOrder{
 			ID: r.ID, Number: int(r.DailyNumber), FolioName: derefStr(r.FolioName),
 			Status:      string(r.Status),
 			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
@@ -1357,8 +1362,15 @@ func (s *OrdersService) Open(ctx context.Context) ([]BoardOrder, decimal.Decimal
 			EnPreparacion: r.EnPreparacion,
 			Renglones:     int(r.Renglones),
 			BusinessDate:  r.BusinessDate.Time.Format("2006-01-02"),
-		})
-		pendiente = pendiente.Add(out[len(out)-1].Outstanding)
+		}
+		// El recorte usa `Outstanding` —el mismo campo que la pantalla pinta— y no `Paid`, que exige
+		// un total positivo: un pedido de $0 no está "saldado" pero tampoco hay nada que cobrarle, y
+		// con el otro predicado se colaría a la lista con un botón de "Cobrar $0".
+		if soloPorCobrar && !bo.Outstanding.IsPositive() {
+			continue
+		}
+		out = append(out, bo)
+		pendiente = pendiente.Add(bo.Outstanding)
 	}
 	return out, domain.Round2(pendiente), nil
 }

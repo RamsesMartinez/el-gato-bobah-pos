@@ -181,6 +181,13 @@ Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
 - **Agregar renglones a un pedido ya cobrado por completo.** Se permite —el cliente pidió más—, y el
   pedido reaparece en la barra con el saldo nuevo. Lo que no puede es quedar cobrado con renglones
   que nadie pagó y sin que se vea.
+
+  > **Revertido por decisión del dueño (2026-09-02).** La hoja del botón naranja abría con todos los
+  > pedidos en curso —medido en pruebas: 30 renglones, 14 ya cobrados, sobre una pantalla donde caben
+  > cinco— y ahora el servidor solo manda lo que falta por cobrar (`GET /orders/open?porCobrar=true`).
+  > El endpoint `POST /orders/:id/lines` sigue aceptando el pedido saldado, pero la aplicación ya no
+  > tiene ningún control que llegue a él: esa venta se captura como un pedido aparte. Se anota aquí y
+  > no solo en el código porque el requisito de arriba prometía lo contrario.
 - **Las dos tabletas agregan al mismo pedido al mismo tiempo.** Los agregados se suman, no se pisan:
   el pedido termina con los renglones de las dos. Cada tableta ve el pedido completo al refrescar.
 - **Una tableta agrega mientras la otra cobra.** El agregado que llega después del cobro deja saldo
