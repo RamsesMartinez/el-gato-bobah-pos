@@ -454,3 +454,44 @@ func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
 		t.Fatalf("cobrar con un método desactivado = %v, quiere ErrMetodoInactivo", err)
 	}
 }
+
+// El pedido recién creado tiene que bastarse solo para cobrarlo.
+//
+// La pantalla que lo crea sabe con qué plataforma lo armó, pero la que lo cobra no tiene por qué
+// preguntárselo: si el dato viaja en el detalle, el cobro ofrece los métodos correctos venga de donde
+// venga. Sin él, la pantalla tendría que acordarse — y "acordarse" entre dos pantallas es la forma
+// en que ya divergieron otras tres cifras de este sistema.
+func TestElDetalleDiceConQueListaSeArmoElPedido(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, _, _ := pedidoDe(t, st, svc, "lista_en_detalle", "100")
+
+	det, err := svc.Detail(ctx, ord.ID)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if det.DeliveryPlatformID != nil {
+		t.Fatalf("un pedido de mostrador dice plataforma %v", *det.DeliveryPlatformID)
+	}
+
+	// Y uno de plataforma la trae, que es el caso que decide qué métodos se ofrecen.
+	var plataforma int16
+	if err := st.Pool.QueryRow(ctx,
+		`select id from delivery_platforms order by id limit 1`).Scan(&plataforma); err != nil {
+		t.Fatalf("leer una plataforma: %v", err)
+	}
+	if _, err := st.Pool.Exec(ctx,
+		// El check de la tabla exige que un pedido de plataforma sea a domicilio: lo reparte ella.
+		`update orders set delivery_platform_id = $2, service_type = 'domicilio' where id = $1`,
+		ord.ID, plataforma); err != nil {
+		t.Fatalf("asignar plataforma: %v", err)
+	}
+	det, err = svc.Detail(ctx, ord.ID)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if det.DeliveryPlatformID == nil || *det.DeliveryPlatformID != plataforma {
+		t.Fatalf("el detalle no trae la plataforma con la que se armó: %v", det.DeliveryPlatformID)
+	}
+}

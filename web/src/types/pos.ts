@@ -119,6 +119,9 @@ export interface OrderView {
   folioName: string;
   status: string;
   serviceType: string;
+  // Con qué lista se armó. Viaja para que un pedido recién creado se baste solo a la hora de
+  // cobrarlo: la hoja de cobro ofrece solo los métodos con los que ESE pedido se puede saldar.
+  deliveryPlatformId: number | null;
   customerName: string | null;
   subtotal: string;
   deliveryFee: string;
@@ -131,6 +134,22 @@ export interface OrderView {
   outstanding: string;
   openedAt: string;
   lines?: OrderLine[];
+}
+
+// PedidoParaCobrar es lo MÍNIMO que la hoja de cobro necesita para hacer su trabajo.
+//
+// Existe para que la hoja sirva igual a un pedido que viene de la lista del tablero y a uno que
+// acaba de crear el POS: los dos tipos lo satisfacen sin conversión. Pedirle un `BoardOrder`
+// completo obligaba a inventarle campos al recién creado, y un dato inventado en un tipo es el que
+// después alguien lee como verdadero.
+export interface PedidoParaCobrar {
+  id: number;
+  number: number;
+  folioName: string;
+  total: string;
+  outstanding: string;
+  currency: Currency;
+  deliveryPlatformId: number | null;
 }
 
 // CobroHecho es lo que responde cobrar: qué quedó del pedido, no un "ok".
@@ -170,8 +189,10 @@ export interface ReceiptLine {
 }
 
 // ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva,
-// y sin el saldo pendiente, que es asunto de la caja y no del cliente que se lleva el ticket.
-export type ReceiptOrder = Omit<OrderView, 'lines' | 'outstanding'> & { lines?: ReceiptLine[] };
+// sin el saldo pendiente —asunto de la caja, no del cliente que se lleva el ticket— y sin la lista
+// de precios, que decide qué se cobra pero no se imprime.
+export type ReceiptOrder =
+  Omit<OrderView, 'lines' | 'outstanding' | 'deliveryPlatformId'> & { lines?: ReceiptLine[] };
 
 export interface BoardOrder {
   // Si a este pedido todavía se le puede AGREGAR. Viene del servidor y no se deduce del estado

@@ -23,7 +23,11 @@ describe('armarPedido', () => {
 
   it('sin pagos = mandado a cocina y por cobrar', () => {
     const body = armarPedido({ cuenta: cuenta({}), lineas: [linea({})], clientUuid: 'u1', deliveryFee: 0 });
-    expect(body.payments).toBeUndefined();
+    // El cuerpo NO lleva pagos, y ya no puede llevarlos: el campo se borró del tipo. Crear un
+    // pedido ya cobrado era el atajo que se saltaba la cocina, y el servidor lo rechaza desde la
+    // feature 005 — el parámetro se quedó muerto hasta este barrido, con este test verificando la
+    // ausencia de algo que nadie podía poner.
+    expect('payments' in body).toBe(false);
   });
 
   it('lleva el animal de la cuenta, que es el que ya vio el cliente', () => {

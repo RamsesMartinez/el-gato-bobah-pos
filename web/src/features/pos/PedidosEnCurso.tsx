@@ -101,7 +101,7 @@ export function PedidosEnCurso({ onAbrir, hayQueAgregar }: {
           entraron— y con otro pedido nada de eso aplica. Remontarla lo limpia sin un efecto que
           resincronice, que es de donde salen los estados a medias. */}
       <CobrarSheet key={cobrando?.id} order={cobrando}
-        onClose={() => setCobrando(null)} onCobrado={refrescar} />
+        onClose={() => setCobrando(null)} onCobrado={() => refrescar()} />
     </>
   );
 }
