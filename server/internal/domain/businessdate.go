@@ -30,14 +30,21 @@ func BusinessDate(t time.Time, loc *time.Location) time.Time {
 // la zona mal escrita prefiere una fecha corrida a no poder cobrar. La validación de que el nombre
 // sea real va en la frontera donde se GUARDA la configuración, no donde se usa.
 func LoadBusinessLocation(name string) *time.Location {
-	if name == "" {
-		return time.UTC
+	if name != "" {
+		if loc, err := time.LoadLocation(name); err == nil {
+			return loc
+		}
 	}
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		return time.UTC
+	// El default del producto, no UTC. Caer a UTC corre la fecha seis horas sin avisar, y eso se ve
+	// plausible: es el peor modo de fallo posible. El nombre vacío o inválido no debería llegar aquí
+	// —la frontera lo valida al guardar— pero un dato viejo o metido por fuera sí puede, y entonces
+	// el fallback es lo único que queda.
+	if loc, err := time.LoadLocation(DefaultTimezone); err == nil {
+		return loc
 	}
-	return loc
+	// Sin la base de zonas no hay nada mejor que UTC. El binario la embebe (`time/tzdata` en
+	// cmd/api), así que llegar aquí significa que algo mucho más grande está roto.
+	return time.UTC
 }
 
 // ValidTimezone dice si un nombre IANA existe. Es lo que usa la frontera al guardar la

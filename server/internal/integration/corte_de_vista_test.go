@@ -187,3 +187,76 @@ func TestElCorteDeVistaNoCambiaUnArqueoCerrado(t *testing.T) {
 		}
 	}
 }
+
+// LA LISTA DE ENTREGADOS TIENE QUE FUNCIONAR CON LA CAJA CERRADA.
+//
+// `MomentosDelTurnoPrincipal` trae cuándo abrió el turno vigente con una subconsulta escalar, que
+// devuelve NULL cuando no hay ninguno abierto. sqlc infirió el tipo copiando la nulabilidad de la
+// COLUMNA —`opened_at` es not null— así que generó un `time.Time` que no acepta NULL, y el escaneo
+// truena antes de llegar a la rama que ya contemplaba ese caso.
+//
+// El efecto es todas las noches: en cuanto se cierra la caja, la sección de reembolsos del tablero
+// contesta 500. Y en un negocio recién instalado, desde el primer día hasta la primera apertura.
+// Pasa con CUALQUIER modo de corte, porque la consulta corre antes de saber cuál se va a usar.
+func TestLosEntregadosSeVenConLaCajaCerrada(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+
+	// A propósito SIN abrir caja: es el estado del negocio la mayor parte del día.
+	if _, err := svc.DeliveredToday(ctx); err != nil {
+		t.Fatalf("con la caja cerrada la lista de entregados truena: %v", err)
+	}
+}
+
+// EL PEDIDO QUE SE ABRE ANTES DEL CORTE Y SE ENTREGA DESPUÉS TIENE QUE VERSE.
+//
+// La lista filtraba por `opened_at`, pero lo que decide si un entregado pertenece a la ventana
+// visible es cuándo se COMPLETÓ, no cuándo se abrió. Un pedido levantado a las 23:50 y entregado a
+// las 00:05 quedaba fuera justo cuando se vuelve accionable: recién entregado y candidato a
+// reembolso. La misma consulta ya ordenaba por `completed_at`, así que el filtro miraba una columna
+// y el orden otra.
+func TestElPedidoQueCruzaElCorteAlEntregarseSigueALaVista(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	// 23:50 en México del día 1 = 05:50 UTC del día 2.
+	antesDelCorte := time.Date(2026, 9, 2, 5, 50, 0, 0, time.UTC)
+	// 00:05 del día 2 en México = 06:05 UTC.
+	despuesDelCorte := time.Date(2026, 9, 2, 6, 5, 0, 0, time.UTC)
+
+	cajero := makeUser(t, st, "cajero_cruce", "cajero")
+	prod := makeProduct(t, st, "Café cruce", decimal.RequireFromString("100"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	abrirCajaPrincipal(t, st, cajero)
+
+	alFilo := app.NewOrdersService(st, func() time.Time { return antesDelCorte })
+	ord, err := crearYCobrar(t, ctx, alFilo, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100")}},
+	})
+	if err != nil {
+		t.Fatalf("crear a las 23:50: %v", err)
+	}
+
+	yaPasoLaMedianoche := app.NewOrdersService(st, func() time.Time { return despuesDelCorte })
+	if err := yaPasoLaMedianoche.DeliverAll(ctx, ord.ID); err != nil {
+		t.Fatalf("entregar a las 00:05: %v", err)
+	}
+	// `completed_at` lo pone el reloj de la BASE, no el que se le inyecta al servicio, así que se
+	// fija a mano al instante que este caso describe. Sin esto el test mide la hora real de la
+	// máquina y no el borde que viene a cubrir.
+	if _, err := st.Pool.Exec(ctx,
+		`update orders set completed_at = $2 where id = $1`, ord.ID, despuesDelCorte); err != nil {
+		t.Fatalf("fijar la hora de entrega: %v", err)
+	}
+
+	lista, err := yaPasoLaMedianoche.DeliveredToday(ctx)
+	if err != nil {
+		t.Fatalf("DeliveredToday: %v", err)
+	}
+	if !contieneID(lista, ord.ID) {
+		t.Error("el pedido entregado hace cinco minutos no aparece: se filtró por cuándo se abrió y no por cuándo se completó, justo cuando se vuelve accionable")
+	}
+}

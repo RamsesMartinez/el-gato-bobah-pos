@@ -180,7 +180,11 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 func (s *SalesService) Location(ctx context.Context) *time.Location {
 	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
 	if err != nil {
-		return time.UTC
+		// El default del producto, no UTC. Es la misma llamada, el mismo modo de falla y el mismo
+		// corrimiento de seis horas que se corrigió en la fecha de negocio del arqueo: aquí decide
+		// qué día se le muestra al gerente como "hoy", así que un preset resuelto en UTC le enseña
+		// un rango que nadie pidió después de las 18:00 locales.
+		tz = domain.DefaultTimezone
 	}
 	return domain.LoadBusinessLocation(tz)
 }

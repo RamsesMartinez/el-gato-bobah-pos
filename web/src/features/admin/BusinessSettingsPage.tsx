@@ -149,6 +149,7 @@ export function BusinessSettingsPage() {
             {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
                 sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
             <Picker
+              size="lg"
               value={tzValue}
               onChange={setTz}
               options={ZONAS_MEXICO.map((z) => ({ value: z.value, label: z.label }))}
@@ -179,7 +180,11 @@ export function BusinessSettingsPage() {
         </Text>
         <HStack gap={2} align="end" flexWrap="wrap">
           <Box flex="1" minW="260px">
+            {/* size="lg": el default del componente es `md`, que en Chakra mide 40px — por debajo
+                del piso de 44 con el que un dedo acierta a la primera. Y el botón de guardar que va
+                a su lado ya mide 44, así que la fila se veía disparejа. */}
             <Picker
+              size="lg"
               value={corte ?? data?.corteDeVista ?? 'medianoche'}
               onChange={setCorte}
               options={CORTES}

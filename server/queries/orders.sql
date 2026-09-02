@@ -114,13 +114,17 @@ select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_
        (select count(*) from order_lines l
          where l.order_id = o.id and l.cancelled_at is null and l.delivered_qty >= l.quantity)::int as lineas_entregadas
 from orders o
--- Desde un INSTANTE, no por fecha del servidor.
+-- Desde un INSTANTE, y mirando cuándo se COMPLETÓ.
 --
 -- Filtraba `business_date = <hoy según el reloj del servidor>`, que corre en UTC: en México la
 -- medianoche UTC cae a las 18:00 locales, así que la lista se vaciaba a media hora pico con los
--- pedidos del día todavía frescos. Ahora el instante lo decide el negocio — medianoche local, inicio
--- del turno o último cierre de caja.
-where o.status = 'entregada' and o.opened_at >= $1
+-- pedidos del día todavía frescos. Ahora el instante lo decide el negocio.
+--
+-- Y por `completed_at`, no por `opened_at`: lo que decide si un entregado pertenece a la ventana
+-- visible es cuándo se completó. Un pedido levantado a las 23:50 y entregado a las 00:05 quedaba
+-- fuera justo cuando se vuelve accionable — recién entregado y candidato a reembolso. El `order by`
+-- de esta misma consulta ya usaba `completed_at`: el filtro miraba una columna y el orden otra.
+where o.status = 'entregada' and o.completed_at >= $1
 order by o.completed_at desc nulls last, o.id desc;
 
 -- name: RefundOrder :exec
@@ -262,6 +266,12 @@ left join lateral (
   select coalesce(sum(p.amount), 0) as paid from order_payments p where p.order_id = o.id
 ) pagos on true
 where o.status not in ('cancelada', 'reembolsada')
+  -- Redundante a propósito, y no se puede quitar. El OR de abajo referencia `pagos.paid`, que sale
+  -- del lateral, así que Postgres no lo puede empujar al scan de `orders`: calculaba los pagos de
+  -- CADA pedido histórico no cancelado antes de descartarlo. Medido con 30 mil pedidos: 175 ms y
+  -- 90 mil buffers, en una consulta que cada tableta pide cada 30 segundos. Este predicado dice lo
+  -- mismo pero sin tocar el lateral, y baja a 20 ms y 155 buffers usando los índices que ya hay.
+  and (o.status in ('abierta', 'lista') or o.business_date = $1)
   and (
     -- SIN filtro de fecha en los que siguen en curso, a propósito: un pedido abierto se ve hasta que
     -- alguien lo cierre, sin importar de qué día sea. Es el mecanismo con el que se limpia el

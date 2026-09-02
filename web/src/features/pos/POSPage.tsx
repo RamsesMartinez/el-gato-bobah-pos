@@ -327,7 +327,10 @@ export function POSPage() {
               la mitad. Con el piso, lo que se recorta es el desplazamiento de las cuentas, que ya
               scrollean solas. */}
           <Box flex="1" minW="140px"><TicketTabs /></Box>
-          <Box w="clamp(150px, 28%, 280px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
+          {/* Techo bajado de 280 a 240: en la tableta real el panel del ticket se lleva ~300px, así que
+              a la fila le quedan ~610 y el buscador es el que más margen sobrante tiene. Con 280 los
+              chips de pedidos en curso se comprimían a una rendija donde no se ve ninguno completo. */}
+          <Box w="clamp(150px, 26%, 240px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
           {/* Los pedidos que ya se mandaron a cocina, en la MISMA fila que las cuentas sin mandar.
               No cuesta alto nuevo —la fila ya existía— y absorbe la píldora de "Por cobrar", que
               mostraba esto mismo en otro lugar. Un toque en un chip vuelve a abrir el pedido; antes
