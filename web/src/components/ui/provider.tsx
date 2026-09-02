@@ -38,6 +38,26 @@ const system = createSystem(
       },
       // Radio único de controles: botones, inputs, menús (l2) y cards (l3)
       // comparten esquina. Coherencia visual global; ver src/theme/ui.ts.
+      // EL PISO TÁCTIL, EN LA RECETA Y NO EN CADA PANTALLA.
+      //
+      // 44 px es el mínimo con el que un dedo acierta a la primera; por debajo, el operador toca dos
+      // veces y la segunda cae en otra cosa — y aquí "otra cosa" significa cobrar el pedido de otra
+      // mesa. Estaba escrito a mano once veces entre dos pantallas, más tres constantes `TAP`
+      // locales que ni entre ellas coincidían (56, 44, 44).
+      //
+      // Puesto en la receta, un `<Button>` sin props ya cumple: nadie tiene que acordarse, que es
+      // justo lo que falla cuando el que escribe la pantalla número doce no leyó las once anteriores.
+      //
+      // Va en el tamaño POR DEFECTO (`md`, que Chakra deja en 40 px) y no en `base`: `xs` y `sm` son
+      // 83 controles de pantallas densas de administración —tablas de gastos, catálogo, corte— que
+      // no se operan con el cliente enfrente y donde cada renglón que crece es un renglón de datos
+      // que se pierde. Subirlos a ciegas cambiaría esas pantallas sin que nadie lo haya visto.
+      // Usarlos donde el dedo decide dinero es la excepción, y se nota al leerlo.
+      //
+      // Los tamaños por encima del piso viven en theme/ui.ts (TAP_LG, TAP_XL).
+      recipes: {
+        button: { variants: { size: { md: { minH: "44px" } } } },
+      },
       semanticTokens: {
         radii: {
           l2: { value: "{radii.lg}" },

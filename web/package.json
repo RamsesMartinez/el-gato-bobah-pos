@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node scripts/require-node.mjs && vitest run"
+    "test": "node scripts/require-node.mjs && vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.36.1",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.10.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.3",
