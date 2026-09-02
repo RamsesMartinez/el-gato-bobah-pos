@@ -128,7 +128,15 @@ pantalla.
 - [X] T033 Correr el `db-architect` sobre la migración 0055 y las dos consultas cambiadas de `server/queries/orders.sql`, antes de aplicarlas.
 - [X] T034 Correr el `tablet-ui-reviewer` sobre `web/src/features/admin/BusinessSettingsPage.tsx` y `web/src/features/pos/PedidosEnCurso.tsx`: un ajuste nuevo y una marca nueva en la pantalla más usada.
 - [X] T035 Correr el `go-backend-reviewer` sobre `backoffice.go`, `orders.go` y `businessdate.go`.
-- [ ] T036 Recorrer [quickstart.md](./quickstart.md) completo, **empezando por cambiar la zona horaria del sistema operativo** — sin eso el recorrido pasa en falso.
+- [~] T036 Recorrido de [quickstart.md](./quickstart.md) contra el ambiente de pruebas: **verificado por API**, no por pantalla.
+  - Verificado: la lista de entregados responde 200 **con la caja cerrada** (el crítico); el ajuste
+    de corte viaja en los dos sentidos y rechaza un valor inventado con 400; los pedidos en curso
+    salen sin filtro de fecha (8 del 31-ago, con el servidor ya en otro día); la migración 0056
+    aplicó y el índice existe.
+  - **NO verificado**: los pasos que exigen cambiar la zona horaria del sistema operativo y mirar la
+    pantalla — que las once pantallas y los dos papeles muestren la hora del local, que la hora no
+    parpadee al cargar, y el aviso al cambiar de zona. Eso necesita un navegador con el reloj movido
+    y una persona mirando; los tests cubren el formateo, pero no que la pantalla lo use.
 - [X] T037 ~~Comparar las cifras de un arqueo cerrado antes y después del despliegue~~ — **no se puede correr en el ambiente de pruebas**: tiene CERO turnos cerrados, así que no hay arqueo que comparar. La invariante queda cubierta por dos tests automatizados, que son más fuertes que la comparación manual porque corren en cada cambio: `TestNingunaVentaCambiaDeDia` (ninguna `business_date` se mueve) y `TestElCorteDeVistaNoCambiaUnArqueoCerrado` (ninguna cifra del arqueo cambia al mover el modo de corte y la zona). En producción, cuando toque, las cifras a comparar son las de los turnos 4, 5, 7 y 10.
 
 ---
