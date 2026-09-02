@@ -204,3 +204,14 @@ test('el cambio se puede dejar como propina de un toque', async () => {
   await u.click(boton);
   expect(await screen.findByRole('button', { name: /^Cobrar \$500/ })).toBeEnabled();
 });
+
+// La hoja se puede abrir sobre un pedido que otra caja acaba de saldar. Decir "escribe cuánto vas a
+// cobrar" ahí manda al operador a buscar un problema que no existe.
+test('sobre un pedido ya saldado lo dice y no ofrece cobrar', async () => {
+  order.mockResolvedValue({ ...pedido({ outstanding: '0', paid: true }), lines: [] });
+  pinta(<CobrarSheet order={pedido({ outstanding: '0', paid: true })} onClose={() => {}} onCobrado={() => {}} />);
+
+  expect(await screen.findByText('Este pedido ya está cobrado.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Cobrar / })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+});

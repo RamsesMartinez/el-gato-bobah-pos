@@ -182,7 +182,12 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   const cambioComoPropina = efectivo && v.cambio > 0 && v.propina === 0
     && round2(v.propina + v.cambio) <= totalDelPedido ? v.cambio : 0;
 
-  const aviso = {
+  // Un pedido sin saldo no se cobra, y decirlo importa: la hoja se puede abrir sobre un pedido que
+  // otra caja acaba de saldar, y "escribe cuánto vas a cobrar" ahí manda al operador a buscar un
+  // problema que no existe.
+  const saldado = falta <= 0;
+
+  const aviso = saldado ? 'Este pedido ya está cobrado.' : {
     'sin-monto': 'Escribe cuánto vas a cobrar.',
     'monto-invalido': 'Escribe el monto solo con números y punto, sin comas.',
     'sin-metodo': 'Falta con qué paga.',
@@ -364,11 +369,17 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
           )}
           {/* Se cobra el MONTO capturado, no lo que entregó el cliente: el excedente es cambio, no
               ingreso. Registrarlo como ingreso inflaría la venta y descuadraría el corte. */}
-          <Button w="100%" size="lg" minH="56px" colorPalette="green"
-            disabled={!v.ok} loading={cobrar.isPending}
-            onClick={() => cobrar.mutate()}>
-            Cobrar {money(String(round2(v.monto + v.propina)), moneda)}
-          </Button>
+          {saldado ? (
+            <Button w="100%" size="lg" minH="56px" variant="outline" colorPalette="gray" onClick={onClose}>
+              Cerrar
+            </Button>
+          ) : (
+            <Button w="100%" size="lg" minH="56px" colorPalette="green"
+              disabled={!v.ok} loading={cobrar.isPending}
+              onClick={() => cobrar.mutate()}>
+              Cobrar {money(String(round2(v.monto + v.propina)), moneda)}
+            </Button>
+          )}
         </DrawerFooter>
       </DrawerContent>
     </DrawerRoot>
