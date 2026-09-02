@@ -10,6 +10,8 @@ import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
 import type { CobroHecho, OrderView, PedidoParaCobrar } from '../types/pos';
 import { money } from '../utils/format';
+import { TAP_LG, TAP_XL } from '../theme/ui';
+import { useUiStore } from '../stores/ui';
 import { uuid } from '../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
 import {
@@ -72,6 +74,7 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
 // estado entero es el faltante, y ese vive en el servidor.
 export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   const qc = useQueryClient();
+  const palette = useUiStore((s) => s.palette);
   const [metodo, setMetodo] = useState<number | null>(null);
   const [recibido, setRecibido] = useState('');
   // null = "todo lo que falta". No es un string vacío ni un efecto que lo rellene: el faltante baja
@@ -213,7 +216,13 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
       <DrawerBackdrop />
-      <DrawerContent borderTopRadius="2xl" maxW={{ base: '100%', lg: '960px' }} mx="auto">
+      {/* La paleta del negocio, como el resto del POS. Los estados de selección estaban quemados en
+          verde: el mismo sistema se veía de un color en una pantalla y de otro en la de al lado, y
+          un negocio que cambiaba su color lo veía cambiar en todas menos en la que cobra.
+          El verde SÍ se queda en las dos acciones que meten dinero —COBRAR y "el cambio es
+          propina"—, que es semántico y es el mismo criterio del botón COBRAR del panel. */}
+      <DrawerContent colorPalette={palette} borderTopRadius="2xl"
+        maxW={{ base: '100%', lg: '960px' }} mx="auto">
         <DrawerHeader borderBottomWidth="1px" py={3}>
           <HStack justify="space-between" align="start">
             <Box minW={0}>
@@ -261,8 +270,8 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
                   {sugerencias.map((s) => {
                     const on = monto === String(s.monto);
                     return (
-                      <Button key={s.etiqueta} minH="52px" flex="1" minW="90px"
-                        variant={on ? 'solid' : 'outline'} colorPalette={on ? 'green' : 'gray'}
+                      <Button key={s.etiqueta} minH={TAP_LG} flex="1" minW="90px"
+                        variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                         onClick={() => { setMontoElegido(String(s.monto)); setRecibido(''); }}>
                         <VStack gap={0}>
                           <Text fontSize="2xs" opacity={0.8}>{s.etiqueta}</Text>
@@ -271,7 +280,7 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
                       </Button>
                     );
                   })}
-                  <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otro"
+                  <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro"
                     aria-label="Otro monto"
                     value={monto} onChange={(e) => setMontoElegido(e.target.value)} />
                 </HStack>
@@ -292,8 +301,8 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
               ) : (
                 <SimpleGrid columns={{ base: 2, sm: 3 }} gap={2}>
                   {elegibles.map((m) => (
-                    <Button key={m.id} minH="52px" variant={metodo === m.id ? 'solid' : 'outline'}
-                      colorPalette={metodo === m.id ? 'green' : 'gray'}
+                    <Button key={m.id} minH={TAP_LG} variant={metodo === m.id ? 'solid' : 'outline'}
+                      colorPalette={metodo === m.id ? undefined : 'gray'}
                       onClick={() => { setMetodo(m.id); setRecibido(''); }}>
                       {m.name}
                     </Button>
@@ -308,15 +317,15 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
               <Box>
                 <Text fontSize="sm" fontWeight="600" mb={2}>Propina</Text>
                 <HStack gap={2} flexWrap="wrap">
-                  <Button minH="52px" variant={propina === '' ? 'solid' : 'outline'}
-                    colorPalette={propina === '' ? 'green' : 'gray'} onClick={() => setPropina('')}>
+                  <Button minH={TAP_LG} variant={propina === '' ? 'solid' : 'outline'}
+                    colorPalette={propina === '' ? undefined : 'gray'} onClick={() => setPropina('')}>
                     Sin
                   </Button>
                   {presetsDePropina(v.monto).map((p) => {
                     const on = propina === String(p.monto);
                     return (
-                      <Button key={p.etiqueta} minH="52px"
-                        variant={on ? 'solid' : 'outline'} colorPalette={on ? 'green' : 'gray'}
+                      <Button key={p.etiqueta} minH={TAP_LG}
+                        variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                         onClick={() => setPropina(String(p.monto))}>
                         <VStack gap={0}>
                           <Text fontSize="2xs" opacity={0.8}>{p.etiqueta}</Text>
@@ -325,7 +334,7 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
                       </Button>
                     );
                   })}
-                  <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otra"
+                  <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otra"
                     aria-label="Otra propina"
                     value={propina} onChange={(e) => setPropina(e.target.value)} />
                 </HStack>
@@ -337,19 +346,19 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
               <Box>
                 <Text fontSize="sm" fontWeight="600" mb={2}>¿Con cuánto paga?</Text>
                 <HStack gap={2} flexWrap="wrap">
-                  <Button minH="52px" variant={recibido === '' ? 'solid' : 'outline'}
-                    colorPalette={recibido === '' ? 'green' : 'gray'}
+                  <Button minH={TAP_LG} variant={recibido === '' ? 'solid' : 'outline'}
+                    colorPalette={recibido === '' ? undefined : 'gray'}
                     onClick={() => setRecibido('')}>
                     Exacto
                   </Button>
                   {billetes.map((b) => (
-                    <Button key={b} minH="52px" variant={recibido === String(b) ? 'solid' : 'outline'}
-                      colorPalette={recibido === String(b) ? 'green' : 'gray'}
+                    <Button key={b} minH={TAP_LG} variant={recibido === String(b) ? 'solid' : 'outline'}
+                      colorPalette={recibido === String(b) ? undefined : 'gray'}
                       onClick={() => setRecibido(String(b))}>
                       {money(String(b), moneda)}
                     </Button>
                   ))}
-                  <Input w="7rem" minH="52px" inputMode="decimal" placeholder="Otro"
+                  <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro"
                     aria-label="Con cuánto paga"
                     value={recibido} onChange={(e) => setRecibido(e.target.value)} />
                 </HStack>
@@ -384,11 +393,11 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
           {/* Se cobra el MONTO capturado, no lo que entregó el cliente: el excedente es cambio, no
               ingreso. Registrarlo como ingreso inflaría la venta y descuadraría el corte. */}
           {saldado ? (
-            <Button w="100%" size="lg" minH="56px" variant="outline" colorPalette="gray" onClick={onClose}>
+            <Button w="100%" size="lg" minH={TAP_XL} variant="outline" colorPalette="gray" onClick={onClose}>
               Cerrar
             </Button>
           ) : (
-            <Button w="100%" size="lg" minH="56px" colorPalette="green"
+            <Button w="100%" size="lg" minH={TAP_XL} colorPalette="green"
               disabled={!v.ok} loading={cobrar.isPending}
               onClick={() => cobrar.mutate()}>
               Cobrar {money(String(round2(v.monto + v.propina)), moneda)}
