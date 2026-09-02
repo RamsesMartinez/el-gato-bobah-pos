@@ -2,13 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toaster } from '../../components/ui/toaster';
 import { ApiError } from '../../api/client';
 import { posApi } from '../../api/pos';
-import type { CreateOrderBody } from '../../api/pos';
 import type { OrderView } from '../../types/pos';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
 import { armarPedido } from '../../domain/pedido';
 
-// Manda la cuenta activa al servidor, con pagos o sin ellos.
+export interface MandarCmd {
+  // A qué pedido en curso se le agregan estos renglones. Ausente = se crea un pedido nuevo.
+  agregarA?: number;
+  deliveryFee?: number;
+  // Qué hacer con el pedido recién creado, además de lo de siempre. Es cómo el POS abre el cobro
+  // justo después de confirmar sin que este hook sepa nada de cobrar.
+  luego?: (order: OrderView) => void;
+}
+
+// Manda la cuenta activa al servidor. NUNCA con pagos.
+//
+// El parámetro `payments` existió mientras crear-y-cobrar era una sola llamada; el servidor dejó de
+// aceptarlo —ese atajo se saltaba la cocina— y aquí quedó muerto, con un test verificando la
+// ausencia de un campo que ya nadie podía poner.
 //
 // Es un hook y no código dentro de la hoja de cobro porque ahora lo usan dos pantallas: el panel
 // del pedido —que manda a cocina sin cobrar— y la hoja, que cobra. Antes vivía solo en la hoja, y
@@ -29,11 +41,7 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
   const defaultFee = settings ? Number(settings.deliveryFee) : 20;
 
   const mutation = useMutation({
-    mutationFn: ({ payments, agregarA, deliveryFee }: {
-      payments?: CreateOrderBody['payments'];
-      agregarA?: number;
-      deliveryFee?: number;
-    }) => {
+    mutationFn: ({ agregarA, deliveryFee }: MandarCmd) => {
       const body = armarPedido({
         cuenta,
         lineas: cobrables,
@@ -48,16 +56,23 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
         // `armarPedido` vuelve a aplicar `cobraEnvio`; aquí solo se decide CUÁNTO cuesta el envío
         // cuando aplica, no SI aplica. Deducirlo también aquí era la segunda copia de la regla.
         deliveryFee: deliveryFee ?? defaultFee,
-        payments,
       });
       return agregarA ? posApi.addOrderLines(agregarA, body.lines) : posApi.createOrder(body);
     },
-    onSuccess: (order) => {
+    onSuccess: (order, vars) => {
       closeTab(cuenta.id); // la cuenta se envió o se cobró: se cierra y queda la siguiente activa
-      qc.invalidateQueries({ queryKey: ['orders', 'active'] });
+      // El PREFIJO entero, no solo `active`. Con `['orders','active']` a secas, el pedido recién
+      // confirmado no aparecía en la barra del POS —que lee `['orders','open']`— hasta su siguiente
+      // refresco de 30 segundos, y con la lista vacía el botón ni siquiera se pintaba: quien mandaba
+      // a cocina para cobrar después se quedaba mirando una barra sin nada, con el cliente enfrente.
+      qc.invalidateQueries({ queryKey: ['orders'] });
       // El pedido nuevo alimenta las recomendaciones → refetch para verlas al instante.
       qc.invalidateQueries({ queryKey: ['modifier-defaults'] });
       onDone(order);
+      // La continuación de ESTA llamada. Se pasa como función y no como una bandera de modo: quien
+      // manda el pedido es quien sabe qué sigue —cobrarlo o soltarlo— y el hook no tiene por qué
+      // enterarse.
+      vars.luego?.(order);
     },
     onError: (e: unknown) => {
       // El backend dice QUÉ producto tumbó el pedido; aquí solo se pinta. El nombre va en el título

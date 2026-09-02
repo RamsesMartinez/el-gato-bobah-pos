@@ -172,7 +172,7 @@ export function OrdersBoardPage() {
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
       {/* `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
       <CobrarSheet key={cobrando?.id} order={cobrando}
-        onClose={() => setCobrando(null)} onCobrado={invalidateAll} />
+        onClose={() => setCobrando(null)} onCobrado={() => invalidateAll()} />
     </Box>
   );
 }

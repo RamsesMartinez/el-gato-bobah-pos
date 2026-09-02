@@ -8,7 +8,7 @@ import { LuCheck, LuSplit } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
-import type { BoardOrder, OrderView } from '../types/pos';
+import type { CobroHecho, OrderView, PedidoParaCobrar } from '../types/pos';
 import { money } from '../utils/format';
 import { uuid } from '../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
@@ -17,9 +17,12 @@ import {
 } from '../domain/cobro';
 
 interface Props {
-  order: BoardOrder | null;
+  order: PedidoParaCobrar | null;
   onClose: () => void;
-  onCobrado: () => void;
+  // Se llama tras CADA cobro que entra, con lo que quedó del pedido. Quien la recibe decide qué
+  // hacer: la barra solo refresca; el POS, cuando el pedido queda saldado, lo relee para imprimir
+  // el ticket con el PAGADO que dice el servidor.
+  onCobrado: (res: CobroHecho, orderId: number) => void;
 }
 
 // Traduce el error del servidor a lo que necesita leer quien está cobrando.
@@ -157,7 +160,7 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
       qc.setQueryData(['orders', order!.id], (prev: OrderView | undefined) =>
         (prev ? { ...prev, outstanding: res.outstanding, paid: res.paid } : prev));
       qc.invalidateQueries({ queryKey: ['orders'] });
-      onCobrado();
+      onCobrado(res, order!.id);
       if (res.paid || resta <= 0) {
         toaster.create({ title: 'Cobrado', type: 'success' });
         onClose();

@@ -89,6 +89,13 @@ func TestLosEntregadosNoSeVacianALas18DelLocal(t *testing.T) {
 	if err := alAnochecer.DeliverAll(ctx, ord.ID); err != nil {
 		t.Fatalf("entregar: %v", err)
 	}
+	// `completed_at` lo escribe la BASE con su propio now(), no el reloj inyectado, así que sin esto
+	// el pedido queda entregado a la hora real de la corrida. El test pasaba de tarde y fallaba de
+	// madrugada — una prueba que depende de cuándo se corre no prueba nada.
+	if _, err := st.Pool.Exec(ctx,
+		`update orders set completed_at = $2 where id = $1`, ord.ID, lasOchoDeLaNoche); err != nil {
+		t.Fatalf("fijar la hora de entrega: %v", err)
+	}
 
 	// A las 23:00 del local —cuando el servidor ya cree que es mañana— el pedido SIGUE en la lista.
 	alasOnce := app.NewOrdersService(st, func() time.Time { return lasOnceDeLaNoche })

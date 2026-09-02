@@ -17,12 +17,15 @@ import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
 import { useMandarPedido } from './useMandarPedido';
+import { parseMonto } from '../../domain/numeros';
 import { useAgregarAPedido } from './useAgregarAPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../../shared/ProductEditDialog';
-import type { BoardOrder, MenuProduct, OrderView, TicketLine, TicketModifier } from '../../types/pos';
+import type {
+  BoardOrder, CobroHecho, MenuProduct, OrderView, PedidoParaCobrar, TicketLine, TicketModifier,
+} from '../../types/pos';
 import { money } from '../../utils/format';
 import { TicketPreview } from '../../shared/tickets/TicketPreview';
 import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTicket';
@@ -37,7 +40,7 @@ import { PedidosEnCurso } from './PedidosEnCurso';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
-import { CheckoutSheet } from './CheckoutSheet';
+import { CobrarSheet } from '../../shared/CobrarSheet';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
 // Clamp aproximado al cargar por si el viewport cambió de tamaño entre sesiones (no dejarla fuera).
@@ -106,7 +109,17 @@ export function POSPage() {
     setShowPrices((v) => { localStorage.setItem('pos.showPrices', v ? '0' : '1'); return !v; });
   const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
   const [editing, setEditing] = useState<TicketLine | null>(null);
+  // El pedido recién creado, que es lo que hace salir la COMANDA. Se pone siempre que se crea uno,
+  // se cobre o no: cocina tiene que enterarse en los dos casos.
+  const [pedidoNuevo, setPedidoNuevo] = useState<OrderView | null>(null);
+  // El pedido con el que TERMINA la venta: es el que abre la confirmación y el que sale impreso en
+  // el ticket del cliente. Va aparte del anterior porque cuando se cobra, el ticket tiene que decir
+  // PAGADO — y eso solo se sabe después del cobro, no al crear el pedido.
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
+  // El pedido que se está cobrando. El POS ya no tiene su propia pantalla de dinero: crea el pedido
+  // y abre LA hoja de cobro, la misma del botón naranja y la del tablero. Dos pantallas de cobro
+  // eran dos aritméticas, dos validaciones y dos formas de traducir el mismo error del servidor.
+  const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
   const [ticketOpen, setTicketOpen] = useState(false);
   // modo editar: reutiliza el grid del POS para editar productos (admin/gerente).
   const [editMode, setEditMode] = useState(false);
@@ -120,20 +133,41 @@ export function POSPage() {
 
   const ticketDrawer = useDisclosure();
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
-  const checkout = useDisclosure();
   // Mandar a cocina sin cobrar vive aquí y no en la hoja de cobro: es una decisión sobre el
   // pedido, no sobre el dinero. Tenerlo dentro del cobro hacía que la pantalla pidiera método de
   // pago y propina para algo que después se descartaba.
   // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
   // solo con lo agregado.
   const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
-  const { mandar, enviando } = useMandarPedido((order) => {
+  const [envio, setEnvio] = useState('');
+  const { mandar, enviando, noDisponibles, defaultFee } = useMandarPedido((order) => {
     ticketDrawer.onClose();
     // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
     setAgregados(undefined);
-    setLastOrder(order);
+    setPedidoNuevo(order);
   });
-  const enviarACocina = () => mandar({});
+  // Mandar a cocina sin cobrar: la venta termina aquí y la confirmación lo dice.
+  // El envío capturado viaja como número; ausente = el default del negocio. `armarPedido` decide
+  // si aplica.
+  const envioDelPedido = () => {
+    const m = parseMonto(envio);
+    return m.estado === 'valido' ? m.valor : undefined;
+  };
+  const enviarACocina = () => mandar({ luego: setLastOrder, deliveryFee: envioDelPedido() });
+  // Cobrar: se crea el pedido —cocina ya se entera— y se abre la hoja de cobro sobre él. La
+  // confirmación y el ticket esperan a que quede saldado, porque hasta entonces no se sabe si el
+  // papel dice PAGADO.
+  const cobrarLaCuenta = () => mandar({ luego: setCobrando, deliveryFee: envioDelPedido() });
+  // La venta termina cuando el pedido queda saldado, no cuando se creó.
+  //
+  // El pedido se RELEE del servidor antes de imprimir: el ticket estampa PAGADO o POR COBRAR, y con
+  // el pedido recién creado —que todavía no tiene pagos— saldría POR COBRAR en cada venta de
+  // mostrador. El ticket automático además se imprime una sola vez por pedido, así que no habría
+  // segunda oportunidad de corregirlo.
+  const terminarElCobro = async (res: CobroHecho, orderId: number) => {
+    if (!res.paid) return;
+    setLastOrder(await posApi.order(orderId));
+  };
 
   // Agregarle a un pedido que ya está en cocina, desde el chip de la barra. Es el camino que la
   // feature 005 viene a abrir: antes existía enterrado en la hoja de cobro —armar el carrito,
@@ -141,6 +175,7 @@ export function POSPage() {
   const { agregar } = useAgregarAPedido((order, nuevos) => {
     ticketDrawer.onClose();
     setAgregados(nuevos);
+    setPedidoNuevo(order);
     setLastOrder(order);
   });
   // La lista solo ofrece "Agregar" con productos capturados, así que aquí siempre hay algo que
@@ -386,8 +421,10 @@ export function POSPage() {
           <Box flex="1" minW={0}>{catalog}</Box>
           {!panelHidden && (
             <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
-              <Ticket onCheckout={checkout.onOpen} onEnviar={enviarACocina} enviando={enviando}
-                onEditLine={editLine} onHide={() => setPanelHidden(true)} />
+              <Ticket onCheckout={cobrarLaCuenta} onEnviar={enviarACocina} enviando={enviando}
+                onEditLine={editLine}
+                envio={envio} onEnvio={setEnvio} envioPorDefecto={defaultFee}
+                noDisponibles={noDisponibles} onHide={() => setPanelHidden(true)} />
             </Box>
           )}
         </Flex>
@@ -403,7 +440,7 @@ export function POSPage() {
               <Text fontWeight="700" truncate>{count} art · {money(total)}</Text>
               <LuChevronUp />
             </HStack>
-            <Button size="md" colorPalette="green" fontWeight="800" px={6} onClick={checkout.onOpen}>
+            <Button size="md" colorPalette="green" fontWeight="800" px={6} onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           </HStack>
@@ -429,7 +466,7 @@ export function POSPage() {
             <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total)}` : 'Ver pedido'}</Text>
           </HStack>
           {count > 0 && (
-            <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6} onClick={checkout.onOpen}>
+            <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6} onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           )}
@@ -451,9 +488,11 @@ export function POSPage() {
             {/* onHide = cerrar el sheet: a size=full el backdrop queda tapado, sin esto no hay cómo cerrarlo */}
             <Box flex="1" minH={0}>
               <Ticket
-                onCheckout={() => { ticketDrawer.onClose(); checkout.onOpen(); }}
+                onCheckout={() => { ticketDrawer.onClose(); cobrarLaCuenta(); }}
                 onEnviar={enviarACocina} enviando={enviando} onEditLine={editLine}
                 onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers}
+                envio={envio} onEnvio={setEnvio} envioPorDefecto={defaultFee}
+                noDisponibles={noDisponibles}
               />
             </Box>
           </Flex>
@@ -470,10 +509,15 @@ export function POSPage() {
         onConfirm={confirmModifiers}
       />
 
-      <CheckoutSheet
-        isOpen={checkout.open}
-        onClose={checkout.onClose}
-        onDone={(order) => { checkout.onClose(); ticketDrawer.onClose(); setLastOrder(order); }}
+      {/* LA hoja de cobro, la misma que abre el botón naranja y la del tablero. El POS ya no tiene
+          la suya: dos pantallas de dinero eran dos aritméticas, dos validaciones y dos formas de
+          traducir el mismo error, y ya habían divergido en cinco reglas verificables.
+          `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      <CobrarSheet
+        key={cobrando?.id}
+        order={cobrando}
+        onClose={() => setCobrando(null)}
+        onCobrado={terminarElCobro}
       />
 
       {/* Modo editar: editor de producto reutilizando el grid del POS */}
@@ -517,7 +561,9 @@ export function POSPage() {
               <Text color="fg.muted" mb={5}>Cobrado · #{lastOrder?.number}</Text>
             ) : (
               <Text color="orange.600" fontWeight="700" mb={5}>
-                Falta cobrar {money(Number(lastOrder?.total ?? 0))} · #{lastOrder?.number}
+                {/* Lo que FALTA, no el total. Con `total`, un pedido de $600 con $200 abonados
+                    decía "Falta cobrar $600" y mandaba a cobrar de más. */}
+                Falta cobrar {money(Number(lastOrder?.outstanding ?? 0))} · #{lastOrder?.number}
               </Text>
             )}
             <VStack gap={2}>
@@ -539,13 +585,15 @@ export function POSPage() {
           para los tickets que se sacan después, desde el tablero. */}
       <TicketPreview order={lastOrder} isOpen={ticketOpen} onClose={() => setTicketOpen(false)} />
 
-      {/* Sin UI: si el negocio activó la impresión automática, el ticket sale al cerrar el pedido.
-          El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen disponibles. */}
+      {/* Sin UI: si el negocio activó la impresión automática, el ticket sale cuando la venta
+          TERMINA. El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen
+          disponibles. */}
       <AutoPrintTicket order={lastOrder} />
 
-      {/* La comanda de cocina, si el negocio la activó. Sale del MISMO pedido recién mandado: son
-          dos papeles distintos para dos personas distintas, y cada uno con su propio ajuste. */}
-      <KitchenTicket order={lastOrder} soloLineas={agregados} />
+      {/* La comanda sale del pedido recién CREADO, no del que termina la venta: cocina tiene que
+          enterarse en cuanto el pedido existe, sin esperar a que alguien cobre. Son dos papeles
+          distintos para dos personas distintas, y cada uno con su propio ajuste. */}
+      <KitchenTicket order={pedidoNuevo} soloLineas={agregados} />
     </Box>
   );
 }

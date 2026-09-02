@@ -71,16 +71,21 @@ type OrderView struct {
 	// FolioName es el nombre con el que se canta el pedido ("Tigre"). Vacío en los pedidos
 	// anteriores a que existieran: a esos no se les inventa uno, porque el ticket que se imprimió
 	// en su día llevaba solo el número.
-	FolioName    string          `json:"folioName"`
-	Status       string          `json:"status"`
-	ServiceType  string          `json:"serviceType"`
-	CustomerName *string         `json:"customerName"`
-	Notes        *string         `json:"notes"`
-	Subtotal     decimal.Decimal `json:"subtotal"`
-	DeliveryFee  decimal.Decimal `json:"deliveryFee"`
-	Total        decimal.Decimal `json:"total"`
-	Currency     domain.Currency `json:"currency"`
-	Paid         bool            `json:"paid"`
+	FolioName   string `json:"folioName"`
+	Status      string `json:"status"`
+	ServiceType string `json:"serviceType"`
+	// DeliveryPlatformID: con qué lista se armó. Viaja para que el pedido recién creado se baste
+	// solo a la hora de cobrarlo — la pantalla que cobra ofrece solo los métodos con los que ese
+	// pedido se puede saldar, y preguntárselo a la pantalla que lo creó sería pedirle que se
+	// acuerde. Entre dos pantallas, "acordarse" es como ya divergieron otras tres cifras.
+	DeliveryPlatformID *int16          `json:"deliveryPlatformId"`
+	CustomerName       *string         `json:"customerName"`
+	Notes              *string         `json:"notes"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
+	Total              decimal.Decimal `json:"total"`
+	Currency           domain.Currency `json:"currency"`
+	Paid               bool            `json:"paid"`
 	// Outstanding es lo que falta por cobrar. Viaja porque la hoja de cobro lo necesita entre pago
 	// y pago de una cuenta dividida: sin él tendría que restar por su cuenta, y dos
 	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
@@ -351,7 +356,8 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 	view := &OrderView{
 		FolioName: derefStr(o.FolioName),
 		ID:        o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
-		ServiceType: string(o.ServiceType), CustomerName: o.CustomerName, Notes: o.Notes,
+		ServiceType: string(o.ServiceType), DeliveryPlatformID: o.DeliveryPlatformID,
+		CustomerName: o.CustomerName, Notes: o.Notes,
 		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:        domain.PedidoSaldado(paid, o.Total),
 		Outstanding: domain.PorCobrar(o.Total, paid),

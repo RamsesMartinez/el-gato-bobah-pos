@@ -33,10 +33,9 @@ export interface ArmarPedidoInput {
   clientUuid: string;
   // Costo de envío del negocio. Solo aplica a domicilio propio.
   deliveryFee: number;
-  payments?: CreateOrderBody['payments'];
 }
 
-export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee, payments }: ArmarPedidoInput): CreateOrderBody {
+export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee }: ArmarPedidoInput): CreateOrderBody {
   const lista = cuenta.platformId;
   return {
     clientUuid,
@@ -58,7 +57,5 @@ export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee, payments 
       notes: l.notes,
       modifiers: l.modifiers.map((m) => ({ optionId: m.optionId, qty: m.qty })),
     })),
-    // Sin pagos = mandado a cocina y por cobrar. El servidor lo deja abierto y el tablero lo marca.
-    payments,
   };
 }
