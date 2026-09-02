@@ -17,6 +17,7 @@ import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
 import {
   billetesUtiles, presetsDePropina, sugerenciasDeMonto, validarCobro, round2,
 } from '../domain/cobro';
+import type { MotivoInvalido } from '../domain/cobro';
 
 interface Props {
   order: PedidoParaCobrar | null;
@@ -204,14 +205,19 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // problema que no existe.
   const saldado = falta <= 0;
 
-  const aviso = saldado ? 'Este pedido ya está cobrado.' : {
+  // `Record<MotivoInvalido, string>` EXHAUSTIVO, y ese tipo es el punto: agregar un motivo de
+  // rechazo en `domain/cobro` sin escribir aquí qué lee el operador NO COMPILA. Sin él, un motivo
+  // nuevo apagaría el botón sin decir por qué, que es la peor forma de rechazar algo — el operador
+  // ve un botón muerto y no tiene ninguna acción que tomar.
+  const textos: Record<MotivoInvalido, string> = {
     'sin-monto': 'Escribe cuánto vas a cobrar.',
     'monto-invalido': 'Escribe el monto solo con números y punto, sin comas.',
     'sin-metodo': 'Falta con qué paga.',
     excede: `Es más de lo que falta (${money(String(falta), moneda)}).`,
     'propina-excede': 'La propina no puede ser mayor que la cuenta.',
     'falta-efectivo': `Faltan ${money(String(v.faltaEfectivo), moneda)}.`,
-  }[v.motivo ?? 'sin-monto'];
+  };
+  const aviso = saldado ? 'Este pedido ya está cobrado.' : textos[v.motivo ?? 'sin-monto'];
 
   return (
     <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
