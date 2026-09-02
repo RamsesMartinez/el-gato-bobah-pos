@@ -163,7 +163,7 @@ test.describe('E — el dinero, de la pantalla al servidor', () => {
           clientUuid: crypto.randomUUID(),
         },
       });
-      expect(r.ok(), `el cobro ${i + 1} de 3 falló`).toBeTruthy();
+      expect(r.ok(), `el cobro ${i + 1} de 3 falló: ${r.status()} ${await r.text()}`).toBeTruthy();
       falta = Math.round((falta - partes[i]) * 100) / 100;
       const res = await r.json();
       // La cifra que devuelve el cobro es la que la pantalla pinta: si no cuadra, el operador ve un
