@@ -42,6 +42,13 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
       recargar: true,
     };
   }
+  if (/ya no está activo/i.test(msg)) {
+    return {
+      titulo: 'Ese método de pago ya no está activo',
+      detalle: 'Elige otro, o vuelve a activarlo en Ajustes.',
+      recargar: false,
+    };
+  }
   if (/plataforma/i.test(msg)) {
     return { titulo: 'Con ese método no se puede cobrar este pedido', recargar: false };
   }

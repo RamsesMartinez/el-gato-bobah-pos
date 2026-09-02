@@ -1213,6 +1213,9 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 			}
 			return err
 		}
+		if !m.IsActive {
+			return domain.ErrMetodoInactivo
+		}
 		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.DeliveryPlatformID) {
 			return domain.ErrPaymentMethodPlatform
 		}

@@ -428,3 +428,29 @@ func TestSinCajaAbiertaNoSeCobraNadaNuevo(t *testing.T) {
 		t.Fatalf("cobrar sin caja abierta = %v, quiere ErrNoOpenRegister", err)
 	}
 }
+
+// EL DEFECTO: un método de pago desactivado seguía cobrando.
+//
+// GetPaymentMethod no filtraba `is_active`, así que la única barrera era que el front no lo listara
+// — y una tableta encendida lleva horas con el catálogo en caché. El negocio apaga un método
+// justamente para dejar de recibir por ahí; que el servidor lo siga aceptando manda ese dinero a un
+// renglón del corte que nadie está contando.
+func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, cajero, efectivo := pedidoDe(t, st, svc, "metodo_apagado", "250")
+
+	if _, err := st.Pool.Exec(ctx,
+		`update payment_methods set is_active = false where id = $1`, efectivo); err != nil {
+		t.Fatalf("desactivar el método: %v", err)
+	}
+
+	_, err := svc.Charge(ctx, app.ChargeCmd{
+		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("250"),
+		ActorID: cajero, ClientUUID: uuid.New(),
+	})
+	if !errors.Is(err, domain.ErrMetodoInactivo) {
+		t.Fatalf("cobrar con un método desactivado = %v, quiere ErrMetodoInactivo", err)
+	}
+}

@@ -288,7 +288,8 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 }
 
 const getPaymentMethod = `-- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1
 `
 
 type GetPaymentMethodRow struct {
@@ -298,8 +299,12 @@ type GetPaymentMethodRow struct {
 	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
 	AutoDeclare        bool        `json:"auto_declare"`
 	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	IsActive           bool        `json:"is_active"`
 }
 
+// Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
+// apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
+// ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
 func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMethodRow, error) {
 	row := q.db.QueryRow(ctx, getPaymentMethod, id)
 	var i GetPaymentMethodRow
@@ -310,6 +315,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
 		&i.DeliveryPlatformID,
+		&i.IsActive,
 	)
 	return i, err
 }
