@@ -54,11 +54,23 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
   // palabra. Y no son la misma cosa: al chip en preparación se le TOCA para agregarle, mientras que
   // el entregado sin cobrar es un aviso de dinero — exactamente lo que la píldora que esto
   // reemplazó hacía bien, y que se perdió al ponerlos todos como chips.
-  const enPreparacion = pedidos.filter((o) => o.enPreparacion);
-  const conSaldo = pedidos.filter((o) => !o.enPreparacion);
+  // CHIP: sigue en cocina Y todavía debe. Un pedido pagado que sigue en cocina no tiene nada que el
+  // cajero deba hacerle —ya cobró— y ponerlo aquí satura la barra, que es la pantalla más apretada
+  // del sistema. La cocina lo sigue viendo en su tablero, que es donde importa.
+  const enPreparacion = pedidos.filter((o) => o.enPreparacion && Number(o.outstanding) > 0);
+
+  // LISTA: todo lo que debe dinero, esté en cocina o ya entregado.
+  const conSaldo = pedidos.filter((o) => Number(o.outstanding) > 0);
+
+  // El total sale de la MISMA lista que la píldora abre, no del que manda el servidor.
+  //
+  // Con dos fuentes, la tableta llegó a decir $2,141 en la píldora y $1,928 en la lista: el operador
+  // ve dos cifras del mismo dinero y no tiene forma de saber cuál miente. Es el corolario del
+  // principio III, y ya costó un turno con $4,500 de faltante inexplicable.
+  const totalPendiente = conSaldo.reduce((s, o) => s + Number(o.outstanding), 0);
 
   // Sin nada que mostrar no se pinta: un contador en cero es chrome que le quita ancho a la barra.
-  if (pedidos.length === 0) return null;
+  if (enPreparacion.length === 0 && conSaldo.length === 0) return null;
 
   return (
     <>
@@ -119,7 +131,7 @@ export function PedidosEnCurso({ onAbrir }: { onAbrir: (pedido: BoardOrder) => v
         >
           <LuWallet />
           <Text as="span" ml={1} fontWeight="800" whiteSpace="nowrap">
-            {money(String(data?.outstanding ?? '0'))}
+            {money(String(totalPendiente))}
           </Text>
           <Text as="span" ml={1} fontSize="xs" opacity={0.9}>({conSaldo.length})</Text>
         </Button>

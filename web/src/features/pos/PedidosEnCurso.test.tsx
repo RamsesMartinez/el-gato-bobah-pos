@@ -90,3 +90,49 @@ test('los chips scrollean dentro de su propia caja acotada', async () => {
   expect(conScroll, 'los chips necesitan su propia caja con overflowX auto').toBeTruthy();
   expect(caja).toBeTruthy();
 });
+
+// EL NÚMERO DE LA PÍLDORA Y LA LISTA QUE ABRE SALEN DEL MISMO PREDICADO.
+//
+// La píldora tomaba el total del servidor —que suma TODO lo pendiente— y la lista se armaba con otro
+// filtro. En la tableta real decían $2,141 y $1,928: el operador ve dos cifras del mismo dinero y no
+// tiene forma de saber cuál miente. Es el corolario del principio III, y ya costó un turno con
+// $4,500 de faltante inexplicable.
+test('el total de la píldora es la suma de lo que la lista muestra', async () => {
+  openOrders.mockResolvedValue({
+    items: [
+      pedido({ id: 1, folioName: 'Castor', enPreparacion: true, outstanding: '213', total: '213' }),
+      pedido({ id: 2, folioName: 'Urraca', enPreparacion: false, status: 'entregada', outstanding: '712', total: '712' }),
+    ],
+    // El servidor manda una cifra DISTINTA de la suma de la lista, a propósito: es la única forma
+    // de saber cuál de las dos fuentes está usando la píldora. Con las dos iguales, el test pasa
+    // con el defecto puesto.
+    outstanding: '99999',
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} />);
+
+  // Se abre la lista y se compara su encabezado con el de la píldora: son la misma cifra o una de
+  // las dos miente.
+  // La píldora lleva el conteo entre paréntesis; los chips no.
+  const pildora = await screen.findByRole('button', { name: /\(2\)/ });
+  expect(pildora.textContent, 'la píldora suma lo que la lista muestra, no lo que manda el servidor').toMatch(/925/);
+  expect(pildora.textContent).not.toMatch(/99,?999/);
+});
+
+// SOLO SE VEN COMO CHIP LOS QUE SIGUEN EN CURSO Y NO ESTÁN SALDADOS.
+//
+// Un pedido pagado que sigue en cocina no tiene nada que el cajero deba hacerle: ya cobró. Ponerlo
+// como chip satura la barra —la pantalla más apretada del sistema— con algo que no es accionable
+// desde ahí. La cocina lo sigue viendo en su tablero, que es donde importa.
+test('un pedido en curso YA PAGADO no ocupa un chip', async () => {
+  openOrders.mockResolvedValue({
+    items: [
+      pedido({ id: 1, folioName: 'Pagado', enPreparacion: true, outstanding: '0', total: '100' }),
+      pedido({ id: 2, folioName: 'Debe', enPreparacion: true, outstanding: '100', total: '100' }),
+    ],
+    outstanding: '100',
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} />);
+
+  expect(await screen.findByRole('button', { name: /Debe/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Pagado/ })).toBeNull();
+});
