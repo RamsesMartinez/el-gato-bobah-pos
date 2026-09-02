@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Button, VStack, HStack, SimpleGrid, Text, Input, Box, Flex, IconButton,
 } from '@chakra-ui/react';
@@ -79,6 +79,20 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
   // operador puede editarlo o ponerlo en 0 (envío gratis) para este pedido. null = usar default.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const [feeOverride, setFeeOverride] = useState<string | null>(null);
+  // Una llave por línea de pago, estable entre reintentos de ESTA cuenta.
+  //
+  // Generarlas dentro del bucle rompía el caso para el que existen: si el cobro entra y la respuesta
+  // se pierde, el operador vuelve a tocar COBRAR y con llaves nuevas el servidor registra los pagos
+  // otra vez. La creación del pedido ya era idempotente por `clientUuid`; los cobros no lo eran.
+  const llavesDePago = useRef<Map<string, string>>(new Map());
+  const llaveDe = (i: number) => {
+    const k = `${activeId}#${i}`;
+    const ya = llavesDePago.current.get(k);
+    if (ya) return ya;
+    const nueva = uuid();
+    llavesDePago.current.set(k, nueva);
+    return nueva;
+  };
   const isDelivery = serviceType === 'domicilio';
   const defaultFee = settings ? settings.deliveryFee : '20';
   const feeInput = feeOverride ?? defaultFee;
@@ -176,12 +190,14 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
     // se perdía entero y había que recapturarlo con el cliente enfrente.
     mutationFn: async () => {
       const order = await posApi.createOrder(build());
-      for (const p of buildPayments()) {
-        // Su propia llave por pago: si la respuesta se pierde y el operador reintenta, el servidor
-        // reconoce el que ya entró en vez de cobrarlo dos veces. Con la cuenta dividida es lo único
-        // que distingue dos mitades iguales entre sí.
+      const pagos = buildPayments();
+      for (let i = 0; i < pagos.length; i++) {
+        const p = pagos[i];
+        // Su propia llave por pago, la MISMA en cada reintento: si la respuesta se pierde y el
+        // operador vuelve a tocar, el servidor reconoce el que ya entró en vez de cobrarlo dos
+        // veces. Con la cuenta dividida es además lo único que distingue dos mitades iguales.
         await posApi.chargeOrder(order.id, {
-          methodId: p.methodId, amount: p.amount, tip: p.tip, clientUuid: uuid(),
+          methodId: p.methodId, amount: p.amount, tip: p.tip, clientUuid: llaveDe(i),
         });
       }
       // Se relee DESPUÉS de cobrar. Devolver el pedido recién creado dejaba la confirmación
@@ -195,6 +211,7 @@ export function CheckoutSheet({ isOpen, onClose, onDone }: Props) {
       setTendered('');
       setTip('');
       setSplitMode(false); setSplits([]); // el siguiente pedido arranca en modo simple
+      llavesDePago.current.clear(); // la cuenta se cerró: las llaves de sus pagos ya no aplican
       setFeeOverride(null); // siguiente pedido vuelve al costo de envío por defecto
       qc.invalidateQueries({ queryKey: ['orders', 'active'] });
       // el pedido nuevo alimenta las recomendaciones → refetch para verlas al instante
