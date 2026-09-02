@@ -56,6 +56,18 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
+- **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
+  1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
+  entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
+  están de acuerdo por construcción. En Windows los binarios del navegador los bloquea Smart App
+  Control, así que corre en contenedor como el resto de los gates:
+
+  ```bash
+  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.62.1-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
+  ```
+
+  Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
+  buscar el defecto. Los casos y su porqué están en [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md).
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).

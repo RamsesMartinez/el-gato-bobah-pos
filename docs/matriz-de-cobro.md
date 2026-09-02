@@ -79,32 +79,52 @@ cobrar $115 de un pedido de $95.
 | C12 | Pedido ya saldado al abrir | Lo dice; no ofrece cobrar | idem | vitest |
 | C13 | "El cambio es propina" | Un toque, sin teclear | idem | vitest |
 
-## D. La pantalla que cobra el carrito — **lo que falta**
+## D. La pantalla que cobraba el carrito — **ya no existe**
 
-Ninguno de estos tenía test cuando se escribió esta matriz, y cada uno es un defecto vivo.
+Diez defectos vivían aquí. Siete se cerraron **borrando la pantalla**: el POS ya no tiene su propia
+hoja de dinero, sino que crea el pedido y abre la misma hoja de cobro del botón naranja y del
+tablero. No hay guardia más confiable que el archivo que no existe.
 
-| # | Caso | Qué debe pasar | Test | Estado |
-|---|---|---|---|---|
-| D1 | Borrar una línea del pago dividido y reintentar | La línea que queda **no** hereda la llave de la que se fue | — | **descubierto, sin arreglar** |
-| D2 | Corregir los montos tras un fallo y reintentar | No queda atorado para siempre | — | **descubierto, sin arreglar** |
-| D3 | Domicilio y **después** plataforma | No se cobra el envío que el servidor no va a cobrar | — | **descubierto, sin arreglar** |
-| D4 | Propina mayor que la cuenta | No llega a crear el pedido | — | **descubierto, sin arreglar** |
-| D5 | Sin método elegible | El botón no cobra ni manda `methodId: 0` | — | **descubierto, sin arreglar** |
-| D6 | Envío mal escrito | No se convierte en envío gratis | — | **descubierto, sin arreglar** |
-| D7 | Propina mal escrita | No cae a $0 en silencio | — | **descubierto, sin arreglar** |
-| D8 | Encabezado y botón | Dicen la misma cifra | — | **descubierto, sin arreglar** |
-| D9 | El diálogo de "pedido registrado" | Dice lo que **falta**, no el total | — | **descubierto, sin arreglar** |
-| D10 | Rebote del servidor | Se traduce, no sale crudo | — | **descubierto, sin arreglar** |
+| # | Caso | Cómo quedó | Test |
+|---|---|---|---|
+| D1 | Borrar una línea del pago dividido y reintentar heredaba la llave de la que se fue | **borrado con la pantalla** | — |
+| D2 | Corregir los montos tras un fallo dejaba la cuenta atorada para siempre | **borrado con la pantalla** | — |
+| D3 | Domicilio y **después** plataforma cobraba un envío fantasma | `cobraEnvio`, un solo lugar | `pedido.test.ts`, `Ticket.test.tsx` |
+| D4 | Propina sin tope dejaba el pedido creado y sin cobrar | **borrado**; la hoja que queda la topa antes de mandar | `cobro.test.ts` |
+| D5 | Sin método elegible mandaba `methodId: 0` | **borrado**; la hoja que queda apaga el botón | `CobrarSheet.test.tsx` |
+| D6 | Envío mal escrito = envío gratis | El panel lo rechaza y apaga los botones | `Ticket.test.tsx` |
+| D7 | Propina mal escrita caía a $0 | **borrado**; `parseMonto` distingue inválido de cero | `numeros.test.ts` |
+| D8 | Encabezado y botón decían cifras distintas | **borrado**; la hoja que queda pinta una sola | `CobrarSheet.test.tsx` |
+| D9 | El diálogo decía el total en vez del saldo | Usa `outstanding` | — (verificado a mano) |
+| D10 | Rebotes del servidor crudos | **borrado**; la hoja que queda los traduce | `CobrarSheet.test.tsx` |
 
-## E. Extremo a extremo, en el navegador
+## E. Extremo a extremo, contra el ambiente desplegado
 
-| # | Caso | Qué debe pasar | Test | Estado |
-|---|---|---|---|---|
-| E1 | Cobrar un pedido completo | Sale de la barra y el corte lo cuenta una vez | — | pendiente |
-| E2 | Repartir entre tres, con propina en dos | El corte separa las propinas por método | — | pendiente |
-| E3 | Doble tap sobre el botón de cobrar | Un solo pago registrado | — | pendiente |
-| E4 | Agregarle a un pedido ya pagado que sigue en cocina | Se puede | — | pendiente |
-| E5 | Domicilio + plataforma | La pantalla no ofrece cobrar un envío fantasma | — | pendiente |
+Playwright, a 1024×600, contra `app-dev` y `api-dev` de verdad. Lo que estas atrapan y las de vitest
+no es el **desacuerdo entre la pantalla y el servidor**: con el backend simulado los dos están de
+acuerdo por construcción, y de esa forma fueron todos los defectos caros de este sistema.
+
+Se corren con `bun run e2e` (en contenedor, como el resto de los gates).
+
+| # | Caso | Qué debe pasar | Test |
+|---|---|---|---|
+| E0 | La barra y su lista | La cifra del encabezado es la suma de la lista | `dinero.spec.ts` |
+| E1 | COBRAR desde el POS | Crea el pedido y abre **la** hoja de cobro, sin método preseleccionado | `cobro-en-pantalla.spec.ts` |
+| E1b | Cobrar en efectivo | El pedido queda saldado y la confirmación dice Cobrado, no "falta" | idem |
+| E2 | Repartir entre tres | Queda saldado, sin centavos colgando, y cada cobro devuelve el faltante correcto | `dinero.spec.ts` |
+| E3 | Doble tap sobre cobrar | Un solo pago; con otro método se rechaza | idem |
+| E5 | Pedido de plataforma | El servidor no cobra el envío del negocio y el detalle dice con qué lista se armó | idem |
+| E5b | Domicilio y **después** plataforma, en la pantalla | El campo de envío desaparece | `cobro-en-pantalla.spec.ts` |
+| E6 | Envío con coma de millar | Lo dice y apaga COBRAR | idem |
+
+### Lo que la matriz E encontró y ninguna otra prueba veía
+
+**El POS dejaba de poder vender.** `POST /orders` respondía 500 con un choque del índice único de
+nombres del día. Cuando la pantalla empezó a proponer el nombre, el camino donde el servidor lo
+asigna se quedó sin verificar si ya estaba usado — y en cuanto la lista de animales se consume a
+medias, el que le toca por folio numérico ya está tomado. Medido: el pedido **24** del día. La única
+salida del operador era esperar al día siguiente. Cubierto por
+`folio_no_tumba_la_venta_test.go`.
 
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
