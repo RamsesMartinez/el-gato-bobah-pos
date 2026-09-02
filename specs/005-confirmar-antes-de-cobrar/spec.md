@@ -178,6 +178,14 @@ Las formas de fallar, enumeradas antes de escribir nada. Cada una deja su test.
   pidiendo una confirmación que ahí no aplica.
 - **Agregar renglones a un pedido ya entregado o cancelado.** Son estados terminales; el agregado se
   rechaza.
+
+  > **El ENTREGADO se abrió por decisión del dueño (2026-09-02).** El cliente que ya recibió su
+  > comida y sigue en la mesa pide una más; mandarla como pedido aparte deja dos cuentas para la
+  > misma mesa y una de las dos se pierde de vista. Su dinero tampoco estaba cerrado: el pago se
+  > registra al cobrar, no al entregar. El pedido que recibe renglones **vuelve a `abierta`**
+  > (`domain.ReabreAlAgregar`) — si se quedara en `entregada`, el tablero no lo listaría y nadie
+  > prepararía la comida recién pedida. Cancelada y reembolsada siguen rechazando: ahí el dinero ya
+  > lo contó un arqueo firmado.
 - **Agregar renglones a un pedido ya cobrado por completo.** Se permite —el cliente pidió más—, y el
   pedido reaparece en la barra con el saldo nuevo. Lo que no puede es quedar cobrado con renglones
   que nadie pagó y sin que se vea.

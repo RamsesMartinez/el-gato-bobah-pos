@@ -844,12 +844,9 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		}
 		// Y se REVALIDA el estado sobre la fila ya bloqueada, no solo sobre la lectura de arriba.
 		//
-		// Entre las dos cabe que la otra estación entregue o cancele el pedido, y con la barra de
-		// pedidos en curso ese hueco dejó de ser teórico: el chip sigue en pantalla hasta el
-		// siguiente refresco, y ahora un cobro que salda un pedido sin preparación lo entrega SOLO,
-		// que es el caso más común del mostrador. Sin esto entra un renglón sobre un pedido ya
-		// entregado y `RecalcOrderTotals` le sube el total — mover dinero que ya se contó, que es
-		// justo lo que el comentario de esta función dice que nunca debe pasar.
+		// Entre las dos cabe que la otra estación CANCELE o reembolse el pedido, y el renglón sigue
+		// en pantalla hasta el siguiente refresco. Sin esto entra un renglón sobre un reembolso y
+		// `RecalcOrderTotals` le sube el total: mover dinero que un arqueo firmado ya contó.
 		if !domain.PuedeRecibirLineas(string(o.Status)) {
 			return fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
 				domain.ErrConflict, ord.DailyNumber, o.Status)
@@ -906,6 +903,17 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 			OrderID: orderID, Ids: agregados,
 		}); err != nil {
 			return err
+		}
+		// El entregado que recibe renglones vuelve a estar EN CURSO: lo nuevo no salió de la cocina
+		// y el tablero solo lista abierta y lista, así que dejarlo en `entregada` esconde la comida
+		// que acaban de pedir. `completed_at` se queda como está: solo se lee junto al estado
+		// `entregada` y la próxima entrega lo vuelve a estampar.
+		if domain.ReabreAlAgregar(string(o.Status)) {
+			if err := q.SetOrderStatus(ctx, db.SetOrderStatusParams{
+				ID: orderID, Status: db.OrderStatusAbierta,
+			}); err != nil {
+				return err
+			}
 		}
 		return q.RecalcOrderTotals(ctx, orderID)
 	})

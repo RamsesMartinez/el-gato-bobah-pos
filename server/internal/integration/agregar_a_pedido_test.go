@@ -73,13 +73,14 @@ func TestAgregarAUnPedidoEnCurso(t *testing.T) {
 			len(tras.Lines))
 	}
 
-	// Y al pedido entregado ya no.
-	if err := svc.DeliverAll(ctx, ord.ID); err != nil {
-		t.Fatalf("DeliverAll: %v", err)
+	// Y al CANCELADO no. Ahí el dinero ya se decidió: subirle el total mueve algo que un arqueo
+	// firmado ya contó. (Al entregado sí se le puede — ver TestElEntregadoQueRecibeMasVuelveACocina.)
+	if err := svc.Cancel(ctx, ord.ID, cajero, "prueba"); err != nil {
+		t.Fatalf("Cancel: %v", err)
 	}
 	err = func() error { _, e := svc.AddLines(ctx, ord.ID, uno, cajero); return e }()
 	if !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("agregar a un entregado = %v, quiere conflicto: entraría un renglón sobre un pedido que nadie va a preparar", err)
+		t.Fatalf("agregar a un cancelado = %v, quiere conflicto", err)
 	}
 	if !contieneEstado(err.Error()) {
 		t.Errorf("el error no dice en qué estado quedó el pedido (%q): la tableta suspendida no se entera de qué pasó", err)
@@ -139,4 +140,71 @@ func buscarEnCurso(t *testing.T, svc *app.OrdersService, id int64) app.BoardOrde
 	}
 	t.Fatalf("el pedido %d no está en la barra de en curso", id)
 	return app.BoardOrder{}
+}
+
+// EL ENTREGADO QUE RECIBE MÁS VUELVE A COCINA.
+//
+// El cliente ya recibió su comida, sigue en la mesa y pide una más. Antes eso se rechazaba y el
+// operador abría un pedido aparte: dos cuentas para la misma mesa, y una de las dos se pierde de
+// vista — que es justo lo que el dueño pidió evitar.
+//
+// Las dos mitades se prueban juntas a propósito: aceptar el renglón SIN devolver el pedido a curso
+// es peor que rechazarlo. El tablero solo lista abierta y lista, así que el renglón entraría, se
+// cobraría, y nadie prepararía la comida.
+func TestElEntregadoQueRecibeMasVuelveACocina(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, cafe, cajero := pedidoEnCurso(t, st, svc, "reabre", false)
+
+	if err := svc.DeliverAll(ctx, ord.ID); err != nil {
+		t.Fatalf("DeliverAll: %v", err)
+	}
+	entregados, err := svc.DeliveredToday(ctx)
+	if err != nil {
+		t.Fatalf("DeliveredToday: %v", err)
+	}
+	if !estaEnLaLista(entregados, ord.ID) {
+		t.Fatalf("el pedido no quedó entregado: el test no está probando lo que dice")
+	}
+
+	tras, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
+		{ProductID: cafe, Qty: decimal.RequireFromString("1")},
+	}, cajero)
+	if err != nil {
+		t.Fatalf("AddLines sobre un entregado: %v", err)
+	}
+
+	if tras.Status != domain.StatusAbierta {
+		t.Errorf("estado = %q, quiere abierta: en entregada el tablero no lo lista y nadie prepara lo que se acaba de pedir",
+			tras.Status)
+	}
+	if !tras.Total.Equal(decimal.RequireFromString("200")) {
+		t.Errorf("total = %s, quiere 200", tras.Total)
+	}
+
+	// Sale de "Entregados hoy" —ya no está entregado del todo— y vuelve a la barra como preparable.
+	entregados, err = svc.DeliveredToday(ctx)
+	if err != nil {
+		t.Fatalf("DeliveredToday: %v", err)
+	}
+	if estaEnLaLista(entregados, ord.ID) {
+		t.Errorf("sigue en Entregados hoy con comida sin salir: la misma venta se lee terminada en una pantalla y pendiente en otra")
+	}
+	enCurso := buscarEnCurso(t, svc, ord.ID)
+	if !enCurso.EnPreparacion {
+		t.Errorf("enPreparacion = false: la hoja del POS no ofrecería agregarle, y cocina no lo ve")
+	}
+	if !enCurso.Outstanding.Equal(decimal.RequireFromString("200")) {
+		t.Errorf("saldo = %s, quiere 200", enCurso.Outstanding)
+	}
+}
+
+func estaEnLaLista(lista []app.BoardOrder, id int64) bool {
+	for _, o := range lista {
+		if o.ID == id {
+			return true
+		}
+	}
+	return false
 }

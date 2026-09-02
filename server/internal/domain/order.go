@@ -289,9 +289,28 @@ func PedidoSaldado(pagado, total decimal.Decimal) bool {
 
 // PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
 //
-// Solo lo que sigue en curso. Un pedido entregado ya tiene su venta contada en el corte y su ticket
-// en manos del cliente; cancelado y reembolsado son terminales. Cambiarle el total a cualquiera de
-// esos es mover dinero que ya se cerró.
+// Incluye el ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa pide una más, y
+// mandarla como pedido aparte deja dos cuentas para la misma mesa: una de las dos se pierde de
+// vista y termina cobrándose a medias o no cobrándose. Su dinero además no está cerrado — el pago
+// se registra cuando se cobra, no cuando se entrega.
+//
+// Cancelada y reembolsada quedan fuera: ahí el dinero YA se decidió, y subirle el total a un
+// reembolso es mover algo que un arqueo firmado ya contó.
+//
+// Un entregado que recibe renglones deja de estar entregado; eso lo dice ReabreAlAgregar.
 func PuedeRecibirLineas(estado string) bool {
-	return estado == StatusAbierta || estado == StatusLista
+	return estado == StatusAbierta || estado == StatusLista || estado == StatusEntregada
+}
+
+// ReabreAlAgregar dice si el pedido tiene que volver a estar en curso tras recibir renglones.
+//
+// Solo el entregado: lo nuevo no ha salido de la cocina, y dejarlo en `entregada` lo esconde del
+// tablero —que solo lista abierta y lista—, así que nadie prepararía la comida que se acaba de
+// pedir. También lo saca de "Entregados hoy", que es correcto: ya no está entregado del todo.
+//
+// La transición NO se agrega a CanTransition a propósito. Ahí sería un `entregada → abierta` que
+// cualquiera podría pedir por su cuenta, y des-entregar un pedido a mano no es algo que esta app
+// ofrezca; aquí es la consecuencia de agregar, no una acción.
+func ReabreAlAgregar(estado string) bool {
+	return estado == StatusEntregada
 }

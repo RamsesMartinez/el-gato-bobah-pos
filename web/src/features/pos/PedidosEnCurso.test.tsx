@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
@@ -7,7 +7,10 @@ import type { ReactNode } from 'react';
 import type { BoardOrder } from '../../types/pos';
 
 const openOrders = vi.hoisted(() => vi.fn());
-vi.mock('../../api/pos', () => ({ posApi: { openOrders, order: vi.fn(), paymentMethods: vi.fn(), chargeOrder: vi.fn() } }));
+const order = vi.hoisted(() => vi.fn());
+const paymentMethods = vi.hoisted(() => vi.fn());
+const chargeOrder = vi.hoisted(() => vi.fn());
+vi.mock('../../api/pos', () => ({ posApi: { openOrders, order, paymentMethods, chargeOrder } }));
 
 import { PedidosEnCurso } from './PedidosEnCurso';
 
@@ -27,7 +30,7 @@ const pedido = (over: Partial<BoardOrder> = {}): BoardOrder => ({
   enPreparacion: true, renglones: 3, lines: [], ...over,
 });
 
-afterEach(() => { openOrders.mockReset(); });
+afterEach(() => { openOrders.mockReset(); order.mockReset(); paymentMethods.mockReset(); chargeOrder.mockReset(); });
 
 // LA BARRA ES UN SOLO BOTÓN, y no es una preferencia estética.
 //
@@ -40,7 +43,7 @@ test('la barra ocupa un solo control, no uno por pedido', async () => {
     items: Array.from({ length: 6 }, (_, i) => pedido({ id: i + 1, folioName: `Animal${i}` })),
     outstanding: '1500',
   });
-  const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+  const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
 
   await screen.findByRole('button', { name: /1,500/ });
   expect(container.querySelectorAll('button')).toHaveLength(1);
@@ -50,7 +53,7 @@ test('la barra ocupa un solo control, no uno por pedido', async () => {
 // controles llegaba a cobrar 112 px estando vacía porque vivía fuera del condicional.
 test('no pinta nada cuando no hay nada que cobrar', async () => {
   openOrders.mockResolvedValue({ items: [], outstanding: '0' });
-  const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+  const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
   await new Promise((r) => setTimeout(r, 0));
   expect(container.querySelector('button')).toBeNull();
 });
@@ -72,7 +75,7 @@ test('el total del botón es la suma de lo que la lista muestra', async () => {
     // el defecto puesto.
     outstanding: '99999',
   });
-  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
 
   const boton = await screen.findByRole('button', { name: /\(2\)/ });
   expect(boton.textContent, 'el botón suma lo que la lista muestra, no lo que manda el servidor').toMatch(/925/);
@@ -92,7 +95,7 @@ test('al pedido que sigue en cocina se le puede agregar', async () => {
     items: [pedido({ id: 7, folioName: 'Castor', enPreparacion: true, outstanding: '250' })],
     outstanding: '250',
   });
-  pinta(<PedidosEnCurso onAbrir={onAbrir} hayQueAgregar />);
+  pinta(<PedidosEnCurso onAbrir={onAbrir} onCobrado={() => {}} hayQueAgregar />);
 
   await u.click(await screen.findByRole('button', { name: /250/ }));
   await u.click(await screen.findByRole('button', { name: /Agregar/ }));
@@ -101,20 +104,25 @@ test('al pedido que sigue en cocina se le puede agregar', async () => {
 
 // El entregado sin cobrar es el caso caro —el cliente ya se fue con la comida— y necesita decirse
 // con todas sus letras, no depender del color.
-test('el entregado sin cobrar se nombra y solo ofrece cobrar', async () => {
+//
+// Y SÍ ofrece agregarle: el cliente que ya recibió lo suyo y sigue en la mesa pide una más. Mandar
+// eso como pedido aparte deja dos cuentas para la misma mesa y una de las dos se pierde de vista.
+test('al entregado sin cobrar se le puede agregar y cobrar, y se dice que ya salió', async () => {
   const u = userEvent.setup();
+  const onAbrir = vi.fn();
   openOrders.mockResolvedValue({
     items: [pedido({ id: 2, folioName: 'Lobo', status: 'entregada', enPreparacion: false })],
     outstanding: '250',
   });
-  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+  pinta(<PedidosEnCurso onAbrir={onAbrir} onCobrado={() => {}} hayQueAgregar />);
 
   await u.click(await screen.findByRole('button', { name: /250/ }));
   expect(await screen.findByText('Lobo')).toBeInTheDocument();
   expect(screen.getByText(/ya se entregó/)).toBeInTheDocument();
-  // No se le puede agregar: el servidor rechaza renglones en un pedido entregado.
-  expect(screen.queryByRole('button', { name: /Agregar/ })).toBeNull();
   expect(screen.getByRole('button', { name: /Cobrar \$250/ })).toBeInTheDocument();
+
+  await u.click(screen.getByRole('button', { name: /Agregar/ }));
+  expect(onAbrir).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
 });
 
 // Un control de 44 px que no hace nada ni dice por qué es peor que no tenerlo: con la cuenta vacía,
@@ -122,7 +130,7 @@ test('el entregado sin cobrar se nombra y solo ofrece cobrar', async () => {
 test('sin productos capturados, Agregar está apagado y la hoja dice por qué', async () => {
   const u = userEvent.setup();
   openOrders.mockResolvedValue({ items: [pedido()], outstanding: '250' });
-  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar={false} />);
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar={false} />);
 
   await u.click(await screen.findByRole('button', { name: /250/ }));
   expect(await screen.findByText(/Captura los productos en una cuenta/)).toBeInTheDocument();
@@ -146,10 +154,41 @@ test('la hoja pinta un renglón por pedido, sin plegados', async () => {
     ],
     outstanding: '350',
   });
-  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
 
   await u.click(await screen.findByRole('button', { name: /350/ }));
   expect(await screen.findByText('Debe')).toBeInTheDocument();
   expect(screen.getByText('TambienDebe')).toBeInTheDocument();
   expect(screen.queryByText(/ya cobrado/)).toBeNull();
+});
+
+// COBRAR DESDE ESTA HOJA TERMINA LA VENTA DONDE SE IMPRIME EL TICKET.
+//
+// La hoja se quedaba refrescando su lista y nada más: quien cobraba desde el botón naranja no veía
+// la confirmación ni podía sacar el papel, mientras que cobrar el mismo pedido desde el panel sí lo
+// ofrecía. El ticket no lo pinta este componente —vive en la pantalla que lo monta— justamente para
+// que los dos caminos terminen en la MISMA confirmación y ninguno se quede sin papel.
+test('al quedar saldado, avisa a la pantalla para que ofrezca el ticket', async () => {
+  const u = userEvent.setup();
+  const onCobrado = vi.fn();
+  openOrders.mockResolvedValue({
+    items: [pedido({ id: 7, folioName: 'Tigre', outstanding: '250', total: '250' })],
+    outstanding: '250',
+  });
+  order.mockResolvedValue({ ...pedido({ id: 7, outstanding: '250', total: '250' }), lines: [] });
+  paymentMethods.mockResolvedValue({
+    items: [{ id: 1, name: 'Efectivo', kind: 'efectivo', deliveryPlatformId: null }],
+  });
+  chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false });
+
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={onCobrado} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  await u.click(await screen.findByRole('button', { name: /^Cobrar \$250/ }));
+  await u.click(await screen.findByRole('button', { name: 'Efectivo' }));
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
+
+  await waitFor(() => expect(onCobrado).toHaveBeenCalledWith(
+    expect.objectContaining({ paid: true }), 7,
+  ));
 });

@@ -44,6 +44,8 @@ cobrar $115 de un pedido de $95.
 | A17 | Un pedido de plataforma marcado a domicilio | El servidor **fuerza** el envío a 0 | `precios_plataforma_test.go` | Postgres |
 | A18 | La barra pide `?porCobrar=true` | Solo lo que debe; el total sigue siendo la suma de lo listado | `TestLaBarraPuedePedirSoloLoQueFaltaPorCobrar` | Postgres |
 | A19 | `?porCobrar` con un valor que no se entiende | 400 `ErrValidation`; **nunca** el default en silencio | `TestUnaBanderaMalEscritaNoSeLeeComoFalse` | unitario |
+| A20 | Agregar renglones a un pedido ya ENTREGADO | Se acepta y el pedido vuelve a `abierta`, o cocina no prepara lo que ya se cobró | `TestElEntregadoQueRecibeMasVuelveACocina` | Postgres |
+| A21 | Agregar renglones a un pedido cancelado o reembolsado | `ErrConflict`: su dinero ya lo contó un arqueo firmado | `TestAgregarAUnPedidoEnCurso` | Postgres |
 
 ## B. La aritmética del front — un solo lugar, con su prueba
 

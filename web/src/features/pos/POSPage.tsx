@@ -390,7 +390,8 @@ export function POSPage() {
               1024x600 con el panel abierto, la fila pedía 667.6 px de los 612.6 que hay: se
               desbordaba estando vacía y el overflow oculto del padre se comía los botones de la
               derecha. Un botón cabe siempre. */}
-          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} hayQueAgregar={cuenta.lines.length > 0} />
+          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} onCobrado={terminarElCobro}
+            hayQueAgregar={cuenta.lines.length > 0} />
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}

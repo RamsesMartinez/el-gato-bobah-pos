@@ -28,7 +28,7 @@ export function useAgregarAPedido(onListo: (pedido: OrderView, agregados: number
       onListo(respuesta, respuesta.agregados ?? []);
     },
     onError: (e: unknown) => {
-      // El pedido pudo haberse entregado o cancelado desde la otra estación mientras esta tableta
+      // El pedido pudo haberse cancelado o reembolsado desde la otra estación mientras esta tableta
       // dormía, y el renglón sigue en pantalla hasta el siguiente refresco. El mensaje del servidor
       // trae el estado, así que se muestra tal cual en vez de un "no se pudo" que no dice qué pasó.
       toaster.create({
