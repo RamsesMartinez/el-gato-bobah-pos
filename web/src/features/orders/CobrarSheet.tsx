@@ -8,7 +8,7 @@ import { LuCheck, LuSplit } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { posApi } from '../../api/pos';
 import { ApiError } from '../../api/client';
-import type { BoardOrder } from '../../types/pos';
+import type { BoardOrder, OrderView } from '../../types/pos';
 import { money } from '../../utils/format';
 import { uuid } from '../../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../pos/metodosDePago';
@@ -82,6 +82,15 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // El último rebote del servidor, EN LA HOJA y no solo en un toast: el toast se va solo, y esto se
   // lee justo cuando el operador tiene el dinero del cliente en la mano y necesita decidir qué hacer.
   const [rebote, setRebote] = useState<{ titulo: string; detalle?: string } | null>(null);
+  // La llave de ESTE pedazo, estable mientras el pedazo siga sin cobrarse.
+  //
+  // Generarla en cada envío rompía justo el caso para el que existe: el cobro entra, la respuesta se
+  // pierde en la red, el operador vuelve a tocar, y con llave nueva el servidor lo registra otra vez.
+  // Rota SOLO al cobrar con éxito, que es cuando empieza el pedazo siguiente. Si el operador edita
+  // el monto o el método antes de reintentar, la llave sigue siendo la misma a propósito: el
+  // servidor la sella contra la carga y responde que ese cobro ya entró con otro método, en vez de
+  // registrar un segundo pago sobre uno que quizá sí aterrizó.
+  const [llave, setLlave] = useState(uuid);
 
   // El pedido VIVO, no la foto que traía el prop.
   //
@@ -125,18 +134,11 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   });
 
   const cobrar = useMutation({
-    mutationFn: async () => {
-      // La llave se genera al mandar y NO se reusa entre cobros distintos. Un reintento del MISMO
-      // pedazo la conserva porque la mutación se reintenta con el mismo cierre; un pedazo nuevo trae
-      // llave nueva. El servidor la sella contra el método y el monto, así que si el operador
-      // corrige la cifra antes de reintentar, el cobro se rechaza en vez de darse por hecho.
-      const clientUuid = uuid();
-      return posApi.chargeOrder(order!.id, {
-        methodId: metodo!, amount: v.monto,
-        ...(v.propina > 0 ? { tip: v.propina } : {}),
-        clientUuid,
-      });
-    },
+    mutationFn: async () => posApi.chargeOrder(order!.id, {
+      methodId: metodo!, amount: v.monto,
+      ...(v.propina > 0 ? { tip: v.propina } : {}),
+      clientUuid: llave,
+    }),
     onSuccess: (res) => {
       setRebote(null);
       if (res.yaEstaba) {
@@ -147,6 +149,13 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
         setYaCobrado((xs) => [...xs, { monto: v.monto, metodo: elegido?.name ?? '' }]);
       }
       const resta = Number(res.outstanding);
+      // La respuesta del cobro entra al MISMO caché del que la hoja lee, no a un estado paralelo.
+      //
+      // Es la cifra que acaba de calcular el servidor, así que sirve de inmediato mientras el
+      // refetch viaja; guardándola aparte habría dos lugares con lo que falta, y ésa es justamente
+      // la deuda que dejó a la barra diciendo $2,141 y a su lista $1,928.
+      qc.setQueryData(['orders', order!.id], (prev: OrderView | undefined) =>
+        (prev ? { ...prev, outstanding: res.outstanding, paid: res.paid } : prev));
       qc.invalidateQueries({ queryKey: ['orders'] });
       onCobrado();
       if (res.paid || resta <= 0) {
@@ -154,7 +163,9 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
         onClose();
         return;
       }
-      // Queda saldo: la hoja NO se cierra. Se prepara para el siguiente comensal con lo que falta.
+      // Queda saldo: la hoja NO se cierra. Se prepara para el siguiente comensal con lo que falta,
+      // y con llave nueva: el pedazo que viene es otro cobro.
+      setLlave(uuid());
       setMontoElegido(null);
       setMetodo(null);
       setRecibido('');

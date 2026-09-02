@@ -215,3 +215,50 @@ test('sobre un pedido ya saldado lo dice y no ofrece cobrar', async () => {
   expect(screen.queryByRole('button', { name: /^Cobrar / })).toBeNull();
   expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
 });
+
+// EL CASO PARA EL QUE EXISTE LA LLAVE, y el que se rompía generándola en cada envío.
+//
+// El cobro entra, la respuesta se pierde en la red, el operador vuelve a tocar. Con llave nueva el
+// servidor no tiene cómo saber que es el mismo cobro y lo registra otra vez: el cliente paga dos
+// veces y el corte cierra con un sobrante que nadie sabe de dónde salió.
+test('el reintento de un cobro fallido manda la MISMA llave', async () => {
+  const u = userEvent.setup();
+  chargeOrder.mockRejectedValueOnce(new Error('network error'));
+  chargeOrder.mockResolvedValueOnce({ outstanding: '0', paid: true, yaEstaba: true });
+  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await u.click(await screen.findByRole('button', { name: 'Tarjeta' }));
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$500/ }));
+  await screen.findByText('No se pudo cobrar');
+
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$500/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(2));
+
+  const primera = chargeOrder.mock.calls[0][1].clientUuid;
+  const segunda = chargeOrder.mock.calls[1][1].clientUuid;
+  expect(segunda, 'el reintento cambió de llave: el servidor lo cobraría dos veces').toBe(primera);
+});
+
+// Y al cobrar un pedazo con éxito, el siguiente comensal va con llave NUEVA: es otro cobro, y
+// reusarla lo haría rebotar como reintento de uno que ya entró.
+test('cada pedazo cobrado estrena llave', async () => {
+  const u = userEvent.setup();
+  chargeOrder.mockResolvedValue({ outstanding: '250', paid: false, yaEstaba: false });
+  // La primera lectura ve la cuenta entera; a partir del cobro, el servidor ya dice 250. La hoja
+  // tiene que prepararse para el segundo comensal con ESA cifra, no con la que tenía al abrirse.
+  order.mockResolvedValueOnce({ ...pedido(), lines: [] });
+  order.mockResolvedValue({ ...pedido({ outstanding: '250' }), lines: [] });
+  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await u.click(await screen.findByRole('button', { name: /Entre 2.*250/ }));
+  await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
+
+  await u.click(await screen.findByRole('button', { name: 'Efectivo' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Cobrar \$250/ })).toBeEnabled());
+  await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(2));
+
+  expect(chargeOrder.mock.calls[1][1].clientUuid).not.toBe(chargeOrder.mock.calls[0][1].clientUuid);
+});
