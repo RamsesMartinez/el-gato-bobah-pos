@@ -97,6 +97,10 @@ test('un pedido en curso ya pagado sigue pudiendo recibir renglones', async () =
 
   // Sin saldo, el botón cuenta los que siguen en curso en vez de gritar un "$0" que se lee vacío.
   await u.click(await screen.findByRole('button', { name: /1 en curso/ }));
+  // Un toque más que antes: los ya cobrados se pliegan para que el modal no abra gigante. La
+  // capacidad no se perdió —sigue siendo el único camino para agregarle algo a un pedido que el
+  // cliente ya pagó— pero deja de estorbarle a quien viene a cobrar.
+  await u.click(await screen.findByRole('button', { name: /1 pedido ya cobrado/ }));
   expect(await screen.findByText('Pagado')).toBeInTheDocument();
 
   await u.click(screen.getByRole('button', { name: /Agregar/ }));
@@ -131,4 +135,70 @@ test('sin productos capturados, Agregar está apagado y la hoja dice por qué', 
   await u.click(await screen.findByRole('button', { name: /250/ }));
   expect(await screen.findByText(/Captura los productos en una cuenta/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Agregar/ })).toBeDisabled();
+});
+
+// EL DEFECTO: el modal abría gigante, con los pedidos ya cobrados mezclados entre los que hay que
+// cobrar.
+//
+// Medido en el ambiente de pruebas: 30 renglones, 14 de ellos ya cobrados. Quien abre el botón
+// naranja viene a cobrar, y tiene que leer treinta renglones para encontrar los dieciséis que le
+// importan — en una pantalla de 600 px de alto, donde caben cinco.
+//
+// No se quitan de la respuesta: un pedido pagado que sigue en cocina es el caso más común de
+// "agrégame una más" y este modal es el ÚNICO camino de la app para agregarle algo. Se pliegan.
+test('los ya cobrados no estorban: el modal abre con lo que hay que cobrar', async () => {
+  const u = userEvent.setup();
+  openOrders.mockResolvedValue({
+    items: [
+      pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' }),
+      pedido({ id: 2, folioName: 'YaPago', outstanding: '0', total: '100' }),
+      pedido({ id: 3, folioName: 'TambienPago', outstanding: '0', total: '80' }),
+    ],
+    outstanding: '250',
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+
+  expect(await screen.findByText('Debe')).toBeInTheDocument();
+  expect(screen.queryByText('YaPago')).toBeNull();
+  expect(screen.queryByText('TambienPago')).toBeNull();
+});
+
+// Pero siguen a un toque: es el único camino para agregarle algo a un pedido que el cliente ya pagó
+// y sigue esperando.
+test('los ya cobrados están a un toque, y se dice cuántos son', async () => {
+  const u = userEvent.setup();
+  const onAbrir = vi.fn();
+  openOrders.mockResolvedValue({
+    items: [
+      pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' }),
+      pedido({ id: 2, folioName: 'YaPago', outstanding: '0', total: '100' }),
+      pedido({ id: 3, folioName: 'TambienPago', outstanding: '0', total: '80' }),
+    ],
+    outstanding: '250',
+  });
+  pinta(<PedidosEnCurso onAbrir={onAbrir} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  // El renglón dice CUÁNTOS son: sin el número, quien busca un pedido no sabe si vale la pena abrir.
+  await u.click(screen.getByRole('button', { name: /2 pedidos ya cobrados/ }));
+
+  expect(await screen.findByText('YaPago')).toBeInTheDocument();
+  await u.click(screen.getAllByRole('button', { name: /Agregar/ })[0]);
+  expect(onAbrir).toHaveBeenCalled();
+});
+
+// Sin ninguno cobrado, el renglón de plegado no se pinta: un control que abre una lista vacía es
+// alto gastado en una pantalla que no lo tiene.
+test('sin pedidos cobrados no aparece el renglón de plegado', async () => {
+  const u = userEvent.setup();
+  openOrders.mockResolvedValue({
+    items: [pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' })],
+    outstanding: '250',
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  expect(screen.queryByText(/ya cobrados/)).toBeNull();
 });

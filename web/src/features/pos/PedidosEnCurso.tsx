@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
-import { LuWallet, LuPlus } from 'react-icons/lu';
+import { LuWallet, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
 } from '../../components/ui/drawer';
@@ -118,30 +118,15 @@ function PedidosEnCursoSheet({ abierta, pedidos, hayQueAgregar, onCerrar, onCobr
   onCobrar: (o: BoardOrder) => void;
   onAgregar: (o: BoardOrder) => void;
 }) {
+  const [verCobrados, setVerCobrados] = useState(false);
   const total = pedidos.reduce((s, o) => s + Number(o.outstanding), 0);
-  return (
-    <DrawerRoot open={abierta} placement="bottom" size="md"
-      onOpenChange={(e) => { if (!e.open) onCerrar(); }}>
-      <DrawerBackdrop />
-      <DrawerContent borderTopRadius="2xl">
-        <DrawerHeader borderBottomWidth="1px" py={3}>
-          <HStack justify="space-between">
-            <Text fontWeight="800" fontSize="lg">Pedidos en curso</Text>
-            {total > 0 && (
-              <Text fontWeight="800" fontSize="lg">Por cobrar {money(String(total))}</Text>
-            )}
-          </HStack>
-        </DrawerHeader>
-        <DrawerBody py={3}>
-          {!hayQueAgregar && pedidos.some((o) => o.enPreparacion) && (
-            <Text fontSize="sm" color="fg.muted" mb={2}>
-              Captura los productos en una cuenta para poder agregarlos a un pedido.
-            </Text>
-          )}
-          <VStack align="stretch" gap={2}>
-            {pedidos.map((o) => {
-              const debe = Number(o.outstanding) > 0;
-              return (
+  // Lo que hay que cobrar arriba; lo ya cobrado que sigue en cocina, plegado.
+  const porCobrar = pedidos.filter((o) => Number(o.outstanding) > 0);
+  const yaCobrados = pedidos.filter((o) => Number(o.outstanding) === 0);
+
+  const renglon = (o: BoardOrder) => {
+    const debe = Number(o.outstanding) > 0;
+    return (
                 <Flex key={o.id} borderWidth="1px"
                   borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg"
                   px={3} py={2} align="center" justify="space-between" gap={2}>
@@ -171,8 +156,48 @@ function PedidosEnCursoSheet({ abierta, pedidos, hayQueAgregar, onCerrar, onCobr
                     )}
                   </HStack>
                 </Flex>
-              );
-            })}
+    );
+  };
+
+  return (
+    <DrawerRoot open={abierta} placement="bottom" size="md"
+      onOpenChange={(e) => { if (!e.open) onCerrar(); }}>
+      <DrawerBackdrop />
+      <DrawerContent borderTopRadius="2xl">
+        <DrawerHeader borderBottomWidth="1px" py={3}>
+          <HStack justify="space-between">
+            <Text fontWeight="800" fontSize="lg">Pedidos en curso</Text>
+            {total > 0 && (
+              <Text fontWeight="800" fontSize="lg">Por cobrar {money(String(total))}</Text>
+            )}
+          </HStack>
+        </DrawerHeader>
+        <DrawerBody py={3}>
+          {!hayQueAgregar && pedidos.some((o) => o.enPreparacion) && (
+            <Text fontSize="sm" color="fg.muted" mb={2}>
+              Captura los productos en una cuenta para poder agregarlos a un pedido.
+            </Text>
+          )}
+          <VStack align="stretch" gap={2}>
+            {porCobrar.map((o) => renglon(o))}
+
+            {/* Los ya cobrados, plegados. Abren la lista a un toque porque siguen siendo el ÚNICO
+                camino de la app para agregarle algo a un pedido que el cliente ya pagó y está
+                esperando — el caso más común de "agrégame una más". Pero quien abre el botón
+                naranja viene a cobrar, y mezclarlos le hacía leer treinta renglones para encontrar
+                los dieciséis que le importaban, en una pantalla donde caben cinco. */}
+            {yaCobrados.length > 0 && (
+              <>
+                <Button minH={TAP} variant="ghost" colorPalette="gray" justifyContent="space-between"
+                  onClick={() => setVerCobrados((v) => !v)}>
+                  <Text fontSize="sm">
+                    {yaCobrados.length} {yaCobrados.length === 1 ? 'pedido ya cobrado' : 'pedidos ya cobrados'} en cocina
+                  </Text>
+                  {verCobrados ? <LuChevronUp /> : <LuChevronDown />}
+                </Button>
+                {verCobrados && yaCobrados.map((o) => renglon(o))}
+              </>
+            )}
           </VStack>
         </DrawerBody>
       </DrawerContent>

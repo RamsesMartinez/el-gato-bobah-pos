@@ -195,11 +195,19 @@ export function Ticket({
             disabled={lines.length === 0 || envioMalEscrito} loading={enviando} onClick={onEnviar}>
             Enviar a cocina
           </Button>
+          {/* COBRAR también MANDA el pedido a cocina, y decirlo importa: desde que confirmar es
+              obligatorio antes de cobrar, este botón dejó de ser reversible. Quien lo toca y luego
+              cierra la hoja de cobro creyendo que canceló, ve el carrito vacío y vuelve a capturar
+              el pedido — y cocina prepara dos veces lo mismo. */}
           <Button flex="1.3" size="lg" h="56px" colorPalette="green" fontWeight="800"
+            aria-describedby="cobrar-manda-a-cocina"
             disabled={lines.length === 0 || envioMalEscrito} onClick={onCheckout}>
             COBRAR
           </Button>
         </HStack>
+        <Text id="cobrar-manda-a-cocina" fontSize="2xs" color="fg.muted" textAlign="right" mt={1}>
+          Cobrar también manda el pedido a cocina
+        </Text>
       </Box>
     </Flex>
   );
