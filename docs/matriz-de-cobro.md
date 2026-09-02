@@ -42,6 +42,8 @@ cobrar $115 de un pedido de $95.
 | A15 | Cobrar un pedido cancelado o reembolsado | `ErrPedidoNoCobrable` | `TestNoSeCobraUnPedidoCancelado` | Postgres |
 | A16 | Crear un pedido ya cobrado | `ErrCobroFueraDeLugar` | `cobrar_exige_confirmar_test.go` | Postgres |
 | A17 | Un pedido de plataforma marcado a domicilio | El servidor **fuerza** el envío a 0 | `precios_plataforma_test.go` | Postgres |
+| A18 | La barra pide `?porCobrar=true` | Solo lo que debe; el total sigue siendo la suma de lo listado | `TestLaBarraPuedePedirSoloLoQueFaltaPorCobrar` | Postgres |
+| A19 | `?porCobrar` con un valor que no se entiende | 400 `ErrValidation`; **nunca** el default en silencio | `TestUnaBanderaMalEscritaNoSeLeeComoFalse` | unitario |
 
 ## B. La aritmética del front — un solo lugar, con su prueba
 
