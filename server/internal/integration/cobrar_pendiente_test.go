@@ -47,7 +47,7 @@ func TestUnPedidoMandadoACocinaSePuedeCobrarDespues(t *testing.T) {
 	svc := app.NewOrdersService(st, clock)
 	ord, cajero, efectivo := pedidoSinCobrar(t, st, svc, "despues")
 
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("250"), ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("Charge: %v", err)
@@ -70,10 +70,10 @@ func TestNoSePuedeCobrarDosVecesElMismoPedido(t *testing.T) {
 	ord, cajero, efectivo := pedidoSinCobrar(t, st, svc, "doble")
 
 	cobro := app.ChargeCmd{OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("250"), ActorID: cajero}
-	if err := svc.Charge(ctx, cobro); err != nil {
+	if _, err := svc.Charge(ctx, cobro); err != nil {
 		t.Fatalf("primer cobro: %v", err)
 	}
-	if err := svc.Charge(ctx, cobro); !errors.Is(err, domain.ErrPedidoYaPagado) {
+	if _, err := svc.Charge(ctx, cobro); !errors.Is(err, domain.ErrPedidoYaPagado) {
 		t.Fatalf("segundo cobro = %v, quiere ErrPedidoYaPagado", err)
 	}
 }
@@ -85,7 +85,7 @@ func TestSePuedeAbonarYLuegoCompletar(t *testing.T) {
 	svc := app.NewOrdersService(st, clock)
 	ord, cajero, efectivo := pedidoSinCobrar(t, st, svc, "abono")
 
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("100"), ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("abono: %v", err)
@@ -96,13 +96,13 @@ func TestSePuedeAbonarYLuegoCompletar(t *testing.T) {
 	}
 
 	// Y no se puede pasar del resto.
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("151"), ActorID: cajero,
 	}); !errors.Is(err, domain.ErrCobroExcede) {
 		t.Fatalf("cobrar 151 cuando faltan 150 = %v, quiere ErrCobroExcede", err)
 	}
 
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("150"), ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("completar: %v", err)
@@ -124,7 +124,7 @@ func TestNoSeCobraUnPedidoCancelado(t *testing.T) {
 	if err := svc.Cancel(ctx, ord.ID, cajero, "el cliente se fue"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	err := svc.Charge(ctx, app.ChargeCmd{
+	_, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("250"), ActorID: cajero,
 	})
 	if !errors.Is(err, domain.ErrPedidoNoCobrable) {
@@ -140,7 +140,7 @@ func TestElCobroEntraEnElTurnoDeHoy(t *testing.T) {
 	svc := app.NewOrdersService(st, clock)
 	ord, cajero, efectivo := pedidoSinCobrar(t, st, svc, "turno")
 
-	if err := svc.Charge(ctx, app.ChargeCmd{
+	if _, err := svc.Charge(ctx, app.ChargeCmd{
 		OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("250"), ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("Charge: %v", err)

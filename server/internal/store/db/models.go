@@ -886,6 +886,7 @@ type OrderPayment struct {
 	ReceivedBy        *int64          `json:"received_by"`
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
 }
 
 type PasswordResetToken struct {

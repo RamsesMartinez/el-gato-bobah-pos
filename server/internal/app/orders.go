@@ -81,8 +81,13 @@ type OrderView struct {
 	Total        decimal.Decimal `json:"total"`
 	Currency     domain.Currency `json:"currency"`
 	Paid         bool            `json:"paid"`
-	OpenedAt     time.Time       `json:"openedAt"`
-	Lines        []OrderLineView `json:"lines"`
+	// Outstanding es lo que falta por cobrar. Viaja porque la hoja de cobro lo necesita entre pago
+	// y pago de una cuenta dividida: sin él tendría que restar por su cuenta, y dos
+	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
+	// propia lista decía $1,928.
+	Outstanding decimal.Decimal `json:"outstanding"`
+	OpenedAt    time.Time       `json:"openedAt"`
+	Lines       []OrderLineView `json:"lines"`
 }
 
 type OrderLineView struct {
@@ -348,8 +353,9 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		ID:        o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
 		ServiceType: string(o.ServiceType), CustomerName: o.CustomerName, Notes: o.Notes,
 		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
-		Paid:     paid.GreaterThanOrEqual(o.Total) && o.Total.IsPositive(),
-		OpenedAt: o.OpenedAt,
+		Paid:        domain.PedidoSaldado(paid, o.Total),
+		Outstanding: domain.PorCobrar(o.Total, paid),
+		OpenedAt:    o.OpenedAt,
 	}
 	for _, l := range lines {
 		view.Lines = append(view.Lines, OrderLineView{
@@ -427,7 +433,7 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
-			Paid:        r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(),
+			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
 			Outstanding: domain.PorCobrar(r.Total, r.Paid),
 			OpenedAt:    r.OpenedAt,
 			Lines:       porPedido[r.ID],
@@ -492,7 +498,7 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 			ServiceType: string(r.ServiceType), DeliveryPlatformID: r.DeliveryPlatformID,
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
-			Paid:        r.Paid.GreaterThanOrEqual(r.Total) && r.Total.IsPositive(),
+			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
 			Outstanding: domain.PorCobrar(r.Total, r.Paid),
 			OpenedAt:    r.OpenedAt,
 		})
@@ -1075,12 +1081,35 @@ func (s *OrdersService) lineasDelTablero(ctx context.Context) (map[int64][]Board
 
 // ChargeCmd es un cobro sobre un pedido que ya existe.
 type ChargeCmd struct {
-	OrderID   int64
-	MethodID  int16
-	Amount    decimal.Decimal
-	Tip       decimal.Decimal
-	Reference *string
-	ActorID   int64
+	OrderID  int64
+	MethodID int16
+	Amount   decimal.Decimal
+	Tip      decimal.Decimal
+	// ClientUUID identifica ESTE cobro, no el pedido. Es lo que vuelve inocuo el reenvío de un pago
+	// que ya entró — el que la pantalla manda cuando la tableta no pintó la respuesta y el operador
+	// volvió a tocar. Sin él, dividir la cuenta se come el dinero de un comensal: dos mitades de
+	// $250 son indistinguibles entre sí, así que la segunda llamada pasa todas las validaciones y
+	// deja el pedido saldado con una sola mitad cobrada. Ver la migración 0057.
+	//
+	// Cero significa "sin llave": el cobro se registra, sin la red. Es lo que hacen las pruebas
+	// viejas y cualquier cliente que no la mande.
+	ClientUUID uuid.UUID
+	Reference  *string
+	ActorID    int64
+}
+
+// ChargeResult es lo que queda del pedido después de cobrar.
+//
+// El cobro respondía `{"ok":true}` y la pantalla se quedaba restando por su cuenta para saber
+// cuánto faltaba todavía — con la cuenta dividida, una vez por comensal. Dos implementaciones de la
+// misma cifra es de donde salieron el $2,141 contra $1,928 de la barra: aquí la cifra sale del
+// mismo lugar que la calcula, y la pantalla la pinta.
+type ChargeResult struct {
+	Outstanding decimal.Decimal `json:"outstanding"`
+	Paid        bool            `json:"paid"`
+	// YaEstaba dice que este cobro ya se había registrado y esta llamada no movió dinero. La
+	// pantalla lo necesita para no volver a sumar la propina ni cantar un cobro que no ocurrió.
+	YaEstaba bool `json:"yaEstaba"`
 }
 
 // Charge cobra un pedido que se mandó a cocina sin cobrar.
@@ -1092,18 +1121,12 @@ type ChargeCmd struct {
 //
 // El pago entra en el turno ABIERTO AHORA, no en el del pedido: el dinero cae en el cajón de hoy,
 // y meterlo en un arqueo ya firmado dejaría ese turno cuadrando contra efectivo que no estaba.
-func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
+func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResult, error) {
 	if !domain.ValidMoney(domain.Round2(cmd.Amount), false) || !domain.ValidMoney(domain.Round2(cmd.Tip), true) {
-		return domain.ErrValidation
+		return nil, domain.ErrValidation
 	}
-	sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrNoOpenRegister
-		}
-		return err
-	}
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
+	var res ChargeResult
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		// FOR UPDATE: entre leer lo cobrado y escribir el pago cabe otro cajero haciendo lo mismo,
 		// y sin el lock los dos verían el pedido a cero y registrarían el total completo cada uno.
 		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
@@ -1113,11 +1136,71 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 			}
 			return err
 		}
-		pagado, err := q.SumOrderPayments(ctx, cmd.OrderID)
+		sumas, err := q.SumOrderPayments(ctx, cmd.OrderID)
 		if err != nil {
 			return err
 		}
+		pagado := sumas.Pagado
+		// La llave se consulta ANTES de validar, y ese orden importa: al reenviar el ÚLTIMO pago de
+		// una división el pedido ya está saldado, así que ValidarCobro lo rechazaría con
+		// ErrPedidoYaPagado y la pantalla cantaría un fallo sobre dinero que sí entró. Un reenvío
+		// no es un error: es una llamada que no tiene nada que hacer.
+		//
+		// Y va antes que la caja abierta: un cobro que YA entró se tiene que poder reconocer aunque
+		// entretanto se haya cerrado el turno. Contestar "no hay caja abierta" sobre un pago que sí
+		// está registrado manda al operador a borrar el renglón y rehacerlo con llave nueva, que es
+		// exactamente el cobro doble que esta llave existe para impedir.
+		if cmd.ClientUUID != uuid.Nil() {
+			ya, err := q.GetOrderPaymentByClientUUID(ctx, &cmd.ClientUUID)
+			switch {
+			case err == nil && ya.OrderID == cmd.OrderID:
+				// Mismo pedido, MISMA carga: es el reenvío de una llamada que ya entró.
+				//
+				// Si la carga cambió no es un reintento. El caso real: el pago se commiteó, la
+				// respuesta se perdió, y el operador —"la terminal no jaló, me paga en efectivo"—
+				// cambia el método y vuelve a tocar. Darlo por hecho deja la pantalla cantando
+				// cobrado, los billetes en el cajón, y el corte esperando la tarjeta que nunca llegó
+				// sin esperar el efectivo que sí está: descuadre en los dos métodos a la vez.
+				if ya.PaymentMethodID != cmd.MethodID ||
+					!ya.Amount.Equal(domain.Round2(cmd.Amount)) ||
+					!ya.TipAmount.Equal(domain.Round2(cmd.Tip)) {
+					return fmt.Errorf("%w: ese cobro ya se registró con otro método o monto", domain.ErrConflict)
+				}
+				res = ChargeResult{
+					Outstanding: domain.PorCobrar(o.Total, pagado),
+					Paid:        domain.PedidoSaldado(pagado, o.Total),
+					YaEstaba:    true,
+				}
+				return nil
+			case err == nil:
+				// La misma llave sobre OTRO pedido no es un reintento: es un cobro mal dirigido, y
+				// darlo por hecho se saltaría un cobro de verdad.
+				return fmt.Errorf("%w: ese cobro ya se registró en otro pedido", domain.ErrConflict)
+			case !errors.Is(err, pgx.ErrNoRows):
+				return err
+			}
+		}
+		// La caja se lee y se BLOQUEA dentro de la transacción. Leerla fuera dejaba caber un cierre
+		// de turno completo entre la lectura y el insert, y ese pago quedaba huérfano de los dos
+		// arqueos: el cerrado ya persistió su esperado y el nuevo filtra los pagos por su sesión.
+		sess, err := q.LockOpenPrimarySession(ctx)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNoOpenRegister
+			}
+			return err
+		}
 		if err := domain.ValidarCobro(string(o.Status), o.Total, pagado, cmd.Amount); err != nil {
+			return err
+		}
+		// La propina se topa contra la cuenta, POR PAGO y no acumulada.
+		//
+		// El tope existe para atrapar el dedo gordo —un pedido de $250 aceptaba $9,999 de propina, que
+		// entra al esperado del cajón y cierra el turno con ese faltante—, y un dedo gordo es UNA
+		// cifra absurda, no la suma de varias plausibles. Acumular bloqueaba un caso cotidiano: una
+		// cuenta de $60 que pagan dos amigos y cada uno le deja $40 al repartidor. El segundo rebotaba
+		// con el dinero del cliente ya en la mano, que es justo lo que este tope no debe provocar.
+		if err := domain.ValidarPropina(o.Total, domain.Round2(cmd.Tip)); err != nil {
 			return err
 		}
 		// El método se resuelve BAJO RLS y contra la plataforma del pedido, igual que al crearlo:
@@ -1141,8 +1224,14 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 			RegisterSessionID: &sess.ID,
 			ReceivedBy:        &cmd.ActorID,
 			Reference:         cmd.Reference,
+			ClientUuid:        llaveDeCobro(cmd.ClientUUID),
 		}); err != nil {
 			return err
+		}
+		yaPagado := pagado.Add(domain.Round2(cmd.Amount))
+		res = ChargeResult{
+			Outstanding: domain.PorCobrar(o.Total, yaPagado),
+			Paid:        domain.PedidoSaldado(yaPagado, o.Total),
 		}
 
 		// El pedido que no pasa por cocina y queda SALDADO se cierra aquí mismo.
@@ -1173,6 +1262,19 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) error {
 			ID: cmd.OrderID, Status: db.OrderStatusEntregada,
 		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// llaveDeCobro traduce "sin llave" al NULL de la columna: el índice único es PARCIAL, así que un
+// NULL no compite con nadie y el cobro sin llave se registra como siempre.
+func llaveDeCobro(u uuid.UUID) *uuid.UUID {
+	if u == uuid.Nil() {
+		return nil
+	}
+	return &u
 }
 
 // Open lista los pedidos que el punto de venta tiene que seguir viendo: la barra de en curso.

@@ -192,8 +192,8 @@ func (q *Queries) CreateOrderLineModifier(ctx context.Context, arg CreateOrderLi
 }
 
 const createOrderPayment = `-- name: CreateOrderPayment :exec
-insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by, reference)
-values ($1,$2,$3,$4,$5,$6,$7)
+insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by, reference, client_uuid)
+values ($1,$2,$3,$4,$5,$6,$7,$8)
 `
 
 type CreateOrderPaymentParams struct {
@@ -204,6 +204,7 @@ type CreateOrderPaymentParams struct {
 	RegisterSessionID *int64          `json:"register_session_id"`
 	ReceivedBy        *int64          `json:"received_by"`
 	Reference         *string         `json:"reference"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
 }
 
 func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPaymentParams) error {
@@ -215,6 +216,7 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 		arg.RegisterSessionID,
 		arg.ReceivedBy,
 		arg.Reference,
+		arg.ClientUuid,
 	)
 	return err
 }
@@ -366,6 +368,44 @@ func (q *Queries) GetOrderIDByClientUUID(ctx context.Context, clientUuid uuid.UU
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getOrderPaymentByClientUUID = `-- name: GetOrderPaymentByClientUUID :one
+select id, order_id, payment_method_id, amount, tip_amount
+from order_payments where client_uuid = $1
+`
+
+type GetOrderPaymentByClientUUIDRow struct {
+	ID              int64           `json:"id"`
+	OrderID         int64           `json:"order_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	TipAmount       decimal.Decimal `json:"tip_amount"`
+}
+
+// ¿Este cobro exacto ya entró, y sobre qué pedido? Es la red que el cobro dividido necesita: dos
+// mitades iguales son indistinguibles entre sí, así que sin la llave del cliente el reenvío de la
+// primera pasa todas las validaciones y deja el pedido saldado con una sola mitad cobrada.
+//
+// Devuelve la CARGA del pago, no un booleano. Un no-op solo es inocuo si la llamada es idéntica:
+// si el pago entró y su respuesta se perdió, el operador puede cambiar el método —"la terminal no
+// jaló, me paga en efectivo"— y volver a tocar. Dando eso por reintento, la pantalla canta cobrado,
+// el operador mete los billetes al cajón, y el corte cierra esperando la tarjeta que nunca llegó y
+// sin esperar el efectivo que sí está. Descuadre en los dos métodos a la vez.
+//
+// Sin filtro de empresa: RLS lo agrega, y el índice único que respalda esto va por
+// (company_id, client_uuid).
+func (q *Queries) GetOrderPaymentByClientUUID(ctx context.Context, clientUuid *uuid.UUID) (GetOrderPaymentByClientUUIDRow, error) {
+	row := q.db.QueryRow(ctx, getOrderPaymentByClientUUID, clientUuid)
+	var i GetOrderPaymentByClientUUIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.PaymentMethodID,
+		&i.Amount,
+		&i.TipAmount,
+	)
+	return i, err
 }
 
 const getPricedOptions = `-- name: GetPricedOptions :many
@@ -756,7 +796,12 @@ where o.status not in ('cancelada', 'reembolsada')
     o.status in ('abierta', 'lista')
     -- Los que deben dinero sí se acotan al día en curso: el pendiente de hace tres meses ya no es
     -- algo que el cajero de hoy pueda cobrar, y traerlos convertiría la barra en un histórico.
-    or (pagos.paid < o.total and o.business_date = $1)
+    --
+    -- El centavo de tolerancia es el MISMO de ` + "`" + `domain.PedidoSaldado` + "`" + `, y tiene que moverse con él.
+    -- Escrito como ` + "`" + `pagos.paid < o.total` + "`" + ` a secas, dividir $100 en tres partes de $33.33 cerraba el
+    -- pedido —con el predicado tolerante— y esta consulta lo seguía listando con $0.01 de deuda que
+    -- nadie podía cobrar. Lo cubre TestUnPedidoCerradoNoDejaCentavosDeDeuda, que pasa por los dos.
+    or (o.total - pagos.paid > 0.01 and o.business_date = $1)
   )
 order by o.opened_at
 `
@@ -1161,14 +1206,26 @@ func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) 
 }
 
 const sumOrderPayments = `-- name: SumOrderPayments :one
-select coalesce(sum(amount), 0)::numeric(10,2) from order_payments where order_id = $1
+select coalesce(sum(amount), 0)::numeric(10,2) as pagado,
+       coalesce(sum(tip_amount), 0)::numeric(10,2) as propina
+from order_payments where order_id = $1
 `
 
-// Lo ya cobrado de un pedido. Se lee dentro de la tx del cobro y con el pedido bloqueado, que es
-// lo que impide que dos cajeros cobrando a la vez registren cada uno el total completo.
-func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (decimal.Decimal, error) {
+type SumOrderPaymentsRow struct {
+	Pagado  decimal.Decimal `json:"pagado"`
+	Propina decimal.Decimal `json:"propina"`
+}
+
+// Lo ya cobrado de un pedido, y la propina ya registrada. Se lee dentro de la tx del cobro y con el
+// pedido bloqueado, que es lo que impide que dos cajeros cobrando a la vez registren cada uno el
+// total completo.
+//
+// La propina viaja en la misma pasada porque su tope es ACUMULADO: se topa cada cobro por separado
+// y tres pagos de $250 de propina sobre una cuenta de $250 pasan los tres, con el cajón esperando
+// $750 que nadie dejó.
+func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (SumOrderPaymentsRow, error) {
 	row := q.db.QueryRow(ctx, sumOrderPayments, orderID)
-	var column_1 decimal.Decimal
-	err := row.Scan(&column_1)
-	return column_1, err
+	var i SumOrderPaymentsRow
+	err := row.Scan(&i.Pagado, &i.Propina)
+	return i, err
 }

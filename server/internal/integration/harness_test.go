@@ -281,7 +281,7 @@ func crearYCobrar(t *testing.T, ctx context.Context, svc *app.OrdersService, cmd
 		return ord, err
 	}
 	for _, p := range pagos {
-		if err := svc.Charge(ctx, app.ChargeCmd{
+		if _, err := svc.Charge(ctx, app.ChargeCmd{
 			OrderID: ord.ID, MethodID: p.MethodID, Amount: p.Amount, Tip: p.Tip,
 			Reference: p.Reference, ActorID: cmd.OpenedBy,
 		}); err != nil {
