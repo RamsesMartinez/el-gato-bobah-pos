@@ -142,12 +142,12 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
     onSuccess: (res) => {
       setRebote(null);
       if (res.yaEstaba) {
-        // El cobro ya estaba registrado: esta llamada no movió dinero y decirlo evita que el
-        // operador crea que cobró dos veces, o que cobre otra vez creyendo que no entró.
+        // El cobro ya estaba registrado: esta llamada no movió dinero, y decirlo evita que el
+        // operador crea que cobró dos veces. El pedazo sí está cobrado —entró en el intento cuya
+        // respuesta se perdió— así que cuenta en la lista igual que los demás.
         toaster.create({ title: 'Ese cobro ya estaba registrado', type: 'info' });
-      } else {
-        setYaCobrado((xs) => [...xs, { monto: v.monto, metodo: elegido?.name ?? '' }]);
       }
+      setYaCobrado((xs) => [...xs, { monto: v.monto, metodo: elegido?.name ?? '' }]);
       const resta = Number(res.outstanding);
       // La respuesta del cobro entra al MISMO caché del que la hoja lee, no a un estado paralelo.
       //
