@@ -215,5 +215,22 @@ hacer segura, y los cuatro se midieron contra Postgres real antes de escribir na
       "Cobrar" por renglón, en `web/src/features/pos/PedidosEnCurso.tsx`
 - [X] T063 [US5] `invalidateAll` y el SSE invalidan el prefijo `['orders']` completo, no solo
       `active`
-- [ ] T064 [US5] Ensayo en dev: cobrar una cuenta repartida entre tres y comparar el corte contra el
+- [X] T064 [US5] Ensayo en dev: cobrar una cuenta repartida entre tres y comparar el corte contra el
       efectivo, con las propinas separadas por método (SC-009)
+
+### T064 — lo que se midió, contra `api-dev.elgatobobah.com`
+
+Pedido #14 de $36, repartido en tres pedazos de $12 con propina en dos de ellos:
+
+| Verificado | Resultado |
+| --- | --- |
+| El detalle del pedido trae `outstanding` | sí, y sin cobrar nada es igual al total |
+| El faltante que devuelve cada cobro | cuadra con el del detalle en los tres |
+| El residuo del redondeo | cero: el pedido queda saldado sin centavos colgando |
+| Sigue en la barra por estar en cocina | sí, y sin deuda |
+| Reintentar un cobro que ya entró | reconocido (`yaEstaba`), no se registra otra vez |
+| Reintentar con OTRO método | rechazado |
+| **Las propinas en el corte** | **$1.20 en Tarjeta débito y $1.80 en Efectivo — cada una con el método con el que entró** |
+
+Lo que **no** se ensayó a mano: la pantalla en una tableta de 1024×600 real. La disposición se
+razonó contra el presupuesto medido, no se vio corriendo.
