@@ -49,7 +49,7 @@ func TestUnPedidoAbiertoDeOtroDiaSigueEnLaLista(t *testing.T) {
 		t.Fatalf("envejecer el pedido: %v", err)
 	}
 
-	lista, _, err := hoy.Open(ctx)
+	lista, _, err := hoy.Open(ctx, false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestUnPedidoAbiertoDeOtroDiaSigueEnLaLista(t *testing.T) {
 	if err := hoy.DeliverAll(ctx, ord.ID); err != nil {
 		t.Fatalf("DeliverAll: %v", err)
 	}
-	tras, _, err := hoy.Open(ctx)
+	tras, _, err := hoy.Open(ctx, false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

@@ -364,8 +364,17 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 // El total pendiente viaja junto a la lista y NO se suma en la pantalla: si cada lado lo calculara
 // por su cuenta, un cambio en el predicado dejaría la cifra del encabezado diciendo una cosa y la
 // lista otra, y quien la lee no tiene forma de saber cuál miente.
+//
+// `?porCobrar=true` deja fuera lo que ya está saldado. Se filtra AQUÍ y no en la pantalla porque el
+// encabezado y la lista salen del mismo recorrido: filtrar en el front dejaría el total sumando
+// filas que la lista no muestra.
 func (h *Handlers) OpenOrders(w http.ResponseWriter, r *http.Request) {
-	items, pendiente, err := h.orders.Open(r.Context())
+	soloPorCobrar, err := queryBool(r, "porCobrar", false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, pendiente, err := h.orders.Open(r.Context(), soloPorCobrar)
 	if err != nil {
 		Error(w, err)
 		return

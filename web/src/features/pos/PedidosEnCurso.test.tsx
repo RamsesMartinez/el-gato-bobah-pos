@@ -31,10 +31,10 @@ afterEach(() => { openOrders.mockReset(); });
 
 // LA BARRA ES UN SOLO BOTÓN, y no es una preferencia estética.
 //
-// Eran un chip por pedido más una píldora de dinero. Medido en un navegador sin cabeza contra el
-// presupuesto real —1024×600, panel del pedido abierto, rol de gerente— la fila pedía 667.6 px
-// sobre 612.6 disponibles: se desbordaba con CERO chips, y el `overflow: hidden` del padre dejaba
-// los botones de precios y edición al 11% visible con un chip y al 0% con dos.
+// Medido en un navegador sin cabeza contra el presupuesto real —1024×600, panel del pedido abierto,
+// rol de gerente— la fila pedía 667.6 px sobre 612.6 disponibles: se desbordaba estando VACÍA, y el
+// overflow oculto del padre dejaba los botones de precios y edición al 11% visible con un control
+// por pedido, y al 0% con dos.
 test('la barra ocupa un solo control, no uno por pedido', async () => {
   openOrders.mockResolvedValue({
     items: Array.from({ length: 6 }, (_, i) => pedido({ id: i + 1, folioName: `Animal${i}` })),
@@ -43,13 +43,12 @@ test('la barra ocupa un solo control, no uno por pedido', async () => {
   const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
 
   await screen.findByRole('button', { name: /1,500/ });
-  // Seis pedidos, un botón. Antes eran seis chips más la píldora dentro de la misma fila.
   expect(container.querySelectorAll('button')).toHaveLength(1);
 });
 
 // Un contador en cero es chrome que le quita ancho a la barra en una tableta de 7", y la caja de
-// chips llegaba a cobrar 112 px estando vacía porque vivía fuera del condicional.
-test('no pinta nada cuando no hay pedidos en curso', async () => {
+// controles llegaba a cobrar 112 px estando vacía porque vivía fuera del condicional.
+test('no pinta nada cuando no hay nada que cobrar', async () => {
   openOrders.mockResolvedValue({ items: [], outstanding: '0' });
   const { container } = pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
   await new Promise((r) => setTimeout(r, 0));
@@ -58,9 +57,9 @@ test('no pinta nada cuando no hay pedidos en curso', async () => {
 
 // EL BOTÓN Y LA LISTA QUE ABRE SALEN DEL MISMO PREDICADO.
 //
-// La píldora tomaba el total del servidor —que suma TODO lo pendiente— y la lista se armaba con otro
-// filtro. En la tableta real decían $2,141 y $1,928: el operador ve dos cifras del mismo dinero y no
-// tiene forma de saber cuál miente. Es el corolario del principio III, y ya costó un turno con
+// El encabezado tomaba el total del servidor —que suma TODO lo pendiente— y la lista se armaba con
+// otro filtro. En la tableta real decían $2,141 y $1,928: el operador ve dos cifras del mismo dinero
+// y no tiene forma de saber cuál miente. Es el corolario del principio III, y ya costó un turno con
 // $4,500 de faltante inexplicable.
 test('el total del botón es la suma de lo que la lista muestra', async () => {
   openOrders.mockResolvedValue({
@@ -80,35 +79,28 @@ test('el total del botón es la suma de lo que la lista muestra', async () => {
   expect(boton.textContent).not.toMatch(/99,?999/);
 });
 
-// EL PEDIDO YA PAGADO QUE SIGUE EN COCINA TIENE QUE PODER RECIBIR MÁS.
+// AGREGARLE A UN PEDIDO QUE SIGUE EN COCINA ES LO QUE ESTA HOJA NO PUEDE PERDER.
 //
-// Este test afirmaba lo contrario —"un pedido en curso YA PAGADO no ocupa un chip"— y esa regla
-// estaba mal: el filtro de la barra era `enPreparacion && outstanding > 0`, así que el caso más
-// común de "agrégame una más" —el cliente que ya pagó y sigue esperando su comida— se quedó sin
-// ningún camino en toda la app. El encabezado del archivo prometía justo lo contrario.
-test('un pedido en curso ya pagado sigue pudiendo recibir renglones', async () => {
+// La hoja ya solo trae lo que falta por cobrar, y de ahí a "esta hoja es solo para cobrar" hay un
+// paso. Pero el pedido que sigue en la plancha y todavía debe es justo al que el cliente le pide una
+// más, y este es el único camino de la app para llevárselo: el tablero de Pedidos entrega, cobra y
+// cancela, pero no agrega.
+test('al pedido que sigue en cocina se le puede agregar', async () => {
   const u = userEvent.setup();
   const onAbrir = vi.fn();
   openOrders.mockResolvedValue({
-    items: [pedido({ id: 1, folioName: 'Pagado', enPreparacion: true, outstanding: '0', total: '100' })],
-    outstanding: '0',
+    items: [pedido({ id: 7, folioName: 'Castor', enPreparacion: true, outstanding: '250' })],
+    outstanding: '250',
   });
   pinta(<PedidosEnCurso onAbrir={onAbrir} hayQueAgregar />);
 
-  // Sin saldo, el botón cuenta los que siguen en curso en vez de gritar un "$0" que se lee vacío.
-  await u.click(await screen.findByRole('button', { name: /1 en curso/ }));
-  // Un toque más que antes: los ya cobrados se pliegan para que el modal no abra gigante. La
-  // capacidad no se perdió —sigue siendo el único camino para agregarle algo a un pedido que el
-  // cliente ya pagó— pero deja de estorbarle a quien viene a cobrar.
-  await u.click(await screen.findByRole('button', { name: /1 pedido ya cobrado/ }));
-  expect(await screen.findByText('Pagado')).toBeInTheDocument();
-
-  await u.click(screen.getByRole('button', { name: /Agregar/ }));
-  expect(onAbrir).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  await u.click(await screen.findByRole('button', { name: /Agregar/ }));
+  expect(onAbrir).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
 });
 
 // El entregado sin cobrar es el caso caro —el cliente ya se fue con la comida— y necesita decirse
-// con todas sus letras, no depender del color ni caber en un chip de 100 px.
+// con todas sus letras, no depender del color.
 test('el entregado sin cobrar se nombra y solo ofrece cobrar', async () => {
   const u = userEvent.setup();
   openOrders.mockResolvedValue({
@@ -126,7 +118,7 @@ test('el entregado sin cobrar se nombra y solo ofrece cobrar', async () => {
 });
 
 // Un control de 44 px que no hace nada ni dice por qué es peor que no tenerlo: con la cuenta vacía,
-// tocar el chip hacía un `return` mudo.
+// tocarlo hacía un `return` mudo.
 test('sin productos capturados, Agregar está apagado y la hoja dice por qué', async () => {
   const u = userEvent.setup();
   openOrders.mockResolvedValue({ items: [pedido()], outstanding: '250' });
@@ -137,68 +129,27 @@ test('sin productos capturados, Agregar está apagado y la hoja dice por qué', 
   expect(screen.getByRole('button', { name: /Agregar/ })).toBeDisabled();
 });
 
-// EL DEFECTO: el modal abría gigante, con los pedidos ya cobrados mezclados entre los que hay que
-// cobrar.
+// LA HOJA NO VUELVE A PLEGAR NADA, PORQUE YA NO LE LLEGA NADA QUE PLEGAR.
 //
-// Medido en el ambiente de pruebas: 30 renglones, 14 de ellos ya cobrados. Quien abre el botón
-// naranja viene a cobrar, y tiene que leer treinta renglones para encontrar los dieciséis que le
-// importan — en una pantalla de 600 px de alto, donde caben cinco.
+// Medido en el ambiente de pruebas: 30 renglones, 14 de ellos ya cobrados, en una pantalla donde
+// caben cinco. Primero se plegaron aquí; ahora el servidor no los manda, que es lo único que deja al
+// encabezado y a la lista contando lo mismo.
 //
-// No se quitan de la respuesta: un pedido pagado que sigue en cocina es el caso más común de
-// "agrégame una más" y este modal es el ÚNICO camino de la app para agregarle algo. Se pliegan.
-test('los ya cobrados no estorban: el modal abre con lo que hay que cobrar', async () => {
+// El precio se pagó y hay que saberlo: al pedido YA SALDADO que sigue en cocina se le podía agregar
+// desde esta hoja, y era su único camino. Ahora esa venta se captura aparte.
+test('la hoja pinta un renglón por pedido, sin plegados', async () => {
   const u = userEvent.setup();
   openOrders.mockResolvedValue({
     items: [
       pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' }),
-      pedido({ id: 2, folioName: 'YaPago', outstanding: '0', total: '100' }),
-      pedido({ id: 3, folioName: 'TambienPago', outstanding: '0', total: '80' }),
+      pedido({ id: 2, folioName: 'TambienDebe', outstanding: '100', total: '100' }),
     ],
-    outstanding: '250',
+    outstanding: '350',
   });
   pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
 
-  await u.click(await screen.findByRole('button', { name: /250/ }));
-
+  await u.click(await screen.findByRole('button', { name: /350/ }));
   expect(await screen.findByText('Debe')).toBeInTheDocument();
-  expect(screen.queryByText('YaPago')).toBeNull();
-  expect(screen.queryByText('TambienPago')).toBeNull();
-});
-
-// Pero siguen a un toque: es el único camino para agregarle algo a un pedido que el cliente ya pagó
-// y sigue esperando.
-test('los ya cobrados están a un toque, y se dice cuántos son', async () => {
-  const u = userEvent.setup();
-  const onAbrir = vi.fn();
-  openOrders.mockResolvedValue({
-    items: [
-      pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' }),
-      pedido({ id: 2, folioName: 'YaPago', outstanding: '0', total: '100' }),
-      pedido({ id: 3, folioName: 'TambienPago', outstanding: '0', total: '80' }),
-    ],
-    outstanding: '250',
-  });
-  pinta(<PedidosEnCurso onAbrir={onAbrir} hayQueAgregar />);
-
-  await u.click(await screen.findByRole('button', { name: /250/ }));
-  // El renglón dice CUÁNTOS son: sin el número, quien busca un pedido no sabe si vale la pena abrir.
-  await u.click(screen.getByRole('button', { name: /2 pedidos ya cobrados/ }));
-
-  expect(await screen.findByText('YaPago')).toBeInTheDocument();
-  await u.click(screen.getAllByRole('button', { name: /Agregar/ })[0]);
-  expect(onAbrir).toHaveBeenCalled();
-});
-
-// Sin ninguno cobrado, el renglón de plegado no se pinta: un control que abre una lista vacía es
-// alto gastado en una pantalla que no lo tiene.
-test('sin pedidos cobrados no aparece el renglón de plegado', async () => {
-  const u = userEvent.setup();
-  openOrders.mockResolvedValue({
-    items: [pedido({ id: 1, folioName: 'Debe', outstanding: '250', total: '250' })],
-    outstanding: '250',
-  });
-  pinta(<PedidosEnCurso onAbrir={() => {}} hayQueAgregar />);
-
-  await u.click(await screen.findByRole('button', { name: /250/ }));
-  expect(screen.queryByText(/ya cobrados/)).toBeNull();
+  expect(screen.getByText('TambienDebe')).toBeInTheDocument();
+  expect(screen.queryByText(/ya cobrado/)).toBeNull();
 });

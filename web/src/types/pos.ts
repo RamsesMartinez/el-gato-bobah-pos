@@ -198,7 +198,7 @@ export interface BoardOrder {
   // Si a este pedido todavía se le puede AGREGAR. Viene del servidor y no se deduce del estado
   // aquí: la regla quedaría implementada en dos lados y se separarían al primer cambio.
   enPreparacion: boolean;
-  // Renglones vivos, para que el chip diga de un vistazo qué tan grande es el pedido.
+  // Renglones vivos, para que el renglón diga de un vistazo qué tan grande es el pedido.
   renglones: number;
   id: number;
   number: number;
