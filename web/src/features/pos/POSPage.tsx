@@ -41,6 +41,7 @@ import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
+import { toaster } from '../../components/ui/toaster';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
 // Clamp aproximado al cargar por si el viewport cambió de tamaño entre sesiones (no dejarla fuera).
@@ -158,6 +159,25 @@ export function POSPage() {
   // confirmación y el ticket esperan a que quede saldado, porque hasta entonces no se sabe si el
   // papel dice PAGADO.
   const cobrarLaCuenta = () => mandar({ luego: setCobrando, deliveryFee: envioDelPedido() });
+
+  // Cerrar la hoja de cobro sin haber saldado NO cancela nada, y hay que decirlo.
+  //
+  // Tocar COBRAR ya no abre una pantalla que cobra al final: confirma el pedido —lo manda a cocina—
+  // y después abre el cobro. Así que la cuenta se vacía en ese momento, y quien cierra la hoja
+  // creyendo que canceló ve el carrito vacío y da la venta por perdida. No se perdió: el pedido está
+  // en cocina y en el botón naranja con su saldo. Sin este aviso, el operador lo vuelve a capturar y
+  // cocina prepara dos veces lo mismo.
+  const cerrarElCobro = () => {
+    const pendiente = cobrando;
+    setCobrando(null);
+    if (!pendiente) return;
+    toaster.create({
+      title: `${pendiente.folioName || `Pedido #${pendiente.number}`} ya está en cocina`,
+      description: 'Cóbralo cuando quieras desde el botón naranja de arriba.',
+      type: 'info',
+      duration: 6000,
+    });
+  };
   // La venta termina cuando el pedido queda saldado, no cuando se creó.
   //
   // El pedido se RELEE del servidor antes de imprimir: el ticket estampa PAGADO o POR COBRAR, y con
@@ -516,7 +536,7 @@ export function POSPage() {
       <CobrarSheet
         key={cobrando?.id}
         order={cobrando}
-        onClose={() => setCobrando(null)}
+        onClose={cerrarElCobro}
         onCobrado={terminarElCobro}
       />
 

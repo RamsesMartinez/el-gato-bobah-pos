@@ -102,3 +102,20 @@ test('avisa de los productos que ya no están en el menú, mientras se puede qui
   expect(screen.getByText('Tamarindo')).toBeInTheDocument();
   await u.click(screen.getByRole('button', { name: /Quitar del pedido/ }));
 });
+
+// EL DEFECTO QUE EL DUEÑO REPORTÓ: "elijo elementos, le doy a Cobrar, y se eliminan; aunque cancele
+// el modal ya no reaparecen".
+//
+// COBRAR dejó de ser "abre una pantalla que cobra al final": ahora CONFIRMA el pedido —lo manda a
+// cocina— y después abre el cobro. Eso es lo correcto (cobrar sin que cocina se entere era el atajo
+// que la feature 005 vino a cerrar), pero significa que el botón es irreversible desde el instante
+// en que se toca, y la pantalla no lo decía. Quien cierra la hoja creyendo que canceló ve el carrito
+// vacío, da la venta por perdida y la vuelve a capturar: cocina prepara dos veces lo mismo.
+//
+// El botón lo dice ahora. No es un aviso decorativo: es la diferencia entre un gesto reversible y
+// uno que no lo es.
+test('COBRAR avisa que también manda el pedido a cocina', async () => {
+  pinta(<Ticket {...props} />);
+  const cobrar = await screen.findByRole('button', { name: /COBRAR/ });
+  expect(cobrar).toHaveAccessibleDescription(/cocina/i);
+});
