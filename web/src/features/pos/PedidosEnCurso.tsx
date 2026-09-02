@@ -6,7 +6,7 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
-import type { BoardOrder } from '../../types/pos';
+import type { BoardOrder, CobroHecho } from '../../types/pos';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { money } from '../../utils/format';
 
@@ -23,8 +23,12 @@ const TAP = '44px';
 //
 // La lista vive en una hoja, con espacio para el nombre completo y para las dos acciones que se le
 // pueden hacer: agregarle y cobrarlo.
-export function PedidosEnCurso({ onAbrir, hayQueAgregar }: {
+export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
   onAbrir: (pedido: BoardOrder) => void;
+  // Qué hacer cuando el cobro termina. La confirmación y el ticket viven en la pantalla que monta
+  // esta barra, no aquí: cobrar desde el botón naranja y cobrar desde el panel del pedido terminan
+  // en la misma venta, y con dos confirmaciones distintas una de las dos se quedaría sin ticket.
+  onCobrado: (res: CobroHecho, orderId: number) => void;
   // Si la cuenta activa tiene algo que llevarle a un pedido. Sin esto, "Agregar" era un control de
   // 44 px que no hacía nada ni decía por qué.
   hayQueAgregar: boolean;
@@ -85,7 +89,8 @@ export function PedidosEnCurso({ onAbrir, hayQueAgregar }: {
           entraron— y con otro pedido nada de eso aplica. Remontarla lo limpia sin un efecto que
           resincronice, que es de donde salen los estados a medias. */}
       <CobrarSheet key={cobrando?.id} order={cobrando}
-        onClose={() => setCobrando(null)} onCobrado={() => refrescar()} />
+        onClose={() => setCobrando(null)}
+        onCobrado={(res, orderId) => { refrescar(); onCobrado(res, orderId); }} />
     </>
   );
 }
@@ -115,7 +120,7 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
           </HStack>
         </DrawerHeader>
         <DrawerBody py={3}>
-          {!hayQueAgregar && pedidos.some((o) => o.enPreparacion) && (
+          {!hayQueAgregar && (
             <Text fontSize="sm" color="fg.muted" mb={2}>
               Captura los productos en una cuenta para poder agregarlos a un pedido.
             </Text>
@@ -134,13 +139,14 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
                   </Text>
                 </Box>
                 <HStack gap={2} flexShrink={0}>
-                  {/* Al entregado no se le puede agregar: el servidor rechaza renglones nuevos. */}
-                  {o.enPreparacion && (
-                    <Button minH={TAP} variant="outline" colorPalette="blue" flexShrink={0}
-                      disabled={!hayQueAgregar} onClick={() => onAgregar(o)}>
-                      <LuPlus /> Agregar
-                    </Button>
-                  )}
+                  {/* También al ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa
+                      pide una más, y mandarla como pedido aparte deja dos cuentas para la misma
+                      mesa: una de las dos se pierde de vista. El servidor lo devuelve a "en curso"
+                      para que cocina vea lo nuevo. */}
+                  <Button minH={TAP} variant="outline" colorPalette="blue" flexShrink={0}
+                    disabled={!hayQueAgregar} onClick={() => onAgregar(o)}>
+                    <LuPlus /> Agregar
+                  </Button>
                   <Button minH={TAP} colorPalette="orange" flexShrink={0} onClick={() => onCobrar(o)}>
                     Cobrar {money(o.outstanding, o.currency)}
                   </Button>
