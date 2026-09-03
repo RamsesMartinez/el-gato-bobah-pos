@@ -985,12 +985,36 @@ func (s *BackofficeService) SalesByDay(ctx context.Context, from, to time.Time) 
 		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
 }
-func (s *BackofficeService) SalesByMethod(ctx context.Context, since time.Time) ([]db.SalesByMethodRow, error) {
-	return s.store.QC(ctx).SalesByMethod(ctx, since)
+func (s *BackofficeService) SalesByMethod(ctx context.Context, from, to time.Time) ([]db.SalesByMethodRow, error) {
+	return s.store.QC(ctx).SalesByMethod(ctx, db.SalesByMethodParams{
+		BusinessDate:   pgtype.Date{Time: from, Valid: true},
+		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+	})
 }
-func (s *BackofficeService) ProductMargins(ctx context.Context, since time.Time, limit int32) ([]db.ProductMarginsRow, error) {
-	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{OpenedAt: since, Limit: limit})
+func (s *BackofficeService) ProductMargins(ctx context.Context, from, to time.Time, limit int32) ([]db.ProductMarginsRow, error) {
+	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{
+		BusinessDate:   pgtype.Date{Time: from, Valid: true},
+		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+		Limit:          limit,
+	})
 }
+
+// Location: la zona del NEGOCIO, para que el rango de un reporte se resuelva en el día del local.
+//
+// Mismo modo de falla y mismo fallback que `businessDate`: si la zona no se puede leer se cae al
+// default del producto y no a UTC, porque UTC corre la fecha seis horas sin avisar y el reporte
+// contestaría un periodo que nadie pidió después de las 18:00 locales.
+func (s *BackofficeService) Location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
+}
+
+// Now expone el reloj del servicio para que el handler resuelva el preset con el mismo instante que
+// usa el resto del backoffice (los tests lo fijan).
+func (s *BackofficeService) Now() time.Time { return s.now() }
 
 func (s *BackofficeService) TipsByEmployee(ctx context.Context, from, to time.Time) ([]db.TipsByEmployeeRow, error) {
 	return s.store.QC(ctx).TipsByEmployee(ctx, db.TipsByEmployeeParams{

@@ -19,6 +19,8 @@ const (
 	// MaxSalesPageSize: tope de filas por página. Serializar cien mil ventas no es una consulta
 	// lenta, es un proceso muerto.
 	MaxSalesPageSize = 100
+	// DiasDelPreset30: cuántos días mide "30d", contando hoy.
+	DiasDelPreset30 = 30
 )
 
 // Range es el intervalo de FECHAS DE NEGOCIO que la pantalla está mirando, inclusivo en los dos
@@ -29,7 +31,7 @@ type Range struct {
 	To   time.Time
 }
 
-// ResolveRange traduce un preset ("hoy", "ayer", "semana", "mes", "rango") a fechas concretas.
+// ResolveRange traduce un preset ("hoy", "ayer", "semana", "mes", "30d", "rango") a fechas concretas.
 //
 // Se resuelve en la zona del NEGOCIO y no en UTC. No es un detalle: a las 19:00 de México ya son
 // las 01:00 del día siguiente en UTC, así que "hoy" calculado en UTC devuelve el día equivocado
@@ -42,6 +44,14 @@ func ResolveRange(preset string, from, to time.Time, now time.Time, loc *time.Lo
 		loc = time.UTC
 	}
 	hoy := BusinessDate(now, loc)
+
+	// Una fecha que se manda y no se usa es una pantalla que miente. `from`/`to` solo significan
+	// algo con `preset=rango`; descartarlas en silencio con cualquier otro preset hace que
+	// `?preset=hoy&from=2026-01-01` conteste HOY con la pantalla viéndose perfecta — el mismo modo
+	// de falla que el principio V nombra para un parámetro malformado, y peor, porque nadie lo audita.
+	if preset != "rango" && (!from.IsZero() || !to.IsZero()) {
+		return Range{}, fmt.Errorf("%w: las fechas solo aplican con un rango libre, no con %q", ErrValidation, preset)
+	}
 
 	switch preset {
 	case "hoy", "":
@@ -56,6 +66,12 @@ func ResolveRange(preset string, from, to time.Time, now time.Time, loc *time.Lo
 		return Range{From: hoy.AddDate(0, 0, -diasDesdeLunes), To: hoy}, nil
 	case "mes":
 		return Range{From: time.Date(hoy.Year(), hoy.Month(), 1, 0, 0, 0, 0, time.UTC), To: hoy}, nil
+	case "30d":
+		// La ventana con la que nace la pantalla de Reportes, y son TREINTA días CONTANDO HOY. El
+		// handler la armaba restando 30 al día de fin, que son treinta y uno: el encabezado decía
+		// "últimos 30 días" y la tabla sumaba uno más. Nadie ve un día de diferencia, y por eso
+		// muerde al comparar dos periodos "de 30 días".
+		return Range{From: hoy.AddDate(0, 0, -(DiasDelPreset30 - 1)), To: hoy}, nil
 	case "rango":
 		return rangoLibre(from, to)
 	default:

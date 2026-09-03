@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { posApi } from '../api/pos';
 import { DEFAULT_TIMEZONE } from '../utils/zonaPorDefecto';
-import { fechaYHora, soloFecha, soloHora, zonaEsUsable, zonaSegura } from '../utils/horaDelNegocio';
+import { diaDelNegocio, fechaYHora, soloFecha, soloHora, zonaEsUsable, zonaSegura } from '../utils/horaDelNegocio';
 
 // La zona del negocio, para las pantallas.
 //
@@ -38,5 +38,6 @@ export function useHoraDelNegocio() {
     fechaYHora: (v: string | Date | null | undefined) => fechaYHora(v, zona),
     soloHora: (v: string | Date | null | undefined) => soloHora(v, zona),
     soloFecha: (v: string | Date | null | undefined) => soloFecha(v, zona),
+    diaDelNegocio: (v: string | Date | null | undefined) => diaDelNegocio(v, zona),
   };
 }
