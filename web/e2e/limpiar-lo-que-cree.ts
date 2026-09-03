@@ -15,7 +15,24 @@ export default async function limpiarLoQueCree() {
     console.warn('[e2e] sin marca de inicio: no se limpia nada para no tocar pedidos ajenos.');
     return;
   }
-  const yaEstaban = new Set<number>(JSON.parse(readFileSync(MARCA, 'utf8')));
+  // La marca se lee CON RED. `JSON.parse('')` lanza "Unexpected end of JSON input", y esa excepción
+  // tumbaba el teardown ENTERO antes de cerrar un solo pedido — la limpieza moría en silencio
+  // justo en el caso en que más hace falta. Pasa de verdad: basta con que una corrida se muera
+  // entre que el setup abre el archivo y lo escribe.
+  //
+  // Sin una marca legible NO se toca nada, que es la misma decisión de siempre: dejar basura es
+  // preferible a cerrarle a alguien una cuenta viva.
+  let yaEstaban: Set<number>;
+  try {
+    const crudo = readFileSync(MARCA, 'utf8').trim();
+    if (crudo === '') throw new Error('la marca está vacía');
+    yaEstaban = new Set<number>(JSON.parse(crudo));
+  } catch (e) {
+    console.error(`[e2e] la marca de inicio no se pudo leer (${e instanceof Error ? e.message : e}): `
+      + 'no se limpia nada. Revisa la barra del POS a mano.');
+    unlinkSync(MARCA);
+    return;
+  }
   unlinkSync(MARCA);
 
   const jwt = await tokenDeApi();

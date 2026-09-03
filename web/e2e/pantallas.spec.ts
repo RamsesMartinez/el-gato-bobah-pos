@@ -257,3 +257,52 @@ test.describe('F — el control de rango en la tableta', () => {
 // sin entender qué está mirando no prueba nada.
 //
 // Queda como renglón declarado en docs/matriz-de-pantallas.md, no como test que se ve verde.
+
+test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
+  // Estos casos NO crean ni devuelven nada: comprueban los RECHAZOS. Una devolución no se puede
+  // deshacer, así que un e2e que las cree dejaría dinero devuelto de mentira en el ambiente que
+  // comparte una persona — y el arqueo del día lo reflejaría.
+
+  test('D1 · devolver más de lo cobrado se rechaza', async ({ request }) => {
+    const jwt = await token(request);
+    const auth = { Authorization: `Bearer ${jwt}` };
+    const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
+    const alguno = (abiertos.items ?? [])[0];
+    test.skip(!alguno, 'no hay pedidos en el ambiente para probar el rechazo');
+
+    const r = await request.post(`${API}/orders/${alguno.id}/refund`, {
+      headers: auth,
+      data: { reason: 'prueba de tope', amount: 999999 },
+    });
+    expect(r.status(), 'se aceptó devolver 999,999 de un pedido que no cobró tanto')
+      .toBeGreaterThanOrEqual(400);
+    expect(r.status()).toBeLessThan(500);
+  });
+
+  test('D2 · un motivo en blanco se rechaza', async ({ request }) => {
+    const jwt = await token(request);
+    const auth = { Authorization: `Bearer ${jwt}` };
+    const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
+    const alguno = (abiertos.items ?? [])[0];
+    test.skip(!alguno, 'no hay pedidos en el ambiente para probar el rechazo');
+
+    for (const reason of ['', '   ']) {
+      const r = await request.post(`${API}/orders/${alguno.id}/refund`, {
+        headers: auth, data: { reason, amount: 1 },
+      });
+      expect(r.status(), `se aceptó el motivo ${JSON.stringify(reason)}`).toBeGreaterThanOrEqual(400);
+      expect(r.status()).toBeLessThan(500);
+    }
+  });
+
+  // Un id que no parsea tiene que ser 400, no 500: un 500 dice "el servidor se rompió" y manda a
+  // revisar logs por una petición que nunca valió.
+  test('D3 · un id de renglón inválido es 400, no 500', async ({ request }) => {
+    const jwt = await token(request);
+    const r = await request.post(`${API}/orders/1/lines/abc/cancel`, {
+      headers: { Authorization: `Bearer ${jwt}` }, data: { reason: 'prueba' },
+    });
+    expect(r.status()).toBeGreaterThanOrEqual(400);
+    expect(r.status(), 'un id ilegible salió como 500').toBeLessThan(500);
+  });
+});
