@@ -232,7 +232,8 @@ where business_date = $1 and folio_name is not null;
 -- El tablero los muestra desplegados —lo que falta por entregar es lo que el operador vino a leer,
 -- no algo que deba destapar con un tap—, y pedirlos pedido por pedido serían N peticiones en cada
 -- refresco de una pantalla que se refresca sola cada diez segundos.
-select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes
+select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes,
+       (l.enviado_a_cocina_at is not null)::boolean as enviado_a_cocina
 from order_lines l
 join orders o on o.id = l.order_id
 where o.status in ('abierta','lista') and l.cancelled_at is null

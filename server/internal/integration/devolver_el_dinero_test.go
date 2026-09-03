@@ -329,3 +329,105 @@ func existencias(t *testing.T, st *store.Store, productID int64) decimal.Decimal
 	}
 	return v
 }
+
+// EL REPORTE DE DEVOLUCIONES Y LO QUE SALIÓ DEL CAJÓN CUADRAN (SC-002).
+//
+// Son dos cifras del mismo dinero: `RefundsByDay` lee `orders.refund_amount` y el arqueo suma los
+// movimientos de salida. Si divergen, una de las dos miente y quien las lee no tiene forma de saber
+// cuál — el corolario del principio III.
+//
+// No se exige igualdad con TODO lo devuelto: solo el efectivo sale del cajón. Lo que tiene que
+// cuadrar es la parte en efectivo.
+func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordenes := app.NewOrdersService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_cuadre", "cajero")
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	tarjeta := paymentMethodID(t, st, "Tarjeta débito")
+	abrirCajaPrincipal(t, st, cajero)
+
+	enEfectivo := pedidoCobradoParcial(t, ctx, st, ordenes, "cuadre_efe", "300", "300", cajero, efectivo, false)
+	conTarjeta := pedidoCobradoParcial(t, ctx, st, ordenes, "cuadre_tar", "200", "200", cajero, tarjeta, false)
+
+	antes := salidasDeCaja(t, st)
+	for _, o := range []int64{enEfectivo, conTarjeta} {
+		monto, err := ordenes.PorDevolver(ctx, o, nil)
+		if err != nil {
+			t.Fatalf("PorDevolver: %v", err)
+		}
+		if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+			OrderID: o, Monto: monto, Motivo: "cuadre", ActorID: cajero,
+		}); err != nil {
+			t.Fatalf("devolver: %v", err)
+		}
+	}
+
+	// Lo que el libro dice que salió EN EFECTIVO.
+	var enLibro decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `
+		select coalesce(sum(r.amount), 0) from order_refunds r
+		 where r.cash_movement_id is not null`).Scan(&enLibro); err != nil {
+		t.Fatalf("sumar el libro: %v", err)
+	}
+	salio := salidasDeCaja(t, st).Sub(antes)
+	if !enLibro.Equal(salio) {
+		t.Fatalf("el libro dice %s de devoluciones en efectivo y del cajón salieron %s: dos cifras "+
+			"del mismo dinero que no cuadran", enLibro, salio)
+	}
+	if !salio.Equal(decimal.RequireFromString("300")) {
+		t.Fatalf("del cajón salieron %s, quiere 300: la de tarjeta no sale de la caja", salio)
+	}
+
+	// Y el reporte de devoluciones cuenta las DOS, porque las dos son ingreso que no ocurrió.
+	var reportado decimal.Decimal
+	if err := st.Pool.QueryRow(ctx,
+		`select coalesce(sum(refund_amount), 0) from orders where id in ($1, $2)`,
+		enEfectivo, conTarjeta).Scan(&reportado); err != nil {
+		t.Fatalf("leer refund_amount: %v", err)
+	}
+	if !reportado.Equal(decimal.RequireFromString("500")) {
+		t.Fatalf("el reporte dice %s, quiere 500: es lo devuelto por los dos métodos", reportado)
+	}
+}
+
+// EL MENSAJE DE ERROR YA NO MANDA A UNA ACCIÓN QUE NO EXISTE (FR-008).
+//
+// `ErrCancelarConEntregas` dice "cancela los que falten o haz un reembolso". Cancelar un renglón NO
+// existía: ninguna consulta escribía `order_lines.cancelled_at`, así que la única salida practicable
+// era marcar como entregado lo que seguía en la plancha. Ahora la frase es cierta, y esto lo prueba
+// haciendo lo que el mensaje dice.
+func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	svc := app.NewOrdersService(st, clock)
+	ord, alitas, _ := pedidoDeAlitas(t, st, svc, "mensaje_cierto")
+	cajero := makeUser(t, st, "cajero_mensaje", "cajero")
+
+	// Se entrega UN renglón: el pedido entra en entrega parcial.
+	var lineaAlitas, lineaPapas int64
+	if err := st.Pool.QueryRow(ctx,
+		`select id from order_lines where order_id = $1 and product_id = $2`,
+		ord.ID, alitas).Scan(&lineaAlitas); err != nil {
+		t.Fatalf("leer renglón de alitas: %v", err)
+	}
+	if err := st.Pool.QueryRow(ctx,
+		`select id from order_lines where order_id = $1 and id <> $2 limit 1`,
+		ord.ID, lineaAlitas).Scan(&lineaPapas); err != nil {
+		t.Fatalf("leer el otro renglón: %v", err)
+	}
+	if err := svc.DeliverLine(ctx, ord.ID, lineaAlitas, decimal.RequireFromString("5")); err != nil {
+		t.Fatalf("entregar alitas: %v", err)
+	}
+
+	// El pedido entero no se cancela, y el error lo dice.
+	if err := svc.Cancel(ctx, ord.ID, cajero, "prueba"); !errors.Is(err, domain.ErrCancelarConEntregas) {
+		t.Fatalf("cancelar con entrega parcial = %v, quiere ErrCancelarConEntregas", err)
+	}
+
+	// Y lo que el mensaje manda a hacer, se puede hacer: cancelar el que falta.
+	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); err != nil {
+		t.Fatalf("cancelar el renglón que falta: %v — el error manda a una acción que no funciona", err)
+	}
+}

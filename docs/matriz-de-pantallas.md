@@ -140,6 +140,10 @@ periodo que pidió.
 | E10 | Doble tap al cancelar un renglón | No repone dos veces ni da error | `TestCancelarDosVecesElMismoRenglonNoReponeDosVeces` | Postgres |
 | E11 | La tarjeta de un entregado sin cobrar | **No** ofrece "Devolver": el servidor lo rechazaría | `OrdersBoardPage` (SC-003) | Navegador |
 | E12 | La hoja de devolución | Propone lo que queda, descuenta lo ya devuelto, y dice por qué se apaga | `DevolucionSheet.test.tsx` | Navegador |
+| E15 | Quitar un renglón ya enviado a cocina | **Avisa** que el ingrediente no vuelve, antes de confirmar | `CancelarRenglonDialog.test.tsx` | Navegador |
+| E16 | Quitar un renglón | Pide confirmar: no borra al tocar | idem | Navegador |
+| E17 | Reporte de devoluciones vs salidas del cajón | Cuadran en la parte en efectivo | `TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon` | Postgres |
+| E18 | El error de entrega parcial | Lo que dice ("cancela los que falten") ahora **se puede hacer** | `TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer` | Postgres |
 | E13 | El grant de la tabla nueva | El rol de app puede leer e insertar; sin grant es 42501 en producción | `TestElLibroDeDevolucionesEsUsablePorElRolDeApp` | Postgres |
 | E14 | Un arqueo ya cerrado tras la migración | Mismas cifras | `TestUnArqueoCerradoNoCambiaConLaMigracion` | Postgres |
 

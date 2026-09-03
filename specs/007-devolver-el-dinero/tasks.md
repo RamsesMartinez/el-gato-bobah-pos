@@ -47,7 +47,7 @@ código:
 - [X] T015 [US2] `OrdersService.Refund` con monto, renglones y reparto por método en `server/internal/app/orders.go`
 - [X] T016 [P] [US2] Test de integración: la devolución en efectivo deja **salida de caja** y el arqueo la descuenta; la de tarjeta NO toca el cajón
 - [X] T017 [US2] Salida de caja dentro de la misma transacción de la devolución
-- [ ] T017b [P] [US2] Test de integración (SC-002): el reporte de devoluciones del periodo y la suma de salidas de dinero **cuadran**
+- [X] T017b [P] [US2] Test de integración (SC-002): el reporte de devoluciones del periodo y la suma de salidas de dinero **cuadran**
 - [X] T018 [P] [US1] Test de integración: cancelar un pedido con cobros SIN devolución se rechaza; con devolución, el arqueo queda cuadrado
 - [X] T019 [US1] `OrdersService.Cancel` exige y ejecuta la devolución en la misma transacción
 - [X] T020 [P] [US3] Test de integración: cancelar un renglón NO enviado a cocina repone; uno ya enviado NO repone y el total baja igual
@@ -58,7 +58,7 @@ código:
 - [X] T022 [P] Test en `server/internal/httpapi/`: monto y motivo inválidos son 400, no 500
 - [X] T023 `POST /orders/{id}/refund` acepta renglones y monto en `server/internal/httpapi/handlers_orders.go`
 - [X] T024 `POST /orders/{id}/lines/{lineId}/cancel` en `server/internal/httpapi/handlers_orders.go`
-- [ ] T024b [US3] (FR-008) Revisar `ErrCancelarConEntregas`: hoy manda a "cancela los que falten", que no existía. Con US3 se vuelve cierto — test que lo compruebe, no solo el mensaje reescrito
+- [X] T024b [US3] (FR-008) Revisar `ErrCancelarConEntregas`: hoy manda a "cancela los que falten", que no existía. Con US3 se vuelve cierto — test que lo compruebe, no solo el mensaje reescrito
 - [X] T025 [US1] `RequireRole` en `/orders/{id}/cancel` en `server/internal/httpapi/router.go` — hoy no lo tiene y mueve el mismo dinero que el reembolso
 
 ## Fase 5 — Pantalla
@@ -67,15 +67,15 @@ código:
 - [X] T027 [US2] `web/src/domain/devolucion.ts`, espejo de las reglas del servidor
 - [X] T028 [P] [US2] Test de la hoja de devolución en `web/src/features/orders/`
 - [X] T029 [US2] Hoja de devolución con selección por renglón, a 44 px y dentro de los 600 px
-- [ ] T030 [P] [US3] Test: cancelar un renglón ya enviado a cocina **avisa** que el insumo no vuelve
-- [ ] T031 [US3] Cancelar renglón desde la tarjeta del pedido, con su aviso
+- [X] T030 [P] [US3] Test: cancelar un renglón ya enviado a cocina **avisa** que el insumo no vuelve
+- [X] T031 [US3] Cancelar renglón desde la tarjeta del pedido, con su aviso
 - [X] T032 [US1] La tarjeta deja de ofrecer "Reembolsar" en un pedido sin cobros (SC-003)
 
 ## Fase 6 — Cierre
 
 - [X] T033 Renglones nuevos en `docs/matriz-de-pantallas.md`, cada uno con su test
 - [X] T034 Cerrar X1, X2 y X3 en la tabla de pendientes de la matriz
-- [ ] T035 Gates: `go build`, `go test`, integración, `golangci-lint`, `bun run lint`, vitest, `bun run build`, e2e
+- [X] T035 Gates: `go build`, `go test`, integración, `golangci-lint`, `bun run lint`, vitest, `bun run build`, e2e
 
 ## Dependencias
 
