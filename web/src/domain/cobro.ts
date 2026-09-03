@@ -39,27 +39,41 @@ export function dividirEnPartes(total: number, n: number): number[] | null {
   return partes;
 }
 
-export interface Sugerencia {
-  etiqueta: string;
-  monto: number;
+// montoDeLaParte: cuánto se cobra AHORA si lo que falta se reparte entre `partes` personas.
+//
+// Se recalcula sobre el faltante VIVO en cada pedazo y NO una sola vez al empezar. Dos razones:
+// entre un pedazo y otro el faltante puede cambiar —otra caja cobró algo, o entró un renglón— y
+// unas partes calculadas al principio dejarían de sumar el total; y así la última parte se lleva
+// sola el residuo, que es lo que evita el centavo que nadie puede cobrar.
+//
+// `partes <= 1` es cobrar todo lo que falta, que es el caso de casi todos los pedidos.
+export function montoDeLaParte(falta: number, partes: number): number | null {
+  if (partes <= 1) return round2(falta);
+  const repartido = dividirEnPartes(falta, partes);
+  return repartido ? repartido[0] : null;
 }
 
-// sugerenciasDeMonto son los atajos de "¿cuánto cobras ahora?": todo, o entre cuántos se reparte.
+// MAX_PARTES: tope del repartidor. No es defensivo — es cuántas personas caben en una mesa antes de
+// que repartir a mano deje de tener sentido; más allá, el operador teclea el monto.
+export const MAX_PARTES = 12;
+
+// partesPosibles: en cuántas partes se puede repartir el faltante sin que alguna quede en $0.
 //
-// Existen para que dividir NO cueste teclear. El teclado del sistema come 250 de los 600 px de alto
-// de la tableta y tapa justo la cifra que decide si el botón se enciende; un preset de un toque
-// evita abrirlo en el caso común, que es repartir parejo entre dos, tres o cuatro.
+// Existe porque el repartidor no puede ofrecer lo que el cobro va a rechazar: con $0.05 pendientes,
+// pedir doce partes da partes de $0.00 y "cobrar cero no es cobrar". El operador tocaría el `+` y el
+// botón se apagaría sin decir por qué, que es la peor forma de rechazar algo.
+export function partesPosibles(falta: number): number {
+  const centavos = Math.floor(round2(falta) * 100);
+  return Math.min(MAX_PARTES, Math.max(1, centavos));
+}
+
+// partesQueQuedan: al entrar un pedazo queda una persona menos por cobrar.
 //
-// La parte que se ofrece es la PRIMERA de la división, no la última: la última se lleva el residuo y
-// se cobra sola cuando el faltante ya es exactamente ella.
-export function sugerenciasDeMonto(falta: number): Sugerencia[] {
-  const out: Sugerencia[] = [{ etiqueta: 'Todo', monto: round2(falta) }];
-  for (const n of [2, 3, 4]) {
-    const partes = dividirEnPartes(falta, n);
-    // Sin la guarda, repartir $0.02 entre tres ofrece partes de $0.00 y el cobro rebota.
-    if (partes) out.push({ etiqueta: `Entre ${n}`, monto: partes[0] });
-  }
-  return out;
+// Se baja de a uno en vez de recalcular desde cero porque el reparto es una intención del operador
+// ("somos cuatro"), no una propiedad del pedido: si se dedujera del faltante, cobrar una parte de
+// más o de menos cambiaría en cuántas se está repartiendo sin que nadie lo pidiera.
+export function partesQueQuedan(partes: number): number {
+  return Math.max(1, partes - 1);
 }
 
 export type MotivoInvalido =

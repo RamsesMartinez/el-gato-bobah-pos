@@ -4,7 +4,7 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuSplit } from 'react-icons/lu';
+import { LuCheck, LuMinus, LuPlus, LuSplit, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
@@ -15,7 +15,8 @@ import { useUiStore } from '../stores/ui';
 import { uuid } from '../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
 import {
-  billetesUtiles, presetsDePropina, sugerenciasDeMonto, validarCobro, round2,
+  billetesUtiles, montoDeLaParte, partesPosibles, partesQueQuedan, presetsDePropina,
+  validarCobro, round2,
 } from '../domain/cobro';
 import type { MotivoInvalido } from '../domain/cobro';
 
@@ -82,6 +83,11 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // del servidor y cambia con cada pedazo cobrado, así que sembrarlo en el estado obligaría a
   // resincronizarlo, y esa resincronización es de donde salen las dos cifras que divergen.
   const [montoElegido, setMontoElegido] = useState<string | null>(null);
+  // En cuántas partes se está repartiendo lo que falta. null = no se está repartiendo, que es el
+  // caso de casi todos los pedidos: se cobra todo a una persona y la hoja no gasta un solo píxel
+  // en el repartidor. Antes eran cuatro botones fijos —Todo, entre 2, 3 y 4— siempre en pantalla,
+  // en una hoja donde el alto es lo que escasea.
+  const [partes, setPartes] = useState<number | null>(null);
   const [propina, setPropina] = useState('');
   // Lo que ESTA hoja lleva cobrado, para que el operador vea qué pedazos ya entraron sin tener que
   // acordarse. No se pide al servidor: es la sesión de esta pantalla.
@@ -122,9 +128,12 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   const falta = vivo ? Number(vivo.outstanding) : Number(order?.outstanding ?? 0);
   const totalDelPedido = vivo ? Number(vivo.total) : Number(order?.total ?? 0);
 
-  // Cobrar completo es el caso de casi todos los pedidos y no puede costar un tap: sin elección
-  // explícita, el monto ES lo que falta.
-  const monto = montoElegido ?? String(falta);
+  // Cobrar completo es el caso de casi todos los pedidos y no puede costar un tap: sin reparto ni
+  // monto tecleado, el monto ES lo que falta.
+  //
+  // El monto tecleado gana sobre el reparto: es más específico. Tocar el repartidor lo borra, para
+  // que no queden dos intenciones en pantalla y una ganando en silencio.
+  const monto = montoElegido ?? String(montoDeLaParte(falta, partes ?? 1) ?? falta);
 
   const elegibles = useMemo(
     // Espejo de domain.MetodoCorrespondeALaPlataforma: ofrecer un método que va a rebotar manda al
@@ -174,6 +183,16 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
       // y con llave nueva: el pedazo que viene es otro cobro.
       setLlave(uuid());
       setMontoElegido(null);
+      // Entró una parte: queda una persona menos. Al llegar a la última se sale del reparto y la
+      // hoja vuelve a ofrecer todo lo que falta — que es exactamente lo que esa persona debe, con
+      // el residuo de los redondeos ya incluido.
+      setPartes((p) => {
+        if (p === null) return null;
+        const quedan = partesQueQuedan(p);
+        return quedan > 1 ? quedan : null;
+      });
+      // El método NO se hereda del pedazo anterior: cada persona paga con lo suyo, y arrastrarlo
+      // registraría con tarjeta dinero que entró en efectivo.
       setMetodo(null);
       setRecibido('');
       setPropina('');
@@ -191,7 +210,6 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   if (!order) return null;
 
   const moneda = order.currency;
-  const sugerencias = sugerenciasDeMonto(falta);
   const aCubrirEnEfectivo = round2(v.monto + v.propina);
   const billetes = billetesUtiles(aCubrirEnEfectivo);
   // El cambio que sobra se puede dejar como propina de un toque, en vez de que el operador teclee la
@@ -239,6 +257,15 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
             </Box>
             {/* Las DOS cifras. Pintando solo el faltante donde el operador espera el total, un
                 pedido de $500 con $300 abonados se veía idéntico a uno de $200. */}
+            {/* Dividir vive en el ENCABEZADO, que ya existe, y no en una fila propia: casi siempre
+                se cobra a una sola persona, y una fila que no se usa es alto que se le quita a lo
+                que sí. Aparece solo cuando hay algo que repartir. */}
+            {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
+              <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
+                onClick={() => { setPartes(2); setMontoElegido(null); }}>
+                <LuSplit /> Dividir
+              </Button>
+            )}
             <Box textAlign="right" flexShrink={0}>
               <Text fontSize="xs" color="fg.muted">Total {money(String(totalDelPedido), moneda)}</Text>
               <Text fontWeight="800" fontSize="2xl" lineHeight="1.1">
@@ -263,33 +290,42 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
               </HStack>
             )}
 
-            {/* Cuánto se cobra ahora. Los atajos existen para que dividir NO cueste teclear: el
-                teclado del sistema come 250 de los 600 px de alto de la tableta y tapa la cifra que
-                decide si el botón se enciende. */}
-            {falta > 0 && sugerencias.length > 1 && (
-              <Box>
-                <HStack mb={2} gap={2}>
-                  <LuSplit size={16} />
-                  <Text fontSize="sm" fontWeight="600">¿Cuánto cobras ahora?</Text>
-                </HStack>
-                <HStack gap={2} flexWrap="wrap">
-                  {sugerencias.map((s) => {
-                    const on = monto === String(s.monto);
-                    return (
-                      <Button key={s.etiqueta} minH={TAP_LG} flex="1" minW="90px"
-                        variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
-                        onClick={() => { setMontoElegido(String(s.monto)); setRecibido(''); }}>
-                        <VStack gap={0}>
-                          <Text fontSize="2xs" opacity={0.8}>{s.etiqueta}</Text>
-                          <Text fontWeight="700">{money(String(s.monto), moneda)}</Text>
-                        </VStack>
-                      </Button>
-                    );
-                  })}
-                  <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro"
-                    aria-label="Otro monto"
-                    value={monto} onChange={(e) => setMontoElegido(e.target.value)} />
-                </HStack>
+            {/* El repartidor, SOLO cuando se está repartiendo.
+                Cerrado no ocupa nada: el control que lo abre vive en el encabezado, que ya existía.
+                Abierto es una fila, y el número de partes es libre —no dos, tres o cuatro— porque
+                una mesa de seis es tan común como una de tres. */}
+            {partes !== null && (
+              <Box borderWidth="1px" borderColor="border" borderRadius="lg" px={3} py={2}>
+                <Flex align="center" justify="space-between" gap={2} flexWrap="wrap">
+                  <HStack gap={2}>
+                    <Button aria-label="Una parte menos" minH={TAP_LG} minW={TAP_LG} variant="outline"
+                      colorPalette="gray" disabled={partes <= 2}
+                      onClick={() => { setPartes((p) => Math.max(2, (p ?? 2) - 1)); setMontoElegido(null); }}>
+                      <LuMinus />
+                    </Button>
+                    <VStack gap={0} minW="6.5rem">
+                      <Text fontSize="2xs" color="fg.muted">Entre</Text>
+                      <Text fontWeight="800" fontSize="lg">{partes} personas</Text>
+                    </VStack>
+                    <Button aria-label="Una parte más" minH={TAP_LG} minW={TAP_LG} variant="outline"
+                      colorPalette="gray" disabled={partes >= partesPosibles(falta)}
+                      onClick={() => { setPartes((p) => Math.min(partesPosibles(falta), (p ?? 2) + 1)); setMontoElegido(null); }}>
+                      <LuPlus />
+                    </Button>
+                  </HStack>
+                  <HStack gap={2}>
+                    {/* Teclear un monto sigue disponible para el caso que no es parejo: "yo pago
+                        los tacos y ella el refresco". */}
+                    <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro monto"
+                      aria-label="Otro monto"
+                      value={monto} onChange={(e) => setMontoElegido(e.target.value)} />
+                    <Button aria-label="Dejar de dividir" minH={TAP_LG} minW={TAP_LG}
+                      variant="ghost" colorPalette="gray"
+                      onClick={() => { setPartes(null); setMontoElegido(null); }}>
+                      <LuX />
+                    </Button>
+                  </HStack>
+                </Flex>
               </Box>
             )}
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  round2, parseMonto, dividirEnPartes, sugerenciasDeMonto, validarCobro,
+  round2, parseMonto, dividirEnPartes, montoDeLaParte, partesQueQuedan, partesPosibles,
+  MAX_PARTES, validarCobro,
   cambioDeEfectivo, billetesUtiles, propinaValida, presetsDePropina, type Entrada,
 } from './cobro';
 
@@ -65,23 +66,75 @@ describe('dividirEnPartes', () => {
   });
 });
 
-describe('sugerenciasDeMonto', () => {
-  it('ofrece todo y las divisiones parejas, para no abrir el teclado', () => {
-    // El teclado del sistema come 250 de los 600 px de alto y tapa la cifra que decide si el botón
-    // se enciende. Repartir entre dos, tres o cuatro es el caso común y no puede costar teclear.
-    expect(sugerenciasDeMonto(500)).toEqual([
-      { etiqueta: 'Todo', monto: 500 },
-      { etiqueta: 'Entre 2', monto: 250 },
-      { etiqueta: 'Entre 3', monto: 166.66 },
-      { etiqueta: 'Entre 4', monto: 125 },
-    ]);
+// REPARTIR DE A UNO TIENE QUE SUMAR EL TOTAL EXACTO.
+//
+// Cada parte se calcula sobre el faltante VIVO, no sobre una lista hecha al abrir la hoja. Es lo
+// que permite que el faltante cambie entre pedazos —otra caja cobró, entró un renglón— sin que las
+// partes dejen de sumar. El riesgo del recálculo es el opuesto: que el redondeo deje un centavo
+// colgando, y ese centavo ya costó caro (el servidor cierra el pedido con la tolerancia y la barra
+// lo seguía listando como deuda que nadie podía cobrar).
+describe('repartir la cuenta de a un pedazo', () => {
+  const cobrarPorPartes = (total: number, partes: number) => {
+    const cobros: number[] = [];
+    let falta = round2(total);
+    let quedan = partes;
+    while (falta > 0) {
+      const monto = montoDeLaParte(falta, quedan);
+      if (monto === null) throw new Error('no se pudo repartir');
+      cobros.push(monto);
+      falta = round2(falta - monto);
+      quedan = partesQueQuedan(quedan);
+    }
+    return cobros;
+  };
+
+  it('tres partes de $100 suman $100, sin centavo colgando', () => {
+    const cobros = cobrarPorPartes(100, 3);
+    expect(cobros).toEqual([33.33, 33.33, 33.34]);
+    expect(round2(cobros.reduce((a, b) => a + b, 0))).toBe(100);
   });
 
-  it('con un faltante mínimo no ofrece divisiones que cobrarían cero', () => {
-    expect(sugerenciasDeMonto(0.02)).toEqual([
-      { etiqueta: 'Todo', monto: 0.02 },
-      { etiqueta: 'Entre 2', monto: 0.01 },
-    ]);
+  it('cualquier reparto suma el total exacto', () => {
+    for (const total of [100, 500, 0.05, 137.77, 1234.56, 99.99]) {
+      // Solo hasta donde SE PUEDE repartir: es el mismo tope que la pantalla le pone al `+`.
+      for (let partes = 1; partes <= partesPosibles(total); partes++) {
+        const cobros = cobrarPorPartes(total, partes);
+        expect(round2(cobros.reduce((a, b) => a + b, 0)), `${total} entre ${partes}`).toBe(round2(total));
+      }
+    }
+  });
+
+  // EL REPARTIDOR NO PUEDE OFRECER LO QUE EL COBRO VA A RECHAZAR.
+  //
+  // Con $0.05 pendientes, doce partes dan partes de $0.00 y el cobro las rechaza. Sin este tope el
+  // operador toca el `+`, el botón se apaga y nada dice por qué — la peor forma de rechazar algo.
+  it('no ofrece más partes de las que el faltante aguanta', () => {
+    expect(partesPosibles(0.05)).toBe(5);
+    expect(partesPosibles(0.01)).toBe(1);
+    expect(partesPosibles(100)).toBe(MAX_PARTES);
+    // Y lo que ofrece siempre se puede cobrar.
+    for (const total of [0.03, 0.05, 0.11, 7, 500]) {
+      expect(montoDeLaParte(total, partesPosibles(total)), `${total}`).not.toBeNull();
+    }
+  });
+
+  it('sin reparto se cobra todo lo que falta de un golpe', () => {
+    expect(montoDeLaParte(500, 1)).toBe(500);
+    expect(montoDeLaParte(500, 0)).toBe(500);
+  });
+
+  // Repartir $0.02 entre tres daría partes de $0.00, y cobrar cero no es cobrar. La pantalla usa
+  // este null para no ofrecer el reparto.
+  it('no reparte cuando alguna parte quedaría en cero', () => {
+    expect(montoDeLaParte(0.02, 3)).toBeNull();
+  });
+
+  // El contador baja de a uno y se detiene en 1: sin el piso, cobrar de más lo dejaría en cero y la
+  // siguiente parte sería una división entre cero.
+  it('el contador de partes nunca baja de una', () => {
+    expect(partesQueQuedan(3)).toBe(2);
+    expect(partesQueQuedan(1)).toBe(1);
+    expect(partesQueQuedan(0)).toBe(1);
   });
 });
 
