@@ -274,3 +274,76 @@ describe('el total en la lista de una plataforma', () => {
     expect(screen.getByRole('button', { name: /Agregar 1 · \$100/ })).toBeInTheDocument();
   });
 });
+
+// CORREGIR EL PRECIO DE LA PLATAFORMA SIN SALIR DE LA HOJA.
+//
+// Con Didi activo, cambiar el precio del Frappé obligaba a cerrar la hoja, ir al catálogo, editarlo
+// y volver a armar el pedido — con el repartidor esperando. El precio ya se muestra aquí; lo que
+// faltaba era poder tocarlo.
+//
+// Solo con una plataforma activa: en mostrador el precio se edita en el catálogo, y confundir las
+// dos listas es el error que esta pantalla no puede permitir.
+describe('corregir el precio del producto desde la hoja', () => {
+  const conDidi2 = {
+    id: 630, name: 'Frappé', price: '65', categoryId: 1, description: '', imageUrl: null,
+    trackStock: false,
+    groups: [{
+      id: 40, title: 'Tipo de leche', min: 1, max: 1,
+      options: [{ id: 643, name: 'Leche Entera', priceDelta: '0', maxPerLine: 1, favorite: false }],
+    }],
+  } as unknown as MenuProduct;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    menuMock.current = {
+      platforms: [{ id: 1, name: 'Didi', markupPct: '35' }],
+      platformPrices: { 1: { 630: '100' } },
+      platformModPrices: {},
+      products: [conDidi2],
+    };
+  });
+  afterEach(() => { menuMock.current = { platforms: [], platformPrices: {}, platformModPrices: {} }; });
+
+  it('el precio de la plataforma es un control, no un rótulo', async () => {
+    montar(vi.fn(), conDidi2);
+    useTicketStore.getState().setPlatform(1);
+
+    const precio = await screen.findByRole('button', { name: /Corregir el precio/ });
+    expect(precio).toHaveTextContent('$100');
+    expect(precio).toHaveTextContent('Didi');
+  });
+
+  it('tocarlo abre el diálogo con el desglose de dónde sale el número', async () => {
+    montar(vi.fn(), conDidi2);
+    useTicketStore.getState().setPlatform(1);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Corregir el precio/ }));
+
+    // El desglose no es adorno: se corrige un número que el sistema calculó, y sin ver de dónde
+    // salió se corrige a ciegas. $65 de mostrador, $87.75 calculado con el 35%, $100 vigente.
+    expect((await screen.findAllByText(/65/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/87\.75/).length).toBeGreaterThan(0);
+  });
+
+  // En mostrador NO se ofrece. El precio base se cambia en el catálogo; ofrecerlo aquí haría que
+  // alguien corrigiera el de mostrador creyendo que corrige el de Didi.
+  it('sin plataforma activa no se ofrece corregir nada', async () => {
+    menuMock.current = { platforms: [], platformPrices: {}, platformModPrices: {} };
+    montar(vi.fn(), conDidi2);
+
+    await screen.findByText(/65 base/);
+    expect(screen.queryByRole('button', { name: /Corregir el precio/ })).toBeNull();
+  });
+
+  // La barra decía en prosa cómo corregir un extra. Es una instrucción operativa, y en una hoja
+  // donde el alto escasea va detrás de un icono de ayuda, no ocupando una fila.
+  it('las instrucciones viven detrás del icono de ayuda, no en la barra', async () => {
+    montar(vi.fn(), conDidi2);
+    useTicketStore.getState().setPlatform(1);
+
+    expect(screen.queryByText(/Mantén presionado un extra/)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /Cómo corregir precios/ }));
+    expect(await screen.findByText(/Mantén presionado/)).toBeInTheDocument();
+  });
+});
