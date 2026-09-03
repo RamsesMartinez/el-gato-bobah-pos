@@ -73,13 +73,13 @@ func ResolveRange(preset string, from, to time.Time, now time.Time, loc *time.Lo
 		// muerde al comparar dos periodos "de 30 días".
 		return Range{From: hoy.AddDate(0, 0, -(DiasDelPreset30 - 1)), To: hoy}, nil
 	case "rango":
-		return rangoLibre(from, to)
+		return rangoLibre(from, to, hoy)
 	default:
 		return Range{}, fmt.Errorf("%w: rango desconocido (%q)", ErrValidation, preset)
 	}
 }
 
-func rangoLibre(from, to time.Time) (Range, error) {
+func rangoLibre(from, to, hoy time.Time) (Range, error) {
 	if from.IsZero() || to.IsZero() {
 		return Range{}, fmt.Errorf("%w: un rango libre necesita fecha de inicio y de fin", ErrValidation)
 	}
@@ -91,6 +91,12 @@ func rangoLibre(from, to time.Time) (Range, error) {
 	}
 	if dias := int(t.Sub(f).Hours()/24) + 1; dias > MaxSalesRangeDays {
 		return Range{}, fmt.Errorf("%w: el rango es de %d días y el máximo es %d", ErrValidation, dias, MaxSalesRangeDays)
+	}
+	// Un día que no ha pasado no tiene ventas, así que un rango que lo incluye devuelve una pantalla
+	// vacía —o corta— que se lee como "no vendimos nada". La pantalla lo topa con el calendario, pero
+	// el calendario no impide TECLEAR la fecha: la única barrera real es esta.
+	if t.After(hoy) {
+		return Range{}, fmt.Errorf("%w: el %s no ha pasado todavía", ErrValidation, t.Format(dateOnly))
 	}
 	return Range{From: f, To: t}, nil
 }

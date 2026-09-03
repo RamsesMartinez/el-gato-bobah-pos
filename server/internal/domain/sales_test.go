@@ -252,3 +252,44 @@ func TestUnasFechasQueElPresetNoVaAUsarSeRechazan(t *testing.T) {
 		})
 	}
 }
+
+// UN DÍA QUE NO HA PASADO NO TIENE VENTAS, y un rango que lo incluye devuelve una pantalla corta o
+// vacía que se lee como "no vendimos nada".
+//
+// La pantalla topa el calendario con el día de hoy, pero un tope de calendario no impide teclear la
+// fecha: el navegador marca el campo como inválido y ya. La barrera real es esta.
+func TestUnRangoQueTerminaEnElFuturoSeRechaza(t *testing.T) {
+	loc := mx(t)
+	ahora := time.Date(2026, 9, 3, 21, 0, 0, 0, time.UTC) // 3 de septiembre, 15:00 en México.
+	d := func(s string) time.Time {
+		v, err := time.ParseInLocation(dateOnly, s, time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-10-01"), ahora, loc); !errors.Is(err, ErrValidation) {
+		t.Fatalf("un rango que termina en el futuro debe rechazarse, fue %v", err)
+	}
+	// Hasta HOY inclusive sí: el día de hoy ya empezó a vender.
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-03"), ahora, loc); err != nil {
+		t.Fatalf("un rango que termina hoy debe pasar, fue %v", err)
+	}
+}
+
+// El "hoy" contra el que se compara es el del NEGOCIO. A las 19:00 de México ya es mañana en UTC:
+// con el reloj del servidor, un rango que termina mañana pasaría por bueno justo en la hora de más
+// venta, que es cuando alguien lo pediría.
+func TestElTopeDelFuturoUsaLaZonaDelNegocio(t *testing.T) {
+	loc := mx(t)
+	// 3 de septiembre 19:00 en México = 4 de septiembre 01:00 UTC.
+	ahora := time.Date(2026, 9, 4, 1, 0, 0, 0, time.UTC)
+	d := func(s string) time.Time {
+		v, _ := time.ParseInLocation(dateOnly, s, time.UTC)
+		return v
+	}
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-04"), ahora, loc); !errors.Is(err, ErrValidation) {
+		t.Fatalf("el 4 todavía no es hoy en México; debe rechazarse, fue %v", err)
+	}
+}

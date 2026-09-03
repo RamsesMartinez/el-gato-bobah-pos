@@ -67,12 +67,22 @@ describe('pantalla de Reportes', () => {
     });
   });
 
-  // Un rango a medias no se consulta: la pantalla conserva el periodo anterior —que su encabezado
-  // sigue nombrando— y dice qué falta.
-  it('con media fecha no vuelve a consultar', async () => {
+  // UN RANGO A MEDIAS CONSERVA LAS CIFRAS DEL PERIODO ANTERIOR, CON SU ENCABEZADO.
+  //
+  // Sin `placeholderData` los tres datos caían a `undefined`, los tiles a `?? 0` y el renglón del
+  // periodo desaparecía: la pantalla mostraba `Ventas $0.00 · Pedidos 0 · Propinas $0.00` con las
+  // tablas vacías y sin spinner —con la consulta deshabilitada `isLoading` es falso—. Tres ceros con
+  // aspecto de cifra se leen como un día sin ventas, que es peor que un error.
+  //
+  // El test viejo solo miraba que no se llamara a la API y su comentario afirmaba lo que la pantalla
+  // no hacía. Ahora mira los números.
+  it('con media fecha conserva las cifras y el periodo anteriores', async () => {
     const u = userEvent.setup();
+    api.reportSales.mockResolvedValue({
+      range: rango, byMethod: [], byDay: [{ business_date: '2026-09-01', orders: 3, revenue: '750.00' }],
+    });
     montar();
-    await waitFor(() => expect(api.reportSales).toHaveBeenCalled());
+    expect(await screen.findByText('$750')).toBeInTheDocument();
     api.reportSales.mockClear();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
@@ -80,6 +90,9 @@ describe('pantalla de Reportes', () => {
 
     expect(await screen.findByText(/Elige las dos fechas/)).toBeInTheDocument();
     await waitFor(() => expect(api.reportSales).not.toHaveBeenCalled());
+    // Lo que importa: NO se vació.
+    expect(screen.getByText('$750')).toBeInTheDocument();
+    expect(screen.getByText('2026-08-05 al 2026-09-03')).toBeInTheDocument();
   });
 
   // Con un preset, las fechas NO viajan: el servidor las rechaza porque un `from` que el preset no

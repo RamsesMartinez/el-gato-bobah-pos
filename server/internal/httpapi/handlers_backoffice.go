@@ -32,7 +32,9 @@ func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	// que no entra en int16 en vez de truncar/wrap y actualizar el método equivocado.
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 16)
 	if err != nil {
-		Error(w, err)
+		// El error de strconv no lo reconoce `Error` por errors.Is, así que caía al 500 y dejaba
+		// un slog.Error por una petición que nunca fue válida. El resto del archivo ya envuelve.
+		Error(w, fmt.Errorf("%w: el método de pago %q no es un id", domain.ErrValidation, chi.URLParam(r, "id")))
 		return
 	}
 	var body struct {
@@ -157,11 +159,17 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Una llave que no parsea se RECHAZA, no se descarta. Descartarla cerraba el turno como si
+	// nadie hubiera declarado ese método: el corte comparaba lo esperado contra cero y le inventaba
+	// al cajero un faltante por todo lo que sí había contado.
 	declared := map[int]decimal.Decimal{}
 	for k, v := range body.Declared {
-		if id, err := strconv.Atoi(k); err == nil {
-			declared[id] = v
+		id, err := strconv.Atoi(k)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: %q no es un método de pago", domain.ErrValidation, k))
+			return
 		}
+		declared[id] = v
 	}
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
@@ -206,13 +214,12 @@ func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
 
 // GET /cash-sessions — histórico de cortes (últimos N).
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
-	limit := 50
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 200 {
-			limit = n
-		}
+	limit, err := limiteDeQuery(r.URL.Query(), 50)
+	if err != nil {
+		Error(w, err)
+		return
 	}
-	rows, err := h.backoffice.SessionHistory(r.Context(), int32(limit))
+	rows, err := h.backoffice.SessionHistory(r.Context(), limit)
 	if err != nil {
 		Error(w, err)
 		return
@@ -587,7 +594,12 @@ func (h *Handlers) StockLevels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) StockMovements(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.StockMovements(r.Context(), queryLimit(r, 100))
+	limite, err := limiteDeQuery(r.URL.Query(), 100)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.backoffice.StockMovements(r.Context(), limite)
 	if err != nil {
 		Error(w, err)
 		return
@@ -670,7 +682,12 @@ func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.ProductMargins(r.Context(), rango.From, rango.To, queryLimit(r, 50))
+	limite, err := limiteDeQuery(r.URL.Query(), 50)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rows, err := h.backoffice.ProductMargins(r.Context(), rango.From, rango.To, limite)
 	if err != nil {
 		Error(w, err)
 		return
@@ -729,15 +746,6 @@ func parseDate(s string, fallback time.Time) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("%w: la fecha %q no tiene el formato AAAA-MM-DD", domain.ErrValidation, s)
 	}
 	return t, nil
-}
-
-func queryLimit(r *http.Request, def int32) int32 {
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return int32(n)
-		}
-	}
-	return def
 }
 
 // ---- Catálogo de artículos (insumos) ----

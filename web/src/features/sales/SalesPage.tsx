@@ -50,7 +50,8 @@ export function SalesPage() {
   // usar, y con razón: aceptarlo en silencio deja pedir "hoy, del 1 al 31 de enero" y contestar hoy
   // con la pantalla viéndose perfecta.
   const esRango = preset === 'rango';
-  const rangoInvalido = esRango ? validarRango(desde, hasta) : null;
+  const hoyDelNegocio = horaNegocio.diaDelNegocio(new Date());
+  const rangoInvalido = esRango ? validarRango(desde, hasta, hoyDelNegocio) : null;
   const filtros = { preset, status, serviceType, ...(esRango ? { from: desde, to: hasta } : {}) };
   // Un rango a medias NO se manda: la pantalla conserva el periodo anterior —que es el que su
   // encabezado sigue nombrando— hasta que las dos fechas estén completas.
@@ -103,7 +104,7 @@ export function SalesPage() {
           desde={desde}
           hasta={hasta}
           onRango={(d, h) => { setDesde(d); setHasta(h); setPage(0); }}
-          hoy={horaNegocio.diaDelNegocio(new Date())}
+          hoy={hoyDelNegocio}
         />
       </Box>
 
@@ -168,10 +169,13 @@ export function SalesPage() {
       <HStack justify="space-between" mt={3}>
         <Text fontSize="sm" color="fg.muted">{total} {total === 1 ? 'venta' : 'ventas'}</Text>
         <HStack gap={2}>
-          <Button size="sm" minH="40px" variant="outline" disabled={page === 0}
+          {/* Se apagan mientras el rango está a medias: `paginas` sale del periodo ANTERIOR, así
+              que avanzar movía el contador sobre filas que no son del filtro que se está capturando.
+              44 px, que es el mínimo con el que un dedo acierta a la primera. */}
+          <Button size="sm" minH="44px" px={4} variant="outline" disabled={page === 0 || !puedeConsultar}
             onClick={() => setPage((p) => Math.max(0, p - 1))}>Anterior</Button>
           <Text fontSize="sm">{page + 1} / {paginas}</Text>
-          <Button size="sm" minH="40px" variant="outline" disabled={page + 1 >= paginas}
+          <Button size="sm" minH="44px" px={4} variant="outline" disabled={page + 1 >= paginas || !puedeConsultar}
             onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
         </HStack>
       </HStack>
