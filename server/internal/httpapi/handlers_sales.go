@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -86,23 +85,13 @@ func (h *Handlers) filtroDeVentas(r *http.Request) (domain.SalesFilter, error) {
 		ServiceType: q.Get("serviceType"),
 		Sort:        valorODefault(q.Get("sort"), "fecha"),
 		Dir:         valorODefault(q.Get("dir"), "desc"),
-		Limit:       20,
 	}
 
-	if v := q.Get("pageSize"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return domain.SalesFilter{}, fmt.Errorf("%w: pageSize no es un número", domain.ErrValidation)
-		}
-		f.Limit = int32(n) //nolint:gosec // Validate acota a 1..MaxSalesPageSize
+	limit, offset, err := paginaDeQuery(q)
+	if err != nil {
+		return domain.SalesFilter{}, err
 	}
-	if v := q.Get("page"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			return domain.SalesFilter{}, fmt.Errorf("%w: page no es un número válido", domain.ErrValidation)
-		}
-		f.Offset = int32(n) * f.Limit //nolint:gosec // ambos ya acotados
-	}
+	f.Limit, f.Offset = limit, offset
 
 	if err := f.Validate(); err != nil {
 		return domain.SalesFilter{}, err

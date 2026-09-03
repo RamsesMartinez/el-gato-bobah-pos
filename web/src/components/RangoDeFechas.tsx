@@ -14,9 +14,9 @@ interface Props {
   desde: string;
   hasta: string;
   onRango: (desde: string, hasta: string) => void;
-  // hoy: el día del NEGOCIO, no el del navegador. Tope de los dos campos: elegir un día que no ha
-  // pasado devuelve una pantalla vacía que se lee como "no vendimos nada".
-  hoy?: string;
+  // hoy: el día del NEGOCIO, no el del navegador. Topa los dos campos Y decide el rechazo: el
+  // calendario no impide teclear la fecha, así que el `max` solo por sí mismo no es una barrera.
+  hoy: string;
 }
 
 // El selector de periodo de Ventas y de Reportes.
@@ -31,7 +31,7 @@ interface Props {
 // desplegable de renglones de 20 px, y el calendario nativo es justo lo contrario.
 export function RangoDeFechas({ presets, preset, onPreset, desde, hasta, onRango, hoy }: Props) {
   const esRango = preset === 'rango';
-  const motivo = esRango ? validarRango(desde, hasta) : null;
+  const motivo = esRango ? validarRango(desde, hasta, hoy) : null;
 
   return (
     <Box>

@@ -25,26 +25,34 @@ export function ReportsPage() {
   // Las fechas viajan SOLO con el rango libre: el servidor rechaza un `from` que el preset no va a
   // usar, porque aceptarlo en silencio es contestar un periodo que nadie pidió.
   const esRango = preset === 'rango';
-  const rangoInvalido = esRango ? validarRango(desde, hasta) : null;
+  const hoyDelNegocio = horaNegocio.diaDelNegocio(new Date());
+  const rangoInvalido = esRango ? validarRango(desde, hasta, hoyDelNegocio) : null;
   const periodo = { preset, ...(esRango ? { from: desde, to: hasta } : {}) };
   const puedeConsultar = rangoInvalido === null;
 
   // Las tres consultas comparten la MISMA llave de periodo. Es lo que impide que la pantalla acabe
   // mezclando dos rangos: si una se quedara con el suyo, sus cifras seguirían pintadas junto a las
   // de la otra sin nada que lo delate.
+  // `placeholderData` conserva lo del periodo ANTERIOR mientras el rango está a medias. Sin él, la
+  // pantalla caía a `Ventas $0.00 · Pedidos 0 · Propinas $0.00`, con las tablas vacías y sin el
+  // renglón del periodo — y sin spinner, porque con la consulta deshabilitada `isLoading` es falso.
+  // Tres ceros con aspecto de cifra son peor que un error: se leen como un día sin ventas.
   const sales = useQuery({
     queryKey: ['report', 'sales', periodo],
     queryFn: () => backofficeApi.reportSales(periodo),
+    placeholderData: (previa) => previa,
     enabled: puedeConsultar,
   });
   const margins = useQuery({
     queryKey: ['report', 'margins', periodo],
     queryFn: () => backofficeApi.reportMargins(periodo),
+    placeholderData: (previa) => previa,
     enabled: puedeConsultar,
   });
   const tips = useQuery({
     queryKey: ['report', 'tips', periodo],
     queryFn: () => backofficeApi.reportTips(periodo),
+    placeholderData: (previa) => previa,
     enabled: puedeConsultar,
   });
 
@@ -75,7 +83,7 @@ export function ReportsPage() {
           desde={desde}
           hasta={hasta}
           onRango={(d, h) => { setDesde(d); setHasta(h); }}
-          hoy={horaNegocio.diaDelNegocio(new Date())}
+          hoy={hoyDelNegocio}
         />
       </Box>
 

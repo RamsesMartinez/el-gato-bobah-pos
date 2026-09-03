@@ -59,11 +59,51 @@ periodo que pidió.
 | F6 | Cruzar el cambio de horario | La cuenta de días no gana ni pierde uno | `rangoDeFechas.test.ts › cruzar el cambio de horario` | Navegador |
 | F7 | Tope de 366 días | El 366 pasa, el 367 no — el mismo número que el servidor | `rangoDeFechas.test.ts › el tope son 366 días` | Navegador |
 
+## N. Números de la frontera — servidor
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| N1 | `?limit=abc`, `?limit=0`, `?limit=-5` | 400. Antes contestaban las 50 filas del default | `TestUnEnteroDeLaFronteraNoCaeAlDefault` | Go |
+| N2 | `?limit=3000000000` | 400. Truncado a int32 daba un `LIMIT` **negativo** → 500 por una petición que nunca fue válida | idem | Go |
+| N3 | `?page=214748365` | 400. `int32(n) * limit` envolvía a 4 y contestaba la quinta página con un 200 limpio | `TestUnaPaginaQueDesbordaNoContestaOtra` | Go |
+| N4 | `?pageSize=4294967297` | 400. Truncaba a 1 y pasaba la validación | idem | Go |
+| N5 | El offset de la última página que cabe | Pasa; la siguiente se rechaza. El tope se **deriva** del tamaño | `TestElOffsetNuncaDesbordaInt32` | Go |
+| N6 | `PATCH /payment-methods/abc` | 400, no 500 con un `slog.Error` de por medio | — | **no cubierto** |
+| N7 | Cerrar caja con una llave de `declared` que no es un id | 400. Se descartaba en silencio y el corte comparaba contra cero: faltante inventado | — | **no cubierto** |
+
+## D. Dinero clasificado una sola vez — Ventas
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| D1 | Venta cobrada y luego reembolsada | **No** suma en el desglose por medio de pago; ya la cuenta el tile de reembolsos | `TestElDesgloseDeMetodosNoCuentaLoReembolsado` | Postgres |
+| D2 | Dos empleados con el mismo nombre | Dos renglones en propinas por empleado: uno solo no se puede repartir | `TestLasPropinasNoSeFusionanPorHomonimia` | Postgres |
+
+## G. El rango en la pantalla — regresiones del propio filtro
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| G1 | Rango a medias en Reportes | Conserva las cifras y el periodo anteriores. Caía a `$0.00`, sin periodo y sin spinner | `ReportsPage.test.tsx › con media fecha conserva las cifras` | Navegador |
+| G2 | Rango a medias en Ventas | El paginador se apaga: `paginas` es del periodo anterior | `rangoDeFechas.test.tsx › el paginador queda apagado` | Navegador |
+| G3 | Fecha futura **tecleada** (no elegida en el calendario) | Se rechaza en los dos lados. El `max` del campo no impide teclear | `TestUnRangoQueTerminaEnElFuturoSeRechaza` + `rangoDeFechas.test.tsx` | Go y navegador |
+| G4 | El tope del futuro a las 19:00 de México | Usa el día del **negocio**; con el reloj del servidor mañana pasaría por bueno | `TestElTopeDelFuturoUsaLaZonaDelNegocio` | Go |
+| G5 | `Picker` con `size="sm"` | 44 px de alto. La receta del tema solo subía el piso en `md` | `Picker.test.tsx › el disparador mide al menos 44 px` | Navegador |
+
+
 ---
 
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
-arregla y uno olvidado no.
+arregla y uno olvidado no. Cada uno cita el hallazgo del
+[barrido](auditoria/barrido-de-pantallas-2026-09.md) que lo describe.
 
-_(Se llena con el barrido de pantallas; ver la sección de hallazgos abajo.)_
+| # | Caso | Por qué todavía no | Hallazgo |
+|---|---|---|---|
+| X1 | Cancelar un pedido **ya cobrado** | El dinero se queda en `order_payments`, la venta sale de los reportes y el arqueo lo sigue esperando. Exige decidir qué operación devuelve ese dinero, no solo un test | P1 |
+| X2 | Reembolsar un entregado **sin cobrar** | Registra una pérdida por el total que nunca fue ingreso. Misma decisión que X1 | P2 |
+| X3 | Cancelar un renglón suelto | El error dice "cancela los que falten" y no existe forma de hacerlo | P4 |
+| X4 | El envío del POS no sobrevive a un F5 ni se limpia entre cuentas | Es un `useState` fuera de la cuenta; el arreglo es moverlo a la cuenta | V2, V3 |
+| X5 | La píldora y la barra cobran sin el guard del envío mal escrito | Se cobra el envío por defecto en vez del capturado | V1 |
+| X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
+| X7 | Controles por debajo de 44 px en el ticket y el tablero | ~24 px en −/+/papelera; 32 px en el menú que cancela | V9, P3 |
+| X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio | P10 |

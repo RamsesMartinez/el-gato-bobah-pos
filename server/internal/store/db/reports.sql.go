@@ -265,7 +265,7 @@ left join users u on u.id = op.received_by
 where o.status not in ('cancelada', 'reembolsada')
   and op.tip_amount > 0
   and o.business_date between $1 and $2
-group by u.name
+group by u.id, u.name
 order by tips desc
 `
 
@@ -282,6 +282,10 @@ type TipsByEmployeeRow struct {
 
 // Propinas por empleado que cobró (received_by), para repartirlas. "Sin asignar" = pago sin cajero.
 // Propinas son pass-through (del personal), no ingreso del negocio; este reporte es para reparto.
+//
+// Agrupa por u.id y NO por u.name. Con el nombre, dos empleados que se llamen igual salían en un
+// solo renglón con la suma de los dos, y un renglón así no se puede repartir: quien lo lee no sabe
+// cuánto le toca a cada quien. Es el único reporte que existe para entregar dinero a una persona.
 func (q *Queries) TipsByEmployee(ctx context.Context, arg TipsByEmployeeParams) ([]TipsByEmployeeRow, error) {
 	rows, err := q.db.Query(ctx, tipsByEmployee, arg.BusinessDate, arg.BusinessDate_2)
 	if err != nil {

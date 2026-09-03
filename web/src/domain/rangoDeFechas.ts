@@ -13,7 +13,8 @@
 // límite en el gigabyte de RAM del VPS y tumba la API para todos.
 export const MAX_DIAS_RANGO = 366;
 
-export type MotivoRangoInvalido = 'incompleto' | 'malformado' | 'invertido' | 'demasiados-dias';
+export type MotivoRangoInvalido =
+  | 'incompleto' | 'malformado' | 'invertido' | 'demasiados-dias' | 'en-el-futuro';
 
 // diaValido acepta exactamente lo que el servidor: AAAA-MM-DD y una fecha que existe.
 //
@@ -38,12 +39,19 @@ export function diasDelRango(desde: string, hasta: string): number {
 }
 
 // validarRango dice por qué un rango no se puede pedir, o null si sí.
-export function validarRango(desde: string, hasta: string): MotivoRangoInvalido | null {
+//
+// `hoy` es el día del NEGOCIO. Va como parámetro y no se lee del reloj aquí dentro para que la
+// función siga siendo pura: el día del negocio no es el del navegador, y una tableta con la hora
+// corrida decidiría distinto que el servidor.
+export function validarRango(desde: string, hasta: string, hoy: string): MotivoRangoInvalido | null {
   if (desde === '' || hasta === '') return 'incompleto';
   if (!diaValido(desde) || !diaValido(hasta)) return 'malformado';
   // Invertido devolvería CERO filas sin error, y el operador creería que no vendió.
   if (Date.parse(`${hasta}T00:00:00Z`) < Date.parse(`${desde}T00:00:00Z`)) return 'invertido';
   if (diasDelRango(desde, hasta) > MAX_DIAS_RANGO) return 'demasiados-dias';
+  // El calendario lo topa con `max`, pero `max` no impide teclear la fecha: el navegador solo marca
+  // el campo como inválido y aquí no hay validación de formulario que lo frene.
+  if (diaValido(hoy) && hasta > hoy) return 'en-el-futuro';
   return null;
 }
 
@@ -59,5 +67,7 @@ export function mensajeDeRango(motivo: MotivoRangoInvalido): string {
       return 'La fecha de inicio va antes que la de fin.';
     case 'demasiados-dias':
       return `El periodo no puede pasar de ${MAX_DIAS_RANGO} días.`;
+    case 'en-el-futuro':
+      return 'Ese día todavía no llega.';
   }
 }

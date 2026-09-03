@@ -3,6 +3,9 @@ import {
   MAX_DIAS_RANGO, diaValido, diasDelRango, mensajeDeRango, validarRango,
 } from './rangoDeFechas';
 
+// El día del negocio para los casos que no hablan del futuro: bien posterior a todas sus fechas.
+const HOY = '2027-12-31';
+
 // EL 31 DE FEBRERO NO EXISTE, Y ACEPTARLO ES CONSULTAR OTRO DÍA.
 //
 // `new Date('2026-02-31')` no falla: rueda al 3 de marzo. Un campo que lo acepta manda al servidor
@@ -51,7 +54,7 @@ describe('diasDelRango', () => {
 
 describe('validarRango', () => {
   test('un rango normal pasa', () => {
-    expect(validarRango('2026-08-01', '2026-08-15')).toBeNull();
+    expect(validarRango('2026-08-01', '2026-08-15', HOY)).toBeNull();
   });
 
   // Media fecha NO es un rango. Mandarlo con una sola haría que el servidor conteste el default y
@@ -61,36 +64,58 @@ describe('validarRango', () => {
     ['', '2026-08-01'],
     ['', ''],
   ])('media fecha (%s, %s) queda incompleta', (a, b) => {
-    expect(validarRango(a, b)).toBe('incompleto');
+    expect(validarRango(a, b, HOY)).toBe('incompleto');
   });
 
   // Invertido devolvería CERO filas sin error, y el operador creería que no vendió.
   test('invertido se rechaza', () => {
-    expect(validarRango('2026-08-31', '2026-08-01')).toBe('invertido');
+    expect(validarRango('2026-08-31', '2026-08-01', HOY)).toBe('invertido');
   });
 
   test('una fecha que no existe se rechaza', () => {
-    expect(validarRango('2026-02-31', '2026-03-05')).toBe('malformado');
+    expect(validarRango('2026-02-31', '2026-03-05', HOY)).toBe('malformado');
   });
 
   // El tope es el MISMO que el del servidor. Si el front dejara pedir 400 días, el rebote llegaría
   // con el dedo ya levantado del botón y sin decir qué corregir.
+  // UN DÍA QUE NO HA PASADO NO TIENE VENTAS.
+  //
+  // El calendario lo topa con `max`, pero `max` no impide TECLEAR la fecha: el navegador marca el
+  // campo como inválido y ya, y aquí no hay validación de formulario que lo frene. Un rango en el
+  // futuro devuelve una pantalla vacía que se lee como "no vendimos nada".
+  test('un rango que termina después de hoy se rechaza', () => {
+    expect(validarRango('2026-09-01', '2027-01-01', '2026-09-03')).toBe('en-el-futuro');
+    // Hasta hoy inclusive sí: el día de hoy ya empezó a vender.
+    expect(validarRango('2026-09-01', '2026-09-03', '2026-09-03')).toBeNull();
+  });
+
+  // El día del NEGOCIO, no el del navegador: una tableta con la hora corrida decidiría distinto que
+  // el servidor, y el rebote llegaría desde el otro lado sin que la pantalla lo hubiera anticipado.
+  test('el tope es el día del negocio que se le pasa', () => {
+    expect(validarRango('2026-09-01', '2026-09-03', '2026-09-02')).toBe('en-el-futuro');
+  });
+
   test('el tope son 366 días, y el 366 pasa', () => {
-    expect(validarRango('2026-01-01', '2026-12-31')).toBeNull(); // 365
+    expect(validarRango('2026-01-01', '2026-12-31', HOY)).toBeNull(); // 365
     expect(diasDelRango('2025-01-01', '2026-01-01')).toBe(MAX_DIAS_RANGO);
-    expect(validarRango('2025-01-01', '2026-01-01')).toBeNull();
-    expect(validarRango('2025-01-01', '2026-01-02')).toBe('demasiados-dias');
+    expect(validarRango('2025-01-01', '2026-01-01', HOY)).toBeNull();
+    expect(validarRango('2025-01-01', '2026-01-02', HOY)).toBe('demasiados-dias');
   });
 });
 
 // El texto es para quien atiende el negocio, no para quien lo programó: sin nombres de parámetros,
 // de endpoints ni de columnas.
 describe('mensajeDeRango', () => {
-  test.each(['incompleto', 'malformado', 'invertido', 'demasiados-dias'] as const)(
+  test.each(['incompleto', 'malformado', 'invertido', 'demasiados-dias', 'en-el-futuro'] as const)(
     '%s dice algo accionable y sin internals', (motivo) => {
       const m = mensajeDeRango(motivo);
       expect(m.length).toBeGreaterThan(10);
-      expect(m).not.toMatch(/from|to|preset|query|param|endpoint|null|undefined/i);
+      // Palabra por palabra: un `includes` sobre la frase entera rechazaría "todavía" por
+      // contener "to", y el mensaje correcto se leería como defecto.
+      const palabras = m.toLowerCase().split(/[^a-záéíóúñ]+/);
+      for (const prohibida of ['from', 'to', 'preset', 'query', 'param', 'endpoint', 'null', 'undefined']) {
+        expect(palabras).not.toContain(prohibida);
+      }
     },
   );
 });

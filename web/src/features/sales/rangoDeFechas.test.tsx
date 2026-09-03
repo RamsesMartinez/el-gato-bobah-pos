@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -128,6 +128,50 @@ describe('el rango libre de fechas en Ventas', () => {
     expect(ultima).toMatchObject({ preset: 'hoy' });
     expect(ultima).not.toHaveProperty('from');
     expect(ultima).not.toHaveProperty('to');
+  });
+
+  // EL PAGINADOR NO AVANZA SOBRE UN PERIODO QUE NO SE CONSULTÓ.
+  //
+  // `paginas` sale del periodo ANTERIOR (lo conserva `placeholderData`), así que con el rango a
+  // medias los botones seguían vivos: tocar "Siguiente" movía el contador a "2 / 5" sobre filas que
+  // no son del filtro que se está capturando.
+  it('con el rango a medias el paginador queda apagado', async () => {
+    const u = userEvent.setup();
+    api.list.mockResolvedValue({ ...pagina, total: 100 });
+    montar();
+    await seAsienta();
+
+    await u.click(screen.getByRole('button', { name: 'Rango' }));
+    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
+
+    expect(await screen.findByText(/Elige las dos fechas/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+  });
+
+  // Un día que no ha pasado no tiene ventas: el rango se rechaza antes de mandarlo, y no solo con el
+  // `max` del calendario, que no impide teclear la fecha.
+  it('un rango que termina en el futuro no consulta', async () => {
+    const u = userEvent.setup();
+    montar();
+    await seAsienta();
+    api.list.mockClear();
+
+    await u.click(screen.getByRole('button', { name: 'Rango' }));
+    // MAÑANA, no un año lejano: con una fecha muy lejana el rechazo lo daría el tope de 366 días y
+    // el test pasaría verde sin haber tocado el caso. Un día después de hoy es el borde exacto.
+    const hoy = new Date();
+    const manana = new Date(hoy.getTime() + 86_400_000)
+      .toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+    fireEvent.change(screen.getByLabelText('Desde'), {
+      target: { value: hoy.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }) },
+    });
+    // `fireEvent` y no `type`: el punto del caso es la fecha TECLEADA, la que el `max` del
+    // calendario no frena. Escribirla a mano es lo único que reproduce ese camino.
+    fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: manana } });
+
+    expect(await screen.findByText(/todavía no llega/)).toBeInTheDocument();
+    await waitFor(() => expect(api.list).not.toHaveBeenCalled());
   });
 
   // El tope de los campos es el día del NEGOCIO. Un rango que incluye un día que no ha pasado
