@@ -296,19 +296,29 @@ func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 
 // POST /auth/refresh (reads refresh cookie "cid.token")
 func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
+	// La cookie se BORRA en cada rebote, no solo al salir.
+	//
+	// Sin esto, una credencial que el servidor ya no acepta sobrevive en la tableta hasta su
+	// Max-Age —treinta días en las que se emitieron antes de 0050— y se vuelve a presentar en CADA
+	// recarga. Cada intento cuesta un rebote más, y si alguna vez ese rebote clasifica como reuso,
+	// arrastra con él las sesiones vivas de la misma cuenta en las otras estaciones.
+	rebotar := func(err error) {
+		h.clearRefreshCookie(w)
+		Error(w, err)
+	}
 	c, err := r.Cookie(refreshCookie)
 	if err != nil {
-		Error(w, domain.ErrUnauthorized)
+		rebotar(domain.ErrUnauthorized)
 		return
 	}
 	companyID, token := parseRefreshCookie(c.Value)
 	if companyID == 0 {
-		Error(w, domain.ErrUnauthorized)
+		rebotar(domain.ErrUnauthorized)
 		return
 	}
 	s, err := h.auth.Refresh(r.Context(), companyID, token)
 	if err != nil {
-		Error(w, err)
+		rebotar(err)
 		return
 	}
 	h.writeSession(w, s, http.StatusOK)

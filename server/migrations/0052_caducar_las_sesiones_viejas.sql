@@ -11,14 +11,25 @@
 -- migración y no a mano porque a mano se olvida, y lo que se olvida aquí es la feature entera.
 --
 -- No se borran las filas: el histórico de sesiones es lo que deja ver un reuso más adelante.
-update refresh_tokens set revoked_at = now() where revoked_at is null;
+--
+-- CADUCA, no revoca, y la diferencia vale el POS entero. `ClassifyRefresh` mira `revoked` ANTES que
+-- `expiresAt`: una credencial REVOCADA que reaparece es, por definición, un robo, y el castigo del
+-- robo es `RevokeUserRefreshTokens`, que revoca por `user_id` — todas las sesiones de esa persona,
+-- en todas las tabletas, no solo la cadena comprometida.
+--
+-- En este negocio dos estaciones comparten cuenta (lo dice el comentario de 0050). Revocando en
+-- bloque: la tableta A entra con contraseña, la B despierta con su cookie vieja y le revoca la
+-- sesión a A, A refresca y le revoca la sesión a B. Un ping-pong de quince minutos que no converge
+-- mientras las dos se usen — contraseña a media operación, para siempre.
+--
+-- Caducar dice lo que de verdad pasó: el turno terminó. Sale un 401 limpio, sin respuesta de robo y
+-- sin tocar a la otra estación. El costo buscado —todos vuelven a entrar UNA vez— es idéntico.
+update refresh_tokens set expires_at = now() where revoked_at is null and expires_at > now();
 
 -- +goose Down
 -- Sin vuelta atrás, y no es un descuido.
 --
--- Revivir una credencial revocada es lo contrario de lo que hace el resto del sistema: la
--- detección de reuso trata un refresh revocado que reaparece como robo. Deshacer esto sería
--- reactivar en bloque justo lo que esa detección persigue, y además no se puede distinguir de las
--- que ya estaban revocadas por un logout o por un relevo. El rollback es no hacer nada: quien
--- vuelva a entrar tendrá su sesión nueva.
+-- No se guarda el vencimiento anterior de cada credencial, así que devolverlo sería inventarlo — y
+-- las que ya estaban caducadas por su propio turno no se distinguen de las que caducó esta
+-- migración. El rollback es no hacer nada: quien vuelva a entrar tendrá su sesión nueva.
 select 1;
