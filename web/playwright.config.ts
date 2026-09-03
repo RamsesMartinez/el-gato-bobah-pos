@@ -15,6 +15,12 @@ const BASE = process.env.E2E_BASE_URL ?? 'https://app-dev.elgatobobah.com';
 
 export default defineConfig({
   testDir: './e2e',
+  // La suite crea pedidos contra un ambiente COMPARTIDO con personas. Uno que se quede abierto
+  // aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de caja: le hace creer a
+  // quien opera que hay dinero pendiente. El setup anota qué había antes y el teardown cierra
+  // exactamente lo que la suite abrió, nada más.
+  globalSetup: './e2e/marcar-lo-que-ya-estaba.ts',
+  globalTeardown: './e2e/limpiar-lo-que-cree.ts',
   // Sin paralelo: los tests comparten la base de pruebas y el turno de caja abierto. Dos que cobren
   // a la vez sobre la misma caja se estorban, y un fallo por carrera se lee como un defecto real.
   workers: 1,

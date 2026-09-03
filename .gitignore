@@ -43,3 +43,5 @@ backups/prod/*
 # Salidas de Playwright: trazas, capturas y el reporte de una corrida. Se regeneran.
 web/test-results/
 web/playwright-report/
+# Marca del teardown de Playwright: qué pedidos ya estaban abiertos al empezar la suite.
+web/.playwright-abiertos.json
