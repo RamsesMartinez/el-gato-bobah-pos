@@ -15,8 +15,15 @@ import { round2 } from '../../domain/cobro';
 // desconfiar del contador la próxima vez que marque algo.
 const noSeCobran = new Set(['cancelada', 'reembolsada']);
 
+// El predicado es "DEBE ALGO", no "no está pagado", y es el mismo que usa el servidor.
+//
+// `paid` exige un total positivo, así que un pedido de $0 llega con `paid: false` y
+// `outstanding: "0"`. Con `!paid`, el badge decía "1 por cobrar · $0" y ninguna tarjeta ofrecía
+// Cobrar —el botón se pinta con `outstanding > 0`—: un renglón que no se puede atender y no se va
+// solo. El servidor ya lo dice por escrito en `Open`: "el recorte usa Outstanding y no Paid, que
+// exige un total positivo; un pedido de $0 no está saldado pero tampoco hay nada que cobrarle".
 export function porCobrar(ordenes: BoardOrder[]): BoardOrder[] {
-  return ordenes.filter((o) => !o.paid && !noSeCobran.has(o.status));
+  return ordenes.filter((o) => Number(o.outstanding) > 0 && !noSeCobran.has(o.status));
 }
 
 export interface ResumenPorCobrar {

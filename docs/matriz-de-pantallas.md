@@ -100,6 +100,18 @@ periodo que pidió.
 | V7 | Envío ausente | El default del negocio, y **no** viaja al servidor | `envio.test.ts` | Navegador |
 | V8 | Envío `0` explícito | Envío gratis decidido: viaja como cero | idem | Navegador |
 | V10 | Vaciar una cuenta con plataforma activa | Borra también la plataforma y el envío | `ticket.test.ts › vaciar la cuenta` | Navegador |
+| V8 | Agregar a un pedido con un producto ya desactivado en el carrito | Se recorta ese renglón, igual que al confirmar; no se tira el carrito entero | `agregarRecorta.test.tsx` | Navegador |
+| V7 | Doble tap en COBRAR con red lenta | El botón se apaga mientras el pedido viaja, igual que "Enviar a cocina" | — | **no cubierto** (se ve en red lenta, no en jsdom) |
+
+## P. El tablero de pedidos
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| P5 | Motivo de cancelación con un solo espacio | Se rechaza. Pasaba los dos lados y el `check` de la base lo daba por bueno: histórico con una cancelación sin motivo | `TestUnMotivoEnBlancoSeRechaza` | Go |
+| P5b | Motivo de 10,000 caracteres | Se rechaza; el tope son 200 **caracteres**, no bytes | `TestUnMotivoDesmedidoSeRechaza` | Go |
+| P6 | Pedido de total $0 en la barra | **No** cuenta como por cobrar: el badge decía "1 por cobrar · $0" y ninguna tarjeta ofrecía Cobrar | `porCobrar.test.ts › un pedido de $0` | Navegador |
+| P7 | Doble tap en "Entregar todo" | El segundo es un no-op, no un error rojo sobre una entrega que sí ocurrió | `TestUnDobleTapEnEntregarTodoNoDaError` | Postgres |
+| P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
 
 
 ---
@@ -116,5 +128,7 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 | X2 | Reembolsar un entregado **sin cobrar** | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P2 |
 | X3 | Cancelar un renglón suelto | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P4 |
 | X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
-| X7 | Controles por debajo de 44 px en el ticket y el tablero | ~24 px en −/+/papelera; 32 px en el menú que cancela | V9, P3 |
-| X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio | P10 |
+| X7 | Controles por debajo de 44 px en el ticket y el tablero | ~24 px en −/+/papelera del ticket; 32 px en el menú que cancela. Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto | V9, P3 |
+| X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio. Va con `Picker` y las listas de motivos que ya están escritas | P10 |
+| X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
+| X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |

@@ -9,6 +9,7 @@ import { posApi } from '../../api/pos';
 import type { BoardOrder, CobroHecho } from '../../types/pos';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { money } from '../../utils/format';
+import { round2 } from '../../domain/numeros';
 
 // Alto mínimo de todo lo que se toca. Por debajo el dedo falla y la siguiente venta cae en el
 // pedido de otra mesa.
@@ -54,7 +55,9 @@ export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
   // Con dos fuentes, la tableta llegó a decir $2,141 en la píldora y $1,928 en la lista: el operador
   // ve dos cifras del mismo dinero y no tiene forma de saber cuál miente. Es el corolario del
   // principio III, y ya costó un turno con $4,500 de faltante inexplicable.
-  const totalPendiente = porCobrar.reduce((s, o) => s + Number(o.outstanding), 0);
+  // round2 sobre la suma: son flotantes, y sin redondear la píldora llega a pintar un centavo
+  // que la lista de abajo no tiene. `porCobrar.ts` ya lo hacía; esta copia no.
+  const totalPendiente = round2(porCobrar.reduce((s, o) => s + Number(o.outstanding), 0));
 
   // Sin nada que cobrar no se pinta: un contador en cero es chrome que le quita ancho a la barra, y
   // la caja vacía llegaba a cobrar 112 px de una fila que ya se desbordaba.
