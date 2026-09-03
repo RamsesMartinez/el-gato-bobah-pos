@@ -3,7 +3,7 @@ module github.com/ramthedev/el-gato-bobah-pos/server
 go 1.27.0
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.66.0
+	github.com/anthropics/anthropic-sdk-go v1.68.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
