@@ -128,14 +128,24 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json` = parches de CVE en deps TRANSITIVAS de dev.** Cuando un CVE
-  high vive en una transitiva (`eslint`→`ajv`→`fast-uri`, `vite-plugin-pwa`→`workbox-build`→`glob`→
-  `brace-expansion`, `jsdom`→`undici`, `vite`→`postcss`→`nanoid`) y el padre pinea un rango que no alcanza el parche, se fuerza
-  la versión aquí. **Fija el piso REAL del aviso, no el primero que veas**: `brace-expansion: ">=2.1.3"`
-  resolvía a 4.x, que tiene su propio rango vulnerable (el piso bueno es `>=5.0.8`). Y **acota el
-  major cuando el consumidor depende de internals**: `undici: "^7.29.0"` y no `>=7.29.0`, porque la
-  8.x movió lo que jsdom requiere y deja los tests en "no tests". Cada override se BORRA en cuanto
-  el padre suba su rango (lo trae Dependabot); son deuda, no configuración permanente.
+- **`overrides` en `web/package.json`: hoy NO hay ninguno, y así debe quedar.** Existieron para
+  forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
+  padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
+  `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,
+  `vite`→`postcss`→`nanoid`, `browserslist`). Los cinco se borraron el 2026-09-03 al comprobar que
+  los padres ya resuelven a versiones limpias: `bun audit` sin ellos no encuentra nada en ningún
+  nivel salvo un *moderate* de postcss que ya estaba y va por debajo del gate.
+
+  Si vuelve a hacer falta uno, dos reglas que costaron caro:
+  - **Fija el piso REAL del aviso, no el primero que veas.** `brace-expansion: ">=2.1.3"` resolvía a
+    4.x, que tiene su propio rango vulnerable.
+  - **Acota el major cuando el consumidor depende de internals**: `undici: "^7.29.0"` y no
+    `>=7.29.0`, porque la 8.x movió lo que jsdom requiere y deja los tests en "no tests".
+
+  Y **verifica quitándolo de verdad**: borrar el override y correr `bun install` NO basta si el
+  lockfile ya tiene la versión parcheada — la conserva. Hay que ver a qué resuelve el padre
+  (`bun.lock`) y correr `bun audit` sin filtro de nivel. Un override que sobra son paquetes
+  duplicados en el árbol: quitar estos cinco bajó de 699 a 689.
 - **KNOWN NON-ISSUE (no lo "arregles"):** el aviso de deprecación de `golang.org/x/crypto/blowfish` que aparece dentro de `x/crypto/bcrypt` es **esperado** — bcrypt usa blowfish internamente. `bcrypt.GenerateFromPassword` ([auth.HashSecret](server/internal/auth/password.go)) es la forma correcta y vigente de hashear passwords y **no** está deprecada. No lo cambies por AES ni otro cifrado.
 
 ## 4. Commits / PR
