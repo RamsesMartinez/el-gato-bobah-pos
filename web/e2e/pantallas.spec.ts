@@ -246,3 +246,55 @@ test.describe('F — el control de rango en la tableta', () => {
     expect(gastado).toBeLessThan(300);
   });
 });
+
+test.describe('V — el envío, en las tres superficies que cobran', () => {
+  // LA PÍLDORA Y EL PANEL DICEN EL MISMO TOTAL DEL MISMO PEDIDO.
+  //
+  // `ticketTotal(lines)` no incluye el envío. El panel pintaba total + envío y la píldora el total
+  // pelón, y en 1024×600 el panel arranca OCULTO: la cifra sin envío era la que se veía todos los
+  // días. Es la forma exacta del defecto que ya costó ofrecer cobrar $115 de un pedido de $95.
+  //
+  // No crea ningún pedido: todo pasa en la cuenta local, antes de confirmar.
+  test('V4 · la píldora y el panel dicen el mismo total', async ({ page, request }) => {
+    const jwt = await token(request);
+    await entrar(page, jwt, '/');
+
+    // Un producto cualquiera del catálogo; el precio no importa, solo que las dos cifras coincidan.
+    const tile = page.locator('button', { hasText: /\$/ }).first();
+    await tile.click();
+
+    // El panel: se abre si está oculto.
+    const verPedido = page.getByRole('button', { name: /Ver pedido|art ·/ }).first();
+    await verPedido.click();
+
+    await page.getByRole('button', { name: 'Domicilio' }).click();
+    await page.getByLabel('Costo de envío').fill('30');
+
+    const totalPanel = await page.locator('text=Total').first()
+      .locator('xpath=following-sibling::*[1]').textContent();
+
+    // Y ahora la píldora, con el panel escondido.
+    await page.getByLabel(/Ocultar|panel/i).first().click().catch(() => {});
+    const pildora = await page.getByText(/\d+ art · \$/).first().textContent();
+
+    expect(pildora, `la píldora dice "${pildora}" y el panel "${totalPanel}": son el mismo pedido`)
+      .toContain((totalPanel ?? '').trim());
+  });
+
+  // Con un envío mal escrito, la píldora tampoco cobra. Antes solo el panel se apagaba, y la
+  // píldora mandaba el pedido con el envío POR DEFECTO del negocio.
+  test('V1 · con el envío mal escrito ninguna superficie cobra', async ({ page, request }) => {
+    const jwt = await token(request);
+    await entrar(page, jwt, '/');
+
+    await page.locator('button', { hasText: /\$/ }).first().click();
+    await page.getByRole('button', { name: /Ver pedido|art ·/ }).first().click();
+    await page.getByRole('button', { name: 'Domicilio' }).click();
+    await page.getByLabel('Costo de envío').fill('1,000');
+
+    await expect(page.getByText('Solo números')).toBeVisible();
+    for (const boton of await page.getByRole('button', { name: /^Cobrar$|^COBRAR$/ }).all()) {
+      await expect(boton, 'una de las superficies de cobro seguía viva').toBeDisabled();
+    }
+  });
+});

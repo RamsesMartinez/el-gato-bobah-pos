@@ -31,7 +31,7 @@ function emptyTab(num: number): TicketTab {
   // Sin folioName: la lista vive en el servidor y esto corre también al importar el módulo, antes
   // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
   return {
-    id: uuid(), num, folioName: '', lines: [],
+    id: uuid(), num, folioName: '', lines: [], envio: '',
     serviceType: 'mostrador', customerName: '', platformId: null,
   };
 }
@@ -47,6 +47,7 @@ interface TicketState {
   removeLine: (lineId: string) => void;
   updateLineModifiers: (lineId: string, modifiers: TicketModifier[], notes?: string) => void;
   setServiceType: (t: ServiceType) => void;
+  setEnvio: (v: string) => void;
   setCustomerName: (name: string) => void;
   clearActive: () => void; // vacía la cuenta activa sin cerrarla
   // manejo de cuentas
@@ -140,9 +141,15 @@ export const useTicketStore = create<TicketState>()(
             })),
           ),
         setServiceType: (serviceType) => set((s) => onActive(s, (t) => ({ ...t, serviceType }))),
+        setEnvio: (envio) => set((s) => onActive(s, (t) => ({ ...t, envio }))),
         setCustomerName: (customerName) => set((s) => onActive(s, (t) => ({ ...t, customerName }))),
+        // Vaciar deja la cuenta como recién abierta, y eso incluye la PLATAFORMA. Reseteaba el tipo
+        // de servicio y dejaba puesta la lista de Uber: los productos capturados después salían con
+        // precio de Uber en una cuenta que decía mostrador. Y el envío, por la misma razón.
         clearActive: () =>
-          set((s) => onActive(s, (t) => ({ ...t, lines: [], customerName: '', serviceType: 'mostrador' }))),
+          set((s) => onActive(s, (t) => ({
+            ...t, lines: [], customerName: '', serviceType: 'mostrador', platformId: null, envio: '',
+          }))),
 
         newTab: () =>
           set((s) => {
@@ -206,7 +213,7 @@ export const useTicketStore = create<TicketState>()(
       // pedido de un cliente por un deploy no es negociable.
       merge: (persisted, current) => {
         const prev = (persisted ?? {}) as Partial<TicketState>;
-        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '' }));
+        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '', envio: t.envio ?? '' }));
         return { ...current, ...prev, tabs };
       },
     },

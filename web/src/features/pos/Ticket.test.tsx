@@ -17,8 +17,6 @@ const props = {
   enviando: false,
   onEditLine: vi.fn(),
   onHide: vi.fn(),
-  envio: '',
-  onEnvio: vi.fn(),
   envioPorDefecto: 20,
   noDisponibles: [],
 };
@@ -46,14 +44,16 @@ beforeEach(() => {
 // la caja. El default es para el campo AUSENTE, nunca para el presente y malformado.
 test('un envío mal escrito no cobra envío gratis: apaga los botones y lo dice', async () => {
   useTicketStore.getState().setServiceType('domicilio');
-  const { rerender } = pinta(<Ticket {...props} envio="1,000" />);
+  useTicketStore.getState().setEnvio('1,000');
+  const { rerender } = pinta(<Ticket {...props} />);
 
   expect(await screen.findByText('Solo números')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
   expect(screen.getByRole('button', { name: /Enviar a cocina/ })).toBeDisabled();
 
   // Y bien escrito sí deja seguir: la regla rechaza el formato, no el número.
-  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} envio="30" /></ChakraProvider>);
+  useTicketStore.getState().setEnvio('30');
+  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
   expect(screen.queryByText('Solo números')).toBeNull();
   expect(screen.getByRole('button', { name: 'COBRAR' })).toBeEnabled();
 });
@@ -66,7 +66,7 @@ test('un envío mal escrito no cobra envío gratis: apaga los botones y lo dice'
 test('con plataforma no se ofrece envío, aunque la cuenta diga domicilio', async () => {
   useTicketStore.getState().setServiceType('domicilio');
   useTicketStore.getState().setPlatform(3);
-  pinta(<Ticket {...props} envio="20" />);
+  pinta(<Ticket {...props} />);
 
   expect(screen.queryByLabelText('Costo de envío')).toBeNull();
   // Y el total no lo incluye: el reparto lo cobra la plataforma.
@@ -77,14 +77,15 @@ test('con plataforma no se ofrece envío, aunque la cuenta diga domicilio', asyn
 // el cobro otra.
 test('un domicilio propio suma el envío al total de la pantalla', async () => {
   useTicketStore.getState().setServiceType('domicilio');
-  pinta(<Ticket {...props} envio="30" />);
+  useTicketStore.getState().setEnvio('30');
+  pinta(<Ticket {...props} />);
   expect(await totalEnPantalla()).toBe('$125');
 });
 
 // Sin capturar nada, el envío es el del negocio: el campo vacío significa "el de siempre", no cero.
 test('sin capturar envío se usa el del negocio', async () => {
   useTicketStore.getState().setServiceType('domicilio');
-  pinta(<Ticket {...props} envio="" />);
+  pinta(<Ticket {...props} />);
   expect(await totalEnPantalla()).toBe('$115');
 });
 
@@ -118,4 +119,24 @@ test('COBRAR avisa que también manda el pedido a cocina', async () => {
   pinta(<Ticket {...props} />);
   const cobrar = await screen.findByRole('button', { name: /COBRAR/ });
   expect(cobrar).toHaveAccessibleDescription(/cocina/i);
+});
+
+// UN ENVÍO QUE YA NO APLICA NO PUEDE DEJAR EL POS MUDO.
+//
+// El cálculo del envío corría siempre, pero el campo y el mensaje "Solo números" solo se pintaban
+// en domicilio propio. Teclear "1,5" y luego cambiar a Mostrador —o asignar una plataforma— dejaba
+// los dos botones apagados sin campo que corregir ni razón visible, y como el envío era global,
+// ninguna cuenta podía vender.
+test('un envío mal escrito deja de bloquear cuando la cuenta pasa a mostrador', async () => {
+  useTicketStore.getState().setServiceType('domicilio');
+  useTicketStore.getState().setEnvio('1,5');
+  const { rerender } = pinta(<Ticket {...props} />);
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+
+  useTicketStore.getState().setServiceType('mostrador');
+  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
+
+  expect(await screen.findByRole('button', { name: 'COBRAR' })).toBeEnabled();
+  // Y no queda un aviso huérfano de un campo que ya no se pinta.
+  expect(screen.queryByText('Solo números')).toBeNull();
 });

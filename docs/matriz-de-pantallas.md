@@ -88,6 +88,19 @@ periodo que pidió.
 | G4 | El tope del futuro a las 19:00 de México | Usa el día del **negocio**; con el reloj del servidor mañana pasaría por bueno | `TestElTopeDelFuturoUsaLaZonaDelNegocio` | Go |
 | G5 | `Picker` con `size="sm"` | 44 px de alto. La receta del tema solo subía el piso en `md` | `Picker.test.tsx › el disparador mide al menos 44 px` | Navegador |
 
+## V. El envío del POS — una sola decisión para tres superficies
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| V1 | Envío mal escrito (`1,000`) y cobrar desde la píldora | No cobra. Antes solo el panel se apagaba; la píldora mandaba el envío **por defecto** | `pantallas.spec.ts › V1` | Navegador |
+| V2 | Recargar con envío capturado | Sobrevive: vive en la cuenta, no en la pantalla | `ticket.test.ts › cada cuenta lleva el suyo` | Navegador |
+| V3 | Capturar envío y abrir otra cuenta | La nueva **no** lo hereda | idem | Navegador |
+| V4 | Píldora y panel del mismo pedido a domicilio | Dicen el mismo total, envío incluido | `pantallas.spec.ts › V4` | Navegador |
+| V6 | Envío mal escrito y luego cambiar a mostrador | Deja de bloquear: el campo ya no se pinta, así que no puede trabar sin nada que corregir | `Ticket.test.tsx › deja de bloquear` | Navegador |
+| V7 | Envío ausente | El default del negocio, y **no** viaja al servidor | `envio.test.ts` | Navegador |
+| V8 | Envío `0` explícito | Envío gratis decidido: viaja como cero | idem | Navegador |
+| V10 | Vaciar una cuenta con plataforma activa | Borra también la plataforma y el envío | `ticket.test.ts › vaciar la cuenta` | Navegador |
+
 
 ---
 
@@ -99,11 +112,9 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
-| X1 | Cancelar un pedido **ya cobrado** | El dinero se queda en `order_payments`, la venta sale de los reportes y el arqueo lo sigue esperando. Exige decidir qué operación devuelve ese dinero, no solo un test | P1 |
-| X2 | Reembolsar un entregado **sin cobrar** | Registra una pérdida por el total que nunca fue ingreso. Misma decisión que X1 | P2 |
-| X3 | Cancelar un renglón suelto | El error dice "cancela los que falten" y no existe forma de hacerlo | P4 |
-| X4 | El envío del POS no sobrevive a un F5 ni se limpia entre cuentas | Es un `useState` fuera de la cuenta; el arreglo es moverlo a la cuenta | V2, V3 |
-| X5 | La píldora y la barra cobran sin el guard del envío mal escrito | Se cobra el envío por defecto en vez del capturado | V1 |
+| X1 | Cancelar un pedido **ya cobrado** | Spec [007](../specs/007-devolver-el-dinero/spec.md), a la espera de cuatro decisiones del dueño | P1 |
+| X2 | Reembolsar un entregado **sin cobrar** | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P2 |
+| X3 | Cancelar un renglón suelto | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P4 |
 | X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
 | X7 | Controles por debajo de 44 px en el ticket y el tablero | ~24 px en −/+/papelera; 32 px en el menú que cancela | V9, P3 |
 | X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio | P10 |

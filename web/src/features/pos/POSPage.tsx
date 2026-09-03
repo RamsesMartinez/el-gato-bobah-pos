@@ -17,7 +17,7 @@ import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
 import { useMandarPedido } from './useMandarPedido';
-import { parseMonto } from '../../domain/numeros';
+import { envioDeLaCuenta } from '../../domain/envio';
 import { useAgregarAPedido } from './useAgregarAPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
@@ -143,7 +143,6 @@ export function POSPage() {
   // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
   // solo con lo agregado.
   const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
-  const [envio, setEnvio] = useState('');
   const { mandar, enviando, noDisponibles, defaultFee } = useMandarPedido((order) => {
     ticketDrawer.onClose();
     // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
@@ -151,17 +150,18 @@ export function POSPage() {
     setPedidoNuevo(order);
   });
   // Mandar a cocina sin cobrar: la venta termina aquí y la confirmación lo dice.
-  // El envío capturado viaja como número; ausente = el default del negocio. `armarPedido` decide
-  // si aplica.
-  const envioDelPedido = () => {
-    const m = parseMonto(envio);
-    return m.estado === 'valido' ? m.valor : undefined;
-  };
-  const enviarACocina = () => mandar({ luego: setLastOrder, deliveryFee: envioDelPedido() });
+  //
+  // UNA sola decisión sobre el envío para las tres superficies que cobran. El panel tenía la suya y
+  // la píldora y la barra angosta no tenían ninguna: con un envío mal escrito ellas cobraban el
+  // default del negocio, y el total que pintaban era el del pedido SIN envío mientras el panel
+  // pintaba otro. En 1024×600 el panel arranca oculto, así que la cifra equivocada era la de todos
+  // los días.
+  const envio = envioDeLaCuenta(cuenta, cuenta.envio, defaultFee);
+  const enviarACocina = () => mandar({ luego: setLastOrder, deliveryFee: envio.paraElServidor });
   // Cobrar: se crea el pedido —cocina ya se entera— y se abre la hoja de cobro sobre él. La
   // confirmación y el ticket esperan a que quede saldado, porque hasta entonces no se sabe si el
   // papel dice PAGADO.
-  const cobrarLaCuenta = () => mandar({ luego: setCobrando, deliveryFee: envioDelPedido() });
+  const cobrarLaCuenta = () => mandar({ luego: setCobrando, deliveryFee: envio.paraElServidor });
 
   // Cerrar la hoja de cobro sin haber saldado NO cancela nada, y hay que decirlo.
   //
@@ -446,7 +446,7 @@ export function POSPage() {
             <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
               <Ticket onCheckout={cobrarLaCuenta} onEnviar={enviarACocina} enviando={enviando}
                 onEditLine={editLine}
-                envio={envio} onEnvio={setEnvio} envioPorDefecto={defaultFee}
+                envioPorDefecto={defaultFee}
                 noDisponibles={noDisponibles} onHide={() => setPanelHidden(true)} />
             </Box>
           )}
@@ -460,10 +460,11 @@ export function POSPage() {
           >
             <HStack as="button" onClick={ticketDrawer.onOpen} flex="1" minW={0} gap={2}>
               <LuShoppingCart />
-              <Text fontWeight="700" truncate>{count} art · {money(total)}</Text>
+              <Text fontWeight="700" truncate>{count} art · {money(total + envio.monto)}</Text>
               <LuChevronUp />
             </HStack>
-            <Button size="md" colorPalette="green" fontWeight="800" px={6} onClick={cobrarLaCuenta}>
+            <Button size="md" colorPalette="green" fontWeight="800" px={6}
+              disabled={envio.malEscrito} onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           </HStack>
@@ -486,10 +487,11 @@ export function POSPage() {
           </Box>
           <HStack as="button" onClick={() => setPanelHidden(false)} gap={2} minH="44px" px={1}>
             <LuPanelRightOpen />
-            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total)}` : 'Ver pedido'}</Text>
+            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total + envio.monto)}` : 'Ver pedido'}</Text>
           </HStack>
           {count > 0 && (
-            <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6} onClick={cobrarLaCuenta}>
+            <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6}
+              disabled={envio.malEscrito} onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           )}
@@ -514,7 +516,7 @@ export function POSPage() {
                 onCheckout={() => { ticketDrawer.onClose(); cobrarLaCuenta(); }}
                 onEnviar={enviarACocina} enviando={enviando} onEditLine={editLine}
                 onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers}
-                envio={envio} onEnvio={setEnvio} envioPorDefecto={defaultFee}
+                envioPorDefecto={defaultFee}
                 noDisponibles={noDisponibles}
               />
             </Box>
