@@ -784,7 +784,8 @@ func (q *Queries) ListLinesForDelivery(ctx context.Context, orderID int64) ([]Li
 }
 
 const listLinesOfActiveOrders = `-- name: ListLinesOfActiveOrders :many
-select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes
+select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes,
+       (l.enviado_a_cocina_at is not null)::boolean as enviado_a_cocina
 from order_lines l
 join orders o on o.id = l.order_id
 where o.status in ('abierta','lista') and l.cancelled_at is null
@@ -792,12 +793,13 @@ order by l.order_id, l.id
 `
 
 type ListLinesOfActiveOrdersRow struct {
-	ID           int64           `json:"id"`
-	OrderID      int64           `json:"order_id"`
-	ProductName  string          `json:"product_name"`
-	Quantity     decimal.Decimal `json:"quantity"`
-	DeliveredQty decimal.Decimal `json:"delivered_qty"`
-	Notes        *string         `json:"notes"`
+	ID             int64           `json:"id"`
+	OrderID        int64           `json:"order_id"`
+	ProductName    string          `json:"product_name"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	DeliveredQty   decimal.Decimal `json:"delivered_qty"`
+	Notes          *string         `json:"notes"`
+	EnviadoACocina bool            `json:"enviado_a_cocina"`
 }
 
 // Los renglones de TODOS los pedidos del tablero, en una consulta.
@@ -821,6 +823,7 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 			&i.Quantity,
 			&i.DeliveredQty,
 			&i.Notes,
+			&i.EnviadoACocina,
 		); err != nil {
 			return nil, err
 		}

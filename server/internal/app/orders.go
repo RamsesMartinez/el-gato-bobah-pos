@@ -416,6 +416,10 @@ type BoardLine struct {
 	// BBQ sin cebolla" son platillos distintos.
 	Notes     string   `json:"notes,omitempty"`
 	Modifiers []string `json:"modifiers,omitempty"`
+	// EnviadoACocina decide qué pasa con el insumo si se cancela este renglón: si ya salió, la comida
+	// se hizo y el ingrediente no vuelve. La pantalla lo ANUNCIA antes de confirmar — callarlo hace
+	// que el almacén cuadre mal y nadie sepa por qué.
+	EnviadoACocina bool `json:"enviadoACocina"`
 }
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
@@ -1195,6 +1199,7 @@ func (s *OrdersService) lineasDelTablero(ctx context.Context) (map[int64][]Board
 		porPedido[l.OrderID] = append(porPedido[l.OrderID], BoardLine{
 			ID: l.ID, Name: l.ProductName, Qty: l.Quantity, Delivered: l.DeliveredQty,
 			Notes: derefStr(l.Notes), Modifiers: porLinea[l.ID],
+			EnviadoACocina: l.EnviadoACocina,
 		})
 	}
 	return porPedido, nil

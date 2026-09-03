@@ -236,6 +236,9 @@ export interface BoardLine {
   notes?: string;
   // "Alitas" y "Alitas BBQ sin cebolla" son platillos distintos en una cocina.
   modifiers?: string[];
+  // Si ya salió a cocina. Decide qué pasa con el insumo al cancelar el renglón: si ya salió, la
+  // comida se hizo y el ingrediente no vuelve al almacén.
+  enviadoACocina?: boolean;
 }
 
 // --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---
