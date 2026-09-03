@@ -399,6 +399,73 @@ dos toques para lo que se hace todos los días. Lo que faltaba no era una barrer
 
 ---
 
+---
+
+### H18 · El re-login masivo se tumbaba a sí mismo cada quince minutos — BLOQUEANTE, corregido
+
+**Lo encontró la auditoría del salto a producción, con el deploy ya empujado y a media corrida.** Se
+canceló el job antes de que la migración tocara la base. Va aquí, y no en una nota al pie, porque es
+el defecto más caro de todo el barrido y ninguna prueba lo veía.
+
+**Qué pasaba.** Hacen falta TRES piezas a la vez:
+
+1. La migración `0052` marcaba **revocadas** todas las sesiones vivas, para forzar un re-login que
+   la feature del turno necesitaba.
+2. `domain.ClassifyRefresh` mira `revoked` **antes** que `expiresAt`: una credencial revocada que
+   reaparece es, por definición, un robo.
+3. Y el castigo del robo es `RevokeUserRefreshTokens`, que revoca **por `user_id`** — todas las
+   sesiones de esa persona, en todas las tabletas, no solo la cadena comprometida.
+
+En este negocio dos estaciones comparten cuenta (lo dice el comentario de `0050`). Con las tres
+piezas juntas: la tableta A entra con contraseña, la B despierta con su cookie vieja y le revoca la
+sesión a A, A refresca y le revoca la sesión a B. **Un ping-pong de quince minutos que no converge
+mientras las dos se usen** — contraseña a media operación, para siempre. Y el `Down` de `0052`
+declara por escrito que no hay vuelta atrás, así que el rollback no lo deshacía.
+
+**Regla violada.** IV, en su forma más incómoda: *el camino nuevo que se salta el control viejo* y
+*los casos de borde se piensan ANTES*. Cada pieza es correcta por separado y tiene su test; lo que
+nadie probó es las tres juntas sobre una cuenta con dos estaciones.
+
+**Por qué mi pre-vuelo no lo vio.** Medí lo que se puede medir en una máquina: las migraciones sobre
+los datos reales, el arranque de la API nueva y de la vieja, los grants, las variables de entorno,
+el rollback por imagen. Todo salió verde — y todo eso sigue siendo cierto. Lo que no se ve así es un
+comportamiento que necesita **dos clientes y el paso del tiempo** para manifestarse.
+
+**Opciones.**
+
+| | Opción | Pro | Contra |
+|---|---|---|---|
+| A | Desplegar y avisar que habrá que reentrar | Cero código | No es "reentrar una vez": es cada quince minutos, sin fin |
+| B | Quitar el re-login masivo de `0052` | Simple | Deja el mes de sesión viejo vivo, que es lo que `0052` vino a cerrar |
+| C | Que `0052` **caduque** en vez de revocar | Mismo efecto buscado, sin respuesta de robo | Hay que editar una migración ya aplicada en dev |
+| D | Que el reuso revoque por **familia** y no por usuario | Arregla la causa de raíz | No hay columna de familia: es cambio de esquema, con producción a medio desplegar |
+
+**Refutación.** A es la que se elige sola por inercia y es la peor: convierte un defecto en una
+instrucción de operación imposible de cumplir. B tira la feature. **D es la correcta a largo plazo**
+—la constitución dice "revoca toda la **familia**" y el código revoca por usuario, así que ahí hay
+un defecto de verdad— pero exige migración de esquema, y hacerlo con el front nuevo ya publicado y
+el backend viejo abajo es cambiar dos cosas a la vez en producción.
+
+**Elegida: C**, con D anotado. Caducar dice lo que de verdad pasó —el turno terminó— y sale por
+`RefreshExpired`: un 401 limpio, sin respuesta de robo y sin tocar la otra estación. Editar `0052`
+es legítimo aquí porque **producción nunca la corrió** (estaba en la 42) y su efecto es un cambio de
+datos de una vez, no de esquema: dev ya vivió el logout y el esquema es idéntico en los dos lados.
+
+**Y la cookie se borra en cada rebote de `/auth/refresh`**, no solo al salir. Sin eso, una credencial
+que el servidor ya no acepta sobrevive en la tableta hasta su `Max-Age` —treinta días en las
+emitidas antes de `0050`— y se vuelve a presentar en cada recarga.
+
+**Cubierto por.** `TestDosEstacionesConLaMismaCuentaNoSeRevocanEntreEllas`, que corre la sentencia
+**del archivo** de la migración —no una copia— así que editar `0052` mueve el test. Visto en rojo
+con la versión que revocaba: *"el rebote de una sesión CADUCADA revocó 2 credenciales"*. Y
+`TestUnReusoDeVerdadSigueRevocando`, porque aflojar la detección de robo abriría la puerta que el
+principio V cierra.
+
+**Queda abierto.** `RevokeUserRefreshTokens` sigue revocando por usuario donde la constitución dice
+familia. Necesita columna de linaje en `refresh_tokens` y su migración.
+
+---
+
 ## Lo que queda abierto, y por qué
 
 Los renglones que quedan abiertos no se cerraron en esta tanda. No es una lista de deuda vaga: cada uno está
