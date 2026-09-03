@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
 import type { ReactNode } from 'react';
 import type { BoardOrder } from '../types/pos';
+import { round2 } from '../domain/cobro';
 
 const order = vi.hoisted(() => vi.fn());
 const paymentMethods = vi.hoisted(() => vi.fn());
@@ -76,19 +77,56 @@ test('no se puede cobrar sin elegir método', async () => {
   expect(screen.getByText('Falta con qué paga.')).toBeInTheDocument();
 });
 
-// Dividir no puede costar teclear: el teclado del sistema come 250 de los 600 px de alto de la
-// tableta y tapa justo la cifra que decide si el botón se enciende.
-test('ofrece cobrar todo o repartir entre dos, tres y cuatro, sin teclado', async () => {
+// LA HOJA ABRE PARA COBRARLE A UNA SOLA PERSONA, que es como se cobra casi siempre.
+//
+// Antes traía cuatro botones fijos —Todo, entre 2, entre 3, entre 4— siempre en pantalla. En una
+// hoja donde lo que escasea es el ALTO, eso es una fila entera gastada en el caso raro: el operador
+// veía el repartidor en cada cobro y lo usaba en uno de cada varias decenas.
+test('abre sin repartidor: el monto es todo lo que falta', async () => {
+  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  expect(await screen.findByRole('button', { name: /^Cobrar \$500/ })).toBeInTheDocument();
+  // Ni el repartidor ni sus controles ocupan nada hasta que alguien los pide.
+  expect(screen.queryByLabelText('Una parte más')).toBeNull();
+  expect(screen.queryByLabelText('Otro monto')).toBeNull();
+});
+
+// REPARTIR ES DINÁMICO: el número de partes lo pone el operador, no una lista de cuatro.
+//
+// Una mesa de seis es tan común como una de tres, y con los presets fijos había que teclear el
+// monto — con el teclado del sistema comiéndose 250 de los 600 px de alto y tapando la cifra que
+// decide si el botón se enciende.
+test('al dividir, el número de partes sube y baja y el monto lo sigue', async () => {
   const u = userEvent.setup();
   pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
-  await screen.findByText(/¿Cuánto cobras ahora\?/);
-  expect(screen.getByRole('button', { name: /Entre 2.*250/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Entre 3.*166\.66/ })).toBeInTheDocument();
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
+  // Arranca en dos, que es el reparto más común.
+  expect(screen.getByText('2 personas')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Cobrar \$250/ })).toBeInTheDocument();
 
-  await u.click(screen.getByRole('button', { name: /Entre 3.*166\.66/ }));
-  await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
-  expect(screen.getByRole('button', { name: /^Cobrar \$166\.66/ })).toBeEnabled();
+  await u.click(screen.getByLabelText('Una parte más'));
+  expect(screen.getByText('3 personas')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Cobrar \$166\.66/ })).toBeInTheDocument();
+
+  await u.click(screen.getByLabelText('Una parte menos'));
+  expect(screen.getByRole('button', { name: /^Cobrar \$250/ })).toBeInTheDocument();
+
+  // Y se puede volver a cobrar todo junto de un toque, sin cerrar la hoja.
+  await u.click(screen.getByLabelText('Dejar de dividir'));
+  expect(screen.getByRole('button', { name: /^Cobrar \$500/ })).toBeInTheDocument();
+  expect(screen.queryByLabelText('Una parte más')).toBeNull();
+});
+
+// El repartidor no puede ofrecer lo que el cobro va a rechazar: con $0.02 pendientes, tres partes
+// serían de $0.00. El `+` se apaga en vez de dejar el botón muerto sin decir por qué.
+test('no deja repartir en más partes de las que el faltante aguanta', async () => {
+  const u = userEvent.setup();
+  order.mockResolvedValue({ ...pedido({ outstanding: '0.02', total: '500' }), lines: [] });
+  pinta(<CobrarSheet order={pedido({ outstanding: '0.02' })} onClose={() => {}} onCobrado={() => {}} />);
+
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
+  expect(screen.getByLabelText('Una parte más')).toBeDisabled();
 });
 
 // UN COBRO A LA VEZ, con su llave. Mandar N pagos de un golpe registra dinero que todavía no se
@@ -99,7 +137,7 @@ test('cobrar un pedazo manda UNA llamada, con su llave de idempotencia', async (
   chargeOrder.mockResolvedValue({ outstanding: '250', paid: false, yaEstaba: false });
   pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
-  await u.click(await screen.findByRole('button', { name: /Entre 2.*250/ }));
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
 
@@ -119,7 +157,7 @@ test('con saldo pendiente la hoja sigue abierta y se prepara para el siguiente',
   chargeOrder.mockResolvedValue({ outstanding: '250', paid: false, yaEstaba: false });
   pinta(<CobrarSheet order={pedido()} onClose={onClose} onCobrado={() => {}} />);
 
-  await u.click(await screen.findByRole('button', { name: /Entre 2.*250/ }));
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
 
@@ -250,7 +288,7 @@ test('cada pedazo cobrado estrena llave', async () => {
   order.mockResolvedValue({ ...pedido({ outstanding: '250' }), lines: [] });
   pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
-  await u.click(await screen.findByRole('button', { name: /Entre 2.*250/ }));
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
   await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
@@ -261,4 +299,49 @@ test('cada pedazo cobrado estrena llave', async () => {
   await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(2));
 
   expect(chargeOrder.mock.calls[1][1].clientUuid).not.toBe(chargeOrder.mock.calls[0][1].clientUuid);
+});
+
+// REPARTIR DE A UNO TIENE QUE CERRAR LA CUENTA EXACTA.
+//
+// Cada parte se recalcula sobre el faltante que devuelve el SERVIDOR, no sobre una lista hecha al
+// abrir la hoja: entre un pedazo y otro el faltante puede cambiar. El riesgo del recálculo es el
+// centavo colgando —$100 en tres da tres de $33.33 y suma $99.99—, y ese centavo ya costó: el
+// servidor cerraba el pedido con su tolerancia y la barra lo seguía listando como deuda que nadie
+// podía cobrar.
+test('repartir entre tres cobra 33.33, 33.33 y 33.34, y sale del reparto en la última', async () => {
+  const u = userEvent.setup();
+  const cien = pedido({ total: '100', outstanding: '100' });
+  // El servidor lleva la cuenta de lo que falta y la hoja lee de ahí, nunca de una resta local.
+  let faltante = 100;
+  order.mockImplementation(async () => ({ ...cien, outstanding: String(faltante), lines: [] }));
+  chargeOrder.mockImplementation(async (_id: number, body: { amount: number }) => {
+    faltante = round2(faltante - body.amount);
+    return { outstanding: String(faltante), paid: faltante <= 0, yaEstaba: false };
+  });
+  pinta(<CobrarSheet order={cien} onClose={() => {}} onCobrado={() => {}} />);
+
+  await u.click(await screen.findByRole('button', { name: /Dividir/ }));
+  await u.click(screen.getByLabelText('Una parte más'));
+  expect(screen.getByText('3 personas')).toBeInTheDocument();
+
+  const cobrarCon = async (metodo: string, monto: RegExp) => {
+    await u.click(screen.getByRole('button', { name: metodo }));
+    await u.click(await screen.findByRole('button', { name: monto }));
+  };
+
+  await cobrarCon('Tarjeta', /^Cobrar \$33\.33/);
+  // Entró una: queda una persona menos, y el monto sale del faltante nuevo.
+  await waitFor(() => expect(screen.getByText('2 personas')).toBeInTheDocument());
+  // Cada persona paga con LO SUYO: el método no se hereda del pedazo anterior.
+  expect(screen.getByRole('button', { name: /^Cobrar \$/ })).toBeDisabled();
+
+  await cobrarCon('Efectivo', /^Cobrar \$33\.33/);
+  // La última no lleva repartidor: lo que falta ES lo que esa persona debe, residuo incluido.
+  await waitFor(() => expect(screen.queryByLabelText('Una parte más')).toBeNull());
+  await cobrarCon('Tarjeta', /^Cobrar \$33\.34/);
+
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(3));
+  const montos = chargeOrder.mock.calls.map((c) => (c[1] as { amount: number }).amount);
+  expect(montos).toEqual([33.33, 33.33, 33.34]);
+  expect(round2(montos.reduce((a, b) => a + b, 0))).toBe(100);
 });
