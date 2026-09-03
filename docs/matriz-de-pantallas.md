@@ -115,6 +115,15 @@ periodo que pidió.
 | P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
 | P3 | Renglones del menú ⋮ del tablero | 44 px, y "Cancelar pedido" separado de "Reimprimir comanda" | — | **no cubierto** (se mide en el navegador real) |
 
+## A. Sesiones y relevo entre estaciones
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| A1 | Re-login masivo de la migración 0052 | **Caduca** las sesiones, no las revoca: revocar clasifica el siguiente refresh como ROBO | `TestDosEstacionesConLaMismaCuentaNoSeRevocanEntreEllas` | Postgres |
+| A2 | Dos estaciones con la misma cuenta tras el re-login masivo | Una no tumba a la otra. Revocando, se tumbaban cada ≤15 min indefinidamente | idem | Postgres |
+| A3 | Un reuso de credencial de verdad | **Sigue** revocando: el arreglo no afloja la detección de robo | `TestUnReusoDeVerdadSigueRevocando` | Postgres |
+| A4 | Rebote de `/auth/refresh` | Borra la cookie. Sin eso, la credencial muerta se re-presenta en cada recarga hasta 30 días | — | **no cubierto** |
+
 
 ---
 
@@ -134,3 +143,5 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 | X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio. Va con `Picker` y las listas de motivos que ya están escritas | P10 |
 | X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
 | X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
+| X11 | El reuso revoca por **usuario**, no por familia | La constitución dice "revoca toda la familia". No hay columna de linaje en `refresh_tokens`: es cambio de esquema | H18 |
+| X12 | El front de producción sale ~7 min ANTES que el backend | `deploy-frontend` depende de `frontend` y `deploy-backend` de `image`. En esa ventana el POS crea el pedido y no lo puede cobrar | H18 |
