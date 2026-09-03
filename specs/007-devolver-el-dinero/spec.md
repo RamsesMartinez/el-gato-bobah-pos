@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-03
 
-**Status**: Draft — decisiones pendientes del dueño (ver *Preguntas que este spec NO puede contestar*)
+**Status**: Decidido — las cuatro preguntas las resolvió el dueño el 2026-09-03 (ver *Decisiones tomadas*)
 
 **Input**: Hallazgos P1, P2 y P4 del [barrido de pantallas](../../docs/auditoria/barrido-de-pantallas-2026-09.md)
 del 3 de septiembre de 2026.
@@ -103,20 +103,50 @@ lo que sigue en la plancha.
 - **SC-004** Un pedido con entrega parcial se puede llevar a un estado terminal sin marcar como
   entregado nada que no haya salido.
 
-## Preguntas que este spec NO puede contestar
+## Decisiones tomadas
 
-Son decisiones del dueño y cambian el alcance. **La implementación no empieza sin ellas.**
+Las cuatro las resolvió el dueño el 2026-09-03. El spec las implementa; no se reabren.
 
-1. **Cancelar un pedido cobrado: ¿se rechaza o se permite con devolución?** Rechazar es una línea de
-   código y obliga a devolver primero; permitir con devolución es una operación nueva. La segunda es
-   más trabajo y refleja mejor lo que pasa en la caja.
-2. **La devolución, ¿sale del cajón o solo se anota?** Si sale del cajón, es un movimiento de caja y
-   el arqueo lo descuenta solo. Si solo se anota, alguien tiene que cuadrarlo a mano.
-3. **Reembolso parcial: ¿hace falta?** Hoy el reembolso es de la cuenta entera. Devolver un platillo
-   de tres es un caso real en un restaurante; construirlo cuando nadie lo ha pedido es lo que el
-   principio VI prohíbe. La pregunta es si ya se pidió.
-4. **Cancelar un renglón, ¿repone stock?** Un renglón que nunca se preparó, sí. Uno que ya está en la
-   plancha, no — y el sistema no distingue esos dos hoy.
+### D1 — Cancelar un pedido cobrado PIDE registrar la devolución, no lo rechaza
+
+Rechazar era una línea, pero deja al cajero sin salida: no existiría el "devuélvelo primero" al que
+lo manda el error. Cancelar un pedido con cobros abre el mismo paso que devuelve el dinero, y las
+dos cosas van en **una transacción**: un pedido cancelado sin su devolución registrada es
+exactamente el agujero que esto viene a cerrar.
+
+### D2 — La devolución SALE DEL CAJÓN cuando el cobro fue en efectivo
+
+`register_cash_movements` ya existe con `kind in ('entrada','salida')` y el corte ya la lee, así que
+no hay maquinaria nueva: la devolución en efectivo entra como **salida** y el arqueo la descuenta
+sola. Nadie cuadra a mano, que es de donde salió el turno con $4,500 de faltante.
+
+**Lo que NO sale del cajón**: tarjeta y plataformas. Ese dinero nunca estuvo en la caja, así que
+descontarlo del cajón inventaría un faltante. Se registra contra su método y se concilia con la
+terminal. La devolución sabe por qué método entró cada peso porque los cobros están en
+`order_payments` con su `payment_method_id`.
+
+### D3 — El reembolso puede ser POR RENGLÓN, no solo de la cuenta entera
+
+Devolver un platillo de tres es un caso real de este negocio y ya ocurre. Hoy el reembolso es de la
+cuenta completa, así que la única salida es devolver de más o arreglarlo fuera del sistema —donde no
+lo ve ningún reporte—.
+
+El monto de un reembolso es **lo efectivamente cobrado** de lo que se devuelve, nunca el precio de
+lista: un renglón de un pedido que se cobró a medias no puede devolver más de lo que entró.
+
+### D4 — Cancelar un renglón repone inventario SOLO si no salió a cocina, y lo decide el sistema
+
+No se le pregunta al cajero: `order_lines.enviado_a_cocina_at` ya responde. `NULL` = no salió, la
+comida no se hizo, el insumo vuelve. Con fecha = ya está en la plancha, y reponer inventariaría algo
+que se consumió.
+
+**Consecuencia que hay que decir en pantalla**: cancelar un renglón que ya salió a cocina baja el
+total del pedido pero NO devuelve el insumo, porque se gastó. La pantalla lo dice antes de
+confirmar; callarlo hace que el almacén cuadre mal y nadie sepa por qué.
+
+**Limitación asumida**: `stock_movements` no sabe de qué renglón salió cada descuento, así que
+reponer con precisión exige agregarle esa referencia. Los movimientos históricos quedan sin ella y
+un renglón de un pedido viejo no se puede reponer de forma exacta — se dice, no se adivina.
 
 ## Assumptions
 
