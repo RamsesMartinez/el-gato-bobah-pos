@@ -59,13 +59,18 @@ func TestLaMigracionCaducaLasSesionesDeTodasLasEmpresas(t *testing.T) {
 		quien string
 		token string
 	}{{"la empresa por default", deAna}, {"la otra empresa", deBeto}} {
-		var revocado bool
+		// Se comprueba el EFECTO —que la credencial ya no sirva— y no el mecanismo. La migración
+		// caduca en vez de revocar a propósito: revocar clasifica como ROBO el siguiente refresh y
+		// arrastra las sesiones vivas de la misma cuenta en las otras estaciones (ver
+		// dos_estaciones_no_se_tumban_test.go). Assertar "revoked_at is not null" ataba este test al
+		// mecanismo y habría bloqueado esa corrección.
+		var sigueViva bool
 		if err := st.Pool.QueryRow(ctx,
-			`select revoked_at is not null from refresh_tokens where token_hash = $1`,
-			auth.HashToken(c.token)).Scan(&revocado); err != nil {
+			`select revoked_at is null and expires_at > now() from refresh_tokens where token_hash = $1`,
+			auth.HashToken(c.token)).Scan(&sigueViva); err != nil {
 			t.Fatalf("leer el token de %s: %v", c.quien, err)
 		}
-		if !revocado {
+		if sigueViva {
 			t.Errorf("la sesión de 30 días de %s sigue viva: esa tableta se queda un mes dentro y el límite de horas no le aplica", c.quien)
 		}
 	}
