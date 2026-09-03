@@ -251,6 +251,16 @@ export interface TicketTab {
   // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
   folioName: string;
   lines: TicketLine[];
+  // El costo de envío TAL COMO SE TECLEÓ, y por cuenta.
+  //
+  // Vivía en un useState de la pantalla, y de ahí salían cuatro defectos: no sobrevivía a un F5
+  // mientras el resto del carrito sí (se cobraba el default sin avisar), se heredaba entre
+  // pestañas y sobrevivía al cierre de la cuenta que lo capturó, y la píldora que cobra no lo veía.
+  // El envío es parte de `orders.total`: pertenece a la cuenta.
+  //
+  // Se guarda el TEXTO y no el número: un valor mal escrito tiene que poder bloquear el cobro, y un
+  // número ya parseado no distingue "vacío" de "ilegible".
+  envio: string;
   serviceType: ServiceType;
   customerName: string;
   // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no

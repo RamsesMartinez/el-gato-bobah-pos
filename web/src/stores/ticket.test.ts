@@ -175,3 +175,47 @@ describe('repreciarTodas', () => {
     expect(s.tabs.filter((t) => t.platformId === 5).every((t) => t.lines[0].unitPrice === 149)).toBe(true);
   });
 });
+
+// EL ENVÍO ES DE LA CUENTA, NO DE LA PANTALLA.
+//
+// Vivía en un `useState` de POSPage, y de ahí salían tres defectos con la misma causa: se perdía al
+// recargar mientras el carrito sobrevivía —y el pedido se cobraba con el envío por defecto sin
+// avisar—, se heredaba entre pestañas, y sobrevivía al cierre de la cuenta que lo capturó.
+describe('el envío pertenece a la cuenta', () => {
+  beforeEach(() => {
+    useTicketStore.setState(useTicketStore.getInitialState(), true);
+  });
+
+  test('cada cuenta lleva el suyo', () => {
+    const s = useTicketStore.getState();
+    s.setEnvio('80');
+    s.newTab();
+    // La cuenta nueva NO hereda los $80: capturarlos para un domicilio y encontrárselos en la
+    // siguiente venta es cobrarle a alguien el envío de otro.
+    expect(useTicketStore.getState().tabs.at(-1)?.envio).toBe('');
+
+    const primera = useTicketStore.getState().tabs[0].id;
+    useTicketStore.getState().switchTab(primera);
+    expect(useTicketStore.getState().tabs[0].envio).toBe('80');
+  });
+
+  test('vaciar la cuenta borra el envío y la plataforma', () => {
+    const s = useTicketStore.getState();
+    s.setEnvio('80');
+    s.setPlatform(3);
+    s.clearActive();
+
+    const t = useTicketStore.getState().tabs[0];
+    expect(t.envio).toBe('');
+    // La plataforma también: `clearActive` reseteaba el tipo de servicio y dejaba puesta la lista de
+    // Uber, así que lo capturado después salía con precio de Uber en una cuenta que decía mostrador.
+    expect(t.platformId).toBeNull();
+  });
+
+  test('cerrar la cuenta se lleva su envío', () => {
+    const s = useTicketStore.getState();
+    s.setEnvio('80');
+    s.closeTab(useTicketStore.getState().activeId);
+    expect(useTicketStore.getState().tabs[0].envio).toBe('');
+  });
+});

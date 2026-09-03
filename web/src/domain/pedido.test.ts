@@ -8,7 +8,7 @@ const linea = (l: Partial<TicketLine>): TicketLine => ({
 });
 
 const cuenta = (c: Partial<TicketTab>): TicketTab => ({
-  id: 't1', num: 1, folioName: 'Tigre', lines: [], serviceType: 'mostrador',
+  id: 't1', num: 1, folioName: 'Tigre', lines: [], envio: '', serviceType: 'mostrador',
   customerName: '', platformId: null, ...c,
 });
 

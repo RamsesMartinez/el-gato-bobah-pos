@@ -3,8 +3,7 @@ import {
 } from '@chakra-ui/react';
 import { LuTrash2, LuStickyNote, LuPanelRightClose, LuStore, LuBike } from 'react-icons/lu';
 import { useTicketStore, useActiveTicket, lineTotal, ticketTotal } from '../../stores/ticket';
-import { cobraEnvio } from '../../domain/pedido';
-import { parseMonto } from '../../domain/numeros';
+import { envioDeLaCuenta } from '../../domain/envio';
 import type { TicketLine } from '../../types/pos';
 import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
@@ -17,8 +16,6 @@ interface Props {
   // Costo de envío de ESTE pedido, y el default del negocio. Viven en el panel y no en una pantalla
   // de cobro porque son atributos del pedido que se está armando: el operador los decide mientras
   // toma la orden, no cuando cuenta el dinero. Vacío = el default del negocio.
-  envio: string;
-  onEnvio: (v: string) => void;
   envioPorDefecto: number;
   // Renglones que el servidor va a rechazar porque el producto se inactivó mientras estaba en el
   // carrito. Se avisa AQUÍ, mientras se puede quitar, y no al cobrar con el cliente enfrente.
@@ -41,25 +38,23 @@ const TIPOS = [
 
 export function Ticket({
   onCheckout, onEnviar, enviando, onEditLine, onHide, swipeHandlers,
-  envio, onEnvio, envioPorDefecto, noDisponibles,
+  envioPorDefecto, noDisponibles,
 }: Props) {
-  const { lines, customerName, folioName, serviceType, platformId } = useActiveTicket();
+  const { lines, customerName, folioName, serviceType, platformId, envio } = useActiveTicket();
   const setServiceType = useTicketStore((s) => s.setServiceType);
   const setCustomerName = useTicketStore((s) => s.setCustomerName);
+  const setEnvio = useTicketStore((s) => s.setEnvio);
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
   const remove = useTicketStore((s) => s.removeLine);
   const clear = useTicketStore((s) => s.clearActive);
   const total = ticketTotal(lines);
-  // La misma regla que aplica el servidor al crear el pedido. Escrita dos veces ya divergió una vez.
-  const llevaEnvio = cobraEnvio({ serviceType, platformId });
-  const envioCapturado = parseMonto(envio);
-  const envioMalEscrito = envioCapturado.estado === 'invalido';
-  // Ausente = el default del negocio. Mal escrito = CERO en la vista y el botón apagado: un envío
-  // que cae a cero en silencio es envío gratis que nadie decidió.
-  const envioDelPedido = !llevaEnvio || envioMalEscrito
-    ? 0
-    : (envioCapturado.estado === 'valido' ? envioCapturado.valor : envioPorDefecto);
+  // La MISMA función que usan la píldora y la barra angosta. Cada superficie la llama con la misma
+  // cuenta; lo que no puede haber es dos implementaciones, que es como el panel acabó apagando sus
+  // botones por un envío que la píldora cobraba al default.
+  const envioDelPedido = envioDeLaCuenta({ serviceType, platformId }, envio, envioPorDefecto);
+  const llevaEnvio = envioDelPedido.aplica;
+  const envioMalEscrito = envioDelPedido.malEscrito;
 
   return (
     <Flex direction="column" h="100%" bg="bg.panel">
@@ -150,7 +145,7 @@ export function Ticket({
 
         <Flex justify="space-between" align="center" mb={2}>
           <Text fontSize="lg" fontWeight="600">Total</Text>
-          <Text fontSize="2xl" fontWeight="800">{money(total + envioDelPedido)}</Text>
+          <Text fontSize="2xl" fontWeight="800">{money(total + envioDelPedido.monto)}</Text>
         </Flex>
 
         {/* El envío solo cuando el pedido lo cobra el negocio. Con plataforma no aparece: lo cobra
@@ -161,7 +156,7 @@ export function Ticket({
             <Text fontSize="sm" color="fg.muted" flexShrink={0}>Envío</Text>
             <Input flex="1" minH="44px" inputMode="decimal" aria-label="Costo de envío"
               placeholder={money(envioPorDefecto)}
-              value={envio} onChange={(e) => onEnvio(e.target.value)} />
+              value={envio} onChange={(e) => setEnvio(e.target.value)} />
             {envioMalEscrito && (
               <Text fontSize="xs" color="red.fg">Solo números</Text>
             )}
