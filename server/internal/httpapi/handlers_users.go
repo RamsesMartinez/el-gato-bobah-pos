@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 )
 
 func userIDParam(r *http.Request) (int64, error) {
@@ -160,7 +162,22 @@ func (h *Handlers) SetOwnPIN(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Cambiar el PIN propio se limita porque el rechazo por PIN repetido es un ORÁCULO: no dice de
+	// quién es, pero decir "alguien lo usa" ya basta para recorrer el espacio desde este formulario
+	// y recolectar PINs válidos. Cambiarlo legítimamente pasa dos o tres veces al año, así que el
+	// límite no estorba a nadie que lo use como se debe.
+	llave := "setpin:" + strconv.FormatInt(u.ID, 10)
+	if h.authFails.blocked(r.Context(), llave) {
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "set_pin", "ip", clientIP(r))
+		tooManyRequests(w, h.authFails.retryAfter(r.Context(), llave))
+		return
+	}
 	if err := h.users.SetPIN(r.Context(), u.ID, body.PIN); err != nil {
+		// Un PIN repetido cuenta contra el límite: es el intento que sondea, no un error de dedo.
+		if errors.Is(err, domain.ErrPinRepetido) {
+			h.authFails.record(r.Context(), llave)
+			logging.SecurityEvent(r.Context(), "pin_repetido", "ip", clientIP(r))
+		}
 		Error(w, err)
 		return
 	}

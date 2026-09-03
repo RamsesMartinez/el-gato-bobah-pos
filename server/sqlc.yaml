@@ -59,3 +59,12 @@ sql:
             go_type:
               import: "uuid"
               type: "UUID"
+          # uuid NULABLE → *uuid.UUID, mismo criterio que el numeric de arriba: sin esto sqlc cae a
+          # pgtype.UUID y la llave de idempotencia del cobro se lee distinto que la de la creación,
+          # que sí es not null. Dos representaciones del mismo dato en el mismo flujo.
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "uuid"
+              type: "UUID"
+              pointer: true

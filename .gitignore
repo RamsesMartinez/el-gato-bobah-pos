@@ -39,3 +39,9 @@ docs/tickets/*
 # Respaldos de producción: datos reales del negocio, nunca se versionan (ver backups/README.md).
 backups/prod/*
 !backups/prod/.gitkeep
+
+# Salidas de Playwright: trazas, capturas y el reporte de una corrida. Se regeneran.
+web/test-results/
+web/playwright-report/
+# Marca del teardown de Playwright: qué pedidos ya estaban abiertos al empezar la suite.
+web/.playwright-abiertos.json

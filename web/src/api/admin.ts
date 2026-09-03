@@ -17,6 +17,8 @@ export interface AdminProduct {
   type: string;
   is_active: boolean;
   is_favorite: boolean;
+  // Si el producto necesita prepararse. Es lo que decide si su pedido va al tablero de Pedidos.
+  needsPrep: boolean;
   category: string;
   categoryId: number;
   availableFrom: string | null;  // "YYYY-MM-DD" o null (temporada)
@@ -57,6 +59,7 @@ export interface UpdateProductBody {
   price: number;
   favorite: boolean;
   active: boolean;
+  needsPrep: boolean;
   // Ausente o 0 = no mover el producto de categoría. El servidor valida que sea de esta empresa
   // antes de escribirla; mandar la de otra devuelve el mismo error que una que no existe.
   categoryId?: number;
@@ -135,6 +138,8 @@ export interface Group {
   defaultMin: number;
   defaultMax: number;
   optionCount: number;
+  // Las primeras opciones por su orden real: la tarjeta dice QUÉ tiene el grupo, no solo cuántas.
+  optionPreview: string;
   productCount: number;
   overrideCount: number; // productos que sobrescriben el default
 }

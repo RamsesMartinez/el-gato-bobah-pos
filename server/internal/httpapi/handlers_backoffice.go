@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -31,7 +32,9 @@ func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	// que no entra en int16 en vez de truncar/wrap y actualizar el método equivocado.
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 16)
 	if err != nil {
-		Error(w, err)
+		// El error de strconv no lo reconoce `Error` por errors.Is, así que caía al 500 y dejaba
+		// un slog.Error por una petición que nunca fue válida. El resto del archivo ya envuelve.
+		Error(w, fmt.Errorf("%w: el método de pago %q no es un id", domain.ErrValidation, chi.URLParam(r, "id")))
 		return
 	}
 	var body struct {
@@ -156,11 +159,17 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Una llave que no parsea se RECHAZA, no se descarta. Descartarla cerraba el turno como si
+	// nadie hubiera declarado ese método: el corte comparaba lo esperado contra cero y le inventaba
+	// al cajero un faltante por todo lo que sí había contado.
 	declared := map[int]decimal.Decimal{}
 	for k, v := range body.Declared {
-		if id, err := strconv.Atoi(k); err == nil {
-			declared[id] = v
+		id, err := strconv.Atoi(k)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: %q no es un método de pago", domain.ErrValidation, k))
+			return
 		}
+		declared[id] = v
 	}
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
@@ -205,13 +214,12 @@ func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
 
 // GET /cash-sessions — histórico de cortes (últimos N).
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
-	limit := 50
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 200 {
-			limit = n
-		}
+	limit, err := limiteDeQuery(r.URL.Query(), 50)
+	if err != nil {
+		Error(w, err)
+		return
 	}
-	rows, err := h.backoffice.SessionHistory(r.Context(), int32(limit))
+	rows, err := h.backoffice.SessionHistory(r.Context(), limit)
 	if err != nil {
 		Error(w, err)
 		return
@@ -586,7 +594,12 @@ func (h *Handlers) StockLevels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) StockMovements(w http.ResponseWriter, r *http.Request) {
-	items, err := h.backoffice.StockMovements(r.Context(), queryLimit(r, 100))
+	limite, err := limiteDeQuery(r.URL.Query(), 100)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, err := h.backoffice.StockMovements(r.Context(), limite)
 	if err != nil {
 		Error(w, err)
 		return
@@ -617,67 +630,103 @@ func (h *Handlers) CreateStockMovement(w http.ResponseWriter, r *http.Request) {
 
 // ---- Reportes ----
 
+// GET /reports/sales?preset=&from=&to= — venta por día y cobros por medio de pago.
+//
+// Las dos tablas de la respuesta responden EL MISMO rango. Antes no: `byDay` iba acotado por los
+// dos extremos y `byMethod` solo por el inferior, así que la misma pantalla mostraba julio arriba y
+// "de julio a hoy" abajo, y quien la leía no tenía forma de saber cuál de las dos cifras era la del
+// periodo que pidió.
 func (h *Handlers) ReportSales(w http.ResponseWriter, r *http.Request) {
-	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	rows, err := h.backoffice.SalesByDay(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.SalesByDay(r.Context(), from, to)
+	methods, err := h.backoffice.SalesByMethod(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	methods, err := h.backoffice.SalesByMethod(r.Context(), from)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"byDay": rows, "byMethod": methods})
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "byDay": rows, "byMethod": methods})
 }
 
-// GET /reports/tips?from=&to= — propinas por empleado (para repartir) y por día.
+// GET /reports/tips?preset=&from=&to= — propinas por empleado (para repartir) y por día.
 func (h *Handlers) ReportTips(w http.ResponseWriter, r *http.Request) {
-	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), from, to)
+	byDay, err := h.backoffice.TipsByDay(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	byDay, err := h.backoffice.TipsByDay(r.Context(), from, to)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"byEmployee": byEmployee, "byDay": byDay})
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "byEmployee": byEmployee, "byDay": byDay})
 }
 
+// GET /reports/margins?preset=&from=&to=&limit= — utilidad por producto.
 func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
-	since, err := parseDate(r.URL.Query().Get("since"), time.Now().AddDate(0, 0, -30))
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.ProductMargins(r.Context(), since, queryLimit(r, 50))
+	limite, err := limiteDeQuery(r.URL.Query(), 50)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": rows})
+	rows, err := h.backoffice.ProductMargins(r.Context(), rango.From, rango.To, limite)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "items": rows})
+}
+
+// rangoDeReporte resuelve el periodo de los tres reportes con LAS MISMAS reglas que la pantalla de
+// Ventas: la zona del negocio decide qué día es hoy, un preset desconocido se rechaza, un rango
+// invertido se rechaza y hay un tope de días.
+//
+// Los tres endpoints pasan por aquí a propósito. La pantalla los pide juntos y pinta sus cifras una
+// junto a otra; si cada uno resolviera su rango por su cuenta, bastaría un cambio en uno para que la
+// pantalla mezclara dos periodos sin decirlo.
+//
+// El preset AUSENTE son los últimos 30 días, que es con lo que nace la pantalla. Un preset presente
+// y desconocido se rechaza: el default es para el parámetro que no vino, nunca para el que vino mal.
+func (h *Handlers) rangoDeReporte(r *http.Request) (domain.Range, error) {
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return domain.Range{}, fmt.Errorf("%w: los filtros de la petición no se pudieron leer", domain.ErrValidation)
+	}
+	desde, err := parseDate(q.Get("from"), time.Time{})
+	if err != nil {
+		return domain.Range{}, err
+	}
+	hasta, err := parseDate(q.Get("to"), time.Time{})
+	if err != nil {
+		return domain.Range{}, err
+	}
+	preset := valorODefault(q.Get("preset"), "30d")
+	return domain.ResolveRange(preset, desde, hasta, h.backoffice.Now(), h.backoffice.Location(r.Context()))
+}
+
+// rangoJSON pone el periodo REALMENTE consultado en la respuesta. La pantalla lo imprime: una cifra
+// sin su periodo al lado es una cifra que no se puede auditar, y el encabezado fijo que decía
+// "últimos 30 días" seguía diciéndolo con cualquier otro rango elegido.
+func rangoJSON(r domain.Range) map[string]string {
+	return map[string]string{"from": r.From.Format("2006-01-02"), "to": r.To.Format("2006-01-02")}
 }
 
 // ---- helpers ----
@@ -697,15 +746,6 @@ func parseDate(s string, fallback time.Time) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("%w: la fecha %q no tiene el formato AAAA-MM-DD", domain.ErrValidation, s)
 	}
 	return t, nil
-}
-
-func queryLimit(r *http.Request, def int32) int32 {
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return int32(n)
-		}
-	}
-	return def
 }
 
 // ---- Catálogo de artículos (insumos) ----

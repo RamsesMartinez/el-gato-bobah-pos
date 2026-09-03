@@ -15,7 +15,7 @@ pre-commit:
     web-lint:
       root: "web/"
       glob: "*.{ts,tsx}"
-      run: bun run lint && bun run typecheck
+      run: bash ../scripts/hooks/web-lint.sh
     # Una migración nueva sin su test de integración no pasa. La regla ya estaba escrita en la
     # constitución y aun así se rompió: un recordatorio se olvida, un commit que falla no.
     migracion-con-test:
@@ -26,10 +26,10 @@ pre-push:
   commands:
     go-test:
       root: "server/"
-      run: go test ./...
+      run: bash ../scripts/hooks/go-test.sh
     go-vuln:
       root: "server/"
       run: bash ../scripts/hooks/govulncheck.sh
     web-build:
       root: "web/"
-      run: bun run build
+      run: bash ../scripts/hooks/web-build.sh

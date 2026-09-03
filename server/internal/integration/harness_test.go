@@ -17,6 +17,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -245,4 +246,48 @@ func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
 		t.Fatalf("opción de modificador: %v", err)
 	}
 	return id
+}
+
+// entregarPendientes marca como entregados todos los pedidos sin terminar de la empresa.
+//
+// Existe porque cerrar la caja YA NO admite pedientes (domain.ErrOpenOrders): un pedido abierto es
+// comida que va a salir y dinero sin decidir, y dejarlo colgado de un arqueo ya firmado hace que
+// ese corte no pueda volver a cuadrar. Los tests que cierran un turno tienen que terminar sus
+// ventas primero, igual que el operador real.
+func entregarPendientes(t *testing.T, st *store.Store) {
+	t.Helper()
+	if _, err := st.Pool.Exec(context.Background(),
+		`update orders set status = 'entregada', completed_at = now()
+		  where status in ('abierta', 'lista')`); err != nil {
+		t.Fatalf("entregar pendientes: %v", err)
+	}
+}
+
+// crearYCobrar confirma el pedido y luego lo cobra, que es el flujo real desde que confirmar es
+// obligatorio (feature 005).
+//
+// Antes esto era UNA llamada con `Payments`, y ese camino ya no existe: era el atajo por el que se
+// cobraba sin que cocina se enterara, y por ser el corto era el que se usaba. Los tests lo usaban
+// para armar escenarios, así que el helper conserva la forma de la llamada y hace los dos pasos.
+//
+// Devuelve error para que los tests que comprueban un rechazo sigan escribiéndose igual.
+func crearYCobrar(t *testing.T, ctx context.Context, svc *app.OrdersService, cmd app.CreateOrderCmd) (*app.OrderView, error) {
+	t.Helper()
+	pagos := cmd.Payments
+	cmd.Payments = nil
+
+	ord, err := svc.Create(ctx, cmd)
+	if err != nil || len(pagos) == 0 {
+		return ord, err
+	}
+	for _, p := range pagos {
+		if _, err := svc.Charge(ctx, app.ChargeCmd{
+			OrderID: ord.ID, MethodID: p.MethodID, Amount: p.Amount, Tip: p.Tip,
+			Reference: p.Reference, ActorID: cmd.OpenedBy,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	// Se relee: tras el cobro cambian el estado y lo pagado, y los tests miran eso.
+	return svc.Detail(ctx, ord.ID)
 }

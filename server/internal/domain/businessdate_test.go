@@ -43,16 +43,102 @@ func TestBusinessDate(t *testing.T) {
 	}
 }
 
-// Una zona inválida no puede tumbar una venta: se cae a UTC y el pedido entra. Un negocio con la
-// configuración mal escrita prefiere una fecha corrida a no poder cobrar.
+// Una zona inválida no puede tumbar una venta: se cae al DEFAULT DEL PRODUCTO y el pedido entra.
+//
+// Caía a UTC, y eso corre la fecha seis horas sin avisar. La intención era la correcta —un negocio
+// con la configuración mal escrita prefiere seguir cobrando— pero el valor no: seis horas de
+// corrimiento se ven plausibles, y una fecha plausible y equivocada es peor que un error, porque
+// nadie la audita. El producto se vende en México; ese es el fallback que se parece a la verdad.
 func TestLoadBusinessLocation(t *testing.T) {
 	if loc := LoadBusinessLocation("America/Mexico_City"); loc == nil || loc.String() != "America/Mexico_City" {
 		t.Fatalf("una zona válida debe cargarse, dio %v", loc)
 	}
-	if loc := LoadBusinessLocation("Marte/Olympus"); loc != time.UTC {
-		t.Fatalf("una zona inválida debe caer a UTC, dio %v", loc)
+	if loc := LoadBusinessLocation("Marte/Olympus"); loc == nil || loc.String() != DefaultTimezone {
+		t.Fatalf("una zona inválida debe caer al default del producto, dio %v", loc)
 	}
-	if loc := LoadBusinessLocation(""); loc != time.UTC {
-		t.Fatalf("vacío debe caer a UTC, dio %v", loc)
+	if loc := LoadBusinessLocation(""); loc == nil || loc.String() != DefaultTimezone {
+		t.Fatalf("vacío debe caer al default del producto, dio %v", loc)
+	}
+	// Y nunca devuelve nil: quien la llama la usa sin comprobar.
+	if LoadBusinessLocation("Marte/Olympus") == nil {
+		t.Fatal("LoadBusinessLocation devolvió nil")
+	}
+}
+
+// DESDE CUÁNDO SE VEN LOS ENTREGADOS, SEGÚN EL MODO QUE ELIGIÓ EL NEGOCIO.
+//
+// El caso que decide el diseño es el del CAMBIO DE HORARIO. México quitó el horario de verano en
+// 2022, pero `America/Tijuana` sigue cambiando —va alineada con la costa oeste de Estados Unidos— y
+// está en la lista de zonas que el producto ofrece. Ese día la distancia entre dos medianoches es de
+// 23 o 25 horas, así que un cálculo que reste 24 se desfasa exactamente cuando nadie lo está
+// mirando. La medianoche se calcula EN la zona, no restando horas.
+func TestDesdeCuandoSeVen(t *testing.T) {
+	mx, err := time.LoadLocation("America/Mexico_City")
+	if err != nil {
+		t.Fatalf("cargar la zona: %v", err)
+	}
+	tj, err := time.LoadLocation("America/Tijuana")
+	if err != nil {
+		t.Fatalf("cargar Tijuana: %v", err)
+	}
+	abrioElTurno := time.Date(2026, 9, 1, 22, 0, 0, 0, time.UTC) // 16:00 en México
+	cerroLaCaja := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)   // 22:00 del día anterior en México
+
+	casos := []struct {
+		nombre string
+		modo   string
+		ahora  time.Time
+		zona   *time.Location
+		quiere time.Time
+	}{
+		{
+			// 23:00 del 1 de septiembre en México = 05:00 UTC del 2. El corte es la medianoche del 1,
+			// no la del 2: en UTC ya cambió el día y por eso la lista se vaciaba a media hora pico.
+			"medianoche: la del día LOCAL, no la del servidor",
+			CorteMedianoche,
+			time.Date(2026, 9, 2, 5, 0, 0, 0, time.UTC),
+			mx,
+			time.Date(2026, 9, 1, 0, 0, 0, 0, mx),
+		},
+		{
+			// 2026-11-01 es el domingo del cambio de horario en Tijuana: a las 02:00 el reloj vuelve
+			// a la 01:00, así que ese día dura 25 horas. Restar 24 daría las 01:00 del día anterior.
+			"cambio de horario: la medianoche real, no 24 horas antes",
+			CorteMedianoche,
+			time.Date(2026, 11, 1, 20, 0, 0, 0, time.UTC),
+			tj,
+			time.Date(2026, 11, 1, 0, 0, 0, 0, tj),
+		},
+		{
+			"turno: desde que abrió",
+			CorteTurno,
+			time.Date(2026, 9, 2, 5, 0, 0, 0, time.UTC),
+			mx,
+			abrioElTurno,
+		},
+		{
+			"cierre de caja: desde el último cierre",
+			CorteCierreDeCaja,
+			time.Date(2026, 9, 2, 5, 0, 0, 0, time.UTC),
+			mx,
+			cerroLaCaja,
+		},
+		{
+			// Un modo que no existe no puede caer al más permisivo en silencio: se comporta como el
+			// default, que es lo que el negocio vería si abriera la pantalla.
+			"un modo desconocido se comporta como el default",
+			"lo-que-sea",
+			time.Date(2026, 9, 2, 5, 0, 0, 0, time.UTC),
+			mx,
+			time.Date(2026, 9, 1, 0, 0, 0, 0, mx),
+		},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			got := DesdeCuandoSeVen(c.modo, c.ahora, c.zona, abrioElTurno, cerroLaCaja)
+			if !got.Equal(c.quiere) {
+				t.Errorf("DesdeCuandoSeVen = %s, quiere %s", got.Format(time.RFC3339), c.quiere.Format(time.RFC3339))
+			}
+		})
 	}
 }

@@ -1,4 +1,4 @@
-import { HStack, Button, Box, Text } from '@chakra-ui/react';
+import { HStack, VStack, Button, Box, Text } from '@chakra-ui/react';
 import { LuPlus, LuX } from 'react-icons/lu';
 import { useTicketStore, ticketCount } from '../../stores/ticket';
 import { RADIUS, BORDER_W } from '../../theme/ui';
@@ -37,9 +37,21 @@ export function TicketTabs() {
             bg={active ? 'colorPalette.600' : 'bg.panel'}
             color={active ? 'white' : 'fg'}
           >
-            <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap">
-              {t.customerName || `Cuenta ${t.num}`}{count > 0 ? ` · ${count}` : ''}
-            </Text>
+            {/* El nombre va tenue y debajo: identifica al pedido en cocina, pero quien mira las
+                pestañas está eligiendo en cuál capturar, y para eso sirve el número de cuenta o el
+                nombre del cliente. Se ve desde aquí para que el operador pueda decírselo al cliente
+                al tomarle el pedido, no hasta que imprime el ticket. */}
+            <VStack gap={0} align="start">
+              <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap" lineHeight="1.15">
+                {t.customerName || `Cuenta ${t.num}`}{count > 0 ? ` · ${count}` : ''}
+              </Text>
+              {/* El espacio duro sostiene el renglón mientras la lista de nombres llega del
+                  servidor: sin él la pestaña se recentra sola al aparecer el nombre. */}
+              <Text fontSize="2xs" whiteSpace="nowrap" lineHeight="1.15"
+                color={active ? 'whiteAlpha.700' : 'fg.subtle'}>
+                {t.folioName || ' '}
+              </Text>
+            </VStack>
             {/* la ✕ solo en la cuenta activa → no se cierra por error una de fondo al cambiar.
                 target amplio (32px, para 7") + confirmación si tiene artículos (fn close). */}
             {active && (

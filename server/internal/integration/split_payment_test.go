@@ -26,7 +26,7 @@ func TestSplitPayment(t *testing.T) {
 	card := paymentMethodID(t, st, "Tarjeta débito")
 	abrirCajaPrincipal(t, st, cashier)
 
-	ov, err := svc.Create(ctx, app.CreateOrderCmd{
+	ov, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
@@ -61,7 +61,7 @@ func TestSplitPayment(t *testing.T) {
 	}
 
 	// Un pago parcial NO marca pagada la orden (60 < 100).
-	ov2, err := svc.Create(ctx, app.CreateOrderCmd{
+	ov2, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,

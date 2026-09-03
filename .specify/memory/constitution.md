@@ -49,6 +49,34 @@ $4,500 de faltante inexplicable.
 - **Toda lógica no trivial deja un check runnable.** Si un comentario describe un comportamiento, ese comportamiento **debe** tener test (o el comentario miente cuando el código cambie).
 - Un task de implementación sin su task de test antes está mal ordenado.
 
+#### Los casos de borde se piensan ANTES de escribir el código
+
+**Primero se enumeran las formas de fallar, después se escribe el test, y hasta el final el
+código.** No es un paso de revisión: es el primero, y saltárselo produce código que funciona en el
+camino feliz y se rompe en el único que importaba.
+
+Antes de tocar el editor, la pregunta es *"¿de cuántas formas puede salir mal esto?"* y la respuesta
+se escribe. Cuatro familias que en este repo ya han costado caro:
+
+- **El valor vacío que significa algo.** `Number('')` es `0`, y `0` es un tiempo de bloqueo válido:
+  borrar el campo para reescribirlo apagaba la protección del negocio a media captura.
+- **El estado que no sobrevive.** Una pantalla de bloqueo en memoria de React se evade con F5.
+  Pregunta obligada: *¿qué pasa si se recarga, si se cae la red, si la tableta se suspende?*
+- **El camino nuevo que se salta el control viejo.** Al agregar una rama a un handler, hereda cero
+  protecciones: el desbloqueo por PIN sin `userId` nació sin limitador porque la llave del lockout
+  se construía con el id que ahí ya no existe.
+- **El hermano que no se movió.** Al cambiar dónde vive una validación hay que buscar a todos los
+  que llamaban a lo viejo: mover el filtro de PIN débil a `SetPIN` dejó a `Create` aceptando `1234`.
+
+**El test se escribe contra el borde, no contra el caso feliz.** Un test que solo prueba que lo
+normal funciona no es TDD, es documentación optimista. La pregunta que decide si un test vale es:
+*¿qué defecto concreto atrapa?* Si la respuesta es "ninguno que se me ocurra", el test sobra y el
+borde sigue sin cubrir.
+
+Y **el borde que se descubre tarde se documenta donde se pensó demasiado tarde**: en el spec si el
+requisito estaba mal, en el plan si el diseño no lo vio, en el código si fue un descuido. Un borde
+arreglado en silencio vuelve.
+
 #### Todo defecto encontrado deja su test de regresión
 
 **Un bug arreglado sin test no está arreglado**: está esperando a que alguien lo reintroduzca. Aplica
@@ -121,6 +149,17 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 ## Restricciones del producto
 
 - **Target: tablets de 7"** — el tamaño de los controles táctiles y la separación de las acciones destructivas son requisito funcional, no preferencia estética. La vara de UX del POS es **minimizar taps**: nunca obligar al operador a deshacer para rehacer.
+  - **El presupuesto real es ~1024×600 px, y se diseña contra él, no contra el monitor de quien
+    programa.** Cada control ocupa alto que le quita a la lista que el operador vino a leer. Antes de
+    agregar una barra de filtros, un encabezado o una fila de tarjetas, cuenta cuántos renglones de
+    contenido quedan debajo.
+  - **Prohibido el `<select>` nativo.** En una pantalla de 7 a 10 pulgadas su desplegable lo pinta el
+    sistema operativo con renglones de ~20 px, tapa la pantalla y no se acierta con el dedo. Va
+    [`Picker`](../../web/src/components/Picker.tsx): una hoja inferior con filas grandes y buscador.
+    Esta regla ya se había perdido una vez por vivir solo en el comentario de un componente; por eso
+    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema.
+  - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
+    la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -154,4 +193,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.4.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-31
+**Version**: 1.6.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-01

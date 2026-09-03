@@ -1,24 +1,31 @@
 import { useState } from 'react';
-import { Box, Button, HStack, Table, Text, VStack, Wrap } from '@chakra-ui/react';
+import { Box, Button, HStack, Table, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 
 import { salesApi, type SalesPreset, type SalesSort, type SaleRow } from '../../api/sales';
 import { Page } from '../../components/Page';
+import { Picker, type PickerOption } from '../../components/Picker';
+import { RangoDeFechas } from '../../components/RangoDeFechas';
+import { validarRango } from '../../domain/rangoDeFechas';
 import { SortHead } from '../../components/SortHead';
 import { money } from '../../utils/format';
 import { SaleDetailDialog } from './SaleDetailDialog';
 import { SalesSummaryTiles } from './SalesSummaryTiles';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
+import { soloHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
-const PRESETS: Array<{ id: SalesPreset; label: string }> = [
+const PRESETS = [
   { id: 'hoy', label: 'Hoy' },
   { id: 'ayer', label: 'Ayer' },
   { id: 'semana', label: 'Semana' },
   { id: 'mes', label: 'Mes' },
 ];
 
-const ESTADOS = ['', 'abierta', 'lista', 'entregada', 'cancelada', 'reembolsada'];
-const TIPOS = ['', 'mostrador', 'para_llevar', 'domicilio'];
+const OPCIONES_ESTADO: PickerOption[] = ['abierta', 'lista', 'entregada', 'cancelada', 'reembolsada']
+  .map((s) => ({ value: s, label: etiquetaEstado(s) }));
+const OPCIONES_TIPO: PickerOption[] = ['mostrador', 'para_llevar', 'domicilio']
+  .map((s) => ({ value: s, label: etiquetaTipo(s) }));
 
 const PAGE_SIZE = 20;
 
@@ -28,7 +35,10 @@ const PAGE_SIZE = 20;
 // hay acciones de dinero —cancelar, reembolsar— sobre la tabla. Meterlas aquí duplicaría el permiso
 // y el rastro que ya viven en el tablero, y un tap equivocado en una tabla densa cuesta caro.
 export function SalesPage() {
+  const horaNegocio = useHoraDelNegocio();
   const [preset, setPreset] = useState<SalesPreset>('hoy');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [status, setStatus] = useState('');
   const [serviceType, setServiceType] = useState('');
   const [sort, setSort] = useState<SalesSort>('fecha');
@@ -36,19 +46,30 @@ export function SalesPage() {
   const [page, setPage] = useState(0);
   const [detalle, setDetalle] = useState<SaleRow | null>(null);
 
-  const filtros = { preset, status, serviceType };
+  // Las fechas viajan SOLO con el rango libre. El servidor rechaza un `from` que el preset no va a
+  // usar, y con razón: aceptarlo en silencio deja pedir "hoy, del 1 al 31 de enero" y contestar hoy
+  // con la pantalla viéndose perfecta.
+  const esRango = preset === 'rango';
+  const hoyDelNegocio = horaNegocio.diaDelNegocio(new Date());
+  const rangoInvalido = esRango ? validarRango(desde, hasta, hoyDelNegocio) : null;
+  const filtros = { preset, status, serviceType, ...(esRango ? { from: desde, to: hasta } : {}) };
+  // Un rango a medias NO se manda: la pantalla conserva el periodo anterior —que es el que su
+  // encabezado sigue nombrando— hasta que las dos fechas estén completas.
+  const puedeConsultar = rangoInvalido === null;
 
   const lista = useQuery({
     queryKey: ['sales', 'list', filtros, sort, dir, page],
     queryFn: () => salesApi.list({ ...filtros, sort, dir, page, pageSize: PAGE_SIZE }),
     placeholderData: (previa) => previa,
+    enabled: puedeConsultar,
   });
   // La llave del resumen NO lleva página ni orden: no cambian con ellos, y meterlos haría que se
   // vuelva a pedir en cada tap del paginador.
   const resumen = useQuery({
-    queryKey: ['sales', 'summary', { preset, serviceType }],
-    queryFn: () => salesApi.summary({ preset, serviceType }),
+    queryKey: ['sales', 'summary', { preset, serviceType, desde: esRango ? desde : '', hasta: esRango ? hasta : '' }],
+    queryFn: () => salesApi.summary({ preset, serviceType, ...(esRango ? { from: desde, to: hasta } : {}) }),
     placeholderData: (previa) => previa,
+    enabled: puedeConsultar,
   });
 
   const cambiar = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(0); };
@@ -75,31 +96,32 @@ export function SalesPage() {
         )}
       </HStack>
 
-      <Wrap gap={2} mb={3}>
-        {PRESETS.map((p) => (
-          <Button key={p.id} size="sm" minH="40px" px={4}
-            variant={preset === p.id ? 'solid' : 'outline'}
-            colorPalette={preset === p.id ? undefined : 'gray'}
-            onClick={() => cambiar(setPreset)(p.id)}>
-            {p.label}
-          </Button>
-        ))}
-      </Wrap>
+      <Box mb={3}>
+        <RangoDeFechas
+          presets={PRESETS}
+          preset={preset}
+          onPreset={(id) => cambiar(setPreset)(id as SalesPreset)}
+          desde={desde}
+          hasta={hasta}
+          onRango={(d, h) => { setDesde(d); setHasta(h); setPage(0); }}
+          hoy={hoyDelNegocio}
+        />
+      </Box>
 
       <SalesSummaryTiles resumen={resumen.data} cargando={resumen.isLoading} />
 
+      {/* Pickers táctiles, no <select> nativos: en una tablet de 7" el desplegable del sistema
+          tapa la pantalla con renglones de 20px. Ver la constitución. */}
       <HStack gap={2} my={3} flexWrap="wrap">
-        <Box minW="170px">
-          <select value={status} onChange={(e) => cambiar(setStatus)(e.target.value)}
-            style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}>
-            {ESTADOS.map((s) => <option key={s} value={s}>{s === '' ? 'Todos los estados' : etiquetaEstado(s)}</option>)}
-          </select>
+        <Box flex="1 1 170px" minW="150px" maxW="240px">
+          <Picker size="sm" value={status} onChange={cambiar(setStatus)}
+            options={OPCIONES_ESTADO} placeholder="Todos los estados"
+            title="Filtrar por estado" clearable clearLabel="Todos los estados" />
         </Box>
-        <Box minW="170px">
-          <select value={serviceType} onChange={(e) => cambiar(setServiceType)(e.target.value)}
-            style={{ width: '100%', minHeight: '44px', padding: '0 10px', borderRadius: 8, borderWidth: 1 }}>
-            {TIPOS.map((s) => <option key={s} value={s}>{s === '' ? 'Todos los tipos' : etiquetaTipo(s)}</option>)}
-          </select>
+        <Box flex="1 1 170px" minW="150px" maxW="240px">
+          <Picker size="sm" value={serviceType} onChange={cambiar(setServiceType)}
+            options={OPCIONES_TIPO} placeholder="Todos los tipos"
+            title="Filtrar por tipo de venta" clearable clearLabel="Todos los tipos" />
         </Box>
       </HStack>
 
@@ -119,8 +141,11 @@ export function SalesPage() {
           <Table.Body>
             {items.map((v) => (
               <Table.Row key={v.id} cursor="pointer" onClick={() => setDetalle(v)}>
-                <Table.Cell fontWeight="700">#{v.dailyNumber}</Table.Cell>
-                <Table.Cell whiteSpace="nowrap">{hora(v.openedAt)}</Table.Cell>
+                <Table.Cell>
+                  <Text fontWeight="700" lineHeight="1.2">{v.folioName || `#${v.dailyNumber}`}</Text>
+                  {v.folioName && <Text fontSize="xs" color="fg.muted">#{v.dailyNumber}</Text>}
+                </Table.Cell>
+                <Table.Cell whiteSpace="nowrap">{hora(v.openedAt, horaNegocio.zona)}</Table.Cell>
                 <Table.Cell>{etiquetaEstado(v.status)}</Table.Cell>
                 <Table.Cell>{v.platform || etiquetaTipo(v.serviceType)}</Table.Cell>
                 <Table.Cell color="fg.muted">{v.customer || '—'}</Table.Cell>
@@ -144,10 +169,13 @@ export function SalesPage() {
       <HStack justify="space-between" mt={3}>
         <Text fontSize="sm" color="fg.muted">{total} {total === 1 ? 'venta' : 'ventas'}</Text>
         <HStack gap={2}>
-          <Button size="sm" minH="40px" variant="outline" disabled={page === 0}
+          {/* Se apagan mientras el rango está a medias: `paginas` sale del periodo ANTERIOR, así
+              que avanzar movía el contador sobre filas que no son del filtro que se está capturando.
+              44 px, que es el mínimo con el que un dedo acierta a la primera. */}
+          <Button size="sm" minH="44px" px={4} variant="outline" disabled={page === 0 || !puedeConsultar}
             onClick={() => setPage((p) => Math.max(0, p - 1))}>Anterior</Button>
           <Text fontSize="sm">{page + 1} / {paginas}</Text>
-          <Button size="sm" minH="40px" variant="outline" disabled={page + 1 >= paginas}
+          <Button size="sm" minH="44px" px={4} variant="outline" disabled={page + 1 >= paginas || !puedeConsultar}
             onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
         </HStack>
       </HStack>
@@ -161,7 +189,7 @@ export function SalesPage() {
 
 // Solo la hora: la fecha ya la dice el rango de arriba, y repetirla en cada renglón gasta el ancho
 // que en una tablet de 7 pulgadas hace falta para el medio de pago.
-function hora(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+// La zona llega como parámetro: esta es una función de módulo.
+function hora(iso: string, zona: string): string {
+  return soloHora(iso, zona);
 }

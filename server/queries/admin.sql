@@ -7,7 +7,7 @@
 select q.*, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
-         p.available_from, p.available_until, c.name as category, p.category_id,
+         p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -107,7 +107,8 @@ from products;
 -- name: AdminUpdateProduct :exec
 update products
 set name = $2, price = $3, is_favorite = $4, is_active = $5,
-    available_from = $6, available_until = $7, updated_at = now()
+    available_from = $6, available_until = $7, needs_prep = sqlc.arg(needs_prep),
+    updated_at = now()
 where id = $1;
 
 -- name: AdminListModifierOptions :many

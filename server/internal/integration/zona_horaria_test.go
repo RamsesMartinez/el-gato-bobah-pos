@@ -66,7 +66,7 @@ func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
 		t.Fatalf("el turno abrió con fecha %s, quería 2026-08-29 (20:28 hora de México)", got)
 	}
 
-	ord, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	ord, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -109,7 +109,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 	venta := func(now time.Time) *app.OrderView {
 		t.Helper()
 		svc := app.NewOrdersService(st, func() time.Time { return now })
-		o, err := svc.Create(ctx, app.CreateOrderCmd{
+		o, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID:  uuid.New(),
 			ServiceType: "mostrador",
 			OpenedBy:    cajero,
@@ -147,7 +147,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
 	admin := makeUser(t, st, "admin_zona", "admin")
 
 	cur, err := settings.Get(ctx)
@@ -155,12 +155,17 @@ func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	info := domain.BusinessInfo{Name: cur.BusinessName, Address: cur.Address, Phone: cur.Phone}
+	impresion := domain.PrintSettings{
+		AutoPrintOnClose:   cur.AutoPrintOnClose,
+		PrintFreeModifiers: cur.PrintFreeModifiers,
+		PrintKitchenTicket: cur.PrintKitchenTicket,
+	}
 
-	if _, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "Marte/Olympus", cur.PrintFreeModifiers, admin); err == nil {
+	if _, err := settings.SetBusinessInfo(ctx, info, impresion, domain.DefaultIdentity(), "Marte/Olympus", admin); err == nil {
 		t.Fatal("una zona inventada debe rechazarse al guardar")
 	}
 
-	nueva, err := settings.SetBusinessInfo(ctx, info, cur.AutoPrintOnClose, "America/Tijuana", cur.PrintFreeModifiers, admin)
+	nueva, err := settings.SetBusinessInfo(ctx, info, impresion, domain.DefaultIdentity(), "America/Tijuana", admin)
 	if err != nil {
 		t.Fatalf("una zona válida debe guardarse: %v", err)
 	}

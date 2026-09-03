@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,10 +19,13 @@ import (
 // (§8): un solo consumidor, sin interfaz especulativa.
 type SettingsService struct {
 	store *store.Store
+	// pinPepper: sin él el modo de solo-PIN no se puede encender, porque no habría forma de
+	// garantizar que dos personas no compartan PIN.
+	pinPepper string
 }
 
-func NewSettingsService(s *store.Store) *SettingsService {
-	return &SettingsService{store: s}
+func NewSettingsService(s *store.Store, pinPepper string) *SettingsService {
+	return &SettingsService{store: s, pinPepper: pinPepper}
 }
 
 // BusinessSettings son los ajustes del negocio y la identidad que va en el encabezado del ticket.
@@ -43,9 +47,24 @@ type BusinessSettings struct {
 	Timezone string `json:"timezone"`
 	// PrintFreeModifiers: si el ticket lista los adicionales que no cuestan. Encendido por default
 	// — cocina los usa para preparar y el cliente para reclamar; apagarlo solo acorta el papel.
-	PrintFreeModifiers bool       `json:"printFreeModifiers"`
-	HasLogo            bool       `json:"hasLogo"`
-	LogoUpdatedAt      *time.Time `json:"logoUpdatedAt"`
+	PrintFreeModifiers bool `json:"printFreeModifiers"`
+	// PrintKitchenTicket: si al mandar el pedido sale una comanda SIN precios para cocina. Apagado
+	// por default: en un local donde la cocina está pegada al mostrador sería papel que duplica lo
+	// que el cocinero ya ve. Lo enciende el negocio que tiene la cocina en otro cuarto.
+	PrintKitchenTicket bool `json:"printKitchenTicket"`
+	// CorteDeVista: hasta cuándo se ve un entregado en pantalla. `medianoche` (default), `turno` o
+	// `cierre_de_caja`. No mueve el día de ninguna venta.
+	CorteDeVista string `json:"corteDeVista"`
+	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
+	KitchenCanCharge bool `json:"kitchenCanCharge"`
+	// Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
+	PinOnlyUnlock    bool `json:"pinOnlyUnlock"`
+	LockAfterSeconds int  `json:"lockAfterSeconds"`
+	SessionHours     int  `json:"sessionHours"`
+	// FolioScheme: con qué se nombran los pedidos. `razas` (default) o `animales`.
+	FolioScheme   string     `json:"folioScheme"`
+	HasLogo       bool       `json:"hasLogo"`
+	LogoUpdatedAt *time.Time `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -56,7 +75,20 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Sin zona, las fechas se calcularían en UTC y la cena caería en el día siguiente: el
 			// default acompaña al de la columna en vez de dejar el campo vacío.
-			return BusinessSettings{DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true}, nil
+			// Los tiempos de identidad van con el default de la columna y no en cero: en cero la
+			// pantalla dice "sin bloqueo, sin caducidad" —que es falso— y además no se puede
+			// guardar hasta escribirlos a mano, porque el cero se rechaza en la frontera.
+			ident := domain.DefaultIdentity()
+			return BusinessSettings{
+				DeliveryFee: decimal.Zero, Timezone: domain.DefaultTimezone, PrintFreeModifiers: true,
+				CorteDeVista:     domain.CorteMedianoche,
+				PinOnlyUnlock:    ident.PinOnlyUnlock,
+				LockAfterSeconds: ident.LockAfterSeconds,
+				SessionHours:     ident.SessionHours,
+				// El MISMO default que la columna. Con dos, un negocio sin fila vería un esquema en
+				// la pantalla y su ticket saldría con el otro.
+				FolioScheme: string(domain.EsquemaPorDefecto),
+			}, nil
 		}
 		return BusinessSettings{}, err
 	}
@@ -70,6 +102,13 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		AutoPrintOnClose:   row.AutoPrintOnClose,
 		Timezone:           row.Timezone,
 		PrintFreeModifiers: row.PrintFreeModifiers,
+		PrintKitchenTicket: row.PrintKitchenTicket,
+		CorteDeVista:       row.CorteDeVista,
+		KitchenCanCharge:   row.KitchenCanCharge,
+		PinOnlyUnlock:      row.PinOnlyUnlock,
+		LockAfterSeconds:   int(row.LockAfterSeconds),
+		SessionHours:       int(row.SessionHours),
+		FolioScheme:        string(row.FolioScheme),
 		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
@@ -125,9 +164,29 @@ func (s *SettingsService) Logo(ctx context.Context) (TicketLogo, bool, error) {
 // SetBusinessInfo guarda la identidad que sale en el ticket y el interruptor de impresión
 // automática. Valida en domain ANTES de tocar el store: un texto que no cabe en 80mm se rechaza
 // como 400, no como un check violado de Postgres convertido en 500.
-func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, autoPrint bool, timezone string, printFreeMods bool, userID int64) (BusinessSettings, error) {
+func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.BusinessInfo, print domain.PrintSettings, ident domain.IdentitySettings, timezone string, userID int64) (BusinessSettings, error) {
 	if err := info.Validate(); err != nil {
 		return BusinessSettings{}, err
+	}
+	// Los tiempos se validan AQUÍ y no donde se usan: donde se usan está el arranque del POS, y
+	// ahí un valor absurdo dejaría la tableta bloqueada para siempre sin nada que lo explique.
+	if err := ident.Validate(); err != nil {
+		return BusinessSettings{}, err
+	}
+	// Encender el modo de solo-PIN tiene COMPUERTA; apagarlo nunca, porque volver al modo seguro
+	// siempre se puede.
+	//
+	// Ahí el PIN deja de PROBAR quién eres y pasa a DECIRLO, así que dos personas con el mismo se
+	// desbloquearían la una a la otra y el desglose por cajero del arqueo empezaría a mentir.
+	actual, err := s.Get(ctx)
+	encendiendo := ident.PinOnlyUnlock && (err != nil || !actual.PinOnlyUnlock)
+	if encendiendo {
+		// Sin el secreto no se puede comparar dos PINs por igualdad, así que no hay forma de
+		// garantizar que nadie repita. Fail-closed: no se enciende un modo cuya única protección
+		// no se puede aplicar.
+		if s.pinPepper == "" {
+			return BusinessSettings{}, domain.ErrSinPepper
+		}
 	}
 	// La zona se valida AQUÍ y no donde se usa: donde se usa está el camino de una venta, y ahí un
 	// nombre mal escrito cae a UTC para no tumbar el cobro. Si nunca se rechazara al guardar, ese
@@ -135,18 +194,65 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	if !domain.ValidTimezone(timezone) {
 		return BusinessSettings{}, domain.ErrInvalidTimezone
 	}
-	err := s.store.QC(ctx).UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
-		Timezone:           timezone,
-		PrintFreeModifiers: printFreeMods,
-		BusinessName:       strings.TrimSpace(info.Name),
-		Address:            strings.TrimSpace(info.Address),
-		Phone:              strings.TrimSpace(info.Phone),
-		HeaderNote:         strings.TrimSpace(info.HeaderNote),
-		FooterNote:         strings.TrimSpace(info.FooterNote),
-		AutoPrintOnClose:   autoPrint,
-		UpdatedBy:          &userID,
-	})
-	if err != nil {
+	// El default es para el campo AUSENTE; un valor presente y desconocido se RECHAZA.
+	//
+	// Vacío significa "no lo estoy configurando" y conserva el default. Un modo inventado no: caer
+	// al default ahí dejaría al dueño creyendo que configuró algo que no configuró, que es
+	// exactamente el fallback silencioso que el principio V prohíbe.
+	corte := print.CorteDeVista
+	if corte == "" {
+		corte = domain.CorteMedianoche
+	}
+	if !domain.CorteDeVistaValido(corte) {
+		return BusinessSettings{}, fmt.Errorf("%w: ese momento de corte no existe", domain.ErrValidation)
+	}
+	// Mismo criterio: ausente conserva el default, presente y desconocido se rechaza. Un esquema
+	// inventado dejaría los pedidos nombrándose con una lista que nadie eligió.
+	esquema := print.FolioScheme
+	if esquema == "" {
+		esquema = string(domain.EsquemaPorDefecto)
+	}
+	if !domain.EsquemaValido(esquema) {
+		return BusinessSettings{}, fmt.Errorf("%w: ese esquema de nombres no existe", domain.ErrValidation)
+	}
+	// Guardar el ajuste y borrar los PINs van en la MISMA transacción.
+	//
+	// Eran dos autocommits, y el reintento no reparaba: al segundo intento el ajuste ya decía que
+	// el modo estaba encendido, así que `encendiendo` daba falso y el borrado no volvía a correr
+	// nunca. El negocio se quedaba en un modo de seis dígitos con los PINs de cuatro de antes —que
+	// además ya traen su huella de búsqueda— y nada en la pantalla lo delataba.
+	if err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.UpdateBusinessInfo(ctx, db.UpdateBusinessInfoParams{
+			Timezone:           timezone,
+			PrintFreeModifiers: print.PrintFreeModifiers,
+			PrintKitchenTicket: print.PrintKitchenTicket,
+			CorteDeVista:       corte,
+			FolioScheme:        db.FolioScheme(esquema),
+			KitchenCanCharge:   print.KitchenCanCharge,
+			PinOnlyUnlock:      ident.PinOnlyUnlock,
+			LockAfterSeconds:   int32(ident.LockAfterSeconds),
+			SessionHours:       int32(ident.SessionHours),
+			BusinessName:       strings.TrimSpace(info.Name),
+			Address:            strings.TrimSpace(info.Address),
+			Phone:              strings.TrimSpace(info.Phone),
+			HeaderNote:         strings.TrimSpace(info.HeaderNote),
+			FooterNote:         strings.TrimSpace(info.FooterNote),
+			AutoPrintOnClose:   print.AutoPrintOnClose,
+			UpdatedBy:          &userID,
+		}); err != nil {
+			return err
+		}
+		if !encendiendo {
+			return nil
+		}
+		// Los PINs de antes son de cuatro dígitos y sin garantía de ser distintos, y de lo guardado
+		// no se puede saber ni una cosa ni la otra: bcrypt saliniza. Borrarlos obliga a
+		// recapturarlos, que es el único momento en que el PIN está en claro y se puede validar
+		// largo y unicidad.
+		//
+		// Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña.
+		return q.ClearAllPins(ctx)
+	}); err != nil {
 		return BusinessSettings{}, err
 	}
 	return s.Get(ctx)

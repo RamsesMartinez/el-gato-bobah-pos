@@ -6,6 +6,7 @@ import { toaster } from '../../components/ui/toaster';
 import { usePlatformOptionPrice } from '../../hooks/usePlatformPrice';
 import { money } from '../../utils/format';
 import type { DesglosePrecio } from './precioPlataforma';
+import { montoTecleado } from '../../domain/numeros';
 
 // Corregir el cargo de UN extra en UNA plataforma, dentro del diálogo que ya existía para
 // gestionar la opción. No abre uno propio: el gesto para llegar aquí —mantener presionado— ya
@@ -25,12 +26,15 @@ export function OptionPriceFields({ optionId, optionName, plataforma, plataforma
   const { guardar, quitar } = usePlatformOptionPrice();
   const [delta, setDelta] = useState(String(desglose.vigente));
 
-  const valor = parseFloat(delta);
+  // undefined = lo escrito no es un monto. Antes era `parseFloat`, que lee "1,000" como 1 y guarda
+  // un precio mil veces más chico sin que nada lo delate.
   // >= 0 y no > 0 como en los productos: un extra sin costo ("sin cebolla") es normal y su cargo
   // es 0. Lo que no vale es negativo. Es la misma regla que el check de la tabla.
-  const valido = Number.isFinite(valor) && valor >= 0;
+  const valor = montoTecleado(delta);
+  const valido = valor !== undefined && valor >= 0;
 
-  const onGuardar = () =>
+  const onGuardar = () => {
+    if (valor === undefined) return;
     guardar.mutate({ optionId, platformId: plataformaId, priceDelta: valor }, {
       onSuccess: () => {
         toaster.create({ title: `${optionName}: ${money(valor)} en ${plataforma}`, type: 'success' });
@@ -38,6 +42,7 @@ export function OptionPriceFields({ optionId, optionName, plataforma, plataforma
       },
       onError: (e) => toaster.create({ title: 'No se pudo guardar', description: String(e), type: 'error' }),
     });
+  };
 
   const onQuitar = () =>
     quitar.mutate({ optionId, platformId: plataformaId }, {

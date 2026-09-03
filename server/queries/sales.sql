@@ -18,7 +18,7 @@
 -- cliente porque la lista está paginada: ordenar solo las 20 filas visibles daría un orden falso.
 -- El desempate fijo (opened_at desc, id desc) evita que dos ventas del mismo total bailen entre
 -- páginas.
-select o.id, o.daily_number, o.business_date, o.opened_at, o.completed_at,
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
        dp.name as platform,
        u.name as opened_by_name,
@@ -90,8 +90,19 @@ group by f.status;
 -- cocina sin cobrar suma al total y no aparece aquí). Sale de order_payments porque una venta puede
 -- pagarse con varios métodos.
 --
--- Sin filtro de estado, por el mismo motivo que SalesTotalsByStatus: el resumen dice cuánto entró
--- por cada medio aunque la tabla esté filtrada a un estado. El de tipo de venta sí aplica.
+-- El filtro de ESTADO DE LA PANTALLA no aplica, por el mismo motivo que SalesTotalsByStatus: el
+-- resumen dice cuánto entró por cada medio aunque la tabla esté filtrada a un estado. El de tipo de
+-- venta sí aplica.
+--
+-- Lo que SÍ se excluye son canceladas y reembolsadas, que no son un filtro de la pantalla sino la
+-- misma regla que aplica el total de arriba. Sin ellas, los $500 de una venta devuelta salían en el
+-- tile "Reembolsadas" Y en el de "Tarjeta" mientras el total —que sí las excluye— los ignoraba: el
+-- mismo peso contado de tres maneras en tres renglones hermanos. Reconciliar contra la terminal
+-- bancaria es trabajo del corte de caja, que es por turno y sí mira el flujo bruto; esta pantalla
+-- responde qué VENDIÓ el negocio.
+--
+-- El hermano de esta consulta vive en reports.sql (`SalesByMethod`) y se corrigió primero; esta
+-- copia se quedó con el defecto una versión entera. Se editan juntas.
 select pm.id as method_id, pm.name as method,
        count(*)::int as pagos,
        coalesce(sum(op.amount), 0)::numeric(12,2) as total,
@@ -99,7 +110,8 @@ select pm.id as method_id, pm.name as method,
 from order_payments op
 join orders o on o.id = op.order_id
 join payment_methods pm on pm.id = op.payment_method_id
-where o.business_date between @desde and @hasta
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between @desde and @hasta
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 group by pm.id, pm.name
 order by total desc;
@@ -111,7 +123,8 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.business_date between @desde and @hasta
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between @desde and @hasta
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
   -- seguía mostrando la merma de mostrador y las cifras dejaban de ser del mismo conjunto.

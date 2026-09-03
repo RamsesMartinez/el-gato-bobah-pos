@@ -64,7 +64,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	}
 
 	// Venta de 80 con tarjeta (método auto_declare).
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,
@@ -73,6 +73,10 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+
+	// La caja no cierra con pedidos sin terminar, así que se entrega lo vendido — igual que haría
+	// el operador antes de cerrar.
+	entregarPendientes(t, st)
 
 	// Cierre con un declarado FALSEADO (1, muy por debajo del esperado) para ese método.
 	declared := map[int]decimal.Decimal{int(cardID): decimal.RequireFromString("1")}
@@ -226,7 +230,7 @@ func TestTipFlowsIntoCorte(t *testing.T) {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	// Venta de 100 en efectivo con 15 de propina.
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cashier,

@@ -125,7 +125,7 @@ type sessionResponse struct {
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
 // empresa (para RLS) ANTES de conocer al usuario. cid no es secreto (solo dice qué empresa);
 // la autenticación real es el token aleatorio. Ver AuthService.Refresh.
-func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, token string) {
+func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, token string, vence time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookie,
 		Value:    strconv.FormatInt(companyID, 10) + "." + token,
@@ -133,7 +133,10 @@ func (h *Handlers) setRefreshCookie(w http.ResponseWriter, companyID int64, toke
 		HttpOnly: true,
 		Secure:   h.cfg.Env == "production",
 		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(app.RefreshTokenTTL),
+		// El vencimiento de la cookie es el del refresh que lleva dentro, no un plazo fijo: una
+		// cookie que sobrevive a su credencial hace que cada arranque canjee algo muerto y el
+		// operador vea "terminó el turno" en vez de la pantalla de entrar.
+		Expires: vence,
 	})
 }
 
@@ -158,7 +161,7 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
-	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken)
+	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
 	JSON(w, status, sessionResponse{AccessToken: s.AccessToken, User: s.User})
 }
 
@@ -206,26 +209,83 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 // POST /auth/pin-switch (requires a valid device session)
 func (h *Handlers) PinSwitch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		UserID int64  `json:"userId"`
+		// Puntero: con el modo de solo-PIN el cliente NO manda a quién, y el servidor lo deduce.
+		// Con el modo apagado, su ausencia se rechaza — no se cae al modo permisivo en silencio,
+		// que aquí significaría aceptar cualquier PIN sin saber de quién es.
+		UserID *int64 `json:"userId"`
 		PIN    string `json:"pin"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
+	actor, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	// El relevo conserva el reloj de ESTA estación, así que hace falta el refresh que la estación
+	// viene presentando. Sin cookie no hay sesión de dispositivo que heredar, y arrancar una nueva
+	// sería regalar un turno completo a cambio de un PIN.
+	ck, err := r.Cookie(refreshCookie)
+	if err != nil {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	_, refreshActual := parseRefreshCookie(ck.Value)
+	if refreshActual == "" {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	// Sin userId, el negocio tiene que estar en modo de solo-PIN: ahí el PIN identifica y el
+	// servidor deduce de quién es. Con el modo apagado se RECHAZA — caer al modo permisivo aquí
+	// significaría aceptar cualquier PIN sin saber de quién, y con eso la atribución del arqueo
+	// dejaría de valer.
+	if body.UserID == nil {
+		// El limitador cuelga de QUIEN PIDE, no de a quién se busca: en este modo no hay a quién
+		// buscar, y sin llave la rama nacía sin ninguna protección. Como aquí el PIN IDENTIFICA,
+		// cada intento se prueba contra toda la plantilla a la vez —con 8 personas la esperanza
+		// baja a ~62,500 intentos— y si cae el del admin, quien ataca recibe rol de admin.
+		llave := "pinsolo:" + strconv.FormatInt(actor.ID, 10)
+		if h.authFails.blocked(r.Context(), llave) {
+			logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin_solo", "ip", clientIP(r))
+			tooManyRequests(w, h.authFails.retryAfter(r.Context(), llave))
+			return
+		}
+		opciones, err := h.auth.UnlockOptions(r.Context())
+		if err != nil || !opciones.PinOnly {
+			Error(w, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation))
+			return
+		}
+		s, err := h.auth.PinSwitchSoloPin(r.Context(), body.PIN, actor.ID, refreshActual)
+		if err != nil {
+			h.authFails.record(r.Context(), llave)
+			// El evento no puede decir a quién se intentó desbloquear: en este modo justamente no
+			// se sabe. Lleva solo el origen.
+			logging.SecurityEvent(r.Context(), "pin_failed", "modo", "solo_pin", "ip", clientIP(r))
+			Error(w, err)
+			return
+		}
+		h.authFails.reset(r.Context(), llave)
+		h.writeSession(w, s, http.StatusOK)
+		return
+	}
+	objetivo := *body.UserID
 	// PIN keyspace is tiny (4 digits) — lock per target user id, which the caller
 	// controls in the body, so guessing any operator's PIN is throttled.
-	key := "pin:" + strconv.FormatInt(body.UserID, 10)
+	key := "pin:" + strconv.FormatInt(objetivo, 10)
 	if h.authFails.blocked(r.Context(), key) {
-		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", body.UserID, "ip", clientIP(r))
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "pin", "target_user_id", objetivo, "ip", clientIP(r))
 		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
 		return
 	}
-	s, err := h.auth.PinSwitch(r.Context(), body.UserID, body.PIN)
+	s, err := h.auth.PinSwitchEnEstacion(r.Context(), objetivo, body.PIN, actor.ID, refreshActual)
 	if err != nil {
 		h.authFails.record(r.Context(), key)
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", body.UserID, "ip", clientIP(r))
+			// El evento lleva a QUIÉN se intentó desbloquear, nunca el PIN: un secreto en un log
+			// es peor que no tener el log.
+			logging.SecurityEvent(r.Context(), "pin_failed", "target_user_id", objetivo, "ip", clientIP(r))
 		}
 		Error(w, err)
 		return
@@ -319,4 +379,17 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{
 		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
 	})
+}
+
+// GET /auth/unlock-options
+//
+// Qué debe pedir la pantalla de bloqueo, y a quiénes puede ofrecer. Solo id y nombre: la rejilla se
+// pinta en una tableta a la vista del público.
+func (h *Handlers) UnlockOptions(w http.ResponseWriter, r *http.Request) {
+	opciones, err := h.auth.UnlockOptions(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, opciones)
 }

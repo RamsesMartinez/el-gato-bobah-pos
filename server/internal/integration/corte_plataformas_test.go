@@ -116,7 +116,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 
 	vender := func() {
 		t.Helper()
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:  uuid.New(),
 			ServiceType: "mostrador",
 			OpenedBy:    cajero,
@@ -132,6 +132,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 		t.Fatalf("OpenSession 1: %v", err)
 	}
 	vender()
+	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero,
 		map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")}, ""); err != nil {
 		t.Fatalf("CloseSession 1: %v", err)
@@ -189,7 +190,7 @@ func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
 		if plataforma != nil {
 			st = "domicilio"
 		}
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        st,
 			DeliveryPlatformID: plataforma,
@@ -268,7 +269,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 		if metodo != efectivo {
 			tipo, plataforma = "domicilio", &uber
 		}
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID:         uuid.New(),
 			ServiceType:        tipo,
 			DeliveryPlatformID: plataforma,
@@ -283,6 +284,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 	vender(uberEfectivo, "135")
 	vender(efectivo, "100")
 
+	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero, map[int]decimal.Decimal{
 		int(efectivo):     decimal.RequireFromString("100"),
 		int(uberEnLinea):  decimal.RequireFromString("135"),

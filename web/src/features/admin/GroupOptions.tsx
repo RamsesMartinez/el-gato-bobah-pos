@@ -13,6 +13,7 @@ import { money, normalize } from '../../utils/format';
 import { toaster } from '../../components/ui/toaster';
 import { ConfirmPopover } from '../../components/ui/confirm-popover';
 import { OptionFormDialog } from './OptionFormDialog';
+import { estadoDeOrden } from './reordenarOpciones';
 import type { ReactNode, CSSProperties, Ref } from 'react';
 
 type FavMut = ReturnType<typeof useMutation<void, Error, GroupOption>>;
@@ -90,8 +91,11 @@ export function GroupOptions({ groupId, filter = '', hideInactive = false }: { g
   const base = hideInactive ? opts.filter((o) => o.active) : opts;
   const shown = searching ? base.filter((o) => normalize(o.name).includes(q)) : base;
   const hiddenCount = opts.length - base.length; // archivadas ocultas por el toggle
-  // arrastrar (reordenar) solo cuando se ven TODAS en su orden real: ni búsqueda ni ocultando inactivas
-  const sortable = !searching && hiddenCount === 0;
+  // Arrastrar solo cuando se ven TODAS en su orden real. La regla y su mensaje viven en
+  // reordenarOpciones.ts, con test: desaparecía el arrastre sin explicar nada y se leía como que
+  // la pantalla estaba rota.
+  const orden = estadoDeOrden(searching, hiddenCount);
+  const sortable = orden.puedeReordenar;
   const plural = (n: number) => (n === 1 ? '' : 's');
 
   return (
@@ -114,14 +118,20 @@ export function GroupOptions({ groupId, filter = '', hideInactive = false }: { g
               : 'Sin opciones aún.'}
         </Text>
       )}
-      {shown.length > 0 && hiddenCount > 0 && !searching && (
-        <Text fontSize="xs" color="fg.subtle" py={0.5}>{hiddenCount} archivada{plural(hiddenCount)} oculta{plural(hiddenCount)}.</Text>
+      {/* Un solo renglón: cuántas quedan fuera y por qué no se puede arrastrar. Antes el arrastre
+          desaparecía sin decir nada y se leía como que la pantalla estaba rota. */}
+      {shown.length > 0 && !sortable && (
+        <Text fontSize="xs" color="fg.subtle" py={0.5}>
+          {!searching && hiddenCount > 0 && `${hiddenCount} archivada${plural(hiddenCount)} oculta${plural(hiddenCount)}. `}
+          {shown.length > 1 && orden.motivo}
+        </Text>
       )}
-      {!searching && (
-        <Button size="sm" variant="outline" alignSelf="start" onClick={() => setCreating(true)}>
-          <LuPlus /> Opción
-        </Button>
-      )}
+
+      {/* Agregar NO depende del filtro: se escondía al buscar, y el caso más común es justo ese —
+          buscas el grupo por su nombre y quieres meterle una opción. */}
+      <Button size="sm" variant="outline" alignSelf="start" onClick={() => setCreating(true)}>
+        <LuPlus /> Opción
+      </Button>
 
       <OptionFormDialog key={edit ? `e${edit.id}` : creating ? 'new' : 'closed'}
         groupId={groupId} option={edit} isOpen={edit !== null || creating}

@@ -9,6 +9,7 @@ import { toaster } from '../../components/ui/toaster';
 import { useMutation } from '@tanstack/react-query';
 import { adminApi, type GroupOption } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
+import { montoTecleado } from '../../domain/numeros';
 
 // Crear/editar una opción de modificador (nombre, precio extra, máx por línea).
 // option=null → crear en groupId; option set → editar.
@@ -28,7 +29,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
 
   const save = useMutation({
     mutationFn: () => {
-      const b = { name: name.trim(), priceDelta: parseFloat(price) || 0, maxPerLine: parseInt(maxPerLine, 10) || 1 };
+      const b = { name: name.trim(), priceDelta: montoTecleado(price) ?? 0, maxPerLine: parseInt(maxPerLine, 10) || 1 };
       return option ? adminApi.updateOption(option.id, b) : adminApi.createOption(groupId, b).then(() => {});
     },
     onSuccess: () => { onSaved(); onClose(); toaster.create({ title: option ? 'Opción actualizada' : 'Opción creada', type: 'success' }); },

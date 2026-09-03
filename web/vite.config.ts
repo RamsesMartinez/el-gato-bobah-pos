@@ -56,5 +56,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.ts',
+    // Los E2E son de Playwright y viven en `e2e/`: corren contra el ambiente desplegado, con
+    // navegador de verdad. Sin excluirlos, vitest intenta ejecutarlos y truena.
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 });

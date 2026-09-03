@@ -1,14 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ServiceType, TicketLine, TicketModifier } from '../types/pos';
+import type { ServiceType, TicketLine, TicketModifier, TicketTab } from '../types/pos';
+
+// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos
+// porque `domain` la necesita y no puede importar de `stores/`.
+export type { TicketTab };
 import { uuid } from '../utils/uuid';
+import { nombreLibre } from '../features/pos/folio';
+import { round2 } from '../domain/numeros';
 
 export function lineUnitPrice(line: TicketLine): number {
   const mods = line.modifiers.reduce((s, m) => s + m.priceDelta * m.qty, 0);
   return line.unitPrice + mods;
 }
 export function lineTotal(line: TicketLine): number {
-  return Math.round(lineUnitPrice(line) * line.qty * 100) / 100;
+  return round2(lineUnitPrice(line) * line.qty);
 }
 
 // RepreciarLinea devuelve el precio unitario y los modificadores de una línea en la lista nueva.
@@ -17,23 +23,17 @@ export function lineTotal(line: TicketLine): number {
 export type RepreciarLinea = (line: TicketLine) => Pick<TicketLine, 'unitPrice' | 'modifiers'>;
 
 // Una "cuenta" abierta: un pedido en curso que el cajero puede dejar y retomar.
-export interface TicketTab {
-  id: string;
-  num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
-  lines: TicketLine[];
-  serviceType: ServiceType;
-  customerName: string;
-  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
-  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
-  // cada una tiene que conservar su lista.
-  platformId: number | null;
-}
 
 function emptyTab(num: number): TicketTab {
   // Cada cuenta nueva arranca en MOSTRADOR, aunque la anterior haya sido de plataforma: un tap de
   // más por pedido de plataforma, a cambio de que sea imposible cobrar precio de Uber en mostrador
   // por inercia.
-  return { id: uuid(), num, lines: [], serviceType: 'mostrador', customerName: '', platformId: null };
+  // Sin folioName: la lista vive en el servidor y esto corre también al importar el módulo, antes
+  // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
+  return {
+    id: uuid(), num, folioName: '', lines: [], envio: '',
+    serviceType: 'mostrador', customerName: '', platformId: null,
+  };
 }
 
 interface TicketState {
@@ -47,6 +47,7 @@ interface TicketState {
   removeLine: (lineId: string) => void;
   updateLineModifiers: (lineId: string, modifiers: TicketModifier[], notes?: string) => void;
   setServiceType: (t: ServiceType) => void;
+  setEnvio: (v: string) => void;
   setCustomerName: (name: string) => void;
   clearActive: () => void; // vacía la cuenta activa sin cerrarla
   // manejo de cuentas
@@ -75,6 +76,8 @@ interface TicketState {
   // armado con el catálogo de otro tenant no se puede cobrar y no debe quedarse esperando a que
   // alguien lo intente.
   descartarTodo: () => void;
+  // Le pone nombre a las cuentas que todavía no lo tienen, en cuanto la lista llega del servidor.
+  bautizarCuentas: (disponibles: string[]) => void;
 }
 
 const first = emptyTab(1);
@@ -138,9 +141,15 @@ export const useTicketStore = create<TicketState>()(
             })),
           ),
         setServiceType: (serviceType) => set((s) => onActive(s, (t) => ({ ...t, serviceType }))),
+        setEnvio: (envio) => set((s) => onActive(s, (t) => ({ ...t, envio }))),
         setCustomerName: (customerName) => set((s) => onActive(s, (t) => ({ ...t, customerName }))),
+        // Vaciar deja la cuenta como recién abierta, y eso incluye la PLATAFORMA. Reseteaba el tipo
+        // de servicio y dejaba puesta la lista de Uber: los productos capturados después salían con
+        // precio de Uber en una cuenta que decía mostrador. Y el envío, por la misma razón.
         clearActive: () =>
-          set((s) => onActive(s, (t) => ({ ...t, lines: [], customerName: '', serviceType: 'mostrador' }))),
+          set((s) => onActive(s, (t) => ({
+            ...t, lines: [], customerName: '', serviceType: 'mostrador', platformId: null, envio: '',
+          }))),
 
         newTab: () =>
           set((s) => {
@@ -173,6 +182,22 @@ export const useTicketStore = create<TicketState>()(
             }),
           })),
 
+        // Bautiza solo lo que falta: una cuenta que ya tiene nombre NO se renombra, porque el
+        // operador puede habérselo dicho al cliente hace diez minutos.
+        bautizarCuentas: (disponibles) =>
+          set((s) => {
+            if (disponibles.length === 0 || s.tabs.every((t) => t.folioName)) return s;
+            const tomados = s.tabs.map((t) => t.folioName).filter(Boolean);
+            return {
+              tabs: s.tabs.map((t) => {
+                if (t.folioName) return t;
+                const folioName = nombreLibre(disponibles, tomados);
+                tomados.push(folioName);
+                return { ...t, folioName };
+              }),
+            };
+          }),
+
         descartarTodo: () =>
           set(() => {
             const t = emptyTab(1);
@@ -180,7 +205,18 @@ export const useTicketStore = create<TicketState>()(
           }),
       };
     },
-    { name: 'egb:ticket:v2' }, // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
+    {
+      name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
+      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen nombre, y quedan
+      // con folioName vacío hasta que bautizarCuentas() corra. No se sube la versión del almacén
+      // para forzar el campo: subirla borraría cuentas con productos ya capturados, y perder el
+      // pedido de un cliente por un deploy no es negociable.
+      merge: (persisted, current) => {
+        const prev = (persisted ?? {}) as Partial<TicketState>;
+        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '', envio: t.envio ?? '' }));
+        return { ...current, ...prev, tabs };
+      },
+    },
   ),
 );
 
@@ -189,7 +225,7 @@ export const useActiveTicket = (): TicketTab =>
   useTicketStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);
 
 export function ticketTotal(lines: TicketLine[]): number {
-  return Math.round(lines.reduce((s, l) => s + lineTotal(l), 0) * 100) / 100;
+  return round2(lines.reduce((s, l) => s + lineTotal(l), 0));
 }
 export function ticketCount(lines: TicketLine[]): number {
   return lines.reduce((s, l) => s + l.qty, 0);

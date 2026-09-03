@@ -1,0 +1,3 @@
+
+# Marca del teardown de Playwright: qué pedidos ya estaban abiertos al empezar la suite.
+.playwright-abiertos.json

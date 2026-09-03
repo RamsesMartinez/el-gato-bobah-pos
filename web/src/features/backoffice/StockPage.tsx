@@ -4,8 +4,10 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi } from '../../api/backoffice';
 import { Page } from '../../components/Page';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 export function StockPage() {
+  const horaNegocio = useHoraDelNegocio();
   const levels = useQuery({ queryKey: ['stock', 'levels'], queryFn: backofficeApi.stockLevels });
   const moves = useQuery({ queryKey: ['stock', 'moves'], queryFn: backofficeApi.stockMovements });
 
@@ -51,7 +53,7 @@ export function StockPage() {
               <Table.Body>
                 {(moves.data?.items ?? []).map((m) => (
                   <Table.Row key={m.id}>
-                    <Table.Cell>{new Date(m.created_at).toLocaleString('es-MX')}</Table.Cell>
+                    <Table.Cell>{horaNegocio.fechaYHora(m.created_at)}</Table.Cell>
                     <Table.Cell>{m.item_name}</Table.Cell>
                     <Table.Cell>{m.movement_type}</Table.Cell>
                     <Table.Cell textAlign="end" color={Number(m.quantity) < 0 ? 'red.600' : 'green.600'}>{m.quantity}</Table.Cell>

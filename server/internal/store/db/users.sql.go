@@ -10,6 +10,27 @@ import (
 	"time"
 )
 
+const clearAllPins = `-- name: ClearAllPins :exec
+update users set pin_hash = null, pin_lookup = null, updated_at = now()
+where pin_hash is not null or pin_lookup is not null
+`
+
+// Borra los PINs de TODAS las personas de la empresa, activas o no.
+//
+// Lo usa el encendido del modo de solo-PIN: los PINs de antes son de 4 dígitos y sin garantía de ser
+// distintos, y de lo guardado no se puede saber ni una cosa ni la otra. Obligar a recapturarlos es
+// el único momento en que el PIN está en claro y se puede validar largo y unicidad.
+//
+// También a quien está dado de baja: decía `where is_active` y a esa persona le quedaba su PIN de
+// cuatro dígitos intacto, así que reactivarla metía en un negocio de seis dígitos un PIN de cuatro
+// que abre la caja — 10,000 combinaciones en vez de un millón, y sin nada que lo delatara.
+//
+// Nadie queda encerrado: quien no tiene PIN entra con usuario y contraseña, que sigue funcionando.
+func (q *Queries) ClearAllPins(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearAllPins)
+	return err
+}
+
 const countUsers = `-- name: CountUsers :one
 select count(*) from users
 `
@@ -48,9 +69,9 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 }
 
 const createUser = `-- name: CreateUser :one
-insert into users (name, username, role, pin_hash, password_hash, recovery_email, must_change_password)
-values ($1, $2, $3, $4, $5, $6, $7)
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password
+insert into users (name, username, role, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
+values ($1, $2, $3, $4, $8, $5, $6, $7)
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup
 `
 
 type CreateUserParams struct {
@@ -61,6 +82,7 @@ type CreateUserParams struct {
 	PasswordHash       *string `json:"password_hash"`
 	RecoveryEmail      *string `json:"recovery_email"`
 	MustChangePassword bool    `json:"must_change_password"`
+	PinLookup          *string `json:"pin_lookup"`
 }
 
 // company_id lo auto-sella el default (current_setting) desde el GUC del tenant; RLS lo exige.
@@ -73,6 +95,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.PasswordHash,
 		arg.RecoveryEmail,
 		arg.MustChangePassword,
+		arg.PinLookup,
 	)
 	var i User
 	err := row.Scan(
@@ -88,6 +111,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CompanyID,
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
+		&i.PinLookup,
 	)
 	return i, err
 }
@@ -112,7 +136,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where id = $1
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where id = $1
 `
 
 // RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
@@ -132,12 +156,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.CompanyID,
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
+		&i.PinLookup,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where username = $1 and is_active
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where username = $1 and is_active
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User, error) {
@@ -156,6 +181,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User
 		&i.CompanyID,
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
+		&i.PinLookup,
 	)
 	return i, err
 }
@@ -177,7 +203,7 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 }
 
 const listActiveUsers = `-- name: ListActiveUsers :many
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password from users where is_active order by name
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where is_active order by name
 `
 
 func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
@@ -202,6 +228,7 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 			&i.CompanyID,
 			&i.RecoveryEmail,
 			&i.MustChangePassword,
+			&i.PinLookup,
 		); err != nil {
 			return nil, err
 		}
@@ -262,16 +289,17 @@ func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams
 }
 
 const setUserPin = `-- name: SetUserPin :exec
-update users set pin_hash = $2, updated_at = now() where id = $1
+update users set pin_hash = $2, pin_lookup = $3, updated_at = now() where id = $1
 `
 
 type SetUserPinParams struct {
-	ID      int64   `json:"id"`
-	PinHash *string `json:"pin_hash"`
+	ID        int64   `json:"id"`
+	PinHash   *string `json:"pin_hash"`
+	PinLookup *string `json:"pin_lookup"`
 }
 
 func (q *Queries) SetUserPin(ctx context.Context, arg SetUserPinParams) error {
-	_, err := q.db.Exec(ctx, setUserPin, arg.ID, arg.PinHash)
+	_, err := q.db.Exec(ctx, setUserPin, arg.ID, arg.PinHash, arg.PinLookup)
 	return err
 }
 
@@ -307,7 +335,7 @@ func (q *Queries) SetUserRecoveryEmail(ctx context.Context, arg SetUserRecoveryE
 }
 
 const setUserSecretsByUsername = `-- name: SetUserSecretsByUsername :execrows
-update users set password_hash = $2, pin_hash = $3, is_active = true, updated_at = now()
+update users set password_hash = $2, pin_hash = $3, pin_lookup = $4, is_active = true, updated_at = now()
 where username = $1
 `
 
@@ -315,21 +343,103 @@ type SetUserSecretsByUsernameParams struct {
 	Username     *string `json:"username"`
 	PasswordHash *string `json:"password_hash"`
 	PinHash      *string `json:"pin_hash"`
+	PinLookup    *string `json:"pin_lookup"`
 }
 
+// La huella va JUNTO al hash, siempre. Reiniciar el admin dejaba el pin_hash nuevo y la huella
+// vieja, así que el índice único que impide dos PINs iguales seguía comparando contra un PIN que
+// ya no existe, y con el modo de solo-PIN encendido el admin no podía desbloquear con el suyo.
 func (q *Queries) SetUserSecretsByUsername(ctx context.Context, arg SetUserSecretsByUsernameParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setUserSecretsByUsername, arg.Username, arg.PasswordHash, arg.PinHash)
+	result, err := q.db.Exec(ctx, setUserSecretsByUsername,
+		arg.Username,
+		arg.PasswordHash,
+		arg.PinHash,
+		arg.PinLookup,
+	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
+const tomarSesionDeEstacion = `-- name: TomarSesionDeEstacion :one
+update refresh_tokens set revoked_at = now()
+where token_hash = $1 and revoked_at is null and expires_at > $2 and user_id = $3
+returning expires_at
+`
+
+type TomarSesionDeEstacionParams struct {
+	TokenHash string    `json:"token_hash"`
+	ExpiresAt time.Time `json:"expires_at"`
+	UserID    int64     `json:"user_id"`
+}
+
+// Toma la sesión que la estación viene presentando: la revoca y devuelve su vencimiento.
+//
+// REVOCAR Y LEER EN LA MISMA SENTENCIA, no un select y luego un update. Separados, dos relevos con
+// la misma cookie ven las dos el token vivo en la lectura, las dos emiten sesión, y el update de la
+// perdedora toca cero filas sin error: de un refresh salen dos vivos, y cerrar sesión revoca uno y
+// deja el otro. Es el estado que motivó la feature — un usuario de producción con 4 sesiones vivas.
+//
+// Sin filas = no hay sesión viva en esta estación, y ahí el relevo se niega: emitir un plazo nuevo
+// sería renovar el turno entero a cambio de un PIN.
+//
+// Solo esta sesión. Revocar todas las de la persona tumbaba sus otras tabletas: entregar la
+// estación 1 dejaba al compañero de la estación 2 con "terminó el turno" a media venta.
+//
+// Y tiene que ser de QUIEN VIENE OPERANDO la estación ($3, que sale del token de acceso): sin ese
+// predicado servía cualquier refresh vivo de la empresa, así que un token filtrado por otro lado
+// —un respaldo, un log— tomaba la estación ajena, heredaba su reloj y se la revocaba de paso.
+func (q *Queries) TomarSesionDeEstacion(ctx context.Context, arg TomarSesionDeEstacionParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, tomarSesionDeEstacion, arg.TokenHash, arg.ExpiresAt, arg.UserID)
+	var expires_at time.Time
+	err := row.Scan(&expires_at)
+	return expires_at, err
+}
+
+const unlockCandidates = `-- name: UnlockCandidates :many
+select id, name from users
+where is_active and pin_hash is not null
+order by name
+`
+
+type UnlockCandidatesRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Quiénes pueden desbloquear una estación con su PIN.
+//
+// SOLO id y nombre: esta lista se pinta en una tableta a la vista del público, así que el correo,
+// el rol y el teléfono no tienen por qué salir del servidor.
+//
+// Solo activos y CON PIN: quien no lo tiene configurado no entraría aunque lo tocara, y ofrecerlo
+// sería mandarlo a un callejón. Esa persona entra con usuario y contraseña, que sigue funcionando.
+func (q *Queries) UnlockCandidates(ctx context.Context) ([]UnlockCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, unlockCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnlockCandidatesRow{}
+	for rows.Next() {
+		var i UnlockCandidatesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUser = `-- name: UpdateUser :one
 update users
 set name = $2, role = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup
 `
 
 type UpdateUserParams struct {
@@ -362,6 +472,25 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.CompanyID,
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
+		&i.PinLookup,
 	)
+	return i, err
+}
+
+const userByPinLookup = `-- name: UserByPinLookup :one
+select id, name from users
+where is_active and pin_lookup = $1
+`
+
+type UserByPinLookupRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// De quién es este PIN. Solo tiene sentido con el modo de solo-PIN, donde el PIN identifica.
+func (q *Queries) UserByPinLookup(ctx context.Context, pinLookup *string) (UserByPinLookupRow, error) {
+	row := q.db.QueryRow(ctx, userByPinLookup, pinLookup)
+	var i UserByPinLookupRow
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }

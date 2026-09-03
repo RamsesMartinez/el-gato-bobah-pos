@@ -1,17 +1,17 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/shopspring/decimal"
-
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/shopspring/decimal"
 )
 
 type createOrderBody struct {
@@ -21,7 +21,10 @@ type createOrderBody struct {
 	CustomerName       *string         `json:"customerName"`
 	Notes              *string         `json:"notes"`
 	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
-	Lines              []struct {
+	// folioName: el nombre que la pantalla ya le puso a la cuenta. El servidor lo sanea y resuelve
+	// los choques del día, así que proponerlo no es decidirlo.
+	FolioName string `json:"folioName"`
+	Lines     []struct {
 		ProductID int64           `json:"productId"`
 		Qty       decimal.Decimal `json:"qty"`
 		Notes     string          `json:"notes"`
@@ -62,6 +65,8 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Notes:              body.Notes,
 		OpenedBy:           u.ID,
 		DeliveryFee:        body.DeliveryFee,
+		CompanyID:          u.CompanyID,
+		FolioName:          body.FolioName,
 	}
 	for _, l := range body.Lines {
 		line := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}
@@ -90,7 +95,9 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SetOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -113,7 +120,9 @@ func (h *Handlers) SetOrderStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -146,7 +155,9 @@ func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	var body struct {
@@ -181,7 +192,9 @@ func (h *Handlers) ListOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		Error(w, err)
+		// El error crudo de strconv no lo reconoce `Error` y sale como 500, que dice "el servidor se
+		// rompió" y manda a revisar logs por una petición que nunca valió.
+		Error(w, domain.ErrValidation)
 		return
 	}
 	order, err := h.orders.Detail(r.Context(), id)
@@ -190,4 +203,190 @@ func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, order)
+}
+
+type addLinesBody struct {
+	Lines []struct {
+		ProductID int64           `json:"productId"`
+		Qty       decimal.Decimal `json:"qty"`
+		Notes     string          `json:"notes"`
+		Modifiers []struct {
+			OptionID int64 `json:"optionId"`
+			Qty      int   `json:"qty"`
+		} `json:"modifiers"`
+	} `json:"lines"`
+}
+
+// POST /orders/{id}/lines — agrega renglones a un pedido en curso.
+//
+// Ruta propia y no un PATCH del pedido: lo que se manda es un DELTA —lo que el cliente pidió de
+// más—, no el pedido completo. Un PATCH invitaría a mandar la lista entera, y entonces el servidor
+// tendría que adivinar qué renglón es nuevo y cuál ya estaba para no volver a descontar su stock.
+func (h *Handlers) AddOrderLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body addLinesBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+
+	lines := make([]domain.OrderLineInput, 0, len(body.Lines))
+	for _, l := range body.Lines {
+		in := domain.OrderLineInput{ProductID: l.ProductID, Qty: l.Qty, Notes: l.Notes}
+		for _, m := range l.Modifiers {
+			in.Modifiers = append(in.Modifiers, domain.OrderModInput{OptionID: m.OptionID, Qty: m.Qty})
+		}
+		lines = append(lines, in)
+	}
+
+	order, err := h.orders.AddLines(r.Context(), id, lines, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// El tablero tiene que enterarse: el pedido cambió de total y de contenido, y quien cocina lo
+	// está mirando.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, order)
+}
+
+type deliverLineBody struct {
+	Qty decimal.Decimal `json:"qty"`
+}
+
+// POST /orders/{id}/lines/{lineId}/deliver
+func (h *Handlers) DeliverOrderLine(w http.ResponseWriter, r *http.Request) {
+	orderID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	lineID, err := strconv.ParseInt(chi.URLParam(r, "lineId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body deliverLineBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	// La cantidad lleva el mismo tope que una línea de venta: entregar cierra comida contra un
+	// renglón, y un valor absurdo aquí llega a una columna numeric igual que en el cobro. Sin esto
+	// un NaN o un 1e300 saldrían como 500 en vez de 400.
+	if !domain.ValidQty(body.Qty, domain.MaxOrderQty, false) {
+		Error(w, fmt.Errorf("%w: la cantidad a entregar no es válida", domain.ErrValidation))
+		return
+	}
+	if err := h.orders.DeliverLine(r.Context(), orderID, lineID, body.Qty); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// POST /orders/{id}/deliver
+func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
+	orderID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.orders.DeliverAll(r.Context(), orderID); err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// GET /pos/folio-names — los nombres que la pantalla puede proponer AHORA.
+//
+// Ya no es la lista completa: son los que quedan en la bolsa del negocio y que además no se han
+// cantado hoy. Devolver la lista entera haría que la pantalla propusiera nombres ya consumidos, y
+// el servidor los cambiaría al crear el pedido — el operador vería otro nombre que el que le dijo
+// al cliente.
+//
+// Sin caché HTTP a propósito, y ahora con más razón: la lista se encoge con cada venta. El cliente
+// la vuelve a pedir después de cada pedido.
+func (h *Handlers) FolioNames(w http.ResponseWriter, r *http.Request) {
+	items, err := h.orders.NombresDisponibles(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string][]string{"items": items})
+}
+
+type chargeOrderBody struct {
+	MethodID int16           `json:"methodId"`
+	Amount   decimal.Decimal `json:"amount"`
+	Tip      decimal.Decimal `json:"tip"`
+	// ClientUuid identifica ESTE cobro. Opcional: sin él el pago se registra igual, pero se pierde
+	// la red que hace inocuo el reenvío — y al dividir la cuenta esa red es lo único que impide
+	// que el reenvío de una mitad deje el pedido saldado con la otra sin cobrar.
+	ClientUuid uuid.UUID `json:"clientUuid"`
+	Reference  *string   `json:"reference"`
+}
+
+// POST /orders/{id}/pay
+//
+// Cobra un pedido que se mandó a cocina sin cobrar. El tablero lo marcaba "POR COBRAR" y no había
+// con qué saldarlo: el único lugar que registraba un pago de pedido era la creación.
+func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body chargeOrderBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	// Se devuelve lo que QUEDA del pedido, no un "ok": con la cuenta dividida la pantalla tendría
+	// que restar por su cuenta después de cada comensal, y dos implementaciones de la misma cifra
+	// son de donde salió la barra diciendo $2,141 mientras su lista decía $1,928.
+	res, err := h.orders.Charge(r.Context(), app.ChargeCmd{
+		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
+		ClientUUID: body.ClientUuid, Reference: body.Reference, ActorID: u.ID,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Cobrar era la ÚNICA mutación de pedido que no avisaba, y con la cuenta dividida eso deja de
+	// ser un retraso y pasa a ser dinero: la caja B cobra el pedido entero y la hoja abierta en la
+	// caja A sigue diciendo "Falta $500" indefinidamente —su lista se refresca por otra llave— hasta
+	// que el operador de A cobra el primer pedazo y rebota con el efectivo del cliente en la mano.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
+}
+
+// GET /orders/open — la barra de pedidos en curso del POS.
+//
+// El total pendiente viaja junto a la lista y NO se suma en la pantalla: si cada lado lo calculara
+// por su cuenta, un cambio en el predicado dejaría la cifra del encabezado diciendo una cosa y la
+// lista otra, y quien la lee no tiene forma de saber cuál miente.
+//
+// `?porCobrar=true` deja fuera lo que ya está saldado. Se filtra AQUÍ y no en la pantalla porque el
+// encabezado y la lista salen del mismo recorrido: filtrar en el front dejaría el total sumando
+// filas que la lista no muestra.
+func (h *Handlers) OpenOrders(w http.ResponseWriter, r *http.Request) {
+	soloPorCobrar, err := queryBool(r, "porCobrar", false)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	items, pendiente, err := h.orders.Open(r.Context(), soloPorCobrar)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items, "outstanding": pendiente})
 }

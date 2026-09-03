@@ -383,6 +383,11 @@ func (s *BackofficeService) validatePayments(ctx context.Context, in []ExpensePa
 			}
 			return nil, err
 		}
+		// Un gasto también mueve dinero por ese método: si el negocio lo apagó, su renglón del corte
+		// deja de existir y el gasto desaparece del arqueo.
+		if !m.IsActive {
+			return nil, domain.ErrMetodoInactivo
+		}
 		paidOn := fallbackDate
 		if p.PaidOn != "" {
 			d, err := parseDate(&p.PaidOn)
