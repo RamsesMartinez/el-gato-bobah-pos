@@ -55,6 +55,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Use(RequireAuth(jm))
 				r.Use(WithTenant(st)) // pin-switch corre bajo el tenant del dispositivo
 				r.Post("/pin-switch", h.PinSwitch)
+				// Quiénes pueden desbloquear la estación. Autenticado: es la sesión del dispositivo la
+				// que pregunta, no un anónimo — de otro modo sería la plantilla del negocio en abierto.
+				r.Get("/unlock-options", h.UnlockOptions)
 				r.Get("/me", h.Me)
 			})
 		})
@@ -77,6 +80,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Get("/pos/menu", h.PosMenu)
 				r.Get("/pos/popular", h.PosPopular)
 				r.Get("/pos/modifier-defaults", h.ModifierDefaults)
+				// Los nombres con los que se cantan los pedidos. Es estático dentro de un
+				// despliegue, así que la pantalla lo pide una vez por carga; vive aquí y no en
+				// una copia del front para que la lista tenga un solo dueño.
+				r.Get("/pos/folio-names", h.FolioNames)
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 
@@ -97,6 +104,22 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/", h.ListOrders)
 					r.Get("/{id}", h.GetOrder)
 					r.Post("/{id}/status", h.SetOrderStatus)
+					// Agregar a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos
+					// más". Mismo gate que crear — quien puede levantar el pedido puede ampliarlo.
+					r.Post("/{id}/lines", h.AddOrderLines)
+					// Entregar. Mismo gate que cobrar: quien atiende el mostrador es quien pone la
+					// comida en el mostrador, y pedir un rol distinto para marcarlo obligaría a
+					// buscar al gerente en la hora pico — que es cuando el tablero importa.
+					r.Post("/{id}/deliver", h.DeliverOrder)
+					r.Post("/{id}/lines/{lineId}/deliver", h.DeliverOrderLine)
+					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
+					// uno nuevo: es la misma operación, movida en el tiempo.
+					r.Post("/{id}/pay", h.ChargeOrder)
+					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
+					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
+					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
+					// reembolsar, que es salida de dinero.
+					r.Get("/open", h.OpenOrders)
 					r.Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)

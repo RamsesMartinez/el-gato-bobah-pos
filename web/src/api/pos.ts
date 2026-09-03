@@ -1,5 +1,10 @@
 import { api } from './client';
-import type { BoardOrder, Menu, OrderView, PaymentMethod, RankedOption } from '../types/pos';
+import type {
+  BoardOrder, CobroHecho, CreateOrderBody, Menu, OrderView, PaymentMethod, RankedOption,
+} from '../types/pos';
+
+// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
+export type { CreateOrderBody };
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -7,8 +12,15 @@ export const posApi = {
   // resuelve la empresa por su slug.
   login: (identifier: string, password: string) =>
     api.post<{ accessToken: string; user: SessionUser }>('/auth/login', { username: identifier, password }),
-  pinSwitch: (userId: number, pin: string) =>
-    api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch', { userId, pin }),
+  // userId va en null cuando el negocio usa solo-PIN: ahí el servidor deduce quién es. Con el
+  // ajuste apagado, un userId ausente se RECHAZA — no se cae al modo permisivo en silencio.
+  pinSwitch: (userId: number | null, pin: string) =>
+    api.post<{ accessToken: string; user: SessionUser }>('/auth/pin-switch',
+      userId === null ? { pin } : { userId, pin }),
+  // Quiénes pueden desbloquear esta estación. Solo id y nombre: se pinta en un mostrador a la
+  // vista del público.
+  unlockOptions: () =>
+    api.get<{ pinOnly: boolean; users: Array<{ id: number; name: string }> }>('/auth/unlock-options'),
   // Revoca el refresh token y borra la cookie en el server. Sin esto, "Salir" solo limpia
   // memoria y la sesión revive tras un reload (el arranque canjea la cookie que sobrevive).
   logout: () => api.post<void>('/auth/logout'),
@@ -24,6 +36,12 @@ export const posApi = {
   changeOwnPassword: (currentPassword: string, newPassword: string) =>
     api.post<void>('/me/password', { currentPassword, newPassword }),
   setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
+
+  // Agregar renglones a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos más".
+  // Se manda el DELTA, no el pedido completo — mandar la lista entera obligaría al servidor a
+  // adivinar qué renglón es nuevo para no volver a descontar su stock.
+  addOrderLines: (orderId: number, lines: CreateOrderBody['lines']) =>
+    api.post<OrderView>(`/orders/${orderId}/lines`, { lines }),
 
   // Precios por plataforma: solo las EXCEPCIONES. Quitar una devuelve el producto al calculado.
   // El servidor valida que el producto y la plataforma sean de la empresa antes de escribir, así
@@ -51,6 +69,9 @@ export const posApi = {
   popular: () => api.get<{ items: number[] }>('/pos/popular'),
   // producto → grupo → [optionId rankeadas] por probabilidad contextual. Claves string (JSON).
   modifierDefaults: () => api.get<ModifierDefaults>('/pos/modifier-defaults'),
+  // Los nombres con los que se cantan los pedidos. Es la única copia de la lista y es
+  // estática dentro de un despliegue, así que se pide una vez por carga, no por cuenta.
+  folioNames: () => api.get<{ items: string[] }>('/pos/folio-names'),
   paymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods'),
 
   createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
@@ -62,8 +83,33 @@ export const posApi = {
     api.post<void>(`/orders/${id}/cancel`, { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
+  // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
+  // la caja es quien tiene que poder saldarlo.
+  // La barra de pedidos en curso. `porCobrar=true` deja fuera lo ya saldado: quien abre esa hoja
+  // viene a cobrar, y en el ambiente de pruebas abría con 30 renglones —14 ya cobrados— sobre una
+  // pantalla donde caben cinco.
+  //
+  // El filtro va en el SERVIDOR y no aquí, igual que la suma: el total pendiente sale del mismo
+  // recorrido que la lista, y recortar de este lado lo dejaría contando filas que no se muestran.
+  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open?porCobrar=true'),
   refundOrder: (id: number, reason: string) =>
     api.post<void>(`/orders/${id}/refund`, { reason }),
+  // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
+  // la tarjeta, y "salieron 3 de 5 alitas" es sobre un renglón.
+  deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
+  deliverLine: (id: number, lineId: number, qty: number) =>
+    api.post<void>(`/orders/${id}/lines/${lineId}/deliver`, { qty }),
+  // Cobrar un pedido que se mandó a cocina sin cobrar. Cobra UN pedazo: dividir la cuenta son N
+  // llamadas, una por comensal, cada una con su llave.
+  //
+  // `clientUuid` identifica ESTE cobro y se genera una sola vez, no por intento: es lo que vuelve
+  // inocuo reintentar cuando la respuesta se perdió. El servidor la sella contra el método y el
+  // monto, así que un renglón que se edita antes de reintentar se rechaza en vez de darse por hecho.
+  //
+  // Devuelve lo que queda del pedido. Restarlo en la pantalla sería una segunda implementación de
+  // la misma cifra.
+  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string }) =>
+    api.post<CobroHecho>(`/orders/${id}/pay`, body),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
@@ -89,6 +135,12 @@ export const posApi = {
   // los campos ausentes no se tocan: guardarla no debe pisar el costo de envío ni el ticket.
   updateTimezone: (timezone: string) =>
     api.put<BusinessSettings>('/business-settings', { timezone }),
+  // Hasta cuándo se ven los pedidos entregados. Es un ajuste de PANTALLA: no cambia de qué día es
+  // una venta ni en qué arqueo cae su dinero.
+  updateCorteDeVista: (corteDeVista: string) =>
+    api.put<BusinessSettings>('/business-settings', { corteDeVista }),
+  updateFolioScheme: (folioScheme: string) =>
+    api.put<BusinessSettings>('/business-settings', { folioScheme }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -107,9 +159,22 @@ export interface BusinessSettings {
   // Nombre IANA de la zona del local. La base guarda instantes en UTC; esta zona es la que decide
   // de qué DÍA es cada venta, corte y gasto. El servidor rechaza un nombre que no exista.
   timezone: string;
+  corteDeVista: string;
+  // Con qué se nombran los pedidos: 'razas' (default) o 'animales'.
+  folioScheme: string;
   // Si el ticket lista los adicionales que no cuestan. Encendido por default: cocina los usa para
   // preparar y el cliente para reclamar; apagarlo solo acorta el papel.
   printFreeModifiers: boolean;
+  // Si al mandar el pedido sale una comanda SIN precios para cocina. Apagado por default: donde la
+  // cocina está pegada al mostrador sería papel que duplica lo que el cocinero ya ve.
+  printKitchenTicket: boolean;
+  // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
+  // vive donde le toca, en el punto de venta.
+  kitchenCanCharge: boolean;
+  // Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
+  pinOnlyUnlock: boolean;
+  lockAfterSeconds: number;
+  sessionHours: number;
   // El binario NO viene aquí: se pide por su propio endpoint. hasLogo evita pedirlo cuando no hay,
   // y logoUpdatedAt sirve de versión para invalidar la copia en caché.
   hasLogo: boolean;
@@ -125,24 +190,6 @@ export interface Company {
 
 export type ModifierDefaults = Record<string, Record<string, RankedOption[]>>;
 
-export interface CreateOrderBody {
-  clientUuid: string;
-  serviceType: string;
-  customerName?: string;
-  notes?: string;
-  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
-  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
-  // lo que va aquí es el id, nunca los precios.
-  deliveryPlatformId?: number;
-  lines: Array<{
-    productId: number;
-    qty: number;
-    notes?: string;
-    modifiers: Array<{ optionId: number; qty: number }>;
-  }>;
-  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
-  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
-}
 
 // Lo editable de la configuración del ticket. Todo opcional: se manda solo lo que cambió.
 export interface TicketSettingsInput {
@@ -153,4 +200,9 @@ export interface TicketSettingsInput {
   footerNote?: string;
   autoPrintOnClose?: boolean;
   printFreeModifiers?: boolean;
+  printKitchenTicket?: boolean;
+  kitchenCanCharge?: boolean;
+  pinOnlyUnlock?: boolean;
+  lockAfterSeconds?: number;
+  sessionHours?: number;
 }

@@ -52,6 +52,12 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnauthorized, "UNAUTHORIZED"
 	case errors.Is(err, domain.ErrForbidden):
 		status, code = http.StatusForbidden, "FORBIDDEN"
+	case errors.Is(err, domain.ErrCobroFueraDeLugar):
+		// 422 y no 400: el cuerpo está bien formado, lo que no se puede es la operación — crear un
+		// pedido ya cobrado se salta la cocina. Va ANTES del caso de ErrValidation, que lo envuelve
+		// y se lo llevaría a 400. El código propio deja que la pantalla diga qué hacer en vez de un
+		// "datos inválidos" que no nombra el camino correcto.
+		status, code = http.StatusUnprocessableEntity, "CONFIRMAR_PRIMERO"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):
@@ -69,6 +75,12 @@ func Error(w http.ResponseWriter, err error) {
 		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
 		// corregir en vez de un "datos inválidos" que no dice nada.
 		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
+	case errors.Is(err, domain.ErrOpenOrders):
+		// 409 y código propio, igual que ErrNoOpenRegister: no es un error de lo que mandó el
+		// cliente sino del estado del negocio. El front lo necesita distinguible para llevar al
+		// operador al tablero con los folios que faltan, en vez de mostrar un error que no puede
+		// accionar desde la pantalla de cierre.
+		status, code = http.StatusConflict, "OPEN_ORDERS"
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a

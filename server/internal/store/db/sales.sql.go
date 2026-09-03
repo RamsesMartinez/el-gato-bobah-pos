@@ -42,7 +42,7 @@ func (q *Queries) CountSales(ctx context.Context, arg CountSalesParams) (int64, 
 
 const listSales = `-- name: ListSales :many
 
-select o.id, o.daily_number, o.business_date, o.opened_at, o.completed_at,
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
        dp.name as platform,
        u.name as opened_by_name,
@@ -84,6 +84,7 @@ type ListSalesParams struct {
 type ListSalesRow struct {
 	ID           int64              `json:"id"`
 	DailyNumber  int32              `json:"daily_number"`
+	FolioName    *string            `json:"folio_name"`
 	BusinessDate pgtype.Date        `json:"business_date"`
 	OpenedAt     time.Time          `json:"opened_at"`
 	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
@@ -138,6 +139,7 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 		if err := rows.Scan(
 			&i.ID,
 			&i.DailyNumber,
+			&i.FolioName,
 			&i.BusinessDate,
 			&i.OpenedAt,
 			&i.CompletedAt,
@@ -167,7 +169,8 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.business_date between $1 and $2
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between $1 and $2
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
   -- seguía mostrando la merma de mostrador y las cifras dejaban de ser del mismo conjunto.
@@ -202,7 +205,8 @@ select pm.id as method_id, pm.name as method,
 from order_payments op
 join orders o on o.id = op.order_id
 join payment_methods pm on pm.id = op.payment_method_id
-where o.business_date between $1 and $2
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between $1 and $2
   and ($3::service_type is null or o.service_type = $3)
 group by pm.id, pm.name
 order by total desc
@@ -226,8 +230,19 @@ type SalesTotalsByMethodRow struct {
 // cocina sin cobrar suma al total y no aparece aquí). Sale de order_payments porque una venta puede
 // pagarse con varios métodos.
 //
-// Sin filtro de estado, por el mismo motivo que SalesTotalsByStatus: el resumen dice cuánto entró
-// por cada medio aunque la tabla esté filtrada a un estado. El de tipo de venta sí aplica.
+// El filtro de ESTADO DE LA PANTALLA no aplica, por el mismo motivo que SalesTotalsByStatus: el
+// resumen dice cuánto entró por cada medio aunque la tabla esté filtrada a un estado. El de tipo de
+// venta sí aplica.
+//
+// Lo que SÍ se excluye son canceladas y reembolsadas, que no son un filtro de la pantalla sino la
+// misma regla que aplica el total de arriba. Sin ellas, los $500 de una venta devuelta salían en el
+// tile "Reembolsadas" Y en el de "Tarjeta" mientras el total —que sí las excluye— los ignoraba: el
+// mismo peso contado de tres maneras en tres renglones hermanos. Reconciliar contra la terminal
+// bancaria es trabajo del corte de caja, que es por turno y sí mira el flujo bruto; esta pantalla
+// responde qué VENDIÓ el negocio.
+//
+// El hermano de esta consulta vive en reports.sql (`SalesByMethod`) y se corrigió primero; esta
+// copia se quedó con el defecto una versión entera. Se editan juntas.
 func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMethodParams) ([]SalesTotalsByMethodRow, error) {
 	rows, err := q.db.Query(ctx, salesTotalsByMethod, arg.Desde, arg.Hasta, arg.ServiceType)
 	if err != nil {

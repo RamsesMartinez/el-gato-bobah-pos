@@ -4,7 +4,7 @@ import {
   DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
 import { useUiStore } from '../../stores/ui';
-import { ProductGroupsManager } from './ProductGroupsManager';
+import { ProductGroupsManager } from '../../shared/ProductGroupsManager';
 
 // Diálogo (catálogo → Productos) que envuelve el gestor de grupos reutilizable.
 export function ProductGroupsDialog({ productId, productName, isOpen, onClose }: {

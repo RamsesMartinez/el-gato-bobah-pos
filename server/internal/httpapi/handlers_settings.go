@@ -37,6 +37,13 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		AutoPrintOnClose   *bool            `json:"autoPrintOnClose"`
 		Timezone           *string          `json:"timezone"`
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
+		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
+		CorteDeVista       *string          `json:"corteDeVista"`
+		FolioScheme        *string          `json:"folioScheme"`
+		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
+		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
+		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
+		SessionHours       *int             `json:"sessionHours"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -58,7 +65,10 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
-		body.Timezone != nil || body.PrintFreeModifiers != nil {
+		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
+		body.CorteDeVista != nil || body.FolioScheme != nil ||
+		body.KitchenCanCharge != nil || body.PinOnlyUnlock != nil ||
+		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
 			Error(w, err)
@@ -71,15 +81,24 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			HeaderNote: orCurrent(body.HeaderNote, cur.HeaderNote),
 			FooterNote: orCurrent(body.FooterNote, cur.FooterNote),
 		}
-		autoPrint := cur.AutoPrintOnClose
-		if body.AutoPrintOnClose != nil {
-			autoPrint = *body.AutoPrintOnClose
+		// Cada ajuste ausente conserva su valor actual: el PATCH manda solo lo que cambió, y un
+		// booleano ausente que se leyera como false apagaría lo que nadie tocó.
+		print := domain.PrintSettings{
+			AutoPrintOnClose:   orBool(body.AutoPrintOnClose, cur.AutoPrintOnClose),
+			PrintFreeModifiers: orBool(body.PrintFreeModifiers, cur.PrintFreeModifiers),
+			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
+			// El default es para el campo AUSENTE. Un valor presente y desconocido lo rechaza el
+			// servicio: caer al default ahí dejaría al dueño creyendo que configuró algo que no.
+			CorteDeVista:     orStr(body.CorteDeVista, cur.CorteDeVista),
+			FolioScheme:      orStr(body.FolioScheme, cur.FolioScheme),
+			KitchenCanCharge: orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
 		}
-		printFreeMods := cur.PrintFreeModifiers
-		if body.PrintFreeModifiers != nil {
-			printFreeMods = *body.PrintFreeModifiers
+		ident := domain.IdentitySettings{
+			PinOnlyUnlock:    orBool(body.PinOnlyUnlock, cur.PinOnlyUnlock),
+			LockAfterSeconds: orInt(body.LockAfterSeconds, cur.LockAfterSeconds),
+			SessionHours:     orInt(body.SessionHours, cur.SessionHours),
 		}
-		if _, err := h.settings.SetBusinessInfo(ctx, info, autoPrint, orCurrent(body.Timezone, cur.Timezone), printFreeMods, u.ID); err != nil {
+		if _, err := h.settings.SetBusinessInfo(ctx, info, print, ident, orCurrent(body.Timezone, cur.Timezone), u.ID); err != nil {
 			Error(w, err)
 			return
 		}
@@ -191,4 +210,31 @@ func (h *Handlers) TicketLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.Itoa(len(logo.Bytes)))
 	_, _ = w.Write(logo.Bytes)
+}
+
+// orBool: el ajuste ausente conserva su valor actual. Un PATCH manda solo lo que cambió, y leer un
+// booleano ausente como false apagaría lo que nadie tocó.
+func orBool(v *bool, actual bool) bool {
+	if v == nil {
+		return actual
+	}
+	return *v
+}
+
+// orInt: igual que orBool, para los tiempos. Un entero ausente conserva el actual; leerlo como 0
+// dejaría la tableta bloqueada a cada instante o la sesión sin duración válida.
+func orInt(v *int, actual int) int {
+	if v == nil {
+		return actual
+	}
+	return *v
+}
+
+// orStr: el valor que llegó, o el que ya estaba. Es el mismo criterio que orBool — un campo ausente
+// conserva lo configurado, en vez de reescribirlo con un cero que nadie pidió.
+func orStr(v *string, actual string) string {
+	if v == nil {
+		return actual
+	}
+	return *v
 }

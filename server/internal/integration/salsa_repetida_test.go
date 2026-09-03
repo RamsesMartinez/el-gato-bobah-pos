@@ -38,7 +38,7 @@ func TestDosSalsasDelMismoSaborEnUnaLinea(t *testing.T) {
 	sinSalsa := opcionConTope(t, st, "Salsas alitas", "Sin salsa", decimal.Zero, 1)
 
 	pedir := func(opt int64, veces int, monto string) error {
-		_, err := svc.Create(ctx, app.CreateOrderCmd{
+		_, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
 			ClientUUID:  uuid.New(),
 			ServiceType: "mostrador",
 			OpenedBy:    cajero,

@@ -46,3 +46,14 @@ test('sin onCreate no se insinúa un alta que no existe', async () => {
   expect(screen.getByText('Sin resultados.')).toBeInTheDocument();
   expect(screen.queryByText(/¿No está en la lista\?/)).not.toBeInTheDocument();
 });
+
+// EL PISO DE 44 PX NO ES NEGOCIABLE POR TAMAÑO.
+//
+// La receta del tema sube el alto mínimo solo en `size="md"`, así que un Picker `sm` —el que usan
+// las barras de filtros— quedaba en 32 px. El tamaño decide la tipografía y el padding; el alto con
+// el que un dedo acierta a la primera lo decide el dedo.
+test('el disparador mide al menos 44 px aunque el tamaño sea sm', () => {
+  wrap(<Picker size="sm" value="" options={[{ value: 'a', label: 'Uno' }]} onChange={() => {}} placeholder="Elegir" />);
+  const boton = screen.getByRole('button', { name: /Elegir/ });
+  expect(boton).toHaveStyle({ minHeight: '44px' });
+});

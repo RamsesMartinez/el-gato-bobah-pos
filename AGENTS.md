@@ -56,6 +56,31 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
+- **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
+  1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
+  entre lo que la pantalla calcula y lo que el servidor cobra, y con el backend simulado los dos
+  están de acuerdo por construcción. En Windows los binarios del navegador los bloquea Smart App
+  Control, así que corre en contenedor como el resto de los gates:
+
+  ```bash
+  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.62.1-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
+  ```
+
+  Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
+  buscar el defecto. Los casos y su porqué están en dos matrices que se editan junto con los tests:
+  [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md) (por dónde se pierde dinero) y
+  [docs/matriz-de-pantallas.md](docs/matriz-de-pantallas.md) (por dónde una pantalla dice algo que
+  no es cierto). Las dos declaran también lo que **no** está cubierto.
+
+  **La suite COBRA los pedidos que crea.** El ambiente es compartido con una persona, y un pedido de
+  prueba que se queda abierto aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de
+  caja — le hace creer a quien opera que hay dinero pendiente. El `globalSetup` anota qué pedidos ya
+  estaban abiertos y el `globalTeardown` cierra solo los que la suite abrió
+  ([web/e2e/limpiar-lo-que-cree.ts](web/e2e/limpiar-lo-que-cree.ts)); sin esa marca no toca nada,
+  porque cerrarle a alguien una cuenta viva es peor que dejar basura. Si escribes un script suelto
+  que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
+  (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
+  plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
@@ -91,6 +116,22 @@ mecánica:
     `compose up` sobre la misma VM, y cancelar a media substitución de contenedor deja la API abajo.
   - El deploy termina verificando `/readyz` — un deploy que deja la API caída en silencio es peor que
     uno que falla ruidoso.
+- **Una hoja que nace con `open` puesto no se monta si otra se está cerrando en la misma
+  actualización.** Apareció al subir `@chakra-ui/react` de 3.36.1 a 3.37.0: tocar "Cobrar" dentro de
+  la hoja de *Pedidos por cobrar* cierra esa hoja y monta la de cobro en el mismo `onClick`, y con
+  3.37 quedaban CERO `[role="dialog"]` en el árbol — el camino con el que se cobra desde el botón
+  naranja dejaba de abrir nada.
+
+  Arreglado en [CobrarSheet](web/src/shared/CobrarSheet.tsx): la hoja monta **cerrada** y se abre en
+  el render siguiente, para que haya una transición de cerrado a abierto de verdad. Lo cubre
+  `PedidosEnCurso.test.tsx` › *tocar Cobrar cierra la lista Y abre la hoja de cobro*.
+
+  Dos alternativas que se probaron y NO sirven, para que nadie las reintente: `defaultOpen` no
+  dispara la transición, y partir el cierre y la apertura en dos commits con `flushSync` arregla
+  unos casos y deja otros rotos. La que quedó necesita apagar `react-hooks/set-state-in-effect` en
+  esa línea: es un render extra al montar, acotado, y React no ofrece otra forma de provocar una
+  transición al montar.
+
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
@@ -106,14 +147,24 @@ mecánica:
     integración). Ojo: `uuid.Nil` es **función** (`uuid.Nil()`) y no existe `NewString()`.
   - `strings.CutLast` es lo que usa `rateKeyIP` para tomar el último XFF.
   - `new(expr)` ya acepta un valor: `new(x)` en vez de `v := x; &v`.
-- **`overrides` en `web/package.json` = parches de CVE en deps TRANSITIVAS de dev.** Cuando un CVE
-  high vive en una transitiva (`eslint`→`ajv`→`fast-uri`, `vite-plugin-pwa`→`workbox-build`→`glob`→
-  `brace-expansion`, `jsdom`→`undici`, `vite`→`postcss`→`nanoid`) y el padre pinea un rango que no alcanza el parche, se fuerza
-  la versión aquí. **Fija el piso REAL del aviso, no el primero que veas**: `brace-expansion: ">=2.1.3"`
-  resolvía a 4.x, que tiene su propio rango vulnerable (el piso bueno es `>=5.0.8`). Y **acota el
-  major cuando el consumidor depende de internals**: `undici: "^7.29.0"` y no `>=7.29.0`, porque la
-  8.x movió lo que jsdom requiere y deja los tests en "no tests". Cada override se BORRA en cuanto
-  el padre suba su rango (lo trae Dependabot); son deuda, no configuración permanente.
+- **`overrides` en `web/package.json`: hoy NO hay ninguno, y así debe quedar.** Existieron para
+  forzar la versión parcheada de un CVE *high* que vivía en una transitiva de desarrollo cuando el
+  padre pineaba un rango que no alcanzaba el parche (`eslint`→`ajv`→`fast-uri`,
+  `vite-plugin-pwa`→`workbox-build`→`glob`→`brace-expansion`, `jsdom`→`undici`,
+  `vite`→`postcss`→`nanoid`, `browserslist`). Los cinco se borraron el 2026-09-03 al comprobar que
+  los padres ya resuelven a versiones limpias: `bun audit` sin ellos no encuentra nada en ningún
+  nivel salvo un *moderate* de postcss que ya estaba y va por debajo del gate.
+
+  Si vuelve a hacer falta uno, dos reglas que costaron caro:
+  - **Fija el piso REAL del aviso, no el primero que veas.** `brace-expansion: ">=2.1.3"` resolvía a
+    4.x, que tiene su propio rango vulnerable.
+  - **Acota el major cuando el consumidor depende de internals**: `undici: "^7.29.0"` y no
+    `>=7.29.0`, porque la 8.x movió lo que jsdom requiere y deja los tests en "no tests".
+
+  Y **verifica quitándolo de verdad**: borrar el override y correr `bun install` NO basta si el
+  lockfile ya tiene la versión parcheada — la conserva. Hay que ver a qué resuelve el padre
+  (`bun.lock`) y correr `bun audit` sin filtro de nivel. Un override que sobra son paquetes
+  duplicados en el árbol: quitar estos cinco bajó de 699 a 689.
 - **KNOWN NON-ISSUE (no lo "arregles"):** el aviso de deprecación de `golang.org/x/crypto/blowfish` que aparece dentro de `x/crypto/bcrypt` es **esperado** — bcrypt usa blowfish internamente. `bcrypt.GenerateFromPassword` ([auth.HashSecret](server/internal/auth/password.go)) es la forma correcta y vigente de hashear passwords y **no** está deprecada. No lo cambies por AES ni otro cifrado.
 
 ## 4. Commits / PR
@@ -168,6 +219,15 @@ comando o quirk → este archivo; runbook operativo → `docs/` **y** su rengló
 
 La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
 
+> **Regla, solo en Windows: NO intentes compilar ni arrancar el binario en el equipo. Usa Docker desde el principio.**
+> Smart App Control decide por reputación y un ejecutable recién compilado no tiene ninguna, así que
+> `go run`, `go test` y cualquier herramienta que acabes de instalar pueden fallar hoy y funcionar
+> mañana sin que nada cambie. Intentarlo, verlo fallar, recompilarlo y volver a intentar es tiempo
+> tirado: el veredicto no depende de ti. Todos los caminos ya tienen su fallback en contenedor
+> ([go-test.sh](scripts/hooks/go-test.sh), [govulncheck.sh](scripts/hooks/govulncheck.sh),
+> [golangci-lint.sh](scripts/hooks/golangci-lint.sh)) y la API de desarrollo se levanta con el
+> `docker run` de más abajo. En Linux y macOS nada de esto aplica: ahí se corre normal.
+
 - **Smart App Control bloquea binarios recién compilados.** Está **on por default** en Windows 11 y no se puede excluir un archivo: o se apaga entero (y volver a encenderlo exige reinstalar Windows) o se convive con él. Bloquea por reputación, así que es errático — el síntoma es *"Una directiva de Control de aplicaciones bloqueó este archivo"* y en `Microsoft-Windows-CodeIntegrity/Operational` un evento 3077/3118. Lo confirmado:
   - El binario que `go run` deja en `%TEMP%\go-build…` **se bloquea siempre** → la API moría al arrancar desde `make start`. Por eso [scripts/dev-api.sh](scripts/dev-api.sh) compila a `server/tmp/api` (ruta estable, la misma de air). **No lo regreses a `go run`** — pero tampoco lo tomes por arreglado: el veredicto es **por binario**, así que un `go build` nuevo puede quedar bloqueado aunque el anterior corriera desde esa misma ruta. Ya pasó: la API arrancó bien y, tras un cambio de código, el binario nuevo quedó bloqueado.
   - **La salida confiable es levantar la API en contenedor** (Linux, fuera del alcance de SAC), contra el postgres/redis del compose dev. Es lo que hay que usar cuando `make start` muere con *Permission denied* en `server/tmp/api`:
@@ -183,12 +243,37 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
     ```
 
     Los volúmenes de caché no son opcionales: sin ellos cada arranque vuelve a bajar el módulo entero. El front sigue corriendo en el host con `bun run dev` y su proxy a `:8080`.
-  - **`govulncheck` y `golangci-lint` ya no se ejecutan en el host.** `govulncheck.exe` se bloquea siempre, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). `golangci-lint` corrió sin problema desde el 26-ago y el 29-ago empezó a dar *Permission denied* sin que nada cambiara: **el veredicto de SAC se mueve solo**, así que ninguna herramienta está a salvo por haber corrido ayer. Los dos hooks ya traen la salida y **no hay nada que hacer a mano** — si el binario local no arranca, el mismo escáner/linter corre en contenedor con la versión que usa CI:
+  - **`go test`, `govulncheck` y `golangci-lint` ya no se ejecutan en el host.** El binario que `go test` deja en `%TEMP%` es NUEVO en cada corrida, así que es el peor caso posible para SAC: bloquea un paquete al azar —hoy `internal/cache`, mañana otro— con el resto de la suite en verde. No es un test que falle, es un proceso que no arranca. `govulncheck.exe` se bloquea siempre, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). `golangci-lint` corrió sin problema desde el 26-ago y el 29-ago empezó a dar *Permission denied* sin que nada cambiara: **el veredicto de SAC se mueve solo**, así que ninguna herramienta está a salvo por haber corrido ayer. Los dos hooks ya traen la salida y **no hay nada que hacer a mano** — si el binario local no arranca, el mismo escáner/linter corre en contenedor con la versión que usa CI:
     - [scripts/hooks/govulncheck.sh](scripts/hooks/govulncheck.sh) → `golang:1.27`.
     - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golangci/golangci-lint:v2.13.1`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
+    - [scripts/hooks/web-lint.sh](scripts/hooks/web-lint.sh) → `oven/bun:1`. **Con bun el síntoma es
+      distinto**: no sale el mensaje de SAC sino un lacónico `bun: unknown error:` y un exit 1, sin
+      decir qué script falló — mientras `tsc` y `eslint` corridos a mano pasan limpios. `node_modules`
+      va en un volumen y no en el bind mount: las deps con binarios nativos (esbuild, rolldown) se
+      instalan para Linux dentro del contenedor y montarlas encima dejaría al host sin poder correr
+      nada.
 
     Lo que **no** se hace es `--no-verify`: el gate no se afloja, se corre en otro lado.
-  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`, `lefthook`) corren sin problema **hoy** — con la advertencia de arriba: eso puede cambiar de un día para otro.
+  - **`lefthook` TAMBIÉN se bloquea, y cuando pasa los hooks no corren y casi no se nota.** El
+    síntoma es una línea suelta entre la salida de git: *Can't find lefthook in PATH*, aunque
+    `which lefthook` lo encuentre — el shim de `.git/hooks/` no distingue "no está" de "el sistema
+    no me deja ejecutarlo", y el commit y el push siguen adelante **sin gates**. Confírmalo
+    corriendo `lefthook version`: si dice *Permission denied* sobre el binario, es SAC.
+    Reinstalarlo NO ayuda: el binario recién compilado es el peor caso posible para SAC, porque no
+    tiene reputación ninguna (probado con `go install …/lefthook/v2@latest`, bloqueado al primer
+    intento).
+
+    Mientras dure, los gates se corren a mano antes de cada commit y CI queda de respaldo real —
+    corre la suite completa, incluida la de integración, sobre lo que subiste:
+
+    ```bash
+    cd server && bash ../scripts/hooks/golangci-lint.sh && go build ./...
+    cd ../web && bun run lint && bun run vitest run && bun run build
+    ```
+
+    Lo que **no** se hace es dar por buenos los gates porque "el commit pasó": con lefthook
+    bloqueado, que el commit pase no significa nada.
+  - `go build` a una ruta del repo, `go test` y el resto de las herramientas (`sqlc`, `goose`, `air`) corren sin problema **hoy** — con la advertencia de arriba: eso puede cambiar de un día para otro.
 - **El working tree va en LF y [.gitattributes](.gitattributes) lo fuerza** (`* text=auto eol=lf`). Sin él, el `core.autocrlf=true` que Git for Windows deja por default checa out los 113 `.go` en CRLF y `gofmt -l` —lo primero que corre el pre-commit— los marca todos: no se puede commitear Go sin `--no-verify`, que no se usa. Si te tocó un working tree ya en CRLF: `git config --local core.autocrlf false`, quítales el `\r` y corre `git add --renormalize .`. Ese último paso importa — el contenido queda idéntico pero el stat cache no se refresca solo, y `git status` se queda marcando cientos de archivos "modificados" que `git diff` ve iguales.
 - **`GOTOOLCHAIN` vacío se comporta como `local`**: con Go 1.26 instalado, `go build` falla con *"go.mod requires go >= 1.27.0"* en vez de bajar el toolchain. Se arregla con `go env -w GOTOOLCHAIN=auto` (baja go1.27.0 al module cache) o instalando Go 1.27.
 - **No hay `lsof`**, así que `scripts/start.sh` no detecta puertos ocupados ni `scripts/stop.sh` mata la API/web por puerto. Fija los puertos (`BACKEND_PORT=8080 FRONTEND_PORT=3000 make start`) y cierra a mano lo que quede vivo.

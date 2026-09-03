@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -264,6 +267,32 @@ type SessionView struct {
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
 	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Pending son los pedidos del turno que todavía no se terminan de entregar. Salen del MISMO
+	// predicado que bloquea el cierre, no de una consulta parecida: si la pantalla y la guardia se
+	// derivaran por separado, una de las dos mentiría y quien la lee no tendría cómo saber cuál.
+	//
+	// Se listan aunque ya estén cobrados: cobrado y entregado son cosas distintas, y lo que impide
+	// cerrar es la comida que no ha salido, no el dinero.
+	Pending []PendingOrder `json:"pending"`
+	// Cashiers: cuánto cobró cada persona en el turno. Dos estaciones cobran contra el MISMO
+	// cajón —partirlo en dos daría dos arqueos contando el mismo dinero—, así que la
+	// responsabilidad se rastrea por quien cobró y no por el mueble.
+	Cashiers []CashierTotal `json:"cashiers"`
+}
+
+// CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
+// es lo único que está físicamente en el cajón: una diferencia de arqueo solo puede venir de ahí.
+type CashierTotal struct {
+	Name     string          `json:"name"`
+	Cash     decimal.Decimal `json:"cash"`
+	Other    decimal.Decimal `json:"other"`
+	Payments int             `json:"payments"`
+}
+
+// PendingOrder es un pedido del turno que sigue sin entregarse.
+type PendingOrder struct {
+	Number int    `json:"number"`
+	Name   string `json:"name"`
 }
 
 // CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
@@ -476,9 +505,21 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	// Lo que falta por entregar del turno. Sale del mismo predicado que la guardia del cierre, así
+	// que la pantalla del arqueo no puede decir "todo listo" mientras el botón rebota.
+	pendientes, err := s.pedidosSinEntregar(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	porCajero, err := s.cobradoPorCajero(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
-		ID: sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
+		Pending:  pendientes,
+		Cashiers: porCajero,
+		ID:       sess.ID, RegisterID: reg.ID, RegisterName: reg.Name, IsPrimary: reg.IsPrimary,
 		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
@@ -524,12 +565,19 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 }
 
 // businessDate: el día de negocio de AHORA, en la zona del local. Si la zona no se puede leer cae a
-// UTC en vez de fallar: abrir caja no se detiene por un ajuste mal escrito, y el peor caso es la
-// fecha corrida que ya se tenía antes de que esto existiera.
+// El default del producto en vez de fallar: abrir caja no se detiene por un ajuste que no se pudo
+// leer. Pero el valor del fallback importa tanto como el hecho de tener uno.
+//
+// Caía a UTC, y eso corre la fecha SEIS HORAS sin avisar: un turno abierto después de las 18:00
+// locales queda fechado al día siguiente y todo su dinero entra al arqueo equivocado. Ya pasó — los
+// pedidos 61 y 62 de la cuenta de pruebas, del 29 de agosto a las 20:50, están fechados el 30.
+//
+// El producto se vende en México y nace en `America/Mexico_City`: ese es el fallback que se parece a
+// la verdad. UTC no se parece a nada.
 func (s *BackofficeService) businessDate(ctx context.Context) time.Time {
 	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
 	if err != nil {
-		return domain.BusinessDate(s.now(), time.UTC)
+		tz = domain.DefaultTimezone
 	}
 	return domain.BusinessDate(s.now(), domain.LoadBusinessLocation(tz))
 }
@@ -556,6 +604,14 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		}
 		return nil, err
 	}
+	// Ningún pedido sin terminar sobrevive al cierre. Va ANTES de calcular nada: si el turno se
+	// cierra con pendientes, esos pedidos quedan colgados de un arqueo ya firmado y su venta cae en
+	// un corte que nadie puede volver a cuadrar. Cerrar es además el momento en que el operador SÍ
+	// puede resolverlos: está frente a la caja y el local está vacío.
+	if err := s.sinPedidosPendientes(ctx, sess.ID); err != nil {
+		return nil, err
+	}
+
 	view, err := s.sessionWithExpected(ctx, sess, reg)
 	if err != nil {
 		return nil, err
@@ -929,12 +985,36 @@ func (s *BackofficeService) SalesByDay(ctx context.Context, from, to time.Time) 
 		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
 }
-func (s *BackofficeService) SalesByMethod(ctx context.Context, since time.Time) ([]db.SalesByMethodRow, error) {
-	return s.store.QC(ctx).SalesByMethod(ctx, since)
+func (s *BackofficeService) SalesByMethod(ctx context.Context, from, to time.Time) ([]db.SalesByMethodRow, error) {
+	return s.store.QC(ctx).SalesByMethod(ctx, db.SalesByMethodParams{
+		BusinessDate:   pgtype.Date{Time: from, Valid: true},
+		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+	})
 }
-func (s *BackofficeService) ProductMargins(ctx context.Context, since time.Time, limit int32) ([]db.ProductMarginsRow, error) {
-	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{OpenedAt: since, Limit: limit})
+func (s *BackofficeService) ProductMargins(ctx context.Context, from, to time.Time, limit int32) ([]db.ProductMarginsRow, error) {
+	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{
+		BusinessDate:   pgtype.Date{Time: from, Valid: true},
+		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+		Limit:          limit,
+	})
 }
+
+// Location: la zona del NEGOCIO, para que el rango de un reporte se resuelva en el día del local.
+//
+// Mismo modo de falla y mismo fallback que `businessDate`: si la zona no se puede leer se cae al
+// default del producto y no a UTC, porque UTC corre la fecha seis horas sin avisar y el reporte
+// contestaría un periodo que nadie pidió después de las 18:00 locales.
+func (s *BackofficeService) Location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
+}
+
+// Now expone el reloj del servicio para que el handler resuelva el preset con el mismo instante que
+// usa el resto del backoffice (los tests lo fijan).
+func (s *BackofficeService) Now() time.Time { return s.now() }
 
 func (s *BackofficeService) TipsByEmployee(ctx context.Context, from, to time.Time) ([]db.TipsByEmployeeRow, error) {
 	return s.store.QC(ctx).TipsByEmployee(ctx, db.TipsByEmployeeParams{
@@ -946,4 +1026,70 @@ func (s *BackofficeService) TipsByDay(ctx context.Context, from, to time.Time) (
 	return s.store.QC(ctx).TipsByDay(ctx, db.TipsByDayParams{
 		BusinessDate: pgtype.Date{Time: from, Valid: true}, BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
+}
+
+// sinPedidosPendientes falla nombrando los folios que faltan por terminar.
+//
+// Los folios van en el mensaje a propósito: un "hay pedidos sin terminar" a secas manda al operador
+// a recorrer el tablero comparando, justo cuando está cerrando y con prisa.
+func (s *BackofficeService) sinPedidosPendientes(ctx context.Context, sessionID int64) error {
+	pendientes, err := s.pedidosSinEntregar(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if len(pendientes) == 0 {
+		return nil
+	}
+	partes := make([]string, 0, len(pendientes))
+	for _, p := range pendientes {
+		// El nombre primero porque es lo que se lee en el tablero y lo que se canta; el número va
+		// entre paréntesis para quien busque por ticket. Los pedidos viejos no tienen nombre.
+		num := "#" + strconv.Itoa(p.Number)
+		if p.Name != "" {
+			partes = append(partes, p.Name+" ("+num+")")
+			continue
+		}
+		partes = append(partes, num)
+	}
+	return fmt.Errorf("%w: %s. Entrégalos o cancélalos antes de cerrar",
+		domain.ErrOpenOrders, strings.Join(partes, ", "))
+}
+
+// pedidosSinEntregar lista los pedidos del turno que todavía no salen.
+//
+// Es la fuente ÚNICA de esa lista: la usa el resumen del arqueo y la usa la guardia que impide
+// cerrar. Derivarlas por separado dejaría a la pantalla diciendo una cosa y al botón haciendo otra,
+// y quien lo lee no tendría cómo saber cuál de las dos miente.
+//
+// Cobrado no entra en la cuenta: lo que impide cerrar es la comida que no ha salido, no el dinero.
+func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID int64) ([]PendingOrder, error) {
+	filas, err := s.store.QC(ctx).OpenOrdersInSession(ctx, &sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingOrder, 0, len(filas))
+	for _, f := range filas {
+		out = append(out, PendingOrder{Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
+	}
+	return out, nil
+}
+
+// cobradoPorCajero: cuánto cobró cada persona en el turno.
+//
+// Es la respuesta a "dos estaciones, un solo cajón". Crear una caja por Surface daría dos arqueos
+// contando el mismo dinero físico —dos cifras inventadas—, así que la caja sigue siendo una y lo
+// que se separa es quién cobró. El dato existía desde el principio en received_by y solo lo usaba
+// el reparto de propinas.
+func (s *BackofficeService) cobradoPorCajero(ctx context.Context, sessionID int64) ([]CashierTotal, error) {
+	filas, err := s.store.QC(ctx).SessionCashByCashier(ctx, &sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CashierTotal, 0, len(filas))
+	for _, f := range filas {
+		out = append(out, CashierTotal{
+			Name: f.Cashier, Cash: f.Cash, Other: f.Other, Payments: int(f.Payments),
+		})
+	}
+	return out, nil
 }

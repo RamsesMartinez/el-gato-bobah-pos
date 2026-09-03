@@ -15,6 +15,13 @@ select delivery_fee,
        auto_print_on_close,
        timezone,
        print_free_modifiers,
+       print_kitchen_ticket,
+       corte_de_vista,
+       kitchen_can_charge,
+       pin_only_unlock,
+       lock_after_seconds,
+       session_hours,
+       folio_scheme,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -44,6 +51,16 @@ set business_name       = sqlc.arg(business_name),
     -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
     timezone            = sqlc.arg(timezone),
     print_free_modifiers = sqlc.arg(print_free_modifiers),
+    print_kitchen_ticket = sqlc.arg(print_kitchen_ticket),
+    corte_de_vista = sqlc.arg(corte_de_vista),
+    kitchen_can_charge = sqlc.arg(kitchen_can_charge),
+    pin_only_unlock = sqlc.arg(pin_only_unlock),
+    lock_after_seconds = sqlc.arg(lock_after_seconds),
+    session_hours = sqlc.arg(session_hours),
+    -- Con qué se nombran los pedidos. Cambiarlo NO renombra nada ya vendido: el nombre se guarda en
+    -- orders.folio_name al crear el pedido. La bolsa del esquema viejo se queda como estaba, así que
+    -- volver a él continúa la vuelta que iba a medias en vez de empezar de cero.
+    folio_scheme = sqlc.arg(folio_scheme),
     updated_at          = now(),
     updated_by          = sqlc.arg(updated_by);
 

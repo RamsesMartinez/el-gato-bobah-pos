@@ -13,6 +13,32 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const abrioElTurnoPrincipal = `-- name: AbrioElTurnoPrincipal :one
+select s.opened_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.status = 'abierta'
+order by s.opened_at desc limit 1
+`
+
+// Cuándo abrió el turno vigente de la caja principal. Sin filas si no hay ninguno abierto.
+//
+// Dos consultas y no una: escritas juntas, la ausencia de turno viaja como NULL dentro de una fila
+// que siempre existe, y sqlc infiere la nulabilidad copiando la de la COLUMNA —`opened_at` es not
+// null— generando un tipo que no acepta NULL. El escaneo tronaba con la caja cerrada: todas las
+// noches, y en cualquier negocio recién instalado. Así, "no hay turno" es cero filas, que el
+// llamador ya sabe leer.
+//
+// El costo de separarlas: entre las dos cabe un cierre de caja, y las respuestas describirían
+// momentos distintos del mismo turno. Se acepta porque esto decide UNA VISTA —hasta cuándo se ve un
+// pedido entregado— y no una transacción; el peor caso es que la lista se recorte un refresco antes
+// o después.
+func (q *Queries) AbrioElTurnoPrincipal(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, abrioElTurnoPrincipal)
+	var opened_at time.Time
+	err := row.Scan(&opened_at)
+	return opened_at, err
+}
+
 const anyOpenSession = `-- name: AnyOpenSession :one
 select exists(select 1 from register_sessions where status = 'abierta')
 `
@@ -22,6 +48,21 @@ func (q *Queries) AnyOpenSession(ctx context.Context) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const cerroLaCajaPrincipal = `-- name: CerroLaCajaPrincipal :one
+select s.closed_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.closed_at is not null
+order by s.closed_at desc limit 1
+`
+
+// Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+func (q *Queries) CerroLaCajaPrincipal(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, cerroLaCajaPrincipal)
+	var closed_at pgtype.Timestamptz
+	err := row.Scan(&closed_at)
+	return closed_at, err
 }
 
 const closeSession = `-- name: CloseSession :exec
@@ -247,7 +288,8 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 }
 
 const getPaymentMethod = `-- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1
 `
 
 type GetPaymentMethodRow struct {
@@ -257,8 +299,12 @@ type GetPaymentMethodRow struct {
 	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
 	AutoDeclare        bool        `json:"auto_declare"`
 	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	IsActive           bool        `json:"is_active"`
 }
 
+// Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
+// apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
+// ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
 func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMethodRow, error) {
 	row := q.db.QueryRow(ctx, getPaymentMethod, id)
 	var i GetPaymentMethodRow
@@ -269,6 +315,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
 		&i.DeliveryPlatformID,
+		&i.IsActive,
 	)
 	return i, err
 }
@@ -808,6 +855,41 @@ func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessions
 	return items, nil
 }
 
+const lockOpenPrimarySession = `-- name: LockOpenPrimarySession :one
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1
+for share of s
+`
+
+type LockOpenPrimarySessionRow struct {
+	ID           int64       `json:"id"`
+	RegisterID   int64       `json:"register_id"`
+	BusinessDate pgtype.Date `json:"business_date"`
+}
+
+// La misma sesión, pero BLOQUEADA hasta que la transacción del cobro termine.
+//
+// Sin el lock, entre leer la sesión y escribir el pago cabe un cierre de caja completo: el corte
+// calcula su esperado, lo persiste en register_session_totals —que es una foto, no se recalcula— y
+// el pago aterriza con el id de esa sesión ya cerrada. Ese dinero no lo espera NINGÚN arqueo: el
+// cerrado ya está escrito, y el siguiente filtra los pagos por su propia sesión. El efectivo está
+// físicamente en el cajón y no figura en los libros.
+//
+// `for share` y no `for update`: el cobro no modifica la sesión, solo necesita que nadie la cierre
+// mientras escribe. El cierre sí la actualiza, así que queda esperando en vez de adelantarse.
+//
+// El `of s` es obligatorio: sin él Postgres intentaría bloquear también cash_registers, que este
+// cobro no tiene por qué tocar.
+func (q *Queries) LockOpenPrimarySession(ctx context.Context) (LockOpenPrimarySessionRow, error) {
+	row := q.db.QueryRow(ctx, lockOpenPrimarySession)
+	var i LockOpenPrimarySessionRow
+	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
+	return i, err
+}
+
 const netCashMovements = `-- name: NetCashMovements :one
 select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1
@@ -819,6 +901,45 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 	var net decimal.Decimal
 	err := row.Scan(&net)
 	return net, err
+}
+
+const openOrdersInSession = `-- name: OpenOrdersInSession :many
+select o.daily_number, o.folio_name
+from orders o
+where o.register_session_id = $1
+  and o.status in ('abierta', 'lista')
+order by o.daily_number
+`
+
+type OpenOrdersInSessionRow struct {
+	DailyNumber int32   `json:"daily_number"`
+	FolioName   *string `json:"folio_name"`
+}
+
+// Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
+// comida que va a salir y dinero que no se decidió, y si el turno cierra con esos pendientes su
+// venta cae en un arqueo ya firmado y el corte deja de poder cuadrar.
+//
+// Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
+// "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
+func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]OpenOrdersInSessionRow, error) {
+	rows, err := q.db.Query(ctx, openOrdersInSession, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenOrdersInSessionRow{}
+	for rows.Next() {
+		var i OpenOrdersInSessionRow
+		if err := rows.Scan(&i.DailyNumber, &i.FolioName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const openSession = `-- name: OpenSession :one
@@ -923,6 +1044,65 @@ on conflict do nothing
 func (q *Queries) SeedDeliveryPlatforms(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, seedDeliveryPlatforms)
 	return err
+}
+
+const sessionCashByCashier = `-- name: SessionCashByCashier :many
+select coalesce(u.name, 'Sin asignar') as cashier,
+       coalesce(sum(op.amount) filter (where pm.kind = 'efectivo'), 0)::numeric(12,2) as cash,
+       coalesce(sum(op.amount) filter (where pm.kind <> 'efectivo'), 0)::numeric(12,2) as other,
+       count(*)::int as payments
+from order_payments op
+join orders o on o.id = op.order_id
+join payment_methods pm on pm.id = op.payment_method_id
+left join users u on u.id = op.received_by
+where op.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+group by u.name
+order by cash desc, other desc
+`
+
+type SessionCashByCashierRow struct {
+	Cashier  string          `json:"cashier"`
+	Cash     decimal.Decimal `json:"cash"`
+	Other    decimal.Decimal `json:"other"`
+	Payments int32           `json:"payments"`
+}
+
+// Cuánto cobró cada persona en el turno, separando efectivo de lo demás.
+//
+// Existe porque dos estaciones cobran contra el MISMO cajón: partir la caja en dos no serviría —
+// dos arqueos contando el mismo dinero son dos cifras inventadas—, así que la responsabilidad se
+// rastrea por quien cobró, no por el mueble. El dato ya estaba en received_by desde el principio y
+// solo lo usaba el reparto de propinas.
+//
+// El efectivo va aparte de lo demás porque es lo único que está físicamente en el cajón: una
+// diferencia de arqueo solo puede venir de esa columna.
+//
+// Cancelada y reembolsada quedan fuera: su dinero no entró al cajón. Las propinas también, que son
+// del personal y no ingreso del negocio (ver el principio de dinero de la constitución).
+func (q *Queries) SessionCashByCashier(ctx context.Context, registerSessionID *int64) ([]SessionCashByCashierRow, error) {
+	rows, err := q.db.Query(ctx, sessionCashByCashier, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SessionCashByCashierRow{}
+	for rows.Next() {
+		var i SessionCashByCashierRow
+		if err := rows.Scan(
+			&i.Cashier,
+			&i.Cash,
+			&i.Other,
+			&i.Payments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateCashRegister = `-- name: UpdateCashRegister :one

@@ -1,3 +1,5 @@
+import { parseMonto, parseNumero } from '../../domain/numeros';
+
 // Reglas puras del borrador de gasto: convertir lo que dice un documento a lo que el almacén y
 // la contabilidad necesitan. Viven aparte del diálogo para poder probarse sin montar la UI.
 
@@ -24,15 +26,21 @@ export function packToBase(
   packUnit: string,
   units: { code: string; toBase: string }[],
 ): string {
-  const qty = parseFloat(packQty);
-  if (!packQty || !Number.isFinite(qty) || qty <= 0) return '';
+  // parseNumero y no parseFloat: `parseFloat('1,000')` devuelve 1 y ES finito, así que la guarda de
+  // abajo no lo atrapaba — el operador teclea la coma de millar y el contenido del empaque entra
+  // mil veces más chico. Lo mismo con '12kg', que se leía como 12.
+  const cant = parseNumero(packQty);
+  if (cant.estado !== 'valido' || cant.valor <= 0) return '';
+  const qty = cant.valor;
   const key = packUnit.trim().toLowerCase().replace(/[^a-záéíóúñ]/g, '');
   const code = UNIT_ALIASES[key];
   if (!code) return '';
   const unit = units.find((u) => u.code === code);
   if (!unit) return '';
-  const factor = parseFloat(unit.toBase);
-  if (!Number.isFinite(factor) || factor <= 0) return '';
+  // Este viene del servidor, no de un teclado, pero se lee igual: una sola forma de leer números.
+  const conv = parseNumero(unit.toBase);
+  if (conv.estado !== 'valido' || conv.valor <= 0) return '';
+  const factor = conv.valor;
   // 4 decimales = la escala de numeric(14,4) del almacén; Number() recorta ceros de relleno.
   return String(Number((qty * factor).toFixed(4)));
 }
@@ -51,8 +59,9 @@ export function splitTotals(items: { amount: string; personal: boolean }[]): {
   let local = 0;
   let personal = 0;
   for (const it of items) {
-    const n = parseFloat(it.amount);
-    if (!Number.isFinite(n)) continue;
+    const importe = parseMonto(it.amount);
+    if (importe.estado !== 'valido') continue;
+    const n = importe.valor;
     if (it.personal) personal += n;
     else local += n;
   }
@@ -63,9 +72,9 @@ export function splitTotals(items: { amount: string; personal: boolean }[]): {
 
 export function lineAmount(amount: string, unitPrice: string, qty: string): string {
   if (amount.trim() !== '') return amount;
-  const p = parseFloat(unitPrice);
-  if (!Number.isFinite(p)) return '';
-  const q = parseFloat(qty);
-  const n = p * (Number.isFinite(q) && q > 0 ? q : 1);
+  const precio = parseMonto(unitPrice);
+  if (precio.estado !== 'valido') return '';
+  const cant = parseNumero(qty);
+  const n = precio.valor * (cant.estado === 'valido' && cant.valor > 0 ? cant.valor : 1);
   return n.toFixed(2);
 }

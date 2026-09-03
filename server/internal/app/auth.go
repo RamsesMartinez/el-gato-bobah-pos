@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -14,19 +15,30 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
+// RefreshTokenTTL era el plazo único antes de que existiera `session_hours`, y quedarse en 30 días
+// es lo que hacía que una tableta olvidada siguiera autenticada durante un mes. Se conserva solo
+// como cota superior de lo que el ajuste puede pedir; NO es el respaldo de nada.
 const RefreshTokenTTL = 30 * 24 * time.Hour
 
 type AuthService struct {
-	store *store.Store
-	jwt   *auth.Manager
-	now   func() time.Time
+	// pinPepper: secreto de la huella determinista. Vacío = no se puede deducir de quién es un PIN.
+	pinPepper string
+	store     *store.Store
+	jwt       *auth.Manager
+	now       func() time.Time
 }
 
 func NewAuthService(s *store.Store, jm *auth.Manager, now func() time.Time) *AuthService {
+	return NewAuthServiceConPepper(s, jm, now, "")
+}
+
+// NewAuthServiceConPepper: igual, con el secreto de la huella determinista del PIN. Sin él el modo
+// de solo-PIN no puede deducir de quién es un PIN, y por eso tampoco se deja encender.
+func NewAuthServiceConPepper(s *store.Store, jm *auth.Manager, now func() time.Time, pinPepper string) *AuthService {
 	if now == nil {
 		now = time.Now
 	}
-	return &AuthService{store: s, jwt: jm, now: now}
+	return &AuthService{store: s, jwt: jm, now: now, pinPepper: pinPepper}
 }
 
 // Session is the result of a successful auth: an access token, an opaque refresh
@@ -38,6 +50,9 @@ type Session struct {
 	RefreshToken string      `json:"refreshToken"`
 	CompanyID    int64       `json:"-"`
 	User         domain.User `json:"user"`
+	// Cuándo muere el refresh. Va aquí para que la cookie se ponga con ESTE vencimiento: fijarla a
+	// 30 días dejaba a la tableta mandando durante un mes una credencial muerta desde el día dos.
+	RefreshExpiresAt time.Time `json:"-"`
 }
 
 // Login authenticates a user by username + company slug + password. El identificador de login
@@ -84,7 +99,38 @@ func (s *AuthService) Login(ctx context.Context, username, slug, password string
 // PinSwitch re-mints a session for a different operator via their PIN, DENTRO de la misma
 // empresa: corre bajo el tenant del request (QC/WithTx), así RLS impide cambiar a un usuario
 // de otra empresa (el userID de otra empresa simplemente no existe para esta sesión).
-func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (*Session, error) {
+func (s *AuthService) PinSwitchEnEstacion(ctx context.Context, userID int64, pin string, actorID int64, refreshActual string) (*Session, error) {
+	// Con solo-PIN encendido, ELEGIR PERSONA no es un camino válido: son dos rutas al mismo
+	// desbloqueo con lockouts separados —`pin:<objetivo>` y `pinsolo:<quien pide>`—, así que quien
+	// agota una pasa a la otra y duplica su presupuesto de intentos. Y el modo existe para que la
+	// plantilla no se muestre; dejar la ruta que nombra a la persona lo contradice.
+	soloPin, err := s.modoSoloPin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if soloPin {
+		return nil, fmt.Errorf("%w: este negocio se desbloquea solo con el PIN", domain.ErrValidation)
+	}
+	return s.relevar(ctx, userID, pin, actorID, refreshActual)
+}
+
+// modoSoloPin dice si el negocio se desbloquea con el PIN solo. Un error de lectura se PROPAGA:
+// caer a "no" degradaría el negocio al modo de elegir persona, que es la puerta que el modo cierra
+// a propósito.
+func (s *AuthService) modoSoloPin(ctx context.Context) (bool, error) {
+	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DefaultIdentity().PinOnlyUnlock, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return ajustes.PinOnlyUnlock, nil
+}
+
+// relevar es el relevo en sí, común a los dos modos. Privado a propósito: los dos caminos públicos
+// llegan con su propia comprobación hecha, y un tercer llamador se la saltaría.
+func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, actorID int64, refreshActual string) (*Session, error) {
 	var sess *Session
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
 		u, err := q.GetUserByID(ctx, userID)
@@ -104,7 +150,28 @@ func (s *AuthService) PinSwitch(ctx context.Context, userID int64, pin string) (
 		if !auth.CheckSecret(*u.PinHash, pin) {
 			return domain.ErrInvalidCredentials
 		}
-		sess, err = s.issue(ctx, q, u)
+		// Se TOMA la sesión de esta estación: una sola sentencia la revoca y devuelve su
+		// vencimiento, que es el que hereda el relevo.
+		//
+		// Por token y no por persona: buscar por user_id tomaba el vencimiento más lejano de
+		// cualquiera de sus tabletas, así que entrar fresco en una le regalaba horas a la otra. Y
+		// reponer el plazo completo haría que una tableta usada cada veinte minutos no caducara
+		// nunca, con lo que el límite del turno sería decorativo.
+		//
+		// Sin filas no hay sesión viva en esta estación, y ahí el relevo se niega: la salida es
+		// entrar con usuario y contraseña, que la pantalla de bloqueo ofrece a la vista.
+		vence, err := q.TomarSesionDeEstacion(ctx, db.TomarSesionDeEstacionParams{
+			TokenHash: auth.HashToken(refreshActual), ExpiresAt: s.now(), UserID: actorID,
+		})
+		if err != nil {
+			// Deja rastro: el relevo también presenta un refresh, así que un token muerto que
+			// reaparece aquí es la misma señal que /auth/refresh persigue. NO revoca la familia
+			// como allá —un doble toque en la pantalla táctil presenta dos veces la misma cookie y
+			// echaría al operador con el cliente enfrente—, pero deja de ser invisible.
+			logging.SecurityEvent(ctx, "estacion_sin_sesion", "actor_user_id", actorID)
+			return domain.ErrUnauthorized
+		}
+		sess, err = s.issueUntil(ctx, q, u, vence)
 		return err
 	})
 	if err != nil {
@@ -159,7 +226,13 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 		if !u.IsActive {
 			return domain.ErrUnauthorized
 		}
-		sess, err = s.issue(ctx, q, u)
+		// La rotación CONSERVA el fin del turno; no acuña uno nuevo.
+		//
+		// Reponer el plazo completo en cada rotación corría el vencimiento hacia adelante solo: el
+		// front rota al volver el foco a la ventana, así que una tableta que alguien toca cada rato
+		// no caducaba nunca y `session_hours` era decorativo. Es el mismo defecto que se corrigió
+		// en el relevo por PIN, y quedó vivo en esta otra puerta.
+		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt)
 		return err
 	})
 	if reusedUserID != 0 {
@@ -182,7 +255,28 @@ func (s *AuthService) Logout(ctx context.Context, companyID int64, refreshToken 
 // issue firma el access token y crea el refresh token usando la Queries YA scopeada al tenant
 // (q): CreateRefreshToken auto-sella company_id desde el GUC. Rellena el slug consultando la
 // propia empresa (para mostrar user@slug en el front) — barato y evita threading del slug.
+// issue arranca una sesión NUEVA con el plazo del negocio. Es el camino del login.
 func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Session, error) {
+	return s.issueUntil(ctx, q, u, s.now().Add(s.duracionDeSesion(ctx, q)))
+}
+
+// duracionDeSesion: cuánto vive una sesión en este negocio.
+//
+// Sale del ajuste y no de una constante porque un local con turnos de 12 horas lo sube y otro que
+// quiera más control lo baja. Sin fila de ajustes —empresa recién creada— cae al MISMO default que
+// trae la columna, no a los 30 días de antes: caer al plazo viejo le daba a un negocio nuevo un mes
+// de sesión sin que nada lo dijera, y su pantalla de ajustes mostrando ceros tampoco.
+func (s *AuthService) duracionDeSesion(ctx context.Context, q *db.Queries) time.Duration {
+	ajustes, err := q.GetBusinessSettings(ctx)
+	if err != nil || ajustes.SessionHours <= 0 {
+		return time.Duration(domain.DefaultIdentity().SessionHours) * time.Hour
+	}
+	return time.Duration(ajustes.SessionHours) * time.Hour
+}
+
+// issueUntil arma la sesión con un vencimiento DADO. Existe para que el cambio de operador conserve
+// el reloj del turno en vez de reponerlo.
+func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, vence time.Time) (*Session, error) {
 	du := toDomainUser(u)
 	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
 		du.CompanySlug = co.Slug
@@ -198,11 +292,11 @@ func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Ses
 	if _, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hash,
-		ExpiresAt: s.now().Add(RefreshTokenTTL),
+		ExpiresAt: vence,
 	}); err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du}, nil
+	return &Session{AccessToken: access, RefreshToken: token, CompanyID: u.CompanyID, User: du, RefreshExpiresAt: vence}, nil
 }
 
 func toDomainUser(u db.User) domain.User {
@@ -218,3 +312,84 @@ func toDomainUser(u db.User) domain.User {
 		CreatedAt:          u.CreatedAt,
 	}
 }
+
+// UnlockOption es una persona que puede desbloquear una estación con su PIN.
+// Solo id y nombre: la rejilla se pinta en una tableta a la vista del público.
+type UnlockOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// UnlockOptions describe qué debe pedir la pantalla de bloqueo.
+type UnlockOptions struct {
+	PinOnly bool           `json:"pinOnly"`
+	Users   []UnlockOption `json:"users"`
+}
+
+// UnlockOptions dice quiénes pueden desbloquear esta estación.
+//
+// Con el modo de solo-PIN encendido la lista viaja VACÍA: listar nombres le quitaría al modo su
+// única ventaja —el tap que ahorra— y expondría la plantilla del negocio sin necesidad.
+func (s *AuthService) UnlockOptions(ctx context.Context) (UnlockOptions, error) {
+	// Un error de lectura se PROPAGA. Caía a "no es solo-PIN", así que un hipo de la consulta le
+	// mostraba al mostrador la plantilla completa —que es justo lo que el modo esconde— y abría el
+	// camino de elegir persona, que ahí se cierra a propósito. La empresa sin fila de ajustes es
+	// otra cosa: `modoSoloPin` responde con el default del negocio, que es el modo seguro.
+	pinOnly, err := s.modoSoloPin(ctx)
+	if err != nil {
+		return UnlockOptions{}, err
+	}
+
+	out := UnlockOptions{PinOnly: pinOnly, Users: []UnlockOption{}}
+	if pinOnly {
+		return out, nil
+	}
+	filas, err := s.store.QC(ctx).UnlockCandidates(ctx)
+	if err != nil {
+		return UnlockOptions{}, err
+	}
+	for _, f := range filas {
+		out.Users = append(out.Users, UnlockOption{ID: f.ID, Name: f.Name})
+	}
+	return out, nil
+}
+
+// PinSwitchSoloPin cambia de operador SIN que la pantalla diga quién es: lo deduce del PIN.
+//
+// Solo tiene sentido con el modo de solo-PIN encendido, donde el PIN identifica en vez de solo
+// probar. La deducción usa la huella determinista; bcrypt no puede hacerla porque saliniza, y
+// probar su hash contra cada usuario sería lento y filtraría por tiempo cuántos hay.
+//
+// La respuesta y la latencia son las mismas que las del camino normal: un PIN que no existe corre
+// igual el bcrypt de descarte, para que no se pueda averiguar cuáles están en uso.
+func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID int64, refreshActual string) (*Session, error) {
+	if s.pinPepper == "" {
+		return nil, domain.ErrSinPepper
+	}
+	// La comprobación del modo vive AQUÍ y no solo en el handler: con el modo apagado este camino
+	// identificaría a la persona por su PIN, que es justo lo que el modo por default no hace —ahí
+	// el PIN solo prueba, y por eso bastan cuatro dígitos. Deducir de quién es un PIN de cuatro
+	// abre lo que el mínimo de seis existe para cerrar.
+	soloPin, err := s.modoSoloPin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !soloPin {
+		return nil, fmt.Errorf("%w: falta indicar quién va a desbloquear", domain.ErrValidation)
+	}
+	// El largo se exige también AL DESBLOQUEAR, no solo al capturar: el mínimo de seis lo aplicaba
+	// el botón de la pantalla, que es front y no barrera. Un PIN corto que quedara guardado por
+	// cualquier vía sería desbloqueable tecleándolo.
+	if err := domain.ValidarPin(pin, true); err != nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
+	}
+	fila, err := s.store.QC(ctx).UserByPinLookup(ctx, ptr(domain.PinLookup(pin, s.pinPepper)))
+	if err != nil {
+		auth.CheckDummySecret(pin)
+		return nil, domain.ErrInvalidCredentials
+	}
+	return s.relevar(ctx, fila.ID, pin, actorID, refreshActual)
+}
+
+func ptr[T any](v T) *T { return &v }

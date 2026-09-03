@@ -16,12 +16,12 @@ const pagina: SalesPageData = {
   total: 2,
   items: [
     {
-      id: 1, dailyNumber: 7, date: '2026-08-30', openedAt: '2026-08-30T18:27:10Z', completedAt: null,
+      id: 1, dailyNumber: 7, folioName: 'Tigre', date: '2026-08-30', openedAt: '2026-08-30T18:27:10Z', completedAt: null,
       status: 'entregada', serviceType: 'mostrador', customer: 'Sánchez', total: '275.00',
       deliveryFee: '0', refund: '0', tips: '0', platform: '', openedBy: 'Ana', methods: 'Efectivo',
     },
     {
-      id: 2, dailyNumber: 8, date: '2026-08-30', openedAt: '2026-08-30T19:49:05Z', completedAt: null,
+      id: 2, dailyNumber: 8, folioName: 'Nutria', date: '2026-08-30', openedAt: '2026-08-30T19:49:05Z', completedAt: null,
       status: 'abierta', serviceType: 'domicilio', customer: '', total: '0.00',
       deliveryFee: '0', refund: '0', tips: '0', platform: 'Uber Eats', openedBy: 'Ana', methods: '',
     },

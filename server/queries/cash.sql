@@ -6,7 +6,11 @@
 select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name;
 
 -- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where id = $1;
+-- Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
+-- apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
+-- ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
+select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1;
 
 -- name: UpdatePaymentMethodAutoDeclare :one
 update payment_methods set auto_declare = $2 where id = $1
@@ -189,6 +193,27 @@ join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
 limit 1;
 
+-- name: LockOpenPrimarySession :one
+-- La misma sesión, pero BLOQUEADA hasta que la transacción del cobro termine.
+--
+-- Sin el lock, entre leer la sesión y escribir el pago cabe un cierre de caja completo: el corte
+-- calcula su esperado, lo persiste en register_session_totals —que es una foto, no se recalcula— y
+-- el pago aterriza con el id de esa sesión ya cerrada. Ese dinero no lo espera NINGÚN arqueo: el
+-- cerrado ya está escrito, y el siguiente filtra los pagos por su propia sesión. El efectivo está
+-- físicamente en el cajón y no figura en los libros.
+--
+-- `for share` y no `for update`: el cobro no modifica la sesión, solo necesita que nadie la cierre
+-- mientras escribe. El cierre sí la actualiza, así que queda esperando en vez de adelantarse.
+--
+-- El `of s` es obligatorio: sin él Postgres intentaría bloquear también cash_registers, que este
+-- cobro no tiene por qué tocar.
+select s.id, s.register_id, s.business_date
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active
+limit 1
+for share of s;
+
 -- name: SeedBasePaymentMethods :exec
 -- Métodos de pago base para una empresa recién creada. Desde 0037 la tabla es per-tenant, así que
 -- una empresa nueva nace SIN NINGUNO y no podría cobrar: /payment-methods devolvería vacío y el
@@ -224,3 +249,67 @@ select timezone from business_settings limit 1;
 insert into delivery_platforms (name, price_markup_pct)
 values ('Didi', 0), ('Uber Eats', 0), ('Rappi', 0), ('Propio', 0)
 on conflict do nothing;
+
+-- name: OpenOrdersInSession :many
+-- Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
+-- comida que va a salir y dinero que no se decidió, y si el turno cierra con esos pendientes su
+-- venta cae en un arqueo ya firmado y el corte deja de poder cuadrar.
+--
+-- Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
+-- "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
+select o.daily_number, o.folio_name
+from orders o
+where o.register_session_id = $1
+  and o.status in ('abierta', 'lista')
+order by o.daily_number;
+
+-- name: SessionCashByCashier :many
+-- Cuánto cobró cada persona en el turno, separando efectivo de lo demás.
+--
+-- Existe porque dos estaciones cobran contra el MISMO cajón: partir la caja en dos no serviría —
+-- dos arqueos contando el mismo dinero son dos cifras inventadas—, así que la responsabilidad se
+-- rastrea por quien cobró, no por el mueble. El dato ya estaba en received_by desde el principio y
+-- solo lo usaba el reparto de propinas.
+--
+-- El efectivo va aparte de lo demás porque es lo único que está físicamente en el cajón: una
+-- diferencia de arqueo solo puede venir de esa columna.
+--
+-- Cancelada y reembolsada quedan fuera: su dinero no entró al cajón. Las propinas también, que son
+-- del personal y no ingreso del negocio (ver el principio de dinero de la constitución).
+select coalesce(u.name, 'Sin asignar') as cashier,
+       coalesce(sum(op.amount) filter (where pm.kind = 'efectivo'), 0)::numeric(12,2) as cash,
+       coalesce(sum(op.amount) filter (where pm.kind <> 'efectivo'), 0)::numeric(12,2) as other,
+       count(*)::int as payments
+from order_payments op
+join orders o on o.id = op.order_id
+join payment_methods pm on pm.id = op.payment_method_id
+left join users u on u.id = op.received_by
+where op.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+group by u.name
+order by cash desc, other desc;
+
+-- name: AbrioElTurnoPrincipal :one
+-- Cuándo abrió el turno vigente de la caja principal. Sin filas si no hay ninguno abierto.
+--
+-- Dos consultas y no una: escritas juntas, la ausencia de turno viaja como NULL dentro de una fila
+-- que siempre existe, y sqlc infiere la nulabilidad copiando la de la COLUMNA —`opened_at` es not
+-- null— generando un tipo que no acepta NULL. El escaneo tronaba con la caja cerrada: todas las
+-- noches, y en cualquier negocio recién instalado. Así, "no hay turno" es cero filas, que el
+-- llamador ya sabe leer.
+--
+-- El costo de separarlas: entre las dos cabe un cierre de caja, y las respuestas describirían
+-- momentos distintos del mismo turno. Se acepta porque esto decide UNA VISTA —hasta cuándo se ve un
+-- pedido entregado— y no una transacción; el peor caso es que la lista se recorte un refresco antes
+-- o después.
+select s.opened_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.status = 'abierta'
+order by s.opened_at desc limit 1;
+
+-- name: CerroLaCajaPrincipal :one
+-- Cuándo se cerró por última vez la caja principal. Sin filas si nunca se ha cerrado.
+select s.closed_at from register_sessions s
+join cash_registers r on r.id = s.register_id
+where r.is_primary and s.closed_at is not null
+order by s.closed_at desc limit 1;

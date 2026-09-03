@@ -28,6 +28,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/term"
+
+	// La base de zonas horarias, DENTRO del binario.
+	//
+	// Sin ella `time.LoadLocation` falla y toda zona cae a UTC — el mismo corrimiento de seis horas
+	// que el fallback de la fecha de negocio vino a quitar, pero por la otra puerta y sin nada que
+	// lo delate. La imagen de producción es distroless y hoy la trae; eso es una propiedad de la
+	// imagen base que cambia en cualquier bump. Embeberla cuesta ~450KB y quita la dependencia.
+	_ "time/tzdata"
 )
 
 // Inyectadas por ldflags en el build de producción (server/Dockerfile: -X main.version / main.builtAt).
@@ -86,7 +94,7 @@ func main() {
 	}
 
 	if *resetAdmin {
-		if err := resetAdminUser(ctx, admin); err != nil {
+		if err := resetAdminUser(ctx, admin, cfg.PinPepper); err != nil {
 			slog.Error("reset admin", "error", err)
 			admin.Close()
 			os.Exit(1)
@@ -97,7 +105,7 @@ func main() {
 	}
 
 	if *createCompany {
-		if err := provisionCompany(ctx, admin); err != nil {
+		if err := provisionCompany(ctx, admin, cfg.PinPepper); err != nil {
 			slog.Error("create company", "error", err)
 			admin.Close()
 			os.Exit(1)
@@ -106,7 +114,7 @@ func main() {
 		return
 	}
 
-	if err := bootstrapAdmin(ctx, admin); err != nil {
+	if err := bootstrapAdmin(ctx, admin, cfg.PinPepper); err != nil {
 		slog.Error("bootstrap admin", "error", err)
 		admin.Close()
 		os.Exit(1)
@@ -150,8 +158,8 @@ func main() {
 		Version:    version,
 		BuiltAt:    builtAt,
 		JWT:        jm,
-		Auth:       app.NewAuthService(st, jm, nil),
-		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled),
+		Auth:       app.NewAuthServiceConPepper(st, jm, nil, cfg.PinPepper),
+		Users:      app.NewUsersService(st, hibpClient, cfg.HIBPEnabled, cfg.PinPepper),
 		Menu:       app.NewMenuService(st, nil),
 		MenuCache:  cache.NewMenuCache(cfg.RedisURL),
 		Suggest:    app.NewSuggestService(st, nil),
@@ -159,7 +167,7 @@ func main() {
 		Orders:     app.NewOrdersService(st, nil),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
-		Settings:   app.NewSettingsService(st),
+		Settings:   app.NewSettingsService(st, cfg.PinPepper),
 		Company:    app.NewCompanyService(st),
 		Reset:      app.NewResetService(st, mail, hibpClient, cfg.HIBPEnabled, cfg.AppBaseURL, nil),
 		Broker:     realtime.NewBroker(),
@@ -264,7 +272,7 @@ func envOr(key, def string) string {
 // provisionCompany crea una empresa NUEVA (COMPANY_SLUG/COMPANY_NAME) y su admin inicial
 // (ADMIN_*), para onboarding de un tenant adicional. Operación de plataforma → corre como owner.
 // Falla si el slug ya existe.
-func provisionCompany(ctx context.Context, st *store.Store) error {
+func provisionCompany(ctx context.Context, st *store.Store, pepper string) error {
 	slug := os.Getenv("COMPANY_SLUG")
 	name := envOr("COMPANY_NAME", slug)
 	username := os.Getenv("ADMIN_USERNAME")
@@ -298,13 +306,11 @@ func provisionCompany(ctx context.Context, st *store.Store) error {
 	params := db.CreateUserParams{
 		Name: "Administrador", Username: &username, Role: string(domain.RoleAdmin), PasswordHash: &pwHash,
 	}
-	if pin != "" {
-		pinHash, err := auth.HashSecret(pin)
-		if err != nil {
-			return err
-		}
-		params.PinHash = &pinHash
+	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
+	if err != nil {
+		return err
 	}
+	params.PinHash, params.PinLookup = pinHash, pinLookup
 	if err := st.WithTenant(ctx, co.ID, func(q *db.Queries) error {
 		if _, err := q.CreateUser(ctx, params); err != nil {
 			return err
@@ -332,7 +338,7 @@ func provisionCompany(ctx context.Context, st *store.Store) error {
 
 // bootstrapAdmin creates the first admin (en la empresa por defecto) if the users table is
 // empty, using ADMIN_USERNAME / ADMIN_PASSWORD (required) and ADMIN_PIN (optional).
-func bootstrapAdmin(ctx context.Context, st *store.Store) error {
+func bootstrapAdmin(ctx context.Context, st *store.Store, pepper string) error {
 	n, err := st.Q.CountUsers(ctx) // owner: RLS bypassed → cuenta global (arranque = BD vacía)
 	if err != nil {
 		return err
@@ -363,13 +369,11 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 		Role:         string(domain.RoleAdmin),
 		PasswordHash: &pwHash,
 	}
-	if pin != "" {
-		pinHash, err := auth.HashSecret(pin)
-		if err != nil {
-			return err
-		}
-		params.PinHash = &pinHash
+	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
+	if err != nil {
+		return err
 	}
+	params.PinHash, params.PinLookup = pinHash, pinLookup
 	// WithTenant fija app.company_id → el DEFAULT de users.company_id lo auto-sella al insertar.
 	if err := st.WithTenant(ctx, companyID, func(q *db.Queries) error {
 		_, err := q.CreateUser(ctx, params)
@@ -381,6 +385,35 @@ func bootstrapAdmin(ctx context.Context, st *store.Store) error {
 	return nil
 }
 
+// pinDeAdmin prepara el PIN del admin como lo hace la pantalla: valida y calcula su huella.
+//
+// Los tres caminos de arranque hasheaban el PIN a pelo, sin validar y sin huella, así que el índice
+// único que impide dos PINs iguales no veía esas filas y —con el modo de solo-PIN encendido— el
+// admin quedaba con un PIN que no podía desbloquear, en silencio. Es el mismo defecto que se
+// corrigió en UsersService.Create y que quedó vivo en los hermanos que no se movieron.
+//
+// El largo se exige contra el modo BÁSICO (cuatro dígitos): estos caminos corren al arrancar, antes
+// de que el negocio exista o pueda haber elegido modo. Encender solo-PIN después borra todos los
+// PINs y obliga a recapturarlos, así que ninguno de cuatro sobrevive al cambio.
+func pinDeAdmin(pin, pepper string) (*string, *string, error) {
+	if pin == "" {
+		return nil, nil, nil // sin PIN: se entra con usuario y contraseña
+	}
+	if err := domain.ValidarPin(pin, false); err != nil {
+		return nil, nil, err
+	}
+	hash, err := auth.HashSecret(pin)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Sin secreto no se guarda huella: un HMAC con clave vacía sería invertible por cualquiera.
+	if pepper == "" {
+		return &hash, nil, nil
+	}
+	l := domain.PinLookup(pin, pepper)
+	return &hash, &l, nil
+}
+
 // checkAdminSecrets refuses to create/reset the admin with shipped example values or
 // a trivially guessable PIN. This runs even when the operator does `docker compose up`
 // directly (bypassing scripts/check-env.sh), so the guard must live in code.
@@ -388,7 +421,20 @@ func checkAdminSecrets(password, pin string) error {
 	if config.IsPlaceholder(password) {
 		return fmt.Errorf("ADMIN_PASSWORD es un valor de ejemplo; define una contraseña real en deploy/.env")
 	}
-	if pin != "" && auth.IsWeakPin(pin) {
+	if pin == "" {
+		return nil // sin PIN: el admin entra con usuario y contraseña, que es válido
+	}
+	// El de ejemplo pasaba: `IsWeakPin` mira secuencias y repeticiones, no valores publicados, y
+	// "cambia-esto" no es ninguna de las dos. El PIN se revisa contra lo mismo que la contraseña.
+	if config.IsPlaceholder(pin) {
+		return fmt.Errorf("ADMIN_PIN es un valor de ejemplo; define un PIN real en deploy/.env")
+	}
+	// El PIN se teclea en un teclado numérico: uno con letras no se puede escribir en la pantalla
+	// de bloqueo, así que aceptarlo dejaba al admin sin desbloqueo y sin nada que lo dijera.
+	if strings.IndexFunc(pin, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return fmt.Errorf("ADMIN_PIN solo lleva números: se teclea en un teclado numérico")
+	}
+	if auth.IsWeakPin(pin) {
 		return fmt.Errorf("ADMIN_PIN es demasiado débil (evita 1234/0000/secuencias); usa uno menos obvio en deploy/.env")
 	}
 	return nil
@@ -397,7 +443,7 @@ func checkAdminSecrets(password, pin string) error {
 // resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME) desde el
 // entorno, o lo crea si no existe. No borra datos. Para cuando cambias credenciales
 // después del primer arranque (el bootstrap solo corre con la base vacía).
-func resetAdminUser(ctx context.Context, st *store.Store) error {
+func resetAdminUser(ctx context.Context, st *store.Store, pepper string) error {
 	username := os.Getenv("ADMIN_USERNAME")
 	password := os.Getenv("ADMIN_PASSWORD")
 	pin := os.Getenv("ADMIN_PIN")
@@ -411,13 +457,9 @@ func resetAdminUser(ctx context.Context, st *store.Store) error {
 	if err != nil {
 		return err
 	}
-	var pinHash *string
-	if pin != "" {
-		h, err := auth.HashSecret(pin)
-		if err != nil {
-			return err
-		}
-		pinHash = &h
+	pinHash, pinLookup, err := pinDeAdmin(pin, pepper)
+	if err != nil {
+		return err
 	}
 	companyID, err := defaultCompany(ctx, st)
 	if err != nil {
@@ -428,7 +470,7 @@ func resetAdminUser(ctx context.Context, st *store.Store) error {
 	// Si algún día se resetea admin con multi-empresa poblada, añadir company_id al WHERE.
 	return st.WithTenant(ctx, companyID, func(q *db.Queries) error {
 		n, err := q.SetUserSecretsByUsername(ctx, db.SetUserSecretsByUsernameParams{
-			Username: &username, PasswordHash: &pwHash, PinHash: pinHash,
+			Username: &username, PasswordHash: &pwHash, PinHash: pinHash, PinLookup: pinLookup,
 		})
 		if err != nil {
 			return err
@@ -485,7 +527,7 @@ func runResetPassword(ctx context.Context, cfg config.Config, st *store.Store, i
 		return fmt.Errorf("los passwords no coinciden")
 	}
 
-	users := app.NewUsersService(st, hibp.New(nil), cfg.HIBPEnabled)
+	users := app.NewUsersService(st, hibp.New(nil), cfg.HIBPEnabled, cfg.PinPepper)
 	return users.AdminSetPassword(tenantCtx, u.ID, pw)
 }
 

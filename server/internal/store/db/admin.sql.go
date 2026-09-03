@@ -113,10 +113,10 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.category, q.category_id, q.group_count, q.override_count, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.group_count, q.override_count, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
-         p.available_from, p.available_until, c.name as category, p.category_id,
+         p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -170,6 +170,7 @@ type AdminListProductsRow struct {
 	IsFavorite     bool            `json:"is_favorite"`
 	AvailableFrom  pgtype.Date     `json:"available_from"`
 	AvailableUntil pgtype.Date     `json:"available_until"`
+	NeedsPrep      bool            `json:"needs_prep"`
 	Category       string          `json:"category"`
 	CategoryID     int64           `json:"category_id"`
 	GroupCount     int32           `json:"group_count"`
@@ -210,6 +211,7 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.IsFavorite,
 			&i.AvailableFrom,
 			&i.AvailableUntil,
+			&i.NeedsPrep,
 			&i.Category,
 			&i.CategoryID,
 			&i.GroupCount,
@@ -299,7 +301,8 @@ func (q *Queries) AdminSetOptionFavorite(ctx context.Context, arg AdminSetOption
 const adminUpdateProduct = `-- name: AdminUpdateProduct :exec
 update products
 set name = $2, price = $3, is_favorite = $4, is_active = $5,
-    available_from = $6, available_until = $7, updated_at = now()
+    available_from = $6, available_until = $7, needs_prep = $8,
+    updated_at = now()
 where id = $1
 `
 
@@ -311,6 +314,7 @@ type AdminUpdateProductParams struct {
 	IsActive       bool            `json:"is_active"`
 	AvailableFrom  pgtype.Date     `json:"available_from"`
 	AvailableUntil pgtype.Date     `json:"available_until"`
+	NeedsPrep      bool            `json:"needs_prep"`
 }
 
 func (q *Queries) AdminUpdateProduct(ctx context.Context, arg AdminUpdateProductParams) error {
@@ -322,6 +326,7 @@ func (q *Queries) AdminUpdateProduct(ctx context.Context, arg AdminUpdateProduct
 		arg.IsActive,
 		arg.AvailableFrom,
 		arg.AvailableUntil,
+		arg.NeedsPrep,
 	)
 	return err
 }

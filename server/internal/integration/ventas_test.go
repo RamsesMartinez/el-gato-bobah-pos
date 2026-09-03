@@ -115,7 +115,7 @@ func TestElResumenDeVentasClasificaCadaPesoUnaVez(t *testing.T) {
 	ordersSvc := app.NewOrdersService(st, clock)
 
 	// Dos ventas buenas de $100, una con $15 de propina.
-	if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("100"), Tip: decimal.RequireFromString("15")}},
@@ -125,7 +125,7 @@ func TestElResumenDeVentasClasificaCadaPesoUnaVez(t *testing.T) {
 	venderPara(t, st, cajero, prod, efectivo, "100")
 
 	// Y una cancelada, que NO es ingreso.
-	cancelada, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+	cancelada, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 	})
@@ -208,7 +208,7 @@ func TestLaTablaYElResumenCuadran(t *testing.T) {
 // necesitan repetir; el resto de los archivos arma sus pedidos con lo suyo.
 func venderPara(t *testing.T, st *store.Store, cajero, prod int64, metodo int16, monto string) {
 	t.Helper()
-	if _, err := app.NewOrdersService(st, clock).Create(context.Background(), app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, context.Background(), app.NewOrdersService(st, clock), app.CreateOrderCmd{
 		ClientUUID:  uuid.New(),
 		ServiceType: "mostrador",
 		OpenedBy:    cajero,
@@ -237,7 +237,7 @@ func TestElFiltroDeTipoDeVentaAplicaATodoElResumen(t *testing.T) {
 
 	venta := func(tipo string, propina string) {
 		t.Helper()
-		if _, err := ordersSvc.Create(ctx, app.CreateOrderCmd{
+		if _, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
 			ClientUUID: uuid.New(), ServiceType: tipo, OpenedBy: cajero,
 			Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 			Payments: []app.PaymentInput{{

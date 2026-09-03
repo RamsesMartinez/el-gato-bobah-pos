@@ -185,6 +185,48 @@ func (ns NullFinancialGroup) Value() (driver.Value, error) {
 	return string(ns.FinancialGroup), nil
 }
 
+type FolioScheme string
+
+const (
+	FolioSchemeAnimales FolioScheme = "animales"
+	FolioSchemeRazas    FolioScheme = "razas"
+)
+
+func (e *FolioScheme) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FolioScheme(s)
+	case string:
+		*e = FolioScheme(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FolioScheme: %T", src)
+	}
+	return nil
+}
+
+type NullFolioScheme struct {
+	FolioScheme FolioScheme `json:"folio_scheme"`
+	Valid       bool        `json:"valid"` // Valid is true if FolioScheme is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFolioScheme) Scan(value interface{}) error {
+	if value == nil {
+		ns.FolioScheme, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FolioScheme.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFolioScheme) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FolioScheme), nil
+}
+
 type OrderStatus string
 
 const (
@@ -592,6 +634,13 @@ type BusinessSetting struct {
 	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
+	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
+	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
+	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
+	LockAfterSeconds   int32              `json:"lock_after_seconds"`
+	SessionHours       int32              `json:"session_hours"`
+	CorteDeVista       string             `json:"corte_de_vista"`
+	FolioScheme        FolioScheme        `json:"folio_scheme"`
 }
 
 type CashRegister struct {
@@ -727,6 +776,13 @@ type ExpensePayment struct {
 	CompanyID         int64           `json:"company_id"`
 }
 
+type FolioConsumido struct {
+	Scheme    FolioScheme `json:"scheme"`
+	Name      string      `json:"name"`
+	TakenAt   time.Time   `json:"taken_at"`
+	CompanyID int64       `json:"company_id"`
+}
+
 type FudoImportMap struct {
 	ID       int64   `json:"id"`
 	Entity   string  `json:"entity"`
@@ -831,6 +887,7 @@ type Order struct {
 	RefundReason       *string            `json:"refund_reason"`
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	FolioName          *string            `json:"folio_name"`
 }
 
 type OrderCounter struct {
@@ -839,21 +896,23 @@ type OrderCounter struct {
 }
 
 type OrderLine struct {
-	ID             int64              `json:"id"`
-	OrderID        int64              `json:"order_id"`
-	ProductID      int64              `json:"product_id"`
-	ParentLineID   *int64             `json:"parent_line_id"`
-	ProductName    string             `json:"product_name"`
-	Quantity       decimal.Decimal    `json:"quantity"`
-	UnitPrice      decimal.Decimal    `json:"unit_price"`
-	ModifiersTotal decimal.Decimal    `json:"modifiers_total"`
-	UnitCost       decimal.Decimal    `json:"unit_cost"`
-	LineTotal      decimal.Decimal    `json:"line_total"`
-	Notes          *string            `json:"notes"`
-	CancelledAt    pgtype.Timestamptz `json:"cancelled_at"`
-	CancelledBy    *int64             `json:"cancelled_by"`
-	CancelReason   *string            `json:"cancel_reason"`
-	CreatedAt      time.Time          `json:"created_at"`
+	ID               int64              `json:"id"`
+	OrderID          int64              `json:"order_id"`
+	ProductID        int64              `json:"product_id"`
+	ParentLineID     *int64             `json:"parent_line_id"`
+	ProductName      string             `json:"product_name"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	UnitPrice        decimal.Decimal    `json:"unit_price"`
+	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	UnitCost         decimal.Decimal    `json:"unit_cost"`
+	LineTotal        decimal.Decimal    `json:"line_total"`
+	Notes            *string            `json:"notes"`
+	CancelledAt      pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy      *int64             `json:"cancelled_by"`
+	CancelReason     *string            `json:"cancel_reason"`
+	CreatedAt        time.Time          `json:"created_at"`
+	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
+	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 }
 
 type OrderLineModifier struct {
@@ -877,6 +936,7 @@ type OrderPayment struct {
 	ReceivedBy        *int64          `json:"received_by"`
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
 }
 
 type PasswordResetToken struct {
@@ -925,6 +985,7 @@ type Product struct {
 	UpdatedAt      time.Time        `json:"updated_at"`
 	AvailableFrom  pgtype.Date      `json:"available_from"`
 	AvailableUntil pgtype.Date      `json:"available_until"`
+	NeedsPrep      bool             `json:"needs_prep"`
 }
 
 type ProductChannel struct {
@@ -1083,6 +1144,7 @@ type User struct {
 	CompanyID          int64     `json:"company_id"`
 	RecoveryEmail      *string   `json:"recovery_email"`
 	MustChangePassword bool      `json:"must_change_password"`
+	PinLookup          *string   `json:"pin_lookup"`
 }
 
 type UserPreference struct {

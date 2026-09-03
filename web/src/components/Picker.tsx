@@ -60,7 +60,10 @@ export function Picker({
 
   return (
     <>
-      <Button variant="outline" colorPalette="gray" w="100%" justifyContent="space-between"
+      {/* 44 px SIEMPRE, aunque el `size` sea sm: la receta del tema solo sube el piso en `md`, y
+          `size="sm"` dejaba este disparador en 32 px. El tamaño decide la tipografía y el padding;
+          el alto mínimo con el que un dedo acierta a la primera no es negociable por tamaño. */}
+      <Button variant="outline" colorPalette="gray" w="100%" justifyContent="space-between" minH="44px"
         size={size} fontWeight="500" disabled={disabled} onClick={() => setOpen(true)}>
         <Text flex="1" minW={0} truncate textAlign="start" color={selected ? 'fg' : 'fg.muted'}>
           {selected ? selected.label : placeholder}

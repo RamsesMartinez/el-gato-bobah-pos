@@ -67,6 +67,28 @@ export interface CashSession {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
+  // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
+  pending: PendingOrder[];
+  // Cuánto cobró cada persona. Dos estaciones cobran contra el mismo cajón, así que la
+  // responsabilidad se rastrea por quien cobró y no por el mueble.
+  cashiers: CashierTotal[];
+}
+
+// El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
+// puede venir de esa columna.
+export interface CashierTotal {
+  name: string;
+  cash: string;
+  other: string;
+  payments: number;
+}
+
+// Un pedido que sigue sin salir. Aparece aunque ya esté cobrado: cobrado y entregado son cosas
+// distintas, y lo que impide cerrar es la comida que no ha salido, no el dinero.
+export interface PendingOrder {
+  number: number;
+  name: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {
@@ -445,19 +467,45 @@ export const backofficeApi = {
     reason?: string;
   }) => api.post<void>('/stock/movements', b),
 
-  reportSales: (from?: string, to?: string) =>
+  // Los tres reportes toman EL MISMO periodo y cada uno devuelve el `range` que realmente
+  // consultó. Que lo devuelvan no es redundante: es lo que deja imprimir en la pantalla de qué
+  // periodo son las cifras, y el encabezado fijo que decía "últimos 30 días" seguía diciéndolo con
+  // cualquier otro rango elegido.
+  reportSales: (q: ReportQuery = {}) =>
     api.get<{
+      range: ReportRange;
       byDay: Array<{ business_date: string; orders: number; revenue: string }>;
       byMethod: Array<{ method: string; payments: number; total: string }>;
-    }>(`/reports/sales${from ? `?from=${from}&to=${to}` : ''}`),
-  reportMargins: () =>
-    api.get<{ items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }> }>(
-      '/reports/margins?limit=50',
-    ),
-  // Propinas (pass-through, para repartir): por empleado que cobró y por día.
-  reportTips: (from?: string, to?: string) =>
+    }>(`/reports/sales?${qsReporte(q)}`),
+  reportMargins: (q: ReportQuery = {}) =>
     api.get<{
+      range: ReportRange;
+      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }>;
+    }>(`/reports/margins?${qsReporte({ ...q, limit: 50 })}`),
+  // Propinas (pass-through, para repartir): por empleado que cobró y por día.
+  reportTips: (q: ReportQuery = {}) =>
+    api.get<{
+      range: ReportRange;
       byEmployee: Array<{ employee: string; payments: number; tips: string }>;
       byDay: Array<{ business_date: string; tips: string }>;
-    }>(`/reports/tips${from ? `?from=${from}&to=${to}` : ''}`),
+    }>(`/reports/tips?${qsReporte(q)}`),
 };
+
+export type ReportPreset = '30d' | 'semana' | 'mes' | 'rango';
+export interface ReportRange { from: string; to: string }
+export interface ReportQuery {
+  preset?: ReportPreset;
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
+// Los vacíos NO viajan, igual que en Ventas: el servidor aplica el default solo al parámetro
+// ausente, y un `from=` presente y vacío es un parámetro que vino mal, no uno que no vino.
+function qsReporte(q: ReportQuery): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) {
+    if (v !== undefined && v !== '') p.set(k, String(v));
+  }
+  return p.toString();
+}

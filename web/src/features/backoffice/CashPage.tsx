@@ -1,9 +1,10 @@
 import { useState, Fragment, type ReactNode } from 'react';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, Wrap, useBreakpointValue,
 } from '@chakra-ui/react';
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -15,20 +16,26 @@ import { money } from '../../utils/format';
 import { faltanPorContar } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
+import { soloHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
+import { montoTecleado } from '../../domain/numeros';
 
 // Sobrante (>0) verde, faltante (<0) rojo, cuadrado gris.
 function diffColor(v: string) {
-  const n = parseFloat(v);
+  // Del servidor, no de un teclado: Number() alcanza y no hay formato que validar.
+  const n = Number(v);
   if (n > 0.005) return 'green.500';
   if (n < -0.005) return 'red.500';
   return 'fg.muted';
 }
 
-function hhmm(iso: string) {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+// La zona llega como parámetro: esta es una función de módulo.
+function hhmm(iso: string, zona: string) {
+  return soloHora(iso, zona);
 }
 // Tipo del movimiento para la columna "Tipo": traspaso (azul) o entrada/salida (verde/rojo).
 function movementType(m: CashMovement): { label: string; palette: string } {
@@ -42,7 +49,7 @@ function movementType(m: CashMovement): { label: string; palette: string } {
 // withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
 export function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
   if (!totals?.length) return null;
-  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (parseFloat(pick(t)) || 0), 0);
+  const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
   const diffTotal = sum((t) => t.difference);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -78,7 +85,14 @@ export function TotalsTable({ totals, currency, withTotalRow }: { totals: Method
 
 // Movimientos de efectivo en tabla: Hora · Tipo · Concepto · Usuario · Monto. Excluye las salidas
 // de gastos (van en su propia sección) para no contarlas dos veces.
-export function MovementsTable({ movements, currency }: { movements: CashMovement[]; currency: string }) {
+// La zona llega como PROP y no del hook: esto es una tabla de presentación, y que pidiera los
+// ajustes por su cuenta la vuelve imposible de pintar sin montar media aplicación alrededor. Quien
+// la usa ya tiene la zona a la mano.
+export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }: {
+  movements: CashMovement[];
+  currency: string;
+  zona?: string;
+}) {
   const rows = (movements ?? []).filter((m) => m.expenseId === null);
   if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
   return (
@@ -96,7 +110,7 @@ export function MovementsTable({ movements, currency }: { movements: CashMovemen
             const t = movementType(m);
             return (
               <Table.Row key={m.id}>
-                <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt)}</Table.Cell>
+                <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt, zona)}</Table.Cell>
                 <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
                 <Table.Cell><Text truncate maxW="220px">{m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
@@ -116,7 +130,7 @@ export function MovementsTable({ movements, currency }: { movements: CashMovemen
 // Gastos del corte en tabla + total. No renderiza nada si no hay gastos (ahorra espacio).
 export function ExpensesTable({ expenses, currency }: { expenses: CashExpenseLine[]; currency: string }) {
   if (!expenses?.length) return null;
-  const total = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const total = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
@@ -234,6 +248,7 @@ interface CorteData {
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
 function CorteSummary({ data }: { data: CorteData }) {
+  const horaNegocio = useHoraDelNegocio();
   const cur = data.currency;
   const totals = data.totals ?? [];
   const movements = data.movements ?? [];
@@ -247,7 +262,7 @@ function CorteSummary({ data }: { data: CorteData }) {
         </Section>
       )}
       <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
-        <MovementsTable movements={movements} currency={cur} />
+        <MovementsTable movements={movements} currency={cur} zona={horaNegocio.zona} />
       </Collapsible>
       {expenses.length > 0 && (
         <Collapsible title={`Gastos (${expenses.length})`}>
@@ -261,16 +276,17 @@ function CorteSummary({ data }: { data: CorteData }) {
 // Detalle completo de un corte (carga por id): cabecera + resumen + notas. Lo usan el diálogo (7")
 // y el panel lateral (pantallas grandes).
 function CorteDetail({ id }: { id: number }) {
+  const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'session', id], queryFn: () => backofficeApi.cashSession(id) });
   if (isLoading || !data) return <Center py={8}><Spinner /></Center>;
   return (
     <VStack align="stretch" gap={4}>
       <SimpleGrid columns={2} gap={2} fontSize="sm">
         <Text color="fg.muted">Caja</Text><Text textAlign="end" fontWeight="600">{data.registerName}</Text>
-        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {new Date(data.openedAt).toLocaleString('es-MX')}</Text>
+        <Text color="fg.muted">Abrió</Text><Text textAlign="end">{data.openedByName} · {horaNegocio.fechaYHora(data.openedAt)}</Text>
         {data.closedAt && (<>
           <Text color="fg.muted">Cerró</Text>
-          <Text textAlign="end">{data.closedByName ?? '—'} · {new Date(data.closedAt).toLocaleString('es-MX')}</Text>
+          <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
         </>)}
       </SimpleGrid>
       <CorteSummary data={data} />
@@ -337,6 +353,7 @@ function RegistersTab() {
 
 // ---- Panel de una caja: abrir (si cerrada) u operar/cerrar (si abierta) ----
 function RegisterPanel({ register, openRegisters }: { register: CashRegister; openRegisters: CashRegister[] }) {
+  const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const { data: session, isLoading } = useQuery({
     queryKey: ['cash', 'current', register.id],
@@ -353,18 +370,26 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const openMut = useMutation({
-    mutationFn: () => backofficeApi.cashOpen(register.id, parseFloat(opening) || 0),
+    mutationFn: () => backofficeApi.cashOpen(register.id, montoTecleado(opening) ?? 0),
     onSuccess: () => { setOpening(''); invalidate(); },
     onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
   });
   const closeMut = useMutation({
     mutationFn: () => {
       const d: Record<string, number> = {};
-      Object.entries(declared).forEach(([k, v]) => (d[k] = parseFloat(v) || 0));
+      Object.entries(declared).forEach(([k, v]) => (d[k] = montoTecleado(v) ?? 0));
       return backofficeApi.cashClose(register.id, d, notes || undefined);
     },
     onSuccess: (s) => { setClosed(s); setDeclared({}); setNotes(''); invalidate(); },
-    onError: (e) => toaster.create({ title: 'No se pudo cerrar la caja', description: String(e), type: 'error' }),
+    // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
+    // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
+    // pendiente, y el operador tiene que saber que la puede resolver y volver.
+    onError: (e) => toaster.create({
+      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar' : 'No se pudo cerrar la caja',
+      description: e instanceof ApiError ? e.message : String(e),
+      type: 'error',
+      duration: 8000,
+    }),
   });
 
   if (isLoading) return <Center h="30vh"><Spinner size="xl" /></Center>;
@@ -402,7 +427,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Stat.Root>
             <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px">
               <Stat.Label>Abierta desde</Stat.Label>
-              <Stat.ValueText fontSize="sm">{new Date(session.openedAt).toLocaleString('es-MX')}</Stat.ValueText>
+              <Stat.ValueText fontSize="sm">{horaNegocio.fechaYHora(session.openedAt)}</Stat.ValueText>
             </Stat.Root>
           </SimpleGrid>
 
@@ -462,7 +487,60 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
-          <Button colorPalette="red" size="lg" loading={closeMut.isPending} disabled={porContar.length > 0}
+          {/* Quién cobró qué. Con dos estaciones contra el mismo cajón, es lo único que separa la
+              responsabilidad: partir la caja daría dos arqueos contando el mismo dinero. Solo se
+              pinta si hubo más de una persona — con una sola, repite el total de arriba. */}
+          {session.cashiers.length > 1 && (
+            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+              <Text fontWeight="700" mb={2}>Cobrado por</Text>
+              <Table.Root size="sm">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeader>Persona</Table.ColumnHeader>
+                    <Table.ColumnHeader textAlign="end">Efectivo</Table.ColumnHeader>
+                    <Table.ColumnHeader textAlign="end">Otros</Table.ColumnHeader>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {session.cashiers.map((c) => (
+                    <Table.Row key={c.name}>
+                      <Table.Cell>{c.name}</Table.Cell>
+                      {/* El efectivo con más peso: es lo que está en el cajón y lo único de donde
+                          puede salir una diferencia. */}
+                      <Table.Cell textAlign="end" fontWeight="700">{money(c.cash)}</Table.Cell>
+                      <Table.Cell textAlign="end" color="fg.muted">{money(c.other)}</Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table.Root>
+            </Box>
+          )}
+
+          {/* Lo que falta por entregar, ANTES de intentar cerrar. Antes solo se sabía al presionar
+              el botón y recibir el error: el operador terminaba de contar el efectivo para
+              enterarse entonces de que le faltaba sacar comida. */}
+          {session.pending.length > 0 && (
+            <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
+              _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
+              <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
+                Falta entregar {session.pending.length === 1 ? '1 pedido' : `${session.pending.length} pedidos`}
+              </Text>
+              <Text fontSize="sm" color="fg.muted" mb={2}>
+                La caja no cierra hasta que salgan o se cancelen. Estar cobrado no cuenta: lo que
+                falta es la comida.
+              </Text>
+              <Wrap gap={2}>
+                {session.pending.map((o) => (
+                  <Badge key={o.number} colorPalette="orange" px={2} py={1} fontSize="sm">
+                    {o.name ? `${o.name} · #${o.number}` : `#${o.number}`}
+                  </Badge>
+                ))}
+              </Wrap>
+            </Box>
+          )}
+
+          <Button colorPalette="red" size="lg" loading={closeMut.isPending}
+            disabled={porContar.length > 0 || session.pending.length > 0}
             onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
             Cerrar caja
           </Button>
@@ -489,17 +567,18 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
 // ---- Movimientos de efectivo (entrada/salida) de la sesión abierta ----
 function MovementsPanel({ session }: { session: CashSession }) {
+  const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const [kind, setKind] = useState<'entrada' | 'salida'>('salida');
   const [amount, setAmount] = useState('');
   const [concept, setConcept] = useState('');
 
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, parseFloat(amount) || 0, concept.trim()),
+    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, montoTecleado(amount) ?? 0, concept.trim()),
     onSuccess: () => { setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] }); },
     onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
   });
-  const canAdd = (parseFloat(amount) || 0) > 0 && concept.trim().length > 0;
+  const canAdd = (montoTecleado(amount) ?? 0) > 0 && concept.trim().length > 0;
   // Go serializa un slice vacío como null; sin esta guarda, `.length`/`.map` revienta el render.
   const movements = session.movements ?? [];
 
@@ -525,7 +604,7 @@ function MovementsPanel({ session }: { session: CashSession }) {
           </Button>
         </HStack>
       </Box>
-      <MovementsTable movements={movements} currency={session.currency} />
+      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona} />
     </Box>
   );
 }
@@ -541,11 +620,11 @@ function TransferDialog({ open, onClose, from, openRegisters, onDone }: {
 
   const reset = () => { setToId(''); setAmount(''); setNote(''); };
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashTransfer(from.id, Number(toId), parseFloat(amount) || 0, note || undefined),
+    mutationFn: () => backofficeApi.cashTransfer(from.id, Number(toId), montoTecleado(amount) ?? 0, note || undefined),
     onSuccess: () => { reset(); onDone(); },
     onError: (e) => toaster.create({ title: 'No se pudo traspasar', description: String(e), type: 'error' }),
   });
-  const canSend = !!toId && (parseFloat(amount) || 0) > 0;
+  const canSend = !!toId && (montoTecleado(amount) ?? 0) > 0;
 
   return (
     <DialogRoot open={open} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }} placement="center" size="sm">
@@ -660,6 +739,7 @@ function ManageRegistersTab() {
 
 // ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
 function HistoryTab() {
+  const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'history'], queryFn: backofficeApi.cashHistory });
   const [detailId, setDetailId] = useState<number | null>(null);
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
@@ -685,7 +765,7 @@ function HistoryTab() {
             <Table.Row key={r.id} cursor="pointer" onClick={() => setDetailId(r.id)}
               bg={wide && detailId === r.id ? 'bg.muted' : undefined}>
               <Table.Cell fontWeight="600">{r.registerName}</Table.Cell>
-              <Table.Cell whiteSpace="nowrap">{new Date(r.openedAt).toLocaleString('es-MX')}</Table.Cell>
+              <Table.Cell whiteSpace="nowrap">{horaNegocio.fechaYHora(r.openedAt)}</Table.Cell>
               <Table.Cell>
                 <Badge colorPalette={r.status === 'abierta' ? 'green' : 'gray'}>
                   {r.status === 'abierta' ? 'Abierta' : 'Cerrada'}

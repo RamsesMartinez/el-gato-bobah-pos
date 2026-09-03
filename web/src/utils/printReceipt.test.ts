@@ -1,7 +1,7 @@
 import { describe, it, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildReceiptHtml, overflowingLines, printFrame, printHtmlOffscreen, sampleTicketOrder, TICKET_COLUMNS, type TicketBusinessInfo } from './printReceipt';
 import { money } from './format';
-import type { OrderView } from '../types/pos';
+import type { ReceiptOrder } from '../types/pos';
 
 const baseBusiness: TicketBusinessInfo = {
   businessName: 'El Gato Bobah',
@@ -10,9 +10,11 @@ const baseBusiness: TicketBusinessInfo = {
   headerNote: 'Wi-Fi: gatobobah',
   footerNote: '¡Gracias por su compra!',
   logoDataUri: 'data:image/webp;base64,QUFB',
+  timezone: 'America/Mexico_City',
 };
 
-const baseOrder: OrderView = {
+const baseOrder: ReceiptOrder = {
+  folioName: 'Tigre',
   id: 1,
   number: 42,
   status: 'abierta',
@@ -29,7 +31,7 @@ const baseOrder: OrderView = {
 
 describe('buildReceiptHtml', () => {
   it('escapes attacker-controlled strings so they cannot inject markup/script', () => {
-    const order: OrderView = {
+    const order: ReceiptOrder = {
       ...baseOrder,
       customerName: '<img src=x onerror=alert(1)>',
       lines: [
@@ -54,7 +56,7 @@ describe('buildReceiptHtml', () => {
   });
 
   it('renders normal order data verbatim (no double-escaping of safe text)', () => {
-    const order: OrderView = {
+    const order: ReceiptOrder = {
       ...baseOrder,
       customerName: 'María',
       lines: [{ productName: 'Boba fresa', quantity: '2', unitPrice: '2500', lineTotal: '5000', modifiers: [] }],
@@ -116,7 +118,7 @@ describe('buildReceiptHtml — dinero', () => {
     // El total NO cuadra con las líneas a propósito: el servidor es la única fuente de verdad de
     // los precios y el ticket no debe "corregirlo" (FR-014). Si el builder sumara, $999 no
     // aparecería en ninguna parte del documento.
-    const order: OrderView = {
+    const order: ReceiptOrder = {
       ...baseOrder,
       subtotal: '100',
       total: '999',
@@ -361,7 +363,7 @@ describe('printHtmlOffscreen — trampas del navegador real', () => {
 });
 
 describe('desglose de precio en el ticket', () => {
-  const conExtras: OrderView = {
+  const conExtras: ReceiptOrder = {
     ...baseOrder,
     lines: [{
       productName: 'Café Americano',

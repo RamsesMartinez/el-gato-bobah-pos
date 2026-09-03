@@ -18,6 +18,7 @@ import {
   backofficeApi, type ExpenseCategory, type Supplier, type ArticleSuggestion,
   type ExpenseItemBody, type ExpensePaymentBody, type ParsedDoc, type DocLine,
 } from '../../api/backoffice';
+import { montoTecleado } from '../../domain/numeros';
 
 // Alta de gasto con mercancía y pagos.
 //
@@ -191,8 +192,8 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   // ---- Guardar ----
   // Las líneas de la casa se cuentan aparte: el importe del gasto es solo lo del local.
   const { local: itemsSum, personal: personalSum } = splitTotals(items);
-  const paymentsSum = payments.reduce((a, p) => a + (parseFloat(p.amount) || 0), 0);
-  const total = parseFloat(amount) || 0;
+  const paymentsSum = payments.reduce((a, p) => a + (montoTecleado(p.amount) ?? 0), 0);
+  const total = montoTecleado(amount) ?? 0;
   const itemsDiff = total - itemsSum;
   const status: 'pendiente' | 'pagada' = paymentsSum > 0 && paymentsSum >= total ? 'pagada' : 'pendiente';
 
@@ -237,7 +238,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   // Una línea inventariable exige unidad (sin ella el backend no puede convertir a almacén);
   // se valida aquí para no gastar un round-trip en un 400 evitable.
   const badItem = items.find((i) => i.itemType !== '' && !i.unitId);
-  const badPayment = payments.find((p) => !p.methodId || !(parseFloat(p.amount) > 0) || (needsRegister(p, methodList) && !p.registerId));
+  const badPayment = payments.find((p) => !p.methodId || !((montoTecleado(p.amount) ?? 0) > 0) || (needsRegister(p, methodList) && !p.registerId));
   const canSave = !!categoryId && total > 0 && !badItem && !badPayment;
 
   const setItem = (key: string, patch: Partial<DraftItem>) =>

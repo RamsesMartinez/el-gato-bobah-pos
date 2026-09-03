@@ -34,6 +34,13 @@ select delivery_fee,
        auto_print_on_close,
        timezone,
        print_free_modifiers,
+       print_kitchen_ticket,
+       corte_de_vista,
+       kitchen_can_charge,
+       pin_only_unlock,
+       lock_after_seconds,
+       session_hours,
+       folio_scheme,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -52,6 +59,13 @@ type GetBusinessSettingsRow struct {
 	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
+	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
+	CorteDeVista       string             `json:"corte_de_vista"`
+	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
+	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
+	LockAfterSeconds   int32              `json:"lock_after_seconds"`
+	SessionHours       int32              `json:"session_hours"`
+	FolioScheme        FolioScheme        `json:"folio_scheme"`
 	HasLogo            bool               `json:"has_logo"`
 	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
 	UpdatedAt          time.Time          `json:"updated_at"`
@@ -78,6 +92,13 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.AutoPrintOnClose,
 		&i.Timezone,
 		&i.PrintFreeModifiers,
+		&i.PrintKitchenTicket,
+		&i.CorteDeVista,
+		&i.KitchenCanCharge,
+		&i.PinOnlyUnlock,
+		&i.LockAfterSeconds,
+		&i.SessionHours,
+		&i.FolioScheme,
 		&i.HasLogo,
 		&i.LogoUpdatedAt,
 		&i.UpdatedAt,
@@ -154,20 +175,37 @@ set business_name       = $1,
     -- como nombre IANA real en la frontera (domain.ValidTimezone) antes de llegar aquí.
     timezone            = $7,
     print_free_modifiers = $8,
+    print_kitchen_ticket = $9,
+    corte_de_vista = $10,
+    kitchen_can_charge = $11,
+    pin_only_unlock = $12,
+    lock_after_seconds = $13,
+    session_hours = $14,
+    -- Con qué se nombran los pedidos. Cambiarlo NO renombra nada ya vendido: el nombre se guarda en
+    -- orders.folio_name al crear el pedido. La bolsa del esquema viejo se queda como estaba, así que
+    -- volver a él continúa la vuelta que iba a medias en vez de empezar de cero.
+    folio_scheme = $15,
     updated_at          = now(),
-    updated_by          = $9
+    updated_by          = $16
 `
 
 type UpdateBusinessInfoParams struct {
-	BusinessName       string `json:"business_name"`
-	Address            string `json:"address"`
-	Phone              string `json:"phone"`
-	HeaderNote         string `json:"header_note"`
-	FooterNote         string `json:"footer_note"`
-	AutoPrintOnClose   bool   `json:"auto_print_on_close"`
-	Timezone           string `json:"timezone"`
-	PrintFreeModifiers bool   `json:"print_free_modifiers"`
-	UpdatedBy          *int64 `json:"updated_by"`
+	BusinessName       string      `json:"business_name"`
+	Address            string      `json:"address"`
+	Phone              string      `json:"phone"`
+	HeaderNote         string      `json:"header_note"`
+	FooterNote         string      `json:"footer_note"`
+	AutoPrintOnClose   bool        `json:"auto_print_on_close"`
+	Timezone           string      `json:"timezone"`
+	PrintFreeModifiers bool        `json:"print_free_modifiers"`
+	PrintKitchenTicket bool        `json:"print_kitchen_ticket"`
+	CorteDeVista       string      `json:"corte_de_vista"`
+	KitchenCanCharge   bool        `json:"kitchen_can_charge"`
+	PinOnlyUnlock      bool        `json:"pin_only_unlock"`
+	LockAfterSeconds   int32       `json:"lock_after_seconds"`
+	SessionHours       int32       `json:"session_hours"`
+	FolioScheme        FolioScheme `json:"folio_scheme"`
+	UpdatedBy          *int64      `json:"updated_by"`
 }
 
 // La identidad del ticket y el interruptor de impresión automática. Los strings vacíos se guardan
@@ -184,6 +222,13 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.AutoPrintOnClose,
 		arg.Timezone,
 		arg.PrintFreeModifiers,
+		arg.PrintKitchenTicket,
+		arg.CorteDeVista,
+		arg.KitchenCanCharge,
+		arg.PinOnlyUnlock,
+		arg.LockAfterSeconds,
+		arg.SessionHours,
+		arg.FolioScheme,
 		arg.UpdatedBy,
 	)
 	return err

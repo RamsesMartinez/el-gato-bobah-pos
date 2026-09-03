@@ -263,3 +263,54 @@ func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
 	}
 	return *delMetodo == *delPedido
 }
+
+// PagosCubren dice si lo pagado salda el total. Tolera un centavo de diferencia por el mismo motivo
+// que la pantalla de cobro: el redondeo a dos decimales de varias líneas de pago puede dejar un
+// centavo de sobra o de falta, y rechazar una venta saldada por eso deja al cliente esperando.
+func PagosCubren(pagado, total decimal.Decimal) bool {
+	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
+}
+
+// PedidoSaldado dice si un pedido ya no debe nada. Es EL predicado: quien cierra el pedido, quien
+// lo marca pagado en cada lista y quien calcula lo que falta responden todos a esta función.
+//
+// Estaba escrito cuatro veces, y dos de esas cuatro no toleraban el centavo del redondeo: dividir
+// $100 en tres partes de $33.33 cerraba el pedido —con la versión tolerante— y al mismo tiempo lo
+// seguía mostrando con $0.01 de deuda en la barra del POS y en el detalle, con la versión exacta.
+// El operador no tenía cómo cobrar ese centavo y al día siguiente el pedido salía de la vista con
+// la deuda abierta. Es el corolario del principio III: la lista y el resumen de la misma pantalla
+// salen del mismo predicado, o uno de los dos miente y nadie sabe cuál.
+//
+// El total positivo es parte de la definición: un pedido de $0 no está "pagado", no tiene nada que
+// pagar.
+func PedidoSaldado(pagado, total decimal.Decimal) bool {
+	return total.IsPositive() && PagosCubren(pagado, total)
+}
+
+// PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
+//
+// Incluye el ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa pide una más, y
+// mandarla como pedido aparte deja dos cuentas para la misma mesa: una de las dos se pierde de
+// vista y termina cobrándose a medias o no cobrándose. Su dinero además no está cerrado — el pago
+// se registra cuando se cobra, no cuando se entrega.
+//
+// Cancelada y reembolsada quedan fuera: ahí el dinero YA se decidió, y subirle el total a un
+// reembolso es mover algo que un arqueo firmado ya contó.
+//
+// Un entregado que recibe renglones deja de estar entregado; eso lo dice ReabreAlAgregar.
+func PuedeRecibirLineas(estado string) bool {
+	return estado == StatusAbierta || estado == StatusLista || estado == StatusEntregada
+}
+
+// ReabreAlAgregar dice si el pedido tiene que volver a estar en curso tras recibir renglones.
+//
+// Solo el entregado: lo nuevo no ha salido de la cocina, y dejarlo en `entregada` lo esconde del
+// tablero —que solo lista abierta y lista—, así que nadie prepararía la comida que se acaba de
+// pedir. También lo saca de "Entregados hoy", que es correcto: ya no está entregado del todo.
+//
+// La transición NO se agrega a CanTransition a propósito. Ahí sería un `entregada → abierta` que
+// cualquiera podría pedir por su cuenta, y des-entregar un pedido a mano no es algo que esta app
+// ofrezca; aquí es la consecuencia de agregar, no una acción.
+func ReabreAlAgregar(estado string) bool {
+	return estado == StatusEntregada
+}

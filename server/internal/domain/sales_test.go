@@ -201,3 +201,95 @@ func TestElPromedioSeRedondea(t *testing.T) {
 		t.Fatalf("promedio = %s, quiere 33.34", s.Average)
 	}
 }
+
+// "30d" es la ventana con la que nace la pantalla de Reportes, y son TREINTA días contando hoy.
+//
+// Antes el handler la armaba con `to.AddDate(0,0,-30)`, que son treinta y un días: el encabezado
+// decía "últimos 30 días" y la tabla sumaba uno más. La diferencia es chica y por eso nadie la ve —
+// que es justamente lo que la vuelve peligrosa cuando alguien compara dos periodos "de 30 días".
+func TestElPresetDeTreintaDiasSonTreintaDiasContandoHoy(t *testing.T) {
+	loc := mx(t)
+	ahora := time.Date(2026, 8, 26, 21, 0, 0, 0, time.UTC) // 26 de agosto, 15:00 en México.
+
+	r, err := ResolveRange("30d", time.Time{}, time.Time{}, ahora, loc)
+	if err != nil {
+		t.Fatalf("30d: %v", err)
+	}
+	if got := r.From.Format(dateOnly); got != "2026-07-28" {
+		t.Fatalf("from = %s, quiere 2026-07-28", got)
+	}
+	if got := r.To.Format(dateOnly); got != "2026-08-26" {
+		t.Fatalf("to = %s, quiere 2026-08-26", got)
+	}
+	if dias := int(r.To.Sub(r.From).Hours()/24) + 1; dias != 30 {
+		t.Fatalf("el rango mide %d días, quiere 30", dias)
+	}
+}
+
+// UNA FECHA QUE SE MANDA Y NO SE USA ES UNA PANTALLA QUE MIENTE.
+//
+// `from`/`to` solo significan algo con `preset=rango`. Con cualquier otro preset se descartaban en
+// silencio: `?preset=hoy&from=2026-01-01&to=2026-01-31` contestaba HOY con la pantalla viéndose
+// perfecta, que es el mismo modo de falla que el principio V nombra para un parámetro malformado.
+// Un parámetro presente que no se puede atender se rechaza.
+func TestUnasFechasQueElPresetNoVaAUsarSeRechazan(t *testing.T) {
+	loc := mx(t)
+	ahora := time.Date(2026, 8, 26, 21, 0, 0, 0, time.UTC)
+	ene := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	for _, preset := range []string{"", "hoy", "ayer", "semana", "mes", "30d"} {
+		t.Run("preset="+preset, func(t *testing.T) {
+			if _, err := ResolveRange(preset, ene, ene, ahora, loc); !errors.Is(err, ErrValidation) {
+				t.Fatalf("preset %q con fechas: err = %v, quiere ErrValidation", preset, err)
+			}
+			// Una sola de las dos también: media fecha ignorada engaña igual que dos.
+			if _, err := ResolveRange(preset, ene, time.Time{}, ahora, loc); !errors.Is(err, ErrValidation) {
+				t.Fatalf("preset %q con solo from: err = %v, quiere ErrValidation", preset, err)
+			}
+			if _, err := ResolveRange(preset, time.Time{}, ene, ahora, loc); !errors.Is(err, ErrValidation) {
+				t.Fatalf("preset %q con solo to: err = %v, quiere ErrValidation", preset, err)
+			}
+		})
+	}
+}
+
+// UN DÍA QUE NO HA PASADO NO TIENE VENTAS, y un rango que lo incluye devuelve una pantalla corta o
+// vacía que se lee como "no vendimos nada".
+//
+// La pantalla topa el calendario con el día de hoy, pero un tope de calendario no impide teclear la
+// fecha: el navegador marca el campo como inválido y ya. La barrera real es esta.
+func TestUnRangoQueTerminaEnElFuturoSeRechaza(t *testing.T) {
+	loc := mx(t)
+	ahora := time.Date(2026, 9, 3, 21, 0, 0, 0, time.UTC) // 3 de septiembre, 15:00 en México.
+	d := func(s string) time.Time {
+		v, err := time.ParseInLocation(dateOnly, s, time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-10-01"), ahora, loc); !errors.Is(err, ErrValidation) {
+		t.Fatalf("un rango que termina en el futuro debe rechazarse, fue %v", err)
+	}
+	// Hasta HOY inclusive sí: el día de hoy ya empezó a vender.
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-03"), ahora, loc); err != nil {
+		t.Fatalf("un rango que termina hoy debe pasar, fue %v", err)
+	}
+}
+
+// El "hoy" contra el que se compara es el del NEGOCIO. A las 19:00 de México ya es mañana en UTC:
+// con el reloj del servidor, un rango que termina mañana pasaría por bueno justo en la hora de más
+// venta, que es cuando alguien lo pediría.
+func TestElTopeDelFuturoUsaLaZonaDelNegocio(t *testing.T) {
+	loc := mx(t)
+	// 3 de septiembre 19:00 en México = 4 de septiembre 01:00 UTC.
+	ahora := time.Date(2026, 9, 4, 1, 0, 0, 0, time.UTC)
+	d := func(s string) time.Time {
+		v, _ := time.ParseInLocation(dateOnly, s, time.UTC)
+		return v
+	}
+	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-04"), ahora, loc); !errors.Is(err, ErrValidation) {
+		t.Fatalf("el 4 todavía no es hoy en México; debe rechazarse, fue %v", err)
+	}
+}

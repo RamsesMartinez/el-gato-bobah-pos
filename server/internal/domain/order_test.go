@@ -254,3 +254,51 @@ func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 		t.Fatalf("una opción sin tope configurado debe aceptar la primera: %v", err)
 	}
 }
+
+// AL PEDIDO ENTREGADO SE LE PUEDE AGREGAR, Y DEJA DE ESTAR ENTREGADO.
+//
+// El cliente que ya recibió su comida y sigue en la mesa pide una más. Antes eso se rechazaba y el
+// operador tenía que abrir un pedido aparte: dos cuentas para la misma mesa, y una de las dos se
+// pierde de vista.
+//
+// Las dos mitades van juntas en un solo test a propósito: permitir el agregado SIN reabrir el
+// pedido es peor que rechazarlo — el renglón entra, el tablero solo lista abierta y lista, y nadie
+// prepara la comida que el cliente acaba de pedir y ya se le cobró.
+func TestElEntregadoRecibeRenglonesYVuelveAEstarEnCurso(t *testing.T) {
+	casos := []struct {
+		estado string
+		recibe bool
+		reabre bool
+		porQue string
+	}{
+		{StatusAbierta, true, false, "sigue en curso"},
+		{StatusLista, true, false, "sigue en curso"},
+		{StatusEntregada, true, true, "el cliente sigue en la mesa y pide una más"},
+		{StatusCancelada, false, false, "su dinero ya se decidió"},
+		{StatusReembolsada, false, false, "un arqueo firmado ya contó ese dinero"},
+		// La tableta suspendida media hora vuelve con un estado viejo en pantalla; uno que no
+		// existe no abre la puerta.
+		{"", false, false, "un estado que no existe no abre la puerta"},
+	}
+	for _, c := range casos {
+		t.Run(c.estado, func(t *testing.T) {
+			if got := PuedeRecibirLineas(c.estado); got != c.recibe {
+				t.Errorf("PuedeRecibirLineas(%s) = %v, quiere %v: %s", c.estado, got, c.recibe, c.porQue)
+			}
+			if got := ReabreAlAgregar(c.estado); got != c.reabre {
+				t.Errorf("ReabreAlAgregar(%s) = %v, quiere %v", c.estado, got, c.reabre)
+			}
+		})
+	}
+}
+
+// Reabrir es consecuencia de agregar, NO una transición que alguien pueda pedir. Si se colara a
+// CanTransition, la tableta podría des-entregar un pedido a mano y ese camino no tiene dueño: nada
+// valida por qué, ni deja rastro de quién lo hizo.
+func TestDesEntregarSigueSinSerUnaTransicionPedible(t *testing.T) {
+	for _, destino := range []string{StatusAbierta, StatusLista} {
+		if CanTransition(StatusEntregada, destino) {
+			t.Errorf("CanTransition(entregada, %s) = true: des-entregar a mano no es una acción de esta app", destino)
+		}
+	}
+}

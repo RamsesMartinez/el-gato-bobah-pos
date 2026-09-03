@@ -7,9 +7,9 @@ import { posApi, type BusinessSettings, type TicketSettingsInput } from '../../a
 import { toaster } from '../../components/ui/toaster';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
-import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
-import { useTicketBusinessInfo } from '../tickets/ticketBusinessInfo';
-import { TicketPreview } from '../tickets/TicketPreview';
+import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
+import { useTicketBusinessInfo } from '../../shared/tickets/ticketBusinessInfo';
+import { TicketPreview } from '../../shared/tickets/TicketPreview';
 import { overflowingLines, sampleTicketOrder } from '../../utils/printReceipt';
 
 // Lo que sale impreso en el ticket y cómo se dispara la impresión. El backend es la autoridad
@@ -25,6 +25,7 @@ export function PrintSettingsPage() {
   // null = sin edición local todavía: el input refleja lo cargado sin un useEffect que sincronice.
   const [draft, setDraft] = useState<TicketSettingsInput | null>(null);
   const [help, setHelp] = useState(false);
+  const [confirmarSoloPin, setConfirmarSoloPin] = useState(false);
   const [sample, setSample] = useState(false);
   // El pedido de muestra es fijo: se arma una vez y no cambia entre renders.
   const sampleOrder = useMemo(() => sampleTicketOrder(), []);
@@ -73,6 +74,62 @@ export function PrintSettingsPage() {
   const setFreeMods = useMutation({
     mutationFn: (v: boolean) => posApi.updateTicketSettings({ printFreeModifiers: v }),
     onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
+  const setComanda = useMutation({
+    mutationFn: (v: boolean) => posApi.updateTicketSettings({ printKitchenTicket: v }),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
+  const setCocinaCobra = useMutation({
+    mutationFn: (v: boolean) => posApi.updateTicketSettings({ kitchenCanCharge: v }),
+    onSuccess: applied,
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
+  });
+
+  // Borrador de los tiempos, como texto: un campo vacío a media captura es un estado legítimo de
+  // la pantalla, y convertirlo a número antes de guardar lo volvería un cero que sí significa algo.
+  const [tiempos, setTiempos] = useState<{ lockAfterSeconds?: string; sessionHours?: string }>({});
+  const tiempo = (k: 'lockAfterSeconds' | 'sessionHours', porDefecto: number): string =>
+    tiempos[k] ?? String(data?.[k] ?? porDefecto);
+  const tiemposSinCambios = tiempos.lockAfterSeconds === undefined && tiempos.sessionHours === undefined;
+  const guardarTiempos = () => {
+    const n = (v: string | undefined, actual: number): number => {
+      const x = Number(v);
+      // Un campo vacío o basura conserva lo que había. No cae a cero, que es un valor real.
+      return v === undefined || v.trim() === '' || Number.isNaN(x) ? actual : x;
+    };
+    setIdentidad.mutate({
+      lockAfterSeconds: n(tiempos.lockAfterSeconds, data?.lockAfterSeconds ?? 0),
+      sessionHours: n(tiempos.sessionHours, data?.sessionHours ?? 8),
+    });
+  };
+
+  // EL INTERRUPTOR DEL BLOQUEO ES EL TIEMPO, no una segunda bandera.
+  //
+  // Encendido significa "mayor que cero". Con una columna aparte que dijera si está activo, el
+  // estado "activo con cero segundos" sería posible y nadie sabría cuál gana. Apagar guarda 0;
+  // encender repone lo último que hubo, o los 3 minutos que eran el default viejo.
+  const bloqueoEncendido = Number(tiempo('lockAfterSeconds', 0)) > 0;
+  // Lo que había antes de apagarlo, para que encender no cueste volver a teclearlo. Vive en la
+  // pantalla y no en la base: es una comodidad de captura, no un ajuste del negocio.
+  const [ultimoTiempo, setUltimoTiempo] = useState(180);
+  const prenderBloqueo = (prender: boolean) => {
+    if (prender) {
+      setTiempos((t) => ({ ...t, lockAfterSeconds: String(ultimoTiempo) }));
+      return;
+    }
+    const actual = Number(tiempo('lockAfterSeconds', 0));
+    if (actual > 0) setUltimoTiempo(actual);
+    setTiempos((t) => ({ ...t, lockAfterSeconds: '0' }));
+  };
+
+  const setIdentidad = useMutation({
+    mutationFn: (v: { pinOnlyUnlock?: boolean; lockAfterSeconds?: number; sessionHours?: number }) =>
+      posApi.updateTicketSettings(v),
+    onSuccess: (bs) => { applied(bs); setTiempos({}); },
     onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: String(e), type: 'error' }),
   });
 
@@ -207,9 +264,159 @@ export function PrintSettingsPage() {
         </HStack>
       </Box>
 
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Imprimir comanda para cocina</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Al mandar un pedido sale un papel sin precios, con el número grande y lo que hay que
+              preparar. Enciéndelo si quien cocina no alcanza a ver la pantalla.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.printKitchenTicket ?? false}
+            disabled={setComanda.isPending}
+            onCheckedChange={(e) => setComanda.mutate(e.checked)}
+          />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Cobrar desde Pedidos</Text>
+            {/* Qué hace, no por qué: el porqué del default vive en la migración y en el dominio. */}
+            <Text fontSize="sm" color="fg.muted">
+              Agrega el botón de cobrar en la pantalla de Pedidos. Enciéndelo si quien prepara es
+              la misma persona que cobra. Apagado, los pedidos se cobran desde el punto de venta.
+            </Text>
+          </Box>
+          <Switch
+            checked={data?.kitchenCanCharge ?? false}
+            disabled={setCocinaCobra.isPending}
+            onCheckedChange={(e) => setCocinaCobra.mutate(e.checked)}
+          />
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" mb={1} gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Bloqueo de la pantalla</Text>
+            <Text fontSize="sm" color="fg.muted">
+              La tableta se bloquea sola tras un rato sin usarse y pide identificarse para seguir.
+              Lo capturado no se pierde.
+            </Text>
+          </Box>
+          {/* Interruptor y no un campo donde haya que escribir cero. Apagado es como nace el
+              negocio: en un local donde la tableta vive a la vista del mostrador, bloquearse a
+              media venta son dos toques y un PIN a cambio de nada. */}
+          <Switch
+            inputProps={{ 'aria-label': 'Bloqueo de la pantalla' }}
+            checked={bloqueoEncendido}
+            onCheckedChange={(e) => prenderBloqueo(e.checked)}
+          />
+        </HStack>
+        {/* Se dice qué SIGUE protegiendo con el bloqueo apagado. Sin esto, apagarlo se lee como
+            "quedó sin ninguna barrera", y no es cierto: la sesión caduca igual, y esa la aplica el
+            servidor. */}
+        {!bloqueoEncendido && (
+          <Text fontSize="sm" color="fg.muted" mb={3}>
+            La sesión sigue caducando por su cuenta; abajo se elige cada cuánto.
+          </Text>
+        )}
+        {/* Los tiempos van a un BORRADOR y se guardan con un botón, como el resto de esta página.
+            Guardando en cada tecla, borrar el campo para reescribirlo mandaba lo que Number('')
+            devuelve —cero— y cero es un valor VÁLIDO: el bloqueo quedaba apagado a media captura,
+            sin que nadie lo hubiera decidido. */}
+        <HStack gap={4} flexWrap="wrap" align="start">
+          {/* El tiempo solo aparece con el bloqueo encendido: un campo que no hace nada es alto
+              gastado y una pregunta que el operador no tiene por qué responder. */}
+          {bloqueoEncendido && (
+            <Box>
+              <Text fontSize="sm" fontWeight="600" mb={1}>Se bloquea a los</Text>
+              <HStack>
+                <Input w="6rem" minH="44px" type="number" inputMode="numeric"
+                  aria-label="Se bloquea a los"
+                  value={tiempo('lockAfterSeconds', 180)}
+                  onChange={(e) => setTiempos((t) => ({ ...t, lockAfterSeconds: e.target.value }))} />
+                <Text fontSize="sm" color="fg.muted">segundos</Text>
+              </HStack>
+            </Box>
+          )}
+          <Box>
+            <Text fontSize="sm" fontWeight="600" mb={1}>La sesión dura</Text>
+            <HStack>
+              <Input w="6rem" minH="44px" type="number" inputMode="numeric"
+                value={tiempo('sessionHours', 8)}
+                onChange={(e) => setTiempos((t) => ({ ...t, sessionHours: e.target.value }))} />
+              <Text fontSize="sm" color="fg.muted">horas</Text>
+            </HStack>
+            <Text fontSize="xs" color="fg.muted" mt={1}>Después pide usuario y contraseña</Text>
+          </Box>
+          <Box alignSelf="end">
+            <Button minH="44px" loading={setIdentidad.isPending}
+              disabled={tiemposSinCambios} onClick={guardarTiempos}>
+              Guardar tiempos
+            </Button>
+          </Box>
+        </HStack>
+      </Box>
+
+      <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
+        <HStack justify="space-between" align="start" gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Desbloquear solo con el PIN</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Ahorra tocar el nombre antes de teclear. Al encenderlo, <b>todos vuelven a capturar su
+              PIN</b> y a partir de ahí necesita 6 dígitos y no se puede repetir entre personas.
+            </Text>
+          </Box>
+          {/* Sin confirm() del navegador: lo pinta el sistema operativo con botones fuera del
+              control del producto, igual que un <select> nativo. La página ya tiene diálogos
+              propios (el de ayuda, abajo). */}
+          <Switch
+            checked={data?.pinOnlyUnlock ?? false}
+            disabled={setIdentidad.isPending}
+            onCheckedChange={(e) => {
+              if (e.checked) { setConfirmarSoloPin(true); return; }
+              setIdentidad.mutate({ pinOnlyUnlock: false });
+            }}
+          />
+        </HStack>
+      </Box>
+
       {/* Ticket de prueba: se ve antes de imprimir, y sale marcado para que no se confunda con
           una venta si acaba en manos de un cliente. */}
       <TicketPreview order={sampleOrder} sample isOpen={sample} onClose={() => setSample(false)} />
+
+      <DialogRoot open={confirmarSoloPin} onOpenChange={(e) => setConfirmarSoloPin(e.open)}
+        placement="center" size="sm">
+        <DialogBackdrop />
+        <DialogContent mx={4} borderRadius="2xl">
+          <DialogHeader><DialogTitle>Desbloquear solo con el PIN</DialogTitle></DialogHeader>
+          <DialogBody>
+            <Text>
+              Al encenderlo, <b>todos tendrán que capturar su PIN de nuevo</b>, y el nuevo necesita
+              6 dígitos y no se puede repetir entre personas.
+            </Text>
+            <Text mt={2} color="fg.muted">
+              Mientras tanto entran con su usuario y contraseña.
+            </Text>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" minH="44px" onClick={() => setConfirmarSoloPin(false)}>
+              Cancelar
+            </Button>
+            <Button minH="44px" colorPalette="orange" onClick={() => {
+              setConfirmarSoloPin(false);
+              setIdentidad.mutate({ pinOnlyUnlock: true });
+            }}>
+              Encender
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
 
       <DialogRoot open={help} onOpenChange={(e) => setHelp(e.open)} placement="center" size="sm">
         <DialogBackdrop />
