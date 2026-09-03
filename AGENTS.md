@@ -68,6 +68,16 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 
   Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
   buscar el defecto. Los casos y su porqué están en [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md).
+
+  **La suite COBRA los pedidos que crea.** El ambiente es compartido con una persona, y un pedido de
+  prueba que se queda abierto aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de
+  caja — le hace creer a quien opera que hay dinero pendiente. El `globalSetup` anota qué pedidos ya
+  estaban abiertos y el `globalTeardown` cierra solo los que la suite abrió
+  ([web/e2e/limpiar-lo-que-cree.ts](web/e2e/limpiar-lo-que-cree.ts)); sin esa marca no toca nada,
+  porque cerrarle a alguien una cuenta viva es peor que dejar basura. Si escribes un script suelto
+  que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
+  (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
+  plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
