@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildKitchenHtml } from './printKitchen';
+import { buildKitchenHtml, tamanoDelFolio } from './printKitchen';
 import type { ReceiptOrder } from '../types/pos';
 
 const pedido: ReceiptOrder = {
@@ -102,4 +102,45 @@ test('sin lista de renglones sale el pedido completo y sin la marca de agregado'
   expect(html).toContain('Alitas');
   expect(html).toContain('Refresco');
   expect(html).not.toContain('AGREGADO');
+});
+
+// EL NOMBRE DE LA RAZA NO SE PUEDE SALIR DEL PAPEL.
+//
+// La comanda imprime el folio a 46 px sobre un rollo de 58 mm, que da para unas ocho letras. Con
+// razas de gato el nombre llega a veinte ("Colorpoint Shorthair") y a ese tamaño la impresora lo
+// corta: el operador se queda con "Colorpoi" y el papel deja de servir para cantar el pedido.
+//
+// Se prueba la MEDIDA y no el HTML porque es donde vive la decisión; que el HTML la use lo cubre el
+// caso de abajo.
+describe('el folio de la comanda cabe en el rollo', () => {
+  // 189 px útiles / (0.6 em × letras de la palabra más larga).
+  const cabe = (nombre: string) => {
+    const masLarga = nombre.split(/[\s-]+/).reduce((n, p) => Math.max(n, p.length), 0);
+    return 0.6 * masLarga * tamanoDelFolio(nombre) <= 189;
+  };
+
+  it('los nombres cortos siguen saliendo del tamaño de siempre', () => {
+    expect(tamanoDelFolio('Persa')).toBe(46);
+    expect(tamanoDelFolio('Tigre')).toBe(46);
+    // Ocho letras es lo que cabía antes a 46 px, y sigue cabiendo.
+    expect(tamanoDelFolio('Abisinio')).toBe(39);
+  });
+
+  it('ninguna raza de la lista se sale del papel', () => {
+    const razas = [
+      'Colorpoint Shorthair', 'Sagrado de Birmania', 'Neva Masquerade', 'British Shorthair',
+      'Levkoy Ucraniano', 'Kurilian Bobtail', 'Bosque de Noruega', 'York Chocolate', 'Pixie-bob',
+      'Maine Coon', 'Ojos Azules', 'Persa', 'Manx', 'Mau Egipcio',
+    ];
+    for (const r of razas) {
+      expect(cabe(r), `"${r}" se sale del rollo de 58 mm`).toBe(true);
+    }
+  });
+
+  // Un tamaño de cero o negativo dejaría el folio invisible, que es peor que cortado: el papel sale
+  // sin con qué identificar el pedido.
+  it('nunca baja de un tamaño legible', () => {
+    expect(tamanoDelFolio('Supercalifragilisticoespialidoso')).toBeGreaterThanOrEqual(18);
+    expect(tamanoDelFolio('')).toBe(46);
+  });
 });

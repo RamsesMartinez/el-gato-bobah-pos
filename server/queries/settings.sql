@@ -21,6 +21,7 @@ select delivery_fee,
        pin_only_unlock,
        lock_after_seconds,
        session_hours,
+       folio_scheme,
        (logo_bytes is not null)::boolean as has_logo,
        logo_updated_at,
        updated_at,
@@ -56,6 +57,10 @@ set business_name       = sqlc.arg(business_name),
     pin_only_unlock = sqlc.arg(pin_only_unlock),
     lock_after_seconds = sqlc.arg(lock_after_seconds),
     session_hours = sqlc.arg(session_hours),
+    -- Con qué se nombran los pedidos. Cambiarlo NO renombra nada ya vendido: el nombre se guarda en
+    -- orders.folio_name al crear el pedido. La bolsa del esquema viejo se queda como estaba, así que
+    -- volver a él continúa la vuelta que iba a medias en vez de empezar de cero.
+    folio_scheme = sqlc.arg(folio_scheme),
     updated_at          = now(),
     updated_by          = sqlc.arg(updated_by);
 

@@ -1,125 +1,88 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 )
 
 // Las tres reglas que hacen utilizable la lista. Viven como test y no como comentario porque el
 // día que alguien agregue "Gallo" junto a "Ganso", o "Camarón" porque suena bonito, el comentario
 // no lo detiene y esto sí.
-func TestLaListaDeAnimalesSeGritaSinConfusion(t *testing.T) {
-	if len(animales) != 100 {
-		t.Fatalf("la lista tiene %d nombres, quiere 100", len(animales))
+func TestLasListasSeGritanSinConfusion(t *testing.T) {
+	listas := []struct {
+		nombre    string
+		items     []string
+		cuantos   int
+		topeLargo int
+	}{
+		{"animales", animales[:], 100, 9},
+		// Las razas no llevan tope de largo: "Colorpoint Shorthair" es el nombre real y recortarlo
+		// la convertiría en otra raza. Lo que se ajusta es la comanda, no la lista. El tope de
+		// SanitizarFolio (20) sigue aplicando y se verifica aparte.
+		{"razas", razas[:], 88, 0},
 	}
+	for _, l := range listas {
+		t.Run(l.nombre, func(t *testing.T) {
+			if len(l.items) != l.cuantos {
+				t.Fatalf("la lista tiene %d nombres, quiere %d", len(l.items), l.cuantos)
+			}
 
-	visto := map[string]string{}
-	for _, a := range animales {
-		if otro, dup := visto[a]; dup {
-			t.Errorf("%q está repetido (%q)", a, otro)
-		}
-		visto[a] = a
-	}
+			visto := map[string]bool{}
+			for _, a := range l.items {
+				if visto[a] {
+					t.Errorf("%q está repetido", a)
+				}
+				visto[a] = true
+			}
 
-	// Nueve letras es lo que cabe grande en un ticket de 58 mm y se dice de un tirón.
-	for _, a := range animales {
-		if n := len([]rune(a)); n > 9 {
-			t.Errorf("%q tiene %d letras, el tope es 9", a, n)
-		}
-	}
+			if l.topeLargo > 0 {
+				for _, a := range l.items {
+					if n := len([]rune(a)); n > l.topeLargo {
+						t.Errorf("%q tiene %d letras, el tope es %d", a, n, l.topeLargo)
+					}
+				}
+			}
+			// Todo nombre tiene que pasar por la puerta que valida lo que se imprime: uno que la
+			// propia lista no puede proponer es un nombre muerto.
+			for _, a := range l.items {
+				if SanitizarFolio(a) != a {
+					t.Errorf("%q no sobrevive a SanitizarFolio: la pantalla no podría proponerlo", a)
+				}
+			}
 
-	// Dos nombres que empiezan igual son el mismo sonido en una cocina ruidosa, y eso entrega el
-	// pedido equivocado. La primera sílaba es lo único que se alcanza a oír.
-	porSilaba := map[string]string{}
-	for _, a := range animales {
-		clave := sinAcentos(a)
-		if len(clave) > 3 {
-			clave = clave[:3]
-		}
-		if otro, choca := porSilaba[clave]; choca {
-			t.Errorf("%q y %q empiezan igual (%q): se confunden al cantarlos", a, otro, clave)
-		}
-		porSilaba[clave] = a
+			// Dos nombres que empiezan igual son el mismo sonido en una cocina ruidosa, y eso
+			// entrega el pedido equivocado. La primera sílaba es lo único que se alcanza a oír.
+			porSilaba := map[string]string{}
+			for _, a := range l.items {
+				clave := sinAcentos(a)
+				if len(clave) > 3 {
+					clave = clave[:3]
+				}
+				if otro, choca := porSilaba[clave]; choca {
+					t.Errorf("%q y %q empiezan igual (%q): se confunden al cantarlos", a, otro, clave)
+				}
+				porSilaba[clave] = a
+			}
+		})
 	}
 }
 
-// Una vuelta completa usa los 100 nombres una sola vez: si el barajado perdiera uno, dos pedidos
-// distintos del mismo día se llamarían igual y la cocina no podría distinguirlos.
-func TestUnaVueltaUsaCadaNombreUnaSolaVez(t *testing.T) {
-	dia := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-	visto := map[string]int{}
-	for n := 1; n <= len(animales); n++ {
-		nombre := NombreDeFolio(7, dia, n)
-		if antes, dup := visto[nombre]; dup {
-			t.Fatalf("%q salió en el pedido %d y otra vez en el %d", nombre, antes, n)
-		}
-		visto[nombre] = n
+// El default es razas de gato, y lo es también para el negocio que no tiene fila de ajustes. Con
+// dos fuentes de "cuál es el default", la pantalla mostraría un esquema y el ticket saldría con el
+// otro.
+func TestElEsquemaPorDefectoEsRazas(t *testing.T) {
+	if EsquemaPorDefecto != EsquemaRazas {
+		t.Errorf("el default es %q, quiere razas", EsquemaPorDefecto)
 	}
-	if len(visto) != len(animales) {
-		t.Fatalf("se usaron %d nombres distintos, quiere %d", len(visto), len(animales))
+	if !EsquemaValido("animales") || !EsquemaValido("razas") {
+		t.Error("los dos esquemas del producto tienen que ser válidos")
 	}
-}
-
-// Al agotarse la lista el nombre se repite con número, que es lo que permite que un local con 200
-// pedidos al día siga cantando nombres en vez de volver a los folios.
-func TestAlAgotarseLaListaElNombreLlevaNumero(t *testing.T) {
-	dia := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-	primero := NombreDeFolio(7, dia, 1)
-
-	if segundaVuelta := NombreDeFolio(7, dia, 1+len(animales)); segundaVuelta != primero+" 2" {
-		t.Errorf("pedido %d = %q, quiere %q", 1+len(animales), segundaVuelta, primero+" 2")
-	}
-	if tercera := NombreDeFolio(7, dia, 1+2*len(animales)); tercera != primero+" 3" {
-		t.Errorf("tercera vuelta = %q, quiere %q", tercera, primero+" 3")
-	}
-}
-
-// El orden se revuelve por día: si fuera secuencial, el primer nombre sería siempre el mismo y
-// acabaría significando "el temprano" en vez de identificar a un pedido.
-func TestCadaDiaEmpiezaConOtroAnimal(t *testing.T) {
-	var arranques []string
-	for d := 1; d <= 10; d++ {
-		arranques = append(arranques, NombreDeFolio(7, time.Date(2026, 8, d, 0, 0, 0, 0, time.UTC), 1))
-	}
-	distintos := map[string]bool{}
-	for _, a := range arranques {
-		distintos[a] = true
-	}
-	if len(distintos) < 7 {
-		t.Errorf("en 10 días solo hubo %d arranques distintos (%v): el barajado no está revolviendo",
-			len(distintos), arranques)
-	}
-}
-
-// Dos empresas el mismo día no comparten el orden. No es un requisito de seguridad —el nombre no
-// es secreto—, pero dos locales de la misma cadena cantando "Tigre" a la misma hora es una
-// coincidencia que confunde a quien opera los dos.
-func TestDosEmpresasElMismoDiaNoCompartenElOrden(t *testing.T) {
-	dia := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-	if NombreDeFolio(1, dia, 1) == NombreDeFolio(2, dia, 1) {
-		t.Error("dos empresas arrancaron con el mismo animal el mismo día")
-	}
-}
-
-// El mismo pedido pide su nombre dos veces (al imprimir el ticket y al reimprimirlo) y tiene que
-// dar lo mismo. Es la razón de que el generador sea propio y no math/rand.
-func TestElMismoPedidoSiempreDaElMismoNombre(t *testing.T) {
-	dia := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 50; i++ {
-		if a, b := NombreDeFolio(7, dia, 42), NombreDeFolio(7, dia, 42); a != b {
-			t.Fatalf("dos llamadas dieron %q y %q", a, b)
-		}
-	}
-}
-
-// Un pedido sin número todavía no existe; devolver un animal sería inventarle identidad a algo que
-// no la tiene, y ese nombre acabaría impreso.
-func TestSinNumeroNoHayNombre(t *testing.T) {
-	dia := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
-	for _, n := range []int{0, -1, -100} {
-		if got := NombreDeFolio(7, dia, n); got != "" {
-			t.Errorf("NombreDeFolio(…, %d) = %q, quiere vacío", n, got)
+	// Un esquema que no se entiende NO cae al default en silencio: devolvería nombres de una lista
+	// que nadie pidió, con cara de correcta.
+	for _, malo := range []string{"", "Animales", "gatos", "perros", "razas "} {
+		if EsquemaValido(malo) {
+			t.Errorf("EsquemaValido(%q) = true", malo)
 		}
 	}
 }
@@ -141,17 +104,26 @@ func TestSanitizarFolio(t *testing.T) {
 		{"con acento", "Búho", "Búho"},
 		{"con eñe", "Ñandú", "Ñandú"},
 		{"espacios alrededor", "  Tigre  ", "Tigre"},
-		{"el más largo que cabe", "Cocodrilooo", "Cocodrilooo"},
+		{"el más largo que cabe", "Colorpoint Shorthair", "Colorpoint Shorthair"},
+		// Las razas llevan espacio y guion en su nombre real. Sin esto, la mitad de la lista no
+		// podría proponerse desde la pantalla.
+		{"raza con espacio", "Maine Coon", "Maine Coon"},
+		{"raza con guion", "Pixie-bob", "Pixie-bob"},
+		{"raza de tres palabras", "Sagrado de Birmania", "Sagrado de Birmania"},
 
 		{"vacío", "", ""},
 		{"demasiado corto", "Ti", ""},
-		{"no cabe en el papel", "Rinoceronteee", ""},
+		{"no cabe en el papel", "Colorpoint Shorthairs", ""},
+		// El separador en la orilla o duplicado ya no es un nombre, es relleno — y esto se imprime.
+		{"guion al principio", "-Persa", ""},
+		{"guion al final", "Persa-", ""},
+		{"dos espacios seguidos", "Maine  Coon", ""},
+		{"espacio y guion pegados", "Maine -Coon", ""},
 		// Este texto se imprime en el ticket del cliente y en la comanda. Sin el filtro, la
 		// pantalla podría mandar cualquier cosa y saldría en papel con el nombre del negocio.
 		{"con dígitos", "Tigre2", ""},
 		{"con símbolos", "Tigre!", ""},
 		{"con salto de línea", "Tigre\nMESA GRATIS", ""},
-		{"con espacio en medio", "Tigre Blanco", ""},
 		{"solo espacios", "     ", ""},
 	}
 	for _, c := range casos {
@@ -187,20 +159,164 @@ func TestSiguienteFolioLibre(t *testing.T) {
 	}
 }
 
-// FolioNames es lo que la pantalla pide para proponer un nombre al abrir la cuenta. Devuelve una
-// COPIA: si entregara el arreglo interno, quien lo recibiera podría reordenarlo y con él el
-// barajado por día, que sale de ese mismo orden.
-func TestFolioNamesEsUnaCopia(t *testing.T) {
-	lista := FolioNames()
-	if len(lista) != len(animales) {
-		t.Fatalf("FolioNames devolvió %d nombres, quiere %d", len(lista), len(animales))
+// bolsa reproduce lo que hace el servidor con cada pedido: sortea, vacía si la vuelta se agotó, y
+// anota lo que salió. Vive en el test porque es la secuencia que se quiere probar, no código de
+// producción disfrazado.
+type bolsa struct {
+	lista      []string
+	consumidos []string
+	vaciadas   int
+}
+
+func (b *bolsa) tomar(usadosHoy []string, azar func(int) int) string {
+	n, vaciar := SiguienteDeLaBolsa(b.lista, b.consumidos, usadosHoy, azar)
+	if vaciar {
+		b.consumidos = nil
+		b.vaciadas++
 	}
-	original := animales[0]
-	lista[0] = "Manipulado"
-	if animales[0] != original {
-		t.Fatalf("tocar la copia cambió la lista del servidor: quedó en %q", animales[0])
+	b.consumidos = append(b.consumidos, n)
+	return n
+}
+
+func listaDe(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("N%03d", i)
 	}
-	if FolioNames()[0] != original {
-		t.Fatal("la siguiente llamada ya salió contaminada")
+	return out
+}
+
+// primero es el sorteo más aburrido posible: siempre el primer disponible. Hace la secuencia
+// predecible, que es lo que permite afirmar sobre ella en vez de sobre la suerte.
+func primero(int) int { return 0 }
+
+// LA BOLSA SE AGOTA ANTES DE VOLVER A EMPEZAR — los tres días del reporte.
+//
+// Sin esto, el sorteo con reemplazo repite nombres a los pocos días mientras media lista nunca sale:
+// con 300 nombres y 100 pedidos diarios, la probabilidad de que un nombre salga dos veces EL MISMO
+// día ya es alta, y "Alce 2" con el primer Alce todavía en la plancha es cómo se entrega el pedido
+// equivocado.
+func TestLaBolsaSeAgotaAntesDeVolverAEmpezar(t *testing.T) {
+	b := &bolsa{lista: listaDe(300)}
+
+	dia := func(cuantos int) []string {
+		t.Helper()
+		var hoy []string
+		for i := 0; i < cuantos; i++ {
+			hoy = append(hoy, b.tomar(hoy, primero))
+		}
+		return hoy
+	}
+
+	dia1 := dia(100)
+	if len(b.consumidos) != 100 {
+		t.Fatalf("tras el día 1 la bolsa lleva %d consumidos, quiere 100", len(b.consumidos))
+	}
+	if b.vaciadas != 0 {
+		t.Fatalf("la bolsa se vació %d veces el día 1: quedaban 200 nombres sin usar", b.vaciadas)
+	}
+
+	// Día 2: 190 de los 200 que quedaban. Ninguno puede repetir uno del día 1 — esa es la promesa.
+	dia2 := dia(190)
+	if b.vaciadas != 0 {
+		t.Fatalf("la bolsa se vació el día 2: todavía quedaban 10 nombres sin usar")
+	}
+	vistos := map[string]int{}
+	for _, n := range dia1 {
+		vistos[n] = 1
+	}
+	for _, n := range dia2 {
+		if vistos[n] != 0 {
+			t.Fatalf("%q salió el día 1 y otra vez el día 2, con la bolsa a medias", n)
+		}
+		vistos[n] = 2
+	}
+	if len(vistos) != 290 {
+		t.Fatalf("en dos días salieron %d nombres distintos, quiere 290", len(vistos))
+	}
+
+	// Día 3: se piden 100. Los 10 que quedaban salen primero y ahí la bolsa se vacía UNA vez.
+	dia3 := dia(100)
+	if b.vaciadas != 1 {
+		t.Fatalf("la bolsa se vació %d veces el día 3, quiere exactamente 1", b.vaciadas)
+	}
+	for _, n := range dia3[:10] {
+		if vistos[n] != 0 {
+			t.Errorf("%q ya había salido antes de que la bolsa se vaciara", n)
+		}
+	}
+	if len(vistos)+10 != 300 {
+		t.Fatalf("antes de vaciar habían salido %d nombres, quiere 300", len(vistos)+10)
+	}
+
+	// Y NINGUNO de los 100 del día 3 se repite entre sí: la vuelta nueva descuenta lo ya cantado hoy.
+	// Sin eso, el pedido 11 podría llamarse igual que el 1, con los dos todavía en la plancha.
+	delDia := map[string]bool{}
+	for i, n := range dia3 {
+		if delDia[n] {
+			t.Fatalf("%q se repitió el mismo día (pedido %d): habría que cantarlo como \"%s 2\"", n, i+1, n)
+		}
+		delDia[n] = true
+	}
+}
+
+// La bolsa NO se vacía mientras quede un solo nombre. Es la diferencia entre "se agotan los 300" y
+// "se agotan casi todos": el que sobra nunca saldría.
+func TestConUnNombreSinUsarLaBolsaNoSeVacia(t *testing.T) {
+	lista := listaDe(5)
+	_, vaciar := SiguienteDeLaBolsa(lista, lista[:4], nil, primero)
+	if vaciar {
+		t.Error("se vació con un nombre todavía sin usar")
+	}
+	n, vaciar := SiguienteDeLaBolsa(lista, lista, nil, primero)
+	if !vaciar {
+		t.Error("con todos consumidos tiene que vaciarse y empezar otra vuelta")
+	}
+	if n == "" {
+		t.Error("un pedido sin nombre no es una opción: es con lo que cocina lo canta")
+	}
+}
+
+// EL CASO QUE EL DUEÑO PIDIÓ VALIDAR: al empezar la vuelta nueva, no tomar uno que ya salió hoy.
+//
+// Es poco probable pero pasa, y el resultado es "Alce 2" con el primer Alce todavía esperando. Con
+// tres nombres y dos ya cantados hoy, solo hay una respuesta correcta.
+func TestAlEmpezarLaVueltaNoSeRepiteLoQueYaSalioHoy(t *testing.T) {
+	lista := []string{"Alce", "Bisonte", "Castor"}
+	// Bolsa agotada; hoy ya se cantaron Alce y Bisonte.
+	n, vaciar := SiguienteDeLaBolsa(lista, lista, []string{"Alce", "Bisonte"}, primero)
+	if !vaciar {
+		t.Error("la bolsa estaba agotada: tenía que vaciarse")
+	}
+	if n != "Castor" {
+		t.Errorf("salió %q, quiere Castor: los otros dos ya se cantaron hoy y sonarían como \"Alce 2\"", n)
+	}
+}
+
+// Cuando el día pasó del largo de la lista ya no hay nada fresco que dar, y un pedido sin nombre no
+// es una opción. Devuelve uno repetido a propósito: quien llama le pone el número.
+func TestCuandoElDiaSuperaALaListaSeDevuelveUnoRepetido(t *testing.T) {
+	lista := []string{"Alce", "Bisonte"}
+	n, _ := SiguienteDeLaBolsa(lista, lista, lista, primero)
+	if n == "" {
+		t.Fatal("devolvió vacío: el pedido se quedaría sin nombre con el que cantarlo")
+	}
+	if libre := SiguienteFolioLibre(n, lista); libre != n+" 2" {
+		t.Errorf("el nombre repetido se numera como %q, quiere %q", libre, n+" 2")
+	}
+}
+
+// Un sorteo mal escrito no puede tumbar la venta. `azar` lo inyecta quien llama, y un índice fuera
+// de rango aquí sería un panic en la ruta que crea el pedido.
+func TestUnSorteoFueraDeRangoNoTumbaLaVenta(t *testing.T) {
+	lista := listaDe(3)
+	for _, malo := range []func(int) int{
+		func(int) int { return -1 },
+		func(n int) int { return n },
+		func(n int) int { return n * 1000 },
+	} {
+		if n, _ := SiguienteDeLaBolsa(lista, nil, nil, malo); n == "" {
+			t.Error("un sorteo fuera de rango dejó el pedido sin nombre")
+		}
 	}
 }

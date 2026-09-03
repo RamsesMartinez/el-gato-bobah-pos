@@ -20,6 +20,13 @@ const CORTES = [
   { value: 'cierre_de_caja', label: 'Al cerrar la caja' },
 ];
 
+// Con qué se nombra cada pedido. Las etiquetas dicen cuántos son porque es lo que decide: con una
+// lista más corta, el mismo nombre vuelve antes.
+const ESQUEMAS = [
+  { value: 'razas', label: 'Razas de gato (88 nombres)' },
+  { value: 'animales', label: 'Animales (100 nombres)' },
+];
+
 // Ajustes de negocio (admin/gerente). Hoy solo el costo de envío por defecto; el backend es
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
 export function BusinessSettingsPage() {
@@ -33,6 +40,7 @@ export function BusinessSettingsPage() {
   const [tz, setTz] = useState<string | null>(null);
   const tzValue = tz ?? data?.timezone ?? 'America/Mexico_City';
   const [corte, setCorte] = useState<string | null>(null);
+  const [esquema, setEsquema] = useState<string | null>(null);
 
   const { data: company } = useQuery({ queryKey: ['company'], queryFn: posApi.company });
   const [coName, setCoName] = useState<string | null>(null);
@@ -76,6 +84,22 @@ export function BusinessSettingsPage() {
       // Y la lista de entregados, que es lo que el ajuste acaba de cambiar: sin esto el operador
       // guarda y no ve nada distinto hasta el siguiente refresco.
       qc.invalidateQueries({ queryKey: ['orders', 'delivered'] });
+      toaster.create({ title: 'Guardado', type: 'success' });
+    },
+    onError: (e: unknown) => toaster.create({
+      title: 'No se pudo guardar',
+      description: e instanceof Error ? e.message : String(e),
+      type: 'error',
+    }),
+  });
+
+  const saveEsquema = useMutation({
+    mutationFn: () => posApi.updateFolioScheme(esquema ?? data?.folioScheme ?? 'razas'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['business-settings'] });
+      // Y la lista de nombres que el punto de venta propone: sin esto las cuentas nuevas seguirían
+      // bautizándose con la lista anterior hasta recargar la aplicación.
+      qc.invalidateQueries({ queryKey: ['pos', 'folio-names'] });
       toaster.create({ title: 'Guardado', type: 'success' });
     },
     onError: (e: unknown) => toaster.create({
@@ -193,6 +217,29 @@ export function BusinessSettingsPage() {
             />
           </Box>
           <Button size="lg" loading={saveCorte.isPending} onClick={() => saveCorte.mutate()}>
+            Guardar
+          </Button>
+        </HStack>
+      </Box>
+
+      <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
+        <Text fontWeight="700" mb={1}>Nombres de los pedidos</Text>
+        <Text fontSize="sm" color="fg.muted" mb={3}>
+          Con qué se nombra cada pedido para cantarlo en cocina. Se usan todos los nombres de la
+          lista antes de repetir alguno. Los pedidos ya vendidos conservan el nombre con el que
+          salieron.
+        </Text>
+        <HStack gap={2} align="end" flexWrap="wrap">
+          <Box flex="1" minW="260px">
+            <Picker
+              size="lg"
+              value={esquema ?? data?.folioScheme ?? 'razas'}
+              onChange={setEsquema}
+              options={ESQUEMAS}
+              title="¿Con qué se nombran los pedidos?"
+            />
+          </Box>
+          <Button size="lg" loading={saveEsquema.isPending} onClick={() => saveEsquema.mutate()}>
             Guardar
           </Button>
         </HStack>
