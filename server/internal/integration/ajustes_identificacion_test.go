@@ -10,12 +10,17 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// Los tres ajustes nacen con el comportamiento SEGURO, así que el día del despliegue no cambia nada
-// salvo la duración de la sesión.
+// Los ajustes de identificación nacen con el comportamiento que el dueño eligió.
 //
 // pin_only_unlock apagado importa especialmente: encendido, un dedazo que caiga en el PIN de otro
 // atribuye la venta a quien no fue, en silencio. No es algo que un negocio deba estrenar sin
 // haberlo elegido.
+//
+// El bloqueo de PANTALLA nace apagado desde 0059, y esa parte sí cambió a propósito: en un local
+// donde la tableta vive a la vista del mostrador, bloquearse cada tres minutos son dos toques y un
+// PIN a media venta a cambio de nada. La barrera que queda es la caducidad de la SESIÓN, que la
+// aplica el servidor y que no se movió — por eso las tres se comprueban juntas: apagar el bloqueo
+// de pantalla no puede haber aflojado la sesión de paso.
 func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
 	st := newTestStore(t)
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -27,8 +32,9 @@ func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
 	if ajustes.PinOnlyUnlock {
 		t.Error("pin_only_unlock nació encendido: un negocio estrenaría el modo riesgoso sin elegirlo")
 	}
-	if ajustes.LockAfterSeconds != 180 {
-		t.Errorf("lock_after_seconds = %d, quiere 180", ajustes.LockAfterSeconds)
+	if ajustes.LockAfterSeconds != 0 {
+		t.Errorf("lock_after_seconds = %d, quiere 0: el bloqueo de pantalla nace apagado",
+			ajustes.LockAfterSeconds)
 	}
 	if ajustes.SessionHours != 8 {
 		t.Errorf("session_hours = %d, quiere 8", ajustes.SessionHours)

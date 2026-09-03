@@ -102,9 +102,28 @@ export function PrintSettingsPage() {
       return v === undefined || v.trim() === '' || Number.isNaN(x) ? actual : x;
     };
     setIdentidad.mutate({
-      lockAfterSeconds: n(tiempos.lockAfterSeconds, data?.lockAfterSeconds ?? 180),
+      lockAfterSeconds: n(tiempos.lockAfterSeconds, data?.lockAfterSeconds ?? 0),
       sessionHours: n(tiempos.sessionHours, data?.sessionHours ?? 8),
     });
+  };
+
+  // EL INTERRUPTOR DEL BLOQUEO ES EL TIEMPO, no una segunda bandera.
+  //
+  // Encendido significa "mayor que cero". Con una columna aparte que dijera si está activo, el
+  // estado "activo con cero segundos" sería posible y nadie sabría cuál gana. Apagar guarda 0;
+  // encender repone lo último que hubo, o los 3 minutos que eran el default viejo.
+  const bloqueoEncendido = Number(tiempo('lockAfterSeconds', 0)) > 0;
+  // Lo que había antes de apagarlo, para que encender no cueste volver a teclearlo. Vive en la
+  // pantalla y no en la base: es una comodidad de captura, no un ajuste del negocio.
+  const [ultimoTiempo, setUltimoTiempo] = useState(180);
+  const prenderBloqueo = (prender: boolean) => {
+    if (prender) {
+      setTiempos((t) => ({ ...t, lockAfterSeconds: String(ultimoTiempo) }));
+      return;
+    }
+    const actual = Number(tiempo('lockAfterSeconds', 0));
+    if (actual > 0) setUltimoTiempo(actual);
+    setTiempos((t) => ({ ...t, lockAfterSeconds: '0' }));
   };
 
   const setIdentidad = useMutation({
@@ -281,27 +300,50 @@ export function PrintSettingsPage() {
       </Box>
 
       <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={5} mt={4}>
-        <Text fontWeight="700" mb={1}>Bloqueo de la pantalla</Text>
-        <Text fontSize="sm" color="fg.muted" mb={3}>
-          La tableta se bloquea sola y pide identificarse para seguir. Lo capturado no se pierde.
-        </Text>
+        <HStack justify="space-between" align="start" mb={1} gap={4}>
+          <Box>
+            <Text fontWeight="700" mb={1}>Bloqueo de la pantalla</Text>
+            <Text fontSize="sm" color="fg.muted">
+              La tableta se bloquea sola tras un rato sin usarse y pide identificarse para seguir.
+              Lo capturado no se pierde.
+            </Text>
+          </Box>
+          {/* Interruptor y no un campo donde haya que escribir cero. Apagado es como nace el
+              negocio: en un local donde la tableta vive a la vista del mostrador, bloquearse a
+              media venta son dos toques y un PIN a cambio de nada. */}
+          <Switch
+            inputProps={{ 'aria-label': 'Bloqueo de la pantalla' }}
+            checked={bloqueoEncendido}
+            onCheckedChange={(e) => prenderBloqueo(e.checked)}
+          />
+        </HStack>
+        {/* Se dice qué SIGUE protegiendo con el bloqueo apagado. Sin esto, apagarlo se lee como
+            "quedó sin ninguna barrera", y no es cierto: la sesión caduca igual, y esa la aplica el
+            servidor. */}
+        {!bloqueoEncendido && (
+          <Text fontSize="sm" color="fg.muted" mb={3}>
+            La sesión sigue caducando por su cuenta; abajo se elige cada cuánto.
+          </Text>
+        )}
         {/* Los tiempos van a un BORRADOR y se guardan con un botón, como el resto de esta página.
             Guardando en cada tecla, borrar el campo para reescribirlo mandaba lo que Number('')
             devuelve —cero— y cero es un valor VÁLIDO: el bloqueo quedaba apagado a media captura,
             sin que nadie lo hubiera decidido. */}
         <HStack gap={4} flexWrap="wrap" align="start">
-          <Box>
-            <Text fontSize="sm" fontWeight="600" mb={1}>Se bloquea a los</Text>
-            <HStack>
-              <Input w="6rem" minH="44px" type="number" inputMode="numeric"
-                value={tiempo('lockAfterSeconds', 180)}
-                onChange={(e) => setTiempos((t) => ({ ...t, lockAfterSeconds: e.target.value }))} />
-              <Text fontSize="sm" color="fg.muted">segundos</Text>
-            </HStack>
-            {/* 0 es una elección válida, no un error: una caja en una oficina cerrada no necesita
-                bloquearse. Se dice para que nadie lo lea como "roto". */}
-            <Text fontSize="xs" color="fg.muted" mt={1}>0 = no se bloquea</Text>
-          </Box>
+          {/* El tiempo solo aparece con el bloqueo encendido: un campo que no hace nada es alto
+              gastado y una pregunta que el operador no tiene por qué responder. */}
+          {bloqueoEncendido && (
+            <Box>
+              <Text fontSize="sm" fontWeight="600" mb={1}>Se bloquea a los</Text>
+              <HStack>
+                <Input w="6rem" minH="44px" type="number" inputMode="numeric"
+                  aria-label="Se bloquea a los"
+                  value={tiempo('lockAfterSeconds', 180)}
+                  onChange={(e) => setTiempos((t) => ({ ...t, lockAfterSeconds: e.target.value }))} />
+                <Text fontSize="sm" color="fg.muted">segundos</Text>
+              </HStack>
+            </Box>
+          )}
           <Box>
             <Text fontSize="sm" fontWeight="600" mb={1}>La sesión dura</Text>
             <HStack>

@@ -36,3 +36,28 @@ func TestIdentitySettingsValidate(t *testing.T) {
 		})
 	}
 }
+
+// EL BLOQUEO NACE APAGADO.
+//
+// Nacía en 180 segundos y el dueño lo pidió al revés: un local donde la tableta está siempre a la
+// vista del mostrador no gana nada bloqueándose cada tres minutos, y sí pierde — cada bloqueo son
+// dos toques y un PIN en medio de una venta.
+//
+// Encenderlo es un interruptor en Ajustes, y lo que lo enciende es poner un tiempo mayor que cero:
+// no hay una segunda columna que pueda contradecir a la primera.
+func TestElBloqueoDePantallaNaceApagado(t *testing.T) {
+	d := DefaultIdentity()
+	if d.LockAfterSeconds != 0 {
+		t.Errorf("LockAfterSeconds nace en %d, quiere 0: el negocio nuevo no debe bloquearse solo",
+			d.LockAfterSeconds)
+	}
+	// Y sigue siendo un ajuste válido: cero no es un error de captura que haya que corregir.
+	if err := d.Validate(); err != nil {
+		t.Errorf("los defaults no validan: %v", err)
+	}
+	// Lo que SÍ cambia con esto es la sesión, que no se toca: sin ella no habría ninguna barrera.
+	if d.SessionHours != 8 {
+		t.Errorf("SessionHours = %d, quiere 8: apagar el bloqueo de pantalla no puede alargar la sesión",
+			d.SessionHours)
+	}
+}

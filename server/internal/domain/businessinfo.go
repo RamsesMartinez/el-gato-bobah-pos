@@ -98,8 +98,13 @@ type IdentitySettings struct {
 	// default — un dedazo que caiga en el PIN de otro atribuye la venta a quien no fue, en
 	// silencio. Encenderlo exige PINs de 6 dígitos y únicos, y eso lo verifica el servicio.
 	PinOnlyUnlock bool
-	// LockAfterSeconds: segundos sin actividad antes de bloquear la pantalla. Cero = no bloquear,
-	// que es una elección válida para una caja en una oficina cerrada.
+	// LockAfterSeconds: segundos sin actividad antes de bloquear la pantalla. CERO = NO BLOQUEAR, y
+	// es el default: en un local donde la tableta vive a la vista del mostrador, bloquearse cada
+	// tres minutos son dos toques y un PIN a media venta a cambio de nada.
+	//
+	// Es también el interruptor: encendido es "mayor que cero". No hay una columna aparte que diga
+	// si está activo — dos banderas para lo mismo se contradicen (activo con cero segundos) y nadie
+	// sabe cuál gana.
 	LockAfterSeconds int
 	// SessionHours: horas que dura una sesión antes de exigir usuario y contraseña otra vez.
 	SessionHours int
@@ -137,6 +142,9 @@ const (
 // Duplican los DEFAULT de la migración a propósito: los callers que no tocan estos ajustes —tests
 // de otras cosas, o un alta de empresa— necesitan algo que pasar, y pasar el cero de Go dejaría la
 // sesión en 0 horas. Si se cambian aquí, se cambian también en la migración.
+//
+// El bloqueo de pantalla nace APAGADO (0). La sesión NO: sin su caducidad no quedaría ninguna
+// barrera, y esa sí la aplica el servidor.
 func DefaultIdentity() IdentitySettings {
-	return IdentitySettings{PinOnlyUnlock: false, LockAfterSeconds: 180, SessionHours: 8}
+	return IdentitySettings{PinOnlyUnlock: false, LockAfterSeconds: 0, SessionHours: 8}
 }
