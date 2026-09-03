@@ -263,7 +263,17 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
       if (o) perUnitDelta += deltaDeLista(menu, lista, o.id, Number(o.priceDelta)) * q;
     }
   }
-  const unit = Number(product.price) + perUnitDelta;
+  // EL PRECIO DE LA LISTA ACTIVA, no el de mostrador.
+  //
+  // Decía `Number(product.price)` mientras el encabezado de esta MISMA hoja usaba `precioDeLista`:
+  // dos fuentes para la misma cifra dentro del mismo componente. Con el Frappé de $65 capturado a
+  // mano en $100 para Didi, el encabezado decía "$100 en Didi" y el botón "Agregar · $125" con tres
+  // extras de $20 — el servidor cobraba $160. El operador lee el BOTÓN y es lo que le dice al
+  // cliente; el ticket sale $35 más caro y quien reclama tiene razón.
+  //
+  // Los extras ya salían de la lista (`deltaDeLista`), lo que hacía la mezcla aún más difícil de
+  // ver: el número no era ni el de mostrador ni el de la plataforma.
+  const unit = precioDeLista(menu, lista, product.id, Number(product.price)) + perUnitDelta;
   const total = round2(unit * qty);
 
   const unmet = orderedGroups.filter((g) => countIn(g.id) < g.min);

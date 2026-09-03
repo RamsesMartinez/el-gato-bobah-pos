@@ -84,6 +84,16 @@ cobrar $115 de un pedido de $95.
 | C12 | Pedido ya saldado al abrir | Lo dice; no ofrece cobrar | idem | vitest |
 | C13 | "El cambio es propina" | Un toque, sin teclear | idem | vitest |
 
+## C2. La hoja de modificadores — lo que el operador le dice al cliente
+
+Es la cifra que se lee ANTES de agregar, y por eso importa aunque el carrito guarde bien: el
+operador la canta en voz alta y el ticket sale después.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| C14 | Producto con precio capturado a mano para una plataforma | El botón suma el precio DE LA LISTA, no el de mostrador | `ModifierSheet.test.tsx` › el total en la lista de una plataforma | vitest |
+| C15 | Encabezado y botón de la misma hoja | Salen del mismo precio; con dos fuentes el botón decía $125 sobre un encabezado de $100 | idem | vitest |
+
 ## D. La pantalla que cobraba el carrito — **ya no existe**
 
 Diez defectos vivían aquí. Siete se cerraron **borrando la pantalla**: el POS ya no tiene su propia
