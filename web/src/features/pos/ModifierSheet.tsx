@@ -2,9 +2,9 @@ import { round2 } from '../../domain/cobro';
 // Reinicia el estado del sheet cuando se abre para otro producto/edición.
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
-  Box, Button, HStack, VStack, Text, Wrap, WrapItem, Input, Textarea, Flex,
+  Box, Button, HStack, IconButton, VStack, Text, Wrap, WrapItem, Input, Textarea, Flex,
 } from '@chakra-ui/react';
-import { LuSearch, LuArchiveRestore, LuPlus } from 'react-icons/lu';
+import { LuSearch, LuArchiveRestore, LuCircleHelp, LuPencil, LuPlus } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
   DrawerCloseTrigger, DrawerGrabber,
@@ -18,10 +18,11 @@ import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { adminApi, type AdminModifierOption } from '../../api/admin';
 import { toaster } from '../../components/ui/toaster';
-import { deltaDeLista, desgloseDelta, nombreDeLista, precioDeLista } from './precioPlataforma';
+import { deltaDeLista, desgloseDelta, desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { alTocarUnaSola, cabeOtra, cantidadDe, sumarUna } from './seleccionModificadores';
 import { combinacionGuardada, completarConLaUltima, guardarCombinacion } from './ultimaCombinacion';
 import { OptionPriceFields } from './OptionPriceFields';
+import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket } from '../../stores/ticket';
 
@@ -58,6 +59,10 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
 
   // Gestionar una opción (mantener presionado / clic derecho): desactivar para quitar basura.
   const [manageOpt, setManageOpt] = useState<{ id: number; name: string; priceDelta: number } | null>(null);
+  // Corregir el precio del PRODUCTO en la lista activa, sin salir de la hoja. Antes había que
+  // cerrarla, ir al catálogo, editar y volver a armar el pedido — con el repartidor esperando.
+  const [editandoPrecio, setEditandoPrecio] = useState(false);
+  const [ayuda, setAyuda] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set());
   const suppressClick = useRef(false);
   const pressTimer = useRef<number | undefined>(undefined);
@@ -252,6 +257,11 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   const extraIds = new Set([...extraOptions.values()].flat().map((o) => o.id));
   const archivedFor = (g: MenuGroup): AdminModifierOption[] =>
     (allOptions?.items ?? []).filter((o) => !o.active && o.groupId === g.id && !extraIds.has(o.id));
+
+  // El desglose del producto en la lista activa, para el diálogo de corrección. Sale de la MISMA
+  // función que pinta el precio arriba: con dos fuentes, el diálogo corregiría un número distinto
+  // del que el operador está viendo.
+  const desgloseDelProducto = desglosePrecio(menu, lista, product.id, Number(product.price));
 
   const optById = new Map<number, MenuOption>();
   product.groups.forEach((g) => optsOf(g).forEach((o) => optById.set(o.id, o)));
@@ -458,12 +468,21 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
           <Text fontSize="lg" fontWeight="700">{product.name}</Text>
           {/* Con una plataforma activa se cobra su lista, así que mostrar el precio base aquí
               contradecía al ticket. El operador tiene que ver el número que va a cobrar. */}
+          {/* En mostrador el precio es un rótulo: se cambia en el catálogo, y ofrecerlo aquí haría
+              que alguien corrigiera el de mostrador creyendo que corrige el de la plataforma.
+              Con una lista activa SÍ es un control, con su lápiz: el número que se está viendo es
+              justo el que hay que corregir cuando la plataforma cambia de tarifa. */}
           {lista === null ? (
             <Text fontSize="sm" color="fg.muted">{money(product.price)} base</Text>
           ) : (
-            <Text fontSize="sm" fontWeight="600" color="orange.fg">
-              {money(precioDeLista(menu, lista, product.id, Number(product.price)))} en {nombreDeLista(menu, lista)}
-            </Text>
+            <Button size="sm" minH="44px" px={2} variant="ghost" colorPalette="orange"
+              aria-label={`Corregir el precio en ${nombreDeLista(menu, lista)}`}
+              onClick={() => setEditandoPrecio(true)}>
+              <Text fontSize="sm" fontWeight="700" color="orange.fg">
+                {money(precioDeLista(menu, lista, product.id, Number(product.price)))} en {nombreDeLista(menu, lista)}
+              </Text>
+              <LuPencil />
+            </Button>
           )}
           {showSearch && (
             <HStack mt={2} px={3} borderWidth="1px" borderRadius="lg" bg="bg.subtle">
@@ -480,11 +499,16 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
               <LuArchiveRestore /> {showInactive ? 'Ocultar archivadas' : 'Ver archivadas'}
             </Button>
           )}
-          {/* Misma pista que en el catálogo: el gesto es el mismo y uno que nadie ve no existe. */}
+          {/* La instrucción vive detrás de un icono y no ocupando una fila: en esta hoja el alto es
+              lo que escasea, y una frase que se lee una vez en la vida no puede costar un renglón
+              en cada apertura. El lápiz del precio ya dice que ahí se edita; esto es solo para el
+              gesto del extra, que no tiene dónde poner un icono sin estorbar el tap. */}
           {lista !== null && (
-            <Text fontSize="xs" color="fg.muted" mt={1}>
-              Mantén presionado un extra para corregir su cargo.
-            </Text>
+            <IconButton aria-label={`Cómo corregir precios en ${nombreDeLista(menu, lista)}`}
+              size="sm" minH="44px" minW="44px" variant="ghost" colorPalette="gray"
+              onClick={() => setAyuda(true)}>
+              <LuCircleHelp />
+            </IconButton>
           )}
         </DrawerHeader>
         <DrawerBody>
@@ -576,6 +600,42 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             )}
             <Button size="lg" variant="ghost" onClick={() => setManageOpt(null)}>Cancelar</Button>
           </VStack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
+
+    {/* Corregir el precio del PRODUCTO en la lista activa. Es el MISMO diálogo del catálogo, con su
+        desglose: el operador está corrigiendo un número que el sistema calculó, y sin ver de dónde
+        salió corrige a ciegas. Dos diálogos distintos para lo mismo serían dos cosas que aprender.
+        Se remonta por el precio vigente (`key`) para que el campo arranque en el actual. */}
+    {editandoPrecio && lista !== null && desgloseDelProducto && (
+      <PlatformPriceDialog
+        key={desgloseDelProducto.vigente}
+        productId={product.id}
+        productName={product.name}
+        plataforma={nombreDeLista(menu, lista)}
+        plataformaId={lista}
+        desglose={desgloseDelProducto}
+        isOpen
+        onClose={() => setEditandoPrecio(false)}
+      />
+    )}
+
+    {/* La instrucción, en pasos y sin explicar el porqué: el operador necesita saber qué tocar, no
+        cómo se calcula la lista por dentro. */}
+    <DialogRoot open={ayuda} onOpenChange={(e) => { if (!e.open) setAyuda(false); }} placement="center" size="xs">
+      <DialogBackdrop />
+      <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
+        <DialogBody py={5}>
+          <Text fontWeight="800" mb={3}>Precios en {nombreDeLista(menu, lista)}</Text>
+          <VStack align="stretch" gap={2}>
+            <Text fontSize="sm">1. Toca el precio de arriba para corregir el del producto.</Text>
+            <Text fontSize="sm">2. Mantén presionado un extra para corregir su cargo.</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Solo cambia lo de {nombreDeLista(menu, lista)}. El precio de mostrador se edita en el catálogo.
+            </Text>
+          </VStack>
+          <Button mt={4} w="100%" minH="44px" onClick={() => setAyuda(false)}>Entendido</Button>
         </DialogBody>
       </DialogContent>
     </DialogRoot>
