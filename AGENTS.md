@@ -67,7 +67,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   ```
 
   Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de
-  buscar el defecto. Los casos y su porqué están en [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md).
+  buscar el defecto. Los casos y su porqué están en dos matrices que se editan junto con los tests:
+  [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md) (por dónde se pierde dinero) y
+  [docs/matriz-de-pantallas.md](docs/matriz-de-pantallas.md) (por dónde una pantalla dice algo que
+  no es cierto). Las dos declaran también lo que **no** está cubierto.
 
   **La suite COBRA los pedidos que crea.** El ambiente es compartido con una persona, y un pedido de
   prueba que se queda abierto aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de
