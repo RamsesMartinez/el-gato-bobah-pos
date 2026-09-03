@@ -72,7 +72,8 @@ cobrar $115 de un pedido de $95.
 | C1 | Encabezado | Dice el **total** y lo que **falta**, no una sola cifra | `CobrarSheet.test.tsx` | vitest |
 | C2 | El faltante | Sale del pedido vivo, no de la foto que traía la lista | idem | vitest |
 | C3 | Método | Ninguno preseleccionado: el tap es la confirmación | idem | vitest |
-| C4 | Reparto | Todo / entre 2 / 3 / 4, sin abrir el teclado | idem | vitest |
+| C4 | Reparto | Cerrado no ocupa alto; abierto el número de partes es libre y el `+` se topa donde una parte quedaría en $0 | idem | vitest |
+| C4b | Repartir de a uno | Cada parte sale del faltante VIVO; la última se lleva el residuo y la suma es exacta | idem · `cobro.test.ts` | vitest |
 | C5 | Un cobro | Manda **una** llamada, con su llave | idem | vitest |
 | C6 | Reintento tras un fallo | Manda **la misma** llave | idem | vitest |
 | C7 | Cada pedazo cobrado | Estrena llave | idem | vitest |
@@ -120,6 +121,7 @@ Se corren con `bun run e2e` (en contenedor, como el resto de los gates).
 | E5 | Pedido de plataforma | El servidor no cobra el envío del negocio y el detalle dice con qué lista se armó | idem |
 | E5b | Domicilio y **después** plataforma, en la pantalla | El campo de envío desaparece | `cobro-en-pantalla.spec.ts` |
 | E6 | Envío con coma de millar | Lo dice y apaga COBRAR | idem |
+| E7 | El alto de la hoja de cobro | Cabe en 600 px con y sin repartir, y el repartidor solo cuesta alto cuando se usa | `cabe-en-la-tableta.spec.ts` |
 
 ### Lo que la matriz E encontró y ninguna otra prueba veía
 
