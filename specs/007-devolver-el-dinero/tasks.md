@@ -38,28 +38,28 @@ código:
 
 ## Fase 3 — Consultas y servicio
 
-- [ ] T010 [P] [US2] Queries en `server/queries/orders.sql`: `SumOrderPaymentsByMethod`, `InsertOrderRefund`, `SumOrderRefunds`, `RecalcOrderRefundAmount`
-- [ ] T011 [P] [US3] Queries en `server/queries/orders.sql`: `CancelOrderLine`, `RestockCancelledLine`, `GetOrderLineForCancel`
-- [ ] T012 Regenerar con `make sqlc`
-- [ ] T013 [P] [US2] Test de integración: reembolsar un entregado y cobrado devuelve **lo cobrado**, no el total del pedido
-- [ ] T014 [P] [US2] Test de integración: reembolsar un entregado SIN cobrar se rechaza y no anota pérdida
-- [ ] T014b [P] [US2] Test de integración (A3): `orders.refund_amount` recalculado es la suma del libro, y `RefundsByDay` sigue leyendo lo mismo — si el recálculo se equivoca, ese reporte cambia en silencio
-- [ ] T015 [US2] `OrdersService.Refund` con monto, renglones y reparto por método en `server/internal/app/orders.go`
-- [ ] T016 [P] [US2] Test de integración: la devolución en efectivo deja **salida de caja** y el arqueo la descuenta; la de tarjeta NO toca el cajón
-- [ ] T017 [US2] Salida de caja dentro de la misma transacción de la devolución
+- [X] T010 [P] [US2] Queries en `server/queries/orders.sql`: `SumOrderPaymentsByMethod`, `InsertOrderRefund`, `SumOrderRefunds`, `RecalcOrderRefundAmount`
+- [X] T011 [P] [US3] Queries en `server/queries/orders.sql`: `CancelOrderLine`, `RestockCancelledLine`, `GetOrderLineForCancel`
+- [X] T012 Regenerar con `make sqlc`
+- [X] T013 [P] [US2] Test de integración: reembolsar un entregado y cobrado devuelve **lo cobrado**, no el total del pedido
+- [X] T014 [P] [US2] Test de integración: reembolsar un entregado SIN cobrar se rechaza y no anota pérdida
+- [X] T014b [P] [US2] Test de integración (A3): `orders.refund_amount` recalculado es la suma del libro, y `RefundsByDay` sigue leyendo lo mismo — si el recálculo se equivoca, ese reporte cambia en silencio
+- [X] T015 [US2] `OrdersService.Refund` con monto, renglones y reparto por método en `server/internal/app/orders.go`
+- [X] T016 [P] [US2] Test de integración: la devolución en efectivo deja **salida de caja** y el arqueo la descuenta; la de tarjeta NO toca el cajón
+- [X] T017 [US2] Salida de caja dentro de la misma transacción de la devolución
 - [ ] T017b [P] [US2] Test de integración (SC-002): el reporte de devoluciones del periodo y la suma de salidas de dinero **cuadran**
-- [ ] T018 [P] [US1] Test de integración: cancelar un pedido con cobros SIN devolución se rechaza; con devolución, el arqueo queda cuadrado
-- [ ] T019 [US1] `OrdersService.Cancel` exige y ejecuta la devolución en la misma transacción
-- [ ] T020 [P] [US3] Test de integración: cancelar un renglón NO enviado a cocina repone; uno ya enviado NO repone y el total baja igual
-- [ ] T021 [US3] `OrdersService.CancelLine` en `server/internal/app/orders.go`
+- [X] T018 [P] [US1] Test de integración: cancelar un pedido con cobros SIN devolución se rechaza; con devolución, el arqueo queda cuadrado
+- [X] T019 [US1] `OrdersService.Cancel` exige y ejecuta la devolución en la misma transacción
+- [X] T020 [P] [US3] Test de integración: cancelar un renglón NO enviado a cocina repone; uno ya enviado NO repone y el total baja igual
+- [X] T021 [US3] `OrdersService.CancelLine` en `server/internal/app/orders.go`
 
 ## Fase 4 — Frontera
 
 - [ ] T022 [P] Test en `server/internal/httpapi/`: monto y motivo inválidos son 400, no 500
-- [ ] T023 `POST /orders/{id}/refund` acepta renglones y monto en `server/internal/httpapi/handlers_orders.go`
-- [ ] T024 `POST /orders/{id}/lines/{lineId}/cancel` en `server/internal/httpapi/handlers_orders.go`
+- [X] T023 `POST /orders/{id}/refund` acepta renglones y monto en `server/internal/httpapi/handlers_orders.go`
+- [X] T024 `POST /orders/{id}/lines/{lineId}/cancel` en `server/internal/httpapi/handlers_orders.go`
 - [ ] T024b [US3] (FR-008) Revisar `ErrCancelarConEntregas`: hoy manda a "cancela los que falten", que no existía. Con US3 se vuelve cierto — test que lo compruebe, no solo el mensaje reescrito
-- [ ] T025 [US1] `RequireRole` en `/orders/{id}/cancel` en `server/internal/httpapi/router.go` — hoy no lo tiene y mueve el mismo dinero que el reembolso
+- [X] T025 [US1] `RequireRole` en `/orders/{id}/cancel` en `server/internal/httpapi/router.go` — hoy no lo tiene y mueve el mismo dinero que el reembolso
 
 ## Fase 5 — Pantalla
 

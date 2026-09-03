@@ -23,6 +23,13 @@ var (
 	// porque la pantalla tiene que poder explicarlo: hoy el tablero ofrece "Reembolsar" al lado de
 	// "Cobrar $220" en la misma tarjeta, y el operador no tiene cómo saber por qué rebota.
 	ErrSinCobrosQueDevolver = fmt.Errorf("%w: este pedido no se ha cobrado, así que no hay nada que devolver", ErrConflict)
+	// ErrCancelarSinDevolver: se intenta cancelar un pedido que ya tiene cobros sin confirmar que el
+	// dinero se le regresa al cliente.
+	//
+	// Cancelarlo a secas lo sacaba de los reportes y dejaba los cobros en la base, con el arqueo
+	// esperando ese dinero en el cajón: devolverlo dejaba el corte con un faltante que ningún renglón
+	// explicaba, y no devolverlo dejaba al negocio con dinero que no aparecía en ninguna venta.
+	ErrCancelarSinDevolver = fmt.Errorf("%w: este pedido ya tiene cobros; para cancelarlo hay que devolver ese dinero", ErrConflict)
 )
 
 // CobradoPorMetodo: cuánto entró por cada medio de pago en un pedido.

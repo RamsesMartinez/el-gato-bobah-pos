@@ -939,6 +939,19 @@ type OrderPayment struct {
 	ClientUuid        *uuid.UUID      `json:"client_uuid"`
 }
 
+type OrderRefund struct {
+	ID              int64           `json:"id"`
+	OrderID         int64           `json:"order_id"`
+	OrderLineID     *int64          `json:"order_line_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	Reason          string          `json:"reason"`
+	RefundedBy      int64           `json:"refunded_by"`
+	CashMovementID  *int64          `json:"cash_movement_id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	CompanyID       int64           `json:"company_id"`
+}
+
 type PasswordResetToken struct {
 	ID        int64              `json:"id"`
 	CompanyID int64              `json:"company_id"`
@@ -1094,6 +1107,7 @@ type StockMovement struct {
 	Reason       *string           `json:"reason"`
 	Note         *string           `json:"note"`
 	CreatedAt    time.Time         `json:"created_at"`
+	OrderLineID  *int64            `json:"order_line_id"`
 }
 
 type Supplier struct {
