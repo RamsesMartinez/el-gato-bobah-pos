@@ -19,17 +19,19 @@ async function token(request: APIRequestContext): Promise<string> {
   return (await r.json()).accessToken;
 }
 
-async function entrar(page: Page, jwt: string, ruta: string) {
-  await page.addInitScript((t) => {
-    window.localStorage.setItem('pos.session', JSON.stringify({ state: { token: t }, version: 0 }));
-  }, jwt);
+// entrar pasa por el LOGIN REAL, no por localStorage.
+//
+// El access token vive solo en memoria a propósito —para que un XSS no pueda leerlo— y el rol vive
+// en el mismo store. Sembrar `pos.session` en localStorage no autentica nada: `RequireRole` lee
+// `user.role`, no encuentra usuario y manda a /pos. Las pruebas de `dinero.spec.ts` no lo notaron
+// porque solo visitan `/`, y su aserción de URL acepta `/pos`.
+async function entrar(page: Page, ruta: string) {
+  await page.goto('/');
+  await page.getByPlaceholder('usuario@empresa').fill(`${USUARIO}@${EMPRESA}`);
+  await page.getByPlaceholder('Contraseña').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL(/\/(pos)?$/);
   await page.goto(ruta);
-}
-
-// alturaDe mide lo que un elemento le quita al presupuesto de 600 px. Devuelve 0 si no existe.
-async function alturaDe(page: Page, selector: string): Promise<number> {
-  const caja = await page.locator(selector).first().boundingBox();
-  return caja?.height ?? 0;
 }
 
 test.describe('R — el rango de fechas contra el servidor real', () => {
@@ -155,9 +157,8 @@ test.describe('Q — los reportes responden un solo periodo', () => {
 });
 
 test.describe('F — el control de rango en la tableta', () => {
-  test('F8 · Ventas con el rango abierto deja renglones de tabla a la vista', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/ventas');
+  test('F8 · Ventas con el rango abierto deja renglones de tabla a la vista', async ({ page }) => {
+    await entrar(page, '/ventas');
 
     await page.getByRole('button', { name: 'Rango' }).click();
     await expect(page.getByLabel('Desde')).toBeVisible();
@@ -174,9 +175,8 @@ test.describe('F — el control de rango en la tableta', () => {
 
   // 44 px es el mínimo con el que un dedo acierta a la primera. Por debajo el operador toca dos
   // veces y la segunda cae en otra cosa.
-  test('F9 · los controles del rango miden al menos 44 px', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/ventas');
+  test('F9 · los controles del rango miden al menos 44 px', async ({ page }) => {
+    await entrar(page, '/ventas');
 
     for (const nombre of ['Hoy', 'Ayer', 'Semana', 'Mes', 'Rango']) {
       const caja = await page.getByRole('button', { name: nombre }).boundingBox();
@@ -192,9 +192,8 @@ test.describe('F — el control de rango en la tableta', () => {
   // Un rango a medias no consulta: la pantalla conserva el periodo anterior —que su encabezado sigue
   // nombrando— y dice qué falta. Sin esto se manda media fecha y el servidor contesta un 400 que el
   // operador lee como "se descompuso".
-  test('F2 · con una sola fecha no se consulta y se dice qué falta', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/ventas');
+  test('F2 · con una sola fecha no se consulta y se dice qué falta', async ({ page }) => {
+    await entrar(page, '/ventas');
     await page.getByRole('button', { name: 'Rango' }).click();
 
     let peticiones = 0;
@@ -205,9 +204,8 @@ test.describe('F — el control de rango en la tableta', () => {
     expect(peticiones, 'se consultó con media fecha').toBe(0);
   });
 
-  test('F3 · un rango invertido se avisa antes de ir al servidor', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/ventas');
+  test('F3 · un rango invertido se avisa antes de ir al servidor', async ({ page }) => {
+    await entrar(page, '/ventas');
     await page.getByRole('button', { name: 'Rango' }).click();
     await page.getByLabel('Desde').fill('2026-08-31');
     await page.getByLabel('Hasta').fill('2026-08-01');
@@ -217,9 +215,8 @@ test.describe('F — el control de rango en la tableta', () => {
 
   // El encabezado dice el periodo que el SERVIDOR consultó. Una cifra sin su periodo no se puede
   // auditar; una con el periodo equivocado se audita mal.
-  test('F10 · Reportes imprime el periodo que consultó', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/reportes');
+  test('F10 · Reportes imprime el periodo que consultó', async ({ page }) => {
+    await entrar(page, '/reportes');
 
     await page.getByRole('button', { name: 'Rango' }).click();
     await page.getByLabel('Desde').fill('2026-08-01');
@@ -229,72 +226,34 @@ test.describe('F — el control de rango en la tableta', () => {
     await expect(page.getByText(/últimos 30 días/i)).toHaveCount(0);
   });
 
-  test('F11 · Reportes cabe en la tableta con el rango abierto', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/reportes');
+  test('F11 · Reportes cabe en la tableta con el rango abierto', async ({ page }) => {
+    await entrar(page, '/reportes');
     await page.getByRole('button', { name: 'Rango' }).click();
     await expect(page.getByLabel('Desde')).toBeVisible();
 
     // Nada del filtro puede empujar el contenido fuera de la pantalla horizontalmente: el cuerpo no
-    // se desplaza de lado en una tableta, se desplazan las tablas dentro de su caja.
+    // se desplaza de lado en una tableta; se desplazan las tablas dentro de su caja.
     const ancho = await page.evaluate(() => document.body.scrollWidth);
     expect(ancho, `el cuerpo mide ${ancho} px de ancho sobre una pantalla de 1024`)
       .toBeLessThanOrEqual(1024);
 
-    // Y el bloque de filtros no puede comerse la mitad del alto.
-    const gastado = await alturaDe(page, 'header') + await alturaDe(page, 'h1, h2');
-    expect(gastado).toBeLessThan(300);
+    // Y con el filtro abierto tiene que quedar contenido debajo: las tarjetas de cifras son lo
+    // primero que el gerente viene a leer, y un filtro que las empuja fuera de los 600 px obliga a
+    // desplazarse para ver el número por el que entró.
+    const tarjeta = await page.getByText('Ventas', { exact: true }).first().boundingBox();
+    expect(tarjeta, 'no se encontró la tarjeta de Ventas').not.toBeNull();
+    expect(tarjeta?.y ?? 600, `las cifras empiezan en ${Math.round(tarjeta?.y ?? 0)} px de los 600`)
+      .toBeLessThan(420);
   });
 });
 
-test.describe('V — el envío, en las tres superficies que cobran', () => {
-  // LA PÍLDORA Y EL PANEL DICEN EL MISMO TOTAL DEL MISMO PEDIDO.
-  //
-  // `ticketTotal(lines)` no incluye el envío. El panel pintaba total + envío y la píldora el total
-  // pelón, y en 1024×600 el panel arranca OCULTO: la cifra sin envío era la que se veía todos los
-  // días. Es la forma exacta del defecto que ya costó ofrecer cobrar $115 de un pedido de $95.
-  //
-  // No crea ningún pedido: todo pasa en la cuenta local, antes de confirmar.
-  test('V4 · la píldora y el panel dicen el mismo total', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/');
-
-    // Un producto cualquiera del catálogo; el precio no importa, solo que las dos cifras coincidan.
-    const tile = page.locator('button', { hasText: /\$/ }).first();
-    await tile.click();
-
-    // El panel: se abre si está oculto.
-    const verPedido = page.getByRole('button', { name: /Ver pedido|art ·/ }).first();
-    await verPedido.click();
-
-    await page.getByRole('button', { name: 'Domicilio' }).click();
-    await page.getByLabel('Costo de envío').fill('30');
-
-    const totalPanel = await page.locator('text=Total').first()
-      .locator('xpath=following-sibling::*[1]').textContent();
-
-    // Y ahora la píldora, con el panel escondido.
-    await page.getByLabel(/Ocultar|panel/i).first().click().catch(() => {});
-    const pildora = await page.getByText(/\d+ art · \$/).first().textContent();
-
-    expect(pildora, `la píldora dice "${pildora}" y el panel "${totalPanel}": son el mismo pedido`)
-      .toContain((totalPanel ?? '').trim());
-  });
-
-  // Con un envío mal escrito, la píldora tampoco cobra. Antes solo el panel se apagaba, y la
-  // píldora mandaba el pedido con el envío POR DEFECTO del negocio.
-  test('V1 · con el envío mal escrito ninguna superficie cobra', async ({ page, request }) => {
-    const jwt = await token(request);
-    await entrar(page, jwt, '/');
-
-    await page.locator('button', { hasText: /\$/ }).first().click();
-    await page.getByRole('button', { name: /Ver pedido|art ·/ }).first().click();
-    await page.getByRole('button', { name: 'Domicilio' }).click();
-    await page.getByLabel('Costo de envío').fill('1,000');
-
-    await expect(page.getByText('Solo números')).toBeVisible();
-    for (const boton of await page.getByRole('button', { name: /^Cobrar$|^COBRAR$/ }).all()) {
-      await expect(boton, 'una de las superficies de cobro seguía viva').toBeDisabled();
-    }
-  });
-});
+// V — el envío del POS.
+//
+// NO hay caso extremo a extremo aquí, y decirlo importa más que tener uno verde. La decisión sobre
+// el envío se prueba en `domain/envio.test.ts` (12 casos), en `stores/ticket.test.ts` y en
+// `Ticket.test.tsx`; lo que faltaría medir en el navegador es el cableado de la píldora, y el
+// intento de escribirlo falló por una suposición mía: a 1024x600 el POS entra en modo ANGOSTO y la
+// píldora flotante no existe — la que cobra es la barra inferior. Un test que se ajusta hasta pasar
+// sin entender qué está mirando no prueba nada.
+//
+// Queda como renglón declarado en docs/matriz-de-pantallas.md, no como test que se ve verde.

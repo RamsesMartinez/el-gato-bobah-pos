@@ -92,16 +92,17 @@ periodo que pidió.
 
 | # | Caso | Qué debe pasar | Test | Medido |
 |---|---|---|---|---|
-| V1 | Envío mal escrito (`1,000`) y cobrar desde la píldora | No cobra. Antes solo el panel se apagaba; la píldora mandaba el envío **por defecto** | `pantallas.spec.ts › V1` | Navegador |
+| V1 | Envío mal escrito (`1,000`) y cobrar desde la barra o la píldora | No cobra. Antes solo el panel se apagaba; las otras dos mandaban el envío **por defecto** | `envio.test.ts` cubre la decisión; el **cableado** no está cubierto extremo a extremo | Razonado |
 | V2 | Recargar con envío capturado | Sobrevive: vive en la cuenta, no en la pantalla | `ticket.test.ts › cada cuenta lleva el suyo` | Navegador |
 | V3 | Capturar envío y abrir otra cuenta | La nueva **no** lo hereda | idem | Navegador |
-| V4 | Píldora y panel del mismo pedido a domicilio | Dicen el mismo total, envío incluido | `pantallas.spec.ts › V4` | Navegador |
+| V4 | Barra/píldora y panel del mismo pedido a domicilio | Dicen el mismo total, envío incluido | `envio.test.ts` cubre la decisión; el **cableado** no está cubierto extremo a extremo | Razonado |
 | V6 | Envío mal escrito y luego cambiar a mostrador | Deja de bloquear: el campo ya no se pinta, así que no puede trabar sin nada que corregir | `Ticket.test.tsx › deja de bloquear` | Navegador |
 | V7 | Envío ausente | El default del negocio, y **no** viaja al servidor | `envio.test.ts` | Navegador |
 | V8 | Envío `0` explícito | Envío gratis decidido: viaja como cero | idem | Navegador |
 | V10 | Vaciar una cuenta con plataforma activa | Borra también la plataforma y el envío | `ticket.test.ts › vaciar la cuenta` | Navegador |
 | V8 | Agregar a un pedido con un producto ya desactivado en el carrito | Se recorta ese renglón, igual que al confirmar; no se tira el carrito entero | `agregarRecorta.test.tsx` | Navegador |
 | V7 | Doble tap en COBRAR con red lenta | El botón se apaga mientras el pedido viaja, igual que "Enviar a cocina" | — | **no cubierto** (se ve en red lenta, no en jsdom) |
+| V11 | El cableado del envío en las superficies de cobro, a 1024×600 | Las tres cifras coinciden y las tres se apagan igual | — | **no cubierto**: el intento de e2e partió de una suposición falsa (a 1024×600 el POS es modo angosto, no hay píldora) |
 
 ## P. El tablero de pedidos
 
