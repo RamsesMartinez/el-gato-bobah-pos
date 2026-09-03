@@ -113,6 +113,22 @@ mecánica:
     `compose up` sobre la misma VM, y cancelar a media substitución de contenedor deja la API abajo.
   - El deploy termina verificando `/readyz` — un deploy que deja la API caída en silencio es peor que
     uno que falla ruidoso.
+- **NO SUBAS `@chakra-ui/react` a 3.37.0 sin arreglar antes las hojas encimadas.** Medido el
+  2026-09-03: con 3.37.0 (y `@ark-ui/react` 5.39.0), tocar "Cobrar" dentro de la hoja de *Pedidos
+  por cobrar* cierra esa hoja y **la hoja de cobro no monta** — cero `[role="dialog"]` en el árbol.
+  Se cae el camino con el que se cobra desde el botón naranja, que es dinero.
+
+  El patrón nuestro que lo dispara: `CobrarSheet` monta su `DrawerRoot` ya en `open`
+  (`if (!order) return null` y `<DrawerRoot open …>`), así que no hay transición false→true; en
+  3.36.1 eso funciona y en 3.37.0 no, pero solo cuando OTRA hoja se está cerrando en la misma
+  actualización. Montada sola sigue funcionando — por eso los 18 tests de `CobrarSheet.test.tsx`
+  pasan con 3.37 y el que falla es el de `PedidosEnCurso.test.tsx`.
+
+  Antes de aceptar ese bump hay que darle a la hoja de cobro un `open` de verdad (montarla siempre
+  y controlar el estado) o separar el cierre de una del montaje de la otra. El PR de Dependabot del
+  grupo web viene con este bump adentro y su CI está verde: corrió contra un develop que todavía no
+  tenía ese test.
+
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
