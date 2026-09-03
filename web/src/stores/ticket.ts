@@ -76,7 +76,7 @@ interface TicketState {
   // alguien lo intente.
   descartarTodo: () => void;
   // Le pone nombre a las cuentas que todavía no lo tienen, en cuanto la lista llega del servidor.
-  bautizarCuentas: (animales: string[]) => void;
+  bautizarCuentas: (disponibles: string[]) => void;
 }
 
 const first = emptyTab(1);
@@ -175,16 +175,16 @@ export const useTicketStore = create<TicketState>()(
             }),
           })),
 
-        // Bautiza solo lo que falta: una cuenta que ya tiene animal NO se renombra, porque el
-        // operador puede haberle dicho ese nombre al cliente hace diez minutos.
-        bautizarCuentas: (animales) =>
+        // Bautiza solo lo que falta: una cuenta que ya tiene nombre NO se renombra, porque el
+        // operador puede habérselo dicho al cliente hace diez minutos.
+        bautizarCuentas: (disponibles) =>
           set((s) => {
-            if (animales.length === 0 || s.tabs.every((t) => t.folioName)) return s;
+            if (disponibles.length === 0 || s.tabs.every((t) => t.folioName)) return s;
             const tomados = s.tabs.map((t) => t.folioName).filter(Boolean);
             return {
               tabs: s.tabs.map((t) => {
                 if (t.folioName) return t;
-                const folioName = nombreLibre(animales, tomados);
+                const folioName = nombreLibre(disponibles, tomados);
                 tomados.push(folioName);
                 return { ...t, folioName };
               }),
@@ -200,7 +200,7 @@ export const useTicketStore = create<TicketState>()(
     },
     {
       name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
-      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen animal, y quedan
+      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen nombre, y quedan
       // con folioName vacío hasta que bautizarCuentas() corra. No se sube la versión del almacén
       // para forzar el campo: subirla borraría cuentas con productos ya capturados, y perder el
       // pedido de un cliente por un deploy no es negociable.

@@ -37,7 +37,7 @@ export function TicketTabs() {
             bg={active ? 'colorPalette.600' : 'bg.panel'}
             color={active ? 'white' : 'fg'}
           >
-            {/* El animal va tenue y debajo: identifica al pedido en cocina, pero quien mira las
+            {/* El nombre va tenue y debajo: identifica al pedido en cocina, pero quien mira las
                 pestañas está eligiendo en cuál capturar, y para eso sirve el número de cuenta o el
                 nombre del cliente. Se ve desde aquí para que el operador pueda decírselo al cliente
                 al tomarle el pedido, no hasta que imprime el ticket. */}
@@ -45,7 +45,7 @@ export function TicketTabs() {
               <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap" lineHeight="1.15">
                 {t.customerName || `Cuenta ${t.num}`}{count > 0 ? ` · ${count}` : ''}
               </Text>
-              {/* El espacio duro sostiene el renglón mientras la lista de animales llega del
+              {/* El espacio duro sostiene el renglón mientras la lista de nombres llega del
                   servidor: sin él la pestaña se recentra sola al aparecer el nombre. */}
               <Text fontSize="2xs" whiteSpace="nowrap" lineHeight="1.15"
                 color={active ? 'whiteAlpha.700' : 'fg.subtle'}>
