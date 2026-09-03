@@ -287,9 +287,105 @@ todas, y un piso repartido por las pantallas se pierde en la siguiente que se es
 
 ---
 
+### H12 · El envío del POS vivía fuera de la cuenta — ALTA, corregido
+
+**Una causa, cinco síntomas.** El costo de envío era un `useState` de la pantalla de venta, no un
+campo del pedido. De ahí salían:
+
+1. **No sobrevivía a un F5** mientras el carrito sí (el carrito está en `persist`). El operador
+   volvía a un ticket completo con el campo de envío vacío, y el pedido se cobraba con el default
+   del negocio: $80 capturados se cobraban como $20, sin aviso.
+2. **Se heredaba entre pestañas** y sobrevivía al cierre de la cuenta que lo capturó.
+3. **La píldora y la barra angosta no lo checaban.** El panel apagaba sus botones con un envío mal
+   escrito; esos dos caminos —los que se usan cuando el panel está oculto, y en 1024×600 el panel
+   arranca oculto— mandaban el pedido con el default.
+4. **Pintaban otro total.** El panel sumaba el envío y la píldora no, del mismo pedido.
+5. **Trababa el POS entero.** Un valor mal escrito capturado en domicilio seguía apagando los
+   botones tras cambiar a mostrador, donde el campo ni se pinta: botones muertos, sin razón visible
+   ni campo que corregir. Y como el envío era global, ninguna cuenta podía vender.
+
+**Reglas violadas.** IV-b (*el estado que no sobrevive a un F5* — la constitución lo nombra tal
+cual), III y su corolario (dos superficies de la misma pantalla con predicados distintos), y V (el
+default es para el campo ausente, no para el ilegible).
+
+**Opciones.** (A) parchar cada síntoma donde aparece: guard en la píldora, sumar el envío en la
+barra, limpiar el estado al cerrar la cuenta; (B) mover el envío a la cuenta y extraer la decisión
+a una función pura que consuman las tres superficies.
+
+**Refutación de A.** Es más rápida y deja el defecto vivo: la sexta superficie que se escriba nace
+sin el guard, exactamente como nacieron la píldora y la barra. Y no arregla el (1), que es el que
+cuesta dinero en silencio.
+
+**Elegida: B.** El envío es parte de `orders.total`; su lugar es la cuenta. Se guarda el TEXTO y no
+el número porque un valor mal escrito tiene que poder bloquear el cobro, y un número ya parseado no
+distingue "vacío" de "ilegible".
+
+**Cubierto por.** `envio.test.ts` (12 casos), `ticket.test.ts › el envío pertenece a la cuenta`,
+`Ticket.test.tsx › deja de bloquear`, y lo que jsdom no puede ver —la píldora a 1024×600— en
+`pantallas.spec.ts › V1, V4`.
+
+**De paso:** vaciar una cuenta borraba el tipo de servicio y dejaba puesta la plataforma, así que lo
+capturado después salía con precio de Uber en una cuenta que decía mostrador.
+
+---
+
+### H13 · El badge de "por cobrar" usaba el predicado que el servidor descartó — MEDIA, corregido
+
+**Qué pasaba.** La pantalla filtraba por `!paid`. El servidor filtra por `outstanding > 0`, y su
+comentario dice por qué: *"`paid` exige un total positivo: un pedido de $0 no está saldado pero
+tampoco hay nada que cobrarle"*. Un pedido de $0 aparecía en el badge como "1 por cobrar · $0" y
+ninguna tarjeta ofrecía Cobrar, porque ese botón sí se pinta con `outstanding > 0`. Un renglón que
+no se puede atender y que no se va solo.
+
+**Regla violada.** III, corolario. La razón por la que el servidor lo cambió estaba escrita en el
+código, y la pantalla se quedó con la versión vieja.
+
+---
+
+### H14 · Un espacio era un motivo de cancelación válido — MEDIA, corregido
+
+**Qué pasaba.** La pantalla de reembolso recortaba el texto; la de cancelación solo miraba que la
+cadena no fuera vacía. Un espacio pasaba los dos lados y llegaba a la base, donde el `check` de la
+migración 0007 lo da por bueno. El histórico se quedaba con una cancelación sin motivo, que es
+exactamente lo que ese campo existe para impedir. Y ningún camino acotaba el largo: el único tope
+era el megabyte del cuerpo entero.
+
+**Regla violada.** IV-d (*el hermano que no se movió*: el recorte se puso en un camino y no en el
+otro) y V.
+
+**Elegida.** `domain.MotivoValido` recorta, rechaza lo vacío y acota a 200 **caracteres**, no bytes:
+con acentos, un tope en bytes rechaza un motivo que en pantalla cabe de sobra.
+
+---
+
+### H15 · Un doble tap en "Entregar todo" daba error sobre una entrega que sí ocurrió — MEDIA, corregido
+
+**Qué pasaba.** `SetStatus` ya tenía el no-op idempotente con su comentario —*"un doble-tap en el
+tablero no debe dar error"*—. `DeliverAll` nació después y usa `CanTransition` a pelo, y
+`entregada → entregada` es `false`: el segundo tap pintaba un toast rojo sobre un pedido
+correctamente entregado. El botón además no se apaga mientras la petición viaja.
+
+**Regla violada.** IV-c y la vara de UX del POS: *nunca obligar al operador a deshacer para rehacer*.
+
+---
+
+### H16 · El tablero mostraba el objeto de error crudo — MEDIA, corregido
+
+**Qué pasaba.** `description: String(e)`. Una caída de red pintaba `TypeError: Failed to fetch`; un
+409 pintaba `Error: ` pegado delante del mensaje. Es el mismo defecto que la hoja de cobro documenta
+como corregido, vivo todavía en entregar, cancelar y reembolsar.
+
+**Regla violada.** Restricciones del producto: *prohibido nombrar internals en la UI*, y *si el
+renglón solo tiene sentido para alguien que leyó el código, no va*.
+
+**Elegida.** Un helper con el mensaje del servidor cuando existe, y una instrucción accionable
+cuando no: un fallo de red no tiene mensaje que le sirva a quien opera.
+
+---
+
 ## Lo que queda abierto, y por qué
 
-Ocho renglones del barrido no se cerraron en esta tanda. No es una lista de deuda vaga: cada uno está
+Los renglones que quedan abiertos no se cerraron en esta tanda. No es una lista de deuda vaga: cada uno está
 en la tabla *Pendientes de cubrir* de la matriz, con el hallazgo que lo describe.
 
 Los que importan, y por qué no se arreglaron de una:
@@ -300,9 +396,5 @@ Los que importan, y por qué no se arreglaron de una:
   siquiera consulta los pagos. Arreglarlos exige decidir qué pasa con el dinero —rechazar la
   cancelación, registrar una devolución, o las dos cosas— y esa decisión cambia lo que el arqueo
   espera del cajón. Va por spec, no por parche.
-- **El envío del POS (V1–V4, V6)** tiene una sola causa: vive en un estado de la pantalla en vez de
-  en la cuenta. Por eso no sobrevive a un F5, se hereda entre pestañas, no lo ve la píldora que
-  cobra, y traba los botones sin campo que corregir. Es un cambio de dónde vive un dato, con cinco
-  síntomas: se arregla completo o no se arregla.
 - **Agregar renglones sin llave de idempotencia (V5)** es el mismo control que ya tienen crear y
   cobrar, y el camino nació sin él (IV-c). Necesita columna, migración y su test.

@@ -7,6 +7,7 @@ import { MenuRoot, MenuTrigger, MenuContent, MenuItem } from '../../components/u
 import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
+import { mensajeDeError } from '../../api/mensajes';
 import { posApi } from '../../api/pos';
 import type { BoardLine, BoardOrder } from '../../types/pos';
 import { resumenPorCobrar } from './porCobrar';
@@ -71,8 +72,12 @@ export function OrdersBoardPage() {
   // El prefijo entero: `active`, `delivered` y también `open`, que es la barra del POS. Cobrar
   // desde aquí dejaba a esa barra contando el dinero ya cobrado hasta su siguiente refresco.
   const invalidateAll = () => qc.invalidateQueries({ queryKey: ['orders'] });
+  // El MENSAJE del servidor, no el objeto de error crudo. `String(e)` pintaba
+  // "TypeError: Failed to fetch" al caerse la red y "Error: ..." delante de cada rechazo — el mismo
+  // defecto que la hoja de cobro documenta como corregido, vivo todavía en entregar, cancelar y
+  // reembolsar. La constitución lo prohíbe: en pantalla no van internals.
   const conError = (titulo: string) => (e: unknown) =>
-    toaster.create({ title: titulo, description: String(e), type: 'error' });
+    toaster.create({ title: titulo, description: mensajeDeError(e), type: 'error' });
 
   const entregarLinea = useMutation({
     mutationFn: ({ id, lineId, qty }: { id: number; lineId: number; qty: number }) =>

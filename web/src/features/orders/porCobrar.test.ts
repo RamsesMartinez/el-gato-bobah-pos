@@ -52,3 +52,19 @@ describe('lo que falta cobrar', () => {
     expect(resumenPorCobrar([orden({ paid: true })])).toEqual({ cuantos: 0, monto: 0 });
   });
 });
+
+// UN PEDIDO DE $0 NO ESTÁ SALDADO, PERO NO HAY NADA QUE COBRARLE.
+//
+// El badge filtraba por `!paid`, que el servidor descartó por escrito: `paid` exige un total
+// positivo, así que un pedido de $0 llega con `paid: false` y `outstanding: "0"`. El badge decía
+// "1 por cobrar · $0" y ninguna tarjeta ofrecía Cobrar, porque el botón se pinta con
+// `outstanding > 0`. Un renglón que no se puede atender y que no se va solo.
+test('un pedido de $0 no cuenta como por cobrar', () => {
+  const cero = orden({ id: 99, status: 'entregada', paid: false, outstanding: '0', total: '0' });
+  const debe = orden({ id: 100, status: 'entregada', paid: false, outstanding: '150', total: '150' });
+
+  const pendientes = porCobrar([cero, debe]);
+
+  expect(pendientes.map((o) => o.id)).toEqual([100]);
+  expect(resumenPorCobrar([cero, debe])).toEqual({ cuantos: 1, monto: 150 });
+});

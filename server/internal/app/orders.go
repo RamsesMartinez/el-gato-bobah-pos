@@ -551,8 +551,9 @@ func (s *OrdersService) SetStatus(ctx context.Context, id int64, status string) 
 // caso real (doble-tap secuencial). Si dos cancels concurren, añade SELECT ... FOR
 // UPDATE en una query dedicada cuando exista sqlc en el toolchain.
 func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reason string) error {
-	if reason == "" {
-		return domain.ErrValidation
+	reason, err := domain.MotivoValido(reason)
+	if err != nil {
+		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		o, err := q.GetOrder(ctx, id)
@@ -589,8 +590,9 @@ func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reaso
 // monto devuelto (el total). Idempotente: si no está entregada (ya reembolsada, cancelada,
 // abierta…) rechaza con ErrConflict, así un doble-tap no reembolsa dos veces.
 func (s *OrdersService) Refund(ctx context.Context, id, actor int64, reason string) error {
-	if reason == "" {
-		return domain.ErrValidation
+	reason, err := domain.MotivoValido(reason)
+	if err != nil {
+		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		o, err := q.GetOrder(ctx, id)
@@ -1008,6 +1010,12 @@ func (s *OrdersService) DeliverAll(ctx context.Context, orderID int64) error {
 				return domain.ErrNotFound
 			}
 			return err
+		}
+		// Mismo estado = no-op idempotente, igual que SetStatus: un doble tap en el tablero no
+		// puede contestar error sobre un pedido correctamente entregado. Este camino usaba
+		// CanTransition a pelo, y `entregada → entregada` es false.
+		if string(o.Status) == domain.StatusEntregada {
+			return nil
 		}
 		if !domain.CanTransition(string(o.Status), domain.StatusEntregada) {
 			return domain.ErrConflict

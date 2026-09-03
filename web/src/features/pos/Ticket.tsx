@@ -194,8 +194,13 @@ export function Ticket({
               obligatorio antes de cobrar, este botón dejó de ser reversible. Quien lo toca y luego
               cierra la hoja de cobro creyendo que canceló, ve el carrito vacío y vuelve a capturar
               el pedido — y cocina prepara dos veces lo mismo. */}
+          {/* `loading` también aquí: es el botón que más se toca y era el único de los dos sin
+              estado ocupado. En red lenta el operador toca dos veces y salen dos POST /orders
+              concurrentes con el mismo clientUuid; la idempotencia de Create es check-then-insert
+              sin lock, así que la segunda choca contra el índice único y sale un 500 sobre un
+              pedido que SÍ se creó — con la cuenta ya cerrada, recapturar manda dos veces a cocina. */}
           <Button flex="1.3" size="lg" h="56px" colorPalette="green" fontWeight="800"
-            aria-describedby="cobrar-manda-a-cocina"
+            aria-describedby="cobrar-manda-a-cocina" loading={enviando}
             disabled={lines.length === 0 || envioMalEscrito} onClick={onCheckout}>
             COBRAR
           </Button>
