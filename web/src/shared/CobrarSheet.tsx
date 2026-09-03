@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
@@ -104,6 +104,27 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // servidor la sella contra la carga y responde que ese cobro ya entró con otro método, en vez de
   // registrar un segundo pago sobre uno que quizá sí aterrizó.
   const [llave, setLlave] = useState(uuid);
+
+  // La hoja monta CERRADA y se abre en el render siguiente, en vez de nacer con `open` puesto.
+  //
+  // Suena a rodeo y no lo es: quien abre esta hoja normalmente cierra otra en la MISMA
+  // actualización —tocar "Cobrar" dentro de la lista de pedidos por cobrar hace las dos cosas—, y
+  // sin una transición de cerrado a abierto la hoja no llega a montarse. Medido contra Chakra
+  // 3.37: cero diálogos en el árbol, o sea que tocar Cobrar no abría nada y el operador se quedaba
+  // con el cliente enfrente y sin pantalla. Con 3.36 el mismo código funcionaba, así que es la
+  // clase de defecto que aparece sola en una actualización de dependencias.
+  //
+  // El `key` de quien la monta la vuelve a crear por pedido, así que esto arranca en false cada
+  // vez que se abre para otro.
+  //
+  // La regla `set-state-in-effect` se apaga a propósito y solo aquí: avisa de renders en cascada, y
+  // esto es UN render extra al montar, acotado por el array vacío. React no da otra forma de
+  // provocar una transición al montar, y las dos alternativas se probaron y no sirven: `defaultOpen`
+  // no dispara la transición, y partir el cierre y la apertura en dos commits con `flushSync`
+  // arregla unos casos y no otros.
+  const [visible, setVisible] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setVisible(true); }, []);
 
   // El pedido VIVO, no la foto que traía el prop.
   //
@@ -238,7 +259,7 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   const aviso = saldado ? 'Este pedido ya está cobrado.' : textos[v.motivo ?? 'sin-monto'];
 
   return (
-    <DrawerRoot open placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
+    <DrawerRoot open={visible} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
       <DrawerBackdrop />
       {/* La paleta del negocio, como el resto del POS. Los estados de selección estaban quemados en
           verde: el mismo sistema se veía de un color en una pantalla y de otro en la de al lado, y
