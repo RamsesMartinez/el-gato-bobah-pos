@@ -192,3 +192,32 @@ test('al quedar saldado, avisa a la pantalla para que ofrezca el ticket', async 
     expect.objectContaining({ paid: true }), 7,
   ));
 });
+
+// ABRIR LA HOJA DE COBRO CIERRA LA LISTA EN EL MISMO TOQUE, Y LAS DOS COSAS TIENEN QUE OCURRIR.
+//
+// Es una actualización de React que cierra una hoja y monta otra a la vez. Si la que se monta nace
+// con `open` ya puesto —sin transición de cerrado a abierto— la librería no llega a montarla: con
+// Chakra 3.37 quedaban CERO diálogos en el árbol, o sea que tocar Cobrar no abría nada y el
+// operador se quedaba con el cliente enfrente y sin pantalla.
+//
+// Con 3.36 el mismo código funcionaba. Este test es lo que impide que un bump de dependencias
+// vuelva a tumbar el camino con el que se cobra desde el botón naranja.
+test('tocar Cobrar cierra la lista Y abre la hoja de cobro', async () => {
+  const u = userEvent.setup();
+  openOrders.mockResolvedValue({
+    items: [pedido({ id: 7, folioName: 'Tigre', outstanding: '250', total: '250' })],
+    outstanding: '250',
+  });
+  order.mockResolvedValue({ ...pedido({ id: 7, outstanding: '250', total: '250' }), lines: [] });
+  paymentMethods.mockResolvedValue({
+    items: [{ id: 1, name: 'Efectivo', kind: 'efectivo', deliveryPlatformId: null }],
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  await u.click(await screen.findByRole('button', { name: /^Cobrar \$250/ }));
+
+  // La hoja de cobro se reconoce por su encabezado de dos cifras, que la lista no tiene.
+  expect(await screen.findByText(/Falta \$250/)).toBeInTheDocument();
+  expect(screen.getByText(/Total \$250/)).toBeInTheDocument();
+});
