@@ -23,6 +23,12 @@ async function token(request: APIRequestContext): Promise<string> {
 // La sesión se siembra por API y no tecleando en la pantalla de login: lo que estas pruebas miden es
 // el cobro, y hacerlas pasar por el login las vuelve dependientes de una pantalla que ya tiene sus
 // propias pruebas.
+//
+// OJO: esto NO autentica la aplicación. El access token vive solo en memoria a propósito —para que
+// un XSS no pueda leerlo— y el rol vive en el mismo store, así que `RequireRole` no encuentra
+// usuario y manda a /pos. Aquí no estorba porque estas pruebas solo visitan `/` y su aserción de URL
+// acepta `/pos`; cualquier prueba que abra una pantalla con rol tiene que entrar por el login real,
+// como hace `pantallas.spec.ts`.
 async function entrar(page: Page, jwt: string) {
   await page.addInitScript((t) => {
     window.localStorage.setItem('pos.session', JSON.stringify({ state: { token: t }, version: 0 }));
