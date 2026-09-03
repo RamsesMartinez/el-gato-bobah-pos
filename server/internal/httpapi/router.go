@@ -120,10 +120,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
 					// reembolsar, que es salida de dinero.
 					r.Get("/open", h.OpenOrders)
-					r.Post("/{id}/cancel", h.CancelOrder)
+					// Mismo rol que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
+					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
+					// que mueve dinero sin la barrera que su gemelo sí exige.
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
+					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
+					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
+					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los

@@ -341,3 +341,78 @@ select exists (
   join products p on p.id = l.product_id
   where l.order_id = $1 and l.cancelled_at is null and p.needs_prep
 )::boolean;
+
+-- name: SumOrderPaymentsByMethod :many
+-- Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+--
+-- Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
+-- efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
+-- con un faltante inventado.
+--
+-- `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
+-- entró tiene que poder salir por donde entró, o queda atrapado.
+select pm.id as method_id, pm.name, pm.kind = 'efectivo' as es_efectivo, pm.is_active,
+       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
+from order_payments op
+join payment_methods pm on pm.id = op.payment_method_id
+where op.order_id = $1
+group by pm.id, pm.name, pm.kind, pm.is_active
+order by min(op.created_at);
+
+-- name: SumOrderRefunds :one
+-- Lo ya devuelto de un pedido, y de UNO de sus renglones.
+--
+-- Las dos cifras en una pasada porque el tope de un renglón es lo cobrado de ESE renglón: sin esa
+-- cota, devolver tres veces un platillo de $60 en un pedido de $500 pasa sin que nada lo frene.
+select coalesce(sum(amount), 0)::numeric(10,2) as devuelto_total,
+       coalesce(sum(amount) filter (where order_line_id = sqlc.narg('line_id')), 0)::numeric(10,2) as devuelto_del_renglon
+from order_refunds where order_id = sqlc.arg('order_id');
+
+-- name: InsertOrderRefund :one
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning id;
+
+-- name: RecalcOrderRefundAmount :exec
+-- `orders.refund_amount` pasa a ser la SUMA del libro, no un número que se escribe aparte.
+--
+-- Se conserva la columna porque `RefundsByDay` ya la lee, y dos verdades sobre el mismo dinero es
+-- exactamente lo que el principio III prohíbe. Recalcularla desde el libro es lo que las mantiene
+-- siendo una sola.
+update orders o
+set refund_amount = coalesce((select sum(r.amount) from order_refunds r where r.order_id = o.id), 0)
+where o.id = $1;
+
+-- name: GetOrderLineForCancel :one
+-- El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
+--
+-- `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
+-- repondrían el insumo dos veces. Solo el renglón, no el pedido: bloquear el pedido entero pararía
+-- al que está cobrando en la otra tableta.
+select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
+       o.status as order_status
+from order_lines ol
+join orders o on o.id = ol.order_id
+where ol.id = $1 and ol.order_id = $2
+for update of ol;
+
+-- name: CancelOrderLine :exec
+-- Marca el renglón, no lo borra: el histórico de qué se pidió y se canceló es lo que deja explicar
+-- una merma más adelante. `RecalcOrderTotals` ya excluye los cancelados del total del pedido.
+update order_lines set cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
+where id = $1 and cancelled_at is null;
+
+-- name: RestockCancelledLine :exec
+-- Repone el insumo de UN renglón, revirtiendo los movimientos que de verdad salieron por él.
+--
+-- Revierte lo registrado y no un recálculo con la receta de HOY: una receta que cambió entre la
+-- venta y la cancelación repondría una cantidad distinta de la que se descontó.
+--
+-- Un renglón anterior a la migración 0060 no tiene movimientos ligados y no repone nada. Es la
+-- decisión: de un movimiento viejo no consta a qué renglón pertenecía, y adivinarlo inventaría
+-- existencias.
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
+       sqlc.arg(actor_id), 'cancelación de renglón'
+from stock_movements sm
+where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type = 'venta';

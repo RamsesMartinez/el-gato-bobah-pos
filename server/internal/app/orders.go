@@ -209,10 +209,6 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	}
 
 	// datos para depleción de stock (lectura antes de la tx)
-	qtyByProduct := map[int64]decimal.Decimal{}
-	for _, l := range built.Lines {
-		qtyByProduct[l.ProductID] = qtyByProduct[l.ProductID].Add(l.Qty)
-	}
 	depletion, err := s.loadDepletion(ctx, prodIDs)
 	if err != nil {
 		return nil, err
@@ -288,23 +284,15 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 					return err
 				}
 			}
-		}
-		// depleción de stock: producto con stock directo → descuenta el producto;
-		// con receta → descuenta cada ingrediente × cantidad vendida (el trigger
-		// mantiene stock_levels). Negativos permitidos (verdad contable).
-		reason := "venta"
-		for pid, qty := range qtyByProduct {
-			if depletion.trackStock[pid] {
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "producto", nil, &pid, qty.Neg())); err != nil {
-					return err
-				}
-				continue
-			}
-			for _, it := range depletion.recipe[pid] {
-				ingID := it.ingredientID
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(ord.ID, cmd.OpenedBy, reason, "ingrediente", &ingID, nil, it.qtyBase.Mul(qty).Neg())); err != nil {
-					return err
-				}
+			// Depleción de stock, atribuida a ESTE renglón: producto con stock directo → descuenta
+			// el producto; con receta → cada ingrediente × la cantidad vendida (el trigger mantiene
+			// stock_levels). Negativos permitidos: es verdad contable.
+			//
+			// Por renglón y no agregada por producto, que es como estaba: sin saber de qué renglón
+			// salió cada descuento, cancelar UNO obliga a recalcular su consumo con la receta de HOY,
+			// y una receta que cambió entre la venta y la cancelación repone otra cantidad.
+			if err := descontarRenglon(ctx, q, depletion, ord.ID, lineID, cmd.OpenedBy, l.ProductID, l.Qty); err != nil {
+				return err
 			}
 		}
 		// El pedido nace con todos sus renglones ya en cocina: la comanda del confirmado sale con el
@@ -550,37 +538,14 @@ func (s *OrdersService) SetStatus(ctx context.Context, id int64, status string) 
 // ponytail: el guard se lee dentro de la tx con GetOrder (no FOR UPDATE); cubre el
 // caso real (doble-tap secuencial). Si dos cancels concurren, añade SELECT ... FOR
 // UPDATE en una query dedicada cuando exista sqlc en el toolchain.
+// Cancel cancela una orden SIN devolver dinero. Si el pedido tiene cobros, rechaza.
+//
+// Es un envoltorio de CancelarConDevolucion a propósito: cancelar tiene una sola implementación, y
+// la diferencia entre "cancelar" y "cancelar devolviendo" es un booleano, no otro camino. Dos
+// caminos es como este quedó ignorando los cobros mientras el reembolso sí los miraba.
 func (s *OrdersService) Cancel(ctx context.Context, id int64, actor int64, reason string) error {
-	reason, err := domain.MotivoValido(reason)
-	if err != nil {
-		return err
-	}
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		o, err := q.GetOrder(ctx, id)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return domain.ErrNotFound
-			}
-			return err
-		}
-		if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
-			return domain.ErrConflict
-		}
-		// Cancelar repone el stock de TODAS las líneas, así que un pedido del que ya salió comida
-		// no se puede cancelar: reponer lo que el cliente se llevó le inventaría al almacén
-		// existencias que no están. Lo que queda por hacer se cancela renglón a renglón; lo que ya
-		// se entregó se reembolsa.
-		lineas, err := lineasDeEntrega(ctx, q, id)
-		if err != nil {
-			return err
-		}
-		if domain.HayEntregaParcial(lineas) {
-			return domain.ErrCancelarConEntregas
-		}
-		if err := q.CancelOrder(ctx, db.CancelOrderParams{ID: id, CancelledBy: &actor, CancelReason: &reason}); err != nil {
-			return err
-		}
-		return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &id, ActorID: &actor})
+	return s.CancelarConDevolucion(ctx, CancelacionCmd{
+		OrderID: id, Motivo: reason, ActorID: actor, Devolver: false,
 	})
 }
 
@@ -639,7 +604,30 @@ func (s *OrdersService) loadDepletion(ctx context.Context, prodIDs []int64) (dep
 	return d, nil
 }
 
-func movementIngredientOrProduct(orderID, userID int64, reason, itemType string, ingID, prodID *int64, qty decimal.Decimal) db.InsertStockMovementParams {
+// descontarRenglon registra la depleción de UN renglón, atribuida a él.
+//
+// Lo comparten crear y agregar: eran dos copias del mismo bucle agregado por producto, y una copia
+// es la forma en que uno de los dos caminos se queda sin el arreglo del otro.
+func descontarRenglon(ctx context.Context, q *db.Queries, dep depletionData,
+	orderID, lineID, actorID, productID int64, qty decimal.Decimal,
+) error {
+	const reason = "venta"
+	if dep.trackStock[productID] {
+		pid := productID
+		return insertDepletion(ctx, q,
+			movementIngredientOrProduct(orderID, lineID, actorID, reason, "producto", nil, &pid, qty.Neg()))
+	}
+	for _, it := range dep.recipe[productID] {
+		ingID := it.ingredientID
+		if err := insertDepletion(ctx, q,
+			movementIngredientOrProduct(orderID, lineID, actorID, reason, "ingrediente", &ingID, nil, it.qtyBase.Mul(qty).Neg())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func movementIngredientOrProduct(orderID, lineID, userID int64, reason, itemType string, ingID, prodID *int64, qty decimal.Decimal) db.InsertStockMovementParams {
 	return db.InsertStockMovementParams{
 		ItemType:     db.StockItemType(itemType),
 		IngredientID: ingID,
@@ -647,6 +635,7 @@ func movementIngredientOrProduct(orderID, userID int64, reason, itemType string,
 		MovementType: db.StockMovementType("venta"),
 		Quantity:     qty, // insertDepletion redondea (4dp) y valida
 		OrderID:      &orderID,
+		OrderLineID:  &lineID,
 		UserID:       &userID,
 		Reason:       &reason,
 	}
@@ -823,10 +812,6 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		return nil, err
 	}
 
-	qtyByProduct := map[int64]decimal.Decimal{}
-	for _, l := range built.Lines {
-		qtyByProduct[l.ProductID] = qtyByProduct[l.ProductID].Add(l.Qty)
-	}
 	depletion, err := s.loadDepletion(ctx, prodIDs)
 	if err != nil {
 		return nil, err
@@ -871,6 +856,9 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 				return err
 			}
 			agregados = append(agregados, lineID)
+			if err := descontarRenglon(ctx, q, depletion, orderID, lineID, actor, l.ProductID, l.Qty); err != nil {
+				return err
+			}
 			for _, m := range l.Modifiers {
 				if err := q.CreateOrderLineModifier(ctx, db.CreateOrderLineModifierParams{
 					OrderLineID:      lineID,
@@ -881,20 +869,6 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 					PriceDelta:       m.PriceDelta,
 					UnitCost:         m.UnitCost,
 				}); err != nil {
-					return err
-				}
-			}
-		}
-		for pid, qty := range qtyByProduct {
-			if depletion.trackStock[pid] {
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(orderID, actor, "venta", "producto", nil, &pid, qty.Neg())); err != nil {
-					return err
-				}
-				continue
-			}
-			for _, it := range depletion.recipe[pid] {
-				ingID := it.ingredientID
-				if err := insertDepletion(ctx, q, movementIngredientOrProduct(orderID, actor, "venta", "ingrediente", &ingID, nil, it.qtyBase.Mul(qty).Neg())); err != nil {
 					return err
 				}
 			}
