@@ -18,6 +18,7 @@ import { printHtmlOffscreen } from '../../utils/printReceipt';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
+import { DevolucionSheet } from './DevolucionSheet';
 import { useSessionStore } from '../../stores/session';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
@@ -37,14 +38,13 @@ const TAP = '44px';
 // estorbarían lo que falta por atender.
 const ENTREGADAS_VISIBLES = 5;
 
-const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', 'Otro'];
-const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente', 'Cobro erróneo', 'Otro'];
 
 export function OrdersBoardPage() {
   const horaNegocio = useHoraDelNegocio();
   const live = useOrderEvents();
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
+  const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
   const qc = useQueryClient();
   // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
   // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
@@ -91,16 +91,18 @@ export function OrdersBoardPage() {
     onError: conError('No se pudo entregar'),
   });
   const cancelMut = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.cancelOrder(id, reason),
+    mutationFn: ({ id, reason, devolver }: { id: number; reason: string; devolver: boolean }) =>
+      posApi.cancelOrder(id, reason, devolver),
     onSuccess: invalidateAll,
     // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
     // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué.
     onError: conError('No se pudo cancelar'),
   });
   const refundMut = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.refundOrder(id, reason),
-    onSuccess: () => { invalidateAll(); toaster.create({ title: 'Reembolso registrado', type: 'success' }); },
-    onError: conError('Error'),
+    mutationFn: ({ id, reason, amount }: { id: number; reason: string; amount?: number }) =>
+      posApi.refundOrder(id, reason, amount),
+    onSuccess: () => { invalidateAll(); toaster.create({ title: 'Devolución registrada', type: 'success' }); },
+    onError: conError('No se pudo devolver'),
   });
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
@@ -112,14 +114,14 @@ export function OrdersBoardPage() {
   // ya se fue con la comida.
   const pendiente = resumenPorCobrar([...orders, ...entregadas]);
 
-  const cancel = (o: BoardOrder) => {
-    const reason = window.prompt(`Motivo de cancelación:\n(${CANCEL_REASONS.join(', ')})`, CANCEL_REASONS[0]);
-    if (reason) cancelMut.mutate({ id: o.id, reason });
-  };
-  const refund = (o: BoardOrder) => {
-    const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
-    if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
-  };
+  // La hoja reemplaza al `window.prompt` que pedía el motivo. Ese diálogo lo pinta el sistema
+  // operativo: caja de texto por debajo de 44 px, los motivos listados entre paréntesis sin poder
+  // tocarlos, y —lo peor— tras varios Chrome ofrece suprimirlos, y a partir de ahí `prompt` devuelve
+  // null y la acción deja de hacer nada, en silencio y sin aviso.
+  //
+  // La misma hoja para las dos: con cobros pide cuánto devolver, sin ellos solo el motivo.
+  const cancel = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: true });
+  const refund = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: false });
 
   // La comanda COMPLETA, como acción explícita. La que sale sola al agregar lleva solo lo nuevo
   // —cocina ya está preparando lo anterior—, así que cuando un papel se pierde o la impresora falla
@@ -176,6 +178,25 @@ export function OrdersBoardPage() {
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
       {/* `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      {devolviendo && (
+        <DevolucionSheet
+          key={devolviendo.pedido.id}
+          pedido={devolviendo.pedido}
+          cancelando={devolviendo.cancelando}
+          enviando={cancelMut.isPending || refundMut.isPending}
+          onCerrar={() => setDevolviendo(null)}
+          onConfirmar={(monto, motivo) => {
+            const { pedido, cancelando } = devolviendo;
+            if (cancelando) {
+              cancelMut.mutate({ id: pedido.id, reason: motivo, devolver: monto > 0 });
+            } else {
+              refundMut.mutate({ id: pedido.id, reason: motivo, amount: monto });
+            }
+            setDevolviendo(null);
+          }}
+        />
+      )}
+
       <CobrarSheet key={cobrando?.id} order={cobrando}
         onClose={() => setCobrando(null)} onCobrado={() => invalidateAll()} />
     </Box>
@@ -395,8 +416,15 @@ function Entregadas({ orders, onRefund, onTicket, onCobrar, puedeCobrar }: {
                     </Button>
                   )}
                   <Button size="sm" minH={TAP} variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
-                  <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
-                    onClick={() => onRefund(o)}>Reembolsar</Button>
+                  {/* Devolver solo lo que SE COBRÓ. El botón vivía al lado de "Cobrar $220" en la
+                      misma tarjeta, y tocarlo anotaba $220 de pérdida por un ingreso que nunca
+                      ocurrió — mientras la cuenta por cobrar desaparecía del contador sin haberse
+                      cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
+                      ofrecerla: el operador la toca con el cliente enfrente. */}
+                  {Number(o.total) - Number(o.outstanding) > 0 && (
+                    <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
+                      onClick={() => onRefund(o)}>Devolver</Button>
+                  )}
                 </HStack>
               </Flex>
             );

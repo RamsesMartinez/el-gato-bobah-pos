@@ -73,7 +73,7 @@ from order_payments where client_uuid = $1;
 
 -- name: ListActiveOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -122,7 +122,7 @@ where id = $1;
 -- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
 -- fecha de negocio para no arrastrar todo el histórico.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l

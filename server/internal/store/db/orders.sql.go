@@ -593,7 +593,7 @@ func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundPa
 const listActiveOrders = `-- name: ListActiveOrders :many
 
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -615,6 +615,7 @@ type ListActiveOrdersRow struct {
 	CustomerName       *string            `json:"customer_name"`
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
+	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -642,6 +643,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
+			&i.RefundAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -660,7 +662,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 
 const listDeliveredToday = `-- name: ListDeliveredToday :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -682,6 +684,7 @@ type ListDeliveredTodayRow struct {
 	CustomerName       *string            `json:"customer_name"`
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
+	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -720,6 +723,7 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
+			&i.RefundAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
