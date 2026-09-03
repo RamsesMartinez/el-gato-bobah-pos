@@ -92,8 +92,12 @@ type OrderView struct {
 	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
 	// propia lista decía $1,928.
 	Outstanding decimal.Decimal `json:"outstanding"`
-	OpenedAt    time.Time       `json:"openedAt"`
-	Lines       []OrderLineView `json:"lines"`
+	// Refund: lo ya devuelto de este pedido. Es el otro extremo del tope de una devolución —se
+	// devuelve lo cobrado MENOS esto—, y sin el dato la pantalla ofrecería devolver dos veces lo
+	// mismo y el servidor la rebotaría con el cliente enfrente.
+	Refund   decimal.Decimal `json:"refund"`
+	OpenedAt time.Time       `json:"openedAt"`
+	Lines    []OrderLineView `json:"lines"`
 }
 
 type OrderLineView struct {
@@ -381,7 +385,11 @@ type BoardOrder struct {
 	// ABONADO —el cliente dejó algo al pedir y termina al recoger—, y en ese caso derivar el
 	// pendiente del total, como hacía la pantalla, cobra de más y descuadra el aviso del tablero.
 	Outstanding decimal.Decimal `json:"outstanding"`
-	OpenedAt    time.Time       `json:"openedAt"`
+	// Refund: lo ya devuelto de este pedido. Es el otro extremo del tope de una devolución —se
+	// devuelve lo cobrado MENOS esto—, y sin el dato la pantalla ofrecería devolver dos veces lo
+	// mismo y el servidor la rebotaría con el cliente enfrente.
+	Refund   decimal.Decimal `json:"refund"`
+	OpenedAt time.Time       `json:"openedAt"`
 	// EnPreparacion: si a este pedido todavía se le puede AGREGAR. Viaja como dato y no se deduce
 	// del estado en la pantalla, para que la regla no quede implementada en dos lados y se separen.
 	EnPreparacion bool `json:"enPreparacion"`
@@ -430,6 +438,7 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
 			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
 			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			Refund:      r.RefundAmount,
 			OpenedAt:    r.OpenedAt,
 			Lines:       porPedido[r.ID],
 		})
@@ -495,6 +504,7 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
 			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
 			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			Refund:      r.RefundAmount,
 			OpenedAt:    r.OpenedAt,
 		})
 	}

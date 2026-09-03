@@ -55,7 +55,7 @@ código:
 
 ## Fase 4 — Frontera
 
-- [ ] T022 [P] Test en `server/internal/httpapi/`: monto y motivo inválidos son 400, no 500
+- [X] T022 [P] Test en `server/internal/httpapi/`: monto y motivo inválidos son 400, no 500
 - [X] T023 `POST /orders/{id}/refund` acepta renglones y monto en `server/internal/httpapi/handlers_orders.go`
 - [X] T024 `POST /orders/{id}/lines/{lineId}/cancel` en `server/internal/httpapi/handlers_orders.go`
 - [ ] T024b [US3] (FR-008) Revisar `ErrCancelarConEntregas`: hoy manda a "cancela los que falten", que no existía. Con US3 se vuelve cierto — test que lo compruebe, no solo el mensaje reescrito
@@ -63,18 +63,18 @@ código:
 
 ## Fase 5 — Pantalla
 
-- [ ] T026 [P] [US2] Test de `web/src/domain/devolucion.ts`: cuánto se puede devolver, qué se ofrece y por qué se apaga el botón
-- [ ] T027 [US2] `web/src/domain/devolucion.ts`, espejo de las reglas del servidor
-- [ ] T028 [P] [US2] Test de la hoja de devolución en `web/src/features/orders/`
-- [ ] T029 [US2] Hoja de devolución con selección por renglón, a 44 px y dentro de los 600 px
+- [X] T026 [P] [US2] Test de `web/src/domain/devolucion.ts`: cuánto se puede devolver, qué se ofrece y por qué se apaga el botón
+- [X] T027 [US2] `web/src/domain/devolucion.ts`, espejo de las reglas del servidor
+- [X] T028 [P] [US2] Test de la hoja de devolución en `web/src/features/orders/`
+- [X] T029 [US2] Hoja de devolución con selección por renglón, a 44 px y dentro de los 600 px
 - [ ] T030 [P] [US3] Test: cancelar un renglón ya enviado a cocina **avisa** que el insumo no vuelve
 - [ ] T031 [US3] Cancelar renglón desde la tarjeta del pedido, con su aviso
-- [ ] T032 [US1] La tarjeta deja de ofrecer "Reembolsar" en un pedido sin cobros (SC-003)
+- [X] T032 [US1] La tarjeta deja de ofrecer "Reembolsar" en un pedido sin cobros (SC-003)
 
 ## Fase 6 — Cierre
 
-- [ ] T033 Renglones nuevos en `docs/matriz-de-pantallas.md`, cada uno con su test
-- [ ] T034 Cerrar X1, X2 y X3 en la tabla de pendientes de la matriz
+- [X] T033 Renglones nuevos en `docs/matriz-de-pantallas.md`, cada uno con su test
+- [X] T034 Cerrar X1, X2 y X3 en la tabla de pendientes de la matriz
 - [ ] T035 Gates: `go build`, `go test`, integración, `golangci-lint`, `bun run lint`, vitest, `bun run build`, e2e
 
 ## Dependencias

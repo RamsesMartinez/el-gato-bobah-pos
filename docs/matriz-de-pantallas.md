@@ -124,6 +124,25 @@ periodo que pidió.
 | A3 | Un reuso de credencial de verdad | **Sigue** revocando: el arreglo no afloja la detección de robo | `TestUnReusoDeVerdadSigueRevocando` | Postgres |
 | A4 | Rebote de `/auth/refresh` | Borra la cookie. Sin eso, la credencial muerta se re-presenta en cada recarga hasta 30 días | — | **no cubierto** |
 
+## E. Devolver dinero (spec 007)
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| E1 | Devolver más de lo cobrado | Se rechaza. `Refund` anotaba como pérdida el TOTAL del pedido sin mirar un cobro | `TestSeDevuelveLoCobradoNoElTotalDelPedido` | Postgres |
+| E2 | Devolver un pedido sin cobrar | Se rechaza con su propio error, y no anota pérdida | `TestUnPedidoSinCobrarNoSeDevuelve` | Postgres |
+| E3 | Devolver lo cobrado con tarjeta | **No** toca el cajón: ese dinero nunca estuvo ahí | `TestSoloLaDevolucionEnEfectivoTocaElCajon` | Postgres |
+| E4 | Devolver lo cobrado en efectivo | Sale del cajón como movimiento, y el arqueo lo descuenta solo | idem | Postgres |
+| E5 | Cancelar un pedido ya cobrado | Se rechaza sin devolución; con ella, el cajón queda cuadrado | `TestCancelarUnPedidoCobradoExigeLaDevolucion` | Postgres |
+| E6 | Devolver por un método desactivado | Se permite: el dinero entró por ahí y por ahí sale | `TestSeDevuelvePorUnMetodoDesactivado` | Go |
+| E7 | Devolver dos veces el mismo renglón | El tope es lo cobrado de ESE renglón | `TestNoSeDevuelveMasDeLoQueEntro` | Go |
+| E8 | Cancelar un renglón NO enviado a cocina | Repone el insumo y baja el total | `TestCancelarUnRenglonReponeSoloSiNoSalioACocina` | Postgres |
+| E9 | Cancelar un renglón YA enviado a cocina | Baja el total y **no** repone: el insumo se consumió | `TestUnRenglonQueYaSalioACocinaNoRepone` | Postgres |
+| E10 | Doble tap al cancelar un renglón | No repone dos veces ni da error | `TestCancelarDosVecesElMismoRenglonNoReponeDosVeces` | Postgres |
+| E11 | La tarjeta de un entregado sin cobrar | **No** ofrece "Devolver": el servidor lo rechazaría | `OrdersBoardPage` (SC-003) | Navegador |
+| E12 | La hoja de devolución | Propone lo que queda, descuenta lo ya devuelto, y dice por qué se apaga | `DevolucionSheet.test.tsx` | Navegador |
+| E13 | El grant de la tabla nueva | El rol de app puede leer e insertar; sin grant es 42501 en producción | `TestElLibroDeDevolucionesEsUsablePorElRolDeApp` | Postgres |
+| E14 | Un arqueo ya cerrado tras la migración | Mismas cifras | `TestUnArqueoCerradoNoCambiaConLaMigracion` | Postgres |
+
 
 ---
 
@@ -135,12 +154,8 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
-| X1 | Cancelar un pedido **ya cobrado** | Spec [007](../specs/007-devolver-el-dinero/spec.md), a la espera de cuatro decisiones del dueño | P1 |
-| X2 | Reembolsar un entregado **sin cobrar** | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P2 |
-| X3 | Cancelar un renglón suelto | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P4 |
 | X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
 | X7 | Controles de ~24 px en el renglón del ticket (−, +, papelera) | Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto. El menú del tablero ya subió a 44 px | V9 |
-| X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio. Va con `Picker` y las listas de motivos que ya están escritas | P10 |
 | X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
 | X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
 | X11 | El reuso revoca por **usuario**, no por familia | La constitución dice "revoca toda la familia". No hay columna de linaje en `refresh_tokens`: es cambio de esquema | H18 |
