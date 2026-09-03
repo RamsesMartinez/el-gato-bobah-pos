@@ -383,6 +383,22 @@ cuando no: un fallo de red no tiene mensaje que le sirva a quien opera.
 
 ---
 
+### H17 · El renglón que cancela un pedido medía 32 px — ALTA, corregido
+
+**Qué pasaba.** Los tres renglones del menú ⋮ del tablero eran los únicos controles tappables de esa
+pantalla sin el piso de 44 px: la receta `md` de Chakra da 12 px de padding sobre 20 px de texto. El
+tercero cancela el pedido y repone inventario, y estaba pegado al segundo, que solo reimprime un
+papel.
+
+**Regla violada.** Restricciones del producto, dos veces: *todo control tappable mide al menos 44
+px* y *la separación de las acciones destructivas es requisito funcional, no preferencia estética*.
+
+**Elegida.** 44 px en los tres, separador y aire antes del destructivo. Se descartó pedir
+confirmación: la cancelación ya pide motivo, y una confirmación encima de un diálogo de motivo son
+dos toques para lo que se hace todos los días. Lo que faltaba no era una barrera, era distancia.
+
+---
+
 ## Lo que queda abierto, y por qué
 
 Los renglones que quedan abiertos no se cerraron en esta tanda. No es una lista de deuda vaga: cada uno está
