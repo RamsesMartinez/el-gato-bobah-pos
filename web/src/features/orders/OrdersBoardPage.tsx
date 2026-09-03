@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
 } from '@chakra-ui/react';
-import { MenuRoot, MenuTrigger, MenuContent, MenuItem } from '../../components/ui/menu';
+import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from '../../components/ui/menu';
 import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
@@ -282,10 +282,17 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
               <LuEllipsisVertical />
             </IconButton>
           </MenuTrigger>
-          <MenuContent>
-            <MenuItem value="ticket" onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
-            <MenuItem value="comanda" onClick={() => acciones.comanda(o)}>Reimprimir comanda</MenuItem>
-            <MenuItem value="cancel" color="red.500" onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
+          {/* Los renglones del menú eran los únicos controles tappables de esta pantalla sin el
+              piso de 44 px: la receta `md` de Chakra da 12 px de padding sobre 20 px de texto, o sea
+              32. El tercero cancela el pedido y repone inventario, y estaba pegado al segundo.
+              Va con separador y con aire: la constitución pide separar las acciones destructivas, y
+              aquí un dedo que erra por 6 px repone stock que no se repuso. */}
+          <MenuContent minW="220px">
+            <MenuItem value="ticket" minH={TAP} px={3} onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
+            <MenuItem value="comanda" minH={TAP} px={3} onClick={() => acciones.comanda(o)}>Reimprimir comanda</MenuItem>
+            <MenuSeparator />
+            <MenuItem value="cancel" minH={TAP} px={3} mt={1} color="red.500"
+              onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
           </MenuContent>
         </MenuRoot>
       </HStack>

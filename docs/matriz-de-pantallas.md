@@ -112,6 +112,7 @@ periodo que pidió.
 | P6 | Pedido de total $0 en la barra | **No** cuenta como por cobrar: el badge decía "1 por cobrar · $0" y ninguna tarjeta ofrecía Cobrar | `porCobrar.test.ts › un pedido de $0` | Navegador |
 | P7 | Doble tap en "Entregar todo" | El segundo es un no-op, no un error rojo sobre una entrega que sí ocurrió | `TestUnDobleTapEnEntregarTodoNoDaError` | Postgres |
 | P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
+| P3 | Renglones del menú ⋮ del tablero | 44 px, y "Cancelar pedido" separado de "Reimprimir comanda" | — | **no cubierto** (se mide en el navegador real) |
 
 
 ---
@@ -128,7 +129,7 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 | X2 | Reembolsar un entregado **sin cobrar** | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P2 |
 | X3 | Cancelar un renglón suelto | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P4 |
 | X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
-| X7 | Controles por debajo de 44 px en el ticket y el tablero | ~24 px en −/+/papelera del ticket; 32 px en el menú que cancela. Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto | V9, P3 |
+| X7 | Controles de ~24 px en el renglón del ticket (−, +, papelera) | Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto. El menú del tablero ya subió a 44 px | V9 |
 | X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio. Va con `Picker` y las listas de motivos que ya están escritas | P10 |
 | X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
 | X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
