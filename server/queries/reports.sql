@@ -8,12 +8,25 @@ group by o.business_date
 order by o.business_date;
 
 -- name: SalesByMethod :many
+-- Cobros por medio de pago, con EL MISMO predicado que SalesByDay. No es cosmético: las dos tablas
+-- viven en la misma pantalla, y si una responde otro periodo o incluye otras ventas, la suma de los
+-- métodos no cuadra con el total de arriba y quien lo lee no tiene forma de saber cuál miente.
+--
+-- Dos cosas cambiaron y las dos habían costado:
+--   * Filtraba por `op.created_at >= $1`, SIN cota superior: elegir julio mostraba julio en una
+--     tabla y "de julio a hoy" en la otra. Además `created_at` es el instante del cobro y no el día
+--     de negocio, así que un cobro de un turno que cruza la medianoche caía en otro día que su venta.
+--   * No excluía canceladas ni reembolsadas. El cobro de una venta reembolsada seguía sumando aquí
+--     mientras el total de arriba —que sí la excluye— no lo contaba: ingreso que no ocurrió,
+--     clasificado dos veces distinto en la misma pantalla.
 select pm.name as method,
        count(*)::int as payments,
        coalesce(sum(op.amount), 0)::numeric(12,2) as total
 from order_payments op
+join orders o on o.id = op.order_id
 join payment_methods pm on pm.id = op.payment_method_id
-where op.created_at >= $1
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between $1 and $2
 group by pm.name
 order by total desc;
 
@@ -56,6 +69,12 @@ order by o.business_date;
 
 -- name: ProductMargins :many
 -- Utilidad por producto usando snapshots de las líneas (no depende del costo actual).
+--
+-- Acotada por DÍA DE NEGOCIO y en los dos extremos, igual que sus hermanas de pantalla. Filtraba
+-- por `o.opened_at >= $1` sin cota superior: con un filtro de fechas encima, esta tabla habría
+-- seguido contestando "desde esa fecha hasta hoy" mientras el resto de la pantalla contestaba el
+-- rango elegido. Y `opened_at` es un instante en UTC, no el día con el que el negocio cuadra su
+-- caja: un pedido abierto a las 19:00 de México ya es del día siguiente en UTC.
 select ol.product_name,
        sum(ol.quantity)::numeric(12,2) as qty,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as revenue,
@@ -63,7 +82,8 @@ select ol.product_name,
        coalesce(sum(ol.line_total) - sum(ol.unit_cost * ol.quantity), 0)::numeric(12,2) as margin
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada') and o.opened_at >= $1
+where o.status not in ('cancelada', 'reembolsada')
+  and o.business_date between $1 and $2
 group by ol.product_name
 order by margin desc
-limit $2;
+limit $3;

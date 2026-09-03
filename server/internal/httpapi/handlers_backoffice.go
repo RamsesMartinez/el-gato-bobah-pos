@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -617,67 +618,98 @@ func (h *Handlers) CreateStockMovement(w http.ResponseWriter, r *http.Request) {
 
 // ---- Reportes ----
 
+// GET /reports/sales?preset=&from=&to= — venta por día y cobros por medio de pago.
+//
+// Las dos tablas de la respuesta responden EL MISMO rango. Antes no: `byDay` iba acotado por los
+// dos extremos y `byMethod` solo por el inferior, así que la misma pantalla mostraba julio arriba y
+// "de julio a hoy" abajo, y quien la leía no tenía forma de saber cuál de las dos cifras era la del
+// periodo que pidió.
 func (h *Handlers) ReportSales(w http.ResponseWriter, r *http.Request) {
-	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	rows, err := h.backoffice.SalesByDay(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.SalesByDay(r.Context(), from, to)
+	methods, err := h.backoffice.SalesByMethod(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	methods, err := h.backoffice.SalesByMethod(r.Context(), from)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"byDay": rows, "byMethod": methods})
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "byDay": rows, "byMethod": methods})
 }
 
-// GET /reports/tips?from=&to= — propinas por empleado (para repartir) y por día.
+// GET /reports/tips?preset=&from=&to= — propinas por empleado (para repartir) y por día.
 func (h *Handlers) ReportTips(w http.ResponseWriter, r *http.Request) {
-	to, err := parseDate(r.URL.Query().Get("to"), time.Now())
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	from, err := parseDate(r.URL.Query().Get("from"), to.AddDate(0, 0, -30))
+	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	byEmployee, err := h.backoffice.TipsByEmployee(r.Context(), from, to)
+	byDay, err := h.backoffice.TipsByDay(r.Context(), rango.From, rango.To)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	byDay, err := h.backoffice.TipsByDay(r.Context(), from, to)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	JSON(w, http.StatusOK, map[string]any{"byEmployee": byEmployee, "byDay": byDay})
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "byEmployee": byEmployee, "byDay": byDay})
 }
 
+// GET /reports/margins?preset=&from=&to=&limit= — utilidad por producto.
 func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
-	since, err := parseDate(r.URL.Query().Get("since"), time.Now().AddDate(0, 0, -30))
+	rango, err := h.rangoDeReporte(r)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.ProductMargins(r.Context(), since, queryLimit(r, 50))
+	rows, err := h.backoffice.ProductMargins(r.Context(), rango.From, rango.To, queryLimit(r, 50))
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": rows})
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "items": rows})
+}
+
+// rangoDeReporte resuelve el periodo de los tres reportes con LAS MISMAS reglas que la pantalla de
+// Ventas: la zona del negocio decide qué día es hoy, un preset desconocido se rechaza, un rango
+// invertido se rechaza y hay un tope de días.
+//
+// Los tres endpoints pasan por aquí a propósito. La pantalla los pide juntos y pinta sus cifras una
+// junto a otra; si cada uno resolviera su rango por su cuenta, bastaría un cambio en uno para que la
+// pantalla mezclara dos periodos sin decirlo.
+//
+// El preset AUSENTE son los últimos 30 días, que es con lo que nace la pantalla. Un preset presente
+// y desconocido se rechaza: el default es para el parámetro que no vino, nunca para el que vino mal.
+func (h *Handlers) rangoDeReporte(r *http.Request) (domain.Range, error) {
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return domain.Range{}, fmt.Errorf("%w: los filtros de la petición no se pudieron leer", domain.ErrValidation)
+	}
+	desde, err := parseDate(q.Get("from"), time.Time{})
+	if err != nil {
+		return domain.Range{}, err
+	}
+	hasta, err := parseDate(q.Get("to"), time.Time{})
+	if err != nil {
+		return domain.Range{}, err
+	}
+	preset := valorODefault(q.Get("preset"), "30d")
+	return domain.ResolveRange(preset, desde, hasta, h.backoffice.Now(), h.backoffice.Location(r.Context()))
+}
+
+// rangoJSON pone el periodo REALMENTE consultado en la respuesta. La pantalla lo imprime: una cifra
+// sin su periodo al lado es una cifra que no se puede auditar, y el encabezado fijo que decía
+// "últimos 30 días" seguía diciéndolo con cualquier otro rango elegido.
+func rangoJSON(r domain.Range) map[string]string {
+	return map[string]string{"from": r.From.Format("2006-01-02"), "to": r.To.Format("2006-01-02")}
 }
 
 // ---- helpers ----

@@ -62,6 +62,21 @@ export function soloFecha(iso: string | Date | null | undefined, zona: string): 
   return d.toLocaleDateString('es-MX', { timeZone: zonaSegura(zona), dateStyle: 'medium' });
 }
 
+// diaDelNegocio: el día en formato AAAA-MM-DD, en la zona del NEGOCIO.
+//
+// Es el formato con el que se habla con el servidor y con el que un `input type="date"` acota lo
+// que se puede elegir, así que no puede salir de `toLocaleDateString` con un formato legible.
+//
+// La zona importa aquí tanto como en la hora: a las 19:00 de México ya es el día siguiente en UTC,
+// así que un tope calculado con el reloj del navegador en UTC dejaría elegir mañana, y un rango que
+// incluye un día que no ha pasado devuelve una pantalla vacía que se lee como "no vendimos nada".
+// `en-CA` es el truco estándar para sacar ISO de Intl sin armar la cadena a mano.
+export function diaDelNegocio(v: string | Date | null | undefined, zona: string): string {
+  const d = aFecha(v);
+  if (!d) return '';
+  return d.toLocaleDateString('en-CA', { timeZone: zonaSegura(zona) });
+}
+
 // aFecha acepta lo que las pantallas tienen a la mano y devuelve null si no es una fecha.
 // Una fecha inválida se pinta como vacío, no como "Invalid Date".
 function aFecha(v: string | Date | null | undefined): Date | null {

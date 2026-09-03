@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Box, Button, HStack, Table, Text, VStack, Wrap } from '@chakra-ui/react';
+import { Box, Button, HStack, Table, Text, VStack } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 
 import { salesApi, type SalesPreset, type SalesSort, type SaleRow } from '../../api/sales';
 import { Page } from '../../components/Page';
 import { Picker, type PickerOption } from '../../components/Picker';
+import { RangoDeFechas } from '../../components/RangoDeFechas';
+import { validarRango } from '../../domain/rangoDeFechas';
 import { SortHead } from '../../components/SortHead';
 import { money } from '../../utils/format';
 import { SaleDetailDialog } from './SaleDetailDialog';
@@ -13,7 +15,7 @@ import { etiquetaEstado, etiquetaTipo } from './etiquetas';
 import { soloHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
-const PRESETS: Array<{ id: SalesPreset; label: string }> = [
+const PRESETS = [
   { id: 'hoy', label: 'Hoy' },
   { id: 'ayer', label: 'Ayer' },
   { id: 'semana', label: 'Semana' },
@@ -35,6 +37,8 @@ const PAGE_SIZE = 20;
 export function SalesPage() {
   const horaNegocio = useHoraDelNegocio();
   const [preset, setPreset] = useState<SalesPreset>('hoy');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [status, setStatus] = useState('');
   const [serviceType, setServiceType] = useState('');
   const [sort, setSort] = useState<SalesSort>('fecha');
@@ -42,19 +46,29 @@ export function SalesPage() {
   const [page, setPage] = useState(0);
   const [detalle, setDetalle] = useState<SaleRow | null>(null);
 
-  const filtros = { preset, status, serviceType };
+  // Las fechas viajan SOLO con el rango libre. El servidor rechaza un `from` que el preset no va a
+  // usar, y con razón: aceptarlo en silencio deja pedir "hoy, del 1 al 31 de enero" y contestar hoy
+  // con la pantalla viéndose perfecta.
+  const esRango = preset === 'rango';
+  const rangoInvalido = esRango ? validarRango(desde, hasta) : null;
+  const filtros = { preset, status, serviceType, ...(esRango ? { from: desde, to: hasta } : {}) };
+  // Un rango a medias NO se manda: la pantalla conserva el periodo anterior —que es el que su
+  // encabezado sigue nombrando— hasta que las dos fechas estén completas.
+  const puedeConsultar = rangoInvalido === null;
 
   const lista = useQuery({
     queryKey: ['sales', 'list', filtros, sort, dir, page],
     queryFn: () => salesApi.list({ ...filtros, sort, dir, page, pageSize: PAGE_SIZE }),
     placeholderData: (previa) => previa,
+    enabled: puedeConsultar,
   });
   // La llave del resumen NO lleva página ni orden: no cambian con ellos, y meterlos haría que se
   // vuelva a pedir en cada tap del paginador.
   const resumen = useQuery({
-    queryKey: ['sales', 'summary', { preset, serviceType }],
-    queryFn: () => salesApi.summary({ preset, serviceType }),
+    queryKey: ['sales', 'summary', { preset, serviceType, desde: esRango ? desde : '', hasta: esRango ? hasta : '' }],
+    queryFn: () => salesApi.summary({ preset, serviceType, ...(esRango ? { from: desde, to: hasta } : {}) }),
     placeholderData: (previa) => previa,
+    enabled: puedeConsultar,
   });
 
   const cambiar = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(0); };
@@ -81,16 +95,17 @@ export function SalesPage() {
         )}
       </HStack>
 
-      <Wrap gap={2} mb={3}>
-        {PRESETS.map((p) => (
-          <Button key={p.id} size="sm" minH="40px" px={4}
-            variant={preset === p.id ? 'solid' : 'outline'}
-            colorPalette={preset === p.id ? undefined : 'gray'}
-            onClick={() => cambiar(setPreset)(p.id)}>
-            {p.label}
-          </Button>
-        ))}
-      </Wrap>
+      <Box mb={3}>
+        <RangoDeFechas
+          presets={PRESETS}
+          preset={preset}
+          onPreset={(id) => cambiar(setPreset)(id as SalesPreset)}
+          desde={desde}
+          hasta={hasta}
+          onRango={(d, h) => { setDesde(d); setHasta(h); setPage(0); }}
+          hoy={horaNegocio.diaDelNegocio(new Date())}
+        />
+      </Box>
 
       <SalesSummaryTiles resumen={resumen.data} cargando={resumen.isLoading} />
 
