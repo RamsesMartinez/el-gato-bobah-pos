@@ -10,9 +10,12 @@ import type { MenuProduct, TicketModifier } from '../../types/pos';
 
 vi.mock('../../api/pos', () => ({ posApi: { menu: () => Promise.resolve({}) } }));
 vi.mock('../../api/admin', () => ({ adminApi: {} }));
-vi.mock('../../hooks/useMenu', () => ({
-  useMenu: () => ({ data: { platforms: [], platformPrices: {}, platformModPrices: {} } }),
+// El menú se deja mutable: la lista de precios de una plataforma es lo que distingue el caso de
+// mostrador del de Didi, y sin poder cambiarla no se puede probar el que costaba dinero.
+const menuMock = vi.hoisted(() => ({
+  current: { platforms: [], platformPrices: {}, platformModPrices: {} } as Record<string, unknown>,
 }));
+vi.mock('../../hooks/useMenu', () => ({ useMenu: () => ({ data: menuMock.current }) }));
 
 const salsa = (id: number, name: string, maxPerLine: number) =>
   ({ id, name, priceDelta: '0', maxPerLine, favorite: false });
@@ -210,5 +213,64 @@ describe('un grupo de una sola opción', () => {
     expect(onConfirm.mock.calls[0][0] as TicketModifier[]).toEqual(
       expect.arrayContaining([expect.objectContaining({ groupId: 21 })]),
     );
+  });
+});
+
+// EL BOTÓN COBRABA EL PRECIO DE MOSTRADOR CON LOS EXTRAS DE LA PLATAFORMA.
+//
+// Reproducido con los números reales del ambiente de pruebas: Frappé, base $65, con precio capturado
+// a mano de $100 en Didi, y tres extras con su propia excepción de $20 cada uno.
+//
+//   encabezado ...... $100 en Didi   (precioDeLista)
+//   botón ........... $125           (product.price + deltas de Didi)  ← la mezcla
+//   servidor ........ $160           (precio de Didi + deltas de Didi)
+//
+// El mismo componente sacaba la cifra de dos fuentes: el encabezado de `precioDeLista` y el botón
+// del precio base. El operador lee el botón y le dice $125 al cliente; el ticket sale en $160.
+describe('el total en la lista de una plataforma', () => {
+  const conDidi = {
+    id: 630, name: 'Frappé', price: '65', categoryId: 1, description: '', imageUrl: null,
+    trackStock: false,
+    groups: [{
+      id: 40, title: 'Tipo de leche', min: 1, max: 1,
+      options: [
+        { id: 642, name: 'Leche Deslactosada', priceDelta: '12', maxPerLine: 1, favorite: false },
+        { id: 643, name: 'Leche Entera', priceDelta: '0', maxPerLine: 1, favorite: false },
+      ],
+    }],
+  } as unknown as MenuProduct;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    menuMock.current = {
+      platforms: [{ id: 1, name: 'Didi', markupPct: '35' }],
+      platformPrices: { 1: { 630: '100' } },
+      platformModPrices: { 1: { 642: '20' } },
+      products: [conDidi],
+    };
+  });
+  afterEach(() => { menuMock.current = { platforms: [], platformPrices: {}, platformModPrices: {} }; });
+
+  it('suma el precio DE LA PLATAFORMA, no el de mostrador', async () => {
+    const onConfirm = vi.fn();
+    montar(onConfirm, conDidi);
+    useTicketStore.getState().setPlatform(1);
+
+    // La leche deslactosada cuesta $20 en Didi (excepción), no sus $12 de mostrador.
+    fireEvent.click(await screen.findByRole('button', { name: /^Leche Deslactosada/ }));
+
+    // $100 de Didi + $20 del extra. Con el precio base serían $85, y eso es lo que se cobraba de
+    // menos: $15 por pieza que el servidor sí carga.
+    expect(screen.getByRole('button', { name: /Agregar 1 · \$120/ })).toBeInTheDocument();
+  });
+
+  it('el encabezado y el botón salen del mismo precio', async () => {
+    montar(vi.fn(), conDidi);
+    useTicketStore.getState().setPlatform(1);
+
+    // Sin extras, el botón tiene que decir exactamente lo que el encabezado promete.
+    expect(await screen.findByText(/\$100 en Didi/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Agregar 1 · \$100/ })).toBeInTheDocument();
   });
 });
