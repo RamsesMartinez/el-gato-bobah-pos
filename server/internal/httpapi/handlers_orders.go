@@ -304,13 +304,22 @@ func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// GET /pos/folio-names
+// GET /pos/folio-names — los nombres que la pantalla puede proponer AHORA.
 //
-// Sin caché HTTP a propósito: la lista cambia con el binario, y un max-age dejaría tabletas
-// proponiendo un animal que el despliegue ya quitó. El cliente la guarda por sesión, que es
-// exactamente lo que dura un binario para una tableta encendida.
+// Ya no es la lista completa: son los que quedan en la bolsa del negocio y que además no se han
+// cantado hoy. Devolver la lista entera haría que la pantalla propusiera nombres ya consumidos, y
+// el servidor los cambiaría al crear el pedido — el operador vería otro nombre que el que le dijo
+// al cliente.
+//
+// Sin caché HTTP a propósito, y ahora con más razón: la lista se encoge con cada venta. El cliente
+// la vuelve a pedir después de cada pedido.
 func (h *Handlers) FolioNames(w http.ResponseWriter, r *http.Request) {
-	JSON(w, http.StatusOK, map[string][]string{"items": domain.FolioNames()})
+	items, err := h.orders.NombresDisponibles(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string][]string{"items": items})
 }
 
 type chargeOrderBody struct {

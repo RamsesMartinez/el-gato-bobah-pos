@@ -139,6 +139,8 @@ export const posApi = {
   // una venta ni en qué arqueo cae su dinero.
   updateCorteDeVista: (corteDeVista: string) =>
     api.put<BusinessSettings>('/business-settings', { corteDeVista }),
+  updateFolioScheme: (folioScheme: string) =>
+    api.put<BusinessSettings>('/business-settings', { folioScheme }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -158,6 +160,8 @@ export interface BusinessSettings {
   // de qué DÍA es cada venta, corte y gasto. El servidor rechaza un nombre que no exista.
   timezone: string;
   corteDeVista: string;
+  // Con qué se nombran los pedidos: 'razas' (default) o 'animales'.
+  folioScheme: string;
   // Si el ticket lista los adicionales que no cuestan. Encendido por default: cocina los usa para
   // preparar y el cliente para reclamar; apagarlo solo acorta el papel.
   printFreeModifiers: boolean;

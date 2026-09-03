@@ -29,6 +29,10 @@ func ventaConFolio(t *testing.T, svc *app.OrdersService, cajero, prod int64, met
 // La pantalla le pone nombre a la cuenta al abrirla, para que el operador lo vea desde el primer
 // producto. Ese nombre tiene que ser EL MISMO que acaba en el ticket: si cambiara al cobrar, el
 // operador ya le habría dicho otro al cliente.
+//
+// Se propone un nombre DEL ESQUEMA del negocio. El servidor solo honra los de su propia lista: uno
+// de fuera vendría de una tableta con la lista de otro esquema, y honrarlo dejaría el ticket con un
+// nombre que la bolsa no conoce y que volvería a salir en la misma vuelta.
 func TestElNombreQueProponeLaPantallaEsElQueSeGuarda(t *testing.T) {
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -37,23 +41,29 @@ func TestElNombreQueProponeLaPantallaEsElQueSeGuarda(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
+	propuesto := domain.NombresDelEsquema(domain.EsquemaPorDefecto)[0]
 	ord, err := crearYCobrar(t, context.Background(), svc, app.CreateOrderCmd{
-		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero, FolioName: "Ajolote",
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero, FolioName: propuesto,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if ord.FolioName != "Ajolote" {
-		t.Fatalf("folio = %q, quiere Ajolote", ord.FolioName)
+	if ord.FolioName != propuesto {
+		t.Fatalf("folio = %q, quiere %q", ord.FolioName, propuesto)
 	}
 }
 
-// Dos cuentas abiertas a la vez pueden proponer el mismo animal; la pantalla no sabe qué se usó
-// hoy. El segundo lleva su vuelta —conserva el animal, que es lo que el cliente ya oyó— y NO
-// desplaza al primero.
-func TestDosCuentasConElMismoAnimalNoChocan(t *testing.T) {
+// DOS CUENTAS QUE PROPONEN EL MISMO NOMBRE: LA SEGUNDA SE VA A OTRO, NO A "Persa 2".
+//
+// Antes se conservaba el nombre y se numeraba, con el argumento de que el cliente ya lo había oído.
+// El dueño lo revirtió: "Persa 2" con el primer Persa todavía en la plancha es cómo se entrega el
+// pedido equivocado, y mientras quede un nombre sin usar en la bolsa hay uno mejor que un número.
+//
+// El numerado sigue existiendo, pero como ÚLTIMA red: solo cuando el día ya pasó del largo de la
+// lista y no queda nada fresco. Eso lo cubre el unitario del dominio.
+func TestDosCuentasConElMismoNombreSeVanACaminosDistintos(t *testing.T) {
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	cajero := makeUser(t, st, "cajero_choque", "cajero")
@@ -61,18 +71,27 @@ func TestDosCuentasConElMismoAnimalNoChocan(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	abrirCajaPrincipal(t, st, cajero)
 
-	primero := ventaConFolio(t, svc, cajero, prod, efectivo, "Tejón")
-	segundo := ventaConFolio(t, svc, cajero, prod, efectivo, "Tejón")
-	tercero := ventaConFolio(t, svc, cajero, prod, efectivo, "Tejón")
+	lista := domain.NombresDelEsquema(domain.EsquemaPorDefecto)
+	repetido := lista[0]
+	primero := ventaConFolio(t, svc, cajero, prod, efectivo, repetido)
+	segundo := ventaConFolio(t, svc, cajero, prod, efectivo, repetido)
+	tercero := ventaConFolio(t, svc, cajero, prod, efectivo, repetido)
 
-	if primero.FolioName != "Tejón" {
-		t.Errorf("el primero = %q, quiere Tejón", primero.FolioName)
+	// El primero SÍ se queda con lo que propuso la pantalla: es lo que el operador ya dijo.
+	if primero.FolioName != repetido {
+		t.Errorf("el primero = %q, quiere %q: la propuesta libre tiene que respetarse", primero.FolioName, repetido)
 	}
-	if segundo.FolioName != "Tejón 2" {
-		t.Errorf("el segundo = %q, quiere Tejón 2", segundo.FolioName)
+	for i, o := range []*app.OrderView{segundo, tercero} {
+		if o.FolioName == repetido+" 2" || o.FolioName == repetido+" 3" {
+			t.Errorf("el %d° se llamó %q: con nombres libres en la bolsa, numerar no es la salida",
+				i+2, o.FolioName)
+		}
+		if !contieneNombre(lista, o.FolioName) {
+			t.Errorf("el %d° se llamó %q, que no está en la lista del esquema", i+2, o.FolioName)
+		}
 	}
-	if tercero.FolioName != "Tejón 3" {
-		t.Errorf("el tercero = %q, quiere Tejón 3", tercero.FolioName)
+	if segundo.FolioName == tercero.FolioName {
+		t.Errorf("el segundo y el tercero se llaman igual (%q)", segundo.FolioName)
 	}
 }
 

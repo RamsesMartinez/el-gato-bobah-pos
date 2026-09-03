@@ -185,6 +185,48 @@ func (ns NullFinancialGroup) Value() (driver.Value, error) {
 	return string(ns.FinancialGroup), nil
 }
 
+type FolioScheme string
+
+const (
+	FolioSchemeAnimales FolioScheme = "animales"
+	FolioSchemeRazas    FolioScheme = "razas"
+)
+
+func (e *FolioScheme) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FolioScheme(s)
+	case string:
+		*e = FolioScheme(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FolioScheme: %T", src)
+	}
+	return nil
+}
+
+type NullFolioScheme struct {
+	FolioScheme FolioScheme `json:"folio_scheme"`
+	Valid       bool        `json:"valid"` // Valid is true if FolioScheme is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFolioScheme) Scan(value interface{}) error {
+	if value == nil {
+		ns.FolioScheme, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FolioScheme.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFolioScheme) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FolioScheme), nil
+}
+
 type OrderStatus string
 
 const (
@@ -598,6 +640,7 @@ type BusinessSetting struct {
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
 	SessionHours       int32              `json:"session_hours"`
 	CorteDeVista       string             `json:"corte_de_vista"`
+	FolioScheme        FolioScheme        `json:"folio_scheme"`
 }
 
 type CashRegister struct {
@@ -731,6 +774,13 @@ type ExpensePayment struct {
 	PaidBy            int64           `json:"paid_by"`
 	CreatedAt         time.Time       `json:"created_at"`
 	CompanyID         int64           `json:"company_id"`
+}
+
+type FolioConsumido struct {
+	Scheme    FolioScheme `json:"scheme"`
+	Name      string      `json:"name"`
+	TakenAt   time.Time   `json:"taken_at"`
+	CompanyID int64       `json:"company_id"`
 }
 
 type FudoImportMap struct {

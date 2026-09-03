@@ -58,11 +58,13 @@ type BusinessSettings struct {
 	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
 	KitchenCanCharge bool `json:"kitchenCanCharge"`
 	// Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
-	PinOnlyUnlock    bool       `json:"pinOnlyUnlock"`
-	LockAfterSeconds int        `json:"lockAfterSeconds"`
-	SessionHours     int        `json:"sessionHours"`
-	HasLogo          bool       `json:"hasLogo"`
-	LogoUpdatedAt    *time.Time `json:"logoUpdatedAt"`
+	PinOnlyUnlock    bool `json:"pinOnlyUnlock"`
+	LockAfterSeconds int  `json:"lockAfterSeconds"`
+	SessionHours     int  `json:"sessionHours"`
+	// FolioScheme: con qué se nombran los pedidos. `razas` (default) o `animales`.
+	FolioScheme   string     `json:"folioScheme"`
+	HasLogo       bool       `json:"hasLogo"`
+	LogoUpdatedAt *time.Time `json:"logoUpdatedAt"`
 }
 
 func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
@@ -83,6 +85,9 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 				PinOnlyUnlock:    ident.PinOnlyUnlock,
 				LockAfterSeconds: ident.LockAfterSeconds,
 				SessionHours:     ident.SessionHours,
+				// El MISMO default que la columna. Con dos, un negocio sin fila vería un esquema en
+				// la pantalla y su ticket saldría con el otro.
+				FolioScheme: string(domain.EsquemaPorDefecto),
 			}, nil
 		}
 		return BusinessSettings{}, err
@@ -103,6 +108,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		PinOnlyUnlock:      row.PinOnlyUnlock,
 		LockAfterSeconds:   int(row.LockAfterSeconds),
 		SessionHours:       int(row.SessionHours),
+		FolioScheme:        string(row.FolioScheme),
 		HasLogo:            row.HasLogo,
 	}
 	if row.LogoUpdatedAt.Valid {
@@ -200,6 +206,15 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 	if !domain.CorteDeVistaValido(corte) {
 		return BusinessSettings{}, fmt.Errorf("%w: ese momento de corte no existe", domain.ErrValidation)
 	}
+	// Mismo criterio: ausente conserva el default, presente y desconocido se rechaza. Un esquema
+	// inventado dejaría los pedidos nombrándose con una lista que nadie eligió.
+	esquema := print.FolioScheme
+	if esquema == "" {
+		esquema = string(domain.EsquemaPorDefecto)
+	}
+	if !domain.EsquemaValido(esquema) {
+		return BusinessSettings{}, fmt.Errorf("%w: ese esquema de nombres no existe", domain.ErrValidation)
+	}
 	// Guardar el ajuste y borrar los PINs van en la MISMA transacción.
 	//
 	// Eran dos autocommits, y el reintento no reparaba: al segundo intento el ajuste ya decía que
@@ -212,6 +227,7 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 			PrintFreeModifiers: print.PrintFreeModifiers,
 			PrintKitchenTicket: print.PrintKitchenTicket,
 			CorteDeVista:       corte,
+			FolioScheme:        db.FolioScheme(esquema),
 			KitchenCanCharge:   print.KitchenCanCharge,
 			PinOnlyUnlock:      ident.PinOnlyUnlock,
 			LockAfterSeconds:   int32(ident.LockAfterSeconds),

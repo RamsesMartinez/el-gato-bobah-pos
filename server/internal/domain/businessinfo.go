@@ -82,6 +82,12 @@ type PrintSettings struct {
 	// venta —eso lo hace el turno— y por eso vive aquí, entre los ajustes de pantalla, y no cerca de
 	// nada que toque dinero.
 	CorteDeVista string
+
+	// FolioScheme: con qué se nombran los pedidos, `razas` (default) o `animales`. Vive con los
+	// ajustes del papel porque es lo que sale impreso en el ticket y en la comanda, y porque es con
+	// lo que cocina canta el pedido. Cambiarlo NO renombra nada ya vendido: el nombre se guarda en
+	// el pedido al crearlo.
+	FolioScheme string
 }
 
 // IdentitySettings: cómo se identifica quien opera una estación, y cada cuánto deja de estarlo.

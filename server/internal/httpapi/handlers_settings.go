@@ -39,6 +39,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		PrintFreeModifiers *bool            `json:"printFreeModifiers"`
 		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
 		CorteDeVista       *string          `json:"corteDeVista"`
+		FolioScheme        *string          `json:"folioScheme"`
 		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
 		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
 		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
@@ -65,7 +66,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 	if body.BusinessName != nil || body.Address != nil || body.Phone != nil ||
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
 		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
-		body.CorteDeVista != nil ||
+		body.CorteDeVista != nil || body.FolioScheme != nil ||
 		body.KitchenCanCharge != nil || body.PinOnlyUnlock != nil ||
 		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
@@ -89,6 +90,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			// El default es para el campo AUSENTE. Un valor presente y desconocido lo rechaza el
 			// servicio: caer al default ahí dejaría al dueño creyendo que configuró algo que no.
 			CorteDeVista:     orStr(body.CorteDeVista, cur.CorteDeVista),
+			FolioScheme:      orStr(body.FolioScheme, cur.FolioScheme),
 			KitchenCanCharge: orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
 		}
 		ident := domain.IdentitySettings{

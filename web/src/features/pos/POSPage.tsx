@@ -61,13 +61,16 @@ function loadPillOffset(): { x: number; y: number } {
 export function POSPage() {
   const { data: menu, isLoading, error } = useMenu();
   const { data: popular } = usePopular();
-  // La lista de animales es estática dentro de un despliegue: se pide una vez y se guarda por lo
-  // que dure la sesión, no por cada cuenta que se abre.
+  // Los nombres que QUEDAN en la bolsa del negocio, no la lista completa.
+  //
+  // Se encoge con cada venta —los nombres se agotan antes de repetirse—, así que ya no se puede
+  // guardar por lo que dure la sesión: con una lista vieja la pantalla propondría uno ya cantado y
+  // el servidor lo cambiaría al confirmar, justo el nombre que el operador ya le dijo al cliente.
+  // Se refresca sola tras cada pedido (ver `luegoDeVender`).
   const { data: folios } = useQuery({
     queryKey: ['pos', 'folio-names'],
     queryFn: posApi.folioNames,
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 60_000,
   });
   const bautizarCuentas = useTicketStore((s) => s.bautizarCuentas);
   const cuentasSinNombre = useTicketStore((s) => s.tabs.some((t) => !t.folioName));

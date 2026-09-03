@@ -68,6 +68,10 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
       qc.invalidateQueries({ queryKey: ['orders'] });
       // El pedido nuevo alimenta las recomendaciones → refetch para verlas al instante.
       qc.invalidateQueries({ queryKey: ['modifier-defaults'] });
+      // El pedido acaba de sacar un nombre de la bolsa. Sin esto, la siguiente cuenta se bautizaría
+      // con la lista de antes de la venta y podría proponer el nombre que se acaba de usar — el
+      // servidor lo cambiaría al confirmar, y el operador ya se lo dijo al cliente.
+      qc.invalidateQueries({ queryKey: ['pos', 'folio-names'] });
       onDone(order);
       // La continuación de ESTA llamada. Se pasa como función y no como una bandera de modo: quien
       // manda el pedido es quien sabe qué sigue —cobrarlo o soltarlo— y el hook no tiene por qué

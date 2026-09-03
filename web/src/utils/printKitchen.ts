@@ -16,6 +16,29 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 }
 
+// ANCHO_COMANDA: los píxeles que quedan para el folio en un rollo de 58 mm.
+//
+// 58 mm menos los 4 mm de margen por lado son 50 mm, que a 96 dpi son ~189 px. Courier New avanza
+// ~0.6 em por carácter, así que un nombre de N letras pide 0.6 × N × tamaño.
+const ANCHO_COMANDA = 189;
+const AVANCE = 0.6;
+const TAMANO_FOLIO = 46;
+
+// tamanoDelFolio decide de qué tamaño se imprime el nombre del pedido.
+//
+// Los animales caben todos a 46 px, pero las razas de gato no: "Colorpoint Shorthair" a ese tamaño
+// se sale del rollo y la impresora la corta — el operador se queda con "Colorpoi" y el papel no
+// sirve para cantar el pedido. Se mide la palabra MÁS LARGA porque es la única que no se puede
+// partir: el resto envuelve solo.
+//
+// Se encoge el papel y no la lista a propósito: recortar "Colorpoint Shorthair" a "Colorpoint" la
+// convierte en otra raza.
+export function tamanoDelFolio(nombre: string): number {
+  const masLarga = nombre.split(/[\s-]+/).reduce((n, p) => Math.max(n, p.length), 0);
+  if (masLarga === 0) return TAMANO_FOLIO;
+  return Math.max(18, Math.min(TAMANO_FOLIO, Math.floor(ANCHO_COMANDA / (AVANCE * masLarga))));
+}
+
 // `soloLineas` limita el papel a esos renglones: es la comanda de un AGREGADO.
 //
 // Cocina ya está preparando lo anterior, así que reimprimir el pedido entero la haría preparar dos
@@ -43,13 +66,13 @@ export function buildKitchenHtml(order: ReceiptOrder, soloLineas?: number[], zon
 
   const quien = order.customerName ? `<div class="quien">${esc(order.customerName)}</div>` : '';
 
-  // Tipografía grande y de ancho fijo: se lee de lejos, con las manos ocupadas y bajo la luz de una
+// Tipografía grande y de ancho fijo: se lee de lejos, con las manos ocupadas y bajo la luz de una
   // cocina. El folio es lo más grande del papel porque es con lo que se canta el pedido.
   return `<!doctype html><html><head><meta charset="utf-8"><title>Comanda ${esAgregado ? 'agregado ' : ''}${order.number}</title>
 <style>
   @page { margin: 4mm; }
   body { font-family: 'Courier New', monospace; font-size: 15px; margin: 0; }
-  .folio { font-size: 46px; font-weight: 800; line-height: 1; }
+  .folio { font-size: ${tamanoDelFolio(order.folioName || `#${order.number}`)}px; font-weight: 800; line-height: 1.05; }
   .num { font-size: 15px; font-weight: 600; color: #444; }
   .cab { display: flex; justify-content: space-between; align-items: baseline;
          border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 8px; }

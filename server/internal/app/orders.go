@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"time"
 	"uuid"
@@ -234,7 +235,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		if err != nil {
 			return err
 		}
-		folio, err := resolverFolio(ctx, q, cmd, bizDate, int(num))
+		folio, err := resolverFolio(ctx, q, cmd, bizDate)
 		if err != nil {
 			return err
 		}
@@ -1030,51 +1031,146 @@ func cerrarSiYaSeEntregoTodo(ctx context.Context, q *db.Queries, orderID int64, 
 	return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada})
 }
 
-// resolverFolio decide con qué nombre se canta el pedido.
+// resolverFolio decide con qué nombre se canta el pedido, sacándolo de la BOLSA del negocio.
 //
-// Gana el que propuso la pantalla, porque es el que el operador lleva viendo desde que abrió la
-// cuenta y el que ya le dijo al cliente; el servidor solo lo sanea y le agrega la vuelta si otro
-// pedido del día se le adelantó. Sin propuesta —clientes de API, tests— reparte el suyo.
+// La bolsa se agota antes de repetir: mientras quede un nombre del esquema sin salir, el sorteo es
+// entre esos. Antes el nombre se calculaba del folio numérico sobre una lista barajada por día, lo
+// que reparte bien DENTRO de un día pero no entre días: con 40 pedidos diarios los mismos nombres
+// salían una y otra vez y media lista no se usaba nunca.
 //
-// LOS DOS CAMINOS SE VERIFICAN CONTRA LO YA USADO, y el que faltaba costó caro. El nombre que el
-// servidor reparte sale del folio numérico, y mientras la pantalla no proponía nombres eso bastaba
-// para que fuera único. Al empezar a proponerlos, las cuentas bautizadas por la pantalla empezaron a
-// ocupar lugares de esa misma lista: en cuanto se consume a medias, el animal que al servidor le
-// toca por número ya está tomado. Medido, el pedido 24 de un día así tumbaba la venta con un 500 y
-// el operador se quedaba sin poder cobrar hasta el día siguiente — un choque de NOMBRE impidiendo
-// una venta, cuando el nombre existe para cantar el pedido, no para autorizarlo.
-func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDate pgtype.Date, num int) (string, error) {
-	usados, err := q.FolioNamesUsedToday(ctx, bizDate)
+// Gana el que propuso la pantalla —es el que el operador lleva viendo desde que abrió la cuenta y
+// el que ya le dijo al cliente—, pero solo si SIGUE en la bolsa y libre hoy. Honrar uno ya
+// consumido lo repetiría antes de agotar la vuelta, que es justo lo que esta bolsa viene a evitar;
+// la pantalla pide su lista al servidor y la refresca con cada venta, así que ese caso es una
+// carrera entre dos cajas, no lo normal.
+//
+// LOS DOS CAMINOS SE VERIFICAN CONTRA LO YA USADO HOY, y el que faltaba costó caro: el pedido 24 de
+// un día tumbaba la venta con un 500 por un choque del índice único de nombres, y el operador se
+// quedaba sin poder cobrar hasta el día siguiente — un choque de NOMBRE impidiendo una venta,
+// cuando el nombre existe para cantar el pedido, no para autorizarlo.
+func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDate pgtype.Date) (string, error) {
+	usados, err := folioNamesUsedToday(ctx, q, bizDate)
 	if err != nil {
 		return "", err
 	}
-	nombres := make([]string, 0, len(usados))
+	esquema, err := esquemaDeFolio(ctx, q)
+	if err != nil {
+		return "", err
+	}
+	lista := domain.NombresDelEsquema(esquema)
+	consumidos, err := q.FolioNamesConsumidos(ctx, db.FolioScheme(esquema))
+	if err != nil {
+		return "", err
+	}
+
+	marcar := func(nombre string) error {
+		return q.MarcarFolioConsumido(ctx, db.MarcarFolioConsumidoParams{
+			Scheme: db.FolioScheme(esquema), Name: nombre,
+		})
+	}
+
+	if base := domain.SanitizarFolio(cmd.FolioName); base != "" &&
+		contiene(lista, base) && !contiene(consumidos, base) && !contiene(usados, base) {
+		return base, marcar(base)
+	}
+
+	nombre, vaciar := domain.SiguienteDeLaBolsa(lista, consumidos, usados, rand.IntN)
+	if nombre == "" {
+		// Lista vacía: no puede pasar con las dos del dominio, pero un pedido sin nombre se queda
+		// sin con qué cantarse y el 500 crudo no le dice nada al operador.
+		return "", fmt.Errorf("%w: no hay nombres con qué nombrar el pedido", domain.ErrConflict)
+	}
+	if vaciar {
+		if err := q.VaciarBolsaDeFolios(ctx, db.FolioScheme(esquema)); err != nil {
+			return "", err
+		}
+	}
+	if err := marcar(nombre); err != nil {
+		return "", err
+	}
+	// El sufijo numerado es la ÚLTIMA red, y solo entra cuando el día ya pasó del largo de la lista:
+	// ahí todo lo disponible ya se cantó hoy y "Persa 2" es mejor que "#187".
+	libre := domain.SiguienteFolioLibre(nombre, usados)
+	if libre == "" {
+		return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
+	}
+	return libre, nil
+}
+
+// NombresDisponibles devuelve los nombres que la pantalla puede proponer al abrir una cuenta.
+//
+// Sale del MISMO predicado del que sortea el servidor al crear el pedido (domain.DisponiblesDeLaBolsa):
+// con dos listas, la pantalla propondría nombres que el servidor descarta y el operador vería
+// cambiar el que ya le dijo al cliente. Consultarla no consume nada.
+//
+// La fecha sale del turno abierto, no del reloj: el servidor corre en UTC y el local cierra a las
+// 22:00 de México, así que a las 18:00 locales cambiaría de día y la lista dejaría de descontar lo
+// que se cantó esta noche.
+func (s *OrdersService) NombresDisponibles(ctx context.Context) ([]string, error) {
+	q := s.store.QC(ctx)
+	fecha := pgtype.Date{Time: s.now(), Valid: true}
+	if sess, err := q.GetOpenPrimarySession(ctx); err == nil {
+		fecha = sess.BusinessDate
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	usados, err := folioNamesUsedToday(ctx, q, fecha)
+	if err != nil {
+		return nil, err
+	}
+	esquema, err := esquemaDeFolio(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	consumidos, err := q.FolioNamesConsumidos(ctx, db.FolioScheme(esquema))
+	if err != nil {
+		return nil, err
+	}
+	disponibles, _ := domain.DisponiblesDeLaBolsa(domain.NombresDelEsquema(esquema), consumidos, usados)
+	return disponibles, nil
+}
+
+// esquemaDeFolio lee con qué se nombran los pedidos del negocio.
+//
+// Sin fila de ajustes cae al default del DOMINIO —razas— y nunca a la otra lista: un negocio recién
+// creado tiene que nombrar igual que uno con su fila puesta, o la pantalla mostraría un esquema y el
+// ticket saldría con el otro. Un valor que no se entiende se trata igual y no se propaga.
+func esquemaDeFolio(ctx context.Context, q *db.Queries) (domain.EsquemaDeFolio, error) {
+	e, err := q.FolioSchemeDelNegocio(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.EsquemaPorDefecto, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !domain.EsquemaValido(string(e)) {
+		return domain.EsquemaPorDefecto, nil
+	}
+	return domain.EsquemaDeFolio(e), nil
+}
+
+// folioNamesUsedToday devuelve los nombres ya cantados hoy, sin los nulos de antes de 0046.
+func folioNamesUsedToday(ctx context.Context, q *db.Queries, bizDate pgtype.Date) ([]string, error) {
+	usados, err := q.FolioNamesUsedToday(ctx, bizDate)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(usados))
 	for _, u := range usados {
 		if u != nil {
-			nombres = append(nombres, *u)
+			out = append(out, *u)
 		}
 	}
+	return out, nil
+}
 
-	// El propuesto por la pantalla; si no hay, el que reparte el servidor por folio numérico.
-	base := domain.SanitizarFolio(cmd.FolioName)
-	if base == "" {
-		base = domain.NombreDeFolio(cmd.CompanyID, bizDate.Time, num)
-	}
-	if libre := domain.SiguienteFolioLibre(base, nombres); libre != "" {
-		return libre, nil
-	}
-
-	// Agotadas las cien vueltas del mismo animal, se recorre la lista. Un pedido SIN nombre no es
-	// una opción: es con lo que cocina lo canta.
-	for _, otro := range domain.FolioNames() {
-		if libre := domain.SiguienteFolioLibre(otro, nombres); libre != "" {
-			return libre, nil
+func contiene(xs []string, x string) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
 		}
 	}
-	// Miles de pedidos en un día con la lista entera agotada cien veces. Antes de inventar un
-	// nombre que pueda volver a chocar, se dice qué pasó: el índice único es la última red y un
-	// 500 crudo aquí deja al operador sin saber por qué no puede vender.
-	return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
+	return false
 }
 
 // lineasDelTablero trae los renglones de TODOS los pedidos activos en dos consultas y los agrupa.

@@ -65,7 +65,7 @@ func TestUnFolioOcupadoNoTumbaLaVenta(t *testing.T) {
 	// conoce la baraja del día del servidor—. Así que en cuanto la lista se consume a medias, el
 	// nombre que al servidor le toca por folio numérico ya lo ocupó una cuenta que la pantalla
 	// bautizó. Antes eso salía como un 500 y el operador se quedaba sin poder vender.
-	animales := domain.FolioNames()
+	animales := domain.NombresDelEsquema(domain.EsquemaPorDefecto)
 	for i := 0; i < len(animales)+10; i++ {
 		propuesto := ""
 		if i%2 == 0 {
