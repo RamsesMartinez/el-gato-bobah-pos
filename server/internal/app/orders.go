@@ -30,6 +30,20 @@ func NewOrdersService(s *store.Store, now func() time.Time) *OrdersService {
 	return &OrdersService{store: s, now: now}
 }
 
+// location resuelve la zona del local, que es lo que convierte un instante en un día de calendario.
+//
+// Cae al default del PRODUCTO y no a UTC si no se puede leer, igual que `SalesService.Location`:
+// esta función está en el camino de una venta, y caer a UTC correría la fecha seis horas en
+// silencio. Un día corrido se ve plausible, y por eso es el peor modo de fallo posible — peor que
+// no cobrar, que al menos se nota.
+func (s *OrdersService) location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
+}
+
 type PaymentInput struct {
 	MethodID  int16
 	Amount    decimal.Decimal
@@ -218,24 +232,26 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
-	// La fecha de negocio la HEREDA del turno, no la recalcula. Dos razones:
+	// La fecha de la venta la da el RELOJ, en la zona del local. El folio lo da el turno, y se
+	// toma más abajo. Son dos caminos independientes y ninguno lee al otro.
 	//
-	// 1. El turno ya la resolvió en la zona del local, así que la venta no vuelve a consultarla.
-	// 2. Un turno que cruza la medianoche (abre 11pm, cierra 3am) numera corrido en vez de
-	//    partirse: recalcular por reloj reiniciaba el folio a mitad del turno y dejaba dos
-	//    tickets #1 en la misma noche.
-	bizDate := sess.BusinessDate
+	// Antes esta fecha se HEREDABA del turno, y eso resolvía la numeración del turno nocturno a
+	// costa de un defecto sin techo: un turno que nadie cerraba seguía estampando su fecha días
+	// después. Se midió el 2026-09-04: 158 pedidos y $6,664 archivados como 31 de agosto, con la
+	// pantalla de Ventas del día saliendo vacía mientras el negocio vendía. Lo que sostiene hoy la
+	// numeración corrida del turno nocturno es `NextFolioNumber`, no esta línea.
+	bizDate := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
 	// El pedido SIEMPRE nace abierto. Nacía entregado cuando no había nada que preparar y la venta
 	// quedaba saldada, pero eso dependía de que crear y cobrar fueran una sola llamada — y esa vía
 	// se cerró para que cocina vea todo. La regla vive ahora en Charge, que es donde ocurre.
 	var orderID int64
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		num, err := q.NextDailyNumber(ctx, bizDate)
+		num, err := q.NextFolioNumber(ctx, sess.ID)
 		if err != nil {
 			return err
 		}
-		folio, err := resolverFolio(ctx, q, cmd, bizDate)
+		folio, err := resolverFolio(ctx, q, cmd, sess.ID)
 		if err != nil {
 			return err
 		}
@@ -1044,8 +1060,8 @@ func cerrarSiYaSeEntregoTodo(ctx context.Context, q *db.Queries, orderID int64, 
 // un día tumbaba la venta con un 500 por un choque del índice único de nombres, y el operador se
 // quedaba sin poder cobrar hasta el día siguiente — un choque de NOMBRE impidiendo una venta,
 // cuando el nombre existe para cantar el pedido, no para autorizarlo.
-func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDate pgtype.Date) (string, error) {
-	usados, err := folioNamesUsedToday(ctx, q, bizDate)
+func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, sessionID int64) (string, error) {
+	usados, err := folioNamesUsedInSession(ctx, q, sessionID)
 	if err != nil {
 		return "", err
 	}
@@ -1099,19 +1115,16 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, bizDa
 // con dos listas, la pantalla propondría nombres que el servidor descarta y el operador vería
 // cambiar el que ya le dijo al cliente. Consultarla no consume nada.
 //
-// La fecha sale del turno abierto, no del reloj: el servidor corre en UTC y el local cierra a las
-// 22:00 de México, así que a las 18:00 locales cambiaría de día y la lista dejaría de descontar lo
-// que se cantó esta noche.
+// El alcance es el TURNO, el mismo del que sale el nombre al crear el pedido. Sin turno abierto no
+// hay nada que descontar: tampoco hay forma de crear un pedido, así que la lista sale completa.
 func (s *OrdersService) NombresDisponibles(ctx context.Context) ([]string, error) {
 	q := s.store.QC(ctx)
-	fecha := pgtype.Date{Time: s.now(), Valid: true}
+	var usados []string
 	if sess, err := q.GetOpenPrimarySession(ctx); err == nil {
-		fecha = sess.BusinessDate
+		if usados, err = folioNamesUsedInSession(ctx, q, sess.ID); err != nil {
+			return nil, err
+		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
-	}
-	usados, err := folioNamesUsedToday(ctx, q, fecha)
-	if err != nil {
 		return nil, err
 	}
 	esquema, err := esquemaDeFolio(ctx, q)
@@ -1145,9 +1158,9 @@ func esquemaDeFolio(ctx context.Context, q *db.Queries) (domain.EsquemaDeFolio, 
 	return domain.EsquemaDeFolio(e), nil
 }
 
-// folioNamesUsedToday devuelve los nombres ya cantados hoy, sin los nulos de antes de 0046.
-func folioNamesUsedToday(ctx context.Context, q *db.Queries, bizDate pgtype.Date) ([]string, error) {
-	usados, err := q.FolioNamesUsedToday(ctx, bizDate)
+// folioNamesUsedInSession devuelve los nombres ya cantados en el turno, sin los nulos de antes de 0046.
+func folioNamesUsedInSession(ctx context.Context, q *db.Queries, sessionID int64) ([]string, error) {
+	usados, err := q.FolioNamesUsedInSession(ctx, &sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -1420,23 +1433,17 @@ func llaveDeCobro(u uuid.UUID) *uuid.UUID {
 // encontrar los dieciséis suyos. El precio de ese recorte se paga en la pantalla y hay que decirlo:
 // al pedido YA PAGADO que sigue en cocina se le podía agregar desde ahí, y ese era su único camino.
 func (s *OrdersService) Open(ctx context.Context, soloPorCobrar bool) ([]BoardOrder, decimal.Decimal, error) {
-	// La fecha sale del TURNO abierto, no del reloj del servidor.
+	// La fecha sale del RELOJ, en la zona del local — la misma con la que se archiva la venta.
 	//
-	// El pedido hereda la fecha de negocio del turno —así una noche que abre a las 4pm y cierra a
-	// las 10pm numera corrido en vez de partirse a medianoche—, y filtrar por el reloj hacía que en
-	// cuanto el día cambiara los dos dejaran de coincidir: todos los pedidos en curso desaparecían
-	// de la pantalla, vivos y sin forma de llegar a ellos. El servidor corre en UTC y el local
-	// cierra a las 22:00 de México, así que la medianoche UTC cae a las 18:00 locales: se vaciaba
-	// todas las noches, en plena hora pico.
+	// Salía del turno abierto, y tenía que salir de ahí mientras el pedido HEREDABA esa fecha: el
+	// día del servidor (UTC) cambia a las 18:00 en México, así que filtrar por él vaciaba la barra
+	// en plena hora pico. Ahora que la venta se archiva con el día del local, la fecha del turno es
+	// justo la que ya no coincide: un turno abierto hace cuatro días dejaría fuera de la barra todo
+	// lo entregado y sin cobrar de hoy, que es el pedido caro —el cliente ya se fue.
 	//
-	// Sin turno abierto se cae al día del servidor: no hay pedidos que mostrar, pero la pantalla
-	// tiene que poder abrirse sin error.
-	fecha := pgtype.Date{Time: s.now(), Valid: true}
-	if sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx); err == nil {
-		fecha = sess.BusinessDate
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, decimal.Zero, err
-	}
+	// Solo acota a los que deben dinero. Los que siguen en curso se ven sin filtro de fecha, y eso
+	// no cambia.
+	fecha := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
 	rows, err := s.store.QC(ctx).ListOpenOrders(ctx, fecha)
 	if err != nil {
