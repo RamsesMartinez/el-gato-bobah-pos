@@ -783,6 +783,12 @@ type FolioConsumido struct {
 	CompanyID int64       `json:"company_id"`
 }
 
+type FolioCounter struct {
+	RegisterSessionID int64 `json:"register_session_id"`
+	LastNumber        int32 `json:"last_number"`
+	CompanyID         int64 `json:"company_id"`
+}
+
 type FudoImportMap struct {
 	ID       int64   `json:"id"`
 	Entity   string  `json:"entity"`
@@ -950,6 +956,12 @@ type OrderRefund struct {
 	CashMovementID  *int64          `json:"cash_movement_id"`
 	CreatedAt       time.Time       `json:"created_at"`
 	CompanyID       int64           `json:"company_id"`
+}
+
+type OrdersBusinessDateFix struct {
+	OrderID       int64       `json:"order_id"`
+	PreviousDate  pgtype.Date `json:"previous_date"`
+	CorrectedDate pgtype.Date `json:"corrected_date"`
 }
 
 type PasswordResetToken struct {
