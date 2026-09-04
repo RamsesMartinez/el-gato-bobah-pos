@@ -834,8 +834,13 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
   session: CashSessionDetail;
   zona?: string;
 }) {
-  const ventas = session.sales ?? [];
-  const total = session.salesCount ?? ventas.length;
+  // "El campo no vino" NO es "vino en cero". El front se despliega antes que el backend, y en esa
+  // ventana un corte que sí cobró aparecería jurando que no cobró nada — una pantalla que miente
+  // sobre dinero es peor que una pantalla incompleta. Sin el campo, la sección no se dibuja.
+  if (session.sales === undefined || session.salesCount === undefined) return null;
+
+  const ventas = session.sales;
+  const total = session.salesCount;
 
   if (total === 0) {
     return (
