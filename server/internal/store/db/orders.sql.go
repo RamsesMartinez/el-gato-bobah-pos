@@ -30,6 +30,24 @@ func (q *Queries) CancelOrder(ctx context.Context, arg CancelOrderParams) error 
 	return err
 }
 
+const cancelOrderLine = `-- name: CancelOrderLine :exec
+update order_lines set cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
+where id = $1 and cancelled_at is null
+`
+
+type CancelOrderLineParams struct {
+	ID           int64   `json:"id"`
+	CancelledBy  *int64  `json:"cancelled_by"`
+	CancelReason *string `json:"cancel_reason"`
+}
+
+// Marca el renglón, no lo borra: el histórico de qué se pidió y se canceló es lo que deja explicar
+// una merma más adelante. `RecalcOrderTotals` ya excluye los cancelados del total del pedido.
+func (q *Queries) CancelOrderLine(ctx context.Context, arg CancelOrderLineParams) error {
+	_, err := q.db.Exec(ctx, cancelOrderLine, arg.ID, arg.CancelledBy, arg.CancelReason)
+	return err
+}
+
 const countLinesPendingDelivery = `-- name: CountLinesPendingDelivery :one
 select count(*) from order_lines
 where order_id = $1 and cancelled_at is null and delivered_qty < quantity
@@ -259,18 +277,26 @@ func (q *Queries) DeliverOrderLine(ctx context.Context, arg DeliverOrderLinePara
 	return result.RowsAffected(), nil
 }
 
-const folioNamesUsedToday = `-- name: FolioNamesUsedToday :many
+const folioNamesUsedInSession = `-- name: FolioNamesUsedInSession :many
 select folio_name from orders
-where business_date = $1 and folio_name is not null
+where register_session_id = $1 and folio_name is not null
 `
 
-// Los nombres ya repartidos hoy, para no repetir uno cuando la pantalla propone el suyo.
+// Los nombres ya repartidos EN ESTE TURNO, para no repetir uno cuando la pantalla propone el suyo.
 //
-// Se lee dentro de la MISMA transacción que toma NextDailyNumber, y eso es lo que la hace segura:
-// ese insert bloquea la fila del contador del día hasta el commit, así que dos ventas de la misma
-// empresa y fecha no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
-func (q *Queries) FolioNamesUsedToday(ctx context.Context, businessDate pgtype.Date) ([]*string, error) {
-	rows, err := q.db.Query(ctx, folioNamesUsedToday, businessDate)
+// Mismo alcance que el número, y por la misma razón: si el número se cuenta por turno y el nombre
+// por fecha, los dos caminos quedan a medio separar y el que se cante depende de cuál de las dos
+// cosas cambió primero.
+//
+// Se lee dentro de la MISMA transacción que toma NextFolioNumber, y eso es lo que la hace segura:
+// ese insert bloquea la fila del contador del turno hasta el commit, así que dos ventas del mismo
+// turno no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
+//
+// Un turno muy largo puede repartir más pedidos que nombres tiene la lista. No es un problema
+// nuevo ni rompe nada: `DisponiblesDeLaBolsa` ya devuelve los repetidos antes que dejar un pedido
+// sin con qué cantarse, igual que hacía un día con más de cien ventas.
+func (q *Queries) FolioNamesUsedInSession(ctx context.Context, registerSessionID *int64) ([]*string, error) {
+	rows, err := q.db.Query(ctx, folioNamesUsedInSession, registerSessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +394,50 @@ func (q *Queries) GetOrderIDByClientUUID(ctx context.Context, clientUuid uuid.UU
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getOrderLineForCancel = `-- name: GetOrderLineForCancel :one
+select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
+       o.status as order_status
+from order_lines ol
+join orders o on o.id = ol.order_id
+where ol.id = $1 and ol.order_id = $2
+for update of ol
+`
+
+type GetOrderLineForCancelParams struct {
+	ID      int64 `json:"id"`
+	OrderID int64 `json:"order_id"`
+}
+
+type GetOrderLineForCancelRow struct {
+	ID               int64              `json:"id"`
+	OrderID          int64              `json:"order_id"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
+	CancelledAt      pgtype.Timestamptz `json:"cancelled_at"`
+	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
+	OrderStatus      OrderStatus        `json:"order_status"`
+}
+
+// El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
+//
+// `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
+// repondrían el insumo dos veces. Solo el renglón, no el pedido: bloquear el pedido entero pararía
+// al que está cobrando en la otra tableta.
+func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineForCancelParams) (GetOrderLineForCancelRow, error) {
+	row := q.db.QueryRow(ctx, getOrderLineForCancel, arg.ID, arg.OrderID)
+	var i GetOrderLineForCancelRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.Quantity,
+		&i.DeliveredQty,
+		&i.CancelledAt,
+		&i.EnviadoACocinaAt,
+		&i.OrderStatus,
+	)
+	return i, err
 }
 
 const getOrderPaymentByClientUUID = `-- name: GetOrderPaymentByClientUUID :one
@@ -497,10 +567,41 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 	return items, nil
 }
 
+const insertOrderRefund = `-- name: InsertOrderRefund :one
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning id
+`
+
+type InsertOrderRefundParams struct {
+	OrderID         int64           `json:"order_id"`
+	OrderLineID     *int64          `json:"order_line_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	Reason          string          `json:"reason"`
+	RefundedBy      int64           `json:"refunded_by"`
+	CashMovementID  *int64          `json:"cash_movement_id"`
+}
+
+func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertOrderRefund,
+		arg.OrderID,
+		arg.OrderLineID,
+		arg.PaymentMethodID,
+		arg.Amount,
+		arg.Reason,
+		arg.RefundedBy,
+		arg.CashMovementID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listActiveOrders = `-- name: ListActiveOrders :many
 
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -522,6 +623,7 @@ type ListActiveOrdersRow struct {
 	CustomerName       *string            `json:"customer_name"`
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
+	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -549,6 +651,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
+			&i.RefundAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -567,7 +670,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 
 const listDeliveredToday = `-- name: ListDeliveredToday :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency,
+       o.customer_name, o.total, o.currency, o.refund_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -589,6 +692,7 @@ type ListDeliveredTodayRow struct {
 	CustomerName       *string            `json:"customer_name"`
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
+	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -627,6 +731,7 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 			&i.CustomerName,
 			&i.Total,
 			&i.Currency,
+			&i.RefundAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -687,7 +792,8 @@ func (q *Queries) ListLinesForDelivery(ctx context.Context, orderID int64) ([]Li
 }
 
 const listLinesOfActiveOrders = `-- name: ListLinesOfActiveOrders :many
-select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes
+select l.id, l.order_id, l.product_name, l.quantity, l.delivered_qty, l.notes,
+       (l.enviado_a_cocina_at is not null)::boolean as enviado_a_cocina
 from order_lines l
 join orders o on o.id = l.order_id
 where o.status in ('abierta','lista') and l.cancelled_at is null
@@ -695,12 +801,13 @@ order by l.order_id, l.id
 `
 
 type ListLinesOfActiveOrdersRow struct {
-	ID           int64           `json:"id"`
-	OrderID      int64           `json:"order_id"`
-	ProductName  string          `json:"product_name"`
-	Quantity     decimal.Decimal `json:"quantity"`
-	DeliveredQty decimal.Decimal `json:"delivered_qty"`
-	Notes        *string         `json:"notes"`
+	ID             int64           `json:"id"`
+	OrderID        int64           `json:"order_id"`
+	ProductName    string          `json:"product_name"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	DeliveredQty   decimal.Decimal `json:"delivered_qty"`
+	Notes          *string         `json:"notes"`
+	EnviadoACocina bool            `json:"enviado_a_cocina"`
 }
 
 // Los renglones de TODOS los pedidos del tablero, en una consulta.
@@ -724,6 +831,7 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 			&i.Quantity,
 			&i.DeliveredQty,
 			&i.Notes,
+			&i.EnviadoACocina,
 		); err != nil {
 			return nil, err
 		}
@@ -1040,20 +1148,30 @@ func (q *Queries) MarcarTodoElPedidoEnviadoACocina(ctx context.Context, orderID 
 	return err
 }
 
-const nextDailyNumber = `-- name: NextDailyNumber :one
+const nextFolioNumber = `-- name: NextFolioNumber :one
 
-insert into order_counters (business_date, last_number)
+insert into folio_counters (register_session_id, last_number)
 values ($1, 1)
-on conflict on constraint order_counters_pkey do update set last_number = order_counters.last_number + 1
+on conflict on constraint folio_counters_pkey do update set last_number = folio_counters.last_number + 1
 returning last_number
 `
 
 // Creación
-// company_id lo auto-sella el default (GUC del tenant); el folio diario es por-empresa. Se
-// arbitra por NOMBRE de la PK compuesta (company_id, business_date): referir la columna por
-// nombre haría fallar a sqlc, que no ve las columnas agregadas dinámicamente en la migración.
-func (q *Queries) NextDailyNumber(ctx context.Context, businessDate pgtype.Date) (int32, error) {
-	row := q.db.QueryRow(ctx, nextDailyNumber, businessDate)
+// El folio consecutivo DENTRO DEL TURNO, no dentro del día.
+//
+// La fecha de una venta y su folio son dos caminos independientes: la fecha la da el reloj y el
+// folio lo da el turno. Colgar el contador de la fecha era lo que los acoplaba, y obligaba a que la
+// venta heredara la fecha del turno para que un turno nocturno no se partiera en dos #1 — herencia
+// que además no tenía techo y archivaba días enteros de ventas bajo la fecha de un turno olvidado.
+//
+// company_id lo auto-sella el default (GUC del tenant). Se arbitra por NOMBRE de la PK compuesta
+// (company_id, register_session_id) por consistencia con el resto del archivo.
+//
+// El `on conflict do update` bloquea la fila del contador hasta el commit, y ESO es lo que serializa
+// la numeración: dos cobros simultáneos del mismo turno no pueden estar aquí a la vez. No es un
+// detalle de estilo — quitarlo reparte el mismo número dos veces.
+func (q *Queries) NextFolioNumber(ctx context.Context, registerSessionID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, nextFolioNumber, registerSessionID)
 	var last_number int32
 	err := row.Scan(&last_number)
 	return last_number, err
@@ -1078,6 +1196,22 @@ func (q *Queries) PedidoNecesitaPreparacion(ctx context.Context, orderID int64) 
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const recalcOrderRefundAmount = `-- name: RecalcOrderRefundAmount :exec
+update orders o
+set refund_amount = coalesce((select sum(r.amount) from order_refunds r where r.order_id = o.id), 0)
+where o.id = $1
+`
+
+// `orders.refund_amount` pasa a ser la SUMA del libro, no un número que se escribe aparte.
+//
+// Se conserva la columna porque `RefundsByDay` ya la lee, y dos verdades sobre el mismo dinero es
+// exactamente lo que el principio III prohíbe. Recalcularla desde el libro es lo que las mantiene
+// siendo una sola.
+func (q *Queries) RecalcOrderRefundAmount(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, recalcOrderRefundAmount, id)
+	return err
 }
 
 const recalcOrderTotals = `-- name: RecalcOrderTotals :exec
@@ -1171,6 +1305,32 @@ func (q *Queries) RefundOrder(ctx context.Context, arg RefundOrderParams) error 
 	return err
 }
 
+const restockCancelledLine = `-- name: RestockCancelledLine :exec
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
+       $1, 'cancelación de renglón'
+from stock_movements sm
+where sm.order_line_id = $2 and sm.movement_type = 'venta'
+`
+
+type RestockCancelledLineParams struct {
+	ActorID *int64 `json:"actor_id"`
+	LineID  *int64 `json:"line_id"`
+}
+
+// Repone el insumo de UN renglón, revirtiendo los movimientos que de verdad salieron por él.
+//
+// Revierte lo registrado y no un recálculo con la receta de HOY: una receta que cambió entre la
+// venta y la cancelación repondría una cantidad distinta de la que se descontó.
+//
+// Un renglón anterior a la migración 0060 no tiene movimientos ligados y no repone nada. Es la
+// decisión: de un movimiento viejo no consta a qué renglón pertenecía, y adivinarlo inventaría
+// existencias.
+func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelledLineParams) error {
+	_, err := q.db.Exec(ctx, restockCancelledLine, arg.ActorID, arg.LineID)
+	return err
+}
+
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, user_id, reason)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, $1, 'cancelación de orden'
@@ -1227,5 +1387,84 @@ func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (SumOrder
 	row := q.db.QueryRow(ctx, sumOrderPayments, orderID)
 	var i SumOrderPaymentsRow
 	err := row.Scan(&i.Pagado, &i.Propina)
+	return i, err
+}
+
+const sumOrderPaymentsByMethod = `-- name: SumOrderPaymentsByMethod :many
+select pm.id as method_id, pm.name, pm.kind = 'efectivo' as es_efectivo, pm.is_active,
+       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
+from order_payments op
+join payment_methods pm on pm.id = op.payment_method_id
+where op.order_id = $1
+group by pm.id, pm.name, pm.kind, pm.is_active
+order by min(op.created_at)
+`
+
+type SumOrderPaymentsByMethodRow struct {
+	MethodID   int16           `json:"method_id"`
+	Name       string          `json:"name"`
+	EsEfectivo bool            `json:"es_efectivo"`
+	IsActive   bool            `json:"is_active"`
+	Cobrado    decimal.Decimal `json:"cobrado"`
+}
+
+// Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+//
+// Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
+// efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
+// con un faltante inventado.
+//
+// `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
+// entró tiene que poder salir por donde entró, o queda atrapado.
+func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) ([]SumOrderPaymentsByMethodRow, error) {
+	rows, err := q.db.Query(ctx, sumOrderPaymentsByMethod, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SumOrderPaymentsByMethodRow{}
+	for rows.Next() {
+		var i SumOrderPaymentsByMethodRow
+		if err := rows.Scan(
+			&i.MethodID,
+			&i.Name,
+			&i.EsEfectivo,
+			&i.IsActive,
+			&i.Cobrado,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumOrderRefunds = `-- name: SumOrderRefunds :one
+select coalesce(sum(amount), 0)::numeric(10,2) as devuelto_total,
+       coalesce(sum(amount) filter (where order_line_id = $1), 0)::numeric(10,2) as devuelto_del_renglon
+from order_refunds where order_id = $2
+`
+
+type SumOrderRefundsParams struct {
+	LineID  *int64 `json:"line_id"`
+	OrderID int64  `json:"order_id"`
+}
+
+type SumOrderRefundsRow struct {
+	DevueltoTotal      decimal.Decimal `json:"devuelto_total"`
+	DevueltoDelRenglon decimal.Decimal `json:"devuelto_del_renglon"`
+}
+
+// Lo ya devuelto de un pedido, y de UNO de sus renglones.
+//
+// Las dos cifras en una pasada porque el tope de un renglón es lo cobrado de ESE renglón: sin esa
+// cota, devolver tres veces un platillo de $60 en un pedido de $500 pasa sin que nada lo frene.
+func (q *Queries) SumOrderRefunds(ctx context.Context, arg SumOrderRefundsParams) (SumOrderRefundsRow, error) {
+	row := q.db.QueryRow(ctx, sumOrderRefunds, arg.LineID, arg.OrderID)
+	var i SumOrderRefundsRow
+	err := row.Scan(&i.DevueltoTotal, &i.DevueltoDelRenglon)
 	return i, err
 }

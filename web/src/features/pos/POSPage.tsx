@@ -26,6 +26,7 @@ import { ProductEditDialog } from '../../shared/ProductEditDialog';
 import type {
   BoardOrder, CobroHecho, MenuProduct, OrderView, PedidoParaCobrar, TicketLine, TicketModifier,
 } from '../../types/pos';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { money } from '../../utils/format';
 import { TicketPreview } from '../../shared/tickets/TicketPreview';
 import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTicket';
@@ -439,6 +440,7 @@ export function POSPage() {
 
   return (
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
+      <AvisoDeTurnoViejo estado={cashStatus.data} />
       {wide ? (
         <Flex h="100%">
           <Box flex="1" minW={0}>{catalog}</Box>
@@ -620,5 +622,47 @@ export function POSPage() {
           distintos para dos personas distintas, y cada uno con su propio ajuste. */}
       <KitchenTicket order={pedidoNuevo} soloLineas={agregados} />
     </Box>
+  );
+}
+
+// Aviso de que la caja abierta ya no es de hoy.
+//
+// Existe porque nada se lo decía a quien opera: un turno se quedó abierto cinco días y en ese
+// tiempo se acumularon 158 pedidos en un solo arqueo, sin que ninguna pantalla lo mencionara.
+//
+// NO BLOQUEA EL COBRO, a propósito. Un negocio en operación prefiere una fecha corrida a una caja
+// parada, y convertir un descuido administrativo en un cobro imposible es peor que el descuido.
+//
+// `deOtroDia` lo decide el SERVIDOR: la zona del negocio vive allá, y que cada tableta compare con
+// su propio reloj es justo la familia de defectos que esta pantalla viene a cerrar. Si el campo no
+// viene —el front se despliega minutos antes que el backend— no hay aviso, que es lo correcto:
+// mejor sin aviso que con uno inventado.
+//
+// Franja delgada y descartable, no un renglón fijo en la barra: la barra del POS ya no tiene ancho
+// libre a 1024×600, y el alto que esto ocupa solo se paga mientras el problema existe.
+function AvisoDeTurnoViejo({ estado }: { estado?: { deOtroDia?: boolean; openedAt?: string } }) {
+  const [oculto, setOculto] = useState(false);
+  const horaNegocio = useHoraDelNegocio();
+  const navigate = useNavigate();
+  if (!estado?.deOtroDia || oculto) return null;
+  return (
+    <HStack bg="orange.subtle" borderBottomWidth="1px" borderColor="orange.emphasized"
+      px={3} py={1} gap={3} justify="space-between">
+      <HStack gap={2} minW={0}>
+        <Box color="orange.fg" flexShrink={0}><LuTriangleAlert size={18} /></Box>
+        <Text fontSize="sm" truncate>
+          La caja lleva abierta desde el {horaNegocio.fechaYHora(estado.openedAt)}.
+          Ciérrala para que el corte cuadre por día.
+        </Text>
+      </HStack>
+      <HStack gap={1} flexShrink={0}>
+        <Button size="xs" variant="outline" minH="44px" px={3} onClick={() => navigate('/caja')}>
+          Ir a caja
+        </Button>
+        <Button size="xs" variant="ghost" minH="44px" px={3} onClick={() => setOculto(true)}>
+          Ahora no
+        </Button>
+      </HStack>
+    </HStack>
   );
 }

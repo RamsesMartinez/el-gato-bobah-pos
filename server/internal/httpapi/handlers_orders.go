@@ -127,13 +127,19 @@ func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Reason string `json:"reason"`
+		// Devolver: el cajero confirma que el dinero se le regresa al cliente. Sin esto un pedido
+		// con cobros NO se cancela — cancelarlo a secas lo sacaba de los reportes y dejaba el arqueo
+		// esperando ese dinero en el cajón.
+		Devolver bool `json:"devolver"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.orders.Cancel(r.Context(), id, u.ID, body.Reason); err != nil {
+	if err := h.orders.CancelarConDevolucion(r.Context(), app.CancelacionCmd{
+		OrderID: id, Motivo: body.Reason, ActorID: u.ID, Devolver: body.Devolver,
+	}); err != nil {
 		Error(w, err)
 		return
 	}
@@ -162,13 +168,27 @@ func (h *Handlers) RefundOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Reason string `json:"reason"`
+		// Amount vacío = todo lo que queda por devolver. LineID vacío = contra la cuenta entera.
+		// Los dos opcionales porque el caso de todos los días es "devuélvele todo".
+		Amount *decimal.Decimal `json:"amount"`
+		LineID *int64           `json:"lineId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	if err := h.orders.Refund(r.Context(), id, u.ID, body.Reason); err != nil {
+	monto, err := h.orders.PorDevolver(r.Context(), id, body.LineID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Amount != nil {
+		monto = *body.Amount
+	}
+	if err := h.orders.Devolver(r.Context(), app.DevolucionCmd{
+		OrderID: id, LineID: body.LineID, Monto: monto, Motivo: body.Reason, ActorID: u.ID,
+	}); err != nil {
 		Error(w, err)
 		return
 	}
@@ -389,4 +409,41 @@ func (h *Handlers) OpenOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]any{"items": items, "outstanding": pendiente})
+}
+
+// POST /orders/{id}/lines/{lineId}/cancel — cancela UN renglón del pedido.
+//
+// Existía la columna y no la operación, mientras el error de cancelar un pedido con entregas
+// parciales mandaba al operador a "cancela los que falten" — una acción que no se podía hacer desde
+// ningún lado. La única salida practicable era marcar como entregado lo que seguía en la plancha.
+//
+// Devuelve si repuso el inventario: cancelar algo que YA salió a cocina baja el total pero no
+// devuelve el insumo, y la pantalla tiene que poder decirlo. Callarlo descuadra el almacén sin que
+// nadie sepa por qué.
+func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	lineID, err := strconv.ParseInt(chi.URLParam(r, "lineId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	repuso, err := h.orders.CancelarRenglon(r.Context(), id, lineID, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
 }

@@ -115,8 +115,73 @@ periodo que pidió.
 | P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
 | P3 | Renglones del menú ⋮ del tablero | 44 px, y "Cancelar pedido" separado de "Reimprimir comanda" | — | **no cubierto** (se mide en el navegador real) |
 
+## A. Sesiones y relevo entre estaciones
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| A1 | Re-login masivo de la migración 0052 | **Caduca** las sesiones, no las revoca: revocar clasifica el siguiente refresh como ROBO | `TestDosEstacionesConLaMismaCuentaNoSeRevocanEntreEllas` | Postgres |
+| A2 | Dos estaciones con la misma cuenta tras el re-login masivo | Una no tumba a la otra. Revocando, se tumbaban cada ≤15 min indefinidamente | idem | Postgres |
+| A3 | Un reuso de credencial de verdad | **Sigue** revocando: el arreglo no afloja la detección de robo | `TestUnReusoDeVerdadSigueRevocando` | Postgres |
+| A4 | Rebote de `/auth/refresh` | Borra la cookie. Sin eso, la credencial muerta se re-presenta en cada recarga hasta 30 días | — | **no cubierto** |
+
+## E. Devolver dinero (spec 007)
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| E1 | Devolver más de lo cobrado | Se rechaza. `Refund` anotaba como pérdida el TOTAL del pedido sin mirar un cobro | `TestSeDevuelveLoCobradoNoElTotalDelPedido` | Postgres |
+| E2 | Devolver un pedido sin cobrar | Se rechaza con su propio error, y no anota pérdida | `TestUnPedidoSinCobrarNoSeDevuelve` | Postgres |
+| E3 | Devolver lo cobrado con tarjeta | **No** toca el cajón: ese dinero nunca estuvo ahí | `TestSoloLaDevolucionEnEfectivoTocaElCajon` | Postgres |
+| E4 | Devolver lo cobrado en efectivo | Sale del cajón como movimiento, y el arqueo lo descuenta solo | idem | Postgres |
+| E5 | Cancelar un pedido ya cobrado | Se rechaza sin devolución; con ella, el cajón queda cuadrado | `TestCancelarUnPedidoCobradoExigeLaDevolucion` | Postgres |
+| E6 | Devolver por un método desactivado | Se permite: el dinero entró por ahí y por ahí sale | `TestSeDevuelvePorUnMetodoDesactivado` | Go |
+| E7 | Devolver dos veces el mismo renglón | El tope es lo cobrado de ESE renglón | `TestNoSeDevuelveMasDeLoQueEntro` | Go |
+| E8 | Cancelar un renglón NO enviado a cocina | Repone el insumo y baja el total | `TestCancelarUnRenglonReponeSoloSiNoSalioACocina` | Postgres |
+| E9 | Cancelar un renglón YA enviado a cocina | Baja el total y **no** repone: el insumo se consumió | `TestUnRenglonQueYaSalioACocinaNoRepone` | Postgres |
+| E10 | Doble tap al cancelar un renglón | No repone dos veces ni da error | `TestCancelarDosVecesElMismoRenglonNoReponeDosVeces` | Postgres |
+| E11 | La tarjeta de un entregado sin cobrar | **No** ofrece "Devolver": el servidor lo rechazaría | `OrdersBoardPage` (SC-003) | Navegador |
+| E12 | La hoja de devolución | Propone lo que queda, descuenta lo ya devuelto, y dice por qué se apaga | `DevolucionSheet.test.tsx` | Navegador |
+| E15 | Quitar un renglón ya enviado a cocina | **Avisa** que el ingrediente no vuelve, antes de confirmar | `CancelarRenglonDialog.test.tsx` | Navegador |
+| E16 | Quitar un renglón | Pide confirmar: no borra al tocar | idem | Navegador |
+| E17 | Reporte de devoluciones vs salidas del cajón | Cuadran en la parte en efectivo | `TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon` | Postgres |
+| E18 | El error de entrega parcial | Lo que dice ("cancela los que falten") ahora **se puede hacer** | `TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer` | Postgres |
+| E13 | El grant de la tabla nueva | El rol de app puede leer e insertar; sin grant es 42501 en producción | `TestElLibroDeDevolucionesEsUsablePorElRolDeApp` | Postgres |
+| E14 | Un arqueo ya cerrado tras la migración | Mismas cifras | `TestUnArqueoCerradoNoCambiaConLaMigracion` | Postgres |
+
 
 ---
+
+## T. La fecha la da el reloj, el folio lo da el turno (spec 008)
+
+El defecto que lo abrió: `orders.business_date` se HEREDABA del turno de caja, sin techo. Medido el
+2026-09-04 en el ambiente de pruebas — el turno abrió el 31 de agosto y nadie lo cerró, así que 158
+pedidos y $6,664 quedaron archivados como 31 de agosto y la pantalla de Ventas del día salía vacía
+con el negocio vendiendo.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| T1 | Turno abierto hace cuatro días, venta de hoy | Se archiva con la fecha de HOY, y sigue perteneciendo a ese turno | `TestLaVentaSeArchivaEnElDiaEnQueOcurrioYNoEnElDelTurno` | Go |
+| T2 | Turno que cruza la medianoche | La fecha cambia de día, el folio NO se reinicia | `TestElFolioSigueAlTurnoAunqueCruceLaMedianoche` | Go |
+| T3 | Ocho cobros simultáneos del mismo turno | Folios distintos y consecutivos: el candado de fila sigue serializando | `TestDosCobrosSimultaneosNoCompartenFolio` | Go |
+| T4 | Turno que ya traía folios repartidos al migrar | Continúa en N+1; sin la semilla pediría el 1 y chocaría con un 23505 | `TestUnTurnoConFoliosRepartidosContinuaLaNumeracion` | Go |
+| T5 | Cerrar y reabrir la caja el mismo día | Renumera desde 1 y no colisiona, porque cerrar exige que no queden pedidos vivos | `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | Go |
+| T6 | `folio_counters` bajo el rol de la app | Cobra sin 42501: el grant de 0024 fue puntual y no hay default privileges | `TestElFolioSeReparteBajoElRolDeLaAplicacion` | Go |
+| T7 | Contador colgado del turno de otra empresa | Lo rechaza el ESQUEMA (23503), no un servicio: los chequeos de FK saltan RLS | `TestElEsquemaRechazaUnContadorDeFolioQueCruzaEmpresas` | Go |
+| T8 | La corrección histórica (0062) con dos empresas | Corrige la fecha; deja intactos folio, turno y toda cifra de arqueo; y se revierte | `TestLaMigracionCorrigeElDiaSinMoverDineroDeArqueo` | Go |
+| T9 | Zona con horario de verano el día del cambio | El día se resuelve preguntándole a la zona, nunca restando 24 h | `TestTurnoDeOtroDia` | Go |
+
+## U. Las ventas de un corte y el aviso de turno viejo (spec 008)
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| U1 | Corte con una venta cancelada | Se LISTA (pasó en el turno) pero NO suma al total: su dinero no entró | `TestElDetalleDelCorteListaSusVentasYSoloSumaElIngreso` | Go |
+| U2 | Dos turnos el mismo día | Cada detalle trae solo lo suyo. El filtro es por turno, no por ventana de tiempo | `TestElDetalleDeUnCorteNoTraeVentasDeOtro` | Go |
+| U3 | Corte con más ventas que el tope de 200 | La pantalla dice cuántas hay EN TOTAL: un recorte silencioso se lee como "esto es todo" | `el detalle dice cuántas ventas hay cuando muestra solo una parte` | Vitest |
+| U4 | El total del corte | Declara en pantalla que deja fuera canceladas, reembolsadas y propinas | `el total de las ventas del corte declara qué deja fuera` | Vitest |
+| U5 | Corte sin ninguna venta | Lo dice con una frase; una tabla vacía parece un error de carga | `un corte sin ventas lo dice en vez de pintar una tabla vacía` | Vitest |
+| U6 | Turno abierto ayer a las 23:00, lleva una hora | Avisa: compara DÍAS, no horas transcurridas | `TestElEstadoDeCajaAvisaCuandoElTurnoEsDeOtroDia` | Go |
+| U7 | Con el aviso visible | La pantalla de venta sigue completa: el aviso nunca bloquea el cobro | `el aviso de turno viejo se ve y NO bloquea la pantalla de venta` | Vitest |
+| U8 | Turno abierto hoy | Sin aviso. Un aviso permanente se vuelve ruido y se aprende a ignorar | `un turno abierto hoy no muestra el aviso` | Vitest |
+| U9 | Backend viejo, sin el campo `deOtroDia` | Sin aviso, nunca uno inventado: el front se despliega ~7 min antes que el backend | `sin el campo del backend no se inventa un aviso` | Vitest |
 
 ## Pendientes de cubrir
 
@@ -126,11 +191,12 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
-| X1 | Cancelar un pedido **ya cobrado** | Spec [007](../specs/007-devolver-el-dinero/spec.md), a la espera de cuatro decisiones del dueño | P1 |
-| X2 | Reembolsar un entregado **sin cobrar** | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P2 |
-| X3 | Cancelar un renglón suelto | Spec [007](../specs/007-devolver-el-dinero/spec.md) | P4 |
 | X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
 | X7 | Controles de ~24 px en el renglón del ticket (−, +, papelera) | Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto. El menú del tablero ya subió a 44 px | V9 |
-| X8 | `window.prompt` para el motivo de cancelación | El diálogo lo pinta el sistema; Chrome lo puede suprimir y la acción deja de hacer nada en silencio. Va con `Picker` y las listas de motivos que ya están escritas | P10 |
 | X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
 | X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
+| X11 | El reuso revoca por **usuario**, no por familia | La constitución dice "revoca toda la familia". No hay columna de linaje en `refresh_tokens`: es cambio de esquema | H18 |
+| X12 | El front de producción sale ~7 min ANTES que el backend | `deploy-frontend` depende de `frontend` y `deploy-backend` de `image`. En esa ventana el POS crea el pedido y no lo puede cobrar | H18 |
+| X13 | El folio puede repetirse entre dos turnos del **mismo día** | Consecuencia aceptada de numerar por turno (spec 008). Es inofensiva porque cerrar un turno exige que no queden pedidos vivos, así que dos folios iguales nunca coexisten vivos — pero no hay nada que lo impida si esa regla se afloja. Lo vigila `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | T5 |
+| X14 | El `Down` de 0061 falla si ya se vendió con dos turnos el mismo día | Volver a estrechar la unicidad al día es imposible con dos #1 de la misma fecha. Es inherente a revertir una restricción que se ensanchó; queda escrito en la propia migración en vez de descubrirse al revertir | — |
+| X15 | La lista de ventas del corte se corta en 200 | Sin controles de paginación: el detalle ya reparte 600 px entre cuatro secciones. La pantalla dice cuántas hay en total, así que recorta sin mentir — pero un corte de más de 200 ventas no se puede recorrer completo desde ahí | U3 |

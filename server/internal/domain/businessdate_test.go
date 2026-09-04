@@ -142,3 +142,36 @@ func TestDesdeCuandoSeVen(t *testing.T) {
 		})
 	}
 }
+
+// UN TURNO ES DE OTRO DÍA POR CALENDARIO, NO POR HORAS TRANSCURRIDAS.
+//
+// El aviso existe porque un turno olvidado mete días de dinero en un solo arqueo, y el defecto duró
+// cinco días sin que nadie lo notara. Un umbral de horas —"lleva más de 12 abiertas"— dejaría pasar
+// el turno que abrió ayer a las 23:00 y molestaría al que abrió hoy temprano y sigue vendiendo.
+func TestTurnoDeOtroDia(t *testing.T) {
+	mx := LoadBusinessLocation(DefaultTimezone)
+	// 2026-09-04 14:00 en México.
+	ahora := time.Date(2026, 9, 4, 20, 0, 0, 0, time.UTC)
+
+	casos := []struct {
+		nombre string
+		abrio  time.Time
+		quiere bool
+	}{
+		{"abrió ayer a las 23:00 y lleva una hora", time.Date(2026, 9, 4, 5, 0, 0, 0, time.UTC), true},
+		{"abrió hoy a las 08:00 y lleva seis horas", time.Date(2026, 9, 4, 14, 0, 0, 0, time.UTC), false},
+		{"abrió hace cuatro días", time.Date(2026, 8, 31, 18, 29, 0, 0, time.UTC), true},
+		{"abrió hace un minuto", ahora.Add(-time.Minute), false},
+		// 2026-09-04 23:59 locales: sigue siendo hoy aunque en UTC ya sea el día 5.
+		{"abrió hoy justo antes de la medianoche local", time.Date(2026, 9, 5, 5, 59, 0, 0, time.UTC), false},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := TurnoDeOtroDia(c.abrio, ahora, mx); got != c.quiere {
+				t.Errorf("el turno que %s: TurnoDeOtroDia = %v, se esperaba %v (abrió el %s local, hoy es %s local)",
+					c.nombre, got, c.quiere,
+					c.abrio.In(mx).Format("2006-01-02 15:04"), ahora.In(mx).Format("2006-01-02 15:04"))
+			}
+		})
+	}
+}
