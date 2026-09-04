@@ -123,7 +123,16 @@ export const posApi = {
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
   // ¿hay caja abierta? Para el aviso del POS (disponible a cualquier rol).
-  cashStatus: () => api.get<{ open: boolean }>('/cash-status'),
+  // `deOtroDia` lo decide el SERVIDOR, que es donde vive la zona del negocio. Los tres campos
+  // nuevos son opcionales a propósito: el front se despliega antes que el backend, y durante esos
+  // minutos la pantalla tiene que quedarse sin aviso, no rota.
+  cashStatus: () =>
+    api.get<{
+      open: boolean;
+      openedAt?: string;
+      businessDate?: string;
+      deOtroDia?: boolean;
+    }>('/cash-status'),
 
   businessSettings: () => api.get<BusinessSettings>('/business-settings'),
   // Binario del logo. Lanza ApiError 404 cuando el negocio no subió ninguno: quien llama cae al

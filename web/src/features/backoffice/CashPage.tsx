@@ -8,7 +8,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown,
+  backofficeApi, type CashSession, type CashSessionDetail, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown,
 } from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
@@ -290,6 +290,7 @@ function CorteDetail({ id }: { id: number }) {
         </>)}
       </SimpleGrid>
       <CorteSummary data={data} />
+      <VentasDelCorte session={data} zona={horaNegocio.zona} />
       {data.notes && (
         <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
       )}
@@ -818,4 +819,74 @@ function SessionDetailDialog({ id, onClose }: { id: number | null; onClose: () =
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// Las ventas que este corte cobró.
+//
+// Vive dentro del corte y no como filtro de la pantalla de Ventas: ahí tendría que convivir con el
+// filtro de fechas, y bastaría elegir un rango que no toque el corte para quedarse mirando una
+// pantalla vacía sin nada que explique por qué.
+//
+// Alto acotado: el detalle ya reparte los 600 px de la tableta entre el resumen, los gastos, lo
+// declarado por método y lo cobrado por persona. La lista muestra cinco renglones y desplaza dentro
+// de su propia caja, para no empujar fuera de pantalla lo que ya estaba.
+export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
+  session: CashSessionDetail;
+  zona?: string;
+}) {
+  const ventas = session.sales ?? [];
+  const total = session.salesCount ?? ventas.length;
+
+  if (total === 0) {
+    return (
+      <Section title="Ventas del corte">
+        <Text fontSize="sm" color="fg.muted">Este corte no cobró ninguna venta.</Text>
+      </Section>
+    );
+  }
+
+  const recortadas = total > ventas.length;
+  return (
+    <Section title="Ventas del corte">
+      <Text fontSize="sm" color="fg.muted" mb={2}>
+        {total === 1 ? '1 venta' : `${total} ventas`} · {money(session.salesTotal ?? '0', session.currency)}
+        {' '}sin canceladas, reembolsadas ni propinas
+        {recortadas && ` · se muestran las ${ventas.length} más recientes`}
+      </Text>
+      <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="240px" overflowY="auto">
+        <Table.Root size="sm" stickyHeader>
+          <Table.Header><Table.Row>
+            <Table.ColumnHeader>Folio</Table.ColumnHeader>
+            <Table.ColumnHeader>Hora</Table.ColumnHeader>
+            <Table.ColumnHeader>Estado</Table.ColumnHeader>
+            <Table.ColumnHeader textAlign="end">Total</Table.ColumnHeader>
+          </Table.Row></Table.Header>
+          <Table.Body>
+            {ventas.map((v) => (
+              <Table.Row key={v.id}>
+                <Table.Cell whiteSpace="nowrap">
+                  #{v.dailyNumber}{v.folioName ? ` · ${v.folioName}` : ''}
+                </Table.Cell>
+                <Table.Cell whiteSpace="nowrap">{hhmm(v.openedAt, zona)}</Table.Cell>
+                <Table.Cell>
+                  <Badge colorPalette={colorDeEstadoDeVenta(v.status)}>{v.status}</Badge>
+                </Table.Cell>
+                <Table.Cell textAlign="end" fontWeight="600">
+                  {money(v.total, session.currency)}
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table.Root>
+      </Box>
+    </Section>
+  );
+}
+
+// Cancelada y reembolsada se pintan distinto porque su dinero NO está en el total de arriba: verlas
+// con el mismo color que una venta cobrada invita a sumarlas.
+function colorDeEstadoDeVenta(estado: string) {
+  if (estado === 'cancelada') return 'red';
+  if (estado === 'reembolsada') return 'orange';
+  return 'gray';
 }
