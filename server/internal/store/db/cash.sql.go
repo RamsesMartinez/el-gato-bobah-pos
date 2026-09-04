@@ -285,8 +285,8 @@ type GetOpenPrimarySessionRow struct {
 // caja externa) existen para traspasos y gastos, y si una de ellas bastara para vender el efectivo
 // del mostrador caería en un arqueo que no es el suyo.
 //
-// Trae tambien opened_at: es lo que deja avisar que el turno abierto ya no es de hoy. La fecha de
-// negocio del turno NO sirve para eso — dice con que dia se abrio, no cuando.
+// Trae también opened_at: es lo que deja avisar que el turno abierto ya no es de hoy. La fecha de
+// negocio del turno NO sirve para eso — dice con qué día se abrió, no cuándo.
 func (q *Queries) GetOpenPrimarySession(ctx context.Context) (GetOpenPrimarySessionRow, error) {
 	row := q.db.QueryRow(ctx, getOpenPrimarySession)
 	var i GetOpenPrimarySessionRow

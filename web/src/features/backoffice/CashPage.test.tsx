@@ -161,3 +161,17 @@ function corteCon(over: Partial<CashSessionDetail>): CashSessionDetail {
     ...over,
   };
 }
+
+// "EL CAMPO NO VINO" NO ES "VINO EN CERO".
+//
+// El front de producción sale ~7 minutos antes que el backend. En esa ventana el detalle del corte
+// llega sin `sales`, y tratarlo como una lista vacía hacía que un corte que sí cobró jurara que no
+// cobró nada. Una pantalla que miente sobre dinero es peor que una pantalla incompleta.
+test('sin los campos del backend la sección no se dibuja, en vez de decir que no hubo ventas', () => {
+  const viejo = corteCon({});
+  delete (viejo as Partial<CashSessionDetail>).sales;
+  delete (viejo as Partial<CashSessionDetail>).salesCount;
+  const { container } = render(<Provider><VentasDelCorte session={viejo} /></Provider>);
+  expect(screen.queryByText(/no cobró ninguna venta/i)).not.toBeInTheDocument();
+  expect(container.querySelector('table')).toBeNull();
+});
