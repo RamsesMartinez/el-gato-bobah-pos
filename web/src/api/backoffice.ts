@@ -120,6 +120,27 @@ export interface CashSessionDetail {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Las ventas que este corte cobró. Viven en el corte y no como filtro de la pantalla de Ventas:
+  // ahí convivirían con el filtro de fechas y bastaría un rango que no toque el corte para llegar a
+  // una pantalla vacía sin explicación.
+  sales: CorteSale[];
+  // Cuántas hay EN TOTAL, no cuántas llegaron. Es lo que deja decir "se muestran 200 de 340" en vez
+  // de recortar en silencio, que se lee como "esto es todo".
+  salesCount: number;
+  salesShown: number;
+  // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
+  salesTotal: string;
+}
+
+export interface CorteSale {
+  id: number;
+  dailyNumber: number;
+  folioName: string | null;
+  openedAt: string;
+  status: string;
+  serviceType: string;
+  total: string;
+  refund: string;
 }
 export type FinancialGroup = 'operacional' | 'administrativo' | 'otro';
 export type ExpenseStatus = 'pendiente' | 'pagada' | 'cancelada';

@@ -277,18 +277,26 @@ func (q *Queries) DeliverOrderLine(ctx context.Context, arg DeliverOrderLinePara
 	return result.RowsAffected(), nil
 }
 
-const folioNamesUsedToday = `-- name: FolioNamesUsedToday :many
+const folioNamesUsedInSession = `-- name: FolioNamesUsedInSession :many
 select folio_name from orders
-where business_date = $1 and folio_name is not null
+where register_session_id = $1 and folio_name is not null
 `
 
-// Los nombres ya repartidos hoy, para no repetir uno cuando la pantalla propone el suyo.
+// Los nombres ya repartidos EN ESTE TURNO, para no repetir uno cuando la pantalla propone el suyo.
 //
-// Se lee dentro de la MISMA transacción que toma NextDailyNumber, y eso es lo que la hace segura:
-// ese insert bloquea la fila del contador del día hasta el commit, así que dos ventas de la misma
-// empresa y fecha no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
-func (q *Queries) FolioNamesUsedToday(ctx context.Context, businessDate pgtype.Date) ([]*string, error) {
-	rows, err := q.db.Query(ctx, folioNamesUsedToday, businessDate)
+// Mismo alcance que el número, y por la misma razón: si el número se cuenta por turno y el nombre
+// por fecha, los dos caminos quedan a medio separar y el que se cante depende de cuál de las dos
+// cosas cambió primero.
+//
+// Se lee dentro de la MISMA transacción que toma NextFolioNumber, y eso es lo que la hace segura:
+// ese insert bloquea la fila del contador del turno hasta el commit, así que dos ventas del mismo
+// turno no pueden estar aquí a la vez. Sin ese lock haría falta uno propio.
+//
+// Un turno muy largo puede repartir más pedidos que nombres tiene la lista. No es un problema
+// nuevo ni rompe nada: `DisponiblesDeLaBolsa` ya devuelve los repetidos antes que dejar un pedido
+// sin con qué cantarse, igual que hacía un día con más de cien ventas.
+func (q *Queries) FolioNamesUsedInSession(ctx context.Context, registerSessionID *int64) ([]*string, error) {
+	rows, err := q.db.Query(ctx, folioNamesUsedInSession, registerSessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -1140,20 +1148,30 @@ func (q *Queries) MarcarTodoElPedidoEnviadoACocina(ctx context.Context, orderID 
 	return err
 }
 
-const nextDailyNumber = `-- name: NextDailyNumber :one
+const nextFolioNumber = `-- name: NextFolioNumber :one
 
-insert into order_counters (business_date, last_number)
+insert into folio_counters (register_session_id, last_number)
 values ($1, 1)
-on conflict on constraint order_counters_pkey do update set last_number = order_counters.last_number + 1
+on conflict on constraint folio_counters_pkey do update set last_number = folio_counters.last_number + 1
 returning last_number
 `
 
 // Creación
-// company_id lo auto-sella el default (GUC del tenant); el folio diario es por-empresa. Se
-// arbitra por NOMBRE de la PK compuesta (company_id, business_date): referir la columna por
-// nombre haría fallar a sqlc, que no ve las columnas agregadas dinámicamente en la migración.
-func (q *Queries) NextDailyNumber(ctx context.Context, businessDate pgtype.Date) (int32, error) {
-	row := q.db.QueryRow(ctx, nextDailyNumber, businessDate)
+// El folio consecutivo DENTRO DEL TURNO, no dentro del día.
+//
+// La fecha de una venta y su folio son dos caminos independientes: la fecha la da el reloj y el
+// folio lo da el turno. Colgar el contador de la fecha era lo que los acoplaba, y obligaba a que la
+// venta heredara la fecha del turno para que un turno nocturno no se partiera en dos #1 — herencia
+// que además no tenía techo y archivaba días enteros de ventas bajo la fecha de un turno olvidado.
+//
+// company_id lo auto-sella el default (GUC del tenant). Se arbitra por NOMBRE de la PK compuesta
+// (company_id, register_session_id) por consistencia con el resto del archivo.
+//
+// El `on conflict do update` bloquea la fila del contador hasta el commit, y ESO es lo que serializa
+// la numeración: dos cobros simultáneos del mismo turno no pueden estar aquí a la vez. No es un
+// detalle de estilo — quitarlo reparte el mismo número dos veces.
+func (q *Queries) NextFolioNumber(ctx context.Context, registerSessionID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, nextFolioNumber, registerSessionID)
 	var last_number int32
 	err := row.Scan(&last_number)
 	return last_number, err

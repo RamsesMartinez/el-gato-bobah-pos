@@ -150,6 +150,39 @@ periodo que pidió.
 
 ---
 
+## T. La fecha la da el reloj, el folio lo da el turno (spec 008)
+
+El defecto que lo abrió: `orders.business_date` se HEREDABA del turno de caja, sin techo. Medido el
+2026-09-04 en el ambiente de pruebas — el turno abrió el 31 de agosto y nadie lo cerró, así que 158
+pedidos y $6,664 quedaron archivados como 31 de agosto y la pantalla de Ventas del día salía vacía
+con el negocio vendiendo.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| T1 | Turno abierto hace cuatro días, venta de hoy | Se archiva con la fecha de HOY, y sigue perteneciendo a ese turno | `TestLaVentaSeArchivaEnElDiaEnQueOcurrioYNoEnElDelTurno` | Go |
+| T2 | Turno que cruza la medianoche | La fecha cambia de día, el folio NO se reinicia | `TestElFolioSigueAlTurnoAunqueCruceLaMedianoche` | Go |
+| T3 | Ocho cobros simultáneos del mismo turno | Folios distintos y consecutivos: el candado de fila sigue serializando | `TestDosCobrosSimultaneosNoCompartenFolio` | Go |
+| T4 | Turno que ya traía folios repartidos al migrar | Continúa en N+1; sin la semilla pediría el 1 y chocaría con un 23505 | `TestUnTurnoConFoliosRepartidosContinuaLaNumeracion` | Go |
+| T5 | Cerrar y reabrir la caja el mismo día | Renumera desde 1 y no colisiona, porque cerrar exige que no queden pedidos vivos | `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | Go |
+| T6 | `folio_counters` bajo el rol de la app | Cobra sin 42501: el grant de 0024 fue puntual y no hay default privileges | `TestElFolioSeReparteBajoElRolDeLaAplicacion` | Go |
+| T7 | Contador colgado del turno de otra empresa | Lo rechaza el ESQUEMA (23503), no un servicio: los chequeos de FK saltan RLS | `TestElEsquemaRechazaUnContadorDeFolioQueCruzaEmpresas` | Go |
+| T8 | La corrección histórica (0062) con dos empresas | Corrige la fecha; deja intactos folio, turno y toda cifra de arqueo; y se revierte | `TestLaMigracionCorrigeElDiaSinMoverDineroDeArqueo` | Go |
+| T9 | Zona con horario de verano el día del cambio | El día se resuelve preguntándole a la zona, nunca restando 24 h | `TestTurnoDeOtroDia` | Go |
+
+## U. Las ventas de un corte y el aviso de turno viejo (spec 008)
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| U1 | Corte con una venta cancelada | Se LISTA (pasó en el turno) pero NO suma al total: su dinero no entró | `TestElDetalleDelCorteListaSusVentasYSoloSumaElIngreso` | Go |
+| U2 | Dos turnos el mismo día | Cada detalle trae solo lo suyo. El filtro es por turno, no por ventana de tiempo | `TestElDetalleDeUnCorteNoTraeVentasDeOtro` | Go |
+| U3 | Corte con más ventas que el tope de 200 | La pantalla dice cuántas hay EN TOTAL: un recorte silencioso se lee como "esto es todo" | `el detalle dice cuántas ventas hay cuando muestra solo una parte` | Vitest |
+| U4 | El total del corte | Declara en pantalla que deja fuera canceladas, reembolsadas y propinas | `el total de las ventas del corte declara qué deja fuera` | Vitest |
+| U5 | Corte sin ninguna venta | Lo dice con una frase; una tabla vacía parece un error de carga | `un corte sin ventas lo dice en vez de pintar una tabla vacía` | Vitest |
+| U6 | Turno abierto ayer a las 23:00, lleva una hora | Avisa: compara DÍAS, no horas transcurridas | `TestElEstadoDeCajaAvisaCuandoElTurnoEsDeOtroDia` | Go |
+| U7 | Con el aviso visible | La pantalla de venta sigue completa: el aviso nunca bloquea el cobro | `el aviso de turno viejo se ve y NO bloquea la pantalla de venta` | Vitest |
+| U8 | Turno abierto hoy | Sin aviso. Un aviso permanente se vuelve ruido y se aprende a ignorar | `un turno abierto hoy no muestra el aviso` | Vitest |
+| U9 | Backend viejo, sin el campo `deOtroDia` | Sin aviso, nunca uno inventado: el front se despliega ~7 min antes que el backend | `sin el campo del backend no se inventa un aviso` | Vitest |
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
@@ -164,3 +197,6 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 | X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
 | X11 | El reuso revoca por **usuario**, no por familia | La constitución dice "revoca toda la familia". No hay columna de linaje en `refresh_tokens`: es cambio de esquema | H18 |
 | X12 | El front de producción sale ~7 min ANTES que el backend | `deploy-frontend` depende de `frontend` y `deploy-backend` de `image`. En esa ventana el POS crea el pedido y no lo puede cobrar | H18 |
+| X13 | El folio puede repetirse entre dos turnos del **mismo día** | Consecuencia aceptada de numerar por turno (spec 008). Es inofensiva porque cerrar un turno exige que no queden pedidos vivos, así que dos folios iguales nunca coexisten vivos — pero no hay nada que lo impida si esa regla se afloja. Lo vigila `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | T5 |
+| X14 | El `Down` de 0061 falla si ya se vendió con dos turnos el mismo día | Volver a estrechar la unicidad al día es imposible con dos #1 de la misma fecha. Es inherente a revertir una restricción que se ensanchó; queda escrito en la propia migración en vez de descubrirse al revertir | — |
+| X15 | La lista de ventas del corte se corta en 200 | Sin controles de paginación: el detalle ya reparte 600 px entre cuatro secciones. La pantalla dice cuántas hay en total, así que recorta sin mentir — pero un corte de más de 200 ventas no se puede recorrer completo desde ahí | U3 |

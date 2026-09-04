@@ -60,8 +60,9 @@ func ValidTimezone(name string) bool {
 
 // Los modos de corte de la VISTA: hasta cuándo se ve en pantalla un pedido ya entregado.
 //
-// No tienen nada que ver con el día al que pertenece una venta. Ese lo decide el turno y lo guarda
-// `orders.business_date`; esto solo decide qué se sigue mostrando.
+// No tienen nada que ver con el día al que pertenece una venta. Ese lo decide el RELOJ en la zona
+// del local —lo calcula `BusinessDate` de aquí arriba y lo guarda `orders.business_date`—; esto
+// solo decide qué se sigue mostrando.
 const (
 	// CorteMedianoche: la medianoche del día local. Es el default porque es lo que un operador
 	// espera sin que nadie se lo explique, y el único que no depende de que alguien se acuerde de
@@ -101,4 +102,16 @@ func DesdeCuandoSeVen(modo string, ahora time.Time, zona *time.Location, abrioEl
 	}
 	y, m, d := ahora.In(zona).Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, zona)
+}
+
+// TurnoDeOtroDia dice si un turno abierto arrancó en un día anterior a hoy, en la zona del local.
+//
+// Compara DÍAS DE CALENDARIO y no horas transcurridas, y esa es toda la decisión: un turno que
+// abrió ayer a las 23:00 ya es de ayer aunque lleve una hora abierto, y uno que abrió hoy a las
+// 08:00 no lo es aunque lleve catorce. Contar horas dejaría pasar justo el caso que importa.
+//
+// Existe porque un turno que nadie cierra mete días enteros de dinero en un solo arqueo, y hasta
+// ahora nada se lo decía a quien opera: el defecto duró cinco días sin que nadie lo notara.
+func TurnoDeOtroDia(abrio, ahora time.Time, zona *time.Location) bool {
+	return BusinessDate(abrio, zona).Before(BusinessDate(ahora, zona))
 }
