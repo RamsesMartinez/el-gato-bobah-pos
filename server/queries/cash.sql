@@ -187,7 +187,10 @@ order by pm.sort_key;
 -- La sesión que habilita cobrar. Es SIEMPRE la de la caja principal: las secundarias (caja fuerte,
 -- caja externa) existen para traspasos y gastos, y si una de ellas bastara para vender el efectivo
 -- del mostrador caería en un arqueo que no es el suyo.
-select s.id, s.register_id, s.business_date
+--
+-- Trae también opened_at: es lo que deja avisar que el turno abierto ya no es de hoy. La fecha de
+-- negocio del turno NO sirve para eso — dice con qué día se abrió, no cuándo.
+select s.id, s.register_id, s.business_date, s.opened_at
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
@@ -313,3 +316,37 @@ select s.closed_at from register_sessions s
 join cash_registers r on r.id = s.register_id
 where r.is_primary and s.closed_at is not null
 order by s.closed_at desc limit 1;
+
+-- name: SessionSales :many
+-- Las ventas que ESTE corte cobró, para poder verlas desde el corte.
+--
+-- Por register_session_id y no por ventana de tiempo, igual que ExpectedByMethodForSession y por la
+-- misma razón: la ventana deja fuera lo que se cobró tarde y mete lo que no era del turno.
+--
+-- Existe porque el día de una venta y el turno que la cobró dejaron de coincidir: la fecha la da el
+-- reloj y el turno puede cruzar la medianoche. Sin esto no habría dónde ver qué ventas responden por
+-- el dinero de un arqueo.
+--
+-- Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
+-- las incluye es el total, y de eso se encarga la gemela de abajo.
+select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type,
+       o.total, o.refund_amount
+from orders o
+where o.register_session_id = $1
+order by o.opened_at desc, o.id desc
+limit $2;
+
+-- name: CountSessionSales :one
+-- La gemela de SessionSales, con el MISMO where. Dos cosas que la pantalla necesita y que la lista
+-- recortada no puede dar:
+--
+--   * cuántas ventas hay EN TOTAL, para que un recorte no se lea como "esto es todo";
+--   * cuánto suman las que dejaron ingreso.
+--
+-- El total excluye canceladas y reembolsadas —su dinero no entró— y no toca las propinas, que son
+-- del personal y no ingreso del negocio. La pantalla declara las dos exclusiones: una cifra
+-- agregada que no dice qué incluye invita a sumarla con otra.
+select count(*)::int as total,
+       coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
+from orders o
+where o.register_session_id = $1;

@@ -87,8 +87,15 @@ func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
 	}
 }
 
-// La venta hereda la fecha del TURNO, no la recalcula. Así un turno que de verdad cruza la
-// medianoche local (abre 11pm, cierra 3am) numera corrido en vez de partirse en dos #1.
+// LOS DOS CAMINOS SON INDEPENDIENTES: la fecha la da el reloj, el folio lo da el turno.
+//
+// Antes la venta HEREDABA la fecha del turno, y eso resolvía la numeración de un turno nocturno a
+// costa de que un turno que nadie cerrara siguiera estampando su fecha días después. Se midió: 158
+// pedidos archivados como 31 de agosto hasta el 4 de septiembre, y la pantalla de Ventas del día
+// saliendo vacía con el negocio vendiendo.
+//
+// Ahora ninguno de los dos lee al otro, y este test prueba las dos mitades a la vez a propósito:
+// si alguien vuelve a acoplarlas, una de las dos aserciones se cae.
 func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -132,12 +139,22 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 		t.Fatalf("los folios del turno deben ir corridos: %d y %d", primera.Number, segunda.Number)
 	}
 
+	// Y la otra mitad: la fecha SÍ cambia, porque la decide el reloj y ya es otro día en México.
 	var d1, d2 time.Time
 	_ = st.Pool.QueryRow(ctx, `select business_date from orders where id = $1`, primera.ID).Scan(&d1)
 	_ = st.Pool.QueryRow(ctx, `select business_date from orders where id = $1`, segunda.ID).Scan(&d2)
-	if !d1.Equal(d2) {
-		t.Fatalf("las dos ventas del mismo turno quedaron en días distintos: %s y %s",
-			d1.Format("2006-01-02"), d2.Format("2006-01-02"))
+	zona := domain.LoadBusinessLocation(domain.DefaultTimezone)
+	if quiere := domain.BusinessDate(antes, zona); !d1.Equal(quiere) {
+		t.Errorf("la venta de las 22:30 quedó archivada el %s y ocurrió el %s",
+			d1.Format("2006-01-02"), quiere.Format("2006-01-02"))
+	}
+	if quiere := domain.BusinessDate(despues, zona); !d2.Equal(quiere) {
+		t.Errorf("la venta de las 01:30 quedó archivada el %s y ocurrió el %s",
+			d2.Format("2006-01-02"), quiere.Format("2006-01-02"))
+	}
+	if d1.Equal(d2) {
+		t.Errorf("las dos ventas quedaron el mismo día (%s): la fecha se sigue heredando del turno "+
+			"en vez de leerse del reloj", d1.Format("2006-01-02"))
 	}
 }
 
