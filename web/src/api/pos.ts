@@ -79,8 +79,15 @@ export const posApi = {
   order: (id: number) => api.get<OrderView>(`/orders/${id}`),
   setOrderStatus: (id: number, status: string) =>
     api.post<void>(`/orders/${id}/status`, { status }),
-  cancelOrder: (id: number, reason: string) =>
-    api.post<void>(`/orders/${id}/cancel`, { reason }),
+  // `devolver` confirma que el dinero se le regresa al cliente. Sin él, un pedido con cobros NO se
+  // cancela: cancelarlo a secas lo sacaba de los reportes y dejaba el arqueo esperando ese dinero
+  // en el cajón.
+  cancelOrder: (id: number, reason: string, devolver = false) =>
+    api.post<void>(`/orders/${id}/cancel`, { reason, devolver }),
+  // Cancelar UN renglón. Responde si repuso el inventario: el que ya salió a cocina baja el total
+  // pero no devuelve el insumo, y la pantalla tiene que poder decirlo.
+  cancelOrderLine: (id: number, lineId: number, reason: string) =>
+    api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`, { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
@@ -92,8 +99,10 @@ export const posApi = {
   // El filtro va en el SERVIDOR y no aquí, igual que la suma: el total pendiente sale del mismo
   // recorrido que la lista, y recortar de este lado lo dejaría contando filas que no se muestran.
   openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open?porCobrar=true'),
-  refundOrder: (id: number, reason: string) =>
-    api.post<void>(`/orders/${id}/refund`, { reason }),
+  // `amount` vacío = todo lo que queda por devolver, que es el caso de todos los días. Con monto,
+  // devuelve una parte: un platillo de tres.
+  refundOrder: (id: number, reason: string, amount?: number, lineId?: number) =>
+    api.post<void>(`/orders/${id}/refund`, { reason, amount, lineId }),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
   // la tarjeta, y "salieron 3 de 5 alitas" es sobre un renglón.
   deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
@@ -114,7 +123,16 @@ export const posApi = {
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
   // ¿hay caja abierta? Para el aviso del POS (disponible a cualquier rol).
-  cashStatus: () => api.get<{ open: boolean }>('/cash-status'),
+  // `deOtroDia` lo decide el SERVIDOR, que es donde vive la zona del negocio. Los tres campos
+  // nuevos son opcionales a propósito: el front se despliega antes que el backend, y durante esos
+  // minutos la pantalla tiene que quedarse sin aviso, no rota.
+  cashStatus: () =>
+    api.get<{
+      open: boolean;
+      openedAt?: string;
+      businessDate?: string;
+      deOtroDia?: boolean;
+    }>('/cash-status'),
 
   businessSettings: () => api.get<BusinessSettings>('/business-settings'),
   // Binario del logo. Lanza ApiError 404 cuando el negocio no subió ninguno: quien llama cae al

@@ -783,6 +783,12 @@ type FolioConsumido struct {
 	CompanyID int64       `json:"company_id"`
 }
 
+type FolioCounter struct {
+	RegisterSessionID int64 `json:"register_session_id"`
+	LastNumber        int32 `json:"last_number"`
+	CompanyID         int64 `json:"company_id"`
+}
+
 type FudoImportMap struct {
 	ID       int64   `json:"id"`
 	Entity   string  `json:"entity"`
@@ -937,6 +943,25 @@ type OrderPayment struct {
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
 	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+}
+
+type OrderRefund struct {
+	ID              int64           `json:"id"`
+	OrderID         int64           `json:"order_id"`
+	OrderLineID     *int64          `json:"order_line_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	Reason          string          `json:"reason"`
+	RefundedBy      int64           `json:"refunded_by"`
+	CashMovementID  *int64          `json:"cash_movement_id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	CompanyID       int64           `json:"company_id"`
+}
+
+type OrdersBusinessDateFix struct {
+	OrderID       int64       `json:"order_id"`
+	PreviousDate  pgtype.Date `json:"previous_date"`
+	CorrectedDate pgtype.Date `json:"corrected_date"`
 }
 
 type PasswordResetToken struct {
@@ -1094,6 +1119,7 @@ type StockMovement struct {
 	Reason       *string           `json:"reason"`
 	Note         *string           `json:"note"`
 	CreatedAt    time.Time         `json:"created_at"`
+	OrderLineID  *int64            `json:"order_line_id"`
 }
 
 type Supplier struct {

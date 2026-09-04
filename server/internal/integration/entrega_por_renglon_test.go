@@ -164,7 +164,12 @@ func TestNoSeCancelaUnPedidoConProductosEntregados(t *testing.T) {
 	}
 }
 
-// Un pedido del que no ha salido nada sí se cancela: es el flujo de siempre y no se rompe.
+// Un pedido del que no ha salido nada sí se cancela — pero si ya está COBRADO, hay que devolver su
+// dinero en el mismo paso.
+//
+// Este test cambió con la feature 007. Antes cancelaba a secas y pasaba: la venta salía de los
+// reportes, los $1,120 cobrados se quedaban en `order_payments` y el arqueo los seguía esperando en
+// el cajón. Cancelar sin resolver el dinero era el agujero, no el flujo de siempre.
 func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -172,12 +177,27 @@ func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
 	ord, _, _ := pedidoDeAlitas(t, st, svc, "cancelable")
 	cajero := makeUser(t, st, "cajero_ok", "cajero")
 
-	if err := svc.Cancel(ctx, ord.ID, cajero, "se equivocó de pedido"); err != nil {
-		t.Fatalf("Cancel: %v", err)
+	// Sin confirmar la devolución no se cancela: el pedido está cobrado.
+	if err := svc.Cancel(ctx, ord.ID, cajero, "se equivocó de pedido"); !errors.Is(err, domain.ErrCancelarSinDevolver) {
+		t.Fatalf("cancelar un pedido cobrado sin devolver = %v, quiere ErrCancelarSinDevolver", err)
+	}
+
+	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{
+		OrderID: ord.ID, Motivo: "se equivocó de pedido", ActorID: cajero, Devolver: true,
+	}); err != nil {
+		t.Fatalf("cancelar con devolución: %v", err)
 	}
 	tras, _ := svc.Detail(ctx, ord.ID)
 	if tras.Status != domain.StatusCancelada {
 		t.Errorf("estado = %s, quiere cancelada", tras.Status)
+	}
+	// Y el dinero volvió: sin esto el arqueo seguiría esperando los $1,120 en el cajón.
+	var devuelto decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `select refund_amount from orders where id = $1`, ord.ID).Scan(&devuelto); err != nil {
+		t.Fatalf("leer refund_amount: %v", err)
+	}
+	if !devuelto.Equal(decimal.RequireFromString("1120")) {
+		t.Fatalf("se devolvieron %s de los 1120 cobrados", devuelto)
 	}
 }
 

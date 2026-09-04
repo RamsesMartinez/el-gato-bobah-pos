@@ -12,8 +12,13 @@ where p.id = any($1::bigint[]);
 select id from products where id = any($1::bigint[]) and track_stock;
 
 -- name: InsertStockMovement :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, user_id, reason, note)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);
+-- order_line_id: de QUÉ renglón salió este descuento.
+--
+-- Sin él, reponer un renglón cancelado obliga a recalcular su consumo con la receta de HOY, y una
+-- receta que cambió entre la venta y la cancelación repondría una cantidad distinta de la que salió.
+-- NULL en los movimientos que no vienen de una venta (ajustes, compras, mermas).
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);
 
 -- Almacén / niveles
 

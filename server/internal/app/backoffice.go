@@ -84,6 +84,16 @@ func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, met
 
 // ---- Cortes de caja ----
 
+// maxVentasDeCorte acota la lista de ventas que viaja dentro del detalle de un corte.
+//
+// Es el mismo tope que la frontera aplica a cualquier lista sin paginar (`httpapi.MaxListLimit`), y
+// se repite aquí en vez de importarlo para no invertir el layering: `app` no depende de `httpapi`.
+// Si uno se mueve, el otro también.
+//
+// Recortar no es esconder: el detalle viaja con la cuenta REAL para que la pantalla pueda decir
+// cuántas hay en total.
+const maxVentasDeCorte = 200
+
 type MethodTotal struct {
 	MethodID    int             `json:"methodId"`
 	Name        string          `json:"name"`
@@ -322,6 +332,28 @@ type SessionDetailView struct {
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
 	Breakdown    CorteBreakdown     `json:"breakdown"`
+
+	// Las ventas que este corte cobró. Viven aquí y no en un filtro de la pantalla de Ventas: ahí
+	// convivirían con el filtro de fechas y bastaría elegir un rango que no toque el corte para
+	// llegar a una pantalla vacía sin explicación.
+	Sales []SessionSaleView `json:"sales"`
+	// Cuántas hay EN TOTAL, no cuántas se mandaron. Un recorte silencioso se lee como "esto es todo".
+	SalesCount int `json:"salesCount"`
+	SalesShown int `json:"salesShown"`
+	// Suma de las ventas que dejaron ingreso: sin canceladas, sin reembolsadas y sin propinas. La
+	// pantalla declara las tres exclusiones.
+	SalesTotal decimal.Decimal `json:"salesTotal"`
+}
+
+type SessionSaleView struct {
+	ID          int64           `json:"id"`
+	DailyNumber int             `json:"dailyNumber"`
+	FolioName   *string         `json:"folioName"`
+	OpenedAt    time.Time       `json:"openedAt"`
+	Status      string          `json:"status"`
+	ServiceType string          `json:"serviceType"`
+	Total       decimal.Decimal `json:"total"`
+	Refund      decimal.Decimal `json:"refund"`
 }
 
 type SessionHistoryRow struct {
@@ -787,11 +819,16 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	if err != nil {
 		return nil, err
 	}
+	ventas, cuenta, ingreso, err := s.sessionSales(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	view := &SessionDetailView{
 		ID: sess.ID, RegisterName: sess.RegisterName, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, ClosedAt: tsPtr(sess.ClosedAt),
 		OpenedByName: sess.OpenedByName, ClosedByName: sess.ClosedByName, Notes: sess.Notes,
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps, // no-nil → [] en JSON
+		Sales: ventas, SalesCount: cuenta, SalesShown: len(ventas), SalesTotal: ingreso,
 	}
 	methods := make([]methodExpected, 0, len(totals))
 	for _, t := range totals {
@@ -822,14 +859,49 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 // Chequeo ligero, sin calcular esperados. Disponible a cualquier rol autenticado: saber si el
 // negocio está operando no es dato sensible.
 func (s *BackofficeService) SellingRegisterOpen(ctx context.Context) (bool, error) {
-	_, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
+	estado, err := s.EstadoDeCaja(ctx)
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return estado.Open, nil
+}
+
+// EstadoDeCajaView: si se puede cobrar, y desde cuándo está abierto el turno que recibe ventas.
+type EstadoDeCajaView struct {
+	Open bool `json:"open"`
+	// OpenedAt y BusinessDate: nil sin turno abierto. La pantalla no los inventa.
+	OpenedAt     *time.Time `json:"openedAt,omitempty"`
+	BusinessDate *string    `json:"businessDate,omitempty"`
+	// DeOtroDia lo decide el SERVIDOR. La zona del negocio vive aqui, y que cada tableta compare
+	// fechas contra su propio reloj es la familia de defectos que esta feature viene a cerrar.
+	DeOtroDia bool `json:"deOtroDia"`
+}
+
+// EstadoDeCaja contesta lo mismo que SellingRegisterOpen y además si el turno abierto ya no es de
+// hoy.
+//
+// Va colgado del endpoint que el POS YA consulta para saber si puede cobrar: el aviso no cuesta un
+// viaje más ni un estado nuevo que sincronizar. Y es un AVISO, nunca un bloqueo: un negocio en
+// operación prefiere una fecha corrida a una caja parada, y convertir un descuido administrativo en
+// un cobro imposible es peor que el descuido.
+func (s *BackofficeService) EstadoDeCaja(ctx context.Context) (EstadoDeCajaView, error) {
+	sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EstadoDeCajaView{}, nil
+	}
+	if err != nil {
+		return EstadoDeCajaView{}, err
+	}
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	zona := domain.LoadBusinessLocation(tz)
+	fecha := sess.BusinessDate.Time.Format("2006-01-02")
+	return EstadoDeCajaView{
+		Open: true, OpenedAt: &sess.OpenedAt, BusinessDate: &fecha,
+		DeOtroDia: domain.TurnoDeOtroDia(sess.OpenedAt, s.now(), zona),
+	}, nil
 }
 
 // tsPtr convierte un timestamptz anulable de pgx a *time.Time (nil si NULL).
@@ -1092,4 +1164,32 @@ func (s *BackofficeService) cobradoPorCajero(ctx context.Context, sessionID int6
 		})
 	}
 	return out, nil
+}
+
+// sessionSales lee las ventas de un corte junto con su conteo y su ingreso.
+//
+// La lista y el resumen salen de dos consultas con el MISMO where a propósito: si divergen, una de
+// las dos miente y quien lee la pantalla no tiene forma de saber cuál.
+//
+// El tope es el mismo `MaxListLimit` del resto de las listas. Se devuelve la cuenta REAL aparte para
+// que la pantalla pueda decir cuántas hay: recortar en silencio se lee como "esto es todo".
+func (s *BackofficeService) sessionSales(ctx context.Context, id int64) ([]SessionSaleView, int, decimal.Decimal, error) {
+	q := s.store.QC(ctx)
+	rows, err := q.SessionSales(ctx, db.SessionSalesParams{RegisterSessionID: &id, Limit: maxVentasDeCorte})
+	if err != nil {
+		return nil, 0, decimal.Zero, err
+	}
+	resumen, err := q.CountSessionSales(ctx, &id)
+	if err != nil {
+		return nil, 0, decimal.Zero, err
+	}
+	ventas := make([]SessionSaleView, 0, len(rows)) // no-nil → [] en JSON, nunca null
+	for _, r := range rows {
+		ventas = append(ventas, SessionSaleView{
+			ID: r.ID, DailyNumber: int(r.DailyNumber), FolioName: r.FolioName, OpenedAt: r.OpenedAt,
+			Status: string(r.Status), ServiceType: string(r.ServiceType),
+			Total: r.Total, Refund: r.RefundAmount,
+		})
+	}
+	return ventas, int(resumen.Total), resumen.Ingreso, nil
 }

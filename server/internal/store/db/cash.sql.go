@@ -81,6 +81,34 @@ func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) erro
 	return err
 }
 
+const countSessionSales = `-- name: CountSessionSales :one
+select count(*)::int as total,
+       coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
+from orders o
+where o.register_session_id = $1
+`
+
+type CountSessionSalesRow struct {
+	Total   int32           `json:"total"`
+	Ingreso decimal.Decimal `json:"ingreso"`
+}
+
+// La gemela de SessionSales, con el MISMO where. Dos cosas que la pantalla necesita y que la lista
+// recortada no puede dar:
+//
+//   - cuántas ventas hay EN TOTAL, para que un recorte no se lea como "esto es todo";
+//   - cuánto suman las que dejaron ingreso.
+//
+// El total excluye canceladas y reembolsadas —su dinero no entró— y no toca las propinas, que son
+// del personal y no ingreso del negocio. La pantalla declara las dos exclusiones: una cifra
+// agregada que no dice qué incluye invita a sumarla con otra.
+func (q *Queries) CountSessionSales(ctx context.Context, registerSessionID *int64) (CountSessionSalesRow, error) {
+	row := q.db.QueryRow(ctx, countSessionSales, registerSessionID)
+	var i CountSessionSalesRow
+	err := row.Scan(&i.Total, &i.Ingreso)
+	return i, err
+}
+
 const createCashRegister = `-- name: CreateCashRegister :one
 insert into cash_registers (name) values ($1)
 returning id, name, is_primary, is_active
@@ -239,7 +267,7 @@ func (q *Queries) GetCashRegister(ctx context.Context, id int64) (GetCashRegiste
 }
 
 const getOpenPrimarySession = `-- name: GetOpenPrimarySession :one
-select s.id, s.register_id, s.business_date
+select s.id, s.register_id, s.business_date, s.opened_at
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
@@ -250,15 +278,24 @@ type GetOpenPrimarySessionRow struct {
 	ID           int64       `json:"id"`
 	RegisterID   int64       `json:"register_id"`
 	BusinessDate pgtype.Date `json:"business_date"`
+	OpenedAt     time.Time   `json:"opened_at"`
 }
 
 // La sesión que habilita cobrar. Es SIEMPRE la de la caja principal: las secundarias (caja fuerte,
 // caja externa) existen para traspasos y gastos, y si una de ellas bastara para vender el efectivo
 // del mostrador caería en un arqueo que no es el suyo.
+//
+// Trae también opened_at: es lo que deja avisar que el turno abierto ya no es de hoy. La fecha de
+// negocio del turno NO sirve para eso — dice con qué día se abrió, no cuándo.
 func (q *Queries) GetOpenPrimarySession(ctx context.Context) (GetOpenPrimarySessionRow, error) {
 	row := q.db.QueryRow(ctx, getOpenPrimarySession)
 	var i GetOpenPrimarySessionRow
-	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
+	err := row.Scan(
+		&i.ID,
+		&i.RegisterID,
+		&i.BusinessDate,
+		&i.OpenedAt,
+	)
 	return i, err
 }
 
@@ -1094,6 +1131,71 @@ func (q *Queries) SessionCashByCashier(ctx context.Context, registerSessionID *i
 			&i.Cash,
 			&i.Other,
 			&i.Payments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sessionSales = `-- name: SessionSales :many
+select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type,
+       o.total, o.refund_amount
+from orders o
+where o.register_session_id = $1
+order by o.opened_at desc, o.id desc
+limit $2
+`
+
+type SessionSalesParams struct {
+	RegisterSessionID *int64 `json:"register_session_id"`
+	Limit             int32  `json:"limit"`
+}
+
+type SessionSalesRow struct {
+	ID           int64           `json:"id"`
+	DailyNumber  int32           `json:"daily_number"`
+	FolioName    *string         `json:"folio_name"`
+	OpenedAt     time.Time       `json:"opened_at"`
+	Status       OrderStatus     `json:"status"`
+	ServiceType  ServiceType     `json:"service_type"`
+	Total        decimal.Decimal `json:"total"`
+	RefundAmount decimal.Decimal `json:"refund_amount"`
+}
+
+// Las ventas que ESTE corte cobró, para poder verlas desde el corte.
+//
+// Por register_session_id y no por ventana de tiempo, igual que ExpectedByMethodForSession y por la
+// misma razón: la ventana deja fuera lo que se cobró tarde y mete lo que no era del turno.
+//
+// Existe porque el día de una venta y el turno que la cobró dejaron de coincidir: la fecha la da el
+// reloj y el turno puede cruzar la medianoche. Sin esto no habría dónde ver qué ventas responden por
+// el dinero de un arqueo.
+//
+// Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
+// las incluye es el total, y de eso se encarga la gemela de abajo.
+func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]SessionSalesRow, error) {
+	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SessionSalesRow{}
+	for rows.Next() {
+		var i SessionSalesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.OpenedAt,
+			&i.Status,
+			&i.ServiceType,
+			&i.Total,
+			&i.RefundAmount,
 		); err != nil {
 			return nil, err
 		}

@@ -4,7 +4,7 @@ import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
 } from '@chakra-ui/react';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from '../../components/ui/menu';
-import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag } from 'react-icons/lu';
+import { LuStore, LuBike, LuEllipsisVertical, LuMinus, LuPlus, LuCheck, LuShoppingBag, LuTrash2 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
@@ -18,6 +18,8 @@ import { printHtmlOffscreen } from '../../utils/printReceipt';
 import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
+import { DevolucionSheet } from './DevolucionSheet';
+import { CancelarRenglonDialog } from './CancelarRenglonDialog';
 import { useSessionStore } from '../../stores/session';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
@@ -37,14 +39,14 @@ const TAP = '44px';
 // estorbarían lo que falta por atender.
 const ENTREGADAS_VISIBLES = 5;
 
-const CANCEL_REASONS = ['Cliente canceló', 'Error de captura', 'Sin insumos', 'Otro'];
-const REFUND_REASONS = ['Producto mal', 'Se cayó / dañó', 'Queja del cliente', 'Cobro erróneo', 'Otro'];
 
 export function OrdersBoardPage() {
   const horaNegocio = useHoraDelNegocio();
   const live = useOrderEvents();
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
+  const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
+  const [quitando, setQuitando] = useState<{ orderId: number; linea: BoardLine } | null>(null);
   const qc = useQueryClient();
   // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
   // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
@@ -91,16 +93,36 @@ export function OrdersBoardPage() {
     onError: conError('No se pudo entregar'),
   });
   const cancelMut = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.cancelOrder(id, reason),
+    mutationFn: ({ id, reason, devolver }: { id: number; reason: string; devolver: boolean }) =>
+      posApi.cancelOrder(id, reason, devolver),
     onSuccess: invalidateAll,
     // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
     // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué.
     onError: conError('No se pudo cancelar'),
   });
+  // Cancelar UN renglón. El servidor responde si repuso el inventario, y eso se le dice al operador:
+  // lo que ya salió a cocina baja de la cuenta pero no devuelve el ingrediente.
+  const cancelarRenglonMut = useMutation({
+    mutationFn: ({ id, lineId, reason }: { id: number; lineId: number; reason: string }) =>
+      posApi.cancelOrderLine(id, lineId, reason),
+    onSuccess: (r) => {
+      invalidateAll();
+      toaster.create({
+        title: 'Renglón quitado',
+        description: r.repusoInventario
+          ? 'El ingrediente volvió al almacén.'
+          : 'Ya se estaba preparando: el ingrediente no vuelve al almacén.',
+        type: 'success',
+      });
+    },
+    onError: conError('No se pudo quitar'),
+  });
+
   const refundMut = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => posApi.refundOrder(id, reason),
-    onSuccess: () => { invalidateAll(); toaster.create({ title: 'Reembolso registrado', type: 'success' }); },
-    onError: conError('Error'),
+    mutationFn: ({ id, reason, amount }: { id: number; reason: string; amount?: number }) =>
+      posApi.refundOrder(id, reason, amount),
+    onSuccess: () => { invalidateAll(); toaster.create({ title: 'Devolución registrada', type: 'success' }); },
+    onError: conError('No se pudo devolver'),
   });
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
@@ -112,14 +134,14 @@ export function OrdersBoardPage() {
   // ya se fue con la comida.
   const pendiente = resumenPorCobrar([...orders, ...entregadas]);
 
-  const cancel = (o: BoardOrder) => {
-    const reason = window.prompt(`Motivo de cancelación:\n(${CANCEL_REASONS.join(', ')})`, CANCEL_REASONS[0]);
-    if (reason) cancelMut.mutate({ id: o.id, reason });
-  };
-  const refund = (o: BoardOrder) => {
-    const reason = window.prompt(`Motivo del reembolso:\n(${REFUND_REASONS.join(', ')})`, REFUND_REASONS[0]);
-    if (reason?.trim()) refundMut.mutate({ id: o.id, reason: reason.trim() });
-  };
+  // La hoja reemplaza al `window.prompt` que pedía el motivo. Ese diálogo lo pinta el sistema
+  // operativo: caja de texto por debajo de 44 px, los motivos listados entre paréntesis sin poder
+  // tocarlos, y —lo peor— tras varios Chrome ofrece suprimirlos, y a partir de ahí `prompt` devuelve
+  // null y la acción deja de hacer nada, en silencio y sin aviso.
+  //
+  // La misma hoja para las dos: con cobros pide cuánto devolver, sin ellos solo el motivo.
+  const cancel = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: true });
+  const refund = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: false });
 
   // La comanda COMPLETA, como acción explícita. La que sale sola al agregar lleva solo lo nuevo
   // —cocina ya está preparando lo anterior—, así que cuando un papel se pierde o la impresora falla
@@ -140,6 +162,7 @@ export function OrdersBoardPage() {
   const acciones: Acciones = {
     puedeCobrar,
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
+    quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
     entregarTodo: (o) => entregarTodo.mutate(o.id),
     cobrar: setCobrando,
     ticket: (o) => setTicketOrderID(o.id),
@@ -176,6 +199,38 @@ export function OrdersBoardPage() {
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
       {/* `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      {quitando && (
+        <CancelarRenglonDialog
+          nombre={quitando.linea.name}
+          yaSalioACocina={quitando.linea.enviadoACocina === true}
+          enviando={cancelarRenglonMut.isPending}
+          onCerrar={() => setQuitando(null)}
+          onConfirmar={(motivo) => {
+            cancelarRenglonMut.mutate({ id: quitando.orderId, lineId: quitando.linea.id, reason: motivo });
+            setQuitando(null);
+          }}
+        />
+      )}
+
+      {devolviendo && (
+        <DevolucionSheet
+          key={devolviendo.pedido.id}
+          pedido={devolviendo.pedido}
+          cancelando={devolviendo.cancelando}
+          enviando={cancelMut.isPending || refundMut.isPending}
+          onCerrar={() => setDevolviendo(null)}
+          onConfirmar={(monto, motivo) => {
+            const { pedido, cancelando } = devolviendo;
+            if (cancelando) {
+              cancelMut.mutate({ id: pedido.id, reason: motivo, devolver: monto > 0 });
+            } else {
+              refundMut.mutate({ id: pedido.id, reason: motivo, amount: monto });
+            }
+            setDevolviendo(null);
+          }}
+        />
+      )}
+
       <CobrarSheet key={cobrando?.id} order={cobrando}
         onClose={() => setCobrando(null)} onCobrado={() => invalidateAll()} />
     </Box>
@@ -186,6 +241,7 @@ interface Acciones {
   // puedeCobrar viene del ajuste del negocio: apagado, este tablero no toca dinero.
   puedeCobrar: boolean;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
+  quitarRenglon: (id: number, linea: BoardLine) => void;
   entregarTodo: (o: BoardOrder) => void;
   cobrar: (o: BoardOrder) => void;
   ticket: (o: BoardOrder) => void;
@@ -252,7 +308,8 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
           // sin esto seguiría en 3 después de entregar 3 de 5 — el botón mandaría al servidor una
           // cantidad mayor a la que falta y el operador vería un error por haber acertado.
           <Renglon key={`${l.id}-${l.delivered}`} l={l}
-            onEntregar={(qty) => acciones.entregarLinea(o.id, l.id, qty)} />
+            onEntregar={(qty) => acciones.entregarLinea(o.id, l.id, qty)}
+            onQuitar={() => acciones.quitarRenglon(o.id, l)} />
         ))}
         {listo && (
           <HStack color="green.600" py={1} gap={1}>
@@ -305,7 +362,9 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
 // El botón verde entrega TODO lo que falta con un tap, que es el caso de siempre. El contador solo
 // aparece cuando falta más de uno: es la excepción —salen 3 de 5 alitas y las otras 2 siguen en la
 // freidora— y cobrarle un tap al caso común para servir a la excepción está al revés.
-function Renglon({ l, onEntregar }: { l: BoardLine; onEntregar: (qty: number) => void }) {
+function Renglon({ l, onEntregar, onQuitar }: {
+  l: BoardLine; onEntregar: (qty: number) => void; onQuitar: () => void;
+}) {
   const falta = faltante(l);
   const [cantidad, setCantidad] = useState(falta);
   const parcial = falta > 1;
@@ -346,6 +405,14 @@ function Renglon({ l, onEntregar }: { l: BoardLine; onEntregar: (qty: number) =>
         onClick={() => onEntregar(parcial ? cantidad : falta)}>
         <LuCheck />
       </Button>
+      {/* Quitar el renglón. Va DESPUÉS de entregar y separado, porque es la acción destructiva de la
+          fila y la constitución pide separarla. En una fila tan apretada no hay distancia que dé
+          seguridad de verdad, así que la barrera real es el diálogo: no borra al tocar, pregunta —
+          y de paso dice qué pasa con el ingrediente. */}
+      <IconButton aria-label={`Quitar ${l.name}`} size="sm" variant="ghost" colorPalette="red"
+        minH={TAP} minW="2rem" ml={1} flexShrink={0} onClick={onQuitar}>
+        <LuTrash2 />
+      </IconButton>
     </HStack>
   );
 }
@@ -395,8 +462,15 @@ function Entregadas({ orders, onRefund, onTicket, onCobrar, puedeCobrar }: {
                     </Button>
                   )}
                   <Button size="sm" minH={TAP} variant="outline" onClick={() => onTicket(o)}>Ticket</Button>
-                  <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
-                    onClick={() => onRefund(o)}>Reembolsar</Button>
+                  {/* Devolver solo lo que SE COBRÓ. El botón vivía al lado de "Cobrar $220" en la
+                      misma tarjeta, y tocarlo anotaba $220 de pérdida por un ingreso que nunca
+                      ocurrió — mientras la cuenta por cobrar desaparecía del contador sin haberse
+                      cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
+                      ofrecerla: el operador la toca con el cliente enfrente. */}
+                  {Number(o.total) - Number(o.outstanding) > 0 && (
+                    <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
+                      onClick={() => onRefund(o)}>Devolver</Button>
+                  )}
                 </HStack>
               </Flex>
             );

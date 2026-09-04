@@ -9,7 +9,9 @@ import { POSPage } from './POSPage';
 // que aquí solo se prueba que la pantalla lo obedezca: sin turno abierto, el catálogo y el ticket
 // no se muestran. Antes esto era un aviso naranja que dejaba seguir, y el operador armaba el
 // pedido completo para toparse con el rechazo al cobrar, con el cliente enfrente.
-const cashStatus = vi.hoisted(() => ({ current: { open: true } }));
+const cashStatus = vi.hoisted(() => ({
+  current: { open: true } as { open: boolean; deOtroDia?: boolean; openedAt?: string },
+}));
 vi.mock('../../api/pos', () => ({
   posApi: {
     cashStatus: () => Promise.resolve(cashStatus.current),
@@ -51,4 +53,36 @@ test('con caja abierta la pantalla de venta se muestra', async () => {
   // El bloqueo desaparece; el catálogo vacío del mock no estorba para verificarlo.
   expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
   expect(screen.queryByText(/no hay caja abierta/i)).not.toBeInTheDocument();
+});
+
+// EL AVISO DE TURNO VIEJO NO PUEDE APAGAR LA CAJA.
+//
+// Nace de un defecto real: un turno se quedó abierto cinco días y nada lo decía. Pero el remedio no
+// puede ser peor que el mal — un negocio en operación prefiere una fecha corrida a una caja parada,
+// así que el aviso informa y ofrece la acción, nunca bloquea la pantalla de venta.
+test('el aviso de turno viejo se ve y NO bloquea la pantalla de venta', async () => {
+  cashStatus.current = { open: true, deOtroDia: true, openedAt: '2026-08-31T18:29:00Z' };
+  montar();
+  expect(await screen.findByText(/la caja lleva abierta desde/i)).toBeInTheDocument();
+  // Lo que de verdad importa: la pantalla de venta sigue ahí.
+  expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  expect(screen.queryByText(/no hay caja abierta/i)).not.toBeInTheDocument();
+});
+
+// Un turno abierto HOY no molesta a nadie. Sin esto, el aviso se volvería ruido permanente y quien
+// opera aprendería a ignorarlo — que es como se pierde un aviso que sí importaba.
+test('un turno abierto hoy no muestra el aviso', async () => {
+  cashStatus.current = { open: true, deOtroDia: false };
+  montar();
+  expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  expect(screen.queryByText(/la caja lleva abierta desde/i)).not.toBeInTheDocument();
+});
+
+// El backend puede no traer el campo todavía: el front se despliega ~7 minutos antes. Durante esos
+// minutos la pantalla se queda SIN aviso, nunca rota ni con un aviso inventado.
+test('sin el campo del backend no se inventa un aviso', async () => {
+  cashStatus.current = { open: true };
+  montar();
+  expect(await screen.findByPlaceholderText(/buscar/i)).toBeInTheDocument();
+  expect(screen.queryByText(/la caja lleva abierta desde/i)).not.toBeInTheDocument();
 });

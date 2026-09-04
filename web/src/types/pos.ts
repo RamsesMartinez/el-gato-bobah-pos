@@ -128,6 +128,9 @@ export interface OrderView {
   total: string;
   currency: Currency;
   paid: boolean;
+  // Lo ya devuelto de este pedido. Es el otro extremo del tope: se puede devolver lo cobrado MENOS
+  // esto, y sin el dato la pantalla ofrecería devolver dos veces lo mismo.
+  refund?: string;
   // Lo que falta por cobrar, tal como lo calcula el servidor. La hoja de cobro lo necesita entre
   // pedazo y pedazo de una cuenta dividida: restarlo aquí sería una segunda implementación de la
   // misma cifra, que es lo que ya dejó a la barra del POS diciendo $2,141 y a su lista $1,928.
@@ -211,6 +214,8 @@ export interface BoardOrder {
   total: string;
   currency: Currency;
   paid: boolean;
+  // Lo ya devuelto. El otro extremo del tope de una devolución: se devuelve lo cobrado MENOS esto.
+  refund?: string;
   // Lo que falta por cobrar. Viaja aparte de `paid` porque un pedido puede estar ABONADO, y
   // derivar el pendiente del total cobraría de más.
   outstanding: string;
@@ -231,6 +236,9 @@ export interface BoardLine {
   notes?: string;
   // "Alitas" y "Alitas BBQ sin cebolla" son platillos distintos en una cocina.
   modifiers?: string[];
+  // Si ya salió a cocina. Decide qué pasa con el insumo al cancelar el renglón: si ya salió, la
+  // comida se hizo y el ingrediente no vuelve al almacén.
+  enviadoACocina?: boolean;
 }
 
 // --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---

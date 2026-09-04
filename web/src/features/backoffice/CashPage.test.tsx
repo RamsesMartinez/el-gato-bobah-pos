@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown } from '../../api/backoffice';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale } from '../../api/backoffice';
 
 // Render con el Provider de Chakra (los componentes usan su sistema de temas).
 function wrap(ui: React.ReactElement) {
@@ -106,4 +106,72 @@ test('sin ventas de plataforma la sección no aparece', () => {
   };
   wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
   expect(screen.queryByText('Por plataforma')).not.toBeInTheDocument();
+});
+
+// UN RECORTE SILENCIOSO SE LEE COMO "ESTO ES TODO".
+//
+// El detalle de un corte trae hasta 200 ventas. Si el corte cobró más, la pantalla tiene que decir
+// cuántas hay en total: sin eso, quien revisa un arqueo concluye que faltan ventas o que sobran, y
+// no tiene forma de saber cuál de las dos.
+test('el detalle dice cuántas ventas hay cuando muestra solo una parte', () => {
+  render(
+    <Provider>
+      <VentasDelCorte session={corteCon({ salesCount: 340, salesShown: 2 })} />
+    </Provider>,
+  );
+  expect(screen.getByText(/340 ventas/)).toBeInTheDocument();
+  expect(screen.getByText(/se muestran las 2 más recientes/)).toBeInTheDocument();
+});
+
+// El total del corte NO incluye canceladas, reembolsadas ni propinas, y la pantalla lo dice. Una
+// cifra agregada que no declara qué incluye invita a sumarla con otra y a reportar dinero que el
+// negocio no tuvo.
+test('el total de las ventas del corte declara qué deja fuera', () => {
+  render(
+    <Provider>
+      <VentasDelCorte session={corteCon({ salesCount: 2, salesShown: 2, salesTotal: '200.00' })} />
+    </Provider>,
+  );
+  expect(screen.getByText(/sin canceladas, reembolsadas ni propinas/i)).toBeInTheDocument();
+});
+
+// Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un
+// error de carga, y manda a quien revisa a recargar en vez de a seguir.
+test('un corte sin ventas lo dice en vez de pintar una tabla vacía', () => {
+  render(
+    <Provider>
+      <VentasDelCorte session={corteCon({ salesCount: 0, salesShown: 0, sales: [] })} />
+    </Provider>,
+  );
+  expect(screen.getByText(/no cobró ninguna venta/i)).toBeInTheDocument();
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+});
+
+function corteCon(over: Partial<CashSessionDetail>): CashSessionDetail {
+  const ventas: CorteSale[] = [
+    { id: 2, dailyNumber: 12, folioName: 'Chartreux', openedAt: '2026-09-04T19:10:00Z', status: 'entregada', serviceType: 'mostrador', total: '100.00', refund: '0.00' },
+    { id: 1, dailyNumber: 11, folioName: null, openedAt: '2026-09-04T18:40:00Z', status: 'cancelada', serviceType: 'mostrador', total: '80.00', refund: '0.00' },
+  ];
+  return {
+    id: 1, registerName: 'Caja principal', status: 'cerrada', openingCash: '0', currency: 'MXN',
+    openedAt: '2026-09-04T16:00:00Z', closedAt: null, openedByName: 'Ana', closedByName: null,
+    notes: null, totals: [], movements: [], expenses: [],
+    breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+    sales: ventas, salesCount: 2, salesShown: 2, salesTotal: '100.00',
+    ...over,
+  };
+}
+
+// "EL CAMPO NO VINO" NO ES "VINO EN CERO".
+//
+// El front de producción sale ~7 minutos antes que el backend. En esa ventana el detalle del corte
+// llega sin `sales`, y tratarlo como una lista vacía hacía que un corte que sí cobró jurara que no
+// cobró nada. Una pantalla que miente sobre dinero es peor que una pantalla incompleta.
+test('sin los campos del backend la sección no se dibuja, en vez de decir que no hubo ventas', () => {
+  const viejo = corteCon({});
+  delete (viejo as Partial<CashSessionDetail>).sales;
+  delete (viejo as Partial<CashSessionDetail>).salesCount;
+  const { container } = render(<Provider><VentasDelCorte session={viejo} /></Provider>);
+  expect(screen.queryByText(/no cobró ninguna venta/i)).not.toBeInTheDocument();
+  expect(container.querySelector('table')).toBeNull();
 });
