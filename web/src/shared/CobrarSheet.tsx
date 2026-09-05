@@ -4,10 +4,11 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuMinus, LuPlus, LuSplit, LuX } from 'react-icons/lu';
+import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
+import { VerTicket } from './tickets/ReprintTicket';
 import type { CobroHecho, OrderView, PedidoParaCobrar } from '../types/pos';
 import { money } from '../utils/format';
 import { TAP_LG, TAP_XL } from '../theme/ui';
@@ -83,6 +84,9 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // del servidor y cambia con cada pedazo cobrado, así que sembrarlo en el estado obligaría a
   // resincronizarlo, y esa resincronización es de donde salen las dos cifras que divergen.
   const [montoElegido, setMontoElegido] = useState<string | null>(null);
+  // Qué pedido se está viendo en el visor de ticket. La hoja de cobro se queda abierta detrás: quien
+  // mira la cuenta con el cliente sigue teniendo el cobro donde lo dejó.
+  const [viendoTicket, setViendoTicket] = useState<number | null>(null);
   // En cuántas partes se está repartiendo lo que falta. null = no se está repartiendo, que es el
   // caso de casi todos los pedidos: se cobra todo a una persona y la hoja no gasta un solo píxel
   // en el repartidor. Antes eran cuatro botones fijos —Todo, entre 2, 3 y 4— siempre en pantalla,
@@ -281,6 +285,17 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
             {/* Dividir vive en el ENCABEZADO, que ya existe, y no en una fila propia: casi siempre
                 se cobra a una sola persona, y una fila que no se usa es alto que se le quita a lo
                 que sí. Aparece solo cuando hay algo que repartir. */}
+            {/* Ver el ticket SIN salir de la hoja de cobro. El papel que sale aquí lleva impreso
+                "POR COBRAR" —el pedido todavía no se paga— así que es la cuenta, no un comprobante
+                de venta, y no puede confundirse con uno.
+
+                Va en el ENCABEZADO, que es horizontal: la hoja de cobro tiene un presupuesto de
+                alto medido contra los 600 px de la tableta, y una fila propia se lo quitaría a los
+                métodos de pago. */}
+            <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
+              onClick={() => setViendoTicket(order.id)}>
+              <LuReceipt /> Ticket
+            </Button>
             {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => { setPartes(2); setMontoElegido(null); }}>
@@ -468,6 +483,10 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
           )}
         </DrawerFooter>
       </DrawerContent>
+      {/* El visor se monta FUERA del contenido de la hoja pero dentro del mismo Drawer: la hoja de
+          cobro se queda abierta detrás, así que cerrar el ticket devuelve al operador exactamente
+          donde estaba —con el método elegido y el monto tecleado— y no a empezar de nuevo. */}
+      <VerTicket orderId={viendoTicket} onClose={() => setViendoTicket(null)} />
     </DrawerRoot>
   );
 }
