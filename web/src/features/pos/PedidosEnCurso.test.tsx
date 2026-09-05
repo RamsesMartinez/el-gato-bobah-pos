@@ -221,3 +221,36 @@ test('tocar Cobrar cierra la lista Y abre la hoja de cobro', async () => {
   expect(await screen.findByText(/Falta \$250/)).toBeInTheDocument();
   expect(screen.getByText(/Total \$250/)).toBeInTheDocument();
 });
+
+// VER LA CUENTA SIN COBRARLA TODAVÍA.
+//
+// El operador que va a la mesa con "¿le traigo la cuenta?" no debería tener que cobrar primero para
+// poder imprimirla, ni salirse a buscar el pedido en otra pantalla. El papel que sale lleva impreso
+// "POR COBRAR", así que es la cuenta y no un comprobante de venta.
+test('desde la lista se puede ver el ticket de un pedido sin cobrarlo', async () => {
+  openOrders.mockResolvedValue({ items: [pedido()], outstanding: '250' });
+  order.mockResolvedValue({ ...pedido(), lines: [], paid: false });
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /250/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Ticket/ }));
+
+  // Pide el pedido COMPLETO: la lista trae solo la cabecera y sin las líneas el ticket sale vacío.
+  await waitFor(() => expect(order).toHaveBeenCalledWith(1));
+  // Y NO lo cobró: ver la cuenta no puede mover dinero.
+  expect(chargeOrder).not.toHaveBeenCalled();
+});
+
+// La lista se queda abierta detrás del visor. Cerrar el ticket devuelve al operador donde estaba,
+// no a reabrir la hoja y buscar el pedido otra vez con el cliente esperando.
+test('ver el ticket no cierra la lista de pedidos por cobrar', async () => {
+  openOrders.mockResolvedValue({ items: [pedido()], outstanding: '250' });
+  order.mockResolvedValue({ ...pedido(), lines: [], paid: false });
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /250/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Ticket/ }));
+
+  await waitFor(() => expect(order).toHaveBeenCalled());
+  expect(screen.getByText('Pedidos por cobrar')).toBeInTheDocument();
+});

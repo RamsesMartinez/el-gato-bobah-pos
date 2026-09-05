@@ -49,11 +49,29 @@ test('pide el pedido COMPLETO: la lista del tablero no trae las líneas', async 
   expect((previewProps.current as { order: ReceiptOrder }).order.lines).toHaveLength(1);
 });
 
-test('marca el papel como reimpresión', async () => {
+test('marca el papel como reimpresión cuando el pedido YA se pagó', async () => {
   wrap(<ReprintTicket orderId={12} onClose={vi.fn()} />);
-  await screen.findByTestId('preview');
+  // Se espera al pedido: la marca se DERIVA de él, así que antes de que llegue no hay nada que
+  // afirmar. Mientras carga no se arma ningún papel — TicketPreview no genera html sin pedido.
+  await waitFor(() => expect(getOrder).toHaveBeenCalledWith(12));
   // Sin esto, dos tickets idénticos del mismo pedido pueden circular como ventas distintas.
-  expect((previewProps.current as { reprint: boolean }).reprint).toBe(true);
+  await waitFor(() =>
+    expect((previewProps.current as { reprint: boolean }).reprint).toBe(true));
+});
+
+// UN PEDIDO QUE NO SE HA COBRADO NO LLEVA LA MARCA, Y NO ES UN DETALLE.
+//
+// Desde que se puede ver el ticket de un pedido en curso —desde la hoja de cobro y desde la lista
+// del botón naranja—, ese papel es LA CUENTA: sale con "POR COBRAR" impreso y nunca sacó un ticket
+// de venta antes. Estamparle "REIMPRESIÓN" le diría al cliente que ya hubo otro comprobante de una
+// venta que todavía no ocurre.
+test('un pedido sin cobrar NO se marca como reimpresión: ese papel es la cuenta', async () => {
+  getOrder.mockResolvedValue({ ...order, paid: false, status: 'abierta' });
+  wrap(<ReprintTicket orderId={12} onClose={vi.fn()} />);
+  await waitFor(() => expect(getOrder).toHaveBeenCalledWith(12));
+  await waitFor(() =>
+    expect((previewProps.current as { order: ReceiptOrder | null }).order).not.toBeNull());
+  expect((previewProps.current as { reprint: boolean }).reprint).toBe(false);
 });
 
 test('sin pedido seleccionado no pide nada al servidor', () => {
