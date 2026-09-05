@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { API } from './ambiente';
 
 // LA MATRIZ DE DINERO, PASANDO POR LA PANTALLA. Ver docs/matriz-de-cobro.md, sección E.
 //
@@ -9,6 +10,16 @@ import { test, expect, type Page } from '@playwright/test';
 const USUARIO = process.env.E2E_USER ?? 'admin';
 const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
 const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
+
+// El token para preguntarle al SERVIDOR qué pasó. La pantalla puede no pintar un pedido que sí se
+// creó, y esa diferencia es justo la que hay que medir.
+async function token(request: APIRequestContext): Promise<string> {
+  const r = await request.post(`${API}/auth/login`, {
+    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
+  });
+  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
+  return (await r.json()).accessToken;
+}
 
 async function entrar(page: Page) {
   await page.goto('/');
@@ -55,10 +66,24 @@ async function agregarUnProducto(page: Page): Promise<void> {
 }
 
 test.describe('E — el cobro, en la pantalla', () => {
-  test('E1 · COBRAR crea el pedido y abre LA hoja de cobro, no una pantalla propia', async ({ page }) => {
+  // TOCAR COBRAR NO MANDA NADA A COCINA.
+  //
+  // Antes creaba el pedido aquí mismo. El botón vive junto al total, en la barra que se toca todo el
+  // día, así que un toque por equivocación dejaba comida preparándose y una cuenta que alguien tenía
+  // que ir a cancelar. Ahora el pedido nace al tocar el botón final, el que dice cuánto se cobra.
+  //
+  // Se mide contra el SERVIDOR —cuántos pedidos en curso hay antes y después— porque es lo único
+  // que distingue "no se creó" de "se creó y la pantalla no lo pintó".
+  test('E1 · COBRAR abre la hoja y NO manda el pedido a cocina', async ({ page, request }) => {
+    const jwt = await token(request);
+    const cuantos = async () => {
+      const r = await request.get(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
+      return ((await r.json()).items ?? []).length as number;
+    };
+    const antes = await cuantos();
+
     await entrar(page);
     await agregarUnProducto(page);
-
     await page.getByRole('button', { name: 'COBRAR' }).click();
 
     // La hoja de cobro es la misma del botón naranja: se reconoce por el encabezado que dice las dos
@@ -66,10 +91,13 @@ test.describe('E — el cobro, en la pantalla', () => {
     await expect(page.getByText(/Falta \$/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/Total \$/)).toBeVisible();
 
-    // NINGÚN método viene preseleccionado, a propósito: aquí el pedido ya existe y un dedo que va
-    // directo a Cobrar registraría con tarjeta dinero que entró en efectivo.
+    // NINGÚN método viene preseleccionado, a propósito: un dedo que va directo a Cobrar registraría
+    // con tarjeta dinero que entró en efectivo.
     await expect(page.getByText('Falta con qué paga.')).toBeVisible();
     await expect(page.getByRole('button', { name: /^Cobrar \$/ })).toBeDisabled();
+
+    // Y lo que importa: cocina no se enteró de nada.
+    expect(await cuantos(), 'tocar COBRAR mandó el pedido a cocina').toBe(antes);
   });
 
   test('E1b · cobrando en efectivo, el pedido queda saldado y sale de la barra', async ({ page }) => {
