@@ -345,3 +345,24 @@ test('repartir entre tres cobra 33.33, 33.33 y 33.34, y sale del reparto en la �
   expect(montos).toEqual([33.33, 33.33, 33.34]);
   expect(round2(montos.reduce((a, b) => a + b, 0))).toBe(100);
 });
+
+// IMPRIMIR LA CUENTA SIN SALIR DEL COBRO.
+//
+// El operador con el cliente enfrente pide la cuenta antes de decidir cómo paga. Antes había que
+// cobrar primero para que saliera el ticket, o irse a otra pantalla a buscar el pedido — y volver
+// al cobro significaba empezar de nuevo: método, monto y propina se perdían.
+test('desde la hoja de cobro se puede ver el ticket, y la hoja se queda donde estaba', async () => {
+  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /Ticket/ }));
+
+  // Pide el pedido COMPLETO: la hoja de cobro solo conoce la cabecera y sin líneas el papel sale
+  // vacío.
+  await waitFor(() => expect(order).toHaveBeenCalledWith(7));
+  // Y NO cobró nada: mirar la cuenta no puede mover dinero.
+  expect(chargeOrder).not.toHaveBeenCalled();
+  // La hoja de cobro sigue MONTADA detrás, con sus métodos de pago. Se busca con `hidden` porque
+  // el visor es modal y deja el fondo fuera del árbol de accesibilidad — que es lo correcto: lo que
+  // importa es que al cerrar el ticket el operador vuelva a su cobro y no a empezar de nuevo.
+  expect(screen.getByRole('button', { name: 'Efectivo', hidden: true })).toBeInTheDocument();
+});
