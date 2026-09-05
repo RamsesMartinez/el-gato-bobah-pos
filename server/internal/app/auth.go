@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 
@@ -171,7 +172,9 @@ func (s *AuthService) relevar(ctx context.Context, userID int64, pin string, act
 			logging.SecurityEvent(ctx, "estacion_sin_sesion", "actor_user_id", actorID)
 			return domain.ErrUnauthorized
 		}
-		sess, err = s.issueUntil(ctx, q, u, vence)
+		// Cadena nueva: la credencial que sale es de OTRA persona, y una familia no puede
+		// abarcar a dos — revocarla tendría que decidir a cuál de las dos echa.
+		sess, err = s.issueUntil(ctx, q, u, vence, uuid.Nil())
 		return err
 	})
 	if err != nil {
@@ -201,8 +204,19 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 			// TODA la familia. CLAVE: la revocación va en ESTA tx; devolver un error aquí la haría
 			// rollback. Por eso devolvemos nil (commit) y señalamos el reuso por variable, para
 			// responder 401 después del commit.
-			if err := q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
-				return err // fail-closed: sin revocar, abortamos (rollback) y el llamador ve error
+			// La FAMILIA, no el usuario. Decía "toda la familia" en el comentario y revocaba por
+			// `user_id`: un robo en la tableta de la barra tumbaba también la de la caja, que
+			// comparte cuenta, con el cliente enfrente y sin que nadie entendiera por qué.
+			//
+			// Una credencial sin familia —de antes de 0064— cae al castigo viejo. Es el lado seguro
+			// en el que equivocarse: sin linaje no se puede saber qué cortar, y no cortar nada
+			// dejaría al ladrón dentro.
+			if fam := deref(rt.FamilyID); fam != uuid.Nil() {
+				if err := q.RevokeRefreshFamily(ctx, &fam); err != nil {
+					return err // fail-closed: sin revocar, abortamos (rollback) y el llamador ve error
+				}
+			} else if err := q.RevokeUserRefreshTokens(ctx, rt.UserID); err != nil {
+				return err
 			}
 			reusedUserID = rt.UserID
 			return nil
@@ -232,7 +246,9 @@ func (s *AuthService) Refresh(ctx context.Context, companyID int64, refreshToken
 		// front rota al volver el foco a la ventana, así que una tableta que alguien toca cada rato
 		// no caducaba nunca y `session_hours` era decorativo. Es el mismo defecto que se corrigió
 		// en el relevo por PIN, y quedó vivo en esta otra puerta.
-		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt)
+		// HEREDA la familia: rotar no es entrar de nuevo, es la misma sesión avanzando. Sin
+		// heredarla, cada rotación estrenaría cadena y el reuso volvería a no poder cortar nada.
+		sess, err = s.issueUntil(ctx, q, u, rt.ExpiresAt, deref(rt.FamilyID))
 		return err
 	})
 	if reusedUserID != 0 {
@@ -257,7 +273,8 @@ func (s *AuthService) Logout(ctx context.Context, companyID int64, refreshToken 
 // propia empresa (para mostrar user@slug en el front) — barato y evita threading del slug.
 // issue arranca una sesión NUEVA con el plazo del negocio. Es el camino del login.
 func (s *AuthService) issue(ctx context.Context, q *db.Queries, u db.User) (*Session, error) {
-	return s.issueUntil(ctx, q, u, s.now().Add(s.duracionDeSesion(ctx, q)))
+	// Un login estrena cadena: no desciende de ninguna credencial anterior.
+	return s.issueUntil(ctx, q, u, s.now().Add(s.duracionDeSesion(ctx, q)), uuid.Nil())
 }
 
 // duracionDeSesion: cuánto vive una sesión en este negocio.
@@ -276,7 +293,13 @@ func (s *AuthService) duracionDeSesion(ctx context.Context, q *db.Queries) time.
 
 // issueUntil arma la sesión con un vencimiento DADO. Existe para que el cambio de operador conserve
 // el reloj del turno en vez de reponerlo.
-func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, vence time.Time) (*Session, error) {
+//
+// familia es la CADENA de credenciales a la que pertenece la nueva. Se hereda en la rotación —una
+// rotación no es un login nuevo, es la misma sesión avanzando— y se estrena en todo lo demás. Es lo
+// que permite que un reuso corte solo la cadena comprometida: en este negocio dos estaciones
+// comparten cuenta, y revocar por usuario dejaba a la caja pidiendo contraseña porque robaron la
+// credencial de la barra.
+func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, vence time.Time, familia uuid.UUID) (*Session, error) {
 	du := toDomainUser(u)
 	if co, err := q.GetCompany(ctx, u.CompanyID); err == nil {
 		du.CompanySlug = co.Slug
@@ -289,10 +312,14 @@ func (s *AuthService) issueUntil(ctx context.Context, q *db.Queries, u db.User, 
 	if err != nil {
 		return nil, err
 	}
+	if familia == uuid.Nil() {
+		familia = uuid.New()
+	}
 	if _, err := q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
 		UserID:    u.ID,
 		TokenHash: hash,
 		ExpiresAt: vence,
+		FamilyID:  &familia,
 	}); err != nil {
 		return nil, err
 	}
@@ -393,3 +420,12 @@ func (s *AuthService) PinSwitchSoloPin(ctx context.Context, pin string, actorID 
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// deref devuelve el valor de un uuid opcional, o el cero si viene nulo. La columna es nullable para
+// que el binario anterior pueda seguir insertando si hay que revertir el deploy sin el esquema.
+func deref(u *uuid.UUID) uuid.UUID {
+	if u == nil {
+		return uuid.Nil()
+	}
+	return *u
+}

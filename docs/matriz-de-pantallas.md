@@ -183,6 +183,26 @@ con el negocio vendiendo.
 | U8 | Turno abierto hoy | Sin aviso. Un aviso permanente se vuelve ruido y se aprende a ignorar | `un turno abierto hoy no muestra el aviso` | Vitest |
 | U9 | Backend viejo, sin el campo `deOtroDia` | Sin aviso, nunca uno inventado: el front se despliega ~7 min antes que el backend | `sin el campo del backend no se inventa un aviso` | Vitest |
 
+## V2. Los huecos declarados que se cerraron (barrido de 2026-09-04)
+
+Siete renglones que este documento reconocía como no cubiertos. Cada uno cita qué defecto atrapa su
+prueba; el que no atrapa ninguno no está aquí.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| X6a | El mismo lote de renglones se agrega dos veces | Ni se cobra de más ni se descuenta el inventario dos veces; cocina no lo reimprime | `TestAgregarElMismoLoteDosVecesNoDuplicaNiCobraDeMas` | Go |
+| X6b | Un lote llega dirigido a otro pedido | Rebota diciendo a cuál se aplicó. La comida no se le carga a una cuenta ajena | `TestUnLoteDeRenglonesNoSeAplicaAOtroPedido` | Go |
+| X6c | Un cliente viejo agrega sin llave | Sigue funcionando. Es un techo consciente, no un descuido | `TestAgregarSinLlaveSigueFuncionando` | Go |
+| X7 | Los tres controles del renglón del ticket | Miden ≥44 px reales y la papelera va al extremo opuesto de los de cantidad | `X7 · los controles del renglón del ticket miden 44 px` | Playwright |
+| X9 | Entregar un pedido | Publica evento: la otra tableta deja de ofrecer comida que ya salió | `TestEntregarPublicaEventoParaLaOtraTableta` | Go |
+| X10 | El rótulo de "Entregadas" con los tres modos de corte | Nombra la ventana que el negocio configuró, y el vacío usa la misma | `el título dice la ventana que el negocio configuró` | Vitest |
+| X11a | Reuso de credencial con dos estaciones en la misma cuenta | Corta solo la cadena comprometida; la otra tableta sigue trabajando | `TestElReusoRevocaSoloLaFamiliaComprometida` | Go |
+| X11b | Reuso de una credencial sin familia (anterior a 0064) | Cae al castigo viejo —revocar por usuario— en vez de no cortar nada | `TestUnaCredencialSinFamiliaSigueRevocandoPorUsuario` | Go |
+| X15 | Un corte con más ventas que el tope de página | Se pueden traer las siguientes sin salir del corte | `SessionSalesPage` + "Ver más" | Go |
+
+**X12** no lleva test: es orden de despliegue, y se verifica leyendo el grafo de `ci.yml` —
+`deploy-frontend` ahora depende de `deploy-backend`.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
@@ -191,12 +211,8 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
-| X6 | `POST /orders/:id/lines` sin llave de idempotencia | Un reintento duplica renglones y stock | V5 |
-| X7 | Controles de ~24 px en el renglón del ticket (−, +, papelera) | Ajustarlos cambia el reparto de alto del ticket entero, no es un token suelto. El menú del tablero ya subió a 44 px | V9 |
-| X9 | Entregar no emite evento SSE | La segunda tableta sigue ofreciendo comida ya entregada hasta su refresco. Y el comentario de `ChargeOrder` afirma lo contrario | P8 |
-| X10 | "Entregadas hoy" con un corte que no es medianoche | El rótulo está quemado mientras la ventana la decide el negocio entre tres modos | P11 |
-| X11 | El reuso revoca por **usuario**, no por familia | La constitución dice "revoca toda la familia". No hay columna de linaje en `refresh_tokens`: es cambio de esquema | H18 |
-| X12 | El front de producción sale ~7 min ANTES que el backend | `deploy-frontend` depende de `frontend` y `deploy-backend` de `image`. En esa ventana el POS crea el pedido y no lo puede cobrar | H18 |
 | X13 | El folio puede repetirse entre dos turnos del **mismo día** | Consecuencia aceptada de numerar por turno (spec 008). Es inofensiva porque cerrar un turno exige que no queden pedidos vivos, así que dos folios iguales nunca coexisten vivos — pero no hay nada que lo impida si esa regla se afloja. Lo vigila `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | T5 |
 | X14 | El `Down` de 0061 falla si ya se vendió con dos turnos el mismo día | Volver a estrechar la unicidad al día es imposible con dos #1 de la misma fecha. Es inherente a revertir una restricción que se ensanchó; queda escrito en la propia migración en vez de descubrirse al revertir | — |
-| X15 | La lista de ventas del corte se corta en 200 | Sin controles de paginación: el detalle ya reparte 600 px entre cuatro secciones. La pantalla dice cuántas hay en total, así que recorta sin mentir — pero un corte de más de 200 ventas no se puede recorrer completo desde ahí | U3 |
+| X16 | `order_counters` quedó muerta tras 0061 | Se jubila en una migración propia cuando 008 lleve un ciclo en producción, no antes: mientras tanto es lo que permite volver atrás por imagen sin restaurar la base | — |
+| X17 | El test viejo `TestRefreshReuseRevokesFamily` tenía UNA sola sesión | Con una sola, revocar por usuario y revocar por familia son indistinguibles: pasaba en verde con el comportamiento equivocado. Se conserva (cubre el rechazo) y la distinción la mide ahora `TestElReusoRevocaSoloLaFamiliaComprometida` | — |
+| X18 | Cuatro pedidos de producción cancelados y cobrados sin devolución ($729, 29-ago) | Son datos anteriores a la feature de devoluciones; corregirlos reescribiría un arqueo firmado. Es una decisión del dueño, no un cambio de código. Lo nuevo ya impide que se repita | — |

@@ -787,7 +787,13 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 //   - El total se recalcula desde los renglones GUARDADOS, en la base. Rearmarlo desde el comando
 //     obligaría a re-precisar lo viejo con la lista de precios de hoy, y un pedido de ayer
 //     cambiaría de precio por agregarle un café.
-func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []domain.OrderLineInput, actor int64) (*OrderView, error) {
+//
+// AddLines agrega renglones a un pedido en curso.
+//
+// clientUUID identifica el LOTE, no cada renglón: quien opera manda "lo que agregué" de una vez y un
+// reintento reenvía el mismo lote completo. Sin llave (uuid.Nil) no hay protección — se acepta para
+// no romper a un cliente viejo, pero el front SIEMPRE la manda.
+func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []domain.OrderLineInput, actor int64, clientUUID uuid.UUID) (*OrderView, error) {
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("%w: no hay nada que agregar", domain.ErrValidation)
 	}
@@ -869,6 +875,39 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 			return fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
 				domain.ErrConflict, ord.DailyNumber, o.Status)
 		}
+
+		// IDEMPOTENCIA DEL LOTE. Va DENTRO de la tx y sobre el pedido ya bloqueado: dos reintentos
+		// simultáneos sobre el mismo pedido se serializan aquí, y el insert atómico cierra la
+		// ventana que dejaría un "consulta y luego inserta".
+		//
+		// Un reenvío no es un error: es una llamada que no tiene nada que hacer. Devolver el pedido
+		// tal cual es lo correcto — contestar un fallo manda al operador a agregar el renglón otra
+		// vez a mano, que es justo el cobro doble y el doble descuento de inventario que esto viene
+		// a impedir.
+		if clientUUID != uuid.Nil() {
+			if _, err := q.RegistrarLoteDeRenglones(ctx, db.RegistrarLoteDeRenglonesParams{
+				ClientUuid: clientUUID, OrderID: orderID,
+			}); err != nil {
+				if !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				// Cero filas = la llave ya estaba. ¿Del mismo pedido?
+				dueno, err := q.GetLoteDeRenglones(ctx, clientUUID)
+				if err != nil {
+					return err
+				}
+				if dueno != orderID {
+					// Mismo lote, OTRO pedido: no es un reintento, es una llamada mal dirigida. Si
+					// se aplicara, la comida se le cargaría a una cuenta ajena.
+					return fmt.Errorf("%w: esos renglones ya se agregaron al pedido %d",
+						domain.ErrConflict, dueno)
+				}
+				// El pedido queda como está. `agregados` se queda vacío, así que la comanda del
+				// agregado NO se reimprime: cocina no vuelve a preparar lo que ya preparó.
+				return nil
+			}
+		}
+
 		agregados = agregados[:0]
 		for _, l := range built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{

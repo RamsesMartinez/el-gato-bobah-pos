@@ -921,6 +921,13 @@ type OrderLine struct {
 	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 }
 
+type OrderLineBatch struct {
+	ClientUuid uuid.UUID `json:"client_uuid"`
+	OrderID    int64     `json:"order_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	CompanyID  int64     `json:"company_id"`
+}
+
 type OrderLineModifier struct {
 	ID               int64           `json:"id"`
 	OrderLineID      int64           `json:"order_line_id"`
@@ -1060,6 +1067,7 @@ type RefreshToken struct {
 	ExpiresAt time.Time          `json:"expires_at"`
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 	CreatedAt time.Time          `json:"created_at"`
+	FamilyID  *uuid.UUID         `json:"family_id"`
 }
 
 type RegisterCashMovement struct {

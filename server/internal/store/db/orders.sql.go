@@ -315,6 +315,19 @@ func (q *Queries) FolioNamesUsedInSession(ctx context.Context, registerSessionID
 	return items, nil
 }
 
+const getLoteDeRenglones = `-- name: GetLoteDeRenglones :one
+select order_id from order_line_batches where client_uuid = $1
+`
+
+// A qué pedido se aplicó un lote. Se consulta cuando el insert de arriba no devolvió nada, para
+// distinguir el reenvío legítimo —misma llave, mismo pedido— del reintento mal dirigido.
+func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getLoteDeRenglones, clientUuid)
+	var order_id int64
+	err := row.Scan(&order_id)
+	return order_id, err
+}
+
 const getOrder = `-- name: GetOrder :one
 select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name from orders where id = $1
 `
@@ -1303,6 +1316,33 @@ func (q *Queries) RefundOrder(ctx context.Context, arg RefundOrderParams) error 
 		arg.RefundAmount,
 	)
 	return err
+}
+
+const registrarLoteDeRenglones = `-- name: RegistrarLoteDeRenglones :one
+insert into order_line_batches (client_uuid, order_id)
+values ($1, $2)
+on conflict do nothing
+returning order_id
+`
+
+type RegistrarLoteDeRenglonesParams struct {
+	ClientUuid uuid.UUID `json:"client_uuid"`
+	OrderID    int64     `json:"order_id"`
+}
+
+// Marca que este lote de renglones ya se aplicó. Devuelve la fila SOLO si la insertó.
+//
+// `on conflict do nothing` + `returning`: cero filas significa "esta llave ya estaba", que es la
+// señal de reintento. Se hace con un insert y no con un select previo porque el insert es atómico —
+// un select y luego un insert dejan la ventana entre los dos, y esa ventana es exactamente el doble
+// tap que esto viene a cerrar.
+//
+// company_id lo auto-sella el default (GUC del tenant).
+func (q *Queries) RegistrarLoteDeRenglones(ctx context.Context, arg RegistrarLoteDeRenglonesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, registrarLoteDeRenglones, arg.ClientUuid, arg.OrderID)
+	var order_id int64
+	err := row.Scan(&order_id)
+	return order_id, err
 }
 
 const restockCancelledLine = `-- name: RestockCancelledLine :exec

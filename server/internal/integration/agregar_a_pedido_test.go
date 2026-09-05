@@ -58,10 +58,10 @@ func TestAgregarAUnPedidoEnCurso(t *testing.T) {
 
 	uno := []domain.OrderLineInput{{ProductID: cafe, Qty: decimal.RequireFromString("1")}}
 
-	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero); err != nil {
+	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero, uuid.New()); err != nil {
 		t.Fatalf("primer agregado: %v", err)
 	}
-	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero); err != nil {
+	if _, err := svc.AddLines(ctx, ord.ID, uno, cajero, uuid.New()); err != nil {
 		t.Fatalf("segundo agregado: %v", err)
 	}
 	tras, err := svc.Detail(ctx, ord.ID)
@@ -78,7 +78,7 @@ func TestAgregarAUnPedidoEnCurso(t *testing.T) {
 	if err := svc.Cancel(ctx, ord.ID, cajero, "prueba"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	err = func() error { _, e := svc.AddLines(ctx, ord.ID, uno, cajero); return e }()
+	err = func() error { _, e := svc.AddLines(ctx, ord.ID, uno, cajero, uuid.New()); return e }()
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("agregar a un cancelado = %v, quiere conflicto", err)
 	}
@@ -116,7 +116,7 @@ func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
 
 	if _, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
 		{ProductID: cafe, Qty: decimal.RequireFromString("2")},
-	}, cajero); err != nil {
+	}, cajero, uuid.New()); err != nil {
 		t.Fatalf("AddLines: %v", err)
 	}
 
@@ -170,7 +170,7 @@ func TestElEntregadoQueRecibeMasVuelveACocina(t *testing.T) {
 
 	tras, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
 		{ProductID: cafe, Qty: decimal.RequireFromString("1")},
-	}, cajero)
+	}, cajero, uuid.New())
 	if err != nil {
 		t.Fatalf("AddLines sobre un entregado: %v", err)
 	}

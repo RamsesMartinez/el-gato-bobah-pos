@@ -334,7 +334,7 @@ select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type
 from orders o
 where o.register_session_id = $1
 order by o.opened_at desc, o.id desc
-limit $2;
+limit sqlc.arg('lim') offset sqlc.arg('off');
 
 -- name: CountSessionSales :one
 -- La gemela de SessionSales, con el MISMO where. Dos cosas que la pantalla necesita y que la lista
