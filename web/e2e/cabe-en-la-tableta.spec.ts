@@ -97,3 +97,40 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
   expect(hueco, `la papelera está a ${Math.round(hueco)}px del "+": un toque impreciso borra el renglón`)
     .toBeGreaterThan(40);
 });
+
+// VER LA CUENTA DESDE EL COBRO, SIN QUE LA HOJA DEJE DE CABER.
+//
+// El botón se puso en el encabezado justamente para no gastar alto. Esta prueba lo comprueba en la
+// pantalla real en vez de confiar en que un control horizontal no envuelve: si el encabezado se
+// parte en dos renglones, la hoja crece y los métodos de pago se van fuera de los 600 px.
+test('T-cuenta · el ticket se abre desde el cobro y la hoja sigue cabiendo', async ({ page }) => {
+  await entrar(page);
+  await page.getByText('Dedos de Queso Pza').first().click();
+  const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
+  if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+  const barra = page.getByRole('button', { name: /art ·/ });
+  if (await barra.isVisible().catch(() => false)) await barra.click();
+  await page.getByRole('button', { name: 'COBRAR' }).click();
+  await expect(page.getByRole('button', { name: 'Efectivo' })).toBeVisible({ timeout: 30_000 });
+
+  const alto = Math.round((await page.locator('[role="dialog"]').first().boundingBox())?.height ?? 0);
+  expect(alto, 'la hoja de cobro dejó de caber con el botón de ticket').toBeLessThanOrEqual(600);
+
+  const ticket = page.getByRole('button', { name: /Ticket/ });
+  await expect(ticket, 'no hay por dónde ver la cuenta desde el cobro').toBeVisible();
+  const caja = await ticket.boundingBox();
+  expect(caja!.height, `el botón de ticket mide ${caja!.height}px y el piso es 44`).toBeGreaterThanOrEqual(44);
+
+  await ticket.click();
+  // El papel se pinta DENTRO de un iframe (la vista previa monta el html del ticket ahí), así que
+  // hay que entrar al marco: page.getByText no lo atraviesa.
+  //
+  // Se busca "POR COBRAR" y no cualquier texto: es lo que distingue la cuenta de un comprobante de
+  // venta, y es justo lo que hace que este papel no pueda pasar por uno.
+  const papel = page.frameLocator('iframe').first();
+  await expect(papel.getByText('POR COBRAR'),
+    'el ticket de un pedido en curso tiene que decir POR COBRAR').toBeVisible({ timeout: 30_000 });
+  await expect(papel.getByText('REIMPRESIÓN'),
+    'un pedido que no se ha cobrado no puede salir marcado como reimpresión').toHaveCount(0);
+  console.log(`[e2e] hoja de cobro con boton de ticket: ${alto}px de 600px`);
+});
