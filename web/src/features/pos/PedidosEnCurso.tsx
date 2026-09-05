@@ -148,24 +148,29 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
                     {!o.enPreparacion ? ' · ya se entregó' : ''}
                   </Text>
                 </Box>
-                <HStack gap={2} flexShrink={0}>
+                {/* Botones ANCHOS y bien separados. Son tres acciones seguidas en un renglón, dos
+                    de ellas irreversibles de hecho —agregar manda a cocina, cobrar mueve dinero— y
+                    con el ancho justo un dedo que va a una pica la de al lado. El hueco entre ellos
+                    también sube: separar es tan importante como agrandar. */}
+                <HStack gap={3} flexShrink={0}>
                   {/* También al ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa
                       pide una más, y mandarla como pedido aparte deja dos cuentas para la misma
                       mesa: una de las dos se pierde de vista. El servidor lo devuelve a "en curso"
                       para que cocina vea lo nuevo. */}
-                  <Button minH={TAP} variant="outline" colorPalette="blue" flexShrink={0}
-                    disabled={!hayQueAgregar} onClick={() => onAgregar(o)}>
+                  <Button minH={TAP} minW="128px" px={5} variant="outline" colorPalette="blue"
+                    flexShrink={0} disabled={!hayQueAgregar} onClick={() => onAgregar(o)}>
                     <LuPlus /> Agregar
                   </Button>
                   {/* Ver la cuenta sin cobrarla todavía. El papel dice "POR COBRAR", así que es
                       la cuenta que se le lleva a la mesa y no un comprobante de venta. Icono CON
                       texto y no solo icono: la fila ya tiene dos acciones y una tercera muda se
                       toca por descarte. */}
-                  <Button minH={TAP} variant="outline" colorPalette="gray" flexShrink={0}
-                    onClick={() => onTicket(o)}>
+                  <Button minH={TAP} minW="120px" px={5} variant="outline" colorPalette="gray"
+                    flexShrink={0} onClick={() => onTicket(o)}>
                     <LuReceipt /> Ticket
                   </Button>
-                  <Button minH={TAP} colorPalette="orange" flexShrink={0} onClick={() => onCobrar(o)}>
+                  <Button minH={TAP} minW="164px" px={5} colorPalette="orange" flexShrink={0}
+                    onClick={() => onCobrar(o)}>
                     Cobrar {money(o.outstanding, o.currency)}
                   </Button>
                 </HStack>

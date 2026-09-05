@@ -4,11 +4,13 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuMinus, LuPlus, LuSplit, LuX } from 'react-icons/lu';
+import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
-import type { CobroHecho, Currency, OrderView, PedidoParaCobrar } from '../types/pos';
+import { VerTicket } from './tickets/ReprintTicket';
+import { TicketPreview } from './tickets/TicketPreview';
+import type { CobroHecho, Currency, OrderView, PedidoParaCobrar, ReceiptOrder } from '../types/pos';
 import { money } from '../utils/format';
 import { TAP_LG, TAP_XL } from '../theme/ui';
 import { useUiStore } from '../stores/ui';
@@ -46,6 +48,9 @@ interface Props {
   // Se llama en cuanto el pedido EXISTE, antes de que el cobro entre. Quien la recibe necesita
   // saberlo para no decirle al operador que no pasó nada si el cobro falla después.
   onPedidoCreado?: (pedido: PedidoParaCobrar) => void;
+  // El papel que se imprime cuando el pedido TODAVÍA NO existe. Lo arma quien tiene la cuenta —el
+  // POS—, no esta hoja: la lista del botón naranja también la usa y ahí no hay carrito ninguno.
+  preCuenta?: ReceiptOrder | null;
   onClose: () => void;
   // Se llama tras CADA cobro que entra, con lo que quedó del pedido. Quien la recibe decide qué
   // hacer: la barra solo refresca; el POS, cuando el pedido queda saldado, lo relee para imprimir
@@ -98,7 +103,7 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
 // Lo que se elige aquí es CUÁNTO se cobra ahora; el resto de la hoja es el mismo cobro simple de
 // siempre. No hay un "modo dividido" con su propio estado que reconstruir tras una recarga: el
 // estado entero es el faltante, y ese vive en el servidor.
-export function CobrarSheet({ order, crearPedido, onPedidoCreado, onClose, onCobrado }: Props) {
+export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onClose, onCobrado }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
   const [metodo, setMetodo] = useState<number | null>(null);
@@ -113,6 +118,8 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, onClose, onCob
   // siguientes tienen que ir CONTRA ESE MISMO. Sin recordarlo, cada pedazo crearía uno nuevo y el
   // cliente acabaría con tres pedidos de un tercio cada uno.
   const [pedidoCreado, setPedidoCreado] = useState<PedidoParaCobrar | null>(null);
+  // Si el papel está a la vista. La hoja se queda abierta detrás, con su método y su monto.
+  const [viendoPapel, setViendoPapel] = useState(false);
   // En cuántas partes se está repartiendo lo que falta. null = no se está repartiendo, que es el
   // caso de casi todos los pedidos: se cobra todo a una persona y la hoja no gasta un solo píxel
   // en el repartidor. Antes eran cuatro botones fijos —Todo, entre 2, 3 y 4— siempre en pantalla,
@@ -346,6 +353,17 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, onClose, onCob
             {/* Dividir vive en el ENCABEZADO, que ya existe, y no en una fila propia: casi siempre
                 se cobra a una sola persona, y una fila que no se usa es alto que se le quita a lo
                 que sí. Aparece solo cuando hay algo que repartir. */}
+            {/* La cuenta que el cliente revisa antes de pagar.
+                Si el pedido ya existe —el camino del botón naranja— sale su ticket real. Si no,
+                sale el papel de la cuenta: mismo formato, marcado ** PRE-CUENTA **, sin número de
+                pedido y sin el estado del cobro. Ver specs/012-imprimir-la-cuenta.
+                Va en el encabezado porque es horizontal y no le quita alto a los métodos de pago. */}
+            {(idPedido !== null || preCuenta) && (
+              <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
+                onClick={() => setViendoPapel(true)}>
+                <LuReceipt /> Cuenta
+              </Button>
+            )}
             {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => { setPartes(2); setMontoElegido(null); }}>
@@ -533,6 +551,13 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, onClose, onCob
           )}
         </DrawerFooter>
       </DrawerContent>
+      {/* Dos papeles distintos según lo que exista. Se monta dentro del mismo Drawer para que la
+          hoja de cobro se quede abierta detrás: cerrar el papel devuelve al operador su cobro tal
+          como lo dejó. */}
+      {idPedido !== null
+        ? <VerTicket orderId={viendoPapel ? idPedido : null} onClose={() => setViendoPapel(false)} />
+        : <TicketPreview order={preCuenta ?? null} preCuenta
+            isOpen={viendoPapel} onClose={() => setViendoPapel(false)} />}
     </DrawerRoot>
   );
 }
