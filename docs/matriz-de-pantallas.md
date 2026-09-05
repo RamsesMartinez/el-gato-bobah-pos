@@ -203,6 +203,19 @@ prueba; el que no atrapa ninguno no está aquí.
 **X12** no lleva test: es orden de despliegue, y se verifica leyendo el grafo de `ci.yml` —
 `deploy-frontend` ahora depende de `deploy-backend`.
 
+## W. Ver e imprimir la cuenta antes de cobrarla
+
+Para imprimir el ticket de un pedido en curso había que cobrarlo primero o irse al tablero a
+buscarlo, y volver al cobro costaba empezar de nuevo.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+| --- | --- | --- | --- | --- |
+| W1 | Ver el ticket desde la hoja de cobro | Trae el pedido completo, no cobra nada, y la hoja se queda montada detrás con su método y su monto | `desde la hoja de cobro se puede ver el ticket` | Vitest |
+| W2 | Ver el ticket desde la lista del botón naranja | Trae el pedido completo y la lista se queda abierta detrás | `desde la lista se puede ver el ticket de un pedido sin cobrarlo` | Vitest |
+| W3 | El papel de un pedido pagado | Sale marcado `** REIMPRESIÓN **`: el original ya circuló | `marca el papel como reimpresión cuando el pedido YA se pagó` | Vitest |
+| W4 | El papel de un pedido en curso | Sale con `POR COBRAR` y **sin** marca de reimpresión: es la cuenta, no un comprobante de una venta que no ocurrió | `un pedido sin cobrar NO se marca como reimpresión` | Vitest |
+| W5 | El botón en la hoja de cobro, a 1024×600 | Mide ≥44 px y la hoja sigue cabiendo. Medido: 344 px de 600 — el botón va en el encabezado y cuesta cero alto | `T-cuenta · el ticket se abre desde el cobro` | Playwright |
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
