@@ -384,6 +384,11 @@ export const backofficeApi = {
     api.post<CashSession>('/cash-sessions/close', { registerId, declared, notes }),
   cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
+  // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
+  // para poder llegar al resto — un arqueo cuyas ventas no se pueden recorrer no se puede auditar.
+  cashSessionSales: (id: number, page: number, pageSize: number) =>
+    api.get<{ items: CorteSale[]; total: number; salesTotal: string }>(
+      `/cash-sessions/${id}/sales?page=${page}&pageSize=${pageSize}`),
   cashMovement: (registerId: number, kind: 'entrada' | 'salida', amount: number, concept: string) =>
     api.post<CashSession>('/cash-sessions/movements', { registerId, kind, amount, concept }),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
