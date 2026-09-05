@@ -104,7 +104,7 @@ de hoy.
 - [X] T024 [P] Test de reversibilidad de 0062: tras el `Down`, las fechas vuelven a ser las de antes
 - [X] T025 Escribir `server/migrations/0062_fecha_de_venta_del_reloj.sql`: tabla `orders_business_date_fix` con los valores previos, `update` de las filas que difieren, y `Down` que restaura desde el respaldo y borra la tabla
 - [X] T026 Correr `db-architect` sobre 0062 antes de aplicarla
-- [ ] T027 Ensayar las dos migraciones contra una copia restaurada de los datos reales de producción y anotar cuántas filas cambian por empresa, para compararlo contra lo medido (0 de 31 en el negocio en operación)
+- [X] T027 Ensayar las dos migraciones contra una copia restaurada de los datos reales de producción y anotar cuántas filas cambian por empresa, para compararlo contra lo medido (0 de 31 en el negocio en operación)
 
 ---
 
@@ -160,8 +160,8 @@ aparezca ninguna de otro corte.
 - [X] T046 Actualizar [docs/matriz-de-pantallas.md](../../docs/matriz-de-pantallas.md) y [docs/matriz-de-cobro.md](../../docs/matriz-de-cobro.md) con los casos nuevos y con lo que queda **sin** cubrir
 - [ ] T047 Correr `go-backend-reviewer` sobre los cambios de `server/`
 - [X] T048 Gates completos: `go build ./... && go test ./...`, `bun run lint`, `bun run vitest run`, `bun run build`
-- [ ] T049 Suite e2e a 1024×600 contra el ambiente desplegado, cerrando y cobrando todo pedido que cree
-- [ ] T050 Verificar en dev, con datos reales: el turno viejo del 31-ago se cierra, se abre uno nuevo, y una venta de hoy aparece en Ventas de hoy
+- [X] T049 Suite e2e a 1024×600 contra el ambiente desplegado, cerrando y cobrando todo pedido que cree
+- [X] T050 Verificar en dev, con datos reales: el turno viejo del 31-ago se cierra, se abre uno nuevo, y una venta de hoy aparece en Ventas de hoy
 
 ---
 

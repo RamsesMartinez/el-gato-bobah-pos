@@ -92,7 +92,7 @@ export function Ticket({
           </Center>
         )}
         {lines.map((l) => (
-          <Box key={l.lineId} py={2} px={2} borderBottomWidth="1px" borderColor="border.muted">
+          <Box key={l.lineId} py={1.5} px={2} borderBottomWidth="1px" borderColor="border.muted">
             <Flex justify="space-between" gap={2}>
               <Box flex="1" onClick={() => onEditLine(l)} cursor="pointer">
                 <Text fontWeight="600" fontSize="sm">{l.name}</Text>
@@ -112,11 +112,25 @@ export function Ticket({
               </Box>
               <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap">{money(lineTotal(l))}</Text>
             </Flex>
-            <HStack mt={1} gap={1}>
-              <IconButton aria-label="Quitar" size="xs" variant="ghost" colorPalette="red" onClick={() => remove(l.lineId)}><LuTrash2 /></IconButton>
-              <Button size="xs" onClick={() => dec(l.lineId)}>−</Button>
-              <Text minW="24px" textAlign="center" fontSize="sm">{l.qty}</Text>
-              <Button size="xs" onClick={() => inc(l.lineId)}>+</Button>
+            {/* Los controles del renglón medían ~24 px, por debajo del piso de 44 que la
+                constitución fija: por ahí el dedo toca dos veces y la segunda cae en otra cosa —
+                y aquí "otra cosa" era la papelera, que estaba pegada al menos.
+
+                La papelera se va al EXTREMO OPUESTO. Separar la acción destructiva de la frecuente
+                es requisito funcional, no gusto: quitar un renglón por accidente con el cliente
+                enfrente obliga a volver a buscarlo en el menú.
+
+                Cuesta ~14 px de alto por renglón (los 20 que suben los controles, menos los 6 que
+                se recuperan apretando el relleno). En el panel de 600 px eso es un renglón menos a
+                la vista, y se paga: un control que no se puede tocar no sirve de nada. */}
+            <HStack mt={0.5} gap={1} justify="space-between">
+              <HStack gap={1}>
+                <Button size="sm" minW="44px" minH="44px" onClick={() => dec(l.lineId)}>−</Button>
+                <Text minW="32px" textAlign="center" fontSize="sm" fontWeight="600">{l.qty}</Text>
+                <Button size="sm" minW="44px" minH="44px" onClick={() => inc(l.lineId)}>+</Button>
+              </HStack>
+              <IconButton aria-label="Quitar" size="sm" minW="44px" minH="44px" variant="ghost"
+                colorPalette="red" onClick={() => remove(l.lineId)}><LuTrash2 /></IconButton>
             </HStack>
           </Box>
         ))}

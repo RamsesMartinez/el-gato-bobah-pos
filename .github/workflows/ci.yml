@@ -135,9 +135,19 @@ jobs:
         run: bun audit --audit-level=high
 
   # --- Deploy (solo push directo a main, nunca en PRs) ---
+  # El front sale DESPUÉS del backend, a propósito.
+  #
+  # Antes dependía solo de `frontend` mientras el backend esperaba a `image` (que a su vez espera a
+  # las pruebas de integración): el front llegaba a producción unos siete minutos antes. En esa
+  # ventana el POS ya pide campos que el backend viejo no manda y ofrece caminos que todavía no
+  # existen — se puede crear un pedido y no poder cobrarlo.
+  #
+  # Al revés es seguro: los cambios de backend son aditivos, así que un front viejo contra un backend
+  # nuevo simplemente ignora lo que no conoce. Y si el deploy del backend falla, el front NO sale:
+  # quedarse con los dos viejos es coherente; quedarse con el front nuevo solo, no.
   deploy-frontend:
     name: Deploy frontend (Cloudflare Pages)
-    needs: [frontend]
+    needs: [frontend, deploy-backend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -172,7 +182,9 @@ jobs:
 
   deploy-frontend-staging:
     name: Deploy frontend (ambiente de pruebas)
-    needs: [frontend]
+    # Mismo orden que en producción: el ambiente de pruebas no sirve para ensayar un deploy si su
+    # secuencia no es la que va a correr de verdad.
+    needs: [frontend, deploy-staging]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
