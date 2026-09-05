@@ -159,6 +159,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/", h.CashHistory)
 					r.Get("/current", h.CurrentCashSession)
 					r.Get("/{id}", h.CashSessionDetail)
+					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)
 					r.Post("/movements", h.CreateCashMovement)
 					r.Post("/transfer", h.CashTransfer) // traspaso entre dos cajas abiertas
