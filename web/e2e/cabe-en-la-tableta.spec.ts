@@ -56,3 +56,34 @@ test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page 
     'el repartidor dejó de costar alto: ¿volvió a estar siempre abierto?').toBeGreaterThan(40);
   console.log(`[e2e] hoja de cobro: ${sinRepartir}px sin repartir, ${repartiendo}px repartiendo, de 600px`);
 });
+
+// X7 · LOS CONTROLES DEL RENGLÓN DEL TICKET, MEDIDOS EN PÍXELES REALES.
+//
+// Medían ~24 px, por debajo del piso de 44 que fija la constitución. Vitest no puede atrapar esto:
+// las medidas de Chakra son clases CSS y jsdom no las resuelve, así que un assert de píxeles allá
+// pasaría verde con los botones chicos. Aquí hay un navegador de verdad.
+//
+// Y se mide también la SEPARACIÓN con la papelera: estaba pegada al menos, así que quitar una
+// unidad y borrar el renglón entero se distinguían por unos pocos píxeles.
+test('X7 · los controles del renglón del ticket miden 44 px y la papelera va aparte', async ({ page }) => {
+  await entrar(page);
+  await page.getByText('Dedos de Queso Pza').first().click();
+
+  const menos = page.getByRole('button', { name: '−' }).first();
+  const mas = page.getByRole('button', { name: '+' }).first();
+  const quitar = page.getByRole('button', { name: 'Quitar' }).first();
+
+  for (const [nombre, boton] of [['−', menos], ['+', mas], ['Quitar', quitar]] as const) {
+    const caja = await boton.boundingBox();
+    expect(caja, `no se encontró el control "${nombre}"`).not.toBeNull();
+    expect(caja!.height, `"${nombre}" mide ${caja!.height}px de alto y el piso es 44`).toBeGreaterThanOrEqual(44);
+    expect(caja!.width, `"${nombre}" mide ${caja!.width}px de ancho y el piso es 44`).toBeGreaterThanOrEqual(44);
+  }
+
+  // La papelera al otro extremo: entre ella y el "+" tiene que haber más que el hueco de un gap.
+  const cajaMas = (await mas.boundingBox())!;
+  const cajaQuitar = (await quitar.boundingBox())!;
+  const hueco = cajaQuitar.x - (cajaMas.x + cajaMas.width);
+  expect(hueco, `la papelera está a ${Math.round(hueco)}px del "+": un toque impreciso borra el renglón`)
+    .toBeGreaterThan(40);
+});
