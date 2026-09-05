@@ -435,3 +435,22 @@ select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantit
        sqlc.arg(actor_id), 'cancelación de renglón'
 from stock_movements sm
 where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type = 'venta';
+
+-- name: RegistrarLoteDeRenglones :one
+-- Marca que este lote de renglones ya se aplicó. Devuelve la fila SOLO si la insertó.
+--
+-- `on conflict do nothing` + `returning`: cero filas significa "esta llave ya estaba", que es la
+-- señal de reintento. Se hace con un insert y no con un select previo porque el insert es atómico —
+-- un select y luego un insert dejan la ventana entre los dos, y esa ventana es exactamente el doble
+-- tap que esto viene a cerrar.
+--
+-- company_id lo auto-sella el default (GUC del tenant).
+insert into order_line_batches (client_uuid, order_id)
+values ($1, $2)
+on conflict do nothing
+returning order_id;
+
+-- name: GetLoteDeRenglones :one
+-- A qué pedido se aplicó un lote. Se consulta cuando el insert de arriba no devolvió nada, para
+-- distinguir el reenvío legítimo —misma llave, mismo pedido— del reintento mal dirigido.
+select order_id from order_line_batches where client_uuid = $1;

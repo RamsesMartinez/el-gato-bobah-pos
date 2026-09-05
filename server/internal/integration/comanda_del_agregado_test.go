@@ -52,7 +52,7 @@ func TestSoloLosRenglonesAgregadosSalenEnLaComandaDelAgregado(t *testing.T) {
 	// Agregar: la respuesta dice cuál entró, y solo ese.
 	tras, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
 		{ProductID: cafe, Qty: decimal.RequireFromString("2")},
-	}, cajero)
+	}, cajero, uuid.New())
 	if err != nil {
 		t.Fatalf("AddLines: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestSoloLosRenglonesAgregadosSalenEnLaComandaDelAgregado(t *testing.T) {
 	// Un segundo agregado señala solo el suyo, no acumula los anteriores.
 	otra, err := svc.AddLines(ctx, ord.ID, []domain.OrderLineInput{
 		{ProductID: pan, Qty: decimal.RequireFromString("1")},
-	}, cajero)
+	}, cajero, uuid.New())
 	if err != nil {
 		t.Fatalf("segundo AddLines: %v", err)
 	}
