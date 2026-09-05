@@ -95,18 +95,23 @@ export function TicketPreview({
   order,
   reprint = false,
   sample = false,
+  preCuenta = false,
   isOpen,
   onClose,
 }: {
   order: ReceiptOrder | null;
   reprint?: boolean;
   sample?: boolean;
+  // preCuenta: el papel de una cuenta que todavía NO es una venta. Lleva su marca, no lleva número
+  // de pedido —no existe— y no lleva el estado del cobro, que es lo que lo confundiría con el
+  // ticket de un pedido real sin cobrar.
+  preCuenta?: boolean;
   isOpen: boolean;
   onClose: () => void;
 }) {
   const { data: business, printFreeModifiers } = useTicketBusinessInfo();
   // html vacío = el diálogo abre con un spinner en vez de no abrir. Un toque que no hace nada es
   // exactamente el fallo silencioso que esta feature vino a quitar.
-  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample, printFreeModifiers }) : '';
+  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample, preCuenta, printFreeModifiers }) : '';
   return <TicketPreviewDialog html={html} isOpen={isOpen} onClose={onClose} />;
 }

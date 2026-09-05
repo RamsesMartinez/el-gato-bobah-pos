@@ -200,14 +200,16 @@ export function Ticket({
           {/* Enviar es secundario y COBRAR domina: cobrar es lo que pasa en casi toda venta, y dos
               botones con el mismo peso invitan al toque equivocado — que aquí significa creer que
               se cobró algo que no se cobró. */}
-          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="gray"
+          {/* Contorno azul tenue y no gris: en gris se leía como un texto apagado y no como un
+              control, y quien no lo reconoce como botón termina cobrando para mandar a cocina. El
+              azul lo separa además del verde de COBRAR, que es el que mueve dinero. */}
+          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="blue"
             disabled={lines.length === 0 || envioMalEscrito} loading={enviando} onClick={onEnviar}>
             Enviar a cocina
           </Button>
-          {/* COBRAR también MANDA el pedido a cocina, y decirlo importa: desde que confirmar es
-              obligatorio antes de cobrar, este botón dejó de ser reversible. Quien lo toca y luego
-              cierra la hoja de cobro creyendo que canceló, ve el carrito vacío y vuelve a capturar
-              el pedido — y cocina prepara dos veces lo mismo. */}
+          {/* COBRAR ya NO manda el pedido a cocina: abre la hoja y el pedido nace al tocar el botón
+              final. Este comentario decía lo contrario y era cierto hasta ese cambio; cerrar la
+              hoja sin cobrar ahora no deja nada preparándose. */}
           {/* `loading` también aquí: es el botón que más se toca y era el único de los dos sin
               estado ocupado. En red lenta el operador toca dos veces y salen dos POST /orders
               concurrentes con el mismo clientUuid; la idempotencia de Create es check-then-insert

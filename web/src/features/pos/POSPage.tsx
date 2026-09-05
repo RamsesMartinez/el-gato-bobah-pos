@@ -17,6 +17,7 @@ import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
 import { round2 } from '../../domain/cobro';
+import { preCuentaDeLaCuenta } from './preCuenta';
 import { useMandarPedido } from './useMandarPedido';
 import { envioDeLaCuenta } from '../../domain/envio';
 import { useAgregarAPedido } from './useAgregarAPedido';
@@ -158,7 +159,7 @@ export function POSPage() {
   // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
   // solo con lo agregado.
   const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
-  const { mandar, mandarAsync, enviando, noDisponibles, defaultFee } = useMandarPedido((order) => {
+  const { mandar, mandarAsync, enviando, cobrables, noDisponibles, defaultFee } = useMandarPedido((order) => {
     ticketDrawer.onClose();
     // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
     setAgregados(undefined);
@@ -585,6 +586,19 @@ export function POSPage() {
         order={cobrando}
         crearPedido={() => mandarAsync({ deliveryFee: envio.paraElServidor })}
         onPedidoCreado={setCreadoAlCobrar}
+        // El papel de la cuenta lo arma el POS, que es quien tiene el carrito. Se pasa `cobrables`
+        // y no `lines`: la pantalla ya excluye los productos que dejaron de existir, y el papel
+        // tiene que mostrar lo que se va a cobrar, no lo que se capturó.
+        preCuenta={cobrando && cobrando.id === null
+          ? preCuentaDeLaCuenta({
+            folioName: cuenta.folioName,
+            serviceType: cuenta.serviceType,
+            customerName: cuenta.customerName,
+            lineas: cobrables,
+            envio: envio.monto,
+            total: round2(total + envio.monto),
+          }, new Date())
+          : null}
         onClose={cerrarElCobro}
         onCobrado={terminarElCobro}
       />
