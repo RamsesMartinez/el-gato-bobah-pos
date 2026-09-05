@@ -69,6 +69,16 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
   await entrar(page);
   await page.getByText('Dedos de Queso Pza').first().click();
 
+  // El mismo camino que E7, y por las mismas razones: el producto puede abrir la hoja de
+  // modificadores, y a 1024x600 el POS está en modo ANGOSTO — el ticket no es un panel lateral sino
+  // una hoja inferior que se abre desde la barra. Darlo por hecho es lo que ya tumbó dos pruebas de
+  // esta suite.
+  const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
+  if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+  const barra = page.getByRole('button', { name: /art ·/ });
+  if (await barra.isVisible().catch(() => false)) await barra.click();
+  await expect(page.getByRole('button', { name: 'Quitar' }).first()).toBeVisible({ timeout: 30_000 });
+
   const menos = page.getByRole('button', { name: '−' }).first();
   const mas = page.getByRole('button', { name: '+' }).first();
   const quitar = page.getByRole('button', { name: 'Quitar' }).first();
