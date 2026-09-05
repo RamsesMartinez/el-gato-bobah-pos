@@ -45,7 +45,7 @@ export interface TicketBusinessInfo {
 export function buildReceiptHtml(
   order: ReceiptOrder,
   business: TicketBusinessInfo,
-  opts: { reprint?: boolean; sample?: boolean; printFreeModifiers?: boolean } = {},
+  opts: { reprint?: boolean; sample?: boolean; preCuenta?: boolean; printFreeModifiers?: boolean } = {},
 ): string {
   // El renglón del producto muestra su BASE (cantidad × unitario) y cada adicional con costo lleva
   // el suyo debajo, así los números suman a la vista. Antes el renglón traía el total con los
@@ -108,16 +108,17 @@ export function buildReceiptHtml(
   ${business.address ? `<div class="center muted">${esc(business.address)}</div>` : ''}
   ${business.phone ? `<div class="center muted">Tel. ${esc(business.phone)}</div>` : ''}
   ${business.headerNote ? `<div class="center note">${esc(business.headerNote)}</div>` : ''}
-  <div class="center muted">${order.folioName ? `${order.folioName} &middot; ` : ''}Pedido #${order.number}</div>
+  <div class="center muted">${order.folioName ? `${order.folioName}${opts.preCuenta ? '' : ' &middot; '}` : ''}${opts.preCuenta ? '' : `Pedido #${order.number}`}</div>
   <div class="center muted">${fechaYHora(order.openedAt, business.timezone ?? DEFAULT_TIMEZONE)}</div>
   <div class="center muted">${esc(SERVICE[order.serviceType] ?? order.serviceType)}${order.customerName ? ` · ${esc(order.customerName)}` : ''}</div>
   ${opts.reprint ? '<div class="center reprint">** REIMPRESIÓN **</div>' : ''}
   ${opts.sample ? '<div class="center reprint">** TICKET DE PRUEBA **</div>' : ''}
+  ${opts.preCuenta ? '<div class="center reprint">** PRE-CUENTA **</div>' : ''}
   <hr/>
   <table>${rows}</table>
   <hr/>
   <table>${totalsHead}<tr><td class="total">TOTAL</td><td class="r total">${money(order.total)}</td></tr></table>
-  <div class="center muted" style="margin-top:8px">${order.paid ? 'PAGADO' : 'POR COBRAR'}</div>
+  ${opts.preCuenta ? '' : `<div class="center muted" style="margin-top:8px">${order.paid ? 'PAGADO' : 'POR COBRAR'}</div>`}
   <div class="center note" style="margin-top:10px">${business.footerNote ? esc(business.footerNote) : "¡Gracias!"}</div>
 </body></html>`;
 }
