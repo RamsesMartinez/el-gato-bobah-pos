@@ -49,12 +49,14 @@ values ($1, $2, $3, now())
 on conflict (user_id, key) do update set value = excluded.value, updated_at = now();
 
 -- name: CreateRefreshToken :one
-insert into refresh_tokens (user_id, token_hash, expires_at)
-values ($1, $2, $3)
-returning id, user_id, token_hash, expires_at, revoked_at, created_at;
+-- family_id es la CADENA a la que pertenece la credencial: nace en un login y se propaga en cada
+-- rotación. Es lo que deja cortar al ladrón sin tumbar la tableta del compañero, que comparte cuenta.
+insert into refresh_tokens (user_id, token_hash, expires_at, family_id)
+values ($1, $2, $3, $4)
+returning id, user_id, token_hash, expires_at, revoked_at, created_at, family_id;
 
 -- name: GetRefreshToken :one
-select id, user_id, token_hash, expires_at, revoked_at, created_at
+select id, user_id, token_hash, expires_at, revoked_at, created_at, family_id
 from refresh_tokens where token_hash = $1;
 
 -- name: RevokeRefreshToken :exec
@@ -66,7 +68,23 @@ update refresh_tokens set revoked_at = now() where token_hash = $1;
 update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_at is null;
 
 -- name: RevokeUserRefreshTokens :exec
+-- TODAS las sesiones de una persona. Es lo correcto para un cambio de contraseña: si la contraseña
+-- cambió, nada de lo emitido con la anterior debe seguir sirviendo.
+--
+-- NO es lo correcto para un reuso: ahí se revoca solo la familia comprometida (ver la de abajo).
 update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null;
+
+-- name: RevokeRefreshFamily :exec
+-- La cadena que nació en UN login, y solo esa.
+--
+-- Es el castigo del reuso, y la constitución lo pide así: revocar por usuario tumbaba también la
+-- tableta del compañero, que en este negocio comparte cuenta. Un robo en la barra dejaba a la caja
+-- pidiendo contraseña con el cliente enfrente.
+--
+-- company_id no se nombra: RLS ya lo aplica, y sqlc no ve las columnas que 0023 agregó con
+-- EXECUTE format().
+update refresh_tokens set revoked_at = now()
+where family_id = $1 and family_id is not null and revoked_at is null;
 
 -- name: UnlockCandidates :many
 -- Quiénes pueden desbloquear una estación con su PIN.
