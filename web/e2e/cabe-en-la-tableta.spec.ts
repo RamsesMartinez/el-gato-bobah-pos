@@ -98,14 +98,12 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
     .toBeGreaterThan(40);
 });
 
-// LA HOJA DE COBRO NO LLEVA BOTÓN DE TICKET, Y SIGUE CABIENDO.
+// LA CUENTA SE IMPRIME DESDE EL COBRO, Y LA HOJA SIGUE CABIENDO.
 //
-// El botón estuvo aquí un rato y se quitó: desde que tocar COBRAR ya no crea el pedido, en esta
-// hoja puede no haber todavía ningún pedido que imprimir. Ver la cuenta se hace desde la lista del
-// botón naranja, donde el pedido sí existe.
-//
-// Se mide igual el alto: es la pantalla con menos margen del sistema.
-test('T-cuenta · la hoja de cobro cabe y no ofrece imprimir lo que aún no existe', async ({ page }) => {
+// El papel de una cuenta sin confirmar lleva ** PRE-CUENTA ** y NO lleva número de pedido: no
+// existe todavía. Es lo que impide que pase por un comprobante de venta, y solo se puede comprobar
+// en un navegador de verdad porque el papel se pinta dentro de un iframe.
+test('T-cuenta · el papel de la cuenta sale marcado y la hoja cabe en 600 px', async ({ page }) => {
   await entrar(page);
   await page.getByText('Dedos de Queso Pza').first().click();
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
@@ -118,7 +116,17 @@ test('T-cuenta · la hoja de cobro cabe y no ofrece imprimir lo que aún no exis
   const alto = Math.round((await page.locator('[role="dialog"]').first().boundingBox())?.height ?? 0);
   expect(alto, 'la hoja de cobro dejó de caber en la tableta').toBeLessThanOrEqual(600);
 
-  await expect(page.getByRole('button', { name: /Ticket/ }),
-    'la hoja ofrece imprimir un pedido que todavía no existe').toHaveCount(0);
-  console.log(`[e2e] hoja de cobro: ${alto}px de 600px`);
+  const boton = page.getByRole('button', { name: /Cuenta/ });
+  const caja = await boton.boundingBox();
+  expect(caja!.height, `el botón mide ${caja!.height}px y el piso es 44`).toBeGreaterThanOrEqual(44);
+  await boton.click();
+
+  const papel = page.frameLocator('iframe').first();
+  await expect(papel.getByText('PRE-CUENTA'),
+    'el papel de una cuenta sin confirmar tiene que decir que lo es').toBeVisible({ timeout: 30_000 });
+  await expect(papel.getByText(/Pedido #/),
+    'el papel trae un número de pedido que todavía no existe').toHaveCount(0);
+  await expect(papel.getByText('POR COBRAR'),
+    'el estado del cobro lo confunde con el ticket de un pedido real').toHaveCount(0);
+  console.log(`[e2e] hoja de cobro con boton de cuenta: ${alto}px de 600px`);
 });
