@@ -4,12 +4,11 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuX } from 'react-icons/lu';
+import { LuCheck, LuMinus, LuPlus, LuSplit, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
-import { VerTicket } from './tickets/ReprintTicket';
-import type { CobroHecho, OrderView, PedidoParaCobrar } from '../types/pos';
+import type { CobroHecho, Currency, OrderView, PedidoParaCobrar } from '../types/pos';
 import { money } from '../utils/format';
 import { TAP_LG, TAP_XL } from '../theme/ui';
 import { useUiStore } from '../stores/ui';
@@ -21,8 +20,32 @@ import {
 } from '../domain/cobro';
 import type { MotivoInvalido } from '../domain/cobro';
 
+// CuentaParaCobrar es lo que la hoja necesita para pintarse y cobrar.
+//
+// `id` y `number` son NULOS mientras el pedido no exista. Ese es el caso nuevo: tocar COBRAR ya no
+// crea el pedido —no manda nada a cocina—, así que la hoja se abre sobre la cuenta y el pedido nace
+// cuando se toca el botón final. Un `PedidoParaCobrar` satisface este tipo sin conversión.
+export interface CuentaParaCobrar {
+  id: number | null;
+  number: number | null;
+  folioName: string;
+  total: string;
+  outstanding: string;
+  currency: Currency;
+  deliveryPlatformId: number | null;
+}
+
 interface Props {
-  order: PedidoParaCobrar | null;
+  order: CuentaParaCobrar | null;
+  // Crea el pedido. Solo se llama si `order.id` es nulo, y SOLO al cobrar: es lo que hace que un
+  // toque accidental en COBRAR no mande comida a cocina.
+  //
+  // Obligatoria cuando el id puede ser nulo. TypeScript no puede atar las dos cosas, así que el
+  // camino de cobro lo comprueba y falla ruidoso en vez de cobrar contra un pedido inexistente.
+  crearPedido?: () => Promise<PedidoParaCobrar>;
+  // Se llama en cuanto el pedido EXISTE, antes de que el cobro entre. Quien la recibe necesita
+  // saberlo para no decirle al operador que no pasó nada si el cobro falla después.
+  onPedidoCreado?: (pedido: PedidoParaCobrar) => void;
   onClose: () => void;
   // Se llama tras CADA cobro que entra, con lo que quedó del pedido. Quien la recibe decide qué
   // hacer: la barra solo refresca; el POS, cuando el pedido queda saldado, lo relee para imprimir
@@ -75,7 +98,7 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
 // Lo que se elige aquí es CUÁNTO se cobra ahora; el resto de la hoja es el mismo cobro simple de
 // siempre. No hay un "modo dividido" con su propio estado que reconstruir tras una recarga: el
 // estado entero es el faltante, y ese vive en el servidor.
-export function CobrarSheet({ order, onClose, onCobrado }: Props) {
+export function CobrarSheet({ order, crearPedido, onPedidoCreado, onClose, onCobrado }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
   const [metodo, setMetodo] = useState<number | null>(null);
@@ -84,9 +107,12 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // del servidor y cambia con cada pedazo cobrado, así que sembrarlo en el estado obligaría a
   // resincronizarlo, y esa resincronización es de donde salen las dos cifras que divergen.
   const [montoElegido, setMontoElegido] = useState<string | null>(null);
-  // Qué pedido se está viendo en el visor de ticket. La hoja de cobro se queda abierta detrás: quien
-  // mira la cuenta con el cliente sigue teniendo el cobro donde lo dejó.
-  const [viendoTicket, setViendoTicket] = useState<number | null>(null);
+  // El pedido, una vez que existe. Nulo mientras la hoja se abrió sobre una cuenta sin confirmar.
+  //
+  // Se guarda aquí y no se recalcula: al dividir la cuenta, el primer cobro crea el pedido y los
+  // siguientes tienen que ir CONTRA ESE MISMO. Sin recordarlo, cada pedazo crearía uno nuevo y el
+  // cliente acabaría con tres pedidos de un tercio cada uno.
+  const [pedidoCreado, setPedidoCreado] = useState<PedidoParaCobrar | null>(null);
   // En cuántas partes se está repartiendo lo que falta. null = no se está repartiendo, que es el
   // caso de casi todos los pedidos: se cobra todo a una persona y la hoja no gasta un solo píxel
   // en el repartidor. Antes eran cuatro botones fijos —Todo, entre 2, 3 y 4— siempre en pantalla,
@@ -130,15 +156,22 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setVisible(true); }, []);
 
+  // El id con el que se habla del pedido: el recién creado si la hoja lo confirmó, y si no el que
+  // vino en el prop. Nulo mientras la cuenta no se haya confirmado.
+  const idPedido = pedidoCreado?.id ?? order?.id ?? null;
+  const numero = pedidoCreado?.number ?? order?.number ?? null;
+
   // El pedido VIVO, no la foto que traía el prop.
   //
   // La hoja recibía el objeto que la lista tenía al abrirla y nunca se actualizaba, así que un
   // pedido que otra caja cobró entretanto seguía diciendo "Falta $500" indefinidamente. Ahora la
   // cifra baja del servidor, y cobrar emite su evento SSE, que invalida esta query.
   const { data: vivo } = useQuery({
-    queryKey: ['orders', order?.id],
-    queryFn: () => posApi.order(order!.id),
-    enabled: order !== null,
+    queryKey: ['orders', idPedido],
+    queryFn: () => posApi.order(idPedido as number),
+    // Solo cuando el pedido EXISTE. Sobre una cuenta sin confirmar no hay nada que releer, y las
+    // cifras salen de lo que la pantalla ya tiene capturado.
+    enabled: idPedido !== null,
   });
 
   const { data: metodos } = useQuery({
@@ -175,11 +208,33 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
   });
 
   const cobrar = useMutation({
-    mutationFn: async () => posApi.chargeOrder(order!.id, {
-      methodId: metodo!, amount: v.monto,
-      ...(v.propina > 0 ? { tip: v.propina } : {}),
-      clientUuid: llave,
-    }),
+    mutationFn: async () => {
+      // EL PEDIDO NACE AQUÍ, no al abrir la hoja.
+      //
+      // Antes tocar COBRAR lo creaba y lo mandaba a cocina, así que un toque por equivocación
+      // dejaba comida preparándose y una cuenta que alguien tenía que ir a cancelar. Ahora no pasa
+      // nada hasta este momento — el del botón que dice cuánto se cobra.
+      //
+      // La creación es idempotente por el id de la cuenta, así que un reintento tras una respuesta
+      // perdida devuelve el mismo pedido en vez de crear otro.
+      let id = pedidoCreado?.id ?? order?.id ?? null;
+      if (id === null) {
+        if (!crearPedido) {
+          // No debería ocurrir: quien abre la hoja sobre una cuenta sin confirmar tiene que decir
+          // cómo se confirma. Falla ruidoso antes que cobrar contra un pedido que no existe.
+          throw new Error('la cuenta no está confirmada y no hay cómo confirmarla');
+        }
+        const creado = await crearPedido();
+        setPedidoCreado(creado);
+        onPedidoCreado?.(creado);
+        id = creado.id;
+      }
+      return posApi.chargeOrder(id, {
+        methodId: metodo!, amount: v.monto,
+        ...(v.propina > 0 ? { tip: v.propina } : {}),
+        clientUuid: llave,
+      });
+    },
     onSuccess: (res) => {
       setRebote(null);
       if (res.yaEstaba) {
@@ -195,10 +250,11 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
       // Es la cifra que acaba de calcular el servidor, así que sirve de inmediato mientras el
       // refetch viaja; guardándola aparte habría dos lugares con lo que falta, y ésa es justamente
       // la deuda que dejó a la barra diciendo $2,141 y a su lista $1,928.
-      qc.setQueryData(['orders', order!.id], (prev: OrderView | undefined) =>
+      const idCobrado = pedidoCreado?.id ?? order?.id;
+      qc.setQueryData(['orders', idCobrado], (prev: OrderView | undefined) =>
         (prev ? { ...prev, outstanding: res.outstanding, paid: res.paid } : prev));
       qc.invalidateQueries({ queryKey: ['orders'] });
-      onCobrado(res, order!.id);
+      if (idCobrado !== undefined && idCobrado !== null) onCobrado(res, idCobrado);
       if (res.paid || resta <= 0) {
         toaster.create({ title: 'Cobrado', type: 'success' });
         onClose();
@@ -276,26 +332,20 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
           <HStack justify="space-between" align="start">
             <Box minW={0}>
               <Text fontWeight="800" fontSize="lg" lineClamp={1}>
-                {order.folioName || `#${order.number}`}
+                {order.folioName || (numero !== null ? `#${numero}` : 'Cuenta')}
               </Text>
-              <Text fontSize="sm" color="fg.muted">#{order.number}</Text>
+              {/* El folio lo asigna el SERVIDOR al confirmar. Mientras la cuenta no se confirma no
+                  hay número que enseñar, y enseñar uno inventado es peor que no enseñar ninguno:
+                  el operador se lo diría al cliente y después no coincidiría con el ticket. */}
+              <Text fontSize="sm" color="fg.muted">
+                {numero !== null ? `#${numero}` : 'Sin confirmar'}
+              </Text>
             </Box>
             {/* Las DOS cifras. Pintando solo el faltante donde el operador espera el total, un
                 pedido de $500 con $300 abonados se veía idéntico a uno de $200. */}
             {/* Dividir vive en el ENCABEZADO, que ya existe, y no en una fila propia: casi siempre
                 se cobra a una sola persona, y una fila que no se usa es alto que se le quita a lo
                 que sí. Aparece solo cuando hay algo que repartir. */}
-            {/* Ver el ticket SIN salir de la hoja de cobro. El papel que sale aquí lleva impreso
-                "POR COBRAR" —el pedido todavía no se paga— así que es la cuenta, no un comprobante
-                de venta, y no puede confundirse con uno.
-
-                Va en el ENCABEZADO, que es horizontal: la hoja de cobro tiene un presupuesto de
-                alto medido contra los 600 px de la tableta, y una fila propia se lo quitaría a los
-                métodos de pago. */}
-            <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
-              onClick={() => setViendoTicket(order.id)}>
-              <LuReceipt /> Ticket
-            </Button>
             {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => { setPartes(2); setMontoElegido(null); }}>
@@ -483,10 +533,6 @@ export function CobrarSheet({ order, onClose, onCobrado }: Props) {
           )}
         </DrawerFooter>
       </DrawerContent>
-      {/* El visor se monta FUERA del contenido de la hoja pero dentro del mismo Drawer: la hoja de
-          cobro se queda abierta detrás, así que cerrar el ticket devuelve al operador exactamente
-          donde estaba —con el método elegido y el monto tecleado— y no a empezar de nuevo. */}
-      <VerTicket orderId={viendoTicket} onClose={() => setViendoTicket(null)} />
     </DrawerRoot>
   );
 }
