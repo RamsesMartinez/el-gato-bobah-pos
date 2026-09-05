@@ -95,5 +95,14 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
     },
   });
 
-  return { mandar: mutation.mutate, enviando: mutation.isPending, cobrables, noDisponibles, defaultFee };
+  return {
+    mandar: mutation.mutate,
+    // La versión que se puede ESPERAR. La usa la hoja de cobro para crear el pedido justo antes de
+    // cobrarlo y no antes: hasta que no se toca el botón final, tocar COBRAR no manda nada a cocina.
+    mandarAsync: mutation.mutateAsync,
+    enviando: mutation.isPending,
+    cobrables,
+    noDisponibles,
+    defaultFee,
+  };
 }

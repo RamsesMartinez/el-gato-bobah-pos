@@ -16,6 +16,7 @@ import { usePopular } from '../../hooks/usePopular';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
+import { round2 } from '../../domain/cobro';
 import { useMandarPedido } from './useMandarPedido';
 import { envioDeLaCuenta } from '../../domain/envio';
 import { useAgregarAPedido } from './useAgregarAPedido';
@@ -41,7 +42,7 @@ import { PedidosEnCurso } from './PedidosEnCurso';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
-import { CobrarSheet } from '../../shared/CobrarSheet';
+import { CobrarSheet, type CuentaParaCobrar } from '../../shared/CobrarSheet';
 import { toaster } from '../../components/ui/toaster';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
@@ -124,7 +125,20 @@ export function POSPage() {
   // El pedido que se está cobrando. El POS ya no tiene su propia pantalla de dinero: crea el pedido
   // y abre LA hoja de cobro, la misma del botón naranja y la del tablero. Dos pantallas de cobro
   // eran dos aritméticas, dos validaciones y dos formas de traducir el mismo error del servidor.
-  const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
+  // La cuenta que se está cobrando. Puede NO ser un pedido todavía: tocar COBRAR abre la hoja sobre
+  // la cuenta y el pedido nace al cobrar.
+  const [cobrando, setCobrando] = useState<CuentaParaCobrar | null>(null);
+  // El pedido, en cuanto existe. Lo necesita el aviso de cerrar: solo hay algo en cocina si el
+  // pedido llegó a crearse.
+  const [creadoAlCobrar, setCreadoAlCobrar] = useState<PedidoParaCobrar | null>(null);
+  // Llave de la hoja de cobro: cambia al ABRIRLA y no vuelve a moverse mientras dure.
+  //
+  // No puede ser el id de la cuenta: crear el pedido cierra la pestaña, así que la cuenta activa
+  // cambia A MEDIA VENTA y la hoja se remontaría perdiendo el pedido que acaba de crear — al
+  // dividir, el segundo comensal crearía un pedido nuevo en vez de pagar el mismo.
+  //
+  // Tampoco el id del pedido: es nulo hasta el primer cobro, y aparecer cambiaría la llave igual.
+  const [sesionDeCobro, setSesionDeCobro] = useState(0);
   const [ticketOpen, setTicketOpen] = useState(false);
   // modo editar: reutiliza el grid del POS para editar productos (admin/gerente).
   const [editMode, setEditMode] = useState(false);
@@ -144,7 +158,7 @@ export function POSPage() {
   // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
   // solo con lo agregado.
   const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
-  const { mandar, enviando, noDisponibles, defaultFee } = useMandarPedido((order) => {
+  const { mandar, mandarAsync, enviando, noDisponibles, defaultFee } = useMandarPedido((order) => {
     ticketDrawer.onClose();
     // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
     setAgregados(undefined);
@@ -159,10 +173,32 @@ export function POSPage() {
   // los días.
   const envio = envioDeLaCuenta(cuenta, cuenta.envio, defaultFee);
   const enviarACocina = () => mandar({ luego: setLastOrder, deliveryFee: envio.paraElServidor });
-  // Cobrar: se crea el pedido —cocina ya se entera— y se abre la hoja de cobro sobre él. La
-  // confirmación y el ticket esperan a que quede saldado, porque hasta entonces no se sabe si el
-  // papel dice PAGADO.
-  const cobrarLaCuenta = () => mandar({ luego: setCobrando, deliveryFee: envio.paraElServidor });
+  // COBRAR ABRE LA HOJA. NO MANDA NADA A COCINA.
+  //
+  // Antes creaba el pedido aquí mismo, así que un toque por equivocación —el botón vive junto al
+  // total, en la barra que se toca todo el día— dejaba comida preparándose y una cuenta que alguien
+  // tenía que ir a cancelar. Ahora el pedido nace cuando se toca el botón que dice cuánto se cobra,
+  // dentro de la hoja.
+  //
+  // Cocina NO se entera más tarde de lo que le corresponde: se entera al confirmarse la venta, que
+  // es lo que la feature 005 exige, y la barrera de "no se cobra un pedido que cocina no ha visto"
+  // sigue viva en el SERVIDOR — el pedido se crea antes de cobrarse, siempre.
+  //
+  // Y para mandar a cocina sin cobrar sigue estando "Enviar", que es lo que ese botón significa.
+  const cobrarLaCuenta = () => {
+    setSesionDeCobro((n) => n + 1);
+    setCobrando({
+    id: null, number: null,
+    folioName: cuenta.folioName,
+    total: String(round2(total + envio.monto)),
+    outstanding: String(round2(total + envio.monto)),
+    // La misma moneda que el resto del POS pinta en esta pantalla. La cuenta no la trae porque no
+    // hay dos monedas en un mismo local; el pedido ya creado sí la trae del servidor y desde ese
+    // momento manda la suya.
+    currency: 'MXN',
+    deliveryPlatformId: cuenta.platformId,
+    });
+  };
 
   // Cerrar la hoja de cobro sin haber saldado NO cancela nada, y hay que decirlo.
   //
@@ -172,8 +208,12 @@ export function POSPage() {
   // en cocina y en el botón naranja con su saldo. Sin este aviso, el operador lo vuelve a capturar y
   // cocina prepara dos veces lo mismo.
   const cerrarElCobro = () => {
-    const pendiente = cobrando;
+    const pendiente = creadoAlCobrar;
     setCobrando(null);
+    setCreadoAlCobrar(null);
+    // Sin pedido creado no pasó nada: la cuenta sigue en pantalla y no hay nada en cocina. Avisar
+    // aquí sería mentir, y encima empujaría al operador a buscar en el botón naranja un pedido que
+    // no existe.
     if (!pendiente) return;
     toaster.create({
       title: `${pendiente.folioName || `Pedido #${pendiente.number}`} ya está en cocina`,
@@ -541,8 +581,10 @@ export function POSPage() {
           traducir el mismo error, y ya habían divergido en cinco reglas verificables.
           `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
       <CobrarSheet
-        key={cobrando?.id}
+        key={sesionDeCobro}
         order={cobrando}
+        crearPedido={() => mandarAsync({ deliveryFee: envio.paraElServidor })}
+        onPedidoCreado={setCreadoAlCobrar}
         onClose={cerrarElCobro}
         onCobrado={terminarElCobro}
       />
