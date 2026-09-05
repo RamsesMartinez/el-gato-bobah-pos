@@ -22,6 +22,7 @@ import { DevolucionSheet } from './DevolucionSheet';
 import { CancelarRenglonDialog } from './CancelarRenglonDialog';
 import { useSessionStore } from '../../stores/session';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
 
 // para_llevar ya no se ofrece al cobrar, pero hay pedidos históricos con ese tipo y sin su etiqueta
 // la tarjeta los mostraría como "para_llevar", con guion bajo.
@@ -193,7 +194,7 @@ export function OrdersBoardPage() {
       </SimpleGrid>
 
       {canRefund && (
-        <Entregadas orders={entregadas} onRefund={refund} onTicket={acciones.ticket}
+        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} onRefund={refund} onTicket={acciones.ticket}
           onCobrar={setCobrando} puedeCobrar={puedeCobrar} />
       )}
 
@@ -419,8 +420,10 @@ function Renglon({ l, onEntregar, onQuitar }: {
 
 // Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
-function Entregadas({ orders, onRefund, onTicket, onCobrar, puedeCobrar }: {
+function Entregadas({ orders, corteDeVista, onRefund, onTicket, onCobrar, puedeCobrar }: {
   orders: BoardOrder[];
+  // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
+  corteDeVista?: string;
   onRefund: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
   onCobrar: (o: BoardOrder) => void;
@@ -429,14 +432,14 @@ function Entregadas({ orders, onRefund, onTicket, onCobrar, puedeCobrar }: {
   return (
     <Box mt={4}>
       <HStack mb={2} gap={2}>
-        <Text fontWeight="700">Entregadas hoy</Text>
+        <Text fontWeight="700">{tituloDeEntregadas(corteDeVista)}</Text>
         <Badge borderRadius="full" px={2}>{orders.length}</Badge>
         {orders.length > ENTREGADAS_VISIBLES && (
           <Text fontSize="xs" color="fg.muted">últimas {ENTREGADAS_VISIBLES}</Text>
         )}
       </HStack>
       {orders.length === 0 ? (
-        <Text color="fg.subtle" fontSize="sm">Sin entregas hoy</Text>
+        <Text color="fg.subtle" fontSize="sm">{vacioDeEntregadas(corteDeVista)}</Text>
       ) : (
         <VStack align="stretch" gap={1.5}>
           {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => {
