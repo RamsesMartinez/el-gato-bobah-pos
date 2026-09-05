@@ -203,12 +203,12 @@ prueba; el que no atrapa ninguno no está aquí.
 **X12** no lleva test: es orden de despliegue, y se verifica leyendo el grafo de `ci.yml` —
 `deploy-frontend` ahora depende de `deploy-backend`.
 
-## W. Ver la cuenta, y cuándo nace el pedido
+## W. Cuándo nace el pedido, y el papel de la cuenta
 
-Dos cambios que van juntos. Tocar COBRAR creaba el pedido y lo mandaba a cocina, así que un toque
-por equivocación —el botón vive junto al total, en la barra que se toca todo el día— dejaba comida
-preparándose. Ahora el pedido nace al tocar el botón final; y como en la hoja de cobro puede no
-haber todavía ningún pedido, ver la cuenta se hace desde donde el pedido sí existe.
+Tocar COBRAR creaba el pedido y lo mandaba a cocina, así que un toque por equivocación —el botón
+vive junto al total, en la barra que se toca todo el día— dejaba comida preparándose. Ahora el
+pedido nace al tocar el botón final. Y como en la hoja de cobro puede no haber todavía ningún
+pedido, imprimir la cuenta pasa por un papel propio.
 
 **La barrera de la 005 no se toca**: "no se cobra un pedido que cocina no ha visto" vive en el
 servidor, y el pedido se sigue creando ANTES de cobrarse.
@@ -219,11 +219,17 @@ servidor, y el pedido se sigue creando ANTES de cobrarse.
 | W2 | El botón final del cobro | Crea el pedido y luego lo cobra, contra ese mismo id | `el botón final crea el pedido y luego lo cobra` | Vitest |
 | W3 | Dividir cruzando el momento en que el pedido nace | El pedido se crea UNA vez y los dos pedazos van contra él. Sin esto, cada comensal creaba su propia cuenta y cocina recibía la misma comanda tres veces | `al dividir, el segundo pedazo cobra el pedido que creó el primero` | Vitest |
 | W4 | Cerrar la hoja sin cobrar | No hay aviso de "ya está en cocina": no pasó nada y decirlo sería mentir | `abrir la hoja sobre una cuenta sin confirmar no crea el pedido` | Vitest |
-| W5 | Una cuenta sin confirmar | No finge tener folio del servidor: dice "Sin confirmar". Un número inventado se lo diría al cliente y no coincidiría con el ticket | `una cuenta sin confirmar no finge tener folio del servidor` | Vitest |
-| W6 | Ver el ticket desde la lista del botón naranja | Trae el pedido completo y la lista se queda abierta detrás | `desde la lista se puede ver el ticket de un pedido sin cobrarlo` | Vitest |
-| W7 | El papel de un pedido pagado | Sale marcado `** REIMPRESIÓN **`: el original ya circuló | `marca el papel como reimpresión cuando el pedido YA se pagó` | Vitest |
-| W8 | El papel de un pedido en curso | Sale con `POR COBRAR` y **sin** marca de reimpresión: es la cuenta, no un comprobante de una venta que no ocurrió | `un pedido sin cobrar NO se marca como reimpresión` | Vitest |
-| W9 | La hoja de cobro a 1024×600 | Cabe en 600 px y **no** ofrece imprimir un pedido que aún no existe | `T-cuenta · la hoja de cobro cabe` | Playwright |
+| W5 | Una cuenta sin confirmar | No finge tener folio del servidor: dice "Sin confirmar" | `una cuenta sin confirmar no finge tener folio del servidor` | Vitest |
+| W6 | El papel de una cuenta sin confirmar | Lleva `** PRE-CUENTA **` | `lleva la marca de pre-cuenta` | Vitest |
+| W7 | Ese papel y el número de pedido | No lo lleva: no existe, y uno inventado no coincidiría con el ticket | `no lleva número de pedido` | Vitest |
+| W8 | Ese papel y el estado del cobro | No lo lleva. "POR COBRAR" también sale en el ticket de un pedido REAL sin cobrar, y los dos papeles se parecerían justo donde deben distinguirse | `no lleva el estado del cobro` | Vitest |
+| W9 | Ese papel y el mensaje del negocio | Sí lo lleva: es identidad, no estado | `conserva el mensaje del negocio` | Vitest |
+| W10 | El total del papel | Incluye el envío y coincide al centavo con lo que se va a cobrar | `el total incluye el envío y coincide` | Vitest |
+| W11 | El ticket de una venta real | Sigue con su número y su estado de cobro, y sin la marca de pre-cuenta | `el ticket normal conserva su número y su estado de cobro` | Vitest |
+| W12 | El papel a 1024×600 | El botón mide ≥44 px, la hoja cabe en 600 px, y el papel sale marcado y sin número | `T-cuenta · el papel de la cuenta sale marcado` | Playwright |
+| W13 | Ver el ticket desde la lista del botón naranja | Trae el pedido completo y la lista se queda abierta detrás | `desde la lista se puede ver el ticket de un pedido sin cobrarlo` | Vitest |
+| W14 | El papel de un pedido pagado | Sale marcado `** REIMPRESIÓN **`: el original ya circuló | `marca el papel como reimpresión cuando el pedido YA se pagó` | Vitest |
+| W15 | El papel de un pedido en curso que SÍ existe | Sale con `POR COBRAR` y sin marca de reimpresión | `un pedido sin cobrar NO se marca como reimpresión` | Vitest |
 
 ## Pendientes de cubrir
 
