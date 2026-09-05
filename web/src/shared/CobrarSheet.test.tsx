@@ -346,23 +346,107 @@ test('repartir entre tres cobra 33.33, 33.33 y 33.34, y sale del reparto en la �
   expect(round2(montos.reduce((a, b) => a + b, 0))).toBe(100);
 });
 
-// IMPRIMIR LA CUENTA SIN SALIR DEL COBRO.
+// EL PEDIDO NACE AL COBRAR, NO AL ABRIR LA HOJA.
 //
-// El operador con el cliente enfrente pide la cuenta antes de decidir cómo paga. Antes había que
-// cobrar primero para que saliera el ticket, o irse a otra pantalla a buscar el pedido — y volver
-// al cobro significaba empezar de nuevo: método, monto y propina se perdían.
-test('desde la hoja de cobro se puede ver el ticket, y la hoja se queda donde estaba', async () => {
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
-
-  await userEvent.click(await screen.findByRole('button', { name: /Ticket/ }));
-
-  // Pide el pedido COMPLETO: la hoja de cobro solo conoce la cabecera y sin líneas el papel sale
-  // vacío.
-  await waitFor(() => expect(order).toHaveBeenCalledWith(7));
-  // Y NO cobró nada: mirar la cuenta no puede mover dinero.
+// Antes, tocar COBRAR creaba el pedido y lo mandaba a cocina. El botón vive junto al total, en la
+// barra que se toca todo el día, así que un toque por equivocación dejaba comida preparándose y una
+// cuenta que alguien tenía que ir a cancelar.
+test('abrir la hoja sobre una cuenta sin confirmar no crea el pedido', async () => {
+  const crearPedido = vi.fn();
+  pinta(
+    <CobrarSheet
+      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
+        currency: 'MXN', deliveryPlatformId: null }}
+      crearPedido={crearPedido}
+      onClose={() => {}}
+      onCobrado={() => {}}
+    />,
+  );
+  await screen.findByRole('button', { name: 'Efectivo' });
+  expect(crearPedido, 'abrir la hoja mandó el pedido a cocina').not.toHaveBeenCalled();
   expect(chargeOrder).not.toHaveBeenCalled();
-  // La hoja de cobro sigue MONTADA detrás, con sus métodos de pago. Se busca con `hidden` porque
-  // el visor es modal y deja el fondo fuera del árbol de accesibilidad — que es lo correcto: lo que
-  // importa es que al cerrar el ticket el operador vuelva a su cobro y no a empezar de nuevo.
-  expect(screen.getByRole('button', { name: 'Efectivo', hidden: true })).toBeInTheDocument();
+});
+
+// Y el botón final SÍ lo crea, antes de cobrarlo. La barrera de la 005 —no se cobra un pedido que
+// cocina no ha visto— sigue en pie: el pedido existe cuando el cobro llega al servidor.
+test('el botón final crea el pedido y luego lo cobra', async () => {
+  const crearPedido = vi.fn().mockResolvedValue({
+    id: 77, number: 5, folioName: 'Tigre', total: '500', outstanding: '500',
+    currency: 'MXN', deliveryPlatformId: null,
+  });
+  chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false });
+  order.mockResolvedValue({ ...pedido({ id: 77 }), lines: [] });
+
+  pinta(
+    <CobrarSheet
+      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
+        currency: 'MXN', deliveryPlatformId: null }}
+      crearPedido={crearPedido}
+      onClose={() => {}}
+      onCobrado={() => {}}
+    />,
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+  await userEvent.click(await screen.findByRole('button', { name: /Cobrar/ }));
+
+  await waitFor(() => expect(crearPedido).toHaveBeenCalledTimes(1));
+  // Y cobra CONTRA EL PEDIDO QUE ACABA DE CREAR, no contra un id inventado.
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledWith(77, expect.anything()));
+});
+
+// Mientras la cuenta no se confirma no hay número que enseñar. Enseñar uno inventado es peor que no
+// enseñar ninguno: el operador se lo diría al cliente y después no coincidiría con el ticket.
+test('una cuenta sin confirmar no finge tener folio del servidor', async () => {
+  pinta(
+    <CobrarSheet
+      order={{ id: null, number: null, folioName: '', total: '500', outstanding: '500',
+        currency: 'MXN', deliveryPlatformId: null }}
+      crearPedido={vi.fn()}
+      onClose={() => {}}
+      onCobrado={() => {}}
+    />,
+  );
+  expect(await screen.findByText('Sin confirmar')).toBeInTheDocument();
+});
+
+// DIVIDIR LA CUENTA CRUZANDO EL MOMENTO EN QUE EL PEDIDO NACE.
+//
+// Es el borde caro del cambio: el primer comensal crea el pedido, y el segundo tiene que pagar ESE
+// MISMO. Si la hoja no lo recordara, cada pedazo crearía un pedido nuevo y el cliente acabaría con
+// tres cuentas de un tercio cada una — y cocina con tres comandas de la misma comida.
+test('al dividir, el segundo pedazo cobra el pedido que creó el primero', async () => {
+  const crearPedido = vi.fn().mockResolvedValue({
+    id: 77, number: 5, folioName: 'Tigre', total: '500', outstanding: '500',
+    currency: 'MXN', deliveryPlatformId: null,
+  });
+  // El primer cobro deja saldo: la hoja NO se cierra y se prepara para el siguiente comensal.
+  chargeOrder
+    .mockResolvedValueOnce({ outstanding: '250', paid: false, yaEstaba: false })
+    .mockResolvedValueOnce({ outstanding: '0', paid: true, yaEstaba: false });
+  order.mockResolvedValue({ ...pedido({ id: 77, outstanding: '250' }), lines: [] });
+
+  pinta(
+    <CobrarSheet
+      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
+        currency: 'MXN', deliveryPlatformId: null }}
+      crearPedido={crearPedido}
+      onClose={() => {}}
+      onCobrado={() => {}}
+    />,
+  );
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Dividir' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+  await userEvent.click(await screen.findByRole('button', { name: /Cobrar/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
+
+  // Segundo comensal.
+  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+  await userEvent.click(await screen.findByRole('button', { name: /Cobrar/ }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(2));
+
+  // EL PEDIDO SE CREÓ UNA SOLA VEZ, y los dos cobros fueron contra él.
+  expect(crearPedido, 'cada pedazo creó su propio pedido: el cliente acaba con varias cuentas')
+    .toHaveBeenCalledTimes(1);
+  expect(chargeOrder.mock.calls.map((c) => c[0])).toEqual([77, 77]);
 });
