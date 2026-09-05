@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, Text, VStack } from '@chakra-ui/react';
-import { LuWallet, LuPlus } from 'react-icons/lu';
+import { LuWallet, LuPlus, LuReceipt } from 'react-icons/lu';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader,
 } from '../../components/ui/drawer';
 import { posApi } from '../../api/pos';
 import type { BoardOrder, CobroHecho } from '../../types/pos';
 import { CobrarSheet } from '../../shared/CobrarSheet';
+import { VerTicket } from '../../shared/tickets/ReprintTicket';
 import { money } from '../../utils/format';
 import { round2 } from '../../domain/numeros';
 
@@ -36,6 +37,9 @@ export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
 }) {
   const qc = useQueryClient();
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
+  // Qué pedido se está viendo en el visor. La lista se queda abierta detrás: ver la cuenta de un
+  // pedido y volver a la lista no debería costar reabrir la hoja y buscarlo otra vez.
+  const [viendoTicket, setViendoTicket] = useState<number | null>(null);
   const [abierta, setAbierta] = useState(false);
 
   // El servidor manda solo lo que falta por cobrar (`porCobrar=true` en `api/pos.ts`). Recortarlo
@@ -86,11 +90,13 @@ export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
         onCerrar={() => setAbierta(false)}
         onCobrar={(o) => { setAbierta(false); setCobrando(o); }}
         onAgregar={(o) => { setAbierta(false); onAbrir(o); }}
+        onTicket={(o) => setViendoTicket(o.id)}
       />
 
       {/* `key` por pedido: la hoja lleva estado —cuánto se cobra, con qué, y qué pedazos ya
           entraron— y con otro pedido nada de eso aplica. Remontarla lo limpia sin un efecto que
           resincronice, que es de donde salen los estados a medias. */}
+      <VerTicket orderId={viendoTicket} onClose={() => setViendoTicket(null)} />
       <CobrarSheet key={cobrando?.id} order={cobrando}
         onClose={() => setCobrando(null)}
         onCobrado={(res, orderId) => { refrescar(); onCobrado(res, orderId); }} />
@@ -102,7 +108,7 @@ export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
 //
 // El pedido ENTREGADO y sin cobrar es el caso caro —el cliente ya se fue con la comida— y necesita
 // decirse con todas sus letras, no depender del color.
-function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar, onCobrar, onAgregar }: {
+function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar, onCobrar, onAgregar, onTicket }: {
   abierta: boolean;
   pedidos: BoardOrder[];
   total: number;
@@ -110,6 +116,7 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
   onCerrar: () => void;
   onCobrar: (o: BoardOrder) => void;
   onAgregar: (o: BoardOrder) => void;
+  onTicket: (o: BoardOrder) => void;
 }) {
   return (
     <DrawerRoot open={abierta} placement="bottom" size="md"
@@ -149,6 +156,14 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
                   <Button minH={TAP} variant="outline" colorPalette="blue" flexShrink={0}
                     disabled={!hayQueAgregar} onClick={() => onAgregar(o)}>
                     <LuPlus /> Agregar
+                  </Button>
+                  {/* Ver la cuenta sin cobrarla todavía. El papel dice "POR COBRAR", así que es
+                      la cuenta que se le lleva a la mesa y no un comprobante de venta. Icono CON
+                      texto y no solo icono: la fila ya tiene dos acciones y una tercera muda se
+                      toca por descarte. */}
+                  <Button minH={TAP} variant="outline" colorPalette="gray" flexShrink={0}
+                    onClick={() => onTicket(o)}>
+                    <LuReceipt /> Ticket
                   </Button>
                   <Button minH={TAP} colorPalette="orange" flexShrink={0} onClick={() => onCobrar(o)}>
                     Cobrar {money(o.outstanding, o.currency)}
