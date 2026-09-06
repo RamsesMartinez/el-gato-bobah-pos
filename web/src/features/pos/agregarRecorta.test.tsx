@@ -40,6 +40,9 @@ test('agregar excluye los productos que ya no están en el menú', async () => {
   act(() => result.current.agregar({ id: 12 } as BoardOrder));
 
   await waitFor(() => expect(addOrderLines).toHaveBeenCalled());
-  const [, lineas] = addOrderLines.mock.calls[0];
+  // La firma lleva la llave del LOTE en medio: sin ella, un doble tap agregaba el renglón dos veces
+  // y descontaba el inventario dos veces. Se afirma aquí porque es lo que vuelve inocuo el reintento.
+  const [, llave, lineas] = addOrderLines.mock.calls[0];
+  expect(llave, 'agregar salió sin llave de idempotencia').toBeTruthy();
   expect(lineas.map((l: { productId: number }) => l.productId)).toEqual([1]);
 });

@@ -226,7 +226,10 @@ func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type addLinesBody struct {
-	Lines []struct {
+	// ClientUuid identifica el LOTE que se agrega, no cada renglón. Es lo que vuelve inocuo el
+	// reenvío de un agregado: sin él, un doble tap cobra de más y descuenta el inventario dos veces.
+	ClientUuid uuid.UUID `json:"clientUuid"`
+	Lines      []struct {
 		ProductID int64           `json:"productId"`
 		Qty       decimal.Decimal `json:"qty"`
 		Notes     string          `json:"notes"`
@@ -264,7 +267,7 @@ func (h *Handlers) AddOrderLines(w http.ResponseWriter, r *http.Request) {
 		lines = append(lines, in)
 	}
 
-	order, err := h.orders.AddLines(r.Context(), id, lines, u.ID)
+	order, err := h.orders.AddLines(r.Context(), id, lines, u.ID, body.ClientUuid)
 	if err != nil {
 		Error(w, err)
 		return
@@ -307,6 +310,11 @@ func (h *Handlers) DeliverOrderLine(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	// Entregar TAMBIÉN avisa. Sin esto, la segunda tableta sigue ofreciendo "Entregar" sobre comida
+	// que ya salió hasta su refresco de 30 segundos, y quien la toca recibe un error sobre una
+	// entrega que sí ocurrió — el operador concluye que el sistema se equivocó y la vuelve a sacar.
+	u, _ := userFrom(r.Context())
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": orderID}})
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -321,6 +329,8 @@ func (h *Handlers) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	u, _ := userFrom(r.Context())
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": orderID}})
 	JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -380,10 +390,13 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	// Cobrar era la ÚNICA mutación de pedido que no avisaba, y con la cuenta dividida eso deja de
-	// ser un retraso y pasa a ser dinero: la caja B cobra el pedido entero y la hoja abierta en la
-	// caja A sigue diciendo "Falta $500" indefinidamente —su lista se refresca por otra llave— hasta
-	// que el operador de A cobra el primer pedazo y rebota con el efectivo del cliente en la mano.
+	// Con la cuenta dividida esto deja de ser un retraso y pasa a ser dinero: la caja B cobra el
+	// pedido entero y la hoja abierta en la caja A sigue diciendo "Falta $500" indefinidamente —su
+	// lista se refresca por otra llave— hasta que el operador de A cobra el primer pedazo y rebota
+	// con el efectivo del cliente en la mano.
+	//
+	// Este comentario decía que cobrar era la ÚNICA mutación que no avisaba, y era falso: entregar
+	// tampoco lo hacía. Ya avisan las dos.
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, res)
 }

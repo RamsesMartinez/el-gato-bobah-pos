@@ -92,7 +92,7 @@ export function Ticket({
           </Center>
         )}
         {lines.map((l) => (
-          <Box key={l.lineId} py={2} px={2} borderBottomWidth="1px" borderColor="border.muted">
+          <Box key={l.lineId} py={1.5} px={2} borderBottomWidth="1px" borderColor="border.muted">
             <Flex justify="space-between" gap={2}>
               <Box flex="1" onClick={() => onEditLine(l)} cursor="pointer">
                 <Text fontWeight="600" fontSize="sm">{l.name}</Text>
@@ -112,11 +112,25 @@ export function Ticket({
               </Box>
               <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap">{money(lineTotal(l))}</Text>
             </Flex>
-            <HStack mt={1} gap={1}>
-              <IconButton aria-label="Quitar" size="xs" variant="ghost" colorPalette="red" onClick={() => remove(l.lineId)}><LuTrash2 /></IconButton>
-              <Button size="xs" onClick={() => dec(l.lineId)}>−</Button>
-              <Text minW="24px" textAlign="center" fontSize="sm">{l.qty}</Text>
-              <Button size="xs" onClick={() => inc(l.lineId)}>+</Button>
+            {/* Los controles del renglón medían ~24 px, por debajo del piso de 44 que la
+                constitución fija: por ahí el dedo toca dos veces y la segunda cae en otra cosa —
+                y aquí "otra cosa" era la papelera, que estaba pegada al menos.
+
+                La papelera se va al EXTREMO OPUESTO. Separar la acción destructiva de la frecuente
+                es requisito funcional, no gusto: quitar un renglón por accidente con el cliente
+                enfrente obliga a volver a buscarlo en el menú.
+
+                Cuesta ~14 px de alto por renglón (los 20 que suben los controles, menos los 6 que
+                se recuperan apretando el relleno). En el panel de 600 px eso es un renglón menos a
+                la vista, y se paga: un control que no se puede tocar no sirve de nada. */}
+            <HStack mt={0.5} gap={1} justify="space-between">
+              <HStack gap={1}>
+                <Button size="sm" minW="44px" minH="44px" onClick={() => dec(l.lineId)}>−</Button>
+                <Text minW="32px" textAlign="center" fontSize="sm" fontWeight="600">{l.qty}</Text>
+                <Button size="sm" minW="44px" minH="44px" onClick={() => inc(l.lineId)}>+</Button>
+              </HStack>
+              <IconButton aria-label="Quitar" size="sm" minW="44px" minH="44px" variant="ghost"
+                colorPalette="red" onClick={() => remove(l.lineId)}><LuTrash2 /></IconButton>
             </HStack>
           </Box>
         ))}
@@ -186,14 +200,16 @@ export function Ticket({
           {/* Enviar es secundario y COBRAR domina: cobrar es lo que pasa en casi toda venta, y dos
               botones con el mismo peso invitan al toque equivocado — que aquí significa creer que
               se cobró algo que no se cobró. */}
-          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="gray"
+          {/* Contorno azul tenue y no gris: en gris se leía como un texto apagado y no como un
+              control, y quien no lo reconoce como botón termina cobrando para mandar a cocina. El
+              azul lo separa además del verde de COBRAR, que es el que mueve dinero. */}
+          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="blue"
             disabled={lines.length === 0 || envioMalEscrito} loading={enviando} onClick={onEnviar}>
             Enviar a cocina
           </Button>
-          {/* COBRAR también MANDA el pedido a cocina, y decirlo importa: desde que confirmar es
-              obligatorio antes de cobrar, este botón dejó de ser reversible. Quien lo toca y luego
-              cierra la hoja de cobro creyendo que canceló, ve el carrito vacío y vuelve a capturar
-              el pedido — y cocina prepara dos veces lo mismo. */}
+          {/* COBRAR ya NO manda el pedido a cocina: abre la hoja y el pedido nace al tocar el botón
+              final. Este comentario decía lo contrario y era cierto hasta ese cambio; cerrar la
+              hoja sin cobrar ahora no deja nada preparándose. */}
           {/* `loading` también aquí: es el botón que más se toca y era el único de los dos sin
               estado ocupado. En red lenta el operador toca dos veces y salen dos POST /orders
               concurrentes con el mismo clientUuid; la idempotencia de Create es check-then-insert

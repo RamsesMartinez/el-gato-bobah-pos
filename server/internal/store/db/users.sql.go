@@ -8,6 +8,8 @@ package db
 import (
 	"context"
 	"time"
+
+	"uuid"
 )
 
 const clearAllPins = `-- name: ClearAllPins :exec
@@ -43,19 +45,27 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
-insert into refresh_tokens (user_id, token_hash, expires_at)
-values ($1, $2, $3)
-returning id, user_id, token_hash, expires_at, revoked_at, created_at
+insert into refresh_tokens (user_id, token_hash, expires_at, family_id)
+values ($1, $2, $3, $4)
+returning id, user_id, token_hash, expires_at, revoked_at, created_at, family_id
 `
 
 type CreateRefreshTokenParams struct {
-	UserID    int64     `json:"user_id"`
-	TokenHash string    `json:"token_hash"`
-	ExpiresAt time.Time `json:"expires_at"`
+	UserID    int64      `json:"user_id"`
+	TokenHash string     `json:"token_hash"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	FamilyID  *uuid.UUID `json:"family_id"`
 }
 
+// family_id es la CADENA a la que pertenece la credencial: nace en un login y se propaga en cada
+// rotación. Es lo que deja cortar al ladrón sin tumbar la tableta del compañero, que comparte cuenta.
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
-	row := q.db.QueryRow(ctx, createRefreshToken, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, createRefreshToken,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.FamilyID,
+	)
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
@@ -64,6 +74,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.FamilyID,
 	)
 	return i, err
 }
@@ -117,7 +128,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const getRefreshToken = `-- name: GetRefreshToken :one
-select id, user_id, token_hash, expires_at, revoked_at, created_at
+select id, user_id, token_hash, expires_at, revoked_at, created_at, family_id
 from refresh_tokens where token_hash = $1
 `
 
@@ -131,6 +142,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.FamilyID,
 	)
 	return i, err
 }
@@ -240,6 +252,24 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const revokeRefreshFamily = `-- name: RevokeRefreshFamily :exec
+update refresh_tokens set revoked_at = now()
+where family_id = $1 and family_id is not null and revoked_at is null
+`
+
+// La cadena que nació en UN login, y solo esa.
+//
+// Es el castigo del reuso, y la constitución lo pide así: revocar por usuario tumbaba también la
+// tableta del compañero, que en este negocio comparte cuenta. Un robo en la barra dejaba a la caja
+// pidiendo contraseña con el cliente enfrente.
+//
+// company_id no se nombra: RLS ya lo aplica, y sqlc no ve las columnas que 0023 agregó con
+// EXECUTE format().
+func (q *Queries) RevokeRefreshFamily(ctx context.Context, familyID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshFamily, familyID)
+	return err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 update refresh_tokens set revoked_at = now() where token_hash = $1
 `
@@ -267,6 +297,10 @@ const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
 update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null
 `
 
+// TODAS las sesiones de una persona. Es lo correcto para un cambio de contraseña: si la contraseña
+// cambió, nada de lo emitido con la anterior debe seguir sirviendo.
+//
+// NO es lo correcto para un reuso: ahí se revoca solo la familia comprometida (ver la de abajo).
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID int64) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
 	return err

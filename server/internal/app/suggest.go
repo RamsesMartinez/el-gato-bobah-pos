@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -37,10 +38,17 @@ const (
 	maxRanked           = 4    // opciones rankeadas devueltas por grupo
 )
 
-// mxLocation: México abolió el horario de verano en 2022 → UTC-6 fijo todo el año.
-// ponytail: zona fija sin depender de tzdata en el contenedor. Ceiling: si vuelve el
-// DST o hay locales en otra zona, cargar time.LoadLocation por sucursal.
-var mxLocation = time.FixedZone("America/Mexico_City", -6*3600)
+// La zona sale de la CONFIGURACIÓN DEL NEGOCIO, no de una constante.
+//
+// Era `time.FixedZone("America/Mexico_City", -6*3600)` con un techo declarado: "si vuelve el DST o
+// hay locales en otra zona, cargar time.LoadLocation". Esa condición ya se cumplió — el producto
+// ofrece `America/Tijuana`, que sigue el horario de verano de la costa oeste, y el negocio puede
+// elegirla desde la pantalla de ajustes. Con la zona fija, un local en Tijuana recibía sus
+// sugerencias calculadas una hora fuera media parte del año: el kernel por hora del día apuntaba a
+// la comida de otro momento.
+//
+// El binario embebe tzdata (`time/tzdata` en cmd/api), así que `LoadLocation` no depende de que el
+// contenedor traiga la base de zonas.
 
 type pick struct {
 	productID int64
@@ -65,7 +73,6 @@ type memoEntry struct {
 type SuggestService struct {
 	store *store.Store
 	now   func() time.Time
-	loc   *time.Location
 
 	mu     sync.Mutex
 	cached map[int64]memoEntry // companyID → memo (NO compartir entre empresas: datos de otra)
@@ -75,14 +82,15 @@ func NewSuggestService(s *store.Store, now func() time.Time) *SuggestService {
 	if now == nil {
 		now = time.Now
 	}
-	return &SuggestService{store: s, now: now, loc: mxLocation, cached: map[int64]memoEntry{}}
+	return &SuggestService{store: s, now: now, cached: map[int64]memoEntry{}}
 }
 
 // Defaults devuelve producto→grupo→opciones rankeadas por probabilidad contextual, para la
 // empresa dada. Memoiza POR EMPRESA y por bucket de hora: el memo de una empresa nunca se sirve
 // a otra (aislamiento multi-tenant también en este cómputo en memoria).
 func (s *SuggestService) Defaults(ctx context.Context, companyID int64) (map[int64]map[int64][]RankedOption, error) {
-	now := s.now().In(s.loc)
+	loc := s.location(ctx)
+	now := s.now().In(loc)
 	bucket := now.Truncate(time.Hour)
 
 	s.mu.Lock()
@@ -98,7 +106,7 @@ func (s *SuggestService) Defaults(ctx context.Context, companyID int64) (map[int
 	}
 	picks := make([]pick, len(rows))
 	for i, r := range rows {
-		picks[i] = pick{productID: r.ProductID, groupID: r.GroupID, optionID: r.OptionID, at: r.CreatedAt.In(s.loc)}
+		picks[i] = pick{productID: r.ProductID, groupID: r.GroupID, optionID: r.OptionID, at: r.CreatedAt.In(loc)}
 	}
 	result := rankDefaults(picks, now)
 
@@ -200,4 +208,17 @@ func weight(at, now time.Time, lambda float64) float64 {
 
 func hourOfDay(t time.Time) float64 {
 	return float64(t.Hour()) + float64(t.Minute())/60
+}
+
+// location resuelve la zona del local con el mismo patrón del resto de los servicios: la
+// configurada, cayendo al default del PRODUCTO —nunca a UTC— si no se puede leer.
+//
+// Aquí un fallback a UTC no pierde dinero, pero sí desplaza seis horas el kernel por hora del día:
+// las sugerencias de la comida saldrían a la hora del desayuno.
+func (s *SuggestService) location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
 }

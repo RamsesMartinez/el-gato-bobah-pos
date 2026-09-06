@@ -212,6 +212,34 @@ func (h *Handlers) CashStatus(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, estado)
 }
 
+// GET /cash-sessions/{id}/sales — las ventas de un corte, paginadas.
+//
+// El detalle del corte ya trae la primera página; esto existe para poder llegar al resto. Un arqueo
+// cuyas ventas no se pueden recorrer completas no se puede auditar, y la pantalla decir "hay 340 y
+// te muestro 200" resuelve la honestidad pero no el problema.
+func (h *Handlers) CashSessionSales(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	// La misma paginación del resto de las listas, con sus mismos rechazos: un tamaño absurdo se
+	// devuelve como 400 y nunca cae a un default en silencio.
+	limit, offset, err := paginaDeQuery(r.URL.Query())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	ventas, total, ingreso, err := h.backoffice.SessionSalesPage(r.Context(), id, limit, offset)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{
+		"items": ventas, "total": total, "salesTotal": ingreso,
+	})
+}
+
 // GET /cash-sessions — histórico de cortes (últimos N).
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 	limit, err := limiteDeQuery(r.URL.Query(), 50)

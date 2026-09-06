@@ -8,7 +8,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown,
 } from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
@@ -23,6 +23,11 @@ import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
 import { montoTecleado } from '../../domain/numeros';
+import { mensajeDeError } from '../../api/mensajes';
+
+// Cuántas ventas trae cada "Ver más". El mismo tamaño de página que el resto de las listas: pedir
+// de 200 en 200 no cabe en la caja y pedir de 5 en 5 obliga a diez toques para ver un día.
+const VENTAS_POR_PAGINA = 20;
 
 // Sobrante (>0) verde, faltante (<0) rojo, cuadrado gris.
 function diffColor(v: string) {
@@ -834,13 +839,35 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
   session: CashSessionDetail;
   zona?: string;
 }) {
+  // Los hooks van ANTES de cualquier salida temprana: React exige el mismo orden en cada render, y
+  // una guarda arriba los volvería condicionales.
+  //
+  // Las páginas que se han pedido además de la que trajo el detalle.
+  const [extra, setExtra] = useState<CorteSale[]>([]);
+  const [cargando, setCargando] = useState(false);
+
   // "El campo no vino" NO es "vino en cero". El front se despliega antes que el backend, y en esa
   // ventana un corte que sí cobró aparecería jurando que no cobró nada — una pantalla que miente
   // sobre dinero es peor que una pantalla incompleta. Sin el campo, la sección no se dibuja.
-  if (session.sales === undefined || session.salesCount === undefined) return null;
-
-  const ventas = session.sales;
   const total = session.salesCount;
+  const ventas = [...(session.sales ?? []), ...extra];
+
+  const verMas = async () => {
+    setCargando(true);
+    try {
+      // La página siguiente se calcula sobre lo que YA se tiene, no sobre un contador propio: si el
+      // detalle cambiara de tamaño de página, un contador aparte empezaría a saltarse renglones.
+      const pagina = Math.floor(ventas.length / VENTAS_POR_PAGINA);
+      const r = await backofficeApi.cashSessionSales(session.id, pagina, VENTAS_POR_PAGINA);
+      setExtra((prev) => [...prev, ...r.items]);
+    } catch (e) {
+      toaster.create({ title: 'No se pudieron traer más ventas', description: mensajeDeError(e), type: 'error' });
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  if (session.sales === undefined || total === undefined) return null;
 
   if (total === 0) {
     return (
@@ -883,6 +910,13 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
             ))}
           </Table.Body>
         </Table.Root>
+        {recortadas && (
+          <Box p={2} borderTopWidth="1px">
+            <Button size="sm" variant="outline" w="100%" minH="44px" loading={cargando} onClick={verMas}>
+              Ver más ({total - ventas.length} restantes)
+            </Button>
+          </Box>
+        )}
       </Box>
     </Section>
   );
