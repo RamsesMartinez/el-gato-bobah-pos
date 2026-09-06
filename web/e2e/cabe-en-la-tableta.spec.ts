@@ -56,3 +56,77 @@ test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page 
     'el repartidor dejó de costar alto: ¿volvió a estar siempre abierto?').toBeGreaterThan(40);
   console.log(`[e2e] hoja de cobro: ${sinRepartir}px sin repartir, ${repartiendo}px repartiendo, de 600px`);
 });
+
+// X7 · LOS CONTROLES DEL RENGLÓN DEL TICKET, MEDIDOS EN PÍXELES REALES.
+//
+// Medían ~24 px, por debajo del piso de 44 que fija la constitución. Vitest no puede atrapar esto:
+// las medidas de Chakra son clases CSS y jsdom no las resuelve, así que un assert de píxeles allá
+// pasaría verde con los botones chicos. Aquí hay un navegador de verdad.
+//
+// Y se mide también la SEPARACIÓN con la papelera: estaba pegada al menos, así que quitar una
+// unidad y borrar el renglón entero se distinguían por unos pocos píxeles.
+test('X7 · los controles del renglón del ticket miden 44 px y la papelera va aparte', async ({ page }) => {
+  await entrar(page);
+  await page.getByText('Dedos de Queso Pza').first().click();
+
+  // El mismo camino que E7, y por las mismas razones: el producto puede abrir la hoja de
+  // modificadores, y a 1024x600 el POS está en modo ANGOSTO — el ticket no es un panel lateral sino
+  // una hoja inferior que se abre desde la barra. Darlo por hecho es lo que ya tumbó dos pruebas de
+  // esta suite.
+  const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
+  if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+  const barra = page.getByRole('button', { name: /art ·/ });
+  if (await barra.isVisible().catch(() => false)) await barra.click();
+  await expect(page.getByRole('button', { name: 'Quitar' }).first()).toBeVisible({ timeout: 30_000 });
+
+  const menos = page.getByRole('button', { name: '−' }).first();
+  const mas = page.getByRole('button', { name: '+' }).first();
+  const quitar = page.getByRole('button', { name: 'Quitar' }).first();
+
+  for (const [nombre, boton] of [['−', menos], ['+', mas], ['Quitar', quitar]] as const) {
+    const caja = await boton.boundingBox();
+    expect(caja, `no se encontró el control "${nombre}"`).not.toBeNull();
+    expect(caja!.height, `"${nombre}" mide ${caja!.height}px de alto y el piso es 44`).toBeGreaterThanOrEqual(44);
+    expect(caja!.width, `"${nombre}" mide ${caja!.width}px de ancho y el piso es 44`).toBeGreaterThanOrEqual(44);
+  }
+
+  // La papelera al otro extremo: entre ella y el "+" tiene que haber más que el hueco de un gap.
+  const cajaMas = (await mas.boundingBox())!;
+  const cajaQuitar = (await quitar.boundingBox())!;
+  const hueco = cajaQuitar.x - (cajaMas.x + cajaMas.width);
+  expect(hueco, `la papelera está a ${Math.round(hueco)}px del "+": un toque impreciso borra el renglón`)
+    .toBeGreaterThan(40);
+});
+
+// LA CUENTA SE IMPRIME DESDE EL COBRO, Y LA HOJA SIGUE CABIENDO.
+//
+// El papel de una cuenta sin confirmar lleva ** PRE-CUENTA ** y NO lleva número de pedido: no
+// existe todavía. Es lo que impide que pase por un comprobante de venta, y solo se puede comprobar
+// en un navegador de verdad porque el papel se pinta dentro de un iframe.
+test('T-cuenta · el papel de la cuenta sale marcado y la hoja cabe en 600 px', async ({ page }) => {
+  await entrar(page);
+  await page.getByText('Dedos de Queso Pza').first().click();
+  const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
+  if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+  const barra = page.getByRole('button', { name: /art ·/ });
+  if (await barra.isVisible().catch(() => false)) await barra.click();
+  await page.getByRole('button', { name: 'COBRAR' }).click();
+  await expect(page.getByRole('button', { name: 'Efectivo' })).toBeVisible({ timeout: 30_000 });
+
+  const alto = Math.round((await page.locator('[role="dialog"]').first().boundingBox())?.height ?? 0);
+  expect(alto, 'la hoja de cobro dejó de caber en la tableta').toBeLessThanOrEqual(600);
+
+  const boton = page.getByRole('button', { name: /Cuenta/ });
+  const caja = await boton.boundingBox();
+  expect(caja!.height, `el botón mide ${caja!.height}px y el piso es 44`).toBeGreaterThanOrEqual(44);
+  await boton.click();
+
+  const papel = page.frameLocator('iframe').first();
+  await expect(papel.getByText('PRE-CUENTA'),
+    'el papel de una cuenta sin confirmar tiene que decir que lo es').toBeVisible({ timeout: 30_000 });
+  await expect(papel.getByText(/Pedido #/),
+    'el papel trae un número de pedido que todavía no existe').toHaveCount(0);
+  await expect(papel.getByText('POR COBRAR'),
+    'el estado del cobro lo confunde con el ticket de un pedido real').toHaveCount(0);
+  console.log(`[e2e] hoja de cobro con boton de cuenta: ${alto}px de 600px`);
+});

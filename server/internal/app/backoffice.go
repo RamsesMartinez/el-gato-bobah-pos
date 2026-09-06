@@ -1175,7 +1175,7 @@ func (s *BackofficeService) cobradoPorCajero(ctx context.Context, sessionID int6
 // que la pantalla pueda decir cuántas hay: recortar en silencio se lee como "esto es todo".
 func (s *BackofficeService) sessionSales(ctx context.Context, id int64) ([]SessionSaleView, int, decimal.Decimal, error) {
 	q := s.store.QC(ctx)
-	rows, err := q.SessionSales(ctx, db.SessionSalesParams{RegisterSessionID: &id, Limit: maxVentasDeCorte})
+	rows, err := q.SessionSales(ctx, db.SessionSalesParams{RegisterSessionID: &id, Lim: maxVentasDeCorte})
 	if err != nil {
 		return nil, 0, decimal.Zero, err
 	}
@@ -1184,6 +1184,35 @@ func (s *BackofficeService) sessionSales(ctx context.Context, id int64) ([]Sessi
 		return nil, 0, decimal.Zero, err
 	}
 	ventas := make([]SessionSaleView, 0, len(rows)) // no-nil → [] en JSON, nunca null
+	for _, r := range rows {
+		ventas = append(ventas, SessionSaleView{
+			ID: r.ID, DailyNumber: int(r.DailyNumber), FolioName: r.FolioName, OpenedAt: r.OpenedAt,
+			Status: string(r.Status), ServiceType: string(r.ServiceType),
+			Total: r.Total, Refund: r.RefundAmount,
+		})
+	}
+	return ventas, int(resumen.Total), resumen.Ingreso, nil
+}
+
+// SessionSalesPage devuelve una página de las ventas de un corte.
+//
+// Existe porque el detalle trae hasta `maxVentasDeCorte` y un corte más grande no se podía recorrer
+// completo desde ninguna parte: la pantalla decía cuántas había —no mentía— pero el resto era
+// inalcanzable, y un arqueo que no se puede auditar entero no se puede auditar.
+//
+// Endpoint aparte y no un parámetro del detalle: pedir la página 3 no debería recalcular el arqueo,
+// los gastos y lo cobrado por persona.
+func (s *BackofficeService) SessionSalesPage(ctx context.Context, id int64, limit, offset int32) ([]SessionSaleView, int, decimal.Decimal, error) {
+	q := s.store.QC(ctx)
+	rows, err := q.SessionSales(ctx, db.SessionSalesParams{RegisterSessionID: &id, Lim: limit, Off: offset})
+	if err != nil {
+		return nil, 0, decimal.Zero, err
+	}
+	resumen, err := q.CountSessionSales(ctx, &id)
+	if err != nil {
+		return nil, 0, decimal.Zero, err
+	}
+	ventas := make([]SessionSaleView, 0, len(rows))
 	for _, r := range rows {
 		ventas = append(ventas, SessionSaleView{
 			ID: r.ID, DailyNumber: int(r.DailyNumber), FolioName: r.FolioName, OpenedAt: r.OpenedAt,

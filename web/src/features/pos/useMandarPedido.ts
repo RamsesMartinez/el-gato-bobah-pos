@@ -57,7 +57,11 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
         // cuando aplica, no SI aplica. Deducirlo también aquí era la segunda copia de la regla.
         deliveryFee: deliveryFee ?? defaultFee,
       });
-      return agregarA ? posApi.addOrderLines(agregarA, body.lines) : posApi.createOrder(body);
+      // La MISMA llave para los dos caminos, y por la misma razón: es la de la cuenta, no una por
+      // intento. Generarla por intento hacía que la protección del servidor nunca se disparara.
+      return agregarA
+        ? posApi.addOrderLines(agregarA, cuenta.id, body.lines)
+        : posApi.createOrder(body);
     },
     onSuccess: (order, vars) => {
       closeTab(cuenta.id); // la cuenta se envió o se cobró: se cierra y queda la siguiente activa
@@ -91,5 +95,14 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
     },
   });
 
-  return { mandar: mutation.mutate, enviando: mutation.isPending, cobrables, noDisponibles, defaultFee };
+  return {
+    mandar: mutation.mutate,
+    // La versión que se puede ESPERAR. La usa la hoja de cobro para crear el pedido justo antes de
+    // cobrarlo y no antes: hasta que no se toca el botón final, tocar COBRAR no manda nada a cocina.
+    mandarAsync: mutation.mutateAsync,
+    enviando: mutation.isPending,
+    cobrables,
+    noDisponibles,
+    defaultFee,
+  };
 }

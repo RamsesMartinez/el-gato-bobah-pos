@@ -1148,12 +1148,13 @@ select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type
 from orders o
 where o.register_session_id = $1
 order by o.opened_at desc, o.id desc
-limit $2
+limit $3 offset $2
 `
 
 type SessionSalesParams struct {
 	RegisterSessionID *int64 `json:"register_session_id"`
-	Limit             int32  `json:"limit"`
+	Off               int32  `json:"off"`
+	Lim               int32  `json:"lim"`
 }
 
 type SessionSalesRow struct {
@@ -1179,7 +1180,7 @@ type SessionSalesRow struct {
 // Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
 // las incluye es el total, y de eso se encarga la gemela de abajo.
 func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]SessionSalesRow, error) {
-	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Limit)
+	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Off, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

@@ -28,7 +28,7 @@ export function useAgregarAPedido(onListo: (pedido: OrderView, agregados: number
   const mutation = useMutation({
     mutationFn: async (pedido: BoardOrder) => {
       const body = armarPedido({ cuenta, lineas: cobrables, clientUuid: cuenta.id, deliveryFee: 0 });
-      return posApi.addOrderLines(pedido.id, body.lines);
+      return posApi.addOrderLines(pedido.id, cuenta.id, body.lines);
     },
     onSuccess: (respuesta) => {
       closeTab(cuenta.id);

@@ -140,3 +140,20 @@ test('un envío mal escrito deja de bloquear cuando la cuenta pasa a mostrador',
   // Y no queda un aviso huérfano de un campo que ya no se pinta.
   expect(screen.queryByText('Solo números')).toBeNull();
 });
+
+// El piso de 44 px se mide en Playwright y no aquí: las medidas de Chakra son clases CSS y jsdom no
+// las resuelve, así que un assert de píxeles en este archivo pasaría verde con los botones de 24 px.
+// Vive en e2e/cabe-en-la-tableta.spec.ts, contra un navegador real.
+
+// La acción destructiva va SEPARADA de las frecuentes, no junto a ellas. Es requisito funcional:
+// quitar un renglón por accidente obliga a volver a buscar el producto en el menú.
+test('la papelera no está pegada a los botones de cantidad', () => {
+  useTicketStore.getState().addLine({ productId: 1, name: 'Alitas', unitPrice: 95, qty: 1, modifiers: [] });
+  pinta(<Ticket {...props} />);
+
+  const menos = screen.getByRole('button', { name: '−' });
+  const quitar = screen.getByRole('button', { name: 'Quitar' });
+  // No comparten padre inmediato: el − vive con el + y la papelera se fue al otro extremo.
+  expect(menos.parentElement, 'la papelera sigue pegada a los controles de cantidad')
+    .not.toBe(quitar.parentElement);
+});
