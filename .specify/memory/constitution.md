@@ -146,6 +146,60 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 - **Prohibido el comentario que reformula el código.** Se desincroniza y termina mintiendo. Si el nombre no basta, arregla el nombre — nombres autoexplicativos primero.
 - **Doc-comments estilo Go/Uber**: empiezan con el nombre del símbolo y terminan en punto (`// Validate rejects…`).
 
+### VIII. No se construye el futuro, pero no se le cierra la puerta
+
+El principio VI dice que se escribe el código más simple que resuelve el caso de hoy, y sigue
+mandando. Este lo acota en un solo punto: **YAGNI aplica a lo que se puede agregar después al mismo
+costo; no aplica a lo que después cuesta una migración de datos en producción.**
+
+La pregunta que decide, y que se responde por escrito en el plan de cada feature que toque el
+esquema:
+
+> ¿Esto se puede agregar después al mismo costo?
+
+- **Si la respuesta es sí** —una pantalla, un endpoint, un cálculo, una columna que se llena desde
+  cero— no se construye hoy. Gana el VI.
+- **Si la respuesta es no** —porque exigiría rellenar un hecho que nunca se registró, partir una
+  fila que ya existe, o adivinar a quién pertenecía algo— entonces hoy no se construye la feature,
+  pero **tampoco se toma la decisión que la impide**.
+
+La diferencia no es de tamaño: es de reversibilidad. Un hecho que no se registró no se puede
+recuperar después, y un `id` que ya se repartió no se puede desdoblar sin tocar datos vivos.
+
+#### Las puertas que se dejan abiertas, con nombre
+
+Una lista abstracta ("que escale") no bloquea nada porque no se puede verificar. Éstas sí, y son las
+que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un hallazgo de
+`/speckit-analyze`, y se corrige o se exime explícitamente:
+
+| Puerta | Qué la cerraría | Dónde está hoy |
+|---|---|---|
+| **Más de una sucursal** dentro de una empresa | Un único o un contador por `company_id` que en realidad debería ser por sucursal | Multi-tenant por empresa resuelto con RLS; sucursal **no** existe como concepto |
+| **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
+| **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
+| **Cuánto deja cada plataforma** | Registrar el cobro sin poder reconstruir después qué se quedó la plataforma | No hay columna de comisión; `price_markup_pct` es el sobreprecio de venta, no lo que cobran |
+| **Costear con recetas e inventario de insumos** | Un renglón de venta que no guarda copia de lo que costaba en ese momento | `order_lines.unit_cost` y `order_line_modifiers.unit_cost` ya son snapshot: la puerta está abierta |
+| **Descuentos** | Cobrar sin dejar rastro de que hubo un descuento | `orders.discount_total` existe y siempre vale cero: la columna está, la feature no |
+| **Una lista de productos por plataforma** — activar y desactivar lo que se ofrece en cada app, con nombres propios ligados al mismo producto interno | Asumir que un producto del catálogo es un producto de la plataforma. Ya no lo es: en el POS se vende "Arma tu Crepa" y en Uber cada crepa por sabor, a propósito | `product_platform_prices` ya es por `(producto, plataforma)`: la llave correcta existe. Falta el nombre, el estado y la relación uno-a-varios |
+| **Promociones de plataforma** (2x1, producto de regalo) | Registrar el cobro sin poder reconstruir qué se regaló ni quién lo pagó — el restaurante o la plataforma | No existe el concepto. Los reportes de plataforma traen columnas de promoción y hoy vienen en cero |
+| **Conciliar el depósito de una plataforma contra los pedidos que lo formaron** | No guardar el folio que la plataforma le dio al pedido | El folio de plataforma existe en los datos de origen y **no se guarda en `orders`**: sin él la conciliación es por monto y fecha, que empata mal |
+
+Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
+[docs/plataformas-digitales.md](../../docs/plataformas-digitales.md) y
+[docs/respaldo-fudo.md](../../docs/respaldo-fudo.md).
+
+Esta tabla se actualiza cuando una puerta se cruza (deja de ser puerta y pasa a ser feature) o
+cuando aparece una nueva. Está en la constitución y no en un documento aparte a propósito: es la
+vara con la que `/speckit-analyze` mide, y lo que no está aquí no puede bloquear un plan.
+
+#### El snapshot es la forma barata de dejar una puerta abierta
+
+Copiar en la fila el valor que tenía el catálogo en ese momento cuesta una columna y cierra el
+agujero para siempre: el pasado deja de reescribirse cuando alguien edita el catálogo. Ya está
+aplicado en `order_lines` (nombre, precio y costo del producto) y es lo que hace posible costear
+después. Donde **no** está aplicado, dilo en el plan: `order_lines` no guarda la categoría, así que
+recategorizar un producto reescribe el pasado de cualquier reporte por categoría.
+
 ## Restricciones del producto
 
 - **Target: tablets de 7"** — el tamaño de los controles táctiles y la separación de las acciones destructivas son requisito funcional, no preferencia estética. La vara de UX del POS es **minimizar taps**: nunca obligar al operador a deshacer para rehacer.
@@ -170,6 +224,7 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 ## Quality gates
 
 - **`/speckit-analyze` corre antes de `/speckit-implement`, siempre.** El flujo publicado lo marca opcional; en este repo no lo es. Un hallazgo CRITICAL o HIGH bloquea la implementación hasta resolverse o hasta que el dueño lo exima explícitamente.
+- **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
 - **Verificación de backend antes de dar algo por bueno**: `make api-build && make api-test`.
 - Commits pequeños y enfocados.
@@ -193,4 +248,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.6.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-01
+**Version**: 1.7.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-05
