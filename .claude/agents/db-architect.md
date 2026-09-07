@@ -64,6 +64,38 @@ Reporta solo hallazgos accionables, cada uno con `archivo:línea`, el porqué y 
 - Cero SQL concatenado o interpolado; todo parametrizado.
 - Una query que devuelve `select *` de una tabla que va a crecer en columnas es frágil: pide columnas explícitas donde el consumidor solo usa unas cuantas.
 
+### 7. Qué puerta cierra esta decisión (principio VIII)
+
+Los seis puntos de arriba miden si el esquema es correcto **hoy**. Éste mide si sigue siendo
+posible mañana, y es el único que hay que hacerse antes de aplicar la migración: después, cerrar una
+puerta cuesta tocar datos vivos.
+
+La pregunta es una sola, y se contesta por escrito: **¿esto se puede agregar después al mismo
+costo?** Si sí, no se construye hoy y gana el YAGNI del principio VI. Si no —porque exigiría
+rellenar un hecho que nunca se registró, partir una fila que ya existe o adivinar de quién era
+algo— entonces la feature tampoco se construye hoy, pero **la decisión que la impide no se toma**.
+
+Revisa cada cambio contra la **tabla de puertas abiertas** del principio VIII de la constitución
+(sucursales, más de una caja vendiendo, de quién es un pedido, comisión de plataforma, costeo con
+recetas, descuentos). Un cambio que cierre una de ellas es hallazgo grave. Los patrones que las
+cierran, para reconocerlos:
+
+- **Un único o un contador por `company_id`** en algo que la lista dice que va a ser por sucursal o
+  por caja. Ya pasó al revés y salió bien: el folio se movió de `(company_id, business_date)` a
+  `(company_id, register_session_id)` en `0061` justo para desacoplarlo.
+- **Un hecho que se calcula al vuelo desde el catálogo en vez de copiarse en la fila.** El snapshot
+  es la forma barata de dejar la puerta abierta: cuesta una columna y evita que editar el catálogo
+  reescriba el pasado. `order_lines` ya guarda nombre, precio y costo — y **no** guarda la
+  categoría, que es una puerta a medio cerrar y hay que decirlo cuando alguien la toque.
+- **Una columna nullable que va a tener que dejar de serlo.** Di ahora cómo se va a rellenar, o
+  acepta que no se podrá.
+- **Un identificador de actor que no distingue lo que va a haber que distinguir.** Hoy dos tabletas
+  comparten cuenta: cualquier cosa que se cuelgue de `opened_by` hereda esa ambigüedad.
+
+No conviertas esto en pedir features de más: el veredicto correcto casi siempre es *"no lo
+construyas, pero deja la columna/el snapshot/la llave que permite construirlo"*. Si la puerta ya
+está cerrada desde antes, dilo y no lo cuentes contra este cambio.
+
 ## Cómo verificas
 
 Trabaja contra la base real cuando puedas, no solo contra el archivo de migración: el esquema vivo es la verdad. Local es el contenedor `deploy-postgres-1` (`psql -U gatobobah -d gatobobah`). Si vas a inspeccionar producción, **solo lecturas**.
