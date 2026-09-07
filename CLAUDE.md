@@ -18,7 +18,13 @@ Este repo tiene un índice CodeGraph (`.codegraph/`). Para preguntas **estructur
 
 ## Skills
 
-Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución. Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`, `db-architect`, `tablet-ui-reviewer`). El **`tablet-ui-reviewer` corre ante cualquier pantalla nueva o cambio de disposición en `web/`**: el sistema vive en tabletas de 7 a 10 pulgadas y esa restricción se olvida sola. El **`db-architect` corre ANTES de aplicar una migración nueva** y ante cualquier cambio en `server/migrations/` o `server/queries/`: llaves foráneas y su `ON DELETE`, tipos, índices únicos que deben incluir `company_id`, índices faltantes y migraciones reversibles. Las features nuevas van por spec-kit (`/speckit-*`); `/speckit-analyze` corre siempre antes de `/speckit-implement`.
+Disponibles: `/code-review`, `/security-review`, `/simplify`, `/verify`, `/run`. Para trabajo de seguridad, `/security-review` complementa el principio V de la constitución.
+
+Subagentes especializados en `.claude/agents/` (`go-backend-reviewer`, `security-auditor`, `db-architect`, `tablet-ui-reviewer`), y **dos skills que los lanzan en abanico y consolidan un solo veredicto**: `/revision-de-arquitectura` (los de diseño, sobre un `plan.md`) y `/revision-de-codigo` (los de código, sobre un diff, eligiendo cuáles aplican según qué archivos cambiaron).
+
+**Dentro del ciclo de spec-kit ya no hay que acordarse de correrlos**: [.specify/extensions.yml](.specify/extensions.yml) los engancha en `after_plan` y `after_implement`, y ninguno es `optional`. Fuera del ciclo sí hay que invocarlos a mano — sobre todo el **`db-architect` ANTES de aplicar una migración nueva** y ante cualquier cambio en `server/migrations/` o `server/queries/`, y el **`tablet-ui-reviewer` ante cualquier pantalla nueva o cambio de disposición en `web/`**: el sistema vive en tabletas y esa restricción se olvida sola.
+
+Las features nuevas van por spec-kit (`/speckit-*`), en `specs/NNN-slug/`; `/speckit-analyze` corre siempre antes de `/speckit-implement` y **exige `spec.md`, `plan.md` y `tasks.md`** — una feature que se saltó `plan` o `tasks` no es que pase el gate: es que el gate no puede correr.
 
 ## Quirks
 
