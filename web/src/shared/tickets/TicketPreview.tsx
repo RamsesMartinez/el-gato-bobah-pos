@@ -76,9 +76,10 @@ export function TicketPreviewDialog({
               al botón de imprimir. Cerrar va a la izquierda para que el pulgar no lo alcance por
               accidente cuando busca Imprimir.
 
-              El `minH` es explícito y no se hereda de `size="lg"`: medido a 1024×600 contra el
-              ambiente desplegado, ese tamaño da 42 px y el piso de la constitución son 44. La
-              intención estaba en este comentario desde que se escribió; lo que faltaba era medirla. */}
+              El `minH` es explícito y no se hereda de `size="lg"`. Hoy ese tamaño ya da 44 px
+              —medido a 1024×600 contra el ambiente desplegado—, así que no arregla nada: fija el
+              piso para que un cambio de la receta de Chakra no lo baje sin que nadie se entere. La
+              intención llevaba en este comentario desde que se escribió y no estaba medida. */}
           <HStack w="100%" gap={2}>
             <Button variant="outline" size="lg" minH="44px" flex="1" onClick={onClose}>
               <LuX /> Cerrar

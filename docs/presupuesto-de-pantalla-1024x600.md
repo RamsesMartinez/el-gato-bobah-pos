@@ -155,6 +155,16 @@ Cabe en 600 px con sus nueve campos, todos de al menos 44 px, gracias a las dos 
 serían ~630 px. Con la ventana encogida a 350 px —lo que se lleva el teclado numérico— el botón de
 guardar sigue dentro de la pantalla, que es lo que el footer fijo en `dvh` compra.
 
+## Una trampa al medir un diálogo: la animación de entrada
+
+`boundingBox()` devuelve la caja **transformada**, y Chakra entra los diálogos con un `scale`. El
+mismo botón del ticket mide **42 px** medido en cuanto el diálogo es "visible" y **44 px** ya
+asentado.
+
+Costó un falso hallazgo: se reportó que el botón de imprimir violaba el piso táctil de 44 px, y no
+era cierto — la medición estaba mal, no el botón. **Un assert de píxeles sobre un diálogo espera a
+que la animación termine**, no a `toBeVisible()`. Los tests de este repo esperan 600 ms.
+
 ## Lo que sigue sin medirse
 
 - **El teclado del sistema de verdad.** Chromium headless no lo abre; lo que el e2e mide es la
@@ -162,3 +172,16 @@ guardar sigue dentro de la pantalla, que es lo que el footer fijo en `dvh` compr
   se verifica a mano.
 - **El alto de Ventas con el aviso de turno viejo puesto.** Los números de arriba son sin él; el
   aviso desplaza el shell 53 px como en el POS.
+- **El alto de una fila de Ventas CON folio capturado.** La celda "Tipo" pasa de una a dos líneas.
+  El e2e lo mide cuando el periodo trae alguna, y lo DECLARA cuando no — que es lo que pasó en la
+  corrida del 8 de septiembre, porque los folios de prueba se habían limpiado del ambiente.
+
+## Y lo que estos casos cerraron de specs viejos
+
+Dos tareas llevaban abiertas desde su spec porque exigían el ambiente desplegado y nadie las medía
+a mano:
+
+| Spec | Qué se midió |
+|---|---|
+| 005 · SC-005 | Con pedidos en curso, el mosaico conserva **3 renglones** y el catálogo sus 396 px: la barra flota (empieza en y=76, el catálogo llega a y=600) en vez de empujarlo |
+| 001 · SC-006 | La vista previa del ticket abre contra el desplegado sin una sola petición que no salga y sin nada bloqueado por CSP. El papel sigue siendo manual |

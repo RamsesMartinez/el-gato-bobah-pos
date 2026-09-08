@@ -115,9 +115,21 @@ test('005/T047 · con pedidos en curso el mosaico conserva sus renglones', async
 // programa (una extensión, un agente, un archivo local). Si algo solo funciona en localhost, la
 // feature no cumple. Lo que NO se puede automatizar es el papel: eso se verifica a mano.
 test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', async ({ page }) => {
+  // Lo que se vigila es que la vista previa no dependa de algo que solo existe en la máquina de
+  // quien programa: una petición que NO SALE (red caída, host inalcanzable, esquema `file:`) o un
+  // recurso que la CSP del desplegado bloquea.
+  //
+  // NO se vigila cualquier error de consola, y eso es a propósito: el iframe del ticket está
+  // sandboxeado sin `allow-scripts` —el control de seguridad haciendo su trabajo— y el navegador lo
+  // reporta como error; y el 401 del sondeo de sesión antes del login es el flujo normal. Un assert
+  // de "cero errores de consola" convierte los dos en fallos y enseña a ignorar el test.
   const fallos: string[] = [];
-  page.on('requestfailed', (r) => fallos.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText}`));
-  page.on('console', (m) => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
+  page.on('requestfailed', (r) => fallos.push(`no salió: ${r.method()} ${r.url()} — ${r.failure()?.errorText}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && /Content Security Policy|Refused to load/i.test(m.text())) {
+      fallos.push(`CSP: ${m.text()}`);
+    }
+  });
 
   await entrar(page);
 
@@ -128,6 +140,13 @@ test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', asyn
   await page.getByRole('button', { name: 'Ticket', exact: true }).first().click();
   const ticket = page.locator('[role="dialog"]').last();
   await expect(ticket).toBeVisible({ timeout: 15_000 });
+  // MEDIR DESPUÉS DE QUE LA ANIMACIÓN ASIENTE, no en cuanto el diálogo es "visible".
+  //
+  // Chakra entra el diálogo con un `scale`, y `boundingBox()` devuelve la caja TRANSFORMADA: el
+  // mismo botón mide 42 px a media animación y 44 px asentado. Medido: un assert de piso táctil
+  // hecho al instante reporta una violación que no existe, y mandó a "arreglar" un botón que ya
+  // cumplía. Vale para cualquier medida de píxeles sobre un diálogo.
+  await page.waitForTimeout(600);
 
   // El logo viaja como data URI y NO como <img src> a la API: la CSP de producción
   // (`img-src 'self' data:`) bloquearía una imagen servida desde el otro dominio, así que un
@@ -141,7 +160,11 @@ test('001/T037 · el ticket se ve contra el desplegado, sin instalar nada', asyn
   }
 
   // El botón de imprimir se alcanza SIN desplazarse, en 1024×600 (SC-007).
-  const imprimir = page.getByRole('button', { name: /Imprimir/i }).first();
+  //
+  // Se busca DENTRO del diálogo del ticket y no en toda la página: `Imprimir` como nombre accesible
+  // hace match por substring, y el shell trae "Impresión" en la navegación. Medir el de la
+  // navegación daba 42 px y hacía fallar un test que hablaba de otro botón.
+  const imprimir = ticket.getByRole('button', { name: /Imprimir/i }).first();
   await expect(imprimir).toBeVisible();
   const caja = await imprimir.boundingBox();
   expect(caja!.y + caja!.height,

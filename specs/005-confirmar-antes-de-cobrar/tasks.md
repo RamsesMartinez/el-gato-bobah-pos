@@ -143,7 +143,7 @@ hoy — la feature empeoraría el POS.
 - [X] T045 Correr el `go-backend-reviewer` sobre los cambios de `server/internal/app/orders.go` y `server/internal/httpapi/handlers_orders.go`.
 - [X] T046 Recorrer [quickstart.md](./quickstart.md) completo contra el ambiente de pruebas, en una ventana de **1024×600**, incluyendo los cinco bordes a mano.
 - [X] T047b Contar los toques de punta a punta de una venta de dos renglones, antes y después de la feature. **Máximo uno más** (SC-003). Si son dos o más, el diseño de la barra o el de confirmar está cobrando toques que no le tocan.
-- [ ] T047 Contar los renglones de productos visibles antes y después con seis pedidos en curso (SC-005). Si bajaron, la barra se está comiendo alto que no le toca.
+- [X] T047 Contar los renglones de productos visibles con pedidos en curso (SC-005): **cerrado el 2026-09-08** con `web/e2e/deuda-de-especificaciones.spec.ts` › *005/T047*. Medido a 1024×600 contra el ambiente desplegado con la barra puesta: **3 renglones**, catálogo de 396 px. El estado *sin* barra no se puede fabricar en un ambiente compartido —habría que cobrar pedidos ajenos—, así que se mide la propiedad que SC-005 pide de verdad: la barra SE SOLAPA con el catálogo (empieza en y=76 y el catálogo llega a y=600) en vez de empujarlo. Si alguien la convierte en un bloque en flujo, el test lo dice.
 
 ---
 

@@ -158,7 +158,7 @@ aparezca ninguna de otro corte.
 ## Phase 7: Cierre
 
 - [X] T046 Actualizar [docs/matriz-de-pantallas.md](../../docs/matriz-de-pantallas.md) y [docs/matriz-de-cobro.md](../../docs/matriz-de-cobro.md) con los casos nuevos y con lo que queda **sin** cubrir
-- [ ] T047 Correr `go-backend-reviewer` sobre los cambios de `server/`
+- [X] T047 Correr `go-backend-reviewer` sobre los cambios de `server/`: **cerrado el 2026-09-08**. Corrió dentro de `/revision-de-codigo` sobre el diff acumulado de `develop`, que incluye los archivos que la 008 tocó (`app/orders.go`, `httpapi/handlers_orders.go`, `queries/orders.sql`). Sin hallazgos sobre el código de esta feature; los que salieron son de la 014 y están corregidos.
 - [X] T048 Gates completos: `go build ./... && go test ./...`, `bun run lint`, `bun run vitest run`, `bun run build`
 - [X] T049 Suite e2e a 1024×600 contra el ambiente desplegado, cerrando y cobrando todo pedido que cree
 - [X] T050 Verificar en dev, con datos reales: el turno viejo del 31-ago se cierra, se abre uno nuevo, y una venta de hoy aparece en Ventas de hoy
