@@ -32,7 +32,7 @@ function emptyTab(num: number): TicketTab {
   // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
   return {
     id: uuid(), num, folioName: '', lines: [], envio: '',
-    serviceType: 'mostrador', customerName: '', platformId: null,
+    serviceType: 'mostrador', customerName: '', platformId: null, platformOrderRef: '',
   };
 }
 
@@ -49,6 +49,10 @@ interface TicketState {
   setServiceType: (t: ServiceType) => void;
   setEnvio: (v: string) => void;
   setCustomerName: (name: string) => void;
+  // El folio de la plataforma, tal como se teclea. No se normaliza aquí: el servidor recorta los
+  // extremos y devuelve lo que guardó. Recortar también en la pantalla sería la misma regla escrita
+  // dos veces, y ya divergió una vez con el total del envío.
+  setPlatformOrderRef: (ref: string) => void;
   clearActive: () => void; // vacía la cuenta activa sin cerrarla
   // manejo de cuentas
   newTab: () => void;
@@ -143,12 +147,15 @@ export const useTicketStore = create<TicketState>()(
         setServiceType: (serviceType) => set((s) => onActive(s, (t) => ({ ...t, serviceType }))),
         setEnvio: (envio) => set((s) => onActive(s, (t) => ({ ...t, envio }))),
         setCustomerName: (customerName) => set((s) => onActive(s, (t) => ({ ...t, customerName }))),
+        setPlatformOrderRef: (platformOrderRef) =>
+          set((s) => onActive(s, (t) => ({ ...t, platformOrderRef }))),
         // Vaciar deja la cuenta como recién abierta, y eso incluye la PLATAFORMA. Reseteaba el tipo
         // de servicio y dejaba puesta la lista de Uber: los productos capturados después salían con
         // precio de Uber en una cuenta que decía mostrador. Y el envío, por la misma razón.
         clearActive: () =>
           set((s) => onActive(s, (t) => ({
             ...t, lines: [], customerName: '', serviceType: 'mostrador', platformId: null, envio: '',
+            platformOrderRef: '',
           }))),
 
         newTab: () =>
@@ -171,6 +178,10 @@ export const useTicketStore = create<TicketState>()(
           set((s) => onActive(s, (t) => ({
             ...t,
             platformId,
+            // El folio se va con la lista: uno de Uber colgando de Rappi es basura silenciosa, y
+            // el esquema no puede distinguir un cambio legítimo de uno equivocado. Se tira aquí,
+            // que es el único lugar donde se sabe que la plataforma cambió.
+            platformOrderRef: '',
             lines: reprecia ? t.lines.map((l) => ({ ...l, ...reprecia(l) })) : t.lines,
           }))),
 
