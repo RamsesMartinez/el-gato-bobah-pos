@@ -142,6 +142,22 @@ medias, el que le toca por folio numérico ya está tomado. Medido: el pedido **
 salida del operador era esperar al día siguiente. Cubierto por
 `folio_no_tumba_la_venta_test.go`.
 
+## F. La liquidación de plataforma NO es dinero de la caja (spec 014)
+
+Renglones **abiertos**, escritos antes que el código. La comisión de una plataforma es dinero que
+el negocio no tuvo, y el modo de falla que esta sección vigila es que alguien la reste de una venta.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| F1 | Registrar una liquidación | El resumen de Ventas, el corte de caja y el arqueo devuelven **exactamente lo mismo** que antes | `TestRegistrarUnaLiquidacionNoMueveNingunaVenta` | Postgres |
+| F2 | Escribirle el folio a un pedido de un arqueo **ya cerrado** | Ninguna cifra se mueve. El test falla nombrando la que se movió | `TestCorregirElFolioNoMueveNingunaCifra` | Postgres (respaldo real) |
+| F3 | Las tres cifras del periodo | `vendido`, `se quedó la plataforma` y `llegó al banco` cubren conjuntos distintos; `llegó al banco` **no** es la resta de las otras dos | `TestLoQueLlegoAlBancoNoEsLaRestaDeLasOtrasDos` · `TestElResumenDePlataformasDelPeriodo` | Go + Postgres |
+| F4 | Neto negativo (promoción que financió el restaurante) | Se acepta y se muestra negativo: es lo que de verdad pasó | `TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso` | Postgres |
+| F5 | Comisión negativa, tasa fuera de rango, parte del descuento mayor que el total | 400 de validación, nunca 500 | `TestLoQueUnaLiquidacionRechaza` · `TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir` | Go + Postgres |
+| F6 | Recapturar desde un documento corregido | Reemplaza, no duplica; queda una sola liquidación | `TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica` | Postgres |
+| F8 | Rechazar un importe con exponente absurdo (`1e100000000`) | Rechazo en milisegundos. El mensaje de error **no** expande el número: hacerlo tardaba 77 s y comía memoria | `TestRechazarUnImporteAbsurdoEsBarato` | Go |
+| F7 | Liquidación con sesión de cajero | 403: es dinero que no pasó por la caja | `TestLaLiquidacionExigeRolDeAdministracion` | Postgres |
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.
