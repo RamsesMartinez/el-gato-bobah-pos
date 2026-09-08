@@ -114,8 +114,9 @@ llegó al banco — tres cifras distintas que hoy no existen.
 
 1. **Given** un pedido de plataforma cobrado, **When** el dueño registra su liquidación desde el
    documento, **Then** quedan guardados el importe que la plataforma reporta, la comisión (monto y
-   tasa), la parte del descuento que financió la plataforma, la parte que financió el restaurante,
-   las retenciones atribuidas al pedido, el neto y la referencia del depósito.
+   tasa), el descuento total y la parte que financió la plataforma, las retenciones atribuidas al
+   pedido, el neto y la referencia del depósito; y el sistema **informa** cuánto del descuento lo
+   puso el restaurante, derivándolo de los dos anteriores (FR-012).
 2. **Given** un pedido con liquidación registrada, **When** se registra otra vez desde un documento
    corregido, **Then** la liquidación se **reemplaza**, no se duplica.
 3. **Given** una liquidación registrada, **When** se consulta cualquier total de ventas del sistema,
@@ -216,9 +217,16 @@ falle nombrando el concepto que se rompió.
 **La liquidación**
 
 - **FR-012**: El sistema MUST guardar, por pedido de plataforma, lo que el documento de pago dice:
-  importe reportado por la plataforma, comisión en monto y en tasa, descuento financiado por la
-  plataforma, descuento financiado por el restaurante, retenciones atribuidas al pedido, neto y
-  referencia del depósito.
+  importe reportado por la plataforma, comisión en monto y en tasa, **descuento total y la parte
+  financiada por la plataforma**, retenciones atribuidas al pedido, neto y referencia del depósito.
+  La parte financiada por el restaurante MUST poder informarse, y se **deriva** de las dos anteriores:
+  guardarla además sería el mismo hecho dos veces, y un documento corregido que moviera una y no la
+  otra dejaría la fila contradiciéndose sin que nadie sepa cuál mitad creer.
+
+  > *Enmendado el 2026-09-07*: la redacción original pedía guardar las dos partes del descuento. Al
+  > planear se vio que cualquiera de las dos determina la tercera, y que guardar las dos partes
+  > además vuelve **imposible por construcción** el rechazo que pide el escenario 6 de la US-3
+  > —una parte nunca puede exceder la suma de las partes—, que es una validación que sí se quiere.
 - **FR-013**: Esos valores MUST guardarse como **copia del documento** (snapshot), no calcularse a
   partir de un porcentaje configurado.
 - **FR-014**: Un pedido MUST tener a lo más una liquidación; registrarla de nuevo la reemplaza y deja

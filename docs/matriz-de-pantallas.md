@@ -102,7 +102,7 @@ periodo que pidió.
 | V10 | Vaciar una cuenta con plataforma activa | Borra también la plataforma y el envío | `ticket.test.ts › vaciar la cuenta` | Navegador |
 | V8 | Agregar a un pedido con un producto ya desactivado en el carrito | Se recorta ese renglón, igual que al confirmar; no se tira el carrito entero | `agregarRecorta.test.tsx` | Navegador |
 | V7 | Doble tap en COBRAR con red lenta | El botón se apaga mientras el pedido viaja, igual que "Enviar a cocina" | — | **no cubierto** (se ve en red lenta, no en jsdom) |
-| V11 | El cableado del envío en las superficies de cobro, a 1024×600 | Las tres cifras coinciden y las tres se apagan igual | — | **no cubierto**: el intento de e2e partió de una suposición falsa (a 1024×600 el POS es modo angosto, no hay píldora) |
+| V11 | El cableado del envío en las superficies de cobro, a 1024×600 | Las tres cifras coinciden y las tres se apagan igual | — | **no cubierto**. La suposición que se anotó aquí como falsa era la correcta: medido el 7 sep 2026, a 1024×600 el POS está en modo **ancho** con el panel colapsado (`panelHidden` arranca en true por `max-height: 720px`) y **sí hay píldora flotante** — ver [presupuesto-de-pantalla-1024x600.md](presupuesto-de-pantalla-1024x600.md) |
 
 ## P. El tablero de pedidos
 
@@ -230,6 +230,48 @@ servidor, y el pedido se sigue creando ANTES de cobrarse.
 | W13 | Ver el ticket desde la lista del botón naranja | Trae el pedido completo y la lista se queda abierta detrás | `desde la lista se puede ver el ticket de un pedido sin cobrarlo` | Vitest |
 | W14 | El papel de un pedido pagado | Sale marcado `** REIMPRESIÓN **`: el original ya circuló | `marca el papel como reimpresión cuando el pedido YA se pagó` | Vitest |
 | W15 | El papel de un pedido en curso que SÍ existe | Sale con `POR COBRAR` y sin marca de reimpresión | `un pedido sin cobrar NO se marca como reimpresión` | Vitest |
+
+## Y. El folio de la plataforma y su liquidación (spec 014)
+
+Renglones **abiertos**: se escriben antes que el código, como pide el principio IV, y su columna
+*Test* se llena cuando el test existe. Un renglón que llegue al merge sin test es un hueco, y se
+declara como tal.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| Y1 | Folio con espacios en los extremos (pegado del reporte) | Se guardan los extremos recortados y **nada más**: ni mayúsculas, ni guiones, ni longitud | `TestNormalizePlatformRef` · `TestElFolioSeGuardaTalCualConLosExtremosRecortados` | Postgres |
+| Y2 | Folio vacío o solo espacios | Se rechaza. `""` no es "sin folio": chocaría contra la unicidad o pasaría | `TestNormalizePlatformRef` · `TestElEsquemaRechazaUnFolioQueNoEsUnFolio` | Postgres |
+| Y3 | Folio repetido en la misma empresa y plataforma | Se rechaza **nombrando el pedido que ya lo tiene**, no con un aviso genérico | `TestUnFolioRepetidoDiceCualPedidoLoTiene` · `TestElFolioRepetidoTieneSuPropioCodigo` | Postgres |
+| Y4 | El mismo folio en dos empresas | Se acepta. La unicidad es por empresa y plataforma, nunca global | `TestLaUnicidadDelFolioEsPorEmpresaYPorPlataforma` | Postgres (respaldo real) |
+| Y5 | Folio en un pedido de mostrador | Imposible por construcción (check en el esquema), no por validación de pantalla | `TestUnPedidoDeMostradorNoPuedeTenerFolioDePlataforma` · `TestUnPedidoDeMostradorNoAceptaFolioDePlataforma` | Postgres |
+| Y6 | El campo de folio con la lista en Mostrador | **No existe en el árbol**, no "existe oculto", y no ocupa alto | `PlatformPicker.test.tsx` › *no existe con la lista en Mostrador* | Vitest |
+| Y7 | Mandar un pedido de plataforma con el campo vacío | Se pide el dato con **una** salida explícita; tomarla lo manda sin folio y lo deja como pendiente | `folioPlataforma.test.ts` · `FolioPlataformaSheet.test.tsx` | Vitest |
+| Y8 | La salida explícita con el teclado abierto | Sigue visible y tappable. Si el teclado la tapa, SC-003 pasa de un toque a dos | *pendiente* | Playwright |
+| Y9 | Renglones del mosaico con plataforma activa a 1024×600 | Los mismos que hoy (3 sin el aviso de caja). Si bajan a 2, se declara | *pendiente* | Playwright |
+| Y10 | Filtro de pendientes con un valor desconocido | 400 de validación; **nunca** cae en silencio a "todos" | `TestElFiltroDePendientesDeFolio` | Go |
+| Y11 | Lista y resumen con el filtro de pendientes | Describen **el mismo conjunto**, sin excepción: el `total` de la lista y el `count` del resumen coinciden | `TestLaListaYElResumenDescribenElMismoConjunto` | Postgres |
+| Y12 | Buscar pegando el folio del documento de pago | Devuelve **ese** pedido y solo ese, en un paso | `TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido` | Postgres |
+| Y13 | Buscar el número interno (`187`) o el nombre (`Tigre`) | **No** los encuentra: la búsqueda es del folio de plataforma, que es otra cosa | `TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno` | Postgres |
+| Y14 | El folio en la celda "Tipo" de la lista | Truncado con elipsis, **una sola línea**; el completo vive en el detalle | *pendiente* | — |
+| Y15 | El plan de la consulta de pendientes | Con el predicado LITERAL entra por `orders_plataforma_sin_folio`; con el patrón `narg … is null or (…)` no hay índice que pueda usar ni con `enable_seqscan=off` | medido a mano (ver §Y-plan) | Postgres |
+| Y16 | Rótulos del folio de plataforma en la interfaz | Nombran la plataforma (*Folio de Uber Eats*); nunca dicen "folio" a secas, que en esta pantalla ya es el número del turno | `PlatformPicker.test.tsx` · `SalesPage.test.tsx` | Vitest |
+| Y17 | Pedido sin liquidación contra liquidación en ceros | Se distinguen: ausencia es 404, ceros es 200 con ceros | `TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros` | Postgres |
+| Y18 | Los nueve campos de la liquidación a 1024×600 | Caben con el teclado abierto y el botón de guardar visible | *pendiente* | Playwright |
+| Y19 | Los tiles del resumen de plataformas | Cada uno con su conteo de pedidos a la vista: cubren conjuntos distintos y no se restan | `TestLasTresCifrasDelPeriodoCubrenConjuntosDistintos` · `TestLoQueLlegoAlBancoNoEsLaRestaDeLasOtrasDos` | Go |
+
+### Y-plan: cómo se midió el plan de la consulta
+
+Contra la base restaurada de producción, con `plan_cache_mode = force_generic_plan` y
+`enable_seqscan = off` (la tabla tiene 128 filas; sin desactivar el seq scan el planner lo prefiere
+por tamaño, no por incapacidad):
+
+| Forma de la consulta | Plan |
+|---|---|
+| `delivery_platform_id is not null and platform_order_ref is null` (literal) | `Bitmap Index Scan on orders_plataforma_sin_folio` |
+| `($1::boolean is null) or (…mismo predicado…)` | `Seq Scan` — **no hay índice que pueda usar** |
+| `platform_order_ref = $1` | `Index Scan using orders_platform_ref_busqueda` |
+
+Es la razón de que `sales.sql` tenga cinco PARES de consulta en vez de cinco con un parámetro.
 
 ## Pendientes de cubrir
 
