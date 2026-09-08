@@ -36,6 +36,29 @@ function emptyTab(num: number): TicketTab {
   };
 }
 
+// conLosCamposQueFaltan completa una cuenta guardada con los campos que su versión no tenía.
+//
+// LOS DEFAULTS SE SACAN DE `emptyTab()`, no de una lista escrita a mano. Una lista hay que acordarse
+// de extenderla, y ya se olvidó una vez: `platformOrderRef` nació con el folio de plataforma, no se
+// agregó, y como `FolioPlataformaSheet` vive SIEMPRE montada y arranca con
+// `useState(cuenta.platformOrderRef).trim()`, el POS entero dejaba de renderizar en cuanto el
+// operador entraba con una cuenta vieja — pantalla en blanco al ENTRAR, no al mandar el pedido.
+// Leyendo de `emptyTab()`, el campo número once queda cubierto sin que nadie se acuerde.
+//
+// No se sube la versión del almacén para forzar el descarte: eso borraría cuentas con productos ya
+// capturados, y perder el pedido de un cliente por un deploy no es negociable.
+//
+// Lo vigila `cuentaGuardadaAntes.test.ts`, que quita un campo a la vez y exige que ninguno quede en
+// `undefined`; en pantalla, el caso Y20 de `e2e/folio-de-plataforma.spec.ts`.
+function conLosCamposQueFaltan(t: TicketTab): TicketTab {
+  // Solo las claves REALMENTE puestas pisan el default: una clave presente con `undefined` —lo que
+  // deja `JSON.parse` de un campo que se guardó vacío— volvería a dejar el hueco que esto cierra.
+  const puestas = Object.fromEntries(
+    Object.entries(t).filter(([, v]) => v !== undefined),
+  ) as Partial<TicketTab>;
+  return { ...emptyTab(t.num ?? 1), ...puestas };
+}
+
 interface TicketState {
   tabs: TicketTab[];
   activeId: string;
@@ -218,31 +241,9 @@ export const useTicketStore = create<TicketState>()(
     },
     {
       name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
-      // TODO CAMPO NUEVO DE UNA CUENTA SE RELLENA AQUÍ. No es opcional y no es cosmético.
-      //
-      // Las cuentas que ya estaban abiertas cuando llega una versión no traen los campos que esa
-      // versión estrena, y el primer código que los toque revienta. No se sube la versión del
-      // almacén para forzarlos: subirla borraría cuentas con productos ya capturados, y perder el
-      // pedido de un cliente por un deploy no es negociable.
-      //
-      // Ya costó una pantalla en blanco: `platformOrderRef` nació con el folio de plataforma y no se
-      // agregó a esta lista. `FolioPlataformaSheet` vive SIEMPRE montada y arranca con
-      // `useState(cuenta.platformOrderRef).trim()`, así que el POS entero dejaba de renderizar en
-      // cuanto el operador entraba con una cuenta vieja guardada — no al mandar el pedido, al
-      // ENTRAR. Dos razones por las que ningún test lo atrapó, y las dos hay que reproducirlas
-      // juntas: Playwright arranca con perfil limpio (la cuenta nace de `emptyTab()`, que sí trae el
-      // campo) y sin la marca `sesion.ultimaEmpresa`, que hace que el login trate el dispositivo
-      // como cambio de empresa y llame a `descartarTodo()`. Y "vaciar caché y recargar" de Chrome
-      // no borra localStorage, así que limpiar la caché tampoco lo curaba. Lo cubren
-      // `cuentaGuardadaAntes.test.ts` y el caso Y20 de `e2e/folio-de-plataforma.spec.ts`.
       merge: (persisted, current) => {
         const prev = (persisted ?? {}) as Partial<TicketState>;
-        const tabs = (prev.tabs ?? current.tabs).map((t) => ({
-          ...t,
-          folioName: t.folioName ?? '',
-          envio: t.envio ?? '',
-          platformOrderRef: t.platformOrderRef ?? '',
-        }));
+        const tabs = (prev.tabs ?? current.tabs).map(conLosCamposQueFaltan);
         return { ...current, ...prev, tabs };
       },
     },

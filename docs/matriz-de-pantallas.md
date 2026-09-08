@@ -276,8 +276,8 @@ Es la razón de que `sales.sql` tenga cinco PARES de consulta en vez de cinco co
 
 ## Z. Deuda de specs viejos, cerrada el 8 de septiembre de 2026
 
-Dos renglones que llevaban abiertos porque exigían el ambiente desplegado, y tres que salieron de
-cerrarlos: uno de medición y dos de un defecto que se vio en el ambiente de pruebas.
+Dos renglones que llevaban abiertos porque exigían el ambiente desplegado, y cuatro que salieron de
+cerrarlos: uno de medición y tres de un defecto que se vio en el ambiente de pruebas.
 
 | # | Caso | Qué debe pasar | Test | Medido |
 |---|---|---|---|---|
@@ -286,6 +286,7 @@ cerrarlos: uno de medición y dos de un defecto que se vio en el ambiente de pru
 | Z3 | Medir píxeles de un diálogo | Se espera a que la animación de entrada asiente. `boundingBox()` devuelve la caja **transformada**: el mismo botón da 42 px a media animación y 44 asentado, y eso ya produjo un hallazgo falso | el `waitForTimeout(600)` de *001/T037* | Playwright |
 | Z4 | Entrar con una cuenta guardada por la versión anterior | El POS renderiza. `platformOrderRef` nació con 014 y no se agregó al `merge` del almacén persistido; `FolioPlataformaSheet` vive siempre montada y arranca con `useState(cuenta.platformOrderRef).trim()`, así que una cuenta ya guardada en la tableta dejaba la pantalla **en blanco al entrar** — no al mandar el pedido | `cuentaGuardadaAntes.test.ts` y `folio-de-plataforma.spec.ts` › *Y20* | vitest + Playwright |
 | Z5 | Reproducir el estado de una tableta que ya se usó | Sembrar el carrito viejo NO basta: sin la marca `sesion.ultimaEmpresa`, `hayQueLimpiar` trata el perfil limpio de Playwright como cambio de empresa y el login llama a `descartarTodo()`, que tira lo sembrado antes de que el POS renderice. **Y20 pasó en verde contra el build roto por esto.** Hay que sembrar las dos llaves | el `addInitScript` de *Y20* | Playwright |
+| Z6 | Ninguna pantalla se queda en blanco | Se recorren las 14 rutas con una cuenta guardada por la versión ANTERIOR y se exige que cada una pinte algo y que ninguna tire una excepción. Es la guardia de la **clase**, no del campo: sin error boundary, cualquier throw en render deja el `#root` vacío. Verificado en rojo sirviendo el bundle roto por su hash viejo: `#root` en 0 caracteres y el `pageerror` que reportó el operador | `pantalla-en-blanco.spec.ts` › *Z6* | Playwright |
 
 ## Pendientes de cubrir
 
@@ -300,4 +301,4 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 | X16 | `order_counters` quedó muerta tras 0061 | Se jubila en una migración propia cuando 008 lleve un ciclo en producción, no antes: mientras tanto es lo que permite volver atrás por imagen sin restaurar la base | — |
 | X17 | El test viejo `TestRefreshReuseRevokesFamily` tenía UNA sola sesión | Con una sola, revocar por usuario y revocar por familia son indistinguibles: pasaba en verde con el comportamiento equivocado. Se conserva (cubre el rechazo) y la distinción la mide ahora `TestElReusoRevocaSoloLaFamiliaComprometida` | — |
 | X18 | Cuatro pedidos de producción cancelados y cobrados sin devolución ($729, 29-ago) | Son datos anteriores a la feature de devoluciones; corregirlos reescribiría un arqueo firmado. Es una decisión del dueño, no un cambio de código. Lo nuevo ya impide que se repita | — |
-| X19 | Una tableta con la pantalla en blanco no puede aplicar la versión que la arregla | El aviso de "Nueva versión disponible" y su botón los pinta el toaster, que vive DENTRO del árbol de React: si un defecto tumba el render, el operador se queda con el service worker viejo sirviendo el `index.html` cacheado y sin nada que tocar. Se cura cerrando la app y volviéndola a abrir, que es justo lo que nadie adivina. Cubrirlo pide una salida fuera de React (o `skipWaiting` ante un error de render), y eso es una decisión de producto | — |
+| X19 | Una tableta con la pantalla en blanco no puede aplicar la versión que la arregla | **No hay error boundary en la app.** El aviso de "Nueva versión disponible" y su botón los pinta el toaster, que vive DENTRO del árbol de React: si un defecto tumba el render, el operador se queda con el service worker viejo sirviendo el `index.html` cacheado y sin nada que tocar. Se cura cerrando la app y volviéndola a abrir, que es justo lo que nadie adivina. *Z6* vigila que no pase, pero no da salida cuando pase: eso pide una barrera fuera de React (o `skipWaiting` ante un error de render) y es decisión de producto | — |
