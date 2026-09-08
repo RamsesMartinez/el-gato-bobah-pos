@@ -24,3 +24,11 @@ describe('cuándo se interpone la hoja del folio', () => {
     expect(hayQuePedirElFolio(6, '  4B2E9A10  ')).toBe(false);
   });
 });
+
+// Una cuenta guardada por una versión anterior no trae el campo. La regla no puede reventar con
+// una entrada que el sistema sí produce — ese `.trim()` sobre undefined dejó el POS en blanco.
+it('no truena si la cuenta viene sin el campo', () => {
+  expect(() => hayQuePedirElFolio(6, undefined)).not.toThrow();
+  expect(hayQuePedirElFolio(6, undefined)).toBe(true);
+  expect(hayQuePedirElFolio(null, undefined)).toBe(false);
+});

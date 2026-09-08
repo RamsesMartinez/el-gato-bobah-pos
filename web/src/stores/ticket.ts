@@ -218,13 +218,31 @@ export const useTicketStore = create<TicketState>()(
     },
     {
       name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
-      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen nombre, y quedan
-      // con folioName vacío hasta que bautizarCuentas() corra. No se sube la versión del almacén
-      // para forzar el campo: subirla borraría cuentas con productos ya capturados, y perder el
+      // TODO CAMPO NUEVO DE UNA CUENTA SE RELLENA AQUÍ. No es opcional y no es cosmético.
+      //
+      // Las cuentas que ya estaban abiertas cuando llega una versión no traen los campos que esa
+      // versión estrena, y el primer código que los toque revienta. No se sube la versión del
+      // almacén para forzarlos: subirla borraría cuentas con productos ya capturados, y perder el
       // pedido de un cliente por un deploy no es negociable.
+      //
+      // Ya costó una pantalla en blanco: `platformOrderRef` nació con el folio de plataforma y no se
+      // agregó a esta lista. `FolioPlataformaSheet` vive SIEMPRE montada y arranca con
+      // `useState(cuenta.platformOrderRef).trim()`, así que el POS entero dejaba de renderizar en
+      // cuanto el operador entraba con una cuenta vieja guardada — no al mandar el pedido, al
+      // ENTRAR. Dos razones por las que ningún test lo atrapó, y las dos hay que reproducirlas
+      // juntas: Playwright arranca con perfil limpio (la cuenta nace de `emptyTab()`, que sí trae el
+      // campo) y sin la marca `sesion.ultimaEmpresa`, que hace que el login trate el dispositivo
+      // como cambio de empresa y llame a `descartarTodo()`. Y "vaciar caché y recargar" de Chrome
+      // no borra localStorage, así que limpiar la caché tampoco lo curaba. Lo cubren
+      // `cuentaGuardadaAntes.test.ts` y el caso Y20 de `e2e/folio-de-plataforma.spec.ts`.
       merge: (persisted, current) => {
         const prev = (persisted ?? {}) as Partial<TicketState>;
-        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '', envio: t.envio ?? '' }));
+        const tabs = (prev.tabs ?? current.tabs).map((t) => ({
+          ...t,
+          folioName: t.folioName ?? '',
+          envio: t.envio ?? '',
+          platformOrderRef: t.platformOrderRef ?? '',
+        }));
         return { ...current, ...prev, tabs };
       },
     },
