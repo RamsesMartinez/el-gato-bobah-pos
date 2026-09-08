@@ -486,13 +486,18 @@ func (h *Handlers) SetOrderPlatformRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r.Context())
-	ref, err := h.orders.SetPlatformRef(r.Context(), id, body.PlatformOrderRef, u.ID)
+	res, err := h.orders.SetPlatformRef(r.Context(), id, body.PlatformOrderRef, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	// Se registra quién corrigió el folio de qué pedido. No lleva el folio en sí: es un dato de
-	// negocio que ya vive en la fila, y el log no es donde se consulta.
-	logging.SecurityEvent(r.Context(), "platform_ref_set", "user_id", u.ID, "order_id", id)
-	JSON(w, http.StatusOK, map[string]any{"id": id, "platformOrderRef": ref})
+	// El evento lleva el folio ANTERIOR porque sobrescribir ES borrar: el UPDATE es en sitio, sin
+	// historia, y `platform_ref_set_by`/`_set_at` solo guardan al último. Sin esto, alguien que
+	// reemplace folios buenos por basura no deja rastro de qué había, y pasada la ventana del
+	// reporte de la plataforma (Uber 31 días) esa conciliación no se reconstruye.
+	//
+	// No es PII ni secreto: es el identificador que la plataforma le puso a un pedido.
+	logging.SecurityEvent(r.Context(), "platform_ref_set",
+		"user_id", u.ID, "order_id", id, "folio_anterior", res.Anterior)
+	JSON(w, http.StatusOK, map[string]any{"id": id, "platformOrderRef": res.Actual})
 }

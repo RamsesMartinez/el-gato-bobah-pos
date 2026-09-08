@@ -66,10 +66,25 @@ describe('LiquidacionSheet', () => {
     });
   });
 
+  it('no deja guardar sin las tres cifras que el documento siempre trae', async () => {
+    montar();
+    // El footer se pinta desde el primer cuadro, pero los campos llegan cuando la consulta termina:
+    // esperar al campo y no al botón es lo que evita leer el estado de "Cargando…".
+    await screen.findByLabelText('Venta que reporta');
+    const guardarBtn = screen.getByRole('button', { name: /Guardar liquidación/i });
+    expect(guardarBtn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Venta que reporta'), { target: { value: '220' } });
+    expect(guardarBtn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Comisión', { exact: true }), { target: { value: '33' } });
+    expect(guardarBtn).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Depositado (neto)'), { target: { value: '51.77' } });
+    expect(guardarBtn).toBeEnabled();
+  });
+
   it('manda al servidor lo que dice el documento, sin calcular nada', async () => {
     montar();
     fireEvent.change(await screen.findByLabelText('Venta que reporta'), { target: { value: '220.00' } });
-    fireEvent.change(screen.getByLabelText('Comisión'), { target: { value: '33.00' } });
+    fireEvent.change(screen.getByLabelText('Comisión', { exact: true }), { target: { value: '33.00' } });
     fireEvent.change(screen.getByLabelText('Depositado (neto)'), { target: { value: '51.77' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar liquidación/i }));
     await waitFor(() => {
@@ -84,6 +99,8 @@ describe('LiquidacionSheet', () => {
   it('una tasa sin capturar viaja como ausente, no como cero', async () => {
     montar();
     fireEvent.change(await screen.findByLabelText('Venta que reporta'), { target: { value: '220' } });
+    fireEvent.change(screen.getByLabelText('Comisión', { exact: true }), { target: { value: '33' } });
+    fireEvent.change(screen.getByLabelText('Depositado (neto)'), { target: { value: '51.77' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar liquidación/i }));
     await waitFor(() => {
       expect(api.save).toHaveBeenCalledWith(187, expect.objectContaining({ commissionPct: null }));
@@ -94,7 +111,9 @@ describe('LiquidacionSheet', () => {
   // de verdad pasó. Rechazarlo aquí obligaría a capturar una mentira.
   it('deja capturar un neto negativo', async () => {
     montar();
-    fireEvent.change(await screen.findByLabelText('Depositado (neto)'), { target: { value: '-31.20' } });
+    fireEvent.change(await screen.findByLabelText('Venta que reporta'), { target: { value: '220' } });
+    fireEvent.change(screen.getByLabelText('Comisión', { exact: true }), { target: { value: '33' } });
+    fireEvent.change(screen.getByLabelText('Depositado (neto)'), { target: { value: '-31.20' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar liquidación/i }));
     await waitFor(() => {
       expect(api.save).toHaveBeenCalledWith(187, expect.objectContaining({ netAmount: '-31.20' }));

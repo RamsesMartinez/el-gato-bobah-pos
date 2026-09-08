@@ -312,17 +312,21 @@ func (s *SalesService) resumenDeLaBusqueda(ctx context.Context, f domain.SalesFi
 	}, nil
 }
 
-// Timezone del negocio, para que el preset se resuelva en el día del local y no en UTC. Si no se
-// puede leer cae a UTC en vez de fallar: la pantalla de análisis no se cae por un ajuste mal
-// escrito, y el peor caso es el rango corrido que ya se tenía antes de que esto existiera.
 // buscarPorFolio atiende el caso de pegar el identificador del documento de pago.
 //
-// Devuelve una página de a lo más una fila. Un folio que nadie capturó devuelve la lista VACÍA y no
-// un error: "este renglón del documento todavía no está registrado" es una respuesta legítima, y es
-// exactamente lo que el dueño necesita saber.
+// Casi siempre devuelve UNA fila, pero puede devolver más: la unicidad del folio es por empresa Y
+// PLATAFORMA, así que dos plataformas pueden usar el mismo identificador y las dos entran. Con los
+// formatos reales —UUID de 36 en Uber, entero de 19 en DiDi, de 10 en Rappi— la colisión es
+// prácticamente imposible, pero el esquema la permite a propósito: rechazarla tiraría una captura
+// legítima. Por eso la consulta es `:many` y esto itera en vez de asumir una sola fila; convertirla
+// a `:one` restauraría una garantía que nunca existió.
+//
+// Un folio que nadie capturó devuelve la lista VACÍA y no un error: "este renglón del documento
+// todavía no está registrado" es una respuesta legítima, y es exactamente lo que el dueño necesita.
 func (s *SalesService) buscarPorFolio(ctx context.Context, f domain.SalesFilter, desde, hasta pgtype.Date) (*SalesPage, error) {
 	rows, err := s.store.QC(ctx).FindSaleByPlatformRef(ctx, db.FindSaleByPlatformRefParams{
-		Folio: &f.Folio, Desde: desde, Hasta: hasta,
+		// El folio RECORTADO: la columna lo guarda así, y la comparación es una igualdad exacta.
+		Folio: ptrDe(f.FolioBuscado()), Desde: desde, Hasta: hasta,
 	})
 	if err != nil {
 		return nil, err
@@ -334,6 +338,9 @@ func (s *SalesService) buscarPorFolio(ctx context.Context, f domain.SalesFilter,
 	return &SalesPage{Range: rango(f.Range), Items: out, Total: int64(len(out))}, nil
 }
 
+// Timezone del negocio, para que el preset se resuelva en el día del local y no en UTC. Si no se
+// puede leer cae a UTC en vez de fallar: la pantalla de análisis no se cae por un ajuste mal
+// escrito, y el peor caso es el rango corrido que ya se tenía antes de que esto existiera.
 func (s *SalesService) Location(ctx context.Context) *time.Location {
 	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
 	if err != nil {
@@ -392,3 +399,6 @@ func momento(t pgtype.Timestamptz) *time.Time {
 	v := t.Time
 	return &v
 }
+
+// ptrDe es el puntero a un valor local, para los parámetros nullable de sqlc.
+func ptrDe(v string) *string { return &v }

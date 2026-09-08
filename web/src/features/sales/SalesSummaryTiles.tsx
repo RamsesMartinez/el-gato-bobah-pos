@@ -60,12 +60,12 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
             <CifraDePlataformaTile c={plataformas.vendido} label="Vendido por plataformas" />
             <CifraDePlataformaTile c={plataformas.seQuedoLaPlataforma} label="Se quedó la plataforma" />
             <CifraDePlataformaTile c={plataformas.llegoAlBanco} label="Llegó al banco" />
-            {plataformas.sinLiquidar.count > 0 && (
-              <Tile label="Sin liquidar" valor={String(plataformas.sinLiquidar.count)}
+            {plataformas.sinLiquidar.orders > 0 && (
+              <Tile label="Sin liquidar" valor={String(plataformas.sinLiquidar.orders)}
                 nota="falta su documento" />
             )}
-            {plataformas.sinFolio.count > 0 && (
-              <Tile label="Sin folio" valor={String(plataformas.sinFolio.count)}
+            {plataformas.sinFolio.orders > 0 && (
+              <Tile label="Sin folio de plataforma" valor={String(plataformas.sinFolio.orders)}
                 nota="no se pueden conciliar" />
             )}
           </>

@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -28,6 +29,15 @@ func NormalizePlatformRef(raw string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("%w: el folio de la plataforma no puede ir vacío", ErrValidation)
 	}
+	// Un carácter de control —el byte NUL, sobre todo— se rechaza AQUÍ y no en Postgres. Sin esto,
+	// `{"platformOrderRef":"AB\u0000C"}` pasa la validación (TrimSpace no lo quita, no queda vacío y
+	// son 4 runas) y revienta en el driver con `invalid byte sequence for encoding "UTF8"`, que sale
+	// como 500. El principio V pide 400 para la entrada absurda: un 500 dice "el servidor se rompió"
+	// y manda a revisar logs por un dato que el cliente mandó mal.
+	if i := strings.IndexFunc(ref, esDeControl); i >= 0 {
+		return "", fmt.Errorf("%w: el folio de la plataforma trae un carácter que no se puede guardar",
+			ErrValidation)
+	}
 	// Se mide DESPUÉS de recortar: medir antes rechazaría un folio que cabe, solo por venir pegado
 	// con espacios del reporte.
 	if n := utf8.RuneCountInString(ref); n > MaxPlatformRefLen {
@@ -35,4 +45,30 @@ func NormalizePlatformRef(raw string) (string, error) {
 			ErrValidation, n, MaxPlatformRefLen)
 	}
 	return ref, nil
+}
+
+// esDeControl: cualquier carácter de control, no solo el NUL. Postgres rechaza el NUL y los demás
+// no aportan nada a un identificador — llegan por un pegado sucio o por alguien probando.
+func esDeControl(r rune) bool { return unicode.IsControl(r) }
+
+// PlatformRefDelPedido decide si este pedido puede llevar folio, y lo normaliza.
+//
+// Vive en `domain` y no en el servicio porque es una REGLA pura —un pedido que no es de plataforma
+// no lleva folio de plataforma— y las reglas se prueban sin base de datos. El check del esquema es
+// la red de abajo, pero devolvería un 500 opaco en vez de un 400 que dice qué pasa.
+//
+// nil de entrada = no se mandó folio, que es una salida explícita y no un error.
+func PlatformRefDelPedido(ref *string, plataforma *int16) (*string, error) {
+	if ref == nil {
+		return nil, nil
+	}
+	if plataforma == nil {
+		return nil, fmt.Errorf("%w: un pedido que no es de plataforma no lleva folio de plataforma",
+			ErrValidation)
+	}
+	limpio, err := NormalizePlatformRef(*ref)
+	if err != nil {
+		return nil, err
+	}
+	return &limpio, nil
 }

@@ -356,10 +356,18 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 // NO hay borrado. El folio es el único dato irrecuperable de esta feature (el reporte de pagos de
 // Rappi expone 3 meses y el de Uber 31 días), y corregir un dedazo es sobrescribir, no vaciar: un
 // camino que lo destruye no resuelve ningún caso que el otro no resuelva ya.
-func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string, quien int64) (string, error) {
+// SetPlatformRefResult dice qué había antes y qué quedó. El anterior viaja para que el evento de
+// seguridad lo registre: sobrescribir un folio ES borrarlo —el UPDATE es en sitio, sin historia— y
+// pasada la ventana del reporte de la plataforma (Uber 31 días) no se reconstruye.
+type SetPlatformRefResult struct {
+	Anterior string
+	Actual   string
+}
+
+func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string, quien int64) (SetPlatformRefResult, error) {
 	ref, err := domain.NormalizePlatformRef(raw)
 	if err != nil {
-		return "", err
+		return SetPlatformRefResult{}, err
 	}
 	// Se lee el pedido ANTES de escribir para poder distinguir "no existe en esta empresa" de "no
 	// es de plataforma". El update solo devolvería cero filas en los dos casos, y un 404 sobre un
@@ -367,41 +375,31 @@ func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string
 	ord, err := s.store.QC(ctx).GetOrder(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", domain.ErrNotFound
+			return SetPlatformRefResult{}, domain.ErrNotFound
 		}
-		return "", err
+		return SetPlatformRefResult{}, err
 	}
 	if ord.DeliveryPlatformID == nil {
-		return "", fmt.Errorf("%w: ese pedido no es de plataforma, así que no tiene folio de plataforma",
-			domain.ErrValidation)
+		return SetPlatformRefResult{}, fmt.Errorf(
+			"%w: ese pedido no es de plataforma, así que no tiene folio de plataforma", domain.ErrValidation)
 	}
 
 	row, err := s.store.QC(ctx).SetPlatformRef(ctx, db.SetPlatformRefParams{
 		ID: id, PlatformOrderRef: &ref, PlatformRefSetBy: &quien,
 	})
 	if err != nil {
-		return "", s.traduceFolioRepetido(ctx, err, &ref, ord.DeliveryPlatformID)
+		return SetPlatformRefResult{}, s.traduceFolioRepetido(ctx, err, &ref, ord.DeliveryPlatformID)
 	}
-	return derefStr(row.PlatformOrderRef), nil
+	return SetPlatformRefResult{
+		Anterior: derefStr(ord.PlatformOrderRef),
+		Actual:   derefStr(row.PlatformOrderRef),
+	}, nil
 }
 
-// folioDelPedido normaliza el folio de plataforma y decide si puede ir en este pedido.
-//
-// Un folio en un pedido que NO es de plataforma se rechaza aquí y no solo en el esquema: el check
-// de Postgres es la red de abajo, pero devolvería un 500 opaco en vez de un 400 que dice qué pasa.
+// folioDelPedido traduce el comando a la regla de dominio. La regla vive en `domain` porque es
+// pura y se prueba sin base de datos; aquí solo se desempaqueta el cmd.
 func folioDelPedido(cmd CreateOrderCmd) (*string, error) {
-	if cmd.PlatformOrderRef == nil {
-		return nil, nil
-	}
-	if cmd.DeliveryPlatformID == nil {
-		return nil, fmt.Errorf("%w: un pedido que no es de plataforma no lleva folio de plataforma",
-			domain.ErrValidation)
-	}
-	ref, err := domain.NormalizePlatformRef(*cmd.PlatformOrderRef)
-	if err != nil {
-		return nil, err
-	}
-	return &ref, nil
+	return domain.PlatformRefDelPedido(cmd.PlatformOrderRef, cmd.DeliveryPlatformID)
 }
 
 // rastroDe y rastroCuando mantienen el trío del folio TODO O NADA, que es lo que el check del

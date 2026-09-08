@@ -7,6 +7,8 @@ import {
 } from '../../components/ui/drawer';
 import { settlementsApi, type Settlement, type SettlementInput } from '../../api/settlements';
 import { money } from '../../utils/format';
+import { fechaYHora } from '../../utils/horaDelNegocio';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 interface Props {
   orderId: number;
@@ -25,6 +27,7 @@ interface Props {
 // del encabezado y de los ~250 px que se lleva el teclado numérico al abrirse.
 export function LiquidacionSheet({ orderId, plataforma, isOpen, onClose }: Props) {
   const qc = useQueryClient();
+  const horaNegocio = useHoraDelNegocio();
   const { data, isLoading } = useQuery({
     queryKey: ['settlement', orderId],
     queryFn: () => settlementsApi.get(orderId),
@@ -61,6 +64,13 @@ export function LiquidacionSheet({ orderId, plataforma, isOpen, onClose }: Props
   // Lo que puso el restaurante es DERIVADO y se recalcula al teclear: el operador ve de inmediato
   // cuánto le costó la promoción, que es la cifra por la que existe esta pantalla.
   const restaurante = resta(valores.discountTotal, valores.discountPlatform);
+
+  // Las tres cifras que el documento SIEMPRE trae. El servidor las exige y con razón: mandarlas
+  // vacías dejaría registrado que la plataforma cobró $0 y depositó $0 por un error de captura, no
+  // por un hecho — y eso baja el "se quedó la plataforma" del periodo. Se apaga el botón en vez de
+  // dejar que el operador llegue al rechazo con el documento en la mano.
+  const faltan = ['reportedGross', 'commissionAmount', 'netAmount']
+    .filter((k) => (valores[k as keyof SettlementInput] ?? '').toString().trim() === '');
 
   return (
     <DrawerRoot open={isOpen} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -103,10 +113,18 @@ export function LiquidacionSheet({ orderId, plataforma, isOpen, onClose }: Props
               <Campo etiqueta="Referencia del depósito" valor={valores.payoutReference}
                 onChange={cambiar('payoutReference')} ancho />
               <Campo etiqueta="Documento" valor={valores.documentRef} onChange={cambiar('documentRef')} ancho />
+              {faltan.length > 0 && (
+                <Text fontSize="sm" color="fg.muted">
+                  Captura la venta que reporta, la comisión y el depositado. Si el documento dice
+                  cero, escribe 0.
+                </Text>
+              )}
               {error && <Text fontSize="sm" color="red.fg">{error}</Text>}
+              {/* La fecha va en la zona del NEGOCIO, como el resto de las de esta pantalla.
+                  Recortar el ISO crudo muestra el día de UTC, que cerca de medianoche es otro. */}
               {data && (
                 <Text fontSize="xs" color="fg.muted">
-                  Capturada por {data.capturedBy || 'alguien'} el {data.capturedAt.slice(0, 10)}
+                  Capturada por {data.capturedBy || 'alguien'} el {fechaYHora(data.capturedAt, horaNegocio.zona)}
                 </Text>
               )}
             </VStack>
@@ -117,7 +135,7 @@ export function LiquidacionSheet({ orderId, plataforma, isOpen, onClose }: Props
           <HStack gap={2} w="100%">
             <Button flex="1" minH="52px" variant="outline" onClick={onClose}>Cancelar</Button>
             <Button flex="2" minH="52px" colorPalette="orange"
-              disabled={guardar.isPending}
+              disabled={guardar.isPending || faltan.length > 0}
               onClick={() => guardar.mutate()}>
               Guardar liquidación
             </Button>

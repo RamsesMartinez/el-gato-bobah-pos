@@ -19,6 +19,16 @@
 # volver a la base sembrada por otro camino.
 set -euo pipefail
 
+# El dump que se baja trae los datos CRUDOS de producción: nombres de cliente, notas, motivos de
+# cancelación, hashes de contraseña y el pin_lookup. Dos guardas, porque una sola falla:
+#
+#   - umask 077: el archivo nace 600 y no 644. Lo único que lo separaba de cualquier usuario de la
+#     máquina era el permiso por defecto.
+#   - trap ... EXIT: se borra AL SALIR, pase lo que pase — también si el restore falla a la mitad.
+#     Antes se quedaba en la raíz del repo para siempre, y lo único que lo mantenía fuera de un repo
+#     PÚBLICO era una línea de .gitignore.
+umask 077
+
 VPS_INSTANCE=${VPS_INSTANCE:-pos-vps}
 VPS_USER=${VPS_USER:-ramses_mtz96}
 VPS_ZONE=${VPS_ZONE:-us-central1-a}
@@ -32,6 +42,7 @@ APP_ROLE_PASSWORD=${APP_ROLE_PASSWORD:-test_app_pw}
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESTINO_DUMP=${DESTINO_DUMP:-"$RAIZ/.respaldo-produccion.sql.gz"}
+trap 'rm -f "$DESTINO_DUMP"' EXIT
 
 # psql no está instalado en la caja de desarrollo (el Postgres de dev vive en un contenedor), así
 # que se usa el cliente de la MISMA imagen que corre en producción. `--network host` es lo que hace
@@ -140,6 +151,13 @@ update users set
 -- funcional de producción viviendo en una base de pruebas.
 truncate refresh_tokens, password_reset_tokens;
 
+-- Texto libre de gastos: ahí caben nombres de personas y de proveedores.
+update expense_items set description = 'concepto anonimizado' where description is not null;
+update expenses      set description = 'gasto anonimizado'    where description is not null;
+-- Referencias de cobro: números de tarjeta parciales y folios de transferencia reales.
+update order_payments   set reference = null where reference is not null;
+update expense_payments set reference = null where reference is not null;
+
 -- Proveedores y datos de contacto del negocio.
 update suppliers set phone = null, notes = null where phone is not null or notes is not null;
 update business_settings set
@@ -170,10 +188,21 @@ psql_ "$URL_ADMIN" -v ON_ERROR_STOP=1 -q -c \
 # para romper en producción. Falla ruidoso antes que dejar creer que la base está lista.
 EMPRESAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "select count(*) from companies")
 PEDIDOS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "select count(*) from orders")
+# La verificación cubre TODAS las sentencias de arriba, no tres de trece: antes pasaba en verde
+# aunque diez de ellas no hubieran corrido.
 FUGAS=$(psql_ "$TEST_RESTORED_DATABASE_URL" -tAc "
   select (select count(*) from orders where customer_name is not null or notes is not null)
-       + (select count(*) from users where name !~ '^Usuario [0-9]+$')
-       + (select count(*) from refresh_tokens)")
+       + (select count(*) from order_lines where notes is not null)
+       + (select count(*) from users where name !~ '^Usuario [0-9]+\$' or pin_hash is not null or pin_lookup is not null)
+       + (select count(*) from refresh_tokens)
+       + (select count(*) from password_reset_tokens)
+       + (select count(*) from suppliers where phone is not null or notes is not null)
+       + (select count(*) from business_settings where phone is not null or address is not null or logo_bytes is not null)
+       + (select count(*) from register_sessions where notes is not null)
+       + (select count(*) from cash_transfers where note is not null)
+       + (select count(*) from stock_movements where reason is not null or note is not null)
+       + (select count(*) from order_payments where reference is not null)
+       + (select count(*) from expense_payments where reference is not null)")
 
 echo
 echo "Base restaurada: $NOMBRE_BASE"

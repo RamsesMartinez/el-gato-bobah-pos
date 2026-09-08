@@ -3,6 +3,7 @@ import { Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
 
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
+  DrawerCloseTrigger,
 } from '../../components/ui/drawer';
 
 interface Props {
@@ -48,7 +49,11 @@ export function FolioPlataformaSheet({
           visible mientras se teclea — y sin eso SC-003 pasa de un toque a dos: cerrar el teclado y
           después tocar el botón. */}
       <DrawerContent borderTopRadius="l3" maxH="90dvh" display="flex" flexDirection="column">
-        <DrawerHeader pb={1}>
+        {/* Cerrar NO manda el pedido: vuelve al carrito. Los dos botones del footer mandan, así
+            que sin este control la única forma de arrepentirse era tocar fuera de la hoja, y eso no
+            se ve. El operador que tocó Cobrar por error tiene que poder volver a corregir la cuenta. */}
+        <DrawerCloseTrigger />
+        <DrawerHeader pb={1} pr={12}>
           <Text fontSize="lg" fontWeight="700">¿Con qué folio llegó de {plataforma}?</Text>
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>

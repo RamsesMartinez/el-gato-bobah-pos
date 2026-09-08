@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -153,6 +154,18 @@ func (f SalesFilter) SoloSinFolio() bool { return f.FolioPlataforma == folioPend
 // Buscando: se pego un folio en el buscador. Cambia la consulta entera, no solo el `where`.
 func (f SalesFilter) Buscando() bool { return f.Folio != "" }
 
+// FolioBuscado es el folio YA RECORTADO, que es el único que sirve para buscar.
+//
+// La columna guarda el folio recortado —lo hace NormalizePlatformRef al escribir, y el check del
+// esquema es la red de abajo—, y la búsqueda es una igualdad exacta. Comparar el valor crudo contra
+// esa columna devuelve cero filas cuando el operador pega el folio del documento con espacios, que
+// es el caso NORMAL; y cero filas se lee como "ese renglón todavía no está capturado". El operador
+// lo captura otra vez y quedan dos pedidos apuntando al mismo depósito.
+//
+// La pantalla también recorta, pero eso es UX: la barrera es esta, porque es la única que ve
+// cualquier otro cliente de la API.
+func (f SalesFilter) FolioBuscado() string { return strings.TrimSpace(f.Folio) }
+
 // Validate rechaza lo que no se puede atender. Cada regla existe por un fallo concreto: un estado
 // inventado devolvería cero filas en silencio, un `sort` desconocido ordenaría por otra cosa, y una
 // página de cien mil filas es un proceso muerto.
@@ -184,6 +197,24 @@ func (f SalesFilter) Validate() error {
 		// hubiera buscado.
 		if _, err := NormalizePlatformRef(f.Folio); err != nil {
 			return fmt.Errorf("%w (en la búsqueda)", err)
+		}
+		// Buscar un folio contesta con ESE pedido, así que cualquier otro filtro que venga con él se
+		// tiraría. Se RECHAZA en vez de ignorarse: una pantalla que se ve filtrada y contesta un
+		// pedido que no cumple el filtro es peor que un error, porque nadie la audita — es el mismo
+		// principio que ya rige a `preset` con fechas que no usa.
+		var sobra []string
+		if f.SoloSinFolio() {
+			sobra = append(sobra, "pendientes de folio")
+		}
+		if f.Status != "" {
+			sobra = append(sobra, "estado")
+		}
+		if f.ServiceType != "" {
+			sobra = append(sobra, "tipo de venta")
+		}
+		if len(sobra) > 0 {
+			return fmt.Errorf("%w: buscar un folio contesta ese pedido, así que no se puede combinar con %s",
+				ErrValidation, strings.Join(sobra, " ni "))
 		}
 	}
 	return nil

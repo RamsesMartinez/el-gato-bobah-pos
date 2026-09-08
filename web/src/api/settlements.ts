@@ -49,8 +49,10 @@ export interface PlatformMoney {
   vendido: CifraDePlataforma;
   seQuedoLaPlataforma: CifraDePlataforma;
   llegoAlBanco: CifraDePlataforma;
-  sinLiquidar: { count: number; amount: string };
-  sinFolio: { count: number; amount: string };
+  // Conteos, sin importe: cuánto dinero hay detrás de un pedido sin liquidar es justamente lo que
+  // todavía no se sabe, y un $0.00 ahí se acaba sumando a algo.
+  sinLiquidar: { orders: number };
+  sinFolio: { orders: number };
 }
 
 export const settlementsApi = {

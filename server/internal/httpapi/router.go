@@ -130,10 +130,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
-					// Escribir o corregir el folio de la plataforma. MISMO gate que capturar el
-					// pedido: es el mismo dato, movido en el tiempo, y mandar al cajero a buscar un
-					// gerente para teclear un identificador cuesta más de lo que protege. La
-					// mitigación es el rastro (platform_ref_set_by) y que no hay borrado.
+					// Escribir o corregir el folio de la plataforma. Alcanza al cajero porque es el
+					// mismo dato que captura al levantar el pedido, movido en el tiempo, y mandarlo
+					// a buscar un gerente para teclear un identificador cuesta más de lo que
+					// protege. La mitigación es el rastro (platform_ref_set_by) y el evento con el
+					// folio anterior.
+					//
+					// OJO: NO es el mismo gate que crear. `POST /orders` no tiene RequireRole, así
+					// que un MESERO puede poner un folio al crear el pedido aunque este PATCH le
+					// rebote con 403. Es una asimetría heredada de que crear un pedido nunca pidió
+					// rol; el riesgo es que ocupe un folio ajeno y alguien con rol tenga que
+					// sobrescribirlo. Se dice aquí para que no se descubra al leer el 403.
 					//
 					// El tope por usuario va DESPUÉS de RequireRole: cuenta al que sí tenía
 					// permiso, que es de quien hay que acotar la ráfaga (el resto ya rebota en 403).

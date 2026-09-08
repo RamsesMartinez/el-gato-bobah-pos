@@ -208,6 +208,34 @@ test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
       'buscador, el toggle y los tiles puestos');
     expect(renglones, 'la pantalla de Ventas se quedó sin renglones de tabla a la vista').toBeGreaterThan(0);
 
+    // El alto de la fila CON folio contra una sin él. La celda "Tipo" pasa de una línea a dos, y
+    // la pregunta es si eso empuja el renglón — la columna "Folio" ya es de dos líneas en casi todo
+    // pedido, así que no debería, pero eso es cálculo y esto es medición.
+    const altos = await page.evaluate(() => {
+      const filas = [...document.querySelectorAll('tbody tr')];
+      const conFolio: number[] = [];
+      const sinFolio: number[] = [];
+      for (const f of filas) {
+        const celdas = [...f.querySelectorAll('td')];
+        const tipo = celdas[3];
+        const dosLineas = (tipo?.querySelectorAll('p, div') ?? []).length > 1;
+        (dosLineas ? conFolio : sinFolio).push(Math.round(f.getBoundingClientRect().height));
+      }
+      return { conFolio, sinFolio };
+    });
+    if (altos.conFolio.length === 0) {
+      // Se DECLARA en vez de pasar en verde sin haber medido: el mes de pruebas no trajo ningún
+      // pedido con folio capturado, así que este caso no se ejerció en esta corrida.
+      console.log('[medido 1024×600] Y14 · el mes no trae pedidos con folio capturado: el alto de ' +
+        'la fila con folio NO se midió en esta corrida');
+    } else {
+      const max = Math.max(...altos.conFolio);
+      const base = altos.sinFolio.length ? Math.max(...altos.sinFolio) : max;
+      console.log(`[medido 1024×600] Y14 · fila con folio: ${max}px · sin folio: ${base}px`);
+      expect(max, 'la fila con folio de plataforma creció más de un renglón sobre las demás')
+        .toBeLessThanOrEqual(base + 20);
+    }
+
     // La página NO scrollea horizontalmente: el folio va truncado dentro de su celda, no como
     // columna nueva.
     const desborde = await page.evaluate(() =>
