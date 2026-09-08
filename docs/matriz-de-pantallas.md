@@ -246,17 +246,18 @@ declara como tal.
 | Y5 | Folio en un pedido de mostrador | Imposible por construcción (check en el esquema), no por validación de pantalla | `TestUnPedidoDeMostradorNoPuedeTenerFolioDePlataforma` · `TestUnPedidoDeMostradorNoAceptaFolioDePlataforma` | Postgres |
 | Y6 | El campo de folio con la lista en Mostrador | **No existe en el árbol**, no "existe oculto", y no ocupa alto | `PlatformPicker.test.tsx` › *no existe con la lista en Mostrador* | Vitest |
 | Y7 | Mandar un pedido de plataforma con el campo vacío | Se pide el dato con **una** salida explícita; tomarla lo manda sin folio y lo deja como pendiente | `folioPlataforma.test.ts` · `FolioPlataformaSheet.test.tsx` | Vitest |
-| Y8 | La salida explícita con el teclado abierto | Sigue visible y tappable. Si el teclado la tapa, SC-003 pasa de un toque a dos | *pendiente* | Playwright |
-| Y9 | Renglones del mosaico con plataforma activa a 1024×600 | Los mismos que hoy (3 sin el aviso de caja). Si bajan a 2, se declara | *pendiente* | Playwright |
+| Y8 | La salida explícita con el teclado abierto | Sigue visible y tappable. Si el teclado la tapa, SC-003 pasa de un toque a dos | `folio-de-plataforma.spec.ts` › Y7+Y8 | Playwright (ventana encogida a 350 px; el teclado real no se simula) |
+| Y9 | Renglones del mosaico con plataforma activa a 1024×600 | Medido: 3 en mostrador, 2 con plataforma. El renglón lo cuestan las dos líneas de texto del selector, que ya existían; el campo del folio agrega 0 px | `folio-de-plataforma.spec.ts` › Y6+Y9 | Playwright |
 | Y10 | Filtro de pendientes con un valor desconocido | 400 de validación; **nunca** cae en silencio a "todos" | `TestElFiltroDePendientesDeFolio` | Go |
 | Y11 | Lista y resumen con el filtro de pendientes | Describen **el mismo conjunto**, sin excepción: el `total` de la lista y el `count` del resumen coinciden | `TestLaListaYElResumenDescribenElMismoConjunto` | Postgres |
 | Y12 | Buscar pegando el folio del documento de pago | Devuelve **ese** pedido y solo ese, en un paso | `TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido` | Postgres |
 | Y13 | Buscar el número interno (`187`) o el nombre (`Tigre`) | **No** los encuentra: la búsqueda es del folio de plataforma, que es otra cosa | `TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno` | Postgres |
-| Y14 | El folio en la celda "Tipo" de la lista | Truncado con elipsis, **una sola línea**; el completo vive en el detalle | *pendiente* | — |
+| Y14 | El folio en la celda "Tipo" de la lista | Truncado con elipsis; la página **no** se desborda a lo ancho, que es lo que pasaría con una columna nueva | `folio-de-plataforma.spec.ts` › Y14+F65 | Playwright |
+| Y13b | Dos plataformas usan el MISMO identificador | La búsqueda devuelve los dos, y el renglón dice de qué plataforma es cada uno. La unicidad es por plataforma a propósito: rechazarlo tiraría una captura legítima | medido a mano en dev (pedidos 224/226) | Postgres |
 | Y15 | El plan de la consulta de pendientes | Con el predicado LITERAL entra por `orders_plataforma_sin_folio`; con el patrón `narg … is null or (…)` no hay índice que pueda usar ni con `enable_seqscan=off` | medido a mano (ver §Y-plan) | Postgres |
 | Y16 | Rótulos del folio de plataforma en la interfaz | Nombran la plataforma (*Folio de Uber Eats*); nunca dicen "folio" a secas, que en esta pantalla ya es el número del turno | `PlatformPicker.test.tsx` · `SalesPage.test.tsx` | Vitest |
 | Y17 | Pedido sin liquidación contra liquidación en ceros | Se distinguen: ausencia es 404, ceros es 200 con ceros | `TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros` | Postgres |
-| Y18 | Los nueve campos de la liquidación a 1024×600 | Caben con el teclado abierto y el botón de guardar visible | *pendiente* | Playwright |
+| Y18 | Los nueve campos de la liquidación a 1024×600 | Caben en 600 px, todos ≥44 px, y guardar sigue visible con la ventana encogida a 350 px | `folio-de-plataforma.spec.ts` › Y18 | Playwright |
 | Y19 | Los tiles del resumen de plataformas | Cada uno con su conteo de pedidos a la vista: cubren conjuntos distintos y no se restan | `TestLasTresCifrasDelPeriodoCubrenConjuntosDistintos` · `TestLoQueLlegoAlBancoNoEsLaRestaDeLasOtrasDos` | Go |
 
 ### Y-plan: cómo se midió el plan de la consulta
