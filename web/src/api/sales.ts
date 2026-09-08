@@ -25,6 +25,9 @@ export interface SaleRow {
   refund: string;
   tips: string;
   platform: string;
+  // El folio con el que la plataforma nombró al pedido. Vacío = sin capturar, que es lo que el
+  // filtro de pendientes lista.
+  platformOrderRef: string;
   openedBy: string;
   methods: string;
 }
@@ -77,6 +80,12 @@ export interface SalesQuery {
   dir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
+  // 'pendiente' acota a los pedidos de plataforma SIN folio. Cualquier otro valor lo rechaza el
+  // servidor con un 400 a propósito: un filtro que cae a "todos" muestra un conjunto que nadie pidió.
+  folioPlataforma?: 'pendiente';
+  // El folio EXACTO pegado del documento de pago. Busca solo el folio de plataforma, nunca el
+  // número ni el nombre del turno.
+  folio?: string;
 }
 
 // Los vacíos NO viajan: el servidor aplica el default solo al parámetro ausente, y mandar
@@ -94,5 +103,10 @@ export const salesApi = {
   // El resumen no lleva página ni orden: no cambian con ellos, y meterlos en la llave haría que se
   // vuelva a pedir en cada tap del paginador.
   summary: (q: SalesQuery = {}) =>
-    api.get<SalesSummary>(`/sales/summary?${qs({ preset: q.preset, from: q.from, to: q.to, serviceType: q.serviceType })}`),
+    // El filtro de pendientes y la búsqueda SÍ viajan al resumen: si la lista y el resumen no
+    // describen el mismo conjunto, quien lee la pantalla no tiene forma de saber cuál miente.
+    api.get<SalesSummary>(`/sales/summary?${qs({
+      preset: q.preset, from: q.from, to: q.to, serviceType: q.serviceType,
+      folioPlataforma: q.folioPlataforma, folio: q.folio,
+    })}`),
 };

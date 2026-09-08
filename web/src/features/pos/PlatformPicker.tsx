@@ -1,4 +1,4 @@
-import { Box, Button, HStack, Text } from '@chakra-ui/react';
+import { Box, Button, HStack, Input, Text } from '@chakra-ui/react';
 import { LuStore, LuSmartphone } from 'react-icons/lu';
 
 import { useMenu } from '../../hooks/useMenu';
@@ -11,8 +11,10 @@ import { nombreDeLista, repreciador } from './precioPlataforma';
 // El indicador cambia de color cuando NO es mostrador para que se note de reojo, sin leerlo.
 export function PlatformPicker() {
   const { data: menu } = useMenu();
-  const activa = useActiveTicket().platformId;
+  const cuenta = useActiveTicket();
+  const activa = cuenta.platformId;
   const setPlatform = useTicketStore((s) => s.setPlatform);
+  const setFolio = useTicketStore((s) => s.setPlatformOrderRef);
   const plataformas = menu?.platforms ?? [];
 
   // El selector es quien tiene el menú, así que es quien puede volver a precisar lo ya agregado.
@@ -26,9 +28,15 @@ export function PlatformPicker() {
 
   return (
     <Box>
-      <HStack gap={1} flexWrap="wrap">
+      {/* El campo del folio va EN ESTE MISMO renglón, no debajo.
+          Medido a 1024×600: con plataforma activa y sin el aviso de caja quedan 3 renglones de
+          mosaico y 25 px de sobra, y el piso táctil son 44 px. Apilado, el bloque crece 48 px y el
+          mosaico baja a 2 renglones; en línea crece 4 px (el renglón pasa de 40 a 44) y los 3 se
+          conservan. Si con más plataformas configuradas el flexWrap lo baja, cuesta el renglón que
+          SC-007 permite — y eso se mide, no se supone. */}
+      <HStack gap={1} flexWrap="wrap" align="center">
         <Button
-          size="sm" minH="40px" px={3}
+          size="sm" minH="44px" px={3}
           variant={activa === null ? 'solid' : 'outline'}
           colorPalette={activa === null ? undefined : 'gray'}
           onClick={() => cambiarLista(null)}
@@ -37,7 +45,7 @@ export function PlatformPicker() {
         </Button>
         {plataformas.map((p) => (
           <Button
-            key={p.id} size="sm" minH="40px" px={3}
+            key={p.id} size="sm" minH="44px" px={3}
             variant={activa === p.id ? 'solid' : 'outline'}
             colorPalette={activa === p.id ? 'orange' : 'gray'}
             onClick={() => cambiarLista(p.id)}
@@ -45,6 +53,21 @@ export function PlatformPicker() {
             <LuSmartphone /> {p.name}
           </Button>
         ))}
+        {enPlataforma && (
+          <Input
+            size="sm" minH="44px" w="220px" px={3}
+            // El rótulo nombra la PLATAFORMA. En esta pantalla "folio" ya es el número del turno
+            // —el que se canta como "Tigre"—, así que decirlo a secas manda a teclear el dato
+            // equivocado con el documento de pago en la mano.
+            aria-label={`Folio de ${nombreDeLista(menu, activa)}`}
+            placeholder={`Folio de ${nombreDeLista(menu, activa)}`}
+            value={cuenta.platformOrderRef}
+            onChange={(e) => setFolio(e.target.value)}
+            // El teclado del sistema sube desde abajo y este campo vive arriba del mosaico, así que
+            // no lo tapa. Es la razón de que no viva en una hoja inferior.
+            autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+          />
+        )}
       </HStack>
       {enPlataforma && (
         <>
