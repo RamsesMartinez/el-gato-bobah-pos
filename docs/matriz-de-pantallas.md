@@ -274,6 +274,17 @@ por tamaño, no por incapacidad):
 
 Es la razón de que `sales.sql` tenga cinco PARES de consulta en vez de cinco con un parámetro.
 
+## Z. Deuda de specs viejos, cerrada el 8 de septiembre de 2026
+
+Dos renglones que llevaban abiertos porque exigían el ambiente desplegado. Y un tercero que salió de
+cerrarlos.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| Z1 | El mosaico con pedidos en curso (005 · SC-005) | La barra flota sobre el catálogo en vez de empujarlo: 3 renglones y 396 px de catálogo, con deuda puesta | `deuda-de-especificaciones.spec.ts` › *005/T047* | Playwright |
+| Z2 | La vista previa del ticket contra el desplegado (001 · SC-006) | Abre sin una petición que no salga y sin nada bloqueado por CSP; imprimir se alcanza sin desplazarse | `deuda-de-especificaciones.spec.ts` › *001/T037* | Playwright (el papel sigue siendo manual) |
+| Z3 | Medir píxeles de un diálogo | Se espera a que la animación de entrada asiente. `boundingBox()` devuelve la caja **transformada**: el mismo botón da 42 px a media animación y 44 asentado, y eso ya produjo un hallazgo falso | el `waitForTimeout(600)` de *001/T037* | Playwright |
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
