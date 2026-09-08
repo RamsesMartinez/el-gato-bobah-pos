@@ -177,16 +177,22 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 | **Más de una sucursal** dentro de una empresa | Un único o un contador por `company_id` que en realidad debería ser por sucursal | Multi-tenant por empresa resuelto con RLS; sucursal **no** existe como concepto |
 | **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
 | **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
-| **Cuánto deja cada plataforma** | Registrar el cobro sin poder reconstruir después qué se quedó la plataforma | No hay columna de comisión; `price_markup_pct` es el sobreprecio de venta, no lo que cobran |
+| ~~**Cuánto deja cada plataforma**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `platform_settlements` guarda por pedido lo que dice el documento de pago: comisión (monto y tasa), retenciones, neto y quién financió el descuento. Dejó de ser puerta y es feature |
 | **Costear con recetas e inventario de insumos** | Un renglón de venta que no guarda copia de lo que costaba en ese momento | `order_lines.unit_cost` y `order_line_modifiers.unit_cost` ya son snapshot: la puerta está abierta |
 | **Descuentos** | Cobrar sin dejar rastro de que hubo un descuento | `orders.discount_total` existe y siempre vale cero: la columna está, la feature no |
 | **Una lista de productos por plataforma** — activar y desactivar lo que se ofrece en cada app, con nombres propios ligados al mismo producto interno | Asumir que un producto del catálogo es un producto de la plataforma. Ya no lo es: en el POS se vende "Arma tu Crepa" y en Uber cada crepa por sabor, a propósito | `product_platform_prices` ya es por `(producto, plataforma)`: la llave correcta existe. Falta el nombre, el estado y la relación uno-a-varios |
 | **Promociones de plataforma** (2x1, producto de regalo) | Registrar el cobro sin poder reconstruir qué se regaló ni quién lo pagó — el restaurante o la plataforma | No existe el concepto. Los reportes de plataforma traen columnas de promoción y hoy vienen en cero |
-| **Conciliar el depósito de una plataforma contra los pedidos que lo formaron** | No guardar el folio que la plataforma le dio al pedido | El folio de plataforma existe en los datos de origen y **no se guarda en `orders`**: sin él la conciliación es por monto y fecha, que empata mal |
+| ~~**Conciliar el depósito de una plataforma contra los pedidos que lo formaron**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `orders.platform_order_ref` guarda el folio completo, único por empresa y plataforma, y `platform_settlements.payout_reference` la referencia del depósito. La conciliación dejó de ser por monto y fecha |
 
 Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
 [docs/plataformas-digitales.md](../../docs/plataformas-digitales.md) y
 [docs/respaldo-fudo.md](../../docs/respaldo-fudo.md).
+
+**Dos puertas se cruzaron el 2026-09-08 con el spec 014** y se dejan tachadas en vez de borradas:
+lo que enseñan —qué hecho era irrecuperable y por qué— es lo que hace que la siguiente puerta se
+reconozca. Lo que ese spec **no** cerró y sigue abierto: la base sobre la que Uber calcula la
+comisión bajo promoción (medida en DiDi, sin resolver en Uber), el depósito y el documento de pago
+como entidades propias, y que un pedido de plataforma siga exigiendo turno de caja abierto.
 
 Esta tabla se actualiza cuando una puerta se cruza (deja de ser puerta y pasa a ser feature) o
 cuando aparece una nueva. Está en la constitución y no en un documento aparte a propósito: es la
@@ -248,4 +254,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.7.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-05
+**Version**: 1.8.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-08
