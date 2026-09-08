@@ -44,30 +44,33 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
         {resumen.cancelledLines.count > 0 && (
           <Tile label="Renglones cancelados" valor={money(resumen.cancelledLines.amount)} nota={`${resumen.cancelledLines.count}`} />
         )}
+
+        {/* Las cifras de plataformas van en ESTA MISMA fila, detrás de un separador, y no en una
+            propia. Medido a 1024×600 contra el ambiente desplegado: una fila aparte cuesta 101 px y
+            deja el contenedor de la tabla en 66 px — UN renglón. Esta fila ya scrollea en
+            horizontal, así que meterlas aquí cuesta cero alto, y el operador vino a leer la tabla.
+
+            Lo que impide que se resten con las de arriba NO es estar en otra fila: es que cada una
+            lleva SOBRE CUÁNTOS PEDIDOS habla. Los conjuntos son distintos —hay pedidos vendidos
+            cuyo documento todavía no llega— y sin el conteo tres importes hermanos se restan a ojo.
+            Es la forma exacta del fondo de caja que dejó un turno con $4,500 de faltante. */}
+        {plataformas && plataformas.llegoAlBanco.orders > 0 && (
+          <>
+            <Box alignSelf="stretch" borderLeftWidth="1px" mx={1} flexShrink={0} />
+            <CifraDePlataformaTile c={plataformas.vendido} label="Vendido por plataformas" />
+            <CifraDePlataformaTile c={plataformas.seQuedoLaPlataforma} label="Se quedó la plataforma" />
+            <CifraDePlataformaTile c={plataformas.llegoAlBanco} label="Llegó al banco" />
+            {plataformas.sinLiquidar.count > 0 && (
+              <Tile label="Sin liquidar" valor={String(plataformas.sinLiquidar.count)}
+                nota="falta su documento" />
+            )}
+            {plataformas.sinFolio.count > 0 && (
+              <Tile label="Sin folio" valor={String(plataformas.sinFolio.count)}
+                nota="no se pueden conciliar" />
+            )}
+          </>
+        )}
       </HStack>
-
-      {/* Las tres cifras de plataformas, y SOLO si hay al menos una liquidación capturada. Sin
-          liquidaciones no habría nada que decir y la fila costaría alto por nada.
-
-          Cada tile lleva SOBRE CUÁNTOS PEDIDOS habla. No es adorno: los conjuntos son distintos
-          —hay pedidos vendidos cuyo documento todavía no llega— y tres importes hermanos sin su
-          conteo se restan a ojo. Es la forma exacta del fondo de caja que dejó un turno con $4,500
-          de faltante sin explicación. */}
-      {plataformas && plataformas.llegoAlBanco.orders > 0 && (
-        <HStack gap={2} overflowX="auto" pb={1} css={{ scrollbarWidth: 'none' }}>
-          <CifraDePlataformaTile c={plataformas.vendido} label="Vendido por plataformas" />
-          <CifraDePlataformaTile c={plataformas.seQuedoLaPlataforma} label="Se quedó la plataforma" />
-          <CifraDePlataformaTile c={plataformas.llegoAlBanco} label="Llegó al banco" />
-          {plataformas.sinLiquidar.count > 0 && (
-            <Tile label="Sin liquidar" valor={String(plataformas.sinLiquidar.count)}
-              nota="falta su documento" />
-          )}
-          {plataformas.sinFolio.count > 0 && (
-            <Tile label="Sin folio" valor={String(plataformas.sinFolio.count)}
-              nota="no se pueden conciliar" />
-          )}
-        </HStack>
-      )}
 
       {resumen.byMethod.length > 0 && (
         <HStack gap={2} overflowX="auto" pb={1} css={{ scrollbarWidth: 'none' }}>
