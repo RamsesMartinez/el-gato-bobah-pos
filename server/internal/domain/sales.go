@@ -128,11 +128,30 @@ type SalesFilter struct {
 	Range       Range
 	Status      string
 	ServiceType string
-	Sort        string
-	Dir         string
-	Limit       int32
-	Offset      int32
+	// FolioPlataforma acota la pantalla a los pedidos de plataforma SIN folio. Es una whitelist de
+	// un solo valor ("pendiente") y no un booleano porque llega como texto de la query string: un
+	// `?folioPlataforma=si` tiene que rebotar, no interpretarse.
+	FolioPlataforma string
+	// Folio busca UN pedido por el identificador exacto que trae el documento de pago. No convive
+	// de forma interesante con la paginacion —devuelve una fila o ninguna—, y por eso el servicio
+	// lo atiende con su propia consulta.
+	Folio  string
+	Sort   string
+	Dir    string
+	Limit  int32
+	Offset int32
 }
+
+// folioPendiente es el unico valor que el filtro conoce. "capturado" no lo pidio nadie, y agregarlo
+// convertiria el filtro en multivaluado — que es justo lo que hace que el predicado literal deje de
+// servir y el indice parcial se pierda.
+const folioPendiente = "pendiente"
+
+// SoloSinFolio: la pantalla esta mirando los pendientes de folio.
+func (f SalesFilter) SoloSinFolio() bool { return f.FolioPlataforma == folioPendiente }
+
+// Buscando: se pego un folio en el buscador. Cambia la consulta entera, no solo el `where`.
+func (f SalesFilter) Buscando() bool { return f.Folio != "" }
 
 // Validate rechaza lo que no se puede atender. Cada regla existe por un fallo concreto: un estado
 // inventado devolvería cero filas en silencio, un `sort` desconocido ordenaría por otra cosa, y una
@@ -155,6 +174,17 @@ func (f SalesFilter) Validate() error {
 	}
 	if f.Offset < 0 {
 		return fmt.Errorf("%w: la página no puede ser negativa", ErrValidation)
+	}
+	if f.FolioPlataforma != "" && f.FolioPlataforma != folioPendiente {
+		return fmt.Errorf("%w: filtro de folio desconocido (%q)", ErrValidation, f.FolioPlataforma)
+	}
+	if f.Folio != "" {
+		// Se valida con la MISMA regla que al guardarlo: buscar algo que no cabe en la columna es
+		// escanear por nada, y buscar puros espacios devolvería la lista completa como si nadie
+		// hubiera buscado.
+		if _, err := NormalizePlatformRef(f.Folio); err != nil {
+			return fmt.Errorf("%w (en la búsqueda)", err)
+		}
 	}
 	return nil
 }
