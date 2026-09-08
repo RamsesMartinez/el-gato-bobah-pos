@@ -158,6 +158,28 @@ el negocio no tuvo, y el modo de falla que esta sección vigila es que alguien l
 | F8 | Rechazar un importe con exponente absurdo (`1e100000000`) | Rechazo en milisegundos. El mensaje de error **no** expande el número: hacerlo tardaba 77 s y comía memoria | `TestRechazarUnImporteAbsurdoEsBarato` | Go |
 | F7 | Liquidación con sesión de cajero | 403: es dinero que no pasó por la caja | `TestLaLiquidacionExigeRolDeAdministracion` | Postgres |
 
+## G. Un pedido entregado y nunca cobrado desaparece del arqueo (ABIERTO)
+
+**Medido en el ambiente de pruebas el 8 de septiembre de 2026, corte 5:** cinco pedidos en estado
+`entregada` por **$554.00** sin un solo renglón en `order_payments`. El turno se cerró con los diez
+métodos en **diferencia $0.00** —cuadró perfecto— mientras la lista de ventas de ese mismo corte
+dice **$1,410.50** contra **$856.50** esperados. Quien lea el arqueo no tiene forma de enterarse de
+que faltan $554: para verlo hay que restar dos cifras de dos pantallas distintas.
+
+No es un descuido: el cierre bloquea a propósito por **comida sin entregar**, no por dinero sin
+cobrar, y así está escrito en [`pedidosSinEntregar`](../server/internal/app/backoffice.go)
+(*"lo que impide cerrar es la comida que no ha salido, no el dinero"*). El hueco no es la guardia
+del cierre — es que ninguna cifra del arqueo **declara** lo entregado y no cobrado. `SessionView`
+trae `Pending` (lo que no ha salido) y no trae su hermana.
+
+Lo detecta hoy `fecha-y-folio.spec.ts` › **U2**, que compara la venta del corte contra su esperado y
+falla nombrando la brecha. **U2 está en rojo por esto y se deja en rojo**: pasarlo exigiría cobrar
+cinco pedidos de un turno ya cerrado, y eso reescribe un arqueo firmado — la misma razón por la que
+X18 de [matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta.
+
+Qué lo cerraría: una línea en el arqueo que diga cuánto se entregó sin cobrar, derivada del **mismo**
+predicado que la lista de ventas del corte. Es decisión del dueño, no un cambio que se hace de paso.
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.
