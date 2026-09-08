@@ -186,7 +186,7 @@ test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
       'consultas se quedó sin el filtro').toBe(vivas);
   });
 
-  test('Y14+Y18+F65 · la pantalla de Ventas a 1024×600', async ({ page }) => {
+  test('Y14+F65 · la pantalla de Ventas a 1024×600', async ({ page }) => {
     await entrar(page, '/ventas');
     await expect(page.getByRole('button', { name: /Pendientes de folio/i })).toBeVisible({ timeout: 30_000 });
 
@@ -213,6 +213,55 @@ test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
     const desborde = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(desborde, 'la página se desborda a lo ancho: el folio se pintó como columna').toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('Y18 · la hoja de la liquidación a 1024×600', () => {
+  test('los nueve campos caben, y el botón de guardar sigue visible con el teclado abierto', async ({ page }) => {
+    await entrar(page, '/ventas');
+    await page.getByRole('button', { name: 'Mes', exact: true }).click();
+    await page.waitForLoadState('networkidle');
+
+    // Un renglón de plataforma: es el único que tiene liquidación. Si el mes no trae ninguno, no
+    // hay nada que medir y se dice, en vez de pasar en verde sin haber abierto la hoja.
+    const renglon = page.locator('tbody tr').filter({ hasText: /Uber Eats|Didi|Rappi/ }).first();
+    test.skip(!(await renglon.isVisible().catch(() => false)),
+      'el mes no tiene pedidos de plataforma: no hay liquidación que medir');
+    await renglon.click();
+
+    await page.getByRole('button', { name: /^(Registrar|Corregir)$/ }).click();
+    await expect(page.getByLabel('Venta que reporta')).toBeVisible({ timeout: 15_000 });
+
+    // Los nueve campos del documento existen y todos llegan al piso táctil.
+    const campos = ['Venta que reporta', 'Comisión', 'Tasa de comisión (%)', 'Retenciones',
+      'Descuento total', 'Lo puso la plataforma', 'Depositado (neto)',
+      'Referencia del depósito', 'Documento'];
+    for (const c of campos) {
+      // exact: 'Comisión' es substring de 'Tasa de comisión (%)' y sin esto el locator resuelve dos.
+      const caja = await page.getByLabel(c, { exact: true }).boundingBox();
+      expect(caja, `falta el campo ${c}`).not.toBeNull();
+      expect(Math.round(caja!.height), `${c} no llega al piso táctil`).toBeGreaterThanOrEqual(44);
+    }
+
+    // La hoja entera cabe en la tableta.
+    const hoja = await page.locator('[role="dialog"]').last().boundingBox();
+    expect(Math.round(hoja?.height ?? 0), 'la hoja de liquidación no cabe en 600 px').toBeLessThanOrEqual(600);
+
+    // EL TECLADO. Se simula encogiendo la ventana ~250 px, que es lo que se lleva el numérico.
+    // Con el footer dentro del scroll, guardar quedaría debajo y la captura se volvería imposible
+    // sin cerrar el teclado primero.
+    await page.setViewportSize({ width: 1024, height: 350 });
+    await page.waitForTimeout(300);
+    const guardar = await page.getByRole('button', { name: /Guardar liquidación/i }).boundingBox();
+    expect(guardar, 'el botón de guardar desapareció al encoger la ventana').not.toBeNull();
+    expect(guardar!.y + guardar!.height,
+      'con el teclado abierto el botón de guardar queda fuera de la pantalla')
+      .toBeLessThanOrEqual(350);
+    await page.setViewportSize({ width: 1024, height: 600 });
+
+    // Se cierra SIN guardar: este test mide la pantalla, no captura dinero en un ambiente
+    // compartido.
+    await page.getByRole('button', { name: 'Cancelar' }).click();
   });
 });
 

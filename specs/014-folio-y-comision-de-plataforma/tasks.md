@@ -103,7 +103,7 @@ sola.
 
 ### Medición
 
-- [ ] T028 [US1] Medir a 1024×600 con Playwright en `web/e2e/` los renglones del mosaico con plataforma activa (con y sin el aviso de caja) y el alto del campo, y **anotar el resultado** en `docs/presupuesto-de-pantalla-1024x600.md`. Si el `flexWrap` bajó el campo de renglón, declararlo como el renglón que SC-007 permite
+- [X] T028 [US1] Medir a 1024×600 con Playwright en `web/e2e/` los renglones del mosaico con plataforma activa (con y sin el aviso de caja) y el alto del campo, y **anotar el resultado** en `docs/presupuesto-de-pantalla-1024x600.md`. Si el `flexWrap` bajó el campo de renglón, declararlo como el renglón que SC-007 permite
 
 **Checkpoint**: el dato irrecuperable ya se está guardando.
 
@@ -188,14 +188,14 @@ sola.
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T065 Medir por primera vez la pantalla de **Ventas** a 1024×600 con el método del POS y anotar el conteo de renglones antes y después en `docs/presupuesto-de-pantalla-1024x600.md`. Hoy ese documento solo cubre el POS, y esta feature le agregó a Ventas un buscador, un toggle, una fila de tiles y texto en una celda
-- [ ] T066 Escribir los casos de e2e en `web/e2e/` para el flujo completo a 1024×600: capturar con folio, tomar la salida explícita, encontrar el pedido pegando el folio, completar un pendiente, y **la salida visible con el teclado abierto**. La suite **cobra los pedidos que crea**
-- [ ] T067 Cronometrar en el mismo e2e cuánto toma registrar una liquidación desde que se abre la hoja hasta que se guarda, y declarar el número medido contra los 30 segundos de SC-004
-- [ ] T068 Verificar SC-001 con una consulta sobre la base restaurada: **cero** pedidos de plataforma que no tengan folio ni aparezcan en el filtro de pendientes
-- [ ] T069 [P] Cerrar los renglones de `docs/matriz-de-pantallas.md` y `docs/matriz-de-cobro.md` con el nombre del test que sostiene cada uno; lo que quede sin test se **declara** sin test
-- [ ] T070 Marcar como cruzadas las puertas *conciliar el depósito contra los pedidos que lo formaron* y *cuánto deja cada plataforma* en la tabla del principio VIII de `.specify/memory/constitution.md`, con su bump de versión — **en un commit propio**, como manda Governance
-- [ ] T071 Correr el [quickstart.md](quickstart.md) completo de punta a punta
-- [ ] T072 Correr los gates: `cd server && go build ./... && go test ./...`, `go test -tags=integration ./internal/integration/...`, `make lint`, `make vuln`, y en `web/` `bun run lint && bun run vitest run && bun run build`
+- [X] T065 Medir por primera vez la pantalla de **Ventas** a 1024×600 con el método del POS y anotar el conteo de renglones antes y después en `docs/presupuesto-de-pantalla-1024x600.md`. Hoy ese documento solo cubre el POS, y esta feature le agregó a Ventas un buscador, un toggle, una fila de tiles y texto en una celda
+- [X] T066 Escribir los casos de e2e en `web/e2e/` para el flujo completo a 1024×600: capturar con folio, tomar la salida explícita, encontrar el pedido pegando el folio, completar un pendiente, y **la salida visible con el teclado abierto**. La suite **cobra los pedidos que crea**
+- [X] T067 Cronometrar en el mismo e2e cuánto toma registrar una liquidación desde que se abre la hoja hasta que se guarda, y declarar el número medido contra los 30 segundos de SC-004
+- [X] T068 Verificar SC-001 con una consulta sobre la base restaurada: **cero** pedidos de plataforma que no tengan folio ni aparezcan en el filtro de pendientes
+- [X] T069 [P] Cerrar los renglones de `docs/matriz-de-pantallas.md` y `docs/matriz-de-cobro.md` con el nombre del test que sostiene cada uno; lo que quede sin test se **declara** sin test
+- [X] T070 Marcar como cruzadas las puertas *conciliar el depósito contra los pedidos que lo formaron* y *cuánto deja cada plataforma* en la tabla del principio VIII de `.specify/memory/constitution.md`, con su bump de versión — **en un commit propio**, como manda Governance
+- [X] T071 Correr el [quickstart.md](quickstart.md) completo de punta a punta
+- [X] T072 Correr los gates: `cd server && go build ./... && go test ./...`, `go test -tags=integration ./internal/integration/...`, `make lint`, `make vuln`, y en `web/` `bun run lint && bun run vitest run && bun run build`
 
 ---
 

@@ -100,3 +100,65 @@ Ojo con dos trampas al medir:
 
 Esta medición todavía **no tiene un caso de e2e que la sostenga**. Debería tenerlo, junto con el
 V11 de [matriz-de-pantallas.md](matriz-de-pantallas.md).
+
+---
+
+# Medición del 8 de septiembre de 2026 — el folio de plataforma (spec 014)
+
+Mismo método y mismo navegador, pero contra el **ambiente desplegado**
+(`app-dev.elgatobobah.com`) y no contra la app local, porque es lo que la suite de Playwright ya
+usa. Los casos que la producen están en
+[web/e2e/folio-de-plataforma.spec.ts](../web/e2e/folio-de-plataforma.spec.ts) y vuelven a medir en
+cada corrida: este documento cita, no re-deriva.
+
+## El bloque del selector de plataforma
+
+| | Antes (7-sep) | Ahora | Qué cambió |
+|---|---|---|---|
+| Sin plataforma | 40 px | **44 px** | Los botones subieron al piso táctil. Estaban por debajo desde que se escribieron |
+| Con plataforma elegida | 83 px | **87 px** | +43 px sobre el estado sin plataforma: **exactamente el mismo delta que antes** |
+
+**El campo del folio NO agregó alto al estado con plataforma.** Entra en el renglón que los botones
+ya ocupaban, que es para lo que se puso en línea y no apilado. Los 4 px de diferencia son el piso
+táctil, no el campo.
+
+## El mosaico
+
+| Estado | Renglones | Sobrante |
+|---|---|---|
+| Mostrador | 3 | 6 px |
+| Plataforma activa, con el campo de folio | 2 | 77 px |
+
+**El renglón que se pierde al elegir plataforma YA se perdía antes de esta feature**: lo cuestan las
+dos líneas de texto que el selector muestra desde la 002 ("Cobrando con precios de…" y la
+instrucción de la pulsación larga), no el campo nuevo. Con 6 px de sobra en mostrador, el
+presupuesto de esta pantalla sigue siendo el más apretado del sistema.
+
+## La pantalla de Ventas — medida por primera vez
+
+Este documento solo cubría el POS. Con un mes de datos y filas de 54 px:
+
+| Estado | Tope de la tabla | Alto útil | Renglones |
+|---|---|---|---|
+| Sin cifras de plataformas | y = 354 | 167 px | **3** |
+| Con las cifras en su PROPIA fila | y = 455 | **66 px** | **1** |
+| Con las cifras dentro de la fila de tiles que ya existía | y = 354 | 167 px | **3** |
+
+**Una fila propia para las tres cifras de plataformas cuesta 101 px y deja la tabla en un renglón.**
+Por eso viven en la primera fila de tiles, que ya scrollea en horizontal: ahí cuestan cero alto. Lo
+que impide que se resten con el total de ventas no es estar en otra fila — es que cada una lleva
+sobre cuántos pedidos habla.
+
+## La hoja de la liquidación
+
+Cabe en 600 px con sus nueve campos, todos de al menos 44 px, gracias a las dos columnas: apilados
+serían ~630 px. Con la ventana encogida a 350 px —lo que se lleva el teclado numérico— el botón de
+guardar sigue dentro de la pantalla, que es lo que el footer fijo en `dvh` compra.
+
+## Lo que sigue sin medirse
+
+- **El teclado del sistema de verdad.** Chromium headless no lo abre; lo que el e2e mide es la
+  ventana encogida a 350 px, que reproduce el efecto pero no el teclado. En una tableta real esto
+  se verifica a mano.
+- **El alto de Ventas con el aviso de turno viejo puesto.** Los números de arriba son sin él; el
+  aviso desplaza el shell 53 px como en el POS.
