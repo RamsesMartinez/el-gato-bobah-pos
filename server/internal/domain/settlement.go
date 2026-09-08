@@ -149,6 +149,10 @@ func refAcotada(nombre, v string, max int) error {
 	if strings.TrimSpace(v) == "" {
 		return fmt.Errorf("%w: %s no puede ser solo espacios", ErrValidation, nombre)
 	}
+	// Mismo motivo que en el folio: un byte NUL pasa hasta el driver y sale como 500.
+	if strings.IndexFunc(v, esDeControl) >= 0 {
+		return fmt.Errorf("%w: %s trae un carácter que no se puede guardar", ErrValidation, nombre)
+	}
 	if n := utf8.RuneCountInString(v); n > max {
 		return fmt.Errorf("%w: %s tiene %d caracteres y el máximo es %d", ErrValidation, nombre, n, max)
 	}
@@ -188,13 +192,22 @@ type CifraDePlataforma struct {
 	Excluye string          `json:"excluye"`
 }
 
+// ConteoDePedidos es cuántos pedidos, sin importe. Existe porque `ConceptCount` trae un `Amount` y
+// aquí no hay ninguno que decir: lo que falta por capturar no tiene monto conocido, ese es el punto.
+type ConteoDePedidos struct {
+	Orders int `json:"orders"`
+}
+
 // PlatformMoneySummary son las tres cifras, y NO se derivan una de otra.
 type PlatformMoneySummary struct {
 	Vendido             CifraDePlataforma `json:"vendido"`
 	SeQuedoLaPlataforma CifraDePlataforma `json:"seQuedoLaPlataforma"`
 	LlegoAlBanco        CifraDePlataforma `json:"llegoAlBanco"`
-	SinLiquidar         ConceptCount      `json:"sinLiquidar"`
-	SinFolio            ConceptCount      `json:"sinFolio"`
+	// SinLiquidar y SinFolio son CONTEOS y no importes: cuánto dinero hay detrás de un pedido sin
+	// liquidar es justamente lo que no se sabe todavía. Un campo `amount` aquí diría siempre $0.00,
+	// y una cifra que siempre miente cero se acaba sumando a algo.
+	SinLiquidar ConteoDePedidos `json:"sinLiquidar"`
+	SinFolio    ConteoDePedidos `json:"sinFolio"`
 }
 
 // SummarizePlatformMoney arma las tres cifras del periodo.
@@ -221,7 +234,7 @@ func SummarizePlatformMoney(t PlatformTotals) PlatformMoneySummary {
 			Incluye: "El neto que declara el documento, de esos mismos pedidos",
 			Excluye: "Depósitos que no se pudieron atribuir a un pedido",
 		},
-		SinLiquidar: ConceptCount{Count: t.SinLiquidar},
-		SinFolio:    ConceptCount{Count: t.SinFolio},
+		SinLiquidar: ConteoDePedidos{Orders: t.SinLiquidar},
+		SinFolio:    ConteoDePedidos{Orders: t.SinFolio},
 	}
 }

@@ -372,3 +372,61 @@ func TestLaBusquedaPorFolioSeAcota(t *testing.T) {
 		}
 	})
 }
+
+// PEGAR EL FOLIO CON ESPACIOS ES EL CASO NORMAL, NO EL RARO.
+//
+// El folio se copia del documento de pago y llega con espacios de los dos lados; el camino de
+// ESCRITURA ya lo recorta. Si la BÚSQUEDA no hace lo mismo, la igualdad se compara contra una
+// columna que sí está recortada y devuelve cero filas — y cero filas se lee como "ese renglón del
+// documento no está capturado", que es un falso negativo silencioso: el operador lo captura otra
+// vez y termina con dos pedidos apuntando al mismo depósito.
+func TestElFolioQueSeBuscaLlegaRecortado(t *testing.T) {
+	f := SalesFilter{
+		Range: Range{From: time.Now(), To: time.Now()},
+		Sort:  "fecha", Dir: "desc", Limit: 20,
+		Folio: "  4B2E9A10-77C3  ",
+	}
+	if err := f.Validate(); err != nil {
+		t.Fatalf("un folio pegado con espacios se rechazó: %v", err)
+	}
+	if got := f.FolioBuscado(); got != "4B2E9A10-77C3" {
+		t.Fatalf("la búsqueda usa %q y la columna guarda %q: la igualdad no encuentra nada y se lee "+
+			"como 'no capturado'", got, "4B2E9A10-77C3")
+	}
+}
+
+// Buscar un folio NO se combina con los demás filtros: se rechaza, no se ignora.
+//
+// `List` corta en la búsqueda antes de mirar estado, tipo o pendientes, así que combinarlos
+// devolvía el pedido buscado aunque no cumpliera el filtro puesto — una pantalla que se ve filtrada
+// y contesta otra cosa. Es el mismo modo de falla que ya cierra `preset` con fechas que no usa.
+func TestBuscarUnFolioNoSeCombinaConLosDemasFiltros(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20, Folio: "UBER-1",
+		}
+	}
+	casos := map[string]func(*SalesFilter){
+		"con pendientes de folio": func(f *SalesFilter) { f.FolioPlataforma = "pendiente" },
+		"con estado":              func(f *SalesFilter) { f.Status = StatusEntregada },
+		"con tipo de venta":       func(f *SalesFilter) { f.ServiceType = "domicilio" },
+	}
+	for nombre, toca := range casos {
+		t.Run(nombre, func(t *testing.T) {
+			f := base()
+			toca(&f)
+			err := f.Validate()
+			if err == nil {
+				t.Fatalf("%s se aceptó: la lista contestaría el pedido buscado aunque no cumpla el filtro", nombre)
+			}
+			if !errors.Is(err, ErrValidation) {
+				t.Fatalf("%s se rechazó pero no como ErrValidation: %v", nombre, err)
+			}
+		})
+	}
+	// Y buscar SOLO, sin nada más, sigue pasando.
+	if err := base().Validate(); err != nil {
+		t.Fatalf("buscar un folio a secas se rechazó: %v", err)
+	}
+}

@@ -75,7 +75,11 @@ func TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido(t *testing.T) {
 	conFolio, _ := tresPedidosDePlataforma(t, ctx, orders, cajero, prod, uber)
 
 	f := filtroBase(fixedNow)
-	f.Folio = "UBER-BUSCAR-001"
+	// CON ESPACIOS, que es como queda al pegarlo del documento de pago. La columna guarda el folio
+	// recortado y la búsqueda es igualdad exacta: sin recortar aquí, esto devuelve cero filas y se
+	// lee como "ese renglón del documento no está capturado" — el operador lo captura otra vez y
+	// quedan dos pedidos apuntando al mismo depósito.
+	f.Folio = "  UBER-BUSCAR-001  "
 	pagina, err := sales.List(ctx, f)
 	if err != nil {
 		t.Fatalf("List buscando: %v", err)
@@ -387,5 +391,67 @@ func TestElFolioSeCorrigePorElRouterConSuGateYSuTope(t *testing.T) {
 	if !visto429 {
 		t.Fatal("200 correcciones seguidas del mismo usuario no toparon con el limitador: la ruta " +
 			"quedó fuera del grupo con rateLimitUser")
+	}
+}
+
+// Dos plataformas pueden usar el MISMO identificador, y la búsqueda devuelve las dos.
+//
+// Es el caso que justifica que `FindSaleByPlatformRef` sea `:many`. Con los formatos reales —UUID
+// de 36 en Uber, entero de 19 en DiDi, de 10 en Rappi— la colisión es prácticamente imposible, pero
+// el esquema la permite a propósito: la unicidad es por empresa Y plataforma, y rechazarla tiraría
+// una captura legítima. Sin este test, alguien convierte la consulta a `:one` creyendo que restaura
+// una garantía, y la búsqueda empieza a tronar el día que dos folios coinciden.
+func TestDosPlataformasPuedenCompartirFolioYLaBusquedaDevuelveLasDos(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	orders := app.NewOrdersService(st, clock)
+	sales := app.NewSalesService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_colision", "cajero")
+	prod := makeProduct(t, st, "Soda colision", decimal.RequireFromString("100"), false)
+	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
+	didi := platformID(t, st, defaultCompanyID, "Didi")
+	abrirCajaPrincipal(t, st, cajero)
+
+	const folio = "1234567890"
+	for _, p := range []int16{uber, didi} {
+		f := folio
+		if _, err := orders.Create(ctx, app.CreateOrderCmd{
+			ClientUUID: uuid.New(), ServiceType: "domicilio", DeliveryPlatformID: &p,
+			OpenedBy: cajero, PlatformOrderRef: &f,
+			Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+		}); err != nil {
+			t.Fatalf("crear el pedido de la plataforma %d: %v", p, err)
+		}
+	}
+
+	f := filtroBase(fixedNow)
+	f.Folio = folio
+	pagina, err := sales.List(ctx, f)
+	if err != nil {
+		t.Fatalf("List buscando el folio compartido: %v", err)
+	}
+	if len(pagina.Items) != 2 {
+		t.Fatalf("la búsqueda devolvió %d pedidos y los dos tienen ese folio: si la consulta se "+
+			"convirtió a :one, truena o esconde uno", len(pagina.Items))
+	}
+	// Y el renglón dice de qué plataforma es cada uno, que es lo que hace resoluble la ambigüedad
+	// de un vistazo en vez de obligar a comparar montos.
+	plataformas := map[string]bool{}
+	for _, i := range pagina.Items {
+		plataformas[i.Platform] = true
+	}
+	if len(plataformas) != 2 {
+		t.Fatalf("los dos renglones dicen la misma plataforma (%v): sin esa columna el operador no "+
+			"puede saber cuál es el suyo", plataformas)
+	}
+
+	// El resumen describe el mismo conjunto: los dos.
+	resumen, err := sales.Summary(ctx, f)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if resumen.Count != 2 {
+		t.Fatalf("la lista trae 2 y el resumen cuenta %d", resumen.Count)
 	}
 }

@@ -307,8 +307,8 @@ func TestUnPeriodoSinLiquidacionesNoAfirmaQueLaPlataformaNoCobro(t *testing.T) {
 	if r.SeQuedoLaPlataforma.Orders != 0 || r.LlegoAlBanco.Orders != 0 {
 		t.Fatal("sin liquidaciones, las cifras del documento tienen que cubrir CERO pedidos")
 	}
-	if r.SinLiquidar.Count != 96 {
-		t.Fatalf("los 96 pedidos están sin liquidar y el resumen dice %d", r.SinLiquidar.Count)
+	if r.SinLiquidar.Orders != 96 {
+		t.Fatalf("los 96 pedidos están sin liquidar y el resumen dice %d", r.SinLiquidar.Orders)
 	}
 }
 

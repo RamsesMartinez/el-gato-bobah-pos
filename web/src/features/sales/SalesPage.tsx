@@ -46,8 +46,9 @@ export function SalesPage() {
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
   // Dos controles nuevos y separados: buscar UN pedido por su folio, y quedarse con los que no lo
-  // tienen. Se pueden combinar, y la combinación devuelve vacío por construcción — un pendiente no
-  // tiene folio que buscar. Es correcto, no un caso que haya que impedir.
+  // tienen. NO se combinan: buscar contesta ESE pedido, así que cualquier otro filtro se tiraría y
+  // la pantalla se vería filtrada contestando algo que no cumple el filtro. El servidor lo rechaza
+  // con un 400, y aquí se apaga el otro control para que el operador no llegue a ese rechazo.
   const [folio, setFolio] = useState('');
   const [soloPendientes, setSoloPendientes] = useState(false);
   const [detalle, setDetalle] = useState<SaleRow | null>(null);
@@ -91,11 +92,16 @@ export function SalesPage() {
   // Las tres cifras de plataformas van en su PROPIA consulta y no dentro del resumen de ventas:
   // mezclarlas pondría la comisión al lado del total de ventas, que es exactamente la invitación a
   // restarlas que esta feature evita.
+  // Las cifras de plataformas son del PERIODO COMPLETO: ese endpoint solo usa el rango. Por eso
+  // desaparecen en cuanto la tabla se acota con cualquier filtro — si se quedaran, la fila de tiles
+  // estaría describiendo un conjunto (todo el mes) y la tabla de abajo otro (lo filtrado), a un
+  // borde de 1 px de distancia. Ya costó un turno con $4,500 de faltante sin explicación.
+  const tablaAcotada = soloPendientes || folio.trim() !== '' || status !== '' || serviceType !== '';
   const plataformas = useQuery({
     queryKey: ['platform-money', { preset, desde: esRango ? desde : '', hasta: esRango ? hasta : '' }],
     queryFn: () => settlementsApi.summary({ preset, ...(esRango ? { from: desde, to: hasta } : {}) }),
     placeholderData: (previa) => previa,
-    enabled: puedeConsultar,
+    enabled: puedeConsultar && !tablaAcotada,
   });
 
   const cambiar = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(0); };
@@ -134,7 +140,9 @@ export function SalesPage() {
         />
       </Box>
 
-      <SalesSummaryTiles resumen={resumen.data} plataformas={plataformas.data} cargando={resumen.isLoading} />
+      <SalesSummaryTiles resumen={resumen.data}
+        plataformas={tablaAcotada ? undefined : plataformas.data}
+        cargando={resumen.isLoading} />
 
       {/* Pickers táctiles, no <select> nativos: en una tablet de 7" el desplegable del sistema
           tapa la pantalla con renglones de 20px. Ver la constitución. */}
@@ -155,7 +163,7 @@ export function SalesPage() {
           <Input size="sm" minH="44px" aria-label="Buscar folio de la plataforma"
             placeholder="Folio de la plataforma"
             value={folio}
-            onChange={(e) => { setFolio(e.target.value); setPage(0); }}
+            onChange={(e) => { setFolio(e.target.value); if (e.target.value.trim()) setSoloPendientes(false); setPage(0); }}
             autoComplete="off" autoCapitalize="off" spellCheck={false} />
         </Box>
         {/* Un TOGGLE y no un Picker: el valor es booleano, y con un Picker encenderlo y apagarlo
@@ -164,8 +172,8 @@ export function SalesPage() {
           variant={soloPendientes ? 'solid' : 'outline'}
           colorPalette={soloPendientes ? 'orange' : 'gray'}
           aria-pressed={soloPendientes}
-          onClick={() => { setSoloPendientes((v) => !v); setPage(0); }}>
-          Pendientes de folio
+          onClick={() => { setSoloPendientes((v) => !v); setFolio(''); setPage(0); }}>
+          Pendientes de folio de plataforma
         </Button>
       </HStack>
 

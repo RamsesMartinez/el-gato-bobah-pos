@@ -90,3 +90,58 @@ func TestNormalizePlatformRef(t *testing.T) {
 		})
 	}
 }
+
+// Quién puede llevar folio, probado SIN base de datos.
+func TestPlatformRefDelPedido(t *testing.T) {
+	uber := int16(6)
+	folio := "  UBER-1  "
+	vacio := "   "
+
+	t.Run("sin folio no es error: es la salida explícita", func(t *testing.T) {
+		got, err := PlatformRefDelPedido(nil, &uber)
+		if err != nil || got != nil {
+			t.Fatalf("mandar sin folio tiene que pasar y quedar en nil (got=%v err=%v)", got, err)
+		}
+	})
+	t.Run("con plataforma se recorta", func(t *testing.T) {
+		got, err := PlatformRefDelPedido(&folio, &uber)
+		if err != nil {
+			t.Fatalf("un folio válido se rechazó: %v", err)
+		}
+		if *got != "UBER-1" {
+			t.Fatalf("quedó %q y debía recortarse a %q", *got, "UBER-1")
+		}
+	})
+	t.Run("sin plataforma se rechaza", func(t *testing.T) {
+		// La pantalla no ofrece el campo en mostrador, pero un cliente de API sí puede mandarlo y
+		// el servidor es la única barrera.
+		_, err := PlatformRefDelPedido(&folio, nil)
+		if !errors.Is(err, ErrValidation) {
+			t.Fatalf("un pedido de mostrador aceptó folio de plataforma: %v", err)
+		}
+	})
+	t.Run("vacío se rechaza aunque haya plataforma", func(t *testing.T) {
+		_, err := PlatformRefDelPedido(&vacio, &uber)
+		if !errors.Is(err, ErrValidation) {
+			t.Fatalf("se aceptó un folio de puros espacios: %v", err)
+		}
+	})
+}
+
+// Un carácter de control se rechaza como ENTRADA INVÁLIDA, no como error del servidor.
+//
+// El byte NUL pasa TrimSpace, no deja la cadena vacía y cuenta como una runa, así que llegaba hasta
+// el driver de Postgres: `invalid byte sequence for encoding "UTF8"` (22021), que el mapeo no
+// reconoce y sale como 500. Un 500 dice "el servidor se rompió" y manda a revisar logs por un dato
+// que el cliente mandó mal.
+func TestUnCaracterDeControlEnElFolioEs400YNo500(t *testing.T) {
+	for _, malo := range []string{"AB\x00C", "UBER\x01", "\x7f", "linea1\nlinea2"} {
+		_, err := NormalizePlatformRef(malo)
+		if err == nil {
+			t.Fatalf("se aceptó %q: llega hasta Postgres y sale como 500", malo)
+		}
+		if !errors.Is(err, ErrValidation) {
+			t.Fatalf("%q se rechazó pero no como ErrValidation: %v", malo, err)
+		}
+	}
+}

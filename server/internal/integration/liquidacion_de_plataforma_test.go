@@ -241,8 +241,8 @@ func TestElResumenDePlataformasDelPeriodo(t *testing.T) {
 		t.Fatalf("las cifras del documento cubren %d pedidos y debía ser 1: solo uno está capturado",
 			r.SeQuedoLaPlataforma.Orders)
 	}
-	if r.SinLiquidar.Count != 1 {
-		t.Fatalf("falta 1 por liquidar y el resumen dice %d", r.SinLiquidar.Count)
+	if r.SinLiquidar.Orders != 1 {
+		t.Fatalf("falta 1 por liquidar y el resumen dice %d", r.SinLiquidar.Orders)
 	}
 	// Comisión + retenciones del único documento capturado.
 	if !r.SeQuedoLaPlataforma.Amount.Equal(decimal.RequireFromString("42.96")) {
