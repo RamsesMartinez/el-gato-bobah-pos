@@ -152,6 +152,62 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
   });
 });
 
+// UNA CUENTA GUARDADA POR LA VERSIÓN ANTERIOR NO PUEDE DEJAR EL POS EN BLANCO.
+//
+// Es el defecto que de verdad se vio en dev, sobre Chrome: `platformOrderRef` nació con esta
+// feature, las cuentas ya guardadas en la tableta no lo traían, y `FolioPlataformaSheet` —que vive
+// SIEMPRE montada— hace `useState(valorInicial).trim()` en su primer render. El POS entero se caía
+// antes de pintar: pantalla en blanco al entrar.
+//
+// SEMBRAR EL CARRITO VIEJO NO BASTA, y por eso este caso pasaba en verde contra el build roto:
+// Playwright arranca con un perfil limpio, sin la marca `sesion.ultimaEmpresa`, y `hayQueLimpiar`
+// trata un dispositivo sin marca como cambio de empresa — el login llama a `descartarTodo()` y el
+// carrito sembrado se va a la basura antes de que el POS renderice. La tableta de un operador SÍ
+// tiene la marca, así que ahí la cuenta vieja sobrevive al login y es la que truena. Hay que
+// sembrar las dos cosas para reproducir la tableta de verdad.
+test('Y20 · una cuenta guardada antes de esta feature no deja el POS en blanco', async ({ page, request }) => {
+  const r = await request.post(`${API}/auth/login`, {
+    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
+  });
+  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
+  const companyId: number = (await r.json()).user.companyId;
+
+  const errores: string[] = [];
+  page.on('pageerror', (e) => errores.push(e.message.slice(0, 200)));
+
+  await page.addInitScript((empresa: number) => {
+    // La marca de empresa: sin ella el login limpia el carrito y el defecto no se reproduce.
+    localStorage.setItem('sesion.ultimaEmpresa', String(empresa));
+    localStorage.setItem('egb:ticket:v2', JSON.stringify({
+      state: {
+        tabs: [{
+          id: 'vieja-1', num: 1, folioName: 'Tigre', lines: [], envio: '',
+          serviceType: 'mostrador', customerName: '', platformId: null,
+          // sin platformOrderRef, tal como se guardaba antes
+        }],
+        activeId: 'vieja-1', seq: 2,
+      },
+      version: 0,
+    }));
+  }, companyId);
+
+  await entrar(page);
+
+  // La cuenta VIEJA es la que tiene que seguir ahí: si el POS renderizó porque el login la tiró,
+  // este caso volvería a pasar en verde con el defecto puesto.
+  await expect(page.getByRole('button', { name: /Tigre/ }),
+    'el carrito sembrado no sobrevivió al login: el caso no está reproduciendo la tableta de un operador')
+    .toBeVisible({ timeout: 30_000 });
+
+  // Y elegir plataforma —lo primero que toca el campo nuevo— tampoco truena.
+  const uber = page.getByRole('button', { name: /Uber Eats/ });
+  if (await uber.isVisible().catch(() => false)) {
+    await uber.click();
+    await expect(page.getByLabel('Folio de Uber Eats').first()).toBeVisible();
+  }
+  expect(errores, `el render tiró: ${errores.join(' | ')}`).toHaveLength(0);
+});
+
 test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
   test('Y12 · pegar el folio del documento encuentra el pedido en un paso', async ({ request }) => {
     const jwt = await token(request);
