@@ -2,7 +2,7 @@
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
@@ -112,6 +112,11 @@ db-migrate: deps-up ## Aplica las migraciones embebidas a la DB de dev (:$(PG_PO
 	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/migrate
 sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) — atrapa drift esquema↔query
 	cd server && SQLC_DB_URI="$(DEV_DATABASE_URL)" $(GOBIN)/sqlc vet
+# El respaldo anonimizado que exige el principio IV para probar una migración. Va SEPARADO de
+# TEST_DATABASE_URL porque el harness de integración borra el esquema al empezar cada test.
+respaldo-anonimo: ## Baja producción, borra los datos personales y restaura en TEST_RESTORED_DATABASE_URL
+	bash scripts/respaldo-anonimo.sh
+
 migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
 fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la cache del menú)
