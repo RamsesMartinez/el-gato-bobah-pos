@@ -894,6 +894,9 @@ type Order struct {
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
 	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
 	FolioName          *string            `json:"folio_name"`
+	PlatformOrderRef   *string            `json:"platform_order_ref"`
+	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
+	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
 }
 
 type OrderCounter struct {
@@ -991,6 +994,23 @@ type PaymentMethod struct {
 	AutoDeclare        bool            `json:"auto_declare"`
 	CompanyID          int64           `json:"company_id"`
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+}
+
+type PlatformSettlement struct {
+	OrderID          int64            `json:"order_id"`
+	ReportedGross    decimal.Decimal  `json:"reported_gross"`
+	CommissionAmount decimal.Decimal  `json:"commission_amount"`
+	CommissionPct    *decimal.Decimal `json:"commission_pct"`
+	DiscountTotal    decimal.Decimal  `json:"discount_total"`
+	DiscountPlatform decimal.Decimal  `json:"discount_platform"`
+	Withholdings     decimal.Decimal  `json:"withholdings"`
+	NetAmount        decimal.Decimal  `json:"net_amount"`
+	PayoutReference  *string          `json:"payout_reference"`
+	DocumentRef      *string          `json:"document_ref"`
+	CapturedBy       int64            `json:"captured_by"`
+	CapturedAt       time.Time        `json:"captured_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
+	CompanyID        int64            `json:"company_id"`
 }
 
 type Product struct {

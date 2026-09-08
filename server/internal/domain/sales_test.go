@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -292,4 +293,82 @@ func TestElTopeDelFuturoUsaLaZonaDelNegocio(t *testing.T) {
 	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-04"), ahora, loc); !errors.Is(err, ErrValidation) {
 		t.Fatalf("el 4 todavía no es hoy en México; debe rechazarse, fue %v", err)
 	}
+}
+
+// El filtro de pendientes de folio y la búsqueda por folio.
+//
+// Los dos son parámetros de FRONTERA, así que la regla que importa es la misma que ya rige al resto
+// de esta pantalla: un valor presente y desconocido se RECHAZA, nunca cae a un default. Una pantalla
+// que se ve correcta y responde algo que nadie pidió es peor que un error, porque nadie la audita.
+func TestElFiltroDePendientesDeFolio(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20,
+		}
+	}
+	t.Run("ausente no filtra", func(t *testing.T) {
+		f := base()
+		if err := f.Validate(); err != nil {
+			t.Fatalf("sin el parámetro debe pasar: %v", err)
+		}
+		if f.SoloSinFolio() {
+			t.Fatal("sin el parámetro no debe filtrar nada")
+		}
+	})
+	t.Run("pendiente filtra", func(t *testing.T) {
+		f := base()
+		f.FolioPlataforma = "pendiente"
+		if err := f.Validate(); err != nil {
+			t.Fatalf("'pendiente' es el único valor conocido y se rechazó: %v", err)
+		}
+		if !f.SoloSinFolio() {
+			t.Fatal("'pendiente' debe filtrar a los pedidos de plataforma sin folio")
+		}
+	})
+	t.Run("un valor desconocido se rechaza", func(t *testing.T) {
+		for _, v := range []string{"pendientes", "capturado", "PENDIENTE", "si", "1"} {
+			f := base()
+			f.FolioPlataforma = v
+			if err := f.Validate(); err == nil {
+				t.Fatalf("%q se aceptó: caería a 'todos' y la pantalla mostraría un conjunto que nadie pidió", v)
+			} else if !errors.Is(err, ErrValidation) {
+				t.Fatalf("%q se rechazó pero no como ErrValidation: %v", v, err)
+			}
+		}
+	})
+}
+
+func TestLaBusquedaPorFolioSeAcota(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20,
+		}
+	}
+	t.Run("un folio normal pasa", func(t *testing.T) {
+		f := base()
+		f.Folio = "4B2E9A10-77C3-4F1E-9E62-0A5C1D3F8B44"
+		if err := f.Validate(); err != nil {
+			t.Fatalf("el UUID de Uber se rechazó y es el formato más largo que se conoce: %v", err)
+		}
+		if !f.Buscando() {
+			t.Fatal("con folio, la pantalla está buscando y no listando")
+		}
+	})
+	t.Run("más largo que el tope se rechaza", func(t *testing.T) {
+		f := base()
+		f.Folio = strings.Repeat("x", MaxPlatformRefLen+1)
+		if err := f.Validate(); err == nil {
+			t.Fatal("un folio más largo que el tope no puede existir en la base, así que buscarlo " +
+				"es escanear por nada")
+		}
+	})
+	t.Run("solo espacios se rechaza", func(t *testing.T) {
+		f := base()
+		f.Folio = "   "
+		if err := f.Validate(); err == nil {
+			t.Fatal("buscar puros espacios devolvería la lista completa como si nadie hubiera buscado")
+		}
+	})
 }

@@ -54,6 +54,17 @@ var (
 	// sistema espere billetes que la plataforma pagó por transferencia, y el turno cierra con un
 	// faltante por el monto exacto sin nada que lo explique.
 	ErrPaymentMethodPlatform = errors.New("ese método de pago no corresponde a la plataforma del pedido")
+	// ErrPlatformRefTaken: el folio que la plataforma le dio a un pedido ya está en OTRO pedido de
+	// la misma empresa y la misma plataforma.
+	//
+	// Es el caso normal, no la excepción: el folio se teclea a mano con la tablet de la plataforma
+	// enfrente, y el dedazo es de todos los días. Por eso quien lo envuelve NOMBRA el pedido que ya
+	// lo tiene — un aviso genérico de duplicado manda al operador a buscar a ciegas entre las
+	// ventas del día, con el repartidor esperando.
+	//
+	// Envuelve ErrConflict (409) y no ErrValidation: el dato está bien formado, lo que no se puede
+	// es que dos pedidos compartan el identificador con el que se concilia un depósito.
+	ErrPlatformRefTaken = fmt.Errorf("ese folio ya está en otro pedido de la misma plataforma (%w)", ErrConflict)
 	// ErrOptionOverMax: se pidió una opción de modificador más veces de las que el negocio permite
 	// en una línea (`modifier_options.max_per_line`). Envuelve el nombre y los dos números para
 	// que el mensaje diga qué corregir y no solo que algo está mal.

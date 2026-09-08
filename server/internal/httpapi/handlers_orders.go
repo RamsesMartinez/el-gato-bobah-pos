@@ -15,12 +15,16 @@ import (
 )
 
 type createOrderBody struct {
-	ClientUUID         string          `json:"clientUuid"`
-	ServiceType        string          `json:"serviceType"`
-	DeliveryPlatformID *int16          `json:"deliveryPlatformId"`
-	CustomerName       *string         `json:"customerName"`
-	Notes              *string         `json:"notes"`
-	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
+	ClientUUID         string `json:"clientUuid"`
+	ServiceType        string `json:"serviceType"`
+	DeliveryPlatformID *int16 `json:"deliveryPlatformId"`
+	// platformOrderRef: el folio con el que la plataforma nombra al pedido. Opcional en el cuerpo
+	// porque la pantalla ofrece una salida explícita para mandarlo sin él; el pedido queda entonces
+	// listado como pendiente, que es lo que hace visible la falta.
+	PlatformOrderRef *string         `json:"platformOrderRef"`
+	CustomerName     *string         `json:"customerName"`
+	Notes            *string         `json:"notes"`
+	DeliveryFee      decimal.Decimal `json:"deliveryFee"`
 	// folioName: el nombre que la pantalla ya le puso a la cuenta. El servidor lo sanea y resuelve
 	// los choques del día, así que proponerlo no es decidirlo.
 	FolioName string `json:"folioName"`
@@ -61,6 +65,7 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		ClientUUID:         cid,
 		ServiceType:        body.ServiceType,
 		DeliveryPlatformID: body.DeliveryPlatformID,
+		PlatformOrderRef:   body.PlatformOrderRef,
 		CustomerName:       body.CustomerName,
 		Notes:              body.Notes,
 		OpenedBy:           u.ID,
@@ -459,4 +464,35 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	}
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
+}
+
+type platformRefBody struct {
+	PlatformOrderRef string `json:"platformOrderRef"`
+}
+
+// PATCH /orders/{id}/platform-ref
+//
+// Sub-recurso y no un PATCH genérico sobre el pedido: no existe hoy un endpoint de edición de
+// pedido, y abrirlo para una columna pondría todas las demás al alcance del mismo gate.
+func (h *Handlers) SetOrderPlatformRef(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body platformRefBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	ref, err := h.orders.SetPlatformRef(r.Context(), id, body.PlatformOrderRef, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Se registra quién corrigió el folio de qué pedido. No lleva el folio en sí: es un dato de
+	// negocio que ya vive en la fila, y el log no es donde se consulta.
+	logging.SecurityEvent(r.Context(), "platform_ref_set", "user_id", u.ID, "order_id", id)
+	JSON(w, http.StatusOK, map[string]any{"id": id, "platformOrderRef": ref})
 }

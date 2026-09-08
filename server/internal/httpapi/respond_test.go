@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -69,5 +72,39 @@ func TestErrorSinDetallesNoTraeElCampo(t *testing.T) {
 	}
 	if _, hay := got["error"]["details"]; hay {
 		t.Fatal("details no debe aparecer cuando no hay nada que detallar")
+	}
+}
+
+// Un folio repetido sale como 409 con código PROPIO, no como el CONFLICT genérico.
+//
+// El caso va antes de ErrConflict en el switch —que es quien lo envuelve—, y este test es lo que
+// impide que alguien lo mueva después y se lo lleve al genérico sin que nada falle: la pantalla
+// necesita el código distinguible para llevar el foco al campo del folio con el pedido dueño a la
+// vista, en vez de un "conflicto" que no dice qué corregir.
+func TestElFolioRepetidoTieneSuPropioCodigo(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Error(rec, fmt.Errorf("ese folio de Uber Eats ya está en el pedido Tigre (#187) del 5 de septiembre (%w)",
+		domain.ErrPlatformRefTaken))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("respondió %d y debía ser 409", rec.Code)
+	}
+	var sobre struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &sobre); err != nil {
+		t.Fatalf("el cuerpo no es el sobre de siempre: %v", err)
+	}
+	if sobre.Error.Code != "PLATFORM_REF_TAKEN" {
+		t.Fatalf("el código quedó en %q: cayó al CONFLICT genérico y la pantalla no puede distinguirlo",
+			sobre.Error.Code)
+	}
+	// El mensaje conserva QUÉ pedido lo tiene. Sin eso, el operador busca a ciegas entre las ventas
+	// del día con el repartidor esperando.
+	if !strings.Contains(sobre.Error.Message, "Tigre") || !strings.Contains(sobre.Error.Message, "#187") {
+		t.Fatalf("el mensaje perdió el pedido que ya tiene el folio: %q", sobre.Error.Message)
 	}
 }

@@ -176,6 +176,7 @@ func main() {
 		PurchaseDoc:    app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 		PlatformPrices: app.NewPlatformPricesService(st),
 		Sales:          app.NewSalesService(st, nil),
+		Settlements:    app.NewSettlementsService(st),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
 

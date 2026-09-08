@@ -40,6 +40,12 @@ const (
 	// lista completa a mano —un producto cada dos segundos y medio, sostenido— y acota el script.
 	platformPriceMax    = 120
 	platformPriceWindow = 5 * time.Minute
+	// platformRefMax/Window: correcciones de folio de plataforma por usuario. Mismo criterio que
+	// los precios —es una escritura que alcanza al rol cajero— y el mismo orden de magnitud: quien
+	// se sienta con el estado de cuenta a completar los pendientes del mes hace decenas seguidas,
+	// no miles. Por debajo de eso, el tope estorbaría el trabajo que la feature viene a habilitar.
+	platformRefMax    = 120
+	platformRefWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -66,6 +72,7 @@ type Deps struct {
 	PurchaseDoc    *app.PurchaseDocService
 	PlatformPrices *app.PlatformPricesService
 	Sales          *app.SalesService
+	Settlements    *app.SettlementsService
 }
 
 type Handlers struct {
@@ -89,13 +96,16 @@ type Handlers struct {
 	purchaseDoc    *app.PurchaseDocService
 	platformPrices *app.PlatformPricesService
 	sales          *app.SalesService
+	settlements    *app.SettlementsService
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
 	// platformPrices limita las ESCRITURAS de precio por usuario (ver platformPriceMax).
 	platformPriceWrites *rateLimiter
-	authFails           *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs             *rateLimiter // per-IP request throttle for the /auth group
+	// platformRefWrites limita las correcciones de folio por usuario (ver platformRefMax).
+	platformRefWrites *rateLimiter
+	authFails         *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs           *rateLimiter // per-IP request throttle for the /auth group
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -106,6 +116,7 @@ func NewHandlers(d Deps) *Handlers {
 		purchaseDoc:    d.PurchaseDoc,
 		platformPrices: d.PlatformPrices,
 		sales:          d.Sales,
+		settlements:    d.Settlements,
 		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
@@ -114,6 +125,8 @@ func NewHandlers(d Deps) *Handlers {
 		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", 60, time.Minute),
 		platformPriceWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-price:",
 			platformPriceMax, platformPriceWindow),
+		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
+			platformRefMax, platformRefWindow),
 	}
 }
 
