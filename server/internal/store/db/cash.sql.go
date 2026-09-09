@@ -243,6 +243,44 @@ func (q *Queries) GetBusinessTimezone(ctx context.Context) (string, error) {
 	return timezone, err
 }
 
+const getCashCount = `-- name: GetCashCount :one
+select id, session_id, moment, total, manual_reason, created_by, created_at
+from session_cash_counts
+where session_id = $1 and moment = $2
+`
+
+type GetCashCountParams struct {
+	SessionID int64       `json:"session_id"`
+	Moment    interface{} `json:"moment"`
+}
+
+type GetCashCountRow struct {
+	ID           int64           `json:"id"`
+	SessionID    int64           `json:"session_id"`
+	Moment       interface{}     `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
+// El conteo de un momento, si lo hay. Un turno sin conteo es lo normal en los cortes anteriores a
+// esta funcionalidad, así que "no hay filas" es una respuesta legítima y no un error.
+func (q *Queries) GetCashCount(ctx context.Context, arg GetCashCountParams) (GetCashCountRow, error) {
+	row := q.db.QueryRow(ctx, getCashCount, arg.SessionID, arg.Moment)
+	var i GetCashCountRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Moment,
+		&i.Total,
+		&i.ManualReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getCashRegister = `-- name: GetCashRegister :one
 select id, name, is_primary, is_active from cash_registers where id = $1
 `
@@ -530,6 +568,56 @@ func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegist
 	return items, nil
 }
 
+const listCashCountLines = `-- name: ListCashCountLines :many
+select l.denomination_id, d.value, d.is_coin, l.pieces,
+       (d.value * l.pieces)::numeric(12,2) as subtotal
+from session_cash_count_lines l
+join cash_denominations d on d.id = l.denomination_id
+where l.count_id = $1
+order by d.sort_key
+`
+
+type ListCashCountLinesRow struct {
+	DenominationID int64           `json:"denomination_id"`
+	Value          decimal.Decimal `json:"value"`
+	IsCoin         bool            `json:"is_coin"`
+	Pieces         int32           `json:"pieces"`
+	Subtotal       decimal.Decimal `json:"subtotal"`
+}
+
+// Las piezas de un conteo, con el valor de cada denominación.
+//
+// `subtotal` viaja calculado desde la base y no se deja para la pantalla: lo lee un humano
+// comparando contra su cajón, y dos multiplicaciones del mismo dato son dos formas de que difieran.
+// El valor sale del catálogo por join y no de una copia en el renglón: una denominación no cambia
+// de valor —un billete de $500 vale $500—, y lo que sí puede cambiar es que se retire, que es
+// justo lo que `on delete restrict` impide que borre este join.
+func (q *Queries) ListCashCountLines(ctx context.Context, countID int64) ([]ListCashCountLinesRow, error) {
+	rows, err := q.db.Query(ctx, listCashCountLines, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCashCountLinesRow{}
+	for rows.Next() {
+		var i ListCashCountLinesRow
+		if err := rows.Scan(
+			&i.DenominationID,
+			&i.Value,
+			&i.IsCoin,
+			&i.Pieces,
+			&i.Subtotal,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCashMovements = `-- name: ListCashMovements :many
 select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
 from register_cash_movements m
@@ -616,6 +704,49 @@ func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow
 			&i.IsPrimary,
 			&i.IsActive,
 			&i.OpenSessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDenominations = `-- name: ListDenominations :many
+select id, currency, value, is_coin
+from cash_denominations
+where currency = $1 and is_active
+order by sort_key
+`
+
+type ListDenominationsRow struct {
+	ID       int64           `json:"id"`
+	Currency string          `json:"currency"`
+	Value    decimal.Decimal `json:"value"`
+	IsCoin   bool            `json:"is_coin"`
+}
+
+// Qué piezas se pueden contar en una moneda. Solo las activas: una denominación retirada de
+// circulación no vuelve a ofrecerse, pero sigue existiendo para los arqueos que la usaron.
+//
+// De mayor a menor por sort_key, que es como se cuenta un cajón: primero los billetes grandes.
+func (q *Queries) ListDenominations(ctx context.Context, currency string) ([]ListDenominationsRow, error) {
+	rows, err := q.db.Query(ctx, listDenominations, currency)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDenominationsRow{}
+	for rows.Next() {
+		var i ListDenominationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Currency,
+			&i.Value,
+			&i.IsCoin,
 		); err != nil {
 			return nil, err
 		}
@@ -1014,6 +1145,75 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.RegisterID,
 	)
 	return i, err
+}
+
+const saveCashCount = `-- name: SaveCashCount :one
+insert into session_cash_counts (session_id, moment, total, manual_reason, created_by)
+values ($1, $2, $3, $4, $5)
+returning id, session_id, moment, total, manual_reason, created_by, created_at
+`
+
+type SaveCashCountParams struct {
+	SessionID    int64           `json:"session_id"`
+	Moment       interface{}     `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+}
+
+type SaveCashCountRow struct {
+	ID           int64           `json:"id"`
+	SessionID    int64           `json:"session_id"`
+	Moment       interface{}     `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
+// El conteo de un momento del turno. El total viene YA calculado por el dominio desde las piezas:
+// esta consulta no suma nada, y por eso `total` es un parámetro y no un `sum()`.
+//
+// Un segundo conteo del mismo momento choca con `session_cash_counts_un_momento` y sube como 23505.
+// El servicio lo traduce a conflicto: con dos tabletas compartiendo cuenta, dos personas pueden
+// llegar al cierre a la vez, y eso tiene que decir qué pasó y no "el servidor se rompió".
+func (q *Queries) SaveCashCount(ctx context.Context, arg SaveCashCountParams) (SaveCashCountRow, error) {
+	row := q.db.QueryRow(ctx, saveCashCount,
+		arg.SessionID,
+		arg.Moment,
+		arg.Total,
+		arg.ManualReason,
+		arg.CreatedBy,
+	)
+	var i SaveCashCountRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Moment,
+		&i.Total,
+		&i.ManualReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const saveCashCountLine = `-- name: SaveCashCountLine :exec
+insert into session_cash_count_lines (count_id, denomination_id, pieces)
+values ($1, $2, $3)
+`
+
+type SaveCashCountLineParams struct {
+	CountID        int64 `json:"count_id"`
+	DenominationID int64 `json:"denomination_id"`
+	Pieces         int32 `json:"pieces"`
+}
+
+// Un renglón del conteo. Solo se llama con piezas > 0: el cero no genera fila (FR-009), y el
+// `check (pieces > 0)` del esquema está para que eso no dependa de que el servicio se acuerde.
+func (q *Queries) SaveCashCountLine(ctx context.Context, arg SaveCashCountLineParams) error {
+	_, err := q.db.Exec(ctx, saveCashCountLine, arg.CountID, arg.DenominationID, arg.Pieces)
+	return err
 }
 
 const saveSessionTotal = `-- name: SaveSessionTotal :exec

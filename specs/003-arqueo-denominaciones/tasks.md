@@ -69,7 +69,7 @@ aritmética de dinero: el test se escribe **antes** y se ve fallar por la razón
 
 ### Las consultas
 
-- [ ] T005 Escribir en `server/queries/cash.sql`: `ListDenominations` (por moneda, solo activas,
+- [X] T005 Escribir en `server/queries/cash.sql`: `ListDenominations` (por moneda, solo activas,
       ordenadas de mayor a menor), `SaveCashCount`, `SaveCashCountLine`, `GetCashCount` (por sesión y
       momento) y `ListCashCountLines`. **No nombrar `company_id` en el `WHERE`** — sqlc no la conoce
       en las tablas de 0023 y RLS la aplica sola; sí en las tablas nuevas, donde sqlc sí la ve.
@@ -77,12 +77,12 @@ aritmética de dinero: el test se escribe **antes** y se ve fallar por la razón
 
 ### La aritmética, en `domain`
 
-- [ ] T006 [P] Escribir `server/internal/domain/conteo_test.go`, table-driven, **viéndolo fallar**:
+- [X] T006 [P] Escribir `server/internal/domain/conteo_test.go`, table-driven, **viéndolo fallar**:
       la suma de piezas × valor redondeada a 2; piezas negativas y no enteras rechazadas; un total
       que excede `MaxMoney` rechazado como validación y no como pánico; conteo vacío = $0 y **no**
       es error (una caja puede arrancar vacía); los dos caminos excluyentes (piezas y total juntos →
       error, ninguno de los dos → error, total sin motivo → error).
-- [ ] T007 Escribir `server/internal/domain/conteo.go` hasta que T006 pase. Sin I/O. Sentinels
+- [X] T007 Escribir `server/internal/domain/conteo.go` hasta que T006 pase. Sin I/O. Sentinels
       nuevos envueltos con `%w` sobre `domain.ErrValidation`, mapeados en `httpapi.Error` por
       `errors.Is` — no repartir `http.Error` por los handlers.
 
