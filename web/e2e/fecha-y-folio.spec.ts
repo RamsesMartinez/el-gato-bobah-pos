@@ -113,8 +113,16 @@ test.describe('U — las ventas de un corte', () => {
     }
   });
 
-  // La suma de las ventas de un corte no puede superar lo que ese mismo corte reporta como esperado
-  // por método. Es el cuadre que un turno olvidado rompía sin que ninguna pantalla lo dijera.
+  // Lo vendido en un corte tiene que quedar explicado por dos cifras del MISMO corte: lo que entró
+  // por método y lo que se entregó sin cobrar. Un peso que no esté en ninguna de las dos es dinero
+  // que la pantalla perdió de vista.
+  //
+  // El tercer sumando existe desde el 8 de septiembre de 2026. Antes este caso comparaba lo vendido
+  // contra el esperado a secas, y encontró un corte real que cerró con los diez métodos en
+  // diferencia $0.00 mientras cinco pedidos entregados por $554.00 no tenían un solo pago: el
+  // arqueo cuadraba porque solo compara pagos contra declarado. Sumar `uncollected` NO afloja el
+  // caso — sigue fallando si aparece un peso que no está ni cobrado ni declarado como no cobrado—,
+  // lo que hace es exigir que la pantalla NOMBRE el hueco en vez de callarlo.
   test('U2 · las ventas de un corte cuadran con lo que su arqueo espera', async ({ request }) => {
     const jwt = await token(request);
     const auth = { Authorization: `Bearer ${jwt}` };
@@ -131,10 +139,13 @@ test.describe('U — las ventas de un corte', () => {
       // El esperado incluye el fondo de apertura y las propinas; la venta nunca puede pasarlo.
       const esperado = (det.totals ?? []).reduce(
         (s: number, t: { expected: string }) => s + Number(t.expected), 0);
+      const sinCobrar = Number(det.uncollected ?? 0);
       expect(
         Number(det.salesTotal),
-        `el corte ${c.id} vendió ${det.salesTotal} y su arqueo solo espera ${esperado}`,
-      ).toBeLessThanOrEqual(esperado + 0.01);
+        `el corte ${c.id} vendió ${det.salesTotal}, su arqueo espera ${esperado} y declara ` +
+        `${sinCobrar} sin cobrar: sobran ${(Number(det.salesTotal) - esperado - sinCobrar).toFixed(2)} ` +
+        'que no están ni cobrados ni nombrados',
+      ).toBeLessThanOrEqual(esperado + sinCobrar + 0.01);
     }
     // Sin cortes cerrados con ventas no hay nada que cuadrar. Se SALTA en vez de pasar en verde:
     // un test que no midió nada y se reporta como bueno es peor que uno que falta.

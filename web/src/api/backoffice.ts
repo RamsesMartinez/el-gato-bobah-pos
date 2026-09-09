@@ -73,6 +73,10 @@ export interface CashSession {
   // Cuánto cobró cada persona. Dos estaciones cobran contra el mismo cajón, así que la
   // responsabilidad se rastrea por quien cobró y no por el mueble.
   cashiers: CashierTotal[];
+  // La venta del turno que ningún pago cubre. Es la hermana de `pending`: aquélla dice qué comida
+  // no ha salido, ésta qué dinero no entró. No bloquea el cierre.
+  uncollected: string;
+  uncollectedCount: number;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo

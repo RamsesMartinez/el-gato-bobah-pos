@@ -158,27 +158,44 @@ el negocio no tuvo, y el modo de falla que esta sección vigila es que alguien l
 | F8 | Rechazar un importe con exponente absurdo (`1e100000000`) | Rechazo en milisegundos. El mensaje de error **no** expande el número: hacerlo tardaba 77 s y comía memoria | `TestRechazarUnImporteAbsurdoEsBarato` | Go |
 | F7 | Liquidación con sesión de cajero | 403: es dinero que no pasó por la caja | `TestLaLiquidacionExigeRolDeAdministracion` | Postgres |
 
-## G. Un pedido entregado y nunca cobrado desaparece del arqueo (ABIERTO)
+## G. Un pedido entregado y nunca cobrado, nombrado en el arqueo
 
-**Medido en el ambiente de pruebas el 8 de septiembre de 2026, corte 5:** cinco pedidos en estado
-`entregada` por **$554.00** sin un solo renglón en `order_payments`. El turno se cerró con los diez
-métodos en **diferencia $0.00** —cuadró perfecto— mientras la lista de ventas de ese mismo corte
-dice **$1,410.50** contra **$856.50** esperados. Quien lea el arqueo no tiene forma de enterarse de
-que faltan $554: para verlo hay que restar dos cifras de dos pantallas distintas.
+**Cómo se encontró.** El 8 de septiembre de 2026, corte 5 del ambiente de pruebas: cinco pedidos en
+estado `entregada` por **$554.00** sin un solo renglón en `order_payments`. El turno cerró con los
+diez métodos en **diferencia $0.00** —cuadró perfecto— mientras la lista de ventas de ese mismo
+corte decía **$1,410.50** contra **$856.50** esperados. El arqueo cuadraba por construcción: solo
+compara pagos contra declarado, y una venta sin pago no aparece por ningún lado. Para ver el hueco
+había que restar dos cifras de dos pantallas distintas.
 
-No es un descuido: el cierre bloquea a propósito por **comida sin entregar**, no por dinero sin
-cobrar, y así está escrito en [`pedidosSinEntregar`](../server/internal/app/backoffice.go)
-(*"lo que impide cerrar es la comida que no ha salido, no el dinero"*). El hueco no es la guardia
-del cierre — es que ninguna cifra del arqueo **declara** lo entregado y no cobrado. `SessionView`
-trae `Pending` (lo que no ha salido) y no trae su hermana.
+**Lo que NO se cambió, a propósito.** La guardia del cierre sigue bloqueando por *comida sin
+entregar* y no por dinero (`pedidosSinEntregar`). Entregar sin cobrar es una decisión legítima del
+negocio —se fio, se cobró por fuera— y convertirla en un bloqueo detendría la operación en hora
+pico. El hueco nunca fue la guardia: era que ninguna cifra lo **declaraba**.
 
-Lo detecta hoy `fecha-y-folio.spec.ts` › **U2**, que compara la venta del corte contra su esperado y
-falla nombrando la brecha. **U2 está en rojo por esto y se deja en rojo**: pasarlo exigiría cobrar
-cinco pedidos de un turno ya cerrado, y eso reescribe un arqueo firmado — la misma razón por la que
-X18 de [matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta.
+**Lo que se agregó.** `UncollectedInSession` — la venta del turno que ningún pago cubre, y en
+cuántos pedidos está. Sale del **mismo** `register_session_id` que la lista de ventas y que el
+esperado por método, así que las tres cifras de la pantalla hablan del mismo conjunto. Viaja en las
+dos vistas: la del turno abierto (`SessionView`, junto a `Pending` — aquélla dice qué comida no ha
+salido, ésta qué dinero no entró) y la del corte cerrado (`SessionDetailView`), que es la que
+alguien audita cuando ya nadie se acuerda del turno.
 
-Qué lo cerraría: una línea en el arqueo que diga cuánto se entregó sin cobrar, derivada del **mismo**
-predicado que la lista de ventas del corte. Es decisión del dueño, no un cambio que se hace de paso.
+En pantalla, el arqueo muestra *"Sin cobrar: $X en N pedidos"* antes del botón de cerrar, para que
+se vea mientras se cuenta el efectivo y no después.
+
+| Qué lo cubre | Dónde |
+|---|---|
+| La cifra existe, no cuenta lo ya cobrado, sobrevive al cierre y la resta cierra en el detalle | `TestElArqueoDiceLoQueSeEntregoSinCobrar` |
+| Contra el servidor real: lo vendido = lo cobrado + lo declarado sin cobrar | `fecha-y-folio.spec.ts` › **U2** |
+
+**U2 cambió con esto y no se aflojó.** Antes comparaba lo vendido contra el esperado a secas —así
+encontró el corte 5—; ahora exige que lo vendido quede explicado por *esperado + sin cobrar*. Sigue
+fallando si aparece un peso que no está ni cobrado ni nombrado; lo que ya no hace es fallar porque
+la pantalla calle un hecho que ahora declara.
+
+Lo que sigue sin cubrir: **los cinco pedidos del corte 5 no se tocaron.** Cobrarlos ahora los
+metería en el turno siguiente y reescribiría un arqueo firmado, por la misma razón que X18 de
+[matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta. El corte 5 queda como está, ahora
+con su $554.00 declarado.
 
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 

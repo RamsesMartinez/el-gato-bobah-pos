@@ -1208,6 +1208,45 @@ func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]S
 	return items, nil
 }
 
+const uncollectedInSession = `-- name: UncollectedInSession :one
+select coalesce(sum(o.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
+       count(*)::int as pedidos
+from orders o
+left join lateral (
+  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+) p on true
+where o.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+  and o.total > coalesce(p.pagado, 0)
+`
+
+type UncollectedInSessionRow struct {
+	Monto   decimal.Decimal `json:"monto"`
+	Pedidos int32           `json:"pedidos"`
+}
+
+// La venta del turno que NINGÚN pago cubre, y en cuántos pedidos está.
+//
+// Es la hermana de OpenOrdersInSession: aquélla dice qué comida no ha salido, ésta qué dinero no
+// entró. No bloquea el cierre —entregar sin cobrar es una decisión legítima del negocio— pero el
+// arqueo tiene que nombrarla: sin ella un turno cierra con los diez métodos en diferencia $0.00,
+// porque el arqueo solo compara pagos contra declarado y una venta sin pago no aparece por ningún
+// lado. Medido el 8 de septiembre de 2026: $554.00 en cinco pedidos, invisibles.
+//
+// El mismo register_session_id que SessionSales y que el esperado por método: las tres cifras de la
+// pantalla salen del turno, no de una ventana de tiempo.
+//
+// Los pagos se pre-agregan en un lateral en vez de unir order_payments directo: orders tiene DOS
+// hijas 1:N (líneas y pagos) y unir cualquiera de ellas a un agregado multiplica las filas.
+//
+// Cancelada y reembolsada quedan fuera: su venta no ocurrió, así que no hay dinero que reclamar.
+func (q *Queries) UncollectedInSession(ctx context.Context, registerSessionID *int64) (UncollectedInSessionRow, error) {
+	row := q.db.QueryRow(ctx, uncollectedInSession, registerSessionID)
+	var i UncollectedInSessionRow
+	err := row.Scan(&i.Monto, &i.Pedidos)
+	return i, err
+}
+
 const updateCashRegister = `-- name: UpdateCashRegister :one
 update cash_registers set name = $2, is_active = $3 where id = $1
 returning id, name, is_primary, is_active

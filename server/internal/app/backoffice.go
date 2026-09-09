@@ -288,6 +288,19 @@ type SessionView struct {
 	// cajón —partirlo en dos daría dos arqueos contando el mismo dinero—, así que la
 	// responsabilidad se rastrea por quien cobró y no por el mueble.
 	Cashiers []CashierTotal `json:"cashiers"`
+	// Uncollected es la venta del turno que ningún pago cubre, y UncollectedCount en cuántos
+	// pedidos está. Es la hermana de Pending: aquélla dice qué comida no ha salido, ésta qué dinero
+	// no entró.
+	//
+	// Existe porque sin ella el hueco es invisible. Medido el 8 de septiembre de 2026: un turno
+	// cerró con los diez métodos en diferencia $0.00 mientras cinco pedidos entregados por $554.00
+	// no tenían un solo pago. El arqueo cuadraba por construcción —solo compara pagos contra
+	// declarado— y la venta faltante solo se veía restando dos cifras de dos pantallas distintas.
+	//
+	// NO bloquea el cierre: entregar sin cobrar es una decisión legítima del negocio (se fio, se
+	// cobró por fuera). Lo que no puede pasar es que el arqueo no la nombre.
+	Uncollected      decimal.Decimal `json:"uncollected"`
+	UncollectedCount int             `json:"uncollectedCount"`
 }
 
 // CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
@@ -343,6 +356,12 @@ type SessionDetailView struct {
 	// Suma de las ventas que dejaron ingreso: sin canceladas, sin reembolsadas y sin propinas. La
 	// pantalla declara las tres exclusiones.
 	SalesTotal decimal.Decimal `json:"salesTotal"`
+	// Uncollected es la parte de SalesTotal que ningún pago cubre. Sin ella las dos cifras de esta
+	// misma pantalla —lo vendido y lo esperado por método— no cuadran y nadie puede saber cuál de
+	// las dos miente: es el corolario del principio III, y aquí importa más que en el turno abierto
+	// porque ESTA es la pantalla que alguien audita cuando ya nadie se acuerda del turno.
+	Uncollected      decimal.Decimal `json:"uncollected"`
+	UncollectedCount int             `json:"uncollectedCount"`
 }
 
 type SessionSaleView struct {
@@ -547,6 +566,12 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	// Lo que se vendió y nadie pagó. Va junto a Pending y por la misma razón: que el operador lo
+	// vea mientras cuenta el efectivo, no cuando alguien audite el corte tres semanas después.
+	sinCobrar, err := s.store.QC(ctx).UncollectedInSession(ctx, &sess.ID)
+	if err != nil {
+		return nil, err
+	}
 	// Slices no-nil: en JSON van como [] (no null), así el front no revienta con .length/.map.
 	view := &SessionView{
 		Pending:  pendientes,
@@ -555,6 +580,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
+		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
 	methods := []methodExpected{}
 	for _, r := range rows {
@@ -823,12 +849,19 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	if err != nil {
 		return nil, err
 	}
+	// Misma consulta que el turno abierto: una segunda derivación de la misma cifra es de donde
+	// salen dos pantallas que no coinciden.
+	sinCobrar, err := s.store.QC(ctx).UncollectedInSession(ctx, &id)
+	if err != nil {
+		return nil, err
+	}
 	view := &SessionDetailView{
 		ID: sess.ID, RegisterName: sess.RegisterName, Status: string(sess.Status), OpeningCash: sess.OpeningCash,
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, ClosedAt: tsPtr(sess.ClosedAt),
 		OpenedByName: sess.OpenedByName, ClosedByName: sess.ClosedByName, Notes: sess.Notes,
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps, // no-nil → [] en JSON
 		Sales: ventas, SalesCount: cuenta, SalesShown: len(ventas), SalesTotal: ingreso,
+		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
 	methods := make([]methodExpected, 0, len(totals))
 	for _, t := range totals {
