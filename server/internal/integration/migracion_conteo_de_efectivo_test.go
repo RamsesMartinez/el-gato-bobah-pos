@@ -378,3 +378,45 @@ func TestElDownDeLaMigracionDelConteoNoDejaBasura(t *testing.T) {
 	}
 
 }
+
+// EL SEGUNDO CONTEO DE UN TURNO TAMBIÉN GUARDA SUS RENGLONES.
+//
+// Regresión de un defecto real de 0066: la FK compuesta de los renglones listaba las columnas
+// referenciadas al revés —`references session_cash_counts (id, company_id)` contra las locales
+// `(company_id, count_id)`— y Postgres las empareja por POSICIÓN, no por nombre. Así escrita
+// comparaba `company_id` contra `id`, así que solo pasaba cuando los dos números coincidían.
+//
+// Por qué ningún test lo vio: cada uno arranca con el esquema limpio, la primera fila queda en
+// `id=1` y la empresa sembrada es la 1. La coincidencia es exactamente el caso que todos cubrían.
+// En producción el primer arqueo con desglose habría funcionado y el segundo —el cierre de ese
+// mismo turno— habría tronado con un 500 al guardar el primer renglón, con la caja sin poder
+// cerrarse.
+//
+// Por eso el test cuenta DOS momentos del mismo turno: el segundo conteo tiene `id != company_id`,
+// que es la única condición que hace visible el defecto.
+func TestElSegundoConteoDeUnTurnoTambienGuardaSusRenglones(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	turno := turnoDe(t, st, defaultCompanyID)
+	billete := denominacionMXN(t, st, "50")
+
+	for _, momento := range []string{"apertura", "cierre"} {
+		var conteo int64
+		if err := st.Pool.QueryRow(ctx,
+			`insert into session_cash_counts (company_id, session_id, moment, total, created_by)
+			 values ($1, $2, $3::cash_count_moment, 100,
+			         (select id from users where company_id = $1 order by id limit 1)) returning id`,
+			defaultCompanyID, turno, momento).Scan(&conteo); err != nil {
+			t.Fatalf("crear el conteo de %s: %v", momento, err)
+		}
+		if _, err := st.Pool.Exec(ctx,
+			`insert into session_cash_count_lines (company_id, count_id, denomination_id, pieces)
+			 values ($1, $2, $3, 2)`, defaultCompanyID, conteo, billete); err != nil {
+			t.Fatalf("el renglón del conteo de %s no entró (conteo id=%d, company_id=%d): %v\n"+
+				"la FK compuesta de session_cash_count_lines empareja por posición: si el orden de "+
+				"las columnas referenciadas no es el mismo que el de las locales, solo pasa mientras "+
+				"id y company_id coincidan por casualidad",
+				momento, conteo, defaultCompanyID, err)
+		}
+	}
+}

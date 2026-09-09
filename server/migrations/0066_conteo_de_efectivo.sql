@@ -156,8 +156,14 @@ create table session_cash_count_lines (
   constraint session_cash_count_lines_unicas unique (count_id, denomination_id),
   -- Compuesta por lo mismo que la de arriba: un renglón de la empresa A colgado del conteo de B
   -- sumaría piezas ajenas a un arqueo, y ninguna consulta bajo RLS lo vería.
+  --
+  -- EL ORDEN DE LAS COLUMNAS REFERENCIADAS ES EL MISMO QUE EL DE LAS LOCALES, y no es estilo:
+  -- Postgres las empareja por POSICIÓN, no por nombre. Escrito `references (id, company_id)` esto
+  -- comparaba company_id contra id, y solo pasaba mientras los dos números coincidieran — es decir,
+  -- en el primer conteo de la primera empresa. El segundo arqueo con desglose de cualquier turno
+  -- fallaba con 23503. Lo cubre TestElSegundoConteoDeUnTurnoTambienGuardaSusRenglones.
   constraint session_cash_count_lines_count_fkey
-    foreign key (company_id, count_id) references session_cash_counts (id, company_id)
+    foreign key (company_id, count_id) references session_cash_counts (company_id, id)
     on delete cascade
 );
 
