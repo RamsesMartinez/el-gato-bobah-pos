@@ -250,14 +250,14 @@ where session_id = $1 and moment = $2
 `
 
 type GetCashCountParams struct {
-	SessionID int64       `json:"session_id"`
-	Moment    interface{} `json:"moment"`
+	SessionID int64           `json:"session_id"`
+	Moment    CashCountMoment `json:"moment"`
 }
 
 type GetCashCountRow struct {
 	ID           int64           `json:"id"`
 	SessionID    int64           `json:"session_id"`
-	Moment       interface{}     `json:"moment"`
+	Moment       CashCountMoment `json:"moment"`
 	Total        decimal.Decimal `json:"total"`
 	ManualReason *string         `json:"manual_reason"`
 	CreatedBy    int64           `json:"created_by"`
@@ -1155,7 +1155,7 @@ returning id, session_id, moment, total, manual_reason, created_by, created_at
 
 type SaveCashCountParams struct {
 	SessionID    int64           `json:"session_id"`
-	Moment       interface{}     `json:"moment"`
+	Moment       CashCountMoment `json:"moment"`
 	Total        decimal.Decimal `json:"total"`
 	ManualReason *string         `json:"manual_reason"`
 	CreatedBy    int64           `json:"created_by"`
@@ -1164,7 +1164,7 @@ type SaveCashCountParams struct {
 type SaveCashCountRow struct {
 	ID           int64           `json:"id"`
 	SessionID    int64           `json:"session_id"`
-	Moment       interface{}     `json:"moment"`
+	Moment       CashCountMoment `json:"moment"`
 	Total        decimal.Decimal `json:"total"`
 	ManualReason *string         `json:"manual_reason"`
 	CreatedBy    int64           `json:"created_by"`

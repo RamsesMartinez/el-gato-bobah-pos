@@ -14,6 +14,48 @@ import (
 	"uuid"
 )
 
+type CashCountMoment string
+
+const (
+	CashCountMomentApertura CashCountMoment = "apertura"
+	CashCountMomentCierre   CashCountMoment = "cierre"
+)
+
+func (e *CashCountMoment) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CashCountMoment(s)
+	case string:
+		*e = CashCountMoment(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CashCountMoment: %T", src)
+	}
+	return nil
+}
+
+type NullCashCountMoment struct {
+	CashCountMoment CashCountMoment `json:"cash_count_moment"`
+	Valid           bool            `json:"valid"` // Valid is true if CashCountMoment is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCashCountMoment) Scan(value interface{}) error {
+	if value == nil {
+		ns.CashCountMoment, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CashCountMoment.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCashCountMoment) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CashCountMoment), nil
+}
+
 type ChannelVisibility string
 
 const (
@@ -1137,7 +1179,7 @@ type RegisterSessionTotal struct {
 type SessionCashCount struct {
 	ID           int64           `json:"id"`
 	SessionID    int64           `json:"session_id"`
-	Moment       interface{}     `json:"moment"`
+	Moment       CashCountMoment `json:"moment"`
 	Total        decimal.Decimal `json:"total"`
 	ManualReason *string         `json:"manual_reason"`
 	CreatedBy    int64           `json:"created_by"`

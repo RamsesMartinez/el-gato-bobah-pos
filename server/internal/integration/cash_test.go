@@ -59,7 +59,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 		t.Fatalf("SetPaymentMethodAutoDeclare: %v", err)
 	}
 	primaryID := registerID(t, st, "Caja principal")
-	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, cashier); err != nil {
+	if _, err := backoffice.OpenSession(ctx, primaryID, app.AperturaCmd{}, cashier); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -146,10 +146,10 @@ func TestTransferBetweenRegistersDetectedInBoth(t *testing.T) {
 	primaryID := registerID(t, st, "Caja principal")
 	safeID := registerID(t, st, "Caja fuerte")
 
-	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.RequireFromString("1000"), cashier); err != nil {
+	if _, err := backoffice.OpenSession(ctx, primaryID, aperturaAMano(decimal.RequireFromString("1000")), cashier); err != nil {
 		t.Fatalf("OpenSession(principal): %v", err)
 	}
-	if _, err := backoffice.OpenSession(ctx, safeID, decimal.Zero, cashier); err != nil {
+	if _, err := backoffice.OpenSession(ctx, safeID, app.AperturaCmd{}, cashier); err != nil {
 		t.Fatalf("OpenSession(fuerte): %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestTransferRequiresBothRegistersOpen(t *testing.T) {
 	primaryID := registerID(t, st, "Caja principal")
 	safeID := registerID(t, st, "Caja fuerte")
 
-	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.RequireFromString("500"), cashier); err != nil {
+	if _, err := backoffice.OpenSession(ctx, primaryID, aperturaAMano(decimal.RequireFromString("500")), cashier); err != nil {
 		t.Fatalf("OpenSession(principal): %v", err)
 	}
 	// Caja fuerte NO abierta.
@@ -226,7 +226,7 @@ func TestTipFlowsIntoCorte(t *testing.T) {
 	cashID := paymentMethodID(t, st, "Efectivo")
 	primaryID := registerID(t, st, "Caja principal")
 
-	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, cashier); err != nil {
+	if _, err := backoffice.OpenSession(ctx, primaryID, app.AperturaCmd{}, cashier); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	// Venta de 100 en efectivo con 15 de propina.
@@ -293,7 +293,7 @@ func TestSessionSummaryIncludesExpenses(t *testing.T) {
 		t.Fatalf("categoria: %v", err)
 	}
 
-	sess, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, admin)
+	sess, err := backoffice.OpenSession(ctx, primaryID, app.AperturaCmd{}, admin)
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestExpensePaidRequiresOpenRegister(t *testing.T) {
 	}
 
 	// Con caja abierta → ok + salida de efectivo ligada al gasto.
-	if _, err := backoffice.OpenSession(ctx, primaryID, decimal.Zero, admin); err != nil {
+	if _, err := backoffice.OpenSession(ctx, primaryID, app.AperturaCmd{}, admin); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	id, err := backoffice.CreateExpense(ctx, in)

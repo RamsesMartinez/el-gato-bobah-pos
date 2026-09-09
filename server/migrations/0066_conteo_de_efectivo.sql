@@ -20,15 +20,13 @@
 -- que dejar el deploy colgado con la API a medio sustituir.
 set local lock_timeout = '3s';
 
--- +goose StatementBegin
-do $$
-begin
-  if not exists (select 1 from pg_type where typname = 'cash_count_moment') then
-    create type cash_count_moment as enum ('apertura', 'cierre');
-  end if;
-end
-$$;
--- +goose StatementEnd
+-- Los dos momentos en que se cuenta el cajón.
+--
+-- Va como `create type` suelto y NO dentro de un `do $$ ... $$`: el parser de sqlc no lee DDL
+-- dinámico —es lo mismo que le pasa al `EXECUTE format()` de 0023 con company_id—, así que dentro
+-- del bloque el tipo existe en Postgres y no existe para el código generado. goose no reaplica una
+-- migración, así que la guarda de "si no existe" no hacía falta.
+create type cash_count_moment as enum ('apertura', 'cierre');
 
 -- EL CATÁLOGO. Qué piezas de dinero existen en cada moneda.
 --
