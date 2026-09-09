@@ -110,7 +110,7 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 
 	entregarPendientes(t, st)
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
-	if _, err := back.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreAMano(declarado)); err != nil {
 		t.Fatalf("cerrar: %v", err)
 	}
 	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)

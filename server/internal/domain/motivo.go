@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -13,6 +14,18 @@ import (
 // caracteres son dos renglones largos, que es todo lo que alguien escribe con un cliente enfrente.
 const MaxMotivo = 200
 
+// MotivoLimpio recorta el motivo por los extremos, y quita también los caracteres INVISIBLES.
+//
+// `TrimSpace` no toca el ancho cero (U+200B y sus hermanos de la categoría Cf) y el `btrim` de
+// Postgres solo quita el espacio ASCII, así que un motivo de un solo carácter invisible pasaba los
+// dos lados: quedaba un arqueo con la cifra declarada a mano y un motivo que en pantalla se ve
+// vacío, que es exactamente la cifra sin justificar que este campo existe para impedir.
+func MotivoLimpio(motivo string) string {
+	return strings.TrimFunc(motivo, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r)
+	})
+}
+
 // MotivoValido recorta el motivo y lo rechaza si no queda nada.
 //
 // Existe porque el recorte vivía en UN solo camino: `refund` hacía `reason.trim()` en la pantalla y
@@ -20,7 +33,7 @@ const MaxMotivo = 200
 // la base, donde el `check` de 0007 lo da por bueno — y el histórico se queda con una cancelación
 // sin motivo, que es justo lo que ese campo existe para impedir. Es el hermano que no se movió.
 func MotivoValido(motivo string) (string, error) {
-	m := strings.TrimSpace(motivo)
+	m := MotivoLimpio(motivo)
 	if m == "" {
 		return "", fmt.Errorf("%w: hace falta el motivo", ErrValidation)
 	}

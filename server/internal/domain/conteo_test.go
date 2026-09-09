@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -130,6 +131,27 @@ func TestComoSeDeclaraElEfectivo(t *testing.T) {
 			motivo: "   ",
 			err:    ErrConteoSinExplicar,
 			porQue: "un motivo en blanco es no haber contestado, y pasa el chequeo de \"no vacío\" ingenuo",
+		},
+		{
+			nombre: "a mano con un motivo de caracteres invisibles se rechaza",
+			total:  ptr(mnt("5000")),
+			motivo: "\u200b",
+			err:    ErrConteoSinExplicar,
+			porQue: "TrimSpace no toca el ancho cero y btrim solo quita el espacio ASCII: se colaba un fondo de $5,000 con un motivo que en pantalla se ve vacío",
+		},
+		{
+			nombre: "a mano con un motivo más largo que el tope se rechaza aquí, no en la base",
+			total:  ptr(mnt("2350")),
+			motivo: strings.Repeat("a", MaxMotivo+1),
+			err:    ErrValidation,
+			porQue: "el check del esquema lo rechaza con un 23514 que sube como 500, y el cuerpo del 500 se registra en el log con el texto del operador dentro",
+		},
+		{
+			nombre: "a mano con un motivo justo en el tope pasa",
+			total:  ptr(mnt("2350")),
+			motivo: strings.Repeat("a", MaxMotivo),
+			quiere: "2350",
+			porQue: "el tope es inclusivo en el esquema (between 1 and 200); rechazarlo aquí partiría en dos la misma regla",
 		},
 		{
 			nombre: "sin piezas y sin total: se abre en cero, que es un cajón vacío",

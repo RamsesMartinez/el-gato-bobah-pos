@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/shopspring/decimal"
 )
@@ -78,10 +77,18 @@ func TotalDeclarado(piezas []PiezaContada, aMano *decimal.Decimal, motivo string
 	case conteo && aMano != nil:
 		return decimal.Zero, ErrConteoAmbiguo
 	case aMano != nil:
-		// `TrimSpace` y no `!= ""`: un motivo de puros espacios es no haber contestado, y pasa el
-		// chequeo ingenuo de "no vacío".
-		if strings.TrimSpace(motivo) == "" {
+		// `MotivoLimpio` y no `!= ""`: un motivo de puros espacios —o de caracteres invisibles— es
+		// no haber contestado, y pasa el chequeo ingenuo de "no vacío".
+		if MotivoLimpio(motivo) == "" {
 			return decimal.Zero, ErrConteoSinExplicar
+		}
+		// El TOPE se comprueba aquí y no solo en el `check` del esquema, que ya existe y dice lo
+		// mismo. Dejarlo únicamente allá convierte un texto largo en un 23514 que sube como 500 —y
+		// el cuerpo de un 500 se registra en el log, con el texto del operador dentro, que puede
+		// traer el nombre de una persona. Un 400 no registra cuerpo. Es `MotivoValido`, el mismo
+		// que usan la cancelación y el reembolso: partir esta regla en dos ya costó una vez.
+		if _, err := MotivoValido(motivo); err != nil {
+			return decimal.Zero, err
 		}
 		total := Round2(*aMano)
 		if !ValidMoney(total, true) {

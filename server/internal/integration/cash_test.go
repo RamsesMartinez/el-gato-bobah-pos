@@ -80,7 +80,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 
 	// Cierre con un declarado FALSEADO (1, muy por debajo del esperado) para ese método.
 	declared := map[int]decimal.Decimal{int(cardID): decimal.RequireFromString("1")}
-	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, declared, "")
+	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, cierreAMano(declared))
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}

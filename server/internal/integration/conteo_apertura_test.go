@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -201,4 +202,92 @@ func TestUnaAperturaQueFallaNoDejaLaCajaBloqueada(t *testing.T) {
 // una cifra que nadie puede auditar, y eso vale igual para un turno de prueba.
 func aperturaAMano(total decimal.Decimal) app.AperturaCmd {
 	return app.AperturaCmd{Total: &total, Motivo: "fondo declarado sin contar (fixture de prueba)"}
+}
+
+// UN RENGLÓN REPETIDO ES UNA CAPTURA INVÁLIDA, NO UN 500.
+//
+// Regresión. El caso lo dispara ya `TestUnaAperturaQueFallaNoDejaLaCajaBloqueada`, pero ese solo
+// comprueba que la caja quede libre: el error salía como el `23505` crudo de
+// `session_cash_count_lines_unicas` y `httpapi.Error` lo dejaba caer al default, así que el
+// operador veía "el servidor se rompió" ante un dato que él puede corregir. El principio V exige
+// 400.
+//
+// Y hay un segundo efecto que la base tapaba: `TotalDelConteo` SUMA los dos renglones —el dominio no
+// ve ids, así que no puede detectarlo—, de modo que lo único que impedía un fondo inflado era la
+// unique del esquema. Rechazarlo antes de escribir cierra las dos cosas.
+func TestUnRenglonRepetidoSeRechazaComoCapturaInvalida(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_repetido", "cajero")
+	principal := registerID(t, st, "Caja principal")
+
+	billete := denominacionMXN(t, st, "100")
+	repetido := []app.PiezaCapturada{{DenominationID: billete, Pieces: 2}, {DenominationID: billete, Pieces: 3}}
+
+	_, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{Piezas: repetido}, cajero)
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("el renglón repetido dio %v y tiene que ser ErrValidation: si no, sale como 500 "+
+			"y quien lo puede arreglar es justo el que no se entera", err)
+	}
+
+	// Y no escribió nada: ni el fondo de $500 que habrían sumado los dos renglones.
+	var sesiones int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from register_sessions`).Scan(&sesiones); err != nil {
+		t.Fatalf("contar sesiones: %v", err)
+	}
+	if sesiones != 0 {
+		t.Fatalf("quedaron %d sesiones: el rechazo tiene que ser ANTES de abrir el turno", sesiones)
+	}
+}
+
+// LAS DOS TABLETAS ABREN LA MISMA CAJA AL MISMO TIEMPO Y LA SEGUNDA VE UN CONFLICTO, NO UN 500.
+//
+// Regresión, y no es hipotético: las dos tabletas comparten cuenta, así que las dos pueden tener la
+// caja cerrada en pantalla y tocar "Abrir". `GetOpenSessionByRegister` es un pre-check
+// read-then-insert, no atómico: en la carrera las dos pasan el pre-check y la segunda choca con
+// `one_open_session_per_register`. Ese `23505` no lo traducía nadie —la traducción que existía
+// apunta a `session_cash_counts_un_momento`, que en la apertura es inalcanzable porque la sesión y
+// su conteo son nuevos— y subía como 500.
+//
+// El camino secuencial ya devuelve ErrConflict, y la pantalla ya sabe pintarlo: lo que falta es que
+// la carrera termine igual que la fila.
+func TestDosAperturasSimultaneasDejanUnConflictoYNoUn500(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	cajero := makeUser(t, st, "cajero_carrera", "cajero")
+	principal := registerID(t, st, "Caja principal")
+
+	const intentos = 2
+	errs := make([]error, intentos)
+	var wg sync.WaitGroup
+	arranque := make(chan struct{})
+	for i := range intentos {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc := app.NewBackofficeService(st, clock)
+			<-arranque // que salgan juntas, no en fila
+			_, errs[i] = svc.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
+		}()
+	}
+	close(arranque)
+	wg.Wait()
+
+	abiertas, conflictos := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			abiertas++
+		case errors.Is(err, domain.ErrConflict):
+			conflictos++
+		default:
+			t.Fatalf("la apertura perdedora dio %v: tiene que ser ErrConflict, no el error crudo de "+
+				"Postgres — con dos tabletas compartiendo cuenta esto pasa en un turno normal", err)
+		}
+	}
+	if abiertas != 1 || conflictos != 1 {
+		t.Fatalf("%d aperturas y %d conflictos: la caja tiene que quedar abierta exactamente una vez",
+			abiertas, conflictos)
+	}
 }
