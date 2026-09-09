@@ -58,6 +58,17 @@ POST /cash/registers/3/close
 
 - `counts` sustituye lo declarado del método de efectivo; mandar **los dos** para ese método se
   rechaza.
+- **`manualReason` es obligatorio cuando el efectivo viene en `declared` en vez de contado.** Este
+  renglón faltaba y se agregó al implementar US2: FR-014 dice que escribir el total directamente
+  exige un motivo, y FR-016 que NINGÚN arqueo queda con una cifra suelta — la apertura y el cierre
+  son los dos arqueos del turno, así que la regla no puede aplicar solo a uno. Sin esto, todo lo que
+  la apertura cerró se reabría por el otro lado.
+- **El efectivo es el método con `kind = "efectivo"`**, que ahora viaja en cada renglón de `totals`.
+  No se identifica por nombre: los métodos de plataforma en efectivo también tocan el cajón y solo
+  `kind` los distingue — es la misma razón por la que el fondo de caja se suma a uno y no a cuatro.
+- **Cerrar sin declarar efectivo no guarda conteo.** Una caja que no manejó efectivo no tiene arqueo
+  que explicar, y un conteo en cero afirmaría "conté y estaba vacío", que es un hecho distinto de
+  "nadie contó".
 - Los métodos con `auto_declare` siguen sin pedir nada.
 - El cierre sigue bloqueado por pedidos sin entregar, como hoy.
 

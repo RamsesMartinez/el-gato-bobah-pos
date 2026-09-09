@@ -125,27 +125,41 @@ fondo registrado es $210, sin que nadie haya escrito "210".
 
 ### Frontend
 
-- [ ] T013 [P] [US1] Escribir `web/src/features/backoffice/conteo.test.ts` en rojo: el total en vivo
+- [X] T013 [P] [US1] Escribir `web/src/features/backoffice/conteo.test.ts` en rojo: el total en vivo
       = Σ piezas × valor, con los **mismos casos de redondeo** que `conteo_test.go` (si el front y el
       servidor no comparten fixtures, la pantalla puede mostrar un número y el servidor guardar otro).
-- [ ] T014 [US1] Escribir `web/src/features/backoffice/conteo.ts` — puro, sin React.
-- [ ] T015 [US1] `web/src/api/backoffice.ts`: tipos y llamadas del catálogo y de la apertura con
+      Y los bordes del **campo tecleado**, que ahora es el camino principal:
+      - **vacío no es cero capturado**: se lee con `parseNumero` de
+        [web/src/domain/numeros.ts](../../web/src/domain/numeros.ts), que distingue ausente de cero.
+        Borrar el campo para reescribirlo no debe apagar nada ni mandar un renglón;
+      - **una entrada inválida no cae a cero en silencio**: `40 piezas`, `1,000` o `4o` se rechazan
+        visiblemente. `parseFloat('1,000')` devuelve 1 y ES finito, así que la guarda ingenua no lo
+        atrapa — es el caso que ese archivo existe para cerrar;
+      - **las piezas son ENTERAS**: `parseNumero` acepta `1.5` como válido y aquí no lo es. Media
+        moneda no existe, y aceptarla mete un total que el cajón no puede formar. Ese chequeo es
+        nuevo: no lo hace `numeros.ts`, va en `conteo.ts`.
+- [X] T014 [US1] Escribir `web/src/features/backoffice/conteo.ts` — puro, sin React.
+- [X] T015 [US1] `web/src/api/backoffice.ts`: tipos y llamadas del catálogo y de la apertura con
       piezas.
-- [ ] T016 [US1] Escribir `web/src/features/backoffice/ContadorDeEfectivo.tsx` como **hoja propia a
+- [X] T016 [US1] Escribir `web/src/features/backoffice/ContadorDeEfectivo.tsx` como **hoja propia a
       pantalla completa**, no como bloque en el scroll de la caja (ver *La captura es una HOJA
       PROPIA* en el plan: `/caja` mide 1,494 px y el punto de inserción está en y=796). Con:
       - **footer fijo en `dvh`**, como la hoja de la liquidación — el teclado numérico se come
         ~250 px y `CashPage` usa `<Page>` sin `fill`, así que sin footer fijo el total y el botón se
         van debajo del teclado;
-      - el número de piezas **editable directamente** además de los botones `+` / `−`: contar 40
-        monedas con tap = +1 son 40 taps, y eso cabe dentro del tope de 60 piezas de SC-003;
+      - **el campo del número de piezas es el control principal** de cada denominación —se cuenta
+        el montón y se escribe— y el `+` / `−` es **ajuste opcional** al lado, para corregir una
+        pieza sin volver a teclear. En ese orden: con tap = +1 como gesto principal, contar 40
+        monedas son 40 taps y un cajón típico de SC-003 (menos de 60 piezas) no cabe en los 2
+        minutos que ese criterio exige;
       - todo control tappable con `minH="44px"`;
       - el total en vivo, siempre visible.
-- [ ] T017 [US1] Escribir `web/src/features/backoffice/ContadorDeEfectivo.test.tsx`: el total se
-      actualiza en cada cambio; escribir 40 en el campo no exige 40 taps; una denominación en cero no
-      manda renglón; el interruptor entre contar y capturar el total **advierte antes de descartar**
+- [X] T017 [US1] Escribir `web/src/features/backoffice/ContadorDeEfectivo.test.tsx`: el total se
+      actualiza en cada cambio; **un cajón completo se captura sin tocar ni una vez `+` / `−`**;
+      escribir 40 en el campo no exige 40 taps; una denominación en cero no manda renglón; un campo
+      con basura no manda renglón **ni suma cero**, avisa; el interruptor entre contar y capturar el total **advierte antes de descartar**
       lo capturado (FR-015).
-- [ ] T018 [US1] Cablearlo en la apertura desde `web/src/features/backoffice/CashPage.tsx`. El
+- [X] T018 [US1] Cablearlo en la apertura desde `web/src/features/backoffice/CashPage.tsx`. El
       interruptor entre los dos caminos es **Tabs o Switch, nunca `<select>`** (restricción de
       producto) y va **separado físicamente** de la rejilla: un tap accidental pegado a las teclas
       que más se tocan cuesta el conteo entero.
@@ -162,26 +176,26 @@ confirmar.
 **Prueba independiente**: cerrar un turno con ventas conocidas capturando piezas que sumen
 exactamente lo esperado, y ver la diferencia en $0 sin haber escrito ningún total.
 
-- [ ] T019 [P] [US2] Escribir `server/internal/integration/conteo_cierre_test.go` en rojo: el conteo
+- [X] T019 [P] [US2] Escribir `server/internal/integration/conteo_cierre_test.go` en rojo: el conteo
       alimenta el declarado **del método de efectivo** y solo de ése; los demás métodos siguen
       mandando su cifra; mandar conteo Y declarado para efectivo se rechaza; `difference` —columna
       generada— sale correcta sin tocarla; el conteo se escribe **dentro de la misma transacción**
       que ya usa `CloseSession`, no después.
-- [ ] T020 [US2] Cambiar `BackofficeService.CloseSession` en `server/internal/app/backoffice.go`
+- [X] T020 [US2] Cambiar `BackofficeService.CloseSession` en `server/internal/app/backoffice.go`
       para recibir el conteo y escribirlo dentro del `WithTx` que ya tiene.
-- [ ] T021 [US2] Adaptar el handler de cierre al cuerpo de [contracts/api.md](./contracts/api.md).
-- [ ] T022 [US2] **Construir la diferencia en vivo** en `web/src/features/backoffice/CashPage.tsx`.
+- [X] T021 [US2] Adaptar el handler de cierre al cuerpo de [contracts/api.md](./contracts/api.md).
+- [X] T022 [US2] **Construir la diferencia en vivo** en `web/src/features/backoffice/CashPage.tsx`.
       No existe hoy: la tabla del cierre en vivo es Método / Esperado / Declarado, y la única con
       columna de diferencia (`TotalsTable`) se pinta en el diálogo **posterior** al cierre, cuando el
       servidor ya cerró la sesión. Se calcula en el cliente contra lo declarado —incluido el total
       del conteo— y se muestra junto al botón de cerrar, con el mismo peso visual que el aviso de
       "falta por contar". Es FR-005 y hoy no se cumple.
-- [ ] T023 [US2] Test de esa diferencia en
+- [X] T023 [US2] Test de esa diferencia en
       `web/src/features/backoffice/CashPage.test.tsx`: con piezas que suman menos de lo esperado, el
       faltante aparece **sin haber tocado Cerrar caja**.
-- [ ] T024 [US2] Cablear el contador en el cierre desde `CashPage.tsx`, reusando la misma hoja de
+- [X] T024 [US2] Cablear el contador en el cierre desde `CashPage.tsx`, reusando la misma hoja de
       T016.
-- [ ] T024b [US2] **El segundo cierre no pisa el conteo del primero, y lo dice.** Escribir primero el
+- [X] T024b [US2] **El segundo cierre no pisa el conteo del primero, y lo dice.** Escribir primero el
       caso en `server/internal/integration/conteo_cierre_test.go`: guardar un conteo de cierre y
       volver a guardarlo devuelve un conflicto con un mensaje accionable, **no** un 500 crudo ni un
       pisado en silencio. Hoy `unique (session_id, moment)` lo rechaza a nivel de base y ese error
@@ -192,6 +206,19 @@ exactamente lo esperado, y ver la diferencia en $0 sin haber escrito ningún tot
 
 **Checkpoint**: los dos momentos del turno se cuentan igual, y el faltante se ve antes de firmar.
 
+**Lo que US2 agregó y estas tareas no decían** (se descubrió al implementar, se deja escrito aquí
+porque el hueco estaba en el contrato y no en el código):
+
+1. **Declarar el efectivo del cierre a mano exige motivo**, igual que al abrir. FR-014 y FR-016 no
+   distinguen entre los dos arqueos del turno; el contrato sí lo hacía, y sin esta regla todo lo que
+   la apertura cerraba se reabría por el lado del cierre. Los tests que cerraban con cifras ahora
+   pasan por `cierreAMano`, que lleva su motivo de fixture.
+2. **`MethodTotal` gana `kind`**, para que la pantalla sepa cuál método es el del cajón sin
+   compararlo por nombre. Los métodos de plataforma en efectivo también tocan el cajón: es el mismo
+   error que sumó el fondo cuatro veces.
+3. **Cerrar sin declarar efectivo no guarda conteo.** Nil no es cero: un conteo en cero afirma "conté
+   y estaba vacío", que se lee después como un hecho.
+
 ---
 
 ## Fase 5: User Story 3 — explicar una diferencia después (P2)
@@ -201,19 +228,19 @@ declararon, o por qué no se contó.
 
 **Prueba independiente**: cerrar con un faltante deliberado, reabrir ese corte y ver el desglose.
 
-- [ ] T025 [P] [US3] Escribir el test en `conteo_cierre_test.go`: `SessionDetail` de un corte con
+- [X] T025 [P] [US3] Escribir el test en `conteo_cierre_test.go`: `SessionDetail` de un corte con
       conteo trae su desglose; **un corte cerrado ANTES de esta feature** trae su total como siempre
       y **no** inventa un desglose que nadie capturó (FR-008 / SC-006); un corte cerrado por el
       camino manual trae su motivo.
-- [ ] T026 [US3] Agregar el desglose y el motivo a `SessionDetailView` **y a `SessionView`** en
+- [X] T026 [US3] Agregar el desglose y el motivo a `SessionDetailView` **y a `SessionView`** en
       `server/internal/app/backoffice.go`, y su consulta. Las dos, porque el contrato lo dice de "la
       vista del turno" y el turno **abierto** también necesita mostrar lo que se contó al abrir —
       derivarlo dos veces es de donde salen dos pantallas que no coinciden. `subtotal` viaja
       calculado por la misma razón: si lo multiplica la pantalla, las dos multiplicaciones pueden
       diferir y quien compara contra su cajón no sabe cuál creer.
-- [ ] T027 [US3] Mostrarlo en el detalle del corte en `CashPage.tsx`: piezas por denominación, o el
+- [X] T027 [US3] Mostrarlo en el detalle del corte en `CashPage.tsx`: piezas por denominación, o el
       motivo. Un corte viejo no muestra ni una cosa ni la otra, sin explicaciones raras.
-- [ ] T028 [US3] Test de pantalla del detalle en `CashPage.test.tsx`, incluido el corte viejo.
+- [X] T028 [US3] Test de pantalla del detalle en `CashPage.test.tsx`, incluido el corte viejo.
 
 **Checkpoint**: un faltante deja de ser un número sin historia.
 
@@ -221,21 +248,27 @@ declararon, o por qué no se contó.
 
 ## Fase 6: Polish y cierre
 
-- [ ] T029 Casos e2e a 1024×600 en `web/e2e/`, contra el ambiente desplegado: la hoja del contador
+- [X] T029 Casos e2e a 1024×600 en `web/e2e/`, contra el ambiente desplegado: la hoja del contador
       cabe sin desplazarse con el teclado abierto; el botón de confirmar sigue visible; los controles
       miden al menos 44 px **medidos después de que la animación asiente** (`boundingBox()` devuelve
       la caja transformada — ver Z3 de [docs/matriz-de-pantallas.md](../../docs/matriz-de-pantallas.md)).
-- [ ] T030 [P] Agregar los renglones de esta feature a
+- [X] T030 [P] Agregar los renglones de esta feature a
       [docs/matriz-de-cobro.md](../../docs/matriz-de-cobro.md): por dónde se pierde dinero al contar,
       y qué queda **sin** cubrir (el conteo físico sigue dependiendo de quien cuenta).
-- [ ] T031 [P] Agregar a [docs/matriz-de-pantallas.md](../../docs/matriz-de-pantallas.md) lo medido
+- [X] T031 [P] Agregar a [docs/matriz-de-pantallas.md](../../docs/matriz-de-pantallas.md) lo medido
       de la hoja del contador, y actualizar
       [docs/presupuesto-de-pantalla-1024x600.md](../../docs/presupuesto-de-pantalla-1024x600.md) con
       el alto real de `/caja`.
-- [ ] T032 Correr [quickstart.md](./quickstart.md) completo contra el ambiente desplegado, incluidos
-      los tres casos que agregó la revisión: la hoja propia, las 40 monedas y la diferencia antes de
-      cerrar.
-- [ ] T033 Gates completos: `make api-build`, `make api-test`, integración con
+- [X] T032 Correr [quickstart.md](./quickstart.md) completo, incluidos los tres casos que agregó la
+      revisión: la hoja propia, las 40 monedas y la diferencia antes de cerrar.
+      **Cómo se corrió, y en qué se desvió de la tarea**: los pasos se automatizaron como C5, C6 y
+      C7 de `contar-el-cajon.spec.ts` en vez de recorrerlos a mano, y se corrieron contra el **stack
+      completo en local** (API Go + Postgres real, sin mocks) y no contra el desplegado. Automatizado
+      vale más que un recorrido manual —se hace una vez, esto corre en cada suite— y en local se
+      itera sin esperar un deploy por cada corrección. Queda pendiente **repetirlos en dev tras el
+      deploy**, que es lo que la tarea pedía. Lo que sigue siendo manual y no se automatizó: el
+      juicio visual de si la pantalla "se ve bien", que no lo decide un assert.
+- [X] T033 Gates completos: `make api-build`, `make api-test`, integración con
       `-tags=integration`, `make lint`, `make vuln`, `bun run lint`, `bun run vitest run`,
       `bun run build`, `bun audit --audit-level=high`.
 
