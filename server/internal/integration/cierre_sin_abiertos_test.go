@@ -250,3 +250,116 @@ func TestElArqueoSeparaLoCobradoPorCadaPersona(t *testing.T) {
 		t.Errorf("no-efectivo de Ana = %s, quiere 0", got)
 	}
 }
+
+// LO QUE SE ENTREGÓ Y NUNCA SE COBRÓ TIENE QUE APARECER EN EL ARQUEO.
+//
+// Medido en el ambiente de pruebas el 8 de septiembre de 2026: el corte 5 cerró con los diez
+// métodos en diferencia $0.00 —cuadró perfecto— mientras cinco pedidos entregados por $554.00 no
+// tenían un solo renglón en `order_payments`. La lista de ventas del mismo corte decía $1,410.50 y
+// su esperado $856.50, y para ver el hueco había que restar dos cifras de dos pantallas.
+//
+// La guardia del cierre NO cambia y eso es a propósito: lo que impide cerrar es la comida que no ha
+// salido, no el dinero (ver `pedidosSinEntregar`). Un pedido entregado y no cobrado es una decisión
+// legítima del negocio —se fio, se regaló, se cobró por fuera—; lo que no puede pasar es que el
+// arqueo no la nombre. Es el corolario del principio III: dos cifras de la misma pantalla que se
+// derivan de predicados distintos, sin declarar cuál incluye qué.
+func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordersSvc := app.NewOrdersService(st, clock)
+	backoffice := app.NewBackofficeService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_sincobrar", "cajero")
+	prod := makeProduct(t, st, "Café sin cobrar", decimal.RequireFromString("50"), false)
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	principal := registerID(t, st, "Caja principal")
+	abrirCajaPrincipal(t, st, cajero)
+
+	// Un turno recién abierto no debe nada: la cifra arranca en cero y no en "no sé".
+	inicial, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if !inicial.Uncollected.IsZero() || inicial.UncollectedCount != 0 {
+		t.Fatalf("turno recién abierto reporta $%s sin cobrar en %d pedidos, quiere 0 y 0",
+			inicial.Uncollected, inicial.UncollectedCount)
+	}
+
+	// Uno cobrado y entregado: NO cuenta. Su dinero ya está en el esperado por método, y contarlo
+	// aquí también sería el mismo peso clasificado dos veces.
+	cobrado, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
+		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("50")}},
+	})
+	if err != nil {
+		t.Fatalf("Create cobrado: %v", err)
+	}
+	if err := ordersSvc.DeliverAll(ctx, cobrado.ID); err != nil {
+		t.Fatalf("DeliverAll cobrado: %v", err)
+	}
+
+	// Y otro entregado SIN un solo pago: es el que el arqueo callaba.
+	fiado, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+		Lines: []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("2")}},
+	})
+	if err != nil {
+		t.Fatalf("Create fiado: %v", err)
+	}
+	if err := ordersSvc.DeliverAll(ctx, fiado.ID); err != nil {
+		t.Fatalf("DeliverAll fiado: %v", err)
+	}
+
+	vista, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("Session tras entregar: %v", err)
+	}
+	// Nada bloquea el cierre: los dos salieron. Ese es justo el escenario en el que el hueco es
+	// invisible sin esta cifra.
+	if len(vista.Pending) != 0 {
+		t.Fatalf("el arqueo lista %d pendientes de entregar y los dos ya salieron", len(vista.Pending))
+	}
+	quiere := decimal.RequireFromString("100")
+	if !vista.Uncollected.Equal(quiere) {
+		t.Fatalf("el arqueo dice $%s entregado sin cobrar y el turno tiene $%s: el pedido #%d salió "+
+			"sin un solo pago y el corte cuadraría en cero sin nombrarlo",
+			vista.Uncollected, quiere, fiado.Number)
+	}
+	if vista.UncollectedCount != 1 {
+		t.Fatalf("el arqueo cuenta %d pedidos sin cobrar, quiere 1 (el #%d)", vista.UncollectedCount, fiado.Number)
+	}
+
+	// Al cerrar, la cifra VIAJA en la vista del corte cerrado: es ahí donde alguien la audita
+	// después, cuando ya nadie se acuerda del turno.
+	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
+	cerrado, err := backoffice.CloseSession(ctx, principal, cajero, declarado, "")
+	if err != nil {
+		t.Fatalf("CloseSession: %v", err)
+	}
+	if !cerrado.Uncollected.Equal(quiere) {
+		t.Fatalf("el corte cerrado dice $%s entregado sin cobrar, quiere $%s: si la cifra solo vive "+
+			"mientras el turno está abierto, nadie la ve cuando importa", cerrado.Uncollected, quiere)
+	}
+
+	// Y en el DETALLE del corte, que es la pantalla que alguien abre semanas después. Ahí las dos
+	// cifras tienen que cerrar la resta: lo vendido = lo que entró por método + lo que no entró.
+	// Sin el tercer sumando, quien audita ve $150 vendidos contra $50 esperados y no tiene con qué
+	// explicar los otros $100.
+	det, err := backoffice.SessionDetail(ctx, cerrado.ID)
+	if err != nil {
+		t.Fatalf("SessionDetail: %v", err)
+	}
+	if !det.Uncollected.Equal(quiere) {
+		t.Fatalf("el detalle del corte dice $%s sin cobrar, quiere $%s", det.Uncollected, quiere)
+	}
+	var porMetodo decimal.Decimal
+	for _, m := range det.Totals {
+		porMetodo = porMetodo.Add(m.Expected)
+	}
+	if !det.SalesTotal.Equal(porMetodo.Add(det.Uncollected)) {
+		t.Fatalf("el corte vendió $%s, esperó $%s por método y declara $%s sin cobrar: la resta no "+
+			"cierra y quien audita no puede saber cuál de las tres cifras miente",
+			det.SalesTotal, porMetodo, det.Uncollected)
+	}
+}

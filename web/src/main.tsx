@@ -5,6 +5,7 @@ import '@fontsource-variable/inter';
 import { Provider } from './components/ui/provider';
 import { Toaster } from './components/ui/toaster';
 import { App } from './App';
+import { PantallaQueNoSeCae } from './app/PantallaQueNoSeCae';
 import { registrarLimpiezaDeTenant } from './stores/session';
 import { useTicketStore } from './stores/ticket';
 import { initPwa } from './shared/pwa/registerPwa';
@@ -25,7 +26,12 @@ createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <Provider defaultTheme="light" enableSystem>
-        <App />
+        {/* La barrera envuelve a <App/> y NO al árbol entero: por dentro del Provider, para que la
+            pantalla de salida se pinte con el tema y los tokens de siempre; y sin envolver al
+            <Toaster/>, que es lo único que puede seguir hablando si App se cayó. */}
+        <PantallaQueNoSeCae>
+          <App />
+        </PantallaQueNoSeCae>
         <Toaster />
       </Provider>
     </QueryClientProvider>
