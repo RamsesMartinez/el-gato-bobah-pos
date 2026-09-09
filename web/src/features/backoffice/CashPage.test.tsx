@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale } from '../../api/backoffice';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno } from '../../api/backoffice';
+import { diferenciasDelCierre } from './cierreDeCaja';
+import type { ResultadoDelConteo } from './conteo';
 
 // Render con el Provider de Chakra (los componentes usan su sistema de temas).
 function wrap(ui: React.ReactElement) {
@@ -54,8 +57,8 @@ test('MovementsTable excluye la salida de gasto y etiqueta los tipos', () => {
 
 test('TotalsTable con withTotalRow agrega la fila Total', () => {
   const totals: MethodTotal[] = [
-    { methodId: 1, name: 'Efectivo', expected: '115', declared: '115', difference: '0', autoDeclare: false },
-    { methodId: 2, name: 'Tarjeta', expected: '50', declared: '50', difference: '0', autoDeclare: true },
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '115', declared: '115', difference: '0', autoDeclare: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '50', declared: '50', difference: '0', autoDeclare: true },
   ];
   wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow />);
   expect(screen.getByText('Efectivo')).toBeInTheDocument();
@@ -158,6 +161,8 @@ function corteCon(over: Partial<CashSessionDetail>): CashSessionDetail {
     notes: null, totals: [], movements: [], expenses: [],
     breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
     sales: ventas, salesCount: 2, salesShown: 2, salesTotal: '100.00',
+    // Los cortes anteriores a la 0066 no tienen desglose, y son la mayoría de los que existen.
+    counts: null,
     ...over,
   };
 }
@@ -174,4 +179,125 @@ test('sin los campos del backend la sección no se dibuja, en vez de decir que n
   const { container } = render(<Provider><VentasDelCorte session={viejo} /></Provider>);
   expect(screen.queryByText(/no cobró ninguna venta/i)).not.toBeInTheDocument();
   expect(container.querySelector('table')).toBeNull();
+});
+
+
+// LA DIFERENCIA SE VE ANTES DE TOCAR «CERRAR CAJA» (FR-005).
+//
+// Antes de esta feature la única tabla con columna de diferencia se pintaba en el diálogo POSTERIOR
+// al cierre: el operador firmaba el arqueo y se enteraba del faltante cuando ya no había nada que
+// corregir.
+describe('el cierre en vivo', () => {
+  const delCierre: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '340', declared: '0', difference: '0', autoDeclare: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '80', declared: '0', difference: '0', autoDeclare: true },
+  ];
+
+  function pintaCierre(conteo: ResultadoDelConteo | null, declarado: Record<string, string> = {}) {
+    const declaradoPorMetodo: Record<number, number | undefined> = {
+      1: conteo ? conteo.total : undefined,
+      2: undefined,
+    };
+    const diferencias = diferenciasDelCierre(delCierre, declaradoPorMetodo);
+    return wrap(
+      <>
+        <TablaDelCierre totals={delCierre} currency="MXN" declared={declarado}
+          onDeclared={() => {}} conteo={conteo} onContar={() => {}} diferencias={diferencias} />
+        <DiferenciaDelCierre diferencias={diferencias} currency="MXN" />
+      </>,
+    );
+  }
+
+  test('con piezas que suman menos de lo esperado, el faltante ya está en pantalla', () => {
+    // El cajón debía tener $340 y se contaron $290.
+    pintaCierre({ counts: [{ denominationId: 6, pieces: 5 }], total: 290 });
+    expect(screen.getByLabelText('Diferencia de Efectivo')).toHaveTextContent('-$50');
+    expect(screen.getByLabelText('Diferencia del arqueo')).toHaveTextContent('-$50');
+    expect(screen.getByText('Faltante')).toBeInTheDocument();
+  });
+
+  test('un conteo exacto dice que el arqueo cuadra', () => {
+    pintaCierre({ counts: [{ denominationId: 6, pieces: 7 }], total: 340 });
+    expect(screen.getByText('El arqueo cuadra')).toBeInTheDocument();
+  });
+
+  test('sin conteo el efectivo no muestra una diferencia inventada', () => {
+    // Un campo sin capturar valdría cero y reportaría -$340 de faltante: es el defecto del corte de
+    // $1,662, que mandó a buscar dinero que estaba en el cajón.
+    pintaCierre(null);
+    expect(screen.getByLabelText('Diferencia de Efectivo')).toHaveTextContent('—');
+    expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
+  });
+
+  test('el efectivo se cuenta desde un botón, no se teclea', () => {
+    pintaCierre(null);
+    expect(screen.getByText('Contar efectivo')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Declarado de Efectivo')).not.toBeInTheDocument();
+  });
+
+  test('con el conteo hecho, el botón muestra la cifra contada', () => {
+    // Por rol y no por texto: el esperado de la fila también es $340 cuando el conteo cuadra, que es
+    // justo el caso normal.
+    pintaCierre({ counts: [{ denominationId: 6, pieces: 7 }], total: 340 });
+    expect(screen.getByRole('button', { name: '$340' })).toBeInTheDocument();
+  });
+});
+
+
+// EL DESGLOSE, QUE ES LA RAZÓN DE GUARDARLO (US3).
+describe('el desglose de lo contado', () => {
+  const conPiezas: ConteosDelTurno = {
+    apertura: null,
+    cierre: {
+      total: '290', manualReason: null,
+      lines: [
+        { value: '100.00', isCoin: false, pieces: 2, subtotal: '200.00' },
+        { value: '20.00', isCoin: false, pieces: 4, subtotal: '80.00' },
+        { value: '10.00', isCoin: true, pieces: 1, subtotal: '10.00' },
+      ],
+    },
+  };
+
+  test('un corte contado muestra piezas y subtotal por denominación', async () => {
+    wrap(<DesgloseDelConteo counts={conPiezas} currency="MXN" />);
+    await userEvent.click(screen.getByText('Efectivo contado'));
+    expect(screen.getByText('Al cerrar')).toBeInTheDocument();
+    expect(screen.getByText('$100')).toBeInTheDocument();
+    expect(screen.getByText('$80')).toBeInTheDocument();
+  });
+
+  test('la moneda de menos de un peso se nombra en centavos', async () => {
+    const cincuenta: ConteosDelTurno = {
+      apertura: { total: '3.5', manualReason: null, lines: [{ value: '0.50', isCoin: true, pieces: 7, subtotal: '3.50' }] },
+      cierre: null,
+    };
+    wrap(<DesgloseDelConteo counts={cincuenta} currency="MXN" />);
+    await userEvent.click(screen.getByText('Efectivo contado'));
+    expect(screen.getByText('50¢')).toBeInTheDocument();
+  });
+
+  test('un arqueo capturado a mano muestra el motivo en vez de piezas', async () => {
+    const aMano: ConteosDelTurno = {
+      apertura: null,
+      cierre: { total: '340', manualReason: 'había un billete que no está en la lista', lines: [] },
+    };
+    wrap(<DesgloseDelConteo counts={aMano} currency="MXN" />);
+    await userEvent.click(screen.getByText('Efectivo contado'));
+    expect(screen.getByText(/había un billete que no está en la lista/)).toBeInTheDocument();
+    expect(screen.queryByText('Denominación')).not.toBeInTheDocument();
+  });
+
+  // El caso de TODOS los cortes que ya existen: no se pinta nada, y menos un aviso que hable del
+  // sistema. Que el corte no tenga desglose no es algo que el operador pueda accionar.
+  test('un corte anterior a la funcionalidad no pinta nada', () => {
+    wrap(<DesgloseDelConteo counts={null} currency="MXN" />);
+    // Ni la sección, ni un aviso de que no hay desglose: es una historia del sistema que quien
+    // audita no puede accionar.
+    expect(screen.queryByText('Efectivo contado')).not.toBeInTheDocument();
+  });
+
+  test('un corte con los dos momentos en null tampoco', () => {
+    wrap(<DesgloseDelConteo counts={{ apertura: null, cierre: null }} currency="MXN" />);
+    expect(screen.queryByText('Efectivo contado')).not.toBeInTheDocument();
+  });
 });
