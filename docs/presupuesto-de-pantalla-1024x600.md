@@ -165,6 +165,45 @@ Costó un falso hallazgo: se reportó que el botón de imprimir violaba el piso 
 era cierto — la medición estaba mal, no el botón. **Un assert de píxeles sobre un diálogo espera a
 que la animación termine**, no a `toBeVisible()`. Los tests de este repo esperan 600 ms.
 
+# Medición del 9 de septiembre de 2026 — el conteo de efectivo (spec 003)
+
+## `/caja` no tiene dónde poner una rejilla, y por eso el contador es una hoja
+
+Estas cifras se midieron el **8 de septiembre** al planear la feature, y se traen aquí porque es
+donde se buscan; lo que se midió el 9 es la hoja de la sección siguiente. Escenario **más vacío
+posible** (turno con $0 en todo, sin pedidos pendientes, sin "sin cobrar", un solo cajero) a
+1024×600:
+
+| | |
+|---|---|
+| Alto total de `/caja` | **1,494 px** contra un viewport de 600 |
+| Encabezado + tabs + chips + resumen del corte | **572 px** — deja 28 px de los 600 |
+| Título "Cierre — declarado por método" | y = **727** |
+| El renglón "Efectivo", donde iría la rejilla | y = **796** a 849 |
+| Botón "Cerrar caja" | y = **1,426** |
+
+Con cualquier dato real esos números solo empeoran. El punto de inserción ya está **200 px debajo
+del fold** antes de dibujar el primer renglón, así que ninguna rejilla, por compacta que sea, cumple
+el requisito de caber sin empujar el resumen fuera de vista.
+
+## La hoja del contador: 552 px de 600
+
+Medida con la hoja abierta y el catálogo cargado (once denominaciones en dos columnas, agrupadas en
+billetes y monedas):
+
+| | |
+|---|---|
+| Alto de la hoja | **552 px** de 600 (es el `maxH="92dvh"`) |
+| La moneda de 50¢ —último renglón— | **alcanzable sin desplazarse** |
+| El total y el botón de confirmar | visibles, incluso con la ventana recortada a 350 px |
+
+El recorte a 350 px es cómo se mide el teclado numérico sin poder abrirlo: se come ~250 px de
+ventana visual, y con `vh` en vez de `dvh` el botón se iría debajo de él.
+
+**El margen es de 48 px, y no sobra tanto como parece**: agregar un renglón al encabezado de la
+hoja —un subtítulo, un aviso permanente— se lo come. El aviso de "al cambiar se borra lo capturado"
+es condicional a propósito.
+
 ## Lo que sigue sin medirse
 
 - **El teclado del sistema de verdad.** Chromium headless no lo abre; lo que el e2e mide es la
