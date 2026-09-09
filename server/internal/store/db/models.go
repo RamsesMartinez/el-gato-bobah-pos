@@ -643,6 +643,15 @@ type BusinessSetting struct {
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
 }
 
+type CashDenomination struct {
+	ID       int64           `json:"id"`
+	Currency string          `json:"currency"`
+	Value    decimal.Decimal `json:"value"`
+	IsCoin   bool            `json:"is_coin"`
+	SortKey  int32           `json:"sort_key"`
+	IsActive bool            `json:"is_active"`
+}
+
 type CashRegister struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -1123,6 +1132,25 @@ type RegisterSessionTotal struct {
 	Declared        decimal.Decimal  `json:"declared"`
 	Difference      *decimal.Decimal `json:"difference"`
 	Tips            decimal.Decimal  `json:"tips"`
+}
+
+type SessionCashCount struct {
+	ID           int64           `json:"id"`
+	SessionID    int64           `json:"session_id"`
+	Moment       interface{}     `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+	CompanyID    int64           `json:"company_id"`
+}
+
+type SessionCashCountLine struct {
+	ID             int64 `json:"id"`
+	CountID        int64 `json:"count_id"`
+	DenominationID int64 `json:"denomination_id"`
+	Pieces         int32 `json:"pieces"`
+	CompanyID      int64 `json:"company_id"`
 }
 
 type StockLevel struct {
