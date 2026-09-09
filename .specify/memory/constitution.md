@@ -225,6 +225,22 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
   - Vara para revisar una pantalla: **si el renglón solo tiene sentido para alguien que leyó el código, no va.**
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
+- **El local tiene conexión, y el sistema puede contar con ella** (decidido el 2026-09-08). No se
+  construye captura sin red: el servidor es la única fuente de verdad y una pantalla puede exigirlo.
+  Offline no está descartado — está **aplazado**, porque hoy no devuelve nada y cuesta resolver
+  reconciliación e idempotencia por producto.
+
+  Lo que esta decisión NO autoriza: **quitar** lo que ya funciona sin red. El carrito del POS vive
+  en `egb:ticket:v2` y hoy una caída de wifi no detiene la captura; convertir cada toque en un viaje
+  al servidor sería un retroceso para quien opera, no una simplificación. Una feature nueva puede
+  exigir conexión; ninguna puede volver dependiente de la red algo que hoy no lo es sin decirlo en
+  su spec y aceptar ese costo por escrito.
+- **Se construye para un local y se diseña para varios** (decidido el 2026-09-08). Hoy el único
+  cliente es El Gato Bobah, pero el producto se va a vender a otras empresas y a cadenas. La
+  consecuencia práctica es que **el modelo de operación deja de ser dato conocido**: cuántas cajas
+  cobran, si hay meseros identificados y cuántas sucursales tiene una empresa los decide un cliente
+  que todavía no existe. Por eso las puertas del principio VIII no son hipótesis: son requisitos con
+  fecha desconocida, y cerrar una es cerrarla para un cliente que ya firmó.
 - **Dependencias siempre en la última versión estable**, y **un CVE bloquea el merge**: `govulncheck` (Go) y `bun audit --audit-level=high` (web) son bloqueantes en CI y no se aflojan.
 
 ## Quality gates
@@ -254,4 +270,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.8.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-08
+**Version**: 1.9.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-08
