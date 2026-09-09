@@ -116,17 +116,62 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// GET /cash/denominations?currency= — qué piezas se pueden contar.
+//
+// La moneda es un parámetro de frontera: uno desconocido se RECHAZA y no cae a MXN en silencio. Un
+// catálogo que se ve correcto para la moneda equivocada deja al operador contando piezas que no
+// existen en su cajón, y el total sale de ahí.
+func (h *Handlers) CashDenominations(w http.ResponseWriter, r *http.Request) {
+	moneda := domain.DefaultCurrency
+	if q := r.URL.Query().Get("currency"); q != "" {
+		moneda = domain.Currency(q)
+		if !moneda.Valid() {
+			Error(w, domain.ErrValidation)
+			return
+		}
+	}
+	items, err := h.backoffice.Denominations(r.Context(), moneda)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// piezasBody: lo que la pantalla manda cuando el operador contó el cajón.
+//
+// El total NO viaja aquí: si viniera junto a las piezas habría dos cifras del mismo dinero, y el
+// servidor tendría que elegir. Los dos caminos van en campos distintos justo para poder rechazar
+// que lleguen los dos (FR-015).
+type piezasBody struct {
+	DenominationID int64 `json:"denominationId"`
+	Pieces         int   `json:"pieces"`
+}
+
+func aperturaDelBody(piezas []piezasBody, total *decimal.Decimal, motivo string) app.AperturaCmd {
+	cmd := app.AperturaCmd{Total: total, Motivo: motivo}
+	for _, p := range piezas {
+		cmd.Piezas = append(cmd.Piezas, app.PiezaCapturada{DenominationID: p.DenominationID, Pieces: p.Pieces})
+	}
+	return cmd
+}
+
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RegisterID  int64           `json:"registerId"`
-		OpeningCash decimal.Decimal `json:"openingCash"`
+		RegisterID int64        `json:"registerId"`
+		Counts     []piezasBody `json:"counts"`
+		// OpeningCash sigue llamándose igual para no romper el nombre que la pantalla ya usa, pero
+		// ahora es el camino MANUAL: exige `manualReason` y es excluyente con `counts`.
+		OpeningCash  *decimal.Decimal `json:"openingCash"`
+		ManualReason string           `json:"manualReason"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, body.OpeningCash, u.ID)
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID,
+		aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason), u.ID)
 	if err != nil {
 		Error(w, err)
 		return

@@ -99,27 +99,27 @@ fondo registrado es $210, sin que nadie haya escrito "210".
 
 ### Backend
 
-- [ ] T008 [P] [US1] Escribir `server/internal/integration/conteo_apertura_test.go`, en rojo: abrir
+- [X] T008 [P] [US1] Escribir `server/internal/integration/conteo_apertura_test.go`, en rojo: abrir
       con piezas deja `register_sessions.opening_cash` en la suma exacta; **el total que mande el
       cliente junto a las piezas se ignora** (mandar piezas por $210 y `openingCash: 999` deja 210);
       abrir por el camino manual exige `manualReason` y lo guarda; mandar los dos caminos a la vez
       se rechaza; abrir sin ninguno de los dos se rechaza, salvo piezas vacías; y **una denominación
       de otra moneda se rechaza** con validación, no se suma (FR-011).
-- [ ] T009 [US1] Escribir el test que prueba que **la apertura es atómica**, en
+- [X] T009 [US1] Escribir el test que prueba que **la apertura es atómica**, en
       `conteo_apertura_test.go`: si el conteo falla después de crear la sesión, no queda una sesión
       abierta sin conteo y sin motivo. Hoy `OpenSession` no usa `WithTx` porque hace un solo
       `insert`; con el conteo son tres escrituras, y una sesión huérfana además **bloquea la caja**
       por `one_open_session_per_register` hasta arreglarla a mano.
-- [ ] T010 [US1] Cambiar `BackofficeService.OpenSession` en `server/internal/app/backoffice.go`:
+- [X] T010 [US1] Cambiar `BackofficeService.OpenSession` en `server/internal/app/backoffice.go`:
       recibe piezas o total+motivo, valida por `domain`, recalcula el total en el servidor y escribe
       las tres filas dentro de **un solo** `s.store.WithTx`. Valida además que **cada denominación
       sea de la moneda de la sesión** (`register_sessions.currency`): la regla la declara el plan y
       no la hacía cumplir nadie. Un turno en USD que recibe ids de MXN suma un fondo sin significado,
       y el arqueo después cuadra contra una cifra imposible.
-- [ ] T011 [US1] Handler `GET /cash/denominations` en
+- [X] T011 [US1] Handler `GET /cash/denominations` en
       `server/internal/httpapi/handlers_backoffice.go` + su ruta en `router.go`. La moneda es un
       parámetro de frontera: **un valor desconocido se rechaza**, no cae a MXN en silencio.
-- [ ] T012 [US1] Adaptar el handler de apertura al cuerpo nuevo de
+- [X] T012 [US1] Adaptar el handler de apertura al cuerpo nuevo de
       [contracts/api.md](./contracts/api.md). Handler fino: decodifica, arma el `cmd`, llama al
       servicio, mapea el error.
 

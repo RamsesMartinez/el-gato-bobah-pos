@@ -34,7 +34,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
@@ -98,7 +98,7 @@ func TestUnPedidoCanceladoNoBloqueaElCierre(t *testing.T) {
 	prod := makeProduct(t, st, "Café cancelado", decimal.RequireFromString("50"), false)
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{

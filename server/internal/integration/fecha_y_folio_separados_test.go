@@ -252,7 +252,7 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	svc := app.NewOrdersService(st, clock)
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := back.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("abrir el primer turno: %v", err)
 	}
 	primera, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
@@ -275,7 +275,7 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	if _, err := back.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
 		t.Fatalf("cerrar el turno ya sin pendientes: %v", err)
 	}
-	if _, err := back.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("reabrir el mismo día: %v", err)
 	}
 
