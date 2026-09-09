@@ -29,7 +29,7 @@ aritmética de dinero: el test se escribe **antes** y se ve fallar por la razón
 
 ## Fase 1: Setup
 
-- [ ] T001 Confirmar que `server/migrations/` no tiene un `0066` sin mergear en otra rama viva
+- [X] T001 Confirmar que `server/migrations/` no tiene un `0066` sin mergear en otra rama viva
       (`git branch -a` + `git ls-tree`), antes de tomar el número.
 
 ---
@@ -40,7 +40,7 @@ aritmética de dinero: el test se escribe **antes** y se ve fallar por la razón
 
 ### El esquema
 
-- [ ] T002 Escribir el test de integración de la migración en
+- [X] T002 Escribir el test de integración de la migración en
       `server/internal/integration/migracion_conteo_de_efectivo_test.go`, **antes** de la migración
       (`scripts/hooks/migracion-con-test.sh` lo exige, y la 0037 es por qué). Corre contra Postgres
       real, con **al menos dos empresas** —con una sola, todo camino "por cada otra empresa" es un
@@ -58,13 +58,13 @@ aritmética de dinero: el test se escribe **antes** y se ve fallar por la razón
       - borrar una denominación referenciada por un conteo **falla** (`on delete restrict`), y no se
         lleva en silencio piezas de un arqueo firmado;
       - el `Down` deja el esquema como estaba.
-- [ ] T003 Escribir `server/migrations/0066_conteo_de_efectivo.sql` con las tres tablas de
+- [X] T003 Escribir `server/migrations/0066_conteo_de_efectivo.sql` con las tres tablas de
       [data-model.md](./data-model.md) hasta que T002 pase: `cash_denominations` (global, con su
       `revoke insert, update, delete … from gatobobah_app`), `session_cash_counts` y
       `session_cash_count_lines` (las dos con `company_id` por default del GUC, `enable row level
       security`, policy `tenant_isolation`, grant sin `update` ni `delete`, y **FK compuestas**).
       Abre con `set local lock_timeout = '3s'`. `Down` gemelo, en orden inverso de FK.
-- [ ] T004 Correr la migración contra un respaldo anonimizado de producción
+- [X] T004 Correr la migración contra un respaldo anonimizado de producción
       (`make respaldo-anonimo`) y confirmar que aplica y revierte sin tocar datos vivos.
 
 ### Las consultas
