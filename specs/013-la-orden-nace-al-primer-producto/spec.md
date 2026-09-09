@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-05
 
-**Status**: Draft — bloqueado por las *Decisiones aplazadas*, no pasa a plan
+**Status**: Draft — desbloqueado el 2026-09-08, listo para `/speckit-plan`
 
 **Input**: Ver *Origen* al final.
 
@@ -103,26 +103,22 @@ cancelada.
 
 ---
 
-### User Story 4 - Sin red se sigue capturando (Priority: P2)
+### ~~User Story 4 - Sin red se sigue capturando~~ — FUERA DE ALCANCE (2026-09-08)
 
-Si la tableta pierde la red a media captura, quien atiende sigue agregando productos y el servidor
-se pone al día cuando vuelve.
+Se retira por decisión del dueño: *"por ahora, 100% internet... no es el foco del desarrollo ni
+generará retorno aún."* La captura exige conexión y el servidor es la única fuente de verdad.
 
-**Why this priority**: Hoy el carrito es local y una caída de wifi no detiene a nadie. Convertir cada
-toque en un viaje a la red sin resolver esto empeoraría el sistema para quien lo usa, que es lo
-contrario de lo que esta feature busca.
+Era la historia más cara del spec —cola local, reconciliación al volver la red, idempotencia por
+producto para no duplicar ni perder— y la que menos devuelve hoy, con un local que siempre tiene
+conexión.
 
-**Independent Test**: Capturar productos con la red cortada, restablecerla, y comprobar que la orden
-del servidor quedó con todos los productos y una sola vez cada uno.
+**El costo que se acepta, por escrito:** hoy el carrito vive en la tableta y una caída de wifi NO
+detiene a nadie. Al nacer la orden en el servidor con el primer producto, un módem que parpadee sí
+detiene la captura, y en hora pico eso es una fila. Es un retroceso conocido, no un descuido.
 
-**Acceptance Scenarios**:
-
-1. **Given** la red caída, **When** se agregan productos, **Then** la pantalla los muestra y no
-   bloquea nada.
-2. **Given** esos productos capturados sin red, **When** la red vuelve, **Then** la orden del
-   servidor queda con todos ellos, sin duplicados y sin faltantes.
-3. **Given** la red caída, **When** se intenta cobrar, **Then** se dice que no se puede y por qué —
-   cobrar sí necesita el servidor.
+**Lo que el plan SÍ debe resolver, porque no es offline:** que un fallo de red al agregar un
+producto se vea y se pueda reintentar, en vez de perderse en silencio. Un producto que la pantalla
+muestra y el servidor no tiene es la peor de las dos opciones.
 
 ---
 
@@ -131,9 +127,8 @@ del servidor quedó con todos los productos y una sola vez cada uno.
 - **La orden nace sin caja abierta.** Crear un pedido exige turno abierto. Hoy el POS ni siquiera
   muestra la pantalla de venta sin caja, así que el caso no debería llegar — pero la regla tiene que
   decir qué pasa si llega, porque ahora crear ocurre en el primer toque y no en el confirmar.
-- **Una orden en "cargando" al cerrar la caja.** Cerrar exige que no queden pedidos abiertos ni
-  listos. Un borrador no es ninguno de los dos: hay que decidir si bloquea el cierre o no. Si no
-  bloquea, queda colgando de un turno cerrado.
+- **Una orden en "cargando" al cerrar la caja.** DECIDIDO: no bloquea, y no queda colgando de nada
+  porque el borrador no nace atado a un turno — se amarra al confirmar. Ver *Decisiones del modelo*.
 - **Un borrador de las 23:50 confirmado a las 00:10.** La fecha de la venta la da el reloj
   ([008](../008-fecha-y-folio-separados/spec.md)). Tiene que sellarse al **confirmar**, no al nacer
   el borrador, o se reintroduce el defecto que esa feature cerró.
@@ -170,9 +165,19 @@ del servidor quedó con todos los productos y una sola vez cada uno.
   venta cancelada: no son lo mismo y no pueden leerse igual en un reporte.
 - **FR-009**: El selector de cuentas MUST mostrar el nombre de la orden, y su número solo cuando ya
   exista.
-- **FR-010**: Sin red, capturar MUST seguir funcionando, y el servidor MUST quedar al día al volver,
-  sin productos duplicados ni faltantes.
+- **FR-010**: ~~Sin red, capturar MUST seguir funcionando~~ — **RETIRADO el 2026-09-08** con la US4.
+  La captura exige conexión; el costo aceptado está escrito en esa historia.
 - **FR-011**: Cobrar MUST seguir exigiendo servidor y MUST decirlo con claridad cuando no lo haya.
+- **FR-012**: Un fallo de red al agregar un producto MUST verse y MUST poder reintentarse. El
+  producto MUST NOT quedar pintado en la pantalla si el servidor no lo tiene: una cuenta que muestra
+  algo que no existe es peor que un error, porque se cobra tarde y nadie lo audita.
+- **FR-013**: La orden en captura MUST NOT nacer atada a un turno de caja. El vínculo con
+  `register_session_id` MUST establecerse al confirmarse. (Ver *Decisiones del modelo*: es lo único
+  irreversible del spec.)
+- **FR-014**: La orden en captura MUST registrar quién la capturó desde que nace (`opened_by`), aun
+  cuando hoy las dos tabletas compartan cuenta: es el dato que no se puede recuperar después.
+- **FR-015**: Un borrador abandonado MUST limpiarse por edad y MUST NOT depender del cierre del
+  turno, que es consecuencia de FR-013. El plazo lo fija el plan.
 
 ### Key Entities
 
@@ -219,11 +224,11 @@ del servidor quedó con todos los productos y una sola vez cada uno.
 | Cada toque de producto pasa a tocar el servidor | Hoy el carrito es local e instantáneo. La US4 existe para que eso no se note, y es la parte más difícil de la feature |
 | El consecutivo avanza con cada abandono | El último folio del día será mayor que el número de ventas. Hay que decirlo donde se lea, o parecerá que faltan pedidos |
 
-## Decisiones aplazadas — el modelo de cajas y meseros
+## Decisiones del modelo — tomadas el 2026-09-08
 
-Tres bordes de este spec **no se pueden cerrar sin decidir antes cuántas cajas venden y de quién es
-una orden en captura**. Contestarlos por separado fijaría ese modelo por accidente, así que quedan
-aquí, nombrados, para resolverse juntos.
+Tres bordes de este spec no se podían cerrar sin saber cuántas cajas venden y de quién es una orden
+en captura. Se resolvieron juntas, que era el punto de dejarlas escritas en vez de contestarlas por
+separado.
 
 ### Lo que hoy es cierto, medido
 
@@ -236,37 +241,42 @@ aquí, nombrados, para resolverse juntos.
 | Tabletas | 2, compartiendo la MISMA cuenta de usuario |
 | Pedidos por día | 4 a 10 |
 
-O sea: hoy el sistema es de **una caja que vende y dos estaciones que capturan con la misma
-identidad**. Las otras dos cajas existen para traspasos y gastos, no para cobrar.
+### La respuesta del dueño
 
-### Los tres bordes que dependen de eso
+> *"Hoy para El Gato Bobah, pero debe estar pensado que soporte el crecimiento de una vez a varias
+> empresas, cadenas, etc."* y *"por ahora, 100% internet; ya llegará un momento cuando nos
+> detengamos a optimizarlo para pensar en offline — por ahora no es el foco del desarrollo ni
+> generará retorno aún."*
 
-1. **¿Una orden en captura bloquea el cierre de caja?** Hoy cerrar exige que no queden pedidos
-   abiertos ni listos. Un borrador no es ninguno de los dos. Con una sola caja que vende, "cerrar"
-   es un evento del negocio y bloquear tiene sentido; con N cajas vendiendo, cerrar una no debería
-   detener lo que se captura para otra.
-2. **¿Quién limpia los borradores abandonados?** Con una caja, atarlos al cierre del turno es
-   natural. Con varias, un borrador no sabría de qué turno colgarse hasta que se confirme.
-3. **¿Quién gana si dos tabletas tocaron el mismo borrador?** Con dos estaciones compartiendo cuenta,
-   el conflicto es entre dos personas del mismo mostrador. Con meseros identificados, la orden tiene
-   dueño y la regla cambia: gana el mesero de la mesa, no el último que sincronizó.
+**Se construye para un local y se diseña para varios.** El modelo de operación deja de ser dato
+conocido: cuántas cajas cobran y si hay meseros identificados lo decide un cliente que todavía no
+existe. No se construye nada de eso hoy; tampoco se toma la decisión que lo impida.
 
-### La pregunta que hay que responder primero
+### Cómo quedan los tres bordes
 
-**¿Hacia dónde escala este negocio?** No es lo mismo diseñar para una caja con dos estaciones que
-para N cajas con meseros identificados. Lo que este spec NO debe hacer es cerrar la puerta a lo
-segundo por resolver lo primero de la forma más corta.
+1. **El borrador nace SIN caja y se amarra al confirmar.** Es la única decisión irreversible del
+   spec y por eso es la que se cuida: un borrador que nace atado a `register_session_id` fija que
+   solo una caja captura, y desatarlo después exigiría repartir entre cajas pedidos que ya existen
+   en la base de un cliente en operación — y a cuál pertenecía cada uno no se puede adivinar.
+   Amarrarlo tarde cuesta lo mismo hoy.
+2. **Un borrador NO bloquea el cierre de caja**, porque no cuelga de ninguna. Cerrar sigue exigiendo
+   que no queden pedidos abiertos ni listos, que es la regla de hoy y no cambia. Un borrador sin
+   confirmar no es comida que va a salir ni dinero que se decidió.
+3. **Los borradores abandonados se limpian por edad, no por cierre de turno.** Es la consecuencia de
+   (1) y (2): sin caja de la cual colgarse, el turno no puede ser quien los barra. El plan define el
+   plazo; lo que este spec fija es que la limpieza NO se ata al cierre.
+4. **Si dos tabletas tocan el mismo borrador, gana el servidor.** Con conexión obligatoria no hay
+   historias divergentes que reconciliar: el servidor es la única fuente y la otra tableta ve el
+   estado real en cuanto refresca. La regla de "gana el mesero de la mesa" se escribirá el día que
+   exista mesero, y no antes.
 
-Dos cosas que ya empujan en esa dirección y conviene mirar juntas:
+### Lo que sigue SIN construirse, con su puerta abierta
 
-- **`register_session_id` en el pedido.** Hoy lo hereda de la caja principal. Si un borrador nace
-  antes de confirmarse, hay que decidir si nace ya atado a una caja o si se ata al confirmar. Atarlo
-  tarde es lo que deja la puerta abierta a varias cajas.
-- **Dos estaciones comparten cuenta.** Mientras eso siga siendo así, "de quién es esta orden" no
-  tiene respuesta en los datos. Identificar al mesero es un cambio anterior a este, no posterior.
-
-Hasta que eso se decida, este spec queda **sin planear**: sus US1, US2 y US3 están completas y no
-dependen del modelo, pero los tres bordes de arriba sí.
+- **Identificar quién captura.** Las dos tabletas siguen compartiendo cuenta. La puerta queda
+  abierta porque `orders.opened_by` ya existe y el borrador lo llena desde que nace: el día que cada
+  estación tenga su usuario, el dato histórico distingue solo. Darle cuenta propia a cada tableta es
+  configuración, no migración.
+- **Varias cajas cobrando a la vez.** Nada de este spec la asume, que es justo lo que decide (1).
 
 ## Out of Scope
 
