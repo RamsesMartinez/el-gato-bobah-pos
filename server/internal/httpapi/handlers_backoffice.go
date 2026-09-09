@@ -148,12 +148,20 @@ type piezasBody struct {
 	Pieces         int   `json:"pieces"`
 }
 
-func aperturaDelBody(piezas []piezasBody, total *decimal.Decimal, motivo string) app.AperturaCmd {
-	cmd := app.AperturaCmd{Total: total, Motivo: motivo}
-	for _, p := range piezas {
-		cmd.Piezas = append(cmd.Piezas, app.PiezaCapturada{DenominationID: p.DenominationID, Pieces: p.Pieces})
+// piezasDelBody traduce los renglones del cuerpo, sin decidir nada: quién valida es el servicio.
+func piezasDelBody(piezas []piezasBody) []app.PiezaCapturada {
+	if len(piezas) == 0 {
+		return nil
 	}
-	return cmd
+	out := make([]app.PiezaCapturada, 0, len(piezas))
+	for _, p := range piezas {
+		out = append(out, app.PiezaCapturada{DenominationID: p.DenominationID, Pieces: p.Pieces})
+	}
+	return out
+}
+
+func aperturaDelBody(piezas []piezasBody, total *decimal.Decimal, motivo string) app.AperturaCmd {
+	return app.AperturaCmd{Piezas: piezasDelBody(piezas), Total: total, Motivo: motivo}
 }
 
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +206,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RegisterID int64                      `json:"registerId"`
 		Declared   map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
-		Notes      string                     `json:"notes"`
+		Counts     []piezasBody               `json:"counts"`   // el efectivo, contado por denominaciones
+		// ManualReason es obligatorio cuando el efectivo viene en `declared` en vez de contado
+		// (FR-014): sin él quedaría un arqueo con una cifra que nadie puede reconstruir.
+		ManualReason string `json:"manualReason"`
+		Notes        string `json:"notes"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -217,7 +229,10 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		declared[id] = v
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
+	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		Declarado: declared, Piezas: piezasDelBody(body.Counts),
+		Motivo: body.ManualReason, Notas: body.Notes,
+	})
 	if err != nil {
 		Error(w, err)
 		return
