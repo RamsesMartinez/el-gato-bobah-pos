@@ -212,9 +212,17 @@ por el riesgo de dedazo. Le falta el caso de bulto: **si tocar es +1, contar 40 
 taps**, y eso está dentro del tope de SC-003 (menos de 60 piezas en menos de 2 minutos). Un campo
 numérico son cuatro.
 
-El contador hace las dos cosas: **tap +/− para ajustes chicos** —que es lo que conserva la sensación
-de ver el total subir— y **el número es editable**, así que tocarlo abre el teclado una sola vez y
-se escribe 40. La vara de UX del POS es minimizar taps, y 40 taps para una denominación la rompe.
+El contador hace las dos cosas, pero **no en el mismo orden que decía este plan** (corregido el
+2026-09-09, decisión del dueño): el camino principal es **teclear el número de piezas en el campo de
+su denominación**, porque es como se cuenta en la operación diaria — se agarra el montón de monedas
+de $1, se cuentan, y se escribe. El `+`/`−` queda como **ajuste opcional** para corregir una pieza
+de más o de menos sin volver a teclear, y por eso son dos controles chicos al lado del campo, no la
+tecla grande de la que cuelga todo.
+
+Por qué importa el orden y no es cosmética: si el `+` es el gesto principal, el campo se diseña como
+escape y termina angosto y apretado entre las dos teclas; con el campo como principal, es él el que
+se lleva el ancho y el alto de toque, y las teclas se acomodan alrededor. La vara de UX del POS es
+minimizar taps, y 40 taps para una denominación la rompe.
 
 ## El interruptor entre los dos caminos
 
