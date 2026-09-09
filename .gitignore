@@ -45,3 +45,10 @@ web/test-results/
 web/playwright-report/
 # Marca del teardown de Playwright: qué pedidos ya estaban abiertos al empezar la suite.
 web/.playwright-abiertos.json
+
+# Permisos locales de Claude Code: dan SSH a las VPS y son de esta máquina.
+# El repo es público y la sesión de gcloud es personal — no se comparte.
+.claude/settings.local.json
+
+# Respaldo de producción bajado por scripts/respaldo-anonimo.sh (trae datos del negocio).
+.respaldo-produccion.sql.gz

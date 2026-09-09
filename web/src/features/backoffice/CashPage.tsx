@@ -545,6 +545,25 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
+          {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
+              decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
+              declarado, así que sin esta línea un turno con ventas sin cobrar cierra en cero y el
+              faltante solo aparece restando dos cifras de dos pantallas. */}
+          {Number(session.uncollected) > 0 && (
+            <Box borderWidth="1px" borderColor="red.300" bg="red.50"
+              _dark={{ bg: 'red.950' }} borderRadius="lg" p={3}>
+              <Text fontWeight="700" color="red.700" _dark={{ color: 'red.200' }}>
+                Sin cobrar: {money(session.uncollected)}
+                {' en '}
+                {session.uncollectedCount === 1 ? '1 pedido' : `${session.uncollectedCount} pedidos`}
+              </Text>
+              <Text fontSize="sm" color="fg.muted">
+                Este dinero no está en el arqueo. Cóbralo antes de cerrar o el corte va a cuadrar
+                sin él.
+              </Text>
+            </Box>
+          )}
+
           <Button colorPalette="red" size="lg" loading={closeMut.isPending}
             disabled={porContar.length > 0 || session.pending.length > 0}
             onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>

@@ -83,8 +83,12 @@ func (h *Handlers) filtroDeVentas(r *http.Request) (domain.SalesFilter, error) {
 		Range:       rango,
 		Status:      q.Get("status"),
 		ServiceType: q.Get("serviceType"),
-		Sort:        valorODefault(q.Get("sort"), "fecha"),
-		Dir:         valorODefault(q.Get("dir"), "desc"),
+		// Los dos llegan CRUDOS al dominio, sin default y sin sanear: un valor presente y
+		// desconocido tiene que rebotar como 400, y `valorODefault` solo aplica al AUSENTE.
+		FolioPlataforma: q.Get("folioPlataforma"),
+		Folio:           q.Get("folio"),
+		Sort:            valorODefault(q.Get("sort"), "fecha"),
+		Dir:             valorODefault(q.Get("dir"), "desc"),
 	}
 
 	limit, offset, err := paginaDeQuery(q)

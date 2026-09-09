@@ -65,31 +65,40 @@ func (q *Queries) CountLinesPendingDelivery(ctx context.Context, orderID int64) 
 const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
-                    folio_name, status, completed_at)
+                    folio_name, status, completed_at,
+                    platform_order_ref, platform_ref_set_by, platform_ref_set_at)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-        $14, case when $14::order_status = 'entregada' then now() end)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name
+        $14, case when $14::order_status = 'entregada' then now() end,
+        $15, $16, $17)
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at
 `
 
 type CreateOrderParams struct {
-	ClientUuid         uuid.UUID       `json:"client_uuid"`
-	BusinessDate       pgtype.Date     `json:"business_date"`
-	DailyNumber        int32           `json:"daily_number"`
-	ServiceType        ServiceType     `json:"service_type"`
-	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
-	CustomerName       *string         `json:"customer_name"`
-	Notes              *string         `json:"notes"`
-	RegisterSessionID  *int64          `json:"register_session_id"`
-	OpenedBy           int64           `json:"opened_by"`
-	Subtotal           decimal.Decimal `json:"subtotal"`
-	Total              decimal.Decimal `json:"total"`
-	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
-	FolioName          *string         `json:"folio_name"`
-	Status             OrderStatus     `json:"status"`
+	ClientUuid         uuid.UUID          `json:"client_uuid"`
+	BusinessDate       pgtype.Date        `json:"business_date"`
+	DailyNumber        int32              `json:"daily_number"`
+	ServiceType        ServiceType        `json:"service_type"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	CustomerName       *string            `json:"customer_name"`
+	Notes              *string            `json:"notes"`
+	RegisterSessionID  *int64             `json:"register_session_id"`
+	OpenedBy           int64              `json:"opened_by"`
+	Subtotal           decimal.Decimal    `json:"subtotal"`
+	Total              decimal.Decimal    `json:"total"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	FolioName          *string            `json:"folio_name"`
+	Status             OrderStatus        `json:"status"`
+	PlatformOrderRef   *string            `json:"platform_order_ref"`
+	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
+	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
 }
 
 // status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
 // acto —el refresco de mostrador— nace entregado y nunca pasa por el tablero. El resto nace abierto.
+//
+// El trío del folio de plataforma viaja COMPLETO desde el servicio, no se deriva aquí: el esquema
+// tiene un check todo-o-nada, y armar dos de los tres en SQL dejaría el tercero decidiéndose en un
+// lugar distinto del que valida.
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
 	row := q.db.QueryRow(ctx, createOrder,
 		arg.ClientUuid,
@@ -106,6 +115,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.DeliveryFee,
 		arg.FolioName,
 		arg.Status,
+		arg.PlatformOrderRef,
+		arg.PlatformRefSetBy,
+		arg.PlatformRefSetAt,
 	)
 	var i Order
 	err := row.Scan(
@@ -137,6 +149,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.RefundAmount,
 		&i.DeliveryFee,
 		&i.FolioName,
+		&i.PlatformOrderRef,
+		&i.PlatformRefSetBy,
+		&i.PlatformRefSetAt,
 	)
 	return i, err
 }
@@ -277,6 +292,45 @@ func (q *Queries) DeliverOrderLine(ctx context.Context, arg DeliverOrderLinePara
 	return result.RowsAffected(), nil
 }
 
+const findOrderByPlatformRef = `-- name: FindOrderByPlatformRef :one
+select o.id, o.daily_number, o.folio_name, o.business_date, dp.name as platform
+from orders o
+left join delivery_platforms dp on dp.id = o.delivery_platform_id
+where o.delivery_platform_id = $1 and o.platform_order_ref = $2
+`
+
+type FindOrderByPlatformRefParams struct {
+	DeliveryPlatformID *int16  `json:"delivery_platform_id"`
+	PlatformOrderRef   *string `json:"platform_order_ref"`
+}
+
+type FindOrderByPlatformRefRow struct {
+	ID           int64       `json:"id"`
+	DailyNumber  int32       `json:"daily_number"`
+	FolioName    *string     `json:"folio_name"`
+	BusinessDate pgtype.Date `json:"business_date"`
+	Platform     *string     `json:"platform"`
+}
+
+// ¿Qué pedido tiene ya ese folio? Es lo que convierte un "conflicto" genérico en un mensaje que
+// nombra el pedido, para que el operador no busque a ciegas entre las ventas del día con el
+// repartidor enfrente.
+//
+// Sin filtro de empresa: RLS lo agrega, y el índice único que respalda esto va por
+// (company_id, delivery_platform_id, platform_order_ref).
+func (q *Queries) FindOrderByPlatformRef(ctx context.Context, arg FindOrderByPlatformRefParams) (FindOrderByPlatformRefRow, error) {
+	row := q.db.QueryRow(ctx, findOrderByPlatformRef, arg.DeliveryPlatformID, arg.PlatformOrderRef)
+	var i FindOrderByPlatformRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.DailyNumber,
+		&i.FolioName,
+		&i.BusinessDate,
+		&i.Platform,
+	)
+	return i, err
+}
+
 const folioNamesUsedInSession = `-- name: FolioNamesUsedInSession :many
 select folio_name from orders
 where register_session_id = $1 and folio_name is not null
@@ -329,7 +383,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -364,6 +418,9 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.RefundAmount,
 		&i.DeliveryFee,
 		&i.FolioName,
+		&i.PlatformOrderRef,
+		&i.PlatformRefSetBy,
+		&i.PlatformRefSetAt,
 	)
 	return i, err
 }
@@ -1403,6 +1460,41 @@ type SetOrderStatusParams struct {
 func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) error {
 	_, err := q.db.Exec(ctx, setOrderStatus, arg.ID, arg.Status)
 	return err
+}
+
+const setPlatformRef = `-- name: SetPlatformRef :one
+update orders
+   set platform_order_ref  = $1,
+       platform_ref_set_by = $2,
+       platform_ref_set_at = now(),
+       updated_at          = now()
+ where id = $3 and delivery_platform_id is not null
+returning id, platform_order_ref, delivery_platform_id
+`
+
+type SetPlatformRefParams struct {
+	PlatformOrderRef *string `json:"platform_order_ref"`
+	PlatformRefSetBy *int64  `json:"platform_ref_set_by"`
+	ID               int64   `json:"id"`
+}
+
+type SetPlatformRefRow struct {
+	ID                 int64   `json:"id"`
+	PlatformOrderRef   *string `json:"platform_order_ref"`
+	DeliveryPlatformID *int16  `json:"delivery_platform_id"`
+}
+
+// Escribir o corregir el folio de un pedido que ya existe, incluido uno cobrado o de un arqueo
+// cerrado. Toca EXACTAMENTE cuatro columnas y ninguna de dinero: es lo que hace que ninguna cifra
+// de venta, corte ni arqueo se mueva.
+//
+// No hay camino para BORRARLO: el folio es el único dato irrecuperable de esta feature, y corregir
+// un dedazo es sobrescribir, no vaciar.
+func (q *Queries) SetPlatformRef(ctx context.Context, arg SetPlatformRefParams) (SetPlatformRefRow, error) {
+	row := q.db.QueryRow(ctx, setPlatformRef, arg.PlatformOrderRef, arg.PlatformRefSetBy, arg.ID)
+	var i SetPlatformRefRow
+	err := row.Scan(&i.ID, &i.PlatformOrderRef, &i.DeliveryPlatformID)
+	return i, err
 }
 
 const sumOrderPayments = `-- name: SumOrderPayments :one

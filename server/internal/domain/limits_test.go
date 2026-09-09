@@ -114,3 +114,34 @@ func TestRound2NoSeCuelgaConExponentesAbsurdos(t *testing.T) {
 		t.Fatalf("Round2(587.223) = %s", got)
 	}
 }
+
+// ValidSignedMoney: la cota para el ÚNICO importe del sistema que puede ser negativo, el neto de
+// una liquidación de plataforma.
+//
+// Existe porque `ValidMoney` exige no negativo y reusarlo aquí rechazaría el caso que el spec manda
+// aceptar: con una promoción que financió el restaurante por completo, el neto negativo es lo que
+// de verdad pasó. Lo que sigue acotando es la MAGNITUD — sigue cayendo en un numeric(10,2).
+func TestValidSignedMoneyAceptaElNegativoPeroNoElAbsurdo(t *testing.T) {
+	buenos := []string{"0", "-0.01", "-31.20", "51.77", "10000000", "-10000000"}
+	for _, s := range buenos {
+		if !ValidSignedMoney(decimal.RequireFromString(s)) {
+			t.Fatalf("%s debe aceptarse: es un neto posible de una liquidación", s)
+		}
+	}
+	malos := []string{"10000000.01", "-10000000.01", "1e100000000", "-1e100000000", "1e-100000000"}
+	for _, s := range malos {
+		if ValidSignedMoney(decimal.RequireFromString(s)) {
+			t.Fatalf("%s debe rechazarse: o desborda el numeric o quema CPU al redondearlo", s)
+		}
+	}
+}
+
+// Y no se afloja el otro: lo que ValidMoney rechazaba por negativo lo sigue rechazando. Mover una
+// validación a un hermano nuevo y dejar al viejo aceptando de más es el modo de falla que la
+// constitución llama "el hermano que no se movió".
+func TestValidMoneySigueRechazandoNegativos(t *testing.T) {
+	if ValidMoney(decimal.RequireFromString("-0.01"), true) {
+		t.Fatal("ValidMoney aceptó un negativo: el neto de la liquidación tiene su propio validador " +
+			"justamente para no tener que aflojar este")
+	}
+}

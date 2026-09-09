@@ -74,12 +74,17 @@ export function TicketPreviewDialog({
         <DialogFooter px={3} pb={4} pt={2}>
           {/* Dos acciones, ambas de dedo: el target son tablets de 7" y no hay scroll para llegar
               al botón de imprimir. Cerrar va a la izquierda para que el pulgar no lo alcance por
-              accidente cuando busca Imprimir. */}
+              accidente cuando busca Imprimir.
+
+              El `minH` es explícito y no se hereda de `size="lg"`. Hoy ese tamaño ya da 44 px
+              —medido a 1024×600 contra el ambiente desplegado—, así que no arregla nada: fija el
+              piso para que un cambio de la receta de Chakra no lo baje sin que nadie se entere. La
+              intención llevaba en este comentario desde que se escribió y no estaba medida. */}
           <HStack w="100%" gap={2}>
-            <Button variant="outline" size="lg" flex="1" onClick={onClose}>
+            <Button variant="outline" size="lg" minH="44px" flex="1" onClick={onClose}>
               <LuX /> Cerrar
             </Button>
-            <Button size="lg" flex="2" disabled={!html} onClick={() => printFrame(frame.current)}>
+            <Button size="lg" minH="44px" flex="2" disabled={!html} onClick={() => printFrame(frame.current)}>
               <LuPrinter /> Imprimir
             </Button>
           </HStack>

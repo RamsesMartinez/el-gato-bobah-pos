@@ -40,10 +40,138 @@ func (q *Queries) CountSales(ctx context.Context, arg CountSalesParams) (int64, 
 	return count, err
 }
 
+const countSalesSinFolio = `-- name: CountSalesSinFolio :one
+select count(*) from orders o
+where o.delivery_platform_id is not null and o.platform_order_ref is null
+  and o.business_date between $1 and $2
+  and ($3::order_status is null or o.status = $3)
+  and ($4::service_type is null or o.service_type = $4)
+`
+
+type CountSalesSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	Status      *OrderStatus `json:"status"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+// Gemela de CountSales con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) CountSalesSinFolio(ctx context.Context, arg CountSalesSinFolioParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSalesSinFolio,
+		arg.Desde,
+		arg.Hasta,
+		arg.Status,
+		arg.ServiceType,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const findSaleByPlatformRef = `-- name: FindSaleByPlatformRef :many
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
+       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.platform_order_ref,
+       dp.name as platform,
+       u.name as opened_by_name,
+       (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
+       (select string_agg(distinct pm.name, ' + ' order by pm.name)
+          from order_payments op join payment_methods pm on pm.id = op.payment_method_id
+         where op.order_id = o.id) as methods
+from orders o
+left join delivery_platforms dp on dp.id = o.delivery_platform_id
+left join users u on u.id = o.opened_by
+where o.platform_order_ref = $1
+  and o.business_date between $2 and $3
+`
+
+type FindSaleByPlatformRefParams struct {
+	Folio *string     `json:"folio"`
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
+}
+
+type FindSaleByPlatformRefRow struct {
+	ID               int64              `json:"id"`
+	DailyNumber      int32              `json:"daily_number"`
+	FolioName        *string            `json:"folio_name"`
+	BusinessDate     pgtype.Date        `json:"business_date"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	Status           OrderStatus        `json:"status"`
+	ServiceType      ServiceType        `json:"service_type"`
+	CustomerName     *string            `json:"customer_name"`
+	Total            decimal.Decimal    `json:"total"`
+	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
+	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	PlatformOrderRef *string            `json:"platform_order_ref"`
+	Platform         *string            `json:"platform"`
+	OpenedByName     *string            `json:"opened_by_name"`
+	Tips             decimal.Decimal    `json:"tips"`
+	Methods          []byte             `json:"methods"`
+}
+
+// Buscar un pedido pegando el folio que trae el documento de pago. IGUALDAD exacta, no parcial: el
+// caso de uso es pegar el identificador, y una búsqueda parcial sobre 64 caracteres devuelve varios
+// candidatos y obliga a comparar — que es justo lo que esta feature viene a eliminar.
+//
+// Va como consulta PROPIA y no como un filtro más de las cinco de arriba por dos razones:
+//
+//  1. El plan. Con `col = $1` el planner SÍ puede probar el predicado del índice parcial
+//     `orders_platform_ref_busqueda` (una igualdad implica `is not null` sea cual sea el valor);
+//     metido dentro de un `narg is null or (…)`, no.
+//  2. El resultado es UNA fila o ninguna, así que paginar y agregar por estado no significa nada.
+//     El resumen de la pantalla se deriva de esta misma fila, y por eso la lista y el resumen no
+//     pueden divergir: salen del mismo lugar.
+//
+// Devuelve :many y no :one a propósito: "ese folio no está capturado" es una respuesta legítima —el
+// renglón del documento todavía no se registró— y no un 404.
+//
+// Sin filtro de empresa: RLS lo agrega.
+func (q *Queries) FindSaleByPlatformRef(ctx context.Context, arg FindSaleByPlatformRefParams) ([]FindSaleByPlatformRefRow, error) {
+	rows, err := q.db.Query(ctx, findSaleByPlatformRef, arg.Folio, arg.Desde, arg.Hasta)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindSaleByPlatformRefRow{}
+	for rows.Next() {
+		var i FindSaleByPlatformRefRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.BusinessDate,
+			&i.OpenedAt,
+			&i.CompletedAt,
+			&i.Status,
+			&i.ServiceType,
+			&i.CustomerName,
+			&i.Total,
+			&i.DeliveryFee,
+			&i.RefundAmount,
+			&i.PlatformOrderRef,
+			&i.Platform,
+			&i.OpenedByName,
+			&i.Tips,
+			&i.Methods,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSales = `-- name: ListSales :many
 
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
@@ -82,22 +210,23 @@ type ListSalesParams struct {
 }
 
 type ListSalesRow struct {
-	ID           int64              `json:"id"`
-	DailyNumber  int32              `json:"daily_number"`
-	FolioName    *string            `json:"folio_name"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
-	Status       OrderStatus        `json:"status"`
-	ServiceType  ServiceType        `json:"service_type"`
-	CustomerName *string            `json:"customer_name"`
-	Total        decimal.Decimal    `json:"total"`
-	DeliveryFee  decimal.Decimal    `json:"delivery_fee"`
-	RefundAmount decimal.Decimal    `json:"refund_amount"`
-	Platform     *string            `json:"platform"`
-	OpenedByName *string            `json:"opened_by_name"`
-	Tips         decimal.Decimal    `json:"tips"`
-	Methods      []byte             `json:"methods"`
+	ID               int64              `json:"id"`
+	DailyNumber      int32              `json:"daily_number"`
+	FolioName        *string            `json:"folio_name"`
+	BusinessDate     pgtype.Date        `json:"business_date"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	Status           OrderStatus        `json:"status"`
+	ServiceType      ServiceType        `json:"service_type"`
+	CustomerName     *string            `json:"customer_name"`
+	Total            decimal.Decimal    `json:"total"`
+	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
+	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	PlatformOrderRef *string            `json:"platform_order_ref"`
+	Platform         *string            `json:"platform"`
+	OpenedByName     *string            `json:"opened_by_name"`
+	Tips             decimal.Decimal    `json:"tips"`
+	Methods          []byte             `json:"methods"`
 }
 
 // Pantalla de Ventas (análisis). Distinta del tablero de pedidos: aquí se mira lo que YA pasó.
@@ -105,6 +234,17 @@ type ListSalesRow struct {
 // Las cinco consultas comparten el mismo `where` y viven juntas A PROPÓSITO: si el filtro de la
 // lista y el del resumen divergen, las cifras de arriba dejan de cuadrar con la tabla de abajo y
 // nadie sabe cuál de las dos miente. Se editan en la misma pasada.
+//
+// SON CINCO PARES, NO CINCO. Cada una tiene una gemela `…SinFolio` idéntica salvo por UNA línea: el
+// predicado literal `delivery_platform_id is not null and platform_order_ref is null` del filtro de
+// pendientes. La gemela existe y no un parámetro porque un `sqlc.narg(...) is null or (…)` NO usa el
+// índice parcial `orders_plataforma_sin_folio`: medido contra 150k pedidos, con plan genérico
+// —al que pgx cae solo, porque usa statements con nombre— Postgres no puede probar que el predicado
+// del índice se cumple y cae a un bitmap scan sobre la fecha, incluso con el parámetro en `true`.
+//
+// El precio de esto es duplicación, y el riesgo es que un par se desincronice. Cada gemela va
+// INMEDIATAMENTE DESPUÉS de su original para que cualquier diff las muestre juntas, y
+// `TestLaListaYElResumenDescribenElMismoConjunto` falla si divergen.
 //
 // Ninguna filtra por company_id, y no es un olvido: RLS agrega ese predicado a toda consulta del rol
 // `gatobobah_app`. Además sqlc NO conoce la columna —la migración 0023 la agregó con SQL dinámico
@@ -149,6 +289,118 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 			&i.Total,
 			&i.DeliveryFee,
 			&i.RefundAmount,
+			&i.PlatformOrderRef,
+			&i.Platform,
+			&i.OpenedByName,
+			&i.Tips,
+			&i.Methods,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSalesSinFolio = `-- name: ListSalesSinFolio :many
+select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
+       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.platform_order_ref,
+       dp.name as platform,
+       u.name as opened_by_name,
+       (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
+       (select string_agg(distinct pm.name, ' + ' order by pm.name)
+          from order_payments op join payment_methods pm on pm.id = op.payment_method_id
+         where op.order_id = o.id) as methods
+from orders o
+left join delivery_platforms dp on dp.id = o.delivery_platform_id
+left join users u on u.id = o.opened_by
+where o.delivery_platform_id is not null and o.platform_order_ref is null
+  and o.business_date between $1 and $2
+  and ($3::order_status is null or o.status = $3)
+  and ($4::service_type is null or o.service_type = $4)
+order by
+  case when $5::text = 'total'  and $6::text = 'asc'  then o.total end asc  nulls last,
+  case when $5::text = 'total'  and $6::text <> 'asc' then o.total end desc nulls last,
+  case when $5::text = 'folio'  and $6::text = 'asc'  then o.daily_number end asc  nulls last,
+  case when $5::text = 'folio'  and $6::text <> 'asc' then o.daily_number end desc nulls last,
+  case when $5::text = 'estado' and $6::text = 'asc'  then o.status::text end asc  nulls last,
+  case when $5::text = 'estado' and $6::text <> 'asc' then o.status::text end desc nulls last,
+  case when $5::text = 'tipo'   and $6::text = 'asc'  then o.service_type::text end asc  nulls last,
+  case when $5::text = 'tipo'   and $6::text <> 'asc' then o.service_type::text end desc nulls last,
+  case when $5::text = 'fecha'  and $6::text = 'asc'  then o.opened_at end asc,
+  o.opened_at desc, o.id desc
+limit $8 offset $7
+`
+
+type ListSalesSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	Status      *OrderStatus `json:"status"`
+	ServiceType *ServiceType `json:"service_type"`
+	Sort        string       `json:"sort"`
+	Dir         string       `json:"dir"`
+	Off         int32        `json:"off"`
+	Lim         int32        `json:"lim"`
+}
+
+type ListSalesSinFolioRow struct {
+	ID               int64              `json:"id"`
+	DailyNumber      int32              `json:"daily_number"`
+	FolioName        *string            `json:"folio_name"`
+	BusinessDate     pgtype.Date        `json:"business_date"`
+	OpenedAt         time.Time          `json:"opened_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	Status           OrderStatus        `json:"status"`
+	ServiceType      ServiceType        `json:"service_type"`
+	CustomerName     *string            `json:"customer_name"`
+	Total            decimal.Decimal    `json:"total"`
+	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
+	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	PlatformOrderRef *string            `json:"platform_order_ref"`
+	Platform         *string            `json:"platform"`
+	OpenedByName     *string            `json:"opened_by_name"`
+	Tips             decimal.Decimal    `json:"tips"`
+	Methods          []byte             `json:"methods"`
+}
+
+// Gemela de ListSales con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) ListSalesSinFolio(ctx context.Context, arg ListSalesSinFolioParams) ([]ListSalesSinFolioRow, error) {
+	rows, err := q.db.Query(ctx, listSalesSinFolio,
+		arg.Desde,
+		arg.Hasta,
+		arg.Status,
+		arg.ServiceType,
+		arg.Sort,
+		arg.Dir,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSalesSinFolioRow{}
+	for rows.Next() {
+		var i ListSalesSinFolioRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.BusinessDate,
+			&i.OpenedAt,
+			&i.CompletedAt,
+			&i.Status,
+			&i.ServiceType,
+			&i.CustomerName,
+			&i.Total,
+			&i.DeliveryFee,
+			&i.RefundAmount,
+			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
 			&i.Tips,
@@ -193,6 +445,40 @@ type SalesCancelledLinesRow struct {
 func (q *Queries) SalesCancelledLines(ctx context.Context, arg SalesCancelledLinesParams) (SalesCancelledLinesRow, error) {
 	row := q.db.QueryRow(ctx, salesCancelledLines, arg.Desde, arg.Hasta, arg.ServiceType)
 	var i SalesCancelledLinesRow
+	err := row.Scan(&i.Lineas, &i.Monto)
+	return i, err
+}
+
+const salesCancelledLinesSinFolio = `-- name: SalesCancelledLinesSinFolio :one
+select count(*)::int as lineas,
+       coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
+from order_lines ol
+join orders o on o.id = ol.order_id
+where o.status not in ('cancelada', 'reembolsada')
+  and o.delivery_platform_id is not null and o.platform_order_ref is null
+  and o.business_date between $1 and $2
+  and ol.cancelled_at is not null
+  -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
+  -- seguía mostrando la merma de mostrador y las cifras dejaban de ser del mismo conjunto.
+  and ($3::service_type is null or o.service_type = $3)
+`
+
+type SalesCancelledLinesSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesCancelledLinesSinFolioRow struct {
+	Lineas int32           `json:"lineas"`
+	Monto  decimal.Decimal `json:"monto"`
+}
+
+// Gemela de SalesCancelledLines con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCancelledLinesSinFolioParams) (SalesCancelledLinesSinFolioRow, error) {
+	row := q.db.QueryRow(ctx, salesCancelledLinesSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
+	var i SalesCancelledLinesSinFolioRow
 	err := row.Scan(&i.Lineas, &i.Monto)
 	return i, err
 }
@@ -269,6 +555,64 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 	return items, nil
 }
 
+const salesTotalsByMethodSinFolio = `-- name: SalesTotalsByMethodSinFolio :many
+select pm.id as method_id, pm.name as method,
+       count(*)::int as pagos,
+       coalesce(sum(op.amount), 0)::numeric(12,2) as total,
+       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as propinas
+from order_payments op
+join orders o on o.id = op.order_id
+join payment_methods pm on pm.id = op.payment_method_id
+where o.status not in ('cancelada', 'reembolsada')
+  and o.delivery_platform_id is not null and o.platform_order_ref is null
+  and o.business_date between $1 and $2
+  and ($3::service_type is null or o.service_type = $3)
+group by pm.id, pm.name
+order by total desc
+`
+
+type SalesTotalsByMethodSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesTotalsByMethodSinFolioRow struct {
+	MethodID int16           `json:"method_id"`
+	Method   string          `json:"method"`
+	Pagos    int32           `json:"pagos"`
+	Total    decimal.Decimal `json:"total"`
+	Propinas decimal.Decimal `json:"propinas"`
+}
+
+// Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTotalsByMethodSinFolioParams) ([]SalesTotalsByMethodSinFolioRow, error) {
+	rows, err := q.db.Query(ctx, salesTotalsByMethodSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SalesTotalsByMethodSinFolioRow{}
+	for rows.Next() {
+		var i SalesTotalsByMethodSinFolioRow
+		if err := rows.Scan(
+			&i.MethodID,
+			&i.Method,
+			&i.Pagos,
+			&i.Total,
+			&i.Propinas,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const salesTotalsByStatus = `-- name: SalesTotalsByStatus :many
 with filtrado as (
   select o.id, o.status, o.total, o.delivery_fee
@@ -326,6 +670,71 @@ func (q *Queries) SalesTotalsByStatus(ctx context.Context, arg SalesTotalsByStat
 	items := []SalesTotalsByStatusRow{}
 	for rows.Next() {
 		var i SalesTotalsByStatusRow
+		if err := rows.Scan(
+			&i.Status,
+			&i.Ventas,
+			&i.Total,
+			&i.Envios,
+			&i.Propinas,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const salesTotalsByStatusSinFolio = `-- name: SalesTotalsByStatusSinFolio :many
+with filtrado as (
+  select o.id, o.status, o.total, o.delivery_fee
+  from orders o
+  where o.delivery_platform_id is not null and o.platform_order_ref is null
+    and o.business_date between $1 and $2
+    and ($3::service_type is null or o.service_type = $3)
+), propinas as (
+  select op.order_id, sum(op.tip_amount) as tip_amount
+  from order_payments op
+  join filtrado f on f.id = op.order_id
+  group by op.order_id
+)
+select f.status,
+       count(*)::int as ventas,
+       coalesce(sum(f.total), 0)::numeric(12,2) as total,
+       coalesce(sum(f.delivery_fee), 0)::numeric(12,2) as envios,
+       coalesce(sum(p.tip_amount), 0)::numeric(12,2) as propinas
+from filtrado f
+left join propinas p on p.order_id = f.id
+group by f.status
+`
+
+type SalesTotalsByStatusSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesTotalsByStatusSinFolioRow struct {
+	Status   OrderStatus     `json:"status"`
+	Ventas   int32           `json:"ventas"`
+	Total    decimal.Decimal `json:"total"`
+	Envios   decimal.Decimal `json:"envios"`
+	Propinas decimal.Decimal `json:"propinas"`
+}
+
+// Gemela de SalesTotalsByStatus con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) SalesTotalsByStatusSinFolio(ctx context.Context, arg SalesTotalsByStatusSinFolioParams) ([]SalesTotalsByStatusSinFolioRow, error) {
+	rows, err := q.db.Query(ctx, salesTotalsByStatusSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SalesTotalsByStatusSinFolioRow{}
+	for rows.Next() {
+		var i SalesTotalsByStatusSinFolioRow
 		if err := rows.Scan(
 			&i.Status,
 			&i.Ventas,

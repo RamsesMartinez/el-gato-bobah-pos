@@ -33,6 +33,22 @@ func ValidMoney(v decimal.Decimal, allowZero bool) bool {
 	return v.IsPositive()
 }
 
+// ValidSignedMoney: monto de magnitud ≤ MaxMoney, con el signo que sea.
+//
+// Existe SOLO para el neto de una liquidación de plataforma, que es el único importe del sistema
+// que puede ser negativo: con una promoción que financió el restaurante por completo, el neto
+// negativo es lo que de verdad pasó y rechazarlo obligaría a capturar una mentira.
+//
+// No se aflojó `ValidMoney` para esto a propósito. Ese lo usan la caja, los gastos, los pagos y los
+// totales, donde un negativo SÍ es un error, y quitarle la guarda por un caso nuevo es el modo de
+// falla que la constitución llama "el hermano que no se movió".
+func ValidSignedMoney(v decimal.Decimal) bool {
+	if !escalaSana(v) {
+		return false
+	}
+	return !v.Abs().GreaterThan(MaxMoney)
+}
+
 // ValidQty: cantidad distinta de 0 y con |v| ≤ max. allowNegative admite deltas negativos
 // (mermas/ajustes de stock); las líneas de venta y modificadores exigen > 0.
 func ValidQty(v, max decimal.Decimal, allowNegative bool) bool {

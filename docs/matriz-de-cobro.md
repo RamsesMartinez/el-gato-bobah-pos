@@ -142,6 +142,61 @@ medias, el que le toca por folio numérico ya está tomado. Medido: el pedido **
 salida del operador era esperar al día siguiente. Cubierto por
 `folio_no_tumba_la_venta_test.go`.
 
+## F. La liquidación de plataforma NO es dinero de la caja (spec 014)
+
+Renglones **abiertos**, escritos antes que el código. La comisión de una plataforma es dinero que
+el negocio no tuvo, y el modo de falla que esta sección vigila es que alguien la reste de una venta.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| F1 | Registrar una liquidación | El resumen de Ventas, el corte de caja y el arqueo devuelven **exactamente lo mismo** que antes | `TestRegistrarUnaLiquidacionNoMueveNingunaVenta` | Postgres |
+| F2 | Escribirle el folio a un pedido de un arqueo **ya cerrado** | Ninguna cifra se mueve. El test falla nombrando la que se movió | `TestCorregirElFolioNoMueveNingunaCifra` | Postgres (respaldo real) |
+| F3 | Las tres cifras del periodo | `vendido`, `se quedó la plataforma` y `llegó al banco` cubren conjuntos distintos; `llegó al banco` **no** es la resta de las otras dos | `TestLoQueLlegoAlBancoNoEsLaRestaDeLasOtrasDos` · `TestElResumenDePlataformasDelPeriodo` | Go + Postgres |
+| F4 | Neto negativo (promoción que financió el restaurante) | Se acepta y se muestra negativo: es lo que de verdad pasó | `TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso` | Postgres |
+| F5 | Comisión negativa, tasa fuera de rango, parte del descuento mayor que el total | 400 de validación, nunca 500 | `TestLoQueUnaLiquidacionRechaza` · `TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir` | Go + Postgres |
+| F6 | Recapturar desde un documento corregido | Reemplaza, no duplica; queda una sola liquidación | `TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica` | Postgres |
+| F8 | Rechazar un importe con exponente absurdo (`1e100000000`) | Rechazo en milisegundos. El mensaje de error **no** expande el número: hacerlo tardaba 77 s y comía memoria | `TestRechazarUnImporteAbsurdoEsBarato` | Go |
+| F7 | Liquidación con sesión de cajero | 403: es dinero que no pasó por la caja | `TestLaLiquidacionExigeRolDeAdministracion` | Postgres |
+
+## G. Un pedido entregado y nunca cobrado, nombrado en el arqueo
+
+**Cómo se encontró.** El 8 de septiembre de 2026, corte 5 del ambiente de pruebas: cinco pedidos en
+estado `entregada` por **$554.00** sin un solo renglón en `order_payments`. El turno cerró con los
+diez métodos en **diferencia $0.00** —cuadró perfecto— mientras la lista de ventas de ese mismo
+corte decía **$1,410.50** contra **$856.50** esperados. El arqueo cuadraba por construcción: solo
+compara pagos contra declarado, y una venta sin pago no aparece por ningún lado. Para ver el hueco
+había que restar dos cifras de dos pantallas distintas.
+
+**Lo que NO se cambió, a propósito.** La guardia del cierre sigue bloqueando por *comida sin
+entregar* y no por dinero (`pedidosSinEntregar`). Entregar sin cobrar es una decisión legítima del
+negocio —se fio, se cobró por fuera— y convertirla en un bloqueo detendría la operación en hora
+pico. El hueco nunca fue la guardia: era que ninguna cifra lo **declaraba**.
+
+**Lo que se agregó.** `UncollectedInSession` — la venta del turno que ningún pago cubre, y en
+cuántos pedidos está. Sale del **mismo** `register_session_id` que la lista de ventas y que el
+esperado por método, así que las tres cifras de la pantalla hablan del mismo conjunto. Viaja en las
+dos vistas: la del turno abierto (`SessionView`, junto a `Pending` — aquélla dice qué comida no ha
+salido, ésta qué dinero no entró) y la del corte cerrado (`SessionDetailView`), que es la que
+alguien audita cuando ya nadie se acuerda del turno.
+
+En pantalla, el arqueo muestra *"Sin cobrar: $X en N pedidos"* antes del botón de cerrar, para que
+se vea mientras se cuenta el efectivo y no después.
+
+| Qué lo cubre | Dónde |
+|---|---|
+| La cifra existe, no cuenta lo ya cobrado, sobrevive al cierre y la resta cierra en el detalle | `TestElArqueoDiceLoQueSeEntregoSinCobrar` |
+| Contra el servidor real: lo vendido = lo cobrado + lo declarado sin cobrar | `fecha-y-folio.spec.ts` › **U2** |
+
+**U2 cambió con esto y no se aflojó.** Antes comparaba lo vendido contra el esperado a secas —así
+encontró el corte 5—; ahora exige que lo vendido quede explicado por *esperado + sin cobrar*. Sigue
+fallando si aparece un peso que no está ni cobrado ni nombrado; lo que ya no hace es fallar porque
+la pantalla calle un hecho que ahora declara.
+
+Lo que sigue sin cubrir: **los cinco pedidos del corte 5 no se tocaron.** Cobrarlos ahora los
+metería en el turno siguiente y reescribiría un arqueo firmado, por la misma razón que X18 de
+[matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta. El corte 5 queda como está, ahora
+con su $554.00 declarado.
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.

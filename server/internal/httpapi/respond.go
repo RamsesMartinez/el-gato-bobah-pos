@@ -86,6 +86,11 @@ func Error(w http.ResponseWriter, err error) {
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
 		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
 		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
+	case errors.Is(err, domain.ErrPlatformRefTaken):
+		// 409 con código propio, y va ANTES de ErrConflict, que lo envuelve. El front lo necesita
+		// distinguible para llevar el foco al campo del folio con el pedido dueño a la vista, en
+		// vez de un "conflicto" que no dice cuál es ni qué corregir.
+		status, code = http.StatusConflict, "PLATFORM_REF_TAKEN"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):

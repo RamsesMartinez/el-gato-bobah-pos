@@ -18,12 +18,13 @@ const pagina: SalesPageData = {
     {
       id: 1, dailyNumber: 7, folioName: 'Tigre', date: '2026-08-30', openedAt: '2026-08-30T18:27:10Z', completedAt: null,
       status: 'entregada', serviceType: 'mostrador', customer: 'Sánchez', total: '275.00',
-      deliveryFee: '0', refund: '0', tips: '0', platform: '', openedBy: 'Ana', methods: 'Efectivo',
+      deliveryFee: '0', refund: '0', tips: '0', platform: '', platformOrderRef: '', openedBy: 'Ana', methods: 'Efectivo',
     },
     {
       id: 2, dailyNumber: 8, folioName: 'Nutria', date: '2026-08-30', openedAt: '2026-08-30T19:49:05Z', completedAt: null,
       status: 'abierta', serviceType: 'domicilio', customer: '', total: '0.00',
-      deliveryFee: '0', refund: '0', tips: '0', platform: 'Uber Eats', openedBy: 'Ana', methods: '',
+      deliveryFee: '0', refund: '0', tips: '0', platform: 'Uber Eats',
+      platformOrderRef: '4B2E9A10-77C3-4F1E-9E62-0A5C1D3F8B44', openedBy: 'Ana', methods: '',
     },
   ],
 };
@@ -136,5 +137,64 @@ describe('pantalla de Ventas', () => {
     api.list.mockResolvedValue({ ...pagina, items: [], total: 0 });
     montar();
     expect(await screen.findByText(/sin ventas en este periodo/i)).toBeInTheDocument();
+  });
+});
+
+// El folio de la plataforma en la pantalla de Ventas: buscarlo, filtrar los que faltan y verlo sin
+// que rompa el ancho de la tabla.
+describe('SalesPage · el folio de la plataforma', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.list.mockResolvedValue(pagina);
+    api.summary.mockResolvedValue(resumen);
+  });
+
+  it('el folio se pinta en su propio renglón, bajo el nombre de la plataforma', async () => {
+    montar();
+    const folio = await screen.findByText('4B2E9A10-77C3-4F1E-9E62-0A5C1D3F8B44');
+    expect(folio).toBeInTheDocument();
+    // Va en un elemento aparte del nombre de la plataforma, que es lo que permite truncarlo sin
+    // truncar "Uber Eats".
+    expect(folio.textContent).not.toContain('Uber Eats');
+
+    // Que de verdad quede en UNA línea con elipsis NO se comprueba aquí: las medidas de Chakra son
+    // clases CSS y jsdom no las resuelve, así que un assert de `white-space` pasa en verde con el
+    // truncado quitado. Eso se mide en el e2e a 1024×600 (renglón Y14 de la matriz de pantallas).
+  });
+
+  it('el buscador se llama por la plataforma, no "folio" a secas', async () => {
+    montar();
+    // En esta misma pantalla la columna "Folio" es el número del turno. Un buscador que dijera
+    // "Folio" mandaría a teclear el dato equivocado con el documento de pago en la mano.
+    expect(await screen.findByLabelText(/Buscar folio de la plataforma/i)).toBeInTheDocument();
+  });
+
+  it('buscar un folio lo manda al servidor recortado', async () => {
+    montar();
+    const buscador = await screen.findByLabelText(/Buscar folio de la plataforma/i);
+    fireEvent.change(buscador, { target: { value: '  UBER-77  ' } });
+    await waitFor(() => {
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ folio: 'UBER-77' }));
+    });
+    // Y el resumen recibe el MISMO filtro: si solo lo recibiera la lista, las cifras de arriba
+    // describirían otro conjunto que el de abajo.
+    await waitFor(() => {
+      expect(api.summary).toHaveBeenCalledWith(expect.objectContaining({ folio: 'UBER-77' }));
+    });
+  });
+
+  it('el filtro de pendientes es un toggle: un tap lo enciende y otro lo apaga', async () => {
+    montar();
+    const toggle = await screen.findByRole('button', { name: /Pendientes de folio/i });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ folioPlataforma: 'pendiente' }));
+      expect(api.summary).toHaveBeenCalledWith(expect.objectContaining({ folioPlataforma: 'pendiente' }));
+    });
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'));
   });
 });

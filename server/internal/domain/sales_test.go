@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -291,5 +292,141 @@ func TestElTopeDelFuturoUsaLaZonaDelNegocio(t *testing.T) {
 	}
 	if _, err := ResolveRange("rango", d("2026-09-01"), d("2026-09-04"), ahora, loc); !errors.Is(err, ErrValidation) {
 		t.Fatalf("el 4 todavía no es hoy en México; debe rechazarse, fue %v", err)
+	}
+}
+
+// El filtro de pendientes de folio y la búsqueda por folio.
+//
+// Los dos son parámetros de FRONTERA, así que la regla que importa es la misma que ya rige al resto
+// de esta pantalla: un valor presente y desconocido se RECHAZA, nunca cae a un default. Una pantalla
+// que se ve correcta y responde algo que nadie pidió es peor que un error, porque nadie la audita.
+func TestElFiltroDePendientesDeFolio(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20,
+		}
+	}
+	t.Run("ausente no filtra", func(t *testing.T) {
+		f := base()
+		if err := f.Validate(); err != nil {
+			t.Fatalf("sin el parámetro debe pasar: %v", err)
+		}
+		if f.SoloSinFolio() {
+			t.Fatal("sin el parámetro no debe filtrar nada")
+		}
+	})
+	t.Run("pendiente filtra", func(t *testing.T) {
+		f := base()
+		f.FolioPlataforma = "pendiente"
+		if err := f.Validate(); err != nil {
+			t.Fatalf("'pendiente' es el único valor conocido y se rechazó: %v", err)
+		}
+		if !f.SoloSinFolio() {
+			t.Fatal("'pendiente' debe filtrar a los pedidos de plataforma sin folio")
+		}
+	})
+	t.Run("un valor desconocido se rechaza", func(t *testing.T) {
+		for _, v := range []string{"pendientes", "capturado", "PENDIENTE", "si", "1"} {
+			f := base()
+			f.FolioPlataforma = v
+			if err := f.Validate(); err == nil {
+				t.Fatalf("%q se aceptó: caería a 'todos' y la pantalla mostraría un conjunto que nadie pidió", v)
+			} else if !errors.Is(err, ErrValidation) {
+				t.Fatalf("%q se rechazó pero no como ErrValidation: %v", v, err)
+			}
+		}
+	})
+}
+
+func TestLaBusquedaPorFolioSeAcota(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20,
+		}
+	}
+	t.Run("un folio normal pasa", func(t *testing.T) {
+		f := base()
+		f.Folio = "4B2E9A10-77C3-4F1E-9E62-0A5C1D3F8B44"
+		if err := f.Validate(); err != nil {
+			t.Fatalf("el UUID de Uber se rechazó y es el formato más largo que se conoce: %v", err)
+		}
+		if !f.Buscando() {
+			t.Fatal("con folio, la pantalla está buscando y no listando")
+		}
+	})
+	t.Run("más largo que el tope se rechaza", func(t *testing.T) {
+		f := base()
+		f.Folio = strings.Repeat("x", MaxPlatformRefLen+1)
+		if err := f.Validate(); err == nil {
+			t.Fatal("un folio más largo que el tope no puede existir en la base, así que buscarlo " +
+				"es escanear por nada")
+		}
+	})
+	t.Run("solo espacios se rechaza", func(t *testing.T) {
+		f := base()
+		f.Folio = "   "
+		if err := f.Validate(); err == nil {
+			t.Fatal("buscar puros espacios devolvería la lista completa como si nadie hubiera buscado")
+		}
+	})
+}
+
+// PEGAR EL FOLIO CON ESPACIOS ES EL CASO NORMAL, NO EL RARO.
+//
+// El folio se copia del documento de pago y llega con espacios de los dos lados; el camino de
+// ESCRITURA ya lo recorta. Si la BÚSQUEDA no hace lo mismo, la igualdad se compara contra una
+// columna que sí está recortada y devuelve cero filas — y cero filas se lee como "ese renglón del
+// documento no está capturado", que es un falso negativo silencioso: el operador lo captura otra
+// vez y termina con dos pedidos apuntando al mismo depósito.
+func TestElFolioQueSeBuscaLlegaRecortado(t *testing.T) {
+	f := SalesFilter{
+		Range: Range{From: time.Now(), To: time.Now()},
+		Sort:  "fecha", Dir: "desc", Limit: 20,
+		Folio: "  4B2E9A10-77C3  ",
+	}
+	if err := f.Validate(); err != nil {
+		t.Fatalf("un folio pegado con espacios se rechazó: %v", err)
+	}
+	if got := f.FolioBuscado(); got != "4B2E9A10-77C3" {
+		t.Fatalf("la búsqueda usa %q y la columna guarda %q: la igualdad no encuentra nada y se lee "+
+			"como 'no capturado'", got, "4B2E9A10-77C3")
+	}
+}
+
+// Buscar un folio NO se combina con los demás filtros: se rechaza, no se ignora.
+//
+// `List` corta en la búsqueda antes de mirar estado, tipo o pendientes, así que combinarlos
+// devolvía el pedido buscado aunque no cumpliera el filtro puesto — una pantalla que se ve filtrada
+// y contesta otra cosa. Es el mismo modo de falla que ya cierra `preset` con fechas que no usa.
+func TestBuscarUnFolioNoSeCombinaConLosDemasFiltros(t *testing.T) {
+	base := func() SalesFilter {
+		return SalesFilter{
+			Range: Range{From: time.Now(), To: time.Now()},
+			Sort:  "fecha", Dir: "desc", Limit: 20, Folio: "UBER-1",
+		}
+	}
+	casos := map[string]func(*SalesFilter){
+		"con pendientes de folio": func(f *SalesFilter) { f.FolioPlataforma = "pendiente" },
+		"con estado":              func(f *SalesFilter) { f.Status = StatusEntregada },
+		"con tipo de venta":       func(f *SalesFilter) { f.ServiceType = "domicilio" },
+	}
+	for nombre, toca := range casos {
+		t.Run(nombre, func(t *testing.T) {
+			f := base()
+			toca(&f)
+			err := f.Validate()
+			if err == nil {
+				t.Fatalf("%s se aceptó: la lista contestaría el pedido buscado aunque no cumpla el filtro", nombre)
+			}
+			if !errors.Is(err, ErrValidation) {
+				t.Fatalf("%s se rechazó pero no como ErrValidation: %v", nombre, err)
+			}
+		})
+	}
+	// Y buscar SOLO, sin nada más, sigue pasando.
+	if err := base().Validate(); err != nil {
+		t.Fatalf("buscar un folio a secas se rechazó: %v", err)
 	}
 }

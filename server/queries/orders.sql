@@ -40,12 +40,45 @@ select id from orders where client_uuid = $1;
 -- name: CreateOrder :one
 -- status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
 -- acto —el refresco de mostrador— nace entregado y nunca pasa por el tablero. El resto nace abierto.
+--
+-- El trío del folio de plataforma viaja COMPLETO desde el servicio, no se deriva aquí: el esquema
+-- tiene un check todo-o-nada, y armar dos de los tres en SQL dejaría el tercero decidiéndose en un
+-- lugar distinto del que valida.
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
-                    folio_name, status, completed_at)
+                    folio_name, status, completed_at,
+                    platform_order_ref, platform_ref_set_by, platform_ref_set_at)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,@folio_name,
-        @status, case when @status::order_status = 'entregada' then now() end)
+        @status, case when @status::order_status = 'entregada' then now() end,
+        sqlc.narg('platform_order_ref'), sqlc.narg('platform_ref_set_by'), sqlc.narg('platform_ref_set_at'))
 returning *;
+
+-- name: FindOrderByPlatformRef :one
+-- ¿Qué pedido tiene ya ese folio? Es lo que convierte un "conflicto" genérico en un mensaje que
+-- nombra el pedido, para que el operador no busque a ciegas entre las ventas del día con el
+-- repartidor enfrente.
+--
+-- Sin filtro de empresa: RLS lo agrega, y el índice único que respalda esto va por
+-- (company_id, delivery_platform_id, platform_order_ref).
+select o.id, o.daily_number, o.folio_name, o.business_date, dp.name as platform
+from orders o
+left join delivery_platforms dp on dp.id = o.delivery_platform_id
+where o.delivery_platform_id = $1 and o.platform_order_ref = $2;
+
+-- name: SetPlatformRef :one
+-- Escribir o corregir el folio de un pedido que ya existe, incluido uno cobrado o de un arqueo
+-- cerrado. Toca EXACTAMENTE cuatro columnas y ninguna de dinero: es lo que hace que ninguna cifra
+-- de venta, corte ni arqueo se mueva.
+--
+-- No hay camino para BORRARLO: el folio es el único dato irrecuperable de esta feature, y corregir
+-- un dedazo es sobrescribir, no vaciar.
+update orders
+   set platform_order_ref  = @platform_order_ref,
+       platform_ref_set_by = @platform_ref_set_by,
+       platform_ref_set_at = now(),
+       updated_at          = now()
+ where id = @id and delivery_platform_id is not null
+returning id, platform_order_ref, delivery_platform_id;
 
 -- name: CreateOrderLine :one
 insert into order_lines (order_id, product_id, product_name, quantity, unit_price,
