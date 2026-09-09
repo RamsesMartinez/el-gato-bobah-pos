@@ -99,7 +99,7 @@ server/
 │   ├── domain/
 │   │   ├── conteo.go                     # suma piezas × valor, y las dos reglas excluyentes
 │   │   └── conteo_test.go
-│   ├── app/backoffice.go                 # OpenSession y CloseSession toman piezas
+│   ├── app/backoffice.go                 # OpenSession y CloseSession toman piezas, en UNA transacción
 │   ├── httpapi/handlers_backoffice.go
 │   └── integration/
 │       ├── conteo_apertura_test.go
@@ -157,6 +157,92 @@ La genera `/speckit-tasks`. El orden que sugiere el diseño:
 | Once campos de texto | Once oportunidades de dedazo, que es el error que la feature viene a quitar | Se reusa el gesto de los botones de billete del cobro, que el operador ya conoce |
 | Un total del cliente que el servidor acepte | Vuelve la suma manual, disfrazada | El servidor recalcula desde las piezas y descarta el total, con test |
 | Los dos caminos coexisten | Dos cifras del mismo dinero y nadie sabe cuál manda | Se rechaza en el servicio, no solo en la pantalla |
+
+## La captura es una HOJA PROPIA, no un bloque más en el scroll de la caja
+
+Decidido el 2026-09-08, tras medir. Es la restricción de diseño que manda sobre todo lo demás de
+esta feature, y estaba implícita en el plan original — que es como no estar.
+
+**Lo medido, en el escenario más vacío posible** (turno con $0 en todo, sin pedidos pendientes, sin
+"sin cobrar", un solo cajero) a 1024×600:
+
+| | |
+|---|---|
+| Alto total de `/caja` | **1,494 px** contra un viewport de 600 |
+| Encabezado + tabs + chips + resumen del corte | **572 px** — deja 28 px de los 600 |
+| Título "Cierre — declarado por método" | y = **727** |
+| El renglón "Efectivo", donde iría la rejilla | y = **796** a 849 |
+| Botón "Cerrar caja" | y = **1,426** |
+
+Con cualquier dato real esos números solo empeoran. **Inline es imposible**: el punto de inserción
+ya está a 200 px del fold antes de dibujar el primer renglón, así que FR-013 no se cumple por más
+compacta que sea la rejilla. No es un problema de la rejilla; es que ese lugar de la pantalla ya no
+existe.
+
+En consecuencia:
+
+- `ContadorDeEfectivo` **abre como hoja propia** y ocupa los 1024×600 completos, como
+  `TransferDialog` ya hace en esa misma pantalla. El operador toca "Contar efectivo", cuenta sin
+  desplazarse, confirma, y vuelve al cierre con la cifra puesta. Hoy, llegar al campo de efectivo
+  cuesta dos o tres gestos de scroll.
+- **Footer fijo en `dvh`**, el patrón de la hoja de la liquidación
+  ([docs/presupuesto-de-pantalla-1024x600.md](../../docs/presupuesto-de-pantalla-1024x600.md)). El
+  teclado numérico se come ~250 px al abrirse y `CashPage` usa `<Page>` **sin `fill`**: es scroll de
+  documento plano, así que sin footer fijo el total y el botón de confirmar se van debajo del
+  teclado justo cuando se está tecleando.
+
+## FR-005 no tiene hoy dónde vivir, y el plan lo daba por resuelto
+
+El plan decía que la diferencia se ve porque "el resumen del corte queda visible". Medido: el
+resumen que queda visible es `IngresosEgresosCard` —monto inicial, ingresos, egresos— y **no tiene
+columna de diferencia**. La tabla que sí la tiene (`TotalsTable`) se pinta en dos lugares y ninguno
+sirve: el detalle de un corte histórico, y **el diálogo que aparece DESPUÉS de cerrar**, cuando el
+servidor ya cerró la sesión. La tabla del cierre en vivo tiene Método, Esperado y Declarado, y ahí
+se acaba.
+
+Así que FR-005 —"mostrar la diferencia ANTES de confirmar"— exige construir algo que no existe: una
+diferencia **calculada en el cliente** contra lo declarado, incluido el total del conteo, visible
+junto al botón de cerrar y con el mismo peso visual que el aviso de "falta por contar". Es trabajo
+del alcance de esta feature, no un efecto secundario de tenerla.
+
+## Cómo se cuentan 40 monedas
+
+`research.md` §8 eligió "tocar una denominación y ver el total subir" y rechazó once campos de texto
+por el riesgo de dedazo. Le falta el caso de bulto: **si tocar es +1, contar 40 monedas de $1 son 40
+taps**, y eso está dentro del tope de SC-003 (menos de 60 piezas en menos de 2 minutos). Un campo
+numérico son cuatro.
+
+El contador hace las dos cosas: **tap +/− para ajustes chicos** —que es lo que conserva la sensación
+de ver el total subir— y **el número es editable**, así que tocarlo abre el teclado una sola vez y
+se escribe 40. La vara de UX del POS es minimizar taps, y 40 taps para una denominación la rompe.
+
+## El interruptor entre los dos caminos
+
+FR-014 y FR-015 exigen elegir entre contar y escribir el total, y advertir antes de descartar lo
+capturado. Ningún documento decía con qué control. Queda escrito: **Tabs o Switch, nunca
+`<select>`** (restricción de producto), y **separado físicamente de la rejilla de teclas**. Un tap
+accidental sobre un interruptor pegado a las teclas que más se tocan cuesta el conteo entero, y la
+confirmación de FR-015 no lo arregla: la arregla no poner el interruptor ahí.
+
+## Revisión de arquitectura del 2026-09-08
+
+El plan es del 1 de septiembre y se escribió contra la constitución **1.7.0**. Al retomarse se pasó
+otra vez por `/revision-de-arquitectura` con la **1.9.0**, que ganó dos restricciones que este plan
+no pudo considerar: que se diseña para varias empresas y cadenas, y que la conexión es requisito.
+Lo que cambió, y por qué se deja escrito aquí en vez de corregirlo en silencio:
+
+| Hallazgo | Qué se corrigió |
+|---|---|
+| **Las dos tablas de negocio nacían sin `company_id`** y por lo tanto sin poder llevar RLS | `company_id` con default del GUC, policy `tenant_isolation` y grant explícito en `session_cash_counts` y `session_cash_count_lines`. Es el patrón de toda tabla de negocio desde `0024`, y omitirlo reproducía en tablas frescas la fuga que `0040`, `0041` y `0061` cerraron a posteriori |
+| **FK simple hacia `register_sessions`** | FK **compuesta** `(company_id, session_id)`, y `unique (id, company_id)` en el conteo para que los renglones cuelguen igual. Los chequeos de integridad de Postgres saltan RLS: con la FK simple, un data-fix como owner podía colgar un conteo de una empresa del turno de otra |
+| **`denomination_id` sin `ON DELETE` elegido** | `on delete restrict` explícito. Heredarlo por omisión invita a copiar el `cascade` del renglón de arriba, y eso se llevaría piezas de arqueos ya firmados |
+| **`cash_denominations` global y escribible por la app** | Sigue global —partirla después cuesta lo mismo, como `payment_methods` en `0037`— pero se le **revoca escritura** al rol de la app: sin `company_id` no hay nada que impida que apagar el billete de $1000 lo apague para todas las empresas |
+| **`OpenSession` no usa `WithTx`** | Hoy hace un solo `insert` y no lo necesita; con el conteo pasa a ser tres escrituras. Sin transacción, un fallo después del primer `insert` deja la caja **abierta sin conteo y sin motivo** —lo que FR-016 y SC-007 prohíben— y bloqueada por `one_open_session_per_register` hasta arreglarla a mano |
+
+Lo que el revisor dio por bueno: la reversibilidad del `Down` (tres tablas nuevas, cero columnas en
+tablas vivas), el trato de los arqueos ya cerrados, guardar el `total` en vez de recalcularlo, y los
+tipos de dinero. Ninguna puerta del principio VIII se cierra: el conteo cuelga de `session_id`, así
+que agregar sucursal o una segunda caja que venda no obliga a tocar estas tablas.
 
 ## Complexity Tracking
 
