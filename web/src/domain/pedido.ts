@@ -51,6 +51,9 @@ export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee }: ArmarPe
     // divergió una vez.
     deliveryFee: cobraEnvio(cuenta) ? deliveryFee : 0,
     deliveryPlatformId: lista ?? undefined,
+    // Solo si hay plataforma Y el operador lo escribió. Vacío = tomó la salida explícita, y el
+    // servidor rechaza una cadena vacía a propósito: la ausencia se representa como ausencia.
+    platformOrderRef: lista !== null && cuenta.platformOrderRef ? cuenta.platformOrderRef : undefined,
     lines: lineas.map((l) => ({
       productId: l.productId,
       qty: l.qty,

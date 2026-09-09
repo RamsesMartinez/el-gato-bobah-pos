@@ -63,7 +63,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   Control, así que corre en contenedor como el resto de los gates:
 
   ```bash
-  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.62.1-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
+  MSYS_NO_PATHCONV=1 docker run --rm --network host -v "d:/git/el-gato-bobah-pos/web:/w"     -v gatobobah_e2e_modules:/w/node_modules -w /w -e CI=1     mcr.microsoft.com/playwright:v1.63.0-noble     sh -c "bun install --frozen-lockfile --silent; npx playwright test"
   ```
 
   Un fallo en el primer `goto` casi siempre es la VM spot apagada, no el código: revísalo antes de

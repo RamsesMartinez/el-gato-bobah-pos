@@ -122,6 +122,9 @@ export interface OrderView {
   // Con qué lista se armó. Viaja para que un pedido recién creado se baste solo a la hora de
   // cobrarlo: la hoja de cobro ofrece solo los métodos con los que ESE pedido se puede saldar.
   deliveryPlatformId: number | null;
+  // El folio guardado, ya recortado por el servidor. Viaja para que la pantalla confirme lo que
+  // quedó y no lo que ella cree haber mandado.
+  platformOrderRef: string | null;
   customerName: string | null;
   subtotal: string;
   deliveryFee: string;
@@ -192,10 +195,14 @@ export interface ReceiptLine {
 }
 
 // ReceiptOrder es un pedido visto por la impresora: sin los datos de entrega, que el papel no lleva,
-// sin el saldo pendiente —asunto de la caja, no del cliente que se lleva el ticket— y sin la lista
-// de precios, que decide qué se cobra pero no se imprime.
+// sin el saldo pendiente —asunto de la caja, no del cliente que se lleva el ticket—, sin la lista
+// de precios, que decide qué se cobra pero no se imprime, y SIN el folio de la plataforma.
+//
+// Ese último es dato de conciliación, no del cliente: el que compró por Uber ya tiene el número de
+// Uber en su app, y en el papel solo agregaría un identificador que nadie usa. El día que la
+// comanda de cocina lo necesite, se agrega ahí y no en el ticket del cliente.
 export type ReceiptOrder =
-  Omit<OrderView, 'lines' | 'outstanding' | 'deliveryPlatformId'> & { lines?: ReceiptLine[] };
+  Omit<OrderView, 'lines' | 'outstanding' | 'deliveryPlatformId' | 'platformOrderRef'> & { lines?: ReceiptLine[] };
 
 export interface BoardOrder {
   // Si a este pedido todavía se le puede AGREGAR. Viene del servidor y no se deduce del estado
@@ -258,6 +265,13 @@ export interface TicketTab {
   // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
   // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
   folioName: string;
+  // El folio con el que la plataforma nombra a este pedido, tal como el operador lo tecleó.
+  //
+  // Vive en la CUENTA y no en un useState de la pantalla por lo mismo que el envío: sobrevive a un
+  // cambio de cuenta y a un F5, y no se mezcla entre dos cuentas abiertas a la vez. Vacío mientras
+  // no haya plataforma; cambiar de lista lo tira, porque un folio de Uber colgando de Rappi es
+  // basura silenciosa.
+  platformOrderRef: string;
   lines: TicketLine[];
   // El costo de envío TAL COMO SE TECLEÓ, y por cuenta.
   //
@@ -289,6 +303,9 @@ export interface CreateOrderBody {
   // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
   // lo que va aquí es el id, nunca los precios.
   deliveryPlatformId?: number;
+  // Solo viaja cuando hay plataforma Y el operador lo escribió. Ausente = se tomó la salida
+  // explícita, y el pedido queda listado como pendiente de folio.
+  platformOrderRef?: string;
   lines: Array<{
     productId: number;
     qty: number;

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toaster } from '../../components/ui/toaster';
 import { ApiError } from '../../api/client';
 import { posApi } from '../../api/pos';
-import type { OrderView } from '../../types/pos';
+import type { OrderView, TicketTab } from '../../types/pos';
 import { useMenu } from '../../hooks/useMenu';
 import { useActiveTicket, useTicketStore } from '../../stores/ticket';
 import { armarPedido } from '../../domain/pedido';
@@ -25,6 +25,20 @@ export interface MandarCmd {
 // Es un hook y no código dentro de la hoja de cobro porque ahora lo usan dos pantallas: el panel
 // del pedido —que manda a cocina sin cobrar— y la hoja, que cobra. Antes vivía solo en la hoja, y
 // por eso mandar a cocina obligaba a pasar por controles de dinero que después se descartaban.
+// cuentaActivaAhora lee la cuenta activa DEL STORE, en el instante en que se manda.
+//
+// No es lo mismo que el `cuenta` que el hook cerró en su último render, y la diferencia costó el
+// defecto más caro de la feature del folio: la hoja escribe el folio en la cuenta y llama a mandar()
+// en el MISMO manejador. React no re-renderiza a media función, así que el valor cerrado seguía
+// teniendo el folio vacío y el pedido nacía sin él — con el operador convencido de que lo capturó,
+// y el dato es irrecuperable (Rappi conserva 3 meses, Uber 31 días).
+//
+// Se exporta para que el test pueda reproducirlo sin montar React.
+export function cuentaActivaAhora(): TicketTab {
+  const s = useTicketStore.getState();
+  return s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0];
+}
+
 export function useMandarPedido(onDone: (order: OrderView) => void) {
   const qc = useQueryClient();
   const cuenta = useActiveTicket();
@@ -42,6 +56,9 @@ export function useMandarPedido(onDone: (order: OrderView) => void) {
 
   const mutation = useMutation({
     mutationFn: ({ agregarA, deliveryFee }: MandarCmd) => {
+      // DEL STORE y no del render: ver cuentaActivaAhora. Lo que se manda es lo que la cuenta tiene
+      // AHORA, no lo que tenía cuando este hook se renderizó por última vez.
+      const cuenta = cuentaActivaAhora();
       const body = armarPedido({
         cuenta,
         lineas: cobrables,

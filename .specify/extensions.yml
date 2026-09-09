@@ -1,0 +1,40 @@
+# Hooks de spec-kit — qué corre solo en cada etapa del ciclo.
+#
+# POR QUÉ ESTE ARCHIVO EXISTE. Los cuatro subagentes de `.claude/agents/` ya existían y corrían
+# porque `CLAUDE.md` se los recordaba al harness. Un recordatorio se olvida: este repo ya lo
+# aprendió con `scripts/hooks/migracion-con-test.sh`, que se escribió porque la regla estaba en la
+# constitución y aun así se rompió (la migración 0037 se hizo antes que sus tests). Lo mismo aplica
+# aquí — la diferencia entre "el agente debería correr" y "el agente corre" es este archivo.
+#
+# NINGÚN HOOK ES OPTIONAL, a propósito. Un hook opcional solo imprime una sugerencia, que es
+# exactamente el recordatorio que este archivo viene a reemplazar. La decisión de si un revisor
+# aplica al cambio vive DENTRO de la skill, que puede leer el diff — no en un `optional: true` que
+# se resuelve antes de saber qué cambió.
+#
+# CÓMO SE LEE. Cada entrada nombra un comando; los puntos se vuelven guiones al invocarlo
+# (`revision-de-arquitectura` -> `/revision-de-arquitectura`).
+
+hooks:
+  # Después de /speckit-plan, ANTES de tasks e implement.
+  #
+  # Es el único punto del ciclo donde las decisiones de esquema y de pantalla ya están tomadas y
+  # todavía se corrigen editando un documento. El mismo hallazgo después de implementar se corrige
+  # con una migración sobre datos de un negocio en operación.
+  after_plan:
+    - extension: revision-de-arquitectura
+      command: revision-de-arquitectura
+      description: "db-architect y tablet-ui-reviewer contra el plan, antes de que exista código"
+      optional: false
+      enabled: true
+
+  # Después de /speckit-implement, cuando ya hay código que leer.
+  #
+  # La skill decide qué revisores aplican mirando qué archivos cambiaron: `go-backend-reviewer` si
+  # tocó `server/`, `security-auditor` si tocó auth/config/middleware/logging (donde el principio V
+  # lo vuelve obligatorio), `tablet-ui-reviewer` si la pantalla terminó distinta del plan.
+  after_implement:
+    - extension: revision-de-codigo
+      command: revision-de-codigo
+      description: "Revisores de código sobre el diff, elegidos por lo que el cambio tocó"
+      optional: false
+      enabled: true

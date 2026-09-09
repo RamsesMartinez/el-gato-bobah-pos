@@ -10,6 +10,7 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -57,9 +58,14 @@ type CreateOrderCmd struct {
 	DeliveryPlatformID *int16
 	CustomerName       *string
 	Notes              *string
-	OpenedBy           int64
-	DeliveryFee        decimal.Decimal // capturado en el cobro; solo aplica a domicilio
-	Lines              []domain.OrderLineInput
+	// PlatformOrderRef: el identificador con el que la plataforma nombra al pedido. Se pide al
+	// CAPTURAR y no al cobrar porque es el único momento en que el operador lo tiene enfrente en la
+	// tablet de la plataforma; al cobrar, esa pantalla ya se movió. Nil = se mandó sin él, que es
+	// una salida explícita y no un descuido: el pedido queda listado como pendiente.
+	PlatformOrderRef *string
+	OpenedBy         int64
+	DeliveryFee      decimal.Decimal // capturado en el cobro; solo aplica a domicilio
+	Lines            []domain.OrderLineInput
 	// Payments: 0..N líneas de pago (pago dividido). Vacío = enviar a cocina sin cobrar.
 	// La orden queda "pagada" cuando la suma de amounts cubre el total (ver load()).
 	Payments []PaymentInput
@@ -93,14 +99,18 @@ type OrderView struct {
 	// solo a la hora de cobrarlo — la pantalla que cobra ofrece solo los métodos con los que ese
 	// pedido se puede saldar, y preguntárselo a la pantalla que lo creó sería pedirle que se
 	// acuerde. Entre dos pantallas, "acordarse" es como ya divergieron otras tres cifras.
-	DeliveryPlatformID *int16          `json:"deliveryPlatformId"`
-	CustomerName       *string         `json:"customerName"`
-	Notes              *string         `json:"notes"`
-	Subtotal           decimal.Decimal `json:"subtotal"`
-	DeliveryFee        decimal.Decimal `json:"deliveryFee"`
-	Total              decimal.Decimal `json:"total"`
-	Currency           domain.Currency `json:"currency"`
-	Paid               bool            `json:"paid"`
+	DeliveryPlatformID *int16 `json:"deliveryPlatformId"`
+	// PlatformOrderRef viaja en la respuesta para que la pantalla confirme lo que quedó guardado y
+	// no lo que ella cree haber mandado: el servidor recorta los extremos, así que lo que se ve en
+	// el campo y lo que hay en la base pueden diferir en un espacio.
+	PlatformOrderRef *string         `json:"platformOrderRef"`
+	CustomerName     *string         `json:"customerName"`
+	Notes            *string         `json:"notes"`
+	Subtotal         decimal.Decimal `json:"subtotal"`
+	DeliveryFee      decimal.Decimal `json:"deliveryFee"`
+	Total            decimal.Decimal `json:"total"`
+	Currency         domain.Currency `json:"currency"`
+	Paid             bool            `json:"paid"`
 	// Outstanding es lo que falta por cobrar. Viaja porque la hoja de cobro lo necesita entre pago
 	// y pago de una cuenta dividida: sin él tendría que restar por su cuenta, y dos
 	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
@@ -147,6 +157,12 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	//
 	// La barrera vive AQUÍ y no en la pantalla. Esconder el botón deja el endpoint abierto a
 	// cualquiera con una petición a mano, y el front es espejo del backend, nunca la barrera.
+	// El folio se valida ANTES de tocar la base: es puro y barato, y rechazarlo aquí evita gastar
+	// consultas en un pedido que no va a entrar.
+	folio, err := folioDelPedido(cmd)
+	if err != nil {
+		return nil, err
+	}
 	if len(cmd.Payments) > 0 {
 		return nil, domain.ErrCobroFueraDeLugar
 	}
@@ -251,7 +267,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		if err != nil {
 			return err
 		}
-		folio, err := resolverFolio(ctx, q, cmd, sess.ID)
+		folioNombre, err := resolverFolio(ctx, q, cmd, sess.ID)
 		if err != nil {
 			return err
 		}
@@ -268,8 +284,11 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			Subtotal:           built.Subtotal,
 			Total:              built.Total,
 			DeliveryFee:        built.DeliveryFee,
-			FolioName:          strPtr(folio),
+			FolioName:          strPtr(folioNombre),
 			Status:             db.OrderStatusAbierta,
+			PlatformOrderRef:   folio,
+			PlatformRefSetBy:   rastroDe(folio, cmd.OpenedBy),
+			PlatformRefSetAt:   rastroCuando(folio, s.now()),
 		})
 		if err != nil {
 			return err
@@ -324,9 +343,107 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.traduceFolioRepetido(ctx, err, folio, cmd.DeliveryPlatformID)
 	}
 	return s.load(ctx, orderID)
+}
+
+// SetPlatformRef escribe o corrige el folio de un pedido que YA existe.
+//
+// Funciona sobre un pedido cobrado, cancelado o de un arqueo cerrado, y toca exactamente cuatro
+// columnas —ninguna de dinero—: es lo que hace que ninguna cifra de venta, corte ni arqueo se mueva.
+//
+// NO hay borrado. El folio es el único dato irrecuperable de esta feature (el reporte de pagos de
+// Rappi expone 3 meses y el de Uber 31 días), y corregir un dedazo es sobrescribir, no vaciar: un
+// camino que lo destruye no resuelve ningún caso que el otro no resuelva ya.
+// SetPlatformRefResult dice qué había antes y qué quedó. El anterior viaja para que el evento de
+// seguridad lo registre: sobrescribir un folio ES borrarlo —el UPDATE es en sitio, sin historia— y
+// pasada la ventana del reporte de la plataforma (Uber 31 días) no se reconstruye.
+type SetPlatformRefResult struct {
+	Anterior string
+	Actual   string
+}
+
+func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string, quien int64) (SetPlatformRefResult, error) {
+	ref, err := domain.NormalizePlatformRef(raw)
+	if err != nil {
+		return SetPlatformRefResult{}, err
+	}
+	// Se lee el pedido ANTES de escribir para poder distinguir "no existe en esta empresa" de "no
+	// es de plataforma". El update solo devolvería cero filas en los dos casos, y un 404 sobre un
+	// pedido que el operador está viendo en pantalla manda a buscar el problema donde no está.
+	ord, err := s.store.QC(ctx).GetOrder(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SetPlatformRefResult{}, domain.ErrNotFound
+		}
+		return SetPlatformRefResult{}, err
+	}
+	if ord.DeliveryPlatformID == nil {
+		return SetPlatformRefResult{}, fmt.Errorf(
+			"%w: ese pedido no es de plataforma, así que no tiene folio de plataforma", domain.ErrValidation)
+	}
+
+	row, err := s.store.QC(ctx).SetPlatformRef(ctx, db.SetPlatformRefParams{
+		ID: id, PlatformOrderRef: &ref, PlatformRefSetBy: &quien,
+	})
+	if err != nil {
+		return SetPlatformRefResult{}, s.traduceFolioRepetido(ctx, err, &ref, ord.DeliveryPlatformID)
+	}
+	return SetPlatformRefResult{
+		Anterior: derefStr(ord.PlatformOrderRef),
+		Actual:   derefStr(row.PlatformOrderRef),
+	}, nil
+}
+
+// folioDelPedido traduce el comando a la regla de dominio. La regla vive en `domain` porque es
+// pura y se prueba sin base de datos; aquí solo se desempaqueta el cmd.
+func folioDelPedido(cmd CreateOrderCmd) (*string, error) {
+	return domain.PlatformRefDelPedido(cmd.PlatformOrderRef, cmd.DeliveryPlatformID)
+}
+
+// rastroDe y rastroCuando mantienen el trío del folio TODO O NADA, que es lo que el check del
+// esquema exige. Se arman aquí, en un solo lugar, y no en el SQL: dos de los tres decidiéndose en
+// un archivo y el tercero en otro es cómo el rastro termina a medias.
+func rastroDe(folio *string, quien int64) *int64 {
+	if folio == nil {
+		return nil
+	}
+	return &quien
+}
+
+func rastroCuando(folio *string, cuando time.Time) pgtype.Timestamptz {
+	if folio == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: cuando, Valid: true}
+}
+
+// traduceFolioRepetido convierte el 23505 del índice único en un error que NOMBRA al pedido dueño.
+//
+// Un aviso genérico de duplicado manda al operador a buscar a ciegas entre las ventas del día con
+// el repartidor enfrente; el caso es el dedazo de todos los días, no la excepción. La búsqueda
+// corre bajo RLS, así que solo puede encontrar un pedido de la misma empresa.
+func (s *OrdersService) traduceFolioRepetido(ctx context.Context, err error, folio *string, plataforma *int16) error {
+	if folio == nil || plataforma == nil || !isUniqueViolation(err) {
+		return err
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "orders_platform_ref" {
+		return err
+	}
+	duenio, buscaErr := s.store.QC(ctx).FindOrderByPlatformRef(ctx, db.FindOrderByPlatformRefParams{
+		DeliveryPlatformID: plataforma,
+		PlatformOrderRef:   folio,
+	})
+	if buscaErr != nil {
+		// No se pudo resolver quién lo tiene: se devuelve el conflicto igual, sin nombre. Perder el
+		// detalle es mejor que perder el rechazo.
+		return fmt.Errorf("%w", domain.ErrPlatformRefTaken)
+	}
+	return fmt.Errorf("ese folio de %s ya está en el pedido %s (#%d) del %s (%w)",
+		derefStr(duenio.Platform), derefStr(duenio.FolioName), duenio.DailyNumber,
+		duenio.BusinessDate.Time.Format("2006-01-02"), domain.ErrPlatformRefTaken)
 }
 
 func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) {
@@ -366,7 +483,8 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		FolioName: derefStr(o.FolioName),
 		ID:        o.ID, Number: int(o.DailyNumber), Status: string(o.Status),
 		ServiceType: string(o.ServiceType), DeliveryPlatformID: o.DeliveryPlatformID,
-		CustomerName: o.CustomerName, Notes: o.Notes,
+		PlatformOrderRef: o.PlatformOrderRef,
+		CustomerName:     o.CustomerName, Notes: o.Notes,
 		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:        domain.PedidoSaldado(paid, o.Total),
 		Outstanding: domain.PorCobrar(o.Total, paid),

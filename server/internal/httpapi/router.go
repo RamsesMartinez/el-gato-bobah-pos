@@ -130,6 +130,23 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
+					// Escribir o corregir el folio de la plataforma. Alcanza al cajero porque es el
+					// mismo dato que captura al levantar el pedido, movido en el tiempo, y mandarlo
+					// a buscar un gerente para teclear un identificador cuesta más de lo que
+					// protege. La mitigación es el rastro (platform_ref_set_by) y el evento con el
+					// folio anterior.
+					//
+					// OJO: NO es el mismo gate que crear. `POST /orders` no tiene RequireRole, así
+					// que un MESERO puede poner un folio al crear el pedido aunque este PATCH le
+					// rebote con 403. Es una asimetría heredada de que crear un pedido nunca pidió
+					// rol; el riesgo es que ocupe un folio ajeno y alguien con rol tenga que
+					// sobrescribirlo. Se dice aquí para que no se descubra al leer el 403.
+					//
+					// El tope por usuario va DESPUÉS de RequireRole: cuenta al que sí tenía
+					// permiso, que es de quien hay que acotar la ráfaga (el resto ya rebota en 403).
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero),
+						rateLimitUser(h.platformRefWrites)).
+						Patch("/{id}/platform-ref", h.SetOrderPlatformRef)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los
@@ -186,6 +203,16 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/sales", h.ListSales)
 					r.Get("/sales/summary", h.SalesSummary)
+					// La liquidación de un pedido de plataforma. MISMO gate que la pantalla de
+					// Ventas y no el de crear pedidos: es dinero que NO pasó por la caja —lo que la
+					// plataforma se quedó— y se captura con el estado de cuenta en la mano, días
+					// después, no en la hora pico.
+					r.Put("/orders/{id}/settlement", h.UpsertSettlement)
+					r.Get("/orders/{id}/settlement", h.GetSettlement)
+					// Las tres cifras del periodo. Endpoint propio y no un campo de /sales/summary:
+					// mezclarlas ahí pondría la comisión al lado del total de ventas, que es
+					// exactamente la invitación a restarlas que esta feature evita.
+					r.Get("/platform-settlements/summary", h.PlatformSettlementSummary)
 				})
 				// Gestión del catálogo de cajas (alta/renombrar/activar) = configuración → admin/gerente.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {

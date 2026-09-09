@@ -32,8 +32,31 @@ function emptyTab(num: number): TicketTab {
   // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
   return {
     id: uuid(), num, folioName: '', lines: [], envio: '',
-    serviceType: 'mostrador', customerName: '', platformId: null,
+    serviceType: 'mostrador', customerName: '', platformId: null, platformOrderRef: '',
   };
+}
+
+// conLosCamposQueFaltan completa una cuenta guardada con los campos que su versión no tenía.
+//
+// LOS DEFAULTS SE SACAN DE `emptyTab()`, no de una lista escrita a mano. Una lista hay que acordarse
+// de extenderla, y ya se olvidó una vez: `platformOrderRef` nació con el folio de plataforma, no se
+// agregó, y como `FolioPlataformaSheet` vive SIEMPRE montada y arranca con
+// `useState(cuenta.platformOrderRef).trim()`, el POS entero dejaba de renderizar en cuanto el
+// operador entraba con una cuenta vieja — pantalla en blanco al ENTRAR, no al mandar el pedido.
+// Leyendo de `emptyTab()`, el campo número once queda cubierto sin que nadie se acuerde.
+//
+// No se sube la versión del almacén para forzar el descarte: eso borraría cuentas con productos ya
+// capturados, y perder el pedido de un cliente por un deploy no es negociable.
+//
+// Lo vigila `cuentaGuardadaAntes.test.ts`, que quita un campo a la vez y exige que ninguno quede en
+// `undefined`; en pantalla, el caso Y20 de `e2e/folio-de-plataforma.spec.ts`.
+function conLosCamposQueFaltan(t: TicketTab): TicketTab {
+  // Solo las claves REALMENTE puestas pisan el default: una clave presente con `undefined` —lo que
+  // deja `JSON.parse` de un campo que se guardó vacío— volvería a dejar el hueco que esto cierra.
+  const puestas = Object.fromEntries(
+    Object.entries(t).filter(([, v]) => v !== undefined),
+  ) as Partial<TicketTab>;
+  return { ...emptyTab(t.num ?? 1), ...puestas };
 }
 
 interface TicketState {
@@ -49,6 +72,10 @@ interface TicketState {
   setServiceType: (t: ServiceType) => void;
   setEnvio: (v: string) => void;
   setCustomerName: (name: string) => void;
+  // El folio de la plataforma, tal como se teclea. No se normaliza aquí: el servidor recorta los
+  // extremos y devuelve lo que guardó. Recortar también en la pantalla sería la misma regla escrita
+  // dos veces, y ya divergió una vez con el total del envío.
+  setPlatformOrderRef: (ref: string) => void;
   clearActive: () => void; // vacía la cuenta activa sin cerrarla
   // manejo de cuentas
   newTab: () => void;
@@ -143,12 +170,15 @@ export const useTicketStore = create<TicketState>()(
         setServiceType: (serviceType) => set((s) => onActive(s, (t) => ({ ...t, serviceType }))),
         setEnvio: (envio) => set((s) => onActive(s, (t) => ({ ...t, envio }))),
         setCustomerName: (customerName) => set((s) => onActive(s, (t) => ({ ...t, customerName }))),
+        setPlatformOrderRef: (platformOrderRef) =>
+          set((s) => onActive(s, (t) => ({ ...t, platformOrderRef }))),
         // Vaciar deja la cuenta como recién abierta, y eso incluye la PLATAFORMA. Reseteaba el tipo
         // de servicio y dejaba puesta la lista de Uber: los productos capturados después salían con
         // precio de Uber en una cuenta que decía mostrador. Y el envío, por la misma razón.
         clearActive: () =>
           set((s) => onActive(s, (t) => ({
             ...t, lines: [], customerName: '', serviceType: 'mostrador', platformId: null, envio: '',
+            platformOrderRef: '',
           }))),
 
         newTab: () =>
@@ -171,6 +201,10 @@ export const useTicketStore = create<TicketState>()(
           set((s) => onActive(s, (t) => ({
             ...t,
             platformId,
+            // El folio se va con la lista: uno de Uber colgando de Rappi es basura silenciosa, y
+            // el esquema no puede distinguir un cambio legítimo de uno equivocado. Se tira aquí,
+            // que es el único lugar donde se sabe que la plataforma cambió.
+            platformOrderRef: '',
             lines: reprecia ? t.lines.map((l) => ({ ...l, ...reprecia(l) })) : t.lines,
           }))),
 
@@ -207,13 +241,9 @@ export const useTicketStore = create<TicketState>()(
     },
     {
       name: 'egb:ticket:v2', // ponytail: v2 nueva forma; el ticket v1 (una sola cuenta) se descarta al cargar
-      // Las cuentas que ya estaban abiertas cuando llegó esta versión no traen nombre, y quedan
-      // con folioName vacío hasta que bautizarCuentas() corra. No se sube la versión del almacén
-      // para forzar el campo: subirla borraría cuentas con productos ya capturados, y perder el
-      // pedido de un cliente por un deploy no es negociable.
       merge: (persisted, current) => {
         const prev = (persisted ?? {}) as Partial<TicketState>;
-        const tabs = (prev.tabs ?? current.tabs).map((t) => ({ ...t, folioName: t.folioName ?? '', envio: t.envio ?? '' }));
+        const tabs = (prev.tabs ?? current.tabs).map(conLosCamposQueFaltan);
         return { ...current, ...prev, tabs };
       },
     },

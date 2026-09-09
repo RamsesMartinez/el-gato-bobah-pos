@@ -82,6 +82,11 @@ export const posApi = {
   createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
   activeOrders: () => api.get<{ items: BoardOrder[] }>('/orders'),
   order: (id: number) => api.get<OrderView>(`/orders/${id}`),
+  // Escribir o corregir el folio de la plataforma de un pedido que ya existe, incluido uno cobrado
+  // o de un arqueo cerrado. No hay borrado: corregir un dedazo es sobrescribir, y el folio es el
+  // único dato de esta feature que no se puede recuperar después.
+  setPlatformRef: (id: number, platformOrderRef: string) =>
+    api.patch<{ id: number; platformOrderRef: string }>(`/orders/${id}/platform-ref`, { platformOrderRef }),
   setOrderStatus: (id: number, status: string) =>
     api.post<void>(`/orders/${id}/status`, { status }),
   // `devolver` confirma que el dinero se le regresa al cliente. Sin él, un pedido con cobros NO se

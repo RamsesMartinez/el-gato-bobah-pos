@@ -44,6 +44,8 @@ import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
 import { CobrarSheet, type CuentaParaCobrar } from '../../shared/CobrarSheet';
+import { FolioPlataformaSheet } from './FolioPlataformaSheet';
+import { hayQuePedirElFolio } from '../../domain/folioPlataforma';
 import { toaster } from '../../components/ui/toaster';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
@@ -129,6 +131,9 @@ export function POSPage() {
   // La cuenta que se está cobrando. Puede NO ser un pedido todavía: tocar COBRAR abre la hoja sobre
   // la cuenta y el pedido nace al cobrar.
   const [cobrando, setCobrando] = useState<CuentaParaCobrar | null>(null);
+  // La acción que quedó esperando a que se capture el folio. Guardar la función y no un booleano
+  // es lo que permite usar la misma puerta para "Enviar" y para "Cobrar" sin duplicar el flujo.
+  const [pidiendoFolio, setPidiendoFolio] = useState<{ hacer: () => void } | null>(null);
   // El pedido, en cuanto existe. Lo necesita el aviso de cerrar: solo hay algo en cocina si el
   // pedido llegó a crearse.
   const [creadoAlCobrar, setCreadoAlCobrar] = useState<PedidoParaCobrar | null>(null);
@@ -173,7 +178,24 @@ export function POSPage() {
   // pintaba otro. En 1024×600 el panel arranca oculto, así que la cifra equivocada era la de todos
   // los días.
   const envio = envioDeLaCuenta(cuenta, cuenta.envio, defaultFee);
-  const enviarACocina = () => mandar({ luego: setLastOrder, deliveryFee: envio.paraElServidor });
+  const setFolioDeLaCuenta = useTicketStore((s) => s.setPlatformOrderRef);
+
+  // conFolio es la ÚNICA puerta por la que se manda un pedido de plataforma.
+  //
+  // Con el campo de la barra ya lleno, no se interpone nada: mandar cuesta los mismos toques que
+  // hoy. Vacío, se pide el dato con una salida explícita, que es UN toque más — exactamente lo que
+  // declara SC-003. Envuelve a los DOS caminos que crean el pedido (Enviar y Cobrar) porque un
+  // camino nuevo que se salta el control viejo es cómo la mitad de los pedidos acabarían sin folio.
+  const conFolio = (hacer: () => void) => {
+    if (!hayQuePedirElFolio(cuenta.platformId, cuenta.platformOrderRef)) {
+      hacer();
+      return;
+    }
+    setPidiendoFolio({ hacer });
+  };
+
+  const enviarACocina = () =>
+    conFolio(() => mandar({ luego: setLastOrder, deliveryFee: envio.paraElServidor }));
   // COBRAR ABRE LA HOJA. NO MANDA NADA A COCINA.
   //
   // Antes creaba el pedido aquí mismo, así que un toque por equivocación —el botón vive junto al
@@ -186,7 +208,7 @@ export function POSPage() {
   // sigue viva en el SERVIDOR — el pedido se crea antes de cobrarse, siempre.
   //
   // Y para mandar a cocina sin cobrar sigue estando "Enviar", que es lo que ese botón significa.
-  const cobrarLaCuenta = () => {
+  const cobrarLaCuenta = () => conFolio(() => {
     setSesionDeCobro((n) => n + 1);
     setCobrando({
     id: null, number: null,
@@ -199,7 +221,7 @@ export function POSPage() {
     currency: 'MXN',
     deliveryPlatformId: cuenta.platformId,
     });
-  };
+  });
 
   // Cerrar la hoja de cobro sin haber saldado NO cancela nada, y hay que decirlo.
   //
@@ -581,6 +603,24 @@ export function POSPage() {
           la suya: dos pantallas de dinero eran dos aritméticas, dos validaciones y dos formas de
           traducir el mismo error, y ya habían divergido en cinco reglas verificables.
           `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      <FolioPlataformaSheet
+        isOpen={pidiendoFolio !== null}
+        plataforma={nombreDeLista(menu, cuenta.platformId)}
+        valorInicial={cuenta.platformOrderRef}
+        onGuardarYMandar={(folio) => {
+          setFolioDeLaCuenta(folio);
+          const seguir = pidiendoFolio?.hacer;
+          setPidiendoFolio(null);
+          seguir?.();
+        }}
+        onMandarSinFolio={() => {
+          const seguir = pidiendoFolio?.hacer;
+          setPidiendoFolio(null);
+          seguir?.();
+        }}
+        onCancelar={() => setPidiendoFolio(null)}
+      />
+
       <CobrarSheet
         key={sesionDeCobro}
         order={cobrando}
