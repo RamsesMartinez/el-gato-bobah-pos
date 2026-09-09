@@ -75,3 +75,36 @@ Con la tableta en su resolución real, y con la caja teniendo pedidos pendientes
 - Cada control de captura mide al menos 44 px.
 - El total acumulado se ve **sin desplazarse** mientras se captura. Si hay que hacer scroll para
   verlo, el operador vuelve a la calculadora.
+
+## Los tres casos que la revisión de pantalla encontró sin cubrir (2026-09-08)
+
+Los ejemplos de arriba cuentan 6 y 3 piezas. Ninguno ejercita lo que de verdad pone en riesgo los
+criterios, así que se agregan estos:
+
+### La captura no vive en el scroll de la caja
+
+1. Con el turno abierto, entra a **Caja** y toca **Contar efectivo**.
+2. Se abre una hoja que ocupa la pantalla completa. **Cuenta sin desplazarte**: las denominaciones,
+   el total y el botón de confirmar se ven a la vez a 1024×600.
+3. Confirma. Vuelves al cierre con la cifra puesta.
+
+Lo que verifica: FR-013. Medido el 2026-09-08, el punto donde iría una rejilla inline está en
+y=796 de una página de 1,494 px contra un viewport de 600 — inline no cabe, y este paso lo prueba.
+
+### Contar 40 monedas no cuesta 40 taps
+
+1. En la hoja, **toca el número** de las monedas de $1 (no el botón de +).
+2. Escribe `40`. El total sube $40 de una vez.
+3. Ajusta con **+** y **−** si te sobró o faltó una.
+
+Lo que verifica: SC-003 en el caso de bulto. Con tap = +1 puro, 40 piezas son 40 taps y la vara de
+UX del POS —minimizar taps— se rompe dentro del propio tope de 60 piezas del criterio.
+
+### La diferencia se ve ANTES de cerrar
+
+1. Cuenta piezas que sumen **menos** de lo que el turno espera en efectivo.
+2. Confirma la hoja y vuelve al cierre.
+3. **Sin tocar Cerrar caja**, el faltante ya está a la vista junto al botón.
+
+Lo que verifica: FR-005. Hoy la única tabla con columna de diferencia se pinta en el diálogo
+POSTERIOR al cierre, cuando el servidor ya cerró la sesión — o sea, hoy este paso falla.
