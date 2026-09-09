@@ -64,7 +64,12 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **El operador corrige un dígito a media captura.** El total tiene que seguirlo sin que él vuelva a sumar; si el total se congela o se recalcula tarde, el operador desconfía y saca la calculadora otra vez, que es justo lo que esto viene a quitar.
 - **Un billete de $1000 en un cajón de $400.** El conteo permite capturarlo; quien decide si es un error es el humano al ver la diferencia.
 - **La caja se abre en una moneda distinta a la del catálogo de denominaciones.** Hoy todo es MXN, pero el sistema acepta USD y las denominaciones de una no sirven para la otra.
-- **Dos personas contando a la vez** en la misma caja: el arqueo es de un turno y un turno tiene un solo cierre, pero la pantalla no debe permitir que un segundo cierre pise el conteo del primero.
+- **Dos personas contando a la vez** en la misma caja: el arqueo es de un turno y un turno tiene un
+  solo cierre, pero la pantalla no debe permitir que un segundo cierre pise el conteo del primero.
+  Hoy **las dos tabletas comparten cuenta**, así que esto no es hipotético: las dos abren el cierre,
+  la segunda confirma, y `unique (session_id, moment)` la rechaza. Lo que NO puede pasar es que eso
+  salga como un fallo interno: el segundo cierre MUST decir que ya hay un conteo guardado y quién lo
+  hizo, no un 500 crudo ni un pisado en silencio.
 
 ## Requirements *(mandatory)*
 
@@ -78,7 +83,10 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **FR-006**: El conteo por denominaciones MUST aplicar únicamente a los métodos de pago en efectivo. Los demás se siguen declarando con una sola cifra.
 - **FR-007**: El sistema MUST guardar el desglose capturado —piezas por denominación— junto al arqueo, y mostrarlo al consultar ese corte.
 - **FR-008**: El sistema MUST seguir mostrando correctamente los cortes cerrados antes de esta funcionalidad, sin desglose y sin inventarles uno.
-- **FR-009**: El sistema MUST rechazar una cantidad de piezas que no sea un entero mayor o igual a cero.
+- **FR-009**: El sistema MUST rechazar una cantidad de piezas que no sea un entero mayor o igual a
+  cero. El **cero es válido de entrada** y MUST NOT generar renglón: "no hay" y "no se capturó"
+  son lo mismo aquí, y guardar once ceros por arqueo es ruido. Por eso el esquema lleva
+  `check (pieces > 0)` sin contradecir este requisito: el filtro ocurre antes de escribir.
 - **FR-010**: El sistema MUST rechazar un conteo cuyo total exceda los topes de dinero del sistema, con un error accionable y no un fallo interno.
 - **FR-011**: El catálogo de denominaciones MUST depender de la moneda del turno; las denominaciones de una moneda no se ofrecen para otra.
 - **FR-012**: El sistema MUST permitir abrir o cerrar con cero piezas de una denominación sin obligar a capturarla.
@@ -109,7 +117,11 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **SC-003**: Contar y capturar un cajón típico (menos de 60 piezas) toma **menos de 2 minutos**.
 - **SC-004**: Ante un corte con diferencia, quien lo revisa puede ver **cuántas piezas de cada denominación** se declararon —o, si se capturó el total a mano, **por qué**— sin pedirle nada al operador que lo cerró.
 - **SC-007**: **Ningún** arqueo queda con una cifra de efectivo sin desglose y sin motivo.
-- **SC-005**: Las diferencias de arqueo atribuibles a error de suma bajan a **cero**: una diferencia solo puede venir de dinero que no está o de una pieza mal contada, nunca de una suma.
+- **SC-005** *(resultado esperado, no criterio verificable)*: las diferencias de arqueo atribuibles a
+  error de suma bajan a **cero**. Se deja escrito porque es el porqué de la feature, pero el sistema
+  no puede medirlo: no hay forma de saber si una diferencia vino de una suma mal hecha o de dinero
+  que no está. Lo que sí se verifica es que el operador nunca suma (SC-001) y que el total siempre
+  coincide con las piezas (SC-002); si esos dos se cumplen, éste es consecuencia.
 - **SC-006**: Los cortes cerrados antes de esta funcionalidad se siguen consultando **sin cambios en sus cifras**.
 
 ## Assumptions
