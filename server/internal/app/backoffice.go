@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -95,8 +96,13 @@ func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, met
 const maxVentasDeCorte = 200
 
 type MethodTotal struct {
-	MethodID    int             `json:"methodId"`
-	Name        string          `json:"name"`
+	MethodID int    `json:"methodId"`
+	Name     string `json:"name"`
+	// Kind viaja para que la pantalla sepa cuál de los métodos es el del CAJÓN —el que se cuenta por
+	// denominaciones— sin compararlo por nombre. Los métodos de plataforma en efectivo también tocan
+	// el cajón, así que `affectsCashDrawer` no sirve para distinguirlo; es el mismo `kind` con el que
+	// el corte decide de quién es el fondo (ver sessionWithExpected).
+	Kind        string          `json:"kind"`
 	Expected    decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
 	Declared    decimal.Decimal `json:"declared"`
 	Difference  decimal.Decimal `json:"difference"`
@@ -301,6 +307,9 @@ type SessionView struct {
 	// cobró por fuera). Lo que no puede pasar es que el arqueo no la nombre.
 	Uncollected      decimal.Decimal `json:"uncollected"`
 	UncollectedCount int             `json:"uncollectedCount"`
+	// Counts: lo que se contó al abrir. Va en la MISMA forma que en el detalle del corte y sale del
+	// mismo lugar: dos derivaciones del mismo desglose son dos pantallas que pueden no coincidir.
+	Counts *ConteosDelTurno `json:"counts"`
 }
 
 // CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
@@ -362,6 +371,9 @@ type SessionDetailView struct {
 	// porque ESTA es la pantalla que alguien audita cuando ya nadie se acuerda del turno.
 	Uncollected      decimal.Decimal `json:"uncollected"`
 	UncollectedCount int             `json:"uncollectedCount"`
+	// Counts: el desglose de los dos arqueos del turno. Es lo que convierte un faltante en algo
+	// investigable — "faltan dos billetes de $500" en vez de "faltan $1,000".
+	Counts *ConteosDelTurno `json:"counts"`
 }
 
 type SessionSaleView struct {
@@ -469,12 +481,120 @@ func (s *BackofficeService) activeRegister(ctx context.Context, registerID int64
 
 // OpenSession abre una sesión (corte) para una caja concreta. Falla si esa caja ya tiene una
 // sesión abierta (respaldado por el índice único one_open_session_per_register).
-func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, openingCash decimal.Decimal, userID int64) (*SessionView, error) {
-	// allowZero: abrir con cajón vacío es válido. Rechaza negativos (la columna no tiene
-	// check) e importes absurdos antes de que desborden el numeric(10,2).
-	if !domain.ValidMoney(domain.Round2(openingCash), true) {
-		return nil, domain.ErrValidation
+// DenominationView: una pieza que se puede contar.
+type DenominationView struct {
+	ID     int64           `json:"id"`
+	Value  decimal.Decimal `json:"value"`
+	IsCoin bool            `json:"isCoin"`
+}
+
+// Denominations devuelve el catálogo de una moneda, de mayor a menor.
+//
+// Solo las activas: una denominación retirada de circulación no vuelve a ofrecerse, pero sigue
+// existiendo para los arqueos que la usaron.
+func (s *BackofficeService) Denominations(ctx context.Context, moneda domain.Currency) ([]DenominationView, error) {
+	filas, err := s.store.QC(ctx).ListDenominations(ctx, string(moneda))
+	if err != nil {
+		return nil, err
 	}
+	out := make([]DenominationView, 0, len(filas))
+	for _, f := range filas {
+		out = append(out, DenominationView{ID: f.ID, Value: f.Value, IsCoin: f.IsCoin})
+	}
+	return out, nil
+}
+
+// ConteoLineView: un renglón del desglose, como lo lee quien compara contra su cajón.
+//
+// `Subtotal` viaja calculado desde la base aunque sea derivable: lo lee un humano contando billetes,
+// y si además lo multiplica la pantalla hay dos multiplicaciones del mismo dato que pueden diferir.
+type ConteoLineView struct {
+	Value    decimal.Decimal `json:"value"`
+	IsCoin   bool            `json:"isCoin"`
+	Pieces   int             `json:"pieces"`
+	Subtotal decimal.Decimal `json:"subtotal"`
+}
+
+// ConteoView: el arqueo de efectivo de un momento del turno.
+//
+// `ManualReason` no nulo significa que NO se contó por denominaciones y por qué; en ese caso `Lines`
+// viene vacío. Es la mitad de FR-016 que hace auditable un arqueo sin piezas.
+type ConteoView struct {
+	Total        decimal.Decimal  `json:"total"`
+	ManualReason *string          `json:"manualReason"`
+	Lines        []ConteoLineView `json:"lines"`
+}
+
+// ConteosDelTurno: lo que se contó al abrir y al cerrar.
+//
+// Un momento en nil = ese arqueo no se contó, que es el caso de TODOS los cortes anteriores a esta
+// funcionalidad (FR-008). Nil no se rellena con un conteo en cero: eso afirmaría "conté el cajón y
+// estaba vacío", que es un hecho distinto de "nadie contó".
+type ConteosDelTurno struct {
+	Apertura *ConteoView `json:"apertura"`
+	Cierre   *ConteoView `json:"cierre"`
+}
+
+// conteosDelTurno lee el desglose de los dos momentos, para el turno abierto y para el corte
+// cerrado.
+//
+// UNA SOLA DERIVACIÓN para las dos vistas, a propósito: el turno abierto muestra lo que se contó al
+// abrir y el detalle del corte muestra los dos, y sacarlo por caminos distintos es de donde salen
+// dos pantallas que no coinciden sin forma de saber cuál miente.
+func (s *BackofficeService) conteosDelTurno(ctx context.Context, sessionID int64) (*ConteosDelTurno, error) {
+	out := &ConteosDelTurno{}
+	for _, momento := range []db.CashCountMoment{db.CashCountMomentApertura, db.CashCountMomentCierre} {
+		conteo, err := s.store.QC(ctx).GetCashCount(ctx, db.GetCashCountParams{SessionID: sessionID, Moment: momento})
+		if err != nil {
+			// Sin conteo de ese momento no hay nada que mostrar, y no es un error: es lo normal en
+			// los cortes que cerraron antes de esta funcionalidad.
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+		vista := &ConteoView{Total: conteo.Total, ManualReason: conteo.ManualReason, Lines: []ConteoLineView{}}
+		filas, err := s.store.QC(ctx).ListCashCountLines(ctx, conteo.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range filas {
+			vista.Lines = append(vista.Lines, ConteoLineView{
+				Value: f.Value, IsCoin: f.IsCoin, Pieces: int(f.Pieces), Subtotal: f.Subtotal,
+			})
+		}
+		if momento == db.CashCountMomentApertura {
+			out.Apertura = vista
+		} else {
+			out.Cierre = vista
+		}
+	}
+	if out.Apertura == nil && out.Cierre == nil {
+		return nil, nil // un corte sin ningún conteo: la pantalla lo muestra como siempre
+	}
+	return out, nil
+}
+
+// PiezaCapturada: cuántas piezas de una denominación contó el operador.
+//
+// Viaja con el ID y no con el valor: el valor lo resuelve el servidor leyendo el catálogo, que es lo
+// que hace que un total mandado por el cliente no pueda influir en nada (FR-003).
+type PiezaCapturada struct {
+	DenominationID int64
+	Pieces         int
+}
+
+// AperturaCmd: cómo se declara el fondo al abrir la caja.
+//
+// Los dos caminos de FR-014 son EXCLUYENTES: o se cuentan piezas, o se captura el total con un
+// motivo. Ninguno de los dos es un cajón vacío, que es válido. Quien decide es `domain`.
+type AperturaCmd struct {
+	Piezas []PiezaCapturada
+	Total  *decimal.Decimal
+	Motivo string
+}
+
+func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
 	reg, err := s.activeRegister(ctx, registerID)
 	if err != nil {
 		return nil, err
@@ -484,16 +604,155 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, o
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	sess, err := s.store.QC(ctx).OpenSession(ctx, db.OpenSessionParams{
-		BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
-		OpeningCash:  domain.Round2(openingCash),
-		OpenedBy:     userID,
-		RegisterID:   registerID,
-	})
+	// El total sale de las PIEZAS y del catálogo, nunca de lo que mande el cliente: es la misma
+	// regla que `BuildOrder` con los precios. Se resuelve antes de abrir la transacción porque leer
+	// el catálogo no necesita estar dentro de ella.
+	// La moneda del turno es la de la columna, que hoy siempre toma su default: no hay forma de
+	// elegir otra al abrir. Cuando la haya, ESTA línea es la que cambia — y el test de FR-011 ya
+	// cubre que una denominación de otra moneda se rechaza.
+	piezas, err := s.piezasConSuValor(ctx, cmd.Piezas, string(domain.DefaultCurrency))
 	if err != nil {
 		return nil, err
 	}
+	total, err := domain.TotalDeclarado(piezas, cmd.Total, cmd.Motivo)
+	if err != nil {
+		return nil, err
+	}
+
+	var sess db.RegisterSession
+	// UNA SOLA TRANSACCIÓN. Son tres escrituras —la sesión, el conteo y sus renglones— y si la
+	// segunda o la tercera fallan después de que la primera comprometió, queda una sesión ABIERTA
+	// SIN CONTEO Y SIN MOTIVO, que es justo lo que FR-016 prohíbe. Peor: la caja queda bloqueada,
+	// porque `one_open_session_per_register` no deja abrir otra hasta resolver la huérfana a mano.
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		abierta, err := q.OpenSession(ctx, db.OpenSessionParams{
+			BusinessDate: pgtype.Date{Time: s.businessDate(ctx), Valid: true},
+			OpeningCash:  total,
+			OpenedBy:     userID,
+			RegisterID:   registerID,
+		})
+		if err != nil {
+			return err
+		}
+		sess = abierta
+		return s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total,
+			cmd.Piezas, motivoDelCamino(cmd.Total, cmd.Motivo), userID)
+	})
+	if err != nil {
+		// El pre-check de arriba NO es atómico: dos tabletas pueden pasarlo las dos y la segunda
+		// choca aquí con `one_open_session_per_register`. La fila secuencial ya devuelve
+		// ErrConflict; esto hace que la carrera termine igual, y no en un 500.
+		return nil, traduceConflictoDeCaja(err, db.CashCountMomentApertura)
+	}
 	return s.sessionWithExpected(ctx, sess, reg)
+}
+
+// piezasConSuValor cambia ids por valores leyendo el catálogo, y de paso hace cumplir FR-011.
+//
+// La moneda importa: contar dólares en un turno en pesos daría un total sin significado, y el
+// arqueo del turno entero se compararía después contra esa cifra. Un id que no existe también se
+// rechaza — es una pantalla desincronizada del catálogo, no un cero.
+func (s *BackofficeService) piezasConSuValor(ctx context.Context, capturadas []PiezaCapturada, moneda string) ([]domain.PiezaContada, error) {
+	if len(capturadas) == 0 {
+		return nil, nil
+	}
+	catalogo, err := s.store.QC(ctx).ListDenominations(ctx, moneda)
+	if err != nil {
+		return nil, err
+	}
+	valorDe := make(map[int64]decimal.Decimal, len(catalogo))
+	for _, d := range catalogo {
+		valorDe[d.ID] = d.Value
+	}
+	out := make([]domain.PiezaContada, 0, len(capturadas))
+	// LA MISMA DENOMINACIÓN NO PUEDE VENIR DOS VECES, y se rechaza aquí porque es el único lugar que
+	// ve los ids: `domain.TotalDelConteo` recibe valores, así que SUMA los dos renglones sin poder
+	// saber que son el mismo billete, y lo único que quedaba impidiendo un fondo inflado era la
+	// unique del esquema — que salta cuando ya se escribió la sesión, o sea como 500.
+	vistas := make(map[int64]bool, len(capturadas))
+	for _, p := range capturadas {
+		valor, ok := valorDe[p.DenominationID]
+		if !ok {
+			return nil, fmt.Errorf("%w: la denominación %d no es de la moneda del turno (%s)",
+				domain.ErrValidation, p.DenominationID, moneda)
+		}
+		if vistas[p.DenominationID] {
+			return nil, fmt.Errorf("%w: la denominación de $%s llegó dos veces en el conteo",
+				domain.ErrValidation, valor)
+		}
+		vistas[p.DenominationID] = true
+		out = append(out, domain.PiezaContada{Valor: valor, Piezas: p.Pieces})
+	}
+	return out, nil
+}
+
+// guardarConteo escribe el conteo y sus renglones DENTRO de la transacción que le pasen.
+//
+// Los renglones con cero piezas no se escriben: "no hay" y "no se capturó" son lo mismo en un
+// arqueo (FR-009), y el `check (pieces > 0)` del esquema está para que eso no dependa de que esta
+// función se acuerde.
+func (s *BackofficeService) guardarConteo(ctx context.Context, q *db.Queries, sessionID int64,
+	momento db.CashCountMoment, total decimal.Decimal, piezas []PiezaCapturada, motivo *string,
+	userID int64) error {
+	conteo, err := q.SaveCashCount(ctx, db.SaveCashCountParams{
+		SessionID: sessionID, Moment: momento, Total: total, ManualReason: motivo, CreatedBy: userID,
+	})
+	if err != nil {
+		return traduceConflictoDeCaja(err, momento)
+	}
+	for _, p := range piezas {
+		if p.Pieces <= 0 {
+			continue
+		}
+		if err := q.SaveCashCountLine(ctx, db.SaveCashCountLineParams{
+			CountID: conteo.ID, DenominationID: p.DenominationID, Pieces: int32(p.Pieces),
+		}); err != nil {
+			return traduceConflictoDeCaja(err, momento)
+		}
+	}
+	return nil
+}
+
+// motivoDelCamino devuelve el motivo a guardar, o nil si el efectivo se contó por denominaciones.
+//
+// Nulo significa "se contó" en el esquema, así que la señal es el CAMINO y no el texto: se limpia
+// con `domain.MotivoLimpio`, la misma regla con la que el dominio lo aprobó, porque guardar algo
+// distinto de lo que se validó es cómo se cuela un motivo que la pantalla ve vacío.
+func motivoDelCamino(aMano *decimal.Decimal, motivo string) *string {
+	if aMano == nil {
+		return nil
+	}
+	m := domain.MotivoLimpio(motivo)
+	return &m
+}
+
+// traduceConflictoDeCaja convierte los 23505 que el CLIENTE puede provocar en un error que dice qué
+// pasó, en vez del "el servidor se rompió" que sale de dejar subir el error crudo de Postgres.
+//
+// Ninguno de los tres es raro:
+//   - dos conteos del mismo momento: las dos tabletas comparten cuenta, así que dos personas pueden
+//     abrir el cierre y confirmar las dos;
+//   - la misma caja abierta dos veces: la misma carrera, en la apertura. El pre-check de
+//     `GetOpenSessionByRegister` es read-then-insert y las dos pasan;
+//   - la misma denominación dos veces: una pantalla desincronizada. `piezasConSuValor` ya lo rechaza
+//     antes de escribir, pero esto queda como respaldo para cualquier camino que se agregue después.
+func traduceConflictoDeCaja(err error, momento db.CashCountMoment) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return err
+	}
+	switch {
+	case strings.Contains(pgErr.ConstraintName, "session_cash_counts_un_momento"):
+		return fmt.Errorf("%w: este turno ya tiene un conteo de %s guardado; recarga para ver el que quedó",
+			domain.ErrConflict, momento)
+	case strings.Contains(pgErr.ConstraintName, "one_open_session_per_register"):
+		return fmt.Errorf("%w: esa caja ya está abierta; recarga para ver el turno que quedó",
+			domain.ErrConflict)
+	case strings.Contains(pgErr.ConstraintName, "session_cash_count_lines_unicas"):
+		return fmt.Errorf("%w: llegó la misma denominación dos veces en el conteo",
+			domain.ErrValidation)
+	}
+	return err
 }
 
 // CurrentByRegister devuelve la sesión abierta de una caja con sus esperados en vivo, o nil si
@@ -606,13 +865,19 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 			expected = expected.Add(sess.OpeningCash).Add(net) // + fondo + neto de movimientos
 		}
 		expected, tips = domain.Round2(expected), domain.Round2(tips)
-		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name, Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
+		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name,
+			Kind: string(r.Kind), Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
 		methods = append(methods, methodExpected{
 			name: r.Name, expected: expected, tips: tips,
 			duenoDelFondo: r.Kind == db.PaymentKindEfectivo,
 			plataforma:    r.PlatformName,
 		})
 	}
+	conteos, err := s.conteosDelTurno(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.Counts = conteos
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
@@ -641,7 +906,25 @@ func (s *BackofficeService) businessDate(ctx context.Context) time.Time {
 }
 
 // CloseSession cierra la sesión abierta de una caja, guarda esperado vs declarado por método.
-func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, declared map[int]decimal.Decimal, notes string) (*SessionView, error) {
+// CierreCmd: cómo se declara el dinero al cerrar el turno.
+//
+// El EFECTIVO tiene los dos caminos excluyentes de FR-014 —contar piezas, o escribir el total con un
+// motivo en `Declarado`— porque es el único que está físicamente en el cajón. Los demás métodos
+// siguen mandando su cifra y nada más: no hay piezas que contar en una terminal de tarjeta.
+type CierreCmd struct {
+	Declarado map[int]decimal.Decimal // methodId → lo contado; el del efectivo es el camino manual
+	Piezas    []PiezaCapturada
+	Motivo    string // obligatorio si el efectivo viene en `Declarado` (FR-014)
+	Notas     string
+}
+
+func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
+	// Copia: el mapa es de quien llama y el efectivo se sustituye por el total del conteo. Mutar el
+	// del handler dejaría el cuerpo del request diciendo algo que ya no es.
+	declared := make(map[int]decimal.Decimal, len(cmd.Declarado))
+	for k, v := range cmd.Declarado {
+		declared[k] = v
+	}
 	// allowZero: un método puede cerrar en 0 (sin ventas). Rechaza negativos y absurdos.
 	for _, d := range declared {
 		if !domain.ValidMoney(domain.Round2(d), true) {
@@ -674,6 +957,17 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 	if err != nil {
 		return nil, err
 	}
+
+	conteo, err := s.conteoDelEfectivo(ctx, view.Totals, declared, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if conteo != nil {
+		// El conteo SUSTITUYE lo declarado del efectivo, y de ningún otro método: el fondo de caja ya
+		// enseñó lo que cuesta que una cifra del cajón se sume a los cuatro métodos que lo tocan.
+		declared[conteo.metodo] = conteo.total
+	}
+
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		for i := range view.Totals {
 			t := &view.Totals[i]
@@ -686,17 +980,79 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 				return err
 			}
 		}
+		// DENTRO de la misma transacción que escribe los totales y cierra el turno. Si el conteo
+		// fallara después de comprometerse el cierre, quedaría un arqueo firmado cuyo efectivo no se
+		// puede reconstruir — y el turno ya cerrado, o sea sin forma de volver a intentarlo.
+		if conteo != nil {
+			if err := s.guardarConteo(ctx, q, sess.ID, db.CashCountMomentCierre, conteo.total,
+				cmd.Piezas, conteo.motivo, userID); err != nil {
+				return err
+			}
+		}
 		var n *string
-		if notes != "" {
-			n = &notes
+		if cmd.Notas != "" {
+			n = &cmd.Notas
 		}
 		return q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n})
 	})
 	if err != nil {
-		return nil, err
+		return nil, traduceConflictoDeCaja(err, db.CashCountMomentCierre)
 	}
 	view.Status = "cerrada"
 	return view, nil
+}
+
+// conteoDelEfectivo resuelve los dos caminos de FR-014 para el método del CAJÓN, o devuelve nil si
+// en este cierre no se declaró efectivo.
+//
+// Nil no es lo mismo que cero: una caja secundaria que no manejó efectivo cierra sin nada que
+// contar, y guardar un conteo en cero afirmaría "conté el cajón y estaba vacío", que es un hecho
+// distinto de "nadie contó". Un arqueo inventado se lee después como si fuera cierto.
+//
+// Quién decide es `domain.TotalDeclarado`, el MISMO que decide en la apertura: si los dos caminos
+// llegan juntos, o si el total a mano viene sin motivo, el error sale de ahí. Repetir esa regla aquí
+// sería tenerla en dos capas para que alguien mueva una sola.
+func (s *BackofficeService) conteoDelEfectivo(ctx context.Context, totales []MethodTotal,
+	declared map[int]decimal.Decimal, cmd CierreCmd) (*conteoResuelto, error) {
+	metodo, hay := 0, false
+	for _, t := range totales {
+		if t.Kind == string(db.PaymentKindEfectivo) {
+			metodo, hay = t.MethodID, true
+			break
+		}
+	}
+	if !hay {
+		// Sin método de efectivo en el turno no hay cajón que contar; si alguien mandó piezas, es una
+		// pantalla desincronizada y no un cierre que valga guardar a medias.
+		if len(cmd.Piezas) > 0 {
+			return nil, fmt.Errorf("%w: este turno no maneja efectivo", domain.ErrValidation)
+		}
+		return nil, nil
+	}
+
+	piezas, err := s.piezasConSuValor(ctx, cmd.Piezas, string(domain.DefaultCurrency))
+	if err != nil {
+		return nil, err
+	}
+	var aMano *decimal.Decimal
+	if v, ok := declared[metodo]; ok {
+		aMano = &v
+	}
+	if len(piezas) == 0 && aMano == nil {
+		return nil, nil
+	}
+	total, err := domain.TotalDeclarado(piezas, aMano, cmd.Motivo)
+	if err != nil {
+		return nil, err
+	}
+	return &conteoResuelto{metodo: metodo, total: total, motivo: motivoDelCamino(aMano, cmd.Motivo)}, nil
+}
+
+// conteoResuelto: a qué método alimenta el conteo, con qué total y con qué motivo (nil = se contó).
+type conteoResuelto struct {
+	metodo int
+	total  decimal.Decimal
+	motivo *string
 }
 
 // RecordCashMovement registra una entrada/salida de efectivo del cajón en la sesión abierta de una
@@ -875,6 +1231,11 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			plataforma:    t.PlatformName,
 		})
 	}
+	conteos, err := s.conteosDelTurno(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.Counts = conteos
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{

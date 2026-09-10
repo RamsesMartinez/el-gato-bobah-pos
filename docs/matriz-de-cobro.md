@@ -197,6 +197,38 @@ metería en el turno siguiente y reescribiría un arqueo firmado, por la misma r
 [matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta. El corte 5 queda como está, ahora
 con su $554.00 declarado.
 
+## H. El arqueo de efectivo por denominaciones (spec 003)
+
+Por dónde se pierde dinero **al contar el cajón**. El agujero que esto cierra no está en el cobro
+sino en el arqueo: el operador sumaba a mano en una libreta y de ahí nacían faltantes que después
+nadie podía explicar — un turno cerró con $1,662 de descuadre que era una suma mal hecha, no dinero
+perdido.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| H1 | Piezas contadas y total escrito, los dos para el mismo arqueo | `ErrConteoAmbiguo`: son dos cifras del mismo dinero y no hay forma de saber cuál manda | `TestComoSeDeclaraElEfectivo`, `TestMandarConteoYDeclaradoDelEfectivoSeRechaza` | Postgres |
+| H2 | El cliente manda piezas **y** un total propio | El servidor **recalcula** desde las piezas y descarta el total del cliente | `TestElConteoDeAperturaAlimentaElFondo` | Postgres |
+| H3 | Total escrito a mano sin motivo (al abrir **y** al cerrar) | `ErrConteoSinExplicar`: un arqueo sin desglose y sin explicación no se puede auditar | `TestDeclararElEfectivoDelCierreAManoExigeMotivo` | Postgres |
+| H4 | Motivo de puros espacios, o de caracteres invisibles (`U+200B`) | Se rechaza: en pantalla se ve vacío igual | `TestComoSeDeclaraElEfectivo` | Unitario |
+| H5 | Motivo más largo que el tope del esquema | 400 y no un `23514` que sube como 500 — el cuerpo de un 500 se registra en el log con el texto del operador dentro | `TestComoSeDeclaraElEfectivo` | Unitario |
+| H6 | La misma denominación dos veces en el conteo | 400 nombrando la denominación, **antes** de escribir nada. El dominio suma los dos renglones sin poder saber que son el mismo billete | `TestUnRenglonRepetidoSeRechazaComoCapturaInvalida` | Postgres |
+| H7 | Un conteo que desborda el tope de dinero (mil billetes de $1000) | 400 accionable, y el tope se evalúa sobre el TOTAL y no pieza por pieza | `TestTotalDelConteo` | Unitario |
+| H8 | Piezas fraccionarias (`1.5`) o con coma de millar (`1,000`) en el campo | Se rechazan visiblemente; **no** caen a cero en silencio | `conteo.test.ts` | Navegador (vitest) |
+| H9 | El conteo del cierre alimenta el declarado del efectivo | Y de **ningún otro método**: es el mismo error que sumó el fondo cuatro veces y reportó $4,500 de faltante | `TestElConteoDeCierreAlimentaSoloElDeclaradoDelEfectivo` | Postgres |
+| H10 | El faltante del cierre | Sale de la columna **generada** de la base, no de una resta escrita a mano | `TestElFaltanteDelCierreSaleDeLaColumnaGenerada` | Postgres |
+| H11 | Una apertura que falla a medias | Ni sesión huérfana ni caja bloqueada: las tres escrituras van en una transacción | `TestUnaAperturaQueFallaNoDejaLaCajaBloqueada` | Postgres |
+| H12 | Dos tabletas abren la misma caja al mismo tiempo | La segunda ve un conflicto accionable, no un 500 | `TestDosAperturasSimultaneasDejanUnConflictoYNoUn500` | Postgres |
+| H13 | Un conteo de cierre que ya existe | Conflicto, y el cierre **no queda a medias**: turno abierto y cero totales escritos | `TestUnConteoDeCierreQueYaExisteNoSePisaYElCierreNoQuedaAMedias` | Postgres |
+| H14 | Cerrar sin declarar efectivo | No se inventa un conteo en cero: "conté y estaba vacío" es un hecho distinto de "nadie contó" | `TestCerrarSinDeclararEfectivoNoInventaUnConteo` | Postgres |
+| H15 | Lo que la pantalla suma y lo que el servidor guarda | La misma cifra: se cuentan 40 monedas de $10 y 3 de $50 y el turno abre con $550 | `contar-el-cajon.spec.ts` › **C4** | Navegador + servidor |
+| H16 | La diferencia antes de confirmar el cierre | Visible **antes** de tocar el botón, y con lo no capturado en `—` y no en cero | `cierreDeCaja.test.ts`, `CashPage.test.tsx` | Navegador (vitest) |
+
+**Lo que H no cubre, y es la mitad que importa:** que las piezas que el operador teclea sean las que
+de verdad hay en el cajón. El sistema quitó la suma manual —que es de donde venían los faltantes
+inventados— pero **el conteo físico sigue dependiendo de quien cuenta**. Un cajón mal contado ahora
+produce un arqueo consistente con un conteo equivocado, y la única señal es la diferencia contra lo
+esperado.
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.

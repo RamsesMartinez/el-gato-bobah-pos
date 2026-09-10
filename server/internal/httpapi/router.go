@@ -183,6 +183,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que
+				// abre o cierra la caja.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash/denominations", h.CashDenominations)
 
 				// Precios por plataforma: los captura quien vende, desde la pantalla de venta. El
 				// pedido de la plataforma ya llegó y hay que imprimirlo; mandar al cajero a buscar

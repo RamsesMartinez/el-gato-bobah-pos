@@ -58,7 +58,7 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 	backoffice := app.NewBackofficeService(st, clock)
 	principal := registerID(t, st, "Caja principal")
 	if _, err := backoffice.CloseSession(ctx, principal, cajero,
-		map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("25")}, ""); err != nil {
+		cierreAMano(map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("25")})); err != nil {
 		t.Fatalf("no debe bloquear el cierre: %v", err)
 	}
 }
