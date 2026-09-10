@@ -357,16 +357,15 @@ func TestElDownDeLaMigracionDejaElEsquemaComoEstaba(t *testing.T) {
 	migrarArriba(t, st.Pool)
 	ctx := context.Background()
 
-	antes := versionDeEsquema(t, st)
-	if antes != 65 {
-		t.Fatalf("la base está en la versión %d y este test revierte LA ÚLTIMA: correrlo así "+
-			"desharía la migración equivocada", antes)
-	}
+	// Revierte HASTA la 64, no "la última". La guarda anterior exigía que la base estuviera
+	// exactamente en 65 y hacía fallar el test en cuanto llegó la 0066 — un test de reversibilidad
+	// que caduca con la siguiente migración no prueba nada a partir de entonces.
+	//
 	// Se vuelve a subir pase lo que pase: los demás tests de este paquete dan por hecho que la base
 	// quedó migrada, y dejarla abajo los rompería según el orden en que corran.
 	t.Cleanup(func() { migrarArriba(t, st.Pool) })
 
-	migrarAbajo(t, st.Pool)
+	migrarAbajoHasta(t, st.Pool, 64)
 
 	for _, col := range []string{"platform_order_ref", "platform_ref_set_by", "platform_ref_set_at"} {
 		var n int
@@ -398,7 +397,7 @@ func TestElDownDeLaMigracionDejaElEsquemaComoEstaba(t *testing.T) {
 		t.Fatal("el Down dejó orders_id_company_key: el siguiente Up truena con \"ya existe\"")
 	}
 
-	if v := versionDeEsquema(t, st); v >= antes {
-		t.Fatalf("el Down no movió la versión del esquema (sigue en %d)", v)
+	if v := versionDeEsquema(t, st); v != 64 {
+		t.Fatalf("tras revertir hasta la 64 el esquema quedó en %d", v)
 	}
 }

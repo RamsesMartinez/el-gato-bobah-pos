@@ -5,6 +5,9 @@ import type { PaymentMethod } from '../types/pos';
 export interface MethodTotal {
   methodId: number;
   name: string;
+  // Cuál método es el del CAJÓN, para saber cuál se cuenta por denominaciones. No se compara por
+  // nombre: los métodos de plataforma en efectivo también tocan el cajón y solo `kind` los separa.
+  kind: string;
   expected: string;
   declared: string;
   difference: string;
@@ -53,6 +56,44 @@ export interface CashRegister {
   isActive: boolean;
   openSessionId: number | null; // no-null si la caja tiene una sesión abierta
 }
+// Una pieza que se puede contar. `value` es string por lo mismo que el resto del dinero: es una
+// columna `numeric(10,2)` y convertirla a número en la frontera pierde exactitud.
+export interface Denomination {
+  id: number;
+  value: string;
+  isCoin: boolean; // solo sirve para agrupar en pantalla, y agrupar es lo que hace encontrar la pieza
+}
+
+// Los DOS CAMINOS de declarar el fondo, en un tipo que no deja mandar los dos (FR-014/FR-015).
+//
+// El servidor los rechaza si llegan juntos, pero llegar hasta el rechazo con el cajón contado es un
+// conteo perdido: la unión discriminada lo vuelve imposible de escribir desde aquí.
+export type AperturaInput =
+  | { counts: { denominationId: number; pieces: number }[] }
+  | { openingCash: number; manualReason: string };
+
+// Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
+// humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
+export interface ConteoLine {
+  value: string;
+  isCoin: boolean;
+  pieces: number;
+  subtotal: string;
+}
+// El arqueo de un momento del turno. `manualReason` no nulo = no se contó por denominaciones, y por
+// qué; en ese caso `lines` viene vacío.
+export interface Conteo {
+  total: string;
+  manualReason: string | null;
+  lines: ConteoLine[];
+}
+// Un momento en null = ese arqueo no se contó. Es el caso de todos los cortes anteriores a la
+// funcionalidad, y la pantalla los muestra como siempre (FR-008).
+export interface ConteosDelTurno {
+  apertura: Conteo | null;
+  cierre: Conteo | null;
+}
+
 export interface CashSession {
   id: number;
   registerId: number;
@@ -77,6 +118,7 @@ export interface CashSession {
   // no ha salido, ésta qué dinero no entró. No bloquea el cierre.
   uncollected: string;
   uncollectedCount: number;
+  counts: ConteosDelTurno | null;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
@@ -134,6 +176,7 @@ export interface CashSessionDetail {
   salesShown: number;
   // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
   salesTotal: string;
+  counts: ConteosDelTurno | null;
 }
 
 export interface CorteSale {
@@ -383,9 +426,20 @@ export const backofficeApi = {
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
 
   cashCurrent: (registerId: number) => api.get<CashSession | null>(`/cash-sessions/current?registerId=${registerId}`),
-  cashOpen: (registerId: number, openingCash: number) => api.post<CashSession>('/cash-sessions', { registerId, openingCash }),
-  cashClose: (registerId: number, declared: Record<string, number>, notes?: string) =>
-    api.post<CashSession>('/cash-sessions/close', { registerId, declared, notes }),
+  // Qué piezas se pueden contar. La moneda es un parámetro de frontera: el servidor rechaza una
+  // desconocida en vez de caer a MXN, así que no se manda vacía por si acaso.
+  cashDenominations: (currency?: string) =>
+    api.get<{ items: Denomination[] }>(
+      currency ? `/cash/denominations?currency=${encodeURIComponent(currency)}` : '/cash/denominations'),
+  cashOpen: (registerId: number, apertura: AperturaInput) =>
+    api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
+  // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las
+  // dos: el servidor rechaza la ambigüedad (FR-015).
+  cashClose: (registerId: number, declared: Record<string, number>, extra?: {
+    counts?: { denominationId: number; pieces: number }[];
+    manualReason?: string;
+    notes?: string;
+  }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe

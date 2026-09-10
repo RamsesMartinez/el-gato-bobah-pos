@@ -288,6 +288,23 @@ cerrarlos: uno de medición y tres de un defecto que se vio en el ambiente de pr
 | Z5 | Reproducir el estado de una tableta que ya se usó | Sembrar el carrito viejo NO basta: sin la marca `sesion.ultimaEmpresa`, `hayQueLimpiar` trata el perfil limpio de Playwright como cambio de empresa y el login llama a `descartarTodo()`, que tira lo sembrado antes de que el POS renderice. **Y20 pasó en verde contra el build roto por esto.** Hay que sembrar las dos llaves | el `addInitScript` de *Y20* | Playwright |
 | Z6 | Ninguna pantalla se queda en blanco | Se recorren las 14 rutas con una cuenta guardada por la versión ANTERIOR y se exige que cada una pinte algo y que ninguna tire una excepción. Es la guardia de la **clase**, no del campo: sin error boundary, cualquier throw en render deja el `#root` vacío. Verificado en rojo sirviendo el bundle roto por su hash viejo: `#root` en 0 caracteres y el `pageerror` que reportó el operador | `pantalla-en-blanco.spec.ts` › *Z6* | Playwright |
 
+## C. La hoja del contador de efectivo (spec 003)
+
+Medido el 9 de septiembre de 2026 contra un navegador real a 1024×600, con el stack completo en
+local (API Go + Postgres, sin mocks: un backend simulado estaría de acuerdo con la pantalla por
+construcción).
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| C1 | La hoja con las once denominaciones | Cabe en 600 px —**552 px medidos**— y la moneda de 50¢, que es el último renglón, se alcanza **sin desplazarse**. Inline en `/caja` era imposible: esa pantalla mide 1,494 px y el punto de inserción arranca 200 px debajo del fold | `contar-el-cajon.spec.ts` › **C1** | Playwright |
+| C2 | Los controles de cada denominación | Campo y ajustes ≥44 px reales, medidos **después** de que la animación asiente (ver Z3). Y el campo es más ancho que una tecla de ajuste: es el control principal y el peso visual tiene que decirlo | `contar-el-cajon.spec.ts` › **C2** | Playwright |
+| C3 | El teclado numérico abierto | El total y el botón de confirmar siguen a la vista. Se simula recortando la ventana a 350 px de alto, que es lo único que importa del teclado: se come ~250 px. Es lo que `dvh` + footer fijo existen para resolver | `contar-el-cajon.spec.ts` › **C3** | Playwright |
+| C4 | Contar 40 monedas y abrir la caja | Se teclean, no se tapean 40 veces, y **el turno abre con la misma cifra que mostró la hoja**. El servidor recalcula desde las piezas: si las dos sumas no coinciden, el arqueo se compara contra un fondo que nadie contó | `contar-el-cajon.spec.ts` › **C4** | Playwright + servidor |
+| C5 | El desglose después del cierre | Piezas por denominación y subtotal del servidor; un arqueo capturado a mano muestra su motivo; **un corte anterior a la feature no pinta nada**, sin avisos que hablen del sistema | `CashPage.test.tsx` › *el desglose de lo contado* | Vitest |
+
+**Lo que no se midió en tableta real:** el teclado del sistema operativo. C3 recorta la ventana, que
+es el efecto que importa, pero el teclado real de una Surface puede tapar de otra forma.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se

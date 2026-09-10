@@ -116,17 +116,70 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// GET /cash/denominations?currency= — qué piezas se pueden contar.
+//
+// La moneda es un parámetro de frontera: uno desconocido se RECHAZA y no cae a MXN en silencio. Un
+// catálogo que se ve correcto para la moneda equivocada deja al operador contando piezas que no
+// existen en su cajón, y el total sale de ahí.
+func (h *Handlers) CashDenominations(w http.ResponseWriter, r *http.Request) {
+	moneda := domain.DefaultCurrency
+	if q := r.URL.Query().Get("currency"); q != "" {
+		moneda = domain.Currency(q)
+		if !moneda.Valid() {
+			Error(w, domain.ErrValidation)
+			return
+		}
+	}
+	items, err := h.backoffice.Denominations(r.Context(), moneda)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// piezasBody: lo que la pantalla manda cuando el operador contó el cajón.
+//
+// El total NO viaja aquí: si viniera junto a las piezas habría dos cifras del mismo dinero, y el
+// servidor tendría que elegir. Los dos caminos van en campos distintos justo para poder rechazar
+// que lleguen los dos (FR-015).
+type piezasBody struct {
+	DenominationID int64 `json:"denominationId"`
+	Pieces         int   `json:"pieces"`
+}
+
+// piezasDelBody traduce los renglones del cuerpo, sin decidir nada: quién valida es el servicio.
+func piezasDelBody(piezas []piezasBody) []app.PiezaCapturada {
+	if len(piezas) == 0 {
+		return nil
+	}
+	out := make([]app.PiezaCapturada, 0, len(piezas))
+	for _, p := range piezas {
+		out = append(out, app.PiezaCapturada{DenominationID: p.DenominationID, Pieces: p.Pieces})
+	}
+	return out
+}
+
+func aperturaDelBody(piezas []piezasBody, total *decimal.Decimal, motivo string) app.AperturaCmd {
+	return app.AperturaCmd{Piezas: piezasDelBody(piezas), Total: total, Motivo: motivo}
+}
+
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RegisterID  int64           `json:"registerId"`
-		OpeningCash decimal.Decimal `json:"openingCash"`
+		RegisterID int64        `json:"registerId"`
+		Counts     []piezasBody `json:"counts"`
+		// OpeningCash sigue llamándose igual para no romper el nombre que la pantalla ya usa, pero
+		// ahora es el camino MANUAL: exige `manualReason` y es excluyente con `counts`.
+		OpeningCash  *decimal.Decimal `json:"openingCash"`
+		ManualReason string           `json:"manualReason"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, body.OpeningCash, u.ID)
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID,
+		aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason), u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -153,7 +206,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RegisterID int64                      `json:"registerId"`
 		Declared   map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
-		Notes      string                     `json:"notes"`
+		Counts     []piezasBody               `json:"counts"`   // el efectivo, contado por denominaciones
+		// ManualReason es obligatorio cuando el efectivo viene en `declared` en vez de contado
+		// (FR-014): sin él quedaría un arqueo con una cifra que nadie puede reconstruir.
+		ManualReason string `json:"manualReason"`
+		Notes        string `json:"notes"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -172,7 +229,10 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		declared[id] = v
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
+	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		Declarado: declared, Piezas: piezasDelBody(body.Counts),
+		Motivo: body.ManualReason, Notas: body.Notes,
+	})
 	if err != nil {
 		Error(w, err)
 		return

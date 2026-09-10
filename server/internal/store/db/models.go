@@ -14,6 +14,48 @@ import (
 	"uuid"
 )
 
+type CashCountMoment string
+
+const (
+	CashCountMomentApertura CashCountMoment = "apertura"
+	CashCountMomentCierre   CashCountMoment = "cierre"
+)
+
+func (e *CashCountMoment) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CashCountMoment(s)
+	case string:
+		*e = CashCountMoment(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CashCountMoment: %T", src)
+	}
+	return nil
+}
+
+type NullCashCountMoment struct {
+	CashCountMoment CashCountMoment `json:"cash_count_moment"`
+	Valid           bool            `json:"valid"` // Valid is true if CashCountMoment is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCashCountMoment) Scan(value interface{}) error {
+	if value == nil {
+		ns.CashCountMoment, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CashCountMoment.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCashCountMoment) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CashCountMoment), nil
+}
+
 type ChannelVisibility string
 
 const (
@@ -643,6 +685,15 @@ type BusinessSetting struct {
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
 }
 
+type CashDenomination struct {
+	ID       int64           `json:"id"`
+	Currency string          `json:"currency"`
+	Value    decimal.Decimal `json:"value"`
+	IsCoin   bool            `json:"is_coin"`
+	SortKey  int32           `json:"sort_key"`
+	IsActive bool            `json:"is_active"`
+}
+
 type CashRegister struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -1123,6 +1174,25 @@ type RegisterSessionTotal struct {
 	Declared        decimal.Decimal  `json:"declared"`
 	Difference      *decimal.Decimal `json:"difference"`
 	Tips            decimal.Decimal  `json:"tips"`
+}
+
+type SessionCashCount struct {
+	ID           int64           `json:"id"`
+	SessionID    int64           `json:"session_id"`
+	Moment       CashCountMoment `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+	CompanyID    int64           `json:"company_id"`
+}
+
+type SessionCashCountLine struct {
+	ID             int64 `json:"id"`
+	CountID        int64 `json:"count_id"`
+	DenominationID int64 `json:"denomination_id"`
+	Pieces         int32 `json:"pieces"`
+	CompanyID      int64 `json:"company_id"`
 }
 
 type StockLevel struct {

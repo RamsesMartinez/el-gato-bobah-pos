@@ -105,6 +105,23 @@ func migrarArriba(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
+// migrarAbajoHasta revierte TODO lo que esté por encima de `version`, en orden inverso.
+//
+// Existe porque un test de `Down` que llama a `migrarAbajo` está diciendo en realidad "revierte la
+// última", y eso solo es cierto mientras su migración SEA la última. En cuanto llega la siguiente,
+// el test o deshace la migración equivocada o truena por una dependencia que no existía cuando se
+// escribió — las dos formas de que un test de reversibilidad deje de probar lo que dice probar.
+//
+// Con esto, el test de la migración N revierte hasta N-1 sin importar cuántas hayan llegado después,
+// y de paso ejercita que las posteriores también se revierten.
+func migrarAbajoHasta(t *testing.T, pool *pgxpool.Pool, version int64) {
+	t.Helper()
+	db := prepararGoose(t, pool)
+	if err := goose.DownToContext(context.Background(), db, ".", version); err != nil {
+		t.Fatalf("goose down-to %d: %v", version, err)
+	}
+}
+
 func migrarAbajo(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	db := prepararGoose(t, pool)
