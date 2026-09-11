@@ -399,7 +399,7 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 }
 
 const getPaymentMethod = `-- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1
 `
 
@@ -407,6 +407,7 @@ type GetPaymentMethodRow struct {
 	ID                 int16       `json:"id"`
 	Name               string      `json:"name"`
 	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
 	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
 	AutoDeclare        bool        `json:"auto_declare"`
 	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
@@ -423,6 +424,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 		&i.ID,
 		&i.Name,
 		&i.Kind,
+		&i.IsCash,
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
 		&i.DeliveryPlatformID,
@@ -592,6 +594,58 @@ func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegist
 			&i.ID,
 			&i.Name,
 			&i.IsPrimary,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllPaymentMethods = `-- name: ListAllPaymentMethods :many
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods order by sort_key, name
+`
+
+type ListAllPaymentMethodsRow struct {
+	ID                 int16       `json:"id"`
+	Name               string      `json:"name"`
+	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
+	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
+	AutoDeclare        bool        `json:"auto_declare"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	IsActive           bool        `json:"is_active"`
+}
+
+// Todos, incluidos los apagados. Es la lista de la pantalla de AJUSTES, y por eso no puede ser la
+// misma que ofrece el POS para cobrar.
+//
+// Existe porque apagar un método era una puerta de un solo sentido: la tabla de interruptores se
+// pintaba con la lista filtrada, así que el renglón desaparecía junto con su propio interruptor y
+// no quedaba camino en la aplicación para volver a encenderlo. Un dedo que falla por milímetros
+// sobre «Efectivo» dejaba al mostrador sin cobrar en efectivo hasta que alguien entrara a la base.
+func (q *Queries) ListAllPaymentMethods(ctx context.Context) ([]ListAllPaymentMethodsRow, error) {
+	rows, err := q.db.Query(ctx, listAllPaymentMethods)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllPaymentMethodsRow{}
+	for rows.Next() {
+		var i ListAllPaymentMethodsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.IsCash,
+			&i.AffectsCashDrawer,
+			&i.AutoDeclare,
+			&i.DeliveryPlatformID,
 			&i.IsActive,
 		); err != nil {
 			return nil, err
@@ -1111,7 +1165,7 @@ func (q *Queries) LockOpenPrimarySession(ctx context.Context) (LockOpenPrimarySe
 }
 
 const lockPaymentMethod = `-- name: LockPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1 for update
 `
 
@@ -1119,6 +1173,7 @@ type LockPaymentMethodRow struct {
 	ID                 int16       `json:"id"`
 	Name               string      `json:"name"`
 	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
 	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
 	AutoDeclare        bool        `json:"auto_declare"`
 	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
@@ -1139,6 +1194,7 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 		&i.ID,
 		&i.Name,
 		&i.Kind,
+		&i.IsCash,
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
 		&i.DeliveryPlatformID,
@@ -1341,12 +1397,12 @@ func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalPara
 }
 
 const seedBasePaymentMethods = `-- name: SeedBasePaymentMethods :exec
-insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+insert into payment_methods (company_id, name, kind, is_cash, affects_cash_drawer, is_active, sort_key, auto_declare)
 values
-  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
-  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
-  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
-  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+  ($1, 'Efectivo',           'efectivo',      true,  true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, false, true, 300, true)
 on conflict (company_id, name) do nothing
 `
 
@@ -1357,6 +1413,10 @@ on conflict (company_id, name) do nothing
 // Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
 // hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
 // contratadas es peor que no darle ninguna.
+// `is_cash` se escribe explícito: la columna nace en `false` y la 0067 le puso un `check` que
+// exige que solo lo que se cobra en billetes entre al cajón. Sin esto, sembrar «Efectivo» con
+// `affects_cash_drawer` viola la restricción y **una empresa nueva no se puede crear** — lo
+// encontró el propio `check`, en el sembrado de la segunda empresa de los tests de aislamiento.
 func (q *Queries) SeedBasePaymentMethods(ctx context.Context, companyID int64) error {
 	_, err := q.db.Exec(ctx, seedBasePaymentMethods, companyID)
 	return err

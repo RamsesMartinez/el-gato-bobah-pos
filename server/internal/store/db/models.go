@@ -1046,6 +1046,7 @@ type PaymentMethod struct {
 	AutoDeclare        bool            `json:"auto_declare"`
 	CompanyID          int64           `json:"company_id"`
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	IsCash             bool            `json:"is_cash"`
 }
 
 type PlatformSettlement struct {

@@ -88,6 +88,31 @@ alter table register_session_totals
     not affects_cash_drawer or declared = expected
   ) not valid;
 
+-- QUÉ MÉTODOS SE COBRAN EN BILLETES, como dato propio y no deducido de otro.
+--
+-- Hasta aquí el único marcador de "esto es efectivo" era `affects_cash_drawer`, que en realidad
+-- contesta otra pregunta: dónde CAE ese dinero. Sobrecargar uno con los dos significados dejaba un
+-- bypass de un request — apagar «va al cajón» y encender «automático» en el mismo PATCH satisfacía
+-- la validación, y el método quedaba indistinguible de uno en línea: sus billetes entraban sin que
+-- nadie los contara ni los declarara, y el corte cerraba en $0.00 de diferencia.
+--
+-- `kind` tampoco sirve: «Didi efectivo» es de tipo `plataforma` porque lo que identifica es por
+-- dónde llegó la venta, no con qué pagó el cliente.
+--
+-- Se rellena desde lo que hoy es cierto y NO se expone para editar: que un método se cobre en
+-- billetes es una propiedad suya, no una preferencia del negocio. Lo configurable sigue siendo si
+-- ese efectivo llega a nuestro cajón.
+alter table payment_methods
+  add column is_cash boolean not null default false;
+
+update payment_methods set is_cash = true where kind = 'efectivo' or affects_cash_drawer;
+
+-- Y las dos reglas quedan ancladas donde no dependen de que el siguiente camino se acuerde:
+alter table payment_methods
+  add constraint payment_methods_solo_el_efectivo_al_cajon check (
+    not affects_cash_drawer or is_cash
+  );
+
 -- LA OTRA MITAD DE LA MISMA REGLA, EN EL CATÁLOGO: un método cuyo dinero se cuenta en el cajón no
 -- se puede auto-declarar.
 --
@@ -97,14 +122,16 @@ alter table register_session_totals
 -- combinación imposible. El servicio ya toma el renglón con `for update`; esto es el respaldo que
 -- no depende de que el siguiente camino se acuerde.
 --
--- Auto-declarar significa "el servidor declara lo que él mismo espera": sobre el dinero del cajón
--- eso hace que la diferencia sea cero SIEMPRE y que un faltante real no se pueda detectar.
+-- Auto-declarar significa "el servidor declara lo que él mismo espera": sobre billetes eso hace que
+-- la diferencia sea cero SIEMPRE y que un faltante real no se pueda detectar. Mira `is_cash` y no
+-- `affects_cash_drawer` a propósito: el efectivo que se lleva el repartidor de la app tampoco se
+-- auto-declara, porque también es dinero que alguien contó con la mano.
 --
 -- Validado y no `not valid`: se verificó que ningún método lo viola hoy, ni en la base de
 -- desarrollo ni en el respaldo restaurado de producción.
 alter table payment_methods
-  add constraint payment_methods_cajon_no_se_autodeclara check (
-    not (auto_declare and affects_cash_drawer)
+  add constraint payment_methods_el_efectivo_no_se_autodeclara check (
+    not (auto_declare and is_cash)
   );
 
 -- UN SOLO DUEÑO DEL FONDO POR EMPRESA.
@@ -147,7 +174,9 @@ alter table business_settings
 -- reconstruir un arqueo viejo tal como se firmó. Eso no se recupera volviendo a aplicar la
 -- migración: el esperado de un turno cerrado ya no se puede recalcular sin mentir.
 alter table business_settings drop column if exists blind_cash_count;
-alter table payment_methods drop constraint if exists payment_methods_cajon_no_se_autodeclara;
+alter table payment_methods drop constraint if exists payment_methods_el_efectivo_no_se_autodeclara;
+alter table payment_methods drop constraint if exists payment_methods_solo_el_efectivo_al_cajon;
+alter table payment_methods drop column if exists is_cash;
 drop index if exists payment_methods_un_efectivo_por_empresa;
 alter table register_session_totals drop constraint if exists register_session_totals_cajon_no_se_declara;
 alter table register_session_totals drop column if exists affects_cash_drawer;

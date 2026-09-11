@@ -5,11 +5,22 @@
 -- lo que deja al POS ofrecer solo los dos de la plataforma activa sin comparar nombres.
 select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name;
 
+-- name: ListAllPaymentMethods :many
+-- Todos, incluidos los apagados. Es la lista de la pantalla de AJUSTES, y por eso no puede ser la
+-- misma que ofrece el POS para cobrar.
+--
+-- Existe porque apagar un método era una puerta de un solo sentido: la tabla de interruptores se
+-- pintaba con la lista filtrada, así que el renglón desaparecía junto con su propio interruptor y
+-- no quedaba camino en la aplicación para volver a encenderlo. Un dedo que falla por milímetros
+-- sobre «Efectivo» dejaba al mostrador sin cobrar en efectivo hasta que alguien entrara a la base.
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods order by sort_key, name;
+
 -- name: GetPaymentMethod :one
 -- Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
 -- apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
 -- ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1;
 
 -- name: LockPaymentMethod :one
@@ -20,7 +31,7 @@ from payment_methods where id = $1;
 -- contra el estado viejo y dejan escrita la combinación que el código considera imposible. Que
 -- hoy no se pierda dinero por eso es una coincidencia del orden en que `CloseSession` resuelve los
 -- métodos del cajón, no una garantía.
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1 for update;
 
 -- name: UpdatePaymentMethodFlags :one
@@ -288,12 +299,16 @@ for share of s;
 -- Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
 -- hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
 -- contratadas es peor que no darle ninguna.
-insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+-- `is_cash` se escribe explícito: la columna nace en `false` y la 0067 le puso un `check` que
+-- exige que solo lo que se cobra en billetes entre al cajón. Sin esto, sembrar «Efectivo» con
+-- `affects_cash_drawer` viola la restricción y **una empresa nueva no se puede crear** — lo
+-- encontró el propio `check`, en el sembrado de la segunda empresa de los tests de aislamiento.
+insert into payment_methods (company_id, name, kind, is_cash, affects_cash_drawer, is_active, sort_key, auto_declare)
 values
-  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
-  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
-  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
-  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+  ($1, 'Efectivo',           'efectivo',      true,  true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, false, true, 300, true)
 on conflict (company_id, name) do nothing;
 
 -- name: GetBusinessTimezone :one

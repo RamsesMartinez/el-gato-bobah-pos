@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
@@ -170,5 +172,90 @@ func TestConArqueoCiegoLasCifrasVuelvenAlCerrar(t *testing.T) {
 	}
 	if detalle.Drawer == nil || detalle.Drawer.Expected == nil {
 		t.Fatal("el corte CERRADO tiene que traer su esperado: sin él no se puede auditar")
+	}
+}
+
+// NO BASTA CON NULIFICAR `expected`: LO DERIVADO LO RECONSTRUYE EXACTO.
+//
+// El hallazgo de la auditoría, y es el que decide si esto es un control o un adorno. La misma
+// respuesta que pone el esperado en null trae el desglose por método y lo que cobró cada cajero, y
+// la pantalla los pinta ARRIBA de la tabla del cierre. Quien cuenta no necesita las herramientas
+// del navegador: suma cuatro renglones contiguos.
+//
+// Medido: fondo 500 + neto 0 + Ventas del mostrador 200 + Ventas de Didi efectivo 135 = 835, que
+// es exactamente el esperado oculto. `methodIds` hasta dice qué renglones sumar.
+//
+// Este test no busca claves llamadas `expected` —la fuga viaja en `amount` y en `total`—: reconstruye
+// la cifra como lo haría quien la quiere, y falla si le sale.
+func TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
+	cajero := makeUser(t, st, "cajero_ciego_derivado", "cajero")
+	principal, _, _, esperado := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
+	prenderCiego(t, ctx, settings)
+
+	abierta, err := backoffice.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatalf("CurrentByRegister: %v", err)
+	}
+	delCajon := map[string]bool{}
+	for _, m := range abierta.Totals {
+		for _, id := range abierta.Drawer.MethodIDs {
+			if m.MethodID == id {
+				delCajon[m.Name] = true
+			}
+		}
+	}
+
+	// Así es como se reconstruye: el fondo, el neto y los ingresos de los métodos del cajón.
+	reconstruido := abierta.OpeningCash.Add(abierta.NetMovements)
+	for _, ing := range abierta.Breakdown.Ingresos {
+		if delCajon[ing.Method] {
+			reconstruido = reconstruido.Add(ing.Total)
+		}
+	}
+	if reconstruido.Equal(esperado) {
+		t.Fatalf("con el arqueo ciego encendido, el desglose reconstruye el esperado exacto (%s): quien cuenta lo lee en pantalla sin abrir nada",
+			reconstruido)
+	}
+
+	// Y por el otro camino: lo que cobró cada cajero en efectivo.
+	porCajero := abierta.OpeningCash.Add(abierta.NetMovements)
+	for _, c := range abierta.Cashiers {
+		porCajero = porCajero.Add(c.Cash)
+	}
+	if porCajero.Equal(esperado) {
+		t.Fatalf("el desglose por cajero reconstruye el esperado exacto (%s)", porCajero)
+	}
+}
+
+// Y EL MOVIMIENTO DE CAJA ES OTRO CAMINO DE LECTURA.
+//
+// `POST /cash-sessions/movements` devuelve la vista del turno y está abierto a rol cajero: registrar
+// una entrada de un centavo devolvía el esperado completo. El ocultamiento vivía en cada llamador y
+// éste se lo saltó — que es exactamente por qué ahora vive en un solo lugar.
+func TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	settings := app.NewSettingsService(st, "pepper-de-prueba")
+	cajero := makeUser(t, st, "cajero_ciego_movimiento", "cajero")
+	principal, _, _, _ := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
+	prenderCiego(t, ctx, settings)
+
+	vista, err := backoffice.RecordCashMovement(ctx, principal, "entrada",
+		decimal.RequireFromString("0.01"), "cambio para el turno", cajero)
+	if err != nil {
+		t.Fatalf("registrar el movimiento: %v", err)
+	}
+	if vista.Drawer != nil && vista.Drawer.Expected != nil {
+		t.Fatalf("registrar un movimiento de un centavo devolvió el esperado del cajón: %v", vista.Drawer.Expected)
+	}
+	for _, m := range vista.Totals {
+		if m.Expected != nil {
+			t.Fatalf("registrar un movimiento devolvió el esperado de «%s»: %v", m.Name, m.Expected)
+		}
 	}
 }
