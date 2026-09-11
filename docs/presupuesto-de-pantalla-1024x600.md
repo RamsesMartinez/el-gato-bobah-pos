@@ -204,6 +204,67 @@ ventana visual, y con `vh` en vez de `dvh` el botón se iría debajo de él.
 hoja —un subtítulo, un aviso permanente— se lo come. El aviso de "al cambiar se borra lo capturado"
 es condicional a propósito.
 
+## El cierre con un solo cajón, y Ajustes del negocio (spec 015)
+
+Medido el **10 de septiembre** con [`presupuesto-del-cierre.spec.ts`](../web/e2e/presupuesto-del-cierre.spec.ts):
+el "antes" contra `app-dev` con la spec 003 desplegada y el "después" contra el candidato servido
+en local con la API nueva, **con los mismos diez métodos configurados**. El archivo que mide es el
+mismo para los dos.
+
+**Se mide el contenedor que se desplaza, no el documento.** El AppShell es `h="100dvh"
+overflow="hidden"` y quien hace scroll es el `<Box flex="1" overflowY="auto">` que envuelve al
+`<Outlet>`. La primera versión de esta medición leía `document.documentElement.scrollHeight` y
+devolvía **600 px en las dos pantallas** —exactamente el viewport—, un número que se lee como si
+todo cupiera. Es la misma trampa que la animación de un diálogo: el valor existe, contesta, y no
+mide lo que uno cree.
+
+| | Antes (003) | Después (015) |
+|---|---|---|
+| Tabla del cierre | **575 px** en 10 renglones | **540 px** en 11 |
+| Puntos de captura en esa tabla | **7** (6 campos + el botón de contar) | **4** (3 campos + el botón) |
+| Renglón que captura | 61 px | 61 px |
+| Renglón que dice «Va al cajón» o «Automático» | 37 px | 37 px |
+
+El renglón del cajón cuesta 61 px y los cuatro métodos que dejaron de capturar bajan de 61 a 37:
+**−35 px netos con un renglón más**. El plan había afirmado que la tabla "se acorta" contando
+campos quitados en vez de renglones, que es la afirmación que este archivo existe para no volver a
+creer.
+
+El **alto total de `/caja` no se compara** entre ambientes: depende de cuántas cajas, movimientos y
+pedidos pendientes tenga el turno (1,867 px en el turno con ventas de `app-dev`, 1,467 px en el
+turno casi vacío de local, contra los 1,494 px del escenario más vacío del 8 de septiembre). Lo
+que sí es comparable —porque lo determina la configuración de los métodos y no el turno— es la
+tabla.
+
+### Ajustes del negocio: los métodos no se ven de un vistazo, ni antes ni después
+
+| | Antes (003) | Después (015) |
+|---|---|---|
+| Alto del contenido de `/negocio` | **1,959 px** | **2,342 px** |
+| Renglones de método visibles sin desplazarse | **0 de 10** | **0 de 10** |
+| Dónde arranca la sección | y = **1,231** | y = **1,313** |
+| Ancho útil de la página | 520 px (`<Page maxW="560px">` con su padding) | igual |
+| Área tappable de un interruptor | **20 px** | **44 px** |
+| Hueco entre dos interruptores del mismo renglón | no aplica (uno por renglón) | **46 px** (y 63 el otro) |
+
+Los 82 px que baja la sección son el interruptor del arqueo ciego, que se le puso encima. No
+cambia lo que se ve sin desplazarse porque la sección ya estaba 600 px por debajo del fold: esta
+pantalla se lee desplazándose y así estaba antes.
+
+**El hallazgo de medirla**: la tabla nueva puso tres interruptores de **24 px** de alto en un
+renglón de 41, cuando la constitución pide 44 para cualquier control que se toque con el dedo. Tres
+objetivos chicos y pegados en una página de 520 px es el caso que la regla nombra, y aquí un dedo
+que falla por milímetros apaga «Activo» y saca un método del cobro a media jornada. Se arregló con
+relleno vertical en el `<label>` del interruptor —el objetivo crece, el control no— y quedó su
+aserción en P2.
+
+**Y lo que la medición desmintió**: una revisión calculó el hueco horizontal entre los tres
+interruptores en 16 px, sumando el padding de la celda de una `Table.Root size="sm"`. Medido son
+**46 px**, porque el ancho de esas columnas no lo pone el padding sino los encabezados «Va al
+cajón» y «Automático», más anchos que el interruptor de 48 px que contienen. La conclusión que
+queda no es "no había problema" sino **dónde vive el riesgo**: el hueco depende del largo de un
+encabezado, así que acortar uno lo cierra sin que nadie lo note. Por eso también se afirma en P2.
+
 ## Lo que sigue sin medirse
 
 - **El teclado del sistema de verdad.** Chromium headless no lo abre; lo que el e2e mide es la
