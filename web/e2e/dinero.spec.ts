@@ -1,4 +1,5 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { tokenDeRequest } from './ambiente';
 
 // LA MATRIZ DE DINERO, EXTREMO A EXTREMO. Ver docs/matriz-de-cobro.md, sección E.
 //
@@ -8,17 +9,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 // ninguno se ve con el backend mockeado.
 
 const API = process.env.E2E_API_URL ?? 'https://api-dev.elgatobobah.com/api/v1';
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
 
-async function token(request: APIRequestContext): Promise<string> {
-  const r = await request.post(`${API}/auth/login`, {
-    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
-  });
-  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
-  return (await r.json()).accessToken;
-}
 
 // La sesión se siembra por API y no tecleando en la pantalla de login: lo que estas pruebas miden es
 // el cobro, y hacerlas pasar por el login las vuelve dependientes de una pantalla que ya tiene sus
@@ -38,7 +29,7 @@ async function entrar(page: Page, jwt: string) {
 
 test.describe('E — el dinero, de la pantalla al servidor', () => {
   test('E0 · el ambiente responde y la sesión sirve', async ({ page, request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const abiertos = await request.get(`${API}/orders/open`, {
       headers: { Authorization: `Bearer ${jwt}` },
     });
@@ -56,7 +47,7 @@ test.describe('E — el dinero, de la pantalla al servidor', () => {
   });
 
   test('E3 · un cobro repetido no se registra dos veces', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
 
     const menu = await (await request.get(`${API}/pos/menu`, { headers: auth })).json();
@@ -106,7 +97,7 @@ test.describe('E — el dinero, de la pantalla al servidor', () => {
   });
 
   test('E5 · un pedido de plataforma no cobra el envío del negocio', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
 
     const menu = await (await request.get(`${API}/pos/menu`, { headers: auth })).json();
@@ -134,7 +125,7 @@ test.describe('E — el dinero, de la pantalla al servidor', () => {
   });
 
   test('E2 · repartir entre tres deja el pedido saldado, sin centavos colgando', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
 
     const menu = await (await request.get(`${API}/pos/menu`, { headers: auth })).json();
