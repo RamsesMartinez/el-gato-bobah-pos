@@ -34,7 +34,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
@@ -49,7 +49,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
 
 	// Abierta: no cierra.
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, declarado, ""); !errors.Is(err, domain.ErrOpenOrders) {
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); !errors.Is(err, domain.ErrOpenOrders) {
 		t.Fatalf("con un pedido abierto no debe cerrar, fue: %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	if err := ordersSvc.SetStatus(ctx, pedido.ID, domain.StatusLista); err != nil {
 		t.Fatalf("marcar lista: %v", err)
 	}
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, declarado, ""); !errors.Is(err, domain.ErrOpenOrders) {
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); !errors.Is(err, domain.ErrOpenOrders) {
 		t.Fatalf("con un pedido listo no debe cerrar, fue: %v", err)
 	}
 
@@ -65,7 +65,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	// Y tiene que decirlo con el NOMBRE del pedido: es lo que se lee en el tablero y lo que se
 	// canta, así que un error con solo el número manda a comparar números contra una pantalla que
 	// muestra animales, justo cuando se está cerrando y con prisa.
-	_, err = backoffice.CloseSession(ctx, principal, cajero, declarado, "")
+	_, err = backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado))
 	msg := err.Error()
 	if !contiene(msg, "#") {
 		t.Fatalf("el error debe nombrar los folios pendientes, dijo: %s", msg)
@@ -81,7 +81,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 	if err := ordersSvc.SetStatus(ctx, pedido.ID, domain.StatusEntregada); err != nil {
 		t.Fatalf("entregar: %v", err)
 	}
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("sin pendientes debe cerrar: %v", err)
 	}
 }
@@ -98,7 +98,7 @@ func TestUnPedidoCanceladoNoBloqueaElCierre(t *testing.T) {
 	prod := makeProduct(t, st, "Café cancelado", decimal.RequireFromString("50"), false)
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 	pedido, err := crearYCobrar(t, ctx, ordersSvc, app.CreateOrderCmd{
@@ -112,7 +112,7 @@ func TestUnPedidoCanceladoNoBloqueaElCierre(t *testing.T) {
 		t.Fatalf("cancelar: %v", err)
 	}
 
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, map[int]decimal.Decimal{}, ""); err != nil {
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, app.CierreCmd{}); err != nil {
 		t.Fatalf("un pedido cancelado no debe bloquear el cierre: %v", err)
 	}
 }
@@ -182,7 +182,7 @@ func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
 		t.Fatalf("tras entregar quedan %d pendientes", len(tras.Pending))
 	}
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("con la lista vacía el cierre debe pasar, fue: %v", err)
 	}
 }
@@ -333,7 +333,7 @@ func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
 	// Al cerrar, la cifra VIAJA en la vista del corte cerrado: es ahí donde alguien la audita
 	// después, cuando ya nadie se acuerda del turno.
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
-	cerrado, err := backoffice.CloseSession(ctx, principal, cajero, declarado, "")
+	cerrado, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado))
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
 	}
 	var porMetodo decimal.Decimal
 	for _, m := range det.Totals {
-		porMetodo = porMetodo.Add(m.Expected)
+		porMetodo = porMetodo.Add(*m.Expected)
 	}
 	if !det.SalesTotal.Equal(porMetodo.Add(det.Uncollected)) {
 		t.Fatalf("el corte vendió $%s, esperó $%s por método y declara $%s sin cobrar: la resta no "+

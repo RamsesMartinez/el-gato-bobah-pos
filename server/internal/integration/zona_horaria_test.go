@@ -51,7 +51,7 @@ func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	principal := registerID(t, st, "Caja principal")
 
-	sess, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	sess, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 	principal := registerID(t, st, "Caja principal")
 
 	backoffice := app.NewBackofficeService(st, func() time.Time { return antes })
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -196,7 +196,7 @@ func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
 	backoffice := app.NewBackofficeService(st, func() time.Time { return sess })
 	cajero := makeUser(t, st, "cajero_tj", "cajero")
 	principal := registerID(t, st, "Caja principal")
-	abierta, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	abierta, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}

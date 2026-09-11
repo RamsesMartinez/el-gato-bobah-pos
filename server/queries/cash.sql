@@ -5,16 +5,47 @@
 -- lo que deja al POS ofrecer solo los dos de la plataforma activa sin comparar nombres.
 select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id from payment_methods where is_active order by sort_key, name;
 
+-- name: ListAllPaymentMethods :many
+-- Todos, incluidos los apagados. Es la lista de la pantalla de AJUSTES, y por eso no puede ser la
+-- misma que ofrece el POS para cobrar.
+--
+-- Existe porque apagar un método era una puerta de un solo sentido: la tabla de interruptores se
+-- pintaba con la lista filtrada, así que el renglón desaparecía junto con su propio interruptor y
+-- no quedaba camino en la aplicación para volver a encenderlo. Un dedo que falla por milímetros
+-- sobre «Efectivo» dejaba al mostrador sin cobrar en efectivo hasta que alguien entrara a la base.
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods order by sort_key, name;
+
 -- name: GetPaymentMethod :one
 -- Trae `is_active` para que quien MUEVE DINERO con este método pueda rechazarlo si el negocio lo
 -- apagó. No se filtra en el where: configurar un método desactivado —cambiarle el auto-declare, por
 -- ejemplo— tiene que seguir siendo posible, y ahí el estado no estorba.
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1;
 
--- name: UpdatePaymentMethodAutoDeclare :one
-update payment_methods set auto_declare = $2 where id = $1
-returning id, name, kind, affects_cash_drawer, auto_declare;
+-- name: LockPaymentMethod :one
+-- El mismo renglón que GetPaymentMethod, tomado para actualizar.
+--
+-- Existe porque configurar un método es leer-validar-escribir, y sin lock dos PATCH simultáneos
+-- —uno que enciende «automático» y otro que enciende «va al cajón»— pasan cada uno su validación
+-- contra el estado viejo y dejan escrita la combinación que el código considera imposible. Que
+-- hoy no se pierda dinero por eso es una coincidencia del orden en que `CloseSession` resuelve los
+-- métodos del cajón, no una garantía.
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1 for update;
+
+-- name: UpdatePaymentMethodFlags :one
+-- Los tres interruptores del método, en una actualización PARCIAL: lo que no viene, no cambia.
+--
+-- `sqlc.narg` y no tres parámetros obligatorios, porque un `bool` sin puntero no distingue "ausente"
+-- de "falso": un PATCH que solo quería desactivar el método le habría apagado de paso el interruptor
+-- del cajón, sacando su dinero del arqueo. Plata movida por el tipo de dato y no por el negocio.
+update payment_methods set
+  auto_declare        = coalesce(sqlc.narg('auto_declare'), auto_declare),
+  is_active           = coalesce(sqlc.narg('is_active'), is_active),
+  affects_cash_drawer = coalesce(sqlc.narg('affects_cash_drawer'), affects_cash_drawer)
+where id = $1
+returning id, name, kind, affects_cash_drawer, auto_declare, is_active;
 
 -- name: InsertExpenseCashMovement :exec
 -- Salida de efectivo del cajón al pagar un gasto en efectivo (liga el gasto al corte).
@@ -74,14 +105,28 @@ update register_sessions set status = 'cerrada', closed_by = $2, closed_at = now
 where id = $1;
 
 -- name: SaveSessionTotal :exec
-insert into register_session_totals (session_id, payment_method_id, expected, declared, tips)
-values ($1, $2, $3, $4, $5);
+-- `affects_cash_drawer` se GUARDA aquí y no se vuelve a leer del catálogo: desde la spec 015 ese
+-- interruptor se puede cambiar, y un corte que se reagrupa según el flag de hoy es un arqueo que se
+-- lee distinto según cuándo lo abras. Es el mismo snapshot que `order_lines.unit_price`.
+insert into register_session_totals (session_id, payment_method_id, expected, declared, tips, affects_cash_drawer)
+values ($1, $2, $3, $4, $5, $6);
 
 -- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
        r.name as register_name,
        ob.name as opened_by_name, cb.name as closed_by_name,
-       coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
+       -- La diferencia total del corte son DOS sumandos desde la spec 015: lo que difieren los
+       -- métodos que no tocan el cajón, más la diferencia única del cajón. Los métodos de cajón
+       -- guardan `declared = expected`, así que su parte de la primera suma es cero: sin el segundo
+       -- sumando, esta pantalla —donde alguien audita— muestra cuadrados los cortes que no cuadran.
+       --
+       -- Va como SUBCONSULTA CORRELACIONADA y no como join: un turno tiene hasta dos conteos
+       -- (apertura y cierre) y N renglones de método, y unir las dos 1:N multiplicaría cada
+       -- diferencia por el número de conteos. Es el patrón que ya documentamos para
+       -- order_payments/order_lines.
+       (coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)
+        + coalesce((select c.difference from session_cash_counts c
+                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -101,7 +146,12 @@ where s.id = $1;
 -- permite subtotalizar por plataforma. Faltaba aquí, así que el subtotal existía en el turno vivo y
 -- desaparecía en el histórico — justo cuando llega el depósito de la plataforma y sirve para
 -- conciliar.
-select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+--
+-- `t.affects_cash_drawer` y NO `pm.`: el flag se lee del renglón guardado, no del catálogo de hoy.
+-- Desde la spec 015 ese interruptor se puede cambiar, y leerlo en vivo haría que un corte cerrado
+-- se reagrupara según la configuración del día en que alguien lo abra — las cifras no cambiarían,
+-- pero la forma del reporte sí, y un arqueo que se lee distinto cada vez no se puede auditar.
+select t.payment_method_id, pm.name, pm.kind, t.affects_cash_drawer, t.expected, t.declared, t.tips,
        coalesce(dp.name, '') as platform_name,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
@@ -179,9 +229,33 @@ left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 -- que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
 -- dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
 left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
-where pm.is_active
+-- `or op.id is not null`: un método que se apaga a media jornada tiene que seguir en el arqueo si ya
+-- cobró en este turno. Filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya
+-- entró, y el corte cuadraba contra una cifra más chica sin que nadie lo notara. Hasta la spec 015
+-- nadie podía apagar un método desde la aplicación, así que este camino no existía.
+--
+-- `or pm.kind = 'efectivo'`: el renglón del efectivo del mostrador NUNCA se cae, aunque esté
+-- apagado y no haya cobrado nada. Es el único dueño del fondo de apertura y de los movimientos de
+-- caja —quien los suma es el bucle de Go que mira este `kind`—, así que sin su renglón el fondo no
+-- tiene dónde vivir: medido, apagar «Efectivo» con $500 de fondo dejaba al cajón esperando $0 con
+-- los billetes adentro, y el corte cerraba con $500 de sobrante fantasma.
+where pm.is_active or op.id is not null or pm.kind = 'efectivo'
 group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare, dp.name
 order by pm.sort_key;
+
+-- name: CollectedByMethodInOpenSessions :one
+-- Cuánto lleva cobrado un método en los turnos que siguen ABIERTOS.
+--
+-- Es lo que decide si se puede mover su interruptor «va al cajón» (spec 015, FR-017): cambiarlo con
+-- dinero ya adentro mueve el esperado del cajón en billetes que están físicamente ahí. Suma sobre
+-- todos los turnos abiertos y no solo el de la caja principal: el interruptor es del método, no de
+-- una caja, y un turno abierto de otra caja cuenta igual.
+--
+-- Propinas incluidas: también son dinero que entró por ese método y que el esperado ya cuenta.
+select coalesce(sum(op.amount + op.tip_amount), 0)::numeric(10,2) as cobrado
+from order_payments op
+join register_sessions s on s.id = op.register_session_id
+where op.payment_method_id = $1 and s.status = 'abierta';
 
 -- name: GetOpenPrimarySession :one
 -- La sesión que habilita cobrar. Es SIEMPRE la de la caja principal: las secundarias (caja fuerte,
@@ -225,12 +299,16 @@ for share of s;
 -- Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
 -- hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
 -- contratadas es peor que no darle ninguna.
-insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+-- `is_cash` se escribe explícito: la columna nace en `false` y la 0067 le puso un `check` que
+-- exige que solo lo que se cobra en billetes entre al cajón. Sin esto, sembrar «Efectivo» con
+-- `affects_cash_drawer` viola la restricción y **una empresa nueva no se puede crear** — lo
+-- encontró el propio `check`, en el sembrado de la segunda empresa de los tests de aislamiento.
+insert into payment_methods (company_id, name, kind, is_cash, affects_cash_drawer, is_active, sort_key, auto_declare)
 values
-  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
-  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
-  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
-  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+  ($1, 'Efectivo',           'efectivo',      true,  true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, false, true, 300, true)
 on conflict (company_id, name) do nothing;
 
 -- name: GetBusinessTimezone :one
@@ -376,3 +454,56 @@ select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
 from orders o
 where o.register_session_id = $1;
+
+-- name: ListDenominations :many
+-- Qué piezas se pueden contar en una moneda. Solo las activas: una denominación retirada de
+-- circulación no vuelve a ofrecerse, pero sigue existiendo para los arqueos que la usaron.
+--
+-- De mayor a menor por sort_key, que es como se cuenta un cajón: primero los billetes grandes.
+select id, currency, value, is_coin
+from cash_denominations
+where currency = $1 and is_active
+order by sort_key;
+
+-- name: SaveCashCount :one
+-- El conteo de un momento del turno. El total viene YA calculado por el dominio desde las piezas:
+-- esta consulta no suma nada, y por eso `total` es un parámetro y no un `sum()`.
+--
+-- Un segundo conteo del mismo momento choca con `session_cash_counts_un_momento` y sube como 23505.
+-- El servicio lo traduce a conflicto: con dos tabletas compartiendo cuenta, dos personas pueden
+-- llegar al cierre a la vez, y eso tiene que decir qué pasó y no "el servidor se rompió".
+--
+-- `expected` es el esperado del CAJÓN en el momento del cierre, y se guarda en vez de recalcularse:
+-- sale de `order_payments`, y una venta cancelada o reembolsada después movería la cifra contra la
+-- que el operador firmó. Va nulo en la apertura, donde no hay nada que esperar.
+insert into session_cash_counts (session_id, moment, total, expected, manual_reason, created_by)
+values ($1, $2, $3, $4, $5, $6)
+returning id, session_id, moment, total, manual_reason, created_by, created_at;
+
+-- name: SaveCashCountLine :exec
+-- Un renglón del conteo. Solo se llama con piezas > 0: el cero no genera fila (FR-009), y el
+-- `check (pieces > 0)` del esquema está para que eso no dependa de que el servicio se acuerde.
+insert into session_cash_count_lines (count_id, denomination_id, pieces)
+values ($1, $2, $3);
+
+-- name: GetCashCount :one
+-- El conteo de un momento, si lo hay. Un turno sin conteo es lo normal en los cortes anteriores a
+-- esta funcionalidad, así que "no hay filas" es una respuesta legítima y no un error.
+select id, session_id, moment, total, expected, difference, manual_reason, created_by, created_at
+from session_cash_counts
+where session_id = $1 and moment = $2;
+
+-- name: ListCashCountLines :many
+-- Las piezas de un conteo, con el valor de cada denominación.
+--
+-- `subtotal` viaja calculado desde la base y no se deja para la pantalla: lo lee un humano
+-- comparando contra su cajón, y dos multiplicaciones del mismo dato son dos formas de que difieran.
+-- El valor sale del catálogo por join y no de una copia en el renglón: una denominación no cambia
+-- de valor —un billete de $500 vale $500—, y lo que sí puede cambiar es que se retire, que es
+-- justo lo que `on delete restrict` impide que borre este join.
+select l.denomination_id, d.value, d.is_coin, l.pieces,
+       (d.value * l.pieces)::numeric(12,2) as subtotal
+from session_cash_count_lines l
+join cash_denominations d on d.id = l.denomination_id
+where l.count_id = $1
+order by d.sort_key;

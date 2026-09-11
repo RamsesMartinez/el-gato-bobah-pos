@@ -5,10 +5,31 @@ import type { PaymentMethod } from '../types/pos';
 export interface MethodTotal {
   methodId: number;
   name: string;
-  expected: string;
+  // Cuál método es el del CAJÓN, para saber cuál se cuenta por denominaciones. No se compara por
+  // nombre: los métodos de plataforma en efectivo también tocan el cajón y solo `kind` los separa.
+  kind: string;
+  // NULL con el arqueo ciego encendido y el turno abierto: lo que la pantalla no debe mostrar no se
+  // le manda. Ocultarlo en el cliente lo dejaría legible en la respuesta.
+  expected: string | null;
   declared: string;
   difference: string;
   autoDeclare: boolean;
+  // Si ESTE método exige una cifra capturada para poder cerrar. Lo decide el servidor: deducirlo de
+  // que el esperado sea cero se rompe cuando el esperado no viaja.
+  requiresEntry: boolean;
+}
+
+// El arqueo del cajón físico: una cifra esperada, un conteo, una diferencia.
+//
+// `null` en el turno = no hay arqueo de efectivo (un corte anterior a la spec 015, o una caja que
+// no maneja efectivo). `expected` en null con el arqueo ciego; `counted` y `difference` en null
+// mientras el turno esté abierto.
+export interface ArqueoDelCajon {
+  expected: string | null;
+  counted: string | null;
+  difference: string | null;
+  methodIds: number[];
+  requiresCount: boolean;
 }
 export interface CashMovement {
   id: number;
@@ -53,6 +74,44 @@ export interface CashRegister {
   isActive: boolean;
   openSessionId: number | null; // no-null si la caja tiene una sesión abierta
 }
+// Una pieza que se puede contar. `value` es string por lo mismo que el resto del dinero: es una
+// columna `numeric(10,2)` y convertirla a número en la frontera pierde exactitud.
+export interface Denomination {
+  id: number;
+  value: string;
+  isCoin: boolean; // solo sirve para agrupar en pantalla, y agrupar es lo que hace encontrar la pieza
+}
+
+// Los DOS CAMINOS de declarar el fondo, en un tipo que no deja mandar los dos (FR-014/FR-015).
+//
+// El servidor los rechaza si llegan juntos, pero llegar hasta el rechazo con el cajón contado es un
+// conteo perdido: la unión discriminada lo vuelve imposible de escribir desde aquí.
+export type AperturaInput =
+  | { counts: { denominationId: number; pieces: number }[] }
+  | { openingCash: number; manualReason: string };
+
+// Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
+// humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
+export interface ConteoLine {
+  value: string;
+  isCoin: boolean;
+  pieces: number;
+  subtotal: string;
+}
+// El arqueo de un momento del turno. `manualReason` no nulo = no se contó por denominaciones, y por
+// qué; en ese caso `lines` viene vacío.
+export interface Conteo {
+  total: string;
+  manualReason: string | null;
+  lines: ConteoLine[];
+}
+// Un momento en null = ese arqueo no se contó. Es el caso de todos los cortes anteriores a la
+// funcionalidad, y la pantalla los muestra como siempre (FR-008).
+export interface ConteosDelTurno {
+  apertura: Conteo | null;
+  cierre: Conteo | null;
+}
+
 export interface CashSession {
   id: number;
   registerId: number;
@@ -67,6 +126,10 @@ export interface CashSession {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // El turno se está contando a ciegas: `breakdown` y `cashiers` vienen SIN las cifras de venta.
+  // Lo dice el servidor y no se deduce de que las listas vengan vacías — un turno sin ventas las
+  // trae vacías también, y la pantalla diría «Sin ingresos» sobre las dos.
+  blind?: boolean;
   // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
   // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
   pending: PendingOrder[];
@@ -77,6 +140,8 @@ export interface CashSession {
   // no ha salido, ésta qué dinero no entró. No bloquea el cierre.
   uncollected: string;
   uncollectedCount: number;
+  counts: ConteosDelTurno | null;
+  drawer: ArqueoDelCajon | null;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
@@ -134,6 +199,8 @@ export interface CashSessionDetail {
   salesShown: number;
   // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
   salesTotal: string;
+  counts: ConteosDelTurno | null;
+  drawer: ArqueoDelCajon | null;
 }
 
 export interface CorteSale {
@@ -383,9 +450,24 @@ export const backofficeApi = {
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
 
   cashCurrent: (registerId: number) => api.get<CashSession | null>(`/cash-sessions/current?registerId=${registerId}`),
-  cashOpen: (registerId: number, openingCash: number) => api.post<CashSession>('/cash-sessions', { registerId, openingCash }),
-  cashClose: (registerId: number, declared: Record<string, number>, notes?: string) =>
-    api.post<CashSession>('/cash-sessions/close', { registerId, declared, notes }),
+  // Qué piezas se pueden contar. La moneda es un parámetro de frontera: el servidor rechaza una
+  // desconocida en vez de caer a MXN, así que no se manda vacía por si acaso.
+  cashDenominations: (currency?: string) =>
+    api.get<{ items: Denomination[] }>(
+      currency ? `/cash/denominations?currency=${encodeURIComponent(currency)}` : '/cash/denominations'),
+  cashOpen: (registerId: number, apertura: AperturaInput) =>
+    api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
+  // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las
+  // dos: el servidor rechaza la ambigüedad (FR-015).
+  // `declared` lleva SOLO los métodos cuyo dinero no está en el cajón: el del cajón se declara una
+  // vez, contándolo (`counts`) o con su cifra y motivo (`countedCash` + `manualReason`). Mandar un
+  // método de cajón en `declared` lo rechaza el servidor nombrándolo.
+  cashClose: (registerId: number, declared: Record<string, number>, extra?: {
+    counts?: { denominationId: number; pieces: number }[];
+    countedCash?: number;
+    manualReason?: string;
+    notes?: string;
+  }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
@@ -399,8 +481,11 @@ export const backofficeApi = {
   cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
     api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),
   // Config de negocio (admin/gerente): qué método se declara solo al cerrar caja.
-  setPaymentMethodAutoDeclare: (id: number, autoDeclare: boolean) =>
-    api.patch<PaymentMethod>(`/payment-methods/${id}`, { autoDeclare }),
+  // Los tres interruptores de un método, todos OPCIONALES: lo que no se manda, no cambia. Con un
+  // booleano obligatorio, apagar uno apagaría los otros — y el del cajón mueve dinero.
+  updatePaymentMethod: (id: number, flags: {
+    autoDeclare?: boolean; isActive?: boolean; affectsCashDrawer?: boolean;
+  }) => api.patch<PaymentMethod>(`/payment-methods/${id}`, flags),
 
   // Categorías de gasto
   expenseCategories: () => api.get<{ items: ExpenseCategory[] }>('/expense-categories'),

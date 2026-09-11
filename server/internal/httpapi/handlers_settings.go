@@ -41,6 +41,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		CorteDeVista       *string          `json:"corteDeVista"`
 		FolioScheme        *string          `json:"folioScheme"`
 		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
+		BlindCashCount     *bool            `json:"blindCashCount"`
 		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
 		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
 		SessionHours       *int             `json:"sessionHours"`
@@ -67,7 +68,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
 		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
 		body.CorteDeVista != nil || body.FolioScheme != nil ||
-		body.KitchenCanCharge != nil || body.PinOnlyUnlock != nil ||
+		body.KitchenCanCharge != nil || body.BlindCashCount != nil || body.PinOnlyUnlock != nil ||
 		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
@@ -92,6 +93,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			CorteDeVista:     orStr(body.CorteDeVista, cur.CorteDeVista),
 			FolioScheme:      orStr(body.FolioScheme, cur.FolioScheme),
 			KitchenCanCharge: orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
+			BlindCashCount:   orBool(body.BlindCashCount, cur.BlindCashCount),
 		}
 		ident := domain.IdentitySettings{
 			PinOnlyUnlock:    orBool(body.PinOnlyUnlock, cur.PinOnlyUnlock),

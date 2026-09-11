@@ -6,9 +6,9 @@ import type { PaymentMethod } from '../types/pos';
 // tras volver payment_methods per-tenant. Con la lógica vieja (ids 1/2/3/7 quemados) todo esto
 // fallaba en silencio.
 const metodos: PaymentMethod[] = [
-  { id: 9, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, autoDeclare: false, deliveryPlatformId: null },
-  { id: 10, name: 'Tarjeta débito', kind: 'tarjeta', affectsCashDrawer: false, autoDeclare: true, deliveryPlatformId: null },
-  { id: 12, name: 'Transferencia SPEI', kind: 'transferencia', affectsCashDrawer: false, autoDeclare: true, deliveryPlatformId: null },
+  { id: 9, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, autoDeclare: false, isActive: true, deliveryPlatformId: null },
+  { id: 10, name: 'Tarjeta débito', kind: 'tarjeta', affectsCashDrawer: false, autoDeclare: true, isActive: true, deliveryPlatformId: null },
+  { id: 12, name: 'Transferencia SPEI', kind: 'transferencia', affectsCashDrawer: false, autoDeclare: true, isActive: true, deliveryPlatformId: null },
 ];
 
 test('el efectivo se reconoce por su naturaleza, no por su id', () => {
@@ -42,8 +42,8 @@ test('si ya se usaron todos, cae al primero en vez de quedarse sin método', () 
 // operador armando un cobro que falla con el cliente enfrente.
 describe('metodosDeLaLista', () => {
   const metodos = [
-    { id: 1, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, deliveryPlatformId: null },
-    { id: 2, name: 'Tarjeta', kind: 'tarjeta', affectsCashDrawer: false, deliveryPlatformId: null },
+    { id: 1, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, isActive: true, deliveryPlatformId: null },
+    { id: 2, name: 'Tarjeta', kind: 'tarjeta', affectsCashDrawer: false, isActive: true, deliveryPlatformId: null },
     { id: 3, name: 'Uber Eats en línea', kind: 'plataforma', affectsCashDrawer: false, deliveryPlatformId: 5 },
     { id: 4, name: 'Uber Eats efectivo', kind: 'plataforma', affectsCashDrawer: true, deliveryPlatformId: 5 },
     { id: 5, name: 'Didi en línea', kind: 'plataforma', affectsCashDrawer: false, deliveryPlatformId: 8 },

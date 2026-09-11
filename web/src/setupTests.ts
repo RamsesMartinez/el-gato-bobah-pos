@@ -26,3 +26,21 @@ if (!window.ResizeObserver) {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 }
+
+// El temporizador del focus-trap que corre DESPUÉS de que se desmontó el diálogo.
+//
+// Al cerrar una hoja, `@zag-js/focus-trap` agenda un `setTimeout` para devolverle el foco a quien
+// la abrió. Testing Library desmonta al terminar el test y jsdom se va con el archivo, así que ese
+// temporizador puede dispararse ya sin `document` y vitest lo reporta como *Uncaught Exception* —
+// con los 608 tests en verde y el proceso en 1. Se lo atribuye al archivo que tocaba correr en ese
+// momento, no al que abrió la hoja, así que perseguirlo cuesta una tarde.
+//
+// Visto UNA vez y no reproducido en 16 corridas después (8 con esto puesto y 8 sin), así que esto
+// es mitigación y no un arreglo comprobado: se deja porque cuesta un tick y porque un gate que
+// falla una vez de cada tantas es peor que uno que falla siempre — nadie lo cree la primera vez.
+//
+// Ceder un tick deja que corra mientras el documento todavía existe. No oculta nada: si el trabajo
+// pendiente lanzara de verdad, lanza aquí, dentro del test que lo dejó pendiente.
+afterEach(async () => {
+  await new Promise((listo) => setTimeout(listo, 0));
+});

@@ -39,7 +39,7 @@ func TestSinZonaLaFechaDeNegocioUsaElDefaultDelProductoYNoUTC(t *testing.T) {
 		t.Fatalf("quitar los ajustes: %v", err)
 	}
 
-	sesion, err := svc.OpenSession(ctx, registerID(t, st, "Caja principal"), decimal.RequireFromString("500"), cajero)
+	sesion, err := svc.OpenSession(ctx, registerID(t, st, "Caja principal"), aperturaAMano(decimal.RequireFromString("500")), cajero)
 	if err != nil {
 		t.Fatalf("abrir caja: %v", err)
 	}

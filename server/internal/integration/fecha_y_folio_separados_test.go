@@ -252,7 +252,7 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	svc := app.NewOrdersService(st, clock)
 	principal := registerID(t, st, "Caja principal")
 
-	if _, err := back.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("abrir el primer turno: %v", err)
 	}
 	primera, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
@@ -267,15 +267,15 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	// LA PREMISA, probada aquí mismo: con el pedido vivo, la caja NO cierra. Si esto dejara de
 	// fallar, el reinicio de folio de abajo pasaría de inofensivo a colisión.
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("30")}
-	if _, err := back.CloseSession(ctx, principal, cajero, declarado, ""); !errors.Is(err, domain.ErrOpenOrders) {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); !errors.Is(err, domain.ErrOpenOrders) {
 		t.Fatalf("la caja cerró con un pedido vivo (o falló por otra cosa): %v", err)
 	}
 
 	entregarPendientes(t, st)
-	if _, err := back.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar el turno ya sin pendientes: %v", err)
 	}
-	if _, err := back.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("reabrir el mismo día: %v", err)
 	}
 
@@ -408,9 +408,14 @@ func TestLaMigracionDelFolioSeRevierteYSeReaplica(t *testing.T) {
 		ultimo = o.Number
 	}
 
-	if _, err := st.Pool.Exec(ctx, downDeLaMigracion(t, "0061_folio_por_turno.sql")); err != nil {
-		t.Fatalf("revertir 0061: %v", err)
-	}
+	// POR GOOSE Y NO EJECUTANDO EL `Down` CRUDO. La 0061 dejó de poder revertirse sola cuando la
+	// 0066 colgó una FK compuesta de `register_sessions_tenant_key`, que es justo el índice que este
+	// `Down` borra: el SQL crudo truena con 2BP01 ("otros objetos dependen de él"). No es un defecto
+	// de ninguna de las dos —goose revierte en orden inverso y eso resuelve la cadena sola— pero un
+	// test que ejecuta un solo bloque a mano se salta ese orden y se rompe con cada migración nueva
+	// que toque lo mismo.
+	t.Cleanup(func() { migrarArriba(t, st.Pool) })
+	migrarAbajoHasta(t, st.Pool, 60)
 	var existe bool
 	if err := st.Pool.QueryRow(ctx,
 		`select exists(select 1 from pg_tables where tablename = 'folio_counters')`).Scan(&existe); err != nil {
@@ -420,9 +425,7 @@ func TestLaMigracionDelFolioSeRevierteYSeReaplica(t *testing.T) {
 		t.Error("tras revertir, folio_counters sigue ahí: el Down no la borra")
 	}
 
-	if _, err := st.Pool.Exec(ctx, sqlDeLaMigracion(t, "0061_folio_por_turno.sql")); err != nil {
-		t.Fatalf("reaplicar 0061: %v", err)
-	}
+	migrarArriba(t, st.Pool)
 	var sembrado int
 	if err := st.Pool.QueryRow(ctx,
 		`select last_number from folio_counters where register_session_id = $1`, sess).Scan(&sembrado); err != nil {
