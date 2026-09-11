@@ -16,10 +16,19 @@ from (
          -- Las primeras opciones por su orden real, para que la tarjeta diga QUÉ tiene el grupo y
          -- no solo cuántas. Antes había que expandir cada uno para saber si era el que buscabas.
          -- Se topa a 4: en una tarjeta de 7" el quinto nombre ya no cabe en el renglón.
-         (select string_agg(t.name, ' · ' order by t.sort_key, t.name)
+         -- `coalesce` y no solo el cast: `string_agg` sobre un conjunto VACÍO devuelve NULL, y un
+         -- `NULL::text` sigue siendo NULL. sqlc tipa esta columna como `string` no nulable por el
+         -- cast, así que el scan reventaba con `cannot scan NULL into *string` y —esto es lo
+         -- grave— no fallaba ESE renglón sino la consulta entera: un solo grupo sin opciones
+         -- activas dejaba la pantalla de modificadores en 500. Medido en producción el 2026-09-11.
+         --
+         -- Un grupo sin opciones activas es ordinario: es el estado de uno recién creado, y el de
+         -- uno al que le archivaron la última. La cadena vacía es la respuesta correcta —"no hay
+         -- nada que previsualizar"— y la pantalla ya sabe pintarla.
+         coalesce((select string_agg(t.name, ' · ' order by t.sort_key, t.name)
             from (select mo.name, mo.sort_key from modifier_options mo
                    where mo.group_id = mg.id and mo.is_active
-                   order by mo.sort_key, mo.name limit 4) t)::text as option_preview,
+                   order by mo.sort_key, mo.name limit 4) t), '')::text as option_preview,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id)::int as product_count,
          (select count(*) from product_modifier_groups pmg where pmg.group_id = mg.id and pmg.min_select is not null)::int as override_count,
          count(*) over() as total
