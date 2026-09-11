@@ -169,6 +169,10 @@ export const posApi = {
     api.put<BusinessSettings>('/business-settings', { corteDeVista }),
   updateFolioScheme: (folioScheme: string) =>
     api.put<BusinessSettings>('/business-settings', { folioScheme }),
+  // Arqueo ciego: quien cuenta el cajón no ve lo esperado. Va sola, como las demás: los campos
+  // ausentes no se tocan, y guardar este no puede pisar la zona ni el costo de envío.
+  updateArqueoCiego: (blindCashCount: boolean) =>
+    api.put<BusinessSettings>('/business-settings', { blindCashCount }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -199,6 +203,9 @@ export interface BusinessSettings {
   // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
   // vive donde le toca, en el punto de venta.
   kitchenCanCharge: boolean;
+  // Si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia aparece al
+  // confirmar el cierre.
+  blindCashCount: boolean;
   // Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
   pinOnlyUnlock: boolean;
   lockAfterSeconds: number;

@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno } from '../../api/backoffice';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon } from '../../api/backoffice';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -57,8 +57,8 @@ test('MovementsTable excluye la salida de gasto y etiqueta los tipos', () => {
 
 test('TotalsTable con withTotalRow agrega la fila Total', () => {
   const totals: MethodTotal[] = [
-    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '115', declared: '115', difference: '0', autoDeclare: false },
-    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '50', declared: '50', difference: '0', autoDeclare: true },
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '115', declared: '115', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '50', declared: '50', difference: '0', autoDeclare: true, requiresEntry: false },
   ];
   wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow />);
   expect(screen.getByText('Efectivo')).toBeInTheDocument();
@@ -163,6 +163,7 @@ function corteCon(over: Partial<CashSessionDetail>): CashSessionDetail {
     sales: ventas, salesCount: 2, salesShown: 2, salesTotal: '100.00',
     // Los cortes anteriores a la 0066 no tienen desglose, y son la mayoría de los que existen.
     counts: null,
+    drawer: null,
     ...over,
   };
 }
@@ -182,28 +183,31 @@ test('sin los campos del backend la sección no se dibuja, en vez de decir que n
 });
 
 
-// LA DIFERENCIA SE VE ANTES DE TOCAR «CERRAR CAJA» (FR-005).
+// LA DIFERENCIA SE VE ANTES DE TOCAR «CERRAR CAJA» (FR-005), Y EL CAJÓN ES UNO SOLO (spec 015).
 //
-// Antes de esta feature la única tabla con columna de diferencia se pintaba en el diálogo POSTERIOR
-// al cierre: el operador firmaba el arqueo y se enteraba del faltante cuando ya no había nada que
-// corregir.
+// Antes de la 003 la única tabla con columna de diferencia se pintaba en el diálogo POSTERIOR al
+// cierre: el operador firmaba y se enteraba después. Y hasta la 015 esa diferencia se repartía por
+// método, así que un turno real quedó con «Efectivo» en $0.00 y «Didi efectivo» en −$64.80 — dos
+// diferencias del mismo montón de billetes.
 describe('el cierre en vivo', () => {
   const delCierre: MethodTotal[] = [
-    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '340', declared: '0', difference: '0', autoDeclare: false },
-    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '80', declared: '0', difference: '0', autoDeclare: true },
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '200', declared: '0', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 8, name: 'Didi efectivo', kind: 'plataforma', expected: '140', declared: '0', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '80', declared: '0', difference: '0', autoDeclare: true, requiresEntry: false },
   ];
+  // Los dos de efectivo caen en el mismo cajón: $340 esperados.
+  const cajon: ArqueoDelCajon = {
+    expected: '340', counted: null, difference: null, methodIds: [1, 8], requiresCount: true,
+  };
 
-  function pintaCierre(conteo: ResultadoDelConteo | null, declarado: Record<string, string> = {}) {
-    const declaradoPorMetodo: Record<number, number | undefined> = {
-      1: conteo ? conteo.total : undefined,
-      2: undefined,
-    };
-    const diferencias = diferenciasDelCierre(delCierre, declaradoPorMetodo);
+  function pintaCierre(conteo: ResultadoDelConteo | null, elCajon: ArqueoDelCajon | null = cajon) {
+    const diferencias = diferenciasDelCierre(delCierre, {});
     return wrap(
       <>
-        <TablaDelCierre totals={delCierre} currency="MXN" declared={declarado}
-          onDeclared={() => {}} conteo={conteo} onContar={() => {}} diferencias={diferencias} />
-        <DiferenciaDelCierre diferencias={diferencias} currency="MXN" />
+        <TablaDelCierre totals={delCierre} currency="MXN" declared={{}}
+          onDeclared={() => {}} cajon={elCajon} conteo={conteo} onContar={() => {}}
+          diferencias={diferencias} />
+        <DiferenciaDelCierre diferencias={diferencias} cajon={elCajon} conteo={conteo} currency="MXN" />
       </>,
     );
   }
@@ -211,38 +215,82 @@ describe('el cierre en vivo', () => {
   test('con piezas que suman menos de lo esperado, el faltante ya está en pantalla', () => {
     // El cajón debía tener $340 y se contaron $290.
     pintaCierre({ counts: [{ denominationId: 6, pieces: 5 }], total: 290 });
-    expect(screen.getByLabelText('Diferencia de Efectivo')).toHaveTextContent('-$50');
+    expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('-$50');
     expect(screen.getByLabelText('Diferencia del arqueo')).toHaveTextContent('-$50');
     expect(screen.getByText('Faltante')).toBeInTheDocument();
   });
 
-  test('un conteo exacto dice que el arqueo cuadra', () => {
-    pintaCierre({ counts: [{ denominationId: 6, pieces: 7 }], total: 340 });
-    expect(screen.getByText('El arqueo cuadra')).toBeInTheDocument();
+  test('el faltante es UNO: ningún método de cajón reporta el suyo', () => {
+    pintaCierre({ counts: [], total: 290 });
+    for (const nombre of ['Efectivo', 'Didi efectivo']) {
+      expect(screen.getByLabelText(`Diferencia de ${nombre}`)).toHaveTextContent('—');
+    }
   });
 
-  test('sin conteo el efectivo no muestra una diferencia inventada', () => {
-    // Un campo sin capturar valdría cero y reportaría -$340 de faltante: es el defecto del corte de
-    // $1,662, que mandó a buscar dinero que estaba en el cajón.
+  test('los métodos del cajón dicen que van al cajón, y no reusan «Automático»', () => {
     pintaCierre(null);
-    expect(screen.getByLabelText('Diferencia de Efectivo')).toHaveTextContent('—');
-    expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
-  });
-
-  test('el efectivo se cuenta desde un botón, no se teclea', () => {
-    pintaCierre(null);
-    expect(screen.getByText('Contar efectivo')).toBeInTheDocument();
+    // Dos renglones informativos, uno por cada método de efectivo.
+    expect(screen.getAllByText('Va al cajón')).toHaveLength(2);
+    // «Automático» es otra cosa: lo resuelve el servidor, no se cuenta físicamente.
+    expect(screen.getAllByText('Automático')).toHaveLength(1);
     expect(screen.queryByLabelText('Declarado de Efectivo')).not.toBeInTheDocument();
   });
 
+  test('un conteo exacto dice que el arqueo cuadra', () => {
+    pintaCierre({ counts: [], total: 340 });
+    expect(screen.getByText('El arqueo cuadra')).toBeInTheDocument();
+  });
+
+  test('sin conteo no se muestra una diferencia inventada', () => {
+    // Un cajón sin contar valdría cero y reportaría -$340 de faltante: es el defecto del corte de
+    // $1,662, que mandó a buscar dinero que estaba en el cajón.
+    pintaCierre(null);
+    expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('—');
+    expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
+  });
+
+  test('con el arqueo ciego no existe la columna «Esperado»', () => {
+    // No es solo que no haya cifras: la columna entera sobra, y a 1024×600 el ancho que libera se
+    // lo devuelve a lo que el operador vino a leer.
+    const ciego: ArqueoDelCajon = { ...cajon, expected: null };
+    const sinEsperado = delCierre.map((m) => ({ ...m, expected: null }));
+    wrap(
+      <TablaDelCierre totals={sinEsperado} currency="MXN" declared={{}} onDeclared={() => {}}
+        cajon={ciego} conteo={null} onContar={() => {}}
+        diferencias={diferenciasDelCierre(sinEsperado, {})} />,
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Esperado' })).not.toBeInTheDocument();
+    // Y el resto de la tabla sigue en pie: se puede contar.
+    expect(screen.getByText('Contar efectivo')).toBeInTheDocument();
+  });
+
+  test('con el arqueo ciego no se ve el esperado ni la diferencia', () => {
+    // El esperado llega en null: lo que la pantalla no debe mostrar no se le manda.
+    const ciego: ArqueoDelCajon = { ...cajon, expected: null };
+    pintaCierre({ counts: [], total: 290 }, ciego);
+    expect(screen.getByLabelText('Diferencia del cajón')).toHaveTextContent('—');
+    expect(screen.queryByLabelText('Diferencia del arqueo')).not.toBeInTheDocument();
+    // Y sí se ve lo que el operador contó.
+    expect(screen.getByRole('button', { name: '$290' })).toBeInTheDocument();
+  });
+
+  test('el cajón se cuenta desde un botón, no se teclea', () => {
+    pintaCierre(null);
+    expect(screen.getByText('Contar efectivo')).toBeInTheDocument();
+    expect(screen.getByText('Cajón')).toBeInTheDocument();
+  });
+
   test('con el conteo hecho, el botón muestra la cifra contada', () => {
-    // Por rol y no por texto: el esperado de la fila también es $340 cuando el conteo cuadra, que es
-    // justo el caso normal.
-    pintaCierre({ counts: [{ denominationId: 6, pieces: 7 }], total: 340 });
+    pintaCierre({ counts: [], total: 340 });
     expect(screen.getByRole('button', { name: '$340' })).toBeInTheDocument();
   });
-});
 
+  test('una caja sin efectivo no pinta renglón de cajón', () => {
+    pintaCierre(null, null);
+    expect(screen.queryByText('Cajón')).not.toBeInTheDocument();
+    expect(screen.queryByText('Contar efectivo')).not.toBeInTheDocument();
+  });
+});
 
 // EL DESGLOSE, QUE ES LA RAZÓN DE GUARDARLO (US3).
 describe('el desglose de lo contado', () => {
@@ -299,5 +347,34 @@ describe('el desglose de lo contado', () => {
   test('un corte con los dos momentos en null tampoco', () => {
     wrap(<DesgloseDelConteo counts={{ apertura: null, cierre: null }} currency="MXN" />);
     expect(screen.queryByText('Efectivo contado')).not.toBeInTheDocument();
+  });
+});
+
+
+// EL CORTE CERRADO TIENE QUE SEGUIR MOSTRANDO SU FALTANTE (T016).
+//
+// Desde la spec 015 los métodos que comparten el cajón guardan su declarado igual a su esperado, así
+// que la tabla por método reporta CERO en todos. Si el arqueo del cajón no se pinta, un corte con
+// faltante se lee cuadrado justo en la pantalla donde alguien audita.
+describe('el arqueo en el corte cerrado', () => {
+  test('un corte con faltante lo muestra, aunque la tabla por método esté en ceros', () => {
+    wrap(<ArqueoDelCorte drawer={{
+      expected: '340', counted: '290', difference: '-50', methodIds: [1, 8], requiresCount: false,
+    }} currency="MXN" />);
+    expect(screen.getByLabelText('Esperado del cajón')).toHaveTextContent('$340');
+    expect(screen.getByLabelText('Contado del cajón')).toHaveTextContent('$290');
+    expect(screen.getByLabelText('Diferencia del arqueo del corte')).toHaveTextContent('-$50');
+  });
+
+  test('un corte anterior a la feature no pinta arqueo ni inventa un cero', () => {
+    wrap(<ArqueoDelCorte drawer={null} currency="MXN" />);
+    expect(screen.queryByText('Arqueo del cajón')).not.toBeInTheDocument();
+  });
+
+  test('un turno abierto todavía no tiene qué mostrar', () => {
+    wrap(<ArqueoDelCorte drawer={{
+      expected: '340', counted: null, difference: null, methodIds: [1], requiresCount: true,
+    }} currency="MXN" />);
+    expect(screen.queryByText('Arqueo del cajón')).not.toBeInTheDocument();
   });
 });

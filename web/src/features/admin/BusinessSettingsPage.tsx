@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Box, Heading, Text, Input, Button, VStack, HStack, Center, Spinner, InputGroup } from '@chakra-ui/react';
+import { useState, type ComponentProps } from 'react';
+import { Box, Heading, Text, Input, Button, VStack, HStack, Center, Spinner, InputGroup, Table } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { posApi } from '../../api/pos';
 import { backofficeApi } from '../../api/backoffice';
 import { toaster } from '../../components/ui/toaster';
+import { mensajeDeError } from '../../api/mensajes';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
@@ -26,6 +27,14 @@ const ESQUEMAS = [
   { value: 'razas', label: 'Razas de gato (88 nombres)' },
   { value: 'animales', label: 'Animales (100 nombres)' },
 ];
+
+// El área tappable de un Switch de Chakra mide 24 px de alto —medido a 1024×600— y la constitución
+// pide 44. Tres interruptores de 24 px en un renglón de 41 es exactamente el caso que la regla
+// nombra: el dedo falla por milímetros y cae en el de al lado, que aquí significa apagar un método
+// de cobro a media jornada. El relleno vertical crece el objetivo sin crecer el control.
+function Interruptor(props: ComponentProps<typeof Switch>) {
+  return <Switch size="lg" py="10px" {...props} />;
+}
 
 // Ajustes de negocio (admin/gerente). Hoy solo el costo de envío por defecto; el backend es
 // la autoridad (el PUT exige rol) — esta pantalla es la UX para editarlo.
@@ -57,11 +66,22 @@ export function BusinessSettingsPage() {
     onError: (e) => toaster.create({ title: 'No se pudo actualizar', description: String(e), type: 'error' }),
   });
 
-  const toggleAutoDeclare = useMutation({
-    mutationFn: (v: { id: number; autoDeclare: boolean }) =>
-      backofficeApi.setPaymentMethodAutoDeclare(v.id, v.autoDeclare),
+  const guardarCiego = useMutation({
+    mutationFn: (blindCashCount: boolean) => posApi.updateArqueoCiego(blindCashCount),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['business-settings'] });
+      qc.invalidateQueries({ queryKey: ['cash'] });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar', description: mensajeDeError(e), type: 'error' }),
+  });
+
+  // Un solo mutador para los tres interruptores, y manda SOLO el que cambió: el servidor deja lo
+  // demás como está. Mandar los tres cada vez haría que apagar uno pisara los otros dos.
+  const cambiarMetodo = useMutation({
+    mutationFn: (v: { id: number; flags: { autoDeclare?: boolean; isActive?: boolean; affectsCashDrawer?: boolean } }) =>
+      backofficeApi.updatePaymentMethod(v.id, v.flags),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payment-methods'] }),
-    onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
+    onError: (e) => toaster.create({ title: 'No se pudo cambiar el método', description: mensajeDeError(e), type: 'error' }),
   });
 
   const saveTz = useMutation({
@@ -246,23 +266,61 @@ export function BusinessSettingsPage() {
       </Box>
 
       <Box mt={6} borderWidth="1px" borderColor="border" borderRadius="lg" p={5}>
-        <Text fontWeight="700" mb={1}>Corte de caja</Text>
+        {/* EL ARQUEO CIEGO, arriba de los métodos: es política del negocio y cambia cómo se ve el
+            cierre entero, no la configuración de un método. */}
+        <HStack justify="space-between" align="start" mb={4} gap={4}>
+          <Box>
+            <Text fontWeight="700">Contar sin ver lo esperado</Text>
+            <Text fontSize="sm" color="fg.muted">
+              Quien cuenta el cajón no ve cuánto debería haber. La diferencia aparece al confirmar
+              el cierre.
+            </Text>
+          </Box>
+          <Interruptor checked={data?.blindCashCount ?? false} aria-label="Contar sin ver lo esperado"
+            onCheckedChange={(e) => guardarCiego.mutate(e.checked)} />
+        </HStack>
+
+        <Text fontWeight="700" mb={1}>Métodos de cobro</Text>
         <Text fontSize="sm" color="fg.muted" mb={3}>
-          Los métodos marcados como automáticos se declaran solos al cerrar caja (declarado =
-          esperado): el cajero no necesita capturarlos a mano. Útil para métodos que no se
-          cuentan físicamente, como tarjeta o transferencia.
+          <b>Activo</b>: se ofrece al cobrar. <b>Va al cajón</b>: su efectivo entra al cajón y se
+          cuenta con él — apágalo si el repartidor de la app se lleva el dinero.
+          <b> Automático</b>: se declara solo al cerrar, sin capturarlo.
         </Text>
-        <VStack align="stretch" gap={3}>
-          {(methods?.items ?? []).map((m) => (
-            <HStack key={m.id} justify="space-between">
-              <Text>{m.name}</Text>
-              <Switch
-                checked={m.autoDeclare}
-                onCheckedChange={(e) => toggleAutoDeclare.mutate({ id: m.id, autoDeclare: e.checked })}
-              />
-            </HStack>
-          ))}
-        </VStack>
+        {/* UNA TABLA Y NO UNA LISTA DE INTERRUPTORES SUELTOS: el ancho útil de esta página es ~520
+            px (`<Page maxW="560px">` con su padding), donde no caben tres pares de etiqueta +
+            control por renglón. En la tabla la etiqueta vive una vez, en el encabezado. */}
+        <Box borderWidth="1px" borderColor="border" borderRadius="lg" overflowX="auto">
+          <Table.Root size="sm">
+            <Table.Header><Table.Row>
+              <Table.ColumnHeader>Método</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="center">Activo</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="center">Va al cajón</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="center">Automático</Table.ColumnHeader>
+            </Table.Row></Table.Header>
+            <Table.Body>
+              {(methods?.items ?? []).map((m) => (
+                <Table.Row key={m.id}>
+                  <Table.Cell color={m.isActive ? undefined : 'fg.muted'}>{m.name}</Table.Cell>
+                  {/* «Activo» primero y en su propia columna: es el único de los tres con efecto
+                      inmediato en el mostrador —apagarlo saca el método del cobro— y pegado a los
+                      otros dos, un dedo que falla por milímetros deja de cobrar a media jornada. */}
+                  <Table.Cell textAlign="center">
+                    <Interruptor checked={m.isActive} aria-label={`${m.name} activo`}
+                      onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { isActive: e.checked } })} />
+                  </Table.Cell>
+                  <Table.Cell textAlign="center">
+                    <Interruptor checked={m.affectsCashDrawer} aria-label={`${m.name} va al cajón`}
+                      onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { affectsCashDrawer: e.checked } })} />
+                  </Table.Cell>
+                  <Table.Cell textAlign="center">
+                    <Interruptor checked={m.autoDeclare} aria-label={`${m.name} automático`}
+                      onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { autoDeclare: e.checked } })} />
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        </Box>
       </Box>
 
       <InstallAppSection />
