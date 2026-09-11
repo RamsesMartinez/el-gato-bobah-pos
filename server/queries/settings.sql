@@ -17,6 +17,7 @@ select delivery_fee,
        print_free_modifiers,
        print_kitchen_ticket,
        corte_de_vista,
+       blind_cash_count,
        kitchen_can_charge,
        pin_only_unlock,
        lock_after_seconds,
@@ -53,6 +54,14 @@ set business_name       = sqlc.arg(business_name),
     print_free_modifiers = sqlc.arg(print_free_modifiers),
     print_kitchen_ticket = sqlc.arg(print_kitchen_ticket),
     corte_de_vista = sqlc.arg(corte_de_vista),
+    -- ARQUEO CIEGO: si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia
+    -- aparece DESPUÉS de confirmar el cierre. Es un control contra que alguien acomode lo que
+    -- declara para que cuadre, y por eso es política del negocio y no preferencia de quien opera.
+    --
+    -- Encenderlo ENMIENDA FR-005 de la spec 003 ("la diferencia se ve antes de confirmar"), que
+    -- sigue siendo el comportamiento por default. Las dos reglas protegen cosas distintas: aquella
+    -- al operador honesto de su propio error de suma, esta al negocio de quien no lo es.
+    blind_cash_count = sqlc.arg(blind_cash_count),
     kitchen_can_charge = sqlc.arg(kitchen_can_charge),
     pin_only_unlock = sqlc.arg(pin_only_unlock),
     lock_after_seconds = sqlc.arg(lock_after_seconds),
