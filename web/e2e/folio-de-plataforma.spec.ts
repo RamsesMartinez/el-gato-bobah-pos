@@ -1,6 +1,6 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-import { API, USUARIO, EMPRESA, PASSWORD } from './ambiente';
+import { API, USUARIO, EMPRESA, PASSWORD, tokenDeRequest } from './ambiente';
 
 // EL FOLIO DE LA PLATAFORMA, A 1024×600 Y CONTRA EL SERVIDOR DE VERDAD (spec 014).
 //
@@ -29,13 +29,6 @@ async function entrar(page: Page, ruta = '/') {
   await page.waitForLoadState('networkidle');
 }
 
-async function token(request: APIRequestContext): Promise<string> {
-  const r = await request.post(`${API}/auth/login`, {
-    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
-  });
-  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
-  return (await r.json()).accessToken;
-}
 
 // renglonesDelMosaico cuenta los renglones COMPLETOS de producto que el operador ve.
 //
@@ -210,7 +203,7 @@ test('Y20 · una cuenta guardada antes de esta feature no deja el POS en blanco'
 
 test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
   test('Y12 · pegar el folio del documento encuentra el pedido en un paso', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     // Un folio que nadie capturó devuelve la lista VACÍA y no un error: es la respuesta a "este
     // renglón del documento todavía no está registrado".
     const r = await request.get(`${API}/sales?preset=mes&folio=NO-EXISTE-${Date.now()}`, {
@@ -221,7 +214,7 @@ test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
   });
 
   test('Y10 · un filtro de pendientes desconocido se rechaza, no cae a "todos"', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const r = await request.get(`${API}/sales?preset=mes&folioPlataforma=pendientes`, {
       headers: { Authorization: `Bearer ${jwt}` },
     });
@@ -229,7 +222,7 @@ test.describe('Y · Ventas: buscar, filtrar y liquidar', () => {
   });
 
   test('Y11 · la lista y el resumen de pendientes describen el mismo conjunto', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const h = { Authorization: `Bearer ${jwt}` };
     const lista = await (await request.get(`${API}/sales?preset=mes&folioPlataforma=pendiente&pageSize=100`, { headers: h })).json();
     const resumen = await (await request.get(`${API}/sales/summary?preset=mes&folioPlataforma=pendiente`, { headers: h })).json();

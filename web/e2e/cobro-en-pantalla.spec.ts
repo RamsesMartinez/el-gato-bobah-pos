@@ -1,5 +1,5 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { API } from './ambiente';
+import { test, expect, type Page } from '@playwright/test';
+import { API, tokenDeRequest } from './ambiente';
 
 // LA MATRIZ DE DINERO, PASANDO POR LA PANTALLA. Ver docs/matriz-de-cobro.md, sección E.
 //
@@ -13,13 +13,6 @@ const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
 
 // El token para preguntarle al SERVIDOR qué pasó. La pantalla puede no pintar un pedido que sí se
 // creó, y esa diferencia es justo la que hay que medir.
-async function token(request: APIRequestContext): Promise<string> {
-  const r = await request.post(`${API}/auth/login`, {
-    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
-  });
-  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
-  return (await r.json()).accessToken;
-}
 
 async function entrar(page: Page) {
   await page.goto('/');
@@ -75,7 +68,7 @@ test.describe('E — el cobro, en la pantalla', () => {
   // Se mide contra el SERVIDOR —cuántos pedidos en curso hay antes y después— porque es lo único
   // que distingue "no se creó" de "se creó y la pantalla no lo pintó".
   test('E1 · COBRAR abre la hoja y NO manda el pedido a cocina', async ({ page, request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const cuantos = async () => {
       const r = await request.get(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
       return ((await r.json()).items ?? []).length as number;

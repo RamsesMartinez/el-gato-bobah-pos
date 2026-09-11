@@ -72,6 +72,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   [docs/matriz-de-pantallas.md](docs/matriz-de-pantallas.md) (por dónde una pantalla dice algo que
   no es cierto). Las dos declaran también lo que **no** está cubierto.
 
+  **El login se comparte, y no es cosmética.** `/auth` está limitado a 60 peticiones por minuto y
+  por IP, y la suite lo tumbaba sola: cinco archivos tenían su propia copia del helper de login y
+  entraban en cada test. Medido contra el ambiente de pruebas, una corrida dejó **8 respuestas
+  429**, y lo que se ve es un test esperando 30 segundos a una pantalla que nunca entra —
+  intermitente, y que pasa al reintentar. El token vive en
+  [ambiente.ts](web/e2e/ambiente.ts) (`tokenDeApi` / `tokenDeRequest`), cacheado 5 minutos. Si
+  agregas un spec, úsalo: volver a escribir el login reintroduce la intermitencia y el gate deja de
+  creerse.
+
   **La suite COBRA los pedidos que crea.** El ambiente es compartido con una persona, y un pedido de
   prueba que se queda abierto aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de
   caja — le hace creer a quien opera que hay dinero pendiente. El `globalSetup` anota qué pedidos ya
