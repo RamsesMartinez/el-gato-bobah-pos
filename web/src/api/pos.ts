@@ -78,6 +78,9 @@ export const posApi = {
   // estática dentro de un despliegue, así que se pide una vez por carga, no por cuenta.
   folioNames: () => api.get<{ items: string[] }>('/pos/folio-names'),
   paymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods'),
+  // La lista de AJUSTES trae también los apagados. Con la filtrada, apagar un método lo borraba de
+  // la pantalla que tiene su propio interruptor y no quedaba forma de volver a encenderlo.
+  allPaymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods/all'),
 
   createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
   activeOrders: () => api.get<{ items: BoardOrder[] }>('/orders'),
@@ -169,6 +172,10 @@ export const posApi = {
     api.put<BusinessSettings>('/business-settings', { corteDeVista }),
   updateFolioScheme: (folioScheme: string) =>
     api.put<BusinessSettings>('/business-settings', { folioScheme }),
+  // Arqueo ciego: quien cuenta el cajón no ve lo esperado. Va sola, como las demás: los campos
+  // ausentes no se tocan, y guardar este no puede pisar la zona ni el costo de envío.
+  updateArqueoCiego: (blindCashCount: boolean) =>
+    api.put<BusinessSettings>('/business-settings', { blindCashCount }),
 };
 
 // El dinero viaja como string decimal exacto (ver types/pos.ts).
@@ -199,6 +206,9 @@ export interface BusinessSettings {
   // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
   // vive donde le toca, en el punto de venta.
   kitchenCanCharge: boolean;
+  // Si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia aparece al
+  // confirmar el cierre.
+  blindCashCount: boolean;
   // Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
   pinOnlyUnlock: boolean;
   lockAfterSeconds: number;

@@ -45,6 +45,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - **Un agregado no se une a dos tablas 1:N en la misma consulta.** `order_payments` y `order_lines`
   son las dos 1:N con `orders`: unirlas multiplica las filas (2 pagos × 3 líneas = 6) y duplica las
   sumas. Se pre-agrega cada rama por `order_id`, o se hacen consultas separadas.
+- **Un agregado que se puede vaciar va con `coalesce`, y el cast NO lo salva.** `string_agg`,
+  `array_agg`, `sum`, `min`, `max` sobre un conjunto **vacío** devuelven NULL. Escribir
+  `(select string_agg(...) ...)::text` no lo arregla —un `NULL::text` sigue siendo NULL— pero sí
+  hace que **sqlc tipe la columna como no nulable** (`string` en vez de `*string`), y entonces el
+  scan revienta con `cannot scan NULL into *string`. Lo grave no es el NULL: **no falla ese renglón,
+  falla la consulta entera**. Costó que `/catalogo/opciones` respondiera 500 en producción durante
+  horas porque 21 grupos de modificadores no tenían opciones activas — un estado ordinario: es el de
+  un grupo recién creado. Ver `AdminListGroups` en [modifiers_admin.sql](server/queries/modifiers_admin.sql).
+  `count()` es la excepción: sobre conjunto vacío da 0, no NULL.
 - **sqlc NO conoce `company_id`** en las ~30 tablas a las que se lo agregó
   [0023](server/migrations/0023_tenant_columns.sql) con `EXECUTE format()`: su parser no lee DDL
   dinámico. Nombrar esa columna en una consulta rompe `sqlc generate` con "column does not exist"
@@ -71,6 +80,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   [docs/matriz-de-cobro.md](docs/matriz-de-cobro.md) (por dónde se pierde dinero) y
   [docs/matriz-de-pantallas.md](docs/matriz-de-pantallas.md) (por dónde una pantalla dice algo que
   no es cierto). Las dos declaran también lo que **no** está cubierto.
+
+  **El login se comparte, y no es cosmética.** `/auth` está limitado a 60 peticiones por minuto y
+  por IP, y la suite lo tumbaba sola: cinco archivos tenían su propia copia del helper de login y
+  entraban en cada test. Medido contra el ambiente de pruebas, una corrida dejó **8 respuestas
+  429**, y lo que se ve es un test esperando 30 segundos a una pantalla que nunca entra —
+  intermitente, y que pasa al reintentar. El token vive en
+  [ambiente.ts](web/e2e/ambiente.ts) (`tokenDeApi` / `tokenDeRequest`), cacheado 5 minutos. Si
+  agregas un spec, úsalo: volver a escribir el login reintroduce la intermitencia y el gate deja de
+  creerse.
 
   **La suite COBRA los pedidos que crea.** El ambiente es compartido con una persona, y un pedido de
   prueba que se queda abierto aparece en la barra del POS, suma a "por cobrar" y bloquea el cierre de

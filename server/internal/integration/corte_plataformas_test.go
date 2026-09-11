@@ -30,7 +30,7 @@ func TestElFondoDeCajaSeCuentaUnaSolaVez(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_fondo", "cajero")
 	principal := registerID(t, st, "Caja principal")
 	fondo := decimal.RequireFromString("1500")
-	if _, err := backoffice.OpenSession(ctx, principal, fondo, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, aperturaAMano(fondo), cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_cierre", "cajero")
 	principal := registerID(t, st, "Caja principal")
 	fondo := decimal.RequireFromString("1500")
-	if _, err := backoffice.OpenSession(ctx, principal, fondo, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, aperturaAMano(fondo), cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -84,12 +84,12 @@ func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	declarado := map[int]decimal.Decimal{int(efectivo): fondo}
 
-	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, declarado, "")
+	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado))
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
 	for _, tot := range cerrada.Totals {
-		dif := tot.Declared.Sub(tot.Expected)
+		dif := tot.Declared.Sub(*tot.Expected)
 		if !dif.IsZero() {
 			t.Fatalf("%q cerró con diferencia de %s (esperado %s, declarado %s) sin haber vendido nada",
 				tot.Name, dif, tot.Expected, tot.Declared)
@@ -128,18 +128,18 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 	}
 
 	// Turno 1: una venta de $100, y se cierra declarando lo que hay.
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession 1: %v", err)
 	}
 	vender()
 	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero,
-		map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")}, ""); err != nil {
+		cierreDelCajonAMano(t, st, map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")})); err != nil {
 		t.Fatalf("CloseSession 1: %v", err)
 	}
 
 	// Turno 2, el mismo día y con el mismo reloj: debe esperar SOLO su propia venta.
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession 2: %v", err)
 	}
 	vender()
@@ -179,7 +179,7 @@ func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
 	didiEnLinea := paymentMethodID(t, st, "Didi en línea")
 	efectivo := paymentMethodID(t, st, "Efectivo")
 
-	if _, err := backoffice.OpenSession(ctx, principal, decimal.RequireFromString("500"), cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, aperturaAMano(decimal.RequireFromString("500")), cajero); err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
 
@@ -258,7 +258,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 	uberEfectivo := paymentMethodID(t, st, "Uber Eats efectivo")
 	efectivo := paymentMethodID(t, st, "Efectivo")
 
-	sess, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	sess, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
@@ -285,11 +285,11 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 	vender(efectivo, "100")
 
 	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, map[int]decimal.Decimal{
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, map[int]decimal.Decimal{
 		int(efectivo):     decimal.RequireFromString("100"),
 		int(uberEnLinea):  decimal.RequireFromString("135"),
 		int(uberEfectivo): decimal.RequireFromString("135"),
-	}, ""); err != nil {
+	})); err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
 

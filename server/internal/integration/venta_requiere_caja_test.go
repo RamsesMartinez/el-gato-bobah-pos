@@ -59,7 +59,7 @@ func TestVentaConCajaPrincipalQuedaAtadaALaSesion(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 
 	principal := registerID(t, st, "Caja principal")
-	sess, err := backoffice.OpenSession(ctx, principal, decimal.Zero, cajero)
+	sess, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("OpenSession: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestCajaSecundariaAbiertaNoHabilitaVender(t *testing.T) {
 		`select id from cash_registers where not is_primary and is_active order by id limit 1`).Scan(&secundaria); err != nil {
 		t.Fatalf("no hay caja secundaria de referencia: %v", err)
 	}
-	if _, err := backoffice.OpenSession(ctx, secundaria, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, secundaria, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession(secundaria): %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestEstadoDeCajaSigueLaMismaReglaQueElCobro(t *testing.T) {
 		`select id from cash_registers where not is_primary and is_active order by id limit 1`).Scan(&secundaria); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backoffice.OpenSession(ctx, secundaria, decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, secundaria, app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession(secundaria): %v", err)
 	}
 	if abierta, err = backoffice.SellingRegisterOpen(ctx); err != nil {
@@ -158,7 +158,7 @@ func TestEstadoDeCajaSigueLaMismaReglaQueElCobro(t *testing.T) {
 		t.Fatal("una caja secundaria abierta no habilita vender, y el estado no debe decir que sí")
 	}
 
-	if _, err := backoffice.OpenSession(ctx, registerID(t, st, "Caja principal"), decimal.Zero, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, registerID(t, st, "Caja principal"), app.AperturaCmd{}, cajero); err != nil {
 		t.Fatalf("OpenSession(principal): %v", err)
 	}
 	if abierta, err = backoffice.SellingRegisterOpen(ctx); err != nil {

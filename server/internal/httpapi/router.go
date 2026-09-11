@@ -154,6 +154,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.Get("/payment-methods", h.PaymentMethods)
 				// auto_declare (config de negocio): solo admin/gerente elige qué métodos se
 				// declaran solos al cerrar caja.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/payment-methods/all", h.AllPaymentMethods)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/payment-methods/{id}", h.UpdatePaymentMethod)
 				// Ajustes de negocio: GET lo necesita el cobro (costo de envío por defecto); PUT solo
 				// admin/gerente (es dinero autoritativo del negocio).
@@ -183,6 +184,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que
+				// abre o cierra la caja.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash/denominations", h.CashDenominations)
 
 				// Precios por plataforma: los captura quien vende, desde la pantalla de venta. El
 				// pedido de la plataforma ya llegó y hay que imprimirlo; mandar al cajero a buscar

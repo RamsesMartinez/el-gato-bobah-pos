@@ -1,5 +1,5 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
-import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
+import { test, expect, type Page } from '@playwright/test';
+import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
 
 // LA MATRIZ DE PANTALLAS, EXTREMO A EXTREMO. Ver docs/matriz-de-pantallas.md.
 //
@@ -11,13 +11,6 @@ import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
 // miden —rangos, cotas, cuadres, alto de pantalla— se mide sobre lo que ya hay. Lo que sí crea
 // pedidos vive en dinero.spec.ts, que además los cobra.
 
-async function token(request: APIRequestContext): Promise<string> {
-  const r = await request.post(`${API}/auth/login`, {
-    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
-  });
-  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
-  return (await r.json()).accessToken;
-}
 
 // entrar pasa por el LOGIN REAL, no por localStorage.
 //
@@ -36,7 +29,7 @@ async function entrar(page: Page, ruta: string) {
 
 test.describe('R — el rango de fechas contra el servidor real', () => {
   test('R1 · un preset inventado se rechaza, no cae a hoy', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     for (const ruta of ['/sales?preset=el-mes-pasado-pero-solo-martes', '/reports/sales?preset=inventado']) {
       const r = await request.get(`${API}${ruta}`, { headers: auth });
@@ -48,7 +41,7 @@ test.describe('R — el rango de fechas contra el servidor real', () => {
 
   // Invertido devuelve CERO filas sin error si nadie lo rechaza, y quien lo lee cree que no vendió.
   test('R2 · un rango invertido se rechaza', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const q = 'preset=rango&from=2026-08-31&to=2026-08-01';
     for (const base of ['/sales', '/reports/sales', '/reports/tips', '/reports/margins']) {
@@ -60,7 +53,7 @@ test.describe('R — el rango de fechas contra el servidor real', () => {
 
   // Sin cota, un "del 2020 a hoy" escanea sin límite en el gigabyte de RAM del VPS.
   test('R3 · un rango de años se rechaza en las cuatro rutas', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const q = 'preset=rango&from=2020-01-01&to=2026-12-31';
     for (const base of ['/sales', '/sales/summary', '/reports/sales', '/reports/margins']) {
@@ -73,7 +66,7 @@ test.describe('R — el rango de fechas contra el servidor real', () => {
   // Una fecha que el preset no va a usar se descartaba en silencio: la respuesta era HOY con la
   // pantalla viéndose perfecta.
   test('R5 · fechas con un preset que no las usa se rechazan', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const r = await request.get(`${API}/sales?preset=hoy&from=2026-01-01&to=2026-01-31`, { headers: auth });
     expect(r.status(), 'se aceptaron unas fechas que el preset iba a descartar')
@@ -82,7 +75,7 @@ test.describe('R — el rango de fechas contra el servidor real', () => {
   });
 
   test('R8 · una fecha malformada se rechaza, no cae al default', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     for (const mala of ['31/08/2026', '2026-13-45', 'ayer', '2026-8-1']) {
       const r = await request.get(
@@ -104,7 +97,7 @@ test.describe('Q — los reportes responden un solo periodo', () => {
   // no a ningún método, así que lo cobrado va POR DEBAJO de lo vendido. Lo que no puede pasar es lo
   // contrario — ahí es donde vivía el defecto.
   test('Q1 · lo cobrado por método nunca excede la venta del periodo', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     for (const preset of ['30d', 'semana', 'mes']) {
       const r = await request.get(`${API}/reports/sales?preset=${preset}`, { headers: auth });
@@ -125,7 +118,7 @@ test.describe('Q — los reportes responden un solo periodo', () => {
   // Los tres reportes responden EL MISMO rango. Es lo que impide que la pantalla pinte dos periodos
   // uno junto a otro sin nada que lo delate.
   test('Q4 · los tres reportes devuelven el mismo rango', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const q = 'preset=rango&from=2026-08-01&to=2026-08-31';
     const rangos: Record<string, string> = {};
@@ -144,7 +137,7 @@ test.describe('Q — los reportes responden un solo periodo', () => {
   // "30d" son TREINTA días contando hoy. El handler restaba 30 al día de fin, que son treinta y uno:
   // la diferencia no se ve, y por eso muerde al comparar dos periodos "de 30 días".
   test('Q6 · el preset de 30 días mide treinta días', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const r = await request.get(`${API}/reports/sales?preset=30d`, {
       headers: { Authorization: `Bearer ${jwt}` },
     });
@@ -264,7 +257,7 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
   // comparte una persona — y el arqueo del día lo reflejaría.
 
   test('D1 · devolver más de lo cobrado se rechaza', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
     const alguno = (abiertos.items ?? [])[0];
@@ -280,7 +273,7 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
   });
 
   test('D2 · un motivo en blanco se rechaza', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
     const alguno = (abiertos.items ?? [])[0];
@@ -298,7 +291,7 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
   // Un id que no parsea tiene que ser 400, no 500: un 500 dice "el servidor se rompió" y manda a
   // revisar logs por una petición que nunca valió.
   test('D3 · un id de renglón inválido es 400, no 500', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const r = await request.post(`${API}/orders/1/lines/abc/cancel`, {
       headers: { Authorization: `Bearer ${jwt}` }, data: { reason: 'prueba' },
     });

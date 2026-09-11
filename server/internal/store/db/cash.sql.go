@@ -81,6 +81,28 @@ func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) erro
 	return err
 }
 
+const collectedByMethodInOpenSessions = `-- name: CollectedByMethodInOpenSessions :one
+select coalesce(sum(op.amount + op.tip_amount), 0)::numeric(10,2) as cobrado
+from order_payments op
+join register_sessions s on s.id = op.register_session_id
+where op.payment_method_id = $1 and s.status = 'abierta'
+`
+
+// Cuánto lleva cobrado un método en los turnos que siguen ABIERTOS.
+//
+// Es lo que decide si se puede mover su interruptor «va al cajón» (spec 015, FR-017): cambiarlo con
+// dinero ya adentro mueve el esperado del cajón en billetes que están físicamente ahí. Suma sobre
+// todos los turnos abiertos y no solo el de la caja principal: el interruptor es del método, no de
+// una caja, y un turno abierto de otra caja cuenta igual.
+//
+// Propinas incluidas: también son dinero que entró por ese método y que el esperado ya cuenta.
+func (q *Queries) CollectedByMethodInOpenSessions(ctx context.Context, paymentMethodID int16) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, collectedByMethodInOpenSessions, paymentMethodID)
+	var cobrado decimal.Decimal
+	err := row.Scan(&cobrado)
+	return cobrado, err
+}
+
 const countSessionSales = `-- name: CountSessionSales :one
 select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
@@ -170,7 +192,7 @@ select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.
 from payment_methods pm
 left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
-where pm.is_active
+where pm.is_active or op.id is not null or pm.kind = 'efectivo'
 group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare, dp.name
 order by pm.sort_key
 `
@@ -201,6 +223,16 @@ type ExpectedByMethodForSessionRow struct {
 // suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
 // que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
 // dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+// `or op.id is not null`: un método que se apaga a media jornada tiene que seguir en el arqueo si ya
+// cobró en este turno. Filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya
+// entró, y el corte cuadraba contra una cifra más chica sin que nadie lo notara. Hasta la spec 015
+// nadie podía apagar un método desde la aplicación, así que este camino no existía.
+//
+// `or pm.kind = 'efectivo'`: el renglón del efectivo del mostrador NUNCA se cae, aunque esté
+// apagado y no haya cobrado nada. Es el único dueño del fondo de apertura y de los movimientos de
+// caja —quien los suma es el bucle de Go que mira este `kind`—, así que sin su renglón el fondo no
+// tiene dónde vivir: medido, apagar «Efectivo» con $500 de fondo dejaba al cajón esperando $0 con
+// los billetes adentro, y el corte cerraba con $500 de sobrante fantasma.
 func (q *Queries) ExpectedByMethodForSession(ctx context.Context, registerSessionID *int64) ([]ExpectedByMethodForSessionRow, error) {
 	rows, err := q.db.Query(ctx, expectedByMethodForSession, registerSessionID)
 	if err != nil {
@@ -241,6 +273,48 @@ func (q *Queries) GetBusinessTimezone(ctx context.Context) (string, error) {
 	var timezone string
 	err := row.Scan(&timezone)
 	return timezone, err
+}
+
+const getCashCount = `-- name: GetCashCount :one
+select id, session_id, moment, total, expected, difference, manual_reason, created_by, created_at
+from session_cash_counts
+where session_id = $1 and moment = $2
+`
+
+type GetCashCountParams struct {
+	SessionID int64           `json:"session_id"`
+	Moment    CashCountMoment `json:"moment"`
+}
+
+type GetCashCountRow struct {
+	ID           int64            `json:"id"`
+	SessionID    int64            `json:"session_id"`
+	Moment       CashCountMoment  `json:"moment"`
+	Total        decimal.Decimal  `json:"total"`
+	Expected     *decimal.Decimal `json:"expected"`
+	Difference   *decimal.Decimal `json:"difference"`
+	ManualReason *string          `json:"manual_reason"`
+	CreatedBy    int64            `json:"created_by"`
+	CreatedAt    time.Time        `json:"created_at"`
+}
+
+// El conteo de un momento, si lo hay. Un turno sin conteo es lo normal en los cortes anteriores a
+// esta funcionalidad, así que "no hay filas" es una respuesta legítima y no un error.
+func (q *Queries) GetCashCount(ctx context.Context, arg GetCashCountParams) (GetCashCountRow, error) {
+	row := q.db.QueryRow(ctx, getCashCount, arg.SessionID, arg.Moment)
+	var i GetCashCountRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Moment,
+		&i.Total,
+		&i.Expected,
+		&i.Difference,
+		&i.ManualReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getCashRegister = `-- name: GetCashRegister :one
@@ -325,7 +399,7 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 }
 
 const getPaymentMethod = `-- name: GetPaymentMethod :one
-select id, name, kind, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
 from payment_methods where id = $1
 `
 
@@ -333,6 +407,7 @@ type GetPaymentMethodRow struct {
 	ID                 int16       `json:"id"`
 	Name               string      `json:"name"`
 	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
 	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
 	AutoDeclare        bool        `json:"auto_declare"`
 	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
@@ -349,6 +424,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 		&i.ID,
 		&i.Name,
 		&i.Kind,
+		&i.IsCash,
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
 		&i.DeliveryPlatformID,
@@ -530,6 +606,108 @@ func (q *Queries) ListAllCashRegisters(ctx context.Context) ([]ListAllCashRegist
 	return items, nil
 }
 
+const listAllPaymentMethods = `-- name: ListAllPaymentMethods :many
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods order by sort_key, name
+`
+
+type ListAllPaymentMethodsRow struct {
+	ID                 int16       `json:"id"`
+	Name               string      `json:"name"`
+	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
+	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
+	AutoDeclare        bool        `json:"auto_declare"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	IsActive           bool        `json:"is_active"`
+}
+
+// Todos, incluidos los apagados. Es la lista de la pantalla de AJUSTES, y por eso no puede ser la
+// misma que ofrece el POS para cobrar.
+//
+// Existe porque apagar un método era una puerta de un solo sentido: la tabla de interruptores se
+// pintaba con la lista filtrada, así que el renglón desaparecía junto con su propio interruptor y
+// no quedaba camino en la aplicación para volver a encenderlo. Un dedo que falla por milímetros
+// sobre «Efectivo» dejaba al mostrador sin cobrar en efectivo hasta que alguien entrara a la base.
+func (q *Queries) ListAllPaymentMethods(ctx context.Context) ([]ListAllPaymentMethodsRow, error) {
+	rows, err := q.db.Query(ctx, listAllPaymentMethods)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllPaymentMethodsRow{}
+	for rows.Next() {
+		var i ListAllPaymentMethodsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.IsCash,
+			&i.AffectsCashDrawer,
+			&i.AutoDeclare,
+			&i.DeliveryPlatformID,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCashCountLines = `-- name: ListCashCountLines :many
+select l.denomination_id, d.value, d.is_coin, l.pieces,
+       (d.value * l.pieces)::numeric(12,2) as subtotal
+from session_cash_count_lines l
+join cash_denominations d on d.id = l.denomination_id
+where l.count_id = $1
+order by d.sort_key
+`
+
+type ListCashCountLinesRow struct {
+	DenominationID int64           `json:"denomination_id"`
+	Value          decimal.Decimal `json:"value"`
+	IsCoin         bool            `json:"is_coin"`
+	Pieces         int32           `json:"pieces"`
+	Subtotal       decimal.Decimal `json:"subtotal"`
+}
+
+// Las piezas de un conteo, con el valor de cada denominación.
+//
+// `subtotal` viaja calculado desde la base y no se deja para la pantalla: lo lee un humano
+// comparando contra su cajón, y dos multiplicaciones del mismo dato son dos formas de que difieran.
+// El valor sale del catálogo por join y no de una copia en el renglón: una denominación no cambia
+// de valor —un billete de $500 vale $500—, y lo que sí puede cambiar es que se retire, que es
+// justo lo que `on delete restrict` impide que borre este join.
+func (q *Queries) ListCashCountLines(ctx context.Context, countID int64) ([]ListCashCountLinesRow, error) {
+	rows, err := q.db.Query(ctx, listCashCountLines, countID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCashCountLinesRow{}
+	for rows.Next() {
+		var i ListCashCountLinesRow
+		if err := rows.Scan(
+			&i.DenominationID,
+			&i.Value,
+			&i.IsCoin,
+			&i.Pieces,
+			&i.Subtotal,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCashMovements = `-- name: ListCashMovements :many
 select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
 from register_cash_movements m
@@ -616,6 +794,49 @@ func (q *Queries) ListCashRegisters(ctx context.Context) ([]ListCashRegistersRow
 			&i.IsPrimary,
 			&i.IsActive,
 			&i.OpenSessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDenominations = `-- name: ListDenominations :many
+select id, currency, value, is_coin
+from cash_denominations
+where currency = $1 and is_active
+order by sort_key
+`
+
+type ListDenominationsRow struct {
+	ID       int64           `json:"id"`
+	Currency string          `json:"currency"`
+	Value    decimal.Decimal `json:"value"`
+	IsCoin   bool            `json:"is_coin"`
+}
+
+// Qué piezas se pueden contar en una moneda. Solo las activas: una denominación retirada de
+// circulación no vuelve a ofrecerse, pero sigue existiendo para los arqueos que la usaron.
+//
+// De mayor a menor por sort_key, que es como se cuenta un cajón: primero los billetes grandes.
+func (q *Queries) ListDenominations(ctx context.Context, currency string) ([]ListDenominationsRow, error) {
+	rows, err := q.db.Query(ctx, listDenominations, currency)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDenominationsRow{}
+	for rows.Next() {
+		var i ListDenominationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Currency,
+			&i.Value,
+			&i.IsCoin,
 		); err != nil {
 			return nil, err
 		}
@@ -776,7 +997,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 }
 
 const listSessionTotals = `-- name: ListSessionTotals :many
-select t.payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, t.expected, t.declared, t.tips,
+select t.payment_method_id, pm.name, pm.kind, t.affects_cash_drawer, t.expected, t.declared, t.tips,
        coalesce(dp.name, '') as platform_name,
        (t.declared - t.expected)::numeric(10,2) as difference
 from register_session_totals t
@@ -802,6 +1023,11 @@ type ListSessionTotalsRow struct {
 // permite subtotalizar por plataforma. Faltaba aquí, así que el subtotal existía en el turno vivo y
 // desaparecía en el histórico — justo cuando llega el depósito de la plataforma y sirve para
 // conciliar.
+//
+// `t.affects_cash_drawer` y NO `pm.`: el flag se lee del renglón guardado, no del catálogo de hoy.
+// Desde la spec 015 ese interruptor se puede cambiar, y leerlo en vivo haría que un corte cerrado
+// se reagrupara según la configuración del día en que alguien lo abra — las cifras no cambiarían,
+// pero la forma del reporte sí, y un arqueo que se lee distinto cada vez no se puede auditar.
 func (q *Queries) ListSessionTotals(ctx context.Context, sessionID int64) ([]ListSessionTotalsRow, error) {
 	rows, err := q.db.Query(ctx, listSessionTotals, sessionID)
 	if err != nil {
@@ -836,7 +1062,18 @@ const listSessions = `-- name: ListSessions :many
 select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at, s.closed_at, s.notes,
        r.name as register_name,
        ob.name as opened_by_name, cb.name as closed_by_name,
-       coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)::numeric(10,2) as total_difference
+       -- La diferencia total del corte son DOS sumandos desde la spec 015: lo que difieren los
+       -- métodos que no tocan el cajón, más la diferencia única del cajón. Los métodos de cajón
+       -- guardan ` + "`" + `declared = expected` + "`" + `, así que su parte de la primera suma es cero: sin el segundo
+       -- sumando, esta pantalla —donde alguien audita— muestra cuadrados los cortes que no cuadran.
+       --
+       -- Va como SUBCONSULTA CORRELACIONADA y no como join: un turno tiene hasta dos conteos
+       -- (apertura y cierre) y N renglones de método, y unir las dos 1:N multiplicaría cada
+       -- diferencia por el número de conteos. Es el patrón que ya documentamos para
+       -- order_payments/order_lines.
+       (coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)
+        + coalesce((select c.difference from session_cash_counts c
+                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -924,6 +1161,45 @@ func (q *Queries) LockOpenPrimarySession(ctx context.Context) (LockOpenPrimarySe
 	row := q.db.QueryRow(ctx, lockOpenPrimarySession)
 	var i LockOpenPrimarySessionRow
 	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
+	return i, err
+}
+
+const lockPaymentMethod = `-- name: LockPaymentMethod :one
+select id, name, kind, is_cash, affects_cash_drawer, auto_declare, delivery_platform_id, is_active
+from payment_methods where id = $1 for update
+`
+
+type LockPaymentMethodRow struct {
+	ID                 int16       `json:"id"`
+	Name               string      `json:"name"`
+	Kind               PaymentKind `json:"kind"`
+	IsCash             bool        `json:"is_cash"`
+	AffectsCashDrawer  bool        `json:"affects_cash_drawer"`
+	AutoDeclare        bool        `json:"auto_declare"`
+	DeliveryPlatformID *int16      `json:"delivery_platform_id"`
+	IsActive           bool        `json:"is_active"`
+}
+
+// El mismo renglón que GetPaymentMethod, tomado para actualizar.
+//
+// Existe porque configurar un método es leer-validar-escribir, y sin lock dos PATCH simultáneos
+// —uno que enciende «automático» y otro que enciende «va al cajón»— pasan cada uno su validación
+// contra el estado viejo y dejan escrita la combinación que el código considera imposible. Que
+// hoy no se pierda dinero por eso es una coincidencia del orden en que `CloseSession` resuelve los
+// métodos del cajón, no una garantía.
+func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentMethodRow, error) {
+	row := q.db.QueryRow(ctx, lockPaymentMethod, id)
+	var i LockPaymentMethodRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.IsCash,
+		&i.AffectsCashDrawer,
+		&i.AutoDeclare,
+		&i.DeliveryPlatformID,
+		&i.IsActive,
+	)
 	return i, err
 }
 
@@ -1016,19 +1292,98 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 	return i, err
 }
 
+const saveCashCount = `-- name: SaveCashCount :one
+insert into session_cash_counts (session_id, moment, total, expected, manual_reason, created_by)
+values ($1, $2, $3, $4, $5, $6)
+returning id, session_id, moment, total, manual_reason, created_by, created_at
+`
+
+type SaveCashCountParams struct {
+	SessionID    int64            `json:"session_id"`
+	Moment       CashCountMoment  `json:"moment"`
+	Total        decimal.Decimal  `json:"total"`
+	Expected     *decimal.Decimal `json:"expected"`
+	ManualReason *string          `json:"manual_reason"`
+	CreatedBy    int64            `json:"created_by"`
+}
+
+type SaveCashCountRow struct {
+	ID           int64           `json:"id"`
+	SessionID    int64           `json:"session_id"`
+	Moment       CashCountMoment `json:"moment"`
+	Total        decimal.Decimal `json:"total"`
+	ManualReason *string         `json:"manual_reason"`
+	CreatedBy    int64           `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
+// El conteo de un momento del turno. El total viene YA calculado por el dominio desde las piezas:
+// esta consulta no suma nada, y por eso `total` es un parámetro y no un `sum()`.
+//
+// Un segundo conteo del mismo momento choca con `session_cash_counts_un_momento` y sube como 23505.
+// El servicio lo traduce a conflicto: con dos tabletas compartiendo cuenta, dos personas pueden
+// llegar al cierre a la vez, y eso tiene que decir qué pasó y no "el servidor se rompió".
+//
+// `expected` es el esperado del CAJÓN en el momento del cierre, y se guarda en vez de recalcularse:
+// sale de `order_payments`, y una venta cancelada o reembolsada después movería la cifra contra la
+// que el operador firmó. Va nulo en la apertura, donde no hay nada que esperar.
+func (q *Queries) SaveCashCount(ctx context.Context, arg SaveCashCountParams) (SaveCashCountRow, error) {
+	row := q.db.QueryRow(ctx, saveCashCount,
+		arg.SessionID,
+		arg.Moment,
+		arg.Total,
+		arg.Expected,
+		arg.ManualReason,
+		arg.CreatedBy,
+	)
+	var i SaveCashCountRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Moment,
+		&i.Total,
+		&i.ManualReason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const saveCashCountLine = `-- name: SaveCashCountLine :exec
+insert into session_cash_count_lines (count_id, denomination_id, pieces)
+values ($1, $2, $3)
+`
+
+type SaveCashCountLineParams struct {
+	CountID        int64 `json:"count_id"`
+	DenominationID int64 `json:"denomination_id"`
+	Pieces         int32 `json:"pieces"`
+}
+
+// Un renglón del conteo. Solo se llama con piezas > 0: el cero no genera fila (FR-009), y el
+// `check (pieces > 0)` del esquema está para que eso no dependa de que el servicio se acuerde.
+func (q *Queries) SaveCashCountLine(ctx context.Context, arg SaveCashCountLineParams) error {
+	_, err := q.db.Exec(ctx, saveCashCountLine, arg.CountID, arg.DenominationID, arg.Pieces)
+	return err
+}
+
 const saveSessionTotal = `-- name: SaveSessionTotal :exec
-insert into register_session_totals (session_id, payment_method_id, expected, declared, tips)
-values ($1, $2, $3, $4, $5)
+insert into register_session_totals (session_id, payment_method_id, expected, declared, tips, affects_cash_drawer)
+values ($1, $2, $3, $4, $5, $6)
 `
 
 type SaveSessionTotalParams struct {
-	SessionID       int64           `json:"session_id"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Expected        decimal.Decimal `json:"expected"`
-	Declared        decimal.Decimal `json:"declared"`
-	Tips            decimal.Decimal `json:"tips"`
+	SessionID         int64           `json:"session_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Expected          decimal.Decimal `json:"expected"`
+	Declared          decimal.Decimal `json:"declared"`
+	Tips              decimal.Decimal `json:"tips"`
+	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
 }
 
+// `affects_cash_drawer` se GUARDA aquí y no se vuelve a leer del catálogo: desde la spec 015 ese
+// interruptor se puede cambiar, y un corte que se reagrupa según el flag de hoy es un arqueo que se
+// lee distinto según cuándo lo abras. Es el mismo snapshot que `order_lines.unit_price`.
 func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalParams) error {
 	_, err := q.db.Exec(ctx, saveSessionTotal,
 		arg.SessionID,
@@ -1036,17 +1391,18 @@ func (q *Queries) SaveSessionTotal(ctx context.Context, arg SaveSessionTotalPara
 		arg.Expected,
 		arg.Declared,
 		arg.Tips,
+		arg.AffectsCashDrawer,
 	)
 	return err
 }
 
 const seedBasePaymentMethods = `-- name: SeedBasePaymentMethods :exec
-insert into payment_methods (company_id, name, kind, affects_cash_drawer, is_active, sort_key, auto_declare)
+insert into payment_methods (company_id, name, kind, is_cash, affects_cash_drawer, is_active, sort_key, auto_declare)
 values
-  ($1, 'Efectivo',           'efectivo',      true,  true, 100, false),
-  ($1, 'Tarjeta débito',     'tarjeta',       false, true, 200, true),
-  ($1, 'Tarjeta crédito',    'tarjeta',       false, true, 250, true),
-  ($1, 'Transferencia SPEI', 'transferencia', false, true, 300, true)
+  ($1, 'Efectivo',           'efectivo',      true,  true,  true, 100, false),
+  ($1, 'Tarjeta débito',     'tarjeta',       false, false, true, 200, true),
+  ($1, 'Tarjeta crédito',    'tarjeta',       false, false, true, 250, true),
+  ($1, 'Transferencia SPEI', 'transferencia', false, false, true, 300, true)
 on conflict (company_id, name) do nothing
 `
 
@@ -1057,6 +1413,10 @@ on conflict (company_id, name) do nothing
 // Los de PLATAFORMA quedan fuera a propósito: vender por Uber/DiDi/Rappi exige que ese negocio haya
 // hecho su propia vinculación con la plataforma, y darle tres formas de cobro que no tiene
 // contratadas es peor que no darle ninguna.
+// `is_cash` se escribe explícito: la columna nace en `false` y la 0067 le puso un `check` que
+// exige que solo lo que se cobra en billetes entre al cajón. Sin esto, sembrar «Efectivo» con
+// `affects_cash_drawer` viola la restricción y **una empresa nueva no se puede crear** — lo
+// encontró el propio `check`, en el sembrado de la segunda empresa de los tests de aislamiento.
 func (q *Queries) SeedBasePaymentMethods(ctx context.Context, companyID int64) error {
 	_, err := q.db.Exec(ctx, seedBasePaymentMethods, companyID)
 	return err
@@ -1277,33 +1637,51 @@ func (q *Queries) UpdateCashRegister(ctx context.Context, arg UpdateCashRegister
 	return i, err
 }
 
-const updatePaymentMethodAutoDeclare = `-- name: UpdatePaymentMethodAutoDeclare :one
-update payment_methods set auto_declare = $2 where id = $1
-returning id, name, kind, affects_cash_drawer, auto_declare
+const updatePaymentMethodFlags = `-- name: UpdatePaymentMethodFlags :one
+update payment_methods set
+  auto_declare        = coalesce($2, auto_declare),
+  is_active           = coalesce($3, is_active),
+  affects_cash_drawer = coalesce($4, affects_cash_drawer)
+where id = $1
+returning id, name, kind, affects_cash_drawer, auto_declare, is_active
 `
 
-type UpdatePaymentMethodAutoDeclareParams struct {
-	ID          int16 `json:"id"`
-	AutoDeclare bool  `json:"auto_declare"`
+type UpdatePaymentMethodFlagsParams struct {
+	ID                int16 `json:"id"`
+	AutoDeclare       *bool `json:"auto_declare"`
+	IsActive          *bool `json:"is_active"`
+	AffectsCashDrawer *bool `json:"affects_cash_drawer"`
 }
 
-type UpdatePaymentMethodAutoDeclareRow struct {
+type UpdatePaymentMethodFlagsRow struct {
 	ID                int16       `json:"id"`
 	Name              string      `json:"name"`
 	Kind              PaymentKind `json:"kind"`
 	AffectsCashDrawer bool        `json:"affects_cash_drawer"`
 	AutoDeclare       bool        `json:"auto_declare"`
+	IsActive          bool        `json:"is_active"`
 }
 
-func (q *Queries) UpdatePaymentMethodAutoDeclare(ctx context.Context, arg UpdatePaymentMethodAutoDeclareParams) (UpdatePaymentMethodAutoDeclareRow, error) {
-	row := q.db.QueryRow(ctx, updatePaymentMethodAutoDeclare, arg.ID, arg.AutoDeclare)
-	var i UpdatePaymentMethodAutoDeclareRow
+// Los tres interruptores del método, en una actualización PARCIAL: lo que no viene, no cambia.
+//
+// `sqlc.narg` y no tres parámetros obligatorios, porque un `bool` sin puntero no distingue "ausente"
+// de "falso": un PATCH que solo quería desactivar el método le habría apagado de paso el interruptor
+// del cajón, sacando su dinero del arqueo. Plata movida por el tipo de dato y no por el negocio.
+func (q *Queries) UpdatePaymentMethodFlags(ctx context.Context, arg UpdatePaymentMethodFlagsParams) (UpdatePaymentMethodFlagsRow, error) {
+	row := q.db.QueryRow(ctx, updatePaymentMethodFlags,
+		arg.ID,
+		arg.AutoDeclare,
+		arg.IsActive,
+		arg.AffectsCashDrawer,
+	)
+	var i UpdatePaymentMethodFlagsRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Kind,
 		&i.AffectsCashDrawer,
 		&i.AutoDeclare,
+		&i.IsActive,
 	)
 	return i, err
 }

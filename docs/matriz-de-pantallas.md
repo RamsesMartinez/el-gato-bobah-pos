@@ -288,6 +288,78 @@ cerrarlos: uno de medición y tres de un defecto que se vio en el ambiente de pr
 | Z5 | Reproducir el estado de una tableta que ya se usó | Sembrar el carrito viejo NO basta: sin la marca `sesion.ultimaEmpresa`, `hayQueLimpiar` trata el perfil limpio de Playwright como cambio de empresa y el login llama a `descartarTodo()`, que tira lo sembrado antes de que el POS renderice. **Y20 pasó en verde contra el build roto por esto.** Hay que sembrar las dos llaves | el `addInitScript` de *Y20* | Playwright |
 | Z6 | Ninguna pantalla se queda en blanco | Se recorren las 14 rutas con una cuenta guardada por la versión ANTERIOR y se exige que cada una pinte algo y que ninguna tire una excepción. Es la guardia de la **clase**, no del campo: sin error boundary, cualquier throw en render deja el `#root` vacío. Verificado en rojo sirviendo el bundle roto por su hash viejo: `#root` en 0 caracteres y el `pageerror` que reportó el operador | `pantalla-en-blanco.spec.ts` › *Z6* | Playwright |
 
+## C. La hoja del contador de efectivo (spec 003)
+
+Medido el 9 de septiembre de 2026 contra un navegador real a 1024×600, con el stack completo en
+local (API Go + Postgres, sin mocks: un backend simulado estaría de acuerdo con la pantalla por
+construcción).
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| C1 | La hoja con las once denominaciones | Cabe en 600 px —**552 px medidos**— y la moneda de 50¢, que es el último renglón, se alcanza **sin desplazarse**. Inline en `/caja` era imposible: esa pantalla mide 1,494 px y el punto de inserción arranca 200 px debajo del fold | `contar-el-cajon.spec.ts` › **C1** | Playwright |
+| C2 | Los controles de cada denominación | Campo y ajustes ≥44 px reales, medidos **después** de que la animación asiente (ver Z3). Y el campo es más ancho que una tecla de ajuste: es el control principal y el peso visual tiene que decirlo | `contar-el-cajon.spec.ts` › **C2** | Playwright |
+| C3 | El teclado numérico abierto | El total y el botón de confirmar siguen a la vista. Se simula recortando la ventana a 350 px de alto, que es lo único que importa del teclado: se come ~250 px. Es lo que `dvh` + footer fijo existen para resolver | `contar-el-cajon.spec.ts` › **C3** | Playwright |
+| C4 | Contar 40 monedas y abrir la caja | Se teclean, no se tapean 40 veces, y **el turno abre con la misma cifra que mostró la hoja**. El servidor recalcula desde las piezas: si las dos sumas no coinciden, el arqueo se compara contra un fondo que nadie contó | `contar-el-cajon.spec.ts` › **C4** | Playwright + servidor |
+| C5 | El desglose después del cierre | Piezas por denominación y subtotal del servidor; un arqueo capturado a mano muestra su motivo; **un corte anterior a la feature no pinta nada**, sin avisos que hablen del sistema | `CashPage.test.tsx` › *el desglose de lo contado* | Vitest |
+
+**Lo que no se midió en tableta real:** el teclado del sistema operativo. C3 recorta la ventana, que
+es el efecto que importa, pero el teclado real de una Surface puede tapar de otra forma.
+
+## J. El cierre con un solo cajón y los métodos configurables (spec 015)
+
+Medido el 10 de septiembre de 2026 a 1024×600: el "antes" contra `app-dev` con la spec 003
+desplegada, el "después" contra el candidato servido en local con la API nueva, **con los mismos
+diez métodos configurados** (tres «en línea» en automático, cuatro que caen en el cajón). El
+archivo que mide es el mismo para los dos, así que las cifras son comparables.
+
+Lo que se mide es el **contenedor que se desplaza**, no el documento: el AppShell es
+`h="100dvh" overflow="hidden"` y quien hace scroll es el `<Box flex="1" overflowY="auto">` que
+envuelve al `<Outlet>`. La primera versión de la medición leía `document.documentElement.scrollHeight`
+y reportaba 600 px —exactamente el viewport— en las dos pantallas: el número se lee como si todo
+cupiera.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| J1 | El alto de la tabla del cierre | **575 px → 540 px** con un renglón MÁS (10 → 11): el renglón del cajón cuesta 61 px y los cuatro métodos que ya no capturan bajan de 61 a 37 | `presupuesto-del-cierre.spec.ts` › **P1** | Playwright |
+| J2 | Los toques que cuesta cerrar (SC-006) | **7 capturas → 4**: seis campos y el botón de contar pasan a tres campos y el botón. El arqueo único no se pagó con más pantallas | `presupuesto-del-cierre.spec.ts` › **P1** | Playwright |
+| J3 | El tercer estado de la columna «Declarado» | Dice **«Va al cajón»** y no reusa «Automático»: uno lo resuelve el servidor, el otro se cuenta físicamente, y confundirlos es la ambigüedad que ya costó $4,500 | `CashPage.test.tsx` | Vitest |
+| J4 | La columna «Esperado» con el arqueo ciego | Desaparece entera, no se queda con rayas: a 1024×600 el ancho que libera se lo devuelve a lo que el operador vino a leer | `arqueo-ciego.spec.ts` › **B1**, `CashPage.test.tsx` | Playwright + vitest |
+| J5 | El botón de cerrar con el arqueo ciego | Bloqueado mientras no se cuente el cajón. Verificado en rojo devolviendo la regla vieja (deducirlo de que el esperado sea cero), que con el esperado en `null` lo habilitaba | `arqueo-ciego.spec.ts` › **B2** | Playwright |
+| J6 | Los métodos en Ajustes, a lo ancho | La tabla de cuatro columnas **no se desborda**: el ancho útil de esa página son ~520 px (`<Page maxW="560px">` con su padding), no los 1024 de la tableta — el plan afirmó lo contrario | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J7 | Los métodos en Ajustes, a lo alto | **0 de 10 renglones se ven sin desplazarse**, antes y después: la sección arranca en y≈1,210 (ahora 1,313, por el interruptor del arqueo ciego que se le puso encima). No empeoró, pero tampoco es una pantalla que se lea de un vistazo | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J8 | El área tappable de los interruptores | ≥44 px. **Defecto encontrado al medir**: la tabla nueva puso tres interruptores de **24 px** en un renglón de 41, y un dedo que falla por milímetros cae en el de al lado — que aquí significa apagar «Activo» y sacar un método del cobro a media jornada. La lista vieja medía 20 px con uno solo por renglón; no se heredó | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+
+| J9 | La separación entre los tres interruptores de un renglón | **46 px y 63 px medidos**, contra un piso de 22. Una revisión los estimó en 16 px calculando el padding de la celda; la medición dice otra cosa, porque el ancho lo dan los encabezados «Va al cajón» y «Automático», más anchos que el interruptor. Se afirma en el test porque acortar un encabezado cerraría el hueco sin que nadie lo note | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J10 | El mensaje del cierre rechazado | Dice qué hacer primero y nombra el método, sin explicar el mecanismo: *«recarga la pantalla para cerrar: «Efectivo» ahora se cuenta con el cajón»* | `TestUnMetodoDeCajonEnDeclaradoSeRechaza` | Postgres |
+
+**Lo que J no cubre:** la tableta real. J1–J8 miden un Chromium a 1024×600, que es el presupuesto,
+no una Surface con su teclado y su densidad de píxeles.
+
+## K. Que ninguna pantalla esté rota sin que nadie se entere (2026-09-11)
+
+Un defecto vivió **horas en producción** sin que nada lo detectara: `/catalogo/opciones` respondía
+500 y el catálogo de modificadores no se podía abrir. La causa fue de base —`string_agg` sobre un
+conjunto vacío devuelve NULL, y el `::text` no lo cambia pero sí hace que sqlc tipe la columna como
+`string` no nulable—, pero lo que importa aquí es **por qué la suite no lo vio**.
+
+`pantalla-en-blanco.spec.ts` › Z6 ya recorría esa ruta. Solo que Z6 exige que la pantalla PINTE algo
+y que no tire una excepción, y **un 500 de la API no deja la pantalla en blanco**: TanStack Query lo
+atrapa y queda el encabezado sin datos. Z6 pasaba en verde con el catálogo caído — un caso que se ve
+cubierto y no cubre, que es peor que no tenerlo.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| K1 | Cualquiera de las 14 rutas recibe un 5xx | Falla nombrando la ruta y el endpoint. Es la guardia de la CLASE: cubre el próximo 500, no el que ya pasó | `nada-responde-500.spec.ts` › **N1** | Playwright |
+| K2 | Las tres pestañas del catálogo de modificadores | Las tres responden. Recorrer la ruta NO bastaba: «Activos» daba 200 —sus grupos sí tenían opciones activas— y solo «Inactivos» y «Todos» daban 500 | `nada-responde-500.spec.ts` › **N2** | Playwright |
+| K3 | Un grupo sin opciones activas, en la tarjeta | Ni renglón de vista previa vacío ni «y N más» colgando de una lista que no existe | `ModifierOptionsPage.test.tsx` | Vitest |
+| K4 | El resumen «y N más» | Resta las cuatro que ya mostró: con 6 opciones dice «y 2 más», con 4 no dice nada | idem | Vitest |
+
+**Verificado en rojo**: N2 corrido contra el ambiente de pruebas *antes* del arreglo falla nombrando
+los dos filtros exactos que rompían. Y las tres unitarias se vieron fallar mutando el componente.
+
+**Lo que K no cubre:** que la pantalla muestre lo CORRECTO — eso sigue siendo de cada spec. K1 solo
+exige que el servidor no se rompa, que es justo lo que faltaba.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
@@ -296,6 +368,7 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
+| X20 | `GET /expenses?page=abc` cae a la página 0 en silencio | `handlers_backoffice.go:496` hace `page, _ := strconv.Atoi(...)` e ignora el error, así que un `page` malformado no se rechaza: devuelve la primera página como si nada. Es el principio V —"un parámetro de frontera inválido se RECHAZA; nunca cae a un default en silencio"— y lo encontró el barrido del 500 de modificadores (2026-09-11), en otra familia. **No se arregló con ese despliegue a propósito**: rechazar un parámetro que hoy se acepta es un cambio de comportamiento, y no se mete de polizón en un deploy a producción que ya lleva dos migraciones. Va solo, con su test | — |
 | X13 | El folio puede repetirse entre dos turnos del **mismo día** | Consecuencia aceptada de numerar por turno (spec 008). Es inofensiva porque cerrar un turno exige que no queden pedidos vivos, así que dos folios iguales nunca coexisten vivos — pero no hay nada que lo impida si esa regla se afloja. Lo vigila `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | T5 |
 | X14 | El `Down` de 0061 falla si ya se vendió con dos turnos el mismo día | Volver a estrechar la unicidad al día es imposible con dos #1 de la misma fecha. Es inherente a revertir una restricción que se ensanchó; queda escrito en la propia migración en vez de descubrirse al revertir | — |
 | X16 | `order_counters` quedó muerta tras 0061 | Se jubila en una migración propia cuando 008 lleve un ciclo en producción, no antes: mientras tanto es lo que permite volver atrás por imagen sin restaurar la base | — |

@@ -1,5 +1,5 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
-import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
+import { test, expect } from '@playwright/test';
+import { API, tokenDeRequest } from './ambiente';
 
 // LOS CASOS T Y U DE LA MATRIZ, CONTRA EL SERVIDOR REAL. Ver docs/matriz-de-pantallas.md.
 //
@@ -11,13 +11,6 @@ import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
 // NO CREAN PEDIDOS. El ambiente lo comparte una persona y estas mediciones se hacen sobre lo que ya
 // hay; lo que sí crea pedidos vive en dinero.spec.ts, que además los cobra.
 
-async function token(request: APIRequestContext): Promise<string> {
-  const r = await request.post(`${API}/auth/login`, {
-    data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
-  });
-  expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
-  return (await r.json()).accessToken;
-}
 
 test.describe('T — la fecha la da el reloj', () => {
   // EL DEFECTO REPORTADO, medido donde ocurrió.
@@ -25,7 +18,7 @@ test.describe('T — la fecha la da el reloj', () => {
   // Ninguna venta puede estar archivada en un día distinto de aquel en que se abrió. Con la
   // herencia vieja, un turno olvidado archivaba semanas enteras bajo su fecha de apertura.
   test('T1 · ninguna venta quedó archivada en un día que no es el suyo', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     // `to` es HOY en la zona del local, nunca una fecha futura: el servidor rechaza el rango que
     // no ha pasado, y con razón — pedir hasta diciembre devolvía 400 y esta prueba culpaba al
     // producto de su propio error.
@@ -51,7 +44,7 @@ test.describe('T — la fecha la da el reloj', () => {
   // El folio es único DENTRO DEL TURNO. Es el alcance nuevo, y el índice que lo vigila se movió con
   // él: si el servicio y el esquema no coincidieran, la venta se caería con un 23505 al cobrar.
   test('T2 · dentro de un mismo corte no hay dos folios iguales', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
     expect(h.ok(), `/cash-sessions respondió ${h.status()}`).toBeTruthy();
@@ -72,13 +65,19 @@ test.describe('U — las ventas de un corte', () => {
   // El total del corte no puede incluir lo que no dejó ingreso. Es el principio de dinero: cada peso
   // se clasifica una sola vez, y una cancelada nunca entró al cajón.
   test('U1 · el total del corte excluye canceladas y reembolsadas', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
+    // TODOS los que traiga la página, no los cinco primeros.
+    //
+    // Los primeros cinco eran de la caja fuerte —que no vende— porque esta misma suite la abre y
+    // la cierra para medir la hoja del contador, y cada corrida empuja los cortes con ventas fuera
+    // de la ventana. `revisados > 0` abajo es lo que impide que esto pase en vacío, así que la
+    // ventana tiene que ser lo bastante ancha para alcanzar un corte de la caja que sí vende.
+    const h = await request.get(`${API}/cash-sessions?limit=20`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number }>;
 
     let revisados = 0;
-    for (const c of cortes.slice(0, 5)) {
+    for (const c of cortes) {
       const d = await request.get(`${API}/cash-sessions/${c.id}`, { headers: auth });
       const det = await d.json();
       const ventas = (det.sales ?? []) as Array<{ status: string; total: string }>;
@@ -99,7 +98,7 @@ test.describe('U — las ventas de un corte', () => {
   // La lista y el conteo salen del mismo `where`. Si divergen, uno de los dos miente y quien lee un
   // arqueo no tiene forma de saber cuál.
   test('U3 · el conteo del corte nunca es menor que lo que muestra', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number }>;
@@ -124,7 +123,7 @@ test.describe('U — las ventas de un corte', () => {
   // caso — sigue fallando si aparece un peso que no está ni cobrado ni declarado como no cobrado—,
   // lo que hace es exigir que la pantalla NOMBRE el hueco en vez de callarlo.
   test('U2 · las ventas de un corte cuadran con lo que su arqueo espera', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
     const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number; status: string }>;
@@ -157,7 +156,7 @@ test.describe('U — el aviso de turno viejo', () => {
   // El aviso lo decide el SERVIDOR. Si lo decidiera la tableta, dos aparatos con la hora distinta
   // dirían cosas distintas del mismo turno.
   test('U6 · el estado de caja dice desde cuándo está abierta y si ya no es de hoy', async ({ request }) => {
-    const jwt = await token(request);
+    const jwt = await tokenDeRequest(request);
     const r = await request.get(`${API}/cash-status`, { headers: { Authorization: `Bearer ${jwt}` } });
     expect(r.ok(), `/cash-status respondió ${r.status()}`).toBeTruthy();
     const estado = await r.json();

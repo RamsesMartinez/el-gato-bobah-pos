@@ -92,7 +92,7 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 	back := app.NewBackofficeService(st, clock)
 	svc := app.NewOrdersService(st, clock)
 
-	primerTurno, err := back.OpenSession(ctx, principal, decimal.Zero, cajero)
+	primerTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("abrir el primer turno: %v", err)
 	}
@@ -110,10 +110,10 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 
 	entregarPendientes(t, st)
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("50")}
-	if _, err := back.CloseSession(ctx, principal, cajero, declarado, ""); err != nil {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar: %v", err)
 	}
-	segundoTurno, err := back.OpenSession(ctx, principal, decimal.Zero, cajero)
+	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
 	if err != nil {
 		t.Fatalf("reabrir: %v", err)
 	}

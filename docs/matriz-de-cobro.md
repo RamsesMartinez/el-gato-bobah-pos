@@ -197,6 +197,90 @@ metería en el turno siguiente y reescribiría un arqueo firmado, por la misma r
 [matriz-de-pantallas.md](matriz-de-pantallas.md) sigue abierta. El corte 5 queda como está, ahora
 con su $554.00 declarado.
 
+## H. El arqueo de efectivo por denominaciones (spec 003)
+
+Por dónde se pierde dinero **al contar el cajón**. El agujero que esto cierra no está en el cobro
+sino en el arqueo: el operador sumaba a mano en una libreta y de ahí nacían faltantes que después
+nadie podía explicar — un turno cerró con $1,662 de descuadre que era una suma mal hecha, no dinero
+perdido.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| H1 | Piezas contadas y total escrito, los dos para el mismo arqueo | `ErrConteoAmbiguo`: son dos cifras del mismo dinero y no hay forma de saber cuál manda | `TestComoSeDeclaraElEfectivo`, `TestMandarConteoYDeclaradoDelEfectivoSeRechaza` | Postgres |
+| H2 | El cliente manda piezas **y** un total propio | El servidor **recalcula** desde las piezas y descarta el total del cliente | `TestElConteoDeAperturaAlimentaElFondo` | Postgres |
+| H3 | Total escrito a mano sin motivo (al abrir **y** al cerrar) | `ErrConteoSinExplicar`: un arqueo sin desglose y sin explicación no se puede auditar | `TestDeclararElEfectivoDelCierreAManoExigeMotivo` | Postgres |
+| H4 | Motivo de puros espacios, o de caracteres invisibles (`U+200B`) | Se rechaza: en pantalla se ve vacío igual | `TestComoSeDeclaraElEfectivo` | Unitario |
+| H5 | Motivo más largo que el tope del esquema | 400 y no un `23514` que sube como 500 — el cuerpo de un 500 se registra en el log con el texto del operador dentro | `TestComoSeDeclaraElEfectivo` | Unitario |
+| H6 | La misma denominación dos veces en el conteo | 400 nombrando la denominación, **antes** de escribir nada. El dominio suma los dos renglones sin poder saber que son el mismo billete | `TestUnRenglonRepetidoSeRechazaComoCapturaInvalida` | Postgres |
+| H7 | Un conteo que desborda el tope de dinero (mil billetes de $1000) | 400 accionable, y el tope se evalúa sobre el TOTAL y no pieza por pieza | `TestTotalDelConteo` | Unitario |
+| H8 | Piezas fraccionarias (`1.5`) o con coma de millar (`1,000`) en el campo | Se rechazan visiblemente; **no** caen a cero en silencio | `conteo.test.ts` | Navegador (vitest) |
+| H9 | El conteo del cierre alimenta el declarado del efectivo | Y de **ningún otro método**: es el mismo error que sumó el fondo cuatro veces y reportó $4,500 de faltante | `TestElConteoDeCierreAlimentaSoloElDeclaradoDelEfectivo` | Postgres |
+| H10 | El faltante del cierre | Sale de la columna **generada** de la base, no de una resta escrita a mano | `TestElFaltanteDelCierreSaleDeLaColumnaGenerada` | Postgres |
+| H11 | Una apertura que falla a medias | Ni sesión huérfana ni caja bloqueada: las tres escrituras van en una transacción | `TestUnaAperturaQueFallaNoDejaLaCajaBloqueada` | Postgres |
+| H12 | Dos tabletas abren la misma caja al mismo tiempo | La segunda ve un conflicto accionable, no un 500 | `TestDosAperturasSimultaneasDejanUnConflictoYNoUn500` | Postgres |
+| H13 | Un conteo de cierre que ya existe | Conflicto, y el cierre **no queda a medias**: turno abierto y cero totales escritos | `TestUnConteoDeCierreQueYaExisteNoSePisaYElCierreNoQuedaAMedias` | Postgres |
+| H14 | Cerrar sin declarar efectivo | No se inventa un conteo en cero: "conté y estaba vacío" es un hecho distinto de "nadie contó" | `TestCerrarSinDeclararEfectivoNoInventaUnConteo` | Postgres |
+| H15 | Lo que la pantalla suma y lo que el servidor guarda | La misma cifra: se cuentan 40 monedas de $10 y 3 de $50 y el turno abre con $550 | `contar-el-cajon.spec.ts` › **C4** | Navegador + servidor |
+| H16 | La diferencia antes de confirmar el cierre | Visible **antes** de tocar el botón, y con lo no capturado en `—` y no en cero | `cierreDeCaja.test.ts`, `CashPage.test.tsx` | Navegador (vitest) |
+
+**Lo que H no cubre, y es la mitad que importa:** que las piezas que el operador teclea sean las que
+de verdad hay en el cajón. El sistema quitó la suma manual —que es de donde venían los faltantes
+inventados— pero **el conteo físico sigue dependiendo de quien cuenta**. Un cajón mal contado ahora
+produce un arqueo consistente con un conteo equivocado, y la única señal es la diferencia contra lo
+esperado.
+
+## I. El cajón se arquea una sola vez (spec 015)
+
+Por dónde se perdía dinero **al repartir un solo montón de billetes entre varios métodos**. El
+cajón físico es uno, pero el corte pedía una cifra declarada por cada método que lo toca: además
+de «Efectivo» estaban «Didi efectivo», «Uber Eats efectivo» y «Rappi efectivo». En el ambiente de
+pruebas, turno 3: «Efectivo» esperaba **5,221.60** y declaró 5,221.60 (diferencia 0) mientras
+«Didi efectivo» esperaba **64.80** y declaró 0.00 — un faltante de −64.80 que tanto puede ser
+dinero que no llegó como dinero que sí está y se contó dentro de los 5,221.60. Nadie puede
+distinguirlo después.
+
+Con el conteo por denominaciones de la spec 003 el defecto cambió de signo y se volvió
+estructural: la hoja cuenta el cajón COMPLETO y ese total iba íntegro a «Efectivo», así que el
+dinero de plataforma quedaba declarado **dos veces** y el corte mostraba un sobrante fantasma.
+Es la misma clase de defecto que el fondo de caja contado una vez por método.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| I1 | Un turno con efectivo de mostrador **y** de plataforma | **Una** cifra esperada y **una** diferencia, no una por método | `TestElCajonSeArqueaUnaSolaVez` | Postgres |
+| I2 | El cajón cuadra y una app en efectivo "falta" | No puede pasar: los métodos del cajón ya no tienen diferencia propia | `TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico` | Postgres |
+| I3 | El cliente manda una cifra declarada para un método de cajón | Se rechaza: ese dinero ya se declaró contándolo, y aceptarlo lo cuenta dos veces | `TestUnMetodoDeCajonEnDeclaradoSeRechaza` | Postgres |
+| I4 | Efectivo de una app que **no** llega al cajón (se lo lleva el repartidor) | Se declara aparte, con su propia diferencia | `TestElEfectivoDeUnaAppQueNoLlegaAlCajonSeDeclaraAparte` | Postgres |
+| I5 | Sacar del cajón el efectivo del mostrador | `ErrValidation`: el fondo de apertura y los movimientos quedarían fuera del esperado | `TestElEfectivoDelMostradorNoPuedeSalirDelCajon`, `TestElEfectivoDelMostradorNoSaleDelCajon` | Postgres + unitario |
+| I6 | Mover un interruptor después de cerrar un corte | Ninguna cifra del corte cerrado se mueve: cada renglón guarda si tocaba el cajón | `TestUnCorteCerradoNoSeReagrupaAlCambiarElInterruptor`, `TestElRenglonDelCorteGuardaSiTocabaElCajon` | Postgres (respaldo real) |
+| I7 | Contra qué se comparó un conteo | Queda guardado en la fila del conteo, no se recalcula al consultarlo | `TestElConteoGuardaContraQueSeComparo`, `TestElEsperadoDelConteoEstaAtadoAlMomento` | Postgres |
+| I8 | Los conteos que ya existían antes de la migración | Sobreviven al `check` nuevo y siguen leyéndose con las mismas cifras | `TestLosConteosDeLa0066SobrevivenAlCheck` | Postgres (respaldo real) |
+| I9 | Desactivar un método a media jornada | El esperado del cajón **no** baja en lo que ese método ya cobró | `TestDesactivarUnMetodoNoDesapareceElDineroQueYaCobro` | Postgres |
+| I10 | Un `PATCH` que solo mueve un interruptor | No pisa los otros dos: tres `bool` sin puntero habrían sacado dinero del arqueo por el tipo de dato | `TestUnPatchDeUnInterruptorNoPisaLosOtros` | Postgres |
+| I11 | Auto-declarar un método que va al cajón | Sigue prohibido: el servidor declararía lo que él mismo espera y el faltante sería indetectable | `TestElAutoDeclararSigueProhibidoEnUnMetodoDeCajon` | Postgres |
+| I12 | Arqueo ciego encendido | El esperado **no viaja** en ninguna respuesta del cierre, ni el del cajón ni el de la tarjeta | `TestConArqueoCiegoElEsperadoNoViaja`, `arqueo-ciego.spec.ts` › **B1** | Postgres + navegador |
+| I13 | Arqueo ciego y el botón de cerrar | Sigue bloqueado sin contar: con el esperado en `null`, deducirlo de "el esperado es cero" habilitaba el cierre sobre una pantalla en blanco | `TestConArqueoCiegoElServidorSigueDiciendoQueFalta`, `arqueo-ciego.spec.ts` › **B2** | Postgres + navegador |
+| I14 | Arqueo ciego, ya confirmado el cierre | Las cifras vuelven: el control es no verlas **antes** | `TestConArqueoCiegoLasCifrasVuelvenAlCerrar` | Postgres |
+
+| I15 | Cerrar sin haber contado el cajón | Se rechaza. Como cada método del cajón declara su esperado, un cierre sin conteo dejaba los cuatro renglones en diferencia $0 y ninguna fila de conteo: el corte reportaba **$0 de diferencia con $835 que nadie contó**, peor que el faltante visible de antes de la feature | `TestCerrarSinContarElCajonSeRechaza` | Postgres |
+| I16 | Mover «va al cajón» con dinero de ese método ya en el turno abierto | Se rechaza nombrando cuánto lleva cobrado. Apagarlo bajaba el esperado de $835 a $700 con los billetes adentro: sobrante fantasma, que nadie audita porque un sobrante no duele | `TestApagarVaAlCajonNoBorraElDineroQueYaEstaEnElCajon` | Postgres |
+| I17 | Devolver el efectivo de una app que va al cajón | Registra la salida de caja. Decidirlo por `kind = 'efectivo'` devolvía $135 de billetes sin moverlos del arqueo, y el corte cerraba con un faltante de $135. Enmienda escrita a D2 de la [spec 007](../specs/007-devolver-el-dinero/spec.md) | `TestDevolverElEfectivoDeUnaAppSaleDelCajon`, `TestSaleDelCajonLoQueEstabaEnElCajon` | Postgres + unitario |
+| I18 | Desactivar «Efectivo» del mostrador | El fondo de apertura sigue en el arqueo. Su renglón es el único dueño del fondo y de los movimientos: al caerse de la consulta, el cajón esperaba $0 con $500 adentro | `TestDesactivarElEfectivoNoBorraElFondoDelArqueo` | Postgres |
+| I19 | Dos métodos de tipo efectivo en una empresa | Imposible por índice único parcial. Con dos, el fondo se sumaría a los dos renglones — el defecto que le inventó $4,500 de faltante a un turno | `payment_methods_un_efectivo_por_empresa` (0067) | Postgres |
+| I20 | Dos `PATCH` simultáneos sobre el mismo método | No dejan escrita la combinación prohibida. Leer-validar-escribir va en una transacción con el renglón tomado, y un `check` lo respalda donde sí es atómico | `payment_methods_cajon_no_se_autodeclara` (0067) | Postgres |
+
+| I21 | Arqueo ciego: lo **derivado** del esperado | Tampoco viaja. El desglose por método más el fondo y el neto reconstruían los $835 exactos, y la pantalla los pintaba arriba de la tabla del cierre | `TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado`, `arqueo-ciego.spec.ts` › **B1** | Postgres + navegador |
+| I22 | Registrar un movimiento de caja con el arqueo ciego | No devuelve el esperado. El ocultamiento vivía en cada llamador y éste se lo saltaba: una entrada de un centavo, con rol cajero, lo leía completo | `TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado` | Postgres |
+| I23 | Sacar un método del cajón y auto-declararlo en el **mismo** request | Se rechaza. Satisfacía la validación y dejaba al método indistinguible de uno en línea: sus billetes entraban sin que nadie los contara ni los declarara, con el corte en $0.00 | `TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza` | Postgres |
+| I24 | Meter al cajón un método que no se cobra en billetes | Se rechaza: el arqueo pediría contar dinero que está en la terminal | `TestUnMetodoQueNoEsEfectivoNoEntraAlCajon` | Postgres |
+| I25 | Apagar un método desde Ajustes | Sigue en la pantalla que tiene su interruptor. Era una puerta de un solo sentido: el renglón desaparecía con su propio interruptor y el mostrador se quedaba sin cobrar en efectivo | `TestUnMetodoApagadoSigueEnLaListaDeAjustes` | Postgres |
+| I26 | Arqueo ciego y la columna «Diferencia» | Raya, no cero. `Number(null)` es 0, así que la pantalla pintaba la cifra capturada entera como sobrante —$1,200 en verde— justo cuando el operador decide si vuelve a contar | `cierreDeCaja.test.ts` | Navegador (vitest) |
+
+| I27 | Crear una empresa nueva | Nace con sus métodos y con la forma que el arqueo espera: uno solo de efectivo, en el cajón, sin auto-declarar. El sembrado no escribía `is_cash` y el `check` de la 0067 lo rechazaba — el alta de empresa quedaba rota | `TestUnaEmpresaNuevaNaceConSusMetodosCoherentes` | Postgres |
+
+**Lo que I no cubre:** de qué canal salió cada peso del cajón. Es información de reporte —la da el
+desglose por método del corte— y deliberadamente **no** se le pide al operador: ningún humano puede
+partir un montón de billetes por canal de venta, y cualquier reparto que teclee es inventado.
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.

@@ -81,7 +81,7 @@ func TestMontoDevolvible(t *testing.T) {
 // porque es aritmética de dinero que tiene que poder probarse sin base de datos.
 func TestElRepartoSacaElDineroPorDondeEntro(t *testing.T) {
 	entradas := []CobradoPorMetodo{
-		{MetodoID: 1, Nombre: "Efectivo", EsEfectivo: true, Monto: d("300")},
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("300")},
 		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("200")},
 	}
 
@@ -116,22 +116,29 @@ func TestElRepartoSacaElDineroPorDondeEntro(t *testing.T) {
 	}
 }
 
-// El efectivo se marca, porque es el único que sale del cajón y hace un movimiento de caja. La
-// tarjeta no: ese dinero nunca estuvo en la caja y descontarlo inventaría un faltante.
-func TestSoloElEfectivoSaleDelCajon(t *testing.T) {
+// SALE DEL CAJÓN LO QUE ESTABA EN EL CAJÓN, y eso lo dice el interruptor del método, no su tipo.
+//
+// «Didi efectivo» es de tipo plataforma y sus billetes están en el mismo montón que los del
+// mostrador cuando reparte gente del local. Con la regla vieja —"solo el efectivo"— devolverle a
+// ese cliente sacaba los billetes de la caja sin registrar la salida y el corte cerraba con un
+// faltante del tamaño de la devolución. La tarjeta sigue sin salir: ese dinero nunca estuvo ahí y
+// descontarlo inventaría el faltante en el otro sentido.
+func TestSaleDelCajonLoQueEstabaEnElCajon(t *testing.T) {
 	entradas := []CobradoPorMetodo{
 		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("200")},
-		{MetodoID: 1, Nombre: "Efectivo", EsEfectivo: true, Monto: d("300")},
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("300")},
+		{MetodoID: 8, Nombre: "Didi efectivo", TocaElCajon: true, Monto: d("135")},
+		{MetodoID: 9, Nombre: "Rappi efectivo", Monto: d("80")}, // el repartidor de la app se lo llevó
 	}
-	partes := RepartirDevolucion(entradas, d("500"))
+	partes := RepartirDevolucion(entradas, d("715"))
 	enCajon := decimal.Zero
 	for _, p := range partes {
 		if p.SaleDelCajon {
 			enCajon = enCajon.Add(p.Monto)
 		}
 	}
-	if !enCajon.Equal(d("300")) {
-		t.Fatalf("del cajón salen %s, quiere 300: solo el efectivo", enCajon)
+	if !enCajon.Equal(d("435")) {
+		t.Fatalf("del cajón salen %s, quiere 435 (300 del mostrador + 135 de Didi en efectivo): la tarjeta y el efectivo que se lleva el repartidor no estaban en la caja", enCajon)
 	}
 }
 
@@ -151,7 +158,7 @@ func TestSeDevuelvePorUnMetodoDesactivado(t *testing.T) {
 // El reparto nunca puede devolver más de lo que entró en total: si alguien pide de más, se acota.
 // La validación ya lo rechaza antes, pero el reparto no puede confiar en que lo llamen bien.
 func TestElRepartoNoInventaDinero(t *testing.T) {
-	entradas := []CobradoPorMetodo{{MetodoID: 1, Nombre: "Efectivo", EsEfectivo: true, Monto: d("100")}}
+	entradas := []CobradoPorMetodo{{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("100")}}
 	total := decimal.Zero
 	for _, p := range RepartirDevolucion(entradas, d("999")) {
 		total = total.Add(p.Monto)

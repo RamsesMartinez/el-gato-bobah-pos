@@ -25,8 +25,27 @@ func (h *Handlers) PaymentMethods(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// PATCH /payment-methods/{id}  {autoDeclare} — a nivel negocio, solo admin/gerente (gateado
-// en el router). Marca si el método se declara solo (= esperado) al cerrar caja.
+// AllPaymentMethods: la lista de AJUSTES, con los apagados incluidos. Restringida a admin/gerente
+// en el router, igual que su gemela de cajas.
+func (h *Handlers) AllPaymentMethods(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.AllPaymentMethods(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// PATCH /payment-methods/{id} — los tres interruptores del método, a nivel negocio y solo
+// admin/gerente (gateado en el router): si se declara solo al cerrar, si se ofrece para cobrar, y
+// si su efectivo llega al cajón.
+//
+// LOS TRES CAMPOS SON PUNTEROS y eso no es estilo: con un `bool` pelado un campo ausente y un
+// `false` explícito son indistinguibles, así que un PATCH que solo quería desactivar el método le
+// habría apagado de paso el del cajón y sacado su dinero del arqueo.
+//
+// El del cajón es la respuesta a que el reparto de un pedido de app en efectivo lo hace a veces
+// gente del local —y el dinero regresa al cajón— y a veces el repartidor de la plataforma.
 func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	// bitSize 16: payment_methods.id es smallint; ParseInt (a diferencia de Atoi) rechaza lo
 	// que no entra en int16 en vez de truncar/wrap y actualizar el método equivocado.
@@ -38,21 +57,34 @@ func (h *Handlers) UpdatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		AutoDeclare bool `json:"autoDeclare"`
+		AutoDeclare       *bool `json:"autoDeclare"`
+		IsActive          *bool `json:"isActive"`
+		AffectsCashDrawer *bool `json:"affectsCashDrawer"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	pm, err := h.backoffice.SetPaymentMethodAutoDeclare(r.Context(), int(id), body.AutoDeclare)
+	// Un PATCH que no pide nada es un cliente roto, no una operación válida: se rechaza en vez de
+	// devolver un 200 que parece que hizo algo.
+	if body.AutoDeclare == nil && body.IsActive == nil && body.AffectsCashDrawer == nil {
+		Error(w, fmt.Errorf("%w: el cuerpo no cambia ningún interruptor", domain.ErrValidation))
+		return
+	}
+	pm, err := h.backoffice.UpdatePaymentMethod(r.Context(), int(id), app.MetodoDePagoCmd{
+		AutoDeclare: body.AutoDeclare, IsActive: body.IsActive, AffectsCashDrawer: body.AffectsCashDrawer,
+	})
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	// Config con impacto directo en la reconciliación de caja: evento de seguridad para
-	// auditoría (quién la cambió, sobre qué método, a qué valor).
+	// Config con impacto directo en la reconciliación de caja: evento de seguridad para auditoría
+	// (quién la cambió, sobre qué método y a qué quedó). Los TRES interruptores pasan por aquí — un
+	// camino nuevo sin evento sería configuración de dinero que se mueve sin dejar rastro.
 	u, _ := userFrom(r.Context())
-	logging.SecurityEvent(r.Context(), "payment_method_auto_declare_changed", "method_id", pm.ID, "auto_declare", pm.AutoDeclare, "user_id", u.ID)
+	logging.SecurityEvent(r.Context(), "payment_method_changed",
+		"method_id", pm.ID, "auto_declare", pm.AutoDeclare, "is_active", pm.IsActive,
+		"affects_cash_drawer", pm.AffectsCashDrawer, "user_id", u.ID)
 	JSON(w, http.StatusOK, pm)
 }
 
@@ -116,17 +148,70 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// GET /cash/denominations?currency= — qué piezas se pueden contar.
+//
+// La moneda es un parámetro de frontera: uno desconocido se RECHAZA y no cae a MXN en silencio. Un
+// catálogo que se ve correcto para la moneda equivocada deja al operador contando piezas que no
+// existen en su cajón, y el total sale de ahí.
+func (h *Handlers) CashDenominations(w http.ResponseWriter, r *http.Request) {
+	moneda := domain.DefaultCurrency
+	if q := r.URL.Query().Get("currency"); q != "" {
+		moneda = domain.Currency(q)
+		if !moneda.Valid() {
+			Error(w, domain.ErrValidation)
+			return
+		}
+	}
+	items, err := h.backoffice.Denominations(r.Context(), moneda)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// piezasBody: lo que la pantalla manda cuando el operador contó el cajón.
+//
+// El total NO viaja aquí: si viniera junto a las piezas habría dos cifras del mismo dinero, y el
+// servidor tendría que elegir. Los dos caminos van en campos distintos justo para poder rechazar
+// que lleguen los dos (FR-015).
+type piezasBody struct {
+	DenominationID int64 `json:"denominationId"`
+	Pieces         int   `json:"pieces"`
+}
+
+// piezasDelBody traduce los renglones del cuerpo, sin decidir nada: quién valida es el servicio.
+func piezasDelBody(piezas []piezasBody) []app.PiezaCapturada {
+	if len(piezas) == 0 {
+		return nil
+	}
+	out := make([]app.PiezaCapturada, 0, len(piezas))
+	for _, p := range piezas {
+		out = append(out, app.PiezaCapturada{DenominationID: p.DenominationID, Pieces: p.Pieces})
+	}
+	return out
+}
+
+func aperturaDelBody(piezas []piezasBody, total *decimal.Decimal, motivo string) app.AperturaCmd {
+	return app.AperturaCmd{Piezas: piezasDelBody(piezas), Total: total, Motivo: motivo}
+}
+
 func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RegisterID  int64           `json:"registerId"`
-		OpeningCash decimal.Decimal `json:"openingCash"`
+		RegisterID int64        `json:"registerId"`
+		Counts     []piezasBody `json:"counts"`
+		// OpeningCash sigue llamándose igual para no romper el nombre que la pantalla ya usa, pero
+		// ahora es el camino MANUAL: exige `manualReason` y es excluyente con `counts`.
+		OpeningCash  *decimal.Decimal `json:"openingCash"`
+		ManualReason string           `json:"manualReason"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, body.OpeningCash, u.ID)
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID,
+		aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason), u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -153,7 +238,15 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RegisterID int64                      `json:"registerId"`
 		Declared   map[string]decimal.Decimal `json:"declared"` // methodId(string) → contado
-		Notes      string                     `json:"notes"`
+		Counts     []piezasBody               `json:"counts"`   // el cajón, contado por denominaciones
+		// CountedCash + ManualReason son el camino MANUAL del cajón, igual que `openingCash` en la
+		// apertura: se usa cuando hay algo que el catálogo de denominaciones no puede expresar. El
+		// motivo es obligatorio (FR-014); sin él quedaría un arqueo con una cifra que nadie puede
+		// reconstruir. Va aparte de `declared` a propósito: el dinero del cajón NO se declara por
+		// método, y un método de cajón que llegue en `declared` se rechaza.
+		CountedCash  *decimal.Decimal `json:"countedCash"`
+		ManualReason string           `json:"manualReason"`
+		Notes        string           `json:"notes"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -172,7 +265,10 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		declared[id] = v
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, declared, body.Notes)
+	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		Declarado: declared, Piezas: piezasDelBody(body.Counts),
+		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes,
+	})
 	if err != nil {
 		Error(w, err)
 		return
