@@ -125,6 +125,23 @@ descontarlo del cajón inventaría un faltante. Se registra contra su método y 
 terminal. La devolución sabe por qué método entró cada peso porque los cobros están en
 `order_payments` con su `payment_method_id`.
 
+> **ENMENDADO el 2026-09-10 por la [spec 015](../015-un-solo-arqueo-de-cajon/spec.md).**
+>
+> "Plataformas" dejó de ser sinónimo de "no estuvo en la caja". «Didi efectivo», «Uber Eats
+> efectivo» y «Rappi efectivo» son de tipo plataforma **y** su dinero entra al cajón cuando lo
+> reparte gente del local: son billetes en el mismo montón que todo lo demás. Quién decide ya no es
+> el tipo del método sino su interruptor **«va al cajón»** (`affects_cash_drawer`), que desde la 015
+> se puede cambiar desde la aplicación.
+>
+> Medido: devolverle $135 a un cliente de Didi que pagó en efectivo sacaba los billetes del cajón
+> **sin registrar la salida**, y el corte cerraba con un faltante de $135 que nadie podía explicar —
+> exactamente el agujero que esta feature vino a cerrar, entrando por la otra puerta. Lo cubre
+> `TestDevolverElEfectivoDeUnaAppSaleDelCajon`.
+>
+> Queda igual lo que esta regla protege: **el dinero sale por donde entró**, y lo que nunca pasó por
+> el cajón —tarjeta, transferencia, el efectivo que se lleva el repartidor de la app— no se descuenta
+> de él.
+
 ### D3 — El reembolso puede ser POR RENGLÓN, no solo de la cuenta entera
 
 Devolver un platillo de tres es un caso real de este negocio y ya ocurre. Hoy el reembolso es de la
