@@ -45,6 +45,15 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - **Un agregado no se une a dos tablas 1:N en la misma consulta.** `order_payments` y `order_lines`
   son las dos 1:N con `orders`: unirlas multiplica las filas (2 pagos × 3 líneas = 6) y duplica las
   sumas. Se pre-agrega cada rama por `order_id`, o se hacen consultas separadas.
+- **Un agregado que se puede vaciar va con `coalesce`, y el cast NO lo salva.** `string_agg`,
+  `array_agg`, `sum`, `min`, `max` sobre un conjunto **vacío** devuelven NULL. Escribir
+  `(select string_agg(...) ...)::text` no lo arregla —un `NULL::text` sigue siendo NULL— pero sí
+  hace que **sqlc tipe la columna como no nulable** (`string` en vez de `*string`), y entonces el
+  scan revienta con `cannot scan NULL into *string`. Lo grave no es el NULL: **no falla ese renglón,
+  falla la consulta entera**. Costó que `/catalogo/opciones` respondiera 500 en producción durante
+  horas porque 21 grupos de modificadores no tenían opciones activas — un estado ordinario: es el de
+  un grupo recién creado. Ver `AdminListGroups` en [modifiers_admin.sql](server/queries/modifiers_admin.sql).
+  `count()` es la excepción: sobre conjunto vacío da 0, no NULL.
 - **sqlc NO conoce `company_id`** en las ~30 tablas a las que se lo agregó
   [0023](server/migrations/0023_tenant_columns.sql) con `EXECUTE format()`: su parser no lee DDL
   dinámico. Nombrar esa columna en una consulta rompe `sqlc generate` con "column does not exist"

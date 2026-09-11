@@ -335,6 +335,31 @@ cupiera.
 **Lo que J no cubre:** la tableta real. J1–J8 miden un Chromium a 1024×600, que es el presupuesto,
 no una Surface con su teclado y su densidad de píxeles.
 
+## K. Que ninguna pantalla esté rota sin que nadie se entere (2026-09-11)
+
+Un defecto vivió **horas en producción** sin que nada lo detectara: `/catalogo/opciones` respondía
+500 y el catálogo de modificadores no se podía abrir. La causa fue de base —`string_agg` sobre un
+conjunto vacío devuelve NULL, y el `::text` no lo cambia pero sí hace que sqlc tipe la columna como
+`string` no nulable—, pero lo que importa aquí es **por qué la suite no lo vio**.
+
+`pantalla-en-blanco.spec.ts` › Z6 ya recorría esa ruta. Solo que Z6 exige que la pantalla PINTE algo
+y que no tire una excepción, y **un 500 de la API no deja la pantalla en blanco**: TanStack Query lo
+atrapa y queda el encabezado sin datos. Z6 pasaba en verde con el catálogo caído — un caso que se ve
+cubierto y no cubre, que es peor que no tenerlo.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| K1 | Cualquiera de las 14 rutas recibe un 5xx | Falla nombrando la ruta y el endpoint. Es la guardia de la CLASE: cubre el próximo 500, no el que ya pasó | `nada-responde-500.spec.ts` › **N1** | Playwright |
+| K2 | Las tres pestañas del catálogo de modificadores | Las tres responden. Recorrer la ruta NO bastaba: «Activos» daba 200 —sus grupos sí tenían opciones activas— y solo «Inactivos» y «Todos» daban 500 | `nada-responde-500.spec.ts` › **N2** | Playwright |
+| K3 | Un grupo sin opciones activas, en la tarjeta | Ni renglón de vista previa vacío ni «y N más» colgando de una lista que no existe | `ModifierOptionsPage.test.tsx` | Vitest |
+| K4 | El resumen «y N más» | Resta las cuatro que ya mostró: con 6 opciones dice «y 2 más», con 4 no dice nada | idem | Vitest |
+
+**Verificado en rojo**: N2 corrido contra el ambiente de pruebas *antes* del arreglo falla nombrando
+los dos filtros exactos que rompían. Y las tres unitarias se vieron fallar mutando el componente.
+
+**Lo que K no cubre:** que la pantalla muestre lo CORRECTO — eso sigue siendo de cada spec. K1 solo
+exige que el servidor no se rompa, que es justo lo que faltaba.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
@@ -343,6 +368,7 @@ arregla y uno olvidado no. Cada uno cita el hallazgo del
 
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
+| X20 | `GET /expenses?page=abc` cae a la página 0 en silencio | `handlers_backoffice.go:496` hace `page, _ := strconv.Atoi(...)` e ignora el error, así que un `page` malformado no se rechaza: devuelve la primera página como si nada. Es el principio V —"un parámetro de frontera inválido se RECHAZA; nunca cae a un default en silencio"— y lo encontró el barrido del 500 de modificadores (2026-09-11), en otra familia. **No se arregló con ese despliegue a propósito**: rechazar un parámetro que hoy se acepta es un cambio de comportamiento, y no se mete de polizón en un deploy a producción que ya lleva dos migraciones. Va solo, con su test | — |
 | X13 | El folio puede repetirse entre dos turnos del **mismo día** | Consecuencia aceptada de numerar por turno (spec 008). Es inofensiva porque cerrar un turno exige que no queden pedidos vivos, así que dos folios iguales nunca coexisten vivos — pero no hay nada que lo impida si esa regla se afloja. Lo vigila `TestReabrirLaCajaElMismoDiaRenumeraSinColisionar` | T5 |
 | X14 | El `Down` de 0061 falla si ya se vendió con dos turnos el mismo día | Volver a estrechar la unicidad al día es imposible con dos #1 de la misma fecha. Es inherente a revertir una restricción que se ensanchó; queda escrito en la propia migración en vez de descubrirse al revertir | — |
 | X16 | `order_counters` quedó muerta tras 0061 | Se jubila en una migración propia cuando 008 lleve un ciclo en producción, no antes: mientras tanto es lo que permite volver atrás por imagen sin restaurar la base | — |
