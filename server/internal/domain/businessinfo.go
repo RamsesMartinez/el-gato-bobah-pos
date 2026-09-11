@@ -66,6 +66,16 @@ type PrintSettings struct {
 	AutoPrintOnClose bool
 	// PrintFreeModifiers: el ticket lista los adicionales que no cuestan.
 	PrintFreeModifiers bool
+	// BlindCashCount: quien cuenta el cajón NO ve lo que el sistema espera, y la diferencia aparece
+	// después de confirmar el cierre.
+	//
+	// Apagado por default, a propósito: el comportamiento de hoy —ver la diferencia antes de
+	// firmar— es un requisito de la spec 003 ya implementado, y encender esto lo enmienda. Las dos
+	// reglas protegen cosas distintas: aquella al operador honesto de su propio error de suma, esta
+	// al negocio de quien acomoda lo que declara para que cuadre. Por eso es del negocio y no
+	// preferencia de quien opera.
+	BlindCashCount bool
+
 	// KitchenCanCharge: si el tablero de Pedidos puede cobrar, además de preparar y entregar.
 	// Apagado por default porque cobrar es del punto de venta, y una pantalla de cocina con botón de
 	// cobrar le da acceso al dinero a quien solo tiene que preparar comida. Se enciende donde la

@@ -79,7 +79,20 @@ Cuando un corte cerró con faltante, quien lo revisa al día siguiente abre el a
 - **FR-002**: El sistema MUST permitir capturar, al cerrar la caja, cuántas piezas hay de cada denominación, y usar esa suma como el efectivo declarado.
 - **FR-003**: El sistema MUST calcular el total en el servidor a partir de las PIEZAS. Un total que mande la pantalla se ignora.
 - **FR-004**: El sistema MUST mostrar el total acumulado mientras se captura, actualizado en cada cambio, para que el operador nunca tenga que sumar.
-- **FR-005**: El sistema MUST mostrar la diferencia contra el esperado ANTES de confirmar el cierre, no solo después.
+- **FR-005** *(enmendado el 2026-09-10 por la [spec 015](../015-un-solo-arqueo-de-cajon/spec.md))*:
+  El sistema MUST mostrar la diferencia contra el esperado ANTES de confirmar el cierre, no solo
+  después — **salvo que el negocio tenga encendido el arqueo ciego**, en cuyo caso la diferencia se
+  muestra al confirmar.
+
+  **Por qué se enmienda y no se sustituye.** Las dos reglas protegen cosas distintas: esta al
+  operador honesto de su propio error de suma —contar mal y firmar un faltante que no existe—, y el
+  arqueo ciego al negocio de quien acomoda lo que declara para que cuadre. Ninguna de las dos es
+  mejor en abstracto, así que la elección es del dueño y no del producto. **El default sigue siendo
+  esta regla**: el comportamiento probado no cambia si nadie toca el interruptor.
+
+  Lo que el arqueo ciego NO afloja: el cierre sigue bloqueado hasta capturar todo lo que exige
+  captura, y el operador sigue viendo el total de lo que él mismo contó. Lo único que se oculta es
+  la respuesta.
 - **FR-006**: El conteo por denominaciones MUST aplicar únicamente a los métodos de pago en efectivo. Los demás se siguen declarando con una sola cifra.
 - **FR-007**: El sistema MUST guardar el desglose capturado —piezas por denominación— junto al arqueo, y mostrarlo al consultar ese corte.
 - **FR-008**: El sistema MUST seguir mostrando correctamente los cortes cerrados antes de esta funcionalidad, sin desglose y sin inventarles uno.

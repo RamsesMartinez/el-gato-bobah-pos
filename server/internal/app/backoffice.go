@@ -14,6 +14,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -39,6 +40,11 @@ type PaymentMethodView struct {
 	Kind              string `json:"kind"`
 	AffectsCashDrawer bool   `json:"affectsCashDrawer"`
 	AutoDeclare       bool   `json:"autoDeclare"`
+	IsActive          bool   `json:"isActive"`
+	// IsCash: este método se cobra en billetes. Es propiedad del método y no configuración: lo que
+	// el negocio decide es si ese efectivo llega a su cajón, no si el cliente pagó en efectivo.
+	// La pantalla lo usa para no ofrecer interruptores que el servidor va a rechazar.
+	IsCash bool `json:"isCash"`
 	// DeliveryPlatformID: a qué plataforma pertenece, o nil si no es de plataforma. Es lo que deja
 	// al POS ofrecer solo los dos métodos de la plataforma activa sin compararlos por nombre.
 	DeliveryPlatformID *int16 `json:"deliveryPlatformId"`
@@ -51,36 +57,115 @@ func (s *BackofficeService) PaymentMethods(ctx context.Context) ([]PaymentMethod
 	}
 	out := make([]PaymentMethodView, len(rows))
 	for i, r := range rows {
-		out[i] = PaymentMethodView{ID: int(r.ID), Name: r.Name, Kind: string(r.Kind), AffectsCashDrawer: r.AffectsCashDrawer, AutoDeclare: r.AutoDeclare, DeliveryPlatformID: r.DeliveryPlatformID}
+		out[i] = PaymentMethodView{ID: int(r.ID), Name: r.Name, Kind: string(r.Kind), IsActive: true,
+			AffectsCashDrawer: r.AffectsCashDrawer, AutoDeclare: r.AutoDeclare, DeliveryPlatformID: r.DeliveryPlatformID}
 	}
 	return out, nil
 }
 
-// SetPaymentMethodAutoDeclare marca a nivel negocio si un método de pago se declara solo al
-// cerrar caja (declarado = esperado, sin captura del cajero) o requiere conteo manual.
-func (s *BackofficeService) SetPaymentMethodAutoDeclare(ctx context.Context, methodID int, auto bool) (PaymentMethodView, error) {
-	current, err := s.store.QC(ctx).GetPaymentMethod(ctx, int16(methodID))
+// AllPaymentMethods: los métodos INCLUIDOS LOS APAGADOS, para la pantalla de ajustes.
+//
+// Separada de `PaymentMethods` por la misma razón que `AllCashRegisters` lo está de
+// `CashRegisters`: la lista con la que se cobra no puede traer los apagados, y la lista con la que
+// se configuran tiene que traerlos o apagar uno lo borra de la pantalla que tiene su interruptor.
+func (s *BackofficeService) AllPaymentMethods(ctx context.Context) ([]PaymentMethodView, error) {
+	rows, err := s.store.QC(ctx).ListAllPaymentMethods(ctx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return PaymentMethodView{}, domain.ErrNotFound
+		return nil, err
+	}
+	out := make([]PaymentMethodView, len(rows))
+	for i, r := range rows {
+		out[i] = PaymentMethodView{ID: int(r.ID), Name: r.Name, Kind: string(r.Kind),
+			IsCash: r.IsCash, AffectsCashDrawer: r.AffectsCashDrawer, AutoDeclare: r.AutoDeclare,
+			IsActive: r.IsActive, DeliveryPlatformID: r.DeliveryPlatformID}
+	}
+	return out, nil
+}
+
+// MetodoDePagoCmd: los tres interruptores de un método, cada uno OPCIONAL.
+//
+// Punteros y no booleanos, y la diferencia es dinero: con un `bool` pelado un campo ausente y un
+// `false` explícito son indistinguibles, así que un PATCH que solo quería desactivar el método le
+// habría apagado de paso el del cajón y sacado su dinero del arqueo.
+type MetodoDePagoCmd struct {
+	AutoDeclare       *bool
+	IsActive          *bool
+	AffectsCashDrawer *bool
+}
+
+// UpdatePaymentMethod cambia los interruptores de un método de cobro.
+//
+// Dos reglas que la base no puede expresar y que este método hace cumplir:
+//
+//   - El EFECTIVO DEL MOSTRADOR no sale del cajón. Los billetes que el cliente pone en el mostrador
+//     están ahí por definición, y apagarlo dejaría el fondo de apertura y los movimientos de caja
+//     fuera del esperado: el arqueo se compararía contra una cifra que no incluye el dinero con el
+//     que abrió el turno.
+//   - Un método de cajón no se AUTO-DECLARA. Es la regla que ya existía: el servidor declararía lo
+//     que él mismo espera y el corte perdería la capacidad de detectar un faltante de efectivo.
+//
+// Las dos se evalúan contra el estado RESULTANTE —lo que viene en el cmd, o lo que ya había— y no
+// contra lo que llegó: encender el auto-declarar y apagar el cajón en el mismo PATCH no puede
+// colarse por el orden en que se miren los campos.
+func (s *BackofficeService) UpdatePaymentMethod(ctx context.Context, methodID int, cmd MetodoDePagoCmd) (PaymentMethodView, error) {
+	// TODO EN UNA TRANSACCIÓN, CON EL RENGLÓN TOMADO. Leer, validar el estado resultante y escribir
+	// son tres pasos, y sin lock dos PATCH simultáneos —uno que enciende «automático», otro «va al
+	// cajón»— validan cada uno contra el estado viejo y dejan escrita la combinación que este
+	// código considera imposible.
+	var vista PaymentMethodView
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		actual, err := q.LockPaymentMethod(ctx, int16(methodID))
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
 		}
-		return PaymentMethodView{}, err
-	}
-	// Efectivo (affects_cash_drawer) es justo el método que exige conteo físico: auto-declararlo
-	// dejaría el corte de caja sin forma de detectar un faltante de efectivo.
-	if auto && current.AffectsCashDrawer {
-		return PaymentMethodView{}, domain.ErrValidation
-	}
-	row, err := s.store.QC(ctx).UpdatePaymentMethodAutoDeclare(ctx, db.UpdatePaymentMethodAutoDeclareParams{
-		ID: int16(methodID), AutoDeclare: auto,
+
+		tocaElCajon := actual.AffectsCashDrawer
+		if cmd.AffectsCashDrawer != nil {
+			tocaElCajon = *cmd.AffectsCashDrawer
+		}
+		autoDeclara := actual.AutoDeclare
+		if cmd.AutoDeclare != nil {
+			autoDeclara = *cmd.AutoDeclare
+		}
+		if err := domain.FlagsDelMetodoValidos(actual.IsCash,
+			actual.Kind == db.PaymentKindEfectivo, tocaElCajon, autoDeclara); err != nil {
+			return fmt.Errorf("%w (%s)", err, actual.Name)
+		}
+		// Y el interruptor del cajón no se mueve con dinero de ese método ya dentro del turno
+		// abierto (FR-017): movería el esperado en billetes que están físicamente en el cajón.
+		if tocaElCajon != actual.AffectsCashDrawer {
+			cobrado, err := q.CollectedByMethodInOpenSessions(ctx, int16(methodID))
+			if err != nil {
+				return err
+			}
+			if err := domain.CambioDeCajonPermitido(true, cobrado); err != nil {
+				return fmt.Errorf("%w (%s ya cobró %s)", err, actual.Name, cobrado)
+			}
+		}
+
+		row, err := q.UpdatePaymentMethodFlags(ctx, db.UpdatePaymentMethodFlagsParams{
+			ID: int16(methodID), AutoDeclare: cmd.AutoDeclare, IsActive: cmd.IsActive,
+			AffectsCashDrawer: cmd.AffectsCashDrawer,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		vista = PaymentMethodView{
+			ID: int(row.ID), Name: row.Name, Kind: string(row.Kind), IsCash: actual.IsCash,
+			AffectsCashDrawer: row.AffectsCashDrawer, AutoDeclare: row.AutoDeclare, IsActive: row.IsActive,
+		}
+		return nil
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return PaymentMethodView{}, domain.ErrNotFound
-		}
 		return PaymentMethodView{}, err
 	}
-	return PaymentMethodView{ID: int(row.ID), Name: row.Name, Kind: string(row.Kind), AffectsCashDrawer: row.AffectsCashDrawer, AutoDeclare: row.AutoDeclare}, nil
+	return vista, nil
 }
 
 // ---- Cortes de caja ----
@@ -102,12 +187,44 @@ type MethodTotal struct {
 	// denominaciones— sin compararlo por nombre. Los métodos de plataforma en efectivo también tocan
 	// el cajón, así que `affectsCashDrawer` no sirve para distinguirlo; es el mismo `kind` con el que
 	// el corte decide de quién es el fondo (ver sessionWithExpected).
-	Kind        string          `json:"kind"`
-	Expected    decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
-	Declared    decimal.Decimal `json:"declared"`
-	Difference  decimal.Decimal `json:"difference"`
-	Tips        decimal.Decimal `json:"tips"` // propinas del método (parte del esperado; línea aparte en el resumen)
-	AutoDeclare bool            `json:"autoDeclare"`
+	Kind string `json:"kind"`
+	// Expected viaja en NULL con el arqueo ciego encendido y el turno abierto: lo que la pantalla no
+	// debe mostrar no se le manda. Ocultarlo en el cliente lo dejaría legible en la respuesta, y el
+	// control dejaría de serlo.
+	Expected    *decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
+	Declared    decimal.Decimal  `json:"declared"`
+	Difference  decimal.Decimal  `json:"difference"`
+	Tips        decimal.Decimal  `json:"tips"` // propinas del método (parte del esperado; línea aparte en el resumen)
+	AutoDeclare bool             `json:"autoDeclare"`
+	// RequiresEntry: si el cierre exige una cifra capturada para este método.
+	//
+	// Lo decide el SERVIDOR y no la pantalla, y esa es toda su razón de existir. La pantalla lo
+	// deducía de si el esperado era cero, y con el arqueo ciego el esperado viaja en null: ahí
+	// `Number(null) === 0` concluía que ningún método esperaba dinero, la guardia del cierre se
+	// apagaba y el botón quedaba habilitado con la pantalla en blanco. Es el faltante inventado de
+	// $1,662 por la puerta de atrás.
+	//
+	// Falso para los que se autodeclaran, falso para los que forman el cajón —su dinero se declara
+	// UNA vez, contándolo— y verdadero para el resto que esperaba dinero.
+	RequiresEntry bool `json:"requiresEntry"`
+}
+
+// ArqueoDelCajonView: una cifra esperada, un conteo, una diferencia (spec 015).
+//
+// `Expected` en nil significa dos cosas distintas según el turno, y las dos son legítimas: en un
+// corte anterior a esta feature no se guardó, y con el arqueo ciego encendido no se manda a la
+// pantalla. `Counted` y `Difference` en nil mientras el turno esté abierto: todavía no se cuenta.
+type ArqueoDelCajonView struct {
+	Expected   *decimal.Decimal `json:"expected"`
+	Counted    *decimal.Decimal `json:"counted"`
+	Difference *decimal.Decimal `json:"difference"`
+	// MethodIDs: qué métodos forman este cajón. Viaja para que la pantalla no vuelva a decidirlo por
+	// su cuenta — dos derivaciones de la misma regla son dos pantallas que pueden diferir, y aquí
+	// diferir es pedirle al operador una cifra por dinero que ya contó.
+	MethodIDs []int `json:"methodIds"`
+	// RequiresCount: si el cierre exige contar este cajón. Por lo mismo que `RequiresEntry`, lo
+	// decide el servidor: con el arqueo ciego la pantalla no puede deducirlo del esperado.
+	RequiresCount bool `json:"requiresCount"`
 }
 
 type CashMovementView struct {
@@ -283,6 +400,13 @@ type SessionView struct {
 	Movements    []CashMovementView `json:"movements"`
 	Expenses     []CashExpenseView  `json:"expenses"`
 	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Blind: este turno se está contando a ciegas, así que la vista viene SIN el desglose de la
+	// venta ni lo cobrado por cada cajero.
+	//
+	// Viaja como bandera en vez de dejar que la pantalla lo deduzca de que las listas vengan
+	// vacías: un turno sin ventas también las trae vacías, y la pantalla diría «Sin ingresos» —que
+	// es cierto en un caso y mentira en el otro— sobre la misma respuesta.
+	Blind bool `json:"blind"`
 	// Pending son los pedidos del turno que todavía no se terminan de entregar. Salen del MISMO
 	// predicado que bloquea el cierre, no de una consulta parecida: si la pantalla y la guardia se
 	// derivaran por separado, una de las dos mentiría y quien la lee no tendría cómo saber cuál.
@@ -310,6 +434,9 @@ type SessionView struct {
 	// Counts: lo que se contó al abrir. Va en la MISMA forma que en el detalle del corte y sale del
 	// mismo lugar: dos derivaciones del mismo desglose son dos pantallas que pueden no coincidir.
 	Counts *ConteosDelTurno `json:"counts"`
+	// Drawer: el arqueo del cajón físico. Nil = este turno no tiene arqueo de efectivo (un corte
+	// anterior a la spec 015, o una caja que no maneja efectivo).
+	Drawer *ArqueoDelCajonView `json:"drawer"`
 }
 
 // CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
@@ -374,6 +501,9 @@ type SessionDetailView struct {
 	// Counts: el desglose de los dos arqueos del turno. Es lo que convierte un faltante en algo
 	// investigable — "faltan dos billetes de $500" en vez de "faltan $1,000".
 	Counts *ConteosDelTurno `json:"counts"`
+	// Drawer: el arqueo del cajón físico. Nil = este turno no tiene arqueo de efectivo (un corte
+	// anterior a la spec 015, o una caja que no maneja efectivo).
+	Drawer *ArqueoDelCajonView `json:"drawer"`
 }
 
 type SessionSaleView struct {
@@ -520,7 +650,12 @@ type ConteoLineView struct {
 // `ManualReason` no nulo significa que NO se contó por denominaciones y por qué; en ese caso `Lines`
 // viene vacío. Es la mitad de FR-016 que hace auditable un arqueo sin piezas.
 type ConteoView struct {
-	Total        decimal.Decimal  `json:"total"`
+	Total decimal.Decimal `json:"total"`
+	// Expected y Difference solo existen en el CIERRE, y solo desde la spec 015: en la apertura no
+	// hay nada que esperar, y un corte cerrado antes de la 0067 no los guardó. Nil en los dos casos,
+	// que la pantalla trata igual — muestra el total como siempre y no inventa una diferencia.
+	Expected     *decimal.Decimal `json:"expected"`
+	Difference   *decimal.Decimal `json:"difference"`
 	ManualReason *string          `json:"manualReason"`
 	Lines        []ConteoLineView `json:"lines"`
 }
@@ -553,7 +688,10 @@ func (s *BackofficeService) conteosDelTurno(ctx context.Context, sessionID int64
 			}
 			return nil, err
 		}
-		vista := &ConteoView{Total: conteo.Total, ManualReason: conteo.ManualReason, Lines: []ConteoLineView{}}
+		vista := &ConteoView{
+			Total: conteo.Total, Expected: conteo.Expected, Difference: conteo.Difference,
+			ManualReason: conteo.ManualReason, Lines: []ConteoLineView{},
+		}
 		filas, err := s.store.QC(ctx).ListCashCountLines(ctx, conteo.ID)
 		if err != nil {
 			return nil, err
@@ -573,6 +711,141 @@ func (s *BackofficeService) conteosDelTurno(ctx context.Context, sessionID int64
 		return nil, nil // un corte sin ningún conteo: la pantalla lo muestra como siempre
 	}
 	return out, nil
+}
+
+// esperadoDe: el esperado de un método como valor.
+//
+// El campo es puntero porque con el arqueo ciego viaja en null, pero el CIERRE nunca ve un null:
+// nulifica solo el camino de lectura, y aquí un cero por si acaso es más barato que un 500 por un
+// puntero que alguien deje pasar el día que eso cambie.
+func esperadoDe(t MethodTotal) decimal.Decimal {
+	if t.Expected == nil {
+		return decimal.Zero
+	}
+	return *t.Expected
+}
+
+// ocultarLoEsperado borra del view lo que el arqueo ciego no debe mostrar.
+//
+// Se aplica en los caminos de LECTURA de un turno abierto y jamás en el del cierre, que necesita
+// las cifras para calcular lo que guarda. Y borra el esperado de TODOS los métodos, no solo del
+// efectivo: ver el de la tarjeta permite el mismo acomodo.
+//
+// NULIFICAR `expected` NO BASTA, y creer que sí es lo que convierte este control en un adorno. La
+// misma respuesta llevaba el desglose por método y lo que cobró cada cajero, y la pantalla los
+// pinta ARRIBA de la tabla del cierre: fondo 500 + neto 0 + Ventas del mostrador 200 + Ventas de
+// Didi efectivo 135 = 835, que era exactamente el esperado oculto. Quien cuenta no necesitaba las
+// herramientas del navegador, solo sumar cuatro renglones contiguos.
+//
+// Por eso se va TODO lo que descompone la venta del turno: los ingresos por método, los subtotales
+// por plataforma y lo cobrado por cada cajero. Lo que se queda es lo que el propio operador
+// registró y ya conoce —el fondo con el que abrió, sus movimientos de efectivo y las salidas—:
+// esconderlo no agregaría protección y sí le quitaría la pantalla con la que trabaja.
+func ocultarLoEsperado(totals []MethodTotal, drawer *ArqueoDelCajonView,
+	desglose *CorteBreakdown, cajeros []CashierTotal) {
+	for i := range totals {
+		totals[i].Expected = nil
+	}
+	if drawer != nil {
+		drawer.Expected = nil
+		drawer.Difference = nil
+	}
+	desglose.Ingresos = []CorteMethodBreakdown{}
+	desglose.IngresosTotal = decimal.Zero
+	desglose.Plataformas = []CortePlatformSubtotal{}
+	for i := range cajeros {
+		cajeros[i].Cash = decimal.Zero
+		cajeros[i].Other = decimal.Zero
+	}
+}
+
+// vistaDelTurnoAbierto: la vista que ve una PANTALLA, ya filtrada por el arqueo ciego.
+//
+// Existe para que el filtrado no sea responsabilidad de cada llamador. Lo era, y de los cuatro
+// caminos que devuelven esta vista dos se lo saltaban: registrar un movimiento de caja —abierto a
+// rol cajero— devolvía el esperado completo, así que una entrada de un centavo alcanzaba para
+// leerlo. El único que usa la vista cruda es el cierre, que necesita las cifras para calcular lo
+// que guarda, y eso se ve en que llama a `sessionWithExpected` a propósito.
+func (s *BackofficeService) vistaDelTurnoAbierto(ctx context.Context, sess db.RegisterSession, reg db.GetCashRegisterRow) (*SessionView, error) {
+	view, err := s.sessionWithExpected(ctx, sess, reg)
+	if err != nil {
+		return nil, err
+	}
+	if s.arqueoCiego(ctx) {
+		ocultarLoEsperado(view.Totals, view.Drawer, &view.Breakdown, view.Cashiers)
+		view.Blind = true
+	}
+	return view, nil
+}
+
+// arqueoCiego dice si este negocio cuenta a ciegas.
+//
+// Un fallo al leer los ajustes NO enciende el control: devolver "ciego" ante un error escondería
+// las cifras por un hiccup de la base, y el operador no tendría cómo saber por qué. El default es
+// el comportamiento de la spec 003, que es el que está probado.
+//
+// Pero ese fail-open se REGISTRA, por lo mismo que el del limitador cuando Redis se cae: un
+// control antifraude que se apaga solo y en silencio no se distingue de uno que nunca estuvo
+// encendido, y quien audita el corte no tiene cómo saber cuál de los dos vio.
+func (s *BackofficeService) arqueoCiego(ctx context.Context) bool {
+	ajustes, err := s.store.QC(ctx).GetBusinessSettings(ctx)
+	if err != nil {
+		logging.SecurityEvent(ctx, "blind_count_unavailable", "error", err.Error())
+		return false
+	}
+	return ajustes.BlindCashCount
+}
+
+// arqueoEnVivo arma el arqueo del cajón de un turno ABIERTO: el esperado se calcula, y lo contado
+// todavía no existe.
+//
+// Devuelve nil si ningún método de este turno pone dinero en el cajón: una caja secundaria que no
+// maneja efectivo no tiene arqueo que mostrar, y un arqueo en cero afirmaría que el cajón debía
+// estar vacío.
+func arqueoEnVivo(metodos []domain.MetodoDelCorte, conteos *ConteosDelTurno) (*ArqueoDelCajonView, error) {
+	ids := domain.MetodosDelCajon(metodos)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	esperado, err := domain.EsperadoDelCajon(metodos)
+	if err != nil {
+		return nil, err
+	}
+	arqueo := &ArqueoDelCajonView{Expected: &esperado, MethodIDs: ids}
+	// Exige conteo mientras haya dinero que contar y nadie lo haya contado. Un cajón que no espera
+	// nada no obliga: es el mismo criterio con el que un método sin movimiento no pide cifra.
+	yaContado := conteos != nil && conteos.Cierre != nil
+	arqueo.RequiresCount = !esperado.IsZero() && !yaContado
+	if yaContado {
+		arqueo.Counted = &conteos.Cierre.Total
+		if conteos.Cierre.Difference != nil {
+			arqueo.Difference = conteos.Cierre.Difference
+		}
+	}
+	return arqueo, nil
+}
+
+// arqueoGuardado arma el arqueo de un corte CERRADO desde lo que se guardó, sin recalcular nada.
+//
+// Aquí está la diferencia que importa con `arqueoEnVivo`: el esperado sale de la fila del conteo y
+// los métodos, del snapshot de cada renglón. Recalcularlos leería el catálogo de hoy, y entonces un
+// corte cerrado se reagruparía —o cambiaría de cifra— según cuándo alguien lo abra.
+//
+// Nil cuando no hay conteo de cierre: es el caso de todos los cortes anteriores a la spec 015.
+func arqueoGuardado(metodos []domain.MetodoDelCorte, conteos *ConteosDelTurno) *ArqueoDelCajonView {
+	if conteos == nil || conteos.Cierre == nil {
+		return nil
+	}
+	cierre := conteos.Cierre
+	arqueo := &ArqueoDelCajonView{
+		Counted:   &cierre.Total,
+		MethodIDs: domain.MetodosDelCajon(metodos),
+	}
+	if cierre.Expected != nil {
+		arqueo.Expected = cierre.Expected
+		arqueo.Difference = cierre.Difference
+	}
+	return arqueo
 }
 
 // PiezaCapturada: cuántas piezas de una denominación contó el operador.
@@ -635,7 +908,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 			return err
 		}
 		sess = abierta
-		return s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total,
+		// Sin esperado: al abrir no hay nada que esperar — el fondo ES lo que se contó. El check del
+		// esquema lo exige nulo justo aquí.
+		return s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total, nil,
 			cmd.Piezas, motivoDelCamino(cmd.Total, cmd.Motivo), userID)
 	})
 	if err != nil {
@@ -644,7 +919,7 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		// ErrConflict; esto hace que la carrera termine igual, y no en un 500.
 		return nil, traduceConflictoDeCaja(err, db.CashCountMomentApertura)
 	}
-	return s.sessionWithExpected(ctx, sess, reg)
+	return s.vistaDelTurnoAbierto(ctx, sess, reg)
 }
 
 // piezasConSuValor cambia ids por valores leyendo el catálogo, y de paso hace cumplir FR-011.
@@ -692,10 +967,11 @@ func (s *BackofficeService) piezasConSuValor(ctx context.Context, capturadas []P
 // arqueo (FR-009), y el `check (pieces > 0)` del esquema está para que eso no dependa de que esta
 // función se acuerde.
 func (s *BackofficeService) guardarConteo(ctx context.Context, q *db.Queries, sessionID int64,
-	momento db.CashCountMoment, total decimal.Decimal, piezas []PiezaCapturada, motivo *string,
-	userID int64) error {
+	momento db.CashCountMoment, total decimal.Decimal, esperado *decimal.Decimal,
+	piezas []PiezaCapturada, motivo *string, userID int64) error {
 	conteo, err := q.SaveCashCount(ctx, db.SaveCashCountParams{
-		SessionID: sessionID, Moment: momento, Total: total, ManualReason: motivo, CreatedBy: userID,
+		SessionID: sessionID, Moment: momento, Total: total, Expected: esperado,
+		ManualReason: motivo, CreatedBy: userID,
 	})
 	if err != nil {
 		return traduceConflictoDeCaja(err, momento)
@@ -772,7 +1048,7 @@ func (s *BackofficeService) CurrentByRegister(ctx context.Context, registerID in
 		}
 		return nil, err
 	}
-	return s.sessionWithExpected(ctx, sess, reg)
+	return s.vistaDelTurnoAbierto(ctx, sess, reg)
 }
 
 // sessionExpenses lista los gastos atribuidos a un corte para la sección "Gastos" del resumen.
@@ -802,6 +1078,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if err != nil {
 		return nil, err
 	}
+	// Lo que el dominio necesita para arquear el cajón: qué esperaba cada método y si su dinero está
+	// ahí. Se arma en el mismo recorrido que los totales para no leer el catálogo dos veces.
+	delCorte := make([]domain.MetodoDelCorte, 0, len(rows))
 	// Neto de efectivo movido (entradas − salidas): entra en el esperado del cajón, junto al fondo.
 	net, err := s.store.QC(ctx).NetCashMovements(ctx, sess.ID)
 	if err != nil {
@@ -866,7 +1145,13 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		}
 		expected, tips = domain.Round2(expected), domain.Round2(tips)
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name,
-			Kind: string(r.Kind), Expected: expected, Tips: tips, AutoDeclare: r.AutoDeclare})
+			Kind: string(r.Kind), Expected: &expected, Tips: tips, AutoDeclare: r.AutoDeclare,
+			// Un método cuyo dinero está en el cajón NO pide cifra: su dinero se declara una vez,
+			// contándolo. Los demás piden la suya si esperaban algo.
+			RequiresEntry: !r.AutoDeclare && !r.AffectsCashDrawer && !expected.IsZero()})
+		delCorte = append(delCorte, domain.MetodoDelCorte{
+			ID: int(r.PaymentMethodID), Esperado: expected, TocaElCajon: r.AffectsCashDrawer,
+		})
 		methods = append(methods, methodExpected{
 			name: r.Name, expected: expected, tips: tips,
 			duenoDelFondo: r.Kind == db.PaymentKindEfectivo,
@@ -878,6 +1163,13 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		return nil, err
 	}
 	view.Counts = conteos
+	// El arqueo del cajón, calculado en vivo mientras el turno está abierto: es lo que la pantalla
+	// del cierre necesita para decir cuánto debería haber antes de que alguien cuente.
+	arqueo, err := arqueoEnVivo(delCorte, conteos)
+	if err != nil {
+		return nil, err
+	}
+	view.Drawer = arqueo
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
@@ -912,10 +1204,15 @@ func (s *BackofficeService) businessDate(ctx context.Context) time.Time {
 // motivo en `Declarado`— porque es el único que está físicamente en el cajón. Los demás métodos
 // siguen mandando su cifra y nada más: no hay piezas que contar en una terminal de tarjeta.
 type CierreCmd struct {
-	Declarado map[int]decimal.Decimal // methodId → lo contado; el del efectivo es el camino manual
+	// Declarado: methodId → lo contado, SOLO de los métodos cuyo dinero no está en el cajón. Un
+	// método de cajón aquí se rechaza: su dinero se declara una vez, contándolo.
+	Declarado map[int]decimal.Decimal
 	Piezas    []PiezaCapturada
-	Motivo    string // obligatorio si el efectivo viene en `Declarado` (FR-014)
-	Notas     string
+	// Total y Motivo son el camino manual del CAJÓN, igual que en la apertura: se usa cuando hay algo
+	// que el catálogo de denominaciones no puede expresar, y el motivo es obligatorio (FR-014).
+	Total  *decimal.Decimal
+	Motivo string
+	Notas  string
 }
 
 func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
@@ -958,24 +1255,65 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		return nil, err
 	}
 
-	conteo, err := s.conteoDelEfectivo(ctx, view.Totals, declared, cmd)
+	// EL CAJÓN SE DECLARA UNA SOLA VEZ, contándolo. Un método cuyo dinero está ahí no acepta una
+	// cifra propia: son dos declaraciones del mismo dinero, y de ahí salía el turno con «Efectivo» en
+	// diferencia $0.00 y «Didi efectivo» en −$64.80 sin forma de saber cuál era el faltante real.
+	//
+	// Se RECHAZA en vez de ignorarse. El caso realista no es un atacante sino una tableta con el
+	// front viejo en caché —la aplicación es una PWA con service worker— mandando el cuerpo de antes,
+	// y descartar su cifra en silencio deja al operador creyendo que declaró algo que no se guardó.
+	delCajon := map[int]bool{}
+	if view.Drawer != nil {
+		for _, id := range view.Drawer.MethodIDs {
+			delCajon[id] = true
+		}
+	}
+	for _, t := range view.Totals {
+		if delCajon[t.MethodID] {
+			if _, vino := declared[t.MethodID]; vino {
+				// La acción primero y sin explicar el mecanismo: quien lee esto está cerrando
+				// una caja, no entendiendo el modelo. El nombre del método va porque es lo único
+				// que hace el mensaje diagnosticable cuando alguien lo reporta.
+				return nil, fmt.Errorf("%w: recarga la pantalla para cerrar: «%s» ahora se cuenta con el cajón",
+					domain.ErrValidation, t.Name)
+			}
+		}
+	}
+
+	conteo, err := s.conteoDelCajon(ctx, view.Drawer != nil, cmd)
 	if err != nil {
 		return nil, err
 	}
-	if conteo != nil {
-		// El conteo SUSTITUYE lo declarado del efectivo, y de ningún otro método: el fondo de caja ya
-		// enseñó lo que cuesta que una cifra del cajón se sume a los cuatro métodos que lo tocan.
-		declared[conteo.metodo] = conteo.total
+	// Y SIN CONTEO NO SE CIERRA UN CAJÓN QUE ESPERA DINERO. La pantalla ya bloquea el botón, pero la
+	// guardia tiene que estar aquí: abajo cada método del cajón declara su esperado, así que un
+	// cierre que llega sin conteo deja los cuatro renglones en diferencia cero y ninguna fila de la
+	// cual sacar la real — el corte reportaría $0 con el cajón sin contar. Un cliente viejo en
+	// caché, un envío que falla o un doble toque bastan para llegar aquí.
+	if view.Drawer != nil && view.Drawer.RequiresCount && conteo == nil {
+		return nil, domain.ErrCajonSinContar
+	}
+	// Cada método del cajón declara SU esperado, con conteo o sin él. No es un truco: es la única
+	// forma de escribir "a este método nadie le declaró una cifra propia" en una columna `not null`,
+	// y es lo que hace que ninguno reporte una diferencia que cancele la de otro. La diferencia del
+	// cajón —la única que existe— vive en la fila del conteo.
+	for _, t := range view.Totals {
+		if delCajon[t.MethodID] {
+			declared[t.MethodID] = esperadoDe(t)
+		}
 	}
 
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		for i := range view.Totals {
 			t := &view.Totals[i]
-			t.Declared = domain.Round2(domain.ResolveDeclared(t.AutoDeclare, t.Expected, declared[t.MethodID]))
-			t.Difference = domain.Round2(t.Declared.Sub(t.Expected))
+			esperado := esperadoDe(*t)
+			t.Declared = domain.Round2(domain.ResolveDeclared(t.AutoDeclare, esperado, declared[t.MethodID]))
+			t.Difference = domain.Round2(t.Declared.Sub(esperado))
 			if err := q.SaveSessionTotal(ctx, db.SaveSessionTotalParams{
 				SessionID: sess.ID, PaymentMethodID: int16(t.MethodID),
-				Expected: t.Expected, Declared: t.Declared, Tips: t.Tips,
+				Expected: esperado, Declared: t.Declared, Tips: t.Tips,
+				// El snapshot: con qué configuración se cerró este renglón. Leerlo del catálogo al
+				// consultar el corte lo reagruparía según el interruptor de hoy.
+				AffectsCashDrawer: delCajon[t.MethodID],
 			}); err != nil {
 				return err
 			}
@@ -984,8 +1322,10 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		// fallara después de comprometerse el cierre, quedaría un arqueo firmado cuyo efectivo no se
 		// puede reconstruir — y el turno ya cerrado, o sea sin forma de volver a intentarlo.
 		if conteo != nil {
+			// El esperado del cajón se GUARDA con el conteo: sale de `order_payments`, y una venta
+			// cancelada o reembolsada mañana movería la cifra contra la que el operador firmó hoy.
 			if err := s.guardarConteo(ctx, q, sess.ID, db.CashCountMomentCierre, conteo.total,
-				cmd.Piezas, conteo.motivo, userID); err != nil {
+				view.Drawer.Expected, cmd.Piezas, conteo.motivo, userID); err != nil {
 				return err
 			}
 		}
@@ -999,6 +1339,21 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		return nil, traduceConflictoDeCaja(err, db.CashCountMomentCierre)
 	}
 	view.Status = "cerrada"
+	if conteo != nil {
+		// Se vuelve a leer el conteo ya guardado para que la diferencia que devuelve el cierre sea la
+		// de la columna GENERADA y no una resta que este método haga aparte: dos restas del mismo
+		// dinero son dos cifras que tarde o temprano difieren.
+		conteos, err := s.conteosDelTurno(ctx, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		view.Counts = conteos
+		if conteos != nil && conteos.Cierre != nil && view.Drawer != nil {
+			view.Drawer.Counted = &conteos.Cierre.Total
+			view.Drawer.Difference = conteos.Cierre.Difference
+			view.Drawer.RequiresCount = false
+		}
+	}
 	return view, nil
 }
 
@@ -1012,19 +1367,11 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 // Quién decide es `domain.TotalDeclarado`, el MISMO que decide en la apertura: si los dos caminos
 // llegan juntos, o si el total a mano viene sin motivo, el error sale de ahí. Repetir esa regla aquí
 // sería tenerla en dos capas para que alguien mueva una sola.
-func (s *BackofficeService) conteoDelEfectivo(ctx context.Context, totales []MethodTotal,
-	declared map[int]decimal.Decimal, cmd CierreCmd) (*conteoResuelto, error) {
-	metodo, hay := 0, false
-	for _, t := range totales {
-		if t.Kind == string(db.PaymentKindEfectivo) {
-			metodo, hay = t.MethodID, true
-			break
-		}
-	}
-	if !hay {
-		// Sin método de efectivo en el turno no hay cajón que contar; si alguien mandó piezas, es una
-		// pantalla desincronizada y no un cierre que valga guardar a medias.
-		if len(cmd.Piezas) > 0 {
+func (s *BackofficeService) conteoDelCajon(ctx context.Context, hayCajon bool, cmd CierreCmd) (*conteoResuelto, error) {
+	if !hayCajon {
+		// Sin ningún método que ponga dinero en el cajón no hay nada que contar; si alguien mandó un
+		// conteo, es una pantalla desincronizada y no un cierre que valga guardar a medias.
+		if len(cmd.Piezas) > 0 || cmd.Total != nil {
 			return nil, fmt.Errorf("%w: este turno no maneja efectivo", domain.ErrValidation)
 		}
 		return nil, nil
@@ -1034,23 +1381,21 @@ func (s *BackofficeService) conteoDelEfectivo(ctx context.Context, totales []Met
 	if err != nil {
 		return nil, err
 	}
-	var aMano *decimal.Decimal
-	if v, ok := declared[metodo]; ok {
-		aMano = &v
-	}
-	if len(piezas) == 0 && aMano == nil {
+	// Nada de nada: no se inventa un arqueo. Un conteo en cero afirmaría "conté el cajón y estaba
+	// vacío", que es un hecho distinto de "nadie contó". Devolver nil aquí no deja pasar el cierre:
+	// quien llama rechaza el nil cuando el cajón esperaba dinero.
+	if len(piezas) == 0 && cmd.Total == nil {
 		return nil, nil
 	}
-	total, err := domain.TotalDeclarado(piezas, aMano, cmd.Motivo)
+	total, err := domain.TotalDeclarado(piezas, cmd.Total, cmd.Motivo)
 	if err != nil {
 		return nil, err
 	}
-	return &conteoResuelto{metodo: metodo, total: total, motivo: motivoDelCamino(aMano, cmd.Motivo)}, nil
+	return &conteoResuelto{total: total, motivo: motivoDelCamino(cmd.Total, cmd.Motivo)}, nil
 }
 
-// conteoResuelto: a qué método alimenta el conteo, con qué total y con qué motivo (nil = se contó).
+// conteoResuelto: con qué total se declaró el cajón y con qué motivo (nil = se contó por piezas).
 type conteoResuelto struct {
-	metodo int
 	total  decimal.Decimal
 	motivo *string
 }
@@ -1084,7 +1429,7 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID i
 	}); err != nil {
 		return nil, err
 	}
-	return s.sessionWithExpected(ctx, sess, reg)
+	return s.vistaDelTurnoAbierto(ctx, sess, reg)
 }
 
 // Transfer mueve efectivo de una caja abierta a otra: registra el traspaso y genera, en la MISMA
@@ -1220,10 +1565,16 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
 	methods := make([]methodExpected, 0, len(totals))
+	// Desde el SNAPSHOT de cada renglón, no del catálogo: así es como el corte cerrado conserva la
+	// forma con la que se firmó, aunque el interruptor del método cambie después.
+	delCorte := make([]domain.MetodoDelCorte, 0, len(totals))
 	for _, t := range totals {
 		view.Totals = append(view.Totals, MethodTotal{
-			MethodID: int(t.PaymentMethodID), Name: t.Name,
-			Expected: t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
+			MethodID: int(t.PaymentMethodID), Name: t.Name, Kind: string(t.Kind),
+			Expected: &t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
+		})
+		delCorte = append(delCorte, domain.MetodoDelCorte{
+			ID: int(t.PaymentMethodID), Esperado: t.Expected, TocaElCajon: t.AffectsCashDrawer,
 		})
 		methods = append(methods, methodExpected{
 			name: t.Name, expected: t.Expected, tips: t.Tips,
@@ -1236,11 +1587,18 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		return nil, err
 	}
 	view.Counts = conteos
+	view.Drawer = arqueoGuardado(delCorte, conteos)
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
 		})
+	}
+	// El mismo ocultamiento que en el turno abierto, y aquí no es redundante: este endpoint
+	// acepta el id del turno ABIERTO y está abierto a rol cajero, así que nulificar solo el otro
+	// camino dejaría la cifra a un request de distancia.
+	if string(sess.Status) == "abierta" && s.arqueoCiego(ctx) {
+		ocultarLoEsperado(view.Totals, view.Drawer, &view.Breakdown, nil)
 	}
 	return view, nil
 }

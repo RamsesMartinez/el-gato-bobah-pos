@@ -57,6 +57,11 @@ type BusinessSettings struct {
 	CorteDeVista string `json:"corteDeVista"`
 	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
 	KitchenCanCharge bool `json:"kitchenCanCharge"`
+	// BlindCashCount: si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia
+	// aparece DESPUÉS de confirmar el cierre — un control contra que alguien acomode lo que declara
+	// para que cuadre. Apagado por default: encenderlo enmienda FR-005 de la spec 003, y esa es una
+	// decisión del negocio y no un efecto de un deploy.
+	BlindCashCount bool `json:"blindCashCount"`
 	// Identificación: cómo se identifica quien opera la estación y cada cuánto deja de estarlo.
 	PinOnlyUnlock    bool `json:"pinOnlyUnlock"`
 	LockAfterSeconds int  `json:"lockAfterSeconds"`
@@ -105,6 +110,7 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		PrintKitchenTicket: row.PrintKitchenTicket,
 		CorteDeVista:       row.CorteDeVista,
 		KitchenCanCharge:   row.KitchenCanCharge,
+		BlindCashCount:     row.BlindCashCount,
 		PinOnlyUnlock:      row.PinOnlyUnlock,
 		LockAfterSeconds:   int(row.LockAfterSeconds),
 		SessionHours:       int(row.SessionHours),
@@ -229,6 +235,7 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 			CorteDeVista:       corte,
 			FolioScheme:        db.FolioScheme(esquema),
 			KitchenCanCharge:   print.KitchenCanCharge,
+			BlindCashCount:     print.BlindCashCount,
 			PinOnlyUnlock:      ident.PinOnlyUnlock,
 			LockAfterSeconds:   int32(ident.LockAfterSeconds),
 			SessionHours:       int32(ident.SessionHours),

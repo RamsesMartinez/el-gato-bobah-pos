@@ -84,12 +84,12 @@ func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
 	efectivo := paymentMethodID(t, st, "Efectivo")
 	declarado := map[int]decimal.Decimal{int(efectivo): fondo}
 
-	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, cierreAMano(declarado))
+	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado))
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
 	for _, tot := range cerrada.Totals {
-		dif := tot.Declared.Sub(tot.Expected)
+		dif := tot.Declared.Sub(*tot.Expected)
 		if !dif.IsZero() {
 			t.Fatalf("%q cerró con diferencia de %s (esperado %s, declarado %s) sin haber vendido nada",
 				tot.Name, dif, tot.Expected, tot.Declared)
@@ -134,7 +134,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 	vender()
 	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
 	if _, err := backoffice.CloseSession(ctx, principal, cajero,
-		cierreAMano(map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")})); err != nil {
+		cierreDelCajonAMano(t, st, map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("100")})); err != nil {
 		t.Fatalf("CloseSession 1: %v", err)
 	}
 
@@ -285,7 +285,7 @@ func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
 	vender(efectivo, "100")
 
 	entregarPendientes(t, st) // la caja no cierra con pedidos sin terminar
-	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreAMano(map[int]decimal.Decimal{
+	if _, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, map[int]decimal.Decimal{
 		int(efectivo):     decimal.RequireFromString("100"),
 		int(uberEnLinea):  decimal.RequireFromString("135"),
 		int(uberEfectivo): decimal.RequireFromString("135"),
