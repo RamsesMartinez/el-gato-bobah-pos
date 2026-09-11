@@ -25,6 +25,17 @@ func (h *Handlers) PaymentMethods(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// AllPaymentMethods: la lista de AJUSTES, con los apagados incluidos. Restringida a admin/gerente
+// en el router, igual que su gemela de cajas.
+func (h *Handlers) AllPaymentMethods(w http.ResponseWriter, r *http.Request) {
+	items, err := h.backoffice.AllPaymentMethods(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 // PATCH /payment-methods/{id} — los tres interruptores del método, a nivel negocio y solo
 // admin/gerente (gateado en el router): si se declara solo al cerrar, si se ofrece para cobrar, y
 // si su efectivo llega al cajón.

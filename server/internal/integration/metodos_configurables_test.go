@@ -255,3 +255,162 @@ func TestDesactivarElEfectivoNoBorraElFondoDelArqueo(t *testing.T) {
 			abierta.Drawer.Expected, fondo)
 	}
 }
+
+// SACAR UN MÉTODO DEL CAJÓN Y AUTO-DECLARARLO EN EL MISMO REQUEST NO PUEDE VALER.
+//
+// El bypass que encontró la auditoría de seguridad. La regla que el código llama innegociable
+// —"un método cuyo dinero se cuenta en el cajón no se auto-declara"— se evaluaba solo contra el
+// estado resultante, así que apagar «va al cajón» en el MISMO PATCH la satisfacía.
+//
+// Verificado: con eso puesto antes del primer cobro, los $135 de Didi en efectivo entran, el cajón
+// espera 500 —sin ellos— y el método reporta `autoDeclare` con `requiresEntry` en falso. El cierre
+// contando solo el fondo da diferencia $0.00 en todo. Y en el catálogo el método queda idéntico a
+// «Didi en línea»: no quedaba ningún marcador de que su dinero era efectivo.
+//
+// Por eso el marcador ahora es propio (`is_cash`) y no el mismo interruptor que dice dónde cae el
+// dinero: un método de efectivo no se auto-declara, lo reparta quien lo reparta.
+func TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	didiEfectivo := int(paymentMethodID(t, st, "Didi efectivo"))
+
+	_, err := backoffice.UpdatePaymentMethod(ctx, didiEfectivo, app.MetodoDePagoCmd{
+		AffectsCashDrawer: ptrBool(false),
+		AutoDeclare:       ptrBool(true),
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("sacar del cajón y auto-declarar en el mismo PATCH dio %v: tiene que rechazarse", err)
+	}
+
+	// Y tampoco en dos pasos: el método sigue siendo de efectivo aunque su dinero deje de caer en
+	// nuestro cajón, y auto-declarar efectivo hace que un faltante sea indetectable.
+	if _, err := backoffice.UpdatePaymentMethod(ctx, didiEfectivo, app.MetodoDePagoCmd{
+		AffectsCashDrawer: ptrBool(false),
+	}); err != nil {
+		t.Fatalf("sacar del cajón un método que no ha cobrado: %v", err)
+	}
+	_, err = backoffice.UpdatePaymentMethod(ctx, didiEfectivo, app.MetodoDePagoCmd{
+		AutoDeclare: ptrBool(true),
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("auto-declarar un método de efectivo fuera del cajón dio %v: sigue siendo efectivo", err)
+	}
+}
+
+// Y AL REVÉS: UN MÉTODO QUE NO ES DE EFECTIVO NO PUEDE ENTRAR AL CAJÓN.
+//
+// Marcar «Tarjeta débito» como que va al cajón sumaría al esperado dinero que nunca son billetes,
+// y el arqueo pediría contar algo que está en la terminal.
+func TestUnMetodoQueNoEsEfectivoNoEntraAlCajon(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	tarjeta := int(paymentMethodID(t, st, "Tarjeta débito"))
+
+	_, err := backoffice.UpdatePaymentMethod(ctx, tarjeta, app.MetodoDePagoCmd{
+		AffectsCashDrawer: ptrBool(true),
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("meter la tarjeta al cajón dio %v: ese dinero nunca son billetes", err)
+	}
+}
+
+// APAGAR UN MÉTODO NO PUEDE BORRARLO DE LA PANTALLA QUE TIENE SU INTERRUPTOR.
+//
+// Era una puerta de un solo sentido: la tabla de ajustes se pintaba con la misma lista que ofrece
+// el POS para cobrar, que filtra los apagados. Un toque en «Activo» sobre «Efectivo» —el mismo
+// dedo que falla por milímetros que el código ya nombra— dejaba al mostrador sin cobrar en
+// efectivo y sin camino en la aplicación para volver a encenderlo.
+func TestUnMetodoApagadoSigueEnLaListaDeAjustes(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	backoffice := app.NewBackofficeService(st, clock)
+	efectivo := int(paymentMethodID(t, st, "Efectivo"))
+
+	if _, err := backoffice.UpdatePaymentMethod(ctx, efectivo, app.MetodoDePagoCmd{
+		IsActive: ptrBool(false),
+	}); err != nil {
+		t.Fatalf("apagar el efectivo: %v", err)
+	}
+
+	// Para cobrar ya no se ofrece.
+	paraCobrar, err := backoffice.PaymentMethods(ctx)
+	if err != nil {
+		t.Fatalf("PaymentMethods: %v", err)
+	}
+	for _, m := range paraCobrar {
+		if m.ID == efectivo {
+			t.Fatal("un método apagado se sigue ofreciendo para cobrar")
+		}
+	}
+
+	// Pero en ajustes sigue, con su interruptor en falso: es el único camino para reactivarlo.
+	todos, err := backoffice.AllPaymentMethods(ctx)
+	if err != nil {
+		t.Fatalf("AllPaymentMethods: %v", err)
+	}
+	var encontrado bool
+	for _, m := range todos {
+		if m.ID == efectivo {
+			encontrado = true
+			if m.IsActive {
+				t.Fatal("la lista de ajustes dice que el método está activo y acaba de apagarse")
+			}
+		}
+	}
+	if !encontrado {
+		t.Fatalf("«Efectivo» desapareció de la lista de ajustes (%d métodos): no hay forma de volver a encenderlo", len(todos))
+	}
+}
+
+// UNA EMPRESA NUEVA TIENE QUE PODER NACER, Y SUS MÉTODOS QUEDAR COHERENTES.
+//
+// Lo encontró el `check` de la 0067 al sembrar la segunda empresa de los tests de aislamiento:
+// `SeedBasePaymentMethods` insertaba «Efectivo» con `affects_cash_drawer` y sin `is_cash`, que la
+// columna nueva deja en falso — y la restricción, con razón, lo rechazaba. Con eso puesto, **crear
+// una empresa nueva fallaba**, que es justo el camino por el que este producto se vende a otro
+// negocio.
+//
+// El test afirma las dos cosas: que la empresa se crea y que sus métodos nacen con la forma que el
+// arqueo espera, en vez de solo comprobar que no truene.
+func TestUnaEmpresaNuevaNaceConSusMetodosCoherentes(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	otra := makeCompany(t, st, "nueva-para-cobrar")
+
+	filas, err := st.Pool.Query(ctx,
+		`select name, kind, is_cash, affects_cash_drawer, auto_declare
+		   from payment_methods where company_id = $1 order by sort_key`, otra)
+	if err != nil {
+		t.Fatalf("leer los métodos de la empresa nueva: %v", err)
+	}
+	defer filas.Close()
+
+	var cuantos, enBilletes int
+	for filas.Next() {
+		var nombre, tipo string
+		var esEfectivo, alCajon, automatico bool
+		if err := filas.Scan(&nombre, &tipo, &esEfectivo, &alCajon, &automatico); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		cuantos++
+		if esEfectivo {
+			enBilletes++
+			if !alCajon {
+				t.Errorf("«%s» se cobra en billetes y no entra al cajón: el fondo de apertura se quedaría sin dueño", nombre)
+			}
+			if automatico {
+				t.Errorf("«%s» nace auto-declarado siendo efectivo: un faltante nunca aparecería", nombre)
+			}
+		} else if alCajon {
+			t.Errorf("«%s» entra al cajón sin cobrarse en billetes", nombre)
+		}
+	}
+	if cuantos == 0 {
+		t.Fatal("la empresa nueva nació sin métodos de cobro: no podría cobrar nada")
+	}
+	if enBilletes != 1 {
+		t.Fatalf("la empresa nueva nació con %d métodos de efectivo y tiene que ser exactamente uno: el fondo se sumaría una vez por cada uno", enBilletes)
+	}
+}

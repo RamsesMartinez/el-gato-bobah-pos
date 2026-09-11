@@ -118,19 +118,33 @@ func TestMetodosDelCajon(t *testing.T) {
 // sentido: los billetes que el cliente pone en el mostrador están en el cajón por definición.
 // Apagarlo dejaría el fondo de apertura y los movimientos de caja fuera del esperado, y el arqueo
 // se compararía contra una cifra que no incluye el dinero con el que abrió el turno.
-func TestElEfectivoDelMostradorNoSaleDelCajon(t *testing.T) {
-	if err := FlagDeCajonValido(true, false); !errors.Is(err, ErrValidation) {
-		t.Fatalf("sacar del cajón el efectivo del mostrador dio %v y tiene que ser ErrValidation", err)
+func TestFlagsDelMetodoValidos(t *testing.T) {
+	casos := []struct {
+		nombre                                           string
+		efectivo, delMostrador, tocaElCajon, autoDeclara bool
+		quiere                                           error
+	}{
+		{"el efectivo del mostrador dentro del cajón es lo normal", true, true, true, false, nil},
+		{"sacar del cajón el efectivo del mostrador", true, true, false, false, ErrEfectivoFueraDelCajon},
+		// El reparto de una app en efectivo lo hace a veces gente del local y a veces el repartidor
+		// de la plataforma, que se lo lleva: los dos valores son configuración legítima.
+		{"efectivo de app que entra al cajón", true, false, true, false, nil},
+		{"efectivo de app que se lleva el repartidor", true, false, false, false, nil},
+		{"la tarjeta no entra al cajón", false, false, true, false, ErrCajonSinEfectivo},
+		{"la tarjeta se auto-declara sin problema", false, false, false, true, nil},
+		{"auto-declarar el efectivo del cajón", true, true, true, true, ErrEfectivoAutoDeclarado},
+		// EL BYPASS DE UN REQUEST: sacarlo del cajón no lo deja de hacer efectivo, y el efectivo
+		// que alguien contó con la mano no se declara solo.
+		{"sacarlo del cajón y auto-declararlo a la vez", true, false, false, true, ErrEfectivoAutoDeclarado},
 	}
-	if err := FlagDeCajonValido(true, true); err != nil {
-		t.Fatalf("el efectivo del mostrador dentro del cajón es lo normal: %v", err)
-	}
-	// Los demás sí se configuran: el reparto de una app en efectivo lo hace a veces gente del local
-	// y a veces el repartidor de la plataforma, que se lo lleva.
-	for _, toca := range []bool{true, false} {
-		if err := FlagDeCajonValido(false, toca); err != nil {
-			t.Fatalf("un método que no es el efectivo del mostrador se configura libre: %v", err)
-		}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			err := FlagsDelMetodoValidos(c.efectivo, c.delMostrador, c.tocaElCajon, c.autoDeclara)
+			if !errors.Is(err, c.quiere) {
+				t.Fatalf("FlagsDelMetodoValidos(%v, %v, %v, %v) = %v, quiere %v",
+					c.efectivo, c.delMostrador, c.tocaElCajon, c.autoDeclara, err, c.quiere)
+			}
+		})
 	}
 }
 

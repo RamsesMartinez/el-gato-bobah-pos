@@ -73,15 +73,35 @@ func MetodosDelCajon(metodos []MetodoDelCorte) []int {
 	return out
 }
 
-// FlagDeCajonValido rechaza la única combinación imposible del interruptor.
+// ErrCajonSinEfectivo: un método que no se cobra en billetes no puede entrar al cajón.
+var ErrCajonSinEfectivo = fmt.Errorf("%w: ese método no se cobra en efectivo, así que su dinero no está en el cajón", ErrValidation)
+
+// ErrEfectivoAutoDeclarado: el efectivo no se auto-declara, caiga donde caiga.
+var ErrEfectivoAutoDeclarado = fmt.Errorf("%w: el efectivo se declara contándolo; auto-declararlo haría que un faltante nunca aparezca", ErrValidation)
+
+// FlagsDelMetodoValidos rechaza las combinaciones imposibles de los tres interruptores.
 //
-// `esEfectivoDelMostrador` lo resuelve quien llama comparando el `kind` del método: el dominio no
-// conoce los tipos generados de la base, y esa distinción entre "el dueño del fondo" y "su dinero se
-// cuenta" ya costó una vez — sumar el fondo a los cuatro métodos que tocan el cajón le inventó
-// $4,500 de faltante a un turno.
-func FlagDeCajonValido(esEfectivoDelMostrador, tocaElCajon bool) error {
+// Las tres reglas miran cosas distintas y por eso son tres parámetros y no dos:
+//
+//   - `esEfectivo` es una propiedad del método: se cobra en billetes. La resuelve quien llama
+//     leyendo `is_cash`, que existe precisamente porque antes esto se deducía de «va al cajón» y
+//     sobrecargar un interruptor con dos significados dejaba un bypass de un request: apagar el
+//     cajón y encender «automático» en el mismo PATCH pasaba la validación, y el método quedaba
+//     indistinguible de uno en línea con sus billetes entrando sin que nadie los contara.
+//   - `esEfectivoDelMostrador` es el dueño del fondo de apertura y de los movimientos de caja; su
+//     dinero está en el cajón por definición. Esa distinción entre "el dueño del fondo" y "su
+//     dinero se cuenta" ya costó una vez: sumar el fondo a los cuatro métodos que tocan el cajón
+//     le inventó $4,500 de faltante a un turno.
+//   - `tocaElCajon` y `autoDeclara` son lo configurable.
+func FlagsDelMetodoValidos(esEfectivo, esEfectivoDelMostrador, tocaElCajon, autoDeclara bool) error {
 	if esEfectivoDelMostrador && !tocaElCajon {
 		return ErrEfectivoFueraDelCajon
+	}
+	if tocaElCajon && !esEfectivo {
+		return ErrCajonSinEfectivo
+	}
+	if autoDeclara && esEfectivo {
+		return ErrEfectivoAutoDeclarado
 	}
 	return nil
 }
