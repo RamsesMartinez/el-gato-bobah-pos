@@ -126,6 +126,10 @@ export interface CashSession {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // El turno se está contando a ciegas: `breakdown` y `cashiers` vienen SIN las cifras de venta.
+  // Lo dice el servidor y no se deduce de que las listas vengan vacías — un turno sin ventas las
+  // trae vacías también, y la pantalla diría «Sin ingresos» sobre las dos.
+  blind?: boolean;
   // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
   // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
   pending: PendingOrder[];

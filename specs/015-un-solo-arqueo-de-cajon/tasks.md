@@ -288,6 +288,48 @@ y de validar la 015 contra las specs que toca.
 
 ---
 
+## Fase 8: lo que encontró la auditoría de seguridad (2026-09-10)
+
+El veredicto fue que **el arqueo ciego no era un control**: la misma respuesta que nulificaba el
+esperado traía con qué reconstruirlo exacto. Cada tarea con su test en rojo antes del arreglo.
+
+- [X] T040 Lo derivado del esperado tampoco viaja: `breakdown.ingresos`, `breakdown.plataformas` y
+      `cashiers[].cash`. Fondo + neto + ingresos de los métodos del cajón daban los $835 exactos, y
+      la pantalla los pinta ARRIBA de la tabla del cierre. Test:
+      `TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado`.
+- [X] T041 El ocultamiento pasa a vivir en un solo lugar (`vistaDelTurnoAbierto`): de los cuatro
+      caminos de lectura, dos se lo saltaban. Registrar un movimiento de un centavo —rol cajero—
+      devolvía el esperado completo. Test: `TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado`.
+- [X] T042 La pantalla deja de pintar el resumen del corte y el cobrado por cajero cuando el turno
+      va a ciegas, y lo dice: «Aparece al confirmar el cierre». El servidor manda la bandera
+      `blind` en vez de dejar que la pantalla lo deduzca de listas vacías — un turno sin ventas las
+      trae vacías también.
+- [X] T043 Marcador propio `is_cash`: sacar un método del cajón y auto-declararlo en el mismo PATCH
+      satisfacía la validación y lo dejaba indistinguible de uno en línea. `affects_cash_drawer`
+      dice dónde CAE el dinero, no si es efectivo, y sobrecargarlo dejaba un bypass de un request.
+      Tests: `TestFlagsDelMetodoValidos`, `TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza`,
+      `TestUnMetodoQueNoEsEfectivoNoEntraAlCajon`.
+- [X] T044 `GET /payment-methods/all` para la pantalla de ajustes: apagar un método lo borraba de la
+      pantalla que tiene su propio interruptor. Test: `TestUnMetodoApagadoSigueEnLaListaDeAjustes`.
+- [X] T045 `Number(null) === 0` vivo en `diferenciasDelCierre`: con el arqueo ciego pintaba la
+      cifra capturada entera como sobrante. Y el orden importa — lo que falta por capturar se
+      decide antes de mirar el esperado, o el cierre a ciegas se reporta completo en blanco.
+- [X] T046 El fail-open de `arqueoCiego` deja evento de seguridad (`blind_count_unavailable`): un
+      control antifraude que se apaga en silencio no se distingue de uno que nunca estuvo.
+- [X] T047 El e2e buscaba claves llamadas `expected` y la fuga viajaba en `amount`/`total`: ahora
+      reconstruye la cifra como lo haría quien la quiere. Era un test que pasaba por la razón
+      equivocada.
+- [X] T048 Documentar el control, su **alcance** y el renombre de la clave del evento en
+      [docs/security-owasp.md](../../docs/security-owasp.md); FR-019 y FR-020 en el spec.
+
+- [X] T049 `SeedBasePaymentMethods` no escribía `is_cash`, así que **crear una empresa nueva
+      fallaba** contra el `check` de la 0067. Lo encontró el propio check al sembrar la segunda
+      empresa de los tests de aislamiento — el camino por el que este producto se vende a otro
+      negocio. Test: `TestUnaEmpresaNuevaNaceConSusMetodosCoherentes`, que además afirma la forma
+      con la que nacen (uno solo de efectivo, en el cajón, sin auto-declarar).
+
+---
+
 ## Dependencias
 
 - **La Fase 2 bloquea todo.** Las dos piezas irreversibles —el esperado guardado y el snapshot del

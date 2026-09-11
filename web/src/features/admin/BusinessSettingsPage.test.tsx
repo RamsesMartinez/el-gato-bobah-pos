@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 
 const businessSettings = vi.hoisted(() => vi.fn());
 const paymentMethods = vi.hoisted(() => vi.fn());
+const allPaymentMethods = vi.hoisted(() => vi.fn());
 const updatePaymentMethod = vi.hoisted(() => vi.fn());
 const updateArqueoCiego = vi.hoisted(() => vi.fn());
 vi.mock('../../api/backoffice', () => ({ backofficeApi: { updatePaymentMethod } }));
@@ -15,6 +16,7 @@ vi.mock('../../api/pos', () => ({
   posApi: {
     businessSettings,
     paymentMethods,
+    allPaymentMethods,
     updateCorteDeVista,
     updateTimezone,
     updateArqueoCiego,
@@ -45,15 +47,20 @@ function pinta(nodo: ReactNode) {
   );
 }
 
+// `isCash` decide qué interruptores tienen sentido: lo que se cobra en billetes puede entrar al
+// cajón y NO puede auto-declararse; lo demás, al revés. «Rappi efectivo» va apagado a propósito —
+// la lista de ajustes tiene que traerlo o no habría desde dónde volver a encenderlo.
 const metodos = [
-  { id: 1, name: 'Efectivo', kind: 'efectivo', affectsCashDrawer: true, autoDeclare: false, isActive: true, deliveryPlatformId: null },
-  { id: 8, name: 'Didi efectivo', kind: 'plataforma', affectsCashDrawer: true, autoDeclare: false, isActive: true, deliveryPlatformId: 1 },
-  { id: 2, name: 'Tarjeta débito', kind: 'tarjeta', affectsCashDrawer: false, autoDeclare: true, isActive: true, deliveryPlatformId: null },
+  { id: 1, name: 'Efectivo', kind: 'efectivo', isCash: true, affectsCashDrawer: true, autoDeclare: false, isActive: true, deliveryPlatformId: null },
+  { id: 8, name: 'Didi efectivo', kind: 'plataforma', isCash: true, affectsCashDrawer: true, autoDeclare: false, isActive: true, deliveryPlatformId: 1 },
+  { id: 10, name: 'Rappi efectivo', kind: 'plataforma', isCash: true, affectsCashDrawer: false, autoDeclare: false, isActive: false, deliveryPlatformId: 3 },
+  { id: 2, name: 'Tarjeta débito', kind: 'tarjeta', isCash: false, affectsCashDrawer: false, autoDeclare: true, isActive: true, deliveryPlatformId: null },
 ];
 
 beforeEach(() => {
   businessSettings.mockResolvedValue(ajustes);
-  paymentMethods.mockResolvedValue({ items: metodos });
+  paymentMethods.mockResolvedValue({ items: metodos.filter((m) => m.isActive) });
+  allPaymentMethods.mockResolvedValue({ items: metodos });
   updatePaymentMethod.mockResolvedValue(metodos[0]);
   updateArqueoCiego.mockResolvedValue(ajustes);
 });
@@ -99,11 +106,28 @@ describe('los métodos de cobro', () => {
     // Las etiquetas viven UNA vez, en el encabezado: en 520 px de ancho no caben repetidas por
     // renglón, que es lo que el plan daba por bueno midiendo contra 1024.
     expect(screen.getByRole('columnheader', { name: 'Va al cajón' })).toBeInTheDocument();
+    // «Activo» lo tienen todos; los otros dos dependen de si el método se cobra en billetes, y por
+    // eso no se pinta un interruptor que el servidor va a rechazar.
     for (const nombre of ['Efectivo', 'Didi efectivo', 'Tarjeta débito']) {
       expect(screen.getByLabelText(`${nombre} activo`)).toBeInTheDocument();
-      expect(screen.getByLabelText(`${nombre} va al cajón`)).toBeInTheDocument();
-      expect(screen.getByLabelText(`${nombre} automático`)).toBeInTheDocument();
     }
+    for (const nombre of ['Efectivo', 'Didi efectivo']) {
+      expect(screen.getByLabelText(`${nombre} va al cajón`)).toBeInTheDocument();
+      expect(screen.queryByLabelText(`${nombre} automático`)).toBeNull();
+    }
+    expect(screen.queryByLabelText('Tarjeta débito va al cajón')).toBeNull();
+    expect(screen.getByLabelText('Tarjeta débito automático')).toBeInTheDocument();
+  });
+
+  // APAGAR UN MÉTODO NO PUEDE BORRARLO DE ESTA PANTALLA.
+  //
+  // Era una puerta de un solo sentido: la tabla se pintaba con la lista que ofrece el POS para
+  // cobrar, que filtra los apagados, así que el renglón desaparecía junto con su propio
+  // interruptor y no quedaba camino para volver a encenderlo.
+  test('un método apagado sigue en la tabla, con su interruptor en falso', async () => {
+    pinta(<BusinessSettingsPage />);
+    await screen.findByText('Métodos de cobro');
+    expect(screen.getByLabelText('Rappi efectivo activo')).not.toBeChecked();
   });
 
   // EL CASO QUE IMPORTA: apagar uno NO puede tocar los otros dos.

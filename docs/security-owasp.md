@@ -92,6 +92,44 @@ El negocio confirmó que sí hay devoluciones. Flujo dedicado (no reutiliza canc
   UI en el tablero (sección "Entregadas hoy", solo admin/gerente).
 - Verificado end-to-end con tests de integración contra Postgres real.
 
+## El arqueo ciego — control antifraude (spec 015, 2026-09-10)
+
+El negocio puede encender **«Contar sin ver lo esperado»** (`business_settings.blind_cash_count`):
+quien cuenta el cajón no ve la cifra contra la que se va a comparar, y la diferencia aparece al
+confirmar el cierre. Protege contra que alguien acomode lo que declara para que cuadre.
+
+**Qué se nulifica, dónde y por qué ahí.** Lo que la pantalla no debe mostrar **no se le manda**:
+ocultarlo en el cliente dejaría la cifra en la respuesta, legible con las herramientas del
+navegador. Vive en `app.vistaDelTurnoAbierto`, que es el único camino por el que una pantalla
+recibe un turno abierto, y no en cada llamador — lo era, y de los cuatro caminos dos se lo saltaban:
+registrar un movimiento de caja, abierto a rol cajero, devolvía el esperado completo, así que una
+entrada de un centavo alcanzaba para leerlo.
+
+**Nulificar `expected` no basta, y creerlo es lo que convierte el control en un adorno.** La misma
+respuesta llevaba el desglose por método y lo cobrado por cada cajero, y la pantalla los pintaba
+arriba de la tabla del cierre: fondo 500 + neto 0 + Ventas del mostrador 200 + Ventas de Didi
+efectivo 135 = **835**, que era exactamente el esperado oculto, sin abrir nada. Por eso se va todo
+lo que descompone la venta del turno (`breakdown.ingresos`, `breakdown.plataformas`,
+`cashiers[].cash/other`) y se queda lo que el propio operador registró y ya conoce: el fondo con el
+que abrió y sus movimientos.
+
+| Qué | Dónde | Test |
+|---|---|---|
+| Nulificado en un solo lugar, para los cuatro caminos de lectura | `app.vistaDelTurnoAbierto`, `app.ocultarLoEsperado` | `TestConArqueoCiegoElEsperadoNoViaja`, `TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado` |
+| Lo derivado tampoco reconstruye la cifra | idem | `TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado`, `arqueo-ciego.spec.ts` › B1 |
+| Sin esperado, el servidor sigue diciendo qué falta capturar | `MethodTotal.RequiresEntry`, `ArqueoDelCajonView.RequiresCount` | `TestConArqueoCiegoElServidorSigueDiciendoQueFalta`, › B2 |
+| El fail-open se registra | `app.arqueoCiego` → `blind_count_unavailable` | — |
+
+**Alcance declarado, porque un control cuyo límite no está escrito se cree más grande de lo que
+es**: ata a quien **cuenta** el cajón. Un rol de administración llega a las mismas cifras por
+`GET /sales/summary`, que es su trabajo. Si algún día tiene que atar también a administración, eso
+es una feature nueva y no un ajuste de ésta.
+
+**Clave de evento renombrada**: `payment_method_auto_declare_changed` → `payment_method_changed`,
+porque el endpoint dejó de escribir un solo interruptor. Queda anotado aquí porque la clave estable
+es requisito y una alerta sobre la vieja dejaría de coincidir en silencio. El evento lleva ids y
+booleanos, cero PII.
+
 ## Testing de integración (Postgres efímero)
 
 Suite `internal/integration` (build tag `integration`) contra un Postgres real —cubre lo que

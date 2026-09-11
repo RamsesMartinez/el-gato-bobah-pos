@@ -55,6 +55,30 @@ function cifrasEsperadas(valor: unknown, encontradas: unknown[] = []): unknown[]
   return encontradas;
 }
 
+// reconstruible: la suma con la que se llega al esperado SIN leer ninguna clave llamada `expected`.
+//
+// Buscar esa palabra no alcanzaba, y creer que sí es lo que dejó pasar el hallazgo: la fuga viajaba
+// en claves `amount` y `total`, dentro del desglose por método que la pantalla pinta arriba de la
+// tabla del cierre. Fondo + neto + los ingresos de los métodos del cajón = el esperado exacto.
+type TurnoAbierto = {
+  openingCash: string; netMovements: string;
+  drawer: { methodIds: number[] } | null;
+  totals: Array<{ methodId: number; name: string }>;
+  breakdown?: { ingresos?: Array<{ method: string; total: string }> };
+  cashiers?: Array<{ cash: string }>;
+};
+function reconstruible(s: TurnoAbierto): { porDesglose: number; porCajero: number } {
+  const base = Number(s.openingCash) + Number(s.netMovements);
+  const delCajon = new Set((s.drawer?.methodIds ?? [])
+    .map((id) => s.totals.find((t) => t.methodId === id)?.name)
+    .filter(Boolean) as string[]);
+  const porDesglose = (s.breakdown?.ingresos ?? [])
+    .filter((i) => delCajon.has(i.method))
+    .reduce((suma, i) => suma + Number(i.total), base);
+  const porCajero = (s.cashiers ?? []).reduce((suma, c) => suma + Number(c.cash), base);
+  return { porDesglose, porCajero };
+}
+
 // esperadoDelCajon: cuánto espera el cajón de la caja que está vendiendo, leído CON EL CIEGO
 // APAGADO. Un cajón que no espera nada no obliga a contar —es el mismo criterio con el que un
 // método sin movimiento no pide cifra—, así que sin esto el caso del botón bloqueado se prueba
@@ -79,6 +103,9 @@ test.beforeEach(async () => { comoEstaba = await ponerElCiego(false); });
 test.afterEach(async () => { await ponerElCiego(comoEstaba); });
 
 test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esperado, y la respuesta tampoco trae la cifra', async ({ page }) => {
+  // Se lee ANTES de encender el ciego: es la cifra contra la que se comprueba que nada la
+  // reconstruya después. Con el ciego ya puesto no habría contra qué comparar.
+  const esperado = await esperadoDelCajon();
   await ponerElCiego(true);
   const respuestas: unknown[] = [];
   page.on('response', async (r) => {
@@ -103,6 +130,22 @@ test('B1 · con el arqueo ciego la pantalla del cierre no tiene columna de esper
   expect(respuestas.length, 'no se observó ninguna respuesta de /cash-sessions').toBeGreaterThan(0);
   const filtradas = respuestas.flatMap((r) => cifrasEsperadas(r));
   expect(filtradas, `el servidor mandó ${filtradas.length} cifras esperadas con el arqueo ciego encendido`).toEqual([]);
+
+  // Y LO DERIVADO TAMPOCO: ninguna de las dos sumas puede alcanzar la cifra oculta.
+  if (esperado !== null && esperado > 0) {
+    const abierto = respuestas.find((r) => (r as TurnoAbierto).drawer !== undefined) as TurnoAbierto | undefined;
+    expect(abierto, 'no se observó la vista del turno abierto').toBeTruthy();
+    const { porDesglose, porCajero } = reconstruible(abierto!);
+    expect(Math.abs(porDesglose - esperado),
+      `el desglose reconstruye el esperado (${porDesglose}): quien cuenta lo lee en pantalla sin abrir nada`)
+      .toBeGreaterThan(0.005);
+    expect(Math.abs(porCajero - esperado),
+      `lo cobrado por cajero reconstruye el esperado (${porCajero})`)
+      .toBeGreaterThan(0.005);
+  }
+
+  // En pantalla, el resumen del corte tampoco se pinta.
+  await expect(page.getByText('Aparece al confirmar el cierre, junto con la diferencia.')).toBeVisible();
 });
 
 test('B2 · y el botón de cerrar sigue bloqueado mientras no se cuente el cajón', async ({ page }) => {

@@ -716,8 +716,18 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Stat.Root>
           </SimpleGrid>
 
+          {/* CONTANDO A CIEGAS NO SE PINTA EL RESUMEN, y no basta con que venga vacío: el
+              desglose por método más el fondo y el neto reconstruyen el esperado exacto sumando
+              cuatro renglones contiguos, que es justo lo que el ajuste viene a esconder. Se dice
+              cuándo vuelve, para que no se lea como una pantalla rota. */}
           <Section title="Resumen del corte">
-            <IngresosEgresosCard openingCash={session.openingCash} breakdown={session.breakdown} currency={session.currency} />
+            {session.blind ? (
+              <Text fontSize="sm" color="fg.muted">
+                Aparece al confirmar el cierre, junto con la diferencia.
+              </Text>
+            ) : (
+              <IngresosEgresosCard openingCash={session.openingCash} breakdown={session.breakdown} currency={session.currency} />
+            )}
           </Section>
 
           <MovementsPanel session={session} />
@@ -750,7 +760,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Quién cobró qué. Con dos estaciones contra el mismo cajón, es lo único que separa la
               responsabilidad: partir la caja daría dos arqueos contando el mismo dinero. Solo se
               pinta si hubo más de una persona — con una sola, repite el total de arriba. */}
-          {session.cashiers.length > 1 && (
+          {/* Con el arqueo ciego tampoco: lo cobrado en efectivo por cada persona suma lo mismo
+              que el desglose por método. */}
+          {!session.blind && session.cashiers.length > 1 && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
               <Text fontWeight="700" mb={2}>Cobrado por</Text>
               <Table.Root size="sm">

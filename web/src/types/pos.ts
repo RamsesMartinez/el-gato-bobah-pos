@@ -85,6 +85,9 @@ export interface PaymentMethod {
   affectsCashDrawer: boolean;
   autoDeclare: boolean;
   isActive: boolean;
+  // Se cobra en billetes. Es propiedad del método, no configuración: lo que el negocio decide es si
+  // ese efectivo llega a su cajón. Solo viaja en la lista de ajustes.
+  isCash?: boolean;
   // A qué plataforma pertenece, o null si no es de plataforma. Deja filtrar los métodos de la
   // lista activa sin compararlos por nombre.
   deliveryPlatformId: number | null;

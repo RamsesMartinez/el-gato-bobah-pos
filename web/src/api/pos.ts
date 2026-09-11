@@ -78,6 +78,9 @@ export const posApi = {
   // estática dentro de un despliegue, así que se pide una vez por carga, no por cuenta.
   folioNames: () => api.get<{ items: string[] }>('/pos/folio-names'),
   paymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods'),
+  // La lista de AJUSTES trae también los apagados. Con la filtrada, apagar un método lo borraba de
+  // la pantalla que tiene su propio interruptor y no quedaba forma de volver a encenderlo.
+  allPaymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods/all'),
 
   createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
   activeOrders: () => api.get<{ items: BoardOrder[] }>('/orders'),
