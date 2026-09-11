@@ -8,7 +8,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -16,7 +16,8 @@ import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
 import {
-  faltanPorContar, diferenciasDelCierre, KIND_EFECTIVO, type DiferenciasDelCierre,
+  faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
+  type DiferenciasDelCierre,
 } from './cierreDeCaja';
 import { Page } from '../../components/Page';
 import { useSessionStore } from '../../stores/session';
@@ -26,7 +27,7 @@ import { DEFAULT_TIMEZONE } from '../../utils/zonaPorDefecto';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogCloseTrigger,
 } from '../../components/ui/dialog';
-import { montoTecleado } from '../../domain/numeros';
+import { montoTecleado, round2 } from '../../domain/numeros';
 import { mensajeDeError } from '../../api/mensajes';
 
 // Cuántas ventas trae cada "Ver más". El mismo tamaño de página que el resto de las listas: pedir
@@ -73,7 +74,7 @@ export function TotalsTable({ totals, currency, withTotalRow }: { totals: Method
           {totals.map((t) => (
             <Table.Row key={t.methodId}>
               <Table.Cell>{t.name}</Table.Cell>
-              <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{montoOSinDato(t.expected, currency)}</Table.Cell>
               <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
               <Table.Cell textAlign="end" color={diffColor(t.difference)} fontWeight="600">{money(t.difference, currency)}</Table.Cell>
             </Table.Row>
@@ -81,7 +82,7 @@ export function TotalsTable({ totals, currency, withTotalRow }: { totals: Method
           {withTotalRow && (
             <Table.Row fontWeight="700">
               <Table.Cell>Total</Table.Cell>
-              <Table.Cell textAlign="end">{money(sum((t) => t.expected), currency)}</Table.Cell>
+              <Table.Cell textAlign="end">{money(sum((t) => t.expected ?? '0'), currency)}</Table.Cell>
               <Table.Cell textAlign="end">{money(sum((t) => t.declared), currency)}</Table.Cell>
               <Table.Cell textAlign="end" color={diffColor(String(diffTotal))}>{money(diffTotal, currency)}</Table.Cell>
             </Table.Row>
@@ -254,6 +255,7 @@ interface CorteData {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   counts?: ConteosDelTurno | null;
+  drawer?: ArqueoDelCajon | null;
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -271,6 +273,7 @@ function CorteSummary({ data }: { data: CorteData }) {
           <TotalsTable totals={totals} currency={cur} withTotalRow />
         </Section>
       )}
+      <ArqueoDelCorte drawer={data.drawer} currency={cur} />
       <DesgloseDelConteo counts={data.counts} currency={cur} />
       <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
         <MovementsTable movements={movements} currency={cur} zona={horaNegocio.zona} />
@@ -363,6 +366,37 @@ function RegistersTab() {
   );
 }
 
+// ArqueoDelCorte: lo que el cajón debía tener, lo que se contó y la diferencia — una sola.
+//
+// Sin esto, un corte cerrado con faltante se ve CUADRADO: desde la spec 015 los métodos que
+// comparten el cajón guardan su declarado igual a su esperado, así que la tabla por método reporta
+// cero en todos y el faltante vive solo aquí. Es la pantalla donde alguien audita.
+//
+// Nil = corte anterior a la 015, o una caja que no maneja efectivo. No se pinta nada y no se
+// inventa un cero.
+export function ArqueoDelCorte({ drawer, currency }: {
+  drawer?: ArqueoDelCajon | null; currency: string;
+}) {
+  if (!drawer || drawer.counted === null) return null;
+  const dif = drawer.difference;
+  return (
+    <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel">
+      <Text fontWeight="700" mb={2}>Arqueo del cajón</Text>
+      <SimpleGrid columns={3} gap={2} fontSize="sm">
+        <Text color="fg.muted">Esperado</Text>
+        <Text color="fg.muted">Contado</Text>
+        <Text color="fg.muted">Diferencia</Text>
+        <Text aria-label="Esperado del cajón">{montoOSinDato(drawer.expected, currency)}</Text>
+        <Text aria-label="Contado del cajón" fontWeight="600">{money(drawer.counted, currency)}</Text>
+        <Text aria-label="Diferencia del arqueo del corte" fontWeight="700"
+          color={dif === null ? 'fg.muted' : diffColor(dif)}>
+          {montoOSinDato(dif, currency)}
+        </Text>
+      </SimpleGrid>
+    </Box>
+  );
+}
+
 // DesgloseDelConteo: cuántas piezas de cada denominación se declararon, o por qué no se contó.
 //
 // Es la razón de guardar el desglose (US3): un corte con faltante y sin él es un número sin
@@ -423,22 +457,41 @@ function etiquetaDeDenominacion(value: string, currency: string): string {
   return n < 1 ? `${Math.round(n * 100)}¢` : money(n, currency);
 }
 
-// TablaDelCierre: qué se espera, qué se declaró y CUÁNTO FALTA, por método.
+// montoOSinDato: un importe que puede no viajar.
 //
-// La columna de diferencia no existía en el cierre en vivo —solo en el diálogo posterior, cuando el
-// turno ya está cerrado— así que el operador firmaba y después se enteraba. Es FR-005.
+// Con el arqueo ciego encendido el esperado llega en null —lo que la pantalla no debe mostrar no se
+// le manda— y una raya es lo honesto. Pintar un cero diría que no se espera nada.
+function montoOSinDato(v: string | null, currency: string): string {
+  return v === null ? '—' : money(v, currency);
+}
+
+// TablaDelCierre: qué se espera, qué se declaró y CUÁNTO FALTA (spec 015).
 //
-// El efectivo no lleva campo de texto: lleva el botón que abre el contador. Es el único método que
-// está en el cajón, y teclear su total a mano es justo el paso que esta pantalla viene a quitar.
-export function TablaDelCierre({ totals, currency, declared, onDeclared, conteo, onContar, diferencias }: {
+// EL CAJÓN ES UN RENGLÓN, NO CUATRO. Los métodos cuyo dinero cae en el mismo montón de billetes
+// —el efectivo del mostrador y los de plataforma en efectivo— se siguen listando porque el corte
+// informa por canal, pero sin campo y sin diferencia propia: un turno real quedó con «Efectivo» en
+// $0.00 y «Didi efectivo» en −$64.80, dos diferencias del mismo dinero, y nadie podía saber cuál
+// era el faltante real.
+//
+// El tercer estado de la columna «Declarado» dice **«Va al cajón»** y NO reusa «Automático»: un
+// método auto-declarado lo resuelve el servidor, y uno de cajón se cuenta físicamente. Confundirlos
+// es la clase de ambigüedad que ya costó $4,500.
+export function TablaDelCierre({ totals, currency, declared, onDeclared, cajon, conteo, onContar, diferencias }: {
   totals: MethodTotal[];
   currency: string;
   declared: Record<string, string>;
   onDeclared: (d: Record<string, string>) => void;
+  cajon: ArqueoDelCajon | null;
   conteo: ResultadoDelConteo | null;
   onContar: () => void;
   diferencias: DiferenciasDelCierre;
 }) {
+  const delCajon = new Set(cajon?.methodIds ?? []);
+  const difCajon = diferenciaDelCajon(cajon, conteo);
+  // ARQUEO CIEGO: si el servidor no mandó ningún esperado, la columna entera sobra. No es solo que
+  // no haya cifras — a 1024×600 el ancho que libera se lo devuelve a lo que el operador vino a
+  // leer, y una columna de rayas invita a preguntarse qué se rompió.
+  const seVeElEsperado = totals.some((t) => t.expected !== null) || (cajon?.expected ?? null) !== null;
   return (
     <Box>
       <Text fontWeight="700" mb={2}>Cierre — declarado por método</Text>
@@ -446,24 +499,44 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, conteo,
         <Table.Root size="sm">
           <Table.Header><Table.Row>
             <Table.ColumnHeader>Método</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+            {seVeElEsperado && <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>}
             <Table.ColumnHeader>Declarado</Table.ColumnHeader>
             <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
           </Table.Row></Table.Header>
           <Table.Body>
+            {/* EL CAJÓN, PRIMERO Y UNA SOLA VEZ: es lo que el operador tiene enfrente. */}
+            {cajon && (
+              <Table.Row bg="bg.subtle">
+                <Table.Cell fontWeight="700">Cajón</Table.Cell>
+                {seVeElEsperado && (
+                  <Table.Cell textAlign="end" fontWeight="700">{montoOSinDato(cajon.expected, currency)}</Table.Cell>
+                )}
+                <Table.Cell>
+                  <Button size="sm" minH="44px" variant={conteo ? 'outline' : 'solid'} onClick={onContar}>
+                    {conteo ? money(conteo.total, currency) : 'Contar efectivo'}
+                  </Button>
+                </Table.Cell>
+                <Table.Cell textAlign="end" color={difCajon === undefined ? 'fg.muted' : diffColor(String(difCajon))}
+                  fontWeight="700" aria-label="Diferencia del cajón">
+                  {difCajon === undefined ? '—' : money(difCajon, currency)}
+                </Table.Cell>
+              </Table.Row>
+            )}
             {totals.map((t) => {
               const dif = diferencias.porMetodo[t.methodId];
+              const enElCajon = delCajon.has(t.methodId);
               return (
                 <Table.Row key={t.methodId}>
-                  <Table.Cell>{t.name}</Table.Cell>
-                  <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
+                  <Table.Cell color={enElCajon ? 'fg.muted' : undefined}>{t.name}</Table.Cell>
+                  {seVeElEsperado && (
+                    <Table.Cell textAlign="end">{montoOSinDato(t.expected, currency)}</Table.Cell>
+                  )}
                   <Table.Cell>
-                    {t.autoDeclare ? (
+                    {enElCajon ? (
+                      // Ni campo ni botón: su dinero ya se contó arriba, con el cajón entero.
+                      <Text fontSize="sm" color="fg.muted">Va al cajón</Text>
+                    ) : t.autoDeclare ? (
                       <Text fontSize="sm" color="fg.muted">Automático</Text>
-                    ) : t.kind === KIND_EFECTIVO ? (
-                      <Button size="sm" minH="44px" variant={conteo ? 'outline' : 'solid'} onClick={onContar}>
-                        {conteo ? money(conteo.total, currency) : 'Contar efectivo'}
-                      </Button>
                     ) : (
                       <Input size="sm" minH="44px" w="130px" inputMode="decimal" placeholder="0"
                         aria-label={`Declarado de ${t.name}`}
@@ -489,21 +562,29 @@ export function TablaDelCierre({ totals, currency, declared, onDeclared, conteo,
 //
 // Va junto al botón de cerrar y con el mismo peso visual que el aviso de "falta por contar": las dos
 // cosas deciden si el operador debe tocar el botón o volver a contar.
-export function DiferenciaDelCierre({ diferencias, currency }: {
-  diferencias: DiferenciasDelCierre; currency: string;
+export function DiferenciaDelCierre({ diferencias, cajon, conteo, currency }: {
+  diferencias: DiferenciasDelCierre;
+  cajon: ArqueoDelCajon | null;
+  conteo: ResultadoDelConteo | null;
+  currency: string;
 }) {
   // Mientras falte capturar algo, la cifra sería parcial. Un número que se lee como el resultado del
   // arqueo sin serlo manda a buscar dinero que sí está: el aviso de lo que falta ya está arriba.
   if (!diferencias.completo) return null;
-  const cuadra = Math.abs(diferencias.total) < 0.005;
+  const difCajon = diferenciaDelCajon(cajon, conteo);
+  // Con el cajón sin contar —o con el arqueo ciego, donde el esperado no viaja— no hay total que
+  // mostrar. Sumar cero por el cajón diría que cuadra, y eso nadie lo comprobó.
+  if (cajon !== null && difCajon === undefined) return null;
+  const total = round2(diferencias.total + (difCajon ?? 0));
+  const cuadra = Math.abs(total) < 0.005;
   return (
     <Box borderWidth="1px" borderRadius="lg" p={3} bg="bg.panel"
       borderColor={cuadra ? 'border' : 'red.400'}>
       <HStack justify="space-between" flexWrap="wrap" gap={2}>
-        <Text fontWeight="700">{cuadra ? 'El arqueo cuadra' : (diferencias.total < 0 ? 'Faltante' : 'Sobrante')}</Text>
-        <Text fontSize="xl" fontWeight="700" color={diffColor(String(diferencias.total))}
+        <Text fontWeight="700">{cuadra ? 'El arqueo cuadra' : (total < 0 ? 'Faltante' : 'Sobrante')}</Text>
+        <Text fontSize="xl" fontWeight="700" color={diffColor(String(total))}
           aria-label="Diferencia del arqueo">
-          {money(diferencias.total, currency)}
+          {money(total, currency)}
         </Text>
       </HStack>
     </Box>
@@ -532,21 +613,20 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   // El conteo del cajón para ESTE cierre, tal como lo entregó la hoja. Vive aquí y no en `declared`
   // porque no es una cifra tecleada: es el arqueo, con sus renglones o con su motivo.
   const [conteoDelCierre, setConteoDelCierre] = useState<ResultadoDelConteo | null>(null);
-  const efectivo = (session?.totals ?? []).find((t) => t.kind === KIND_EFECTIVO);
-  // Lo que todavía no se cuenta. La regla vive fuera del componente y con test propio: es la que
-  // evita registrar un faltante inventado, y ese fallo ya costó un corte con $1,662 de descuadre.
+  const cajon = session?.drawer ?? null;
+  // Lo que todavía falta capturar. Las dos reglas viven fuera del componente y con test propio:
+  // son las que evitan registrar un faltante inventado, y ese fallo ya costó un corte con $1,662.
   //
-  // El efectivo cuenta como capturado cuando hay conteo: su cifra ya no se teclea.
-  const capturado = { ...declared };
-  if (efectivo && conteoDelCierre) capturado[efectivo.methodId] = String(conteoDelCierre.total);
-  const porContar = faltanPorContar(session?.totals ?? [], capturado);
+  // QUIÉN EXIGE QUÉ LO DICE EL SERVIDOR (`requiresEntry`, `requiresCount`). Deducirlo de si el
+  // esperado es cero se rompe con el arqueo ciego, donde el esperado no viaja: `Number(null)` es 0
+  // y la pantalla concluiría que no falta nada.
+  const porContar = faltanPorContar(session?.totals ?? [], declared);
+  const faltaElCajon = faltaContarElCajon(cajon, conteoDelCierre);
   // La diferencia en vivo, con la MISMA cifra que se va a mandar: un resumen que se derive de otro
   // predicado que el cierre miente y quien lo lee no tiene cómo saber cuál de los dos.
   const declaradoPorMetodo: Record<number, number | undefined> = {};
   for (const t of session?.totals ?? []) {
-    declaradoPorMetodo[t.methodId] = t.kind === KIND_EFECTIVO && conteoDelCierre
-      ? conteoDelCierre.total
-      : montoTecleado(declared[t.methodId] ?? '');
+    declaradoPorMetodo[t.methodId] = montoTecleado(declared[t.methodId] ?? '');
   }
   const diferencias = diferenciasDelCierre(session?.totals ?? [], declaradoPorMetodo);
   const [notes, setNotes] = useState('');
@@ -561,22 +641,21 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   });
   const closeMut = useMutation({
     mutationFn: () => {
+      // `declared` lleva SOLO lo que no está en el cajón. Un método de cajón aquí lo rechaza el
+      // servidor nombrándolo, y llegar a ese rechazo con el cajón ya contado cuesta recontarlo.
+      const delCajon = new Set(cajon?.methodIds ?? []);
       const d: Record<string, number> = {};
       Object.entries(declared).forEach(([k, v]) => {
-        // El efectivo NO viaja en `declared` cuando se contó: mandar las dos cifras del mismo dinero
-        // lo rechaza el servidor (FR-015), y llegar a ese rechazo con el cajón contado cuesta
-        // recontarlo.
-        if (efectivo && conteoDelCierre && Number(k) === efectivo.methodId) return;
+        if (delCajon.has(Number(k))) return;
         d[k] = montoTecleado(v) ?? 0;
       });
-      const conteo = conteoDelCierre !== null && 'counts' in conteoDelCierre ? conteoDelCierre : null;
-      if (efectivo && conteoDelCierre && conteo === null) {
-        d[efectivo.methodId] = conteoDelCierre.total; // el camino manual: la cifra va con su motivo
-      }
+      const porPiezas = conteoDelCierre !== null && 'counts' in conteoDelCierre ? conteoDelCierre : null;
+      const aMano = conteoDelCierre !== null && !('counts' in conteoDelCierre) ? conteoDelCierre : null;
       return backofficeApi.cashClose(register.id, d, {
-        counts: conteo?.counts,
-        manualReason: conteoDelCierre !== null && !('counts' in conteoDelCierre)
-          ? conteoDelCierre.manualReason : undefined,
+        counts: porPiezas?.counts,
+        // El camino manual del cajón va en su propio campo, como `openingCash` en la apertura.
+        countedCash: aMano?.total,
+        manualReason: aMano?.manualReason,
         notes: notes || undefined,
       });
     },
@@ -651,7 +730,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
           <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
             declared={declared} onDeclared={setDeclared}
-            conteo={conteoDelCierre} onContar={() => setContando(true)}
+            cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
             diferencias={diferencias} />
 
           <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
@@ -660,10 +739,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
               que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
-          {porContar.length > 0 && (
+          {(porContar.length > 0 || faltaElCajon) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
               <Text fontSize="sm" fontWeight="600">
-                Falta capturar lo contado en: {porContar.map((m) => m.name).join(', ')}
+                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name)].join(', ')}
               </Text>
             </Box>
           )}
@@ -739,10 +818,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
-          <DiferenciaDelCierre diferencias={diferencias} currency={session.currency} />
+          <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
+            currency={session.currency} />
 
           <Button colorPalette="red" size="lg" loading={closeMut.isPending}
-            disabled={porContar.length > 0 || session.pending.length > 0}
+            disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0}
             onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
             Cerrar caja
           </Button>
