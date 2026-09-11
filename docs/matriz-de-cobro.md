@@ -268,6 +268,15 @@ Es la misma clase de defecto que el fondo de caja contado una vez por método.
 | I19 | Dos métodos de tipo efectivo en una empresa | Imposible por índice único parcial. Con dos, el fondo se sumaría a los dos renglones — el defecto que le inventó $4,500 de faltante a un turno | `payment_methods_un_efectivo_por_empresa` (0067) | Postgres |
 | I20 | Dos `PATCH` simultáneos sobre el mismo método | No dejan escrita la combinación prohibida. Leer-validar-escribir va en una transacción con el renglón tomado, y un `check` lo respalda donde sí es atómico | `payment_methods_cajon_no_se_autodeclara` (0067) | Postgres |
 
+| I21 | Arqueo ciego: lo **derivado** del esperado | Tampoco viaja. El desglose por método más el fondo y el neto reconstruían los $835 exactos, y la pantalla los pintaba arriba de la tabla del cierre | `TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado`, `arqueo-ciego.spec.ts` › **B1** | Postgres + navegador |
+| I22 | Registrar un movimiento de caja con el arqueo ciego | No devuelve el esperado. El ocultamiento vivía en cada llamador y éste se lo saltaba: una entrada de un centavo, con rol cajero, lo leía completo | `TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado` | Postgres |
+| I23 | Sacar un método del cajón y auto-declararlo en el **mismo** request | Se rechaza. Satisfacía la validación y dejaba al método indistinguible de uno en línea: sus billetes entraban sin que nadie los contara ni los declarara, con el corte en $0.00 | `TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza` | Postgres |
+| I24 | Meter al cajón un método que no se cobra en billetes | Se rechaza: el arqueo pediría contar dinero que está en la terminal | `TestUnMetodoQueNoEsEfectivoNoEntraAlCajon` | Postgres |
+| I25 | Apagar un método desde Ajustes | Sigue en la pantalla que tiene su interruptor. Era una puerta de un solo sentido: el renglón desaparecía con su propio interruptor y el mostrador se quedaba sin cobrar en efectivo | `TestUnMetodoApagadoSigueEnLaListaDeAjustes` | Postgres |
+| I26 | Arqueo ciego y la columna «Diferencia» | Raya, no cero. `Number(null)` es 0, así que la pantalla pintaba la cifra capturada entera como sobrante —$1,200 en verde— justo cuando el operador decide si vuelve a contar | `cierreDeCaja.test.ts` | Navegador (vitest) |
+
+| I27 | Crear una empresa nueva | Nace con sus métodos y con la forma que el arqueo espera: uno solo de efectivo, en el cajón, sin auto-declarar. El sembrado no escribía `is_cash` y el `check` de la 0067 lo rechazaba — el alta de empresa quedaba rota | `TestUnaEmpresaNuevaNaceConSusMetodosCoherentes` | Postgres |
+
 **Lo que I no cubre:** de qué canal salió cada peso del cajón. Es información de reporte —la da el
 desglose por método del corte— y deliberadamente **no** se le pide al operador: ningún humano puede
 partir un montón de billetes por canal de venta, y cualquier reparto que teclee es inventado.

@@ -215,6 +215,21 @@ debajo.
   cierre.
 - **FR-014**: Con el arqueo ciego encendido, el operador MUST poder seguir viendo el total de lo que
   él mismo capturó.
+- **FR-019**: Con el arqueo ciego encendido, ninguna cifra que **reconstruya** lo esperado MUST
+  viajar al cliente mientras el turno esté abierto.
+
+  *Escrito el 2026-09-10, después de que la auditoría de seguridad demostrara que FR-012 no
+  bastaba.* Nulificar el esperado dejaba en la misma respuesta el desglose por método y lo cobrado
+  por cada cajero, y la pantalla los pintaba **arriba** de la tabla del cierre: fondo 500 + neto 0 +
+  Ventas del mostrador 200 + Ventas de Didi efectivo 135 = 835, que era exactamente la cifra oculta.
+  Quien cuenta no necesitaba las herramientas del navegador, solo sumar cuatro renglones contiguos.
+
+  Se queda lo que el propio operador registró y ya conoce —el fondo con el que abrió y sus
+  movimientos de efectivo—: esconderlo no agrega protección y sí le quita la pantalla con la que
+  trabaja.
+- **FR-020**: El alcance del arqueo ciego MUST quedar escrito: ata a quien **cuenta** el cajón, no a
+  quien administra. Un rol de administración llega a las mismas cifras por el resumen de ventas, que
+  es su trabajo. Atar también a administración sería una feature distinta.
 - **FR-015**: La enmienda a FR-005 de la spec 003 MUST quedar escrita en esa spec, nombrando que el
   requisito pasa a depender de un ajuste del negocio.
 - **FR-016**: El cierre MUST permanecer bloqueado hasta que todo método que exige captura la tenga,

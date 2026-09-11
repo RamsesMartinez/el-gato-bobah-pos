@@ -103,7 +103,6 @@ export function diferenciasDelCierre(
   let total = 0;
   let completo = true;
   for (const t of totales) {
-    const esperado = Number(t.expected);
     // Los que se autodeclaran cuadran por construcción: el servidor los declara con su esperado.
     if (t.autoDeclare) {
       porMetodo[t.methodId] = 0;
@@ -115,12 +114,18 @@ export function diferenciasDelCierre(
     if (!t.requiresEntry) continue;
     const d = declarado[t.methodId];
     if (d === undefined) {
-      // Incompleto solo si ESE método exigía captura. El criterio es el mismo de `faltanPorContar`
-      // y sale del mismo lugar: el servidor, no una deducción sobre el esperado.
-      if (t.requiresEntry) completo = false;
+      // Lo que falta por capturar se decide ANTES de mirar el esperado, y ése es el orden que
+      // importa: con el arqueo ciego el esperado no viaja, y saltarse este renglón por eso dejaría
+      // el cierre sin la señal de que falta capturar justo cuando nadie la puede deducir.
+      completo = false;
       continue;
     }
-    const dif = round2(d - esperado);
+    // SIN ESPERADO NO HAY DIFERENCIA, y cero no es "no hay". `Number(null)` es 0, así que restar
+    // contra un esperado que no viajó devolvía la cifra capturada entera: con el arqueo ciego, el
+    // operador tecleaba $1,200 de tarjeta y la pantalla le pintaba un sobrante de $1,200 en verde,
+    // justo cuando decide si vuelve a contar. Es el mismo `Number(null) === 0` que ya costó una vez.
+    if (t.expected === null) continue;
+    const dif = round2(d - Number(t.expected));
     porMetodo[t.methodId] = dif;
     total = round2(total + dif);
   }

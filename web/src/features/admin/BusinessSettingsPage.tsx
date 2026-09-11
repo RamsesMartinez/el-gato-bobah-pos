@@ -41,7 +41,8 @@ function Interruptor(props: ComponentProps<typeof Switch>) {
 export function BusinessSettingsPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
-  const { data: methods } = useQuery({ queryKey: ['payment-methods'], queryFn: posApi.paymentMethods });
+  // La lista COMPLETA, con los apagados: es la pantalla desde la que se vuelven a encender.
+  const { data: methods } = useQuery({ queryKey: ['payment-methods', 'all'], queryFn: posApi.allPaymentMethods });
   // null = sin edición local todavía: refleja el valor cargado. Evita el useEffect+setState
   // (cascading renders) para sincronizar el input con la query.
   const [fee, setFee] = useState<string | null>(null);
@@ -308,13 +309,25 @@ export function BusinessSettingsPage() {
                     <Interruptor checked={m.isActive} aria-label={`${m.name} activo`}
                       onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { isActive: e.checked } })} />
                   </Table.Cell>
+                  {/* Solo lo que se cobra en billetes puede entrar al cajón. Un interruptor que
+                      el servidor va a rechazar es un toque que el operador paga para nada. */}
                   <Table.Cell textAlign="center">
-                    <Interruptor checked={m.affectsCashDrawer} aria-label={`${m.name} va al cajón`}
-                      onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { affectsCashDrawer: e.checked } })} />
+                    {m.isCash ? (
+                      <Interruptor checked={m.affectsCashDrawer} aria-label={`${m.name} va al cajón`}
+                        onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { affectsCashDrawer: e.checked } })} />
+                    ) : (
+                      <Text fontSize="sm" color="fg.muted">—</Text>
+                    )}
                   </Table.Cell>
+                  {/* Y el efectivo no se auto-declara, caiga en nuestro cajón o se lo lleve el
+                      repartidor: declararlo solo haría que un faltante nunca aparezca. */}
                   <Table.Cell textAlign="center">
-                    <Interruptor checked={m.autoDeclare} aria-label={`${m.name} automático`}
-                      onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { autoDeclare: e.checked } })} />
+                    {m.isCash ? (
+                      <Text fontSize="sm" color="fg.muted">—</Text>
+                    ) : (
+                      <Interruptor checked={m.autoDeclare} aria-label={`${m.name} automático`}
+                        onCheckedChange={(e) => cambiarMetodo.mutate({ id: m.id, flags: { autoDeclare: e.checked } })} />
+                    )}
                   </Table.Cell>
                 </Table.Row>
               ))}

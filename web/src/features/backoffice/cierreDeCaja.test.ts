@@ -155,3 +155,34 @@ describe('el arqueo del cajón', () => {
     expect(diferenciaDelCajon(cajon, null)).toBeUndefined();
   });
 });
+
+// CON EL ARQUEO CIEGO NO HAY DIFERENCIA QUE MOSTRAR, Y CERO NO ES "NO HAY".
+//
+// `Number(null)` es 0, así que restar contra un esperado que no viajó daba la cifra capturada
+// entera como diferencia: el operador teclea $1,200 de tarjeta y la pantalla le pinta
+// «Diferencia $1,200.00» en verde, que es un sobrante inventado — y justo antes de confirmar, que
+// es cuando decide si vuelve a contar. Es el mismo `Number(null) === 0` que ya se arregló en
+// `faltanPorContar` y que seguía vivo aquí.
+test('con el esperado en null la diferencia no existe, no es cero', () => {
+  const { porMetodo, total, completo } = diferenciasDelCierre(
+    [{ methodId: 2, name: 'Tarjeta débito', kind: 'tarjeta', expected: null, autoDeclare: false, requiresEntry: true }],
+    { 2: 1200 },
+  );
+  expect(porMetodo[2]).toBeUndefined();
+  expect(total).toBe(0);
+  // Y la captura sí se registró: lo que falta es contra qué comparar, no la cifra.
+  expect(completo).toBe(true);
+});
+
+// Y LA SEÑAL DE "FALTA CAPTURAR" SOBREVIVE AL ARQUEO CIEGO.
+//
+// El borde del arreglo de arriba: si "sin esperado no hay diferencia" se evaluara ANTES de mirar
+// si el método tiene captura, el cierre a ciegas se reportaría completo con los campos vacíos —
+// que es la misma puerta de atrás, con otra llave.
+test('con el arqueo ciego, un método sin capturar sigue dejando el cierre incompleto', () => {
+  const { completo } = diferenciasDelCierre(
+    [{ methodId: 2, name: 'Tarjeta débito', kind: 'tarjeta', expected: null, autoDeclare: false, requiresEntry: true }],
+    {},
+  );
+  expect(completo).toBe(false);
+});
