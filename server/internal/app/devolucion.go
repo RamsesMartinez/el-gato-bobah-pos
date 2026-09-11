@@ -83,8 +83,10 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 		return err
 	}
 
-	// El dinero sale por donde entró. Devolver en efectivo lo que entró por tarjeta saca del cajón
-	// dinero que nunca estuvo ahí, y el arqueo cierra con un faltante inventado.
+	// El dinero sale por donde entró, y sale del cajón lo que estaba en el cajón. Devolver en
+	// efectivo lo que entró por tarjeta saca de la caja dinero que nunca estuvo ahí, y el arqueo
+	// cierra con un faltante inventado; no registrar la salida del efectivo de una app hace lo
+	// mismo con el signo contrario.
 	for _, parte := range domain.RepartirDevolucion(entradas, cmd.Monto) {
 		var movimiento *int64
 		if parte.SaleDelCajon {
@@ -122,11 +124,11 @@ func (s *OrdersService) cobradoPorMetodo(ctx context.Context, q *db.Queries, ord
 	entradas := make([]domain.CobradoPorMetodo, 0, len(filas))
 	for _, f := range filas {
 		entradas = append(entradas, domain.CobradoPorMetodo{
-			MetodoID:   f.MethodID,
-			Nombre:     f.Name,
-			EsEfectivo: f.EsEfectivo,
-			Activo:     f.IsActive,
-			Monto:      f.Cobrado,
+			MetodoID:    f.MethodID,
+			Nombre:      f.Name,
+			TocaElCajon: f.TocaElCajon,
+			Activo:      f.IsActive,
+			Monto:       f.Cobrado,
 		})
 	}
 	return entradas, nil

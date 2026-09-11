@@ -55,7 +55,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	prod := makeProduct(t, st, "Café", decimal.RequireFromString("80"), false)
 	cardID := paymentMethodID(t, st, "Tarjeta débito")
 
-	if _, err := backoffice.SetPaymentMethodAutoDeclare(ctx, int(cardID), true); err != nil {
+	if _, err := backoffice.UpdatePaymentMethod(ctx, int(cardID), app.MetodoDePagoCmd{AutoDeclare: ptrBool(true)}); err != nil {
 		t.Fatalf("SetPaymentMethodAutoDeclare: %v", err)
 	}
 	primaryID := registerID(t, st, "Caja principal")
@@ -80,7 +80,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 
 	// Cierre con un declarado FALSEADO (1, muy por debajo del esperado) para ese método.
 	declared := map[int]decimal.Decimal{int(cardID): decimal.RequireFromString("1")}
-	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, cierreAMano(declared))
+	sess, err := backoffice.CloseSession(ctx, primaryID, cashier, cierreDelCajonAMano(t, st, declared))
 	if err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
@@ -122,14 +122,14 @@ func TestSetPaymentMethodAutoDeclareRejectsCashDrawer(t *testing.T) {
 
 	cashID := paymentMethodID(t, st, "Efectivo")
 
-	_, err := backoffice.SetPaymentMethodAutoDeclare(ctx, int(cashID), true)
+	_, err := backoffice.UpdatePaymentMethod(ctx, int(cashID), app.MetodoDePagoCmd{AutoDeclare: ptrBool(true)})
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("SetPaymentMethodAutoDeclare(Efectivo, true) = %v, want ErrValidation", err)
 	}
 
 	// Marcarlo false (el default) sigue permitido — el rechazo es solo al prender auto en
 	// un método que afecta el cajón.
-	if _, err := backoffice.SetPaymentMethodAutoDeclare(ctx, int(cashID), false); err != nil {
+	if _, err := backoffice.UpdatePaymentMethod(ctx, int(cashID), app.MetodoDePagoCmd{AutoDeclare: ptrBool(false)}); err != nil {
 		t.Fatalf("SetPaymentMethodAutoDeclare(Efectivo, false): %v", err)
 	}
 }

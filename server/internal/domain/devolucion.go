@@ -38,11 +38,15 @@ var (
 // inactivo se rechaza porque no debe entrar dinero nuevo por ahí; el que ya entró tiene que poder
 // salir por donde entró, o queda atrapado y el arqueo nunca cuadra.
 type CobradoPorMetodo struct {
-	MetodoID   int16
-	Nombre     string
-	EsEfectivo bool
-	Activo     bool
-	Monto      decimal.Decimal
+	MetodoID int16
+	Nombre   string
+	// TocaElCajon: si el dinero de ese método está en el cajón, que es lo que decide si devolverlo
+	// registra una salida de caja. Es `affects_cash_drawer` y NO "es de tipo efectivo": «Didi
+	// efectivo» es de tipo plataforma y sus billetes están en el mismo montón que los del mostrador
+	// cuando el reparto lo hace gente del local (spec 015, FR-018).
+	TocaElCajon bool
+	Activo      bool
+	Monto       decimal.Decimal
 }
 
 // ParteDeDevolucion: cuánto se devuelve por un medio, y si eso sale del cajón.
@@ -95,9 +99,13 @@ func ValidarDevolucion(monto, cobrado, yaDevuelto decimal.Decimal) error {
 // Se acota a lo que entró aunque el llamador pida de más: `ValidarDevolucion` ya lo rechaza antes,
 // pero esta función no puede confiar en que la llamen bien — devolver de más es inventar dinero.
 //
-// Solo el efectivo marca `SaleDelCajon`: es el único que de verdad se saca de la caja y hace un
-// movimiento. Lo de tarjeta y plataformas se registra contra su método y se concilia con la
-// terminal, porque ese dinero nunca pasó por el cajón.
+// Marca `SaleDelCajon` lo que ESTÁ en el cajón, que es lo único que de verdad se saca de la caja y
+// hace un movimiento. Lo demás —tarjeta, transferencia, el efectivo de una app que se lleva el
+// repartidor de la plataforma— se registra contra su método y se concilia aparte, porque ese dinero
+// nunca pasó por el cajón.
+//
+// La regla decía "solo el efectivo" y con eso bastaba mientras el único efectivo fuera el del
+// mostrador. Dejó de bastar: la condición es el interruptor «va al cajón» del método, no su tipo.
 func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []ParteDeDevolucion {
 	restante := Round2(monto)
 	var partes []ParteDeDevolucion
@@ -114,7 +122,7 @@ func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []Pa
 			toma = restante
 		}
 		partes = append(partes, ParteDeDevolucion{
-			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: toma, SaleDelCajon: e.EsEfectivo,
+			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: toma, SaleDelCajon: e.TocaElCajon,
 		})
 		restante = Round2(restante.Sub(toma))
 	}

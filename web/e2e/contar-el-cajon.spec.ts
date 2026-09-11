@@ -239,6 +239,12 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
 
   // El corte MÁS VIEJO del histórico: cerró antes de que existiera el conteo. Es el caso de todos
   // los que ya viven en producción, y son la mayoría.
+  //
+  // Esto SUPONE un ambiente con historia, que es el que esta suite tiene por contrato
+  // (`playwright.config.ts`). Contra una base recién sembrada —donde todos los cortes los creó
+  // quien está probando, y por lo tanto todos traen conteo— este caso falla sin que haya nada roto.
+  // Se deja fallando en vez de saltarse solo: un skip automático aquí lo volvería una tautología,
+  // porque la condición que lo saltaría es exactamente la que viene a comprobar.
   const filas = page.getByRole('row');
   const cuantas = await filas.count();
   test.skip(cuantas < 3, 'el histórico no tiene cortes anteriores a la feature');

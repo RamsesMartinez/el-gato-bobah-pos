@@ -231,8 +231,8 @@ func TestUnTurnoNoPuedeTenerDosConteosDelMismoMomento(t *testing.T) {
 
 	insertar := func() error {
 		_, err := st.Pool.Exec(ctx,
-			`insert into session_cash_counts (company_id, session_id, moment, total, created_by)
-			 values ($1, $2, 'cierre', 500,
+			`insert into session_cash_counts (company_id, session_id, moment, total, expected, created_by)
+			 values ($1, $2, 'cierre', 500, 500,
 			         (select id from users where company_id = $1 order by id limit 1))`,
 			defaultCompanyID, turno)
 		return err
@@ -403,8 +403,8 @@ func TestElSegundoConteoDeUnTurnoTambienGuardaSusRenglones(t *testing.T) {
 	for _, momento := range []string{"apertura", "cierre"} {
 		var conteo int64
 		if err := st.Pool.QueryRow(ctx,
-			`insert into session_cash_counts (company_id, session_id, moment, total, created_by)
-			 values ($1, $2, $3::cash_count_moment, 100,
+			`insert into session_cash_counts (company_id, session_id, moment, total, expected, created_by)
+			 values ($1, $2, $3::cash_count_moment, 100, case when $3 = 'cierre' then 100 end,
 			         (select id from users where company_id = $1 order by id limit 1)) returning id`,
 			defaultCompanyID, turno, momento).Scan(&conteo); err != nil {
 			t.Fatalf("crear el conteo de %s: %v", momento, err)

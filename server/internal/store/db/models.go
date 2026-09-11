@@ -683,6 +683,7 @@ type BusinessSetting struct {
 	SessionHours       int32              `json:"session_hours"`
 	CorteDeVista       string             `json:"corte_de_vista"`
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
+	BlindCashCount     bool               `json:"blind_cash_count"`
 }
 
 type CashDenomination struct {
@@ -1045,6 +1046,7 @@ type PaymentMethod struct {
 	AutoDeclare        bool            `json:"auto_declare"`
 	CompanyID          int64           `json:"company_id"`
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	IsCash             bool            `json:"is_cash"`
 }
 
 type PlatformSettlement struct {
@@ -1168,23 +1170,26 @@ type RegisterSession struct {
 }
 
 type RegisterSessionTotal struct {
-	SessionID       int64            `json:"session_id"`
-	PaymentMethodID int16            `json:"payment_method_id"`
-	Expected        decimal.Decimal  `json:"expected"`
-	Declared        decimal.Decimal  `json:"declared"`
-	Difference      *decimal.Decimal `json:"difference"`
-	Tips            decimal.Decimal  `json:"tips"`
+	SessionID         int64            `json:"session_id"`
+	PaymentMethodID   int16            `json:"payment_method_id"`
+	Expected          decimal.Decimal  `json:"expected"`
+	Declared          decimal.Decimal  `json:"declared"`
+	Difference        *decimal.Decimal `json:"difference"`
+	Tips              decimal.Decimal  `json:"tips"`
+	AffectsCashDrawer bool             `json:"affects_cash_drawer"`
 }
 
 type SessionCashCount struct {
-	ID           int64           `json:"id"`
-	SessionID    int64           `json:"session_id"`
-	Moment       CashCountMoment `json:"moment"`
-	Total        decimal.Decimal `json:"total"`
-	ManualReason *string         `json:"manual_reason"`
-	CreatedBy    int64           `json:"created_by"`
-	CreatedAt    time.Time       `json:"created_at"`
-	CompanyID    int64           `json:"company_id"`
+	ID           int64            `json:"id"`
+	SessionID    int64            `json:"session_id"`
+	Moment       CashCountMoment  `json:"moment"`
+	Total        decimal.Decimal  `json:"total"`
+	ManualReason *string          `json:"manual_reason"`
+	CreatedBy    int64            `json:"created_by"`
+	CreatedAt    time.Time        `json:"created_at"`
+	CompanyID    int64            `json:"company_id"`
+	Expected     *decimal.Decimal `json:"expected"`
+	Difference   *decimal.Decimal `json:"difference"`
 }
 
 type SessionCashCountLine struct {

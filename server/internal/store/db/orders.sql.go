@@ -1523,21 +1523,21 @@ func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (SumOrder
 }
 
 const sumOrderPaymentsByMethod = `-- name: SumOrderPaymentsByMethod :many
-select pm.id as method_id, pm.name, pm.kind = 'efectivo' as es_efectivo, pm.is_active,
+select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
        coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
 from order_payments op
 join payment_methods pm on pm.id = op.payment_method_id
 where op.order_id = $1
-group by pm.id, pm.name, pm.kind, pm.is_active
+group by pm.id, pm.name, pm.affects_cash_drawer, pm.is_active
 order by min(op.created_at)
 `
 
 type SumOrderPaymentsByMethodRow struct {
-	MethodID   int16           `json:"method_id"`
-	Name       string          `json:"name"`
-	EsEfectivo bool            `json:"es_efectivo"`
-	IsActive   bool            `json:"is_active"`
-	Cobrado    decimal.Decimal `json:"cobrado"`
+	MethodID    int16           `json:"method_id"`
+	Name        string          `json:"name"`
+	TocaElCajon bool            `json:"toca_el_cajon"`
+	IsActive    bool            `json:"is_active"`
+	Cobrado     decimal.Decimal `json:"cobrado"`
 }
 
 // Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
@@ -1548,6 +1548,11 @@ type SumOrderPaymentsByMethodRow struct {
 //
 // `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
 // entró tiene que poder salir por donde entró, o queda atrapado.
+//
+// QUIÉN SALE DEL CAJÓN ES `affects_cash_drawer`, NO `kind = 'efectivo'` (spec 015, FR-018).
+// «Didi efectivo» es de tipo plataforma y su dinero entra al cajón cuando lo reparte gente del
+// local: son billetes en el mismo montón. Decidirlo por el tipo devolvía $135 de billetes sin
+// registrar la salida, y el corte cerraba con un faltante de $135 que nadie podía explicar.
 func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) ([]SumOrderPaymentsByMethodRow, error) {
 	rows, err := q.db.Query(ctx, sumOrderPaymentsByMethod, orderID)
 	if err != nil {
@@ -1560,7 +1565,7 @@ func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) (
 		if err := rows.Scan(
 			&i.MethodID,
 			&i.Name,
-			&i.EsEfectivo,
+			&i.TocaElCajon,
 			&i.IsActive,
 			&i.Cobrado,
 		); err != nil {

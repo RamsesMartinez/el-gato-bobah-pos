@@ -8,10 +8,28 @@ export interface MethodTotal {
   // Cuál método es el del CAJÓN, para saber cuál se cuenta por denominaciones. No se compara por
   // nombre: los métodos de plataforma en efectivo también tocan el cajón y solo `kind` los separa.
   kind: string;
-  expected: string;
+  // NULL con el arqueo ciego encendido y el turno abierto: lo que la pantalla no debe mostrar no se
+  // le manda. Ocultarlo en el cliente lo dejaría legible en la respuesta.
+  expected: string | null;
   declared: string;
   difference: string;
   autoDeclare: boolean;
+  // Si ESTE método exige una cifra capturada para poder cerrar. Lo decide el servidor: deducirlo de
+  // que el esperado sea cero se rompe cuando el esperado no viaja.
+  requiresEntry: boolean;
+}
+
+// El arqueo del cajón físico: una cifra esperada, un conteo, una diferencia.
+//
+// `null` en el turno = no hay arqueo de efectivo (un corte anterior a la spec 015, o una caja que
+// no maneja efectivo). `expected` en null con el arqueo ciego; `counted` y `difference` en null
+// mientras el turno esté abierto.
+export interface ArqueoDelCajon {
+  expected: string | null;
+  counted: string | null;
+  difference: string | null;
+  methodIds: number[];
+  requiresCount: boolean;
 }
 export interface CashMovement {
   id: number;
@@ -108,6 +126,10 @@ export interface CashSession {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // El turno se está contando a ciegas: `breakdown` y `cashiers` vienen SIN las cifras de venta.
+  // Lo dice el servidor y no se deduce de que las listas vengan vacías — un turno sin ventas las
+  // trae vacías también, y la pantalla diría «Sin ingresos» sobre las dos.
+  blind?: boolean;
   // Pedidos del turno que todavía no se entregan. Vienen del mismo predicado que bloquea el
   // cierre, así que la pantalla no puede decir "todo listo" mientras el botón rebota.
   pending: PendingOrder[];
@@ -119,6 +141,7 @@ export interface CashSession {
   uncollected: string;
   uncollectedCount: number;
   counts: ConteosDelTurno | null;
+  drawer: ArqueoDelCajon | null;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
@@ -177,6 +200,7 @@ export interface CashSessionDetail {
   // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
   salesTotal: string;
   counts: ConteosDelTurno | null;
+  drawer: ArqueoDelCajon | null;
 }
 
 export interface CorteSale {
@@ -435,8 +459,12 @@ export const backofficeApi = {
     api.post<CashSession>('/cash-sessions', { registerId, ...apertura }),
   // El efectivo va contado (`counts`) o como cifra en `declared` con su `manualReason`, nunca las
   // dos: el servidor rechaza la ambigüedad (FR-015).
+  // `declared` lleva SOLO los métodos cuyo dinero no está en el cajón: el del cajón se declara una
+  // vez, contándolo (`counts`) o con su cifra y motivo (`countedCash` + `manualReason`). Mandar un
+  // método de cajón en `declared` lo rechaza el servidor nombrándolo.
   cashClose: (registerId: number, declared: Record<string, number>, extra?: {
     counts?: { denominationId: number; pieces: number }[];
+    countedCash?: number;
     manualReason?: string;
     notes?: string;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
@@ -453,8 +481,11 @@ export const backofficeApi = {
   cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
     api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),
   // Config de negocio (admin/gerente): qué método se declara solo al cerrar caja.
-  setPaymentMethodAutoDeclare: (id: number, autoDeclare: boolean) =>
-    api.patch<PaymentMethod>(`/payment-methods/${id}`, { autoDeclare }),
+  // Los tres interruptores de un método, todos OPCIONALES: lo que no se manda, no cambia. Con un
+  // booleano obligatorio, apagar uno apagaría los otros — y el del cajón mueve dinero.
+  updatePaymentMethod: (id: number, flags: {
+    autoDeclare?: boolean; isActive?: boolean; affectsCashDrawer?: boolean;
+  }) => api.patch<PaymentMethod>(`/payment-methods/${id}`, flags),
 
   // Categorías de gasto
   expenseCategories: () => api.get<{ items: ExpenseCategory[] }>('/expense-categories'),

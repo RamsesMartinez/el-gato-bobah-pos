@@ -305,6 +305,36 @@ construcción).
 **Lo que no se midió en tableta real:** el teclado del sistema operativo. C3 recorta la ventana, que
 es el efecto que importa, pero el teclado real de una Surface puede tapar de otra forma.
 
+## J. El cierre con un solo cajón y los métodos configurables (spec 015)
+
+Medido el 10 de septiembre de 2026 a 1024×600: el "antes" contra `app-dev` con la spec 003
+desplegada, el "después" contra el candidato servido en local con la API nueva, **con los mismos
+diez métodos configurados** (tres «en línea» en automático, cuatro que caen en el cajón). El
+archivo que mide es el mismo para los dos, así que las cifras son comparables.
+
+Lo que se mide es el **contenedor que se desplaza**, no el documento: el AppShell es
+`h="100dvh" overflow="hidden"` y quien hace scroll es el `<Box flex="1" overflowY="auto">` que
+envuelve al `<Outlet>`. La primera versión de la medición leía `document.documentElement.scrollHeight`
+y reportaba 600 px —exactamente el viewport— en las dos pantallas: el número se lee como si todo
+cupiera.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| J1 | El alto de la tabla del cierre | **575 px → 540 px** con un renglón MÁS (10 → 11): el renglón del cajón cuesta 61 px y los cuatro métodos que ya no capturan bajan de 61 a 37 | `presupuesto-del-cierre.spec.ts` › **P1** | Playwright |
+| J2 | Los toques que cuesta cerrar (SC-006) | **7 capturas → 4**: seis campos y el botón de contar pasan a tres campos y el botón. El arqueo único no se pagó con más pantallas | `presupuesto-del-cierre.spec.ts` › **P1** | Playwright |
+| J3 | El tercer estado de la columna «Declarado» | Dice **«Va al cajón»** y no reusa «Automático»: uno lo resuelve el servidor, el otro se cuenta físicamente, y confundirlos es la ambigüedad que ya costó $4,500 | `CashPage.test.tsx` | Vitest |
+| J4 | La columna «Esperado» con el arqueo ciego | Desaparece entera, no se queda con rayas: a 1024×600 el ancho que libera se lo devuelve a lo que el operador vino a leer | `arqueo-ciego.spec.ts` › **B1**, `CashPage.test.tsx` | Playwright + vitest |
+| J5 | El botón de cerrar con el arqueo ciego | Bloqueado mientras no se cuente el cajón. Verificado en rojo devolviendo la regla vieja (deducirlo de que el esperado sea cero), que con el esperado en `null` lo habilitaba | `arqueo-ciego.spec.ts` › **B2** | Playwright |
+| J6 | Los métodos en Ajustes, a lo ancho | La tabla de cuatro columnas **no se desborda**: el ancho útil de esa página son ~520 px (`<Page maxW="560px">` con su padding), no los 1024 de la tableta — el plan afirmó lo contrario | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J7 | Los métodos en Ajustes, a lo alto | **0 de 10 renglones se ven sin desplazarse**, antes y después: la sección arranca en y≈1,210 (ahora 1,313, por el interruptor del arqueo ciego que se le puso encima). No empeoró, pero tampoco es una pantalla que se lea de un vistazo | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J8 | El área tappable de los interruptores | ≥44 px. **Defecto encontrado al medir**: la tabla nueva puso tres interruptores de **24 px** en un renglón de 41, y un dedo que falla por milímetros cae en el de al lado — que aquí significa apagar «Activo» y sacar un método del cobro a media jornada. La lista vieja medía 20 px con uno solo por renglón; no se heredó | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+
+| J9 | La separación entre los tres interruptores de un renglón | **46 px y 63 px medidos**, contra un piso de 22. Una revisión los estimó en 16 px calculando el padding de la celda; la medición dice otra cosa, porque el ancho lo dan los encabezados «Va al cajón» y «Automático», más anchos que el interruptor. Se afirma en el test porque acortar un encabezado cerraría el hueco sin que nadie lo note | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
+| J10 | El mensaje del cierre rechazado | Dice qué hacer primero y nombra el método, sin explicar el mecanismo: *«recarga la pantalla para cerrar: «Efectivo» ahora se cuenta con el cajón»* | `TestUnMetodoDeCajonEnDeclaradoSeRechaza` | Postgres |
+
+**Lo que J no cubre:** la tableta real. J1–J8 miden un Chromium a 1024×600, que es el presupuesto,
+no una Surface con su teclado y su densidad de píxeles.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se
