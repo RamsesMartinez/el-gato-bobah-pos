@@ -267,12 +267,12 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	// LA PREMISA, probada aquí mismo: con el pedido vivo, la caja NO cierra. Si esto dejara de
 	// fallar, el reinicio de folio de abajo pasaría de inofensivo a colisión.
 	declarado := map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("30")}
-	if _, err := back.CloseSession(ctx, principal, cajero, cierreAMano(declarado)); !errors.Is(err, domain.ErrOpenOrders) {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); !errors.Is(err, domain.ErrOpenOrders) {
 		t.Fatalf("la caja cerró con un pedido vivo (o falló por otra cosa): %v", err)
 	}
 
 	entregarPendientes(t, st)
-	if _, err := back.CloseSession(ctx, principal, cajero, cierreAMano(declarado)); err != nil {
+	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar el turno ya sin pendientes: %v", err)
 	}
 	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {

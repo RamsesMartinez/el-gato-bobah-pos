@@ -70,11 +70,38 @@ func declaradoDe(t *testing.T, st *store.Store, principal, metodo int64) (decima
 // tests antes de esta feature. Lleva motivo porque FR-014 lo exige en cuanto el efectivo viene como
 // cifra: un arqueo sin desglose y sin explicación no se puede auditar, y eso vale igual para un
 // turno de prueba.
-func cierreAMano(declarado map[int]decimal.Decimal) app.CierreCmd {
-	return app.CierreCmd{
-		Declarado: declarado,
-		Motivo:    "efectivo declarado sin contar (fixture de prueba)",
+// cierreDelCajonAMano: cerrar declarando cifras, con las de los métodos del CAJÓN movidas al camino
+// manual que exige la spec 015.
+//
+// Existe porque el contrato cambió y la intención de los tests no: "cierra declarando estas cifras".
+// Desde la 015 un método cuyo dinero está en el cajón NO acepta una cifra propia —son dos
+// declaraciones del mismo dinero—, así que lo que antes iba en el mapa por método ahora va como el
+// total del cajón con su motivo. Un solo helper en vez de diez llamadas reescritas.
+func cierreDelCajonAMano(t *testing.T, st *store.Store, declarado map[int]decimal.Decimal) app.CierreCmd {
+	t.Helper()
+	ctx := context.Background()
+	delCajon := decimal.Zero
+	resto := map[int]decimal.Decimal{}
+	hubo := false
+	for id, monto := range declarado {
+		var toca bool
+		if err := st.Pool.QueryRow(ctx,
+			`select affects_cash_drawer from payment_methods where id = $1`, id).Scan(&toca); err != nil {
+			t.Fatalf("leer si el método %d toca el cajón: %v", id, err)
+		}
+		if toca {
+			delCajon = delCajon.Add(monto)
+			hubo = true
+			continue
+		}
+		resto[id] = monto
 	}
+	cmd := app.CierreCmd{Declarado: resto}
+	if hubo {
+		cmd.Total = &delCajon
+		cmd.Motivo = "efectivo declarado sin contar (fixture de prueba)"
+	}
+	return cmd
 }
 
 // EL CONTEO ALIMENTA EL DECLARADO DEL EFECTIVO, Y DE NINGÚN OTRO MÉTODO.
@@ -143,12 +170,26 @@ func TestMandarConteoYDeclaradoDelEfectivoSeRechaza(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_ambiguo", "cajero")
 	principal, efectivo, _ := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
 
+	// Desde la spec 015 hay DOS formas de mandar dos cifras del mismo dinero, y las dos se rechazan.
+	//
+	// La primera es la de siempre: contar piezas y además escribir el total a mano.
+	total := decimal.RequireFromString("999")
 	_, err := backoffice.CloseSession(ctx, principal, cajero, app.CierreCmd{
+		Piezas: piezasDe(t, st, "100", 3, "20", 2),
+		Total:  &total, Motivo: "las dos cosas a la vez",
+	})
+	if !errors.Is(err, domain.ErrConteoAmbiguo) {
+		t.Fatalf("contar piezas y además escribir el total dio %v y tiene que ser ErrConteoAmbiguo", err)
+	}
+
+	// La segunda la trajo la 015: declarar por método el dinero que está en el cajón. Se rechaza
+	// nombrando el método, porque el caso realista es una tableta con el front viejo en caché.
+	_, err = backoffice.CloseSession(ctx, principal, cajero, app.CierreCmd{
 		Piezas:    piezasDe(t, st, "100", 3, "20", 2),
 		Declarado: map[int]decimal.Decimal{int(efectivo): decimal.RequireFromString("999")},
 	})
-	if !errors.Is(err, domain.ErrConteoAmbiguo) {
-		t.Fatalf("mandar conteo y declarado del efectivo dio %v y tiene que ser ErrConteoAmbiguo", err)
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("declarar por método el dinero del cajón dio %v y tiene que ser ErrValidation", err)
 	}
 
 	// Y el turno sigue abierto: nada se escribió.
@@ -163,7 +204,12 @@ func TestMandarConteoYDeclaradoDelEfectivoSeRechaza(t *testing.T) {
 	}
 }
 
-// EL FALTANTE SALE DE LA COLUMNA GENERADA, no de una resta que alguien escribió.
+// EL FALTANTE SALE DE UNA COLUMNA GENERADA, no de una resta que alguien escribió.
+//
+// Con la spec 015 cambió DÓNDE vive: el renglón del método de cajón ya no tiene diferencia propia
+// —su declarado es su esperado por construcción— y el faltante único es el de la fila del conteo.
+// La cobertura se movió con la regla; que el faltante siga siendo visible lo exige además
+// `TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico`.
 func TestElFaltanteDelCierreSaleDeLaColumnaGenerada(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -179,9 +225,18 @@ func TestElFaltanteDelCierreSaleDeLaColumnaGenerada(t *testing.T) {
 		t.Fatalf("cerrar con faltante: %v", err)
 	}
 
-	_, diferencia := declaradoDe(t, st, principal, efectivo)
+	var diferencia decimal.Decimal
+	if err := st.Pool.QueryRow(ctx,
+		`select difference from session_cash_counts where moment = 'cierre'`).Scan(&diferencia); err != nil {
+		t.Fatalf("leer la diferencia del conteo: %v", err)
+	}
 	if !diferencia.Equal(decimal.RequireFromString("-50")) {
 		t.Fatalf("la diferencia salió %s y el faltante real es -50", diferencia)
+	}
+	// Y el renglón del método NO la repite: dos diferencias del mismo dinero es lo que la 015 vino
+	// a quitar.
+	if _, delMetodo := declaradoDe(t, st, principal, efectivo); !delMetodo.IsZero() {
+		t.Fatalf("el método de efectivo reporta %s de diferencia propia: el cajón se arquea una vez", delMetodo)
 	}
 }
 
@@ -210,8 +265,8 @@ func TestUnConteoDeCierreQueYaExisteNoSePisaYElCierreNoQuedaAMedias(t *testing.T
 		t.Fatalf("leer el turno: %v", err)
 	}
 	if _, err := st.Pool.Exec(ctx,
-		`insert into session_cash_counts (session_id, moment, total, created_by)
-		 values ($1, 'cierre', 340, $2)`, sesion, cajero); err != nil {
+		`insert into session_cash_counts (session_id, moment, total, expected, created_by)
+		 values ($1, 'cierre', 340, 340, $2)`, sesion, cajero); err != nil {
 		t.Fatalf("sembrar el conteo de cierre del primero: %v", err)
 	}
 
@@ -246,9 +301,9 @@ func TestDeclararElEfectivoDelCierreAManoExigeMotivo(t *testing.T) {
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
 	cajero := makeUser(t, st, "cajero_sin_motivo", "cajero")
-	principal, efectivo, esperado := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
+	principal, _, esperado := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
 
-	sinMotivo := app.CierreCmd{Declarado: map[int]decimal.Decimal{int(efectivo): esperado}}
+	sinMotivo := app.CierreCmd{Total: &esperado}
 	if _, err := backoffice.CloseSession(ctx, principal, cajero, sinMotivo); !errors.Is(err, domain.ErrConteoSinExplicar) {
 		t.Fatalf("cerrar declarando el efectivo sin motivo dio %v y tiene que exigir el motivo", err)
 	}
@@ -361,7 +416,7 @@ func TestUnCorteViejoSinConteoSigueLeyendoseIgual(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_viejo", "cajero")
 	principal, _, esperado := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
 
-	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, cierreAMano(
+	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st,
 		map[int]decimal.Decimal{int(paymentMethodID(t, st, "Efectivo")): esperado}))
 	if err != nil {
 		t.Fatalf("cerrar: %v", err)
@@ -390,11 +445,11 @@ func TestElDetalleDelCorteTraeElMotivoCuandoNoSeContó(t *testing.T) {
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
 	cajero := makeUser(t, st, "cajero_motivo_detalle", "cajero")
-	principal, efectivo, esperado := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
+	principal, _, esperado := turnoConVentaEnEfectivo(t, ctx, st, cajero, "200", "140")
 
 	cerrada, err := backoffice.CloseSession(ctx, principal, cajero, app.CierreCmd{
-		Declarado: map[int]decimal.Decimal{int(efectivo): esperado},
-		Motivo:    "el cajón trae un billete que no está en la lista",
+		Total:  &esperado,
+		Motivo: "el cajón trae un billete que no está en la lista",
 	})
 	if err != nil {
 		t.Fatalf("cerrar a mano: %v", err)

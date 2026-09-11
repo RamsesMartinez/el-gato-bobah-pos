@@ -36,6 +36,7 @@ select delivery_fee,
        print_free_modifiers,
        print_kitchen_ticket,
        corte_de_vista,
+       blind_cash_count,
        kitchen_can_charge,
        pin_only_unlock,
        lock_after_seconds,
@@ -61,6 +62,7 @@ type GetBusinessSettingsRow struct {
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
 	CorteDeVista       string             `json:"corte_de_vista"`
+	BlindCashCount     bool               `json:"blind_cash_count"`
 	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
@@ -94,6 +96,7 @@ func (q *Queries) GetBusinessSettings(ctx context.Context) (GetBusinessSettingsR
 		&i.PrintFreeModifiers,
 		&i.PrintKitchenTicket,
 		&i.CorteDeVista,
+		&i.BlindCashCount,
 		&i.KitchenCanCharge,
 		&i.PinOnlyUnlock,
 		&i.LockAfterSeconds,
@@ -177,16 +180,24 @@ set business_name       = $1,
     print_free_modifiers = $8,
     print_kitchen_ticket = $9,
     corte_de_vista = $10,
-    kitchen_can_charge = $11,
-    pin_only_unlock = $12,
-    lock_after_seconds = $13,
-    session_hours = $14,
+    -- ARQUEO CIEGO: si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia
+    -- aparece DESPUÉS de confirmar el cierre. Es un control contra que alguien acomode lo que
+    -- declara para que cuadre, y por eso es política del negocio y no preferencia de quien opera.
+    --
+    -- Encenderlo ENMIENDA FR-005 de la spec 003 ("la diferencia se ve antes de confirmar"), que
+    -- sigue siendo el comportamiento por default. Las dos reglas protegen cosas distintas: aquella
+    -- al operador honesto de su propio error de suma, esta al negocio de quien no lo es.
+    blind_cash_count = $11,
+    kitchen_can_charge = $12,
+    pin_only_unlock = $13,
+    lock_after_seconds = $14,
+    session_hours = $15,
     -- Con qué se nombran los pedidos. Cambiarlo NO renombra nada ya vendido: el nombre se guarda en
     -- orders.folio_name al crear el pedido. La bolsa del esquema viejo se queda como estaba, así que
     -- volver a él continúa la vuelta que iba a medias en vez de empezar de cero.
-    folio_scheme = $15,
+    folio_scheme = $16,
     updated_at          = now(),
-    updated_by          = $16
+    updated_by          = $17
 `
 
 type UpdateBusinessInfoParams struct {
@@ -200,6 +211,7 @@ type UpdateBusinessInfoParams struct {
 	PrintFreeModifiers bool        `json:"print_free_modifiers"`
 	PrintKitchenTicket bool        `json:"print_kitchen_ticket"`
 	CorteDeVista       string      `json:"corte_de_vista"`
+	BlindCashCount     bool        `json:"blind_cash_count"`
 	KitchenCanCharge   bool        `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool        `json:"pin_only_unlock"`
 	LockAfterSeconds   int32       `json:"lock_after_seconds"`
@@ -224,6 +236,7 @@ func (q *Queries) UpdateBusinessInfo(ctx context.Context, arg UpdateBusinessInfo
 		arg.PrintFreeModifiers,
 		arg.PrintKitchenTicket,
 		arg.CorteDeVista,
+		arg.BlindCashCount,
 		arg.KitchenCanCharge,
 		arg.PinOnlyUnlock,
 		arg.LockAfterSeconds,

@@ -188,7 +188,7 @@ func TestElCorteDeVistaNoCambiaUnArqueoCerrado(t *testing.T) {
 		t.Fatalf("el arqueo pasó de %d métodos a %d", len(antes.Totals), len(despues.Totals))
 	}
 	for i := range antes.Totals {
-		if !despues.Totals[i].Expected.Equal(antes.Totals[i].Expected) {
+		if !despues.Totals[i].Expected.Equal(*antes.Totals[i].Expected) {
 			t.Errorf("el esperado de %s cambió de %s a %s: un ajuste de PANTALLA movió dinero",
 				antes.Totals[i].Name, antes.Totals[i].Expected, despues.Totals[i].Expected)
 		}
