@@ -1,0 +1,80 @@
+package httpapi
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
+)
+
+// Handlers de la CONSOLA DE PLATAFORMA (spec 016). Todo lo de aquí cuelga de /api/v1/platform y
+// corre con la conexión del rol de plataforma; ni una de estas rutas vive en el grupo del negocio.
+
+// PlatformLogin: POST /api/v1/platform/auth/login
+func (h *Handlers) PlatformLogin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	// Se normaliza AQUÍ y no solo en el servicio, y no es redundante: es esta cadena la que arma la
+	// llave del limitador, y sin normalizar "Soporte" y "soporte" tendrían presupuestos de intentos
+	// separados para la misma credencial.
+	usuario := domain.NormalizarUsuario(body.Username)
+
+	// La cota va ANTES del limitador, que es lo único que la hace servir: un usuario de 900 KB en
+	// la llave llena un Redis de 128 MB en dos minutos —desalojando los contadores del POS— y en el
+	// evento de seguridad se lleva la bitácora entera al rotar. Se rechaza como CUALQUIER
+	// credencial equivocada, con el bcrypt de descarte corrido: la forma del usuario no puede
+	// decir cuáles existen.
+	if !domain.UsuarioValido(usuario) {
+		auth.CheckDummySecret(body.Password)
+		logging.SecurityEvent(r.Context(), "platform_login_failed", "username", "(inválido)", "ip", clientIP(r))
+		Error(w, domain.ErrCredencialDePlataforma)
+		return
+	}
+
+	// Lockout por cuenta, con su propio prefijo: compartir la llave con el login del negocio haría
+	// que agotar los intentos de "soporte" en una superficie bloqueara al "soporte" de la otra —y
+	// de paso diría que el nombre existe en las dos.
+	key := "plataforma:" + usuario
+	if h.authFails.blocked(r.Context(), key) {
+		logging.SecurityEvent(r.Context(), "auth_lockout", "kind", "platform_login", "username", usuario, "ip", clientIP(r))
+		tooManyRequests(w, h.authFails.retryAfter(r.Context(), key))
+		return
+	}
+
+	s, err := h.platform.Login(r.Context(), usuario, body.Password)
+	if err != nil {
+		h.authFails.record(r.Context(), key)
+		if errors.Is(err, domain.ErrCredencialDePlataforma) {
+			// FR-012: queda el intento con el usuario tecleado, NUNCA la contraseña. Y un solo
+			// evento para los tres rechazos: partirlo en "no existe" y "apagado" convertiría la
+			// bitácora en el oráculo que la respuesta se cuida de no ser.
+			logging.SecurityEvent(r.Context(), "platform_login_failed", "username", usuario, "ip", clientIP(r))
+			Error(w, err)
+			return
+		}
+		Error(w, err)
+		return
+	}
+	h.authFails.reset(r.Context(), key)
+	logging.SecurityEvent(r.Context(), "platform_login", "operator", s.Operador.Username, "ip", clientIP(r))
+	JSON(w, http.StatusOK, s)
+}
+
+// PlatformCompanies: GET /api/v1/platform/companies
+func (h *Handlers) PlatformCompanies(w http.ResponseWriter, r *http.Request) {
+	empresas, err := h.platform.Empresas(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, empresas)
+}

@@ -9,7 +9,12 @@ import { join, sep } from 'node:path';
 // dice una hora que no fue.
 //
 // El helper se recorta antes de buscar: ahí llamar a `toLocale*` es su trabajo.
-const PERMITIDOS = ['src/utils/horaDelNegocio.ts'];
+//
+// La consola de plataforma (spec 016) tiene el suyo y no es una grieta en esta regla: es otro
+// producto, se mira en la computadora de quien VENDE el sistema y no tiene una zona de negocio que
+// honrar —ni podría leerla, su rol de base no alcanza `business_settings`—. Lo que esta regla
+// protege es que la hora que ve el CLIENTE sea la del local, y eso sigue teniendo una sola fuente.
+const PERMITIDOS = ['src/utils/horaDelNegocio.ts', 'src/consola/fecha.ts'];
 
 // El dinero se formatea con `toLocaleString` sobre un NÚMERO y no lleva zona; es otro problema.
 const ES_DE_DINERO = /\bn\.toLocaleString\(/;

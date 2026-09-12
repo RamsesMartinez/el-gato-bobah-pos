@@ -1049,6 +1049,16 @@ type PaymentMethod struct {
 	IsCash             bool            `json:"is_cash"`
 }
 
+type PlatformOperator struct {
+	ID           int64     `json:"id"`
+	Username     string    `json:"username"`
+	Name         string    `json:"name"`
+	PasswordHash string    `json:"password_hash"`
+	IsActive     bool      `json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type PlatformSettlement struct {
 	OrderID          int64            `json:"order_id"`
 	ReportedGross    decimal.Decimal  `json:"reported_gross"`
