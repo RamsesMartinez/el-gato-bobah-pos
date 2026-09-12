@@ -6,8 +6,11 @@
   "scripts": {
     "preinstall": "npx only-allow bun",
     "dev": "vite",
+    "dev:consola": "vite --config vite.consola.config.ts",
     "build": "tsc --noEmit && vite build",
+    "build:consola": "tsc --noEmit -p tsconfig.consola.json && vite build --config vite.consola.config.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:consola": "tsc --noEmit -p tsconfig.consola.json",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node scripts/require-node.mjs && vitest run",

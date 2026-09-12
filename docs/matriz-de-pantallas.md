@@ -360,6 +360,48 @@ los dos filtros exactos que rompían. Y las tres unitarias se vieron fallar muta
 **Lo que K no cubre:** que la pantalla muestre lo CORRECTO — eso sigue siendo de cada spec. K1 solo
 exige que el servidor no se rompa, que es justo lo que faltaba.
 
+## L. La consola de plataforma no se cruza con el negocio (2026-09-11)
+
+Spec 016. Lo que se cubre aquí no es una pantalla sino una **separación**, y la vara es distinta:
+cada renglón tiene que poder verse fallar quitando la barrera que lo sostiene, porque una barrera
+que nadie vio caer no se sabe si está.
+
+| # | Caso | Qué debe pasar | Test | Visto en rojo |
+|---|---|---|---|---|
+| L1 | Credencial de plataforma en el login del POS | 401, con la misma respuesta **y la misma latencia** que un usuario inexistente | `consola_separada_test.go` | Sí — medido: 259 µs contra 38 ms al revisar `is_active` antes de bcrypt |
+| L2 | Credencial del negocio en la consola, **siendo admin** | 401. El permiso más alto del producto no alcanza | idem | — |
+| L3 | Token de una superficie contra rutas de la otra | 401 en las dos direcciones, por la firma y no por una comprobación | `auth/plataforma_test.go`, `consola_separada_test.go` | Sí — con un solo secreto, el token cruzado valida |
+| L4 | Operador desactivado con una sesión abierta | El **siguiente** request da 401, sin esperar a que caduque el token | `consola_separada_test.go` | Sí — sin releer al operador devolvía 200 |
+| L5 | La consola contra `orders`, `order_payments`, `register_sessions`, `expenses`, `users` | `42501` en las cinco | `consola_sin_permisos_test.go` | Sí — con `grant select on orders` el caso pasa a verde indebidamente |
+| L6 | La consola escribiendo en `companies` | `42501` en `insert`, `update` y `delete`, y la fila intacta | idem | Sí — con los grants de escritura, dos de los tres pasan |
+| L7 | La lista de clientes | Con dos empresas salen las dos; la versión de esquema viaja una vez | `consola_empresas_test.go` | Sí — sin la política de RLS ve **una de dos** |
+| L8 | Lo que la respuesta NO trae | Ni dinero, ni empleados, ni «última actividad», buscado en el JSON crudo | idem | — |
+| L9 | Arrancar con la conexión equivocada | La API no sirve si el rol de la consola es superusuario o puede leer `orders` | `migracion_consola_test.go` | — |
+| L10 | Revertir la migración | Corta el acceso sin borrar el rol, y volver a aplicarla deja la consola viva | idem | Sí — el `create role if not exists` dejaba el rol sin login en la segunda vuelta |
+| L11 | El POS importando código de la consola | `bun run lint` en rojo, en las dos direcciones y también con `import()` dinámico | `eslint.config.js` (FRONTERAS) | Sí — con tres sondas: estática, dinámica POS→consola y dinámica consola→POS |
+| L11b | La consola importando cualquier carpeta del POS | En rojo para las diez (`features`, `shared`, `stores`, `domain`, `api`, `components`, `hooks`, `app`, `utils`, `types`) | idem | Sí |
+| L12 | El peso del paquete del POS | No crece: 1,133.50 kB antes y después | `bun run build` | Medido |
+| L13 | La pantalla de la consola | Arranca pidiendo entrar; lista las empresas; con cero lo dice en vez de pintar una tabla vacía; un 401 posterior devuelve al login y un 500 se dice sin expulsar | `src/consola/Consola.test.tsx` | Sí — quitando el caso de lista vacía y el manejo del 401, dos casos caen |
+| L14 | Una caída de red (wifi, DNS, CORS) | Dice "No se pudo conectar…", nunca el `Failed to fetch` que escribe el navegador | idem | — |
+| L15 | El mensaje de error se anuncia | Lleva `role="alert"`: un lector de pantalla dice que algo pasó tras tocar Entrar | idem | — |
+
+**Lo que encontró la revisión adversarial y no el trabajo** (queda escrito porque la lección es de
+método, no de código): la primera versión de L11 se dio por buena midiendo **solo el import
+estático**. `no-restricted-imports` no escucha `ImportExpression`, así que `import('../consola/api')`
+cruzaba la frontera con `tsc`, `eslint` y `bun run build` los tres en verde, y con un chunk de la
+consola dentro del `dist/` del POS. La barrera existía a medias y el renglón de esta matriz decía
+que estaba entera.
+
+**Lo que L no cubre, y hay que decirlo:**
+
+- **Ningún test de navegador.** La consola no tiene pruebas de Playwright: la suite corre a 1024×600
+  contra el POS desplegado, y esta pantalla vive en una computadora. Lo que hay es jsdom (L13) y las
+  barreras del backend; **nadie la ha visto pintada en un navegador de verdad**.
+- **Nadie prueba el despliegue a Pages.** Que `staff-dev` sirva la consola y no el POS se ve
+  desplegando, igual que el resto.
+- **La sesión de la consola no sobrevive a una recarga** (no hay refresh, a propósito). No es un
+  defecto: es la decisión de no dejar una credencial de plataforma durmiendo en el navegador.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se

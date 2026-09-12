@@ -97,9 +97,26 @@ func RequestLogger(next http.Handler) http.Handler {
 	})
 }
 
+// clientIP es la IP que va a la bitácora y a los eventos de seguridad.
+//
+// Toma la ÚLTIMA entrada del X-Forwarded-For, igual que `rateKeyIP`, y por la misma razón: Caddy
+// AGREGA el peer real al final, así que con un solo proxy de confianza esa es la única entrada que
+// el cliente no puede falsear — lo que él mande queda a su izquierda. Con la primera,
+// `curl -H 'X-Forwarded-For: 8.8.8.8'` dejaba cada intento fallido registrado con la IP que el
+// atacante eligiera; el limitador nunca se pudo evadir por ahí, pero la bitácora sí mentía, y en un
+// subdominio público es lo único que queda de un intento.
+//
+// ponytail: asume exactamente un proxy de confianza (Caddy), igual que rateKeyIP. Con un salto más
+// hay que pasar a una lista de proxies confiables, y los dos lugares se mueven juntos.
 func clientIP(r *http.Request) string {
 	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-		return strings.TrimSpace(strings.Split(xf, ",")[0])
+		last := xf
+		if _, after, found := strings.CutLast(xf, ","); found {
+			last = after
+		}
+		if ip := strings.TrimSpace(last); ip != "" {
+			return ip
+		}
 	}
 	return r.RemoteAddr
 }

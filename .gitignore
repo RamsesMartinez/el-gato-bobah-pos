@@ -5,6 +5,8 @@ node_modules/
 
 # builds
 web/dist/
+# El build de la consola de plataforma va a su propio directorio para no borrar el del POS.
+web/dist-consola/
 /build
 
 # frontend

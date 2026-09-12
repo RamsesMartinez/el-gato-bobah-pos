@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,6 +40,25 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// LA CONSOLA DE PLATAFORMA (spec 016), y ni una de sus rutas dentro del grupo del negocio.
+		//
+		// No se monta si falta el manager o el servicio: una consola a medias respondería 500 en un
+		// subdominio público, y un 500 ya dice que la ruta está ahí. Sin ellos, no existe.
+		if h.platformJWT != nil && h.platform != nil {
+			r.Route("/platform", func(r chi.Router) {
+				// Mismo throttle por IP que el login del negocio: es la misma superficie de flood.
+				r.With(rateLimit(h.authIPs, cfg.Env == "production")).
+					Post("/auth/login", h.PlatformLogin)
+				r.Group(func(r chi.Router) {
+					// RequireOperador, no RequireAuth: otra firma y otra identidad. Y sin
+					// WithTenant — la consola no tiene empresa, y atarla a una sería el primer
+					// paso para tratarla como una superficie más del POS.
+					r.Use(RequireOperador(h.platformJWT, h.platform))
+					r.Get("/companies", h.PlatformCompanies)
+				})
+			})
+		}
+
 		r.Route("/auth", func(r chi.Router) {
 			// per-IP throttle solo en los endpoints sensibles a flood; pin-switch/me
 			// (frecuentes en el POS) no se limitan por IP — pin-switch ya está protegido
@@ -316,20 +336,40 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 
 // cors resuelve el header Access-Control-Allow-Origin. Con credentials NO se puede
 // usar "*" literal (el browser lo rechaza), así que:
-//   - origen exacto (https://dominio) → se usa tal cual (recomendado en prod).
+//   - uno o varios orígenes exactos separados por coma (https://app…,https://staff…) → se refleja
+//     el que coincida COMPLETO con el Origin del request, y nada si ninguno coincide.
 //   - "" (vacío) → NO se emiten headers CORS = solo mismo origen (fail-closed).
 //   - "*" → SOLO en desarrollo reflejamos el Origin; en prod se ignora (config.Validate
 //     ya rechaza "*" en producción, esto es defensa en profundidad).
+//
+// La lista existe porque el producto tiene dos frentes en dominios distintos contra la MISMA API:
+// el POS en `app.…` y la consola de plataforma en `staff.…`. Con un solo origen permitido, el
+// navegador bloquea al otro entero y el síntoma es un error de red que no menciona CORS.
+//
+// La comparación es por igualdad y nunca por prefijo o sufijo:
+// "https://app.elgatobobah.com.atacante.com" contiene al origen bueno.
 func cors(allowed string, dev bool) func(http.Handler) http.Handler {
+	var permitidos []string
+	for _, o := range strings.Split(allowed, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			permitidos = append(permitidos, o)
+		}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			allow := allowed
-			if allowed == "*" {
+			allow := ""
+			switch {
+			case allowed == "*":
 				if dev && origin != "" {
 					allow = origin // conveniencia de desarrollo
-				} else {
-					allow = "" // en prod no reflejamos orígenes arbitrarios
+				}
+			case origin != "":
+				for _, p := range permitidos {
+					if p == origin {
+						allow = p
+						break
+					}
 				}
 			}
 			if allow != "" {

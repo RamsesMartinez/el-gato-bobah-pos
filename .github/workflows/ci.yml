@@ -129,6 +129,13 @@ jobs:
         run: bun run typecheck
       - name: Build
         run: bun run build
+      # La consola de plataforma se revisa en pasos APARTE (spec 016): su typecheck y su build son
+      # otro proyecto, y el punto de separarlos es que un error suyo se vea como suyo y no como una
+      # falla del POS. Van después a propósito — si el POS está roto, eso se lee primero.
+      - name: Typecheck (consola)
+        run: bun run typecheck:consola
+      - name: Build (consola)
+        run: bun run build:consola
       # Bloqueante en high/critical (A06): antes `|| true` lo hacía informativo. El umbral
       # high evita que un aviso low/moderate rompa CI mientras se triagea.
       - name: Audit
@@ -230,6 +237,74 @@ jobs:
 
       - name: Deploy a Cloudflare Pages (ambiente de pruebas)
         run: bunx wrangler pages deploy dist --project-name=el-gato-bobah-pos-dev --branch=staging --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: e276d7cc7e74941f3843e3dd677cc748
+
+  # --- La consola de plataforma (spec 016): otro build, otro proyecto de Pages, otro dominio. ---
+  #
+  # Jobs propios y NO pasos dentro de los del POS: lo que se despliega al mostrador no puede quedar
+  # varado porque falle la subida de una consola que usa una persona. Si el POS sale y la consola
+  # no, el negocio sigue cobrando.
+  deploy-consola:
+    name: Deploy consola (Cloudflare Pages)
+    needs: [frontend, deploy-backend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.7
+      - name: Install
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build
+        run: bun run build:consola
+        env:
+          VITE_API_URL: https://api.elgatobobah.com/api/v1
+      - name: Deploy a Cloudflare Pages
+        run: bunx wrangler pages deploy dist-consola --project-name=el-gato-bobah-pos-consola --branch=develop --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: e276d7cc7e74941f3843e3dd677cc748
+
+  deploy-consola-staging:
+    name: Deploy consola (ambiente de pruebas)
+    needs: [frontend, deploy-staging]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.7
+      - name: Install
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build
+        run: bun run build:consola
+        env:
+          VITE_API_URL: https://api-dev.elgatobobah.com/api/v1
+      # Misma reescritura del CSP que el POS y por la misma razón: `public-consola/_headers` lista
+      # la API de PRODUCCIÓN, porque el CSP de producción debe listar solo lo que producción
+      # necesita. Falla ruidoso si el sed no encontró nada.
+      - name: Apuntar el CSP a la API de pruebas
+        run: |
+          sed -i 's|https://api\.elgatobobah\.com|https://api-dev.elgatobobah.com|g' dist-consola/_headers
+          grep -q 'connect-src .*https://api-dev\.elgatobobah\.com' dist-consola/_headers
+          ! grep -q 'https://api\.elgatobobah\.com' dist-consola/_headers
+
+      - name: Deploy a Cloudflare Pages (ambiente de pruebas)
+        run: bunx wrangler pages deploy dist-consola --project-name=el-gato-bobah-pos-consola-dev --branch=staging --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: e276d7cc7e74941f3843e3dd677cc748
