@@ -25,9 +25,27 @@ async function entrar(page: Page) {
   await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
 }
 
+
+// ponerUnProductoEnLaCuenta llega al producto por el BUSCADOR, no por el mosaico.
+//
+// Tocarlo directo funcionaba mientras el ambiente de pruebas tenía un catálogo sembrado y chico:
+// el producto estaba a la vista al entrar. Con el catálogo real del negocio —cientos de productos
+// repartidos en categorías— deja de estarlo, y siete casos se caían esperando 60 segundos a un
+// texto que sí existe pero no está en pantalla. El buscador lo alcanza sin importar cuántos haya.
+//
+// Se busca SIEMPRE el mismo producto a propósito: varios de estos casos afirman importes, y tomar
+// "el primero que aparezca" los volvería dependientes de qué catálogo tenga el ambiente.
+async function ponerUnProductoEnLaCuenta(page: Page, nombre = 'Dedos de Queso Pza') {
+  const buscador = page.getByPlaceholder('Buscar producto…');
+  if (await buscador.isVisible().catch(() => false)) {
+    await buscador.fill(nombre);
+  }
+  await page.getByText(nombre).first().click({ timeout: 30_000 });
+}
+
 test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page }) => {
   await entrar(page);
-  await page.getByText('Dedos de Queso Pza').first().click();
+  await ponerUnProductoEnLaCuenta(page);
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
   const pildora = page.getByRole('button', { name: /art ·/ });
@@ -67,7 +85,7 @@ test('E7 · la hoja de cobro cabe en 600 px, con y sin repartir', async ({ page 
 // unidad y borrar el renglón entero se distinguían por unos pocos píxeles.
 test('X7 · los controles del renglón del ticket miden 44 px y la papelera va aparte', async ({ page }) => {
   await entrar(page);
-  await page.getByText('Dedos de Queso Pza').first().click();
+  await ponerUnProductoEnLaCuenta(page);
 
   // El mismo camino que E7, y por las mismas razones: el producto puede abrir la hoja de
   // modificadores, y a 1024x600 el POS está en modo ANGOSTO — el ticket no es un panel lateral sino
@@ -105,7 +123,7 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
 // en un navegador de verdad porque el papel se pinta dentro de un iframe.
 test('T-cuenta · el papel de la cuenta sale marcado y la hoja cabe en 600 px', async ({ page }) => {
   await entrar(page);
-  await page.getByText('Dedos de Queso Pza').first().click();
+  await ponerUnProductoEnLaCuenta(page);
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
   const barra = page.getByRole('button', { name: /art ·/ });
