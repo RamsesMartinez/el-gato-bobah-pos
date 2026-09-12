@@ -1,0 +1,322 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sort"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
+)
+
+// UsageService mide qué se usa del sistema (spec 017).
+//
+// Dos caminos que no se cruzan: `Registrar` escribe con la conexión del NEGOCIO (bajo RLS, la
+// empresa sale del token) y `Mapa` lee con la de la CONSOLA, que no tiene permiso sobre el grano
+// fino. `Recortar` es el único que necesita al dueño, y abre su propia conexión para eso.
+type UsageService struct {
+	store *store.Store
+	now   func() time.Time
+}
+
+func NewUsageService(st *store.Store) *UsageService {
+	return &UsageService{store: st, now: time.Now}
+}
+
+// RetencionDelAgregadoEnDias: cuánto se conserva el conteo.
+//
+// Trece meses —y no doce— para poder comparar un mes contra el mismo mes del año pasado, que es la
+// primera comparación que pide un negocio de comida.
+const RetencionDelAgregadoEnDias = 396
+
+// Registrar guarda un lote de eventos y devuelve cuántos se descartaron por no estar en la lista
+// blanca.
+//
+// Ese número es el único testigo de que una versión del front dejó de medir: si nadie lo mira, el
+// mapa simplemente muestra menos, que es indistinguible de «se usó menos».
+//
+// El rol lo pone quien llama desde el TOKEN, nunca el cuerpo del request.
+func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []domain.EventoDeUso) (int, error) {
+	lote = domain.RecortarLoteDeUso(lote)
+	agregado := domain.PreAgregarUso(lote, rol)
+
+	validos := 0
+	for _, a := range agregado {
+		validos += a.Veces
+	}
+	descartados := len(lote) - validos
+	if len(agregado) == 0 {
+		return descartados, nil
+	}
+
+	// LA SUPRESIÓN SE DECIDE AQUÍ, AL ESCRIBIR, y por eso no se puede deshacer leyendo.
+	//
+	// Quien leyera no podría decidirlo: la consola no tiene permiso sobre `users` para contar la
+	// plantilla de un cliente, y dárselo abriría la puerta que la spec 016 cerró.
+	rolAGuardar, err := s.rolQueSePuedeGuardar(ctx, rol)
+	if err != nil {
+		return descartados, err
+	}
+
+	// EL DÍA DEL NEGOCIO, no el de UTC: con el servidor en UTC la medianoche cae a las 18:00 en
+	// México, así que todo lo de la tarde-noche —donde más se mueve un lugar de comida— se contaría
+	// mañana. Es el mismo defecto que 0038 arregló para la venta, y aquí habría dado un mapa que
+	// miente de noche y acierta de día.
+	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
+
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		for _, a := range agregado {
+			var accion *string
+			if a.Accion != "" {
+				accion = &a.Accion
+			}
+			if err := q.UpsertUsageDaily(ctx, db.UpsertUsageDailyParams{
+				Day: dia, Screen: a.Pantalla, Action: accion, Role: rolAGuardar, Hits: int64(a.Veces),
+			}); err != nil {
+				return fmt.Errorf("sumar el uso del día: %w", err)
+			}
+		}
+		return nil
+	})
+	return descartados, err
+}
+
+// location resuelve la zona del negocio del request. Cae al default del producto si no se puede
+// leer: una medición no puede fallar por eso, y el `BusinessDate` de una zona equivocada sigue
+// siendo mejor que el de UTC.
+func (s *UsageService) location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
+}
+
+// rolQueSePuedeGuardar devuelve el rol, o nil si guardarlo identificaría a una persona.
+func (s *UsageService) rolQueSePuedeGuardar(ctx context.Context, rol domain.Role) (*db.UserRole, error) {
+	if !domain.RolMedible(rol) {
+		return nil, nil
+	}
+	activos, err := s.store.QC(ctx).CountActiveUsersByRole(ctx, string(rol))
+	if err != nil {
+		return nil, fmt.Errorf("contar usuarios del rol: %w", err)
+	}
+	if !domain.CorteDeRolPermitido(int(activos)) {
+		return nil, nil
+	}
+	r := db.UserRole(rol)
+	return &r, nil
+}
+
+// --- Lo que lee la consola (US1). ---
+
+// AccionDeUso es una acción con nombre y cuántas veces ocurrió en el periodo.
+type AccionDeUso struct {
+	Accion string `json:"accion"`
+	Veces  int64  `json:"veces"`
+}
+
+// UsoPorRol reparte el uso de una pantalla entre los roles. `Rol` nulo significa **sin corte**: ese
+// uso existe pero no se puede atribuir sin identificar a una persona (FR-009).
+type UsoPorRol struct {
+	Rol   *string `json:"rol"`
+	Veces int64   `json:"veces"`
+}
+
+// PantallaDeUso es un renglón del mapa.
+//
+// Las tres cifras dicen cosas distintas y el contrato las declara: `Aperturas` cuenta solo las
+// vistas, `Acciones[].Veces` solo las acciones, y `PorRol[].Veces` es TODO lo de la pantalla
+// repartido por rol — de modo que sum(PorRol) == Aperturas + sum(Acciones). Sin esa declaración,
+// quien lea suma dos de las tres y reporta un número que no existe.
+type PantallaDeUso struct {
+	Pantalla  string        `json:"pantalla"`
+	Aperturas int64         `json:"aperturas"`
+	Acciones  []AccionDeUso `json:"acciones"`
+	PorRol    []UsoPorRol   `json:"porRol"`
+}
+
+// MapaDeUso es lo que la consola pinta.
+type MapaDeUso struct {
+	Periodo   RangoDeUso      `json:"periodo"`
+	Pantallas []PantallaDeUso `json:"pantallas"`
+}
+
+// RangoDeUso dice qué periodo se está mirando. Viaja en la respuesta porque una pantalla que no
+// dice qué rango muestra invita a leer el número equivocado.
+type RangoDeUso struct {
+	Desde string `json:"desde"`
+	Hasta string `json:"hasta"`
+}
+
+// Mapa devuelve el uso del periodo, ordenado de la pantalla más usada a la menos.
+//
+// Las pantallas sin uso VIAJAN con cero y no se omiten: «qué no usa nadie» es la mitad de la
+// pregunta que esta feature vino a responder.
+func (s *UsageService) Mapa(ctx context.Context, desde, hasta time.Time, empresa *int64) (MapaDeUso, error) {
+	if err := domain.RangoDeUsoValido(desde, hasta, RetencionDelAgregadoEnDias); err != nil {
+		return MapaDeUso{}, err
+	}
+	filas, err := s.store.Q.SumUsageForMap(ctx, db.SumUsageForMapParams{
+		Desde:   pgtype.Date{Time: desde, Valid: true},
+		Hasta:   pgtype.Date{Time: hasta, Valid: true},
+		Company: empresa,
+	})
+	if err != nil {
+		return MapaDeUso{}, fmt.Errorf("leer el uso: %w", err)
+	}
+
+	porPantalla := map[string]*PantallaDeUso{}
+	porRol := map[string]map[string]int64{} // pantalla -> rol ("" = sin corte) -> veces
+	for _, f := range filas {
+		p, ok := porPantalla[f.Screen]
+		if !ok {
+			p = &PantallaDeUso{Pantalla: f.Screen, Acciones: []AccionDeUso{}, PorRol: []UsoPorRol{}}
+			porPantalla[f.Screen] = p
+			porRol[f.Screen] = map[string]int64{}
+		}
+		if f.Action == nil {
+			p.Aperturas += f.Veces
+		} else {
+			p.Acciones = append(p.Acciones, AccionDeUso{Accion: *f.Action, Veces: f.Veces})
+		}
+		rol := ""
+		if f.Role != nil {
+			rol = string(*f.Role)
+		}
+		porRol[f.Screen][rol] += f.Veces
+	}
+
+	// Las pantallas que nadie abrió: nacen en cero para que el mapa pueda decir «esta no la usa
+	// nadie», que es justo lo que no se puede ver mirando la aplicación.
+	for _, nombre := range domain.PantallasMedibles() {
+		if _, ok := porPantalla[nombre]; !ok {
+			porPantalla[nombre] = &PantallaDeUso{Pantalla: nombre, Acciones: []AccionDeUso{}, PorRol: []UsoPorRol{}}
+		}
+	}
+
+	pantallas := make([]PantallaDeUso, 0, len(porPantalla))
+	for nombre, p := range porPantalla {
+		for rol, veces := range porRol[nombre] {
+			r := &rol
+			if rol == "" {
+				r = nil
+			}
+			p.PorRol = append(p.PorRol, UsoPorRol{Rol: r, Veces: veces})
+		}
+		// Con desempate por nombre: `porRol` se llena recorriendo un map de Go, cuyo orden es
+		// aleatorio a propósito, así que dos empates pintarían distinto en dos cargas seguidas. Una
+		// tabla que se reordena sola es una tabla que nadie puede comparar de un día para otro.
+		sort.Slice(p.PorRol, func(i, j int) bool {
+			if p.PorRol[i].Veces != p.PorRol[j].Veces {
+				return p.PorRol[i].Veces > p.PorRol[j].Veces
+			}
+			return nombreDeRol(p.PorRol[i].Rol) < nombreDeRol(p.PorRol[j].Rol)
+		})
+		sort.Slice(p.Acciones, func(i, j int) bool { return p.Acciones[i].Veces > p.Acciones[j].Veces })
+		pantallas = append(pantallas, *p)
+	}
+	// De más a menos usada, contando todo lo que pasó en ella. El empate se rompe por nombre para
+	// que dos cargas seguidas pinten el mismo orden: una tabla que se reordena sola es una tabla
+	// que nadie puede comparar de un día para otro.
+	sort.Slice(pantallas, func(i, j int) bool {
+		ti, tj := totalDe(pantallas[i]), totalDe(pantallas[j])
+		if ti != tj {
+			return ti > tj
+		}
+		return pantallas[i].Pantalla < pantallas[j].Pantalla
+	})
+
+	return MapaDeUso{
+		Periodo:   RangoDeUso{Desde: desde.Format(time.DateOnly), Hasta: hasta.Format(time.DateOnly)},
+		Pantallas: pantallas,
+	}, nil
+}
+
+func totalDe(p PantallaDeUso) int64 {
+	total := p.Aperturas
+	for _, a := range p.Acciones {
+		total += a.Veces
+	}
+	return total
+}
+
+// --- El recorte (US4). ---
+
+// Recortar borra lo que ya pasó su retención.
+//
+// Corre con la conexión que traiga el store: en producción se le pasa una de DUEÑO, porque el rol
+// de la aplicación está bajo RLS y solo borraría las filas de SU empresa — el recorte se quedaría a
+// medias en una instalación multi-empresa y sin que nada fallara.
+//
+// Borra un día a la vez en la práctica (se llama a diario), así que no necesita lotes: lo que
+// elimina son las filas de un solo día, no un año de golpe.
+func (s *UsageService) Recortar(ctx context.Context) error {
+	filas, err := s.store.Q.DeleteOldUsageDaily(ctx, RetencionDelAgregadoEnDias)
+	if err != nil {
+		return fmt.Errorf("recortar el uso: %w", err)
+	}
+	if filas > 0 {
+		slog.Info("uso recortado", "filas", filas)
+	}
+	return nil
+}
+
+// RecortarPeriodicamente corre el recorte AL ARRANCAR y luego cada `cada`, hasta que el contexto se
+// cancele.
+//
+// El «al arrancar» es lo que hace que exista. Un `time.Ticker` de 24 horas se reinicia con el
+// proceso, y este repo redespliega en CADA merge: un binario que no vive un día entero seguido no
+// dispararía nunca el recorte, en silencio, y la promesa de que el volumen no crece quedaría siendo
+// una promesa que nadie cumple. Lo encontró la revisión de arquitectura; el ticker solo, que era lo
+// obvio, era justo lo que no funcionaba aquí.
+//
+// Un fallo se registra y NO detiene el ciclo: que la base esté ocupada un día no puede dejar el
+// recorte apagado para siempre.
+//
+// La conexión de DUEÑO se abre y se cierra EN CADA PASADA, no se sostiene entre una y otra: es un
+// asa que salta RLS viviendo en el mismo proceso que los handlers, y mantenerla abierta un día
+// entero para correr un `delete` es superficie regalada. `abrir` la provee quien llama.
+func RecortarPeriodicamente(ctx context.Context, cada time.Duration, abrir func(context.Context) (*store.Store, error)) {
+	recortar := func() {
+		st, err := abrir(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Error("sin conexión para recortar el uso", "error", err)
+			}
+			return
+		}
+		defer st.Close()
+		if err := NewUsageService(st).Recortar(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("no se pudo recortar el uso", "error", err)
+		}
+	}
+	recortar()
+
+	t := time.NewTicker(cada)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			// La condición de término que el principio II exige: sin esto es una goroutine que
+			// sobrevive al apagado y mantiene viva una conexión de dueño.
+			return
+		case <-t.C:
+			recortar()
+		}
+	}
+}
+
+// nombreDeRol ordena el "sin corte" al final, que es donde se lee mejor: primero quiénes fueron y
+// al último lo que no se puede atribuir.
+func nombreDeRol(r *string) string {
+	if r == nil {
+		return "~sin corte"
+	}
+	return *r
+}

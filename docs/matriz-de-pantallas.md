@@ -406,6 +406,46 @@ que estaba entera.
 - **La sesión de la consola no sobrevive a una recarga** (no hay refresh, a propósito). No es un
   defecto: es la decisión de no dejar una credencial de plataforma durmiendo en el navegador.
 
+## M. El mapa de uso: medir sin estorbar y sin señalar a nadie (2026-09-12)
+
+Spec 017. Tres promesas que se rompen **en silencio** —la medición estorbando, el anonimato
+filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
+
+| # | Caso | Qué debe pasar | Test | Visto en rojo |
+|---|---|---|---|---|
+| M1 | Lo que se guarda | Un conteo por día, sin columna ni FK hacia una persona **y sin marca de tiempo por evento** — el reloj era el identificador | `migracion_uso_test.go`, `uso_anonimo_test.go` | — |
+| M2 | Un rol con **una sola** persona | El agregado se guarda con rol nulo («sin corte») | `uso_anonimo_test.go` | Sí — saltándose la regla, el rol queda escrito |
+| M3 | La llave del agregado | Dos eventos con `action` y `role` nulos **suman**, no crean dos filas | `migracion_uso_test.go` | Sí — sin `nulls not distinct` quedan 2 |
+| M4 | El lote pre-agregado | Tres toques cuentan tres, aunque se escriban en un solo `update` | `uso_anonimo_test.go` | — |
+| M5 | El endpoint de ingesta | **204 siempre**: lote vacío, cuerpo roto, nombres inventados, 500 eventos | `httpapi/uso_test.go` | — |
+| M6 | Su limitador | Pasado el tope no se escribe, y la respuesta sigue siendo 204 | idem | — |
+| M7 | Lo que el cliente manda de más | El `rol` del cuerpo se ignora —sale del token— y lo demás no tiene columna a la que llegar | `uso_http_test.go` | — |
+| M7b | Un rol reportando pantallas ajenas | Un mesero que reporta la pantalla de usuarios se descarta entero | `domain/uso_test.go` | — |
+| M8 | El registrador del POS | Lote a los 20 / 10 s / al ocultarse **y al irse la página**; uno en vuelo a la vez; un fetch que revienta no lanza ni reintenta | `src/api/uso.test.ts` | Sí — sin la guarda salen dos envíos |
+| M8b | Salir de una carga | `pagehide` manda lo que quede: `visibilitychange` no cubre navegar, y sin él todo lo encolado en esa página se perdía | idem, y `medir-no-estorba.spec.ts` | Sí — el e2e contaba cero intentos |
+| M9 | La recarga | El F5 no cuenta como apertura; dos entradas legítimas sí | `src/app/MedidorDeUso.test.tsx` | — |
+| M10 | El orden | Ningún `await` sobre la medición, y el cobro se mide dentro del `onSuccess` | `src/api/uso-orden.test.ts` | — |
+| M11 | El mapa | Pantallas ordenadas, el número escrito en la celda, las de cero presentes, «sin corte» nombrado | `uso_consola_test.go`, `MapaDeUso.test.tsx` | — |
+| M12 | Qué incluye cada cifra | `sum(porRol) == aperturas + sum(acciones)` | `uso_consola_test.go` | — |
+| M13 | Quién puede leerlo | La consola ve el agregado de **todas** las empresas y `usage_events` le da 42501; el negocio ve solo lo suyo | `migracion_uso_test.go` | Sí — sin la política ve una empresa de dos |
+| M14 | Rango imposible | Un `desde` fuera de la retención o mal escrito da **400**, no un default en silencio | `uso_consola_test.go` | — |
+| M15 | El volumen de un año | Bajo el techo con el churn **al tope del limitador**, no al del uso honesto | `uso_volumen_test.go` | Medido: 10.3 MB de 25 |
+| M16 | El recorte | Borra lo viejo, no toca lo de dentro, y su ciclo termina al apagar | idem | — |
+| M17 | Las coordenadas del futuro | Su tabla se crea al lado sin tocar una fila de lo escrito | idem | — |
+| M19 | La cola y el cambio de sesión | Lo encolado se **tira**, no se manda con el token del siguiente operador | `src/api/uso.test.ts` | — |
+| M18 | El peso del POS | +1.64 kB (1,133.26 → 1,134.90 kB) | `bun run build` | Medido |
+
+**Lo que M no cubre, y hay que decirlo:**
+
+- **La red LENTA solo se prueba a mano.** `medir-no-estorba.spec.ts` corta el endpoint de medición
+  por completo, que es el caso fácil; el que de verdad preocupa —respuestas de 8 a 15 segundos que
+  apilan lotes— vive en el paso 4-bis del quickstart y lo tiene que hacer una persona con el
+  navegador estrangulado.
+- **Nadie mide que el mapa sea útil.** Que las cifras sean correctas está cubierto; que mirándolo se
+  pueda decidir algo, no — eso se ve con un mes de uso encima y a ojo.
+- **El recorte en la VM.** Que dispare al arrancar está probado en integración; que efectivamente
+  corra en producción se comprueba contando filas viejas tras varios despliegues.
+
 ## Pendientes de cubrir
 
 Renglones que este documento reconoce como **no cubiertos**. Están aquí porque un hueco nombrado se

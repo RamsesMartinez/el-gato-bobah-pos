@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 
@@ -77,4 +80,53 @@ func (h *Handlers) PlatformCompanies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, empresas)
+}
+
+// PlatformUsage: GET /api/v1/platform/usage
+//
+// El mapa de calor de uso (spec 017). Lee con la conexión de la CONSOLA, que solo alcanza el
+// agregado: el grano fino —donde mañana van las coordenadas del toque— le está negado por grants.
+func (h *Handlers) PlatformUsage(w http.ResponseWriter, r *http.Request) {
+	desde, err := parseFechaDeUso(r.URL.Query().Get("desde"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	hasta, err := parseFechaDeUso(r.URL.Query().Get("hasta"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// `empresa` ausente = todas juntas (FR-008). Presente y mal escrita se RECHAZA: caer a "todas"
+	// en silencio devolvería un número que nadie pidió, en una pantalla que se ve correcta.
+	var empresa *int64
+	if v := r.URL.Query().Get("empresa"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			Error(w, fmt.Errorf("%w: empresa inválida", domain.ErrValidation))
+			return
+		}
+		empresa = &id
+	}
+
+	mapa, err := h.usageConsola.Mapa(r.Context(), desde, hasta, empresa)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, mapa)
+}
+
+// parseFechaDeUso exige AAAA-MM-DD. Una fecha mal escrita se rechaza en vez de caer a un default:
+// un `desde` que se convierte en "los últimos 30 días" devuelve una pantalla que se ve bien y
+// reporta un periodo que nadie pidió.
+func parseFechaDeUso(v string) (time.Time, error) {
+	if v == "" {
+		return time.Time{}, fmt.Errorf("%w: falta la fecha", domain.ErrValidation)
+	}
+	t, err := time.Parse(time.DateOnly, v)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: la fecha va como AAAA-MM-DD", domain.ErrValidation)
+	}
+	return t, nil
 }

@@ -108,6 +108,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
+- **Medición de uso** (spec 017): el POS manda lotes a `POST /api/v1/usage` y la consola los lee en
+  `GET /api/v1/platform/usage`. **Agregar una pantalla o una acción se hace en DOS lugares**: la
+  lista blanca de [server/internal/domain/uso.go](server/internal/domain/uso.go) —lo que no está ahí
+  se descarta en el servidor y queda un `usage_descartado` en el log— y el mapa de rutas de
+  [web/src/app/rutas-medidas.ts](web/src/app/rutas-medidas.ts). La etiqueta que se ve en el mapa va
+  en [web/src/consola/etiquetas-de-uso.ts](web/src/consola/etiquetas-de-uso.ts), que es una copia
+  deliberada: la consola no importa del POS.
 - **Consola de plataforma** (en `web/`): `bun run dev:consola` (puerto 3100, con proxy a la API),
   `bun run typecheck:consola`, `bun run build:consola`. Van aparte de los del POS a propósito: un
   typo en la consola no puede dejar varado un arreglo de cobro en tableta. El primer operador se

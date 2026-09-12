@@ -46,7 +46,7 @@ beforeEach(() => {
 // diferencia desde esta pantalla.
 test('el encabezado dice el total del pedido y lo que falta, no solo una', async () => {
   order.mockResolvedValue({ ...pedido({ outstanding: '200' }), lines: [] });
-  pinta(<CobrarSheet order={pedido({ outstanding: '200' })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '200' })} onClose={() => {}} onCobrado={() => {}} />);
 
   expect(await screen.findByText(/Total \$500/)).toBeInTheDocument();
   expect(screen.getByText(/Falta \$200/)).toBeInTheDocument();
@@ -59,7 +59,7 @@ test('el encabezado dice el total del pedido y lo que falta, no solo una', async
 test('el faltante sale del pedido vivo, no del que traía la lista', async () => {
   order.mockResolvedValue({ ...pedido({ outstanding: '120' }), lines: [] });
   // La lista traía $500; el servidor dice $120 porque otra caja ya cobró un pedazo.
-  pinta(<CobrarSheet order={pedido({ outstanding: '500' })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '500' })} onClose={() => {}} onCobrado={() => {}} />);
 
   expect(await screen.findByText(/Falta \$120/)).toBeInTheDocument();
 });
@@ -70,7 +70,7 @@ test('el faltante sale del pedido vivo, no del que traía la lista', async () =>
 // registra con tarjeta dinero que entró en efectivo, y el corte cierra descuadrado en los dos
 // métodos a la vez. El tap sobre el método es la confirmación de con qué se está pagando.
 test('no se puede cobrar sin elegir método', async () => {
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   const boton = await screen.findByRole('button', { name: /^Cobrar / });
   expect(boton).toBeDisabled();
@@ -83,7 +83,7 @@ test('no se puede cobrar sin elegir método', async () => {
 // hoja donde lo que escasea es el ALTO, eso es una fila entera gastada en el caso raro: el operador
 // veía el repartidor en cada cobro y lo usaba en uno de cada varias decenas.
 test('abre sin repartidor: el monto es todo lo que falta', async () => {
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   expect(await screen.findByRole('button', { name: /^Cobrar \$500/ })).toBeInTheDocument();
   // Ni el repartidor ni sus controles ocupan nada hasta que alguien los pide.
@@ -98,7 +98,7 @@ test('abre sin repartidor: el monto es todo lo que falta', async () => {
 // decide si el botón se enciende.
 test('al dividir, el número de partes sube y baja y el monto lo sigue', async () => {
   const u = userEvent.setup();
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   // Arranca en dos, que es el reparto más común.
@@ -123,7 +123,7 @@ test('al dividir, el número de partes sube y baja y el monto lo sigue', async (
 test('no deja repartir en más partes de las que el faltante aguanta', async () => {
   const u = userEvent.setup();
   order.mockResolvedValue({ ...pedido({ outstanding: '0.02', total: '500' }), lines: [] });
-  pinta(<CobrarSheet order={pedido({ outstanding: '0.02' })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '0.02' })} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   expect(screen.getByLabelText('Una parte más')).toBeDisabled();
@@ -135,7 +135,7 @@ test('no deja repartir en más partes de las que el faltante aguanta', async () 
 test('cobrar un pedazo manda UNA llamada, con su llave de idempotencia', async () => {
   const u = userEvent.setup();
   chargeOrder.mockResolvedValue({ outstanding: '250', paid: false, yaEstaba: false });
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
@@ -155,7 +155,7 @@ test('con saldo pendiente la hoja sigue abierta y se prepara para el siguiente',
   const u = userEvent.setup();
   const onClose = vi.fn();
   chargeOrder.mockResolvedValue({ outstanding: '250', paid: false, yaEstaba: false });
-  pinta(<CobrarSheet order={pedido()} onClose={onClose} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={onClose} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
@@ -173,7 +173,7 @@ test('al quedar saldado se cierra', async () => {
   const u = userEvent.setup();
   const onClose = vi.fn();
   chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false });
-  pinta(<CobrarSheet order={pedido()} onClose={onClose} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={onClose} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$500/ }));
@@ -186,7 +186,7 @@ test('al quedar saldado se cierra', async () => {
 test('traduce el rebote de otra caja a algo accionable', async () => {
   const u = userEvent.setup();
   chargeOrder.mockRejectedValue(new Error('conflicto: ese pedido ya está cobrado'));
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$500/ }));
@@ -198,7 +198,7 @@ test('traduce el rebote de otra caja a algo accionable', async () => {
 // dividido no existía en ninguna de las dos hojas.
 test('en efectivo no deja cobrar si lo recibido no alcanza', async () => {
   const u = userEvent.setup();
-  pinta(<CobrarSheet order={pedido({ outstanding: '175' })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '175' })} onClose={() => {}} onCobrado={() => {}} />);
   order.mockResolvedValue({ ...pedido({ outstanding: '175' }), lines: [] });
 
   await u.click(await screen.findByRole('button', { name: 'Efectivo' }));
@@ -213,7 +213,7 @@ test('en efectivo no deja cobrar si lo recibido no alcanza', async () => {
 // que el catálogo del front es la única barrera — y una tableta encendida lleva horas con él en
 // caché.
 test('vuelve a pedir el catálogo de métodos al abrir', async () => {
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
   await waitFor(() => expect(paymentMethods).toHaveBeenCalled());
 });
 
@@ -222,7 +222,7 @@ test('vuelve a pedir el catálogo de métodos al abrir', async () => {
 // pagó por transferencia. La fila en blanco dejaba al operador sin saber qué le faltaba.
 test('sin métodos elegibles lo dice con palabras, no deja la fila vacía', async () => {
   paymentMethods.mockResolvedValue({ items: metodos });
-  pinta(<CobrarSheet order={pedido({ deliveryPlatformId: 3 })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ deliveryPlatformId: 3 })} onClose={() => {}} onCobrado={() => {}} />);
 
   expect(await screen.findByText(/no tiene métodos de pago configurados/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^Cobrar / })).toBeDisabled();
@@ -233,7 +233,7 @@ test('sin métodos elegibles lo dice con palabras, no deja la fila vacía', asyn
 test('el cambio se puede dejar como propina de un toque', async () => {
   const u = userEvent.setup();
   order.mockResolvedValue({ ...pedido({ outstanding: '460', total: '460' }), lines: [] });
-  pinta(<CobrarSheet order={pedido({ outstanding: '460', total: '460' })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '460', total: '460' })} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: 'Efectivo' }));
   await u.click(await screen.findByRole('button', { name: '$500' }));
@@ -247,7 +247,7 @@ test('el cambio se puede dejar como propina de un toque', async () => {
 // cobrar" ahí manda al operador a buscar un problema que no existe.
 test('sobre un pedido ya saldado lo dice y no ofrece cobrar', async () => {
   order.mockResolvedValue({ ...pedido({ outstanding: '0', paid: true }), lines: [] });
-  pinta(<CobrarSheet order={pedido({ outstanding: '0', paid: true })} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ outstanding: '0', paid: true })} onClose={() => {}} onCobrado={() => {}} />);
 
   expect(await screen.findByText('Este pedido ya está cobrado.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Cobrar / })).toBeNull();
@@ -263,7 +263,7 @@ test('el reintento de un cobro fallido manda la MISMA llave', async () => {
   const u = userEvent.setup();
   chargeOrder.mockRejectedValueOnce(new Error('network error'));
   chargeOrder.mockResolvedValueOnce({ outstanding: '0', paid: true, yaEstaba: true });
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: 'Tarjeta' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$500/ }));
@@ -286,7 +286,7 @@ test('cada pedazo cobrado estrena llave', async () => {
   // tiene que prepararse para el segundo comensal con ESA cifra, no con la que tenía al abrirse.
   order.mockResolvedValueOnce({ ...pedido(), lines: [] });
   order.mockResolvedValue({ ...pedido({ outstanding: '250' }), lines: [] });
-  pinta(<CobrarSheet order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Tarjeta' }));
@@ -318,7 +318,7 @@ test('repartir entre tres cobra 33.33, 33.33 y 33.34, y sale del reparto en la �
     faltante = round2(faltante - body.amount);
     return { outstanding: String(faltante), paid: faltante <= 0, yaEstaba: false };
   });
-  pinta(<CobrarSheet order={cien} onClose={() => {}} onCobrado={() => {}} />);
+  pinta(<CobrarSheet pantalla="pos" order={cien} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByLabelText('Una parte más'));
@@ -355,6 +355,7 @@ test('abrir la hoja sobre una cuenta sin confirmar no crea el pedido', async () 
   const crearPedido = vi.fn();
   pinta(
     <CobrarSheet
+      pantalla="pos"
       order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
         currency: 'MXN', deliveryPlatformId: null }}
       crearPedido={crearPedido}
@@ -379,6 +380,7 @@ test('el botón final crea el pedido y luego lo cobra', async () => {
 
   pinta(
     <CobrarSheet
+      pantalla="pos"
       order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
         currency: 'MXN', deliveryPlatformId: null }}
       crearPedido={crearPedido}
@@ -399,6 +401,7 @@ test('el botón final crea el pedido y luego lo cobra', async () => {
 test('una cuenta sin confirmar no finge tener folio del servidor', async () => {
   pinta(
     <CobrarSheet
+      pantalla="pos"
       order={{ id: null, number: null, folioName: '', total: '500', outstanding: '500',
         currency: 'MXN', deliveryPlatformId: null }}
       crearPedido={vi.fn()}
@@ -427,6 +430,7 @@ test('al dividir, el segundo pedazo cobra el pedido que creó el primero', async
 
   pinta(
     <CobrarSheet
+      pantalla="pos"
       order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
         currency: 'MXN', deliveryPlatformId: null }}
       crearPedido={crearPedido}

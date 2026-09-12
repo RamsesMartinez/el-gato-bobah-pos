@@ -97,7 +97,9 @@ export function PedidosEnCurso({ onAbrir, onCobrado, hayQueAgregar }: {
           entraron— y con otro pedido nada de eso aplica. Remontarla lo limpia sin un efecto que
           resincronice, que es de donde salen los estados a medias. */}
       <VerTicket orderId={viendoTicket} onClose={() => setViendoTicket(null)} />
-      <CobrarSheet key={cobrando?.id} order={cobrando}
+      {/* Esta lista vive DENTRO del POS (el botón naranja de la barra), así que su cobro se
+          cuenta ahí y no en el tablero de pedidos. */}
+      <CobrarSheet key={cobrando?.id} pantalla="pos" order={cobrando}
         onClose={() => setCobrando(null)}
         onCobrado={(res, orderId) => { refrescar(); onCobrado(res, orderId); }} />
     </>

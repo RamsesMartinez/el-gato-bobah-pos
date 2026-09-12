@@ -222,8 +222,30 @@ func main() {
 		// un cliente, no una decisión de este servicio.
 		PlatformJWT: pjm,
 		Platform:    app.NewPlatformService(plataforma, pjm, nil),
+		// Medición de uso (spec 017): el POS escribe con la conexión del negocio y la consola lee
+		// con la de plataforma, que solo alcanza el agregado. Dos servicios sobre dos conexiones,
+		// no uno compartido: son dos permisos distintos.
+		Usage:        app.NewUsageService(st),
+		UsageConsola: app.NewUsageService(plataforma),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
+
+	// EL RECORTE DEL USO, dentro de este mismo binario: la VM tiene 300 MB de RAM libres y un cron
+	// aparte es otra pieza que se puede olvidar.
+	//
+	// Corre AL ARRANCAR y luego cada 24 h. Lo primero no es un detalle: un ticker de 24 horas se
+	// reinicia con el proceso y aquí se redespliega en cada merge, así que sin la pasada de
+	// arranque un binario que no vive un día entero no recortaría NUNCA, en silencio.
+	//
+	// Con conexión de DUEÑO y no con la de servicio: el rol de la app está bajo RLS y solo borraría
+	// lo de su empresa, dejando el recorte a medias sin que nada fallara.
+	// La conexión de dueño se abre y se cierra EN CADA PASADA: sostenerla todo el día sería un asa
+	// que salta RLS viviendo junto a los handlers, para correr un `delete` una vez cada 24 horas.
+	ctxRecorte, detenerRecorte := context.WithCancel(ctx)
+	defer detenerRecorte()
+	go app.RecortarPeriodicamente(ctxRecorte, 24*time.Hour, func(c context.Context) (*store.Store, error) {
+		return store.New(c, cfg.DatabaseURL)
+	})
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
