@@ -22,8 +22,8 @@ cuenten, y que el volumen no crezca con los dedos.
 
 ## Fase 1: Setup
 
-- [ ] T001 Confirmar rama y feature activa (`019-mapa-por-coordenada` en `.specify/feature.json`).
-- [ ] T002 [P] Anotar el tamaño del paquete del POS **antes**: `cd web && bun run build`. La
+- [X] T001 Confirmar rama y feature activa (`019-mapa-por-coordenada` en `.specify/feature.json`).
+- [X] T002 [P] Anotar el tamaño del paquete del POS **antes**: `cd web && bun run build`. La
       referencia es 1,134.90 kB, y el criterio de éxito es no crecer más de 5 kB.
 
 ---
@@ -32,12 +32,12 @@ cuenten, y que el volumen no crezca con los dedos.
 
 ### La migración, con su test antes
 
-- [ ] T003 Test de la migración en `server/internal/integration/migracion_toques_test.go`, **antes**
+- [X] T003 Test de la migración en `server/internal/integration/migracion_toques_test.go`, **antes**
       de escribirla: la tabla existe; **no tiene ninguna columna de tiempo más fina que el día** ni
       columna de usuario; la llave suma con `role` nulo en vez de crear filas; y los cuatro `check`
       rechazan lo suyo —celda 84, orientación `'landscape'`, `hits` negativo y una pantalla de 5 KB—.
       Verlo fallar.
-- [ ] T004 Escribir `server/migrations/0070_toques_por_zona.sql`: la tabla con `fillfactor = 70`,
+- [X] T004 Escribir `server/migrations/0070_toques_por_zona.sql`: la tabla con `fillfactor = 70`,
       su llave `unique nulls not distinct`, los cuatro `check`, el índice por `day`, RLS con
       `tenant_isolation`, los grants de la app y de la consola, y la política
       `plataforma_lee_todos_los_toques`.
@@ -46,41 +46,42 @@ cuenten, y que el volumen no crezca con los dedos.
       que mande `'landscape'` crea un **balde invisible** —la fila entra, pasa el rango de celda
       porque 0..83 vale en las dos formas, y la consola nunca la muestra—.
 
-- [ ] T005 Test de la política, **visto en rojo quitándola**: con dos empresas, la consola ve las
+- [X] T005 Test de la política, **visto en rojo quitándola**: con dos empresas, la consola ve las
       dos y el rol del negocio solo la suya.
-- [ ] T006 El `Down` y su test: revertir borra la tabla y volver a aplicar la deja usable.
+- [X] T006 El `Down` y su test: revertir borra la tabla y volver a aplicar la deja usable.
 
 ### El dominio: de un toque a una celda
 
-- [ ] T007 [P] Tests en `server/internal/domain/toque_test.go`, en tabla: la celda válida es 0..83;
+- [X] T007 [P] Tests en `server/internal/domain/toque_test.go`, en tabla: la celda válida es 0..83;
       la orientación solo acepta dos valores; una pantalla fuera de la lista instrumentada se
       rechaza; y el par (rol, pantalla) se valida como en la 017.
-- [ ] T008 [P] `server/internal/domain/toque.go`: el tipo del toque, la lista **corta** de pantallas
+- [X] T008 [P] `server/internal/domain/toque.go`: el tipo del toque, la lista **corta** de pantallas
       instrumentadas (hoy solo `pos`), la validación y las constantes de la rejilla (12 × 7).
-- [ ] T008b [P] Test de que la lista instrumentada es **subconjunto** de `pantallasMedibles` (017).
+
+      Las constantes viven aquí y no en la base **a propósito**: cambiar la resolución tiene que
+      verse en un diff. Y hacia una rejilla más fina no se puede volver — no existe el toque fino
+      del cual recalcularla.
+
+- [X] T008b [P] Test de que la lista instrumentada es **subconjunto** de `pantallasMedibles` (017).
 
       El toque entra por el mismo endpoint y se valida contra aquella lista: una pantalla
       instrumentada que no esté allá tiene **todos** sus toques descartados en silencio, y la
       rejilla sale vacía sin un solo error. Es el modo de falla de toda esta familia de features —no
       falla, mide menos— y «menos» se lee como «nadie lo usa».
 
-      Las constantes viven aquí y no en la base **a propósito**: cambiar la resolución tiene que
-      verse en un diff. Y hacia una rejilla más fina no se puede volver — no existe el toque fino
-      del cual recalcularla.
-
-- [ ] T009 [P] Tests de la traducción toque→celda en `web/src/app/celda.test.ts`: una posición
+- [X] T009 [P] Tests de la traducción toque→celda en `web/src/app/celda.test.ts`: una posición
       relativa cae en la celda que le toca, los bordes no se salen del rango, y en vertical la
       rejilla es 7 × 12.
 
       **Y el caso que fija FR-004**: con la página desplazada, el mismo punto físico de la pantalla
       da la **misma** celda. Es lo que separa «qué parte del vidrio usa la mano» de «qué contenido
       se tocó», y sin ese test la decisión vive solo en un comentario.
-- [ ] T010 [P] `web/src/app/celda.ts`: la función pura que convierte `(x, y, ancho, alto)` en
+- [X] T010 [P] `web/src/app/celda.ts`: la función pura que convierte `(x, y, ancho, alto)` en
       `{celda, orientacion}`. Sin React, sin DOM: es la que se prueba en tabla.
 
 ### Las consultas
 
-- [ ] T011 `server/queries/toques.sql`: el `upsert` del conteo —que recibe el día ya calculado, como
+- [X] T011 `server/queries/toques.sql`: el `upsert` del conteo —que recibe el día ya calculado, como
       el de la 017— la lectura de la rejilla, y el `delete` del recorte **con su propia constante**
       (`RetencionDeToquesEnDias = 92`, no la de 396 del agregado). `make sqlc`.
 
@@ -92,13 +93,13 @@ cuenten, y que el volumen no crezca con los dedos.
 
 **Va primero**, como en la 017: es lo que no se puede corregir después.
 
-- [ ] T012 [US2] Test de integración en `server/internal/integration/toques_anonimos_test.go`: tras
+- [X] T012 [US2] Test de integración en `server/internal/integration/toques_anonimos_test.go`: tras
       registrar toques, ninguna fila tiene columna de usuario ni de hora; un rol con un solo
       empleado activo queda **sin rol**; y una ráfaga de mil toques en la misma celda **no cambia el
       número de filas**.
-- [ ] T013 [US2] Test de que el cuerpo del request **no puede traer `x` ni `y`**: aunque los mande,
+- [X] T013 [US2] Test de que el cuerpo del request **no puede traer `x` ni `y`**: aunque los mande,
       no hay dónde guardarlos y no se guardan.
-- [ ] T014 [US2] Guardia estático en `web/src/api/uso-orden.test.ts` (o su gemelo): **ninguna parte
+- [X] T014 [US2] Guardia estático en `web/src/api/uso-orden.test.ts` (o su gemelo): **ninguna parte
       del front manda una imagen ni texto de la pantalla** por el endpoint de medición.
 
       Es FR-009 y es la promesa que el spec llama «la mitad de la feature». Un guardia que lee el

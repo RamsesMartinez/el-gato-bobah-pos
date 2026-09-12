@@ -1279,6 +1279,16 @@ type UsageDaily struct {
 	CompanyID int64       `json:"company_id"`
 }
 
+type UsageTouchesDaily struct {
+	Day         pgtype.Date `json:"day"`
+	Screen      string      `json:"screen"`
+	Orientation string      `json:"orientation"`
+	Cell        int16       `json:"cell"`
+	Role        *UserRole   `json:"role"`
+	Hits        int64       `json:"hits"`
+	CompanyID   int64       `json:"company_id"`
+}
+
 type User struct {
 	ID                 int64     `json:"id"`
 	Name               string    `json:"name"`
