@@ -197,18 +197,53 @@ func RecortarLoteDeUso(lote []EventoDeUso) []EventoDeUso {
 	return lote[:MaxEventosPorLote]
 }
 
-// CorteDeRolPermitido dice si se puede guardar el rol, o si hay que dejarlo en blanco.
+// DecisionDeCorte dice qué se puede escribir de una medición sin señalar a una persona.
+type DecisionDeCorte int
+
+const (
+	// GuardarConRol: ese rol tiene suficiente gente como para que el conteo no sea de nadie.
+	GuardarConRol DecisionDeCorte = iota
+	// GuardarSinCorte: el rol no se escribe, pero la medición sí — el balde de lo suprimido tapa
+	// a más de una persona.
+	GuardarSinCorte
+	// NoGuardar: ni siquiera sin rol. Escribirla sería escribir a una persona.
+	NoGuardar
+)
+
+// MinimoParaCortar: por debajo de dos personas, un conteo es de alguien.
+const MinimoParaCortar = 2
+
+// CortarPorRol decide qué se guarda de una medición hecha por `rol`, mirando la plantilla ENTERA.
 //
-// Con menos de dos usuarios activos de ese rol en esa empresa, decir «el rol gerente hizo estas 40
-// acciones» es decir su nombre. Es la mitad que hace real la promesa de no guardar la identidad:
-// sin esto, la promesa se rompe en la pantalla aunque la columna no exista.
+// La regla obvia —«si ese rol tiene menos de dos activos, déjalo en blanco»— tiene un agujero que
+// costó una auditoría: la supresión se decide rol por rol, pero **todo lo suprimido cae en el mismo
+// balde `role is null`**. Cuando exactamente un rol queda por debajo del umbral, ese balde ES esa
+// persona, y la consola lo pinta con la etiqueta «sin corte», que promete justo lo contrario.
 //
-// Se decide con un número y no leyendo la base para que la regla sea pura y esté en un solo lugar
-// — y porque tiene que aplicarse al ESCRIBIR, que es el único momento en que no se puede deshacer.
-// Quien lo intentara al leer no podría: la consola no tiene permiso para contar la plantilla de un
-// cliente, y dárselo abriría la puerta que la spec 016 cerró.
-func CorteDeRolPermitido(usuariosActivosDelRol int) bool {
-	return usuariosActivosDelRol >= 2
+// El caso no es hipotético: con 1 admin, 2 gerentes, 3 cajeros y 2 meseros —la plantilla típica de
+// un local— el gerente, el cajero y el mesero se guardan con su rol, y `null` es el dueño.
+//
+// Por eso hay un tercer resultado: cuando el balde no alcanza a tapar a nadie, la medición **se
+// pierde**. Es lo que esta feature tiene permitido hacer; escribir un nombre no lo es.
+func CortarPorRol(activosPorRol map[Role]int, rol Role) DecisionDeCorte {
+	if !RolMedible(rol) {
+		return NoGuardar
+	}
+	if activosPorRol[rol] >= MinimoParaCortar {
+		return GuardarConRol
+	}
+	// Cuánta gente cae en el balde de lo suprimido: la suma de los roles que tampoco se pueden
+	// cortar. Un rol SIN nadie activo aporta cero — no hay a quién tapar con él.
+	enElBalde := 0
+	for _, activos := range activosPorRol {
+		if activos > 0 && activos < MinimoParaCortar {
+			enElBalde += activos
+		}
+	}
+	if enElBalde >= MinimoParaCortar {
+		return GuardarSinCorte
+	}
+	return NoGuardar
 }
 
 // PantallasMedibles devuelve la lista blanca, ordenada.

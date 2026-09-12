@@ -84,8 +84,10 @@ func (h *Handlers) PlatformCompanies(w http.ResponseWriter, r *http.Request) {
 
 // PlatformUsage: GET /api/v1/platform/usage
 //
-// El mapa de calor de uso (spec 017). Lee con la conexión de la CONSOLA, que solo alcanza el
-// agregado: el grano fino —donde mañana van las coordenadas del toque— le está negado por grants.
+// El mapa de calor de uso (spec 017). Lee con la conexión de la CONSOLA, que tiene `select` sobre
+// los dos agregados de medición y sobre nada más. No hay grano fino que negarle: la tabla de un
+// renglón por evento no existe —la tumbó la auditoría de la 017— y la 019 cruzó esa puerta con otro
+// conteo, no con coordenadas.
 func (h *Handlers) PlatformUsage(w http.ResponseWriter, r *http.Request) {
 	desde, err := parseFechaDeUso(r.URL.Query().Get("desde"))
 	if err != nil {
@@ -97,16 +99,11 @@ func (h *Handlers) PlatformUsage(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	// `empresa` ausente = todas juntas (FR-008). Presente y mal escrita se RECHAZA: caer a "todas"
-	// en silencio devolvería un número que nadie pidió, en una pantalla que se ve correcta.
-	var empresa *int64
-	if v := r.URL.Query().Get("empresa"); v != "" {
-		id, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || id <= 0 {
-			Error(w, fmt.Errorf("%w: empresa inválida", domain.ErrValidation))
-			return
-		}
-		empresa = &id
+	// `empresa` ausente = todas juntas (FR-008).
+	empresa, err := empresaDeLaConsulta(r)
+	if err != nil {
+		Error(w, err)
+		return
 	}
 
 	mapa, err := h.usageConsola.Mapa(r.Context(), desde, hasta, empresa)
@@ -115,6 +112,55 @@ func (h *Handlers) PlatformUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, mapa)
+}
+
+// PlatformTouches: GET /api/v1/platform/touches
+//
+// La rejilla de toques (spec 019). Misma conexión y mismos límites que el mapa de la 017: la
+// consola solo alcanza el conteo por zona, y el toque suelto no existe en ningún lado del cual
+// pudiera alcanzarlo.
+func (h *Handlers) PlatformTouches(w http.ResponseWriter, r *http.Request) {
+	desde, err := parseFechaDeUso(r.URL.Query().Get("desde"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	hasta, err := parseFechaDeUso(r.URL.Query().Get("hasta"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	empresa, err := empresaDeLaConsulta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+
+	// La pantalla y la orientación las valida el servicio: las dos son listas del dominio, y
+	// repetirlas aquí sería tener la regla en dos lugares que se desincronizan.
+	rejilla, err := h.usageConsola.Rejilla(r.Context(),
+		r.URL.Query().Get("pantalla"), r.URL.Query().Get("orientacion"), desde, hasta, empresa)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, rejilla)
+}
+
+// empresaDeLaConsulta lee el filtro opcional por empresa.
+//
+// Ausente = todas juntas. Presente y mal escrita se RECHAZA: caer a "todas" en silencio devolvería
+// un número que nadie pidió, en una pantalla que se ve correcta y que por eso nadie audita.
+func empresaDeLaConsulta(r *http.Request) (*int64, error) {
+	v := r.URL.Query().Get("empresa")
+	if v == "" {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("%w: empresa inválida", domain.ErrValidation)
+	}
+	return &id, nil
 }
 
 // parseFechaDeUso exige AAAA-MM-DD. Una fecha mal escrita se rechaza en vez de caer a un default:

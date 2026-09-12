@@ -9,6 +9,7 @@ import {
 } from './api';
 import { soloFecha } from './fecha';
 import { MapaDeUso } from './MapaDeUso';
+import { RejillaDeToques } from './RejillaDeToques';
 
 // LA CONSOLA DE PLATAFORMA (spec 016).
 //
@@ -150,6 +151,7 @@ function Empresas_({ operador, alSalir }: { operador: Operador; alSalir: () => v
             </div>
           </div>
           <MapaDeUso empresas={datos.items} />
+          <RejillaDeToques empresas={datos.items} />
         </>
       )}
     </div>

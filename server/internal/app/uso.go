@@ -34,33 +34,79 @@ func NewUsageService(st *store.Store) *UsageService {
 // primera comparación que pide un negocio de comida.
 const RetencionDelAgregadoEnDias = 396
 
-// Registrar guarda un lote de eventos y devuelve cuántos se descartaron por no estar en la lista
-// blanca.
+// RetencionDeToquesEnDias: cuánto se conserva la rejilla, y es MÁS CORTO a propósito.
+//
+// El conteo por pantalla se mira año contra año —«¿se usa más el corte de caja que la temporada
+// pasada?»—; la rejilla solo sirve para decidir un rediseño, y una rejilla de hace un año describe
+// un layout que ya no existe. Conservarla más tiempo es conservar una referencia que miente, y es
+// además la mitad de datos que se guarda de lo más granular que esta feature produce.
+const RetencionDeToquesEnDias = 92
+
+// LoteDeMedicion es lo que llega en un request de medición: aperturas, acciones y toques.
+//
+// Los tres viajan juntos porque salen de la MISMA cola del cliente, en el mismo vaciado.
+type LoteDeMedicion struct {
+	Eventos []domain.EventoDeUso
+	Toques  []domain.Toque
+}
+
+// Descartes dice cuántos se tiraron de cada clase por no pasar la lista blanca.
 //
 // Ese número es el único testigo de que una versión del front dejó de medir: si nadie lo mira, el
 // mapa simplemente muestra menos, que es indistinguible de «se usó menos».
+type Descartes struct {
+	Eventos int
+	Toques  int
+}
+
+// Registrar guarda un lote de medición y devuelve cuántos se descartaron.
+//
+// UNA SOLA TRANSACCIÓN PARA LAS DOS TABLAS, y una sola resolución de lo que comparten: el día del
+// negocio y la decisión de corte por rol. Partirlo en dos escrituras costaba dos transacciones, dos
+// lecturas de la zona horaria y dos conteos de plantilla por petición —y cada petición reteniendo
+// una conexión del pool el doble de tiempo, en una VM de 1 vCPU donde compite con el cobro—. Al
+// tope que el limitador permite eso se multiplica por 30 por minuto y por usuario.
+//
+// La consecuencia de juntarlas, dicha en voz alta: si la transacción falla se pierden las dos
+// mitades. Es aceptable porque las dos son mediciones y perderlas no le cuesta nada a nadie; lo que
+// NO era aceptable era la versión anterior, donde un fallo al escribir las aperturas se llevaba los
+// toques sin siquiera intentarlos, y el comentario decía lo contrario.
 //
 // El rol lo pone quien llama desde el TOKEN, nunca el cuerpo del request.
-func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []domain.EventoDeUso) (int, error) {
-	lote = domain.RecortarLoteDeUso(lote)
-	agregado := domain.PreAgregarUso(lote, rol)
+func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote LoteDeMedicion) (Descartes, error) {
+	eventos := domain.RecortarLoteDeUso(lote.Eventos)
+	toques := domain.RecortarLoteDeToques(lote.Toques)
+	usos := domain.PreAgregarUso(eventos, rol)
+	zonas := domain.PreAgregarToques(toques, rol)
 
+	var descartes Descartes
 	validos := 0
-	for _, a := range agregado {
+	for _, a := range usos {
 		validos += a.Veces
 	}
-	descartados := len(lote) - validos
-	if len(agregado) == 0 {
-		return descartados, nil
+	descartes.Eventos = len(eventos) - validos
+	validos = 0
+	for _, a := range zonas {
+		validos += a.Veces
+	}
+	descartes.Toques = len(toques) - validos
+
+	if len(usos) == 0 && len(zonas) == 0 {
+		return descartes, nil
 	}
 
 	// LA SUPRESIÓN SE DECIDE AQUÍ, AL ESCRIBIR, y por eso no se puede deshacer leyendo.
 	//
 	// Quien leyera no podría decidirlo: la consola no tiene permiso sobre `users` para contar la
 	// plantilla de un cliente, y dárselo abriría la puerta que la spec 016 cerró.
-	rolAGuardar, err := s.rolQueSePuedeGuardar(ctx, rol)
+	corte, rolAGuardar, err := s.corteDeLaEmpresa(ctx, rol)
 	if err != nil {
-		return descartados, err
+		return descartes, err
+	}
+	if corte == domain.NoGuardar {
+		// Ni siquiera sin rol: el balde de lo suprimido no alcanza a tapar a nadie. Se pierde la
+		// medición, que es lo que esta feature tiene permitido hacer.
+		return descartes, nil
 	}
 
 	// EL DÍA DEL NEGOCIO, no el de UTC: con el servidor en UTC la medianoche cae a las 18:00 en
@@ -70,7 +116,7 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		for _, a := range agregado {
+		for _, a := range usos {
 			var accion *string
 			if a.Accion != "" {
 				accion = &a.Accion
@@ -81,9 +127,23 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 				return fmt.Errorf("sumar el uso del día: %w", err)
 			}
 		}
+		for _, a := range zonas {
+			if err := q.UpsertTouchesDaily(ctx, db.UpsertTouchesDailyParams{
+				Day:         dia,
+				Screen:      a.Pantalla,
+				Orientation: a.Orientacion,
+				// La celda cabe en un `smallint` por construcción: `ToqueValido` ya la acotó a la
+				// rejilla antes de llegar aquí.
+				Cell: int16(a.Celda),
+				Role: rolAGuardar,
+				Hits: int64(a.Veces),
+			}); err != nil {
+				return fmt.Errorf("sumar los toques del día: %w", err)
+			}
+		}
 		return nil
 	})
-	return descartados, err
+	return descartes, err
 }
 
 // location resuelve la zona del negocio del request. Cae al default del producto si no se puede
@@ -97,20 +157,23 @@ func (s *UsageService) location(ctx context.Context) *time.Location {
 	return domain.LoadBusinessLocation(tz)
 }
 
-// rolQueSePuedeGuardar devuelve el rol, o nil si guardarlo identificaría a una persona.
-func (s *UsageService) rolQueSePuedeGuardar(ctx context.Context, rol domain.Role) (*db.UserRole, error) {
-	if !domain.RolMedible(rol) {
-		return nil, nil
-	}
-	activos, err := s.store.QC(ctx).CountActiveUsersByRole(ctx, string(rol))
+// corteDeLaEmpresa decide qué se puede escribir sin señalar a una persona, mirando la plantilla
+// ENTERA y no solo la del rol que mide. El porqué está en `domain.CortarPorRol`.
+func (s *UsageService) corteDeLaEmpresa(ctx context.Context, rol domain.Role) (domain.DecisionDeCorte, *db.UserRole, error) {
+	filas, err := s.store.QC(ctx).CountActiveUsersByRoleAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("contar usuarios del rol: %w", err)
+		return domain.NoGuardar, nil, fmt.Errorf("contar la plantilla: %w", err)
 	}
-	if !domain.CorteDeRolPermitido(int(activos)) {
-		return nil, nil
+	activos := make(map[domain.Role]int, len(filas))
+	for _, f := range filas {
+		activos[domain.Role(f.Role)] = int(f.Activos)
+	}
+	corte := domain.CortarPorRol(activos, rol)
+	if corte != domain.GuardarConRol {
+		return corte, nil, nil
 	}
 	r := db.UserRole(rol)
-	return &r, nil
+	return corte, &r, nil
 }
 
 // --- Lo que lee la consola (US1). ---
@@ -246,6 +309,113 @@ func totalDe(p PantallaDeUso) int64 {
 	return total
 }
 
+// --- La rejilla que lee la consola (US1 de la 019). ---
+
+// CeldaDeToques es una zona de la pantalla y cuántas veces se tocó.
+type CeldaDeToques struct {
+	Celda int   `json:"celda"`
+	Veces int64 `json:"veces"`
+}
+
+// FormaDeLaRejilla dice cómo se acomodan las celdas. Viaja en la respuesta porque el mismo número
+// de celda es un lugar distinto en cada forma, y quien pinta necesita las dos cosas.
+type FormaDeLaRejilla struct {
+	Columnas int `json:"columnas"`
+	Filas    int `json:"filas"`
+}
+
+// RejillaDeToques es lo que la consola pinta.
+type RejillaDeToques struct {
+	Pantalla    string           `json:"pantalla"`
+	Orientacion string           `json:"orientacion"`
+	Rejilla     FormaDeLaRejilla `json:"rejilla"`
+	Periodo     RangoDeUso       `json:"periodo"`
+	Celdas      []CeldaDeToques  `json:"celdas"`
+	// El reparto por rol es del TOTAL de la pantalla, no de una celda: por celda, los números son
+	// tan chicos que el corte por rol volvería a identificar por eliminación.
+	PorRol []UsoPorRol `json:"porRol"`
+}
+
+// Rejilla devuelve los toques del periodo en una pantalla y una orientación.
+//
+// LAS DOS ORIENTACIONES NUNCA SE SUMAN (FR-016): se pide una y se devuelve esa. La celda 37 está a
+// la derecha del centro en horizontal y abajo del centro en vertical — mezclarlas pinta un mapa que
+// nadie tocó nunca, y el error sería invisible porque la rejilla se ve normal.
+func (s *UsageService) Rejilla(ctx context.Context, pantalla, orientacion string, desde, hasta time.Time, empresa *int64) (RejillaDeToques, error) {
+	if !domain.PantallaConToque(pantalla) {
+		// Se rechaza en vez de devolver una rejilla en ceros: una rejilla vacía se lee como «aquí
+		// nadie toca», que es justo la conclusión equivocada.
+		return RejillaDeToques{}, fmt.Errorf("%w: esa pantalla no mide toques", domain.ErrValidation)
+	}
+	orientacion, err := domain.OrientacionDeToque(orientacion)
+	if err != nil {
+		return RejillaDeToques{}, err
+	}
+	if err := domain.RangoDeUsoValido(desde, hasta, RetencionDeToquesEnDias); err != nil {
+		return RejillaDeToques{}, err
+	}
+
+	filas, err := s.store.Q.SumTouchesForGrid(ctx, db.SumTouchesForGridParams{
+		Desde:       pgtype.Date{Time: desde, Valid: true},
+		Hasta:       pgtype.Date{Time: hasta, Valid: true},
+		Screen:      pantalla,
+		Orientation: orientacion,
+		Company:     empresa,
+	})
+	if err != nil {
+		return RejillaDeToques{}, fmt.Errorf("leer los toques: %w", err)
+	}
+
+	// LAS 84 CELDAS NACEN EN CERO y se llenan con lo que haya. «Qué parte no toca nadie» es la
+	// mitad de la pregunta que esta feature vino a responder, y una celda omitida por no tener
+	// filas se pinta como un hueco en vez de como un cero.
+	celdas := make([]CeldaDeToques, domain.CeldasDeLaRejilla)
+	for i := range celdas {
+		celdas[i].Celda = i
+	}
+	porRol := map[string]int64{} // "" = sin corte
+	for _, f := range filas {
+		if int(f.Cell) < 0 || int(f.Cell) >= len(celdas) {
+			// No puede pasar —la columna tiene su `check`— pero si pasara, un índice fuera de
+			// rango tumbaría la consola entera por una fila mal escrita.
+			continue
+		}
+		celdas[f.Cell].Veces += f.Veces
+		rol := ""
+		if f.Role != nil {
+			rol = string(*f.Role)
+		}
+		porRol[rol] += f.Veces
+	}
+
+	reparto := make([]UsoPorRol, 0, len(porRol))
+	for rol, veces := range porRol {
+		r := &rol
+		if rol == "" {
+			r = nil
+		}
+		reparto = append(reparto, UsoPorRol{Rol: r, Veces: veces})
+	}
+	// Con desempate por nombre: `porRol` se recorre como map, cuyo orden Go aleatoriza a propósito,
+	// y una tabla que se reordena sola es una tabla que nadie puede comparar de un día para otro.
+	sort.Slice(reparto, func(i, j int) bool {
+		if reparto[i].Veces != reparto[j].Veces {
+			return reparto[i].Veces > reparto[j].Veces
+		}
+		return nombreDeRol(reparto[i].Rol) < nombreDeRol(reparto[j].Rol)
+	})
+
+	columnas, filasDeLaRejilla := domain.RejillaDe(orientacion)
+	return RejillaDeToques{
+		Pantalla:    pantalla,
+		Orientacion: orientacion,
+		Rejilla:     FormaDeLaRejilla{Columnas: columnas, Filas: filasDeLaRejilla},
+		Periodo:     RangoDeUso{Desde: desde.Format(time.DateOnly), Hasta: hasta.Format(time.DateOnly)},
+		Celdas:      celdas,
+		PorRol:      reparto,
+	}, nil
+}
+
 // --- El recorte (US4). ---
 
 // Recortar borra lo que ya pasó su retención.
@@ -263,6 +433,18 @@ func (s *UsageService) Recortar(ctx context.Context) error {
 	}
 	if filas > 0 {
 		slog.Info("uso recortado", "filas", filas)
+	}
+
+	// Los toques van con SU retención, más corta. No es un detalle de afinación: una rejilla de
+	// hace un año describe un layout que ya no existe, y conservarla es conservar una referencia
+	// que miente. Si las dos compartieran constante, la mitad de lo guardado estaría describiendo
+	// una pantalla rediseñada.
+	toques, err := s.store.Q.DeleteOldTouchesDaily(ctx, RetencionDeToquesEnDias)
+	if err != nil {
+		return fmt.Errorf("recortar los toques: %w", err)
+	}
+	if toques > 0 {
+		slog.Info("toques recortados", "filas", toques)
 	}
 	return nil
 }

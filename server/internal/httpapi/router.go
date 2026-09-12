@@ -56,6 +56,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Use(RequireOperador(h.platformJWT, h.platform))
 					r.Get("/companies", h.PlatformCompanies)
 					r.Get("/usage", h.PlatformUsage)
+					r.Get("/touches", h.PlatformTouches)
 				})
 			})
 		}
