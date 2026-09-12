@@ -1,5 +1,11 @@
 package domain
 
+import (
+	"fmt"
+	"sort"
+	"time"
+)
+
 // EL USO DEL SISTEMA (spec 017): qué se puede contar y cómo se cuenta.
 //
 // Todo lo de aquí es puro: recibe números y cadenas, no toca base ni red. Es lo que permite probar
@@ -163,4 +169,35 @@ func RecortarLoteDeUso(lote []EventoDeUso) []EventoDeUso {
 // cliente, y dárselo abriría la puerta que la spec 016 cerró.
 func CorteDeRolPermitido(usuariosActivosDelRol int) bool {
 	return usuariosActivosDelRol >= 2
+}
+
+// PantallasMedibles devuelve la lista blanca, ordenada.
+//
+// La usa el mapa para que las pantallas que NADIE abrió aparezcan en cero: «qué no usa nadie» es la
+// mitad de la pregunta, y una pantalla que se omite por no tener filas se lee como que no existe.
+func PantallasMedibles() []string {
+	nombres := make([]string, 0, len(pantallasMedibles))
+	for n := range pantallasMedibles {
+		nombres = append(nombres, n)
+	}
+	sort.Strings(nombres)
+	return nombres
+}
+
+// RangoDeUsoValido rechaza lo que no se puede contestar.
+//
+// Un `desde` más viejo que la retención NO se recorta en silencio a lo que hay: devolver otro rango
+// del que se pidió es una pantalla que miente, y nadie la audita porque se ve bien (principio V).
+func RangoDeUsoValido(desde, hasta time.Time, retencionEnDias int) error {
+	if desde.IsZero() || hasta.IsZero() {
+		return fmt.Errorf("%w: falta el periodo", ErrValidation)
+	}
+	if hasta.Before(desde) {
+		return fmt.Errorf("%w: el periodo termina antes de empezar", ErrValidation)
+	}
+	masViejoPosible := time.Now().AddDate(0, 0, -retencionEnDias)
+	if desde.Before(masViejoPosible.Truncate(24 * time.Hour)) {
+		return fmt.Errorf("%w: solo se conservan %d días de uso", ErrValidation, retencionEnDias)
+	}
+	return nil
 }

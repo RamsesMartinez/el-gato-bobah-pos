@@ -186,11 +186,11 @@ una demora atribuible a la medición.
 **Prueba independiente**: con un día de uso, la pantalla muestra al menos una pantalla con conteo
 mayor que cero, y ese conteo sube al volver a abrirla.
 
-- [ ] T026 [US1] Test de integración en `server/internal/integration/uso_consola_test.go`, antes del
+- [X] T026 [US1] Test de integración en `server/internal/integration/uso_consola_test.go`, antes del
       código: `GET /api/v1/platform/usage` con sesión de plataforma devuelve las pantallas
       **ordenadas de más a menos usada**, incluye las de conteo **cero**, y trae `rol: null` para lo
       suprimido.
-- [ ] T026b [US1] Test que **fija qué incluye cada cifra**, con números que no cuadran por
+- [X] T026b [US1] Test que **fija qué incluye cada cifra**, con números que no cuadran por
       casualidad: `aperturas` cuenta solo las vistas de pantalla, `acciones[].veces` solo las
       acciones con nombre, y `porRol[].veces` es **el total de las dos** repartido por rol — de modo
       que `sum(porRol) == aperturas + sum(acciones)`.
@@ -198,26 +198,26 @@ mayor que cero, y ese conteo sube al volver a abrirla.
       Sin esto, quien lea la respuesta va a sumar dos de las tres y va a reportar un número que no
       existe. Es el mismo defecto que el principio III persigue con el dinero, en otra moneda.
 
-- [ ] T027 [US1] Test de lo que **no** puede traer, buscado en el JSON crudo: ninguna cifra de
+- [X] T027 [US1] Test de lo que **no** puede traer, buscado en el JSON crudo: ninguna cifra de
       dinero, ningún dato de empleados, ningún id de usuario (FR-003).
-- [ ] T028 [US1] Test de que una sesión **del negocio** contra esa ruta da **401**, no 403.
-- [ ] T029 [US1] `UsageService.Mapa(ctx, desde, hasta, empresa)` y el handler
+- [X] T028 [US1] Test de que una sesión **del negocio** contra esa ruta da **401**, no 403.
+- [X] T029 [US1] `UsageService.Mapa(ctx, desde, hasta, empresa)` y el handler
       `GET /api/v1/platform/usage`, dentro del grupo de plataforma.
-- [ ] T030 [US1] Test del rango: un `desde` más viejo que la retención se **rechaza** con
+- [X] T030 [US1] Test del rango: un `desde` más viejo que la retención se **rechaza** con
       `ErrValidation`. No se recorta en silencio a lo que hay — una pantalla que devuelve otro rango
       del que pide miente (principio V).
-- [ ] T031 [P] [US1] `web/src/consola/etiquetas-de-uso.ts`: cómo se llama cada pantalla en la
+- [X] T031 [P] [US1] `web/src/consola/etiquetas-de-uso.ts`: cómo se llama cada pantalla en la
       consola. **Copia deliberada**, no import del POS: son dos productos y el linter lo impide.
-- [ ] T032 [US1] Tests de la pantalla en `web/src/consola/MapaDeUso.test.tsx`: pinta las pantallas
+- [X] T032 [US1] Tests de la pantalla en `web/src/consola/MapaDeUso.test.tsx`: pinta las pantallas
       ordenadas, muestra el número dentro de la celda, dice «todavía no hay uso registrado» con cero
       datos (FR-015), y nombra «sin corte» cuando el rol viene nulo.
-- [ ] T033 [US1] `web/src/consola/MapaDeUso.tsx`: la rejilla CSS con intensidad por color **y el
+- [X] T033 [US1] `web/src/consola/MapaDeUso.tsx`: la rejilla CSS con intensidad por color **y el
       número escrito**, el selector de periodo y el de empresa. Sin una sola dependencia nueva.
 
       **Un solo eje**: pantallas ordenadas por uso, acciones desplegables debajo. No es un
       calendario de contribuciones.
 
-- [ ] T034 [US1] Enganchar el mapa en la consola (la 016 hoy solo tiene la lista de empresas).
+- [X] T034 [US1] Enganchar el mapa en la consola (la 016 hoy solo tiene la lista de empresas).
 
 ---
 
@@ -226,7 +226,7 @@ mayor que cero, y ese conteo sube al volver a abrirla.
 **Prueba independiente**: simulado un año de uso, el espacio ocupado se mantiene bajo el techo
 declarado.
 
-- [ ] T035 [US4] Test de volumen en `server/internal/integration/uso_volumen_test.go`: siembra un
+- [X] T035 [US4] Test de volumen en `server/internal/integration/uso_volumen_test.go`: siembra un
       año **con el patrón de escritura real** —lotes que incrementan repetidamente las filas del
       día— y mide `pg_total_relation_size` de las dos tablas. Falla si pasa de **25 MB** por
       empresa.
@@ -234,9 +234,9 @@ declarado.
       **Un `insert` con el total ya sumado no sirve**: mide un escenario que la operación nunca
       produce y esconde el costo de las versiones muertas.
 
-- [ ] T036 [US4] Test del recorte: con filas de hace 20 días y de hace 14 meses, tras una pasada no
+- [X] T036 [US4] Test del recorte: con filas de hace 20 días y de hace 14 meses, tras una pasada no
       queda ninguna fuera de la retención, y las de dentro **no se tocan**.
-- [ ] T037 [US4] `UsageService.Recortar(ctx)` en `server/internal/app/uso.go`: borra
+- [X] T037 [US4] `UsageService.Recortar(ctx)` en `server/internal/app/uso.go`: borra
       `usage_events` de más de 14 días y `usage_daily` de más de 13 meses, con una conexión de
       **dueño** abierta y cerrada para eso —el rol de la app está bajo RLS y solo borraría lo de su
       empresa—.
@@ -244,15 +244,15 @@ declarado.
       Va en `app` y **no** en un paquete `tareas` nuevo: la arquitectura de este repo tiene cuatro
       lugares (`httpapi`, `app`, `domain`, `store/db`) y un quinto para «cosas que corren solas» se
       convierte en el cajón de sastre donde termina la lógica que nadie sabe dónde poner.
-- [ ] T038 [US4] Cablearlo en `server/cmd/api/main.go`: **corre al arrancar** y luego cada 24 h,
+- [X] T038 [US4] Cablearlo en `server/cmd/api/main.go`: **corre al arrancar** y luego cada 24 h,
       colgado del contexto que ya se cancela en el apagado.
 
       El «al arrancar» es el que hace que exista: un ticker de 24 h se reinicia con el proceso y
       aquí se redespliega en cada merge, así que sin eso no dispararía **nunca**.
 
-- [ ] T039 [US4] Test de que la goroutine **termina** al cancelar el contexto (principio II: ninguna
+- [X] T039 [US4] Test de que la goroutine **termina** al cancelar el contexto (principio II: ninguna
       goroutine sin condición de término).
-- [ ] T039b [US4] Test de la puerta de FR-013 (SC-006): escribir `{"x":120,"y":340}` en el `detail`
+- [X] T039b [US4] Test de la puerta de FR-013 (SC-006): escribir `{"x":120,"y":340}` en el `detail`
       de una fila existente y leerlo de vuelta, **sin tocar el esquema**. Es la única forma de
       comprobar que «agregar coordenadas después no exige migrar» antes de necesitarlo.
 
@@ -260,7 +260,7 @@ declarado.
 
 ## Fase 7: Cierre
 
-- [ ] T039c [US3] Caso de Playwright en `web/e2e/`, contra el ambiente de pruebas: con la red
+- [X] T039c [US3] Caso de Playwright en `web/e2e/`, contra el ambiente de pruebas: con la red
       bloqueada (`page.route` abortando `/usage`), armar una cuenta y cobrar. Pasa si el cobro
       responde igual y la pantalla no muestra un solo aviso.
 
@@ -269,14 +269,14 @@ declarado.
 
 - [ ] T040 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 4-bis** (red lenta
       con throttling, verificando que no se apilan envíos). El paso de la red caída es el fácil.
-- [ ] T041 [P] Medir el paquete del POS y compararlo contra el número de T002 (si creció más de unos
+- [X] T041 [P] Medir el paquete del POS y compararlo contra el número de T002 (si creció más de unos
       pocos KB, algo del mapa se coló) **y comprobar que `web/package.json` y `web/bun.lock` no
       cambiaron** — que es SC-007 medido en vez de prometido.
-- [ ] T042 [P] Renglones en `docs/matriz-de-pantallas.md`: qué cubre cada test de esta feature y
+- [X] T042 [P] Renglones en `docs/matriz-de-pantallas.md`: qué cubre cada test de esta feature y
       **qué no** — en particular, que nadie mide que el mapa sea legible con datos reales.
-- [ ] T043 [P] Documentar en `AGENTS.md` el endpoint de ingesta y la lista blanca (dónde se agrega
+- [X] T043 [P] Documentar en `AGENTS.md` el endpoint de ingesta y la lista blanca (dónde se agrega
       una pantalla nueva), y en `docs/security-owasp.md` por qué esta feature no guarda identidad.
-- [ ] T044 Gates completos: `make api-build`, `api-test`, integración, `make lint`, `make vuln`,
+- [X] T044 Gates completos: `make api-build`, `api-test`, integración, `make lint`, `make vuln`,
       `bun run lint`, los dos `typecheck`, `bun run vitest run`, los dos `build` y
       `bun audit --audit-level=high`.
 

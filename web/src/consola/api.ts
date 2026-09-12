@@ -101,3 +101,33 @@ export interface Empresas {
 export function empresas(): Promise<Empresas> {
   return pedir<Empresas>('/platform/companies');
 }
+
+export interface AccionDeUso {
+  accion: string;
+  veces: number;
+}
+
+export interface UsoPorRol {
+  // `null` = sin corte: ese uso existe pero atribuirlo a un rol identificaría a una persona.
+  rol: string | null;
+  veces: number;
+}
+
+export interface PantallaDeUso {
+  pantalla: string;
+  aperturas: number;
+  acciones: AccionDeUso[];
+  porRol: UsoPorRol[];
+}
+
+export interface MapaDeUso {
+  periodo: { desde: string; hasta: string };
+  pantallas: PantallaDeUso[];
+}
+
+// mapaDeUso pide el uso de un periodo. `empresa` ausente = todas juntas.
+export function mapaDeUso(desde: string, hasta: string, empresa?: number): Promise<MapaDeUso> {
+  const q = new URLSearchParams({ desde, hasta });
+  if (empresa) q.set("empresa", String(empresa));
+  return pedir<MapaDeUso>("/platform/usage?" + q.toString());
+}
