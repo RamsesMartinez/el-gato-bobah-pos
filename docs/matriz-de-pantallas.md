@@ -394,9 +394,13 @@ que estaba entera.
 
 **Lo que L no cubre, y hay que decirlo:**
 
-- **Ningún test de navegador.** La consola no tiene pruebas de Playwright: la suite corre a 1024×600
-  contra el POS desplegado, y esta pantalla vive en una computadora. Lo que hay es jsdom (L13) y las
-  barreras del backend; **nadie la ha visto pintada en un navegador de verdad**.
+- **Ningún test de navegador AUTOMÁTICO.** La consola no entra a la suite de Playwright: ésa corre a
+  1024×600 contra el POS desplegado, y esta pantalla vive en una computadora. Lo que hay es jsdom
+  (L13) y las barreras del backend.
+
+  Sí se abrió a mano en Chromium contra los dos ambientes desplegados el 2026-09-12 —entrar, la
+  tabla con las dos empresas, cero errores en la consola del navegador—, pero eso fue un ensayo, no
+  un check runnable: **si la pantalla se rompe mañana, nada lo va a decir**.
 - **Nadie prueba el despliegue a Pages.** Que `staff-dev` sirva la consola y no el POS se ve
   desplegando, igual que el resto.
 - **La sesión de la consola no sobrevive a una recarga** (no hay refresh, a propósito). No es un
