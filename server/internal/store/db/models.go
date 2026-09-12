@@ -1270,6 +1270,25 @@ type Unit struct {
 	ToBase decimal.Decimal `json:"to_base"`
 }
 
+type UsageDaily struct {
+	Day       pgtype.Date `json:"day"`
+	Screen    string      `json:"screen"`
+	Action    *string     `json:"action"`
+	Role      *UserRole   `json:"role"`
+	Hits      int64       `json:"hits"`
+	CompanyID int64       `json:"company_id"`
+}
+
+type UsageEvent struct {
+	ID         int64     `json:"id"`
+	OccurredAt time.Time `json:"occurred_at"`
+	Screen     string    `json:"screen"`
+	Action     *string   `json:"action"`
+	Role       *UserRole `json:"role"`
+	Detail     []byte    `json:"detail"`
+	CompanyID  int64     `json:"company_id"`
+}
+
 type User struct {
 	ID                 int64     `json:"id"`
 	Name               string    `json:"name"`

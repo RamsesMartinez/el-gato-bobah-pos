@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
+import { MedidorDeUso } from './app/MedidorDeUso';
 import { RequireAuth, RequireRole } from './app/RequireAuth';
 import { BloqueoPorInactividad } from './features/auth/BloqueoPorInactividad';
 import { LoginPage } from './features/auth/LoginPage';
@@ -33,7 +34,11 @@ export const App = () => {
 
   return (
   <BrowserRouter>
-    <Routes>
+    <>
+      {/* Mide por dónde va el operador. Va fuera de <Routes> para que no dependa de acertarle a
+          una ruta concreta, y no pinta nada: si fallara, no hay pantalla que romper. */}
+      <MedidorDeUso />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/recuperar" element={<ForgotPasswordPage />} />
       <Route path="/reset" element={<ResetPasswordPage />} />
@@ -71,7 +76,8 @@ export const App = () => {
         <Route path="/cuenta" element={<AccountPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/pos" replace />} />
-    </Routes>
+      </Routes>
+    </>
   </BrowserRouter>
   );
 };
