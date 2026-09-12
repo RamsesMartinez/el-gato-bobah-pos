@@ -22,7 +22,7 @@ Cuatro reglas que este repo ya aprendió a la mala y que esta feature toca de ll
 ## Fase 1: Setup
 
 - [X] T001 Crear la rama y confirmar que `016-consola-de-plataforma` es la feature activa.
-- [ ] T002 [P] **(manual, fuera del repositorio)** Reservar los subdominios
+- [X] T002 [P] **(manual, fuera del repositorio)** Reservar los subdominios
       `staff-dev.elgatobobah.com` y `staff.elgatobobah.com`, y crear sus dos proyectos de Pages —
       uno por ambiente, como ya existen `el-gato-bobah-pos` y `el-gato-bobah-pos-dev`.
 
@@ -203,7 +203,7 @@ revés, el primer import cruzado entra sin que nada lo detenga.
 
 ## Fase 7: Despliegue y cierre
 
-- [ ] T037b **(manual, fuera del repositorio)** Tocar el `deploy/.env` de la VM de pruebas y el de
+- [X] T037b **(manual, fuera del repositorio)** Tocar el `deploy/.env` de la VM de pruebas y el de
       producción, **antes** de desplegar. Tres cosas:
 
       1. `PLATFORM_JWT_SECRET` — `openssl rand -base64 48`, **distinto de `JWT_SECRET`**.
