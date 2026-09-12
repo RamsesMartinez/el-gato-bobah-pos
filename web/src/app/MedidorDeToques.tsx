@@ -51,6 +51,12 @@ export function MedidorDeToques() {
       //
       // El `[role="dialog"]` se queda como segunda red, para un diálogo que se pinte SIN portal
       // dentro del contenedor.
+      //
+      // CONSECUENCIA QUE HAY QUE TENER PRESENTE AL LEER LA REJILLA, medida en el ambiente de
+      // pruebas: en este catálogo casi todo producto abre su hoja de modificadores, así que de una
+      // captura completa se cuenta el toque que ABRE la hoja y ninguno de los de adentro. La
+      // rejilla dice dónde se toca para EMPEZAR algo, no cuántas veces se tocó en total — y eso se
+      // dice también al lado de la rejilla, en la consola.
       const destino = e.target;
       if (!(destino instanceof Element)) return;
       if (!destino.closest('[data-medible]')) return;

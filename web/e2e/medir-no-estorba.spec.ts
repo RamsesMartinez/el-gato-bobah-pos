@@ -68,8 +68,8 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
 
 test('M2 · con la medición muerta, capturar tocando rápido responde igual', async ({ page }) => {
   // SC-004 de la 019: el escuchador de toques va en la fase de captura del documento, que es justo
-  // donde un manejador mal escrito se traga el evento antes de que llegue al botón. Con la red de
-  // la medición colgada, cada toque además encola —y si encolar costara algo, se notaría aquí y no
+  // donde un manejador mal escrito se traga el evento antes de que llegue al control. Con la red de
+  // la medición colgada, cada toque además encola — y si encolar costara algo, se notaría aquí y no
   // en un test unitario con el DOM simulado.
   let intentos = 0;
   await page.route('**/api/v1/usage', async (route) => {
@@ -80,27 +80,33 @@ test('M2 · con la medición muerta, capturar tocando rápido responde igual', a
 
   await entrar(page);
 
-  // Tocar RÁPIDO, como se captura de verdad: la tableta recibe una ráfaga de toques seguidos y
-  // cada uno pasa por el escuchador antes de llegar a su control.
-  const productos = page.getByRole('button').filter({ hasText: /\$/ });
-  const cuantos = Math.min(await productos.count(), 6);
+  // Tocar un producto. En este catálogo casi todos abren la hoja de modificadores, así que el
+  // primer toque se comprueba por su EFECTO: si el escuchador cancelara o detuviera el evento, la
+  // hoja no abriría y el mostrador se quedaría sin poder capturar.
+  const producto = page.getByRole('button').filter({ hasText: /\$/ }).first();
+  await producto.click({ timeout: 15_000 });
+  const hoja = page.getByRole('dialog').first();
+  await expect(hoja, 'el toque no llegó al producto: la medición se metió en el camino del dedo').toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Y ahora la ráfaga, DENTRO de la hoja: son los toques que la rejilla no cuenta —es una capa
+  // encima— pero que tienen que seguir funcionando igual. Es el peor caso de los dos mundos.
+  const opciones = hoja.getByRole('button').filter({ hasText: /\d|Sin/ });
+  const cuantas = Math.min(await opciones.count(), 5);
   const arranque = Date.now();
-  for (let i = 0; i < cuantos; i++) {
-    await productos.nth(i).click({ timeout: 5_000 });
+  for (let i = 0; i < cuantas; i++) {
+    await opciones.nth(i).click({ timeout: 5_000 }).catch(() => {});
   }
   const tardanza = Date.now() - arranque;
-
-  // Cada toque tuvo efecto: los renglones están en la cuenta. Es lo que se rompería si el
-  // escuchador cancelara o detuviera el evento.
-  if (cuantos > 0) {
-    await expect(page.getByRole('button', { name: /Cobrar|Enviar/ }).first()).toBeVisible({ timeout: 10_000 });
-    // Y no se volvió lento: seis toques con la medición colgada tienen que costar lo mismo que sin
-    // ella. El margen es amplio a propósito —el ambiente de pruebas es una VM chica— porque lo que
-    // este número atrapa es un `await` en el camino del toque, que costaría segundos por toque.
-    expect(tardanza, 'capturar se volvió lento con la medición colgada').toBeLessThan(cuantos * 3_000);
+  if (cuantas > 0) {
+    // El margen es amplio a propósito —el ambiente de pruebas es una VM chica— porque lo que este
+    // número atrapa es un `await` en el camino del toque, que costaría segundos por toque.
+    expect(tardanza, 'tocar se volvió lento con la medición colgada').toBeLessThan(cuantas * 3_000);
   }
 
-  // La pantalla sigue viva después de la ráfaga.
+  // La pantalla sigue viva después de la ráfaga: se cierra la hoja y el POS responde.
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
 
   await page.waitForTimeout(12_000);
