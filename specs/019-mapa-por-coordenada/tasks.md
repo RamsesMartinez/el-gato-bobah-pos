@@ -167,11 +167,11 @@ cuenten, y que el volumen no crezca con los dedos.
       respondiendo igual. Es SC-004, y hoy solo lo comprueba una persona leyendo el quickstart.
 - [ ] T028 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 3-bis** (que el
       Picker y el PIN no cuenten) y el de la red muerta.
-- [ ] T029 [P] Medir el paquete del POS contra T002 (no más de +5 kB) **y comprobar que
+- [X] T029 [P] Medir el paquete del POS contra T002 (no más de +5 kB) **y comprobar que
       `web/package.json` y `web/bun.lock` no cambiaron**, que es SC-007 medido en vez de prometido.
-- [ ] T030 [P] Renglones en `docs/matriz-de-pantallas.md` y en `docs/security-owasp.md`: qué cubre
+- [X] T030 [P] Renglones en `docs/matriz-de-pantallas.md` y en `docs/security-owasp.md`: qué cubre
       cada test y **qué no**.
-- [ ] T031 [P] Documentar en `AGENTS.md` dónde se agrega una pantalla instrumentada (son dos
+- [X] T031 [P] Documentar en `AGENTS.md` dónde se agrega una pantalla instrumentada (son dos
       lugares, como en la 017) y que la leyenda se actualiza con cada rediseño.
 - [ ] T032 Gates completos y despliegue.
 
