@@ -6,7 +6,15 @@ Las decisiones que había que tomar antes de escribir código, con lo que se des
 
 **Decisión**: cola en memoria en el POS, envío **en lote** por `fetch` con `keepalive` y **sin
 `await`**. Se vacía a los 20 eventos, a los 10 segundos, o cuando la pestaña se oculta. Si el envío
-falla, se descarta sin reintentar.
+falla, se descarta sin reintentar. **Y nunca hay más de un lote en vuelo**: si el anterior sigue
+pendiente, se sigue acumulando en la cola —hasta el tope de 50— y el envío se pospone.
+
+Lo de «uno en vuelo» lo encontró la revisión de arquitectura y no es teórico: con wifi lento **pero
+no caído** —que es el escenario que motiva todo este diseño, no el de la red muerta— un `fetch`
+tarda 8–15 s en resolverse, el temporizador de 10 s dispara otro encima, y a la media hora hay
+varios lotes compitiendo por la misma conexión flaky **con el `POST /orders/:id/pay`**. Ninguno
+bloquea al operador, pero le pueden hacer más lento el cobro, que es exactamente lo que US3 promete
+que no pasa.
 
 **Rationale**: FR-004 y FR-005 no piden «que sea rápido»: piden que **no exista** un camino donde la
 medición pueda demorar o romper una acción. Lo único que garantiza eso es no esperarla nunca. Y el
@@ -22,19 +30,36 @@ restaurante.
 
 ## 2. Qué cuenta como «se abrió una pantalla»
 
-**Decisión**: cuenta la **entrada a una ruta**. No cuenta si esa misma pantalla ya se contó **hace
-menos de 5 segundos en la misma pestaña**. La marca vive en `sessionStorage` —sobrevive a un F5 y
-muere con la pestaña—.
+**Decisión**: cuenta **toda entrada a una ruta**, con una sola excepción: **la primera vista después
+de una recarga no cuenta**, y eso se sabe preguntándole al navegador —
+`performance.getEntriesByType('navigation')[0].type === 'reload'`— en vez de adivinarlo con un
+cronómetro.
 
-**Rationale**: el edge case del spec es real: el operador aprieta F5 por costumbre y eso no es
-«volvió a entrar». Cinco segundos cubren la recarga (1–2 s) y el doble toque, sin tragarse una
-navegación de verdad: nadie entra a Caja, sale y vuelve en menos de cinco segundos a propósito.
+**Rationale**: el edge case del spec es real —el operador aprieta F5 por costumbre y eso no es
+«volvió a entrar»— pero la primera versión de esta decisión lo resolvía con una ventana de 5
+segundos en `sessionStorage`, y la revisión de arquitectura la tumbó por los dos lados a la vez:
+
+- **Se le escapa el caso que venía a cubrir.** Un F5 en una tableta con wifi degradado, caché frío y
+  1,133 kB de paquete tarda **más** de 5 s en volver a la ruta. Para entonces la marca expiró y la
+  recarga cuenta igual.
+- **Y subcuenta justo lo que más importa medir.** En el mostrador sí se entra y se sale de una
+  pantalla en segundos: un cajero rebota entre el menú y la cuenta varias veces mientras arma un
+  pedido. Con la ventana, solo la primera de esas entradas contaba — y esas pantallas de consulta
+  frecuente son las que SC-001 quiere poder nombrar.
+
+Preguntarle al navegador si fue una recarga no tiene ninguno de los dos problemas, **y quita
+código**: se va el `sessionStorage`, se va la constante de 5 segundos y se va el estado que había
+que mantener.
 
 | Alternativa | Por qué no |
 |---|---|
-| Contar toda entrada, incluida la recarga | Infla justo las pantallas que más se recargan, que son las que el operador mira cuando algo va lento. El dato mentiría en la dirección más cara |
-| Marca en memoria (no en `sessionStorage`) | Una recarga borra la memoria: el caso que el anti-rebote existe para cubrir es exactamente el que se le escaparía |
-| Marca en `localStorage` | Sobrevive al cierre de la pestaña y al día siguiente: una pantalla abierta hoy se comería la primera apertura de mañana |
+| Ventana de N segundos en `sessionStorage` | Lo de arriba: se le escapa la recarga lenta y se come las entradas rápidas legítimas |
+| Contar toda entrada, recarga incluida | Infla justo las pantallas que más se recargan, que son las que el operador mira cuando algo va lento. El dato mentiría en la dirección más cara |
+| Marca en `localStorage` | Sobrevive al cierre de la pestaña: una pantalla abierta hoy se comería la primera apertura de mañana |
+
+**Lo que se pierde, y se acepta**: tras una recarga, la vista que el operador sí está mirando no se
+cuenta esa vez. Una apertura de menos es más barata que inflar sistemáticamente las pantallas
+lentas.
 
 ## 3. Dónde y con qué forma se guarda
 

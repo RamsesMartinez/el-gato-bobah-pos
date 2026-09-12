@@ -25,6 +25,17 @@ lista blanca (revisa el contador de descartes en el log del servidor).
 **Falla si** algo se traba, parpadea o muestra un error: significa que la medición está en el camino
 del operador, y eso es un no-go, no un detalle.
 
+**Y el caso que de verdad muerde: la red LENTA, no la caída.** La red muerta es fácil —el `fetch`
+falla rápido y se descarta—; la mala es la que acumula envíos encima de envíos.
+
+4-bis. Con las herramientas del navegador en *Slow 3G* (o un proxy que tire paquetes), usa el POS
+diez minutos seguidos y cobra un pedido al final.
+
+**Se espera**: en la pestaña de red **nunca hay dos `POST /usage` en vuelo a la vez**, y el cobro
+tarda lo mismo que sin medición.
+**Falla si** se apilan: entonces los lotes están compitiendo por la conexión con el cobro, que es
+justo lo que el diseño promete evitar y lo que la red caída no deja ver.
+
 5. Vuelve a encender la red.
 
 **Se espera**: lo que se perdió, se perdió. No hay que ver un pico de eventos atrasados — no se
@@ -61,16 +72,20 @@ que el evento lleve coordenadas estaría leyendo dónde puso el dedo la gente de
 
 ## Que quepa
 
-9. Siembra un año de uso simulado y mide:
+9. Siembra un año de uso **con el patrón de escritura real** —lotes que incrementan muchas veces las
+   mismas filas del día, como los produce el endpoint, no un `insert` con el total ya sumado— y mide:
 
 ```sql
 select pg_size_pretty(pg_total_relation_size('usage_events')),
        pg_size_pretty(pg_total_relation_size('usage_daily'));
 ```
 
-**Se espera**: por debajo del techo declarado (15 MB por empresa).
-**Falla si** lo pasa: el agregado no está agregando —revisa el `nulls not distinct` de la llave— o
-el recorte no corrió.
+**Se espera**: por debajo del techo declarado (**25 MB por empresa**; el caso limpio midió 13.3 MB).
+**Falla si** lo pasa: el agregado no está agregando —revisa el `nulls not distinct` de la llave—, el
+lote no está pre-agregando antes del `upsert`, o el recorte no corrió.
+
+**Un `insert` masivo con el total final NO sirve como prueba**: mide un escenario que la operación
+nunca produce y pasa en verde escondiendo el costo de las versiones muertas.
 
 ## Que el POS no engordó
 
@@ -83,5 +98,6 @@ POS.
 ## Lo que este quickstart NO cubre
 
 - Que el mapa se lea bien con datos de verdad: eso se ve mirándolo, con un mes de uso encima.
-- Que el recorte diario corra en la VM: se comprueba al día siguiente del despliegue, contando filas
-  viejas.
+- Que el recorte corra en la VM: se comprueba contando filas viejas **después de varios despliegues
+  seguidos**, no al día siguiente de uno. El caso que rompe es justo el binario que se reinicia antes
+  de cumplir 24 horas.
