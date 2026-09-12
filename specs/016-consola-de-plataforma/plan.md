@@ -48,6 +48,15 @@ Lo que hace que esto sea defendible y no un `if`:
 | 2 | **Rol de base propio** (`gatobobah_platform`), con su propio pool | Aunque un handler leyera mal, la conexión que usa **no tiene permiso** sobre las tablas de operación |
 | 3 | **Grants explícitos, y nada más** | `select` sobre `companies` y sobre las tablas de plataforma. **Cero** sobre `orders`, `order_payments`, `register_sessions`, `expenses` y las demás. Postgres responde `42501` |
 
+**Y una política de RLS acotada, que el plan original no tenía.** `/speckit-analyze` encontró que el
+grant **no basta**: `companies` lleva la política `company_self` y RLS también le aplica al rol de
+plataforma, así que con `select` a secas la consola vería **una empresa de dos** — FR-007 imposible.
+Se abre con una política de una línea, para **una tabla, un comando y un rol**, verificada contra
+datos reales: el rol pasa a ver 2 de 2 y el de la app sigue viendo solo la suya.
+
+Lo que **no** se hace es darle `BYPASSRLS`: resolvería esto y abriría todo lo demás el día que
+alguien agregue un grant por comodidad. Además el arranque lo rechaza a propósito.
+
 La barrera 2 y la 3 son la respuesta a FR-006. No son teoría: el repo ya vive esta forma —el binario
 abre **dos** pools hoy, el del owner y el de `gatobobah_app`— y esta feature agrega el tercero.
 

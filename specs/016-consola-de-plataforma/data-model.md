@@ -29,6 +29,25 @@ Lo que de verdad impone FR-005 y FR-006.
 | `select` | `companies`, `platform_operators`, y las tablas de plataforma que lleguen después |
 | **nada** | `orders`, `order_lines`, `order_payments`, `order_refunds`, `register_sessions`, `register_session_totals`, `session_cash_counts`, `expenses`, `products`, `users`… |
 
+## Y una política de RLS, porque el grant NO basta
+
+**Encontrado en `/speckit-analyze`, verificado contra datos reales.** `companies` tiene la política
+`company_self`, que limita cada fila a la empresa de la conexión. RLS **también le aplica** al rol
+de plataforma —solo la esquivan los superusuarios—, así que con `select` a secas la consola vería
+**una empresa de dos**, o ninguna. FR-007 sería imposible de cumplir.
+
+```sql
+create policy plataforma_lee_todas_las_empresas on companies
+  for select to gatobobah_platform using (true);
+```
+
+Verificado: con ella el rol ve **2 de 2**, y `gatobobah_app` sigue viendo **solo la suya** — las
+políticas se suman por comando, así que abrir una no toca la otra.
+
+**Lo que NO se hace: darle `BYPASSRLS` al rol.** Resolvería esto y abriría todo lo demás el día que
+alguien agregue un grant por comodidad. Además el arranque lo rechaza a propósito. La política es
+quirúrgica: una tabla, un comando, un rol.
+
 Y el que se olvida y no se nota: **`grant usage on schema public`**. Sin él, los `select`
 explícitos no sirven de nada — es el mismo olvido que la 0024 documenta.
 

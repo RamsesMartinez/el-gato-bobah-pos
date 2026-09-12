@@ -22,9 +22,12 @@ Cuatro reglas que este repo ya aprendió a la mala y que esta feature toca de ll
 ## Fase 1: Setup
 
 - [ ] T001 Crear la rama y confirmar que `016-consola-de-plataforma` es la feature activa.
-- [ ] T002 [P] Reservar los subdominios `staff-dev.elgatobobah.com` y `staff.elgatobobah.com`, y
-      crear sus dos proyectos de Pages — uno por ambiente, como ya existen `el-gato-bobah-pos` y
-      `el-gato-bobah-pos-dev`.
+- [ ] T002 [P] **(manual, fuera del repositorio)** Reservar los subdominios
+      `staff-dev.elgatobobah.com` y `staff.elgatobobah.com`, y crear sus dos proyectos de Pages —
+      uno por ambiente, como ya existen `el-gato-bobah-pos` y `el-gato-bobah-pos-dev`.
+
+      Ningún test puede comprobar esto: se verifica al desplegar. Va marcado para que nadie lo dé
+      por hecho al revisar la lista.
 
 ---
 
@@ -39,14 +42,23 @@ Cuatro reglas que este repo ya aprendió a la mala y que esta feature toca de ll
       `platform_operators` nace vacía y sin `company_id`, que el rol `gatobobah_platform` existe y
       **no** es superusuario ni tiene `bypassrls`, y que `gatobobah_app` **no** puede leer
       `platform_operators`. Verlo fallar.
-- [ ] T004 Escribir `server/migrations/0068_consola_de_plataforma.sql`: la tabla, el rol, y los
-      grants **explícitos** — `usage on schema public` más `select` sobre `companies` y
-      `platform_operators`, y nada más.
+- [ ] T004 Escribir `server/migrations/0068_consola_de_plataforma.sql`: la tabla, el rol, los
+      grants **explícitos** —`usage on schema public` más `select` sobre `companies` y
+      `platform_operators`, y nada más— **y la política de RLS**
+      `plataforma_lee_todas_las_empresas on companies for select to gatobobah_platform using (true)`.
+
+      **La política no es opcional**: `companies` lleva `company_self`, RLS también le aplica al rol
+      de plataforma, y sin ella la consola vería **una empresa de dos**. Lo encontró
+      `/speckit-analyze` y está verificado contra datos reales. **Nunca `BYPASSRLS`** — resolvería
+      esto y abriría todo lo demás.
 
       Dos comentarios que tienen que quedar en el archivo, porque son los atajos que alguien con
       prisa va a considerar: **nunca `grant ... on all tables` para este rol** (expondría `orders`,
       `users` y `order_payments` de golpe) y **el `Down` no borra el rol**.
 
+- [ ] T004b Test de la política, **antes** de escribirla: con dos empresas en la base, el rol de
+      plataforma ve **las dos**, y `gatobobah_app` sigue viendo **solo la suya**. Verlo fallar
+      quitando la política — sin eso no se sabe si es ella la que abre o si algo más está mal.
 - [ ] T005 Escribir el `Down`: `alter role gatobobah_platform with nologin` más los revokes de lo
       que otorgó el `Up`. **Sin `drop role`**, con el porqué en el comentario: los roles son objetos
       del servidor y si tienen permisos en otra base el `drop` falla — medido: pasa en CI y en
@@ -127,6 +139,12 @@ Va **antes** que US2 a propósito: es la barrera, y US2 es lo que se apoya en el
 - [ ] T026 [US3] Test de integración **bajo el rol `gatobobah_platform`**: `select` sobre `orders`,
       `order_payments`, `register_sessions`, `expenses` y `users` da `42501`. Y sobre `companies`,
       un número.
+- [ ] T026b [US3] Y que **tampoco puede escribir** (FR-009): `insert`, `update` y `delete` sobre
+      `companies` dan `42501`.
+
+      No es redundante con T026: los grants son de `select`, así que la escritura está denegada
+      **por omisión** — y lo que se omite no se nota hasta que alguien lo agrega. Este test es lo
+      que impide que la spec 018 ocurra por accidente en vez de por decisión.
 - [ ] T027 [US3] Test de la simetría: `gatobobah_app` no puede leer `platform_operators`.
 - [ ] T028 [US3] Verificar cada test de T026 **quitando el grant correspondiente** y viéndolo pasar
       a verde indebidamente. Un test de permisos que nunca se vio fallar no prueba que el permiso
@@ -137,7 +155,12 @@ Va **antes** que US2 a propósito: es la barrera, y US2 es lo que se apoya en el
 ## Fase 5: US2 — Ver qué empresas hay (P1)
 
 - [ ] T029 [US2] Test de integración de `GET /api/v1/platform/companies`: lista **todas** las
-      empresas, trae la versión de esquema **una sola vez** y **ninguna cifra de dinero**.
+      empresas —con dos en la base, salen las dos—, trae la versión de esquema **una sola vez**, y
+      **no trae**: ninguna cifra de dinero (FR-008), ningún dato de empleados de un cliente (FR-016)
+      ni la última actividad (FR-007b, que queda para la spec 017).
+
+      Los tres «no trae» se afirman explícitamente y no se dan por buenos porque nadie los escribió:
+      una respuesta se llena sola cuando alguien agrega un campo «de paso».
 - [ ] T030 [US2] Implementar el endpoint.
 - [ ] T031 [US2] Test de cero empresas: la respuesta lo dice y la pantalla no pinta una tabla vacía
       (FR-015).
