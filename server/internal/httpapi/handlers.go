@@ -89,6 +89,10 @@ type Deps struct {
 	// Usage es la medición de uso (spec 017). Escribe con la conexión del negocio y se lee desde
 	// la consola; el mismo servicio atiende las dos puntas porque la regla de anonimato vive en una.
 	Usage *app.UsageService
+	// UsageConsola es el MISMO servicio sobre OTRA conexión: la de plataforma, que solo puede leer
+	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
+	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
+	UsageConsola *app.UsageService
 }
 
 type Handlers struct {
@@ -116,6 +120,7 @@ type Handlers struct {
 	platformJWT    *auth.ManagerDePlataforma
 	platform       *app.PlatformService
 	usage          *app.UsageService
+	usageConsola   *app.UsageService
 	// usoIngesta limita cuánto puede mandar una tableta. No protege la base —de eso se encargan la
 	// lista blanca y los checks— sino el camino: un bucle en el front no puede costar una escritura
 	// por vuelta.
@@ -143,6 +148,7 @@ func NewHandlers(d Deps) *Handlers {
 		platformJWT:    d.PlatformJWT,
 		platform:       d.Platform,
 		usage:          d.Usage,
+		usageConsola:   d.UsageConsola,
 		usoIngesta:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
 		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y

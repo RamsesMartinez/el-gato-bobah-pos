@@ -8,6 +8,7 @@ import {
   type Operador,
 } from './api';
 import { soloFecha } from './fecha';
+import { MapaDeUso } from './MapaDeUso';
 
 // LA CONSOLA DE PLATAFORMA (spec 016).
 //
@@ -136,6 +137,21 @@ function Empresas_({ operador, alSalir }: { operador: Operador; alSalir: () => v
         )}
         {datos !== null && datos.items.length > 0 && <Tabla empresas={datos.items} />}
       </div>
+
+      {/* El mapa de uso (spec 017). Va debajo de la lista y no en otra pantalla: son la misma
+          pregunta —quiénes son los clientes y qué usan— y partirla en dos vistas obligaría a
+          recordar de cuál se venía. */}
+      {datos !== null && datos.items.length > 0 && (
+        <>
+          <div className="encabezado" style={{ marginTop: 32 }}>
+            <div>
+              <h1>Uso del sistema</h1>
+              <p className="tenue">Cuántas veces se abre cada pantalla y qué se hace adentro.</p>
+            </div>
+          </div>
+          <MapaDeUso empresas={datos.items} />
+        </>
+      )}
     </div>
   );
 }

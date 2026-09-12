@@ -173,6 +173,18 @@ negocio no es una comprobación en el código, y esa es toda la decisión:
 Lo que la consola **no** puede hacer hoy, y es deliberado: **escribir**. No tiene un solo `insert`,
 `update` ni `delete`. Las acciones de soporte (spec 018) exigen cambiar permisos a propósito.
 
+## La medición de uso (spec 017) — lo que NO se guarda
+
+| OWASP | Decisión | Por qué |
+|---|---|---|
+| A01 | El evento **no tiene columna de persona** ni FK a `users` | No es que la aplicación no la escriba: no hay dónde. Lo que no existe no se llena por descuido ni aparece en un `select *` dentro de seis meses |
+| A01 | Un rol con **menos de dos** usuarios activos se guarda como «sin corte» | Decir «el gerente hizo 40 acciones» en una empresa con un gerente es decir su nombre. Se decide al ESCRIBIR: leyendo no se podría —la consola no tiene permiso sobre `users`— y escrito ya no se deshace |
+| A03 | Lista blanca de pantallas y acciones en `domain` | Sin ella, cuántos valores distintos hay en la base lo decide el cliente |
+| A04 | Tope de 50 eventos por lote y limitador por usuario | Un bucle en el front no puede costar una escritura por vuelta. El limitador lleva test propio: como el endpoint responde 204 pase lo que pase, roto es indistinguible de ausente |
+| A04 | El `detail` del cuerpo se **descarta sin mirarlo** | Esa columna existe para las coordenadas del futuro; llena desde el cliente es un campo libre por donde entra lo que la feature promete no guardar |
+| A09 | Un `usage_descartado` en el log con el primer nombre desconocido | Es el único testigo de que una versión del front dejó de medir: el mapa mostraría menos, indistinguible de «se usó menos» |
+| A01 | La consola lee `usage_daily` y **nunca** `usage_events` | Mira conteos, no hechos — y mañana esos hechos llevan coordenadas |
+
 ## Checklist de lanzamiento en el VPS (operador)
 
 **Secretos y config (antes del primer arranque):**

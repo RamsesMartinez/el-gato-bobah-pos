@@ -8,6 +8,10 @@ import { MENSAJE_SIN_RED } from './api';
 // atrapar: que la pantalla muestre lo que el servidor manda y que no se quede en blanco cuando la
 // respuesta viene vacía o cuando el acceso deja de servir a media sesión.
 
+// El mapa de uso vive dentro de esta pantalla, así que los stubs tienen que contestarle a ÉL
+// también: una respuesta con otra forma haría que el mapa no pinte y el test miraría otra cosa.
+const MAPA_VACIO = { periodo: { desde: '2026-09-01', hasta: '2026-09-12' }, pantallas: [] };
+
 function respuesta(cuerpo: unknown, status = 200) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
@@ -43,6 +47,7 @@ describe('la consola de plataforma', () => {
       if (String(url).endsWith('/platform/auth/login')) {
         return respuesta({ accessToken: 'tok', operator: { id: 1, username: 'soporte', name: 'Soporte' } });
       }
+      if (String(url).includes('/platform/usage')) return respuesta(MAPA_VACIO);
       return respuesta({
         items: [
           { id: 1, slug: 'gatobobah', name: 'El Gato Bobah', activa: true, createdAt: '2026-08-26T18:21:06Z' },
@@ -53,8 +58,10 @@ describe('la consola de plataforma', () => {
     });
     await entrarComoSoporte(fetchStub);
 
-    expect(await screen.findByText('El Gato Bobah')).toBeInTheDocument();
-    expect(screen.getByText('Otra Empresa (inactiva)')).toBeInTheDocument();
+    // Por CELDA y no por texto suelto: el nombre de la empresa aparece dos veces en esta pantalla
+    // —en la lista y como filtro del mapa de uso— y buscarlo suelto es ambiguo.
+    expect(await screen.findByRole('cell', { name: 'El Gato Bobah' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Otra Empresa (inactiva)' })).toBeInTheDocument();
     expect(screen.getByText(/versión de instalación 68/)).toBeInTheDocument();
   });
 
@@ -63,6 +70,7 @@ describe('la consola de plataforma', () => {
       if (String(url).endsWith('/platform/auth/login')) {
         return respuesta({ accessToken: 'tok', operator: { id: 1, username: 'soporte', name: 'Soporte' } });
       }
+      if (String(url).includes('/platform/usage')) return respuesta(MAPA_VACIO);
       return respuesta({ items: [], schema: { version: 68 } });
     });
     await entrarComoSoporte(fetchStub);
