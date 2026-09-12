@@ -1,6 +1,9 @@
 package domain
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // DÓNDE CAE EL DEDO (spec 019). Lo puro: qué se puede contar y qué forma tiene una celda.
 //
@@ -146,4 +149,27 @@ func RecortarLoteDeToques(lote []Toque) []Toque {
 		return lote
 	}
 	return lote[:MaxToquesPorLote]
+}
+
+// PantallaConToque dice si esa pantalla está instrumentada para toques.
+func PantallaConToque(pantalla string) bool {
+	_, ok := pantallasConToque[pantalla]
+	return ok
+}
+
+// OrientacionDeToque resuelve el parámetro de la consulta: vacío es `horizontal`, lo válido es lo
+// que venga, y lo demás se RECHAZA.
+//
+// Caer a horizontal en silencio ante un valor mal escrito pintaría los datos de una forma de
+// pantalla bajo el nombre de la otra: la rejilla se vería normal y describiría un lugar que no
+// existe. El default es para el parámetro ausente, nunca para el presente y malformado.
+func OrientacionDeToque(v string) (string, error) {
+	switch v {
+	case "":
+		return OrientacionHorizontal, nil
+	case OrientacionHorizontal, OrientacionVertical:
+		return v, nil
+	default:
+		return "", fmt.Errorf("%w: orientación desconocida", ErrValidation)
+	}
 }
