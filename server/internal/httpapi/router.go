@@ -97,6 +97,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 			r.Group(func(r chi.Router) {
 				r.Use(WithTenant(st)) // todo lo demás: conexión atada al tenant → RLS aísla cada query
 
+				// LA MEDICIÓN DE USO (spec 017). Va dentro del grupo del negocio, con tenant y
+				// autenticación, porque la empresa y el rol los pone el SERVIDOR desde el token:
+				// dejar que el cliente los mande sería dejarlo decir de qué rol es.
+				//
+				// Sin `RequireRole`: la mide cualquiera que esté trabajando, que es justo el punto.
+				r.Post("/usage", h.RegistrarUso)
+
 				r.Get("/pos/menu", h.PosMenu)
 				r.Get("/pos/popular", h.PosPopular)
 				r.Get("/pos/modifier-defaults", h.ModifierDefaults)

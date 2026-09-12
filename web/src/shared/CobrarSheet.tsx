@@ -6,6 +6,7 @@ import {
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
 import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
+import { medirAccion } from '../api/uso';
 import { posApi } from '../api/pos';
 import { ApiError } from '../api/client';
 import { VerTicket } from './tickets/ReprintTicket';
@@ -243,6 +244,10 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
       });
     },
     onSuccess: (res) => {
+      // Se mide DESPUÉS de que el servidor cobró, dentro del onSuccess y nunca antes de la
+      // mutación: medir primero convertiría un cobro en algo que espera a la medición (spec 017,
+      // US3). Si esta línea desapareciera, lo único que se pierde es el conteo.
+      medirAccion('pos', 'cobrar');
       setRebote(null);
       if (res.yaEstaba) {
         // El cobro ya estaba registrado: esta llamada no movió dinero, y decirlo evita que el

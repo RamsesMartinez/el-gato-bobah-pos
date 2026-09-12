@@ -26,9 +26,9 @@ Cinco cosas que este repo ya aprendió, y que esta feature toca de lleno:
 
 ## Fase 1: Setup
 
-- [ ] T001 Confirmar que `017-mapa-de-calor-de-uso` es la rama y la feature activa
+- [X] T001 Confirmar que `017-mapa-de-calor-de-uso` es la rama y la feature activa
       (`.specify/feature.json`).
-- [ ] T002 [P] Anotar el tamaño del paquete del POS **antes** de tocar nada: `cd web && bun run
+- [X] T002 [P] Anotar el tamaño del paquete del POS **antes** de tocar nada: `cd web && bun run
       build`, y dejar el número en el commit. La referencia es 1,133.50 kB (2026-09-11); sin el
       antes, el «no creció» del final no se puede afirmar.
 
@@ -38,13 +38,13 @@ Cinco cosas que este repo ya aprendió, y que esta feature toca de lleno:
 
 ### La migración, con su test antes
 
-- [ ] T003 Escribir el test de la migración en
+- [X] T003 Escribir el test de la migración en
       `server/internal/integration/migracion_uso_test.go`, **antes** de la migración: que las dos
       tablas existen, que `usage_events` **no tiene ninguna columna de usuario**, que la llave de
       `usage_daily` es `unique nulls not distinct` —probándolo: dos upserts con `action` y `role`
       nulos suman en la misma fila, no crean dos—, y que los `check` de longitud rechazan una
       cadena de 5 KB. Verlo fallar.
-- [ ] T004 Escribir `server/migrations/0069_uso_del_sistema.sql`: las dos tablas con su
+- [X] T004 Escribir `server/migrations/0069_uso_del_sistema.sql`: las dos tablas con su
       `company_id … references companies(id) on delete cascade` **escrito literal**, el índice
       `(company_id, occurred_at)`, la llave `unique nulls not distinct`, los `check` de longitud, el
       `enable row level security` con `tenant_isolation` en las dos, y los grants: `insert` sobre
@@ -53,22 +53,22 @@ Cinco cosas que este repo ya aprendió, y que esta feature toca de lleno:
       El `update` es para el `upsert` y el `select` porque Postgres lo exige para leer `hits` en el
       `set`; los dos van con su comentario, o el siguiente que los lea los quita por «sobran».
 
-- [ ] T005 Agregar la política de plataforma en la misma migración:
+- [X] T005 Agregar la política de plataforma en la misma migración:
       `plataforma_lee_todo_el_uso on usage_daily for select to gatobobah_platform using (true)`,
       más `grant select on usage_daily to gatobobah_platform`. **Y ningún grant sobre
       `usage_events`.**
-- [ ] T006 Test de la política en `migracion_uso_test.go`, **visto en rojo quitándola**: con dos
+- [X] T006 Test de la política en `migracion_uso_test.go`, **visto en rojo quitándola**: con dos
       empresas sembradas, el rol de plataforma ve el agregado de **las dos**, el rol de la app solo
       el suyo, y `select` sobre `usage_events` desde plataforma da **42501**.
-- [ ] T007 Escribir el `Down`: borra las dos tablas. Test de que revertir y volver a aplicar deja el
+- [X] T007 Escribir el `Down`: borra las dos tablas. Test de que revertir y volver a aplicar deja el
       esquema igual.
 
 ### El dominio: lo que se puede contar y cómo se cuenta
 
-- [ ] T008 [P] Tests en `server/internal/domain/uso_test.go`, en tabla: la lista blanca acepta lo
+- [X] T008 [P] Tests en `server/internal/domain/uso_test.go`, en tabla: la lista blanca acepta lo
       conocido y rechaza lo demás (incluidas cadenas larguísimas y vacías), el pre-agregado de un
       lote suma por `(pantalla, acción, rol)`, y un lote de más de 50 se recorta.
-- [ ] T009 [P] `server/internal/domain/uso.go`: la lista blanca de pantallas y acciones, el tipo del
+- [X] T009 [P] `server/internal/domain/uso.go`: la lista blanca de pantallas y acciones, el tipo del
       evento, `PreAgregar(lote)` y los sentinels. Puro, sin I/O.
 
       **Los roles son los CUATRO que existen** (`admin`, `gerente`, `cajero`, `mesero`), no los tres
@@ -78,14 +78,14 @@ Cinco cosas que este repo ya aprendió, y que esta feature toca de lleno:
       La lista es la que mantiene acotado el número de combinaciones distintas: sin ella, cuántas
       filas puede tener `usage_daily` lo decide el cliente.
 
-- [ ] T010 [P] Tests de la regla de k-anonimato en `uso_test.go`: con 0 o 1 usuario activo de ese
+- [X] T010 [P] Tests de la regla de k-anonimato en `uso_test.go`: con 0 o 1 usuario activo de ese
       rol, el corte se suprime; con 2 o más, se conserva. Es puro: recibe el conteo, no la base.
-- [ ] T011 [P] `domain.CorteDeRolPermitido(usuariosActivosDelRol int) bool`, con el porqué escrito:
+- [X] T011 [P] `domain.CorteDeRolPermitido(usuariosActivosDelRol int) bool`, con el porqué escrito:
       decir «el rol gerente hizo 40 acciones» en una empresa con un gerente es decir su nombre.
 
 ### Las consultas
 
-- [ ] T012 `server/queries/uso.sql` con las cuatro: insertar el grano fino, el `upsert` del
+- [X] T012 `server/queries/uso.sql` con las cuatro: insertar el grano fino, el `upsert` del
       agregado (`on conflict on constraint usage_daily_llave do update set hits = usage_daily.hits +
       excluded.hits`), contar usuarios activos por rol de la empresa, y la lectura del mapa. Correr
       `make sqlc`.
@@ -105,16 +105,16 @@ lo que se escribió con la persona, se escribió.
 **Prueba independiente**: con dos roles usando el sistema, ninguna consulta —ni desde la app ni
 desde la base— permite reconstruir qué hizo un empleado.
 
-- [ ] T013 [US2] Test de integración en `server/internal/integration/uso_anonimo_test.go`, antes del
+- [X] T013 [US2] Test de integración en `server/internal/integration/uso_anonimo_test.go`, antes del
       código: tras ingerir eventos de un usuario, **ninguna fila de ninguna de las dos tablas
       contiene su id**, y el esquema no tiene ninguna columna que apunte a `users`.
-- [ ] T014 [US2] Test del caso que de verdad importa: una empresa con **un solo** usuario activo de
+- [X] T014 [US2] Test del caso que de verdad importa: una empresa con **un solo** usuario activo de
       un rol ingiere eventos → las filas del agregado quedan con `role` **nulo**. Con dos usuarios
       del mismo rol → el rol se conserva. Verlo en rojo saltándose `CorteDeRolPermitido`.
-- [ ] T015 [US2] `server/internal/app/uso.go`: `UsageService.Registrar(ctx, lote)` — valida contra
+- [X] T015 [US2] `server/internal/app/uso.go`: `UsageService.Registrar(ctx, lote)` — valida contra
       la lista blanca, pre-agrega, cuenta los usuarios activos del rol, decide la supresión y hace
       **una sola transacción** con el insert del grano fino y el `upsert` del agregado.
-- [ ] T016 [US2] Test de que el rol sale del **token** y no del cuerpo: un lote que trae `"rol":
+- [X] T016 [US2] Test de que el rol sale del **token** y no del cuerpo: un lote que trae `"rol":
       "admin"` inventado no cambia lo que se guarda.
 
 ---
@@ -126,10 +126,10 @@ una demora atribuible a la medición.
 
 ### El endpoint, que nunca puede estorbar
 
-- [ ] T017 [US3] Test en `server/internal/httpapi/uso_test.go`, antes del código: el endpoint
+- [X] T017 [US3] Test en `server/internal/httpapi/uso_test.go`, antes del código: el endpoint
       responde **204 siempre** —lote vacío, cuerpo mal formado, pantallas desconocidas, 500 eventos—
       y nunca un cuerpo de error.
-- [ ] T017b [US3] **Test del limitador, antes de escribirlo**: pasado el tope por usuario, los
+- [X] T017b [US3] **Test del limitador, antes de escribirlo**: pasado el tope por usuario, los
       eventos **no se escriben** y la respuesta sigue siendo 204.
 
       El principio V no deja mergear un control de seguridad sin su test, y aquí la razón es más
@@ -137,17 +137,17 @@ una demora atribuible a la medición.
       —o desconectado por un refactor del router— **no se nota por ninguna vía**. El único testigo
       posible es este test.
 
-- [ ] T017c [US3] Test de que el servidor **ignora cualquier `detail` que venga en el cuerpo**: un
+- [X] T017c [US3] Test de que el servidor **ignora cualquier `detail` que venga en el cuerpo**: un
       lote con `{"detail":{"cliente":"Juan"}}` se guarda con `detail` nulo.
 
       `detail` existe para las coordenadas del futuro (FR-013). Mientras el cliente pueda escribirlo,
       esa puerta es también un campo libre por donde entra justo lo que FR-003 prohíbe — y a
       diferencia de una columna mal usada, un `jsonb` no avisa.
 
-- [ ] T018 [US3] `POST /api/v1/usage` en `server/internal/httpapi/handlers_uso.go`, dentro del grupo
+- [X] T018 [US3] `POST /api/v1/usage` en `server/internal/httpapi/handlers_uso.go`, dentro del grupo
       del negocio con `RequireAuth` y `WithTenant`, con su limitador por usuario, el tope de 50
       eventos por lote y **el `detail` del cuerpo descartado sin mirarlo**.
-- [ ] T019 [US3] Test de que lo descartado **deja rastro**: una línea de `slog.Warn` con clave
+- [X] T019 [US3] Test de que lo descartado **deja rastro**: una línea de `slog.Warn` con clave
       estable `usage_descartado`, el conteo del lote y **el primer nombre desconocido** (que es lo
       que dice qué hay que arreglar). No es `logging.SecurityEvent`: no es un evento de seguridad,
       es telemetría de la propia medición.
@@ -157,25 +157,25 @@ una demora atribuible a la medición.
 
 ### El registrador del POS
 
-- [ ] T020 [P] [US3] Tests en `web/src/api/uso.test.ts`, antes del código: el lote se manda a los 20
+- [X] T020 [P] [US3] Tests en `web/src/api/uso.test.ts`, antes del código: el lote se manda a los 20
       eventos, a los 10 segundos y al ocultarse la pestaña; **nunca hay dos envíos en vuelo a la
       vez**; un `fetch` que rechaza no lanza al llamador ni reintenta; y la cola se recorta a 50.
-- [ ] T021 [US3] `web/src/api/uso.ts`: la cola, el lote, `fetch` con `keepalive` **sin `await`**, y
+- [X] T021 [US3] `web/src/api/uso.ts`: la cola, el lote, `fetch` con `keepalive` **sin `await`**, y
       la guarda de «uno en vuelo».
 
       El caso que cubre la guarda es el de wifi lento, no el de wifi caído: con envíos de 8–15 s el
       temporizador dispara otro encima y terminan compitiendo con el `POST /orders/:id/pay`.
 
-- [ ] T022 [P] [US3] Test de que **la recarga no cuenta** como apertura: con
+- [X] T022 [P] [US3] Test de que **la recarga no cuenta** como apertura: con
       `performance.getEntriesByType('navigation')[0].type === 'reload'`, la primera vista no se
       encola; con `navigate`, sí. Y que dos entradas legítimas seguidas a la misma pantalla **sí**
       cuentan las dos.
-- [ ] T023 [US3] `web/src/app/rutas-medidas.ts` y el enganche en el router: cada ruta dice qué
+- [X] T023 [US3] `web/src/app/rutas-medidas.ts` y el enganche en el router: cada ruta dice qué
       pantalla es, y lo que no está en el mapa **no se mide** (no se inventa un nombre).
-- [ ] T024 [US3] Enganchar las acciones con nombre en los lugares donde ya ocurren (cobrar, cerrar
+- [X] T024 [US3] Enganchar las acciones con nombre en los lugares donde ya ocurren (cobrar, cerrar
       caja, contar efectivo, editar producto, traspaso), **siempre después** de que la acción
       ocurra.
-- [ ] T025 [US3] Test de humo del orden: en el camino de cobro, el registro se encola **después** de
+- [X] T025 [US3] Test de humo del orden: en el camino de cobro, el registro se encola **después** de
       que el cobro respondió. Un `await` colado ahí es el defecto que esta historia existe para
       impedir.
 
