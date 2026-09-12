@@ -1,6 +1,6 @@
 # Feature Specification: Un mapa de calor de uso, para dejar de suponer qué se usa
 
-**Feature Branch**: `016-mapa-de-calor-de-uso`
+**Feature Branch**: `017-mapa-de-calor-de-uso`
 
 **Created**: 2026-09-11
 
@@ -29,9 +29,13 @@ verdad.
 
 ### User Story 1 - Ver qué pantallas y qué acciones se usan (Priority: P1)
 
-El dueño entra a una pantalla nueva de uso y ve, en un mapa de calor, las pantallas del sistema
-ordenadas por cuánto se abren, y dentro de cada una las acciones con nombre que se dispararon
-(cobrar, cerrar caja, contar efectivo, editar producto, traspaso). Elige el periodo y compara.
+El **operador de plataforma** entra a la consola (spec 016) y ve, en un mapa de calor, las pantallas
+del sistema ordenadas por cuánto se abren, y dentro de cada una las acciones con nombre que se
+dispararon (cobrar, cerrar caja, contar efectivo, editar producto, traspaso). Elige el periodo y
+compara, y puede verlo unificado o por empresa.
+
+**NO es una pantalla del dueño del negocio.** Es investigación del producto, no un reporte del
+local: vive detrás del login de plataforma y ningún usuario de una empresa la ve.
 
 **Why this priority**: Es la feature. Sin esto no hay nada; con esto ya se puede decidir qué
 recortar y qué arreglar, que es lo único que se pidió.
@@ -154,14 +158,17 @@ mantiene por debajo de un techo declarado y verificable.
   no se puede entregar, **se descarta**.
 - **FR-005**: El sistema MUST seguir funcionando sin red exactamente igual que hoy. Esta feature
   MUST NOT introducir ninguna dependencia nueva de la red en un camino que hoy no la tenga.
-- **FR-006**: El dueño MUST poder ver un mapa de calor con las pantallas ordenadas por uso y las
+- **FR-006**: El operador de plataforma MUST poder ver un mapa de calor con las pantallas ordenadas por uso y las
   acciones de cada una.
 - **FR-007**: El mapa de calor MUST estar construido sin librerías de gráficas de terceros.
 
-  No es una preferencia técnica: es evitar licencias y evitar cargarle peso a una tableta que ya
-  pelea por cada kilobyte. Una escala de color y unas barras son CSS.
+  No es preferencia técnica ni ahorro de licencias: es que cada dependencia trae su calendario de
+  versiones y sus conflictos, y en este repo además un CVE bloquea el merge. Ya es principio de la
+  constitución —*«Sin dependencia nueva para lo que hace la stdlib»*—, y aquí aplica solo: una
+  escala de color y unas barras son CSS, y escribirlas cuesta menos que integrar una librería.
 
-- **FR-008**: El dueño MUST poder elegir el periodo que mira.
+- **FR-008**: El operador de plataforma MUST poder elegir el periodo que mira, y ver el mapa
+  unificado o acotado a una empresa.
 - **FR-009**: El sistema MUST NOT ofrecer un corte por rol cuando ese corte identifique a una
   persona por eliminación.
 
@@ -196,7 +203,7 @@ mantiene por debajo de un techo declarado y verificable.
 
 ### Measurable Outcomes
 
-- **SC-001**: Después de un día de operación, el dueño puede nombrar **la pantalla más usada y la
+- **SC-001**: Después de un día de operación, el operador de plataforma puede nombrar **la pantalla más usada y la
   menos usada** del sistema mirando una sola pantalla, sin pedirle nada a nadie.
 - **SC-002**: **Ninguna** consulta sobre los datos de uso, por ninguna vía, permite reconstruir qué
   hizo un empleado identificado.
@@ -207,7 +214,7 @@ mantiene por debajo de un techo declarado y verificable.
 - **SC-005**: La pantalla del mapa se lee completa a 1024×600 **sin desplazamiento horizontal**.
 - **SC-006**: Agregar coordenadas del toque más adelante **no requiere migrar** los datos ya
   escritos.
-- **SC-007**: El mapa se pinta **sin ninguna dependencia nueva** en el paquete del front.
+- **SC-007**: El mapa se pinta **sin agregar una sola dependencia** al proyecto.
 
 ## Assumptions
 
@@ -216,12 +223,18 @@ mantiene por debajo de un techo declarado y verificable.
 - **Las acciones que se cuentan son una lista con nombre**, no cualquier toque. Eso acota el volumen
   y hace los datos legibles; contar «todos los clics» es justo lo que US3 del mapa por coordenada
   deja para después.
-- **El dueño es quien mira esto.** Es información de negocio, no operativa: no va en la tableta del
-  mostrador.
+- **Quien mira esto es el operador de plataforma**, desde la consola de la spec 016. No es
+  información del negocio sino del producto, y por eso ningún usuario de una empresa la ve.
 - **La fecha la pone el servidor**, como ya hace la venta desde la spec 008 — el reloj de la tableta
   no es confiable.
 - **Periodo de conservación por defecto**: se propone conservar el detalle por días recientes y el
   agregado por más tiempo; el plan fija los números y FR-011 exige que queden escritos.
+
+## Dependencias
+
+Depende de la **spec 016 (la consola de plataforma)**: el mapa vive ahí dentro, detrás de su login
+y de su subdominio. La recolección del dato es independiente y puede construirse antes; lo que no
+se puede es pintar el mapa sin la consola.
 
 ## Out of Scope
 
@@ -232,6 +245,7 @@ mantiene por debajo de un techo declarado y verificable.
 - **Enviar estos datos a cualquier servicio externo de analítica.** Ninguno: los datos son del
   negocio y viven en su base.
 - **Un tablero configurable.** Una pantalla que contesta la pregunta, no un constructor de reportes.
+- **La consola en sí** —identidad de plataforma, login separado, subdominio—: es la spec 016.
 
 ## Origen
 
@@ -246,3 +260,8 @@ Dos decisiones tomadas por él antes de escribir este spec, y que lo condicionan
 |---|---|
 | ¿Qué mide? | **Las dos**: hoy pantallas y acciones; el toque por coordenada queda como puerta abierta |
 | ¿Distingue quién? | **Por rol, sin identidad** |
+
+Y una precisión suya, ese mismo día, sobre el «sin librerías»: *«me refiero a que desde un inicio
+quiero tecnologías in house… muchas veces me puedo llegar a topar con problemas de versiones»*. La
+razón no es el costo de una licencia sino el costo de depender: versiones, conflictos y CVE. Es el
+principio VI de la constitución, que ya lo dice.
