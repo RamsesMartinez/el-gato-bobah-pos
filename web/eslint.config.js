@@ -28,6 +28,16 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 // `shared/` nació de esta misma limpieza: tres pantallas importaban `features/tickets`, y eso no era
 // una pantalla importando a otra — era que el ticket nunca fue una pantalla. Cuando la frontera se
 // queja, la pregunta correcta no es "¿cómo la evado?" sino "¿de quién es de verdad esta pieza?".
+const MENSAJE_POS_NO_IMPORTA_CONSOLA =
+  'El POS no importa nada de la consola de plataforma: su código no viaja a la tableta. Si las dos ' +
+  'necesitan lo mismo, cópialo — son dos productos distintos con dos ciclos de vida distintos, y ' +
+  'compartir aquí es cómo la consola termina dentro del paquete que baja el mostrador.';
+
+const MENSAJE_CONSOLA_NO_IMPORTA_POS =
+  'La consola no usa nada del POS. Es otro producto, con otro público y otro despliegue: lo que ' +
+  'necesite, lo tiene propio. Tomar algo de aquí ata los dos ciclos de vida y un refactor del POS ' +
+  'la rompe en silencio.';
+
 const FRONTERAS = [
   {
     files: ['src/domain/**/*.ts'],
@@ -88,6 +98,71 @@ const FRONTERAS = [
               'falta.',
           },
         ],
+      }],
+    },
+  },
+  // LA CONSOLA DE PLATAFORMA NO SE MEZCLA CON EL POS (spec 016, US4).
+  //
+  // El POS corre en tabletas de 7 pulgadas por wifi de restaurante y la consola en la computadora
+  // de quien vende el sistema. Un solo import cruzado —un helper, un tipo, una constante— mete el
+  // código de la consola en el paquete que baja la tableta, y eso no se nota mirando: se nota en
+  // los kilobytes, meses después.
+  //
+  // Es una regla y no un acuerdo porque un acuerdo ya se rompió antes en este mismo front: las
+  // cuatro copias de round2 nacieron de "compilaba de las dos formas".
+  //
+  // OJO CON `no-restricted-imports`: solo mira `import`/`export` ESTÁTICOS. Su implementación
+  // escucha `ImportDeclaration`, `ExportNamedDeclaration` y `ExportAllDeclaration`, y NO
+  // `ImportExpression` — así que `import('../consola/api')` la cruza sin que nada falle. No es
+  // teoría: se probó metiendo ese import dinámico en `src/main.tsx` y `tsc`, `eslint` y
+  // `bun run build` pasaron los tres limpios, con un chunk de la consola dentro del `dist/` del
+  // POS. Por eso cada dirección lleva DOS reglas, y borrar la de `no-restricted-syntax` reabre el
+  // agujero entero.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/consola/**'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['**/consola/*', '**/consola/**', '../consola/*', './consola/*'],
+            message: MENSAJE_POS_NO_IMPORTA_CONSOLA,
+          },
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector: 'ImportExpression[source.value=/(^|\\/)consola\\//]',
+        message: MENSAJE_POS_NO_IMPORTA_CONSOLA,
+      }],
+    },
+  },
+  {
+    // Y al revés: la consola no importa NADA del POS. No es por peso —tiene su propio paquete—
+    // sino porque un refactor del POS la rompería en silencio, y quien lo haga no tiene por qué
+    // acordarse de que existe.
+    //
+    // La lista son todas las carpetas del POS, no solo las pantallas: `domain`, `utils` y
+    // `components` son justo las que uno toma "porque ya existen", y son las que atan los dos
+    // ciclos de vida.
+    files: ['src/consola/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: [
+              '**/features/*', '**/shared/*', '**/stores/*', '**/domain/*', '**/api/*',
+              '**/components/*', '**/hooks/*', '**/app/*', '**/utils/*', '**/types/*',
+              '../features/*', '../shared/*', '../stores/*', '../domain/*', '../api/*',
+              '../components/*', '../hooks/*', '../app/*', '../utils/*', '../types/*',
+            ],
+            message: MENSAJE_CONSOLA_NO_IMPORTA_POS,
+          },
+        ],
+      }],
+      'no-restricted-syntax': ['error', {
+        selector:
+          'ImportExpression[source.value=/(\\.\\.|@)\\/(features|shared|stores|domain|api|components|hooks|app|utils|types)\\//]',
+        message: MENSAJE_CONSOLA_NO_IMPORTA_POS,
       }],
     },
   },

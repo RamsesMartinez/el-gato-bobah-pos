@@ -17,7 +17,10 @@ func TestPinPepperSeValidaSoloSiEstaPuesto(t *testing.T) {
 			// Entorno de desarrollo: este test es sobre el pepper, y producción exige media docena
 			// de cosas más que solo estorbarían el caso que se quiere aislar.
 			Env: "development", JWTSecret: strings.Repeat("k", 48),
-			DatabaseURL: "postgres://x",
+			// La consola firma con otro secreto y Validate lo exige siempre; sin él este caso
+			// fallaría por una razón que no tiene nada que ver con el pepper.
+			PlatformJWTSecret: strings.Repeat("c", 48),
+			DatabaseURL:       "postgres://x",
 		}
 	}
 	casos := []struct {

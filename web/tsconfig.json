@@ -19,5 +19,9 @@
     // formatea fechas por su cuenta; es un test que necesita el sistema de archivos.
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // La consola de plataforma tiene su propio proyecto (tsconfig.consola.json). Excluirla de aquí
+  // es lo que impide que un error suyo bloquee el build del POS, que es lo que se despliega a las
+  // tabletas.
+  "exclude": ["src/consola"]
 }
