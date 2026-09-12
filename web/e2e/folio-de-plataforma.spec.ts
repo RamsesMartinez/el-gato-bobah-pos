@@ -111,7 +111,7 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
     test.skip(!(await uber.isVisible().catch(() => false)), 'este negocio no tiene plataformas configuradas');
     await uber.click();
 
-    await page.getByText('Dedos de Queso Pza').first().click();
+    await ponerUnProductoEnLaCuenta(page);
     const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
     if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
 
@@ -158,6 +158,24 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
 // carrito sembrado se va a la basura antes de que el POS renderice. La tableta de un operador SÍ
 // tiene la marca, así que ahí la cuenta vieja sobrevive al login y es la que truena. Hay que
 // sembrar las dos cosas para reproducir la tableta de verdad.
+
+// ponerUnProductoEnLaCuenta llega al producto por el BUSCADOR, no por el mosaico.
+//
+// Tocarlo directo funcionaba mientras el ambiente de pruebas tenía un catálogo sembrado y chico:
+// el producto estaba a la vista al entrar. Con el catálogo real del negocio —cientos de productos
+// repartidos en categorías— deja de estarlo, y siete casos se caían esperando 60 segundos a un
+// texto que sí existe pero no está en pantalla. El buscador lo alcanza sin importar cuántos haya.
+//
+// Se busca SIEMPRE el mismo producto a propósito: varios de estos casos afirman importes, y tomar
+// "el primero que aparezca" los volvería dependientes de qué catálogo tenga el ambiente.
+async function ponerUnProductoEnLaCuenta(page: Page, nombre = 'Dedos de Queso Pza') {
+  const buscador = page.getByPlaceholder('Buscar producto…');
+  if (await buscador.isVisible().catch(() => false)) {
+    await buscador.fill(nombre);
+  }
+  await page.getByText(nombre).first().click({ timeout: 30_000 });
+}
+
 test('Y20 · una cuenta guardada antes de esta feature no deja el POS en blanco', async ({ page, request }) => {
   const r = await request.post(`${API}/auth/login`, {
     data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
