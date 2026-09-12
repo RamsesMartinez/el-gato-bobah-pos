@@ -48,10 +48,25 @@ accesible por un `grant on all tables` anterior.
 
 ## El `Down` de esta migración no borra el rol
 
-Verificado contra el Postgres de desarrollo: un rol con permisos en **otra base** hace fallar
-`drop role`, y `drop owned by` no alcanza los grants de otras bases. Aquí hay cinco bases en el
-mismo clúster que corrieron las mismas migraciones, así que un `goose down` contra una sola
-revienta por las demás. La 0024 ya arrastra ese defecto; esta migración no lo repite.
+En Postgres los roles son del **servidor**, no de cada base: un rol con permisos en otra base del
+mismo Postgres hace fallar `drop role`, y `drop owned by` no alcanza esos grants.
+
+**Dónde falla y dónde no** (verificado el 2026-09-11, contando bases en cada Postgres):
+
+| Dónde | Bases en ese Postgres | ¿Falla el `Down`? |
+|---|---|---|
+| CI | 1 (`gatobobah_test`) | No |
+| Producción | 1 | **No** |
+| VM de pruebas | 2 | Sí |
+| Máquina de desarrollo | 5 | Sí |
+
+O sea: **un `Down` que pasa en CI y funcionaría en producción, pero truena en la máquina de quien
+programa**. Esa forma es peor de lo que parece: quien lo sufre concluye que su entorno está roto, no
+que la migración lo está.
+
+La 0024 ya arrastra ese defecto; esta migración no lo repite. El arreglo sirve en los cuatro
+ambientes por igual, que es la razón de fondo: un `Down` correcto no depende de cuántas bases
+tenga el servidor donde se ejecute.
 
 El `Down` hace `alter role gatobobah_platform with nologin` y revoca lo que el `Up` otorgó. Eso
 corta el acceso, que es lo único que importa al revertir. Borrar el rol del clúster es un paso

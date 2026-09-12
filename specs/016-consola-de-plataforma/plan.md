@@ -119,11 +119,22 @@ Seis hallazgos, todos con su escenario. Estos son los que movieron el diseño:
 
 ### 1. El `Down` del rol de base NO es reversible aquí (verificado contra Postgres real)
 
-Iba a copiar el `drop owned by` + `drop role` de la 0024. **No funciona en este clúster**: un rol
-con permisos en **otra base** hace fallar `drop role`, y `drop owned by` no alcanza los grants de
-otras bases —están fuera de su alcance por diseño de Postgres—. El contenedor de desarrollo hospeda
-**cinco** bases que corrieron las mismas migraciones, así que un `goose down` contra una sola
-revienta por las otras cuatro.
+Iba a copiar el `drop owned by` + `drop role` de la 0024. **En Postgres los roles son objetos del
+servidor, no de cada base**: si el rol tiene permisos en **otra** base del mismo Postgres, el
+`drop role` falla, y `drop owned by` no alcanza esos grants —están fuera de su alcance por diseño—.
+
+**Dónde falla y dónde no** (verificado el 2026-09-11, contando bases en cada Postgres):
+
+| Dónde | Bases en ese Postgres | ¿Falla el `Down`? |
+|---|---|---|
+| CI | 1 (`gatobobah_test`) | No |
+| Producción | 1 | **No** |
+| VM de pruebas | 2 | Sí |
+| Máquina de desarrollo | 5 | Sí |
+
+O sea: **un `Down` que pasa en CI y funcionaría en producción, pero truena en la máquina de quien
+programa**. Esa forma es peor de lo que parece: quien lo sufre concluye que su entorno está roto, no
+que la migración lo está.
 
 **La 0024 ya arrastra este defecto hoy.** No se toca —está aplicada—, pero la 0068 no lo repite.
 
