@@ -38,12 +38,23 @@ export function MedidorDeToques() {
     const bajadas = new Map<number, { x: number; y: number }>();
 
     const alBajar = (e: PointerEvent) => {
-      // LAS CAPAS DE ENCIMA NO CUENTAN. Hojas, diálogos y el bloqueo por PIN no cambian de ruta,
-      // así que sus toques se atribuirían a la pantalla de abajo. El peor es el teclado del PIN:
-      // siempre cae en el mismo sitio y dejaría una zona caliente en el centro que dentro de seis
-      // meses alguien va a leer como «un control muy usado».
+      // LAS CAPAS DE ENCIMA NO CUENTAN, y se decide al revés de lo obvio: **solo cuenta lo que
+      // cuelga del contenedor de la aplicación** (`data-medible`, en AppShell). Hojas, diálogos,
+      // avisos flotantes y el bloqueo por PIN no cambian de ruta, así que sus toques se
+      // atribuirían a la pantalla de abajo.
+      //
+      // La primera versión excluía `[role="dialog"]`, que es una lista de lo prohibido: un portal
+      // nuevo nacía CONTADO. Y ya había uno — el aviso flotante de Chakra se anuncia con
+      // `role="status"` y se pinta abajo a la derecha, encima de la zona del botón de cobrar, con
+      // un «Deshacer» que la gente toca. La rejilla habría inflado justo la celda que decide un
+      // rediseño.
+      //
+      // El `[role="dialog"]` se queda como segunda red, para un diálogo que se pinte SIN portal
+      // dentro del contenedor.
       const destino = e.target;
-      if (destino instanceof Element && destino.closest('[role="dialog"]')) return;
+      if (!(destino instanceof Element)) return;
+      if (!destino.closest('[data-medible]')) return;
+      if (destino.closest('[role="dialog"]')) return;
 
       if (bajadas.size >= MAX_CONTACTOS) bajadas.clear();
       bajadas.set(e.pointerId, { x: e.clientX, y: e.clientY });

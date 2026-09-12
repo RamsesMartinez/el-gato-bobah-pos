@@ -66,14 +66,22 @@ camino de vuelta a identificar a alguien.
 | Pantallas instrumentadas | 1 | hoy solo el POS (FR-015) |
 | **Filas por día, tope absoluto** | **840** | y eso es si se toca *cada* celda, en *las dos* formas, con *cada* rol |
 | Retención | 92 días | |
-| **Filas, tope absoluto** | **77,280** | ≈ 10 MB con su índice |
+| **Filas, tope absoluto** | **77,280** | |
 
-**Techo declarado: menos de 20 MB por empresa**, que deja margen para el churn de los `update` entre
-pasadas de autovacuum. Es un tope **estructural** y no una estimación: no depende de cuántos toques
-lleguen, porque los toques suben contadores.
+**Medido** (Postgres 16, con el patrón de escritura real: los días pasados fríos y el día en curso
+recibiendo 20,000 incrementos de a uno): **16.5 MB en 77,364 filas**, de los cuales **7.5 MB son
+índices** — 223 bytes por fila. La estimación de este documento decía «≈ 10 MB con su índice» y se
+quedó **40 % corta**; el número bueno es el medido.
 
-Con cuatro pantallas instrumentadas el tope sube a cuatro veces eso, y ahí ya habría que decidir si
-se acorta la retención o se instrumenta menos. **No se agregan pantallas sin rehacer esta cuenta.**
+**Techo declarado: 20 MB por empresa y POR PANTALLA INSTRUMENTADA**, que deja margen para el churn
+de los `update` entre pasadas de autovacuum. Es un tope **estructural** y no una estimación: no
+depende de cuántos toques lleguen, porque los toques suben contadores. Con una sola pantalla
+instrumentada ya se ocupa el **82 %** de ese techo.
+
+Con cuatro pantallas instrumentadas el tope sube a cuatro veces eso —66 MB medidos, más que la base
+completa del negocio— y ahí ya habría que decidir si se acorta la retención o se instrumenta menos.
+**No se agregan pantallas sin rehacer esta cuenta**, y el mensaje de fallo de
+`toques_volumen_test.go` lo nombra como una de las tres causas posibles.
 
 Para comparar: la base completa de producción pesa hoy **18 MB**.
 
@@ -110,7 +118,9 @@ disposición **ahora**, y contra el trimestre anterior.
 - **La celda no dice qué control era.** En una pantalla que se desplaza, la misma zona es contenido
   distinto en momentos distintos (FR-004). Lo que responde es qué parte del vidrio usa la mano.
 - **Cambiar la resolución de la rejilla tiene una dirección barata y otra imposible.** Ir a una más
-  GRUESA se recalcula fusionando celdas. Ir a una más **FINA no se puede**: no existe el toque fino
+  GRUESA se recalcula fusionando celdas —con letra chica: 12 columnas se fusionan exacto a 6, 4, 3 o
+  2, pero **7 filas es primo**, así que en el eje vertical la única fusión limpia es la de una sola
+  franja—. Ir a una más **FINA no se puede**: no existe el toque fino
   del cual derivarla, que es justamente la decisión que hace segura esta feature. Cambiarla hacia
   abajo obliga a declarar el corte y perder la comparación con lo anterior. Por eso la resolución
   vive en el código: para que ese cambio se vea en un diff y no en una tabla de configuración.

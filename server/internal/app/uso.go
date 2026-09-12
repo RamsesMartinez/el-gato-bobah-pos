@@ -42,33 +42,71 @@ const RetencionDelAgregadoEnDias = 396
 // además la mitad de datos que se guarda de lo más granular que esta feature produce.
 const RetencionDeToquesEnDias = 92
 
-// Registrar guarda un lote de eventos y devuelve cuántos se descartaron por no estar en la lista
-// blanca.
+// LoteDeMedicion es lo que llega en un request de medición: aperturas, acciones y toques.
+//
+// Los tres viajan juntos porque salen de la MISMA cola del cliente, en el mismo vaciado.
+type LoteDeMedicion struct {
+	Eventos []domain.EventoDeUso
+	Toques  []domain.Toque
+}
+
+// Descartes dice cuántos se tiraron de cada clase por no pasar la lista blanca.
 //
 // Ese número es el único testigo de que una versión del front dejó de medir: si nadie lo mira, el
 // mapa simplemente muestra menos, que es indistinguible de «se usó menos».
+type Descartes struct {
+	Eventos int
+	Toques  int
+}
+
+// Registrar guarda un lote de medición y devuelve cuántos se descartaron.
+//
+// UNA SOLA TRANSACCIÓN PARA LAS DOS TABLAS, y una sola resolución de lo que comparten: el día del
+// negocio y la decisión de corte por rol. Partirlo en dos escrituras costaba dos transacciones, dos
+// lecturas de la zona horaria y dos conteos de plantilla por petición —y cada petición reteniendo
+// una conexión del pool el doble de tiempo, en una VM de 1 vCPU donde compite con el cobro—. Al
+// tope que el limitador permite eso se multiplica por 30 por minuto y por usuario.
+//
+// La consecuencia de juntarlas, dicha en voz alta: si la transacción falla se pierden las dos
+// mitades. Es aceptable porque las dos son mediciones y perderlas no le cuesta nada a nadie; lo que
+// NO era aceptable era la versión anterior, donde un fallo al escribir las aperturas se llevaba los
+// toques sin siquiera intentarlos, y el comentario decía lo contrario.
 //
 // El rol lo pone quien llama desde el TOKEN, nunca el cuerpo del request.
-func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []domain.EventoDeUso) (int, error) {
-	lote = domain.RecortarLoteDeUso(lote)
-	agregado := domain.PreAgregarUso(lote, rol)
+func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote LoteDeMedicion) (Descartes, error) {
+	eventos := domain.RecortarLoteDeUso(lote.Eventos)
+	toques := domain.RecortarLoteDeToques(lote.Toques)
+	usos := domain.PreAgregarUso(eventos, rol)
+	zonas := domain.PreAgregarToques(toques, rol)
 
+	var descartes Descartes
 	validos := 0
-	for _, a := range agregado {
+	for _, a := range usos {
 		validos += a.Veces
 	}
-	descartados := len(lote) - validos
-	if len(agregado) == 0 {
-		return descartados, nil
+	descartes.Eventos = len(eventos) - validos
+	validos = 0
+	for _, a := range zonas {
+		validos += a.Veces
+	}
+	descartes.Toques = len(toques) - validos
+
+	if len(usos) == 0 && len(zonas) == 0 {
+		return descartes, nil
 	}
 
 	// LA SUPRESIÓN SE DECIDE AQUÍ, AL ESCRIBIR, y por eso no se puede deshacer leyendo.
 	//
 	// Quien leyera no podría decidirlo: la consola no tiene permiso sobre `users` para contar la
 	// plantilla de un cliente, y dárselo abriría la puerta que la spec 016 cerró.
-	rolAGuardar, err := s.rolQueSePuedeGuardar(ctx, rol)
+	corte, rolAGuardar, err := s.corteDeLaEmpresa(ctx, rol)
 	if err != nil {
-		return descartados, err
+		return descartes, err
+	}
+	if corte == domain.NoGuardar {
+		// Ni siquiera sin rol: el balde de lo suprimido no alcanza a tapar a nadie. Se pierde la
+		// medición, que es lo que esta feature tiene permitido hacer.
+		return descartes, nil
 	}
 
 	// EL DÍA DEL NEGOCIO, no el de UTC: con el servidor en UTC la medianoche cae a las 18:00 en
@@ -78,7 +116,7 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		for _, a := range agregado {
+		for _, a := range usos {
 			var accion *string
 			if a.Accion != "" {
 				accion = &a.Accion
@@ -89,43 +127,7 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 				return fmt.Errorf("sumar el uso del día: %w", err)
 			}
 		}
-		return nil
-	})
-	return descartados, err
-}
-
-// RegistrarToques guarda un lote de toques por zona (spec 019) y devuelve cuántos se descartaron.
-//
-// Va aparte de `Registrar` y no como un tercer parámetro suyo porque escribe en OTRA tabla con otra
-// llave: una apertura se agrega por (pantalla, acción) y un toque por (pantalla, orientación,
-// celda). Lo que sí comparte, y es lo que importa, es la decisión de si el rol se puede guardar:
-// vive en `rolQueSePuedeGuardar` y no se copia.
-//
-// El precio de tenerlas separadas es una transacción y un conteo de plantilla de más por request.
-// Es un `count` indizado sobre `users` acotado por RLS, treinta veces por minuto y por usuario en
-// el peor caso que el limitador permite; a cambio, ninguna de las dos escrituras puede tumbar a la
-// otra — y las dos se pueden perder sin consecuencia, que es la promesa de toda esta familia.
-func (s *UsageService) RegistrarToques(ctx context.Context, rol domain.Role, lote []domain.Toque) (int, error) {
-	lote = domain.RecortarLoteDeToques(lote)
-	agregado := domain.PreAgregarToques(lote, rol)
-
-	validos := 0
-	for _, a := range agregado {
-		validos += a.Veces
-	}
-	descartados := len(lote) - validos
-	if len(agregado) == 0 {
-		return descartados, nil
-	}
-
-	rolAGuardar, err := s.rolQueSePuedeGuardar(ctx, rol)
-	if err != nil {
-		return descartados, err
-	}
-	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
-
-	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		for _, a := range agregado {
+		for _, a := range zonas {
 			if err := q.UpsertTouchesDaily(ctx, db.UpsertTouchesDailyParams{
 				Day:         dia,
 				Screen:      a.Pantalla,
@@ -141,7 +143,7 @@ func (s *UsageService) RegistrarToques(ctx context.Context, rol domain.Role, lot
 		}
 		return nil
 	})
-	return descartados, err
+	return descartes, err
 }
 
 // location resuelve la zona del negocio del request. Cae al default del producto si no se puede
@@ -155,20 +157,23 @@ func (s *UsageService) location(ctx context.Context) *time.Location {
 	return domain.LoadBusinessLocation(tz)
 }
 
-// rolQueSePuedeGuardar devuelve el rol, o nil si guardarlo identificaría a una persona.
-func (s *UsageService) rolQueSePuedeGuardar(ctx context.Context, rol domain.Role) (*db.UserRole, error) {
-	if !domain.RolMedible(rol) {
-		return nil, nil
-	}
-	activos, err := s.store.QC(ctx).CountActiveUsersByRole(ctx, string(rol))
+// corteDeLaEmpresa decide qué se puede escribir sin señalar a una persona, mirando la plantilla
+// ENTERA y no solo la del rol que mide. El porqué está en `domain.CortarPorRol`.
+func (s *UsageService) corteDeLaEmpresa(ctx context.Context, rol domain.Role) (domain.DecisionDeCorte, *db.UserRole, error) {
+	filas, err := s.store.QC(ctx).CountActiveUsersByRoleAll(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("contar usuarios del rol: %w", err)
+		return domain.NoGuardar, nil, fmt.Errorf("contar la plantilla: %w", err)
 	}
-	if !domain.CorteDeRolPermitido(int(activos)) {
-		return nil, nil
+	activos := make(map[domain.Role]int, len(filas))
+	for _, f := range filas {
+		activos[domain.Role(f.Role)] = int(f.Activos)
+	}
+	corte := domain.CortarPorRol(activos, rol)
+	if corte != domain.GuardarConRol {
+		return corte, nil, nil
 	}
 	r := db.UserRole(rol)
-	return &r, nil
+	return corte, &r, nil
 }
 
 // --- Lo que lee la consola (US1). ---

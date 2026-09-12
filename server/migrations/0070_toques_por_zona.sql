@@ -12,6 +12,15 @@
 --    con cada lote; su hora de última escritura diría a qué hora estuvo activa esa zona, que es
 --    medio camino de vuelta.
 --
+--    **Con una salvedad que hay que decir**: `xmin` es una columna de SISTEMA y se lee con el mismo
+--    `select`. Como cada lote hace `on conflict do update`, el `xmin` de una fila es el
+--    identificador de transacción del último lote que tocó esa zona — sondeándolo cada minuto se
+--    reconstruye qué zonas se usaron en el último minuto. No se puede quitar; lo que se puede es no
+--    mentir sobre ello. Hoy no cruza una frontera de confianza real —quien tiene la credencial de
+--    plataforma tiene también la del dueño, las dos viven en el mismo `deploy/.env`— pero el grant
+--    de esta tabla trae ese canal incluido, y el día que la consola corra con credenciales
+--    separadas hay que contarlo.
+--
 -- Y el volumen queda acotado POR CONSTRUCCIÓN: mil toques en la misma zona suben un contador. Las
 -- filas las fija la rejilla —84 celdas × 2 orientaciones × 5 cortes de rol × las pantallas
 -- instrumentadas— sin importar cuántos dedos lleguen.
@@ -63,10 +72,16 @@ create table usage_touches_daily (
 -- la 017: sin esto, las filas calientes de un día crecen 3.6× antes de que autovacuum llegue.
 with (fillfactor = 70);
 
--- El índice de la llave arranca por `company_id`, así que sirve para mirar UNA empresa. Éste es
--- para mirarlas TODAS juntas, que aquí tiene más sentido todavía que en la 017: el layout es el
--- mismo software para todos los clientes, así que juntar tabletas da mejor muestra para decidir
--- dónde va un control.
+-- ESTE ÍNDICE SIRVE LAS DOS LECTURAS DE LA CONSOLA, no solo la de «todas las empresas». Medido con
+-- `EXPLAIN` sobre el plan GENÉRICO —el que pgx usa a partir de la quinta ejecución del mismo
+-- statement, o sea el caso normal de un endpoint—: el filtro opcional por empresa viaja como
+-- `($5 is null or company_id = $5)`, que el planificador no puede convertir en condición de índice,
+-- así que entra por `day` y filtra el resto. La llave única NUNCA sirve un `select`: es solo
+-- unicidad y `on conflict`.
+--
+-- Se dice aquí porque el comentario anterior invitaba al error contrario —«para una empresa ya está
+-- la llave»—: quitando este índice, la consulta de UNA empresa cae a `Parallel Seq Scan`, y ningún
+-- test fija el plan.
 create index usage_touches_daily_dia on usage_touches_daily (day);
 
 alter table usage_touches_daily enable row level security;

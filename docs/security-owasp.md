@@ -209,6 +209,24 @@ misma —¿qué se puede cruzar con qué?— y la respuesta cambió el diseño e
 | A09 | Un `toques_descartados` en el log | El mismo testigo que en la 017, con su propio nombre |
 | A01 | La consola pide **una orientación** y recibe esa | Sumarlas pintaría una rejilla que nadie tocó nunca, y el error sería invisible: se vería normal describiendo un lugar que no existe |
 | — | Retención **más corta** que la del agregado: 92 días contra 396 | Una rejilla de hace un año describe un layout que ya no existe. Conservarla es conservar una referencia que miente |
+| A01 | El corte de rol mira la plantilla **entera**, no solo ese rol | La regla obvia deja un agujero: todo lo suprimido cae en el mismo balde `role is null`, así que cuando **un solo rol** queda bajo el umbral, ese balde ES esa persona —con 1 admin, 2 gerentes, 3 cajeros y 2 meseros, `null` es el dueño— y la consola lo pinta como «sin corte». Cuando el balde no alcanza a tapar a nadie, la medición **no se escribe**. Aplica también a la 017, que tenía el mismo agujero |
+
+### Hasta dónde llega el anonimato de la medición, dicho por escrito
+
+Lo de arriba impide guardar a una persona. **No impide cruzar lo guardado con otra cosa**, y eso hay
+que decirlo en vez de dejar que se lea como una garantía que no es:
+
+- El periodo de la consulta es libre dentro de la retención, así que se puede pedir **un solo día**.
+- En un local donde ese día trabajó una sola persona de ese rol —turnos que no se solapan, que es lo
+  normal en un negocio chico— la rejilla de ese día es la de esa persona, y `orders.opened_by` o
+  `register_sessions.closed_by` dicen quién fue.
+- **Un mínimo de ventana no lo arregla**: restar «7 días hasta hoy» menos «7 días hasta ayer»
+  recupera el día. Lo mismo deshace cualquier agregación temporal que se ponga encima.
+
+Quien puede hacer ese cruce es quien ya tiene acceso a la base del cliente, no un operador de la
+consola —su rol solo alcanza `companies`, `platform_operators` y los dos agregados de medición—. Se
+documenta, como se documentó el alcance del arqueo ciego, porque la promesa correcta es «no se
+guarda quién», no «es imposible saber quién».
 
 ## Checklist de lanzamiento en el VPS (operador)
 

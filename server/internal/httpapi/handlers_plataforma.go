@@ -84,8 +84,10 @@ func (h *Handlers) PlatformCompanies(w http.ResponseWriter, r *http.Request) {
 
 // PlatformUsage: GET /api/v1/platform/usage
 //
-// El mapa de calor de uso (spec 017). Lee con la conexión de la CONSOLA, que solo alcanza el
-// agregado: el grano fino —donde mañana van las coordenadas del toque— le está negado por grants.
+// El mapa de calor de uso (spec 017). Lee con la conexión de la CONSOLA, que tiene `select` sobre
+// los dos agregados de medición y sobre nada más. No hay grano fino que negarle: la tabla de un
+// renglón por evento no existe —la tumbó la auditoría de la 017— y la 019 cruzó esa puerta con otro
+// conteo, no con coordenadas.
 func (h *Handlers) PlatformUsage(w http.ResponseWriter, r *http.Request) {
 	desde, err := parseFechaDeUso(r.URL.Query().Get("desde"))
 	if err != nil {

@@ -154,10 +154,18 @@ export function RejillaDeToques({ empresas }: { empresas: Empresa[] }) {
               ))}
             </ul>
             <p className="tenue">Según la pantalla del {FECHA_DEL_LAYOUT}.</p>
+
+            <h3>Por rol</h3>
             <p className="tenue">
               {rejilla.porRol.length === 0
                 ? '—'
                 : rejilla.porRol.map((r) => `${r.rol ?? 'sin corte'} ${r.veces}`).join(' · ')}
+            </p>
+            {/* La misma nota que el mapa de la 017, porque la duda es la misma: sin ella «sin
+                corte» se lee como un error de captura. */}
+            <p className="tenue">
+              «Sin corte» son toques que existen pero no se pueden atribuir a un rol sin señalar a
+              una persona.
             </p>
           </div>
         </div>

@@ -22,21 +22,27 @@ export interface ZonaDelPos {
   que: string;
 }
 
-// Medido en 1024×600, que es el presupuesto real de la tableta. El panel de la cuenta se lleva 32 %
-// del ancho, así que empieza en la columna 8 de 12.
+// Medido en 1024×600, que es el presupuesto real de la tableta:
+//  - el menú lateral mide 76 px de ancho fijo, o sea casi exactamente la primera columna de las 12;
+//  - el panel de la cuenta se lleva 32 % de lo que queda, así que arranca a media columna 8.
+// La columna 8 es el borde entre los productos y la cuenta, y por eso va con los productos: es
+// donde cae el dedo que alcanza el último producto de la fila.
 const HORIZONTAL: ZonaDelPos[] = [
-  { filas: [0, 1], columnas: [0, 7], que: 'Barra de cuentas, buscador y categorías' },
-  { filas: [2, 6], columnas: [0, 7], que: 'Los productos' },
-  { filas: [0, 5], columnas: [8, 11], que: 'La cuenta: sus renglones' },
-  { filas: [6, 6], columnas: [8, 11], que: 'El total y el botón de cobrar' },
+  { filas: [0, 6], columnas: [0, 0], que: 'El menú lateral' },
+  { filas: [0, 1], columnas: [1, 8], que: 'Barra de cuentas, buscador y categorías' },
+  { filas: [2, 6], columnas: [1, 8], que: 'Los productos' },
+  { filas: [0, 5], columnas: [9, 11], que: 'La cuenta: sus renglones' },
+  { filas: [6, 6], columnas: [9, 11], que: 'El total y el botón de cobrar' },
 ];
 
 // En vertical el POS apila: el catálogo ocupa casi todo y la cuenta se reduce a una barra al pie
-// con el total y el botón de cobrar.
+// con el total y el botón de cobrar. El menú lateral sigue midiendo 76 px, que aquí es la primera
+// columna de siete.
 const VERTICAL: ZonaDelPos[] = [
-  { filas: [0, 1], columnas: [0, 6], que: 'Barra de cuentas, buscador y categorías' },
-  { filas: [2, 10], columnas: [0, 6], que: 'Los productos' },
-  { filas: [11, 11], columnas: [0, 6], que: 'La barra del pie: total y cobrar' },
+  { filas: [0, 11], columnas: [0, 0], que: 'El menú lateral' },
+  { filas: [0, 1], columnas: [1, 6], que: 'Barra de cuentas, buscador y categorías' },
+  { filas: [2, 10], columnas: [1, 6], que: 'Los productos' },
+  { filas: [11, 11], columnas: [1, 6], que: 'La barra del pie: total y cobrar' },
 ];
 
 export function zonasDelPos(orientacion: 'horizontal' | 'vertical'): ZonaDelPos[] {

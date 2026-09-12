@@ -55,11 +55,11 @@ func TestLaRejillaDeToquesPorElRouter(t *testing.T) {
 	svc := app.NewUsageService(st)
 	makeUser(t, st, "cajero_rejilla_uno", "cajero")
 	makeUser(t, st, "cajero_rejilla_dos", "cajero")
-	if _, err := svc.RegistrarToques(ctx, domain.RoleCajero, []domain.Toque{
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 0, Orientacion: domain.OrientacionHorizontal},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("sembrar toques: %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestLaRejillaNoSumaLasDosOrientaciones(t *testing.T) {
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionVertical},
 	}
-	if _, err := svc.RegistrarToques(ctx, domain.RoleCajero, lote); err != nil {
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: lote}); err != nil {
 		t.Fatalf("sembrar: %v", err)
 	}
 

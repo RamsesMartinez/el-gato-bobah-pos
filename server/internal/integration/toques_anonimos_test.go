@@ -28,10 +28,10 @@ func TestLosToquesNoGuardanAQuienToco(t *testing.T) {
 
 	// `RegistrarToques` recibe un ROL y una CELDA. No hay parámetro por donde entre una persona ni
 	// un punto: la identidad y la coordenada fina no se filtran después, no existen.
-	if _, err := svc.RegistrarToques(ctx, domain.RoleCajero, []domain.Toque{
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 0, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 83, Orientacion: domain.OrientacionHorizontal},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("registrar toques: %v", err)
 	}
 
@@ -50,38 +50,50 @@ func TestLosToquesNoGuardanAQuienToco(t *testing.T) {
 
 // EL CASO QUE IMPORTA: un rol con una sola persona no se puede cortar (FR-011).
 //
-// Con un solo mesero en la empresa, «el mesero tocó aquí 300 veces» es su nombre. La supresión
-// ocurre al ESCRIBIR, así que lo que no se escribió no se puede consultar ni con acceso a la base.
+// Con un solo mesero en la empresa, «el mesero tocó aquí 300 veces» es su nombre. Y no basta con
+// dejar el rol en blanco: si ES EL ÚNICO rol suprimido, el balde `sin corte` también es él. Por eso
+// en ese caso no se escribe nada.
 func TestElRolDeUnaSolaPersonaNoSeGuardaEnLosToques(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
 
 	makeUser(t, st, "mesero_toque_solito", "mesero")
-	if _, err := svc.RegistrarToques(ctx, domain.RoleMesero, []domain.Toque{
+	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 12, Orientacion: domain.OrientacionHorizontal},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("registrar el toque del mesero: %v", err)
 	}
 
-	var conRol int
-	if err := st.Pool.QueryRow(ctx,
-		`select count(*) from usage_touches_daily where role is not null`).Scan(&conRol); err != nil {
+	var filas int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from usage_touches_daily`).Scan(&filas); err != nil {
+		t.Fatalf("leer los toques: %v", err)
+	}
+	if filas != 0 {
+		t.Fatal("se escribió la rejilla de la única persona activa: con un solo rol bajo el umbral, `sin corte` no tapa a nadie — es esa persona")
+	}
+
+	// Y CON EL BALDE LLENO SÍ SE MIDE, sin rol. Si no, un local chico saldría con la rejilla vacía
+	// y eso se lee como «aquí nadie toca» en vez de como «aquí no se puede cortar».
+	makeUser(t, st, "admin_toque_solito", "admin")
+	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Toques: []domain.Toque{
+		{Pantalla: "pos", Celda: 12, Orientacion: domain.OrientacionHorizontal},
+	}}); err != nil {
+		t.Fatalf("registrar con el balde lleno: %v", err)
+	}
+
+	var conRol, sinRol int
+	if err := st.Pool.QueryRow(ctx, `
+		select count(*) filter (where role is not null),
+		       coalesce(sum(hits) filter (where role is null), 0)
+		  from usage_touches_daily`).Scan(&conRol, &sinRol); err != nil {
 		t.Fatalf("leer los toques: %v", err)
 	}
 	if conRol != 0 {
 		t.Fatal("el rol quedó escrito con una sola persona en él: el corte identifica por eliminación")
 	}
-
-	// Y la fila SÍ existe, sin rol: suprimir el corte no puede ser suprimir la medición, o la
-	// rejilla de un negocio chico saldría vacía y se leería como «aquí nadie toca».
-	var sinRol int
-	if err := st.Pool.QueryRow(ctx,
-		`select coalesce(sum(hits),0) from usage_touches_daily where role is null`).Scan(&sinRol); err != nil {
-		t.Fatalf("leer los toques sin corte: %v", err)
-	}
 	if sinRol != 1 {
-		t.Fatalf("el toque sin corte se contó %d veces y debe contarse una: suprimir el rol no es tirar el dato", sinRol)
+		t.Fatalf("el toque sin corte se contó %d veces y debe contarse una: con dos personas en el balde, suprimir el rol no es tirar el dato", sinRol)
 	}
 }
 
@@ -104,7 +116,7 @@ func TestUnaRafagaDeToquesNoCreaFilasNuevas(t *testing.T) {
 		for j := 0; j < porLote; j++ {
 			lote = append(lote, domain.Toque{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal})
 		}
-		if _, err := svc.RegistrarToques(ctx, domain.RoleCajero, lote); err != nil {
+		if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: lote}); err != nil {
 			t.Fatalf("registrar la ráfaga %d: %v", i, err)
 		}
 	}
@@ -133,10 +145,10 @@ func TestLaMismaCeldaEnDosOrientacionesSonDosFilas(t *testing.T) {
 	makeUser(t, st, "cajero_orient_uno", "cajero")
 	makeUser(t, st, "cajero_orient_dos", "cajero")
 
-	if _, err := svc.RegistrarToques(ctx, domain.RoleCajero, []domain.Toque{
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionHorizontal},
 		{Pantalla: "pos", Celda: 37, Orientacion: domain.OrientacionVertical},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("registrar toques: %v", err)
 	}
 
@@ -161,7 +173,7 @@ func TestElToqueFueraDeLaListaSeDescartaYSeCuenta(t *testing.T) {
 	makeUser(t, st, "cajero_descarte_uno", "cajero")
 	makeUser(t, st, "cajero_descarte_dos", "cajero")
 
-	descartados, err := svc.RegistrarToques(ctx, domain.RoleCajero, []domain.Toque{
+	descartados, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Toques: []domain.Toque{
 		{Pantalla: "pos", Celda: 5, Orientacion: domain.OrientacionHorizontal},
 		// Medible en la 017, pero NO instrumentada para toques.
 		{Pantalla: "caja", Celda: 5, Orientacion: domain.OrientacionHorizontal},
@@ -169,12 +181,12 @@ func TestElToqueFueraDeLaListaSeDescartaYSeCuenta(t *testing.T) {
 		{Pantalla: "pos", Celda: 84, Orientacion: domain.OrientacionHorizontal},
 		// La orientación inventada: la que crearía un balde invisible si entrara.
 		{Pantalla: "pos", Celda: 5, Orientacion: "landscape"},
-	})
+	}})
 	if err != nil {
 		t.Fatalf("registrar toques: %v", err)
 	}
-	if descartados != 3 {
-		t.Fatalf("descartó %d de 3", descartados)
+	if descartados.Toques != 3 {
+		t.Fatalf("descartó %d de 3", descartados.Toques)
 	}
 
 	var filas int

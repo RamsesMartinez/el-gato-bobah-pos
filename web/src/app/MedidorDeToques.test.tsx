@@ -21,12 +21,21 @@ function toque(tipo: 'pointerdown' | 'pointerup', destino: Element, x: number, y
   destino.dispatchEvent(ev);
 }
 
+// El contenedor `data-medible` es lo que marca qué es «la pantalla»: en la aplicación lo pone
+// AppShell, y aquí se monta igual porque sin él no se cuenta nada — que es justo la garantía.
 function montar(ruta = '/pos') {
-  return render(
+  const r = render(
     <MemoryRouter initialEntries={[ruta]}>
       <MedidorDeToques />
+      <div data-medible data-testid="pantalla" />
     </MemoryRouter>,
   );
+  return r;
+}
+
+function enLaPantalla(el: Element): Element {
+  document.querySelector('[data-medible]')!.appendChild(el);
+  return el;
 }
 
 describe('MedidorDeToques', () => {
@@ -40,8 +49,7 @@ describe('MedidorDeToques', () => {
 
   it('un toque cuenta, con la celda que le toca', () => {
     montar();
-    const boton = document.createElement('button');
-    document.body.appendChild(boton);
+    const boton = enLaPantalla(document.createElement('button'));
 
     toque('pointerdown', boton, 300, 200);
     toque('pointerup', boton, 302, 201);
@@ -55,8 +63,7 @@ describe('MedidorDeToques', () => {
   // en vez de intención: la columna por donde se arrastra saldría como la más usada del POS.
   it('un arrastre de más de 10 px NO cuenta', () => {
     montar();
-    const lista = document.createElement('div');
-    document.body.appendChild(lista);
+    const lista = enLaPantalla(document.createElement('div'));
 
     toque('pointerdown', lista, 300, 400);
     toque('pointerup', lista, 300, 200);
@@ -69,9 +76,8 @@ describe('MedidorDeToques', () => {
   // arrastres — se pierden los dos toques y nada falla.
   it('dos contactos simultáneos no se mezclan', () => {
     montar();
-    const a = document.createElement('button');
-    const b = document.createElement('button');
-    document.body.append(a, b);
+    const a = enLaPantalla(document.createElement('button'));
+    const b = enLaPantalla(document.createElement('button'));
 
     toque('pointerdown', a, 100, 100, 1);
     toque('pointerdown', b, 700, 400, 2);
@@ -87,11 +93,10 @@ describe('MedidorDeToques', () => {
   // alguien va a leer como «un control muy usado».
   it('un toque dentro de un [role="dialog"] no cuenta', () => {
     montar();
-    const hoja = document.createElement('div');
+    const hoja = enLaPantalla(document.createElement('div'));
     hoja.setAttribute('role', 'dialog');
     const tecla = document.createElement('button');
     hoja.appendChild(tecla);
-    document.body.appendChild(hoja);
 
     toque('pointerdown', tecla, 500, 300);
     toque('pointerup', tecla, 500, 300);
@@ -104,8 +109,7 @@ describe('MedidorDeToques', () => {
   // turno para que el servidor los tire — wifi del mostrador gastado en nada.
   it('una pantalla que no está instrumentada no manda nada', () => {
     montar('/caja');
-    const boton = document.createElement('button');
-    document.body.appendChild(boton);
+    const boton = enLaPantalla(document.createElement('button'));
 
     toque('pointerdown', boton, 300, 200);
     toque('pointerup', boton, 300, 200);
@@ -115,10 +119,26 @@ describe('MedidorDeToques', () => {
 
   // Un `up` sin su `down` —el dedo entró desde fuera de la ventana, o el navegador canceló el
   // contacto— no puede contar como toque en el lugar donde se levantó.
+  // EL AVISO FLOTANTE, que es el portal que ya existía y caía sobre la zona del botón de cobrar.
+  // Se anuncia con `role="status"`, no con `role="dialog"`, así que una lista de lo prohibido no lo
+  // atrapaba: con el filtro invertido, lo que no cuelga del contenedor no cuenta y punto.
+  it('lo que se pinta fuera del contenedor medible no cuenta', () => {
+    montar();
+    const aviso = document.createElement('div');
+    aviso.setAttribute('role', 'status');
+    const deshacer = document.createElement('button');
+    aviso.appendChild(deshacer);
+    document.body.appendChild(aviso);
+
+    toque('pointerdown', deshacer, 950, 560);
+    toque('pointerup', deshacer, 950, 560);
+
+    expect(medirToque).not.toHaveBeenCalled();
+  });
+
   it('un up sin su down no cuenta', () => {
     montar();
-    const boton = document.createElement('button');
-    document.body.appendChild(boton);
+    const boton = enLaPantalla(document.createElement('button'));
 
     toque('pointerup', boton, 300, 200, 9);
 
@@ -127,8 +147,7 @@ describe('MedidorDeToques', () => {
 
   it('al desmontar deja de escuchar', () => {
     const { unmount } = montar();
-    const boton = document.createElement('button');
-    document.body.appendChild(boton);
+    const boton = enLaPantalla(document.createElement('button'));
     unmount();
 
     toque('pointerdown', boton, 300, 200);
@@ -158,10 +177,9 @@ describe('MedidorDeToques', () => {
 
     it('no cancela ni detiene el evento, ni siquiera el que sí cuenta', () => {
       montar();
-      const boton = document.createElement('button');
+      const boton = enLaPantalla(document.createElement('button'));
       const propio = vi.fn();
       boton.addEventListener('pointerup', propio);
-      document.body.appendChild(boton);
 
       const bajada = new Event('pointerdown', { bubbles: true, cancelable: true });
       Object.assign(bajada, { clientX: 300, clientY: 200, pointerId: 1 });
@@ -180,10 +198,9 @@ describe('MedidorDeToques', () => {
     // como medición no puede ser estorbarlo como gesto.
     it('el desplazamiento de una lista no se toca', () => {
       montar();
-      const lista = document.createElement('div');
+      const lista = enLaPantalla(document.createElement('div'));
       const seDesplazo = vi.fn();
       lista.addEventListener('pointermove', seDesplazo);
-      document.body.appendChild(lista);
 
       toque('pointerdown', lista, 300, 400);
       const mover = new Event('pointermove', { bubbles: true, cancelable: true });
