@@ -413,13 +413,14 @@ filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
 
 | # | Caso | Qué debe pasar | Test | Visto en rojo |
 |---|---|---|---|---|
-| M1 | El evento guardado | Ninguna columna ni FK apunta a una persona, y `detail` viaja vacío | `migracion_uso_test.go`, `uso_anonimo_test.go` | — |
+| M1 | Lo que se guarda | Un conteo por día, sin columna ni FK hacia una persona **y sin marca de tiempo por evento** — el reloj era el identificador | `migracion_uso_test.go`, `uso_anonimo_test.go` | — |
 | M2 | Un rol con **una sola** persona | El agregado se guarda con rol nulo («sin corte») | `uso_anonimo_test.go` | Sí — saltándose la regla, el rol queda escrito |
 | M3 | La llave del agregado | Dos eventos con `action` y `role` nulos **suman**, no crean dos filas | `migracion_uso_test.go` | Sí — sin `nulls not distinct` quedan 2 |
-| M4 | El grano fino | Una fila por toque, no una por combinación (o las coordenadas futuras no servirían) | `uso_anonimo_test.go` | — |
+| M4 | El lote pre-agregado | Tres toques cuentan tres, aunque se escriban en un solo `update` | `uso_anonimo_test.go` | — |
 | M5 | El endpoint de ingesta | **204 siempre**: lote vacío, cuerpo roto, nombres inventados, 500 eventos | `httpapi/uso_test.go` | — |
 | M6 | Su limitador | Pasado el tope no se escribe, y la respuesta sigue siendo 204 | idem | — |
-| M7 | Lo que el cliente manda de más | El `detail` y el `rol` del cuerpo se descartan; el rol sale del token | `uso_http_test.go` | — |
+| M7 | Lo que el cliente manda de más | El `rol` del cuerpo se ignora —sale del token— y lo demás no tiene columna a la que llegar | `uso_http_test.go` | — |
+| M7b | Un rol reportando pantallas ajenas | Un mesero que reporta la pantalla de usuarios se descarta entero | `domain/uso_test.go` | — |
 | M8 | El registrador del POS | Lote a los 20 / 10 s / al ocultarse; **uno en vuelo a la vez**; un fetch que revienta no lanza ni reintenta | `src/api/uso.test.ts` | Sí — sin la guarda salen dos envíos |
 | M9 | La recarga | El F5 no cuenta como apertura; dos entradas legítimas sí | `src/app/MedidorDeUso.test.tsx` | — |
 | M10 | El orden | Ningún `await` sobre la medición, y el cobro se mide dentro del `onSuccess` | `src/api/uso-orden.test.ts` | — |
@@ -427,10 +428,11 @@ filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
 | M12 | Qué incluye cada cifra | `sum(porRol) == aperturas + sum(acciones)` | `uso_consola_test.go` | — |
 | M13 | Quién puede leerlo | La consola ve el agregado de **todas** las empresas y `usage_events` le da 42501; el negocio ve solo lo suyo | `migracion_uso_test.go` | Sí — sin la política ve una empresa de dos |
 | M14 | Rango imposible | Un `desde` fuera de la retención o mal escrito da **400**, no un default en silencio | `uso_consola_test.go` | — |
-| M15 | El volumen de un año | Bajo el techo, **con el churn real** de los `update` | `uso_volumen_test.go` | Medido: 11.2 MB de 25 |
+| M15 | El volumen de un año | Bajo el techo con el churn **al tope del limitador**, no al del uso honesto | `uso_volumen_test.go` | Medido: 10.3 MB de 25 |
 | M16 | El recorte | Borra lo viejo, no toca lo de dentro, y su ciclo termina al apagar | idem | — |
-| M17 | Las coordenadas del futuro | Se escriben en `detail` y se leen, sin tocar el esquema | idem | — |
-| M18 | El peso del POS | +1.41 kB (1,133.26 → 1,134.67 kB) | `bun run build` | Medido |
+| M17 | Las coordenadas del futuro | Su tabla se crea al lado sin tocar una fila de lo escrito | idem | — |
+| M19 | La cola y el cambio de sesión | Lo encolado se **tira**, no se manda con el token del siguiente operador | `src/api/uso.test.ts` | — |
+| M18 | El peso del POS | +1.64 kB (1,133.26 → 1,134.90 kB) | `bun run build` | Medido |
 
 **Lo que M no cubre, y hay que decirlo:**
 

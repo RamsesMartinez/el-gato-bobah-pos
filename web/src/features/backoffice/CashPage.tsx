@@ -637,7 +637,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
-    onSuccess: () => { medirAccion('caja', 'contar-efectivo'); setContando(false); invalidate(); },
+    // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
+    // —que existe en la lista blanca— nunca se disparaba, y el conteo del cierre no se contaba en
+    // ningún lado. Dos ceros permanentes que se leen como «nadie lo hace».
+    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); invalidate(); },
     onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
   });
   const closeMut = useMutation({
@@ -851,14 +854,16 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           // La moneda del turno la fija el servidor con el default de la columna: hoy no hay forma
           // de elegir otra al abrir. Cuando la haya, ESTA línea es la que cambia.
           currency="MXN" etiquetaConfirmar="Abrir caja" guardando={openMut.isPending}
-          onConfirmar={(r) => openMut.mutate(aperturaDelConteo(r))} />
+          // Contar el cajón se mide aquí, donde de verdad ocurre, y no en el onSuccess de la
+          // mutación: el de abrir mide «abrir-turno», que es otro hecho.
+          onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate(aperturaDelConteo(r)); }} />
       )}
 
       {session && (
         <ContadorDeEfectivo isOpen={contando} onClose={() => setContando(false)}
           titulo={`Efectivo en «${register.name}»`} currency={session.currency}
           etiquetaConfirmar="Usar este conteo" guardando={false}
-          onConfirmar={(r) => { setConteoDelCierre(r); setContando(false); }} />
+          onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); setConteoDelCierre(r); setContando(false); }} />
       )}
 
       <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)}

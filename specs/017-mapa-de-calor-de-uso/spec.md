@@ -191,8 +191,13 @@ mantiene por debajo de un techo declarado y verificable.
 - **FR-011**: El spec MUST declarar el techo de espacio y el periodo de conservación, y ambos MUST
   ser verificables.
 - **FR-012**: Los datos de uso MUST estar aislados por empresa.
-- **FR-013**: El modelo del evento MUST admitir que más adelante se le agreguen **coordenadas del
-  toque** sin rehacer el modelo ni migrar los datos ya escritos.
+- **FR-013**: El sistema MUST poder empezar a guardar **coordenadas del toque** más adelante sin
+  rehacer el modelo ni migrar los datos ya escritos.
+
+  **Corregido el 2026-09-12, tras la auditoría adversarial.** Decía «el modelo del evento», y de ahí
+  salió un diseño con una tabla de grano fino cuya marca de tiempo permitía identificar a la persona
+  cruzándola con `register_sessions`. La puerta se cumple mejor sin esa tabla: las coordenadas nacen
+  en la suya el día que se midan, y crear una tabla no migra nada.
 
   Es el principio VIII aplicado: el mapa por coordenada no se construye hoy, pero la decisión que lo
   impediría —un modelo que solo sepa contar pantallas— no se toma tampoco.

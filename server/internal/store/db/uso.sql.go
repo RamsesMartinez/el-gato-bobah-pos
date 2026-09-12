@@ -40,49 +40,6 @@ func (q *Queries) DeleteOldUsageDaily(ctx context.Context, dollar_1 int32) (int6
 	return result.RowsAffected(), nil
 }
 
-const deleteOldUsageEvents = `-- name: DeleteOldUsageEvents :execrows
-delete from usage_events where occurred_at < now() - ($1::int * interval '1 day')
-`
-
-// El recorte del grano fino. Corre con conexión de DUEÑO: el rol de la aplicación está bajo RLS y
-// solo borraría lo de su empresa, dejando el recorte a medias sin que nada fallara.
-func (q *Queries) DeleteOldUsageEvents(ctx context.Context, dollar_1 int32) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteOldUsageEvents, dollar_1)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const insertUsageEvent = `-- name: InsertUsageEvent :exec
-
-insert into usage_events (screen, action, role)
-values ($1, $2, $3)
-`
-
-type InsertUsageEventParams struct {
-	Screen string    `json:"screen"`
-	Action *string   `json:"action"`
-	Role   *UserRole `json:"role"`
-}
-
-// EL USO DEL SISTEMA (spec 017).
-//
-// Dos caminos que no se cruzan: el POS ESCRIBE (las tres primeras, con el rol de la aplicación) y
-// la consola LEE (la última, con el rol de plataforma, que no tiene permiso sobre el grano fino).
-// El grano fino, un hecho por fila. Sin quién lo hizo: la tabla no tiene esa columna.
-//
-// `detail` NO se recibe de nadie: existe para las coordenadas del futuro (FR-013) y se queda nulo.
-// Aceptarlo desde el cuerpo del POST convertiría esa puerta en un campo libre.
-//
-// ponytail: una fila por evento, hasta 50 por lote y por transacción. A 3 pedidos/día medidos (y
-// 100 en el escenario de diseño) son milisegundos; si algún día un cliente mete miles de eventos
-// por minuto, esto pasa a un `copy`.
-func (q *Queries) InsertUsageEvent(ctx context.Context, arg InsertUsageEventParams) error {
-	_, err := q.db.Exec(ctx, insertUsageEvent, arg.Screen, arg.Action, arg.Role)
-	return err
-}
-
 const sumUsageForMap = `-- name: SumUsageForMap :many
 select screen,
        action,
@@ -141,26 +98,38 @@ func (q *Queries) SumUsageForMap(ctx context.Context, arg SumUsageForMapParams) 
 }
 
 const upsertUsageDaily = `-- name: UpsertUsageDaily :exec
+
 insert into usage_daily (day, screen, action, role, hits)
-values (current_date, $1, $2, $3, $4)
+values ($1, $2, $3, $4, $5)
 on conflict on constraint usage_daily_llave
 do update set hits = usage_daily.hits + excluded.hits
 `
 
 type UpsertUsageDailyParams struct {
-	Screen string    `json:"screen"`
-	Action *string   `json:"action"`
-	Role   *UserRole `json:"role"`
-	Hits   int64     `json:"hits"`
+	Day    pgtype.Date `json:"day"`
+	Screen string      `json:"screen"`
+	Action *string     `json:"action"`
+	Role   *UserRole   `json:"role"`
+	Hits   int64       `json:"hits"`
 }
 
+// EL USO DEL SISTEMA (spec 017).
+//
+// Dos caminos que no se cruzan: el POS ESCRIBE con el rol de la aplicación y la consola LEE con el
+// de plataforma. Una sola tabla: el conteo. Ver el porqué en la migración 0069 — un renglón por
+// toque se podía cruzar con `register_sessions` por la marca de tiempo y deshacía el anonimato.
 // El conteo del día. Recibe el lote YA PRE-AGREGADO: suma `excluded.hits`, no `+1`.
+//
+// El DÍA viene calculado desde Go con la zona del negocio, no de `current_date`: con el servidor en
+// UTC la medianoche cae a las 18:00 en México y todo lo de la tarde-noche —la franja de más
+// movimiento— se contaría mañana. Es el mismo defecto que 0038 arregló para la venta.
 //
 // Cada `update` deja la versión vieja de la fila muerta, y estas filas son pocas y calientes:
 // medido, 135 filas con 2,000 incrementos de a uno pasan de 64 kB a 232 kB antes de que autovacuum
 // llegue. Pre-agregar convierte hasta 50 escrituras físicas en una.
 func (q *Queries) UpsertUsageDaily(ctx context.Context, arg UpsertUsageDailyParams) error {
 	_, err := q.db.Exec(ctx, upsertUsageDaily,
+		arg.Day,
 		arg.Screen,
 		arg.Action,
 		arg.Role,

@@ -239,16 +239,13 @@ func main() {
 	//
 	// Con conexión de DUEÑO y no con la de servicio: el rol de la app está bajo RLS y solo borraría
 	// lo de su empresa, dejando el recorte a medias sin que nada fallara.
+	// La conexión de dueño se abre y se cierra EN CADA PASADA: sostenerla todo el día sería un asa
+	// que salta RLS viviendo junto a los handlers, para correr un `delete` una vez cada 24 horas.
 	ctxRecorte, detenerRecorte := context.WithCancel(ctx)
 	defer detenerRecorte()
-	if dueno, err := store.New(ctxRecorte, cfg.DatabaseURL); err != nil {
-		// No se aborta el arranque: el recorte es mantenimiento, no una barrera. Que la API sirva
-		// importa más, y el siguiente arranque lo vuelve a intentar.
-		slog.Error("sin conexión para el recorte de uso: no se va a recortar en este arranque", "error", err)
-	} else {
-		defer dueno.Close()
-		go app.NewUsageService(dueno).RecortarPeriodicamente(ctxRecorte, 24*time.Hour)
-	}
+	go app.RecortarPeriodicamente(ctxRecorte, 24*time.Hour, func(c context.Context) (*store.Store, error) {
+		return store.New(c, cfg.DatabaseURL)
+	})
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

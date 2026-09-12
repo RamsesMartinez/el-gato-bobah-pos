@@ -24,10 +24,12 @@ del cuerpo.
 - **Sin fecha en el cuerpo.** La pone el servidor (spec 008: el reloj de la tableta no manda).
 - **Sin identidad en el cuerpo.** Ni usuario, ni estación, ni nada que permita deducir a la persona
   (FR-002). El servidor escribe el rol del token, y lo suprime si identifica.
-- **Y el servidor DESCARTA cualquier `detail` que venga en el cuerpo**, sin mirarlo. Esa columna
-  existe para las coordenadas del futuro (FR-013); mientras el cliente pueda escribirla es un campo
-  libre por donde entra justo lo que FR-003 prohíbe, y un `jsonb` con datos de más no avisa: hay que
-  ir a buscarlo.
+- **Lo que el cuerpo traiga de más no tiene dónde llegar**: se guarda un conteo por día, no un
+  renglón por evento, así que no hay columna libre donde meter datos. La tabla de grano fino que el
+  plan proponía se quitó justamente por eso y por el reloj (ver [data-model.md](../data-model.md)).
+- **Un evento que ese ROL no podría haber abierto se descarta.** Un mesero que reporta la pantalla
+  de usuarios —que un `GET` suyo recibiría con 403— llenaría el mapa de mentiras desde adentro, y
+  una medición que se puede falsear deja de servir para decidir, que es lo único para lo que existe.
 - Limitado por usuario con el limitador que ya existe. Pasado el tope: 204 igual, y no se escribe.
 
 **Lo que este endpoint NO hace**: devolver datos, confirmar qué se guardó, o fallar de forma que el

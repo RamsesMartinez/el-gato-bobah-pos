@@ -1,28 +1,21 @@
 -- EL USO DEL SISTEMA (spec 017).
 --
--- Dos caminos que no se cruzan: el POS ESCRIBE (las tres primeras, con el rol de la aplicación) y
--- la consola LEE (la última, con el rol de plataforma, que no tiene permiso sobre el grano fino).
-
--- name: InsertUsageEvent :exec
--- El grano fino, un hecho por fila. Sin quién lo hizo: la tabla no tiene esa columna.
---
--- `detail` NO se recibe de nadie: existe para las coordenadas del futuro (FR-013) y se queda nulo.
--- Aceptarlo desde el cuerpo del POST convertiría esa puerta en un campo libre.
---
--- ponytail: una fila por evento, hasta 50 por lote y por transacción. A 3 pedidos/día medidos (y
--- 100 en el escenario de diseño) son milisegundos; si algún día un cliente mete miles de eventos
--- por minuto, esto pasa a un `copy`.
-insert into usage_events (screen, action, role)
-values ($1, $2, $3);
+-- Dos caminos que no se cruzan: el POS ESCRIBE con el rol de la aplicación y la consola LEE con el
+-- de plataforma. Una sola tabla: el conteo. Ver el porqué en la migración 0069 — un renglón por
+-- toque se podía cruzar con `register_sessions` por la marca de tiempo y deshacía el anonimato.
 
 -- name: UpsertUsageDaily :exec
 -- El conteo del día. Recibe el lote YA PRE-AGREGADO: suma `excluded.hits`, no `+1`.
+--
+-- El DÍA viene calculado desde Go con la zona del negocio, no de `current_date`: con el servidor en
+-- UTC la medianoche cae a las 18:00 en México y todo lo de la tarde-noche —la franja de más
+-- movimiento— se contaría mañana. Es el mismo defecto que 0038 arregló para la venta.
 --
 -- Cada `update` deja la versión vieja de la fila muerta, y estas filas son pocas y calientes:
 -- medido, 135 filas con 2,000 incrementos de a uno pasan de 64 kB a 232 kB antes de que autovacuum
 -- llegue. Pre-agregar convierte hasta 50 escrituras físicas en una.
 insert into usage_daily (day, screen, action, role, hits)
-values (current_date, $1, $2, $3, $4)
+values ($1, $2, $3, $4, $5)
 on conflict on constraint usage_daily_llave
 do update set hits = usage_daily.hits + excluded.hits;
 
@@ -51,11 +44,6 @@ where day between sqlc.arg('desde')::date and sqlc.arg('hasta')::date
   and (sqlc.narg('company')::bigint is null or company_id = sqlc.narg('company')::bigint)
 group by screen, action, role
 order by screen, action nulls first, role nulls first;
-
--- name: DeleteOldUsageEvents :execrows
--- El recorte del grano fino. Corre con conexión de DUEÑO: el rol de la aplicación está bajo RLS y
--- solo borraría lo de su empresa, dejando el recorte a medias sin que nada fallara.
-delete from usage_events where occurred_at < now() - ($1::int * interval '1 day');
 
 -- name: DeleteOldUsageDaily :execrows
 -- Y el del agregado, con su propia retención (más larga: es lo que se mira).

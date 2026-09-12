@@ -50,7 +50,7 @@ func TestElLoteDeUsoSePreAgrega(t *testing.T) {
 		{Pantalla: "caja", Accion: "cerrar-turno"},
 		{Pantalla: "pos"},
 	}
-	agregado := PreAgregarUso(lote)
+	agregado := PreAgregarUso(lote, RoleCajero)
 
 	if len(agregado) != 3 {
 		t.Fatalf("quedaron %d combinaciones y hay 3 distintas: %+v", len(agregado), agregado)
@@ -122,5 +122,39 @@ func TestSeCuentanLosCuatroRoles(t *testing.T) {
 	}
 	if RolMedible(Role("inventado")) {
 		t.Error("un rol que no existe no debería medirse")
+	}
+}
+
+// TODA PANTALLA MEDIBLE DICE QUIÉN PUEDE ABRIRLA.
+//
+// La mitad barata de la desincronización: una pantalla nueva en la lista blanca sin su renglón de
+// roles se descartaría SIEMPRE —`PantallaPermitidaParaRol` devuelve false para lo que no conoce— y
+// el mapa mostraría un cero permanente que se lee como «nadie la usa».
+func TestTodaPantallaMedibleTieneRoles(t *testing.T) {
+	for _, pantalla := range PantallasMedibles() {
+		if !PantallaPermitidaParaRol(pantalla, RoleAdmin) {
+			t.Errorf("la pantalla %q no dice qué roles pueden abrirla: sus eventos se descartarían todos, en silencio", pantalla)
+		}
+	}
+}
+
+// UN ROL NO PUEDE REPORTAR USO DE UNA PANTALLA QUE NO PUEDE ABRIR.
+//
+// La lista blanca acota el CONJUNTO de valores, no su coherencia. Sin esto, un mesero manda treinta
+// aperturas por minuto de la pantalla de usuarios —que un GET suyo recibiría con 403— y el mapa
+// dice que es la más usada del sistema. No es una fuga: es una medición que se puede llenar de
+// mentiras desde adentro, y entonces deja de servir para lo único que existe.
+func TestUnRolNoReportaPantallasQueNoPuedeAbrir(t *testing.T) {
+	mentira := []EventoDeUso{{Pantalla: "usuarios"}, {Pantalla: "negocio"}}
+	if n := len(PreAgregarUso(mentira, RoleMesero)); n != 0 {
+		t.Fatalf("el mesero reportó %d pantallas de administración: el mapa se llena de mentiras desde adentro", n)
+	}
+	// Y lo que sí puede abrir, se cuenta.
+	if n := len(PreAgregarUso([]EventoDeUso{{Pantalla: "pos"}}, RoleMesero)); n != 1 {
+		t.Fatal("el mesero no pudo reportar el POS, que es donde trabaja")
+	}
+	// El admin sí ve las de administración.
+	if n := len(PreAgregarUso(mentira, RoleAdmin)); n != 2 {
+		t.Fatalf("el admin reportó %d de 2 pantallas suyas", n)
 	}
 }

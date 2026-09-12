@@ -113,6 +113,24 @@ if (typeof document !== 'undefined') {
   });
 }
 
+// AL CAMBIAR DE SESIÓN, LA COLA SE TIRA. No se manda: se tira.
+//
+// El caso concreto: un cajero navega tres pantallas —tres eventos encolados, por debajo del lote de
+// 20 y antes de los 10 segundos—, se desloguea, y entra otro operador en la misma tableta. Como el
+// token se lee al VACIAR y no al encolar, esos tres eventos viajarían con el Bearer del siguiente y
+// el servidor los contaría con SU empresa y SU rol, porque los saca del token. La medición
+// quedaría atribuida a quien no fue.
+//
+// Se descartan en vez de mandarlos antes de cerrar sesión porque esta feature tiene permiso para
+// perder mediciones y no lo tiene para mentir. Es la misma razón por la que el carrito SÍ se
+// conserva entre sesiones de la misma empresa y esto no: un ticket a medias vale; tres aperturas
+// de pantalla, no.
+useSessionStore.subscribe((estado, anterior) => {
+  if (estado.token !== anterior.token) {
+    cola = [];
+  }
+});
+
 // _soloParaPruebas expone lo mínimo para poder probar la cola sin abrir la caja negra.
 export const _soloParaPruebas = {
   reiniciar(): void {

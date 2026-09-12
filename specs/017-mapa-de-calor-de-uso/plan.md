@@ -55,8 +55,8 @@ para el de hoy. Un techo calculado con 3.1 pedidos/día no diría nada.
 
 | Puerta | Qué la cerraría | Qué hace este plan |
 |---|---|---|
-| **Coordenadas del toque** (FR-013) | Guardar **solo** conteos: un agregado por día no tiene dónde meter un punto | `usage_events` guarda el grano fino con `detail jsonb` vacío hoy. Agregar `{"x":…,"y":…}` después no migra nada |
-| **Más de una sucursal** | Un evento que solo sepa de empresa y no pueda decir de dónde salió | El mismo `detail` lo admite, y si se vuelve feature se agrega columna con backfill nulo |
+| **Coordenadas del toque** (FR-013) | Escribir hoy un grano fino con marca de tiempo que después haya que borrar por privacidad | Nacen en su propia tabla el día que se midan. **Crear una tabla no migra nada**, que es lo que el requisito pide — y lo prueba `TestLasCoordenadasDelFuturoNoExigenMigrarLoEscrito` |
+| **Más de una sucursal** | Un conteo que no pueda decir de dónde salió | Una columna nueva con backfill nulo, al mismo costo que hoy |
 | **Distinguir estaciones** (la puerta abierta de la constitución) | Guardar la persona hoy «para poder cortar mañana» | **No se guarda**. El día que haya estación, es un campo nuevo del evento, y el rol sigue siendo el corte correcto |
 | **Medir cuánto rato, no cuántas veces** | — | Se decidió medir aperturas. Medir tiempo exigiría un evento de salida por cada uno de entrada: se puede agregar después sin tocar lo escrito |
 
@@ -87,9 +87,15 @@ que es lo único que el beacon daba de más.
 convertiría un cobro en dependiente de la red, y eso la constitución lo prohíbe en sus
 *Restricciones del producto*.
 
-### 2. El agregado se sube al escribir, no en un trabajo aparte
+### 2. Solo el conteo, y se sube al escribir
 
-Cada lote hace, en **una transacción**: insertar el grano fino y `upsert` del conteo del día,
+**La tabla de grano fino se quitó tras la auditoría adversarial**, por dos razones independientes:
+su marca de tiempo deshacía el anonimato —se cruza con `register_sessions.closed_by`— y su volumen
+no tenía techo real: al tope del limitador eran 298 MB por día y por cuenta. Con solo el conteo, las
+filas las acota la lista blanca y no hay instante que cruzar. La puerta de FR-013 no se cierra: las
+coordenadas del futuro nacen en su propia tabla, y crear una tabla no migra nada.
+
+Cada lote hace, en **una transacción**, el `upsert` del conteo del día,
 **pre-agregando dentro del lote** — se agrupa por `(pantalla, acción, rol)` y sale un solo
 `update … set hits = hits + n` por combinación, no uno por evento. Medido: sin eso, las 135 filas de
 un día con 2,000 incrementos encima pasan de 64 kB a 232 kB de versiones muertas antes de que
@@ -129,7 +135,7 @@ regla tiene que funcionar, sin que nadie se acuerde de encenderla.
 
 ```text
 server/
-├── migrations/0069_uso_del_sistema.sql        # dos tablas, grants, RLS, política de plataforma
+├── migrations/0069_uso_del_sistema.sql        # UNA tabla (el conteo), grants, RLS, política
 ├── queries/uso.sql                            # ingesta, agregado y lectura de la consola
 ├── internal/domain/uso.go                     # lista blanca, anti-rebote, k-anonimato (puro)
 ├── internal/app/uso.go                        # UsageService: la tx de ingesta, la lectura y el recorte
