@@ -146,3 +146,62 @@ th {
   font-weight: 400;
   padding: 6px 12px;
 }
+
+/* El mapa de uso (spec 017). CSS propio: una escala de color son cuatro líneas. */
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.grupo {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 400;
+  background: transparent;
+  border: 1px solid var(--borde);
+  color: var(--tenue);
+}
+
+.chip.activo {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: #fff;
+}
+
+.celda {
+  display: inline-block;
+  min-width: 56px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mapa td:nth-child(2) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.desplegar {
+  width: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+}
+
+tr.accion td:first-child {
+  padding-left: 24px;
+  color: var(--tenue);
+}

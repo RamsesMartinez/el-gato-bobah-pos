@@ -32,6 +32,10 @@ const (
 	// la consola). Es el tope que acota el FLOOD —adivinación a ciegas, DoS por CPU de bcrypt—,
 	// distinto del lockout por cuenta de arriba, que acota los intentos contra UNA credencial.
 	authIPMax = 60
+	// usoMax: lotes de medición por minuto y por usuario. El cliente manda uno cada 10 segundos en
+	// el peor caso, así que 30 deja margen de sobra para una tableta ocupada y corta en seco un
+	// bucle. Lo que pasa del tope se tira sin avisar: es una medición, no un cobro.
+	usoMax = 30
 	// docExtractMax: extracciones de documento por hora y por usuario. Cada una es una llamada
 	// pagada a un modelo, así que el tope protege el presupuesto, no la seguridad: un local
 	// captura unas cuantas compras al día, y 60/hora deja margen de sobra para reintentar una
@@ -82,6 +86,13 @@ type Deps struct {
 	// debe no existir nada.
 	PlatformJWT *auth.ManagerDePlataforma
 	Platform    *app.PlatformService
+	// Usage es la medición de uso (spec 017). Escribe con la conexión del negocio y se lee desde
+	// la consola; el mismo servicio atiende las dos puntas porque la regla de anonimato vive en una.
+	Usage *app.UsageService
+	// UsageConsola es el MISMO servicio sobre OTRA conexión: la de plataforma, que solo puede leer
+	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
+	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
+	UsageConsola *app.UsageService
 }
 
 type Handlers struct {
@@ -108,6 +119,12 @@ type Handlers struct {
 	settlements    *app.SettlementsService
 	platformJWT    *auth.ManagerDePlataforma
 	platform       *app.PlatformService
+	usage          *app.UsageService
+	usageConsola   *app.UsageService
+	// usoIngesta limita cuánto puede mandar una tableta. No protege la base —de eso se encargan la
+	// lista blanca y los checks— sino el camino: un bucle en el front no puede costar una escritura
+	// por vuelta.
+	usoIngesta *rateLimiter
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
@@ -130,6 +147,9 @@ func NewHandlers(d Deps) *Handlers {
 		settlements:    d.Settlements,
 		platformJWT:    d.PlatformJWT,
 		platform:       d.Platform,
+		usage:          d.Usage,
+		usageConsola:   d.UsageConsola,
+		usoIngesta:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
 		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos

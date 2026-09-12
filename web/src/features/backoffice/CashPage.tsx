@@ -4,6 +4,7 @@ import {
   Center, Spinner, Stat, Tabs, Badge, SimpleGrid, Wrap, useBreakpointValue,
 } from '@chakra-ui/react';
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { medirAccion } from '../../api/uso';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -636,7 +637,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
-    onSuccess: () => { setContando(false); invalidate(); },
+    // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
+    // —que existe en la lista blanca— nunca se disparaba, y el conteo del cierre no se contaba en
+    // ningún lado. Dos ceros permanentes que se leen como «nadie lo hace».
+    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); invalidate(); },
     onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
   });
   const closeMut = useMutation({
@@ -659,7 +663,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         notes: notes || undefined,
       });
     },
-    onSuccess: (s) => { setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); invalidate(); },
+    onSuccess: (s) => {
+      medirAccion('caja', 'cerrar-turno');
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); invalidate();
+    },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
     // pendiente, y el operador tiene que saber que la puede resolver y volver.
@@ -847,14 +854,16 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           // La moneda del turno la fija el servidor con el default de la columna: hoy no hay forma
           // de elegir otra al abrir. Cuando la haya, ESTA línea es la que cambia.
           currency="MXN" etiquetaConfirmar="Abrir caja" guardando={openMut.isPending}
-          onConfirmar={(r) => openMut.mutate(aperturaDelConteo(r))} />
+          // Contar el cajón se mide aquí, donde de verdad ocurre, y no en el onSuccess de la
+          // mutación: el de abrir mide «abrir-turno», que es otro hecho.
+          onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); openMut.mutate(aperturaDelConteo(r)); }} />
       )}
 
       {session && (
         <ContadorDeEfectivo isOpen={contando} onClose={() => setContando(false)}
           titulo={`Efectivo en «${register.name}»`} currency={session.currency}
           etiquetaConfirmar="Usar este conteo" guardando={false}
-          onConfirmar={(r) => { setConteoDelCierre(r); setContando(false); }} />
+          onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); setConteoDelCierre(r); setContando(false); }} />
       )}
 
       <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)}
@@ -885,7 +894,10 @@ function MovementsPanel({ session }: { session: CashSession }) {
 
   const mut = useMutation({
     mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, montoTecleado(amount) ?? 0, concept.trim()),
-    onSuccess: () => { setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] }); },
+    onSuccess: () => {
+      medirAccion('caja', 'traspaso');
+      setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] });
+    },
     onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
   });
   const canAdd = (montoTecleado(amount) ?? 0) > 0 && concept.trim().length > 0;

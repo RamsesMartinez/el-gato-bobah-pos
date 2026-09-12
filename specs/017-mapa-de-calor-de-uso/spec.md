@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Planeando (2026-09-12)
 
 **Input**: Ver *Origen* al final.
 
@@ -45,11 +45,11 @@ pantalla con conteo mayor que cero, y ese conteo sube al volver a abrirla.
 
 **Acceptance Scenarios**:
 
-1. **Given** un día de operación normal, **When** el dueño abre el mapa de uso, **Then** ve las
+1. **Given** un día de operación normal, **When** el operador de plataforma abre el mapa de uso, **Then** ve las
    pantallas ordenadas de más a menos usada, con su conteo y su intensidad de color.
 2. **Given** una pantalla que nadie abrió en el periodo, **When** se mira el mapa, **Then** aparece
    con cero y se distingue a simple vista de las que sí se usaron.
-3. **Given** una pantalla seleccionada, **When** el dueño la despliega, **Then** ve las acciones
+3. **Given** una pantalla seleccionada, **When** el operador de plataforma la despliega, **Then** ve las acciones
    con nombre que ocurrieron dentro y cuántas veces.
 4. **Given** un periodo sin datos —el sistema recién instalado—, **When** se abre el mapa,
    **Then** dice que todavía no hay uso registrado, sin pintar un mapa vacío que parezca roto.
@@ -58,8 +58,8 @@ pantalla con conteo mayor que cero, y ese conteo sube al volver a abrirla.
 
 ### User Story 2 - Por rol, nunca por persona (Priority: P1)
 
-El registro distingue si quien usó el sistema era cajero, gerente o administrador, y **no guarda
-quién fue**. El dueño puede ver que un rol usa el sistema distinto sin que eso señale a nadie.
+El registro distingue el **rol** —administrador, gerente, cajero o mesero— y **no guarda quién
+fue**. El operador de plataforma puede ver que un rol usa el sistema distinto sin que eso señale a nadie.
 
 **Why this priority**: Va en P1 junto con US1 y no después, porque **no es una capa que se agregue
 encima**: si el primer evento se escribe con la identidad de la persona, ya se registró, y quitarlo
@@ -143,6 +143,11 @@ mantiene por debajo de un techo declarado y verificable.
 - **El reloj de la tableta mal puesto.** La fecha del dato la pone el servidor, como ya hace la
   venta (spec 008).
 - **Datos de uso de otra empresa.** No se cruzan: RLS, como todo lo demás.
+- **La pantalla de entrar no se puede medir, y hay que saberlo.** El registro va autenticado para
+  que el servidor ponga empresa y rol sin que el cliente los mande; antes de entrar no hay ninguna
+  de las dos cosas, así que esos eventos se descartan. El mapa nunca va a mostrar el login, y eso no
+  es un defecto: es la consecuencia de no dejar que el cliente diga de qué empresa es. Si algún día
+  importa medir esa pantalla, es otra decisión y otro camino.
 
 ## Requirements *(mandatory)*
 
@@ -150,8 +155,13 @@ mantiene por debajo de un techo declarado y verificable.
 
 - **FR-001**: El sistema MUST registrar cuántas veces se abre cada pantalla y cuántas veces se
   dispara cada acción con nombre.
-- **FR-002**: El registro MUST guardar el **rol** de quien lo hizo (cajero, gerente, administrador)
-  y MUST NOT guardar la identidad de la persona ni nada de lo que permita deducirla.
+- **FR-002**: El registro MUST guardar el **rol** de quien lo hizo —los cuatro que el sistema tiene:
+  administrador, gerente, cajero y **mesero**— y MUST NOT guardar la identidad de la persona ni nada
+  de lo que permita deducirla.
+
+  Los primeros renglones de este spec decían tres roles y se olvidaban de `mesero`, que existe en el
+  sistema desde el principio. Una lista de tres manda al cuarto al camino de error en vez de
+  contarlo, y el mapa se quedaría sin ver justo al rol que menos se conoce.
 - **FR-003**: El registro MUST NOT contener datos personales, nombres de cliente, contenido de
   pedidos ni importes.
 - **FR-004**: El registro MUST NOT bloquear, demorar ni hacer fallar ninguna acción del operador. Si
@@ -181,13 +191,26 @@ mantiene por debajo de un techo declarado y verificable.
 - **FR-011**: El spec MUST declarar el techo de espacio y el periodo de conservación, y ambos MUST
   ser verificables.
 - **FR-012**: Los datos de uso MUST estar aislados por empresa.
-- **FR-013**: El modelo del evento MUST admitir que más adelante se le agreguen **coordenadas del
-  toque** sin rehacer el modelo ni migrar los datos ya escritos.
+- **FR-013**: El sistema MUST poder empezar a guardar **coordenadas del toque** más adelante sin
+  rehacer el modelo ni migrar los datos ya escritos.
+
+  **Corregido el 2026-09-12, tras la auditoría adversarial.** Decía «el modelo del evento», y de ahí
+  salió un diseño con una tabla de grano fino cuya marca de tiempo permitía identificar a la persona
+  cruzándola con `register_sessions`. La puerta se cumple mejor sin esa tabla: las coordenadas nacen
+  en la suya el día que se midan, y crear una tabla no migra nada.
 
   Es el principio VIII aplicado: el mapa por coordenada no se construye hoy, pero la decisión que lo
   impediría —un modelo que solo sepa contar pantallas— no se toma tampoco.
 
-- **FR-014**: La pantalla del mapa MUST leerse en una tableta de 1024×600.
+- **FR-014**: La pantalla del mapa MUST leerse **en la computadora de quien opera la plataforma**,
+  que es donde vive la consola (spec 016).
+
+  Corregido el 2026-09-12, al terminar la 016. Este renglón decía «en una tableta de 1024×600»
+  porque se escribió cuando el mapa iba a ser una pantalla del POS. Ya no lo es: vive dentro de la
+  consola de plataforma, que corre en otro dominio, con otro build y **nunca en una tableta** —el
+  dueño lo dijo así: *«en la tablet no va a cargar el código del dashboard de staff, porque en las
+  tablets nunca entrarían»*. Medir esta pantalla contra el presupuesto de 1024×600 sería exigirle
+  una restricción que no tiene, y peor: sugeriría que el POS la carga.
 - **FR-015**: Con cero datos, la pantalla MUST decirlo y MUST NOT pintar un mapa vacío.
 
 ### Key Entities
@@ -211,7 +234,8 @@ mantiene por debajo de un techo declarado y verificable.
   que con el servidor arriba.
 - **SC-004**: Simulado un año de uso, el espacio ocupado se mantiene **por debajo del techo
   declarado**.
-- **SC-005**: La pantalla del mapa se lee completa a 1024×600 **sin desplazamiento horizontal**.
+- **SC-005**: La pantalla del mapa se lee completa **sin desplazamiento horizontal** en la pantalla
+  de una computadora (1280×800 o más). Ver FR-014: no es una pantalla de tableta.
 - **SC-006**: Agregar coordenadas del toque más adelante **no requiere migrar** los datos ya
   escritos.
 - **SC-007**: El mapa se pinta **sin agregar una sola dependencia** al proyecto.

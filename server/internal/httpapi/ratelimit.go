@@ -88,6 +88,40 @@ func (rl *rateLimiter) blocked(ctx context.Context, key string) bool {
 	return w.count >= rl.max
 }
 
+// recordAndOver cuenta un intento y dice si YA pasó del tope, en una sola operación.
+//
+// Existe porque `blocked` + `record` son dos pasos y entre ellos cabe una carrera: 300 peticiones
+// simultáneas con el mismo token leen todas un contador por debajo del tope, todas pasan, y el
+// control promete un número que no cumple. Con el valor de retorno del INCR no hay hueco.
+//
+// Y aquí el error de Redis es BLOQUEO, no paso libre — al revés que `blocked`. En el login,
+// fallar abierto existe para no dejar a nadie fuera del sistema; en la medición no hay nadie a
+// quien dejar fuera: perder mediciones mientras Redis está caído cuesta cero, y quedarse sin tope
+// cuesta el disco del VPS.
+func (rl *rateLimiter) recordAndOver(ctx context.Context, key string, max int) bool {
+	if rl.rdb != nil {
+		fullKey := rl.prefix + key
+		pipe := rl.rdb.Pipeline()
+		incr := pipe.Incr(ctx, fullKey)
+		pipe.ExpireNX(ctx, fullKey, rl.window)
+		if _, err := pipe.Exec(ctx); err != nil {
+			logging.SecurityEvent(ctx, "ratelimit_redis_error", "op", "record_and_over", "error", err.Error())
+			return true // fail closed
+		}
+		return incr.Val() > int64(max)
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := rl.now()
+	w := rl.hits[key]
+	if w == nil || now.After(w.reset) {
+		w = &rlWindow{reset: now.Add(rl.window)}
+		rl.hits[key] = w
+	}
+	w.count++
+	return w.count > max
+}
+
 // record counts one attempt against key. Fixed window: the TTL is set only on the FIRST hit
 // (ExpireNX) so a steady stream of attempts doesn't keep pushing the window forward forever.
 func (rl *rateLimiter) record(ctx context.Context, key string) {

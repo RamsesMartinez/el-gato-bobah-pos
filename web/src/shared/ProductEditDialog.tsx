@@ -10,6 +10,7 @@ import { Field } from '../components/ui/field';
 import { Switch } from '../components/ui/switch';
 import { toaster } from '../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { medirAccion } from '../api/uso';
 import { adminApi, type AdminProduct, type Category } from '../api/admin';
 import { Picker, type PickerOption } from '../components/Picker';
 import { useUiStore } from '../stores/ui';
@@ -46,6 +47,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
       }),
     onSuccess: () => {
+      // Después de que el servidor guardó, nunca antes (spec 017, US3).
+      medirAccion('catalogo', 'editar-producto');
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
       qc.invalidateQueries({ queryKey: ['menu'] });
       onClose();
