@@ -304,6 +304,113 @@ func totalDe(p PantallaDeUso) int64 {
 	return total
 }
 
+// --- La rejilla que lee la consola (US1 de la 019). ---
+
+// CeldaDeToques es una zona de la pantalla y cuántas veces se tocó.
+type CeldaDeToques struct {
+	Celda int   `json:"celda"`
+	Veces int64 `json:"veces"`
+}
+
+// FormaDeLaRejilla dice cómo se acomodan las celdas. Viaja en la respuesta porque el mismo número
+// de celda es un lugar distinto en cada forma, y quien pinta necesita las dos cosas.
+type FormaDeLaRejilla struct {
+	Columnas int `json:"columnas"`
+	Filas    int `json:"filas"`
+}
+
+// RejillaDeToques es lo que la consola pinta.
+type RejillaDeToques struct {
+	Pantalla    string           `json:"pantalla"`
+	Orientacion string           `json:"orientacion"`
+	Rejilla     FormaDeLaRejilla `json:"rejilla"`
+	Periodo     RangoDeUso       `json:"periodo"`
+	Celdas      []CeldaDeToques  `json:"celdas"`
+	// El reparto por rol es del TOTAL de la pantalla, no de una celda: por celda, los números son
+	// tan chicos que el corte por rol volvería a identificar por eliminación.
+	PorRol []UsoPorRol `json:"porRol"`
+}
+
+// Rejilla devuelve los toques del periodo en una pantalla y una orientación.
+//
+// LAS DOS ORIENTACIONES NUNCA SE SUMAN (FR-016): se pide una y se devuelve esa. La celda 37 está a
+// la derecha del centro en horizontal y abajo del centro en vertical — mezclarlas pinta un mapa que
+// nadie tocó nunca, y el error sería invisible porque la rejilla se ve normal.
+func (s *UsageService) Rejilla(ctx context.Context, pantalla, orientacion string, desde, hasta time.Time, empresa *int64) (RejillaDeToques, error) {
+	if !domain.PantallaConToque(pantalla) {
+		// Se rechaza en vez de devolver una rejilla en ceros: una rejilla vacía se lee como «aquí
+		// nadie toca», que es justo la conclusión equivocada.
+		return RejillaDeToques{}, fmt.Errorf("%w: esa pantalla no mide toques", domain.ErrValidation)
+	}
+	orientacion, err := domain.OrientacionDeToque(orientacion)
+	if err != nil {
+		return RejillaDeToques{}, err
+	}
+	if err := domain.RangoDeUsoValido(desde, hasta, RetencionDeToquesEnDias); err != nil {
+		return RejillaDeToques{}, err
+	}
+
+	filas, err := s.store.Q.SumTouchesForGrid(ctx, db.SumTouchesForGridParams{
+		Desde:       pgtype.Date{Time: desde, Valid: true},
+		Hasta:       pgtype.Date{Time: hasta, Valid: true},
+		Screen:      pantalla,
+		Orientation: orientacion,
+		Company:     empresa,
+	})
+	if err != nil {
+		return RejillaDeToques{}, fmt.Errorf("leer los toques: %w", err)
+	}
+
+	// LAS 84 CELDAS NACEN EN CERO y se llenan con lo que haya. «Qué parte no toca nadie» es la
+	// mitad de la pregunta que esta feature vino a responder, y una celda omitida por no tener
+	// filas se pinta como un hueco en vez de como un cero.
+	celdas := make([]CeldaDeToques, domain.CeldasDeLaRejilla)
+	for i := range celdas {
+		celdas[i].Celda = i
+	}
+	porRol := map[string]int64{} // "" = sin corte
+	for _, f := range filas {
+		if int(f.Cell) < 0 || int(f.Cell) >= len(celdas) {
+			// No puede pasar —la columna tiene su `check`— pero si pasara, un índice fuera de
+			// rango tumbaría la consola entera por una fila mal escrita.
+			continue
+		}
+		celdas[f.Cell].Veces += f.Veces
+		rol := ""
+		if f.Role != nil {
+			rol = string(*f.Role)
+		}
+		porRol[rol] += f.Veces
+	}
+
+	reparto := make([]UsoPorRol, 0, len(porRol))
+	for rol, veces := range porRol {
+		r := &rol
+		if rol == "" {
+			r = nil
+		}
+		reparto = append(reparto, UsoPorRol{Rol: r, Veces: veces})
+	}
+	// Con desempate por nombre: `porRol` se recorre como map, cuyo orden Go aleatoriza a propósito,
+	// y una tabla que se reordena sola es una tabla que nadie puede comparar de un día para otro.
+	sort.Slice(reparto, func(i, j int) bool {
+		if reparto[i].Veces != reparto[j].Veces {
+			return reparto[i].Veces > reparto[j].Veces
+		}
+		return nombreDeRol(reparto[i].Rol) < nombreDeRol(reparto[j].Rol)
+	})
+
+	columnas, filasDeLaRejilla := domain.RejillaDe(orientacion)
+	return RejillaDeToques{
+		Pantalla:    pantalla,
+		Orientacion: orientacion,
+		Rejilla:     FormaDeLaRejilla{Columnas: columnas, Filas: filasDeLaRejilla},
+		Periodo:     RangoDeUso{Desde: desde.Format(time.DateOnly), Hasta: hasta.Format(time.DateOnly)},
+		Celdas:      celdas,
+		PorRol:      reparto,
+	}, nil
+}
+
 // --- El recorte (US4). ---
 
 // Recortar borra lo que ya pasó su retención.

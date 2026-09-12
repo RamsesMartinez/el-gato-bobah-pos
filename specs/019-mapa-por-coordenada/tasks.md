@@ -132,20 +132,20 @@ cuenten, y que el volumen no crezca con los dedos.
 
 ## Fase 5: US1 — Ver dónde se toca (P1)
 
-- [ ] T021 [US1] Test de integración de `GET /api/v1/platform/touches`: devuelve **las 84 celdas**
+- [X] T021 [US1] Test de integración de `GET /api/v1/platform/touches`: devuelve **las 84 celdas**
       —incluidas las de cero—, la rejilla y la orientación; con sesión del negocio da **401**; un
       rango más viejo que la retención da **400**; y `empresa` ausente suma todas.
-- [ ] T021b [US1] Test de que **las dos orientaciones no se suman** (FR-016): con la misma celda
+- [X] T021b [US1] Test de que **las dos orientaciones no se suman** (FR-016): con la misma celda
       sembrada en horizontal y en vertical, pedir una devuelve solo la suya.
 
       Mezclarlas pinta una rejilla que nadie tocó nunca: la celda 37 es otro lugar en cada forma.
-- [ ] T022 [US1] `UsageService.Rejilla(...)` y el handler, dentro del grupo de plataforma.
-- [ ] T023 [P] [US1] `web/src/consola/zonas-del-pos.ts`: la leyenda **fechada** de qué es cada fila
+- [X] T022 [US1] `UsageService.Rejilla(...)` y el handler, dentro del grupo de plataforma.
+- [X] T023 [P] [US1] `web/src/consola/zonas-del-pos.ts`: la leyenda **fechada** de qué es cada fila
       y columna del layout vigente. Texto, nunca una imagen.
-- [ ] T024 [US1] Tests de `web/src/consola/RejillaDeToques.test.tsx`: pinta la rejilla con la
+- [X] T024 [US1] Tests de `web/src/consola/RejillaDeToques.test.tsx`: pinta la rejilla con la
       proporción correcta, el número dentro de las celdas con conteo, dice «todavía no hay toques»
       con cero datos, y muestra la leyenda con su fecha.
-- [ ] T025 [US1] `web/src/consola/RejillaDeToques.tsx` con CSS propio, y engancharla en la consola
+- [X] T025 [US1] `web/src/consola/RejillaDeToques.tsx` con CSS propio, y engancharla en la consola
       junto al mapa de la 017.
 
 ---

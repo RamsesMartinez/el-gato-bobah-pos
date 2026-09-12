@@ -1,16 +1,20 @@
 # Contratos: los toques por zona
 
-## `POST /api/v1/usage` — el mismo de la 017, con un campo más
+## `POST /api/v1/usage` — el mismo de la 017, con un arreglo más
 
 ```
-{ "eventos": [ { "pantalla": "pos", "celda": 37, "orientacion": "horizontal" },
-                { "pantalla": "caja", "accion": "cerrar-turno" } ] }
+{ "eventos": [ { "pantalla": "caja", "accion": "cerrar-turno" } ],
+  "toques":  [ { "pantalla": "pos", "celda": 37, "orientacion": "horizontal" } ] }
 → 204 No Content   (siempre)
 ```
 
-- **Un evento con `celda` es un toque**; sin ella es lo de siempre (apertura o acción). Los dos
-  viajan en el mismo lote, por la misma cola y con el mismo limitador: lo que hace que la medición
-  no estorbe ya está escrito y probado, y un camino nuevo habría que volver a demostrarlo.
+- **Los dos arreglos viajan en el mismo request**, por la misma cola, con el mismo limitador y la
+  misma guarda de «uno en vuelo»: lo que hace que la medición no estorbe ya está escrito y probado,
+  y un camino nuevo habría que volver a demostrarlo.
+- **Un toque es un hecho distinto, no un evento con campos de más.** Van en arreglos separados
+  porque se agregan por llaves distintas —(pantalla, acción) contra (pantalla, orientación, celda)—
+  y porque así el tipo del evento de la 017 **sigue sin tener dónde guardar una coordenada**: la
+  promesa deja de depender de que nadie llene un campo opcional.
 - **`celda` es un número de 0 a 83**, ya calculado en la tableta. **Nunca se manda `x` ni `y`**: un
   punto con precisión de píxel que viaja existe en el cuerpo, en el log de un proxy y en la memoria
   del servidor aunque después se redondee.
