@@ -19,7 +19,12 @@
 - **Sin instante y sin elemento.** El día lo pone el servidor con la zona del negocio, y qué control
   se tocó no se guarda — esa pregunta la responde la 017 con las acciones con nombre.
 - Un toque de una pantalla que **no está instrumentada** se descarta, como cualquier valor fuera de
-  la lista blanca, y queda contado en el log del servidor.
+  la lista blanca, y queda contado en el log del servidor. **Y tampoco se encola en la tableta**: el
+  escuchador vive en la raíz y ve toda la aplicación, así que sin filtrar también en el cliente
+  mandaría toques de pantallas no medidas durante todo el turno para que el servidor los tire.
+- **Los toques dentro de una hoja, un diálogo o la pantalla de bloqueo no se mandan.** No cambian de
+  ruta, así que se contarían como de la pantalla de abajo: el teclado del PIN dejaría una zona
+  caliente en el centro que se lee como un control muy usado.
 
 ## `GET /api/v1/platform/touches?pantalla=…&desde=…&hasta=…&empresa=…`
 
@@ -39,6 +44,10 @@ Grupo de plataforma, detrás de `RequireOperador`. Con una sesión del negocio: 
 - **Las 84 celdas viajan siempre**, incluidas las de cero: «qué parte no toca nadie» es la mitad de
   la pregunta, y una celda que se omite por no tener filas se pinta como un hueco.
 - `orientacion` por defecto `horizontal`; se puede pedir la otra. **Nunca se suman las dos.**
+- **`empresa` es opcional**: ausente = todas juntas, igual que en el mapa de la 017. Aquí tiene más
+  sentido todavía que allá —el layout es el mismo software para todos los clientes, así que juntar
+  tabletas da mejor muestra para decidir dónde va un control—. Lo que eso exige es un índice por
+  `day`: sin él, «todas» recorre la tabla entera de cada empresa.
 - `porRol` reparte **el total de la pantalla**, no de una celda, y `rol: null` significa «sin
   corte»: ese uso existe pero atribuirlo identificaría a una persona.
 - **Ninguna imagen, ningún texto de la pantalla, ninguna cifra de dinero.**
