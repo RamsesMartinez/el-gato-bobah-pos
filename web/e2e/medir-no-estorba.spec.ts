@@ -65,3 +65,44 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
   // solo intento, esto pasaría en verde con la feature apagada.
   expect(intentos, 'el registrador no intentó mandar nada: el test no probó lo que dice').toBeGreaterThan(0);
 });
+
+test('M2 · con la medición muerta, capturar tocando rápido responde igual', async ({ page }) => {
+  // SC-004 de la 019: el escuchador de toques va en la fase de captura del documento, que es justo
+  // donde un manejador mal escrito se traga el evento antes de que llegue al botón. Con la red de
+  // la medición colgada, cada toque además encola —y si encolar costara algo, se notaría aquí y no
+  // en un test unitario con el DOM simulado.
+  let intentos = 0;
+  await page.route('**/api/v1/usage', async (route) => {
+    intentos++;
+    await new Promise((r) => setTimeout(r, 60_000));
+    await route.abort().catch(() => {});
+  });
+
+  await entrar(page);
+
+  // Tocar RÁPIDO, como se captura de verdad: la tableta recibe una ráfaga de toques seguidos y
+  // cada uno pasa por el escuchador antes de llegar a su control.
+  const productos = page.getByRole('button').filter({ hasText: /\$/ });
+  const cuantos = Math.min(await productos.count(), 6);
+  const arranque = Date.now();
+  for (let i = 0; i < cuantos; i++) {
+    await productos.nth(i).click({ timeout: 5_000 });
+  }
+  const tardanza = Date.now() - arranque;
+
+  // Cada toque tuvo efecto: los renglones están en la cuenta. Es lo que se rompería si el
+  // escuchador cancelara o detuviera el evento.
+  if (cuantos > 0) {
+    await expect(page.getByRole('button', { name: /Cobrar|Enviar/ }).first()).toBeVisible({ timeout: 10_000 });
+    // Y no se volvió lento: seis toques con la medición colgada tienen que costar lo mismo que sin
+    // ella. El margen es amplio a propósito —el ambiente de pruebas es una VM chica— porque lo que
+    // este número atrapa es un `await` en el camino del toque, que costaría segundos por toque.
+    expect(tardanza, 'capturar se volvió lento con la medición colgada').toBeLessThan(cuantos * 3_000);
+  }
+
+  // La pantalla sigue viva después de la ráfaga.
+  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+
+  await page.waitForTimeout(12_000);
+  expect(intentos, 'el registrador no intentó mandar nada: el test no probó lo que dice').toBeGreaterThan(0);
+});

@@ -429,6 +429,18 @@ func (s *UsageService) Recortar(ctx context.Context) error {
 	if filas > 0 {
 		slog.Info("uso recortado", "filas", filas)
 	}
+
+	// Los toques van con SU retención, más corta. No es un detalle de afinación: una rejilla de
+	// hace un año describe un layout que ya no existe, y conservarla es conservar una referencia
+	// que miente. Si las dos compartieran constante, la mitad de lo guardado estaría describiendo
+	// una pantalla rediseñada.
+	toques, err := s.store.Q.DeleteOldTouchesDaily(ctx, RetencionDeToquesEnDias)
+	if err != nil {
+		return fmt.Errorf("recortar los toques: %w", err)
+	}
+	if toques > 0 {
+		slog.Info("toques recortados", "filas", toques)
+	}
 	return nil
 }
 
