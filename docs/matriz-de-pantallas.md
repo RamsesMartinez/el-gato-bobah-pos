@@ -421,7 +421,8 @@ filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
 | M6 | Su limitador | Pasado el tope no se escribe, y la respuesta sigue siendo 204 | idem | — |
 | M7 | Lo que el cliente manda de más | El `rol` del cuerpo se ignora —sale del token— y lo demás no tiene columna a la que llegar | `uso_http_test.go` | — |
 | M7b | Un rol reportando pantallas ajenas | Un mesero que reporta la pantalla de usuarios se descarta entero | `domain/uso_test.go` | — |
-| M8 | El registrador del POS | Lote a los 20 / 10 s / al ocultarse; **uno en vuelo a la vez**; un fetch que revienta no lanza ni reintenta | `src/api/uso.test.ts` | Sí — sin la guarda salen dos envíos |
+| M8 | El registrador del POS | Lote a los 20 / 10 s / al ocultarse **y al irse la página**; uno en vuelo a la vez; un fetch que revienta no lanza ni reintenta | `src/api/uso.test.ts` | Sí — sin la guarda salen dos envíos |
+| M8b | Salir de una carga | `pagehide` manda lo que quede: `visibilitychange` no cubre navegar, y sin él todo lo encolado en esa página se perdía | idem, y `medir-no-estorba.spec.ts` | Sí — el e2e contaba cero intentos |
 | M9 | La recarga | El F5 no cuenta como apertura; dos entradas legítimas sí | `src/app/MedidorDeUso.test.tsx` | — |
 | M10 | El orden | Ningún `await` sobre la medición, y el cobro se mide dentro del `onSuccess` | `src/api/uso-orden.test.ts` | — |
 | M11 | El mapa | Pantallas ordenadas, el número escrito en la celda, las de cero presentes, «sin corte» nombrado | `uso_consola_test.go`, `MapaDeUso.test.tsx` | — |

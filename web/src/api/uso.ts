@@ -106,11 +106,18 @@ export function esRecargaDeLaPagina(): boolean {
   }
 }
 
-// Al ocultarse la pestaña se manda lo que quede: es el último momento en que se puede.
+// Al irse la pestaña se manda lo que quede: es el último momento en que se puede.
+//
+// DOS EVENTOS Y NO UNO, y esto lo encontró el e2e: `visibilitychange` cubre cambiar de pestaña o
+// minimizar, pero NO se dispara de forma confiable cuando la página NAVEGA a otra dirección —que es
+// lo que pasa al recargar o al entrar por una URL—. Con solo ése, todo lo encolado en una carga se
+// perdía al salir de ella y el registrador parecía apagado: cero peticiones en una sesión entera.
+// `pagehide` es el que cubre ese caso.
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') vaciarCola();
   });
+  window.addEventListener('pagehide', () => vaciarCola());
 }
 
 // AL CAMBIAR DE SESIÓN, LA COLA SE TIRA. No se manda: se tira.
