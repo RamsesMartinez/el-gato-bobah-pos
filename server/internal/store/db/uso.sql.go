@@ -11,20 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveUsersByRole = `-- name: CountActiveUsersByRole :one
-select count(*)::bigint from users where role = $1 and is_active
+const countActiveUsersByRoleAll = `-- name: CountActiveUsersByRoleAll :many
+select role, count(*)::bigint as activos
+from users
+where is_active
+group by role
 `
 
-// Cuántas personas activas tiene ese rol en la empresa del request (RLS acota la consulta).
+type CountActiveUsersByRoleAllRow struct {
+	Role    string `json:"role"`
+	Activos int64  `json:"activos"`
+}
+
+// Cuántas personas activas tiene CADA rol en la empresa del request (RLS acota la consulta).
 //
-// Es lo que decide si el rol se guarda o se deja en blanco: con menos de dos, escribirlo es escribir
-// un nombre. Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede
-// deshacer — y porque quien lee no podría: la consola no tiene permiso sobre `users`.
-func (q *Queries) CountActiveUsersByRole(ctx context.Context, role string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveUsersByRole, role)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
+// La plantilla ENTERA y no solo la del rol que mide, y eso lo cambió una auditoría: la supresión se
+// decide rol por rol, pero todo lo suprimido cae en el mismo balde `role is null`. Cuando
+// exactamente un rol queda por debajo del umbral, ese balde ES esa persona —con 1 admin, 2
+// gerentes, 3 cajeros y 2 meseros, `null` es el dueño— y la consola lo pinta como «sin corte», que
+// promete lo contrario. Para saberlo hay que ver a todos.
+//
+// Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede deshacer — y
+// porque quien lee no podría: la consola no tiene permiso sobre `users`.
+func (q *Queries) CountActiveUsersByRoleAll(ctx context.Context) ([]CountActiveUsersByRoleAllRow, error) {
+	rows, err := q.db.Query(ctx, countActiveUsersByRoleAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountActiveUsersByRoleAllRow{}
+	for rows.Next() {
+		var i CountActiveUsersByRoleAllRow
+		if err := rows.Scan(&i.Role, &i.Activos); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteOldUsageDaily = `-- name: DeleteOldUsageDaily :execrows

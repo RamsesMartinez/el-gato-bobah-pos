@@ -117,16 +117,18 @@ func TestElRecorteDeUsoDejaLoQueEstaDentroDeLaRetencion(t *testing.T) {
 	}
 }
 
-// LA PUERTA DE LAS COORDENADAS SIGUE ABIERTA (FR-013, SC-006), y ahora es una tabla futura.
+// LA PUERTA DE LAS COORDENADAS SE CRUZÓ (FR-013, SC-006), y se cruzó por otro lado del que este
+// test esperaba.
 //
-// El plan la dejaba como una columna `jsonb` en una tabla de grano fino. Esa tabla se quitó —su
-// marca de tiempo deshacía el anonimato— y la puerta no se cerró con ella: el día que se midan
-// coordenadas nace una tabla para ellas, y crear una tabla NO MIGRA NADA, que es literalmente lo
-// que el requisito pide.
+// El plan de la 017 la dejaba como una columna `jsonb` en una tabla de grano fino, y este test
+// ensayaba justo esa migración: una tabla con `occurred_at`, `x` y `y`. La spec 019 la construyó y
+// **no se parece a eso**: es `usage_touches_daily`, un conteo por zona, sin instante y sin punto,
+// por las mismas dos razones que habían tumbado la tabla fina —el instante por fila se cruza con
+// `register_sessions.closed_by` y el volumen no cabía—.
 //
-// Lo que este test fija es que el agregado no estorba: se puede crear esa tabla al lado sin tocar
-// una sola fila de lo escrito.
-func TestLasCoordenadasDelFuturoNoExigenMigrarLoEscrito(t *testing.T) {
+// El test se queda porque lo que fijaba sigue siendo cierto y ahora es un hecho verificable en vez
+// de un ensayo: medir dónde cae el dedo **no exigió migrar una sola fila** de lo ya escrito.
+func TestLaPuertaDeLasCoordenadasSeCruzoSinMigrarLoEscrito(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -135,33 +137,32 @@ func TestLasCoordenadasDelFuturoNoExigenMigrarLoEscrito(t *testing.T) {
 		t.Fatalf("sembrar uso: %v", err)
 	}
 
-	// La migración que algún día llegaría, ensayada aquí: una tabla nueva, ninguna alteración de lo
-	// que ya existe.
-	if _, err := st.Pool.Exec(ctx, `
-		create table usage_touches (
-		  id bigint generated always as identity primary key,
-		  occurred_at timestamptz not null default now(),
-		  screen text not null,
-		  x int not null, y int not null,
-		  company_id bigint not null default current_setting('app.company_id', true)::bigint
-		)`); err != nil {
-		t.Fatalf("la tabla de coordenadas no se puede crear al lado: %v", err)
-	}
+	// La tabla de la 019 vive AL LADO, no dentro: ninguna columna del agregado se tocó.
 	if _, err := st.Pool.Exec(ctx,
-		`insert into usage_touches (screen, x, y) values ('pos', 120, 340)`); err != nil {
-		t.Fatalf("guardar una coordenada: %v", err)
+		`insert into usage_touches_daily (day, screen, orientation, cell, hits)
+		 values (current_date, 'pos', 'horizontal', 37, 3)`); err != nil {
+		t.Fatalf("la tabla de zonas no convive con el agregado: %v", err)
 	}
 
-	// Y lo escrito sigue intacto: agregar la puerta no reescribió el pasado.
 	var hits int
 	if err := st.Pool.QueryRow(ctx, `select hits from usage_daily where screen = 'pos'`).Scan(&hits); err != nil {
 		t.Fatalf("releer el conteo: %v", err)
 	}
 	if hits != 7 {
-		t.Fatalf("el conteo cambió a %d: abrir la puerta tocó lo ya escrito", hits)
+		t.Fatalf("el conteo cambió a %d: cruzar la puerta tocó lo ya escrito", hits)
 	}
-	if _, err := st.Pool.Exec(ctx, `drop table usage_touches`); err != nil {
-		t.Fatalf("limpiar: %v", err)
+
+	// Y la forma en que se cruzó es la que importa: sin instante y sin punto. Si alguien agregara
+	// cualquiera de los dos, el anonimato de las DOS tablas se deshace —el instante las cruza—.
+	var conTiempo int
+	if err := st.Pool.QueryRow(ctx, `
+		select count(*) from information_schema.columns
+		 where table_name = 'usage_touches_daily'
+		   and (data_type like 'timestamp%' or column_name in ('x', 'y'))`).Scan(&conTiempo); err != nil {
+		t.Fatalf("leer el catálogo: %v", err)
+	}
+	if conTiempo != 0 {
+		t.Fatal("la tabla de zonas ganó un instante o una coordenada: es exactamente el diseño que la auditoría de la 017 tumbó")
 	}
 }
 

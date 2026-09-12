@@ -19,13 +19,21 @@ values ($1, $2, $3, $4, $5)
 on conflict on constraint usage_daily_llave
 do update set hits = usage_daily.hits + excluded.hits;
 
--- name: CountActiveUsersByRole :one
--- Cuántas personas activas tiene ese rol en la empresa del request (RLS acota la consulta).
+-- name: CountActiveUsersByRoleAll :many
+-- Cuántas personas activas tiene CADA rol en la empresa del request (RLS acota la consulta).
 --
--- Es lo que decide si el rol se guarda o se deja en blanco: con menos de dos, escribirlo es escribir
--- un nombre. Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede
--- deshacer — y porque quien lee no podría: la consola no tiene permiso sobre `users`.
-select count(*)::bigint from users where role = $1 and is_active;
+-- La plantilla ENTERA y no solo la del rol que mide, y eso lo cambió una auditoría: la supresión se
+-- decide rol por rol, pero todo lo suprimido cae en el mismo balde `role is null`. Cuando
+-- exactamente un rol queda por debajo del umbral, ese balde ES esa persona —con 1 admin, 2
+-- gerentes, 3 cajeros y 2 meseros, `null` es el dueño— y la consola lo pinta como «sin corte», que
+-- promete lo contrario. Para saberlo hay que ver a todos.
+--
+-- Se pregunta al ESCRIBIR porque es el único momento en que la decisión no se puede deshacer — y
+-- porque quien lee no podría: la consola no tiene permiso sobre `users`.
+select role, count(*)::bigint as activos
+from users
+where is_active
+group by role;
 
 -- name: SumUsageForMap :many
 -- Lo que lee la consola: el conteo del periodo por pantalla, acción y rol.

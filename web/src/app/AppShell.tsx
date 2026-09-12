@@ -51,7 +51,13 @@ export function AppShell() {
   };
 
   return (
-    <Flex h="100dvh" overflow="hidden" colorPalette={palette}>
+    // `data-medible` marca QUÉ cuenta como pantalla para el mapa de toques (spec 019), y la marca
+    // es fail-closed: lo que no cuelga de aquí no se cuenta. Eso deja fuera, por construcción, todo
+    // lo que se pinta en un portal —hojas, diálogos y los avisos flotantes— y la pantalla de
+    // bloqueo, que vive por encima del shell. La lista de exclusiones se invertió a propósito:
+    // excluir capas conocidas hacía que un portal nuevo naciera CONTADO, y el aviso flotante cae
+    // abajo a la derecha, justo sobre la zona del botón de cobrar.
+    <Flex data-medible h="100dvh" overflow="hidden" colorPalette={palette}>
       <Flex direction="column" w="76px" bg="gray.900" color="white" py={3} flexShrink={0}>
         <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />
         {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems */}
