@@ -84,11 +84,6 @@ export function ModifierOptionsPage() {
 
   return (
     <Page maxW="1150px" fill>
-      <Text color="fg.muted" mb={3} flexShrink={0}>
-        Catálogo de grupos de modificadores (reutilizables entre productos). El default de min/máx
-        se puede sobrescribir al asignar el grupo a cada <b>producto</b>.
-      </Text>
-
       <HStack mb={2} gap={3} wrap="wrap" justify="space-between" flexShrink={0}>
         <HStack gap={3} wrap="wrap">
           {/* ✕ dentro del input (endElement): no recalcula el layout al aparecer y queda
