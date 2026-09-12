@@ -34,6 +34,14 @@ func NewUsageService(st *store.Store) *UsageService {
 // primera comparación que pide un negocio de comida.
 const RetencionDelAgregadoEnDias = 396
 
+// RetencionDeToquesEnDias: cuánto se conserva la rejilla, y es MÁS CORTO a propósito.
+//
+// El conteo por pantalla se mira año contra año —«¿se usa más el corte de caja que la temporada
+// pasada?»—; la rejilla solo sirve para decidir un rediseño, y una rejilla de hace un año describe
+// un layout que ya no existe. Conservarla más tiempo es conservar una referencia que miente, y es
+// además la mitad de datos que se guarda de lo más granular que esta feature produce.
+const RetencionDeToquesEnDias = 92
+
 // Registrar guarda un lote de eventos y devuelve cuántos se descartaron por no estar en la lista
 // blanca.
 //
@@ -79,6 +87,56 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 				Day: dia, Screen: a.Pantalla, Action: accion, Role: rolAGuardar, Hits: int64(a.Veces),
 			}); err != nil {
 				return fmt.Errorf("sumar el uso del día: %w", err)
+			}
+		}
+		return nil
+	})
+	return descartados, err
+}
+
+// RegistrarToques guarda un lote de toques por zona (spec 019) y devuelve cuántos se descartaron.
+//
+// Va aparte de `Registrar` y no como un tercer parámetro suyo porque escribe en OTRA tabla con otra
+// llave: una apertura se agrega por (pantalla, acción) y un toque por (pantalla, orientación,
+// celda). Lo que sí comparte, y es lo que importa, es la decisión de si el rol se puede guardar:
+// vive en `rolQueSePuedeGuardar` y no se copia.
+//
+// El precio de tenerlas separadas es una transacción y un conteo de plantilla de más por request.
+// Es un `count` indizado sobre `users` acotado por RLS, treinta veces por minuto y por usuario en
+// el peor caso que el limitador permite; a cambio, ninguna de las dos escrituras puede tumbar a la
+// otra — y las dos se pueden perder sin consecuencia, que es la promesa de toda esta familia.
+func (s *UsageService) RegistrarToques(ctx context.Context, rol domain.Role, lote []domain.Toque) (int, error) {
+	lote = domain.RecortarLoteDeToques(lote)
+	agregado := domain.PreAgregarToques(lote, rol)
+
+	validos := 0
+	for _, a := range agregado {
+		validos += a.Veces
+	}
+	descartados := len(lote) - validos
+	if len(agregado) == 0 {
+		return descartados, nil
+	}
+
+	rolAGuardar, err := s.rolQueSePuedeGuardar(ctx, rol)
+	if err != nil {
+		return descartados, err
+	}
+	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
+
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		for _, a := range agregado {
+			if err := q.UpsertTouchesDaily(ctx, db.UpsertTouchesDailyParams{
+				Day:         dia,
+				Screen:      a.Pantalla,
+				Orientation: a.Orientacion,
+				// La celda cabe en un `smallint` por construcción: `ToqueValido` ya la acotó a la
+				// rejilla antes de llegar aquí.
+				Cell: int16(a.Celda),
+				Role: rolAGuardar,
+				Hits: int64(a.Veces),
+			}); err != nil {
+				return fmt.Errorf("sumar los toques del día: %w", err)
 			}
 		}
 		return nil
