@@ -69,6 +69,9 @@ Cuatro reglas que este repo ya aprendió a la mala y que esta feature toca de ll
 ### Configuración y arranque
 
 - [ ] T007 [P] Agregar `PLATFORM_JWT_SECRET` y `PLATFORM_DATABASE_URL` a `server/internal/config/`,
+      y en `deploy/` seguir **el patrón del rol de la aplicación**: `PLATFORM_DB_PASSWORD` en el
+      `.env`, la URL armada por el compose, y la contraseña del rol fijada por el bootstrap. No
+      inventar un camino nuevo para la configuración.
       con su validación en `config.Validate`: débil o ausente **no arranca**, y **igual a
       `JWT_SECRET` tampoco** — dos secretos iguales son un secreto y el fallo sería silencioso.
 - [ ] T008 [P] Test de `config.Validate` en `server/internal/config/config_test.go` para los tres
@@ -199,6 +202,13 @@ revés, el primer import cruzado entra sin que nada lo detenga.
 ---
 
 ## Fase 7: Despliegue y cierre
+
+- [ ] T037b **(manual, fuera del repositorio)** Poner `PLATFORM_JWT_SECRET` y
+      `PLATFORM_DB_PASSWORD` en el `deploy/.env` de la VM de pruebas y en el de producción.
+
+      **Bloquea el despliegue y hay que hacerlo ANTES**: la API no arranca sin ellas, así que un
+      deploy con el código nuevo y sin las variables deja el servicio abajo. Los valores son
+      aleatorios y se generan; no son datos que alguien tenga que recordar.
 
 - [ ] T038 Agregar a `ci.yml` el build y el despliegue de la consola a sus dos proyectos de Pages,
       **sin tocar** los pasos del POS.
