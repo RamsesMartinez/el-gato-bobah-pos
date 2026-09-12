@@ -154,6 +154,13 @@ export function RejillaDeToques({ empresas }: { empresas: Empresa[] }) {
               ))}
             </ul>
             <p className="tenue">Según la pantalla del {FECHA_DEL_LAYOUT}.</p>
+            {/* Lo que el número NO incluye, y sin decirlo se lee al revés: medido en el ambiente de
+                pruebas, tocar un producto abre su hoja de modificadores, así que de una captura
+                completa la rejilla ve el toque que ABRE y ninguno de los de adentro. */}
+            <p className="tenue">
+              Cuenta el toque que abre una acción. Lo que se toca dentro de una hoja o un diálogo no
+              entra aquí.
+            </p>
 
             <h3>Por rol</h3>
             <p className="tenue">

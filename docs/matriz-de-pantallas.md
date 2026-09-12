@@ -504,6 +504,10 @@ cuenten, y que el volumen no crezca con los dedos.
   mismo `select` y avanza en cada `update`: sondeándola se reconstruye qué zonas se tocaron en el
   último minuto. No se puede quitar. Hoy no cruza una frontera real —la credencial de plataforma y
   la del dueño viven en el mismo archivo— pero el grant lo trae incluido.
+- **La rejilla cuenta el toque que ABRE una acción, no los de dentro.** Medido en pruebas: tocar un
+  producto abre su hoja de modificadores, así que de una captura completa entra el toque del
+  producto y ninguno de los de la hoja. No es un defecto —es el filtro de capas haciendo su
+  trabajo— pero cambia cómo se lee el número, y por eso se dice al lado de la rejilla.
 - **El umbral de arrastre mide el desplazamiento NETO**, no la excursión máxima: un desplazamiento
   que va y vuelve al mismo punto se cuenta como toque. Seguir el `pointermove` lo atraparía a cambio
   de meter trabajo en el camino del dedo, que es lo que esta feature tiene prohibido.

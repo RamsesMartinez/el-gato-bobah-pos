@@ -165,7 +165,7 @@ cuenten, y que el volumen no crezca con los dedos.
 - [X] T027b [US3] Extender `web/e2e/medir-no-estorba.spec.ts` para que **toque** la pantalla, no
       solo navegue: con el endpoint de medición colgado, capturar tocando rápido tiene que seguir
       respondiendo igual. Es SC-004, y hoy solo lo comprueba una persona leyendo el quickstart.
-- [ ] T028 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 3-bis** (que el
+- [X] T028 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 3-bis** (que el
       Picker y el PIN no cuenten) y el de la red muerta.
 - [X] T029 [P] Medir el paquete del POS contra T002 (no más de +5 kB) **y comprobar que
       `web/package.json` y `web/bun.lock` no cambiaron**, que es SC-007 medido en vez de prometido.
@@ -173,7 +173,7 @@ cuenten, y que el volumen no crezca con los dedos.
       cada test y **qué no**.
 - [X] T031 [P] Documentar en `AGENTS.md` dónde se agrega una pantalla instrumentada (son dos
       lugares, como en la 017) y que la leyenda se actualiza con cada rediseño.
-- [ ] T032 Gates completos y despliegue.
+- [X] T032 Gates completos y despliegue.
 
 ---
 

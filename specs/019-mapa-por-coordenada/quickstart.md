@@ -10,6 +10,16 @@
 **Falla si** está todo en cero: el lote no salió, o la pantalla no está en la lista instrumentada
 (revisa el contador de descartes en el log del servidor).
 
+> **Cierra lo que se abra entre toque y toque.** En este catálogo casi todo producto abre su hoja de
+> modificadores, y un toque dentro de una hoja **no se cuenta** — es una capa encima—. Sin cerrarla,
+> de cinco toques cuenta uno y parece un defecto. Corriendo esto contra el ambiente de pruebas el
+> 2026-09-12 pasó exactamente eso.
+
+**Medido el 2026-09-12 contra el ambiente de pruebas**: cinco toques en la celda 39 y uno en la 11
+subieron `{39: +6, 11: +1}` (el sexto de la 39 es el toque del paso 3-bis, que abre la hoja y sí
+cuenta); diez arrastres no subieron ninguna; seis toques dentro de la hoja, en la celda 42, no
+aparecen; y el único cuerpo enviado llevó las llaves `pantalla`, `celda` y `orientacion` y nada más.
+
 ## Que NO cuente los arrastres
 
 3. Desplaza la lista de productos arriba y abajo diez veces, sin tocar ningún botón.
@@ -55,12 +65,22 @@ select * from usage_touches_daily limit 5;
 
 **Se espera**: día, pantalla, orientación, celda, rol y conteo. **Ninguna columna de tiempo más fina
 que el día**, ninguna de usuario.
+
+Medido el 2026-09-12 sobre el ambiente de pruebas ya desplegado:
+`day:date | screen:text | orientation:text | cell:smallint | role:USER-DEFINED | hits:bigint | company_id:bigint`.
 **Falla si** hay un `created_at` o un `updated_at`: diría a qué hora estuvo activa esa zona, que es
 medio camino de vuelta.
 
 7. Con **un solo** empleado activo de un rol, genera toques con él y mira las filas.
 
-**Se espera**: `role` nulo.
+**Se espera**: depende de la plantilla, y esto lo cambió la auditoría —léelo antes de llamarlo
+defecto—:
+- Si hay **otro** rol también con una sola persona, la fila entra con `role` **nulo**: el balde de
+  lo suprimido tapa a dos.
+- Si ese es el **único** rol por debajo de dos personas, **no hay fila**. Con 1 admin, 2 gerentes,
+  3 cajeros y 2 meseros, `null` sería el dueño, y «sin corte» estaría mintiendo.
+
+**Falla si** aparece el nombre del rol en el primer caso, o si aparece una fila en el segundo.
 
 ## Que quepa
 
@@ -81,7 +101,10 @@ turno y cada uno deja muerta la versión vieja. Eso es lo que hay que medir, y e
 
 ## Que el POS no engordó
 
-9. `cd web && bun run build` — el chunk principal no crece más de **5 kB** sobre 1,134.90 kB.
+9. `cd web && bun run build` — el chunk principal no crece más de **5 kB** sobre 1,134.94 kB.
+
+Medido el 2026-09-12: **1,136.43 kB**, o sea **+1.49 kB**, y `web/package.json` y `web/bun.lock` sin
+un solo cambio (cero dependencias nuevas).
 
 ## Lo que este quickstart NO cubre
 
