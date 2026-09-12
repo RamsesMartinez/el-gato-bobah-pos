@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/auth"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
@@ -93,6 +94,55 @@ func RequireRole(roles ...domain.Role) func(http.Handler) http.Handler {
 					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
 				Error(w, domain.ErrForbidden)
 				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireOperador valida el Bearer con la firma de la CONSOLA y vuelve a leer al operador.
+//
+// Las dos mitades importan:
+//
+//   - La firma es de `PLATFORM_JWT_SECRET`, así que un token del negocio no se rechaza por un `if`:
+//     no se puede construir. Y al revés.
+//   - Se relee al operador en CADA request porque retirarle el acceso a alguien tiene que morder en
+//     el siguiente, no cuando caduque su token (FR-013). El costo es una lectura por llave primaria
+//     sobre una tabla de una o dos filas, en una superficie que usa una persona.
+//
+// Todo rechazo es 401, nunca 403: a quien no debe ver la consola no se le confirma que la ruta
+// exista.
+func RequireOperador(jm *auth.ManagerDePlataforma, svc *app.PlatformService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if jm == nil || svc == nil {
+				// Sin las dos piezas la consola no está configurada. Fail-closed: antes negar todo
+				// que servir con media barrera.
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if raw == "" || raw == r.Header.Get("Authorization") {
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			claims, err := jm.Parse(raw)
+			if err != nil {
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			op, err := svc.Operador(r.Context(), claims.OperadorID)
+			if err != nil {
+				Error(w, domain.ErrUnauthorized)
+				return
+			}
+			// El operador queda en la traza del request y NO en el contexto: hoy ningún handler
+			// de la consola necesita saber quién pregunta, y meterlo al ctx "por si acaso" es
+			// plomería muerta. Cuando haga falta —las acciones de soporte de la spec 018 van a
+			// querer firmar quién las hizo— se agrega ahí, que cuesta lo mismo.
+			if ti := traceFrom(r.Context()); ti != nil {
+				ti.userID = op.ID
+				ti.role = "plataforma"
 			}
 			next.ServeHTTP(w, r)
 		})

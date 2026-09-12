@@ -22,6 +22,14 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
 - **`server/`** — Go 1.27 · chi · pgx + **sqlc** · goose (migraciones **embebidas**) · Redis.
 - **`web/`** — React 19 · Vite · Chakra UI v3 · TanStack Query · Zustand. Bun, **nunca npm**.
 - **`deploy/`** — docker-compose + Caddy (TLS, headers de seguridad).
+- **`web/src/consola/`** — la **consola de plataforma** (spec 016): otro producto, para quien VENDE
+  el sistema. Otro build (`bun run build:consola` → `dist-consola/`), otro proyecto de Pages, otro
+  dominio (`staff.elgatobobah.com`, `staff-dev` en pruebas) y otro `tsconfig`. **No comparte código
+  con el POS**, y `eslint.config.js` lo impone en las dos direcciones: su peso no viaja a la tableta
+  y un error suyo no bloquea un deploy del mostrador. En el backend cuelga de `/api/v1/platform`,
+  firma con `PLATFORM_JWT_SECRET` y se conecta con el rol `gatobobah_platform`, que solo puede leer
+  `companies` y `platform_operators` — las barreras y sus pruebas están en
+  [docs/security-owasp.md](docs/security-owasp.md).
 - **`specs/`** — un directorio por feature (`NNN-slug/`), generado por spec-kit.
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
 - **`references/`** — exports reales de FUDO (fuente del importador de catálogo).
@@ -100,6 +108,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
+- **Consola de plataforma** (en `web/`): `bun run dev:consola` (puerto 3100, con proxy a la API),
+  `bun run typecheck:consola`, `bun run build:consola`. Van aparte de los del POS a propósito: un
+  typo en la consola no puede dejar varado un arreglo de cobro en tableta. El primer operador se
+  crea con `PLATFORM_OPERATOR_USERNAME=… PLATFORM_OPERATOR_PASSWORD=… ./api -reset-platform-operator`
+  (la tabla nace vacía: una credencial sembrada por una migración vive en este repositorio, que es
+  público).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
 - **Frontend siempre con bun** (`bun install`, `bun run`, `bun audit`). `web/package.json` bloquea npm (`preinstall: only-allow bun`). Nunca crees `package-lock.json`.

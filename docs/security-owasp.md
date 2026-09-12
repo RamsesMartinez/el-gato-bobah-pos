@@ -138,13 +138,53 @@ familia, rotación, y el flujo de reembolso. Job de CI `integration` con servici
 postgres:16-alpine (digest-pin). `go test ./...` normal no se ve afectado (skip sin
 `TEST_DATABASE_URL`).
 
+## Tercera ronda — lo que encontró la revisión adversarial de la spec 016 (2026-09-11)
+
+Cuatro defectos que **no los trajo esa feature**: los destapó auditarla. Tres viven en el login del
+negocio, que lleva meses en producción.
+
+| OWASP | Defecto | Escenario concreto | Arreglo | Test |
+|-------|---------|--------------------|---------|------|
+| A07 | **El lockout por cuenta se evadía cambiando mayúsculas** | `users.username` y `companies.slug` son **citext**: `admin` y `ADMIN` son el mismo usuario para autenticar, pero la llave del limitador se armaba con el cuerpo crudo. `admin` × `gatobobah` da 2⁵ × 2⁹ = **16,384 contadores** para la misma credencial, así que quien adivina desde varias IPs solo tenía que alternar mayúsculas. El bloqueo B1 dejaba de morder | `domain.NormalizarUsuario` antes de armar la llave, en los dos logins | `TestElLockoutDelLoginNoDistingueMayusculas` |
+| A04 | **El usuario del login no tenía cota en la frontera** | Un `username` de 900 KB (cabe en el `maxBody` de 1 MiB) viajaba a la llave del limitador —Redis de 128 MB con `allkeys-lru`: ~145 peticiones lo llenan y empiezan a desalojarse los contadores del POS, con el limitador **fallando abierto**— y al evento de seguridad, que rota a 1 MB con 10 respaldos: **once peticiones se llevan toda la bitácora** de intentos anteriores | `domain.UsuarioValido` (1–64, sin espacios ni `@`) en los dos handlers, rechazando con el **mismo 401 y el bcrypt de descarte** para no volver la forma del usuario en un oráculo | `TestUnUsuarioAbsurdoSeRechazaSinLlegarAlLimitador`, y su gemelo de la consola |
+| A09 | **La IP de la bitácora la elegía el cliente** | `clientIP` tomaba la **primera** entrada de `X-Forwarded-For`. `curl -H 'X-Forwarded-For: 8.8.8.8'` dejaba cada `login_failed` con la IP que el atacante quisiera. El throttle nunca se pudo evadir así (`rateKeyIP` ya usaba la última), pero en un subdominio público la bitácora es lo único que queda de un intento | `clientIP` toma la **última**, igual que `rateKeyIP`: Caddy agrega el peer real al final | `TestLaIPDelEventoNoLaEligeElCliente` |
+| A05 | **Un `APP_ENV` con typo apagaba las dos mitades del CORS** | `Validate` solo prohíbe `*` cuando el valor es exactamente `production`, y el router refleja cualquier Origin cuando es cualquier cosa **distinta** de `production`. Un `APP_ENV=prod` cae en el peor cuadrante de los dos: arranca con `*` **y** refleja | Lista cerrada: solo `development` o `production`; cualquier otra cosa no arranca | `TestValidate_RechazaUnAmbienteDesconocido` |
+
+Y uno que sí era de la 016: sin `PLATFORM_DB_PASSWORD` el compose arma una URL que *parece* válida
+(`postgres://gatobobah_platform:@postgres:…`), el bootstrap no le fija contraseña al rol porque no
+hay ninguna, y la API muere al conectar con un error que no nombra la variable. Ahora `Validate` la
+exige en producción.
+
+## La consola de plataforma (spec 016) — tres barreras, ninguna es un `if`
+
+Superficie nueva en `staff.elgatobobah.com`, para quien VENDE el sistema. Lo que la separa del
+negocio no es una comprobación en el código, y esa es toda la decisión:
+
+| OWASP | Barrera | Qué la impone | Test |
+|-------|---------|---------------|------|
+| A01 | Las credenciales no se cruzan | `platform_operators` es otra tabla, **sin `company_id`**: el login del negocio consulta `users` y ahí no está. | `consola_separada_test.go` |
+| A01/A02 | Los tokens no se cruzan | **Dos secretos de firma**. Un token de la consola no valida en el negocio porque la firma no coincide, no porque alguien lo revise. `config.Validate` no arranca si `PLATFORM_JWT_SECRET` falta, es débil o **es igual a `JWT_SECRET`**. | `auth/plataforma_test.go`, `config_test.go` |
+| A01 | La consola no alcanza la operación | Rol `gatobobah_platform` con `select` **solo** sobre `companies` y `platform_operators`. Un endpoint que por descuido consultara `orders` falla con `42501`. **Nunca `BYPASSRLS`**; la consola ve todas las empresas por una política de RLS acotada a `select`. | `consola_sin_permisos_test.go`, `migracion_consola_test.go` |
+| A05 | El rol correcto, comprobado al arrancar | `store.AssertPlatformGrants`: aborta si el rol es superusuario o si un `select` canario sobre `orders` **no** falla con `42501`. Cierra el `PLATFORM_DATABASE_URL` copiado de `DATABASE_URL`. | `migracion_consola_test.go` |
+| A07 | No se puede enumerar operadores | Usuario inexistente, contraseña equivocada y operador desactivado: misma respuesta y **misma latencia** (bcrypt de descarte, y el `is_active` se revisa DESPUÉS del hash). | `consola_separada_test.go` |
+| A01 | Desactivar corta el acceso ya | El middleware relee al operador en cada request; no se espera a que caduque el token. | `consola_separada_test.go` |
+| A05 | `CORS_ORIGIN` admite varios orígenes | Dos frentes (POS y consola) contra la misma API. Coincidencia **exacta** por origen, nunca por prefijo, y `*` sigue prohibido en producción **en cualquier entrada de la lista**. | `cors_test.go` |
+
+Lo que la consola **no** puede hacer hoy, y es deliberado: **escribir**. No tiene un solo `insert`,
+`update` ni `delete`. Las acciones de soporte (spec 018) exigen cambiar permisos a propósito.
+
 ## Checklist de lanzamiento en el VPS (operador)
 
 **Secretos y config (antes del primer arranque):**
 - [ ] `JWT_SECRET`: `openssl rand -base64 48` (≥32; la API rechaza débiles/placeholder).
 - [ ] `POSTGRES_PASSWORD`: `openssl rand -hex 24`.
 - [ ] `ADMIN_PASSWORD` y `ADMIN_PIN` reales (no `cambia-esto`, no `1234` — la API los rechaza).
-- [ ] **`CORS_ORIGIN=https://tu-dominio`** (exacto). Con `*` en producción la API NO arranca.
+- [ ] **`CORS_ORIGIN=https://tu-dominio,https://staff.tu-dominio`** (exactos, separados por coma).
+  Con `*` en producción —aunque sea una entrada más de la lista— la API NO arranca.
+- [ ] `PLATFORM_JWT_SECRET`: `openssl rand -base64 48`, **distinto de `JWT_SECRET`** (si son iguales
+  la API no arranca).
+- [ ] `PLATFORM_DB_PASSWORD`: `openssl rand -hex 24`. Sin él en producción la consola no tiene su rol
+  y la API no arranca.
 - [ ] `scripts/check-env.sh` pasa. `deploy/.env` no versionado (ya lo está) y `chmod 600`.
 
 **Hardening del host:**

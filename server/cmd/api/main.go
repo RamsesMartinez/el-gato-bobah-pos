@@ -50,6 +50,7 @@ func main() {
 	resetAdmin := flag.Bool("reset-admin", false, "actualiza/crea el admin con ADMIN_* y sale (sin borrar datos)")
 	createCompany := flag.Bool("create-company", false, "provisiona una empresa nueva (COMPANY_SLUG/NAME) + su admin (ADMIN_*) y sale")
 	resetPassword := flag.String("reset-password", "", "resetea la contraseña de username@slug (prompt interactivo, oculto) y sale")
+	resetOperador := flag.Bool("reset-platform-operator", false, "crea/actualiza al operador de la consola con PLATFORM_OPERATOR_* y sale")
 	flag.Parse()
 
 	config.LoadEnvFile() // carga deploy/.env de forma literal (soporta # $ espacios, sin expansión de shell)
@@ -92,6 +93,11 @@ func main() {
 		admin.Close()
 		os.Exit(1)
 	}
+	if err := ensurePlatformRolePassword(ctx, admin, cfg.PlatformDBPassword); err != nil {
+		slog.Error("platform role password", "error", err)
+		admin.Close()
+		os.Exit(1)
+	}
 
 	if *resetAdmin {
 		if err := resetAdminUser(ctx, admin, cfg.PinPepper); err != nil {
@@ -100,6 +106,17 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("admin actualizado")
+		admin.Close()
+		return
+	}
+
+	if *resetOperador {
+		if err := resetPlatformOperator(ctx, admin); err != nil {
+			slog.Error("reset platform operator", "error", err)
+			admin.Close()
+			os.Exit(1)
+		}
+		slog.Info("operador de plataforma actualizado")
 		admin.Close()
 		return
 	}
@@ -138,6 +155,27 @@ func main() {
 		}
 	}
 
+	// Tercer pool: la consola de plataforma (spec 016). Su rol solo puede LEER companies y las
+	// tablas de plataforma, y ese grant —no un `if` del código— es lo que la separa del negocio.
+	// En desarrollo cae al mismo rol con el que ya se sirve, así que el aislamiento se prueba en
+	// la suite de integración y no aquí.
+	plataforma, err := store.New(ctx, cfg.PlatformDatabaseURLOrDefault())
+	if err != nil {
+		slog.Error("platform store", "error", err)
+		os.Exit(1)
+	}
+	defer plataforma.Close()
+
+	// Solo cuando hay conexión propia: un PLATFORM_DATABASE_URL copiado de DATABASE_URL o de
+	// APP_DATABASE_URL serviría la consola con bypass total y la única señal sería una auditoría a
+	// mano. En producción Validate ya exige que exista.
+	if cfg.PlatformDatabaseURL != "" {
+		if err := store.AssertPlatformGrants(ctx, plataforma); err != nil {
+			slog.Error("la consola de plataforma no está acotada por sus grants", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	// Corre sobre `st` (rol de servicio, RLS-enforced en prod): el GetUserByUsername de abajo
 	// depende de RLS para acotar a la empresa correcta — hacerlo como owner (admin) vería
 	// usernames repetidos entre empresas y podría resetear el usuario equivocado.
@@ -151,6 +189,9 @@ func main() {
 	}
 
 	jm := auth.NewManager(cfg.JWTSecret, nil)
+	// La firma de la consola es OTRA, y config.Validate ya se negó a arrancar si fuera la misma.
+	// Con dos secretos, "usar el token de allá acá" no se rechaza: no se puede construir.
+	pjm := auth.NewManagerDePlataforma(cfg.PlatformJWTSecret, nil)
 	hibpClient := hibp.New(&http.Client{Timeout: 5 * time.Second})
 	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.MailFrom)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
@@ -177,6 +218,10 @@ func main() {
 		PlatformPrices: app.NewPlatformPricesService(st),
 		Sales:          app.NewSalesService(st, nil),
 		Settlements:    app.NewSettlementsService(st),
+		// La consola, sobre su propio pool: es la conexión la que le impide leer la operación de
+		// un cliente, no una decisión de este servicio.
+		PlatformJWT: pjm,
+		Platform:    app.NewPlatformService(plataforma, pjm, nil),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)
 
@@ -242,6 +287,19 @@ func ensureAppRolePassword(ctx context.Context, st *store.Store, pw string) erro
 	}
 	lit := "'" + strings.ReplaceAll(pw, "'", "''") + "'"
 	_, err := st.Pool.Exec(ctx, "alter role gatobobah_app with login password "+lit)
+	return err
+}
+
+// ensurePlatformRolePassword le fija el password al rol gatobobah_platform, igual que su gemela
+// hace con el rol de la aplicación: la migración 0068 crea el rol SIN password para no versionar
+// secretos, y sin password el rol no puede conectarse. No-op si no se definió PLATFORM_DB_PASSWORD
+// (dev, donde la consola se sirve con la misma conexión que el negocio).
+func ensurePlatformRolePassword(ctx context.Context, st *store.Store, pw string) error {
+	if pw == "" {
+		return nil
+	}
+	lit := "'" + strings.ReplaceAll(pw, "'", "''") + "'"
+	_, err := st.Pool.Exec(ctx, "alter role gatobobah_platform with login password "+lit)
 	return err
 }
 
@@ -439,6 +497,50 @@ func checkAdminSecrets(password, pin string) error {
 		return fmt.Errorf("ADMIN_PIN es demasiado débil (evita 1234/0000/secuencias); usa uno menos obvio en deploy/.env")
 	}
 	return nil
+}
+
+// resetPlatformOperator crea (o le cambia la contraseña a) el operador de la consola de
+// plataforma, leyendo PLATFORM_OPERATOR_USERNAME/PASSWORD/NAME del entorno.
+//
+// Es el ÚNICO camino para que nazca el primer operador, y por eso la tabla nace vacía: una
+// credencial sembrada por una migración vive en el repositorio —que es público— con su hash, para
+// siempre.
+//
+// Corre como DUEÑO de la base a propósito: el rol de la consola no puede escribir en su propia
+// tabla, y abrirle ese permiso por comodidad sería deshacer media feature.
+//
+// NO se copia la forma de -reset-admin: aquél filtra solo por username con un `ponytail` que
+// advierte que no está resuelto para multi-empresa. Aquí no hay empresa, el username es único
+// global y el problema no existe.
+func resetPlatformOperator(ctx context.Context, st *store.Store) error {
+	usuario := domain.NormalizarUsuario(os.Getenv("PLATFORM_OPERATOR_USERNAME"))
+	password := os.Getenv("PLATFORM_OPERATOR_PASSWORD")
+	if usuario == "" || password == "" {
+		return fmt.Errorf("define PLATFORM_OPERATOR_USERNAME/PLATFORM_OPERATOR_PASSWORD")
+	}
+	if !domain.UsuarioValido(usuario) {
+		return fmt.Errorf("PLATFORM_OPERATOR_USERNAME inválido: sin espacios, sin '@' y de 1 a 64 caracteres")
+	}
+	if config.IsPlaceholder(password) {
+		return fmt.Errorf("PLATFORM_OPERATOR_PASSWORD es un valor de ejemplo; define una contraseña real")
+	}
+	// La misma vara que para cualquier contraseña del producto: quien entra aquí ve el catálogo de
+	// clientes, así que no hay razón para pedirle menos que a un cajero.
+	if err := domain.ValidatePassword(password); err != nil {
+		return fmt.Errorf("PLATFORM_OPERATOR_PASSWORD: %w", err)
+	}
+	hash, err := auth.HashSecret(password)
+	if err != nil {
+		return err
+	}
+	nombre := os.Getenv("PLATFORM_OPERATOR_NAME")
+	if nombre == "" {
+		nombre = usuario
+	}
+	_, err = st.Q.UpsertPlatformOperator(ctx, db.UpsertPlatformOperatorParams{
+		Username: usuario, Name: nombre, PasswordHash: hash,
+	})
+	return err
 }
 
 // resetAdminUser actualiza la contraseña/PIN del admin (por ADMIN_USERNAME) desde el

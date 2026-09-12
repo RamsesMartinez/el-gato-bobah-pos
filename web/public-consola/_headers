@@ -1,0 +1,16 @@
+# Encabezados de la CONSOLA DE PLATAFORMA (spec 016). Archivo propio y no una copia del otro: el
+# del POS lista lo que el POS necesita —manifest, service worker, íconos— y esta consola no es una
+# PWA ni se instala en ninguna tableta.
+#
+# Sin `manifest.json` y sin `sw.js` a propósito: con el `public/` del POS, la consola quedaría
+# instalable con el nombre y el logo del restaurante, en la computadora de quien VENDE el sistema.
+#
+# El host de la API lo reescribe CI para el ambiente de pruebas, igual que en el del POS: aquí va
+# el de producción, porque el CSP de producción lista solo lo que producción necesita.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.elgatobobah.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow

@@ -28,6 +28,10 @@ const refreshCookie = "refresh_token"
 const (
 	authFailMax    = 10
 	authFailWindow = 5 * time.Minute
+	// authIPMax: peticiones por minuto y por IP al grupo de autenticación (el del negocio y el de
+	// la consola). Es el tope que acota el FLOOD —adivinación a ciegas, DoS por CPU de bcrypt—,
+	// distinto del lockout por cuenta de arriba, que acota los intentos contra UNA credencial.
+	authIPMax = 60
 	// docExtractMax: extracciones de documento por hora y por usuario. Cada una es una llamada
 	// pagada a un modelo, así que el tope protege el presupuesto, no la seguridad: un local
 	// captura unas cuantas compras al día, y 60/hora deja margen de sobra para reintentar una
@@ -73,6 +77,11 @@ type Deps struct {
 	PlatformPrices *app.PlatformPricesService
 	Sales          *app.SalesService
 	Settlements    *app.SettlementsService
+	// PlatformJWT y Platform son la consola de plataforma (spec 016). Van juntas o no van: el
+	// router no monta el grupo /platform sin las dos, y montarlo a medias respondería 500 donde
+	// debe no existir nada.
+	PlatformJWT *auth.ManagerDePlataforma
+	Platform    *app.PlatformService
 }
 
 type Handlers struct {
@@ -97,6 +106,8 @@ type Handlers struct {
 	platformPrices *app.PlatformPricesService
 	sales          *app.SalesService
 	settlements    *app.SettlementsService
+	platformJWT    *auth.ManagerDePlataforma
+	platform       *app.PlatformService
 	// docExtract limita el endpoint de extracción: cada llamada cuesta dinero en la API del
 	// modelo, así que un cliente con un bug (o malicioso) no puede vaciar el presupuesto.
 	docExtract *rateLimiter
@@ -117,12 +128,14 @@ func NewHandlers(d Deps) *Handlers {
 		platformPrices: d.PlatformPrices,
 		sales:          d.Sales,
 		settlements:    d.Settlements,
+		platformJWT:    d.PlatformJWT,
+		platform:       d.Platform,
 		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.
 		authFails: newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-fails:", authFailMax, authFailWindow),
-		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", 60, time.Minute),
+		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", authIPMax, time.Minute),
 		platformPriceWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-price:",
 			platformPriceMax, platformPriceWindow),
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
@@ -195,6 +208,27 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			body.Username, body.Slug = nick, slug
 		}
 	}
+	// NORMALIZAR ANTES DE ARMAR LA LLAVE, o el lockout no sirve.
+	//
+	// `users.username` y `companies.slug` son citext: "admin" y "ADMIN" son el mismo usuario para
+	// autenticar, pero eran llaves distintas para el limitador — 2^5 × 2^9 = 16,384 contadores
+	// separados para `admin@gatobobah`, y quien adivina contraseñas desde varias IPs solo tenía que
+	// alternar mayúsculas. Lo encontró una revisión adversarial, no producción.
+	body.Username = domain.NormalizarUsuario(body.Username)
+	body.Slug = domain.NormalizarUsuario(body.Slug)
+
+	// Y la cota, antes de que esas cadenas toquen el limitador o el log: un usuario de 900 KB llena
+	// el Redis de 128 MB —desalojando los contadores del POS, con el limitador fallando ABIERTO— y
+	// se lleva la bitácora de intentos al rotar el archivo. Se rechaza como una credencial
+	// equivocada cualquiera, con el bcrypt de descarte corrido, para no volver la FORMA del usuario
+	// en un oráculo de cuáles existen.
+	if !domain.UsuarioValido(body.Username) || !domain.UsuarioValido(body.Slug) {
+		auth.CheckDummySecret(body.Password)
+		logging.SecurityEvent(r.Context(), "login_failed", "slug", "(inválido)", "username", "(inválido)", "ip", clientIP(r))
+		Error(w, fmt.Errorf("%w: revisa el usuario, la empresa y la contraseña", domain.ErrInvalidCredentials))
+		return
+	}
+
 	// Lockout por cuenta = empresa+usuario: bloquea antes de tocar bcrypt tras demasiados fallos.
 	key := "login:" + body.Slug + ":" + body.Username
 	if h.authFails.blocked(r.Context(), key) {

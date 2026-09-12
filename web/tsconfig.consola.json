@@ -1,0 +1,12 @@
+{
+  // El typecheck de la CONSOLA, aparte del POS (spec 016, US4).
+  //
+  // Separarlos no es orden por orden: `bun run build` del POS es `tsc --noEmit && vite build`, y es
+  // de lo que dependen los despliegues del mostrador. Con un solo proyecto, un typo en la consola
+  // dejaría varado un arreglo urgente de cobro en tableta.
+  "extends": "./tsconfig.json",
+  "include": ["src/consola"],
+  // El `exclude` se REDEFINE: `extends` hereda el del padre —que excluye justo esta carpeta— y el
+  // proyecto se quedaría sin archivos ("No inputs were found").
+  "exclude": []
+}
