@@ -47,7 +47,8 @@ con 1 GB de RAM y 18 GB de disco libres · paquete del POS en 1,134.90 kB.
 |---|---|---|
 | **Distinguir tamaños de tableta** | Guardar solo la celda, sin decir de qué forma era la pantalla | Se guarda la **orientación**. Una proporción más fina es una columna nueva con backfill nulo |
 | **Saber qué control se toca** | Guardar el elemento tocado hoy «por si acaso» — y con él, texto de la pantalla | **No se guarda**. Esa pregunta ya la responde la 017 con las acciones con nombre, sin coordenadas |
-| **Una rejilla más fina** | Nada: la celda se calcula en el cliente y la tabla guarda un número | Cambiar la resolución es cambiar una constante; los datos viejos quedan con la suya y el mapa lo dice |
+| **Una rejilla más GRUESA** | Nada | Se recalcula fusionando celdas: 12×7 sale de 24×14 sumando de a cuatro. Reversible |
+| **Una rejilla más FINA** | Ya está cerrada, y hay que decirlo | **No se puede recalcular**: no existe el toque fino del cual derivarla — es la decisión central de esta feature. Cambiarla obliga a declarar el corte y perder la comparación con lo de antes |
 | **El recorrido del dedo** | — | **Cerrada a propósito**: exige secuencia, y la secuencia es tiempo (FR-003). Está en *out of scope* del spec |
 
 **La puerta que esta feature cierra, y es deliberado**: no se va a poder saber *cuándo* se tocó algo,
@@ -83,6 +84,22 @@ Lo único que se agrega del lado de la tableta es un escuchador de `pointerup` q
 cada desplazamiento de la lista de productos dejaría un rastro y el mapa mediría scroll en vez de
 intención.
 
+Tres detalles que la revisión de arquitectura encontró y que no son detalles:
+
+- **El punto de bajada se guarda por `pointerId`**, en un mapa y no en una variable. En el mostrador
+  hay dos manos —una sostiene comida, la otra toca— y dos contactos se solapan: con un solo estado
+  compartido, el `down` de un dedo se compara con el `up` del otro y salen arrastres falsos.
+- **Los toques dentro de una hoja, un diálogo o el bloqueo NO se cuentan.** Ni `Picker`, ni
+  `CobrarSheet`, ni `LockScreen` cambian de ruta: son capas encima de la misma pantalla, así que sus
+  toques se atribuirían a la de abajo. El caso que más contamina es el **teclado del PIN**: dejaría
+  una zona caliente en el centro que dentro de seis meses alguien va a leer como «un control muy
+  usado». Se filtra por el ancestro `[role="dialog"]` —que las hojas de Chakra ya llevan— y a
+  `LockScreen` se le pone ese rol, que además es lo correcto: es un modal que bloquea todo.
+- **La lista blanca también corre en la tableta.** El escuchador vive en la raíz y ve toda la
+  aplicación; sin filtrar en el cliente, encolaría toques de pantallas no instrumentadas durante
+  todo el turno para que el servidor los tire — wifi de restaurante gastado en nada. Reusa
+  `pantallaDe()` de la 017.
+
 ### 3. Una tabla de conteos, no de toques — y esta vez se sabe por qué
 
 Gemela de `usage_daily`: `(empresa, día, pantalla, orientación, celda, rol) → veces`.
@@ -95,6 +112,19 @@ aperturas.
 
 Con conteos, **las filas las acota la rejilla**: 84 celdas × 5 cortes de rol × las pantallas
 instrumentadas. Mil toques en la misma zona suben un contador y no crean nada.
+
+## La leyenda: 84 números sin referencia no son un mapa
+
+La rejilla se pinta sola —FR-009 prohíbe la captura— y eso deja una pregunta abierta que la revisión
+nombró: dentro de seis meses, o con otra persona mirando, ¿qué es la fila 0?
+
+Va una **leyenda de texto, corta y fechada**, al lado de la rejilla: «fila 0: categorías · columnas
+9-11: la cuenta · fila 6: barra inferior», con la fecha del layout al que corresponde. Texto y nunca
+una imagen, así que no choca con FR-009.
+
+Y va **fechada a propósito**: el día que la pantalla se rediseñe, la leyenda vieja describe un layout
+que ya no existe. Con la fecha a la vista, quien mire datos de hace tres meses sabe que la
+referencia es de entonces; sin ella, creería que sigue vigente.
 
 ## Estructura
 
@@ -109,6 +139,7 @@ server/
 web/
 ├── src/api/uso.ts                          # +medirToque(pantalla, celda, orientación)
 ├── src/app/MedidorDeToques.tsx             # el escuchador: pointerdown/up → celda
+├── src/consola/zonas-del-pos.ts            # la leyenda fechada de qué es cada fila y columna
 └── src/consola/RejillaDeToques.tsx         # la rejilla, CSS propio
 ```
 

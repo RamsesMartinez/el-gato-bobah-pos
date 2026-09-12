@@ -34,8 +34,11 @@ tocó?»* no. Y acota las filas: 84 celdas por pantalla y por corte de rol, pase
 **Decisión**: cuenta el `pointerup` cuyo `pointerdown` estuvo a **menos de 10 px**; lo demás es
 arrastre y se descarta.
 
-**Rationale**: el POS tiene pantallas con 1,978 px de contenido en 600 visibles (medido), así que se
-desplaza todo el día. Contar los arrastres llenaría el mapa del rastro del scroll en vez de las
+**Rationale**: el POS se desplaza todo el día, aunque no todas sus pantallas igual: `/caja` se
+desplaza entera (1,978 px de contenido en 600 visibles, medido), y `/pos` —la primera que se va a
+instrumentar— tiene el desplazamiento **dentro** del área de productos, con el encabezado, las
+pestañas y la cuenta fijos. La diferencia importa al leer el primer mapa: en `/pos`, las zonas fijas
+significan siempre lo mismo y solo la franja central cambia de contenido. Contar los arrastres llenaría el mapa del rastro del scroll en vez de las
 intenciones, y las zonas más «calientes» serían por donde la gente arrastra, no por donde decide.
 
 Diez píxeles es el umbral que usan los navegadores para distinguir un tap de un drag; menos convierte
@@ -80,8 +83,13 @@ una tabla con 84 celdas por pantalla es pagar por algo que nadie va a abrir.
 dentro de las que tienen conteo.
 
 **Rationale**: FR-009. Una captura de la pantalla de un cliente lleva nombres, pedidos e importes; no
-puede salir del local. Y quien mira el mapa conoce el POS de memoria: la forma de la rejilla más la
-posición ya dicen de qué zona se habla.
+puede salir del local.
+
+Que «quien mira conoce el POS de memoria» **no basta como única mitigación**, y la revisión lo marcó:
+el día que mire otra persona, o que alguien abra datos de hace tres meses con el layout ya cambiado,
+la rejilla son 84 números sin referencia. Por eso va una **leyenda de texto fechada** al lado —«fila
+0: categorías · columnas 9-11: la cuenta»—, que es texto y no choca con FR-009, y cuya fecha avisa
+cuando describe un layout que ya no existe.
 
 | Alternativa | Por qué no |
 |---|---|

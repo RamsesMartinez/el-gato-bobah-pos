@@ -35,6 +35,16 @@ zonas «calientes» van a ser por donde la gente arrastra.
 **Falla si** algo se traba: la medición está en el camino del dedo, que es lo único que esta feature
 no puede hacer.
 
+## Que las capas de encima no se cuenten
+
+3-bis. Abre el Picker de una lista, toca tres opciones, ciérralo. Bloquea la pantalla y teclea el PIN
+para volver.
+
+**Se espera**: ninguna celda sube por esos toques.
+**Falla si** suben: esos toques se están atribuyendo a la pantalla de abajo, y el teclado del PIN
+—que siempre cae en el mismo sitio— va a dejar una zona caliente que alguien va a leer como un
+control muy usado.
+
 ## Que no se pueda reconstruir a la persona ni el momento
 
 6. Contra la base:
@@ -54,14 +64,20 @@ medio camino de vuelta.
 
 ## Que quepa
 
-8. Siembra un trimestre al tope y mide:
+8. Siembra un trimestre al tope **con el patrón real de escritura** —muchos `update` sobre las
+   mismas filas del día, no un `insert` masivo con el total ya sumado— y mide:
 
 ```sql
 select pg_size_pretty(pg_total_relation_size('usage_touches_daily'));
 ```
 
-**Se espera**: por debajo de 10 MB por empresa. Es un tope estructural —84 celdas × 5 cortes × las
-pantallas instrumentadas— así que si lo pasa, algo está creando filas que no debería.
+**Se espera**: por debajo de **20 MB** por empresa. Es un tope estructural —84 celdas × 2
+orientaciones × 5 cortes de rol × las pantallas instrumentadas— así que si lo pasa, algo está
+creando filas que no debería.
+
+**Un `insert` masivo no sirve como prueba**: cada fila real recibe cientos de `update` a lo largo del
+turno y cada uno deja muerta la versión vieja. Eso es lo que hay que medir, y es la razón del
+`fillfactor` de la tabla.
 
 ## Que el POS no engordó
 
