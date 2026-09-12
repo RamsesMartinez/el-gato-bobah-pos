@@ -57,6 +57,13 @@ interface Props {
   // hacer: la barra solo refresca; el POS, cuando el pedido queda saldado, lo relee para imprimir
   // el ticket con el PAGADO que dice el servidor.
   onCobrado: (res: CobroHecho, orderId: number) => void;
+  // Desde qué pantalla se está cobrando, para la medición de uso (spec 017).
+  //
+  // Obligatoria y sin default: esta hoja se monta desde el POS y desde el tablero de pedidos, y con
+  // un literal fijo aquí todos los cobros del tablero se contarían como del POS — `pedidos/cobrar`
+  // quedaría en cero permanente, que se lee como «nadie cobra desde ahí» en vez de «está mal
+  // medido». Un default la habría dejado igual de rota y en silencio.
+  pantalla: 'pos' | 'pedidos';
 }
 
 // Traduce el error del servidor a lo que necesita leer quien está cobrando.
@@ -104,7 +111,7 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
 // Lo que se elige aquí es CUÁNTO se cobra ahora; el resto de la hoja es el mismo cobro simple de
 // siempre. No hay un "modo dividido" con su propio estado que reconstruir tras una recarga: el
 // estado entero es el faltante, y ese vive en el servidor.
-export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onClose, onCobrado }: Props) {
+export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onClose, onCobrado, pantalla }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
   const [metodo, setMetodo] = useState<number | null>(null);
@@ -247,7 +254,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
       // Se mide DESPUÉS de que el servidor cobró, dentro del onSuccess y nunca antes de la
       // mutación: medir primero convertiría un cobro en algo que espera a la medición (spec 017,
       // US3). Si esta línea desapareciera, lo único que se pierde es el conteo.
-      medirAccion('pos', 'cobrar');
+      medirAccion(pantalla, 'cobrar');
       setRebote(null);
       if (res.yaEstaba) {
         // El cobro ya estaba registrado: esta llamada no movió dinero, y decirlo evita que el

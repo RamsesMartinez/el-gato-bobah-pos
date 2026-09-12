@@ -21,22 +21,18 @@ import (
 // fino. `Recortar` es el único que necesita al dueño, y abre su propia conexión para eso.
 type UsageService struct {
 	store *store.Store
+	now   func() time.Time
 }
 
 func NewUsageService(st *store.Store) *UsageService {
-	return &UsageService{store: st}
+	return &UsageService{store: st, now: time.Now}
 }
 
-// retenciónEnDías: cuánto vive cada cosa.
+// RetencionDelAgregadoEnDias: cuánto se conserva el conteo.
 //
-// El grano fino dura poco porque su trabajo es permitir recontar si mañana se cuenta distinto, y
-// darle dónde caer a las coordenadas del futuro. El agregado dura trece meses —y no doce— para
-// poder comparar un mes contra el mismo mes del año pasado, que es la primera comparación que pide
-// un negocio de comida.
-const (
-	RetencionDeEventosEnDias   = 14
-	RetencionDelAgregadoEnDias = 396 // 13 meses
-)
+// Trece meses —y no doce— para poder comparar un mes contra el mismo mes del año pasado, que es la
+// primera comparación que pide un negocio de comida.
+const RetencionDelAgregadoEnDias = 396
 
 // Registrar guarda un lote de eventos y devuelve cuántos se descartaron por no estar en la lista
 // blanca.
@@ -47,7 +43,7 @@ const (
 // El rol lo pone quien llama desde el TOKEN, nunca el cuerpo del request.
 func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []domain.EventoDeUso) (int, error) {
 	lote = domain.RecortarLoteDeUso(lote)
-	agregado := domain.PreAgregarUso(lote)
+	agregado := domain.PreAgregarUso(lote, rol)
 
 	validos := 0
 	for _, a := range agregado {
@@ -67,23 +63,20 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 		return descartados, err
 	}
 
+	// EL DÍA DEL NEGOCIO, no el de UTC: con el servidor en UTC la medianoche cae a las 18:00 en
+	// México, así que todo lo de la tarde-noche —donde más se mueve un lugar de comida— se contaría
+	// mañana. Es el mismo defecto que 0038 arregló para la venta, y aquí habría dado un mapa que
+	// miente de noche y acierta de día.
+	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
+
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		for _, a := range agregado {
 			var accion *string
 			if a.Accion != "" {
 				accion = &a.Accion
 			}
-			// El grano fino guarda UNO POR TOQUE, no uno por combinación: el día que lleve
-			// coordenadas, un punto por dedo es justo lo que hace que sirva.
-			for i := 0; i < a.Veces; i++ {
-				if err := q.InsertUsageEvent(ctx, db.InsertUsageEventParams{
-					Screen: a.Pantalla, Action: accion, Role: rolAGuardar,
-				}); err != nil {
-					return fmt.Errorf("guardar evento de uso: %w", err)
-				}
-			}
 			if err := q.UpsertUsageDaily(ctx, db.UpsertUsageDailyParams{
-				Screen: a.Pantalla, Action: accion, Role: rolAGuardar, Hits: int64(a.Veces),
+				Day: dia, Screen: a.Pantalla, Action: accion, Role: rolAGuardar, Hits: int64(a.Veces),
 			}); err != nil {
 				return fmt.Errorf("sumar el uso del día: %w", err)
 			}
@@ -91,6 +84,17 @@ func (s *UsageService) Registrar(ctx context.Context, rol domain.Role, lote []do
 		return nil
 	})
 	return descartados, err
+}
+
+// location resuelve la zona del negocio del request. Cae al default del producto si no se puede
+// leer: una medición no puede fallar por eso, y el `BusinessDate` de una zona equivocada sigue
+// siendo mejor que el de UTC.
+func (s *UsageService) location(ctx context.Context) *time.Location {
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	return domain.LoadBusinessLocation(tz)
 }
 
 // rolQueSePuedeGuardar devuelve el rol, o nil si guardarlo identificaría a una persona.
@@ -205,7 +209,15 @@ func (s *UsageService) Mapa(ctx context.Context, desde, hasta time.Time, empresa
 			}
 			p.PorRol = append(p.PorRol, UsoPorRol{Rol: r, Veces: veces})
 		}
-		sort.Slice(p.PorRol, func(i, j int) bool { return p.PorRol[i].Veces > p.PorRol[j].Veces })
+		// Con desempate por nombre: `porRol` se llena recorriendo un map de Go, cuyo orden es
+		// aleatorio a propósito, así que dos empates pintarían distinto en dos cargas seguidas. Una
+		// tabla que se reordena sola es una tabla que nadie puede comparar de un día para otro.
+		sort.Slice(p.PorRol, func(i, j int) bool {
+			if p.PorRol[i].Veces != p.PorRol[j].Veces {
+				return p.PorRol[i].Veces > p.PorRol[j].Veces
+			}
+			return nombreDeRol(p.PorRol[i].Rol) < nombreDeRol(p.PorRol[j].Rol)
+		})
 		sort.Slice(p.Acciones, func(i, j int) bool { return p.Acciones[i].Veces > p.Acciones[j].Veces })
 		pantallas = append(pantallas, *p)
 	}
@@ -245,16 +257,12 @@ func totalDe(p PantallaDeUso) int64 {
 // Borra un día a la vez en la práctica (se llama a diario), así que no necesita lotes: lo que
 // elimina son las filas de un solo día, no un año de golpe.
 func (s *UsageService) Recortar(ctx context.Context) error {
-	eventos, err := s.store.Q.DeleteOldUsageEvents(ctx, RetencionDeEventosEnDias)
+	filas, err := s.store.Q.DeleteOldUsageDaily(ctx, RetencionDelAgregadoEnDias)
 	if err != nil {
-		return fmt.Errorf("recortar eventos de uso: %w", err)
+		return fmt.Errorf("recortar el uso: %w", err)
 	}
-	agregado, err := s.store.Q.DeleteOldUsageDaily(ctx, RetencionDelAgregadoEnDias)
-	if err != nil {
-		return fmt.Errorf("recortar el agregado de uso: %w", err)
-	}
-	if eventos > 0 || agregado > 0 {
-		slog.Info("uso recortado", "eventos", eventos, "agregado", agregado)
+	if filas > 0 {
+		slog.Info("uso recortado", "filas", filas)
 	}
 	return nil
 }
@@ -270,9 +278,21 @@ func (s *UsageService) Recortar(ctx context.Context) error {
 //
 // Un fallo se registra y NO detiene el ciclo: que la base esté ocupada un día no puede dejar el
 // recorte apagado para siempre.
-func (s *UsageService) RecortarPeriodicamente(ctx context.Context, cada time.Duration) {
+//
+// La conexión de DUEÑO se abre y se cierra EN CADA PASADA, no se sostiene entre una y otra: es un
+// asa que salta RLS viviendo en el mismo proceso que los handlers, y mantenerla abierta un día
+// entero para correr un `delete` es superficie regalada. `abrir` la provee quien llama.
+func RecortarPeriodicamente(ctx context.Context, cada time.Duration, abrir func(context.Context) (*store.Store, error)) {
 	recortar := func() {
-		if err := s.Recortar(ctx); err != nil && ctx.Err() == nil {
+		st, err := abrir(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Error("sin conexión para recortar el uso", "error", err)
+			}
+			return
+		}
+		defer st.Close()
+		if err := NewUsageService(st).Recortar(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("no se pudo recortar el uso", "error", err)
 		}
 	}
@@ -290,4 +310,13 @@ func (s *UsageService) RecortarPeriodicamente(ctx context.Context, cada time.Dur
 			recortar()
 		}
 	}
+}
+
+// nombreDeRol ordena el "sin corte" al final, que es donde se lee mejor: primero quiénes fueron y
+// al último lo que no se puede atribuir.
+func nombreDeRol(r *string) string {
+	if r == nil {
+		return "~sin corte"
+	}
+	return *r
 }

@@ -623,6 +623,7 @@ export function POSPage() {
 
       <CobrarSheet
         key={sesionDeCobro}
+        pantalla="pos"
         order={cobrando}
         crearPedido={() => mandarAsync({ deliveryFee: envio.paraElServidor })}
         onPedidoCreado={setCreadoAlCobrar}

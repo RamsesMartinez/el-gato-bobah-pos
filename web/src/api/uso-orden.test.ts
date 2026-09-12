@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 // haría nunca (habría que simular la red lenta en cada pantalla).
 const ARCHIVOS = [
   'src/shared/CobrarSheet.tsx',
+  'src/shared/ProductEditDialog.tsx',
   'src/features/backoffice/CashPage.tsx',
   'src/app/MedidorDeUso.tsx',
   'src/api/uso.ts',
@@ -35,7 +36,9 @@ describe('medir nunca se espera', () => {
 
   it('la medición del cobro ocurre dentro del onSuccess, no antes de la mutación', () => {
     const src = readFileSync('src/shared/CobrarSheet.tsx', 'utf8');
-    const enSuccess = src.indexOf("medirAccion('pos', 'cobrar')");
+    // `pantalla` es una prop desde que la hoja se monta también desde el tablero de pedidos: el
+    // literal 'pos' aquí contaba los cobros del tablero como del POS.
+    const enSuccess = src.indexOf("medirAccion(pantalla, 'cobrar')");
     const success = src.indexOf('onSuccess:');
     expect(enSuccess, 'no se encontró la medición del cobro').toBeGreaterThan(-1);
     // Está después del `onSuccess:` del mismo bloque: primero se cobra, después se cuenta.

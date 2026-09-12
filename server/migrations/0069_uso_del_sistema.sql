@@ -16,48 +16,39 @@
 set local lock_timeout = '3s';
 
 -- ---------------------------------------------------------------------------------------------
--- 1. El grano fino.
+-- UNA SOLA TABLA: el conteo. No hay tabla de eventos, y eso es una decisión, no un olvido.
 -- ---------------------------------------------------------------------------------------------
-
-create table usage_events (
-  id          bigint generated always as identity primary key,
-  -- LA FECHA LA PONE EL SERVIDOR. El reloj de la tableta no manda, igual que en la venta (spec
-  -- 008): una tableta con la fecha corrida escribiría eventos en un día que no ocurrió.
-  occurred_at timestamptz not null default now(),
-  -- De la lista blanca de `domain`. Lo que no está en la lista no llega hasta aquí.
-  screen      text not null,
-  -- NULO = fue una apertura de pantalla. Las aperturas y las acciones viven en la misma tabla
-  -- porque son el mismo hecho: alguien hizo algo en una pantalla.
-  action      text,
-  -- NULO = sin corte. Cuando el rol tiene menos de dos usuarios activos en esa empresa, decir
-  -- "el gerente hizo 40 acciones" es decir su nombre, así que no se escribe (FR-009). La supresión
-  -- ocurre al ESCRIBIR y por eso no se puede deshacer leyendo.
-  role        user_role,
-  -- LA PUERTA DE FR-013, hoy siempre nula. El día que se midan coordenadas del toque entran aquí
-  -- como {"x":…,"y":…} sin migrar una sola fila.
-  --
-  -- Y la cierra del lado de afuera el handler: el `detail` que venga en el cuerpo del POST se
-  -- DESCARTA sin mirarlo. Mientras el cliente pueda escribir aquí, esta puerta es también un campo
-  -- libre por donde entra lo que FR-003 prohíbe — y un jsonb con datos de más no avisa.
-  detail      jsonb,
-  company_id  bigint not null default current_setting('app.company_id', true)::bigint
-              references companies(id) on delete cascade,
-
-  -- La lista blanca de Go es la barrera buena, pero estas dos columnas reciben lo que venga en el
-  -- cuerpo. Un control que solo vive en Go se rodea por otra ruta; uno en la columna, no.
-  constraint usage_events_nombres_acotados check (
-    char_length(screen) <= 40 and (action is null or char_length(action) <= 60))
-);
-
--- Empieza por company_id: RLS agrega ese predicado a toda consulta del rol de la app, y un índice
--- que arranque por la fecha se queda descartando filas de otras empresas dentro del scan (ver 0042).
-create index usage_events_company_fecha on usage_events (company_id, occurred_at);
-
--- ---------------------------------------------------------------------------------------------
--- 2. El agregado, que es lo único que lee la consola.
--- ---------------------------------------------------------------------------------------------
+--
+-- El plan tenía dos tablas: ésta y una de grano fino, un renglón por toque, con `detail jsonb`
+-- vacío para las coordenadas del futuro. La auditoría adversarial la tumbó por dos caminos
+-- independientes, y los dos son del tipo que no se ve mirando:
+--
+-- 1. SE PODÍA DESHACER EL ANONIMATO CON EL RELOJ. Un renglón por toque con marca de microsegundos
+--    se cruza con `register_sessions.closed_by` o con `orders.opened_by`: el evento "sin corte" de
+--    las 22:03:11.412 es de quien cerró el turno a las 22:03:11.6. Y como los eventos de un turno
+--    son un flujo contiguo de la misma tableta, esa sesión etiqueta TODO lo que cayó en medio. El
+--    identificador no era el rol: era el reloj. Suprimir el rol no protegía de nada.
+-- 2. EL VOLUMEN NO TENÍA TECHO REAL. Con el limitador intacto, una cuenta puede mandar 2.16
+--    millones de eventos al día: medido, 298 MB diarios, 4 GB en los 14 días de retención — 167×
+--    el techo declarado. Un bucle en una tableta llenaba el disco del VPS y Postgres se detenía,
+--    o sea: el mostrador dejaba de cobrar por una feature de analítica.
+--
+-- Con solo el conteo, las dos desaparecen por construcción: no hay instante que cruzar, y el
+-- número de FILAS está acotado por la lista blanca (pantallas × acciones × roles), sin importar
+-- cuántos eventos lleguen. Lo que crece es un contador, no la tabla.
+--
+-- Y la puerta de FR-013 sigue abierta al mismo costo: el día que se midan coordenadas, nace una
+-- tabla nueva para ellas. Crear una tabla no migra nada — que es literalmente lo que el requisito
+-- pide. Lo que se pierde es poder recontar distinto los últimos 14 días, y no vale una tabla que
+-- hoy nadie lee y que solo el recorte toca.
 
 create table usage_daily (
+  -- EL DÍA DEL NEGOCIO, calculado en Go con la zona de la empresa, no `current_date`.
+  --
+  -- Con el servidor en UTC la medianoche cae a las 18:00 en México: todo lo que pasa de las 6pm en
+  -- adelante —la franja donde más se mueve un lugar de comida— se contaría en el día SIGUIENTE.
+  -- Es el mismo defecto que 0038 ya corrigió para la venta (ver domain.BusinessDate); repetirlo
+  -- aquí habría dado un mapa que miente de noche y acierta de día.
   day        date not null,
   screen     text not null,
   action     text,
@@ -80,14 +71,14 @@ create table usage_daily (
   constraint usage_daily_hits_no_negativo check (hits >= 0)
 );
 
--- ---------------------------------------------------------------------------------------------
--- 3. Quién puede qué.
--- ---------------------------------------------------------------------------------------------
+-- El único índice de la tabla es el de la llave única, y empieza por `company_id`: le sirve al
+-- filtro de UNA empresa y no al de TODAS, que es el default del mapa. Sin éste, pedir "todas" con
+-- 13 meses encima recorre la tabla entera.
+create index usage_daily_dia on usage_daily (day);
 
-alter table usage_events enable row level security;
-create policy tenant_isolation on usage_events
-  using (company_id = current_setting('app.company_id', true)::bigint)
-  with check (company_id = current_setting('app.company_id', true)::bigint);
+-- ---------------------------------------------------------------------------------------------
+-- Quién puede qué.
+-- ---------------------------------------------------------------------------------------------
 
 alter table usage_daily enable row level security;
 create policy tenant_isolation on usage_daily
@@ -99,19 +90,15 @@ create policy tenant_isolation on usage_daily
 -- pasan y `make start` pasa —dev sirve como owner, sin RLS ni grants— y en producción el primer
 -- evento devuelve 42501.
 --
--- El POS solo ESCRIBE el grano fino: no lo lee nadie desde la aplicación.
-grant insert on usage_events to gatobobah_app;
-
--- Y en el agregado necesita las tres: `insert` y `update` por el upsert, y `select` porque Postgres
+-- El POS necesita las tres: `insert` y `update` por el upsert, y `select` porque Postgres
 -- lo exige para leer `hits` dentro del `set`. No es acceso de lectura para una pantalla del
 -- negocio: no existe tal pantalla, el mapa es de la consola.
 grant select, insert, update on usage_daily to gatobobah_app;
 
 -- LA CONSOLA DE PLATAFORMA: solo el agregado, y solo para leer.
 --
--- Ningún grant sobre `usage_events`, a propósito y para siempre: la consola mira conteos, no
--- hechos. El día que el grano fino lleve coordenadas del toque, seguirá sin alcanzarlo salvo que
--- alguien lo decida a propósito y lo escriba en una migración.
+-- Conteos, que es todo lo que hay. El día que nazca una tabla de coordenadas, alcanzarla será una
+-- decisión que alguien tenga que escribir en una migración, no algo que herede.
 grant select on usage_daily to gatobobah_platform;
 
 -- Y su política, por lo mismo que la de `companies` en la 0068: el grant SOLO no alcanza, porque
@@ -126,8 +113,7 @@ create policy plataforma_lee_todo_el_uso on usage_daily
 
 -- +goose Down
 
--- Revertir PIERDE los conteos, y no se recuperan volviendo a aplicar la migración: el grano fino
--- también se va, así que no hay de dónde reconstruirlos. Lo que no se pierde es nada del negocio —
--- esta feature no toca un solo pedido ni un solo peso.
+-- Revertir PIERDE los conteos y no se recuperan volviendo a aplicar la migración: no hay grano fino
+-- del cual reconstruirlos, a propósito. Lo que no se pierde es nada del negocio — esta feature no
+-- toca un solo pedido ni un solo peso.
 drop table if exists usage_daily;
-drop table if exists usage_events;

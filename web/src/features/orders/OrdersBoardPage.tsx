@@ -232,7 +232,7 @@ export function OrdersBoardPage() {
         />
       )}
 
-      <CobrarSheet key={cobrando?.id} order={cobrando}
+      <CobrarSheet key={cobrando?.id} order={cobrando} pantalla="pedidos"
         onClose={() => setCobrando(null)} onCobrado={() => invalidateAll()} />
     </Box>
   );

@@ -18,27 +18,38 @@ import (
 //
 // No es que la aplicación no lo escriba: es que no hay columna. Lo que no existe no se llena por
 // descuido, no se llena en un data-fix y no aparece en un `select *` dentro de seis meses.
-func TestElEventoDeUsoNoPuedeGuardarAQuienLoHizo(t *testing.T) {
+func TestElUsoNoTieneDondeGuardarAQuienLoHizo(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	for _, tabla := range []string{"usage_events", "usage_daily"} {
-		var existe bool
-		if err := st.Pool.QueryRow(ctx,
-			`select exists (select 1 from information_schema.tables where table_name = $1)`, tabla,
-		).Scan(&existe); err != nil {
-			t.Fatalf("consultar %s: %v", tabla, err)
-		}
-		if !existe {
-			t.Fatalf("no existe %s: la feature no tiene dónde escribir", tabla)
-		}
+	var existe bool
+	if err := st.Pool.QueryRow(ctx,
+		`select exists (select 1 from information_schema.tables where table_name = 'usage_daily')`,
+	).Scan(&existe); err != nil {
+		t.Fatalf("consultar usage_daily: %v", err)
+	}
+	if !existe {
+		t.Fatal("no existe usage_daily: la feature no tiene dónde escribir")
+	}
+
+	// Y NO existe una tabla de eventos, que es una decisión y no un olvido: un renglón por toque
+	// con su marca de tiempo se cruza con register_sessions y deshace el anonimato que esta feature
+	// promete (ver el porqué en la migración 0069).
+	var granoFino bool
+	if err := st.Pool.QueryRow(ctx,
+		`select exists (select 1 from information_schema.tables where table_name = 'usage_events')`,
+	).Scan(&granoFino); err != nil {
+		t.Fatalf("consultar usage_events: %v", err)
+	}
+	if granoFino {
+		t.Fatal("volvió la tabla de eventos: un renglón por toque con marca de tiempo se cruza con register_sessions.closed_by y con orders.opened_by, y el rol suprimido deja de proteger a nadie")
 	}
 
 	// Cualquier columna que huela a persona. La lista es de nombres porque lo que se busca es que
 	// nadie la agregue "de paso" al implementar algo más.
 	filas, err := st.Pool.Query(ctx,
 		`select table_name, column_name from information_schema.columns
-		  where table_name in ('usage_events','usage_daily')
+		  where table_name = 'usage_daily' 
 		    and column_name in ('user_id','usuario_id','created_by','opened_by','username','user_name','device_id','station_id')`)
 	if err != nil {
 		t.Fatalf("consultar columnas: %v", err)
@@ -62,7 +73,7 @@ func TestElEventoDeUsoNoPuedeGuardarAQuienLoHizo(t *testing.T) {
 		select count(*)
 		  from information_schema.table_constraints tc
 		  join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-		 where tc.table_name in ('usage_events','usage_daily')
+		 where tc.table_name = 'usage_daily' 
 		   and tc.constraint_type = 'FOREIGN KEY'
 		   and ccu.table_name = 'users'`).Scan(&fks); err != nil {
 		t.Fatalf("consultar FKs: %v", err)
@@ -120,17 +131,17 @@ func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
 
 	enorme := strings.Repeat("a", 5000)
 	if _, err := st.Pool.Exec(ctx,
-		`insert into usage_events (screen) values ($1)`, enorme); err == nil {
+		`insert into usage_daily (day, screen, hits) values (current_date, $1, 1)`, enorme); err == nil {
 		t.Fatal("el esquema aceptó una pantalla de 5 KB: el check de longitud no está")
 	}
 	if _, err := st.Pool.Exec(ctx,
-		`insert into usage_events (screen, action) values ('pos', $1)`, enorme); err == nil {
+		`insert into usage_daily (day, screen, action, hits) values (current_date, 'pos', $1, 1)`, enorme); err == nil {
 		t.Fatal("el esquema aceptó una acción de 5 KB")
 	}
 	// Y lo normal sí entra, o el test de arriba pasaría con la tabla rota.
 	if _, err := st.Pool.Exec(ctx,
-		`insert into usage_events (screen, action) values ('pos', 'cobrar')`); err != nil {
-		t.Fatalf("un evento normal no entró: %v", err)
+		`insert into usage_daily (day, screen, action, hits) values (current_date, 'pos', 'cobrar', 1)`); err != nil {
+		t.Fatalf("un conteo normal no entró: %v", err)
 	}
 }
 
@@ -140,7 +151,7 @@ func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
 // `app.company_id` y `tenant_isolation` la deja viendo CERO filas — el mapa saldría vacío sin que
 // nada fallara, que es la peor forma de fallar. Y sin el grant ausente sobre `usage_events`, la
 // consola estaría leyendo hechos en vez de conteos.
-func TestLaConsolaVeElAgregadoDeTodasYNoElGranoFino(t *testing.T) {
+func TestLaConsolaVeElAgregadoDeTodasLasEmpresas(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)
@@ -164,16 +175,6 @@ func TestLaConsolaVeElAgregadoDeTodasYNoElGranoFino(t *testing.T) {
 		t.Fatalf("la consola ve %d filas de 2: sin la política ve cero y el mapa sale vacío sin que nada falle", vistasPorLaConsola)
 	}
 
-	// Y el grano fino le está negado.
-	var n int
-	err := plataforma.Pool.QueryRow(ctx, `select count(*) from usage_events`).Scan(&n)
-	if err == nil {
-		t.Fatalf("la consola leyó usage_events (%d filas): mira conteos, no hechos — y mañana esos hechos llevan coordenadas", n)
-	}
-	if !esPermisoDenegado(err) {
-		t.Fatalf("usage_events no falló por permiso denegado: %v", err)
-	}
-
 	// El negocio sigue encerrado en lo suyo: abrir la política de plataforma no puede aflojar eso.
 	app := appRoleStore(t)
 	var vistasPorElNegocio int
@@ -193,20 +194,19 @@ func TestRevertirElUsoYVolverAAplicarlo(t *testing.T) {
 	const antesDelUso = 68
 	migrarAbajoHasta(t, st.Pool, antesDelUso)
 
-	for _, tabla := range []string{"usage_events", "usage_daily"} {
-		var existe bool
-		if err := st.Pool.QueryRow(ctx,
-			`select exists (select 1 from information_schema.tables where table_name = $1)`, tabla,
-		).Scan(&existe); err != nil {
-			t.Fatalf("consultar %s tras revertir: %v", tabla, err)
-		}
-		if existe {
-			t.Fatalf("%s sobrevivió al Down: revertir dejó el esquema a medias", tabla)
-		}
+	var sigue bool
+	if err := st.Pool.QueryRow(ctx,
+		`select exists (select 1 from information_schema.tables where table_name = 'usage_daily')`,
+	).Scan(&sigue); err != nil {
+		t.Fatalf("consultar tras revertir: %v", err)
+	}
+	if sigue {
+		t.Fatal("usage_daily sobrevivió al Down: revertir dejó el esquema a medias")
 	}
 
 	migrarArriba(t, st.Pool)
-	if _, err := st.Pool.Exec(ctx, `insert into usage_events (screen) values ('pos')`); err != nil {
-		t.Fatalf("tras reaplicar, la tabla no acepta un evento: %v", err)
+	if _, err := st.Pool.Exec(ctx,
+		`insert into usage_daily (day, screen, hits) values (current_date, 'pos', 1)`); err != nil {
+		t.Fatalf("tras reaplicar, la tabla no acepta un conteo: %v", err)
 	}
 }

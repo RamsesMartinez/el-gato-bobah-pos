@@ -28,12 +28,15 @@ func (h *Handlers) RegistrarUso(w http.ResponseWriter, r *http.Request) {
 
 	// El tope por usuario va ANTES de leer el cuerpo: un bucle en el front no puede costar ni una
 	// deserialización. Y muerde en silencio, como todo lo demás aquí.
-	key := "uso:" + itoa64(u.ID)
-	if h.usoIngesta.blocked(r.Context(), key) {
+	//
+	// `recordAndOver` y no `blocked`+`record`: los dos pasos dejan un hueco por donde 300 peticiones
+	// simultáneas con el mismo token pasan todas —leen el contador antes de que aterrice el primer
+	// incremento— y el tope promete un número que no cumple. Además falla CERRADO si Redis está
+	// caído: perder mediciones no le cuesta nada a nadie, quedarse sin tope sí.
+	if h.usoIngesta.recordAndOver(r.Context(), "uso:"+itoa64(u.ID), usoMax) {
 		sinContenido()
 		return
 	}
-	h.usoIngesta.record(r.Context(), key)
 
 	var body struct {
 		Eventos []domain.EventoDeUso `json:"eventos"`

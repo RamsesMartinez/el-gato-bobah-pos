@@ -34,27 +34,20 @@ func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
 	}
 
 	// `Registrar` recibe un ROL, no un usuario: la identidad no puede llegar ni por error, porque
-	// no hay parámetro por donde. Lo que sí se comprueba aquí es la otra mitad, la que sí podría
-	// romperse en runtime: que `detail` —la puerta de las coordenadas del futuro— quede VACÍA.
-	//
-	// Que ninguna de las dos tablas tenga columna de persona lo prueba
-	// TestElEventoDeUsoNoPuedeGuardarAQuienLoHizo, contra el esquema.
+	// no hay parámetro por donde. Y no queda NINGÚN instante por fila con el que cruzar: lo que se
+	// guarda es un conteo por día, no un renglón por toque — ver el porqué en la migración 0069.
 	_ = uno
-	var conDetalle int
-	if err := st.Pool.QueryRow(ctx,
-		`select count(*) from usage_events where detail is not null`).Scan(&conDetalle); err != nil {
-		t.Fatalf("revisar detail: %v", err)
-	}
-	if conDetalle != 0 {
-		t.Fatalf("%d eventos traen `detail`: esa columna existe para las coordenadas del futuro, y llena desde el cuerpo es el hueco por donde entra lo que FR-003 prohíbe", conDetalle)
-	}
 
-	var eventos int
-	if err := st.Pool.QueryRow(ctx, `select count(*) from usage_events`).Scan(&eventos); err != nil {
-		t.Fatalf("contar eventos: %v", err)
+	var filas, suma int
+	if err := st.Pool.QueryRow(ctx,
+		`select count(*), coalesce(sum(hits),0) from usage_daily`).Scan(&filas, &suma); err != nil {
+		t.Fatalf("leer el agregado: %v", err)
 	}
-	if eventos != 2 {
-		t.Fatalf("se guardaron %d eventos de 2: el test de arriba pasaría en verde con la tabla vacía", eventos)
+	if suma != 2 {
+		t.Fatalf("se contaron %d de 2 eventos: el test de arriba pasaría en verde con la tabla vacía", suma)
+	}
+	if filas != 2 {
+		t.Fatalf("quedaron %d combinaciones y son 2 (una apertura y un cobro)", filas)
 	}
 }
 
@@ -99,11 +92,9 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 	}
 }
 
-// El lote pre-agregado NO pierde eventos: el grano fino guarda uno por toque.
-//
-// Si el pre-agregado se colara al grano fino, el día que se midan coordenadas habría un punto por
-// combinación en vez de uno por dedo, y la puerta de FR-013 quedaría cerrada sin que nadie lo note.
-func TestElGranoFinoGuardaUnoPorEvento(t *testing.T) {
+// El lote pre-agregado NO pierde eventos: tres toques son tres, aunque se escriban en un solo
+// `update`.
+func TestElLotePreAgregadoNoPierdeEventos(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -115,18 +106,16 @@ func TestElGranoFinoGuardaUnoPorEvento(t *testing.T) {
 		t.Fatalf("registrar: %v", err)
 	}
 
-	var eventos, hits int
-	if err := st.Pool.QueryRow(ctx, `select count(*) from usage_events`).Scan(&eventos); err != nil {
-		t.Fatalf("contar eventos: %v", err)
+	var filas, hits int
+	if err := st.Pool.QueryRow(ctx,
+		`select count(*), coalesce(sum(hits),0) from usage_daily`).Scan(&filas, &hits); err != nil {
+		t.Fatalf("leer el agregado: %v", err)
 	}
-	if err := st.Pool.QueryRow(ctx, `select coalesce(sum(hits),0) from usage_daily`).Scan(&hits); err != nil {
-		t.Fatalf("sumar el agregado: %v", err)
-	}
-	if eventos != 3 {
-		t.Fatalf("el grano fino guardó %d filas de 3 toques: el pre-agregado se coló donde no debe", eventos)
+	if filas != 1 {
+		t.Fatalf("quedaron %d filas y los tres toques son la misma combinación", filas)
 	}
 	if hits != 3 {
-		t.Fatalf("el agregado suma %d de 3", hits)
+		t.Fatalf("el agregado suma %d de 3 toques: se perdieron por el camino", hits)
 	}
 }
 
@@ -149,11 +138,11 @@ func TestLoDesconocidoSeDescartaYSeCuenta(t *testing.T) {
 	if descartados != 2 {
 		t.Fatalf("descartó %d de 2: sin ese número, una versión del front que manda nombres viejos deja de medir y nadie se entera", descartados)
 	}
-	var eventos int
-	if err := st.Pool.QueryRow(ctx, `select count(*) from usage_events`).Scan(&eventos); err != nil {
+	var hits int
+	if err := st.Pool.QueryRow(ctx, `select coalesce(sum(hits),0) from usage_daily`).Scan(&hits); err != nil {
 		t.Fatalf("contar: %v", err)
 	}
-	if eventos != 1 {
-		t.Fatalf("entraron %d eventos y solo uno era válido", eventos)
+	if hits != 1 {
+		t.Fatalf("se contaron %d eventos y solo uno era válido", hits)
 	}
 }

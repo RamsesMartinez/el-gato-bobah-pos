@@ -115,3 +115,33 @@ describe('el registrador de uso', () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 });
+
+describe('la cola y el cambio de sesión', () => {
+  it('cambiar de sesión TIRA lo encolado, no lo manda con el token nuevo', () => {
+    const fetchStub = vi.fn(respuestaOk);
+    vi.stubGlobal('fetch', fetchStub);
+
+    // Un cajero deja tres eventos encolados y se va.
+    medirPantalla('pos');
+    medirPantalla('caja');
+    medirPantalla('pedidos');
+    expect(_soloParaPruebas.tamanoDeLaCola()).toBe(3);
+
+    // Entra otro operador en la misma tableta.
+    useSessionStore.setState({ token: 'tok-de-otro' });
+    expect(_soloParaPruebas.tamanoDeLaCola()).toBe(0);
+
+    vaciarCola();
+    // Si se hubieran mandado, el servidor los habría contado con la empresa y el rol del SEGUNDO:
+    // saca las dos cosas del token, no del cuerpo.
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it('cerrar sesión también la tira', () => {
+    const fetchStub = vi.fn(respuestaOk);
+    vi.stubGlobal('fetch', fetchStub);
+    medirPantalla('pos');
+    useSessionStore.setState({ token: null });
+    expect(_soloParaPruebas.tamanoDeLaCola()).toBe(0);
+  });
+});

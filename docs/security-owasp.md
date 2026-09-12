@@ -177,11 +177,15 @@ Lo que la consola **no** puede hacer hoy, y es deliberado: **escribir**. No tien
 
 | OWASP | Decisión | Por qué |
 |---|---|---|
-| A01 | El evento **no tiene columna de persona** ni FK a `users` | No es que la aplicación no la escriba: no hay dónde. Lo que no existe no se llena por descuido ni aparece en un `select *` dentro de seis meses |
+| A01 | **No se guarda un renglón por evento**, solo un conteo por día | La primera versión sí lo guardaba, con marca de microsegundos. Una auditoría adversarial mostró que eso deshace el anonimato entero: ese instante se cruza con `register_sessions.closed_by` o `orders.opened_by` y etiqueta al empleado — y como los eventos de un turno son un flujo contiguo, una sola coincidencia etiqueta todo lo que cayó en medio. **El identificador no era el rol: era el reloj** |
+| A01 | El conteo **no tiene columna de persona** ni FK a `users` | No es que la aplicación no la escriba: no hay dónde |
 | A01 | Un rol con **menos de dos** usuarios activos se guarda como «sin corte» | Decir «el gerente hizo 40 acciones» en una empresa con un gerente es decir su nombre. Se decide al ESCRIBIR: leyendo no se podría —la consola no tiene permiso sobre `users`— y escrito ya no se deshace |
 | A03 | Lista blanca de pantallas y acciones en `domain` | Sin ella, cuántos valores distintos hay en la base lo decide el cliente |
 | A04 | Tope de 50 eventos por lote y limitador por usuario | Un bucle en el front no puede costar una escritura por vuelta. El limitador lleva test propio: como el endpoint responde 204 pase lo que pase, roto es indistinguible de ausente |
-| A04 | El `detail` del cuerpo se **descarta sin mirarlo** | Esa columna existe para las coordenadas del futuro; llena desde el cliente es un campo libre por donde entra lo que la feature promete no guardar |
+| A04 | Ninguna columna libre que el cliente pueda llenar | Al quitar el grano fino se fue también el `jsonb` donde un cuerpo malicioso podía escribir. Las coordenadas del futuro nacerán en su propia tabla, con su propia decisión |
+| A04 | El tope se cuenta con el **valor de retorno del `INCR`**, no con un `GET` previo | Los dos pasos dejaban una carrera: 300 peticiones simultáneas leían el contador antes del primer incremento y pasaban todas |
+| A04 | Y con Redis caído, la ingesta **falla cerrada** | Al revés que el login, donde fallar abierto existe para no dejar a nadie fuera. Aquí no hay a quién dejar fuera: perder mediciones cuesta cero, quedarse sin tope cuesta el disco del VPS |
+| A03 | Un rol no puede reportar pantallas que su rol no abre | La lista blanca acota el conjunto de valores, no su coherencia: sin esto un mesero llena el mapa de aperturas de la pantalla de administración |
 | A09 | Un `usage_descartado` en el log con el primer nombre desconocido | Es el único testigo de que una versión del front dejó de medir: el mapa mostraría menos, indistinguible de «se usó menos» |
 | A01 | La consola lee `usage_daily` y **nunca** `usage_events` | Mira conteos, no hechos — y mañana esos hechos llevan coordenadas |
 

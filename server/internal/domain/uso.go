@@ -68,13 +68,16 @@ var pantallasMedibles = map[string]struct{}{
 //
 // Que sea una lista corta y no «cualquier clic» es lo que mantiene el volumen acotado y el mapa
 // legible: lo que se busca es saber qué cuesta trabajo, no registrar cada toque.
+//
+// SOLO LO QUE ALGUIEN DISPARA HOY. La primera versión de esta lista tenía doce acciones y el front
+// enganchaba cuatro: las otras ocho habrían salido en el mapa como ceros permanentes, que se leen
+// como «nadie la usa» y no como «nadie la midió» — el mismo modo de falla que el comentario de
+// arriba describe para las pantallas. Agregar una es una línea aquí y una llamada allá, juntas.
 var accionesMedibles = map[string]map[string]struct{}{
-	"pos":        {"cobrar": {}, "agregar-producto": {}, "cancelar-pedido": {}},
-	"pedidos":    {"entregar": {}, "cobrar": {}},
-	"caja":       {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
-	"catalogo":   {"editar-producto": {}, "crear-producto": {}},
-	"inventario": {"ajustar-stock": {}},
-	"gastos":     {"registrar-gasto": {}},
+	"pos":      {"cobrar": {}},
+	"pedidos":  {"cobrar": {}},
+	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
+	"catalogo": {"editar-producto": {}},
 }
 
 // maxNombreDePantalla y maxNombreDeAccion son el espejo de los `check` de la migración 0069.
@@ -106,6 +109,41 @@ func EventoDeUsoValido(pantalla, accion string) bool {
 	return ok
 }
 
+// rolesPorPantalla es el ESPEJO de lo que el router deja abrir a cada rol.
+//
+// Sin esto, la lista blanca acota el conjunto de valores pero no su coherencia: un mesero con su
+// propio token puede reportar treinta aperturas por minuto de la pantalla de usuarios —que un GET
+// suyo recibiría con 403— y el mapa diría que es la más usada del sistema. No es una fuga de datos:
+// es una feature de medición que se puede llenar de mentiras desde adentro, y lo que mide deja de
+// servir para decidir.
+//
+// Es una COPIA de lo que `RequireRole` impone en el router y hay que moverla con él. El test
+// `TestTodaPantallaMedibleTieneRoles` impide la mitad barata de la desincronización —una pantalla
+// nueva sin roles— y el resto vive en esta nota.
+var rolesPorPantalla = map[string][]Role{
+	"pos":        {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+	"pedidos":    {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+	"cuenta":     {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
+	"caja":       {RoleAdmin, RoleGerente, RoleCajero},
+	"ventas":     {RoleAdmin, RoleGerente},
+	"reportes":   {RoleAdmin, RoleGerente},
+	"gastos":     {RoleAdmin, RoleGerente},
+	"inventario": {RoleAdmin, RoleGerente},
+	"catalogo":   {RoleAdmin, RoleGerente},
+	"usuarios":   {RoleAdmin},
+	"negocio":    {RoleAdmin},
+	"impresion":  {RoleAdmin, RoleGerente},
+}
+
+// PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.
+func PantallaPermitidaParaRol(pantalla string, rol Role) bool {
+	roles, ok := rolesPorPantalla[pantalla]
+	if !ok {
+		return false
+	}
+	return rol.In(roles...)
+}
+
 // RolMedible dice si ese rol es uno de los que el sistema tiene.
 //
 // Son CUATRO y no tres: `mesero` existe desde la primera migración, y el spec lo había olvidado.
@@ -121,8 +159,10 @@ func RolMedible(r Role) bool { return r.Valid() }
 // con decenas de miles de filas vivas, autovacuum tarda días en disparar—. Agrupar convierte hasta
 // 50 escrituras físicas en una.
 //
-// Descarta lo que no está en la lista blanca: lo que no se puede contar no llega a la base.
-func PreAgregarUso(lote []EventoDeUso) []UsoAgregado {
+// Descarta lo que no está en la lista blanca Y lo que ese rol no podría haber abierto: un evento
+// incoherente con quien lo manda es una mentira, y una medición llena de mentiras no sirve para
+// decidir, que es lo único para lo que existe.
+func PreAgregarUso(lote []EventoDeUso, rol Role) []UsoAgregado {
 	if len(lote) == 0 {
 		return nil
 	}
@@ -132,7 +172,7 @@ func PreAgregarUso(lote []EventoDeUso) []UsoAgregado {
 	orden := make([]llave, 0, len(lote))
 	veces := make(map[llave]int, len(lote))
 	for _, e := range lote {
-		if !EventoDeUsoValido(e.Pantalla, e.Accion) {
+		if !EventoDeUsoValido(e.Pantalla, e.Accion) || !PantallaPermitidaParaRol(e.Pantalla, rol) {
 			continue
 		}
 		k := llave{e.Pantalla, e.Accion}
