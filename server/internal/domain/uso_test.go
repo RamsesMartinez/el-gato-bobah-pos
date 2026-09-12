@@ -91,20 +91,24 @@ func TestElLoteDeUsoSeRecorta(t *testing.T) {
 // la pantalla aunque la columna no exista.
 //
 // Se decide con un número —cuántos usuarios activos tiene ese rol— y no con la base, para que sea
-// puro y para que la decisión ocurra al ESCRIBIR, que es donde no se puede deshacer.
 func TestElCorteDeRolSeApagaCuandoIdentifica(t *testing.T) {
+	// Con una sola persona en el rol, el corte no se da. Es el mismo borde de siempre, ahora
+	// expresado sobre la plantilla entera: ver TestElBaldeSinCorteNoPuedeSerUnaSolaPersona para el
+	// caso que esta versión de la regla agregó.
+	plantilla := map[Role]int{RoleCajero: 3, RoleMesero: 3}
 	casos := []struct {
-		activos   int
-		permitido bool
+		activos int
+		quiere  DecisionDeCorte
 	}{
-		{0, false}, // nadie: no hay corte que dar
-		{1, false}, // el caso que importa
-		{2, true},
-		{9, true},
+		{0, NoGuardar}, // nadie: no hay corte que dar, y el balde no tapa a nadie
+		{1, NoGuardar}, // el caso que importa
+		{2, GuardarConRol},
+		{9, GuardarConRol},
 	}
 	for _, c := range casos {
-		if got := CorteDeRolPermitido(c.activos); got != c.permitido {
-			t.Errorf("CorteDeRolPermitido(%d) = %v, quiere %v", c.activos, got, c.permitido)
+		plantilla[RoleGerente] = c.activos
+		if got := CortarPorRol(plantilla, RoleGerente); got != c.quiere {
+			t.Errorf("con %d gerentes activos = %v, quiere %v", c.activos, got, c.quiere)
 		}
 	}
 }
@@ -156,5 +160,69 @@ func TestUnRolNoReportaPantallasQueNoPuedeAbrir(t *testing.T) {
 	// El admin sí ve las de administración.
 	if n := len(PreAgregarUso(mentira, RoleAdmin)); n != 2 {
 		t.Fatalf("el admin reportó %d de 2 pantallas suyas", n)
+	}
+}
+
+// EL BALDE «SIN CORTE» PUEDE SER UNA SOLA PERSONA, y ése es el caso que la regla vieja no veía.
+//
+// La supresión se decidía rol por rol y de forma independiente: cada rol bajo el umbral caía en el
+// mismo `role is null`. Cuando **exactamente un rol** queda por debajo, ese balde ES esa persona —y
+// la consola lo pinta con la etiqueta «sin corte», que promete justo lo contrario—.
+//
+// El escenario es la plantilla típica del cliente de hoy, no una hipótesis.
+func TestElBaldeSinCorteNoPuedeSerUnaSolaPersona(t *testing.T) {
+	casos := []struct {
+		nombre  string
+		activos map[Role]int
+		rol     Role
+		quiere  DecisionDeCorte
+	}{
+		{
+			// 1 admin · 2 gerentes · 3 cajeros · 2 meseros: el único suprimido es el admin, así que
+			// `sin corte` es el dueño y su rejilla completa queda etiquetada con su puesto.
+			nombre:  "un solo rol bajo el umbral: no se guarda nada",
+			activos: map[Role]int{RoleAdmin: 1, RoleGerente: 2, RoleCajero: 3, RoleMesero: 2},
+			rol:     RoleAdmin,
+			quiere:  NoGuardar,
+		},
+		{
+			nombre:  "y los roles que sí se cortan siguen contándose",
+			activos: map[Role]int{RoleAdmin: 1, RoleGerente: 2, RoleCajero: 3, RoleMesero: 2},
+			rol:     RoleCajero,
+			quiere:  GuardarConRol,
+		},
+		{
+			// Dos roles de una persona cada uno: el balde tiene dos, y ya no señala a nadie.
+			nombre:  "dos roles bajo el umbral: el balde tapa a los dos",
+			activos: map[Role]int{RoleAdmin: 1, RoleMesero: 1, RoleCajero: 3},
+			rol:     RoleAdmin,
+			quiere:  GuardarSinCorte,
+		},
+		{
+			nombre:  "un local de una sola persona no se mide",
+			activos: map[Role]int{RoleAdmin: 1},
+			rol:     RoleAdmin,
+			quiere:  NoGuardar,
+		},
+		{
+			// Un rol sin nadie activo no aporta al balde: no hay a quién tapar con él.
+			nombre:  "los roles vacíos no cuentan como personas en el balde",
+			activos: map[Role]int{RoleAdmin: 1, RoleGerente: 0, RoleMesero: 0, RoleCajero: 4},
+			rol:     RoleAdmin,
+			quiere:  NoGuardar,
+		},
+		{
+			nombre:  "un rol que no existe en la plantilla no se guarda",
+			activos: map[Role]int{RoleCajero: 5},
+			rol:     Role("cocina"),
+			quiere:  NoGuardar,
+		},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			if got := CortarPorRol(c.activos, c.rol); got != c.quiere {
+				t.Fatalf("CortarPorRol(%v, %q) = %v, quiere %v", c.activos, c.rol, got, c.quiere)
+			}
+		})
 	}
 }

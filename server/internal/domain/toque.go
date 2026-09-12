@@ -11,6 +11,11 @@ import (
 // diff. Y ojo con la dirección —hacia una rejilla más gruesa se recalcula fusionando celdas; hacia
 // una más fina NO se puede, porque el toque fino no se guarda en ningún lado. Esa es la decisión
 // central de esta feature, no un efecto secundario.
+//
+// «Más gruesa se recalcula» tiene letra chica, y conviene leerla antes de prometerlo: 12 columnas
+// se fusionan exacto a 6, 4, 3 o 2, pero **7 filas es primo**. En el eje vertical la única rejilla
+// más gruesa que sale de una fusión limpia es la de UNA franja; cualquier otra —12×4, por ejemplo—
+// hay que aproximarla, y aproximar aquí es inventar dónde cayó el dedo.
 
 // ColumnasDeLaRejilla y FilasDeLaRejilla, en horizontal. En vertical se invierten.
 //
@@ -35,9 +40,13 @@ const (
 // cuerpo del request, en el log de un proxy y en la memoria del servidor aunque después se
 // redondeara. Redondear en el origen es lo único que hace que el punto exacto no exista.
 type Toque struct {
-	Pantalla    string
-	Celda       int
-	Orientacion string
+	// Las etiquetas son explícitas aunque Go empataría los nombres sin ellas: sin etiqueta, el
+	// contrato con la tableta lo sostiene un default del lenguaje, y renombrar el campo en Go
+	// rompería el cable en silencio — con el peor modo de falla de esta familia, que es 204 y una
+	// rejilla midiendo menos.
+	Pantalla    string `json:"pantalla"`
+	Celda       int    `json:"celda"`
+	Orientacion string `json:"orientacion"`
 }
 
 // pantallasConToque es la lista CORTA de pantallas instrumentadas (FR-015).

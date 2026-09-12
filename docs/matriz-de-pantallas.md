@@ -463,7 +463,11 @@ cuenten, y que el volumen no crezca con los dedos.
 | N6 | La celda | Se calcula **en la tableta**; el mismo punto del vidrio da la misma celda con la página desplazada, y el mismo punto relativo da la misma celda en dos tabletas de distinto tamaño | `src/app/celda.test.ts` | — |
 | N7 | El arrastre | Más de 10 px **no cuenta**: sin esto la rejilla mide scroll en vez de intención | `MedidorDeToques.test.tsx` | Sí |
 | N8 | Dos dedos a la vez | Cada contacto con su `pointerId`; con estado compartido los dos salen como arrastres | idem | Sí |
-| N9 | **Las capas de encima** | Lo que cae dentro de un `[role="dialog"]` no cuenta, y `LockScreen` tiene ese rol | idem y `LockScreen.test.tsx` | Sí — sin el rol, el teclado del PIN contamina el centro |
+| N9 | **Las capas de encima** | Solo cuenta lo que cuelga de `[data-medible]` (AppShell): hojas, diálogos, avisos flotantes y el bloqueo quedan fuera **por construcción** | idem y `LockScreen.test.tsx` | Sí — sin el rol, el teclado del PIN contamina el centro |
+| N9b | El aviso flotante | Se anuncia `role="status"`, no `dialog`: con una lista de lo prohibido nacía CONTADO, y cae sobre la zona del botón de cobrar con un «Deshacer» que la gente toca | `MedidorDeToques.test.tsx` | — |
+| N9c | El bloqueo cumple lo que promete | `aria-modal` con `inert` en lo de abajo: sin él, `Tab`+`Enter` desde el bloqueo activa un control de la pantalla de atrás | `LockScreen.test.tsx` | Sí |
+| N5b | **El balde «sin corte» de una sola persona** | Con un solo rol bajo el umbral no se escribe nada: `null` sería esa persona. Aplica también a la 017 | `domain/uso_test.go`, `toques_anonimos_test.go` | Sí |
+| N18b | La leyenda cubre las 84 celdas | Sin huecos y sin traslapes, en las dos orientaciones; incluye el menú lateral, que es la columna 0 | `zonas-del-pos.test.ts` | — |
 | N10 | Que no estorbe | El escuchador va en captura y **no cancela nada**: el `onClick` del botón y el desplazamiento de la lista siguen llegando | `MedidorDeToques.test.tsx` · `medir-no-estorba.spec.ts` › **M2** | — |
 | N11 | La lista blanca del cliente | En once de las doce pantallas no queda **ni un listener** colgado | `MedidorDeToques.test.tsx` | — |
 | N12 | Lo que viaja en el cuerpo | Llaves exactamente `{eventos, toques}`, y cada toque solo `{pantalla, celda, orientacion}` | `uso-nunca-manda-la-pantalla.test.ts` | — |
@@ -475,8 +479,9 @@ cuenten, y que el volumen no crezca con los dedos.
 | N18 | La leyenda | Sale con la **fecha del layout** que describe | `RejillaDeToques.test.tsx` | — |
 | N19 | El número en la celda | Escrito, no solo el tono, y cada celda dice su fila y columna para quien no la ve | idem | — |
 | N20 | El volumen de un trimestre | Bajo el techo con las **dos orientaciones** y el churn al tope | `toques_volumen_test.go` | Medido: **16.5 MB de 20** (7.5 de índices, 77,364 filas, 223 B/fila) |
+| N23 | La frontera con toques | Celda 84, celda negativa, `'landscape'`, `celda: 1e400` y una pantalla sin instrumentar: **204** y sin pánico; el limitador muerde con las dos mitades | `httpapi/uso_test.go` | — |
 | N21 | El recorte | Usa **su** retención (92 días), y no se lleva el agregado de 396 | idem | — |
-| N22 | El peso del POS | +1.37 kB (1,134.94 → 1,136.31 kB), y `package.json`/`bun.lock` sin cambios | `bun run build` | Medido |
+| N22 | El peso del POS | +1.49 kB (1,134.94 → 1,136.43 kB), y `package.json`/`bun.lock` sin cambios | `bun run build` | Medido |
 
 **Lo que N no cubre, y hay que decirlo:**
 
@@ -490,6 +495,18 @@ cuenten, y que el volumen no crezca con los dedos.
   atrapa hasta que alguien la agrega y vuelve a correrlo.
 - **La orientación vertical no se ha probado en una tableta real.** Los tests la cubren; que el POS
   en vertical se parezca a la leyenda vertical, no.
+- **El anonimato no resiste un cruce con la base del cliente.** La consulta admite un solo día, y en
+  un local donde ese día trabajó una sola persona de ese rol, esa rejilla es suya —`orders.opened_by`
+  dice quién—. Un mínimo de ventana no lo arregla (restar dos rangos recupera el día). Está escrito
+  en [docs/security-owasp.md](security-owasp.md); lo que la feature promete es «no se guarda quién»,
+  no «es imposible saber quién».
+- **`xmin` es el `updated_at` que la tabla dice no tener.** Es una columna de sistema, se lee con el
+  mismo `select` y avanza en cada `update`: sondeándola se reconstruye qué zonas se tocaron en el
+  último minuto. No se puede quitar. Hoy no cruza una frontera real —la credencial de plataforma y
+  la del dueño viven en el mismo archivo— pero el grant lo trae incluido.
+- **El umbral de arrastre mide el desplazamiento NETO**, no la excursión máxima: un desplazamiento
+  que va y vuelve al mismo punto se cuenta como toque. Seguir el `pointermove` lo atraparía a cambio
+  de meter trabajo en el camino del dedo, que es lo que esta feature tiene prohibido.
 
 ## Pendientes de cubrir
 
