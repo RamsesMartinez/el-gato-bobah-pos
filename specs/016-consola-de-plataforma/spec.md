@@ -54,9 +54,14 @@ superficie y es rechazada en la otra.
 
 ### User Story 2 - Ver qué empresas hay y si están sanas (Priority: P1)
 
-El operador de plataforma ve la lista de empresas con lo que necesita para saber si alguna está en
-problemas: desde cuándo existe, si su esquema está al día y cuándo fue la última vez que alguien
-usó el sistema.
+El operador de plataforma ve la lista de empresas: cuáles son y desde cuándo existen, más la versión
+de esquema **de la instalación**.
+
+**Lo que esta primera versión NO muestra, y por qué.** «Última actividad» exigiría leer una tabla de
+operación, que es exactamente lo que FR-005 prohíbe; llega con la [spec 017](../017-mapa-de-calor-de-uso/spec.md),
+que escribe ese dato del lado de plataforma. Y «esquema por empresa» no existe: hoy hay **una sola
+base con un solo número de versión**, así que una columna por cliente diría lo mismo en todos los
+renglones — una pantalla que aparenta informar.
 
 **Why this priority**: Es la razón de entrar. Y es **solo lectura**, que es lo que hace seguro
 probar el camino completo.
@@ -68,11 +73,9 @@ la aplicación del negocio sigue sin poder ver la otra.
 
 1. **Given** varias empresas, **When** el operador abre la consola, **Then** las ve todas con su
    nombre, desde cuándo existen y su última actividad.
-2. **Given** una empresa cuyo esquema quedó atrás de una migración, **When** se mira la lista,
-   **Then** se distingue de las que están al día.
-3. **Given** una empresa sin actividad reciente, **When** se mira la lista, **Then** se ve, porque
-   es justo la señal de que algo pasa.
-4. **Given** la lista, **When** se busca cualquier cifra de dinero, **Then** no hay ninguna: la
+2. **Given** la instalación, **When** se abre la consola, **Then** se ve **una vez** en qué versión
+   de esquema está — no como columna por empresa.
+3. **Given** la lista, **When** se busca cualquier cifra de dinero, **Then** no hay ninguna: la
    consola no reporta las ventas de los clientes.
 
 ---
@@ -151,8 +154,17 @@ la consola.
   Es la lección que el propio repo ya aprendió: los chequeos que viven solo en el código se saltan
   por el camino nuevo que nadie revisó.
 
-- **FR-007**: La consola MUST poder listar todas las empresas con su nombre, su antigüedad, el
-  estado de su esquema y su última actividad.
+- **FR-007**: La consola MUST poder listar todas las empresas con su nombre y su antigüedad, y MUST
+  mostrar la versión de esquema **de la instalación** una sola vez.
+
+  *Corregido el 2026-09-11, tras la revisión de arquitectura.* La versión original pedía «el estado
+  de su esquema y su última actividad» por empresa. Ninguna de las dos se puede cumplir hoy: el
+  esquema es uno solo para toda la base —verificado, las dos empresas marcan la misma versión— y la
+  última actividad exigiría leer tablas de operación que FR-005 prohíbe. Un requisito que no se
+  puede satisfacer no se implementa «como se pueda»: se corrige.
+
+- **FR-007b**: La «última actividad» por empresa MUST quedar fuera de esta feature y llegar con la
+  spec 017, que ya va a escribir ese dato del lado de plataforma.
 - **FR-008**: La consola MUST NOT mostrar cifras de dinero de ningún cliente.
 - **FR-009**: La primera versión de la consola MUST ser de **solo lectura**: ninguna acción que
   modifique datos de una empresa.
@@ -186,14 +198,17 @@ la consola.
 - **SC-002**: Desde una sesión de plataforma **no existe forma** de leer un pedido, una venta ni un
   corte de ninguna empresa, ni construyendo la petición a mano.
 - **SC-003**: El paquete que descarga la tableta **no crece** respecto de hoy.
-- **SC-004**: El operador de plataforma ve el estado de todas las empresas en **una sola pantalla**.
+- **SC-004**: El operador de plataforma ve **todas** las empresas de la instalación en una sola
+  pantalla, sin que ninguna quede fuera.
 - **SC-005**: Desactivar a un operador le corta el acceso **sin esperar** a que caduque su sesión.
 - **SC-006**: La consola no muestra **ninguna** cifra de dinero de ningún cliente.
 
 ## Assumptions
 
 - **Hay un solo operador de plataforma al principio** —el dueño del producto—, pero el modelo admite
-  varios sin rehacerse.
+  varios sin rehacerse. Y acotar a un operador a un subconjunto de empresas —un encargado de cuenta
+  por cliente— es una puerta **distinta** de esa, también abierta al mismo costo: hoy el único
+  operador ve todo, así que una tabla puente se agrega después sin tocar datos.
 - **La consola se usa desde una computadora, no desde una tableta.** El dueño lo dijo explícitamente:
   el presupuesto de 1024×600 no aplica aquí, y por eso no se diseña contra él.
 - **Comparte repositorio con el resto del producto**, para que CI, tipos y despliegue sean los
