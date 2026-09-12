@@ -54,10 +54,24 @@ que garantizar y probar es que la respuesta y **la latencia** sean las de una cu
 
 ## Configuración nueva
 
-| Variable | Qué | Al arranque |
-|---|---|---|
-| `PLATFORM_JWT_SECRET` | Firma de la consola | La API **no arranca** si falta, si es débil o **si es igual a `JWT_SECRET`** |
-| `PLATFORM_DATABASE_URL` | Conexión como `gatobobah_platform` | En producción es obligatoria; sin ella el aislamiento no existe |
+Siguiendo **el patrón que ya usa el rol de la aplicación**, y no uno nuevo: en `deploy/.env` va la
+contraseña, el compose arma la URL con ella y el binario le fija la contraseña al rol al arrancar.
+
+| En `deploy/.env` | Qué |
+|---|---|
+| `PLATFORM_JWT_SECRET` | Firma de la consola |
+| `PLATFORM_DB_PASSWORD` | Contraseña del rol `gatobobah_platform` |
+
+| Lo que arma el compose | De dónde |
+|---|---|
+| `PLATFORM_DATABASE_URL` | `postgres://gatobobah_platform:${PLATFORM_DB_PASSWORD}@postgres:5432/...` |
+
+Al arranque, la API **no arranca** si `PLATFORM_JWT_SECRET` falta, es débil o **es igual a
+`JWT_SECRET`**; y en producción tampoco sin la conexión de plataforma, porque sin ella el
+aislamiento no existe.
+
+**Los dos valores son cadenas aleatorias**, no datos que alguien tenga que saber: se generan como ya
+se generaron las que están.
 
 Las dos se validan en `config.Validate`, junto a las que ya están. Dos secretos iguales son un
 secreto, y el fallo sería silencioso.
