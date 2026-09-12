@@ -152,17 +152,17 @@ cuenten, y que el volumen no crezca con los dedos.
 
 ## Fase 6: US4 — Que quepa (P1)
 
-- [ ] T026 [US4] Test de volumen en `server/internal/integration/toques_volumen_test.go`: siembra un
+- [X] T026 [US4] Test de volumen en `server/internal/integration/toques_volumen_test.go`: siembra un
       trimestre **al tope, con las dos orientaciones y con el patrón real de escritura** (muchos
       `update` sobre las mismas filas, no un `insert` con el total) y falla si pasa de **20 MB**.
-- [ ] T027 [US4] Sumar el `delete` de toques a `UsageService.Recortar`, con su constante propia, y
+- [X] T027 [US4] Sumar el `delete` de toques a `UsageService.Recortar`, con su constante propia, y
       su test: lo de más de 92 días se va, lo de dentro no se toca.
 
 ---
 
 ## Fase 7: Cierre
 
-- [ ] T027b [US3] Extender `web/e2e/medir-no-estorba.spec.ts` para que **toque** la pantalla, no
+- [X] T027b [US3] Extender `web/e2e/medir-no-estorba.spec.ts` para que **toque** la pantalla, no
       solo navegue: con el endpoint de medición colgado, capturar tocando rápido tiene que seguir
       respondiendo igual. Es SC-004, y hoy solo lo comprueba una persona leyendo el quickstart.
 - [ ] T028 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 3-bis** (que el
