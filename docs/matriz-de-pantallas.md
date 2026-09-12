@@ -437,10 +437,10 @@ filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
 
 **Lo que M no cubre, y hay que decirlo:**
 
-- **La red LENTA solo se prueba a mano.** `medir-no-estorba.spec.ts` corta el endpoint de medición
-  por completo, que es el caso fácil; el que de verdad preocupa —respuestas de 8 a 15 segundos que
-  apilan lotes— vive en el paso 4-bis del quickstart y lo tiene que hacer una persona con el
-  navegador estrangulado.
+- **La red LENTA solo se prueba a mano.** `medir-no-estorba.spec.ts` deja el endpoint colgado un
+  minuto, que ya es el caso malo —ni éxito ni error—, pero el que apila lotes de verdad son
+  respuestas de 8 a 15 segundos sostenidas media hora: eso vive en el paso 4-bis del quickstart y lo
+  tiene que hacer una persona con el navegador estrangulado.
 - **Nadie mide que el mapa sea útil.** Que las cifras sean correctas está cubierto; que mirándolo se
   pueda decidir algo, no — eso se ve con un mes de uso encima y a ojo.
 - **El recorte en la VM.** Que dispare al arrancar está probado en integración; que efectivamente
