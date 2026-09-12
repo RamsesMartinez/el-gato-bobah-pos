@@ -58,8 +58,8 @@ pantalla con conteo mayor que cero, y ese conteo sube al volver a abrirla.
 
 ### User Story 2 - Por rol, nunca por persona (Priority: P1)
 
-El registro distingue si quien usó el sistema era cajero, gerente o administrador, y **no guarda
-quién fue**. El operador de plataforma puede ver que un rol usa el sistema distinto sin que eso señale a nadie.
+El registro distingue el **rol** —administrador, gerente, cajero o mesero— y **no guarda quién
+fue**. El operador de plataforma puede ver que un rol usa el sistema distinto sin que eso señale a nadie.
 
 **Why this priority**: Va en P1 junto con US1 y no después, porque **no es una capa que se agregue
 encima**: si el primer evento se escribe con la identidad de la persona, ya se registró, y quitarlo
@@ -143,6 +143,11 @@ mantiene por debajo de un techo declarado y verificable.
 - **El reloj de la tableta mal puesto.** La fecha del dato la pone el servidor, como ya hace la
   venta (spec 008).
 - **Datos de uso de otra empresa.** No se cruzan: RLS, como todo lo demás.
+- **La pantalla de entrar no se puede medir, y hay que saberlo.** El registro va autenticado para
+  que el servidor ponga empresa y rol sin que el cliente los mande; antes de entrar no hay ninguna
+  de las dos cosas, así que esos eventos se descartan. El mapa nunca va a mostrar el login, y eso no
+  es un defecto: es la consecuencia de no dejar que el cliente diga de qué empresa es. Si algún día
+  importa medir esa pantalla, es otra decisión y otro camino.
 
 ## Requirements *(mandatory)*
 
@@ -150,8 +155,13 @@ mantiene por debajo de un techo declarado y verificable.
 
 - **FR-001**: El sistema MUST registrar cuántas veces se abre cada pantalla y cuántas veces se
   dispara cada acción con nombre.
-- **FR-002**: El registro MUST guardar el **rol** de quien lo hizo (cajero, gerente, administrador)
-  y MUST NOT guardar la identidad de la persona ni nada de lo que permita deducirla.
+- **FR-002**: El registro MUST guardar el **rol** de quien lo hizo —los cuatro que el sistema tiene:
+  administrador, gerente, cajero y **mesero**— y MUST NOT guardar la identidad de la persona ni nada
+  de lo que permita deducirla.
+
+  Los primeros renglones de este spec decían tres roles y se olvidaban de `mesero`, que existe en el
+  sistema desde el principio. Una lista de tres manda al cuarto al camino de error en vez de
+  contarlo, y el mapa se quedaría sin ver justo al rol que menos se conoce.
 - **FR-003**: El registro MUST NOT contener datos personales, nombres de cliente, contenido de
   pedidos ni importes.
 - **FR-004**: El registro MUST NOT bloquear, demorar ni hacer fallar ninguna acción del operador. Si
