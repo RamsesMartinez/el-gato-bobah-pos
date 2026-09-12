@@ -24,6 +24,10 @@ del cuerpo.
 - **Sin fecha en el cuerpo.** La pone el servidor (spec 008: el reloj de la tableta no manda).
 - **Sin identidad en el cuerpo.** Ni usuario, ni estación, ni nada que permita deducir a la persona
   (FR-002). El servidor escribe el rol del token, y lo suprime si identifica.
+- **Y el servidor DESCARTA cualquier `detail` que venga en el cuerpo**, sin mirarlo. Esa columna
+  existe para las coordenadas del futuro (FR-013); mientras el cliente pueda escribirla es un campo
+  libre por donde entra justo lo que FR-003 prohíbe, y un `jsonb` con datos de más no avisa: hay que
+  ir a buscarlo.
 - Limitado por usuario con el limitador que ya existe. Pasado el tope: 204 igual, y no se escribe.
 
 **Lo que este endpoint NO hace**: devolver datos, confirmar qué se guardó, o fallar de forma que el
@@ -44,6 +48,18 @@ Grupo de plataforma, detrás de `RequireOperador`. Con una sesión del negocio: 
     "empresas": [ { "id": 2, "slug": "gatobobah", "nombre": "El Gato Bobah" } ]
   }
 ```
+
+**Qué incluye cada cifra, porque si no alguien va a sumar dos de las tres:**
+
+| Campo | Cuenta | NO cuenta |
+|---|---|---|
+| `aperturas` | Las veces que se **abrió** esa pantalla | Las acciones de adentro |
+| `acciones[].veces` | Las veces que se disparó **esa acción** | Las aperturas |
+| `porRol[].veces` | **Todo lo de esa pantalla** —aperturas más acciones— repartido por rol | Nada: es el total |
+
+De modo que `sum(porRol) == aperturas + sum(acciones)`, y esa igualdad la fija un test. Es la misma
+disciplina que el principio III exige con el dinero: cada hecho se cuenta una vez y cada cifra dice
+qué incluye.
 
 - `empresa` ausente = **todas juntas** (FR-008). Con `empresa=<id>`, solo esa.
 - Las pantallas vienen **ordenadas de más a menos usada**, que es la pregunta que la pantalla

@@ -132,9 +132,8 @@ server/
 ├── migrations/0069_uso_del_sistema.sql        # dos tablas, grants, RLS, política de plataforma
 ├── queries/uso.sql                            # ingesta, agregado y lectura de la consola
 ├── internal/domain/uso.go                     # lista blanca, anti-rebote, k-anonimato (puro)
-├── internal/app/uso.go                        # UsageService: la tx de ingesta y la lectura
-├── internal/httpapi/handlers_uso.go           # POST /usage (negocio) · GET /platform/usage
-└── internal/tareas/recorte.go                 # el borrado diario, dentro del binario
+├── internal/app/uso.go                        # UsageService: la tx de ingesta, la lectura y el recorte
+└── internal/httpapi/handlers_uso.go           # POST /usage (negocio) · GET /platform/usage
 
 web/
 ├── src/api/uso.ts                             # el registrador del POS: cola, lote, keepalive

@@ -71,6 +71,10 @@ Cinco cosas que este repo ya aprendió, y que esta feature toca de lleno:
 - [ ] T009 [P] `server/internal/domain/uso.go`: la lista blanca de pantallas y acciones, el tipo del
       evento, `PreAgregar(lote)` y los sentinels. Puro, sin I/O.
 
+      **Los roles son los CUATRO que existen** (`admin`, `gerente`, `cajero`, `mesero`), no los tres
+      que nombra el spec: el enum `user_role` ya tiene el cuarto, y una lista que se olvide de él
+      manda a `mesero` al camino de error en vez de contarlo.
+
       La lista es la que mantiene acotado el número de combinaciones distintas: sin ella, cuántas
       filas puede tener `usage_daily` lo decide el cliente.
 
@@ -125,12 +129,31 @@ una demora atribuible a la medición.
 - [ ] T017 [US3] Test en `server/internal/httpapi/uso_test.go`, antes del código: el endpoint
       responde **204 siempre** —lote vacío, cuerpo mal formado, pantallas desconocidas, 500 eventos—
       y nunca un cuerpo de error.
+- [ ] T017b [US3] **Test del limitador, antes de escribirlo**: pasado el tope por usuario, los
+      eventos **no se escriben** y la respuesta sigue siendo 204.
+
+      El principio V no deja mergear un control de seguridad sin su test, y aquí la razón es más
+      fuerte que el principio: como el endpoint responde 204 pase lo que pase, un limitador roto
+      —o desconectado por un refactor del router— **no se nota por ninguna vía**. El único testigo
+      posible es este test.
+
+- [ ] T017c [US3] Test de que el servidor **ignora cualquier `detail` que venga en el cuerpo**: un
+      lote con `{"detail":{"cliente":"Juan"}}` se guarda con `detail` nulo.
+
+      `detail` existe para las coordenadas del futuro (FR-013). Mientras el cliente pueda escribirlo,
+      esa puerta es también un campo libre por donde entra justo lo que FR-003 prohíbe — y a
+      diferencia de una columna mal usada, un `jsonb` no avisa.
+
 - [ ] T018 [US3] `POST /api/v1/usage` en `server/internal/httpapi/handlers_uso.go`, dentro del grupo
-      del negocio con `RequireAuth` y `WithTenant`, con su limitador por usuario y el tope de 50
-      eventos por lote.
-- [ ] T019 [US3] Test de que lo descartado **queda contado en el log** (`logging.SecurityEvent` no:
-      un contador de descartes). Sin eso, una versión del front que manda nombres viejos deja de
-      medir y nadie se entera.
+      del negocio con `RequireAuth` y `WithTenant`, con su limitador por usuario, el tope de 50
+      eventos por lote y **el `detail` del cuerpo descartado sin mirarlo**.
+- [ ] T019 [US3] Test de que lo descartado **deja rastro**: una línea de `slog.Warn` con clave
+      estable `usage_descartado`, el conteo del lote y **el primer nombre desconocido** (que es lo
+      que dice qué hay que arreglar). No es `logging.SecurityEvent`: no es un evento de seguridad,
+      es telemetría de la propia medición.
+
+      Sin esa línea, una versión del front que manda nombres viejos deja de medir y nadie se
+      entera — el mapa simplemente muestra menos, que es indistinguible de «se usó menos».
 
 ### El registrador del POS
 
@@ -167,6 +190,14 @@ mayor que cero, y ese conteo sube al volver a abrirla.
       código: `GET /api/v1/platform/usage` con sesión de plataforma devuelve las pantallas
       **ordenadas de más a menos usada**, incluye las de conteo **cero**, y trae `rol: null` para lo
       suprimido.
+- [ ] T026b [US1] Test que **fija qué incluye cada cifra**, con números que no cuadran por
+      casualidad: `aperturas` cuenta solo las vistas de pantalla, `acciones[].veces` solo las
+      acciones con nombre, y `porRol[].veces` es **el total de las dos** repartido por rol — de modo
+      que `sum(porRol) == aperturas + sum(acciones)`.
+
+      Sin esto, quien lea la respuesta va a sumar dos de las tres y va a reportar un número que no
+      existe. Es el mismo defecto que el principio III persigue con el dinero, en otra moneda.
+
 - [ ] T027 [US1] Test de lo que **no** puede traer, buscado en el JSON crudo: ninguna cifra de
       dinero, ningún dato de empleados, ningún id de usuario (FR-003).
 - [ ] T028 [US1] Test de que una sesión **del negocio** contra esa ruta da **401**, no 403.
@@ -205,9 +236,14 @@ declarado.
 
 - [ ] T036 [US4] Test del recorte: con filas de hace 20 días y de hace 14 meses, tras una pasada no
       queda ninguna fuera de la retención, y las de dentro **no se tocan**.
-- [ ] T037 [US4] `server/internal/tareas/recorte.go`: borra `usage_events` de más de 14 días y
-      `usage_daily` de más de 13 meses, con una conexión de **dueño** abierta y cerrada para eso
-      —el rol de la app está bajo RLS y solo borraría lo de su empresa—.
+- [ ] T037 [US4] `UsageService.Recortar(ctx)` en `server/internal/app/uso.go`: borra
+      `usage_events` de más de 14 días y `usage_daily` de más de 13 meses, con una conexión de
+      **dueño** abierta y cerrada para eso —el rol de la app está bajo RLS y solo borraría lo de su
+      empresa—.
+
+      Va en `app` y **no** en un paquete `tareas` nuevo: la arquitectura de este repo tiene cuatro
+      lugares (`httpapi`, `app`, `domain`, `store/db`) y un quinto para «cosas que corren solas» se
+      convierte en el cajón de sastre donde termina la lógica que nadie sabe dónde poner.
 - [ ] T038 [US4] Cablearlo en `server/cmd/api/main.go`: **corre al arrancar** y luego cada 24 h,
       colgado del contexto que ya se cancela en el apagado.
 
@@ -216,15 +252,26 @@ declarado.
 
 - [ ] T039 [US4] Test de que la goroutine **termina** al cancelar el contexto (principio II: ninguna
       goroutine sin condición de término).
+- [ ] T039b [US4] Test de la puerta de FR-013 (SC-006): escribir `{"x":120,"y":340}` en el `detail`
+      de una fila existente y leerlo de vuelta, **sin tocar el esquema**. Es la única forma de
+      comprobar que «agregar coordenadas después no exige migrar» antes de necesitarlo.
 
 ---
 
 ## Fase 7: Cierre
 
+- [ ] T039c [US3] Caso de Playwright en `web/e2e/`, contra el ambiente de pruebas: con la red
+      bloqueada (`page.route` abortando `/usage`), armar una cuenta y cobrar. Pasa si el cobro
+      responde igual y la pantalla no muestra un solo aviso.
+
+      SC-003 es la promesa central de US3 y hoy solo la comprueba un humano leyendo el quickstart.
+      Una promesa que solo se verifica a mano se rompe el día que nadie tiene tiempo de verificarla.
+
 - [ ] T040 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 4-bis** (red lenta
       con throttling, verificando que no se apilan envíos). El paso de la red caída es el fácil.
-- [ ] T041 [P] Medir el paquete del POS y compararlo contra el número de T002. Si creció más de unos
-      pocos KB, algo del mapa se coló.
+- [ ] T041 [P] Medir el paquete del POS y compararlo contra el número de T002 (si creció más de unos
+      pocos KB, algo del mapa se coló) **y comprobar que `web/package.json` y `web/bun.lock` no
+      cambiaron** — que es SC-007 medido en vez de prometido.
 - [ ] T042 [P] Renglones en `docs/matriz-de-pantallas.md`: qué cubre cada test de esta feature y
       **qué no** — en particular, que nadie mide que el mapa sea legible con datos reales.
 - [ ] T043 [P] Documentar en `AGENTS.md` el endpoint de ingesta y la lista blanca (dónde se agrega
