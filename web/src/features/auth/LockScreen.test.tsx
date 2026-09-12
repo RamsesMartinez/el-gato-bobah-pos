@@ -147,3 +147,17 @@ test('Enter con el foco en un botón no manda el PIN', async () => {
   fireEvent.keyDown(window, { key: 'Enter' });
   await noIntentoEntrar();
 });
+
+// EL BLOQUEO ES UN MODAL, y decirlo tiene dos consecuencias.
+//
+// La primera es de accesibilidad: cubre toda la pantalla y no deja usar nada de abajo.
+// La segunda es la que se rompe en silencio: el medidor de toques (spec 019) excluye lo que cae
+// dentro de un `[role="dialog"]`, y el bloqueo no cambia de ruta. Sin este atributo, cada
+// desbloqueo suma cuatro toques a la pantalla de abajo SIEMPRE EN EL MISMO SITIO —el teclado del
+// PIN está centrado— y la rejilla acaba mostrando una zona caliente que nadie tocó ahí.
+test('se anuncia como modal, y por eso sus toques no se cuentan en la pantalla de abajo', () => {
+  pintar();
+  const modal = document.querySelector('[role="dialog"]');
+  expect(modal, 'sin role="dialog" el teclado del PIN contamina la rejilla de la pantalla de abajo').not.toBeNull();
+  expect(modal!.getAttribute('aria-modal')).toBe('true');
+});

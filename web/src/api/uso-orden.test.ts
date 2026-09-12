@@ -17,6 +17,7 @@ const ARCHIVOS = [
   'src/shared/ProductEditDialog.tsx',
   'src/features/backoffice/CashPage.tsx',
   'src/app/MedidorDeUso.tsx',
+  'src/app/MedidorDeToques.tsx',
   'src/api/uso.ts',
 ];
 
@@ -26,7 +27,7 @@ describe('medir nunca se espera', () => {
     for (const archivo of ARCHIVOS) {
       const src = readFileSync(archivo, 'utf8');
       src.split('\n').forEach((linea, i) => {
-        if (/await\s+(medirAccion|medirPantalla|vaciarCola)\s*\(/.test(linea)) {
+        if (/await\s+(medirAccion|medirPantalla|medirToque|vaciarCola)\s*\(/.test(linea)) {
           culpables.push(`${archivo}:${i + 1}: ${linea.trim()}`);
         }
       });

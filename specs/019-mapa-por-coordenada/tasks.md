@@ -109,23 +109,23 @@ cuenten, y que el volumen no crezca con los dedos.
 
 ## Fase 4: US3 — Que el dedo no se entere (P1)
 
-- [ ] T015 [P] [US3] Tests en `web/src/app/MedidorDeToques.test.tsx`, antes del código: un toque
+- [X] T015 [P] [US3] Tests en `web/src/app/MedidorDeToques.test.tsx`, antes del código: un toque
       cuenta; un **arrastre de más de 10 px no**; dos contactos simultáneos no se mezclan (cada uno
       con su `pointerId`); y un toque dentro de un `[role="dialog"]` **no cuenta**.
-- [ ] T016 [US3] Darle `role="dialog"` y `aria-modal` a `web/src/features/auth/LockScreen.tsx`, con
+- [X] T016 [US3] Darle `role="dialog"` y `aria-modal` a `web/src/features/auth/LockScreen.tsx`, con
       su test. **Va antes del escuchador**: es lo que hace que el filtro de capas sirva de algo.
 
       Sin esto, el teclado del PIN —que siempre cae en el mismo sitio— deja una zona caliente en el
       centro de la pantalla de abajo que dentro de seis meses alguien va a leer como «un control muy
       usado». Y el rol además es lo correcto: es un modal que bloquea todo.
 
-- [ ] T017 [US3] `web/src/app/MedidorDeToques.tsx`: el escuchador de `pointerdown`/`pointerup` en el
+- [X] T017 [US3] `web/src/app/MedidorDeToques.tsx`: el escuchador de `pointerdown`/`pointerup` en el
       documento, con el mapa por `pointerId`, el umbral de 10 px y el filtro de capas.
 
-- [ ] T018 [US3] Filtrar en el **cliente** por la lista de pantallas instrumentadas, reusando
+- [X] T018 [US3] Filtrar en el **cliente** por la lista de pantallas instrumentadas, reusando
       `pantallaDe()`: lo que el servidor va a tirar no se manda.
-- [ ] T019 [US3] `medirToque()` en `web/src/api/uso.ts`, que encola en la MISMA cola de la 017.
-- [ ] T020 [US3] Test de que el escuchador **no interfiere**: un toque sobre un botón sigue
+- [X] T019 [US3] `medirToque()` en `web/src/api/uso.ts`, que encola en la MISMA cola de la 017.
+- [X] T020 [US3] Test de que el escuchador **no interfiere**: un toque sobre un botón sigue
       disparando su `onClick`, y el desplazamiento de una lista sigue funcionando.
 
 ---

@@ -22,7 +22,20 @@ interface EventoDeUso {
   accion?: string;
 }
 
-let cola: EventoDeUso[] = [];
+// Un toque por zona (spec 019). La celda ya viene calculada: aquí nunca hay un (x, y), ni siquiera
+// de paso — ver `celda.ts`.
+interface ToqueDeUso {
+  pantalla: string;
+  celda: number;
+  orientacion: 'horizontal' | 'vertical';
+}
+
+// UNA SOLA COLA PARA LAS DOS COSAS, y se separan al mandar.
+//
+// Dos colas serían dos relojes, dos guardas de «uno en vuelo» y dos peticiones cada diez segundos
+// compitiendo por la misma red flaky con el POST del cobro. Todo lo que hace que esta medición no
+// estorbe está aquí y se comparte.
+let cola: Array<EventoDeUso | ToqueDeUso> = [];
 let enVuelo = false;
 let reloj: ReturnType<typeof setInterval> | null = null;
 
@@ -39,7 +52,20 @@ export function medirAccion(pantalla: string, accion: string): void {
   encolar({ pantalla, accion });
 }
 
-function encolar(e: EventoDeUso): void {
+// medirToque cuenta que el dedo cayó en una zona de una pantalla.
+//
+// Recibe la CELDA, no el punto: quien la calcula es `celdaDelToque`, en la tableta. Si aquí entrara
+// un (x, y), el dato fino existiría en el cuerpo del request y en el log de cualquier proxy aunque
+// el servidor lo redondeara después.
+export function medirToque(pantalla: string, celda: number, orientacion: 'horizontal' | 'vertical'): void {
+  encolar({ pantalla, celda, orientacion });
+}
+
+function esToque(x: EventoDeUso | ToqueDeUso): x is ToqueDeUso {
+  return 'celda' in x;
+}
+
+function encolar(e: EventoDeUso | ToqueDeUso): void {
   cola.push(e);
   if (cola.length > MAX_EN_COLA) {
     cola = cola.slice(cola.length - MAX_EN_COLA);
@@ -71,6 +97,8 @@ export function vaciarCola(): void {
   const lote = cola;
   cola = [];
   enVuelo = true;
+  const eventos = lote.filter((x) => !esToque(x));
+  const toques = lote.filter(esToque);
 
   // SIN `await`, a propósito. Quien llamó a medir ya siguió con lo suyo hace rato.
   void fetch(BASE + '/usage', {
@@ -79,7 +107,7 @@ export function vaciarCola(): void {
     // de más, y aquí hace falta el header de autenticación, que el beacon no admite.
     keepalive: true,
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify({ eventos: lote }),
+    body: JSON.stringify({ eventos, toques }),
   })
     .catch(() => {
       // Se perdió. No se reintenta, no se avisa y no se vuelve a encolar: un reintento es otra

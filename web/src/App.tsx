@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { restoreSession } from './api/client';
 import { AppShell } from './app/AppShell';
 import { MedidorDeUso } from './app/MedidorDeUso';
+import { MedidorDeToques } from './app/MedidorDeToques';
 import { RequireAuth, RequireRole } from './app/RequireAuth';
 import { BloqueoPorInactividad } from './features/auth/BloqueoPorInactividad';
 import { LoginPage } from './features/auth/LoginPage';
@@ -38,6 +39,7 @@ export const App = () => {
       {/* Mide por dónde va el operador. Va fuera de <Routes> para que no dependa de acertarle a
           una ruta concreta, y no pinta nada: si fallara, no hay pantalla que romper. */}
       <MedidorDeUso />
+      <MedidorDeToques />
       <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/recuperar" element={<ForgotPasswordPage />} />

@@ -85,12 +85,12 @@ func RejillaDe(orientacion string) (columnas, filas int) {
 
 // MaxToquesPorLote acota lo que una tableta puede mandar de un golpe.
 //
-// Más alto que el de las aperturas (`MaxEventosPorLote`) a propósito: un turno son miles de toques
-// y decenas de aperturas, así que con el mismo tope la mitad de los toques se perdería en cada
-// vaciado de cola. Y el tope sigue existiendo por lo mismo que allá: acota el camino —la llave del
-// limitador y la línea de log se arman con lo que llega—, no la base, que ya está acotada por la
-// lista blanca y por los `check` de las columnas.
-const MaxToquesPorLote = 120
+// Es el mismo número que el de las aperturas y no por simetría: el tope real lo pone la COLA del
+// cliente, que guarda 50 mientras hay un envío en vuelo y se vacía a los 20 o a los diez segundos.
+// Un lote más grande que eso no lo produce el POS —solo un bucle o un `curl`—, y lo que este tope
+// protege es el camino: la llave del limitador y la línea de log se arman con lo que llega. La base
+// ya está acotada por la lista blanca y por los `check` de las columnas.
+const MaxToquesPorLote = MaxEventosPorLote
 
 // ToqueAgregado es una zona del día con cuántas veces se tocó.
 type ToqueAgregado struct {

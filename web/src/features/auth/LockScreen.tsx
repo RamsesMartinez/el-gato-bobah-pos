@@ -116,7 +116,14 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   }, [pidiendoPin, pin, largoMinimo, teclear, borrar, desbloquear]);
 
   return (
-    <Center ref={caja} tabIndex={-1} outline="none"
+    // `role="dialog"` y `aria-modal` porque eso ES: una capa que cubre toda la pantalla y no deja
+    // usar nada de abajo. Además de ser lo correcto para quien navega con lector, es lo que hace
+    // que el medidor de toques (spec 019) NO cuente el teclado del PIN: el bloqueo no cambia de
+    // ruta, así que sus toques se atribuirían a la pantalla de abajo —y como el teclado siempre
+    // cae en el mismo sitio, dejaría una zona caliente en el centro que dentro de seis meses
+    // alguien leería como «un control muy usado».
+    <Center ref={caja} tabIndex={-1} outline="none" role="dialog" aria-modal="true"
+      aria-label="Pantalla bloqueada"
       position="fixed" inset={0} zIndex={2000} bg="bg.subtle" p={4}>
       <VStack gap={4} w="100%" maxW="480px">
         <HStack color="fg.muted">
