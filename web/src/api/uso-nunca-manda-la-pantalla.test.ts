@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { useSessionStore } from '../stores/session';
-import { _soloParaPruebas, medirAccion, medirPantalla, vaciarCola } from './uso';
+import { _soloParaPruebas, medirAccion, medirPantalla, medirToque, vaciarCola } from './uso';
 
 // NUNCA UNA CAPTURA, NUNCA EL CONTENIDO DE LA PANTALLA (FR-009 de la 019).
 //
@@ -20,7 +20,7 @@ import { _soloParaPruebas, medirAccion, medirPantalla, vaciarCola } from './uso'
 // actualizar a mano es un guardia que se queda atrás en el primer archivo nuevo.
 function archivosQueArmanElEnvio(): string[] {
   const medidores = readdirSync('src/app')
-    .filter((n) => /^Medidor.*\.tsx$/.test(n))
+    .filter((n) => /^Medidor[^.]*\.tsx$/.test(n))
     .map((n) => `src/app/${n}`);
   return ['src/api/uso.ts', 'src/app/celda.ts', 'src/app/rutas-medidas.ts', ...medidores];
 }
@@ -81,9 +81,10 @@ describe('lo que de verdad viaja en el cuerpo', () => {
     _soloParaPruebas.reiniciar();
   });
 
-  it('el cuerpo solo tiene las llaves declaradas, y cada evento solo las suyas', () => {
+  it('el cuerpo solo tiene las llaves declaradas, y cada evento y cada toque solo las suyas', () => {
     medirPantalla('pos');
     medirAccion('pos', 'cobrar');
+    medirToque('pos', 37, 'horizontal');
     vaciarCola();
 
     expect(cuerpos).toHaveLength(1);
@@ -91,12 +92,23 @@ describe('lo que de verdad viaja en el cuerpo', () => {
     // Se comprueba contra la lista de lo PERMITIDO y no contra la de lo prohibido: así una llave
     // nueva —la que alguien agregue el día que quiera «solo un poquito de contexto»— rompe el test
     // sin que nadie haya tenido que anticiparla.
-    expect(Object.keys(cuerpo).sort()).toEqual(['eventos']);
+    expect(Object.keys(cuerpo).sort()).toEqual(['eventos', 'toques']);
+
     for (const e of cuerpo.eventos as Record<string, unknown>[]) {
       for (const llave of Object.keys(e)) {
         expect(['pantalla', 'accion'], `el evento viajó con la llave "${llave}"`).toContain(llave);
       }
       expect(typeof e.pantalla).toBe('string');
     }
+
+    // EL TOQUE NO LLEVA UN PUNTO. Es la promesa entera de la 019: lo que viaja es el número de
+    // celda, ya redondeado en la tableta. Un `x` o un `y` aquí —aunque el servidor los ignorara—
+    // existirían en el cuerpo del request y en el log de cualquier proxy del camino.
+    const toques = cuerpo.toques as Record<string, unknown>[];
+    expect(toques).toHaveLength(1);
+    for (const llave of Object.keys(toques[0])) {
+      expect(['pantalla', 'celda', 'orientacion'], `el toque viajó con la llave "${llave}"`).toContain(llave);
+    }
+    expect(Number.isInteger(toques[0].celda)).toBe(true);
   });
 });
