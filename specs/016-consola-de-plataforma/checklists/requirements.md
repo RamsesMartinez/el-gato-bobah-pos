@@ -76,3 +76,29 @@ manifiesto de la PWA del restaurante.
 **Lo que la revisión confirmó sin objeción**: grants explícitos en vez de `on all tables`, la
 simetría que sale gratis, `platform_operators` sin RLS, `staff.` en vez de `admin.`, y que ninguna
 puerta del principio VIII se cierra.
+
+
+## Post-analyze (2026-09-11)
+
+Cinco hallazgos; **uno crítico que habría hecho imposible cumplir FR-007**.
+
+**El crítico**: el plan daba por hecho que «no ser superusuario» bastaba para que el rol de la
+consola leyera `companies`. No es así — esa tabla lleva la política RLS `company_self`, y **RLS
+también le aplica al rol de plataforma**. Verificado creando el rol de verdad: con solo `select`
+veía **1 empresa de 2**. La consola habría listado una sola, o ninguna.
+
+Arreglo verificado: una política acotada a **una tabla, un comando y un rol** —
+`for select to gatobobah_platform using (true)`—, con la que pasa a ver 2 de 2 mientras
+`gatobobah_app` sigue viendo solo la suya. **No** `BYPASSRLS`: resolvería esto y abriría todo lo
+demás el día que alguien agregue un grant por comodidad.
+
+Los otros cuatro, todos huecos de cobertura:
+
+| | Qué faltaba |
+|---|---|
+| FR-009 | Nadie probaba que la consola **no pueda escribir**. Los grants son de `select`, así que la escritura está denegada **por omisión** — y lo omitido no se nota hasta que alguien lo agrega. Es lo que impide que la spec 018 ocurra por accidente |
+| FR-016 | Sin verificar que no viajen datos de empleados de un cliente |
+| FR-007b | Sin verificar que la última actividad **no** viaje todavía |
+| T002 | Trabajo fuera del repositorio que ningún test puede comprobar; ahora va marcado como manual |
+
+Cobertura final: **17 de 17 FR** con tarea, 6 de 6 SC. 44 tareas.
