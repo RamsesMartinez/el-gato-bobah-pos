@@ -31,20 +31,29 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
   let intentos = 0;
   await page.route('**/api/v1/usage', async (route) => {
     intentos++;
-    // Se cuelga hasta el final de la prueba: si el registrador esperara la respuesta, la pantalla
-    // se quedaría esperando con él.
-    await new Promise(() => {});
-    await route.abort();
+    // Se cuelga: si el registrador esperara la respuesta, la pantalla se quedaría esperando con él.
+    // Es el caso peor —ni éxito ni error— y el que más se parece al wifi de un restaurante.
+    await new Promise((r) => setTimeout(r, 60_000));
+    await route.abort().catch(() => {});
   });
 
   await entrar(page);
 
-  // Navegar por tres pantallas y volver: cada una encola una medición que no va a poder entregarse.
-  for (const ruta of ['/pedidos', '/caja', '/pos']) {
-    await page.goto(ruta);
-    await page.waitForLoadState('domcontentloaded');
+  // Navegar DENTRO de la aplicación, como lo hace el operador: el POS es una SPA y una recarga
+  // completa por cada pantalla no es lo que ocurre en el mostrador.
+  for (const nombre of ['Pedidos', 'Caja']) {
+    const enlace = page.getByRole('link', { name: nombre }).or(page.getByRole('button', { name: nombre }));
+    if (await enlace.first().isVisible().catch(() => false)) {
+      await enlace.first().click();
+      await page.waitForTimeout(500);
+    }
   }
 
+  // El lote sale por tiempo a los 10 segundos. Se espera a que salga: si no, este test mediría que
+  // el registrador está apagado y lo llamaría éxito.
+  await page.waitForTimeout(12_000);
+
+  await page.goto('/pos');
   // El POS sigue respondiendo: el catálogo carga y la cuenta se puede abrir.
   await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
 

@@ -145,3 +145,17 @@ describe('la cola y el cambio de sesión', () => {
     expect(_soloParaPruebas.tamanoDeLaCola()).toBe(0);
   });
 });
+
+describe('el último momento para mandar', () => {
+  it('manda lo que quede cuando la página se va, no solo cuando se oculta', () => {
+    const fetchStub = vi.fn(respuestaOk);
+    vi.stubGlobal('fetch', fetchStub);
+    medirPantalla('pos');
+
+    // `pagehide` es el que cubre NAVEGAR a otra dirección o recargar; `visibilitychange` cubre
+    // cambiar de pestaña. Con solo el segundo, todo lo encolado en una carga se perdía al salir de
+    // ella — el registrador parecía apagado y no había forma de notarlo desde adentro.
+    window.dispatchEvent(new Event('pagehide'));
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+});
