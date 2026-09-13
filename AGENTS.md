@@ -62,6 +62,22 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   horas porque 21 grupos de modificadores no tenían opciones activas — un estado ordinario: es el de
   un grupo recién creado. Ver `AdminListGroups` en [modifiers_admin.sql](server/queries/modifiers_admin.sql).
   `count()` es la excepción: sobre conjunto vacío da 0, no NULL.
+- **Un slice nil de Go sale como `null`, no como `[]`, y eso tumba una pantalla sin un solo error en
+  el servidor.** `json.Marshal` de un `[]T` nil escribe `null`; de un `[]T{}` escribe `[]`. Un mapa
+  al que se le pide una llave ausente devuelve el cero del valor —nil— así que
+  `Lines: porPedido[r.ID]` es nil en cuanto ese pedido no tiene renglones vivos.
+
+  Costó la pantalla de pedidos de producción el 2026-09-13: un pedido cuya única línea se canceló
+  llegó con `lines: null`, el tablero hace `o.lines.filter(...)` al pintar cada tarjeta, y el
+  mostrador se quedó con «La pantalla no se pudo mostrar» **con la API respondiendo 200 y sin una
+  sola línea de error en el log**. No falla nada: se entrega un contrato distinto del prometido, y
+  el 5xx que uno busca no existe.
+
+  La regla: **toda respuesta que prometa un arreglo lo entrega, aunque esté vacío.** Se normaliza
+  antes de devolver —ver `conRenglones` en [orders.go](server/internal/app/orders.go)— y el test va
+  sobre el **JSON crudo**, porque deserializar a una estructura de Go borra justo la diferencia
+  entre `null` y `[]`. Del lado del front, el campo se declara **opcional** para que el compilador
+  obligue a la guarda; un test estático se olvida de un archivo nuevo, `tsc` no.
 - **sqlc NO conoce `company_id`** en las ~30 tablas a las que se lo agregó
   [0023](server/migrations/0023_tenant_columns.sql) con `EXECUTE format()`: su parser no lee DDL
   dinámico. Nombrar esa columna en una consulta rompe `sqlc generate` con "column does not exist"

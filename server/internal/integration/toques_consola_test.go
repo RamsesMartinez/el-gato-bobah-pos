@@ -142,10 +142,16 @@ func TestLaRejillaDeToquesPorElRouter(t *testing.T) {
 		// ella esta misma consulta devolvería cero filas sin fallar.
 		// Se siembra por SQL directo y con el dueño: `RegistrarToques` escribe siempre en la
 		// empresa del contexto, y lo que este caso mide es que la consola cruza esa frontera.
+		//
+		// EL DÍA SE PASA DESDE GO, no se toma de `current_date`. Postgres corre en UTC y el rango de
+		// la consulta se arma con la fecha local: después de las 18:00 en México son días distintos,
+		// así que la fila sembrada caía FUERA del rango y el test fallaba con «0 toques» a partir de
+		// esa hora. Es la misma trampa que la migración 0038 arregló para la venta, reaparecida en
+		// el andamio de un test.
 		otra := makeCompany(t, st, "otra-empresa-rejilla")
 		if _, err := st.Pool.Exec(ctx,
 			`insert into usage_touches_daily (day, screen, orientation, cell, role, hits, company_id)
-			 values (current_date, 'pos', 'horizontal', 37, 'cajero', 5, $1)`, otra); err != nil {
+			 values ($1::date, 'pos', 'horizontal', 37, 'cajero', 5, $2)`, hoy(), otra); err != nil {
 			t.Fatalf("sembrar la otra empresa: %v", err)
 		}
 
