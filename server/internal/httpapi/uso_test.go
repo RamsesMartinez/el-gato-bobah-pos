@@ -35,6 +35,19 @@ func TestLaMedicionSiempreResponde204(t *testing.T) {
 		{"pantalla inventada", `{"eventos":[{"pantalla":"la-que-no-existe"}]}`},
 		{"acción inventada", `{"eventos":[{"pantalla":"pos","accion":"hacer-magia"}]}`},
 		{"nombre absurdo", `{"eventos":[{"pantalla":"` + strings.Repeat("a", 5000) + `"}]}`},
+		// Los toques entran por aquí desde la 019, y su camino de descarte tiene que morir igual de
+		// callado: lo que el servidor va a tirar no puede costarle un error a quien está cobrando.
+		{"toques vacíos", `{"toques":[]}`},
+		{"pantalla sin toques instrumentados", `{"toques":[{"pantalla":"caja","celda":3,"orientacion":"horizontal"}]}`},
+		{"celda fuera de la rejilla", `{"toques":[{"pantalla":"pos","celda":84,"orientacion":"horizontal"}]}`},
+		{"celda negativa", `{"toques":[{"pantalla":"pos","celda":-5,"orientacion":"horizontal"}]}`},
+		// El balde invisible, rechazado en la frontera antes de que la columna tenga que atraparlo.
+		{"orientación inventada", `{"toques":[{"pantalla":"pos","celda":3,"orientacion":"landscape"}]}`},
+		// Un número que no cabe en un int: muere en el decode, y el decode tampoco puede gritar.
+		{"celda imposible", `{"toques":[{"pantalla":"pos","celda":1e400,"orientacion":"horizontal"}]}`},
+		// El `x`/`y` de más no cabe aquí: ese toque es VÁLIDO y llegaría al store, que en esta
+		// prueba es nil a propósito. Que las coordenadas no tengan dónde aterrizar lo comprueba
+		// `TestElToquePorElRouterNoGuardaCoordenadas`, contra la base de verdad y el catálogo.
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
@@ -73,7 +86,13 @@ func TestLaMedicionSeLimitaPorUsuario(t *testing.T) {
 			t.Fatalf("el lote pasó el limitador y llegó a escribir (%v): el tope no está cableado", r)
 		}
 	}()
-	cuerpo, _ := json.Marshal(map[string]any{"eventos": []map[string]string{{"pantalla": "pos"}}})
+	// Con las DOS mitades: desde la 019 una petición compra el doble de trabajo, así que el tope
+	// tiene que morder antes de leer el cuerpo para las dos. Un refactor del router que mueva el
+	// limitador después del decode rompe esto en silencio —el endpoint seguiría respondiendo 204—.
+	cuerpo, _ := json.Marshal(map[string]any{
+		"eventos": []map[string]any{{"pantalla": "pos"}},
+		"toques":  []map[string]any{{"pantalla": "pos", "celda": 3, "orientacion": "horizontal"}},
+	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/usage", bytes.NewReader(cuerpo))
 	req = req.WithContext(context.WithValue(req.Context(), userCtxKey, AuthUser{ID: 7, CompanyID: 1, Role: domain.RoleCajero}))
 	w := httptest.NewRecorder()

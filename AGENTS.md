@@ -62,6 +62,22 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   horas porque 21 grupos de modificadores no tenían opciones activas — un estado ordinario: es el de
   un grupo recién creado. Ver `AdminListGroups` en [modifiers_admin.sql](server/queries/modifiers_admin.sql).
   `count()` es la excepción: sobre conjunto vacío da 0, no NULL.
+- **Un slice nil de Go sale como `null`, no como `[]`, y eso tumba una pantalla sin un solo error en
+  el servidor.** `json.Marshal` de un `[]T` nil escribe `null`; de un `[]T{}` escribe `[]`. Un mapa
+  al que se le pide una llave ausente devuelve el cero del valor —nil— así que
+  `Lines: porPedido[r.ID]` es nil en cuanto ese pedido no tiene renglones vivos.
+
+  Costó la pantalla de pedidos de producción el 2026-09-13: un pedido cuya única línea se canceló
+  llegó con `lines: null`, el tablero hace `o.lines.filter(...)` al pintar cada tarjeta, y el
+  mostrador se quedó con «La pantalla no se pudo mostrar» **con la API respondiendo 200 y sin una
+  sola línea de error en el log**. No falla nada: se entrega un contrato distinto del prometido, y
+  el 5xx que uno busca no existe.
+
+  La regla: **toda respuesta que prometa un arreglo lo entrega, aunque esté vacío.** Se normaliza
+  antes de devolver —ver `conRenglones` en [orders.go](server/internal/app/orders.go)— y el test va
+  sobre el **JSON crudo**, porque deserializar a una estructura de Go borra justo la diferencia
+  entre `null` y `[]`. Del lado del front, el campo se declara **opcional** para que el compilador
+  obligue a la guarda; un test estático se olvida de un archivo nuevo, `tsc` no.
 - **sqlc NO conoce `company_id`** en las ~30 tablas a las que se lo agregó
   [0023](server/migrations/0023_tenant_columns.sql) con `EXECUTE format()`: su parser no lee DDL
   dinámico. Nombrar esa columna en una consulta rompe `sqlc generate` con "column does not exist"
@@ -115,6 +131,24 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   [web/src/app/rutas-medidas.ts](web/src/app/rutas-medidas.ts). La etiqueta que se ve en el mapa va
   en [web/src/consola/etiquetas-de-uso.ts](web/src/consola/etiquetas-de-uso.ts), que es una copia
   deliberada: la consola no importa del POS.
+- **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
+  `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
+  pantalla también son dos lugares**: `pantallasConToque` en
+  [server/internal/domain/toque.go](server/internal/domain/toque.go) y `PANTALLAS_CON_TOQUE` en
+  [web/src/app/rutas-medidas.ts](web/src/app/rutas-medidas.ts). Tres cosas que no son obvias:
+  - **La lista tiene que ser SUBCONJUNTO de `pantallasMedibles`** (la de la 017): el toque entra por
+    el mismo endpoint y se valida contra aquélla. Una pantalla que no esté allá tiene todos sus
+    toques descartados en silencio, y su rejilla sale vacía sin un solo error. Lo vigila
+    `TestLasPantallasConToqueSonSubconjunto`.
+  - **Cuesta disco, no solo una línea.** Medido: 16.5 MB por trimestre, por empresa y **por
+    pantalla** —84 celdas × 2 orientaciones × 5 cortes de rol × 92 días— contra un techo de 20 MB.
+    Instrumentar una segunda pantalla lo duplica: vuelve a correr `toques_volumen_test.go` y mueve
+    el techo a propósito, o no la agregues.
+  - **La leyenda se actualiza con cada rediseño del POS.** Vive en
+    [web/src/consola/zonas-del-pos.ts](web/src/consola/zonas-del-pos.ts) con su `FECHA_DEL_LAYOUT`,
+    y es lo que reemplaza a la captura que está prohibido pintar debajo. Ningún test puede saber si
+    las bandas siguen siendo ciertas: el día que se mueva el panel de la cuenta, la leyenda vieja
+    describe una pantalla que ya no existe.
 - **Consola de plataforma** (en `web/`): `bun run dev:consola` (puerto 3100, con proxy a la API),
   `bun run typecheck:consola`, `bun run build:consola`. Van aparte de los del POS a propósito: un
   typo en la consola no puede dejar varado un arreglo de cobro en tableta. El primer operador se

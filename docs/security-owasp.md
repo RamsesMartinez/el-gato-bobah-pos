@@ -182,12 +182,51 @@ Lo que la consola **no** puede hacer hoy, y es deliberado: **escribir**. No tien
 | A01 | Un rol con **menos de dos** usuarios activos se guarda como «sin corte» | Decir «el gerente hizo 40 acciones» en una empresa con un gerente es decir su nombre. Se decide al ESCRIBIR: leyendo no se podría —la consola no tiene permiso sobre `users`— y escrito ya no se deshace |
 | A03 | Lista blanca de pantallas y acciones en `domain` | Sin ella, cuántos valores distintos hay en la base lo decide el cliente |
 | A04 | Tope de 50 eventos por lote y limitador por usuario | Un bucle en el front no puede costar una escritura por vuelta. El limitador lleva test propio: como el endpoint responde 204 pase lo que pase, roto es indistinguible de ausente |
-| A04 | Ninguna columna libre que el cliente pueda llenar | Al quitar el grano fino se fue también el `jsonb` donde un cuerpo malicioso podía escribir. Las coordenadas del futuro nacerán en su propia tabla, con su propia decisión |
+| A04 | Ninguna columna libre que el cliente pueda llenar | Al quitar el grano fino se fue también el `jsonb` donde un cuerpo malicioso podía escribir. Las coordenadas nacieron después en su propia tabla y con su propia decisión: ver la spec 019, abajo |
 | A04 | El tope se cuenta con el **valor de retorno del `INCR`**, no con un `GET` previo | Los dos pasos dejaban una carrera: 300 peticiones simultáneas leían el contador antes del primer incremento y pasaban todas |
 | A04 | Y con Redis caído, la ingesta **falla cerrada** | Al revés que el login, donde fallar abierto existe para no dejar a nadie fuera. Aquí no hay a quién dejar fuera: perder mediciones cuesta cero, quedarse sin tope cuesta el disco del VPS |
 | A03 | Un rol no puede reportar pantallas que su rol no abre | La lista blanca acota el conjunto de valores, no su coherencia: sin esto un mesero llena el mapa de aperturas de la pantalla de administración |
 | A09 | Un `usage_descartado` en el log con el primer nombre desconocido | Es el único testigo de que una versión del front dejó de medir: el mapa mostraría menos, indistinguible de «se usó menos» |
-| A01 | La consola lee `usage_daily` y **nunca** `usage_events` | Mira conteos, no hechos — y mañana esos hechos llevan coordenadas |
+| A01 | La consola lee **conteos, nunca hechos** | Su rol tiene `select` sobre `usage_daily` y `usage_touches_daily` y sobre nada más. La tabla de grano fino no existe: no es que no la alcance, es que no hay qué alcanzar |
+
+## Dónde cae el dedo (spec 019) — la coordenada que no existe
+
+La 017 dejó esta mitad aplazada y con la puerta abierta. Al cruzarla, la pregunta adversarial fue la
+misma —¿qué se puede cruzar con qué?— y la respuesta cambió el diseño entero.
+
+| OWASP | Decisión | Por qué |
+|---|---|---|
+| A01 | **La celda se calcula en la tableta**; al servidor nunca llega un `(x, y)` | Un punto con precisión de píxel que viaja EXISTE: en el cuerpo del request, en el log de acceso de un proxy y en la memoria del servidor, aunque después se redondee. «Se borra luego» es una intención; redondear en el origen es una garantía. Y el tipo del evento no tiene campo para un punto, así que la promesa no depende de que nadie lo llene |
+| A01 | **Tampoco hay instante**, ni siquiera un `updated_at` | Esa fila se toca con cada lote: su hora de última escritura diría a qué hora estuvo activa esa zona, que es medio camino de vuelta al cruce con `register_sessions` |
+| A01 | **Ninguna imagen y ningún texto de la pantalla** | La tentación es pintar las manchas encima de una captura, que se entiende mejor. Una captura del POS de un cliente lleva nombres, el contenido de sus pedidos e importes, y eso no puede salir del local. Lo vigila un guardia que **lee el código** de los archivos que arman el envío: `toDataURL`, canvas, `innerText`, `document.title` y la dirección de la página |
+| A01 | La rejilla es **gruesa a propósito**: 12×7, zonas del tamaño de un botón | Más fina sería un mapa de puntos con otro nombre. Y la dirección importa: hacia una rejilla más gruesa se recalcula fusionando celdas, **hacia una más fina no se puede** — el toque fino no se guarda en ningún lado |
+| A01 | Mismo corte de rol que la 017: menos de dos personas activas, «sin corte» | Y suprimir el rol no es tirar la medición: la fila existe sin él |
+| A03 | Lista blanca de pantallas instrumentadas, **subconjunto** de la de la 017 | Una pantalla que no esté allá tendría todos sus toques descartados en silencio y su rejilla saldría vacía. Lo vigila un test: el modo de falla de esta familia no es fallar, es medir menos — y «menos» se lee como «nadie lo usa» |
+| A03 | La misma lista corre **también en el cliente** | El escuchador vive en la raíz y ve toda la aplicación; sin filtrar allá, encolaría toques de pantallas no medidas todo el turno para que el servidor los tire |
+| A03 | `check` de orientación en la columna | Sin él, una versión vieja de la tableta que mande `'landscape'` crea un **balde invisible**: la fila entra, pasa el rango de celda —0..83 vale en las dos formas— y la consola nunca la muestra. Los toques de esa zona desaparecen sin un solo error |
+| A04 | Mil toques en la misma zona **suben un contador** | Es lo que hace que quepa, y por construcción: las filas las fija la rejilla (84 × 2 orientaciones × 5 cortes de rol × pantallas instrumentadas), no los dedos. Medido: 16.5 MB por trimestre y por pantalla, con el churn al tope del limitador |
+| A04 | Mismo endpoint, mismo limitador y misma cola que la 017 | Un camino nuevo obligaría a volver a demostrar todo lo que hace que la medición no estorbe, a cambio de nada |
+| A09 | Un `toques_descartados` en el log | El mismo testigo que en la 017, con su propio nombre |
+| A01 | La consola pide **una orientación** y recibe esa | Sumarlas pintaría una rejilla que nadie tocó nunca, y el error sería invisible: se vería normal describiendo un lugar que no existe |
+| — | Retención **más corta** que la del agregado: 92 días contra 396 | Una rejilla de hace un año describe un layout que ya no existe. Conservarla es conservar una referencia que miente |
+| A01 | El corte de rol mira la plantilla **entera**, no solo ese rol | La regla obvia deja un agujero: todo lo suprimido cae en el mismo balde `role is null`, así que cuando **un solo rol** queda bajo el umbral, ese balde ES esa persona —con 1 admin, 2 gerentes, 3 cajeros y 2 meseros, `null` es el dueño— y la consola lo pinta como «sin corte». Cuando el balde no alcanza a tapar a nadie, la medición **no se escribe**. Aplica también a la 017, que tenía el mismo agujero |
+
+### Hasta dónde llega el anonimato de la medición, dicho por escrito
+
+Lo de arriba impide guardar a una persona. **No impide cruzar lo guardado con otra cosa**, y eso hay
+que decirlo en vez de dejar que se lea como una garantía que no es:
+
+- El periodo de la consulta es libre dentro de la retención, así que se puede pedir **un solo día**.
+- En un local donde ese día trabajó una sola persona de ese rol —turnos que no se solapan, que es lo
+  normal en un negocio chico— la rejilla de ese día es la de esa persona, y `orders.opened_by` o
+  `register_sessions.closed_by` dicen quién fue.
+- **Un mínimo de ventana no lo arregla**: restar «7 días hasta hoy» menos «7 días hasta ayer»
+  recupera el día. Lo mismo deshace cualquier agregación temporal que se ponga encima.
+
+Quien puede hacer ese cruce es quien ya tiene acceso a la base del cliente, no un operador de la
+consola —su rol solo alcanza `companies`, `platform_operators` y los dos agregados de medición—. Se
+documenta, como se documentó el alcance del arqueo ciego, porque la promesa correcta es «no se
+guarda quién», no «es imposible saber quién».
 
 ## Checklist de lanzamiento en el VPS (operador)
 

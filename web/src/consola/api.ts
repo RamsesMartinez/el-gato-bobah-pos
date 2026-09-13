@@ -131,3 +131,35 @@ export function mapaDeUso(desde: string, hasta: string, empresa?: number): Promi
   if (empresa) q.set("empresa", String(empresa));
   return pedir<MapaDeUso>("/platform/usage?" + q.toString());
 }
+
+export type OrientacionDeToque = 'horizontal' | 'vertical';
+
+export interface CeldaDeToques {
+  celda: number;
+  veces: number;
+}
+
+export interface RejillaDeToques {
+  pantalla: string;
+  orientacion: OrientacionDeToque;
+  rejilla: { columnas: number; filas: number };
+  periodo: { desde: string; hasta: string };
+  // Las 84 celdas siempre, incluidas las de cero: «qué parte no toca nadie» es la mitad de la
+  // pregunta, y una celda omitida se pintaría como un hueco.
+  celdas: CeldaDeToques[];
+  porRol: UsoPorRol[];
+}
+
+// rejillaDeToques pide los toques de UNA pantalla en UNA orientación. Las dos orientaciones nunca
+// se suman: la misma celda es otro lugar en cada forma.
+export function rejillaDeToques(
+  pantalla: string,
+  orientacion: OrientacionDeToque,
+  desde: string,
+  hasta: string,
+  empresa?: number,
+): Promise<RejillaDeToques> {
+  const q = new URLSearchParams({ pantalla, orientacion, desde, hasta });
+  if (empresa) q.set('empresa', String(empresa));
+  return pedir<RejillaDeToques>('/platform/touches?' + q.toString());
+}

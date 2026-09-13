@@ -237,7 +237,15 @@ export interface BoardOrder {
   // Los renglones vivos con lo que falta de cada uno. Vienen en la misma respuesta del tablero:
   // se pintan desplegados, y pedirlos por tarjeta serían N peticiones cada diez segundos.
   // Vacío en las entregadas, que ya no tienen nada pendiente.
-  lines: BoardLine[];
+  // OPCIONAL a propósito, aunque el servidor garantice el arreglo y tenga su test.
+  //
+  // El 2026-09-13 llegó `null` —un slice nil de Go se serializa así— y el tablero, que hace
+  // `.filter` al pintar cada tarjeta, se cayó entero con el servidor respondiendo 200. El tipo decía
+  // `BoardLine[]`, así que ni TypeScript ni el linter podían avisar.
+  //
+  // Marcarlo opcional convierte al COMPILADOR en el guardia: cualquier acceso sin pasar por
+  // `renglonesDe()` deja de compilar. Un test estático se puede olvidar de un archivo nuevo; esto no.
+  lines?: BoardLine[];
 }
 
 // Un renglón visto desde el tablero. Sin precio: entregar no mueve dinero, y en 600 px de alto una
