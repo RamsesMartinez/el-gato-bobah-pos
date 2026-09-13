@@ -49,3 +49,35 @@ describe('entregados', () => {
     expect(entregados(pedido([]))).toBe(0);
   });
 });
+
+// LA PANTALLA DEL MOSTRADOR NO SE PUEDE CAER POR LO QUE VENGA EN UNA RESPUESTA.
+//
+// El 2026-09-13 el servidor mandó `lines: null` en un pedido cuya única línea se había cancelado
+// —un slice nil de Go se serializa como `null`, no como `[]`— y estas dos funciones, que corren al
+// PINTAR cada tarjeta, reventaron con `Cannot read properties of null (reading 'filter')`. Se cayó
+// el tablero entero y el mostrador se quedó con «La pantalla no se pudo mostrar»; reiniciar no
+// servía, porque el dato volvía igual.
+//
+// El servidor ya no lo manda y eso lo fija `TestElTableroNuncaMandaRenglonesNulos`. Esto es la otra
+// mitad: que ninguna respuesta pueda volver a tumbar la pantalla donde se vende. Un pedido sin
+// renglones se pinta vacío, que es la verdad.
+describe('un pedido sin renglones no tumba la pantalla', () => {
+  // `as BoardOrder` a propósito: el tipo dice que `lines` es un arreglo, y el defecto fue
+  // exactamente que la realidad no lo era. Un test que respete el tipo no puede reproducirlo.
+  const sinRenglones = { ...pedido([]), lines: null } as unknown as BoardOrder;
+
+  it('pendientes devuelve vacío en vez de reventar', () => {
+    expect(pendientes(sinRenglones)).toEqual([]);
+  });
+
+  it('entregados devuelve cero en vez de reventar', () => {
+    expect(entregados(sinRenglones)).toBe(0);
+  });
+
+  it('y con el campo ausente del todo, igual', () => {
+    const sinCampo = { ...pedido([]) } as Partial<BoardOrder>;
+    delete sinCampo.lines;
+    expect(pendientes(sinCampo as BoardOrder)).toEqual([]);
+    expect(entregados(sinCampo as BoardOrder)).toBe(0);
+  });
+});

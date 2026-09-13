@@ -114,6 +114,9 @@ periodo que pidió.
 | P7 | Doble tap en "Entregar todo" | El segundo es un no-op, no un error rojo sobre una entrega que sí ocurrió | `TestUnDobleTapEnEntregarTodoNoDaError` | Postgres |
 | P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
 | P3 | Renglones del menú ⋮ del tablero | 44 px, y "Cancelar pedido" separado de "Reimprimir comanda" | — | **no cubierto** (se mide en el navegador real) |
+| **P10** | **Un pedido cuya única línea se canceló** | El tablero lo pinta vacío. **Defecto real en producción el 2026-09-13**: el servidor mandaba `lines: null` —un slice nil de Go se serializa así— y `o.lines.filter(...)`, que corre al pintar cada tarjeta, tumbaba la pantalla entera con **el servidor respondiendo 200**. El mostrador veía «La pantalla no se pudo mostrar» y reiniciar no servía, porque el dato volvía igual | `TestElTableroNuncaMandaRenglonesNulos` · `entrega.test.ts › un pedido sin renglones` | Postgres + Navegador |
+| P10b | Las entregadas | Su constructor **nunca** asignaba `lines`, así que todas salían con `null`. No tumbaba nada solo porque esa pantalla no los toca: la misma bomba, armada en otro lado | `TestLasEntregadasTampocoMandanRenglonesNulos` | Postgres |
+| P10c | Que no vuelva | `BoardOrder.lines` es **opcional** en el tipo: cualquier acceso que no pase por `renglonesDe()` deja de compilar. Un test estático se olvida de un archivo nuevo; el compilador no | `tsc` | Comprobado inyectando el acceso directo |
 
 ## A. Sesiones y relevo entre estaciones
 
