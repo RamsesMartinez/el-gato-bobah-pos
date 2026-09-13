@@ -581,7 +581,27 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 			Lines:       porPedido[r.ID],
 		})
 	}
-	return out, nil
+	return conRenglones(out), nil
+}
+
+// conRenglones deja `Lines` como ARREGLO en todos los pedidos, nunca nil.
+//
+// Un slice nil de Go se serializa como `null`, no como `[]`, y ésa es toda la diferencia entre una
+// tarjeta vacía y la pantalla del mostrador caída: el tablero hace `o.lines.filter(...)` al pintar
+// cada pedido, así que un `null` lo tumba entero **con el servidor respondiendo 200**. Pasó el
+// 2026-09-13 con un pedido cuya única línea se canceló: la consulta filtra `cancelled_at is null`,
+// el mapa no tenía entrada para ese pedido, y `porPedido[id]` devolvió el cero de Go.
+//
+// Va aquí, en una sola función que recorre lo que se va a entregar, y no en cada sitio donde se
+// arma un `BoardOrder`: lo que hay que garantizar es el CONTRATO de la respuesta, y el contrato
+// dice arreglo. Lo fijan `TestElTableroNuncaMandaRenglonesNulos` y su gemelo de entregadas.
+func conRenglones(pedidos []BoardOrder) []BoardOrder {
+	for i := range pedidos {
+		if pedidos[i].Lines == nil {
+			pedidos[i].Lines = []BoardLine{}
+		}
+	}
+	return pedidos
 }
 
 // desdeCuandoSeVenLosEntregados resuelve el corte de la vista con el modo que eligió el negocio.
@@ -646,7 +666,7 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 			OpenedAt:    r.OpenedAt,
 		})
 	}
-	return out, nil
+	return conRenglones(out), nil
 }
 
 // Detail carga una orden completa.

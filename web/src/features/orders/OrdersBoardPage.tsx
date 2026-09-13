@@ -11,7 +11,7 @@ import { mensajeDeError } from '../../api/mensajes';
 import { posApi } from '../../api/pos';
 import type { BoardLine, BoardOrder } from '../../types/pos';
 import { resumenPorCobrar } from './porCobrar';
-import { entregados, faltante, pendientes } from './entrega';
+import { entregados, faltante, pendientes, renglonesDe } from './entrega';
 import { money } from '../../utils/format';
 import { buildKitchenHtml } from '../../utils/printKitchen';
 import { printHtmlOffscreen } from '../../utils/printReceipt';
@@ -289,7 +289,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             <Text as="span" lineClamp={1}>
               #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}
               {o.customerName ? ` · ${o.customerName}` : ''}
-              {o.lines.length > 1 ? ` · ${entregados(o)}/${o.lines.length}` : ''}
+              {renglonesDe(o).length > 1 ? ` · ${entregados(o)}/${renglonesDe(o).length}` : ''}
             </Text>
           </HStack>
         </Box>

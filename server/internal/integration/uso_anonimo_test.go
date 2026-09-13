@@ -26,10 +26,10 @@ func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
 	uno := makeUser(t, st, "cajero_uso_uno", "cajero")
 	makeUser(t, st, "cajero_uso_dos", "cajero")
 
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, []domain.EventoDeUso{
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
 		{Pantalla: "pos"},
 		{Pantalla: "pos", Accion: "cobrar"},
-	}); err != nil {
+	}}); err != nil {
 		t.Fatalf("registrar uso: %v", err)
 	}
 
@@ -56,6 +56,10 @@ func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
 // Decir «el gerente hizo estas 40 acciones» en una empresa con un gerente es decir su nombre. La
 // supresión ocurre al ESCRIBIR: lo que no se escribió no se puede consultar, ni con acceso a la
 // base, ni dentro de un año cuando ya nadie recuerde esta regla.
+//
+// Y la supresión mira la plantilla ENTERA, no solo ese rol: si es el único por debajo del umbral,
+// el balde «sin corte» también lo identifica. Lo prueba en tabla
+// `TestElBaldeSinCorteNoPuedeSerUnaSolaPersona`, en el dominio.
 func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -63,7 +67,7 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 
 	// Un solo mesero en la empresa.
 	makeUser(t, st, "mesero_solito", "mesero")
-	if _, err := svc.Registrar(ctx, domain.RoleMesero, []domain.EventoDeUso{{Pantalla: "pos"}}); err != nil {
+	if _, err := svc.Registrar(ctx, domain.RoleMesero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "pos"}}}); err != nil {
 		t.Fatalf("registrar uso del mesero: %v", err)
 	}
 
@@ -79,7 +83,7 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 	// Y con dos, el corte sí se conserva: si no, la feature no mide nada por rol nunca.
 	makeUser(t, st, "gerente_uso_uno", "gerente")
 	makeUser(t, st, "gerente_uso_dos", "gerente")
-	if _, err := svc.Registrar(ctx, domain.RoleGerente, []domain.EventoDeUso{{Pantalla: "caja"}}); err != nil {
+	if _, err := svc.Registrar(ctx, domain.RoleGerente, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{{Pantalla: "caja"}}}); err != nil {
 		t.Fatalf("registrar uso del gerente: %v", err)
 	}
 	var conRolGerente int
@@ -102,7 +106,7 @@ func TestElLotePreAgregadoNoPierdeEventos(t *testing.T) {
 	makeUser(t, st, "cajero_grano_dos", "cajero")
 
 	lote := []domain.EventoDeUso{{Pantalla: "pos"}, {Pantalla: "pos"}, {Pantalla: "pos"}}
-	if _, err := svc.Registrar(ctx, domain.RoleCajero, lote); err != nil {
+	if _, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: lote}); err != nil {
 		t.Fatalf("registrar: %v", err)
 	}
 
@@ -127,16 +131,16 @@ func TestLoDesconocidoSeDescartaYSeCuenta(t *testing.T) {
 	makeUser(t, st, "cajero_desconocido_uno", "cajero")
 	makeUser(t, st, "cajero_desconocido_dos", "cajero")
 
-	descartados, err := svc.Registrar(ctx, domain.RoleCajero, []domain.EventoDeUso{
+	descartados, err := svc.Registrar(ctx, domain.RoleCajero, app.LoteDeMedicion{Eventos: []domain.EventoDeUso{
 		{Pantalla: "pos"},
 		{Pantalla: "pantalla-que-no-existe"},
 		{Pantalla: "pos", Accion: "hacer-magia"},
-	})
+	}})
 	if err != nil {
 		t.Fatalf("registrar: %v", err)
 	}
-	if descartados != 2 {
-		t.Fatalf("descartó %d de 2: sin ese número, una versión del front que manda nombres viejos deja de medir y nadie se entera", descartados)
+	if descartados.Eventos != 2 {
+		t.Fatalf("descartó %d de 2: sin ese número, una versión del front que manda nombres viejos deja de medir y nadie se entera", descartados.Eventos)
 	}
 	var hits int
 	if err := st.Pool.QueryRow(ctx, `select coalesce(sum(hits),0) from usage_daily`).Scan(&hits); err != nil {

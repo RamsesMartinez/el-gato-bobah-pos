@@ -114,6 +114,9 @@ periodo que pidió.
 | P7 | Doble tap en "Entregar todo" | El segundo es un no-op, no un error rojo sobre una entrega que sí ocurrió | `TestUnDobleTapEnEntregarTodoNoDaError` | Postgres |
 | P9 | Error de red al entregar | Un mensaje accionable, no `TypeError: Failed to fetch` | `mensajes.test.ts` | Navegador |
 | P3 | Renglones del menú ⋮ del tablero | 44 px, y "Cancelar pedido" separado de "Reimprimir comanda" | — | **no cubierto** (se mide en el navegador real) |
+| **P10** | **Un pedido cuya única línea se canceló** | El tablero lo pinta vacío. **Defecto real en producción el 2026-09-13**: el servidor mandaba `lines: null` —un slice nil de Go se serializa así— y `o.lines.filter(...)`, que corre al pintar cada tarjeta, tumbaba la pantalla entera con **el servidor respondiendo 200**. El mostrador veía «La pantalla no se pudo mostrar» y reiniciar no servía, porque el dato volvía igual | `TestElTableroNuncaMandaRenglonesNulos` · `entrega.test.ts › un pedido sin renglones` | Postgres + Navegador |
+| P10b | Las entregadas | Su constructor **nunca** asignaba `lines`, así que todas salían con `null`. No tumbaba nada solo porque esa pantalla no los toca: la misma bomba, armada en otro lado | `TestLasEntregadasTampocoMandanRenglonesNulos` | Postgres |
+| P10c | Que no vuelva | `BoardOrder.lines` es **opcional** en el tipo: cualquier acceso que no pase por `renglonesDe()` deja de compilar. Un test estático se olvida de un archivo nuevo; el compilador no | `tsc` | Comprobado inyectando el acceso directo |
 
 ## A. Sesiones y relevo entre estaciones
 
@@ -431,20 +434,86 @@ filtrándose y el volumen creciendo— y por eso cada una tiene su gate.
 | M14 | Rango imposible | Un `desde` fuera de la retención o mal escrito da **400**, no un default en silencio | `uso_consola_test.go` | — |
 | M15 | El volumen de un año | Bajo el techo con el churn **al tope del limitador**, no al del uso honesto | `uso_volumen_test.go` | Medido: 10.3 MB de 25 |
 | M16 | El recorte | Borra lo viejo, no toca lo de dentro, y su ciclo termina al apagar | idem | — |
-| M17 | Las coordenadas del futuro | Su tabla se crea al lado sin tocar una fila de lo escrito | idem | — |
+| M17 | Las coordenadas del futuro | **Puerta cruzada** por la spec 019: `usage_touches_daily` nace al lado sin tocar una fila de lo escrito, y sin instante ni punto | idem | — |
 | M19 | La cola y el cambio de sesión | Lo encolado se **tira**, no se manda con el token del siguiente operador | `src/api/uso.test.ts` | — |
 | M18 | El peso del POS | +1.64 kB (1,133.26 → 1,134.90 kB) | `bun run build` | Medido |
 
 **Lo que M no cubre, y hay que decirlo:**
 
-- **La red LENTA solo se prueba a mano.** `medir-no-estorba.spec.ts` corta el endpoint de medición
-  por completo, que es el caso fácil; el que de verdad preocupa —respuestas de 8 a 15 segundos que
-  apilan lotes— vive en el paso 4-bis del quickstart y lo tiene que hacer una persona con el
-  navegador estrangulado.
+- **La red LENTA solo se prueba a mano.** `medir-no-estorba.spec.ts` deja el endpoint colgado un
+  minuto, que ya es el caso malo —ni éxito ni error—, pero el que apila lotes de verdad son
+  respuestas de 8 a 15 segundos sostenidas media hora: eso vive en el paso 4-bis del quickstart y lo
+  tiene que hacer una persona con el navegador estrangulado.
 - **Nadie mide que el mapa sea útil.** Que las cifras sean correctas está cubierto; que mirándolo se
   pueda decidir algo, no — eso se ve con un mes de uso encima y a ojo.
 - **El recorte en la VM.** Que dispare al arrancar está probado en integración; que efectivamente
   corra en producción se comprueba contando filas viejas tras varios despliegues.
+
+## N. Dónde cae el dedo: la rejilla de toques (2026-09-12)
+
+Spec 019, la mitad que la 017 dejó aplazada. Tres promesas que **solo un test sostiene**, porque
+las tres se rompen sin que nada falle: que el arrastre no cuente, que las capas de encima no se
+cuenten, y que el volumen no crezca con los dedos.
+
+| # | Caso | Qué debe pasar | Test | Visto en rojo |
+|---|---|---|---|---|
+| N1 | Lo que se guarda | Un conteo por zona y por día: **ninguna columna de tiempo más fina que el día**, ninguna de usuario, ningún `(x, y)` | `migracion_toques_test.go`, `toques_http_test.go` | Sí — la tabla no existía |
+| N2 | Los cuatro `check` | Celda 84, `'landscape'`, `hits` negativo y una pantalla de 5 kB se rechazan | `migracion_toques_test.go` | Sí |
+| N2b | **El `check` de la orientación** | Sin él, una tableta que mande `'landscape'` crea un **balde invisible**: la fila entra, pasa el rango de celda —0..83 vale en las dos formas— y la consola nunca la muestra | idem | Sí |
+| N3 | La llave | La misma celda con `role` nulo **suma**; la misma celda en otra orientación es **otra fila** | `migracion_toques_test.go`, `toques_anonimos_test.go` | — |
+| N4 | Una ráfaga de mil toques | Sube un contador y **no cambia el número de filas** | `toques_anonimos_test.go` | — |
+| N5 | Un rol con una sola persona | Se guarda sin corte, **y la fila existe**: suprimir el rol no es tirar la medición | idem | — |
+| N6 | La celda | Se calcula **en la tableta**; el mismo punto del vidrio da la misma celda con la página desplazada, y el mismo punto relativo da la misma celda en dos tabletas de distinto tamaño | `src/app/celda.test.ts` | — |
+| N7 | El arrastre | Más de 10 px **no cuenta**: sin esto la rejilla mide scroll en vez de intención | `MedidorDeToques.test.tsx` | Sí |
+| N8 | Dos dedos a la vez | Cada contacto con su `pointerId`; con estado compartido los dos salen como arrastres | idem | Sí |
+| N9 | **Las capas de encima** | Solo cuenta lo que cuelga de `[data-medible]` (AppShell): hojas, diálogos, avisos flotantes y el bloqueo quedan fuera **por construcción** | idem y `LockScreen.test.tsx` | Sí — sin el rol, el teclado del PIN contamina el centro |
+| N9b | El aviso flotante | Se anuncia `role="status"`, no `dialog`: con una lista de lo prohibido nacía CONTADO, y cae sobre la zona del botón de cobrar con un «Deshacer» que la gente toca | `MedidorDeToques.test.tsx` | — |
+| N9c | El bloqueo cumple lo que promete | `aria-modal` con `inert` en lo de abajo: sin él, `Tab`+`Enter` desde el bloqueo activa un control de la pantalla de atrás | `LockScreen.test.tsx` | Sí |
+| N5b | **El balde «sin corte» de una sola persona** | Con un solo rol bajo el umbral no se escribe nada: `null` sería esa persona. Aplica también a la 017 | `domain/uso_test.go`, `toques_anonimos_test.go` | Sí |
+| N18b | La leyenda cubre las 84 celdas | Sin huecos y sin traslapes, en las dos orientaciones; incluye el menú lateral, que es la columna 0 | `zonas-del-pos.test.ts` | — |
+| N10 | Que no estorbe | El escuchador va en captura y **no cancela nada**: el `onClick` del botón y el desplazamiento de la lista siguen llegando | `MedidorDeToques.test.tsx` · `medir-no-estorba.spec.ts` › **M2** | — |
+| N11 | La lista blanca del cliente | En once de las doce pantallas no queda **ni un listener** colgado | `MedidorDeToques.test.tsx` | — |
+| N12 | Lo que viaja en el cuerpo | Llaves exactamente `{eventos, toques}`, y cada toque solo `{pantalla, celda, orientacion}` | `uso-nunca-manda-la-pantalla.test.ts` | — |
+| N13 | **Ninguna captura** | Ningún archivo que arma el envío usa `toDataURL`, canvas, `innerText`, `document.title` ni la dirección | idem | Sí — inyectándole la forma prohibida |
+| N14 | La rejilla que lee la consola | Las **84 celdas**, las de cero incluidas, en el orden de la rejilla | `toques_consola_test.go`, `RejillaDeToques.test.tsx` | Sí — 404 |
+| N15 | **Las dos orientaciones** | Nunca se suman: se pide una y se devuelve esa; una inventada da **400** | idem | — |
+| N16 | Quién puede leerlo | Con sesión del negocio, **401**. La consola ve las de **todas** las empresas | `toques_consola_test.go`, `migracion_toques_test.go` | Sí — sin la política ve una de dos |
+| N17 | Parámetro malo | Pantalla no instrumentada, orientación inventada y rango fuera de la retención dan **400**, nunca un default | `toques_consola_test.go` | — |
+| N18 | La leyenda | Sale con la **fecha del layout** que describe | `RejillaDeToques.test.tsx` | — |
+| N19 | El número en la celda | Escrito, no solo el tono, y cada celda dice su fila y columna para quien no la ve | idem | — |
+| N20 | El volumen de un trimestre | Bajo el techo con las **dos orientaciones** y el churn al tope | `toques_volumen_test.go` | Medido: **16.5 MB de 20** (7.5 de índices, 77,364 filas, 223 B/fila) |
+| N23 | La frontera con toques | Celda 84, celda negativa, `'landscape'`, `celda: 1e400` y una pantalla sin instrumentar: **204** y sin pánico; el limitador muerde con las dos mitades | `httpapi/uso_test.go` | — |
+| N21 | El recorte | Usa **su** retención (92 días), y no se lleva el agregado de 396 | idem | — |
+| N22 | El peso del POS | +1.49 kB (1,134.94 → 1,136.43 kB), y `package.json`/`bun.lock` sin cambios | `bun run build` | Medido |
+
+**Lo que N no cubre, y hay que decirlo:**
+
+- **La rejilla nunca se ha visto con datos de un mes.** Todo lo de arriba prueba que los números son
+  correctos; que mirándola se pueda decidir dónde mover un botón se ve con uso encima y a ojo.
+- **Nadie verifica que la leyenda siga siendo cierta.** El test comprueba que sale con su fecha, no
+  que las bandas correspondan al layout de hoy: eso lo tiene que rehacer una persona en cada
+  rediseño del POS.
+- **El techo es POR PANTALLA INSTRUMENTADA.** Hoy la lista tiene una y ocupa el 82 % de los 20 MB.
+  Agregar otra cuesta una línea de código **y otro tanto de disco**, y el test de volumen no lo
+  atrapa hasta que alguien la agrega y vuelve a correrlo.
+- **La orientación vertical no se ha probado en una tableta real.** Los tests la cubren; que el POS
+  en vertical se parezca a la leyenda vertical, no.
+- **El anonimato no resiste un cruce con la base del cliente.** La consulta admite un solo día, y en
+  un local donde ese día trabajó una sola persona de ese rol, esa rejilla es suya —`orders.opened_by`
+  dice quién—. Un mínimo de ventana no lo arregla (restar dos rangos recupera el día). Está escrito
+  en [docs/security-owasp.md](security-owasp.md); lo que la feature promete es «no se guarda quién»,
+  no «es imposible saber quién».
+- **`xmin` es el `updated_at` que la tabla dice no tener.** Es una columna de sistema, se lee con el
+  mismo `select` y avanza en cada `update`: sondeándola se reconstruye qué zonas se tocaron en el
+  último minuto. No se puede quitar. Hoy no cruza una frontera real —la credencial de plataforma y
+  la del dueño viven en el mismo archivo— pero el grant lo trae incluido.
+- **La rejilla cuenta el toque que ABRE una acción, no los de dentro.** Medido en pruebas: tocar un
+  producto abre su hoja de modificadores, así que de una captura completa entra el toque del
+  producto y ninguno de los de la hoja. No es un defecto —es el filtro de capas haciendo su
+  trabajo— pero cambia cómo se lee el número, y por eso se dice al lado de la rejilla.
+- **El umbral de arrastre mide el desplazamiento NETO**, no la excursión máxima: un desplazamiento
+  que va y vuelve al mismo punto se cuenta como toque. Seguir el `pointermove` lo atraparía a cambio
+  de meter trabajo en el camino del dedo, que es lo que esta feature tiene prohibido.
 
 ## Pendientes de cubrir
 

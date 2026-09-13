@@ -36,3 +36,23 @@ export function pantallaDe(ruta: string): string | null {
   }
   return null;
 }
+
+// QUÉ PANTALLAS MIDEN EL TOQUE (spec 019).
+//
+// Lista corta a propósito: se empieza por el POS, que es donde el dedo está todo el día. Medir doce
+// pantallas para mirar dos es volumen y ruido, y la 017 es la que va a decir cuál agregar.
+//
+// **Tiene que coincidir con `pantallasConToque` en `server/internal/domain/toque.go`**, y esa a su
+// vez es subconjunto de la lista de la 017. Una pantalla que esté aquí y no allá manda toques todo
+// el turno para que el servidor los tire; una que esté allá y no aquí sale con la rejilla vacía, y
+// una rejilla vacía se lee como «aquí nadie toca».
+const PANTALLAS_CON_TOQUE = new Set(['pos']);
+
+// seMidenSusToques filtra EN LA TABLETA lo que el servidor iba a descartar de todos modos.
+//
+// El escuchador vive en la raíz y ve toda la aplicación: sin esto, encolaría toques de pantallas no
+// instrumentadas durante todo el turno —y el wifi del mostrador es el mismo por el que viaja un
+// cobro—.
+export function seMidenSusToques(pantalla: string | null): boolean {
+  return pantalla !== null && PANTALLAS_CON_TOQUE.has(pantalla);
+}

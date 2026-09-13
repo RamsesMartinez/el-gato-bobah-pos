@@ -267,7 +267,7 @@ declarado.
       SC-003 es la promesa central de US3 y hoy solo la comprueba un humano leyendo el quickstart.
       Una promesa que solo se verifica a mano se rompe el día que nadie tiene tiempo de verificarla.
 
-- [ ] T040 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 4-bis** (red lenta
+- [X] T040 Correr [quickstart.md](./quickstart.md) completo, **incluido el paso 4-bis** (red lenta
       con throttling, verificando que no se apilan envíos). El paso de la red caída es el fácil.
 - [X] T041 [P] Medir el paquete del POS y compararlo contra el número de T002 (si creció más de unos
       pocos KB, algo del mapa se coló) **y comprobar que `web/package.json` y `web/bun.lock` no

@@ -205,3 +205,69 @@ tr.accion td:first-child {
   padding-left: 24px;
   color: var(--tenue);
 }
+
+/* LA REJILLA DE TOQUES (spec 019).
+   Se pinta sola, sin captura debajo: lo único que da la proporción de la pantalla es el
+   `aspect-ratio` de abajo. */
+.toques {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.rejilla {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 420px;
+  min-width: 300px;
+  max-width: 620px;
+  /* La forma de la tableta. Sin esto la rejilla se estira a lo que quepa y deja de parecerse a la
+     pantalla que describe, que es lo único que le da sentido a «la esquina de arriba». */
+  aspect-ratio: 1024 / 600;
+  padding: 2px;
+  background: var(--borde);
+  border-radius: 8px;
+}
+
+.zona {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  /* El número va encima del tono y la consola es oscura, así que tiene que leerse sobre el rojo
+     casi opaco y sobre el fondo casi vacío: texto claro con sombra oscura alrededor, en vez de
+     elegir un color y perder la mitad de los casos. */
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.zona.apagada {
+  /* La celda que nadie tocó se pinta, no se deja en blanco: un hueco se lee como un defecto de la
+     pantalla y «qué parte no toca nadie» es la mitad de la pregunta. */
+  background: var(--panel) !important;
+}
+
+.leyenda {
+  flex: 1 1 260px;
+  min-width: 240px;
+  font-size: 13px;
+}
+
+.leyenda h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.leyenda ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.leyenda li {
+  margin-bottom: 3px;
+}
