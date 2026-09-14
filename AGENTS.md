@@ -32,7 +32,26 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
   [docs/security-owasp.md](docs/security-owasp.md).
 - **`specs/`** — un directorio por feature (`NNN-slug/`), generado por spec-kit.
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
-- **`references/`** — exports reales de FUDO (fuente del importador de catálogo).
+- **`references/` YA NO EXISTE EN EL REPOSITORIO**, y es una regla, no un accidente. Los exports de
+  FUDO traen el **costo de compra de cada insumo**, el **nombre de cada proveedor**, las **ventas por
+  día y por hora** y los **gastos por categoría, incluido el pago a colaboradores**. Eso es la
+  estructura de márgenes del negocio, y este repositorio es **público**. Viven en
+  `~/gatobobah-datos/references/`; `make fudo-import` los lee de ahí y falla con un mensaje claro si
+  no están. Se apunta a otro lado con `FUDO_DIR=... make fudo-import`.
+
+  **La regla general, que aplica a cualquier cosa que se quiera agregar:**
+
+  | Va en el repositorio | No va, nunca |
+  | --- | --- |
+  | Código, esquema, pruebas | Exports, respaldos, reportes de ventas o de gastos |
+  | El **porqué** de una decisión | Los **números del negocio** que la motivaron |
+  | Hechos del mundo — «Uber cobra 30%», «la API exige NDA» | Cuánto vende el negocio, cuánto le cuesta un insumo, a quién le compra |
+  | Un techo medido del sistema — «la tabla pesa 16.5 MB» | Documentos fiscales, nómina, datos de clientes |
+
+  La vara: **si el dato sigue siendo cierto en otro restaurante, va; si solo es cierto en éste, no.**
+  Un documento que necesite las dos mitades cita la de afuera sin copiarla — como hace
+  [docs/plataformas-digitales.md](docs/plataformas-digitales.md), que documenta las comisiones
+  medidas y deja los CFDI fuera del repo a propósito.
 
 ### Listas filtradas, ordenables y paginadas
 

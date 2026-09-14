@@ -119,8 +119,14 @@ respaldo-anonimo: ## Baja producción, borra los datos personales y restaura en 
 
 migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
-fudo-import: deps-up ## Importa el catálogo FUDO desde references/ (y limpia la cache del menú)
-	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir ../references
+# FUDO_DIR: los exports viven FUERA del repositorio, a propósito. Traen el costo de compra de cada
+# insumo, el nombre de cada proveedor y las ventas del negocio — y este repo es público. Ver §1 de
+# AGENTS.md. Se puede apuntar a otro lado con `FUDO_DIR=... make fudo-import`.
+FUDO_DIR ?= $(HOME)/gatobobah-datos/references
+
+fudo-import: deps-up ## Importa el catálogo FUDO desde $FUDO_DIR (y limpia la cache del menú)
+	@test -d "$(FUDO_DIR)" || { echo "No existe $(FUDO_DIR). Los exports de FUDO viven fuera del repositorio; ver AGENTS.md §1."; exit 1; }
+	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir "$(FUDO_DIR)"
 	@# Por patrón y no `DEL pos:menu`: desde 0022 la clave lleva el tenant (pos:menu:1, pos:popular:1,
 	@# ver internal/cache/menu.go). Borrar la clave vieja no invalidaba nada y el POS seguía
 	@# sirviendo el menú anterior — o vacío, si se importó con la base recién migrada.

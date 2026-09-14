@@ -10,7 +10,8 @@ ventas reales, y la mitad del trabajo de leerlos es descubrir que los nombres mi
 > máquina del dueño. Es su única copia — un respaldo que solo existe en una carpeta sincronizada no
 > es un respaldo.
 >
-> No confundir con [`references/`](../references/), que son exports de FUDO usados por el importador
+> No confundir con los exports de FUDO que usa el importador, que **viven fuera del repositorio**
+> (`~/gatobobah-datos/references/`) por traer costos de compra, proveedores y ventas — ver AGENTS.md §1
 > de catálogo (`cmd/fudo-import`) y sí están versionados.
 
 ---
