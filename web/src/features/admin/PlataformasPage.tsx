@@ -12,6 +12,7 @@ import {
   type ConexionDePlataforma,
 } from '../../api/plataformas';
 import { MenuDePlataformaPage } from './MenuDePlataformaPage';
+import { useMenu } from '../../hooks/useMenu';
 
 /**
  * Las tiendas conectadas: alta, baja y el acceso a lo demás.
@@ -20,15 +21,20 @@ import { MenuDePlataformaPage } from './MenuDePlataformaPage';
  * lista de diferencias se quedaba en «todavía no hay ninguna tienda» para siempre.
  */
 
-// Las plataformas del catálogo. Son fijas y su id viene de `delivery_platforms`; se piden al
-// servidor junto con las conexiones para no adivinar ids que son por empresa.
-const PLATAFORMAS: PickerOption[] = [
-  { value: '1', label: 'Didi' },
-  { value: '2', label: 'Uber Eats' },
-  { value: '3', label: 'Rappi' },
-];
-
 function Alta({ onListo }: { onListo: () => void }) {
+  // LAS PLATAFORMAS SE LEEN DEL MENÚ, no se escriben aquí.
+  //
+  // `delivery_platforms.id` es POR EMPRESA: en el respaldo de producción, Uber Eats es el 2 para
+  // una empresa y el 6 para otra. Una lista fija en el front manda el id de la empresa equivocada;
+  // la FK compuesta del esquema lo rechaza —falla seguro, no conecta mal— pero el formulario deja
+  // de servir y el mensaje no dice por qué.
+  //
+  // «Propio» queda fuera: es reparto del propio negocio, sin menú publicado que leer.
+  const { data: menu } = useMenu();
+  const plataformas: PickerOption[] = (menu?.platforms ?? [])
+    .filter((p) => p.name !== 'Propio')
+    .map((p) => ({ value: String(p.id), label: p.name }));
+
   const [platformId, setPlatformId] = useState('');
   const [storeId, setStoreId] = useState('');
   const [label, setLabel] = useState('');
@@ -60,7 +66,7 @@ function Alta({ onListo }: { onListo: () => void }) {
       <VStack align="stretch" gap={3}>
         <Picker
           value={platformId}
-          options={PLATAFORMAS}
+          options={plataformas}
           onChange={setPlatformId}
           placeholder="¿De qué app?"
           title="Aplicación de reparto"
@@ -162,7 +168,13 @@ export function PlataformasPage() {
               <Button minH="44px" variant="outline" onClick={() => navegar(`/plataformas/${c.id}/emparejar`)}>
                 <LuLink2 /> Emparejar
               </Button>
-              <Button minH="44px" variant="ghost" colorPalette="red" onClick={() => preguntar(c)}>
+              <Button
+                minH="44px"
+                variant="ghost"
+                colorPalette="red"
+                aria-label={`Desconectar ${c.platformName} ${c.label}`}
+                onClick={() => preguntar(c)}
+              >
                 <LuTrash2 />
               </Button>
             </HStack>

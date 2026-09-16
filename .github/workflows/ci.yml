@@ -101,11 +101,18 @@ jobs:
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
-        # -timeout 20m: el default de `go test` son 10, y la suite los pasó cuando confirmar y cobrar
-        # dejaron de ser una sola llamada (feature 005) — cada pedido sembrado hace ahora dos viajes
-        # a la base, y el runner es varias veces más lento que una máquina local. Un timeout que
-        # revienta se lee como "un test se colgó" y manda a buscar un defecto que no existe.
-        run: go test -timeout 20m -tags=integration ./internal/integration/... ./internal/httpapi/...
+        # -timeout 30m. Subido de 20 el 2026-09-16, cuando la suite lo pasó al agregar la 020. Un
+        # timeout que revienta se lee como "un test se colgó" y manda a buscar un defecto que no
+        # existe — el de la 020 tardó en diagnosticarse justo por eso.
+        #
+        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo suba sepa qué está comprando: la suite
+        # llama `newTestStore` **368 veces**, y cada una hace `drop schema public cascade` y corre
+        # las 71 migraciones. Medido: local ~9 min, el runner ~2.3× más lento. El aislamiento por
+        # prueba es deliberado y vale lo que cuesta, pero una prueba nueva que solo mira una
+        # restricción no necesita su propio esquema: pueden compartir uno con subpruebas, como hace
+        # `TestLasRestriccionesDelEsquemaDeMenus`. Antes de subir esto otra vez, mira si lo que se
+        # agregó podía compartir.
+        run: go test -timeout 30m -tags=integration ./internal/integration/... ./internal/httpapi/...
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379/0

@@ -97,8 +97,7 @@ func TestUnEmparejamientoNoCruzaEmpresas(t *testing.T) {
 // FR-005 EN EL ESQUEMA. Una lectura que vuelve sin productos no es un menú vacío: es una lectura
 // que no sirve. Tratarla como dato válido haría que la comparación dijera que sobra todo el
 // catálogo — el peor reporte posible, y el que más invita a una acción destructiva.
-func TestUnaLecturaOkSinItemsSeRechaza(t *testing.T) {
-	st := newTestStore(t)
+func subUnaLecturaOkSinItemsSeRechaza(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-vacia")
 
@@ -114,8 +113,7 @@ func TestUnaLecturaOkSinItemsSeRechaza(t *testing.T) {
 }
 
 // Y su gemelo: una lectura en curso no puede tener hora de fin, ni una terminada carecer de ella.
-func TestElEstadoDeUnaLecturaEsCoherenteConSuHoraDeFin(t *testing.T) {
-	st := newTestStore(t)
+func subElEstadoDeUnaLecturaEsCoherenteConSuHoraDeFin(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-coherente")
 
@@ -136,8 +134,7 @@ func TestElEstadoDeUnaLecturaEsCoherenteConSuHoraDeFin(t *testing.T) {
 // LA LISTA DE CLASES DE FALLO ES UN CONTROL DE SEGURIDAD, no una convención. Sirve para que el
 // error crudo de una API ajena —que puede traer el secreto en el query string— nunca llegue a la
 // base. Un `check` no se olvida cuando alguien agrega una rama nueva al servicio.
-func TestLaClaseDeFalloEsUnaListaCerrada(t *testing.T) {
-	st := newTestStore(t)
+func subLaClaseDeFalloEsUnaListaCerrada(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-fallos")
 
@@ -159,14 +156,18 @@ func TestLaClaseDeFalloEsUnaListaCerrada(t *testing.T) {
 
 // VARIAS TIENDAS POR EMPRESA. Es la puerta del principio VIII que motivó rehacer el esquema: una
 // llave única sin `external_store_id` dejaría fuera a la segunda sucursal.
-func TestDosTiendasDeLaMismaPlataformaCaben(t *testing.T) {
-	st := newTestStore(t)
+func subDosTiendasDeLaMismaPlataformaCaben(t *testing.T, st *store.Store) {
 	sembrarConexion(t, st, defaultCompanyID, "sucursal-centro")
 	sembrarConexion(t, st, defaultCompanyID, "sucursal-norte")
 
+	// Contado por SUS tiendas y no por la empresa entera: comparte esquema con las demás
+	// subpruebas, y un `count(*)` global convertiría esta aserción en una función de cuántas
+	// corrieron antes.
 	var n int
 	if err := st.Pool.QueryRow(context.Background(),
-		`select count(*) from platform_connections where company_id = $1`, defaultCompanyID).Scan(&n); err != nil {
+		`select count(*) from platform_connections
+		  where company_id = $1 and external_store_id in ('sucursal-centro', 'sucursal-norte')`,
+		defaultCompanyID).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {
@@ -175,8 +176,7 @@ func TestDosTiendasDeLaMismaPlataformaCaben(t *testing.T) {
 }
 
 // Y la misma tienda dos veces, no: es captura duplicada y produciría dos fotos del mismo menú.
-func TestLaMismaTiendaNoSeRegistraDosVeces(t *testing.T) {
-	st := newTestStore(t)
+func subLaMismaTiendaNoSeRegistraDosVeces(t *testing.T, st *store.Store) {
 	sembrarConexion(t, st, defaultCompanyID, "tienda-repetida")
 	if _, err := st.Pool.Exec(context.Background(),
 		`insert into platform_connections (company_id, delivery_platform_id, external_store_id, label)
@@ -188,8 +188,7 @@ func TestLaMismaTiendaNoSeRegistraDosVeces(t *testing.T) {
 
 // FR-012: un item de la plataforma no puede apuntar a dos productos. Lo impide la PK, y sin este
 // assert es la promesa de un comentario.
-func TestUnItemDeLaPlataformaNoApuntaADosProductos(t *testing.T) {
-	st := newTestStore(t)
+func subUnItemDeLaPlataformaNoApuntaADosProductos(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-fr012")
 	a := sembrarProductoEn(t, st, defaultCompanyID, "Chamoyada")
@@ -206,8 +205,7 @@ func TestUnItemDeLaPlataformaNoApuntaADosProductos(t *testing.T) {
 
 // FR-010: al revés SÍ. Es el caso real del negocio, no una generalización — una `Chamoyada` abajo
 // son doce chamoyadas arriba.
-func TestUnProductoSiPuedeSerVariosPlatillosDeArriba(t *testing.T) {
-	st := newTestStore(t)
+func subUnProductoSiPuedeSerVariosPlatillosDeArriba(t *testing.T, st *store.Store) {
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-fr010")
 	chamoyada := sembrarProductoEn(t, st, defaultCompanyID, "Chamoyada")
 
@@ -225,8 +223,7 @@ func TestUnProductoSiPuedeSerVariosPlatillosDeArriba(t *testing.T) {
 }
 
 // FR-014: la pareja se guarda contra identificadores, así que renombrar el producto no la toca.
-func TestRenombrarElProductoNoRompeLaPareja(t *testing.T) {
-	st := newTestStore(t)
+func subRenombrarElProductoNoRompeLaPareja(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-fr014")
 	p := sembrarProductoEn(t, st, defaultCompanyID, "Nombre viejo")
@@ -264,17 +261,22 @@ func sembrarConexion(t *testing.T, st *store.Store, companyID int64, storeID str
 func sembrarProductoEn(t *testing.T, st *store.Store, companyID int64, nombre string) int64 {
 	t.Helper()
 	ctx := context.Background()
+	// La categoría lleva el nombre de la prueba: `categories_name_scope` es único por empresa, y
+	// desde que estas pruebas comparten esquema, dos que siembren «Chamoyada» chocarían. El choque
+	// no dice nada del código, solo del fixture.
 	var catID int64
 	if err := st.Pool.QueryRow(ctx,
 		`insert into categories (company_id, name) values ($1, $2) returning id`,
-		companyID, "cat-"+nombre).Scan(&catID); err != nil {
+		companyID, "cat-"+t.Name()+"-"+nombre).Scan(&catID); err != nil {
 		t.Fatalf("categoría de %s: %v", nombre, err)
 	}
+	// El nombre del producto también: `products_company_name_key` es único por empresa. Lo que la
+	// prueba mira es el id que devuelve, no el texto.
 	var id int64
 	if err := st.Pool.QueryRow(ctx,
 		`insert into products (company_id, name, price, category_id, type)
 		 values ($1, $2, $3, $4, 'simple') returning id`,
-		companyID, nombre, decimal.NewFromInt(50), catID).Scan(&id); err != nil {
+		companyID, t.Name()+"-"+nombre, decimal.NewFromInt(50), catID).Scan(&id); err != nil {
 		t.Fatalf("producto %s: %v", nombre, err)
 	}
 	return id
@@ -481,5 +483,27 @@ func TestElServicioRespetaElTenantBajoElRolDeApp(t *testing.T) {
 	}
 	if dueña != defaultCompanyID {
 		t.Fatalf("la conexión quedó en la empresa %d y no en la %d", dueña, defaultCompanyID)
+	}
+}
+
+// LAS RESTRICCIONES DEL ESQUEMA, TODAS SOBRE UN SOLO ESQUEMA.
+//
+// Cada una usa su propia tienda y no se pisan, así que reconstruir la base ocho veces solo cuesta
+// tiempo: `newTestStore` hace `drop schema` y corre las 71 migraciones, y la suite completa ya hace
+// eso 368 veces. Medido: en CI eso fue lo que la empujó contra el tope de 20 minutos.
+func TestLasRestriccionesDelEsquemaDeMenus(t *testing.T) {
+	st := newTestStore(t)
+	casos := map[string]func(*testing.T, *store.Store){
+		"una lectura ok sin items se rechaza":       subUnaLecturaOkSinItemsSeRechaza,
+		"el estado es coherente con la hora de fin": subElEstadoDeUnaLecturaEsCoherenteConSuHoraDeFin,
+		"la clase de fallo es una lista cerrada":    subLaClaseDeFalloEsUnaListaCerrada,
+		"dos tiendas de la misma plataforma caben":  subDosTiendasDeLaMismaPlataformaCaben,
+		"la misma tienda no se registra dos veces":  subLaMismaTiendaNoSeRegistraDosVeces,
+		"un item no apunta a dos productos":         subUnItemDeLaPlataformaNoApuntaADosProductos,
+		"un producto sí puede ser varios platillos": subUnProductoSiPuedeSerVariosPlatillosDeArriba,
+		"renombrar el producto no rompe la pareja":  subRenombrarElProductoNoRompeLaPareja,
+	}
+	for nombre, caso := range casos {
+		t.Run(nombre, func(t *testing.T) { caso(t, st) })
 	}
 }
