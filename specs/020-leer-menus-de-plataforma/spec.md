@@ -74,9 +74,10 @@ clase, la pantalla nombra los tres y no inventa un cuarto.
 ### User Story 2 - Emparejar por primera vez lo de arriba con lo de abajo (Priority: P1)
 
 El menú de las plataformas se capturó a mano, así que **no trae ningún identificador del POS**. La
-primera comparación no puede empatar nada sola. Quien administra el catálogo ve las dos listas lado
-a lado, acepta las coincidencias que el sistema propone por nombre y precio, y resuelve a mano las
-que no. Ese emparejamiento **se guarda y no se vuelve a pedir**.
+primera comparación no puede empatar nada sola. Quien administra el catálogo va resolviendo los
+platillos publicados uno por uno: acepta las coincidencias que el sistema propone y busca a mano las
+que no coinciden, viendo en todo momento el nombre completo de los dos lados. Ese emparejamiento
+**se guarda y no se vuelve a pedir**.
 
 **Por qué es P1 y no P2**: sin esto, la US1 reporta que el 100% del menú difiere, que es cierto y es
 inútil. Es el trabajo que hace posible todo lo demás, y se hace una sola vez por plataforma.
@@ -205,8 +206,18 @@ plataforma, y un intento de agregarlo rompe una prueba.
 - **FR-012**: El sistema MUST NOT emparejar dos productos del catálogo con el mismo producto de la
   plataforma.
 - **FR-013**: El sistema MUST permitir deshacer un emparejamiento.
-- **FR-014**: El emparejamiento MUST sobrevivir a que cambie el nombre del producto en cualquiera de
-  los dos lados.
+- **FR-014**: El emparejamiento MUST sobrevivir a que cambie el nombre **en cualquiera de los dos
+  lados**, porque se guarda contra identificadores y no contra nombres. Verificado del lado de la
+  plataforma: Uber asigna el identificador al crear la entidad y **no lo mueve al renombrar** —
+  medido el 2026-09-15, 111 entidades del menú tienen un id derivado de un nombre anterior
+  (`Elige_tu_mejor_opció` se llama hoy «Arma tu crepa de 2 ingredientes»).
+- **FR-014a**: El emparejamiento MUST poder hacerse en **tres niveles** —platillo, grupo de
+  modificadores y opción—, porque así modelan el menú tanto el POS como las plataformas. Para este
+  spec es obligatorio **platillo y opción**; el nivel de grupo puede quedar sin usar, pero no sin
+  poder expresarse.
+- **FR-014b**: El emparejamiento MUST NOT asumir que del lado del POS siempre hay un **producto**.
+  Un platillo de la plataforma puede corresponder mañana a una receta o a un insumo, cuando exista
+  el inventario de insumos. Hoy no se construye ese caso; lo que no se puede es cerrarlo.
 
 **Comparar**
 
@@ -232,7 +243,10 @@ plataforma, y un intento de agregarlo rompe una prueba.
 ### Key Entities
 
 - **Conexión con una plataforma** — qué plataforma, de qué empresa, si está configurada, y el
-  identificador de la tienda de ese lado. Una empresa puede tener una conexión por plataforma.
+  identificador de la tienda de ese lado. **Una empresa puede tener varias conexiones con la misma
+  plataforma: una por tienda.** Un negocio con dos sucursales es dos tiendas distintas arriba, con
+  su propio menú y su propia lectura. Asumir una sola conexión por plataforma dejaría fuera a la
+  segunda sucursal y ataría cada foto de menú a «la» tienda, sin poder decir después de cuál era.
 - **Lectura del menú** — una foto del menú publicado de una plataforma en un momento dado, con su
   resultado (sirvió o falló). Es lo que permite decir «de cuándo es esto».
 - **Producto de la plataforma** — un platillo tal como está publicado: su identificador de allá, su
@@ -259,15 +273,18 @@ plataforma, y un intento de agregarlo rompe una prueba.
   se presenta como una comparación válida.
 - **SC-006**: Una lectura de menú no afecta el tiempo de respuesta de la captura de un pedido en el
   mostrador.
-- **SC-007**: El sistema queda listo para leer una plataforma nueva sin cambiar lo ya construido
-  para las otras dos.
+- **SC-007**: Conectar una plataforma nueva **no obliga a cambiar el modelo de datos ni la
+  comparación**: ni el esquema ni la lógica de comparar nombran a ninguna plataforma en particular.
+  Verificable buscando el nombre de una plataforma en esos dos lugares y no encontrándolo. Lo que sí
+  se agrega es el lector de esa plataforma, que es trabajo nuevo y no una reescritura del anterior.
 
 ## Assumptions
 
-- **El acceso a las tres plataformas no está concedido hoy**, y el camino para obtenerlo no depende
-  de este equipo: las tres exigen NDA y una aprobación humana. Esta feature se construye para estar
-  lista cuando alguno llegue, y **la primera plataforma que se conecte de verdad será la primera que
-  conteste**, no la que se elija por diseño.
+- **Uber Eats ya está conectado; las otras dos no** *(actualizado el 2026-09-14)*. El ambiente de
+  pruebas de Uber está activo y se leyó el menú real de la tienda: token válido 30 días, `HTTP 200`,
+  211 KB de menú. DiDi Food y Rappi siguen exigiendo NDA y aprobación humana, y el camino para
+  obtenerlo no depende de este equipo. Por eso se construye contra Uber primero —es la que
+  contestó— sin que el diseño la privilegie.
 - **La lectura se puede ejercer antes de tener acceso de producción.** Al menos una de las tres
   ofrece un ambiente de pruebas de alta inmediata, así que el código de lectura se puede probar
   contra una plataforma real sin firmar nada. No se construye a ciegas.
@@ -278,6 +295,23 @@ plataforma, y un intento de agregarlo rompe una prueba.
 - **El catálogo del POS es la fuente de verdad de lo que el negocio vende**, pero **no** de lo que
   se publica: que un platillo exista arriba y no abajo puede ser deliberado, y la feature no asume
   que sea un error.
+- **En el PRECIO, la fuente de verdad es la plataforma, no el POS** *(decidido el 2026-09-15)*.
+  `product_platform_prices` no es el precio al que se vende: es una copia que alguien captura
+  **después**, a mano, para que el ticket cuadre con lo que la plataforma ya cobró. Por eso una
+  diferencia de precio significa casi siempre **«el POS está desactualizado»**, y la pantalla lo
+  dice en ese orden. El markup por plataforma es solo el valor por omisión de lo que nadie ha
+  capturado; ningún cálculo de margen debe apoyarse en él.
+- **Se decidió reducir el menú publicado, no ampliarlo** *(2026-09-15, con la investigación de
+  [docs/menu-en-plataformas.md](../../docs/menu-en-plataformas.md))*. La hipótesis de que partir un
+  producto en variantes hace que aparezca más en el buscador **no tiene respaldo**, y la única
+  evidencia cuantitativa pública apunta al revés. Se consolidan las variantes que solo cambian de
+  **tamaño o de cantidad de ingredientes**; se mantienen separadas las que cambian de **sabor**, que
+  es lo único que el buscador semántico puede aprovechar.
+
+  Para esta feature **no cambia ningún requisito**: el sistema sigue teniendo que aceptar que un
+  producto del POS sea varios platillos arriba (FR-010), porque durante la consolidación —y después
+  de ella— va a seguir habiendo casos. Lo que cambia es que la lista de diferencias se va a usar
+  **para decidir qué consolidar**, no solo para cuadrar precios.
 - **El volumen es chico**: un menú de restaurante, no un catálogo de retail. Las decisiones se toman
   para decenas o cientos de productos, no para miles.
 - **Cada plataforma llama distinto a las mismas cosas** y ninguna coincide con el vocabulario del

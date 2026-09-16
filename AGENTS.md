@@ -32,6 +32,12 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
   [docs/security-owasp.md](docs/security-owasp.md).
 - **`specs/`** — un directorio por feature (`NNN-slug/`), generado por spec-kit.
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
+- **`http/`** — peticiones a las APIs de las plataformas, en texto plano, para la extensión
+  **REST Client** de VS Code (`humao.rest-client`, recomendada en `.vscode/extensions.json`). Son
+  **solo lectura a propósito**: el `PUT` de menú de Uber reemplaza el menú publicado completo y no
+  hay deshacer, así que ningún endpoint que escriba vive en un archivo que se dispara con un clic.
+  Las credenciales van en `.vscode/settings.json` —ignorado por git— copiado de
+  [.vscode/settings.json.example](.vscode/settings.json.example).
 - **`references/` YA NO EXISTE EN EL REPOSITORIO**, y es una regla, no un accidente. Los exports de
   FUDO traen el **costo de compra de cada insumo**, el **nombre de cada proveedor**, las **ventas por
   día y por hora** y los **gastos por categoría, incluido el pago a colaboradores**. Eso es la
@@ -143,6 +149,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
+- **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
+  una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
+  plataforma **ya cobró**. La dirección de la verdad es de arriba hacia abajo: manda lo publicado en
+  Uber, DiDi o Rappi, y el POS va detrás.
+
+  De ahí se siguen tres cosas que se han interpretado al revés y cuestan números falsos:
+  - **El markup por plataforma (`delivery_platforms.price_markup_pct`, hoy 35%) es solo un valor por
+    omisión para lo que nadie ha capturado.** No describe lo que el negocio cobra. Cualquier cálculo
+    de margen o de comisión hecho sobre él describe una tienda hipotética.
+  - **Una diferencia de precio contra la plataforma casi siempre significa «el POS está
+    desactualizado», no «la plataforma está mal».** La acción normal es actualizar abajo.
+  - **Un precio de plataforma muy por debajo del de mostrador es un dedazo de captura, no una
+    promoción**, y hoy nada lo detecta. Medido el 2026-09-15: `Sodas explosivas` se publica en Uber
+    a $110.00 y el POS la tenía capturada a $34.75 — dos ventas registradas a menos de un tercio.
+- **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
+  parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
+  «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
+  cero excepciones de precio en vez de 7, y un catálogo que parece llevar meses quieto cuando se
+  editó anteayer— **sin que nada falle**. En toda consulta manual, filtra por `slug`.
 - **Medición de uso** (spec 017): el POS manda lotes a `POST /api/v1/usage` y la consola los lee en
   `GET /api/v1/platform/usage`. **Agregar una pantalla o una acción se hace en DOS lugares**: la
   lista blanca de [server/internal/domain/uso.go](server/internal/domain/uso.go) —lo que no está ahí
@@ -150,6 +175,24 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   [web/src/app/rutas-medidas.ts](web/src/app/rutas-medidas.ts). La etiqueta que se ve en el mapa va
   en [web/src/consola/etiquetas-de-uso.ts](web/src/consola/etiquetas-de-uso.ts), que es una copia
   deliberada: la consola no importa del POS.
+- **Menús de plataforma** (spec 020): se lee el menú publicado de una tienda y se compara contra el
+  catálogo. Cuatro cosas que no son obvias y que cuestan caro si se olvidan:
+  - **La garantía de que nada escribe en la plataforma vive en el TRANSPORTE**, no en una revisión:
+    [solo_lectura.go](server/internal/uber/solo_lectura.go) rechaza todo verbo distinto de `GET`
+    antes de abrir el socket, y `sin_escrituras_test.go` parsea el AST del paquete para que el
+    intento falle en `go test`. El `PUT` de menú de Uber es reemplazo total y no hay deshacer.
+  - **El emparejamiento tiene DOS vecinos que podrían borrarlo**, y los dos están cerrados:
+    `platform_item_links` **no** referencia `platform_menu_items` (para que podar lecturas no se
+    lleve el trabajo manual) y su FK a `products` es `on delete restrict` (porque el reorg de datos
+    del §6 sí borra productos). Los cubre `emparejamiento_sobrevive_test.go`, y su fallo sería
+    silencioso y semanas después.
+  - **El id de la tienda vive en `platform_connections`, NUNCA en el entorno.** Una empresa tendrá
+    varias sucursales y cada una es una tienda distinta arriba; la llave única incluye
+    `external_store_id` por eso.
+  - **Instrumentar sus pantallas son TRES lugares**, no dos: `pantallasMedibles` y
+    `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
+    [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
+    descartan todos, en silencio.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
