@@ -223,3 +223,48 @@ func TestValidate_ExigeLaContrasenaDelRolDeLaConsolaEnProduccion(t *testing.T) {
 		t.Fatalf("con la contraseña debe pasar, y falló: %v", err)
 	}
 }
+
+// La integración con Uber Eats es OPCIONAL: sin credenciales el POS arranca igual y la feature de
+// menús de plataforma queda apagada. Ese es el caso normal de una instalación que no vende por
+// plataformas, y romper el arranque por eso dejaría sin cobrar a un negocio que no la usa.
+func TestValidate_SinCredencialesDeUberArrancaIgual(t *testing.T) {
+	if err := Validate(base()); err != nil {
+		t.Fatalf("sin UBER_EATS_* debe pasar, got %v", err)
+	}
+}
+
+// Pero una credencial a medias o copiada del ejemplo NO arranca: el síntoma de dejarla pasar es un
+// 401 opaco en la primera lectura de menú, horas después y sin relación visible con la config.
+func TestValidate_RechazaCredencialesDeUberAMedias(t *testing.T) {
+	casos := []struct {
+		nombre                string
+		id, secreto, ambiente string
+	}{
+		{"secreto sin id", "", "secreto-de-verdad-largo", "sandbox"},
+		{"id sin secreto", "un-client-id", "", "sandbox"},
+		{"secreto placeholder", "un-client-id", "cambia-esto-por-un-secreto", "sandbox"},
+		{"ambiente inventado", "un-client-id", "secreto-de-verdad-largo", "staging"},
+		{"ambiente vacío", "un-client-id", "secreto-de-verdad-largo", ""},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			cfg := base()
+			cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv = c.id, c.secreto, c.ambiente
+			if err := Validate(cfg); err == nil {
+				t.Errorf("%s debería rechazarse", c.nombre)
+			}
+		})
+	}
+}
+
+func TestValidate_AceptaCredencialesDeUberCompletas(t *testing.T) {
+	for _, ambiente := range []string{"sandbox", "production"} {
+		cfg := base()
+		cfg.UberEatsClientID = "un-client-id"
+		cfg.UberEatsClientSecret = "secreto-de-verdad-largo"
+		cfg.UberEatsEnv = ambiente
+		if err := Validate(cfg); err != nil {
+			t.Errorf("ambiente %q debería aceptarse: %v", ambiente, err)
+		}
+	}
+}

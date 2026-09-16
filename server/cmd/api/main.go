@@ -25,6 +25,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/uber"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/term"
@@ -214,10 +215,11 @@ func main() {
 		Broker:     realtime.NewBroker(),
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
-		PurchaseDoc:    app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
-		PlatformPrices: app.NewPlatformPricesService(st),
-		Sales:          app.NewSalesService(st, nil),
-		Settlements:    app.NewSettlementsService(st),
+		PurchaseDoc:     app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
+		PlatformPrices:  app.NewPlatformPricesService(st),
+		MenusPlataforma: app.NewMenusDePlataformaService(st, lectoresDePlataforma(cfg), nil),
+		Sales:           app.NewSalesService(st, nil),
+		Settlements:     app.NewSettlementsService(st),
 		// La consola, sobre su propio pool: es la conexión la que le impide leer la operación de
 		// un cliente, no una decisión de este servicio.
 		PlatformJWT: pjm,
@@ -685,3 +687,43 @@ func runHealthcheck(port string) int {
 	}
 	return 0
 }
+
+// lectoresDePlataforma arma los lectores de menú que estén CONFIGURADOS.
+//
+// Un mapa vacío es un estado normal, no un error: un negocio que no vende por plataformas arranca
+// igual y la pantalla dice «esta tienda no está conectada». Fallar aquí dejaría sin cobrar a quien
+// no usa la feature.
+//
+// El cliente que entra al mapa es de SOLO LECTURA por construcción: su transporte rechaza todo
+// verbo distinto de GET antes de abrir el socket, y la interfaz `app.LectorDeMenu` solo declara
+// métodos de lectura — aunque alguien agregara una escritura al paquete, el servicio no podría
+// llamarla.
+func lectoresDePlataforma(cfg config.Config) map[string]app.LectorDeMenu {
+	lectores := map[string]app.LectorDeMenu{}
+	if cfg.UberEatsEnabled() {
+		c, err := uber.New(cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv)
+		if err != nil {
+			// config.Validate ya rechazó un ambiente desconocido al arrancar, así que llegar aquí
+			// significa que las dos validaciones se separaron.
+			slog.Error("cliente de Uber Eats", "error", err)
+			os.Exit(1)
+		}
+		lectores[nombreDeUberEnElCatalogo] = lectorDeUber{c}
+	}
+	return lectores
+}
+
+// nombreDeUberEnElCatalogo es cómo se llama la plataforma en `delivery_platforms`, que es la llave
+// con la que el servicio encuentra su lector. Si se renombra la fila, esto deja de empatar y la
+// pantalla dice «no configurada» sin que nada falle — por eso está nombrado y no interpolado.
+const nombreDeUberEnElCatalogo = "Uber Eats"
+
+// lectorDeUber adapta el cliente a lo que el servicio necesita. El paquete `uber` no conoce el
+// vocabulario del negocio y `app` no conoce los errores de Uber: la traducción vive en el borde.
+type lectorDeUber struct{ c *uber.Client }
+
+func (l lectorDeUber) LeerMenu(ctx context.Context, storeID string) ([]domain.ItemDePlataforma, error) {
+	return l.c.LeerMenu(ctx, storeID)
+}
+
+func (l lectorDeUber) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }

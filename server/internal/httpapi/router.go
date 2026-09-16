@@ -326,6 +326,32 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/{id}/products", h.AdminGroupProducts)
 				})
 
+				// MENÚS DE PLATAFORMA (spec 020): leer lo publicado y decir en qué difiere.
+				//
+				// Admin y gerente, como el resto de `/admin/*`: esto administra el catálogo, no
+				// cobra. El cajero tiene su tablero de pedidos.
+				//
+				// NINGUNA de estas rutas escribe en una plataforma. Los DELETE borran filas
+				// nuestras; la garantía de que no se puede tocar la tienda vive en el transporte
+				// de internal/uber, que rechaza todo verbo distinto de GET antes del socket.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/platform-menus", func(r chi.Router) {
+					r.Get("/connections", h.ListPlatformConnections)
+					r.Post("/connections", h.CreatePlatformConnection)
+					r.Route("/connections/{id}", func(r chi.Router) {
+						r.Delete("/", h.DeletePlatformConnection)
+						r.Get("/links/count", h.CountPlatformLinks)
+						// Limitado por usuario con su PROPIO contador: cada lectura baja 211 KB de
+						// un tercero y escribe 222 filas, y el menú de un restaurante cambia en
+						// semanas. Una ráfaga solo puede ser un bucle en la pantalla.
+						r.With(rateLimitUser(h.platformMenuReads)).Post("/read", h.ReadPlatformMenu)
+						r.Get("/reads", h.ListPlatformMenuReads)
+						r.Get("/pairing", h.PlatformMenuPairing)
+						r.Get("/differences", h.PlatformMenuDifferences)
+						r.Put("/links/{externalId}", h.SetPlatformItemLink)
+						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
+					})
+				})
+
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/reload", h.AdminReload)
 

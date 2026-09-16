@@ -477,6 +477,22 @@ func RecortarPeriodicamente(ctx context.Context, cada time.Duration, abrir func(
 		if err := NewUsageService(st).Recortar(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("no se pudo recortar el uso", "error", err)
 		}
+		// Menús de plataforma (spec 020), sobre la MISMA conexión de dueño y la misma pasada.
+		//
+		// Van aquí y no en su propio ticker porque las dos son mantenimiento de datos que cruza
+		// empresas: bajo el rol de app cada una podaría solo la suya, y abrir una segunda conexión
+		// de dueño para lo mismo es un asa más que salta RLS viviendo junto a los handlers.
+		menus := NewMenusDePlataformaService(st, nil, nil)
+		// Primero las colgadas: un despliegue mata las lecturas que iban corriendo y su fila se
+		// queda en curso para siempre, con la pantalla diciendo «se está leyendo» eternamente.
+		if n, err := menus.CerrarLecturasColgadas(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("no se pudieron cerrar las lecturas colgadas", "error", err)
+		} else if n > 0 {
+			slog.Info("lecturas de menú cerradas por quedarse colgadas", "filas", n)
+		}
+		if _, err := menus.PodarLecturas(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("no se pudieron podar las lecturas de menú", "error", err)
+		}
 	}
 	recortar()
 
