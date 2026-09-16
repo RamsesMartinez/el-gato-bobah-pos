@@ -1,0 +1,175 @@
+# Uber Eats — API de comercios, SOLO LECTURA
+#
+# Se abre con la extensión **REST Client** de VS Code (`humao.rest-client`): archivos de texto
+# plano, sin cuenta y sin nube. Cada bloque separado por `###` trae un «Send Request» encima; se
+# aprieta y la respuesta abre al lado.
+#
+# POR QUÉ ESTO Y NO UNA COLECCIÓN DE POSTMAN: es texto, así que se revisa en un diff, se comenta
+# como código y no depende de exportar e importar algo que vive en la nube de un tercero. Si
+# prefieres interfaz gráfica, **Bruno** es la alternativa libre y sus archivos también se commitean.
+#
+# ---------------------------------------------------------------------------------------------
+# ANTES DE EMPEZAR: las credenciales NO están aquí y no deben estarlo.
+#
+#   cp .vscode/settings.json.example .vscode/settings.json
+#
+# y pon ahí el Client ID y el Secret. Ese archivo está ignorado por git.
+#
+# Para cambiar entre sandbox y producción: **Ctrl+Alt+E** (o la barra de estado, abajo a la
+# derecha) y eliges el ambiente. Las URL cambian solas.
+# ---------------------------------------------------------------------------------------------
+#
+# TODO LO DE AQUÍ ESTÁ PROBADO, uno por uno, contra la tienda real el 2026-09-15. Lo que devolvió
+# 404 está listado al final para que nadie lo vuelva a intentar a ciegas.
+#
+# NINGUNA PETICIÓN DE ESTE ARCHIVO ESCRIBE NADA, y es deliberado. El `PUT` de menú de Uber es
+# reemplazo total —«overwrites any existing menus»— y **no está verificado si el sandbox está
+# aislado para escritura**: `test-api.uber.com` devuelve la tienda y el menú REALES del comercio,
+# mientras la documentación dice que los datos de prueba se reinician periódicamente. Esas dos
+# cosas se contradicen. Hasta que Uber conteste cuál es, aquí no se escribe.
+#
+# ⚠️ **VARIAS RESPUESTAS TRAEN DATOS PERSONALES** — nombre y teléfono del titular, dirección del
+# local, y el nombre de pila de cada cliente que pidió. Están marcadas abajo.
+#
+# **Esas respuestas NO se guardan ni se commitean**: este archivo solo tiene las peticiones, y lo
+# que devuelve Uber abre en un panel aparte de VS Code, sin tocar el disco. La marca ⚠️ no es por
+# el archivo: es por lo que hagas con lo que ves en pantalla. Dos formas de que termine en un
+# repositorio público, las dos requieren una acción tuya:
+#
+#   1. Pegar la respuesta en un issue, en un chat o en un documento del repo.
+#   2. Usar «Save Response Body» de la extensión y guardarla dentro del proyecto.
+
+### 1 · Token
+# Vale 30 días. Uber permite 100 tokens por hora y **el 101 invalida el más viejo**, así que el
+# código lo cachea; aquí se pide a mano porque son pruebas.
+#
+# Los tres `scope` están concedidos y se piden juntos a propósito: con `eats.store` solo, la
+# petición 8 responde 401. Probado el 2026-09-15.
+#
+# Con el ambiente en `prod` y una app de tipo *Testing*, esto responde **401 unauthorized_client**
+# — y está bien: significa que los dos ambientes están separados de verdad.
+# @name token
+POST {{authHost}}/oauth/v2/token
+Content-Type: application/x-www-form-urlencoded
+
+client_id={{clientId}}&client_secret={{clientSecret}}&grant_type=client_credentials&scope=eats.store eats.order eats.report
+
+# =============================================================================================
+#  CATÁLOGO — el menú publicado
+# =============================================================================================
+
+### 2 · EL MENÚ PUBLICADO — la razón de ser de todo esto
+# Devuelve cuatro listas al mismo nivel: `menus`, `categories`, `items`, `modifier_groups`.
+# Medido: 1 menú · 12 categorías · 233 items · 42 grupos · **211 KB** (23.8 KB con gzip).
+#
+# Tres cosas que solo se descubren mirando datos reales, y que ya costaron un conteo mal hecho:
+#
+#  - **Un modificador ES un item.** No hay tipo «opción» aparte. Los 233 son 65 platillos + 157
+#    opciones + 11 huérfanos que nadie referencia. Se distinguen por DÓNDE los referencian.
+#  - **El campo `type` de `categories[].entities[]` viene AUSENTE** en 60 de 81 referencias, y su
+#    default es `ITEM`. Contar solo los explícitos da 21 platillos donde hay 65.
+#  - **Los precios son enteros en centavos**: `13000` son $130.00.
+GET {{apiHost}}/v2/eats/stores/{{storeId}}/menus
+Authorization: Bearer {{token.response.body.access_token}}
+Accept-Encoding: gzip
+
+# =============================================================================================
+#  PEDIDOS
+# =============================================================================================
+
+### 3 · Los pedidos de la tienda  ⚠️ trae nombre de cliente
+# **Es el ÚNICO endpoint de pedidos que existe**, y ojo con lo que NO trae:
+#
+#  - **No trae renglones.** Ni platillos, ni cantidades, ni importes. Solo el encabezado: folio,
+#    estado, cliente, fechas y tipo de entrega. Para saber qué se vendió, no sirve.
+#  - **No pagina hacia atrás ni filtra por fecha.** `limit`, `page_size` y `start_time` se aceptan
+#    y **se ignoran**: probado, devuelven byte por byte lo mismo.
+#  - Medido el 2026-09-15: devuelve **2 pedidos**, del 24-ago y del 5-sep.
+#
+# O sea que el histórico de ventas de Uber NO se puede sacar de aquí. Ese dato vive en el POS.
+GET {{apiHost}}/v1/delivery/store/{{storeId}}/orders
+Authorization: Bearer {{token.response.body.access_token}}
+
+# =============================================================================================
+#  LA TIENDA — dos vistas distintas del mismo local
+# =============================================================================================
+
+### 4 · Tiendas del comercio (vista «eats»)
+# De aquí sale el `store_id`, que es un UUID: cópialo de esta respuesta, no lo teclees.
+# Trae `pos_data`, `avg_prep_time`, `price_bucket`, `status` y el `web_url` público.
+GET {{apiHost}}/v1/eats/stores
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 5 · Detalle de una tienda (vista «eats»)
+GET {{apiHost}}/v1/eats/stores/{{storeId}}
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 6 · Tiendas (vista «delivery»)  ⚠️ trae datos personales
+# **Es otra vista, no un duplicado de la 4**, y es la más completa: contacto (nombre, correo y
+# teléfono del titular), dirección con coordenadas, instrucciones de recolección, zona horaria,
+# tiempos de preparación por franja horaria y los tipos de entrega habilitados.
+#
+# Sirve para lo que la vista «eats» no dice: **cuánto tiempo de preparación tiene declarado cada
+# franja** — el número que Uber usa para prometerle un tiempo al cliente.
+GET {{apiHost}}/v1/delivery/stores
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 7 · Detalle de una tienda (vista «delivery»)  ⚠️ trae datos personales
+GET {{apiHost}}/v1/delivery/store/{{storeId}}
+Authorization: Bearer {{token.response.body.access_token}}
+
+# =============================================================================================
+#  ESTADO E INTEGRACIÓN
+# =============================================================================================
+
+### 8 · Estado de la tienda (abierta / pausada)
+# Devuelve dos campos y el segundo es el útil: `{"status":"OFFLINE","offlineReason":"..."}`.
+# `OUT_OF_MENU_HOURS` significa «cerrada por horario», que NO es lo mismo que «pausada a mano» —
+# confundirlos haría creer que alguien apagó la tienda cuando solo es de madrugada.
+GET {{apiHost}}/v1/eats/store/{{storeId}}/status
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 9 · Configuración del PDV y de los webhooks
+# El tablero de la integración. Hoy todo en `false`, que es lo esperado mientras no haya conector:
+# `integration_enabled`, `pos_integration_enabled`, `order_release_enabled`, `auto_accept_enabled`,
+# y los tres webhooks (pedidos programados, liberación de pedido, estado de la entrega).
+#
+# **Es la petición que hay que mirar el día que se conecte el POS de verdad**: si `integration_enabled`
+# sigue en `false`, los pedidos no llegan y nada falla ruidosamente.
+GET {{apiHost}}/v1/eats/stores/{{storeId}}/pos_data
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 10 · Horarios de días festivos
+GET {{apiHost}}/v1/eats/stores/{{storeId}}/holiday-hours
+Authorization: Bearer {{token.response.body.access_token}}
+
+# ---------------------------------------------------------------------------------------------
+# LO QUE NO EXISTE — probado el 2026-09-15, todos 404. No los vuelvas a intentar.
+#
+#   Detalle de un pedido        /v1/delivery/store/{id}/orders/{orderId}, /v1/eats/order/{id},
+#                               /v1/delivery/order/{id} y cuatro formas más
+#   Reportes                    /v1/eats/report, /v1/eats/reports, .../report, .../reports
+#   Analítica                   .../analytics, .../metrics, .../insights
+#   Reseñas y promociones       .../reviews, .../feedback, .../promotions
+#   Un platillo suelto          /v2/eats/stores/{id}/menus/items/{itemId}
+#   Un menú suelto              /v2/eats/stores/{id}/menus/{menuId}
+#   Disponibilidad por item     .../items/availability
+#
+# El `scope eats.report` SÍ se concede, pero no hay endpoint que lo use en esta API. Si algún día
+# aparece uno, es por ahí.
+# ---------------------------------------------------------------------------------------------
+# LO QUE NO VA A ESTAR AQUÍ HASTA QUE ALGUIEN LO DECIDA POR ESCRITO
+#
+#   PUT    /v2/eats/stores/{id}/menus             reemplaza el menú COMPLETO
+#   POST   /v2/eats/stores/{id}/menus/items/{id}  actualiza un platillo
+#   POST   /v1/eats/store/{id}/status             pausa o reanuda la tienda
+#   DELETE /v1/eats/stores/{id}/pos_data          desconecta la integración
+#
+# No están escritas a propósito, ni siquiera comentadas de forma que se puedan descomentar rápido.
+# La primera vez que se dispare un `PUT` contra la tienda viva, el menú publicado se reemplaza por
+# lo que vaya en el cuerpo. No hay deshacer.
+#
+# Y OJO CON LA IDEA DE «PROBAR CON UN PRODUCTO QUE CASI NO SE VENDE»: funciona con el `POST` de un
+# platillo suelto, que toca ESE item. **No funciona con el `PUT` de menú**, que no toca un producto
+# sino que sustituye los 65 por lo que mandes.
+# ---------------------------------------------------------------------------------------------

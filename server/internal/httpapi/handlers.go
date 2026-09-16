@@ -48,6 +48,16 @@ const (
 	// lista completa a mano —un producto cada dos segundos y medio, sostenido— y acota el script.
 	platformPriceMax    = 120
 	platformPriceWindow = 5 * time.Minute
+
+	// Lectura de menú de plataforma: 12 por hora y por usuario.
+	//
+	// El número no sale del límite de tokens de Uber (100/hora): de eso se encarga el caché, que
+	// reusa el mismo token 30 días. Sale de lo que cuesta CADA lectura — 211 KB bajados de un
+	// tercero y 222 filas escritas— y de para qué sirve: el menú de un restaurante cambia en
+	// semanas, no en minutos, así que doce al día ya es generoso y una ráfaga solo puede ser un
+	// bucle en la pantalla.
+	platformMenuReadMax    = 12
+	platformMenuReadWindow = time.Hour
 	// platformRefMax/Window: correcciones de folio de plataforma por usuario. Mismo criterio que
 	// los precios —es una escritura que alcanza al rol cajero— y el mismo orden de magnitud: quien
 	// se sienta con el estado de cuenta a completar los pendientes del mes hace decenas seguidas,
@@ -79,8 +89,12 @@ type Deps struct {
 	// POS opera capturando las líneas a mano).
 	PurchaseDoc    *app.PurchaseDocService
 	PlatformPrices *app.PlatformPricesService
-	Sales          *app.SalesService
-	Settlements    *app.SettlementsService
+	// MenusPlataforma siempre se construye (ver main.go): el servicio existe aunque no haya ninguna
+	// plataforma configurada, y en ese caso `DispararLectura` responde 412 «no está conectada»
+	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
+	MenusPlataforma *app.MenusDePlataformaService
+	Sales           *app.SalesService
+	Settlements     *app.SettlementsService
 	// PlatformJWT y Platform son la consola de plataforma (spec 016). Van juntas o no van: el
 	// router no monta el grupo /platform sin las dos, y montarlo a medias respondería 500 donde
 	// debe no existir nada.
@@ -96,31 +110,32 @@ type Deps struct {
 }
 
 type Handlers struct {
-	cfg            config.Config
-	version        string
-	builtAt        string
-	jwt            *auth.Manager
-	auth           *app.AuthService
-	users          *app.UsersService
-	menu           *app.MenuService
-	menuCache      *cache.MenuCache
-	suggest        *app.SuggestService
-	costing        *app.CostingService
-	orders         *app.OrdersService
-	backoffice     *app.BackofficeService
-	admin          *app.AdminService
-	settings       *app.SettingsService
-	company        *app.CompanyService
-	reset          *app.ResetService
-	broker         *realtime.Broker
-	purchaseDoc    *app.PurchaseDocService
-	platformPrices *app.PlatformPricesService
-	sales          *app.SalesService
-	settlements    *app.SettlementsService
-	platformJWT    *auth.ManagerDePlataforma
-	platform       *app.PlatformService
-	usage          *app.UsageService
-	usageConsola   *app.UsageService
+	cfg             config.Config
+	version         string
+	builtAt         string
+	jwt             *auth.Manager
+	auth            *app.AuthService
+	users           *app.UsersService
+	menu            *app.MenuService
+	menuCache       *cache.MenuCache
+	suggest         *app.SuggestService
+	costing         *app.CostingService
+	orders          *app.OrdersService
+	backoffice      *app.BackofficeService
+	admin           *app.AdminService
+	settings        *app.SettingsService
+	company         *app.CompanyService
+	reset           *app.ResetService
+	broker          *realtime.Broker
+	purchaseDoc     *app.PurchaseDocService
+	platformPrices  *app.PlatformPricesService
+	menusPlataforma *app.MenusDePlataformaService
+	sales           *app.SalesService
+	settlements     *app.SettlementsService
+	platformJWT     *auth.ManagerDePlataforma
+	platform        *app.PlatformService
+	usage           *app.UsageService
+	usageConsola    *app.UsageService
 	// usoIngesta limita cuánto puede mandar una tableta. No protege la base —de eso se encargan la
 	// lista blanca y los checks— sino el camino: un bucle en el front no puede costar una escritura
 	// por vuelta.
@@ -130,6 +145,8 @@ type Handlers struct {
 	docExtract *rateLimiter
 	// platformPrices limita las ESCRITURAS de precio por usuario (ver platformPriceMax).
 	platformPriceWrites *rateLimiter
+	// platformMenuReads limita cuántas lecturas de menú puede disparar un usuario.
+	platformMenuReads *rateLimiter
 	// platformRefWrites limita las correcciones de folio por usuario (ver platformRefMax).
 	platformRefWrites *rateLimiter
 	authFails         *rateLimiter // account-targeted brute-force lockout (per username / user id)
@@ -141,16 +158,17 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
-		purchaseDoc:    d.PurchaseDoc,
-		platformPrices: d.PlatformPrices,
-		sales:          d.Sales,
-		settlements:    d.Settlements,
-		platformJWT:    d.PlatformJWT,
-		platform:       d.Platform,
-		usage:          d.Usage,
-		usageConsola:   d.UsageConsola,
-		usoIngesta:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
-		docExtract:     newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
+		purchaseDoc:     d.PurchaseDoc,
+		platformPrices:  d.PlatformPrices,
+		menusPlataforma: d.MenusPlataforma,
+		sales:           d.Sales,
+		settlements:     d.Settlements,
+		platformJWT:     d.PlatformJWT,
+		platform:        d.Platform,
+		usage:           d.Usage,
+		usageConsola:    d.UsageConsola,
+		usoIngesta:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
+		docExtract:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.
@@ -158,6 +176,12 @@ func NewHandlers(d Deps) *Handlers {
 		authIPs:   newRateLimiter(d.Cfg.RedisURL, "ratelimit:auth-ips:", authIPMax, time.Minute),
 		platformPriceWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-price:",
 			platformPriceMax, platformPriceWindow),
+		// Contador PROPIO y no el de precios: son dos acciones sin relación, y compartirlo hacía
+		// que el doc-comment del otro dijera algo falso. Lo que acota aquí no es el límite de
+		// tokens de la plataforma —de eso se encarga el caché, que dura 30 días— sino la ráfaga:
+		// cada lectura baja 211 KB de un tercero y escribe 222 filas.
+		platformMenuReads: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-menu-read:",
+			platformMenuReadMax, platformMenuReadWindow),
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
 			platformRefMax, platformRefWindow),
 	}

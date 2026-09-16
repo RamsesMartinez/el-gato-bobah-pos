@@ -14,7 +14,147 @@ Cuando dos investigaciones se contradicen, el renglón lo dice. Las mediciones d
 
 ---
 
+## 0. Revisión del 2026-09-13 — qué se movió y qué no
+
+Cuatro investigaciones independientes volvieron a medir lo que este documento afirmaba el 2026-09-06.
+**El veredicto técnico cambió; el comercial no.** Los renglones de abajo reemplazan lo que
+contradigan más adelante en el documento; lo que no se nombra aquí sigue vigente.
+
+### Lo que se movió, y mucho
+
+| Lo que decía este documento | Lo que se midió el 2026-09-13 |
+| --- | --- |
+| La vía directa está cerrada en las tres | **Las tres tienen `GET` documentado del menú publicado.** Uber `GET /v2/eats/stores/{id}/menus` · Rappi `GET …/store/{id}/menu/current` · DiDi `GET /v3/item/item/list` [D, con URL en §3] |
+| Sin forma de probar sin permiso | **El sandbox de Uber es autoservicio**: app de tipo *Testing* en developer.uber.com/dashboard, scopes pre-otorgados, sin aprobación. `test-api.uber.com` + `sandbox-login.uber.com` [D] |
+| El contrato de Uber de 2022 no incluye México ni LATAM | **Existe un formulario LATAM vivo y en español**: `t.uber.com/new_latam_integrations`, genera NDA y acuerdo de API. **Acepta «Persona Física»** y **México está en su lista de jurisdicciones**. Contacto: `latam-integrations@uber.com` [D, formulario descargado y leído campo por campo] |
+| DiDi Food, «la más opaca comercialmente» | **Portal en español de México** (developer.didi-food.com/es-MX/openapi) y **MX es el PRIMER país** de su `country_list`: `["MX","JP","BR","CO","CR","DO","CL","PE"]`. El ítem del menú trae campos de **IVA e IEPS** con tasa en puntos base — eso no se pone por accidente. Sandbox real con herramientas que disparan webhooks [D, probado en vivo: credenciales falsas → `errno 14105`] |
+| Rappi: documentación pública, credenciales por alta manual | Se confirma, y se agrega: **México soportado** (`api.rappi.com.mx`), sandbox en `api.dev.rappi.com`, y las credenciales de desarrollo se entregan **antes** que las de producción [D] |
+
+### Lo que NO se movió
+
+**Las tres puertas siguen exigiendo NDA y una aprobación humana.** No hay credencial de producción
+autoservicio en ninguna. Y **la pregunta que decide el proyecto sigue sin respuesta en las tres**:
+si aprueban a un restaurante de una sola sucursal que no vende software. No hay una sola referencia
+pública de un caso así en México, en ninguna de las tres.
+
+Lo único que cierra ese hueco son tres mensajes que solo puede mandar el dueño (§8, paso C).
+
+### Lo nuevo que cambia decisiones
+
+1. **El middleware no se paga solo a este volumen.** A ~45 pedidos de plataforma al mes, la captura
+   manual del folio son ~45 minutos de trabajo mensual; el middleware más barato con cobertura real
+   cuesta 45 USD al mes. **Cuesta del orden de 8 a 10 veces el trabajo que elimina**, y eso antes de
+   construir y certificar el conector contra su API. El middleware se justificaría por el objetivo
+   (2) —el pedido entrando sin recaptura—, nunca por ahorro de captura [I, sobre precios de lista D].
+2. **mipOS sigue mudo, una semana después.** Los tres hosts (`integrations.`, `sandbox.`,
+   `mipos.shop`) resuelven al mismo IP de OVH y **ninguno contesta en 80 ni en 443**. El marketing y
+   la documentación siguen vivos porque están en Webflow y GitBook. Que el **sandbox** también esté
+   mudo empuja hacia «apagado» y no hacia «filtrado por IP»: un sandbox filtrado no capta
+   desarrolladores, que es para lo que existe. Sigue siendo el modelo correcto con la
+   infraestructura caída [D, medido].
+3. **Nadie vende detección de drift.** Las tres plataformas exponen el `GET` del menú publicado y
+   **ningún producto publica comparación automática contra el catálogo del POS**. La recomendación
+   de la industria es auditoría manual trimestral. Un trabajo que baje el menú de cada canal y
+   reporte los renglones que difieren es construible y no lo vende nadie: es, con mucho, la pieza de
+   más valor por línea de código de este dominio [I, sobre búsqueda exhaustiva D].
+4. **En México la oferta dominante es «cambia tu POS por el nuestro», no «conecta el tuyo».** Parrot,
+   Soft Restaurant, PoloTab, OlaClick y Xetux son POS propios con delivery de fábrica, no middleware
+   para terceros. Xetux es el caso instructivo: su integración **exige suscripción a Xetux Y a
+   Deliverect** [I].
+
+### Riesgos operativos que este documento no tenía, y endurecen su §6.1
+
+- **Una caída corta apaga la tienda.** DoorDash pausa la tienda si el tablet no recibe pedidos por
+  **5 minutos**; Uber pausa tras varios pedidos sin aceptar y **la deja apagada hasta las 6:00 am**
+  del día siguiente si nadie la reactiva [D]. La disponibilidad deja de ser una métrica y pasa a ser
+  una condición de operación.
+- **La plataforma penaliza el desabasto que no se sincroniza.** Caso documentado: ítems marcados
+  agotados que no se sincronizaron durante más de tres meses terminaron con el restaurante en lista
+  de monitoreo de DoorDash y **riesgo de expulsión** [D].
+- **El IVA se puede pagar dos veces.** El reporte de conciliación incluye el impuesto que la
+  plataforma **ya remitió**; importarlo sin distinguirlo hace que el restaurante lo declare otra vez
+  [D]. **Es un requisito que le falta al §7.2**: una columna que diga «impuesto ya remitido por la
+  plataforma», distinta de «impuesto que remito yo». Sin ella el importador de CSV del paso B
+  produce un número que se ve bien y no lo es.
+
+### Lo que el código libre enseña, y la documentación no
+
+- **La llave externa es el mismo concepto en las cuatro plataformas leídas**, y es la llave de
+  idempotencia del menú entero: DoorDash `merchant_supplied_id`, Rappi `sku`, Uber `external_data`,
+  DiDi `app_item_id`, HubRise `ref`. DoorDash lo dice con el mecanismo a la vista: si llega un menú
+  con un `merchant_supplied_id` que ya existe, **lo sobreescribe**; si no, crea uno nuevo.
+  **Cambiar esa llave no renombra: duplica.** La puerta que la constitución llama «llave estable del
+  producto hacia afuera» deja de ser prudencia abstracta [D].
+- **Uber modela el menú como grafo plano con overrides por contexto, no como árbol.** El mismo ítem
+  cuesta distinto según el grupo de modificadores en que aparezca (`price_info.overrides` con
+  `context_type: MODIFIER_GROUP`), y `charge_above` permite «los primeros dos gratis». **Modelar el
+  menú como árbol y después intentar mapearlo a Uber es el error estructural más caro de esta
+  familia** [D].
+- **El SDK de Uber Eats más usado NO verifica el HMAC del webhook.** Su propio comentario dice
+  *"Add and maybe check the hmacSignature"*. Quien copie ese patrón acepta payloads sin firma
+  verificada [D].
+- **Dos modelos públicos y gratuitos que resuelven `product_platform_prices` mejor que desde cero**:
+  el `item-offers` de Open Delivery v2 (producto × canal con precio y disponibilidad propios) y el
+  `variant` + `sku.price_overrides` de HubRise (override por canal **con ventana horaria y de
+  fechas**). Vale leerlos antes de diseñar esa tabla [D].
+
+### Los modificadores: la respuesta al hueco que §6.6 dejó abierto
+
+§6.6 decía: *«No se verificó si el modelo de modificadores de las plataformas admite ese mapeo
+uno-a-varios»*. Ya se verificó, y la respuesta es **no, salvo en Uber**.
+
+Toast publica la tabla de incompatibilidades entre su POS y los canales [D]. Lo que importa aquí:
+
+| Característica | Uber Eats | DoorDash | Grubhub | Deliveroo | Síntoma cuando no se soporta |
+| --- | :-: | :-: | :-: | :-: | --- |
+| **Subgrupos anidados** | ✓ | ✗ | ✗ | ✗ | El subgrupo no aparece bajo su padre |
+| «Prompt for quantity» | ✓ | ✗ | ✗ | ✗ | **El ítem desaparece completo del menú** |
+| Precio por secuencia («los primeros 2 gratis») | ✗ | ✗ | ✗ | ✗ | No cotiza bien |
+| Pre-modificadores («Sin», «Extra», «Aparte») | ✗ | ✗ | ✗ | ✗ | No aparecen en el menú del socio |
+
+**«Arma tu Crepa» cae de lleno en la fila de subgrupos anidados.** Y no es un defecto del middleware
+ni del POS: es que cada plataforma tiene un modelo de menú distinto e incompatible, y lo único que
+un intermediario puede hacer es aplanar o advertir. Rappi además topa el anidamiento en **2 niveles**
+—con una contradicción en su propia documentación, que en otra página dice 11— y sus modificadores
+son **hijos del producto, no entidades reutilizables**: el mismo topping en dos platillos se manda
+dos veces.
+
+### Rappi tiene un estado que las otras no: aprobación de menú
+
+Un `200` del `POST` de menú significa **«en cola de aprobación»**, no «publicado». El veredicto
+llega por webhook (`MENU_APPROVED` / `MENU_REJECTED`), y `MENU_REJECTED` trae **solo el `store_id`,
+sin motivo**. Además: *«no es posible procesar más de un menú a la vez; si ya hay uno en aprobación,
+todos los menús entrantes de esa tienda se ignoran»* — un reintento ingenuo se traga en silencio.
+**Cualquier diseño que trate «subí el menú» como «el menú está arriba» miente en Rappi** [D].
+
+### Sobre automatizar el portal con un navegador
+
+La pregunta se hizo explícita y la respuesta es que **no vale la pena**, por asimetría:
+
+- **La prohibición existe y es explícita en México.** Términos generales de Uber, sección
+  *Restricciones*: *«causar o lanzar cualquier programa o script con el objeto de extraer, indexar,
+  analizar o de otro modo realizar prospección de datos de cualquier parte de los Servicios»*. Y la
+  terminación es *«de inmediato… por cualquier motivo»*, sin gradación ni aviso pactado [D].
+- **No se encontró un solo caso público** de una cuenta de comercio suspendida por automatizar su
+  propio portal. Ausencia de evidencia, no evidencia de ausencia.
+- El beneficio son ~10 minutos de trabajo a la semana. El costo del peor caso es **la cuenta de la
+  que vive el negocio**, en la plataforma que cobra 30%. No hay número de horas ahorradas que pague
+  eso [I].
+
+**La distinción que sí importa, y que está del lado limpio de la línea**: **DiDi es la única de las
+tres que empuja sus informes a un correo electrónico** — su Centro de datos ofrece *«enviar esta
+información vía correo electrónico»* [D]. Un ingestor de buzón no automatiza ningún portal: es el
+comercio pidiendo su propio dato por el canal que la plataforma ofrece. Uber cierra esa puerta a
+propósito y lo dice: *«For security reasons, reports are not included in the notification email»*
+[D]. Rappi solo ofrece descarga desde el portal [D].
+
+---
+
 ## 1. La respuesta corta
+
+> **Revisado el 2026-09-13.** Lo técnico de esta sección quedó desactualizado: ver §0. Lo comercial
+> —que las tres puertas exigen NDA y aprobación humana, y que nadie ha confirmado que aprueben a un
+> local único— **sigue vigente**, y es lo que sostiene el veredicto.
 
 **Hoy, para este negocio, la integración directa con las tres plataformas NO es alcanzable, y la vía middleware tampoco está confirmada como alcanzable.** Lo que sí es alcanzable hoy, sin permiso de nadie y sin código de integración, es cerrar el objetivo (1) —el folio— capturándolo a mano, y avanzar buena parte del objetivo (3) importando los CSV de pago que las plataformas ya entregan por su portal.
 
@@ -373,7 +513,10 @@ Aplicando el principio VI, todo esto se agrega después al mismo costo y no debe
 - Tabla de eventos crudos de webhook (no hay webhooks).
 - Módulo de auth OAuth contra ninguna plataforma.
 - Barrido de recuperación, healthcheck que apague la tienda, sincronización de menú, canal de disponibilidad.
-- Cualquier cliente HTTP contra Uber, Rappi, DiDi o un middleware.
+- Cualquier cliente HTTP **de ESCRITURA** contra Uber, Rappi, DiDi o un middleware. El `PUT` de
+  menú de Uber es reemplazo total —*«overwrites any existing menus»*— y el primer disparo contra la
+  tienda viva puede borrar el menú publicado [D, revisión 2026-09-13]. Un cliente de **lectura**
+  contra el sandbox autoservicio de Uber sí es construible hoy y no arriesga nada.
 - Pantallas de "pedidos entrantes".
 
 ---
@@ -390,6 +533,23 @@ Orden sugerido, del que no depende de nadie al que depende de todos:
 | **B. Importador de CSV de pagos** | Parser del reporte que ya se descarga, más pantalla de conciliación depósito ↔ pedidos | Buena parte del objetivo (3), **sin API, sin NDA y sin SLA** | Abrir un archivo real de cada plataforma para conocer sus columnas de México (§2.1) |
 | **C. Preguntar por el canal publicado** | Llenar el formulario de PDV de Uber Eats México, escribir a `globalsupportapi@didiglobal.com` (DiDi) y al portal de Rappi. Cuesta cero y responde en semanas o nunca | Es lo único que puede cambiar el veredicto de §1. **Nada del plan debe depender de que contesten** | Nadie |
 | **D. Spec de integración** | Lo de §6, para **una** plataforma | Objetivo (2) | Que C haya devuelto un acceso concedido **por escrito**, incluido el territorio |
+
+> **Revisión del 2026-09-13 sobre este orden.** El orden A → B → C → D **no cambia**, pero tres
+> cosas sí:
+>
+> - **El paso C gana destinatarios concretos y verificados**: el formulario LATAM de Uber
+>   (`t.uber.com/new_latam_integrations`, acepta Persona Física, México en su lista) y
+>   `latam-integrations@uber.com`; `globalsupportapi@didiglobal.com` y `soporte.tienda@mx.didiglobal.com`
+>   para DiDi; y el gerente de cuenta para Rappi. Sigue costando cero y sigue siendo lo único que
+>   puede mover el veredicto.
+> - **El paso B se parte en dos, y la mitad de DiDi es más barata**: DiDi manda sus informes por
+>   correo, así que ahí va un ingestor de buzón; Uber lo prohíbe explícitamente y ahí va un
+>   importador de archivo. Y al importador le falta un requisito que hoy no está en §7.2: distinguir
+>   el impuesto **ya remitido por la plataforma** del propio, o el número sale falso.
+> - **Aparece un paso nuevo que no depende de nadie y que antes no se veía**: el sandbox de Uber es
+>   autoservicio. Se puede escribir y **ejercer de verdad** un cliente de LECTURA de menú contra
+>   `test-api.uber.com` hoy, sin firmar nada. Eso convierte «código listo aunque no funcional» en
+>   «código con su prueba», que es otra cosa.
 
 **Cuál plataforma primero, si alguna se abre [I]:** Rappi. Es la única con documentación pública completa, la única con API financiera que une `order_id` con `payment_id` de fábrica, la única que reconoce por escrito la vía autogestionada en su sitio mexicano, y la de menor comisión medida (20% contra 30%). Construir para las tres a la vez es alcance mal recortado.
 

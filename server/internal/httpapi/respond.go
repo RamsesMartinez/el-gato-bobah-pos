@@ -96,6 +96,27 @@ func Error(w http.ResponseWriter, err error) {
 		// distinguible para llevar el foco al campo del folio con el pedido dueño a la vista, en
 		// vez de un "conflicto" que no dice cuál es ni qué corregir.
 		status, code = http.StatusConflict, "PLATFORM_REF_TAKEN"
+	// Menús de plataforma (spec 020). Cada uno con su código propio porque la pantalla tiene que
+	// decir cosas distintas: los tres primeros NO son errores del operador sino estados del mundo,
+	// y un "conflicto" genérico no le diría qué hacer con ninguno.
+	case errors.Is(err, domain.ErrPlataformaSinCredenciales):
+		// 412 y no 404: la tienda existe, lo que falta es la configuración del despliegue. La
+		// pantalla dice «esta tienda no está conectada», que es distinto de «no hay diferencias».
+		status, code = http.StatusPreconditionFailed, "PLATFORM_NOT_CONFIGURED"
+	case errors.Is(err, domain.ErrLecturaEnCurso):
+		status, code = http.StatusConflict, "READ_IN_PROGRESS"
+	case errors.Is(err, domain.ErrSinLecturaValida), errors.Is(err, domain.ErrLecturaVacia):
+		// 410: hubo o hay intento, pero no existe una foto contra la cual emparejar ni comparar.
+		// Devolver 200 con una lista vacía haría creer que el menú coincide en todo.
+		status, code = http.StatusGone, "NO_VALID_READ"
+	case errors.Is(err, domain.ErrParejaOcupada):
+		status, code = http.StatusConflict, "LINK_TAKEN"
+	case errors.Is(err, domain.ErrConexionDuplicada):
+		status, code = http.StatusConflict, "CONNECTION_EXISTS"
+	case errors.Is(err, domain.ErrItemInexistente):
+		// 404 y no 422: el id viajó bien, simplemente no está en la última lectura. Sin este caso
+		// el PUT respondería 200 y la pantalla seguiría diciendo «sin pareja», sin error visible.
+		status, code = http.StatusNotFound, "PLATFORM_ITEM_NOT_FOUND"
 	case errors.Is(err, domain.ErrConflict):
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):

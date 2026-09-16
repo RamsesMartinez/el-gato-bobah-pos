@@ -76,6 +76,24 @@ type Config struct {
 	// recompilar. No se manda thinking ni effort en la llamada justamente para que cualquier
 	// modelo del catálogo sea válido aquí (Haiku rechaza esos parámetros).
 	AnthropicModel string `env:"ANTHROPIC_MODEL" envDefault:"claude-opus-5"`
+
+	// --- Lectura del menú de Uber Eats (spec 020) ---
+	// Vacío = la integración está apagada y el POS arranca igual: un negocio que no vende por
+	// plataformas no tiene por qué configurar esto para poder cobrar.
+	//
+	// AQUÍ NO VA EL ID DE LA TIENDA, a propósito. Una empresa va a tener varias sucursales y cada
+	// una es una tienda distinta arriba; vive en `platform_connections`, una fila por tienda.
+	UberEatsClientID     string `env:"UBER_EATS_CLIENT_ID" envDefault:""`
+	UberEatsClientSecret string `env:"UBER_EATS_CLIENT_SECRET" envDefault:""`
+	// UberEatsEnv elige contra qué ambiente de Uber se habla: "sandbox" o "production". No tiene
+	// default porque adivinarlo es elegir por el operador entre la tienda de pruebas y la que
+	// factura.
+	UberEatsEnv string `env:"UBER_EATS_ENV" envDefault:""`
+}
+
+// UberEatsEnabled reports whether the Uber Eats menu reader is configured.
+func (c Config) UberEatsEnabled() bool {
+	return c.UberEatsClientID != "" && c.UberEatsClientSecret != ""
 }
 
 // DocExtractEnabled reports whether purchase-document extraction is configured.
@@ -183,6 +201,18 @@ func Validate(c Config) error {
 		}
 		if c.AnthropicModel == "" {
 			return errors.New("ANTHROPIC_MODEL vacío: define el modelo (p. ej. claude-opus-5) o quita ANTHROPIC_API_KEY")
+		}
+	}
+	// Uber Eats: o las tres variables, o ninguna. Una credencial a medias no falla al arrancar —
+	// falla en la primera lectura de menú, horas después, con un 401 opaco que nadie relaciona con
+	// la configuración. Y un ambiente mal escrito es peor que un error: habla con la tienda
+	// equivocada sin decirlo.
+	if c.UberEatsClientID != "" || c.UberEatsClientSecret != "" {
+		if IsPlaceholder(c.UberEatsClientID) || IsPlaceholder(c.UberEatsClientSecret) {
+			return errors.New("UBER_EATS_CLIENT_ID y UBER_EATS_CLIENT_SECRET van juntas y con valor propio (o deja las dos vacías para apagar la lectura de menús de plataforma)")
+		}
+		if c.UberEatsEnv != "sandbox" && c.UberEatsEnv != "production" {
+			return errors.New(`UBER_EATS_ENV debe ser "sandbox" o "production": sin un valor conocido no se puede elegir entre la tienda de pruebas y la que factura`)
 		}
 	}
 	return nil

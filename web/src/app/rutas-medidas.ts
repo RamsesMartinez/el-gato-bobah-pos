@@ -23,6 +23,10 @@ const PANTALLAS: Array<[RegExp, string]> = [
   [/^\/negocio/, 'negocio'],
   [/^\/impresion/, 'impresion'],
   [/^\/cuenta/, 'cuenta'],
+  // Menús de plataforma (spec 020). Son DOS lugares: esta línea y `pantallasMedibles` en
+  // server/internal/domain/uso.go. Sin la del servidor, cada evento se descarta en silencio.
+  [/^\/plataformas\/[0-9]+\/emparejar/, 'emparejar'],
+  [/^\/plataformas/, 'plataformas'],
 ];
 
 // pantallaDe traduce una ruta al nombre que se mide, o `null` si esa ruta no se mide.

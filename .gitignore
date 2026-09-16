@@ -54,3 +54,18 @@ web/.playwright-abiertos.json
 
 # Respaldo de producción bajado por scripts/respaldo-anonimo.sh (trae datos del negocio).
 .respaldo-produccion.sql.gz
+
+# DATOS DEL NEGOCIO — nunca en el repositorio.
+#
+# `references/` traía los exports reales de FUDO: costo de compra de cada insumo, nombre de cada
+# proveedor, ventas por día y por hora, y gastos por categoría incluyendo pago a colaboradores.
+# Estuvo público desde el 2026-07-16. Es la estructura de márgenes del negocio, y este repositorio
+# es público y puede volverse open source.
+#
+# Dónde vive ahora: `~/gatobobah-datos/references/` en la máquina del dueño. `make fudo-import`
+# lo lee de ahí — ver AGENTS.md §1.
+references/
+
+# Credenciales de la extensión REST Client (`http/*.http`): trae el Client Secret de Uber.
+# La plantilla sin secretos sí se commitea: `.vscode/settings.json.example`.
+.vscode/settings.json
