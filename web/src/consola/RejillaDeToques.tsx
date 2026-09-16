@@ -83,7 +83,11 @@ export function RejillaDeToques({ empresas }: { empresas: Empresa[] }) {
   // respuesta con otra forma —un proxy que devuelve HTML, una versión vieja de la API— tumbaría la
   // pantalla entera en vez de mostrar una rejilla vacía.
   const celdas = rejilla?.celdas ?? [];
-  const columnas = rejilla?.rejilla.columnas ?? 12;
+  // `rejilla?.rejilla?.columnas` con LOS DOS signos de pregunta. Con uno solo la cadena se corta al
+  // primer nivel: una respuesta que trae `celdas` pero no `rejilla` pasa la primera guarda y revienta
+  // en la segunda, que es exactamente lo que el comentario de arriba viene a evitar. Se manifestaba
+  // como un test intermitente de la consola, no como un error reproducible.
+  const columnas = rejilla?.rejilla?.columnas ?? 12;
   const maximo = celdas.reduce((m, c) => (c.veces > m ? c.veces : m), 0);
 
   return (
@@ -149,7 +153,7 @@ export function RejillaDeToques({ empresas }: { empresas: Empresa[] }) {
           <div className="leyenda">
             <h3>Qué hay en cada zona</h3>
             <ul>
-              {zonasDelPos(rejilla.orientacion).map((z) => (
+              {zonasDelPos(rejilla?.orientacion ?? orientacion).map((z) => (
                 <li key={`${z.filas[0]}-${z.columnas[0]}`}>{etiquetaDeZona(z)}</li>
               ))}
             </ul>
@@ -164,7 +168,7 @@ export function RejillaDeToques({ empresas }: { empresas: Empresa[] }) {
 
             <h3>Por rol</h3>
             <p className="tenue">
-              {rejilla.porRol.length === 0
+              {!rejilla?.porRol?.length
                 ? '—'
                 : rejilla.porRol.map((r) => `${r.rol ?? 'sin corte'} ${r.veces}`).join(' · ')}
             </p>
