@@ -65,3 +65,7 @@ web/.playwright-abiertos.json
 # Dónde vive ahora: `~/gatobobah-datos/references/` en la máquina del dueño. `make fudo-import`
 # lo lee de ahí — ver AGENTS.md §1.
 references/
+
+# Credenciales de la extensión REST Client (`http/*.http`): trae el Client Secret de Uber.
+# La plantilla sin secretos sí se commitea: `.vscode/settings.json.example`.
+.vscode/settings.json

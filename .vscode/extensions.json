@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    // Corre los archivos de `http/`. MIT, sin cuenta y sin nube: las peticiones viven en el
+    // repositorio como texto y se revisan en un diff.
+    "humao.rest-client"
+  ]
+}
