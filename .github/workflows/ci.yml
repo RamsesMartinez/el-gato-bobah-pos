@@ -78,11 +78,41 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
+      # Compilar sqlc desde fuente cuesta ~60s y da SIEMPRE el mismo binario para una versión
+      # dada: se cachea por versión + sistema. En un miss cuesta lo de antes, nunca más.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache-sqlc
+        with:
+          path: ~/go/bin/sqlc
+          key: sqlc-v1.31.1-${{ runner.os }}-${{ runner.arch }}
       # sqlc pinado (misma versión que el Makefile → codegen reproducible local/CI).
       - name: Instalar sqlc
+        if: steps.cache-sqlc.outputs.cache-hit != 'true'
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+      - name: sqlc al PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # Esta base se tira entera al terminar el job: pagar durabilidad por cada escritura es
+      # comprar una garantía que nadie va a cobrar. NO se toca el Postgres de producción, solo el
+      # del runner. Medido sobre la suite completa: 447.8 s → 312.3 s por sí solo, y 52.3 s →
+      # 44.5 s ya con la plantilla (lo que quedaba por ahorrar era menos, porque las migraciones
+      # por prueba eran justo lo que más fsync pedía).
+      #
+      # Va por `alter system` y no por la línea de comandos del contenedor porque `services:` de
+      # Actions no acepta `command:`; los tres parámetros son de contexto sighup, así que un
+      # reload basta y no hace falta reiniciar.
+      - name: Postgres sin durabilidad (es una base desechable)
         run: |
-          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          psql "$DATABASE_URL" \
+            -c "alter system set fsync = off" \
+            -c "alter system set full_page_writes = off" \
+            -c "alter system set synchronous_commit = off" \
+            -c "select pg_reload_conf()"
+          # Verifica en una conexión NUEVA: el reload no cambia la sesión que lo pidió, así que
+          # comprobarlo ahí daría 'on' y haría creer que no sirvió. Y si un día el runner se queda
+          # sin psql, esto falla ruidoso en vez de dejar la suite lenta sin que nadie lo note.
+          test "$(psql "$DATABASE_URL" -tAc 'show fsync')" = off
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
       # El código generado debe estar al día (nadie olvidó `make sqlc` tras tocar una query).
       - name: sqlc al día (sqlc diff)
         run: sqlc diff
@@ -101,18 +131,17 @@ jobs:
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
-        # -timeout 30m. Subido de 20 el 2026-09-16, cuando la suite lo pasó al agregar la 020. Un
-        # timeout que revienta se lee como "un test se colgó" y manda a buscar un defecto que no
-        # existe — el de la 020 tardó en diagnosticarse justo por eso.
+        # -timeout 10m contra ~45 s medidos: el margen es para un cuelgue, no para crecer dentro.
+        # Bajado de 30m el 2026-09-16 al dejar de correr las migraciones por prueba.
         #
-        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo suba sepa qué está comprando: la suite
-        # llama `newTestStore` **368 veces**, y cada una hace `drop schema public cascade` y corre
-        # las 71 migraciones. Medido: local ~9 min, el runner ~2.3× más lento. El aislamiento por
-        # prueba es deliberado y vale lo que cuesta, pero una prueba nueva que solo mira una
-        # restricción no necesita su propio esquema: pueden compartir uno con subpruebas, como hace
-        # `TestLasRestriccionesDelEsquemaDeMenus`. Antes de subir esto otra vez, mira si lo que se
-        # agregó podía compartir.
-        run: go test -timeout 30m -tags=integration ./internal/integration/... ./internal/httpapi/...
+        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo mueva sepa qué está comprando: la
+        # suite llama `newTestStore` ~364 veces y cada llamada CLONA una plantilla ya migrada
+        # (~30 ms), en vez de correr las 71 migraciones (~770 ms) como hasta el 2026-09-16. Medido
+        # sobre la suite completa: 447.8 s → 44.5 s, con el `fsync=off` de arriba. Si esto vuelve a
+        # crecer, lo que creció es el CUERPO de las pruebas, no su preparación: ahí sí aplica que
+        # una prueba que solo mira una restricción comparta esquema con subpruebas, como hace
+        # `TestLasRestriccionesDelEsquemaDeMenus`.
+        run: go test -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379/0
@@ -322,7 +351,15 @@ jobs:
   # es gratis e ilimitado en repos públicos, así que el build vive aquí y el VPS solo baja.
   image:
     name: Build imagen API (ghcr.io)
-    needs: [backend, integration]
+    # Construir la imagen no necesita que las pruebas de integración hayan pasado: lo que tiene
+    # que estar gateado por ellas es el DESPLIEGUE, y eso lo imponen los `needs` de los jobs de
+    # deploy. Con esto el minuto del docker build corre EN PARALELO con la suite en vez de después.
+    #
+    # Lo que SÍ cambia, y hay que saberlo: con la suite en rojo el tag móvil `:develop` queda
+    # apuntando a una imagen que no pasó las pruebas. Ningún deploy la toma —para eso están los
+    # `needs` de abajo—, pero quien levante a mano con `:develop` ya no puede suponer que lo que
+    # baja está verde. El tag con SHA no tiene ese problema: identifica un commit, no "lo último".
+    needs: [backend]
     # Las DOS ramas: main alimenta producción y develop el ambiente de pruebas. Sin construir en
     # develop, api-dev se quedaría corriendo la imagen de producción y no probaría nada.
     if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') && github.event_name == 'push'
@@ -371,7 +408,8 @@ jobs:
 
   deploy-staging:
     name: Deploy backend (ambiente de pruebas)
-    needs: [image]
+    # `integration` va aquí, no en `image`: el gate es del despliegue.
+    needs: [image, integration]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -396,17 +434,20 @@ jobs:
       # falla ruidoso en vez de dejar creer que se probó algo.
       - name: Verifica que la API de pruebas quedó arriba
         run: |
-          for i in $(seq 1 30); do
+          # Sondea de inmediato y espera poco al principio: la API suele estar arriba en
+          # segundos, y dormir 10s antes del primer intento los regalaba siempre.
+          for i in $(seq 1 60); do
             if curl -fsS -m 10 https://api-dev.elgatobobah.com/readyz | grep -q ready; then
               echo "API de pruebas lista"; exit 0
             fi
-            sleep 10
+            sleep 5
           done
           echo "api-dev no respondió /readyz tras 5 min (¿la VM spot está apagada? /ambiente-dev on)"; exit 1
 
   deploy-backend:
     name: Deploy backend (VPS)
-    needs: [image]
+    # `integration` va aquí, no en `image`: el gate es del despliegue.
+    needs: [image, integration]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -434,10 +475,12 @@ jobs:
       # Un deploy que deja la API caída y nadie se entera es peor que uno que falla ruidoso.
       - name: Verifica que la API quedó arriba
         run: |
-          for i in $(seq 1 30); do
+          # Sondea de inmediato y espera poco al principio: la API suele estar arriba en
+          # segundos, y dormir 10s antes del primer intento los regalaba siempre.
+          for i in $(seq 1 60); do
             if curl -fsS -m 10 https://api.elgatobobah.com/readyz | grep -q ready; then
               echo "API lista"; exit 0
             fi
-            sleep 10
+            sleep 5
           done
           echo "La API no respondió /readyz tras 5 min"; exit 1
