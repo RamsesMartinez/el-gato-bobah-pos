@@ -50,3 +50,45 @@ Lo que **no** se marcó como duda, y por qué, para que no se reabra en `/specki
   contabilidad interna no es una opción defendible.
 - El pedido pendiente vive aparte del pedido del POS: lo exige el principio III.
 - No hay aceptación automática: el operador decide, y hoy nada sabe si hay ingredientes.
+
+## Revisión de arquitectura — 2026-09-17
+
+`db-architect` y `tablet-ui-reviewer` corrieron sobre el plan (hook `after_plan`). **Veredicto:
+cambios requeridos**, todos aplicados antes de `/speckit-tasks`.
+
+Lo que cambió de verdad, no de redacción:
+
+- **La migración no corría**: faltaban los índices `(company_id, id)` en `users` y en
+  `platform_connections`. Verificado contra Postgres real.
+- **`platform_webhook_events` no podía recibir la fila que prometía**: sin empresa no hay
+  `company_id` que fijar. El aviso de tienda desconocida ahora se rechaza antes de tocar la base, y
+  SC-004 se ajustó para decirlo.
+- **La red de seguridad no guardaba lo que decía**: `raw_body` es el aviso, no el detalle. Se agregó
+  `raw_detail`.
+- **Se revirtió el único global** de `(plataforma, tienda)`: rompería la prueba de un segundo
+  cliente en sandbox. La ambigüedad la resuelve la firma.
+- **El aviso quedaba tapado** por cualquier hoja abierta del POS. Va en su propio overlay, con dos
+  escenarios de aceptación nuevos (US1 · 5 y 6).
+- **La puerta de varias empresas pasó de «abierta» a «parcialmente abierta»**: recibir sí, decidir
+  no, porque aceptar y rechazar salen con la identidad global de la 020.
+
+## /speckit-analyze — 2026-09-17
+
+Cobertura: **31 de 31 requisitos con al menos una tarea**. Sin hallazgos CRITICAL. Tres ALTOS, los
+tres de `tasks.md`, ya corregidos:
+
+- **La llave de firma se capturaba en la última fase** y sin ella no se puede verificar ni una
+  firma: el MVP no se podía demostrar. Movida a fundacional (T011-T015). No se ve leyendo las fases
+  por separado; se ve al preguntar qué hace falta para correr el primer test de firma.
+- **Una tarea apuntaba a `server/internal/app/cash.go`, que no existe.** Abrir turno es
+  `OpenSession` en `server/internal/app/backoffice.go:870`.
+- **`orders` exige `client_uuid` y `daily_number`** y ninguna tarea decía de dónde salen.
+  `platform_order_ref` **no** sustituye a `daily_number`: son columnas distintas, y `order_counters`
+  es por `business_date`, así que funciona sin turno abierto. Queda escrito en T047.
+
+Dos MEDIOS corregidos: la ventana de poda quedó fijada en **60 días** (el ciclo de pago de la
+plataforma es mensual), y nueve tareas que juntaban implementación y test se partieron en dos, como
+exige el principio IV.
+
+Dos tareas sin requisito que las pida —instrumentar la pantalla nueva para la medición de uso— se
+quedan: las pide `AGENTS.md`, no el spec.

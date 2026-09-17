@@ -48,6 +48,12 @@ misma llave que se configuró.
    llamando por teléfono al local.
 4. **Given** un pedido pendiente, **When** se agota el plazo sin que nadie decida, **Then** el
    sistema NO decide por el operador: la plataforma cancela, y el sistema lo registra y lo muestra.
+5. **Given** que quien atiende está capturando una venta de mostrador **con el ticket abierto a
+   pantalla completa**, **When** llega un pedido de la plataforma, **Then** el aviso se ve por
+   encima de lo que esté abierto. Es el escenario que más importa —el pedido llega justo cuando hay
+   alguien ocupado— y es el que se pierde si el aviso se pinta como una parte más de la pantalla.
+6. **Given** tres pedidos pendientes a la vez, **When** quien atiende mira la pantalla, **Then** ve
+   el más urgente con sus acciones directas y cuántos más hay esperando.
 
 ---
 
@@ -179,8 +185,12 @@ como inactiva y que la pantalla lo dice.
 - **Un aviso de un tipo que no manejamos.** Se confirma la recepción y se registra, sin procesarlo:
   no confirmar haría que la plataforma reintente para siempre algo que nunca vamos a usar.
 - **Un cuerpo enorme o mal formado.** Se rechaza por tamaño antes de intentar interpretarlo.
-- **Llega un aviso de una tienda que no es de ninguna empresa nuestra.** Se rechaza y queda evento
-  de seguridad: es el caso de una llave filtrada o de una configuración equivocada.
+- **Llega un aviso de una tienda que no es de ninguna empresa nuestra.** Se rechaza **antes de
+  escribir nada** y queda evento de seguridad: es el caso de una llave filtrada o de una
+  configuración equivocada. No se guarda, porque no hay empresa a la cual guardarlo.
+- **Dos empresas registraron el mismo id de tienda.** Pasa en el ambiente de pruebas, donde las
+  plataformas reparten tiendas de demostración compartidas. Quien resuelve la ambigüedad es la
+  firma: la empresa cuya llave valide el cuerpo es la dueña del aviso.
 
 ## Requirements *(mandatory)*
 
@@ -289,8 +299,11 @@ como inactiva y que la pantalla lo dice.
   segundos**, sin que nadie teclee nada.
 - **SC-002**: Aceptar un pedido cuesta **un solo toque**, y el ticket sale sin pasos adicionales.
 - **SC-003**: **Cero pedidos duplicados** al reenviar el mismo aviso cinco veces seguidas.
-- **SC-004**: **Cero pedidos perdidos**: todo aviso que el sistema confirmó tiene su pedido o su
-  descarte explicado, y todo aviso que falló quedó registrado con su causa.
+- **SC-004**: **Cero pedidos perdidos**: todo aviso **de una tienda nuestra** que el sistema
+  confirmó tiene su pedido o su descarte explicado, y todo aviso que falló quedó registrado con su
+  causa. Un aviso de una tienda que no es de ninguna empresa nuestra se rechaza antes de tocar la
+  base y deja solo su evento de seguridad: no pertenece a ningún negocio, así que no aparece en la
+  pantalla de ninguno.
 - **SC-005**: Un aviso con firma inválida **nunca** produce un pedido, y queda registrado como
   evento de seguridad.
 - **SC-006**: La captura manual de un pedido de plataforma **deja de ser necesaria**: el operador no
