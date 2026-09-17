@@ -9,6 +9,12 @@ import { POSPage } from './POSPage';
 // que aquí solo se prueba que la pantalla lo obedezca: sin turno abierto, el catálogo y el ticket
 // no se muestran. Antes esto era un aviso naranja que dejaba seguir, y el operador armaba el
 // pedido completo para toparse con el rechazo al cobrar, con el cliente enfrente.
+const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
+vi.mock('../../api/pedidosDePlataforma', () => ({
+  pedidosPendientes: () => Promise.resolve(pendientes.current),
+  aceptarPedidoDePlataforma: vi.fn(),
+}));
+
 const cashStatus = vi.hoisted(() => ({
   current: { open: true } as { open: boolean; deOtroDia?: boolean; openedAt?: string },
 }));
@@ -41,10 +47,30 @@ function montar() {
 
 test('sin caja abierta no se muestra la pantalla de venta', async () => {
   cashStatus.current = { open: false };
+  pendientes.current = [];
   montar();
   expect(await screen.findByText(/no hay caja abierta/i)).toBeInTheDocument();
   // Y lo que importa: el botón de cobrar no está por ningún lado.
   expect(screen.queryByRole('button', { name: /cobrar/i })).not.toBeInTheDocument();
+});
+
+// UN PEDIDO DE PLATAFORMA SE VE AUNQUE NO HAYA CAJA ABIERTA.
+//
+// Es el caso de madrugada, y es el único por el que aceptar no exige turno: la cocina no espera a
+// que alguien abra caja. Si el aviso solo viviera en la pantalla de venta, ese pedido sería
+// invisible hasta que la plataforma lo cancelara sola y el cliente reclamara — un fallo que nadie
+// detecta desde adentro.
+test('sin caja abierta, un pedido de plataforma sigue avisando', async () => {
+  cashStatus.current = { open: false };
+  pendientes.current = [{
+    id: 1, platformName: 'Uber Eats', displayId: 'K4T2',
+    placedAt: '2026-09-17T18:04:00Z', decideBefore: new Date(Date.now() + 600000).toISOString(),
+    serviceType: 'domicilio', customerName: 'Ana', total: '342.00', lines: [],
+  }];
+  montar();
+  expect(await screen.findByText(/no hay caja abierta/i)).toBeInTheDocument();
+  expect(await screen.findByTestId('aviso-de-pedido-entrante')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Aceptar/ })).toBeInTheDocument();
 });
 
 test('con caja abierta la pantalla de venta se muestra', async () => {

@@ -120,16 +120,16 @@ en la tableta en menos de 10 s; aceptarlo y ver el ticket.
 
 ### Pantalla
 
-- [ ] T053 [US1] Escribir `web/src/api/pedidosDePlataforma.ts` con sus tipos, declarando `lines`/`options` **opcionales** para que el compilador obligue a la guarda
-- [ ] T054 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que **el aviso se ve con una hoja abierta encima**. Es el escenario que más importa y el que se pierde si se pinta como parte normal de la pantalla. **Verlo en rojo**
-- [ ] T055 [US1] Escribir `web/src/features/pos/AvisoDePedidoEntrante.tsx` en su **propio overlay**, por encima de cualquier hoja del POS, como franja horizontal **fuera** de la barra superior — esa fila ya se desborda ~55 px en 1024×600
-- [ ] T056 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test del reloj: se pintan **minutos y color**, nunca segundos, con umbral a los 90 s y otro cerca del final. **Verlo en rojo**
-- [ ] T057 [US1] Escribir la cuenta regresiva con sus tres estados en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
-- [ ] T058 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que Aceptar cuesta **un toque** y de que Aceptar y Rechazar **no son dos botones iguales**: Aceptar dominante, Rechazar chico y separado. **Verlo en rojo**
-- [ ] T059 [US1] Escribir los botones con su separación en `web/src/features/pos/AvisoDePedidoEntrante.tsx`, copiando el criterio de `web/src/features/pos/PedidosEnCurso.tsx`
+- [X] T053 [US1] Escribir `web/src/api/pedidosDePlataforma.ts` con sus tipos, declarando `lines`/`options` **opcionales** para que el compilador obligue a la guarda
+- [X] T054 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que **el aviso se ve con una hoja abierta encima**. Es el escenario que más importa y el que se pierde si se pinta como parte normal de la pantalla. **Verlo en rojo**
+- [X] T055 [US1] Escribir `web/src/features/pos/AvisoDePedidoEntrante.tsx` en su **propio overlay**, por encima de cualquier hoja del POS, como franja horizontal **fuera** de la barra superior — esa fila ya se desborda ~55 px en 1024×600
+- [X] T056 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test del reloj: se pintan **minutos y color**, nunca segundos, con umbral a los 90 s y otro cerca del final. **Verlo en rojo**
+- [X] T057 [US1] Escribir la cuenta regresiva con sus tres estados en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
+- [X] T058 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que Aceptar cuesta **un toque** y de que Aceptar y Rechazar **no son dos botones iguales**: Aceptar dominante, Rechazar chico y separado. **Verlo en rojo**
+- [X] T059 [US1] Escribir los botones con su separación en `web/src/features/pos/AvisoDePedidoEntrante.tsx`, copiando el criterio de `web/src/features/pos/PedidosEnCurso.tsx`
 - [ ] T060 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de tres pendientes a la vez: se ve el más urgente con sus acciones y un contador con los demás. **Verlo en rojo**
 - [ ] T061 [US1] Escribir `web/src/features/pos/PedidosEntrantesSheet.tsx` con el contador «+N», copiando el patrón de `web/src/features/pos/PedidosEnCurso.tsx`
-- [ ] T062 [US1] Cablear el aviso en `web/src/features/pos/POSPage.tsx` y suscribirlo a `platform.order.received`
+- [X] T062 [US1] Cablear el aviso en `web/src/features/pos/POSPage.tsx` y suscribirlo a `platform.order.received`
 - [ ] T063 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que aceptar dispara la impresión del ticket de cocina respetando `PrintSettings`. **Verlo en rojo**
 - [ ] T064 [US1] Escribir la impresión al aceptar en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
 

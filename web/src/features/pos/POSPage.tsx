@@ -35,6 +35,7 @@ import { AutoPrintTicket, KitchenTicket } from '../../shared/tickets/AutoPrintTi
 import { buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
+import { AvisoDePlataforma } from './AvisoDePlataforma';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
 import { TicketTabs } from './TicketTabs';
@@ -419,7 +420,13 @@ export function POSPage() {
   // ya significa "la caja principal tiene turno"; aquí no se decide nada, solo se pinta.
   if (cashStatus.data && !cashStatus.data.open) {
     return (
-      <Center h="80vh" px={6}>
+      <>
+        {/* EL AVISO TAMBIÉN AQUÍ, y no es duplicación: un pedido de plataforma puede llegar de
+            madrugada, sin turno abierto, y aceptarlo NO exige turno — la cocina no espera a que
+            alguien abra caja. Si el aviso solo viviera en la pantalla de venta, ese pedido sería
+            invisible hasta que la plataforma lo cancelara sola. */}
+        <AvisoDePlataforma />
+        <Center h="80vh" px={6}>
         <VStack gap={4} maxW="420px" textAlign="center">
           <Box color="orange.500"><LuTriangleAlert size={44} /></Box>
           <Text fontSize="xl" fontWeight="700">No hay caja abierta</Text>
@@ -431,8 +438,9 @@ export function POSPage() {
           ) : (
             <Text color="fg.muted" fontSize="sm">Pídele a un gerente que la abra.</Text>
           )}
-        </VStack>
-      </Center>
+          </VStack>
+        </Center>
+      </>
     );
   }
 
@@ -503,6 +511,10 @@ export function POSPage() {
 
   return (
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
+      {/* Se pinta en su propio portal, por encima de cualquier hoja abierta: el pedido llega justo
+          cuando alguien está capturando una venta, y un aviso dentro de este árbol queda debajo del
+          ticket a pantalla completa. */}
+      <AvisoDePlataforma />
       <AvisoDeTurnoViejo estado={cashStatus.data} />
       {wide ? (
         <Flex h="100%">
