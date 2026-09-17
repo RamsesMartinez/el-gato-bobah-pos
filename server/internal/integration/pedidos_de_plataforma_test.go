@@ -65,6 +65,16 @@ func tiendaConLlave(t *testing.T, st *store.Store, empresa int64, tienda, llave 
 		values ($1, $2, $3)`, plataforma, llave, empresa); err != nil {
 		t.Fatalf("guardar la llave: %v", err)
 	}
+	// Los métodos de cobro de la plataforma, que en producción los siembra CrearConexion. Se
+	// replican aquí porque este helper inserta la conexión directo, sin pasar por el servicio.
+	if _, err := st.Pool.Exec(ctx, `
+		insert into payment_methods (company_id, name, kind, delivery_platform_id, is_cash,
+		                             affects_cash_drawer, is_active, sort_key, auto_declare)
+		values ($1, 'Uber Eats en línea', 'plataforma', $2, false, false, true, 400, false),
+		       ($1, 'Uber Eats efectivo', 'plataforma', $2, true, true, true, 410, false)
+		on conflict (company_id, name) do nothing`, empresa, plataforma); err != nil {
+		t.Fatalf("sembrar los métodos de la plataforma: %v", err)
+	}
 	return conexion
 }
 
@@ -81,7 +91,7 @@ func avisoDePedido(eventID, tienda string) []byte {
 func servicioDePedidos(st *store.Store) *app.PedidosDePlataformaService {
 	return app.NewPedidosDePlataformaService(st,
 		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}},
-		"sandbox", nil)
+		"sandbox", clock)
 }
 
 // UN AVISO NO CAE EN LA EMPRESA EQUIVOCADA, NI CON LA MISMA TIENDA REGISTRADA EN LAS DOS.
@@ -251,7 +261,7 @@ func TestUnDetalleQueNoSeTraeNoSeConfirma(t *testing.T) {
 	tiendaConLlave(t, st, empresa, "tienda-sd", "llave-sin-detalle-suficiente")
 	svc := app.NewPedidosDePlataformaService(st,
 		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("la plataforma no contestó")}},
-		"sandbox", nil)
+		"sandbox", clock)
 
 	cuerpo := avisoDePedido("evt-sin-detalle", "tienda-sd")
 	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
@@ -376,7 +386,7 @@ func TestLaPuertaPublicaDelWebhook(t *testing.T) {
 			Cfg: config.Config{}, JWT: jm,
 			PedidosPlataforma: app.NewPedidosDePlataformaService(st,
 				map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("caída")}},
-				"sandbox", nil),
+				"sandbox", clock),
 		})
 		rRoto := httpapi.Router(config.Config{}, jm, hRoto, st)
 		cuerpo := avisoDePedido("evt-roto-puerta", "tienda-puerta")
@@ -416,7 +426,7 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	                    "price":{"unit_price":{"amount":4500}}}]}}`
 	svcSinOpciones := app.NewPedidosDePlataformaService(st,
 		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(sinOpciones)}},
-		"sandbox", nil)
+		"sandbox", clock)
 	cuerpo := avisoDePedido("evt-sin-opciones", "tienda-pend")
 	if err := svcSinOpciones.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
@@ -449,7 +459,7 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	}
 
 	// Y sin ningún pendiente, la lista entera también es `[]`.
-	vacio := app.NewPedidosDePlataformaService(newTestStore(t), nil, "sandbox", nil)
+	vacio := app.NewPedidosDePlataformaService(newTestStore(t), nil, "sandbox", clock)
 	st2 := newTestStore(t)
 	otra := makeCompany(t, st2, "empresa-vacia")
 	ctx2, soltar2, err := st2.AcquireTenant(ctx, otra)
@@ -458,12 +468,181 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	}
 	defer soltar2()
 	_ = vacio
-	svc2 := app.NewPedidosDePlataformaService(st2, nil, "sandbox", nil)
+	svc2 := app.NewPedidosDePlataformaService(st2, nil, "sandbox", clock)
 	lista, err := svc2.Pendientes(ctx2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := json.Marshal(lista); string(b) != "[]" {
 		t.Fatalf("sin pendientes la lista debería ser [] y fue %s", b)
+	}
+}
+
+// ACEPTAR: EL PEDIDO ENTRA AL POS YA PAGADO POR LA PLATAFORMA.
+//
+// Es donde vive el dinero de esta feature, y lo que se vigila es el principio III: el total tiene
+// que cuadrar al centavo con lo que cobró la plataforma, y el pedido NO puede aparecer como dinero
+// por cobrar — la plataforma ya cobró, y pedirlo otra vez en el corte es un faltante inventado.
+func TestAceptarDejaElPedidoEnElPOSYaPagado(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const llave = "llave-para-aceptar-pedidos-ok"
+	empresa := makeCompany(t, st, "empresa-acepta")
+	usuario := makeUserIn(t, st, empresa, "cajera-acepta", "cajero")
+	tiendaConLlave(t, st, empresa, "tienda-acepta", llave)
+	svc := servicioDePedidos(st)
+
+	cuerpo := avisoDePedido("evt-aceptar", "tienda-acepta")
+	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+	}); err != nil {
+		t.Fatalf("recibir: %v", err)
+	}
+
+	ctxT, soltar, err := st.AcquireTenant(ctx, empresa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer soltar()
+
+	pendientes, err := svc.Pendientes(ctxT)
+	if err != nil || len(pendientes) != 1 {
+		t.Fatalf("pendientes = %d, err = %v", len(pendientes), err)
+	}
+
+	vista, err := svc.Aceptar(ctxT, pendientes[0].ID, usuario)
+	if err != nil {
+		t.Fatalf("aceptar: %v", err)
+	}
+
+	// EL TOTAL CUADRA AL CENTAVO con lo que cobró la plataforma (34200 centavos = $342.00).
+	var total, pagado string
+	var estado, folio string
+	var sesion *int64
+	if err := st.Pool.QueryRow(ctx, `
+		select o.total::text, o.status::text, o.platform_order_ref, o.register_session_id,
+		       coalesce((select sum(amount) from order_payments where order_id = o.id), 0)::text
+		  from orders o where o.id = $1`, vista.ID).Scan(&total, &estado, &folio, &sesion, &pagado); err != nil {
+		t.Fatalf("leer el pedido creado: %v", err)
+	}
+	if total != "342.00" {
+		t.Fatalf("total = %s, la plataforma cobró 342.00", total)
+	}
+	if pagado != "342.00" {
+		t.Fatalf("pagado = %s: la plataforma YA cobró, y dejarlo por cobrar inventa un faltante en el corte", pagado)
+	}
+	if folio != "ped-1" {
+		t.Fatalf("platform_order_ref = %q, se esperaba el folio de la plataforma", folio)
+	}
+	// SIN TURNO ABIERTO SE ACEPTA IGUAL: la cocina no espera a que alguien abra caja.
+	if sesion != nil {
+		t.Fatalf("register_session_id = %v y no había turno abierto", *sesion)
+	}
+
+	// El pedido entrante quedó marcado, con quién y cuándo.
+	var estadoEntrante string
+	var decidioPor *int64
+	if err := st.Pool.QueryRow(ctx,
+		`select state::text, decided_by from platform_incoming_orders where id = $1`,
+		pendientes[0].ID).Scan(&estadoEntrante, &decidioPor); err != nil {
+		t.Fatal(err)
+	}
+	if estadoEntrante != "aceptado" || decidioPor == nil || *decidioPor != usuario {
+		t.Fatalf("el entrante quedó %q por %v", estadoEntrante, decidioPor)
+	}
+
+	// Y ya no está pendiente: la tableta deja de mostrarlo.
+	if p, _ := svc.Pendientes(ctxT); len(p) != 0 {
+		t.Fatalf("sigue pendiente después de aceptarlo: %d", len(p))
+	}
+
+	// ACEPTAR DOS VECES SE RECHAZA DICIÉNDOLO, no en silencio: dos tabletas pueden tocar el botón
+	// al mismo tiempo y quien no gane tiene que enterarse.
+	if _, err := svc.Aceptar(ctxT, pendientes[0].ID, usuario); !errors.Is(err, domain.ErrPedidoYaDecidido) {
+		t.Fatalf("aceptar dos veces dio: %v", err)
+	}
+}
+
+// AL ABRIR TURNO, LOS PEDIDOS HUÉRFANOS SE RENUMERAN.
+//
+// `orders_folio_turno_key` es único por (company_id, register_session_id, daily_number). Mientras el
+// pedido no tiene turno su número es 0 y no choca con nada, porque Postgres trata los NULL como
+// distintos. Al asignarle el turno, ese 0 entra a competir con los folios reales — y DOS huérfanos
+// chocan entre ellos. Un update en bloque habría reventado.
+func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const llave = "llave-para-los-huerfanos-ok"
+	empresa := makeCompany(t, st, "empresa-huerfanos")
+	usuario := makeUserIn(t, st, empresa, "cajera-huerfanos", "cajero")
+	tiendaConLlave(t, st, empresa, "tienda-huerf", llave)
+
+	ctxT, soltar, err := st.AcquireTenant(ctx, empresa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer soltar()
+
+	// DOS pedidos aceptados sin turno: es el caso que choca.
+	for i, folio := range []string{"ped-h1", "ped-h2"} {
+		detalle := strings.Replace(detalleDeUnPedido, `"id":"ped-1"`, `"id":"`+folio+`"`, 1)
+		svc := app.NewPedidosDePlataformaService(st,
+			map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalle)}},
+			"sandbox", clock)
+		cuerpo := avisoDePedido("evt-huerfano-"+itoa(i), "tienda-huerf")
+		if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+		}); err != nil {
+			t.Fatalf("recibir %s: %v", folio, err)
+		}
+		pend, err := svc.Pendientes(ctxT)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Aceptar(ctxT, pend[0].ID, usuario); err != nil {
+			t.Fatalf("aceptar %s: %v", folio, err)
+		}
+	}
+
+	// SE ABRE EL TURNO POR EL CAMINO REAL, no insertando la fila: lo que este caso prueba es que
+	// `OpenSession` reclama los huérfanos, y un insert directo se saltaría justo eso.
+	var principal int64
+	if err := st.Pool.QueryRow(ctxT,
+		`select id from cash_registers where is_primary and is_active limit 1`).Scan(&principal); err != nil {
+		t.Fatalf("caja principal: %v", err)
+	}
+	vista, err := app.NewBackofficeService(st, clock).OpenSession(ctxT, principal, app.AperturaCmd{}, usuario)
+	if err != nil {
+		t.Fatalf("abrir turno: %v", err)
+	}
+	sesion := vista.ID
+
+	filas, err := st.Pool.Query(ctx, `
+		select daily_number, register_session_id from orders
+		 where delivery_platform_id is not null and company_id = $1 order by id`, empresa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer filas.Close()
+	numeros := map[int32]bool{}
+	for filas.Next() {
+		var num int32
+		var ses *int64
+		if err := filas.Scan(&num, &ses); err != nil {
+			t.Fatal(err)
+		}
+		if ses == nil || *ses != sesion {
+			t.Fatalf("un pedido quedó sin reclamar por el turno: sesión = %v", ses)
+		}
+		if numeros[num] {
+			t.Fatalf("DOS PEDIDOS CON EL MISMO FOLIO %d en el mismo turno: el único "+
+				"orders_folio_turno_key no lo habría permitido, y un update en bloque revienta aquí", num)
+		}
+		numeros[num] = true
+	}
+	if len(numeros) != 2 {
+		t.Fatalf("se reclamaron %d pedidos y deberían ser 2", len(numeros))
 	}
 }

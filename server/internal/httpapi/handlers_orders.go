@@ -501,3 +501,37 @@ func (h *Handlers) SetOrderPlatformRef(w http.ResponseWriter, r *http.Request) {
 		"user_id", u.ID, "order_id", id, "folio_anterior", res.Anterior)
 	JSON(w, http.StatusOK, map[string]any{"id": id, "platformOrderRef": res.Actual})
 }
+
+// PlatformPendingOrders lista los pedidos de plataforma que esperan decisión.
+//
+// Sin gate de rol, igual que la barra de pedidos en curso: quien está atendiendo es quien tiene que
+// poder verlos y decidir, y el plazo de la plataforma no espera a que llegue un gerente.
+func (h *Handlers) PlatformPendingOrders(w http.ResponseWriter, r *http.Request) {
+	pedidos, err := h.pedidosPlataforma.Pendientes(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"orders": pedidos})
+}
+
+// AcceptPlatformOrder acepta un pedido de plataforma: se lo confirma a la plataforma y lo mete al
+// POS ya pagado.
+func (h *Handlers) AcceptPlatformOrder(w http.ResponseWriter, r *http.Request) {
+	u, _ := userFrom(r.Context())
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	pedido, err := h.pedidosPlataforma.Aceptar(r.Context(), id, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.created", Data: pedido})
+	// Y el aviso de que ESTE pedido ya se atendió: sin él, la otra tableta sigue mostrando la
+	// alarma y quien la toque encuentra un botón que ya no hace nada.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "platform.order.decided", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, pedido)
+}

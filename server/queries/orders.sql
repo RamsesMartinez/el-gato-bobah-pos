@@ -388,10 +388,15 @@ where order_id = @order_id and id = any(@ids::bigint[]);
 -- embotellada en el mostrador—, que antes nacía entregado porque crear y cobrar eran una sola
 -- llamada. Al separarlos, ese pedido se quedaba abierto para siempre en la barra y el operador
 -- tenía que entregarlo a mano: un toque por cada refresco, en la venta más frecuente del día.
+--
+-- LEFT JOIN Y `coalesce(..., true)`: un renglón sin producto del catálogo —un platillo de plataforma
+-- que todavía no se empareja— SÍ hay que prepararlo. Con el join interno, un pedido cuyo único
+-- renglón fuera así se habría considerado «sin nada que preparar» y se cerraría solo: la cocina
+-- nunca lo vería y el cliente esperaría comida que nadie hizo.
 select exists (
   select 1 from order_lines l
-  join products p on p.id = l.product_id
-  where l.order_id = $1 and l.cancelled_at is null and p.needs_prep
+  left join products p on p.id = l.product_id
+  where l.order_id = $1 and l.cancelled_at is null and coalesce(p.needs_prep, true)
 )::boolean;
 
 -- name: SumOrderPaymentsByMethod :many

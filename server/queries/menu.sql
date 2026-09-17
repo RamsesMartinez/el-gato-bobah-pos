@@ -49,6 +49,9 @@ join orders o on o.id = ol.order_id
 where o.status <> 'cancelada'
   and ol.cancelled_at is null
   and o.opened_at >= now() - interval '30 days'
+  -- Un renglón sin producto del catálogo (un platillo de plataforma sin emparejar) no es un
+  -- producto: agruparlo crearía un balde NULL en la pestaña «Top» del POS.
+  and ol.product_id is not null
 group by ol.product_id
 order by qty desc, ol.product_id
 limit 60;

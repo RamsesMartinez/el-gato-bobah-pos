@@ -177,3 +177,44 @@ select id
 update orders
    set register_session_id = $2, daily_number = $3
  where id = $1 and register_session_id is null;
+
+-- name: GetPlatformPaymentMethod :one
+-- El método de pago de una plataforma, en línea o en efectivo.
+--
+-- Existe uno por plataforma y por forma de cobro («Uber Eats en línea», «Uber Eats efectivo»)
+-- desde antes de esta feature, porque la captura manual ya los usaba. Aquí solo se elige el que
+-- corresponde: un pedido que el cliente pagó en la app NO es lo mismo que uno contra entrega, y
+-- meterlos en el mismo cajón hace que el corte pida efectivo que nadie recibió.
+select id from payment_methods
+ where delivery_platform_id = $1
+   and is_active
+   and (name ilike '%efectivo%') = sqlc.arg(en_efectivo)::boolean
+ limit 1;
+
+-- name: CreatePlatformOrderPayment :exec
+-- El pago de un pedido de plataforma. `register_session_id` puede ir NULL: la cocina no espera a
+-- que alguien abra caja, y el pedido se enlaza al turno que se abra después.
+insert into order_payments (order_id, payment_method_id, amount, register_session_id, received_by,
+                            reference, client_uuid)
+values ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: SeedPlatformPaymentMethods :exec
+-- Los dos métodos de cobro de una plataforma, al CONECTAR la tienda.
+--
+-- `SeedBasePaymentMethods` los deja fuera a propósito y con razón: «vender por Uber exige que ese
+-- negocio haya hecho su propia vinculación con la plataforma, y darle formas de cobro que no tiene
+-- contratadas es peor que no darle ninguna». Conectar la tienda ES esa vinculación — es el momento
+-- exacto que ese comentario nombra.
+--
+-- Sin esto, aceptar el primer pedido falla con «falta el método de pago», y el operador no tiene
+-- desde dónde arreglarlo: los métodos de plataforma no se crean desde ninguna pantalla.
+--
+-- Dos y no uno: un pedido pagado en la aplicación NO es lo mismo que uno contra entrega, y meterlos
+-- en el mismo cajón hace que el corte pida efectivo que nadie recibió. `is_cash` y
+-- `affects_cash_drawer` solo en el de efectivo, que es lo que el check de la 0067 exige.
+insert into payment_methods (company_id, name, kind, delivery_platform_id, is_cash,
+                             affects_cash_drawer, is_active, sort_key, auto_declare)
+values
+  ($1, sqlc.arg(nombre_en_linea)::text,  'plataforma', $2, false, false, true, 400, false),
+  ($1, sqlc.arg(nombre_efectivo)::text, 'plataforma', $2, true,  true,  true, 410, false)
+on conflict (company_id, name) do nothing;

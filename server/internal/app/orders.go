@@ -296,8 +296,11 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		orderID = ord.ID
 		for _, l := range built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
-				OrderID:        ord.ID,
-				ProductID:      l.ProductID,
+				OrderID: ord.ID,
+				// SIEMPRE con producto por este camino: la captura del POS resuelve el renglón
+				// contra el catálogo antes de llegar aquí. La columna es opcional desde la 0072
+				// solo para el pedido que llega de una plataforma y todavía no se empareja.
+				ProductID:      &l.ProductID,
 				ProductName:    l.ProductName,
 				Quantity:       l.Qty,
 				UnitPrice:      l.UnitPrice,
@@ -1050,7 +1053,7 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		for _, l := range built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 				OrderID:        orderID,
-				ProductID:      l.ProductID,
+				ProductID:      &l.ProductID,
 				ProductName:    l.ProductName,
 				Quantity:       l.Qty,
 				UnitPrice:      l.UnitPrice,

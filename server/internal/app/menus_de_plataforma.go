@@ -194,6 +194,30 @@ func (s *MenusDePlataformaService) CrearConexion(ctx context.Context, in AltaDeC
 		}
 		return 0, fmt.Errorf("crear conexión de plataforma: %w", err)
 	}
+
+	// LOS MÉTODOS DE COBRO DE ESA PLATAFORMA SE CREAN AQUÍ, y este es el lugar correcto por lo que
+	// dice el propio comentario de `SeedBasePaymentMethods`: los deja fuera porque «vender por Uber
+	// exige que ese negocio haya hecho su propia vinculación con la plataforma». Conectar la tienda
+	// ES esa vinculación.
+	//
+	// Sin esto, aceptar el primer pedido falla con «falta el método de pago» y el operador no tiene
+	// desde dónde arreglarlo: los métodos de plataforma no se crean desde ninguna pantalla. Se
+	// descubrió al escribir la prueba de aceptar con una empresa nueva — la empresa del negocio ya
+	// los tenía de antes y eso lo tapaba.
+	//
+	// No tumba el alta si falla: la conexión ya existe y sirve para leer el menú, que es la feature
+	// anterior. Lo que no se puede es aceptar pedidos, y eso se ve al intentarlo.
+	nombre, err := s.store.QC(ctx).GetPlatformByID(ctx, in.PlatformID)
+	if err == nil {
+		if e := s.store.QC(ctx).SeedPlatformPaymentMethods(ctx, db.SeedPlatformPaymentMethodsParams{
+			DeliveryPlatformID: &in.PlatformID,
+			NombreEnLinea:      nombre.Name + " en línea",
+			NombreEfectivo:     nombre.Name + " efectivo",
+		}); e != nil {
+			logging.SecurityEvent(ctx, "metodos_de_plataforma_no_sembrados",
+				"connection_id", id, "platform_id", in.PlatformID)
+		}
+	}
 	return id, nil
 }
 

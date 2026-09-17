@@ -159,6 +159,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
+					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
+					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
+					// la plataforma no espera a que llegue un gerente.
+					if h.pedidosPlataforma != nil {
+						r.Get("/platform/pending", h.PlatformPendingOrders)
+						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
+					}
 					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
 					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
 					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para

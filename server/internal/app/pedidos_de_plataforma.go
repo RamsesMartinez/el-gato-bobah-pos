@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -414,3 +415,210 @@ func valor(d *decimal.Decimal) decimal.Decimal {
 	}
 	return *d
 }
+
+// PedidoAceptado es lo que la tableta necesita para imprimir sin volver a pedir nada.
+type PedidoAceptado struct {
+	ID          int64  `json:"id"`
+	Number      int    `json:"number"`
+	PlatformRef string `json:"platformRef"`
+}
+
+// Aceptar confirma el pedido a la plataforma y lo mete al POS ya pagado.
+//
+// EL ORDEN ES: PRIMERO LA PLATAFORMA, DESPUÉS NUESTRA BASE. Es lo menos malo de dos caminos malos.
+// Si se creara el pedido local primero y la plataforma rechazara la aceptación, quedaría una venta
+// en el corte por un pedido que la plataforma va a cancelar sola en minutos — dinero que el negocio
+// nunca recibió. Al revés, si la plataforma acepta y la escritura local falla, no se pierde nada:
+// el aviso crudo y el detalle siguen guardados y el pedido sigue pendiente en la pantalla.
+//
+// ponytail: reintentar tras ese fallo vuelve a llamar a la plataforma, y no sabemos todavía qué
+// contesta ante un pedido ya aceptado — la documentación no lo dice y no hay forma de generar un
+// pedido de prueba para averiguarlo. El techo es ese: si contesta error, el operador tiene que
+// decidirlo desde la aplicación de la plataforma. Se resuelve el día que se pueda probar.
+func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, usuarioID int64) (PedidoAceptado, error) {
+	ent, err := s.store.QC(ctx).GetIncomingOrder(ctx, entranteID)
+	if err != nil {
+		return PedidoAceptado{}, fmt.Errorf("%w: ese pedido no existe", domain.ErrNotFound)
+	}
+	if ent.State != db.PlatformOrderStatePendiente {
+		return PedidoAceptado{}, fmt.Errorf("%w (está %s)", domain.ErrPedidoYaDecidido, ent.State)
+	}
+	decisor, ok := s.decisores[ent.PlatformName]
+	if !ok {
+		return PedidoAceptado{}, fmt.Errorf("%w: no hay conexión con %s", domain.ErrValidation, ent.PlatformName)
+	}
+	if err := decisor.AceptarPedido(ctx, ent.ExternalOrderID, ""); err != nil {
+		// La plataforma NO confirmó: no se crea nada. Aceptar aquí y no allá es la peor
+		// combinación posible — la cocina prepara y la plataforma cancela.
+		return PedidoAceptado{}, fmt.Errorf("%w: %s no confirmó la aceptación", domain.ErrConflict, ent.PlatformName)
+	}
+
+	renglones, err := s.store.QC(ctx).ListLinesOfIncomingOrders(ctx, []int64{entranteID})
+	if err != nil {
+		return PedidoAceptado{}, fmt.Errorf("leer los renglones: %w", err)
+	}
+
+	plataformaID, err := s.plataformaDeLaConexion(ctx, ent.ConnectionID)
+	if err != nil {
+		return PedidoAceptado{}, err
+	}
+	// EL MÉTODO DE PAGO DISTINGUE EN LÍNEA DE CONTRA ENTREGA. Meterlos en el mismo cajón hace que
+	// el corte pida efectivo que nadie recibió. Hoy solo llegan pedidos pagados en la aplicación;
+	// el día que lleguen de los otros, esto es lo que cambia.
+	metodo, err := s.store.QC(ctx).GetPlatformPaymentMethod(ctx, db.GetPlatformPaymentMethodParams{
+		DeliveryPlatformID: &plataformaID, EnEfectivo: false,
+	})
+	if err != nil {
+		return PedidoAceptado{}, fmt.Errorf("%w: falta el método de pago de %s", domain.ErrValidation, ent.PlatformName)
+	}
+
+	tz, err := s.store.QC(ctx).GetBusinessTimezone(ctx)
+	if err != nil {
+		tz = domain.DefaultTimezone
+	}
+	fecha := pgtype.Date{Time: domain.BusinessDate(s.ahora(), domain.LoadBusinessLocation(tz)), Valid: true}
+	total := valor(ent.Total)
+
+	var creado PedidoAceptado
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// `daily_number` = 0 MIENTRAS NO HAY TURNO, y no es un valor inventado al azar: el único
+		// `orders_folio_turno_key` es por (empresa, turno, número), y con el turno en NULL Postgres
+		// trata cada fila como distinta. El folio real se lo da el turno al reclamarlo. Hasta
+		// entonces, la identidad del pedido es su folio en la plataforma, que además es el que el
+		// cliente dice por teléfono.
+		sesion, numero, err := s.turnoYFolio(ctx, q)
+		if err != nil {
+			return err
+		}
+		ord, err := q.CreateOrder(ctx, db.CreateOrderParams{
+			ClientUuid:         uuid.New(),
+			BusinessDate:       fecha,
+			DailyNumber:        numero,
+			ServiceType:        ent.ServiceType,
+			DeliveryPlatformID: &plataformaID,
+			CustomerName:       ent.CustomerName,
+			RegisterSessionID:  sesion,
+			// QUIEN ACEPTA ES QUIEN LO ABRIÓ, y por eso la fila se crea aquí y no al recibir: un
+			// pedido que llega solo no tiene quién lo abrió, y `opened_by` es not null. Inventar un
+			// usuario de sistema para llenarla es el parche que ya se rechazó una vez.
+			OpenedBy:         usuarioID,
+			Subtotal:         total,
+			Total:            total,
+			Status:           db.OrderStatusAbierta,
+			PlatformOrderRef: &ent.ExternalOrderID,
+			PlatformRefSetBy: &usuarioID,
+			PlatformRefSetAt: pgtype.Timestamptz{Time: s.ahora(), Valid: true},
+		})
+		if err != nil {
+			return err
+		}
+		if err := copiarRenglones(ctx, q, ord.ID, renglones); err != nil {
+			return err
+		}
+		// YA PAGADO POR LA PLATAFORMA. Dejarlo por cobrar inventa un faltante en el corte por un
+		// dinero que el negocio sí recibió, solo que no por la caja.
+		if err := q.CreatePlatformOrderPayment(ctx, db.CreatePlatformOrderPaymentParams{
+			OrderID: ord.ID, PaymentMethodID: metodo, Amount: total,
+			RegisterSessionID: sesion, ReceivedBy: &usuarioID,
+			Reference: &ent.ExternalOrderID, ClientUuid: ptrUUID(uuid.New()),
+		}); err != nil {
+			return err
+		}
+		filas, err := q.AcceptIncomingOrder(ctx, db.AcceptIncomingOrderParams{
+			ID: entranteID, DecidedBy: &usuarioID, OrderID: &ord.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if filas == 0 {
+			// Otra tableta ganó entre la lectura y este update. La transacción se deshace entera.
+			return domain.ErrPedidoYaDecidido
+		}
+		creado = PedidoAceptado{ID: ord.ID, Number: int(ord.DailyNumber), PlatformRef: ent.ExternalOrderID}
+		return nil
+	})
+	if err != nil {
+		return PedidoAceptado{}, err
+	}
+	return creado, nil
+}
+
+// turnoYFolio devuelve el turno abierto y el folio que le toca, o (nil, 0) si no hay turno.
+//
+// Aceptar NO exige turno abierto: la cocina no puede esperar a que alguien abra caja. Es la
+// decisión del dueño del 2026-09-16, y lo que la paga es que al ABRIR turno se vea de un vistazo
+// qué pedidos quedan considerados en esa apertura.
+func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Queries) (*int64, int32, error) {
+	sess, err := q.GetOpenPrimarySession(ctx)
+	if err != nil {
+		return nil, 0, nil //nolint:nilerr // sin turno abierto NO es un error: es el camino normal de madrugada
+	}
+	num, err := q.NextFolioNumber(ctx, sess.ID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return &sess.ID, num, nil
+}
+
+// ReclamarHuerfanos le da turno y folio real a los pedidos que se aceptaron sin turno abierto.
+//
+// UNO POR UNO Y RENUMERANDO, no un update en bloque, y ésa es la parte que no era obvia. Mientras
+// el pedido no tiene turno su `daily_number` es 0 y no choca con nada porque el único
+// `orders_folio_turno_key` es por (empresa, turno, número) y los NULL son distintos entre sí. En el
+// momento de asignarle el turno, ese 0 compite con los folios reales de ese turno — y dos pedidos
+// huérfanos chocan entre ellos.
+func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, sesionID int64, fecha pgtype.Date) error {
+	ids, err := q.ListOrphanPlatformOrders(ctx, fecha)
+	if err != nil {
+		return fmt.Errorf("buscar pedidos de plataforma sin turno: %w", err)
+	}
+	for _, id := range ids {
+		num, err := q.NextFolioNumber(ctx, sesionID)
+		if err != nil {
+			return err
+		}
+		if err := q.ClaimPlatformOrder(ctx, db.ClaimPlatformOrderParams{
+			ID: id, RegisterSessionID: &sesionID, DailyNumber: num,
+		}); err != nil {
+			return fmt.Errorf("darle turno al pedido %d: %w", id, err)
+		}
+	}
+	return nil
+}
+
+func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context, conexion int64) (int16, error) {
+	c, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexion)
+	if err != nil {
+		return 0, fmt.Errorf("%w: la tienda del pedido ya no está conectada", domain.ErrNotFound)
+	}
+	return c.DeliveryPlatformID, nil
+}
+
+// copiarRenglones pasa los renglones del pedido entrante al pedido del POS.
+//
+// EL PRECIO ES EL DE LA PLATAFORMA, no el del catálogo: la dirección de la verdad en precio es de
+// arriba hacia abajo. Un renglón sin pareja entra igual, con el nombre que mandó la plataforma —
+// rechazar un pedido pagado por un hueco de nuestra contabilidad interna no es defendible.
+func copiarRenglones(ctx context.Context, q *db.Queries, pedido int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+	for _, r := range renglones {
+		if r.ParentLineID != nil {
+			// Las opciones viajan dentro del nombre del renglón por ahora: `order_line_modifiers`
+			// exige una opción del catálogo, y un modificador de la plataforma sin pareja no la
+			// tiene. Se ve en el ticket y no se pierde.
+			continue
+		}
+		if _, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
+			OrderID:     pedido,
+			ProductID:   r.ProductID,
+			ProductName: r.ExternalName,
+			Quantity:    r.Quantity,
+			UnitPrice:   r.UnitPrice,
+			LineTotal:   r.Quantity.Mul(r.UnitPrice).Round(2),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }

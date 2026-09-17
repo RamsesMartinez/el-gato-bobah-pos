@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
+	"uuid"
 )
 
 const acceptIncomingOrder = `-- name: AcceptIncomingOrder :execrows
@@ -50,6 +51,37 @@ type ClaimPlatformOrderParams struct {
 // Le da turno y folio real a UN pedido huérfano. Va dentro de la transacción que abre el turno.
 func (q *Queries) ClaimPlatformOrder(ctx context.Context, arg ClaimPlatformOrderParams) error {
 	_, err := q.db.Exec(ctx, claimPlatformOrder, arg.ID, arg.RegisterSessionID, arg.DailyNumber)
+	return err
+}
+
+const createPlatformOrderPayment = `-- name: CreatePlatformOrderPayment :exec
+insert into order_payments (order_id, payment_method_id, amount, register_session_id, received_by,
+                            reference, client_uuid)
+values ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type CreatePlatformOrderPaymentParams struct {
+	OrderID           int64           `json:"order_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	Reference         *string         `json:"reference"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+}
+
+// El pago de un pedido de plataforma. `register_session_id` puede ir NULL: la cocina no espera a
+// que alguien abra caja, y el pedido se enlaza al turno que se abra después.
+func (q *Queries) CreatePlatformOrderPayment(ctx context.Context, arg CreatePlatformOrderPaymentParams) error {
+	_, err := q.db.Exec(ctx, createPlatformOrderPayment,
+		arg.OrderID,
+		arg.PaymentMethodID,
+		arg.Amount,
+		arg.RegisterSessionID,
+		arg.ReceivedBy,
+		arg.Reference,
+		arg.ClientUuid,
+	)
 	return err
 }
 
@@ -168,6 +200,32 @@ func (q *Queries) GetIncomingOrderByExternalID(ctx context.Context, arg GetIncom
 		&i.OrderID,
 	)
 	return i, err
+}
+
+const getPlatformPaymentMethod = `-- name: GetPlatformPaymentMethod :one
+select id from payment_methods
+ where delivery_platform_id = $1
+   and is_active
+   and (name ilike '%efectivo%') = $2::boolean
+ limit 1
+`
+
+type GetPlatformPaymentMethodParams struct {
+	DeliveryPlatformID *int16 `json:"delivery_platform_id"`
+	EnEfectivo         bool   `json:"en_efectivo"`
+}
+
+// El método de pago de una plataforma, en línea o en efectivo.
+//
+// Existe uno por plataforma y por forma de cobro («Uber Eats en línea», «Uber Eats efectivo»)
+// desde antes de esta feature, porque la captura manual ya los usaba. Aquí solo se elige el que
+// corresponde: un pedido que el cliente pagó en la app NO es lo mismo que uno contra entrega, y
+// meterlos en el mismo cajón hace que el corte pida efectivo que nadie recibió.
+func (q *Queries) GetPlatformPaymentMethod(ctx context.Context, arg GetPlatformPaymentMethodParams) (int16, error) {
+	row := q.db.QueryRow(ctx, getPlatformPaymentMethod, arg.DeliveryPlatformID, arg.EnEfectivo)
+	var id int16
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getWebhookEventByExternalID = `-- name: GetWebhookEventByExternalID :one
@@ -579,6 +637,45 @@ func (q *Queries) RotateWebhookKey(ctx context.Context, arg RotateWebhookKeyPara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const seedPlatformPaymentMethods = `-- name: SeedPlatformPaymentMethods :exec
+insert into payment_methods (company_id, name, kind, delivery_platform_id, is_cash,
+                             affects_cash_drawer, is_active, sort_key, auto_declare)
+values
+  ($1, $3::text,  'plataforma', $2, false, false, true, 400, false),
+  ($1, $4::text, 'plataforma', $2, true,  true,  true, 410, false)
+on conflict (company_id, name) do nothing
+`
+
+type SeedPlatformPaymentMethodsParams struct {
+	CompanyID          int64  `json:"company_id"`
+	DeliveryPlatformID *int16 `json:"delivery_platform_id"`
+	NombreEnLinea      string `json:"nombre_en_linea"`
+	NombreEfectivo     string `json:"nombre_efectivo"`
+}
+
+// Los dos métodos de cobro de una plataforma, al CONECTAR la tienda.
+//
+// `SeedBasePaymentMethods` los deja fuera a propósito y con razón: «vender por Uber exige que ese
+// negocio haya hecho su propia vinculación con la plataforma, y darle formas de cobro que no tiene
+// contratadas es peor que no darle ninguna». Conectar la tienda ES esa vinculación — es el momento
+// exacto que ese comentario nombra.
+//
+// Sin esto, aceptar el primer pedido falla con «falta el método de pago», y el operador no tiene
+// desde dónde arreglarlo: los métodos de plataforma no se crean desde ninguna pantalla.
+//
+// Dos y no uno: un pedido pagado en la aplicación NO es lo mismo que uno contra entrega, y meterlos
+// en el mismo cajón hace que el corte pida efectivo que nadie recibió. `is_cash` y
+// `affects_cash_drawer` solo en el de efectivo, que es lo que el check de la 0067 exige.
+func (q *Queries) SeedPlatformPaymentMethods(ctx context.Context, arg SeedPlatformPaymentMethodsParams) error {
+	_, err := q.db.Exec(ctx, seedPlatformPaymentMethods,
+		arg.CompanyID,
+		arg.DeliveryPlatformID,
+		arg.NombreEnLinea,
+		arg.NombreEfectivo,
+	)
+	return err
 }
 
 const upsertWebhookKey = `-- name: UpsertWebhookKey :exec

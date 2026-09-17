@@ -166,7 +166,7 @@ returning id
 
 type CreateOrderLineParams struct {
 	OrderID        int64           `json:"order_id"`
-	ProductID      int64           `json:"product_id"`
+	ProductID      *int64          `json:"product_id"`
 	ProductName    string          `json:"product_name"`
 	Quantity       decimal.Decimal `json:"quantity"`
 	UnitPrice      decimal.Decimal `json:"unit_price"`
@@ -1103,7 +1103,7 @@ from order_lines where order_id = $1 order by id
 
 type ListOrderLinesRow struct {
 	ID             int64              `json:"id"`
-	ProductID      int64              `json:"product_id"`
+	ProductID      *int64             `json:"product_id"`
 	ProductName    string             `json:"product_name"`
 	Quantity       decimal.Decimal    `json:"quantity"`
 	UnitPrice      decimal.Decimal    `json:"unit_price"`
@@ -1250,8 +1250,8 @@ func (q *Queries) NextFolioNumber(ctx context.Context, registerSessionID int64) 
 const pedidoNecesitaPreparacion = `-- name: PedidoNecesitaPreparacion :one
 select exists (
   select 1 from order_lines l
-  join products p on p.id = l.product_id
-  where l.order_id = $1 and l.cancelled_at is null and p.needs_prep
+  left join products p on p.id = l.product_id
+  where l.order_id = $1 and l.cancelled_at is null and coalesce(p.needs_prep, true)
 )::boolean
 `
 
@@ -1261,6 +1261,11 @@ select exists (
 // embotellada en el mostrador—, que antes nacía entregado porque crear y cobrar eran una sola
 // llamada. Al separarlos, ese pedido se quedaba abierto para siempre en la barra y el operador
 // tenía que entregarlo a mano: un toque por cada refresco, en la venta más frecuente del día.
+//
+// LEFT JOIN Y `coalesce(..., true)`: un renglón sin producto del catálogo —un platillo de plataforma
+// que todavía no se empareja— SÍ hay que prepararlo. Con el join interno, un pedido cuyo único
+// renglón fuera así se habría considerado «sin nada que preparar» y se cerraría solo: la cocina
+// nunca lo vería y el cliente esperaría comida que nadie hizo.
 func (q *Queries) PedidoNecesitaPreparacion(ctx context.Context, orderID int64) (bool, error) {
 	row := q.db.QueryRow(ctx, pedidoNecesitaPreparacion, orderID)
 	var column_1 bool
@@ -1318,7 +1323,7 @@ where o.status <> 'cancelada'
 `
 
 type RecentModifierPicksRow struct {
-	ProductID int64     `json:"product_id"`
+	ProductID *int64    `json:"product_id"`
 	GroupID   int64     `json:"group_id"`
 	OptionID  int64     `json:"option_id"`
 	CreatedAt time.Time `json:"created_at"`

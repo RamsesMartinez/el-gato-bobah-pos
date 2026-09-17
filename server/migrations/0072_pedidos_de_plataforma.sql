@@ -319,6 +319,26 @@ alter table orders add constraint orders_servicio_de_plataforma
   check (service_type in ('domicilio','para_llevar') or delivery_platform_id is null);
 
 -- ---------------------------------------------------------------------------------------------
+-- 6. UN RENGLÓN PUEDE NO TENER PRODUCTO DEL CATÁLOGO
+--
+-- `order_lines.product_id` era not null, y eso impide lo que FR-013 exige: que un platillo sin
+-- pareja NO impida aceptar. El cliente ya pagó; rechazar su pedido por un hueco de nuestra
+-- contabilidad interna no es una opción defendible, y tampoco lo es tirar el renglón, porque
+-- entonces la cocina no prepara ese platillo.
+--
+-- Es un ensanchamiento: toda fila que existe hoy tiene producto y lo sigue teniendo. Lo que cambia
+-- son DOS consultas que la leen, y las dos fallaban EN SILENCIO con un NULL:
+--
+--   - `OrderHasPrepPending` unía a `products` con un join interno, así que un pedido cuyo único
+--     renglón no tuviera pareja se habría considerado «sin nada que preparar» y se cerraría solo.
+--     La cocina nunca lo vería. Ahora es left join con `coalesce(needs_prep, true)`: sin producto
+--     se asume que SÍ hay que prepararlo, que es lo cierto para un platillo de plataforma.
+--   - `PopularProducts` agrupaba por `product_id` y habría creado un balde NULL en la pestaña
+--     «Top» del POS. Ahora los excluye.
+-- ---------------------------------------------------------------------------------------------
+alter table order_lines alter column product_id drop not null;
+
+-- ---------------------------------------------------------------------------------------------
 -- RLS y grants. El grant NO se hereda: el de 0024 fue puntual y sin default privileges, así que una
 -- tabla nueva sin su grant responde 42501 en el primer request de producción y nunca falla en
 -- desarrollo, donde la API se conecta como owner.
@@ -362,6 +382,19 @@ set local lock_timeout = '3s';
 alter table orders drop constraint orders_servicio_de_plataforma;
 alter table orders add constraint orders_check
   check (service_type = 'domicilio' or delivery_platform_id is null);
+
+-- El Down NO regresa el not null de order_lines.product_id: si ya entró un renglón sin pareja,
+-- ponerlo de vuelta lo borraría o reventaría. Se avisa y se deja abierto.
+-- +goose StatementBegin
+do $$
+begin
+  if exists (select 1 from order_lines where product_id is null) then
+    raise notice 'hay renglones sin producto del catálogo: order_lines.product_id se queda nullable';
+  else
+    alter table order_lines alter column product_id set not null;
+  end if;
+end $$;
+-- +goose StatementEnd
 
 drop table if exists platform_incoming_order_lines;
 drop table if exists platform_incoming_orders;

@@ -204,7 +204,13 @@ func (s *MenuService) Popular(ctx context.Context) ([]int64, error) {
 	}
 	ids := make([]int64, 0, len(rows))
 	for _, r := range rows {
-		ids = append(ids, r.ProductID)
+		// La consulta ya excluye los renglones sin producto —un platillo de plataforma sin
+		// emparejar no es un producto del catálogo— pero la columna es opcional desde la 0072 y el
+		// tipo lo refleja. La guarda es del compilador, no un recordatorio.
+		if r.ProductID == nil {
+			continue
+		}
+		ids = append(ids, *r.ProductID)
 	}
 	return ids, nil
 }
