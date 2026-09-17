@@ -40,6 +40,21 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// LA PUERTA PÚBLICA DE LAS PLATAFORMAS (spec 021), y está aquí arriba a propósito: FUERA
+		// del grupo de RequireAuth y FUERA de WithTenant.
+		//
+		// No es un descuido ni una excepción cómoda. Quien llama es la plataforma, no una persona:
+		// no hay sesión que exigir, y no puede haber empresa en el contexto porque LA EMPRESA ES EL
+		// RESULTADO de autenticar el cuerpo con la firma. Montarla dentro del grupo de tenant haría
+		// que todo aviso fuera rechazado antes de poder verificarlo.
+		//
+		// Lo único que la protege es la firma, y por eso lleva su propio límite por IP: es la única
+		// ruta del negocio que cualquiera puede alcanzar.
+		if h.pedidosPlataforma != nil {
+			r.With(rateLimit(h.webhookIPs, cfg.Env == "production")).
+				Post("/webhooks/{plataforma}", h.WebhookDePlataforma)
+		}
+
 		// LA CONSOLA DE PLATAFORMA (spec 016), y ni una de sus rutas dentro del grupo del negocio.
 		//
 		// No se monta si falta el manager o el servicio: una consola a medias respondería 500 en un

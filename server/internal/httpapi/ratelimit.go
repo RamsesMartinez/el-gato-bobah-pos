@@ -220,6 +220,12 @@ func rateKeyIP(r *http.Request, behindProxy bool) string {
 // spray, bcrypt-CPU DoS, refresh hammering) trips before the handler runs. Scope it to
 // the sensitive endpoints (login/refresh/forgot/reset) so routine ops (pin-switch, me) aren't
 // throttled; account-targeted guessing is caught separately by the per-account limiter.
+// webhookMax: avisos por minuto y por IP que se aceptan en la puerta pública. Un local con mucho
+// movimiento no pasa de decenas de pedidos por hora, así que 300 por minuto son dos órdenes de
+// magnitud de margen. El número existe para que una ráfaga no cueste una escritura por vuelta, no
+// para racionar pedidos.
+const webhookMax = 300
+
 func rateLimit(rl *rateLimiter, behindProxy bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

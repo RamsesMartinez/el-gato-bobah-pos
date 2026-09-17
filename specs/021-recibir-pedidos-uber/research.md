@@ -209,13 +209,18 @@ concreta; esa es la que tiene la impresora enfrente.
 
 ## D9 · Enterarse de que Uber cerró la tienda
 
-**Decisión**: se recibe y se muestra el aviso de cambio de estado de la tienda. Si Uber no concede
-el permiso que ese aviso exige, se cubre consultando el estado de la tienda, que **ya sabemos leer**
-(`GET .../status`, verificado en la 020 y documentado en `http/uber-eats.http`).
+**Decisión** (invertida el 2026-09-17): **el camino principal es consultar el estado de la tienda**
+con `GET .../status`, que ya sabemos leer —verificado en la 020 y documentado en
+`http/uber-eats.http`—. El aviso `store.status.changed` queda como mejora posterior.
 
-**Por qué la alternativa importa**: ese aviso exige un permiso que hoy **no tenemos** y que está en
-el ticket abierto con Uber. Atar FR-028 a un permiso que puede no llegar dejaría el requisito sin
-cumplir por una razón ajena. Leer el estado cuesta una llamada que ya funciona.
+**Por qué se invirtió**: ese aviso exige un permiso que Uber concede solo a aplicaciones
+autorizadas explícitamente, y **el dueño decidió no abrir el ticket por ahora** para no quedarse
+bloqueado. Construir FR-028 sobre un aviso que nunca va a llegar sería construir un requisito que
+no se cumple, y peor: no se notaría, porque la ausencia de un aviso no falla — simplemente el
+negocio nunca se entera de que lo cerraron, que es exactamente el defecto que FR-028 viene a cerrar.
+
+El código se escribe de modo que **manejar el aviso sea agregar un caso**, no rehacer el camino: el
+día que exista el permiso, lo que cambia es de dónde viene el dato, no qué se hace con él.
 
 ---
 

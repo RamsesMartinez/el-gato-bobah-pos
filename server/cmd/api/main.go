@@ -215,11 +215,12 @@ func main() {
 		Broker:     realtime.NewBroker(),
 		// nil cuando no hay ANTHROPIC_API_KEY: la extracción de tickets es opcional y el POS
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
-		PurchaseDoc:     app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
-		PlatformPrices:  app.NewPlatformPricesService(st),
-		MenusPlataforma: app.NewMenusDePlataformaService(st, lectoresDePlataforma(cfg), nil),
-		Sales:           app.NewSalesService(st, nil),
-		Settlements:     app.NewSettlementsService(st),
+		PurchaseDoc:       app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
+		PlatformPrices:    app.NewPlatformPricesService(st),
+		MenusPlataforma:   app.NewMenusDePlataformaService(st, lectoresDePlataforma(cfg), nil),
+		PedidosPlataforma: app.NewPedidosDePlataformaService(st, decisoresDePlataforma(cfg), cfg.UberEatsEnv, nil),
+		Sales:             app.NewSalesService(st, nil),
+		Settlements:       app.NewSettlementsService(st),
 		// La consola, sobre su propio pool: es la conexión la que le impide leer la operación de
 		// un cliente, no una decisión de este servicio.
 		PlatformJWT: pjm,
@@ -712,6 +713,42 @@ func lectoresDePlataforma(cfg config.Config) map[string]app.LectorDeMenu {
 	}
 	return lectores
 }
+
+// decisoresDePlataforma arma lo que hace falta para RECIBIR y decidir pedidos.
+//
+// Es un mapa aparte del de lectores y no una ampliación de aquél, a propósito: el de lectura
+// garantiza por tipo que el servicio de menús no pueda escribir nada en la plataforma, y meterle un
+// método de escritura tiraría esa garantía para las dos features.
+func decisoresDePlataforma(cfg config.Config) map[string]app.DecisorDePedidos {
+	decisores := map[string]app.DecisorDePedidos{}
+	if cfg.UberEatsEnabled() {
+		c, err := uber.New(cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv)
+		if err != nil {
+			slog.Error("cliente de pedidos de Uber Eats", "error", err)
+			os.Exit(1)
+		}
+		decisores[nombreDeUberEnElCatalogo] = decisorDeUber{c}
+	}
+	return decisores
+}
+
+// decisorDeUber adapta el cliente igual que lectorDeUber, y por la misma razón: la traducción entre
+// los errores de una API ajena y el vocabulario del negocio vive en el borde.
+type decisorDeUber struct{ c *uber.Client }
+
+func (d decisorDeUber) TraerDetalleDePedido(ctx context.Context, liga string) ([]byte, error) {
+	return d.c.TraerDetalleDePedido(ctx, liga)
+}
+
+func (d decisorDeUber) AceptarPedido(ctx context.Context, pedidoID, ref string) error {
+	return d.c.AceptarPedido(ctx, pedidoID, ref)
+}
+
+func (d decisorDeUber) RechazarPedido(ctx context.Context, pedidoID, motivo, expl string) error {
+	return d.c.RechazarPedido(ctx, pedidoID, motivo, expl)
+}
+
+func (d decisorDeUber) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }
 
 // nombreDeUberEnElCatalogo es cómo se llama la plataforma en `delivery_platforms`, que es la llave
 // con la que el servicio encuentra su lector. Si se renombra la fila, esto deja de empatar y la

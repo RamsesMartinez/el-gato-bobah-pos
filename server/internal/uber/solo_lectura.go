@@ -9,6 +9,7 @@ package uber
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // NombreDeLaPlataforma aparece en los errores del guardia. Está aquí y no interpolado en cada
@@ -16,8 +17,22 @@ import (
 // las dos se intentó tocar.
 const NombreDeLaPlataforma = "Uber Eats"
 
+// escriturasPermitidas es la lista blanca de rutas donde este paquete SÍ puede escribir.
+//
+// Son dos, y son las dos decisiones sobre un pedido que llegó: aceptarlo y rechazarlo. Sin ellas no
+// hay integración —un pedido que no se puede aceptar no sirve— y con cualquier otra, sí hay riesgo:
+// el `PUT` de menú reemplaza el menú publicado completo y el `DELETE` de `pos_data` desconecta la
+// integración, y ninguno de los dos se deshace.
+//
+// Se comparan como SUFIJO de la ruta y no como subcadena: `strings.Contains` dejaría pasar
+// `/menus?x=accept_pos_order` y cualquier otra cosa que lleve el texto adentro.
+var escriturasPermitidas = []string{
+	"/accept_pos_order",
+	"/deny_pos_order",
+}
+
 // soloLectura envuelve un RoundTripper y **rechaza todo verbo distinto de GET antes de abrir el
-// socket**.
+// socket**, salvo las rutas de escriturasPermitidas.
 //
 // POR QUÉ EN EL TRANSPORTE Y NO EN UNA REVISIÓN. El `PUT` de menú de Uber es reemplazo total
 // —«overwrites any existing menus»— así que el primer disparo contra la tienda viva sustituye el
@@ -32,10 +47,10 @@ func soloLectura(base http.RoundTripper) http.RoundTripper {
 		base = http.DefaultTransport
 	}
 	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && !escrituraPermitida(r) {
 			return nil, fmt.Errorf(
-				"%s: operación %s bloqueada — este cliente es de solo lectura y %s reemplaza el menú publicado completo",
-				NombreDeLaPlataforma, r.Method, r.Method)
+				"%s: operación %s sobre %s bloqueada — este cliente solo escribe para aceptar o rechazar un pedido, y un %s de menú reemplaza el menú publicado completo",
+				NombreDeLaPlataforma, r.Method, r.URL.Path, r.Method)
 		}
 		return base.RoundTrip(r)
 	})
@@ -58,6 +73,21 @@ func soloElHostDeToken(host string, base http.RoundTripper) http.RoundTripper {
 		}
 		return base.RoundTrip(r)
 	})
+}
+
+// escrituraPermitida exige POST y que la ruta TERMINE en una de las dos permitidas. El método se
+// verifica también: un PUT a `/accept_pos_order` no es nada que la plataforma acepte, y dejarlo
+// pasar sería ensanchar la puerta sin ganar nada.
+func escrituraPermitida(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	for _, ruta := range escriturasPermitidas {
+		if strings.HasSuffix(r.URL.Path, ruta) {
+			return true
+		}
+	}
+	return false
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

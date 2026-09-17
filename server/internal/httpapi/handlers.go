@@ -92,9 +92,10 @@ type Deps struct {
 	// MenusPlataforma siempre se construye (ver main.go): el servicio existe aunque no haya ninguna
 	// plataforma configurada, y en ese caso `DispararLectura` responde 412 «no está conectada»
 	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
-	MenusPlataforma *app.MenusDePlataformaService
-	Sales           *app.SalesService
-	Settlements     *app.SettlementsService
+	MenusPlataforma   *app.MenusDePlataformaService
+	PedidosPlataforma *app.PedidosDePlataformaService
+	Sales             *app.SalesService
+	Settlements       *app.SettlementsService
 	// PlatformJWT y Platform son la consola de plataforma (spec 016). Van juntas o no van: el
 	// router no monta el grupo /platform sin las dos, y montarlo a medias respondería 500 donde
 	// debe no existir nada.
@@ -110,32 +111,33 @@ type Deps struct {
 }
 
 type Handlers struct {
-	cfg             config.Config
-	version         string
-	builtAt         string
-	jwt             *auth.Manager
-	auth            *app.AuthService
-	users           *app.UsersService
-	menu            *app.MenuService
-	menuCache       *cache.MenuCache
-	suggest         *app.SuggestService
-	costing         *app.CostingService
-	orders          *app.OrdersService
-	backoffice      *app.BackofficeService
-	admin           *app.AdminService
-	settings        *app.SettingsService
-	company         *app.CompanyService
-	reset           *app.ResetService
-	broker          *realtime.Broker
-	purchaseDoc     *app.PurchaseDocService
-	platformPrices  *app.PlatformPricesService
-	menusPlataforma *app.MenusDePlataformaService
-	sales           *app.SalesService
-	settlements     *app.SettlementsService
-	platformJWT     *auth.ManagerDePlataforma
-	platform        *app.PlatformService
-	usage           *app.UsageService
-	usageConsola    *app.UsageService
+	cfg               config.Config
+	version           string
+	builtAt           string
+	jwt               *auth.Manager
+	auth              *app.AuthService
+	users             *app.UsersService
+	menu              *app.MenuService
+	menuCache         *cache.MenuCache
+	suggest           *app.SuggestService
+	costing           *app.CostingService
+	orders            *app.OrdersService
+	backoffice        *app.BackofficeService
+	admin             *app.AdminService
+	settings          *app.SettingsService
+	company           *app.CompanyService
+	reset             *app.ResetService
+	broker            *realtime.Broker
+	purchaseDoc       *app.PurchaseDocService
+	platformPrices    *app.PlatformPricesService
+	menusPlataforma   *app.MenusDePlataformaService
+	pedidosPlataforma *app.PedidosDePlataformaService
+	sales             *app.SalesService
+	settlements       *app.SettlementsService
+	platformJWT       *auth.ManagerDePlataforma
+	platform          *app.PlatformService
+	usage             *app.UsageService
+	usageConsola      *app.UsageService
 	// usoIngesta limita cuánto puede mandar una tableta. No protege la base —de eso se encargan la
 	// lista blanca y los checks— sino el camino: un bucle en el front no puede costar una escritura
 	// por vuelta.
@@ -147,6 +149,9 @@ type Handlers struct {
 	platformPriceWrites *rateLimiter
 	// platformMenuReads limita cuántas lecturas de menú puede disparar un usuario.
 	platformMenuReads *rateLimiter
+	// webhookIPs limita la puerta pública de las plataformas. Es la única ruta del negocio sin
+	// sesión, así que es la única que cualquiera puede alcanzar sin credenciales.
+	webhookIPs *rateLimiter
 	// platformRefWrites limita las correcciones de folio por usuario (ver platformRefMax).
 	platformRefWrites *rateLimiter
 	authFails         *rateLimiter // account-targeted brute-force lockout (per username / user id)
@@ -158,17 +163,18 @@ func NewHandlers(d Deps) *Handlers {
 		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
-		purchaseDoc:     d.PurchaseDoc,
-		platformPrices:  d.PlatformPrices,
-		menusPlataforma: d.MenusPlataforma,
-		sales:           d.Sales,
-		settlements:     d.Settlements,
-		platformJWT:     d.PlatformJWT,
-		platform:        d.Platform,
-		usage:           d.Usage,
-		usageConsola:    d.UsageConsola,
-		usoIngesta:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
-		docExtract:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
+		purchaseDoc:       d.PurchaseDoc,
+		platformPrices:    d.PlatformPrices,
+		menusPlataforma:   d.MenusPlataforma,
+		pedidosPlataforma: d.PedidosPlataforma,
+		sales:             d.Sales,
+		settlements:       d.Settlements,
+		platformJWT:       d.PlatformJWT,
+		platform:          d.Platform,
+		usage:             d.Usage,
+		usageConsola:      d.UsageConsola,
+		usoIngesta:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
+		docExtract:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.
@@ -182,6 +188,12 @@ func NewHandlers(d Deps) *Handlers {
 		// cada lectura baja 211 KB de un tercero y escribe 222 filas.
 		platformMenuReads: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-menu-read:",
 			platformMenuReadMax, platformMenuReadWindow),
+		// EL LÍMITE DEL WEBHOOK ES POR IP y muy por encima del volumen real: lo que acota es una
+		// ráfaga contra una puerta pública, no los pedidos. Dimensionarlo apretado sería peor que
+		// no tenerlo — un rechazo a la plataforma es un pedido que no entra. Y como el limitador
+		// de este repo es fail-open cuando Redis no contesta, un hiccup del caché nunca bloquea
+		// un pedido.
+		webhookIPs: newRateLimiter(d.Cfg.RedisURL, "ratelimit:webhook:", webhookMax, time.Minute),
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
 			platformRefMax, platformRefWindow),
 	}

@@ -1,9 +1,11 @@
 package uber
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +20,11 @@ var archivosDondeSePermiteNombrarUnVerboDeEscritura = map[string]bool{
 	"token.go":               true,
 	"token_test.go":          true,
 	"sin_escrituras_test.go": true,
+	// Las DOS únicas escrituras de toda la integración: aceptar y rechazar un pedido (spec 021).
+	// Que el archivo esté en esta lista no las autoriza — lo que las autoriza es la lista blanca
+	// de rutas del transporte, y TestLaListaBlancaNoAbreElMenuNiLaTienda vigila que no crezca.
+	"pedidos.go":      true,
+	"pedidos_test.go": true,
 }
 
 // LA ALARMA TEMPRANA de que nadie agregó una escritura (FR-007).
@@ -88,6 +95,81 @@ func TestNingunaDependenciaDeAutomatizacionDeNavegador(t *testing.T) {
 	for _, sospechosa := range []string{"chromedp", "go-rod", "playwright", "puppeteer", "selenium", "agouti"} {
 		if strings.Contains(string(mod), sospechosa) {
 			t.Errorf("go.mod trae %q: automatizar el portal de comercios está prohibido por los términos de la plataforma, y la terminación es inmediata", sospechosa)
+		}
+	}
+}
+
+// LA LISTA BLANCA NO PUEDE CRECER HACIA EL MENÚ NI HACIA LA TIENDA.
+//
+// La spec 021 necesita exactamente dos escrituras —aceptar y rechazar un pedido— y para eso el
+// guardia dejó de ser «solo GET» y pasó a ser «solo GET, más estas rutas». Ese cambio es el riesgo:
+// una lista blanca es una puerta con una cerradura que alguien puede ensanchar con una línea.
+//
+// Lo que esta prueba impide concretamente es que la lista llegue a admitir el PUT de menú —que
+// reemplaza el menú publicado completo y no tiene deshacer— o el DELETE de pos_data, que desconecta
+// la integración. Ninguna de las dos se recupera desde aquí.
+func TestLaListaBlancaNoAbreElMenuNiLaTienda(t *testing.T) {
+	if len(escriturasPermitidas) != 2 {
+		t.Fatalf("la lista blanca tiene %d rutas y debería tener 2 (aceptar y rechazar un pedido): %v",
+			len(escriturasPermitidas), escriturasPermitidas)
+	}
+	for _, ruta := range escriturasPermitidas {
+		for _, prohibido := range []string{"menu", "pos_data", "status", "holiday"} {
+			if strings.Contains(strings.ToLower(ruta), prohibido) {
+				t.Errorf("la lista blanca admite %q, que toca %q: eso no se recupera", ruta, prohibido)
+			}
+		}
+		if !strings.Contains(ruta, "pos_order") {
+			t.Errorf("la lista blanca admite %q, que no es una decisión sobre un pedido", ruta)
+		}
+	}
+}
+
+// Y que el guardia siga rechazando lo que no está en la lista, en tiempo de ejecución y no solo en
+// el AST: una prueba estática se olvida de un camino nuevo, el transporte no.
+func TestElGuardiaSigueRechazandoLoQueNoEstaEnLaLista(t *testing.T) {
+	rt := soloLectura(roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("no debió llegar al socket")
+	}))
+
+	casos := []struct{ metodo, url string }{
+		{"PUT", "https://test-api.uber.com/v2/eats/stores/abc/menus"},
+		{"DELETE", "https://test-api.uber.com/v1/eats/stores/abc/pos_data"},
+		{"POST", "https://test-api.uber.com/v1/eats/store/abc/status"},
+		{"POST", "https://test-api.uber.com/v2/eats/stores/abc/menus/items/xyz"},
+		{"POST", "https://test-api.uber.com/v1/eats/orders/abc/accept_pos_order/../../menus"},
+	}
+	for _, c := range casos {
+		req, err := http.NewRequest(c.metodo, c.url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := rt.RoundTrip(req)
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if err == nil {
+			t.Errorf("%s %s pasó el guardia", c.metodo, c.url)
+		}
+	}
+
+	// Y las dos que SÍ tienen que pasar, o la feature no existe.
+	for _, url := range []string{
+		"https://test-api.uber.com/v1/eats/orders/abc-123/accept_pos_order",
+		"https://test-api.uber.com/v1/eats/orders/abc-123/deny_pos_order",
+	} {
+		req, err := http.NewRequest("POST", url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := rt.RoundTrip(req)
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if err == nil {
+			t.Errorf("%s no llegó al socket", url)
+		} else if !strings.Contains(err.Error(), "no debió llegar al socket") {
+			t.Errorf("%s lo bloqueó el guardia: %v", url, err)
 		}
 	}
 }
