@@ -267,6 +267,17 @@ mecánica:
   esa línea: es un render extra al montar, acotado, y React no ofrece otra forma de provocar una
   transición al montar.
 
+- **`overflowY="auto"` SIN un alto no hace scroll: la caja crece.** No falla, no avisa y en el
+  monitor de quien programa se ve bien — el precio lo paga la tableta de 600 px, donde cada renglón
+  de la lista empuja fuera de la pantalla lo que viene debajo. Va con `maxH` en **dvh** (lo que se
+  reparte es el alto de la tableta, no un número de píxeles) o con el patrón `Page fill` +
+  `flex="1" minH={0}` que documenta [Page.tsx](web/src/components/Page.tsx). Pasó en la lista de
+  diferencias de la 020, que sacaba de la pantalla la lista de tiendas y el formulario de alta.
+  **Y un componente que se pinta DENTRO de otra pantalla no trae su propio `Page`**: anidarlos
+  duplica 48 px de relleno que no separa nada y recorta el ancho dos veces. Lo cubren
+  `MenuDePlataformaPage.test.tsx` y `PlataformasPage.test.tsx`, que cuentan los contenedores con la
+  firma del `Page` (`max-width: 1150px`) — en jsdom `getComputedStyle` sí resuelve lo que emite
+  Chakra, así que el defecto de disposición sí deja test.
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.

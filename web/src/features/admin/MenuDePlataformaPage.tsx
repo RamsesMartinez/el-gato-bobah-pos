@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Box, Button, HStack, Text, VStack } from '@chakra-ui/react';
 import { LuRefreshCw } from 'react-icons/lu';
-import { Page } from '../../components/Page';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import {
   diferencias,
@@ -142,111 +141,114 @@ export function MenuDePlataformaPage() {
   };
 
   if (conexiones.length === 0) {
-    return (
-      <Page>
-        <Text>Todavía no hay ninguna tienda dada de alta.</Text>
-      </Page>
-    );
+    return <Text>Todavía no hay ninguna tienda dada de alta.</Text>;
   }
 
   const ultima = conexion?.lastRead;
 
+  // NO lleva `Page`. Esta comparación se pinta DENTRO de la pantalla de plataformas, que ya está
+  // en un `Page`: envolverla en otro duplicaba 48 px de relleno que no separa nada de nada — el 8%
+  // del alto de una tableta de 600 px, gastado en márgenes, y encima recortaba el ancho una
+  // segunda vez. Si algún día se rutea sola, el `Page` lo pone la ruta, no el componente.
   return (
-    <Page>
-      <VStack align="stretch" gap={3}>
-        {/* Sin este selector, la segunda sucursal es invisible: `activa` se fijaba a la primera y
-            nunca cambiaba. El modelo soporta varias tiendas por plataforma desde el día uno. */}
-        {conexiones.length > 1 && (
-          <HStack gap={2} wrap="wrap">
-            {conexiones.map((c) => (
-              <Button
-                key={c.id}
-                minH="44px"
-                variant={c.id === activa ? 'solid' : 'outline'}
-                onClick={() => setActiva(c.id)}
-              >
-                {c.platformName} · {c.label}
-              </Button>
-            ))}
-          </HStack>
-        )}
-
-        <HStack justify="space-between" wrap="wrap" gap={2}>
-          <VStack align="start" gap={0}>
-            <Text fontWeight="bold">
-              {conexion?.platformName} · {conexion?.label}
-            </Text>
-            {/* De cuándo es el dato, SIEMPRE. Sin esto la pantalla empieza a mentir el segundo día. */}
-            <Text fontSize="sm" color="fg.muted">
-              {!conexion?.credentialsConfigured
-                ? 'Esta tienda todavía no está conectada.'
-                : !ultima
-                  ? 'Nunca se ha leído el menú de esta tienda.'
-                  : ultima.status === 'en_curso'
-                    ? 'Leyendo el menú…'
-                    : ultima.status === 'fallida'
-                      ? `${ultima.failureKind ? TEXTO_DE_FALLO[ultima.failureKind] : 'La última lectura falló.'} Último dato: ${horaNegocio.fechaYHora(ultima.startedAt)}`
-                      : `Leído el ${horaNegocio.fechaYHora(ultima.startedAt)}`}
-            </Text>
-          </VStack>
-          <Button
-            minH="44px"
-            onClick={pedirLectura}
-            loading={leyendo}
-            disabled={!conexion?.credentialsConfigured}
-          >
-            <LuRefreshCw /> Leer ahora
-          </Button>
+    <VStack align="stretch" gap={3}>
+      {/* Sin este selector, la segunda sucursal es invisible: `activa` se fijaba a la primera y
+          nunca cambiaba. El modelo soporta varias tiendas por plataforma desde el día uno. */}
+      {conexiones.length > 1 && (
+        <HStack gap={2} wrap="wrap">
+          {conexiones.map((c) => (
+            <Button
+              key={c.id}
+              minH="44px"
+              variant={c.id === activa ? 'solid' : 'outline'}
+              onClick={() => setActiva(c.id)}
+            >
+              {c.platformName} · {c.label}
+            </Button>
+          ))}
         </HStack>
+      )}
 
-        {ultima?.stale && (
-          <Badge colorPalette="orange" alignSelf="flex-start">
-            Este dato ya está viejo
-          </Badge>
-        )}
-
-        <HStack gap={2}>
-          <Button
-            minH="44px"
-            variant={pestana === 'accionable' ? 'solid' : 'outline'}
-            onClick={() => setPestana('accionable')}
-          >
-            Por corregir
-          </Button>
-          <Button
-            minH="44px"
-            variant={pestana === 'unLado' ? 'solid' : 'outline'}
-            onClick={() => setPestana('unLado')}
-          >
-            Solo en un lado{cmp ? ` (${cmp.unpaired})` : ''}
-          </Button>
-        </HStack>
-
-        {pestana === 'unLado' && (
+      <HStack justify="space-between" wrap="wrap" gap={2}>
+        <VStack align="start" gap={0}>
+          <Text fontWeight="bold">
+            {conexion?.platformName} · {conexion?.label}
+          </Text>
+          {/* De cuándo es el dato, SIEMPRE. Sin esto la pantalla empieza a mentir el segundo día. */}
           <Text fontSize="sm" color="fg.muted">
-            La mayoría de estos no son errores: hay productos que no se venden en la app a propósito,
-            y platillos de la app que todavía no tienen pareja aquí.
+            {!conexion?.credentialsConfigured
+              ? 'Esta tienda todavía no está conectada.'
+              : !ultima
+                ? 'Nunca se ha leído el menú de esta tienda.'
+                : ultima.status === 'en_curso'
+                  ? 'Leyendo el menú…'
+                  : ultima.status === 'fallida'
+                    ? `${ultima.failureKind ? TEXTO_DE_FALLO[ultima.failureKind] : 'La última lectura falló.'} Último dato: ${horaNegocio.fechaYHora(ultima.startedAt)}`
+                    : `Leído el ${horaNegocio.fechaYHora(ultima.startedAt)}`}
           </Text>
-        )}
+        </VStack>
+        <Button
+          minH="44px"
+          onClick={pedirLectura}
+          loading={leyendo}
+          disabled={!conexion?.credentialsConfigured}
+        >
+          <LuRefreshCw /> Leer ahora
+        </Button>
+      </HStack>
 
-        {aviso && <Text color="fg.muted">{aviso}</Text>}
+      {ultima?.stale && (
+        <Badge colorPalette="orange" alignSelf="flex-start">
+          Este dato ya está viejo
+        </Badge>
+      )}
 
-        {cmp && cmp.differences.length === 0 && !aviso && (
-          <Text color="fg.muted">
-            {pestana === 'accionable'
-              ? 'No hay diferencias de precio ni de disponibilidad.'
-              : 'Todo lo publicado tiene pareja en el sistema.'}
-          </Text>
-        )}
+      <HStack gap={2}>
+        <Button
+          minH="44px"
+          variant={pestana === 'accionable' ? 'solid' : 'outline'}
+          onClick={() => setPestana('accionable')}
+        >
+          Por corregir
+        </Button>
+        <Button
+          minH="44px"
+          variant={pestana === 'unLado' ? 'solid' : 'outline'}
+          onClick={() => setPestana('unLado')}
+        >
+          Solo en un lado{cmp ? ` (${cmp.unpaired})` : ''}
+        </Button>
+      </HStack>
 
-        {cmp && (
-          <Box overflowY="auto">
-            {cmp.differences.map((d) => (
-              <RenglonDeDiferencia key={`${d.kind}-${d.externalId ?? d.localId}`} d={d} />
-            ))}
-          </Box>
-        )}
-      </VStack>
-    </Page>
+      {pestana === 'unLado' && (
+        <Text fontSize="sm" color="fg.muted">
+          La mayoría de estos no son errores: hay productos que no se venden en la app a propósito,
+          y platillos de la app que todavía no tienen pareja aquí.
+        </Text>
+      )}
+
+      {aviso && <Text color="fg.muted">{aviso}</Text>}
+
+      {cmp && cmp.differences.length === 0 && !aviso && (
+        <Text color="fg.muted">
+          {pestana === 'accionable'
+            ? 'No hay diferencias de precio ni de disponibilidad.'
+            : 'Todo lo publicado tiene pareja en el sistema.'}
+        </Text>
+      )}
+
+      {/* LA CAJA VA ACOTADA, y el `maxH` no es cosmético: `overflowY` sin alto NO crea una región
+          de scroll —la caja simplemente crece— y cada diferencia empujaba hacia abajo la lista de
+          tiendas y el formulario de alta hasta sacarlos de la pantalla. Con 174 productos contra
+          65 platillos publicados, la lista larga es el caso normal, no el raro.
+          En dvh y no en px porque lo que se reparte es el alto de la tableta, no un número fijo. */}
+      {cmp && (
+        <Box maxH="40dvh" overflowY="auto" data-testid="lista-de-diferencias">
+          {cmp.differences.map((d) => (
+            <RenglonDeDiferencia key={`${d.kind}-${d.externalId ?? d.localId}`} d={d} />
+          ))}
+        </Box>
+      )}
+    </VStack>
   );
 }

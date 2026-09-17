@@ -115,4 +115,17 @@ describe('MenuDePlataformaPage', () => {
     montar();
     expect(await screen.findByText(/todavía no está conectada/)).toBeInTheDocument();
   });
+
+  // `overflowY` SIN ALTO NO HACE SCROLL: la caja crece con el contenido y empuja hacia abajo todo
+  // lo que sigue en la pantalla —la lista de tiendas y el formulario de alta— hasta sacarlo de una
+  // tableta de 600 px. Con 174 productos contra 65 platillos publicados, la lista larga es lo
+  // normal. Si esta prueba se cae, la lista volvió a crecer sin tope.
+  it('la lista de diferencias hace scroll en su propia caja, no empuja la pantalla', async () => {
+    montar();
+    const caja = await screen.findByTestId('lista-de-diferencias');
+    const estilo = getComputedStyle(caja);
+    expect(estilo.overflowY).toBe('auto');
+    expect(estilo.maxHeight).not.toBe('');
+    expect(estilo.maxHeight).not.toBe('none');
+  });
 });
