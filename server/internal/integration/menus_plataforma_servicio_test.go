@@ -50,6 +50,13 @@ func (l *lectorFalso) LeerMenu(ctx context.Context, storeID string) ([]domain.It
 	return l.items, l.err
 }
 
+func (l *lectorFalso) ListarTiendas(ctx context.Context) ([]domain.TiendaDePlataforma, error) {
+	return []domain.TiendaDePlataforma{
+		{ID: "tienda-ya-registrada", Nombre: "Sucursal Centro", Ciudad: "Toluca"},
+		{ID: "tienda-nueva", Nombre: "Sucursal Norte", Ciudad: "Metepec", PDVConectado: true},
+	}, nil
+}
+
 func (l *lectorFalso) ClaseDeFallo(err error) domain.ClaseDeFallo {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return domain.FalloTiempoAgotado
@@ -452,5 +459,67 @@ func TestLaPodaDelServicioConservaLaUltima(t *testing.T) {
 	}
 	if quedan != 1 {
 		t.Fatalf("quedaron %d lecturas; la última se conserva aunque sea vieja", quedan)
+	}
+}
+
+// LAS TIENDAS SE ELIGEN, NO SE TECLEAN — y las que ya están dadas de alta se marcan.
+//
+// El identificador de tienda es el único dato del alta que una persona no puede producir de memoria
+// ni deducir: pedirlo escrito es lo que deja fuera a quien nunca ha usado el sistema. Y dejar en la
+// lista una que ya se registró, para que el alta falle con «ya existe», hace creer al operador que
+// se equivocó de tienda.
+func TestLasTiendasDisponiblesMarcanLasYaRegistradas(t *testing.T) {
+	st := newTestStore(t)
+	lector := &lectorFalso{items: menuFalso()}
+	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
+	plat := plataformaUber(t, st, defaultCompanyID)
+
+	if _, err := svc.CrearConexion(ctx, app.AltaDeConexion{
+		PlatformID: plat, ExternalStoreID: "tienda-ya-registrada", Label: "Centro",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	tiendas, err := svc.TiendasDisponibles(ctx, plat)
+	if err != nil {
+		t.Fatalf("listar tiendas disponibles: %v", err)
+	}
+	if len(tiendas) != 2 {
+		t.Fatalf("devolvió %d tiendas, quería 2", len(tiendas))
+	}
+	porID := map[string]domain.TiendaDePlataforma{}
+	for _, s := range tiendas {
+		porID[s.ID] = s
+	}
+	if !porID["tienda-ya-registrada"].YaRegistrada {
+		t.Error("la tienda ya dada de alta no viene marcada: el alta fallaría con «ya existe» y parecería un error del operador")
+	}
+	if porID["tienda-nueva"].YaRegistrada {
+		t.Error("una tienda sin conexión salió marcada como registrada")
+	}
+	if porID["tienda-nueva"].Nombre != "Sucursal Norte" || porID["tienda-nueva"].Ciudad != "Metepec" {
+		t.Errorf("sin nombre y ciudad nadie distingue sus sucursales: %+v", porID["tienda-nueva"])
+	}
+}
+
+// Sin credenciales para esa plataforma no hay lista que dar, y se dice — no es una lista vacía.
+func TestSinCredencialesNoHayTiendasQueListar(t *testing.T) {
+	st := newTestStore(t)
+	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, nil)
+	if _, err := svc.TiendasDisponibles(ctx, plataformaUber(t, st, defaultCompanyID)); !errors.Is(err, domain.ErrPlataformaSinCredenciales) {
+		t.Fatalf("se esperaba ErrPlataformaSinCredenciales, dio %v", err)
+	}
+}
+
+// Una plataforma de OTRA empresa se rechaza: los chequeos de integridad saltan RLS, así que sin
+// esta validación listaríamos tiendas contra la plataforma equivocada.
+func TestUnaPlataformaAjenaNoListaTiendas(t *testing.T) {
+	st := newTestStore(t)
+	otra := makeCompany(t, st, "vecina-tiendas")
+	lector := &lectorFalso{items: menuFalso()}
+	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
+
+	if _, err := svc.TiendasDisponibles(ctx, plataformaUber(t, st, otra)); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("una plataforma ajena debería rechazarse, dio %v", err)
 	}
 }

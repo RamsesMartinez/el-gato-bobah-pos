@@ -726,4 +726,8 @@ func (l lectorDeUber) LeerMenu(ctx context.Context, storeID string) ([]domain.It
 	return l.c.LeerMenu(ctx, storeID)
 }
 
+func (l lectorDeUber) ListarTiendas(ctx context.Context) ([]domain.TiendaDePlataforma, error) {
+	return l.c.ListarTiendas(ctx)
+}
+
 func (l lectorDeUber) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }

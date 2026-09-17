@@ -101,6 +101,26 @@ type ItemDePlataforma struct {
 	Activo   bool        `json:"available"`
 }
 
+// TiendaDePlataforma es una tienda tal como la lista la plataforma, para que alguien la ELIJA en vez
+// de teclear su identificador.
+//
+// Trae lo mínimo con lo que una persona distingue sus sucursales: el nombre y la ciudad. La
+// respuesta de la plataforma incluye además el correo del titular, su teléfono y la dirección
+// exacta, y nada de eso cruza esta frontera — la pantalla no lo necesita y el repositorio es
+// público (FR-022 es sobre secretos, esto es lo mismo con datos personales).
+type TiendaDePlataforma struct {
+	ID     string `json:"externalStoreId"`
+	Nombre string `json:"name"`
+	Ciudad string `json:"city"`
+	// PDVConectado: si esa tienda ya tiene un punto de venta conectado del lado de la plataforma.
+	// Sin mostrarlo, alguien conecta la misma dos veces y no entiende por qué la otra dejó de
+	// recibir.
+	PDVConectado bool `json:"posConnected"`
+	// YaRegistrada: si esta empresa ya la dio de alta aquí. La alternativa —dejarla en la lista y
+	// que el alta falle con «ya existe»— hace que el operador crea que se equivocó de tienda.
+	YaRegistrada bool `json:"alreadyAdded"`
+}
+
 // ProductoLocal es el lado del POS de la comparación, con su precio YA calculado para la
 // plataforma: la excepción capturada si existe, y si no `base × (1 + markup)`. Esa regla vive en
 // app/menu.go y no se duplica aquí.

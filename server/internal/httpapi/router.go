@@ -336,6 +336,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// de internal/uber, que rechaza todo verbo distinto de GET antes del socket.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/platform-menus", func(r chi.Router) {
 					r.Get("/connections", h.ListPlatformConnections)
+					// Va limitado con el mismo contador que la lectura de menú: también habla con
+					// un tercero, aunque baje mucho menos.
+					r.With(rateLimitUser(h.platformMenuReads)).Get("/available-stores", h.ListAvailablePlatformStores)
 					r.Post("/connections", h.CreatePlatformConnection)
 					r.Route("/connections/{id}", func(r chi.Router) {
 						r.Delete("/", h.DeletePlatformConnection)

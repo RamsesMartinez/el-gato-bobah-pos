@@ -188,7 +188,11 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     silencioso y semanas después.
   - **El id de la tienda vive en `platform_connections`, NUNCA en el entorno.** Una empresa tendrá
     varias sucursales y cada una es una tienda distinta arriba; la llave única incluye
-    `external_store_id` por eso.
+    `external_store_id` por eso. **Y NO se teclea**: `GET /admin/platform-menus/available-stores`
+    lo trae de la plataforma y la pantalla ofrece "Nombre — Ciudad". Es el único dato del alta que
+    una persona no puede producir ni verificar de memoria, y ese endpoint es el MISMO que servirá
+    cuando exista el consentimiento del comerciante — ahí solo cambia de dónde sale el token, no la
+    pantalla. Deja el campo escrito a mano como salida, nunca como el camino.
   - **Instrumentar sus pantallas son TRES lugares**, no dos: `pantallasMedibles` y
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se

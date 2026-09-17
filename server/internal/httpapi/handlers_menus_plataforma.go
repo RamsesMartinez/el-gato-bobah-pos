@@ -68,6 +68,27 @@ type altaDeConexionBody struct {
 	Label           string `json:"label"`
 }
 
+// GET /admin/platform-menus/available-stores?platformId=6
+//
+// Las tiendas que la plataforma reporta, para elegir una en vez de teclear su identificador.
+// Solo lectura, y sale del mismo guardia de transporte que todo lo demás de este paquete.
+func (h *Handlers) ListAvailablePlatformStores(w http.ResponseWriter, r *http.Request) {
+	crudo := r.URL.Query().Get("platformId")
+	id, err := strconv.ParseInt(crudo, 10, 16)
+	if err != nil || id <= 0 {
+		// Rechazado y no caído a un default: sin plataforma no hay lista que dar, y devolver la de
+		// otra sería peor que un error.
+		Error(w, domain.ErrValidation)
+		return
+	}
+	tiendas, err := h.menusPlataforma.TiendasDisponibles(r.Context(), int16(id))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"stores": tiendas})
+}
+
 // POST /admin/platform-menus/connections
 func (h *Handlers) CreatePlatformConnection(w http.ResponseWriter, r *http.Request) {
 	var body altaDeConexionBody

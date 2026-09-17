@@ -105,10 +105,28 @@ export interface Comparacion {
   unpaired: number;
 }
 
+/** Una tienda como la reporta la plataforma, para elegirla en vez de teclear su identificador. */
+export interface TiendaDePlataforma {
+  externalStoreId: string;
+  name: string;
+  city: string;
+  /** Si esa tienda ya tiene un punto de venta conectado del lado de la plataforma. */
+  posConnected: boolean;
+  /** Si esta empresa ya la dio de alta aquí. Se marca en vez de esconderla: quien la busca y no la
+   *  encuentra cree que se equivocó de tienda. */
+  alreadyAdded: boolean;
+}
+
 const RAIZ = '/admin/platform-menus';
 
 export const listarConexiones = () =>
   api.get<{ connections: ConexionDePlataforma[] }>(`${RAIZ}/connections`).then((r) => r.connections);
+
+/** Las tiendas que la plataforma reporta. Es lo que evita pedir un UUID escrito a mano. */
+export const tiendasDisponibles = (platformId: number) =>
+  api
+    .get<{ stores: TiendaDePlataforma[] }>(`${RAIZ}/available-stores?platformId=${platformId}`)
+    .then((r) => r.stores);
 
 export const crearConexion = (body: { platformId: number; externalStoreId: string; label: string }) =>
   api.post<{ id: number }>(`${RAIZ}/connections`, body);

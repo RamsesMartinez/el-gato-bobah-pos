@@ -25,6 +25,7 @@ import (
 // sigue sin poder llamarlo, y eso es justo lo que la US4 promete.
 type LectorDeMenu interface {
 	LeerMenu(ctx context.Context, storeID string) ([]domain.ItemDePlataforma, error)
+	ListarTiendas(ctx context.Context) ([]domain.TiendaDePlataforma, error)
 	ClaseDeFallo(err error) domain.ClaseDeFallo
 }
 
@@ -115,6 +116,50 @@ func (s *MenusDePlataformaService) resumen(r db.GetLastMenuReadRow) *ResumenDeLe
 	// reloj distinto mostrarían cosas distintas del mismo dato.
 	res.Vieja = r.StartedAt.Before(s.ahora().AddDate(0, 0, -domain.RetencionDeLecturasEnDias))
 	return res
+}
+
+// TiendasDisponibles lista las tiendas que la plataforma alcanza, marcando cuáles ya están dadas
+// de alta aquí.
+//
+// EXISTE PARA QUE NADIE TECLEE UN UUID. El identificador de tienda es el único dato del alta que una
+// persona no puede producir de memoria ni deducir, y pedirlo escrito es lo que deja fuera a quien
+// nunca ha usado el sistema.
+//
+// Marcar las ya registradas es la otra mitad: dejarlas en la lista y que el alta falle con «ya
+// existe» hace que el operador crea que se equivocó de tienda.
+func (s *MenusDePlataformaService) TiendasDisponibles(ctx context.Context, plataformaID int16) ([]domain.TiendaDePlataforma, error) {
+	plat, err := s.store.QC(ctx).GetPlatformByID(ctx, plataformaID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Va por aquí y no por la FK: los chequeos de integridad saltan RLS, así que un id de
+			// otra empresa pasaría y listaríamos tiendas contra la plataforma equivocada.
+			return nil, fmt.Errorf("%w: esa plataforma no existe para esta empresa", domain.ErrValidation)
+		}
+		return nil, fmt.Errorf("plataforma %d: %w", plataformaID, err)
+	}
+	lector := s.lectores[plat.Name]
+	if lector == nil {
+		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plat.Name)
+	}
+
+	tiendas, err := lector.ListarTiendas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listar tiendas de %s: %w", plat.Name, err)
+	}
+	yaEstan, err := s.store.QC(ctx).ListPlatformConnections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("conexiones existentes: %w", err)
+	}
+	registradas := map[string]bool{}
+	for _, c := range yaEstan {
+		if c.DeliveryPlatformID == plataformaID {
+			registradas[c.ExternalStoreID] = true
+		}
+	}
+	for i := range tiendas {
+		tiendas[i].YaRegistrada = registradas[tiendas[i].ID]
+	}
+	return tiendas, nil
 }
 
 type AltaDeConexion struct {
