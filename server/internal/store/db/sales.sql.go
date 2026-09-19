@@ -71,10 +71,13 @@ func (q *Queries) CountSalesSinFolio(ctx context.Context, arg CountSalesSinFolio
 
 const findSaleByPlatformRef = `-- name: FindSaleByPlatformRef :many
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -82,6 +85,7 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.platform_order_ref = $1
   and o.business_date between $2 and $3
 `
@@ -103,11 +107,13 @@ type FindSaleByPlatformRefRow struct {
 	ServiceType      ServiceType        `json:"service_type"`
 	CustomerName     *string            `json:"customer_name"`
 	Total            decimal.Decimal    `json:"total"`
+	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
+	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
 }
@@ -149,11 +155,13 @@ func (q *Queries) FindSaleByPlatformRef(ctx context.Context, arg FindSaleByPlatf
 			&i.ServiceType,
 			&i.CustomerName,
 			&i.Total,
+			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
+			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
 		); err != nil {
@@ -170,10 +178,13 @@ func (q *Queries) FindSaleByPlatformRef(ctx context.Context, arg FindSaleByPlatf
 const listSales = `-- name: ListSales :many
 
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -181,6 +192,7 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.business_date between $1 and $2
   and ($3::order_status is null or o.status = $3)
   and ($4::service_type is null or o.service_type = $4)
@@ -220,11 +232,13 @@ type ListSalesRow struct {
 	ServiceType      ServiceType        `json:"service_type"`
 	CustomerName     *string            `json:"customer_name"`
 	Total            decimal.Decimal    `json:"total"`
+	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
+	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
 }
@@ -287,11 +301,13 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 			&i.ServiceType,
 			&i.CustomerName,
 			&i.Total,
+			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
+			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
 		); err != nil {
@@ -307,10 +323,13 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 
 const listSalesSinFolio = `-- name: ListSalesSinFolio :many
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -318,6 +337,7 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between $1 and $2
   and ($3::order_status is null or o.status = $3)
@@ -358,11 +378,13 @@ type ListSalesSinFolioRow struct {
 	ServiceType      ServiceType        `json:"service_type"`
 	CustomerName     *string            `json:"customer_name"`
 	Total            decimal.Decimal    `json:"total"`
+	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
+	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
 }
@@ -398,11 +420,13 @@ func (q *Queries) ListSalesSinFolio(ctx context.Context, arg ListSalesSinFolioPa
 			&i.ServiceType,
 			&i.CustomerName,
 			&i.Total,
+			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
+			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
 		); err != nil {

@@ -121,6 +121,11 @@ func Error(w http.ResponseWriter, err error) {
 		status, code = http.StatusConflict, "CONFLICT"
 	case errors.Is(err, domain.ErrTooManyRequests):
 		status, code = http.StatusTooManyRequests, "TOO_MANY_REQUESTS"
+	case errors.Is(err, domain.ErrDescuentoMayorQueLaVenta):
+		// 422 y no 400: el monto está bien formado; lo que no se puede es descontar más de lo que
+		// se vendió. El código propio deja que la pantalla ponga el máximo donde el operador lo
+		// está tecleando, en vez de un aviso genérico de "datos inválidos".
+		status, code = http.StatusUnprocessableEntity, "DISCOUNT_OVER_SUBTOTAL"
 	case errors.Is(err, domain.ErrProductNotSell),
 		errors.Is(err, domain.ErrOptionNotFound),
 		errors.Is(err, domain.ErrEmptyOrder):

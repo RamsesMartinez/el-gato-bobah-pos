@@ -64,6 +64,13 @@ const (
 	// no miles. Por debajo de eso, el tope estorbaría el trabajo que la feature viene a habilitar.
 	platformRefMax    = 120
 	platformRefWindow = 5 * time.Minute
+	// descuentoMax/Window: cambios de descuento por usuario. Mismo orden de magnitud que las
+	// correcciones de folio, y por el mismo motivo: es una escritura de dinero que alcanza a
+	// cualquiera que capture pedidos, y este endpoint NO pide rol a propósito. Un turno con muchas
+	// promociones son decenas de capturas, no miles; lo que el tope corta es el bucle que llenaría
+	// la bitácora de eventos y pelearía por el lock de la fila.
+	descuentoMax    = 120
+	descuentoWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -149,8 +156,10 @@ type Handlers struct {
 	platformMenuReads *rateLimiter
 	// platformRefWrites limita las correcciones de folio por usuario (ver platformRefMax).
 	platformRefWrites *rateLimiter
-	authFails         *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs           *rateLimiter // per-IP request throttle for the /auth group
+	// descuentoWrites limita los cambios de descuento por usuario (ver descuentoMax).
+	descuentoWrites *rateLimiter
+	authFails       *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs         *rateLimiter // per-IP request throttle for the /auth group
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -184,6 +193,8 @@ func NewHandlers(d Deps) *Handlers {
 			platformMenuReadMax, platformMenuReadWindow),
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
 			platformRefMax, platformRefWindow),
+		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
+			descuentoMax, descuentoWindow),
 	}
 }
 

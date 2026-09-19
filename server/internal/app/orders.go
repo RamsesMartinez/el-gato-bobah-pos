@@ -65,7 +65,13 @@ type CreateOrderCmd struct {
 	PlatformOrderRef *string
 	OpenedBy         int64
 	DeliveryFee      decimal.Decimal // capturado en el cobro; solo aplica a domicilio
-	Lines            []domain.OrderLineInput
+	// DiscountAmount y DiscountPercent: el descuento tal como lo capturó el operador, y son
+	// EXCLUYENTES. Los dos juntos se rechazan en el dominio: no hay precedencia que inventar, hay
+	// una ambigüedad sobre dinero. El porcentaje se resuelve contra el subtotal que calcula el
+	// servidor, nunca contra uno que mande el cliente.
+	DiscountAmount  *decimal.Decimal
+	DiscountPercent *decimal.Decimal
+	Lines           []domain.OrderLineInput
 	// Payments: 0..N líneas de pago (pago dividido). Vacío = enviar a cocina sin cobrar.
 	// La orden queda "pagada" cuando la suma de amounts cubre el total (ver load()).
 	Payments []PaymentInput
@@ -107,10 +113,13 @@ type OrderView struct {
 	CustomerName     *string         `json:"customerName"`
 	Notes            *string         `json:"notes"`
 	Subtotal         decimal.Decimal `json:"subtotal"`
-	DeliveryFee      decimal.Decimal `json:"deliveryFee"`
-	Total            decimal.Decimal `json:"total"`
-	Currency         domain.Currency `json:"currency"`
-	Paid             bool            `json:"paid"`
+	// Discount viaja SIEMPRE, también en cero. Un campo que a veces falta obliga a cada pantalla a
+	// adivinar, y este repo ya pagó esa lección con los arreglos que llegaban como `null`.
+	Discount    decimal.Decimal `json:"discount"`
+	DeliveryFee decimal.Decimal `json:"deliveryFee"`
+	Total       decimal.Decimal `json:"total"`
+	Currency    domain.Currency `json:"currency"`
+	Paid        bool            `json:"paid"`
 	// Outstanding es lo que falta por cobrar. Viaja porque la hoja de cobro lo necesita entre pago
 	// y pago de una cuenta dividida: sin él tendría que restar por su cuenta, y dos
 	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
@@ -234,6 +243,17 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if err != nil {
 		return nil, err
 	}
+	// El descuento va ANTES del envío: se descuenta la comida, no el reparto. Al revés, una
+	// promoción del menú le recortaría al repartidor lo que se le paga por llevarla.
+	descuento, err := domain.ResolverDescuento(built.Subtotal, cmd.DiscountAmount, cmd.DiscountPercent)
+	if err != nil {
+		return nil, err
+	}
+	built, err = domain.AplicarDescuento(built, descuento)
+	if err != nil {
+		return nil, err
+	}
+
 	// El costo de envío solo aplica a domicilio Y sin plataforma: el reparto de Uber/DiDi/Rappi lo
 	// cobra la plataforma, así que sumarle el envío del negocio le carga $20 de más a cada pedido.
 	cobraEnvio := cmd.ServiceType == "domicilio" && cmd.DeliveryPlatformID == nil
@@ -289,6 +309,10 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 			PlatformOrderRef:   folio,
 			PlatformRefSetBy:   rastroDe(folio, cmd.OpenedBy),
 			PlatformRefSetAt:   rastroCuando(folio, s.now()),
+			DiscountTotal:      built.Discount,
+			// El autor del descuento lo estampa la consulta solo si hubo monto (el check de la
+			// tabla exige esa correspondencia); aquí se manda siempre quien capturó el pedido.
+			DiscountSetBy: cmd.OpenedBy,
 		})
 		if err != nil {
 			return err
@@ -398,6 +422,83 @@ func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string
 
 // folioDelPedido traduce el comando a la regla de dominio. La regla vive en `domain` porque es
 // pura y se prueba sin base de datos; aquí solo se desempaqueta el cmd.
+// SetDiscountResult dice qué descuento había antes y cuál quedó.
+//
+// El anterior viaja para que el evento de seguridad lo registre: la columna se sobrescribe EN SITIO
+// y sin historia, igual que el folio de plataforma, así que dos cambios seguidos borran la
+// evidencia del primero. El rastro (`discount_set_by`) solo guarda al último, y este es un dato de
+// dinero que sale del total.
+type SetDiscountResult struct {
+	Vista    *OrderView
+	Anterior decimal.Decimal
+	Actual   decimal.Decimal
+}
+
+// SetDiscountCmd es el cambio de descuento de un pedido que YA existe. Amount y Percent son
+// excluyentes, y los dos nil significan "quítalo".
+type SetDiscountCmd struct {
+	OrderID int64
+	Amount  *decimal.Decimal
+	Percent *decimal.Decimal
+	Actor   int64
+}
+
+// SetDiscount cambia o quita el descuento de un pedido abierto, y recalcula su total.
+//
+// Existe porque el descuento se teclea con el cliente enfrente y se teclea mal, y sin esto
+// corregirlo obligaría a cancelar el pedido y capturarlo de nuevo — deshacer para rehacer, que es
+// justo lo que la vara de UX del producto prohíbe.
+//
+// Las tres puertas cerradas, y por qué cada una:
+//
+//   - Pedido cancelado o reembolsado: son estados terminales. Su dinero ya se revirtió.
+//   - Pedido saldado: mover el total después de que los pagos lo cubrieron deja un cobro que no
+//     corresponde a ninguna venta, y un arqueo ya firmado contando otra cifra.
+//   - Descuento que deja el total POR DEBAJO de lo ya abonado: el pedido quedaría sobrepagado sin
+//     ninguna forma de devolver la diferencia. Este borde no estaba en el spec —apareció al
+//     escribir el servicio, con el pago dividido a la vista— y se cierra aquí porque el pago
+//     parcial sí es un caso de todos los días: el cliente deja algo al pedir y termina al recoger.
+func (s *OrdersService) SetDiscount(ctx context.Context, cmd SetDiscountCmd) (SetDiscountResult, error) {
+	var res SetDiscountResult
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrderParaDescuento(ctx, cmd.OrderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if o.Status == db.OrderStatusCancelada || o.Status == db.OrderStatusReembolsada {
+			return fmt.Errorf("%w: el pedido está %s y su dinero ya se revirtió", domain.ErrConflict, o.Status)
+		}
+		if domain.PedidoSaldado(o.Paid, o.Total) {
+			return fmt.Errorf("%w: el pedido ya está cobrado; cambiar el descuento movería el total "+
+				"contra pagos que ya se registraron", domain.ErrConflict)
+		}
+		descuento, err := domain.ResolverDescuento(o.Subtotal, cmd.Amount, cmd.Percent)
+		if err != nil {
+			return err
+		}
+		if nuevoTotal := domain.Round2(o.Subtotal.Sub(descuento).Add(o.DeliveryFee)); nuevoTotal.LessThan(o.Paid) {
+			return fmt.Errorf("%w: con ese descuento el total quedaría en %s y el pedido ya tiene %s abonados",
+				domain.ErrConflict, nuevoTotal.StringFixed(2), o.Paid.StringFixed(2))
+		}
+		res.Anterior, res.Actual = o.DiscountTotal, descuento
+		return q.SetOrderDiscount(ctx, db.SetOrderDiscountParams{
+			ID: cmd.OrderID, Descuento: descuento, Quien: cmd.Actor,
+		})
+	})
+	if err != nil {
+		return SetDiscountResult{}, err
+	}
+	vista, err := s.load(ctx, cmd.OrderID)
+	if err != nil {
+		return SetDiscountResult{}, err
+	}
+	res.Vista = vista
+	return res, nil
+}
+
 func folioDelPedido(cmd CreateOrderCmd) (*string, error) {
 	return domain.PlatformRefDelPedido(cmd.PlatformOrderRef, cmd.DeliveryPlatformID)
 }
@@ -485,7 +586,8 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		ServiceType: string(o.ServiceType), DeliveryPlatformID: o.DeliveryPlatformID,
 		PlatformOrderRef: o.PlatformOrderRef,
 		CustomerName:     o.CustomerName, Notes: o.Notes,
-		Subtotal: o.Subtotal, DeliveryFee: o.DeliveryFee, Total: o.Total, Currency: domain.Currency(o.Currency),
+		Subtotal: o.Subtotal, Discount: o.DiscountTotal, DeliveryFee: o.DeliveryFee,
+		Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:        domain.PedidoSaldado(paid, o.Total),
 		Outstanding: domain.PorCobrar(o.Total, paid),
 		OpenedAt:    o.OpenedAt,

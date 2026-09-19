@@ -1035,6 +1035,8 @@ type Order struct {
 	PlatformOrderRef   *string            `json:"platform_order_ref"`
 	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
 	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
+	DiscountSetBy      *int64             `json:"discount_set_by"`
+	DiscountSetAt      pgtype.Timestamptz `json:"discount_set_at"`
 }
 
 type OrderCounter struct {

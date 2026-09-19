@@ -129,6 +129,14 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
                   </HStack>
                 </HStack>
               )}
+              {/* Solo cuando hubo: un renglón que siempre dice $0 enseña a no leer esta zona, que
+                  es donde vive el dinero. */}
+              {Number(venta.discount) > 0 && (
+                <Dato k="Descuento"
+                  v={venta.discountBy
+                    ? `-${money(venta.discount)} · ${venta.discountBy}`
+                    : `-${money(venta.discount)}`} />
+              )}
               {Number(venta.tips) > 0 && <Dato k="Propina" v={money(venta.tips)} />}
               {Number(venta.deliveryFee) > 0 && <Dato k="Envío" v={money(venta.deliveryFee)} />}
               {Number(venta.refund) > 0 && <Dato k="Reembolsado" v={money(venta.refund)} />}

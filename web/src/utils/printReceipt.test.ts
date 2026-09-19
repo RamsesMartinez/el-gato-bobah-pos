@@ -21,6 +21,7 @@ const baseOrder: ReceiptOrder = {
   serviceType: 'mostrador',
   customerName: null,
   subtotal: '5000',
+  discount: '0',
   deliveryFee: '0',
   total: '5000',
   currency: 'MXN',
@@ -121,6 +122,7 @@ describe('buildReceiptHtml — dinero', () => {
     const order: ReceiptOrder = {
       ...baseOrder,
       subtotal: '100',
+      discount: '0',
       total: '999',
       lines: [{ productName: 'Ramen', quantity: '1', unitPrice: '100', lineTotal: '100', modifiers: [] }],
     };
@@ -202,6 +204,39 @@ describe('buildReceiptHtml — texto superior', () => {
     expect(html).toContain('Wi-Fi: gatobobah');
     // Arriba del detalle, no en cualquier lado: va antes de la línea que separa el encabezado.
     expect(html.indexOf('Wi-Fi: gatobobah')).toBeLessThan(html.indexOf('<table>'));
+  });
+
+  // EL PAPEL TIENE QUE CERRAR. El cliente suma los renglones, le da $5000 y el papel dice $4500:
+  // lo normal es que reclame, y quien atiende no tiene con qué explicarlo.
+  it('con descuento imprime subtotal, descuento y total, y las tres cifras cierran', () => {
+    const html = buildReceiptHtml(
+      { ...baseOrder, subtotal: '5000', discount: '500', deliveryFee: '0', total: '4500' },
+      baseBusiness,
+    );
+    expect(html).toContain('Subtotal');
+    expect(html).toContain('Descuento');
+    expect(html).toContain('-$500');
+    expect(html).toContain('$4,500');
+  });
+
+  // Un renglón que siempre dice $0.00 enseña a no leer esa zona del papel, que es donde vive el
+  // dinero.
+  it('sin descuento no imprime un renglón de descuento en cero', () => {
+    expect(buildReceiptHtml(baseOrder, baseBusiness)).not.toContain('Descuento');
+  });
+
+  // Los dos a la vez, en el orden en que se aplican: se descuenta la comida y el envío se suma
+  // después. Es la misma aritmética del servidor.
+  it('con descuento y envío el papel muestra los cuatro renglones', () => {
+    const html = buildReceiptHtml(
+      { ...baseOrder, subtotal: '5000', discount: '500', deliveryFee: '200', total: '4700' },
+      baseBusiness,
+    );
+    const posDescuento = html.indexOf('Descuento');
+    const posEnvio = html.indexOf('Envío');
+    expect(posDescuento).toBeGreaterThan(-1);
+    expect(posEnvio).toBeGreaterThan(posDescuento);
+    expect(html).toContain('$4,700');
   });
 
   it('omite el renglón cuando no hay texto superior', () => {
