@@ -1,5 +1,6 @@
 import type { ReceiptOrder, TicketLine } from '../../types/pos';
 import { lineTotal } from '../../stores/ticket';
+import { round2 } from '../../domain/numeros';
 
 // Arma el papel de una cuenta que TODAVÍA NO es un pedido.
 //
@@ -10,7 +11,7 @@ import { lineTotal } from '../../stores/ticket';
 // Vive aparte del componente y es pura a propósito: convertir una cuenta en un papel es una
 // decisión sobre dinero, y una decisión se prueba.
 export function preCuentaDeLaCuenta(
-  { folioName, serviceType, customerName, lineas, envio, total }: {
+  { folioName, serviceType, customerName, lineas, envio, descuento, total }: {
     folioName: string;
     serviceType: string;
     customerName: string;
@@ -18,11 +19,14 @@ export function preCuentaDeLaCuenta(
     // dejaron de existir, y el papel tiene que mostrar lo que se va a cobrar, no lo que se capturó.
     lineas: TicketLine[];
     envio: number;
+    // Lo que se está descontando. Va explícito y no se deduce del total: con descuento, restarle el
+    // envío al total ya no devuelve el subtotal, y el papel saldría con tres cifras que no cierran.
+    descuento: number;
     total: number;
   },
   ahora: Date,
 ): ReceiptOrder {
-  const subtotal = total - envio;
+  const subtotal = round2(total - envio + descuento);
   return {
     id: 0,
     // El número NO existe todavía. Se manda en cero y quien imprime la pre-cuenta no lo pinta;
@@ -37,6 +41,7 @@ export function preCuentaDeLaCuenta(
     serviceType,
     customerName: customerName || null,
     subtotal: subtotal.toFixed(2),
+    discount: descuento.toFixed(2),
     deliveryFee: envio.toFixed(2),
     total: total.toFixed(2),
     currency: 'MXN',

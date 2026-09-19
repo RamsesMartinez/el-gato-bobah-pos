@@ -281,6 +281,46 @@ Es la misma clase de defecto que el fondo de caja contado una vez por método.
 desglose por método del corte— y deliberadamente **no** se le pide al operador: ningún humano puede
 partir un montón de billetes por canal de venta, y cualquier reparto que teclee es inventado.
 
+## J. El descuento sobre el total (spec 022)
+
+Un descuento es dinero que sale del total antes de cobrarse. Se clasifica **una sola vez**: es una
+reducción del ingreso dentro de `orders.total`, no un renglón hermano que alguien pueda volver a
+restar. Todo reporte agregado suma `orders.total`, así que la aritmética correcta en un solo lugar
+es lo que sostiene el resto.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| J1 | Descuento capturado como porcentaje | El servidor lo resuelve contra **su** subtotal y guarda PESOS, no la fórmula | `TestElServidorResuelveElPorcentajeContraSuPropioSubtotal` | Postgres |
+| J2 | Descuento mayor que la venta | 422 con el máximo en el mensaje; el pedido no se crea | `TestResolverDescuento` | Unitario |
+| J3 | Monto y porcentaje en el mismo request | 400: es ambigüedad sobre dinero, no una precedencia que inventar | `TestResolverDescuento` | Unitario |
+| J4 | Descuento + envío | Se descuenta la comida y el envío se suma después: $385 − $50 + $35 = $370 | `TestElDescuentoNoSeComeElEnvio` | Unitario |
+| J5 | El corte de caja de un pedido descontado | Espera el total **ya rebajado**; el descuento no se resta dos veces ni ninguna | `TestElCorteCuentaElTotalRebajadoUnaSolaVez` | Postgres |
+| J6 | Cancelar renglones hasta dejar el subtotal bajo el descuento | Total en cero, nunca negativo; el descuento registrado NO se recorta | `TestCancelarUnRenglonNoDejaElTotalNegativo` | Postgres |
+| J7 | Agregar renglones a un pedido con descuento | El descuento no se recalcula, aunque se haya capturado como porcentaje | `TestAgregarRenglonesNoRecalculaElDescuento` | Postgres |
+| J8 | Cambiar el descuento de un pedido ya cobrado | `ErrConflict`: movería el total contra pagos ya registrados | `TestUnPedidoCobradoNoAdmiteCambioDeDescuento` | Postgres |
+| J9 | Descuento que deja el total bajo lo ya abonado | `ErrConflict`: el pedido quedaría sobrepagado sin forma de devolver | `TestElDescuentoNoPuedeDejarElTotalBajoLoYaAbonado` | Postgres |
+| J10 | Descuento sin autor | Lo rechaza el **esquema**, no la aplicación (check `orders_descuento_con_rastro`) | `TestNoSePuedeDescontarSinDecirQuienFue` | Postgres |
+| J11 | Escribir el descuento bajo el rol `gatobobah_app` | Funciona: RLS y grants cubren las columnas nuevas | `TestElDescuentoSeEscribeBajoElRolDeLaAplicacion` | Postgres |
+| J12 | Campo vacío tras borrarlo para reescribirlo | Ausencia de descuento, no cero | `descuento.test.ts` | Navegador (vitest) |
+| J13 | "1,000" tecleado en el campo | Bloquea el cobro; no cae a $1 ni a cero | `descuento.test.ts` | Navegador (vitest) |
+| J14 | Las tres superficies que pintan el total | Panel, píldora y barra angosta dicen la MISMA cifra rebajada | `POSPage.test.tsx` | Navegador (vitest) |
+| J15 | El ticket del cliente | Subtotal, descuento y total cierran; sin descuento no hay renglón en $0.00 | `printReceipt.test.ts` | Navegador (vitest) |
+| J16 | Un pedido descontado al **100 %** | Queda **saldado**, no «Falta cobrar $0.00» para siempre | `TestUnPedidoDescontadoPorCompletoQuedaSaldado` | Unitario |
+| J17 | La píldora flotante del modo ancho | Pinta el total rebajado, igual que el botón que cobra a su lado | `POSPage.test.tsx` (anchos 500 y 1024) | Navegador (vitest) |
+| J18 | Quitar un descuento | Deja evento de seguridad con el monto **anterior**: la columna se sobrescribe sin historia | `TestQuitarUnDescuentoDejaElEventoConElMontoAnterior` | Postgres |
+| J19 | Ráfaga sobre el endpoint de descuento | Tope por usuario (429): cada vuelta escribe la fila y avisa a todas las tabletas | `TestElDescuentoTieneTopePorUsuario` | Postgres |
+| J20 | El endpoint sin token | 401 — la ruta no pide rol, pero sí autenticación | `TestElEndpointDelDescuentoExigeAutenticacion` | Postgres |
+| J21 | Los cuatro checks de la migración | Postgres rechaza descuento negativo, total negativo, rastro a medias y descuento sin autor | `TestLosChecksDelDescuentoRechazanLoImposible` | Postgres |
+
+**Quién descontó SÍ se puede leer desde el producto**: el detalle de la venta muestra el nombre
+junto al monto. Sin eso, la decisión de no pedir rol para descontar se apoyaría en un rastro que
+solo se consulta con un `psql` en la mano.
+
+**Lo que J no cubre:** quién financió el descuento —el negocio o la plataforma—. No se registra, por
+decisión del dueño (2026-09-19), y reconstruirlo exige el documento de pago de la plataforma, que
+Uber expone 31 días y Rappi 3 meses. Tampoco cubre la corrección del descuento de un pedido **ya
+creado** desde la pantalla: el endpoint existe y está probado, la pantalla para usarlo no.
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.

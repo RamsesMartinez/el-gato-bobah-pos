@@ -1,3 +1,4 @@
+import type { ModoDeDescuento } from '../domain/descuento';
 // Tipos del dominio POS (espejo del backend Go). camelCase. El DINERO viaja como string
 // decimal exacto ("70.50") — nunca number en el cable (ver utils/format.ts money()). Los
 // tipos internos del ticket (TicketLine/TicketModifier) sí usan number: son solo la
@@ -134,6 +135,9 @@ export interface OrderView {
   platformOrderRef: string | null;
   customerName: string | null;
   subtotal: string;
+  // Lo que se descontó, siempre presente aunque sea "0.00". El servidor lo manda en toda respuesta
+  // de pedido: un campo que a veces falta obliga a cada pantalla a adivinar.
+  discount: string;
   deliveryFee: string;
   total: string;
   currency: Currency;
@@ -298,6 +302,15 @@ export interface TicketTab {
   // Se guarda el TEXTO y no el número: un valor mal escrito tiene que poder bloquear el cobro, y un
   // número ya parseado no distingue "vacío" de "ilegible".
   envio: string;
+  // El descuento TAL COMO SE TECLEÓ, y su modo ($ o %). Vive en la cuenta por lo mismo que el
+  // envío: sobrevive a un F5 y a un cambio de cuenta, y no se mezcla entre dos cuentas abiertas.
+  //
+  // Se guarda el TEXTO y no el número, por la misma razón que el envío: un valor mal escrito tiene
+  // que poder bloquear el cobro, y un número ya parseado no distingue "vacío" de "ilegible".
+  descuento: string;
+  // El modo se guarda con la cuenta y no en la pantalla: cambiar de cuenta y volver tiene que
+  // encontrar el mismo campo que se dejó, o el operador reescribe un 20 creyendo que son pesos.
+  descuentoModo: ModoDeDescuento;
   serviceType: ServiceType;
   customerName: string;
   // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
@@ -315,6 +328,10 @@ export interface CreateOrderBody {
   // choques del día, así que proponerlo no es decidirlo.
   folioName?: string;
   deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
+  // El descuento capturado. EXCLUYENTES: mandar los dos es un 400. El porcentaje viaja como
+  // porcentaje porque el servidor lo resuelve contra SU subtotal, no contra el de la pantalla.
+  discountAmount?: number;
+  discountPercent?: number;
   // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
   // lo que va aquí es el id, nunca los precios.
   deliveryPlatformId?: number;
