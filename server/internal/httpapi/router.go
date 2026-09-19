@@ -176,6 +176,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero),
 						rateLimitUser(h.platformRefWrites)).
 						Patch("/{id}/platform-ref", h.SetOrderPlatformRef)
+
+					// El descuento NO lleva RequireRole, y es una decisión, no un olvido: un pedido
+					// de plataforma con promoción llega a cualquier hora y exigir a alguien con rol
+					// dejaría la captura detenida con el repartidor esperando. El control es el
+					// rastro —`discount_set_by`, que el check de la tabla vuelve obligatorio— y el
+					// mismo gate que ya tiene crear un pedido, que tampoco pide rol.
+					// Sí lleva tope por usuario, aunque no lleve rol: el endpoint escribe dinero y
+					// deja un evento de seguridad por llamada, así que un bucle costaría locks de
+					// fila y bitácora. El tope cuenta al usuario, que aquí es siempre alguien
+					// autenticado.
+					r.With(rateLimitUser(h.descuentoWrites)).Put("/{id}/discount", h.SetOrderDiscount)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los

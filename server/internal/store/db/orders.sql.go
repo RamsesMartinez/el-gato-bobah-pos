@@ -66,11 +66,14 @@ const createOrder = `-- name: CreateOrder :one
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
                     folio_name, status, completed_at,
-                    platform_order_ref, platform_ref_set_by, platform_ref_set_at)
+                    platform_order_ref, platform_ref_set_by, platform_ref_set_at,
+                    discount_total, discount_set_by, discount_set_at)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
         $14, case when $14::order_status = 'entregada' then now() end,
-        $15, $16, $17)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at
+        $15, $16, $17,
+        $18, case when $18::numeric > 0 then $19::bigint end,
+        case when $18::numeric > 0 then now() end)
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at
 `
 
 type CreateOrderParams struct {
@@ -91,6 +94,8 @@ type CreateOrderParams struct {
 	PlatformOrderRef   *string            `json:"platform_order_ref"`
 	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
 	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
+	DiscountTotal      decimal.Decimal    `json:"discount_total"`
+	DiscountSetBy      int64              `json:"discount_set_by"`
 }
 
 // status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
@@ -99,6 +104,13 @@ type CreateOrderParams struct {
 // El trío del folio de plataforma viaja COMPLETO desde el servicio, no se deriva aquí: el esquema
 // tiene un check todo-o-nada, y armar dos de los tres en SQL dejaría el tercero decidiéndose en un
 // lugar distinto del que valida.
+//
+// El descuento entra AQUÍ y no en un update posterior: un pedido que nace sin su descuento y lo
+// recibe un instante después existe, aunque sea por milisegundos, con un total que nadie cobró —y
+// es el total que vería una lectura concurrente del tablero.
+//
+// Su rastro va con `case`: la columna exige autor solo cuando hay monto (check
+// `orders_descuento_con_rastro`), y un pedido sin descuento no tiene a quién responsabilizar.
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
 	row := q.db.QueryRow(ctx, createOrder,
 		arg.ClientUuid,
@@ -118,6 +130,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.PlatformOrderRef,
 		arg.PlatformRefSetBy,
 		arg.PlatformRefSetAt,
+		arg.DiscountTotal,
+		arg.DiscountSetBy,
 	)
 	var i Order
 	err := row.Scan(
@@ -152,6 +166,8 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.PlatformOrderRef,
 		&i.PlatformRefSetBy,
 		&i.PlatformRefSetAt,
+		&i.DiscountSetBy,
+		&i.DiscountSetAt,
 	)
 	return i, err
 }
@@ -383,7 +399,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -421,6 +437,8 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.PlatformOrderRef,
 		&i.PlatformRefSetBy,
 		&i.PlatformRefSetAt,
+		&i.DiscountSetBy,
+		&i.DiscountSetAt,
 	)
 	return i, err
 }
@@ -506,6 +524,47 @@ func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineFor
 		&i.CancelledAt,
 		&i.EnviadoACocinaAt,
 		&i.OrderStatus,
+	)
+	return i, err
+}
+
+const getOrderParaDescuento = `-- name: GetOrderParaDescuento :one
+select o.id, o.status, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.id = $1
+for update
+`
+
+type GetOrderParaDescuentoRow struct {
+	ID            int64           `json:"id"`
+	Status        OrderStatus     `json:"status"`
+	Subtotal      decimal.Decimal `json:"subtotal"`
+	DiscountTotal decimal.Decimal `json:"discount_total"`
+	DeliveryFee   decimal.Decimal `json:"delivery_fee"`
+	Total         decimal.Decimal `json:"total"`
+	Paid          decimal.Decimal `json:"paid"`
+}
+
+// El pedido al que se le va a cambiar el descuento, BLOQUEADO.
+//
+// El `for update` no es ceremonia: sin él, el tope "descuento ≤ subtotal" se valida contra un
+// subtotal que otra estación ya movió al agregar renglones, o se pisa un total que un cobro
+// paralelo acaba de dar por saldado. Es el mismo motivo por el que existe `GetOrderForUpdate`.
+//
+// Trae lo pagado porque de eso depende si el cambio se permite: un pedido ya cobrado por completo
+// no admite mover su total, que es contra lo que se registraron esos pagos.
+func (q *Queries) GetOrderParaDescuento(ctx context.Context, id int64) (GetOrderParaDescuentoRow, error) {
+	row := q.db.QueryRow(ctx, getOrderParaDescuento, id)
+	var i GetOrderParaDescuentoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Subtotal,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+		&i.Paid,
 	)
 	return i, err
 }
@@ -1288,8 +1347,9 @@ const recalcOrderTotals = `-- name: RecalcOrderTotals :exec
 update orders o
 set subtotal = coalesce((select sum(ol.line_total) from order_lines ol
                           where ol.order_id = o.id and ol.cancelled_at is null), 0),
-    total    = coalesce((select sum(ol.line_total) from order_lines ol
-                          where ol.order_id = o.id and ol.cancelled_at is null), 0) + o.delivery_fee,
+    total    = greatest(coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0)
+                        - o.discount_total, 0) + o.delivery_fee,
     updated_at = now()
 where o.id = $1
 `
@@ -1302,6 +1362,15 @@ where o.id = $1
 // un café.
 //
 // El envío no se toca: se decidió al crear el pedido y agregar renglones no lo cambia.
+//
+// El DESCUENTO tampoco se recalcula, y esa es la razón de guardarlo en pesos y no como porcentaje:
+// es lo que una persona decidió descontar, no una fórmula viva. Si se recalculara, agregarle un
+// café a la cuenta cambiaría el descuento sin que nadie lo pidiera, y el ticket que el cliente ya
+// tiene en la mano dejaría de cuadrar.
+//
+// `greatest(..., 0)` es el piso: cancelar renglones puede dejar el subtotal por debajo de un
+// descuento ya capturado, y un total negativo sería devolver dinero que nadie autorizó. Lo que se
+// recorta es el TOTAL; el descuento registrado se queda, porque es un hecho.
 func (q *Queries) RecalcOrderTotals(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, recalcOrderTotals, id)
 	return err
@@ -1442,6 +1511,35 @@ type RestockCancelledOrderParams struct {
 // Repone el stock de una orden cancelada: movimientos 'cancelacion' que invierten las ventas.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
+	return err
+}
+
+const setOrderDiscount = `-- name: SetOrderDiscount :exec
+update orders o
+set discount_total = $2,
+    discount_set_by = case when $2::numeric > 0 then $3::bigint end,
+    discount_set_at = case when $2::numeric > 0 then now() end,
+    total = greatest(o.subtotal - $2::numeric, 0) + o.delivery_fee,
+    updated_at = now()
+where o.id = $1
+`
+
+type SetOrderDiscountParams struct {
+	ID        int64           `json:"id"`
+	Descuento decimal.Decimal `json:"descuento"`
+	Quien     int64           `json:"quien"`
+}
+
+// Escribe el descuento y recalcula el total en la MISMA sentencia.
+//
+// Juntos a propósito: son la misma decisión, y partirlos deja una ventana en la que el descuento ya
+// está guardado y el total todavía no lo refleja — que es exactamente lo que leería el tablero.
+//
+// Quitar el descuento (monto 0) limpia el rastro: el check `orders_descuento_con_rastro` exige que
+// un descuento positivo tenga autor y que un cero no lo tenga, así que olvidar esta limpieza falla
+// ruidoso en Postgres en vez de dejar un autor colgado de un descuento que ya no existe.
+func (q *Queries) SetOrderDiscount(ctx context.Context, arg SetOrderDiscountParams) error {
+	_, err := q.db.Exec(ctx, setOrderDiscount, arg.ID, arg.Descuento, arg.Quien)
 	return err
 }
 
