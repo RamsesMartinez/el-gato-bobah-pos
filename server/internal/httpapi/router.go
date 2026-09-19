@@ -176,6 +176,17 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero),
 						rateLimitUser(h.platformRefWrites)).
 						Patch("/{id}/platform-ref", h.SetOrderPlatformRef)
+
+					// El descuento NO lleva RequireRole, y es una decisión, no un olvido: un pedido
+					// de plataforma con promoción llega a cualquier hora y exigir a alguien con rol
+					// dejaría la captura detenida con el repartidor esperando. El control es el
+					// rastro —`discount_set_by`, que el check de la tabla vuelve obligatorio— y el
+					// mismo gate que ya tiene crear un pedido, que tampoco pide rol.
+					// Sí lleva tope por usuario, aunque no lleve rol: el endpoint escribe dinero y
+					// deja un evento de seguridad por llamada, así que un bucle costaría locks de
+					// fila y bitácora. El tope cuenta al usuario, que aquí es siempre alguien
+					// autenticado.
+					r.With(rateLimitUser(h.descuentoWrites)).Put("/{id}/discount", h.SetOrderDiscount)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los
@@ -324,6 +335,35 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/{id}/options", h.AdminCreateOption)
 					r.Post("/{id}/options/reorder", h.AdminReorderOptions)
 					r.Get("/{id}/products", h.AdminGroupProducts)
+				})
+
+				// MENÚS DE PLATAFORMA (spec 020): leer lo publicado y decir en qué difiere.
+				//
+				// Admin y gerente, como el resto de `/admin/*`: esto administra el catálogo, no
+				// cobra. El cajero tiene su tablero de pedidos.
+				//
+				// NINGUNA de estas rutas escribe en una plataforma. Los DELETE borran filas
+				// nuestras; la garantía de que no se puede tocar la tienda vive en el transporte
+				// de internal/uber, que rechaza todo verbo distinto de GET antes del socket.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/platform-menus", func(r chi.Router) {
+					r.Get("/connections", h.ListPlatformConnections)
+					// Va limitado con el mismo contador que la lectura de menú: también habla con
+					// un tercero, aunque baje mucho menos.
+					r.With(rateLimitUser(h.platformMenuReads)).Get("/available-stores", h.ListAvailablePlatformStores)
+					r.Post("/connections", h.CreatePlatformConnection)
+					r.Route("/connections/{id}", func(r chi.Router) {
+						r.Delete("/", h.DeletePlatformConnection)
+						r.Get("/links/count", h.CountPlatformLinks)
+						// Limitado por usuario con su PROPIO contador: cada lectura baja 211 KB de
+						// un tercero y escribe 222 filas, y el menú de un restaurante cambia en
+						// semanas. Una ráfaga solo puede ser un bucle en la pantalla.
+						r.With(rateLimitUser(h.platformMenuReads)).Post("/read", h.ReadPlatformMenu)
+						r.Get("/reads", h.ListPlatformMenuReads)
+						r.Get("/pairing", h.PlatformMenuPairing)
+						r.Get("/differences", h.PlatformMenuDifferences)
+						r.Put("/links/{externalId}", h.SetPlatformItemLink)
+						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
+					})
 				})
 
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).

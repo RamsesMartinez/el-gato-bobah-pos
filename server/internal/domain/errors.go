@@ -65,6 +65,11 @@ var (
 	// Envuelve ErrConflict (409) y no ErrValidation: el dato está bien formado, lo que no se puede
 	// es que dos pedidos compartan el identificador con el que se concilia un depósito.
 	ErrPlatformRefTaken = fmt.Errorf("ese folio ya está en otro pedido de la misma plataforma (%w)", ErrConflict)
+	// ErrDescuentoMayorQueLaVenta: se quiso descontar más de lo que el pedido vendió. Es 422 y no
+	// 400 porque el dato está bien formado —es un monto válido— y lo que falla es la regla: un
+	// total negativo devolvería dinero que nadie autorizó. El mensaje lleva el máximo, para que el
+	// operador no vuelva a teclear a ciegas con el cliente enfrente.
+	ErrDescuentoMayorQueLaVenta = errors.New("el descuento no puede ser mayor que la venta")
 	// ErrOptionOverMax: se pidió una opción de modificador más veces de las que el negocio permite
 	// en una línea (`modifier_options.max_per_line`). Envuelve el nombre y los dos números para
 	// que el mensaje diga qué corregir y no solo que algo está mal.

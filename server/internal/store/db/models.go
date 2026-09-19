@@ -359,6 +359,92 @@ func (ns NullPaymentKind) Value() (driver.Value, error) {
 	return string(ns.PaymentKind), nil
 }
 
+type PlatformItemKind string
+
+const (
+	PlatformItemKindPlatillo PlatformItemKind = "platillo"
+	PlatformItemKindGrupo    PlatformItemKind = "grupo"
+	PlatformItemKindOpcion   PlatformItemKind = "opcion"
+)
+
+func (e *PlatformItemKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlatformItemKind(s)
+	case string:
+		*e = PlatformItemKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlatformItemKind: %T", src)
+	}
+	return nil
+}
+
+type NullPlatformItemKind struct {
+	PlatformItemKind PlatformItemKind `json:"platform_item_kind"`
+	Valid            bool             `json:"valid"` // Valid is true if PlatformItemKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatformItemKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlatformItemKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlatformItemKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatformItemKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlatformItemKind), nil
+}
+
+type PlatformReadStatus string
+
+const (
+	PlatformReadStatusEnCurso PlatformReadStatus = "en_curso"
+	PlatformReadStatusOk      PlatformReadStatus = "ok"
+	PlatformReadStatusFallida PlatformReadStatus = "fallida"
+)
+
+func (e *PlatformReadStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlatformReadStatus(s)
+	case string:
+		*e = PlatformReadStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlatformReadStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPlatformReadStatus struct {
+	PlatformReadStatus PlatformReadStatus `json:"platform_read_status"`
+	Valid              bool               `json:"valid"` // Valid is true if PlatformReadStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatformReadStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlatformReadStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlatformReadStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatformReadStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlatformReadStatus), nil
+}
+
 type ProductType string
 
 const (
@@ -949,6 +1035,8 @@ type Order struct {
 	PlatformOrderRef   *string            `json:"platform_order_ref"`
 	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
 	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
+	DiscountSetBy      *int64             `json:"discount_set_by"`
+	DiscountSetAt      pgtype.Timestamptz `json:"discount_set_at"`
 }
 
 type OrderCounter struct {
@@ -1047,6 +1135,49 @@ type PaymentMethod struct {
 	CompanyID          int64           `json:"company_id"`
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
 	IsCash             bool            `json:"is_cash"`
+}
+
+type PlatformConnection struct {
+	ID                 int64     `json:"id"`
+	DeliveryPlatformID int16     `json:"delivery_platform_id"`
+	ExternalStoreID    string    `json:"external_store_id"`
+	Label              string    `json:"label"`
+	IsActive           bool      `json:"is_active"`
+	CreatedAt          time.Time `json:"created_at"`
+	CompanyID          int64     `json:"company_id"`
+}
+
+type PlatformItemLink struct {
+	ConnectionID int64              `json:"connection_id"`
+	ExternalID   string             `json:"external_id"`
+	Kind         PlatformItemKind   `json:"kind"`
+	ProductID    int64              `json:"product_id"`
+	LocalKind    string             `json:"local_kind"`
+	ConfirmedAt  pgtype.Timestamptz `json:"confirmed_at"`
+	ConfirmedBy  *int64             `json:"confirmed_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+	CompanyID    int64              `json:"company_id"`
+}
+
+type PlatformMenuItem struct {
+	ReadID     int64            `json:"read_id"`
+	ExternalID string           `json:"external_id"`
+	Kind       PlatformItemKind `json:"kind"`
+	Name       string           `json:"name"`
+	PriceCents int64            `json:"price_cents"`
+	Available  bool             `json:"available"`
+	CompanyID  int64            `json:"company_id"`
+}
+
+type PlatformMenuRead struct {
+	ID           int64              `json:"id"`
+	ConnectionID int64              `json:"connection_id"`
+	StartedAt    time.Time          `json:"started_at"`
+	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
+	Status       PlatformReadStatus `json:"status"`
+	ItemCount    *int32             `json:"item_count"`
+	FailureKind  *string            `json:"failure_kind"`
+	CompanyID    int64              `json:"company_id"`
 }
 
 type PlatformOperator struct {

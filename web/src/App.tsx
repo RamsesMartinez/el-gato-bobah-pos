@@ -19,6 +19,8 @@ import { StockPage } from './features/backoffice/StockPage';
 import { ReportsPage } from './features/backoffice/ReportsPage';
 import { EmployeesPage } from './features/admin/EmployeesPage';
 import { CatalogPage } from './features/admin/CatalogPage';
+import { PlataformasPage } from './features/admin/PlataformasPage';
+import { EmparejarConexionPage } from './features/admin/EmparejarConexionPage';
 import { ProductsAdminPage } from './features/admin/ProductsAdminPage';
 import { ModifierOptionsPage } from './features/admin/ModifierOptionsPage';
 import { AppearancePage } from './features/admin/AppearancePage';
@@ -68,6 +70,10 @@ export const App = () => {
           <Route path="productos" element={<ProductsAdminPage />} />
           <Route path="opciones" element={<ModifierOptionsPage />} />
         </Route>
+        {/* Menús de plataforma (spec 020). `RequireRole` es UX/espejo: la barrera real la pone
+            `RequireRole(RoleAdmin, RoleGerente)` en el router del backend. */}
+        <Route path="/plataformas" element={<RequireRole path="/plataformas"><PlataformasPage /></RequireRole>} />
+        <Route path="/plataformas/:id/emparejar" element={<RequireRole path="/plataformas"><EmparejarConexionPage /></RequireRole>} />
         {/* rutas viejas → redirigen al hub (compatibilidad con enlaces existentes) */}
         <Route path="/productos" element={<Navigate to="/catalogo/productos" replace />} />
         <Route path="/opciones" element={<Navigate to="/catalogo/opciones" replace />} />

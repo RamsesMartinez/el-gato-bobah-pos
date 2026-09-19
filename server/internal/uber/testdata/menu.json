@@ -1,0 +1,356 @@
+{
+  "menus": [
+    {
+      "id": "Menu_principal",
+      "title": {
+        "translations": {
+          "en": "Menú"
+        }
+      }
+    }
+  ],
+  "categories": [
+    {
+      "id": "Bebidas_frias",
+      "title": {
+        "translations": {
+          "en": "Bebidas frías"
+        }
+      },
+      "entities": [
+        {
+          "id": "Limonada_de_Mango_"
+        },
+        {
+          "id": "Limonada_de_Fresa_"
+        },
+        {
+          "id": "Refresco_de_Toronja"
+        }
+      ]
+    },
+    {
+      "id": "Los_mas_pedidos",
+      "title": {
+        "translations": {
+          "en": "Los más pedidos"
+        }
+      },
+      "entities": [
+        {
+          "id": "Limonada_de_Mango_",
+          "type": "ITEM"
+        },
+        {
+          "id": "Papas_con_queso"
+        }
+      ]
+    },
+    {
+      "id": "Salados",
+      "title": {
+        "translations": {
+          "en": "Salados"
+        }
+      },
+      "entities": [
+        {
+          "id": "Papas_con_queso"
+        },
+        {
+          "id": "Sandwich_de_tres_q"
+        }
+      ]
+    },
+    {
+      "id": "Categoria_vacia",
+      "title": {
+        "translations": {
+          "en": "Postres"
+        }
+      },
+      "entities": []
+    }
+  ],
+  "items": [
+    {
+      "id": "Limonada_de_Mango_",
+      "title": {
+        "translations": {
+          "en": "Limonada de Mango 🥭"
+        }
+      },
+      "price_info": {
+        "price": 9900,
+        "overrides": []
+      },
+      "modifier_group_ids": {
+        "ids": [
+          "Tamano_de_tu_bebida"
+        ]
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Limonada_de_Fresa_",
+      "title": {
+        "translations": {
+          "en": "Limonada de Fresa 🍓"
+        }
+      },
+      "price_info": {
+        "price": 9900,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Refresco_de_Toronja",
+      "title": {
+        "translations": {
+          "en": "Refresco de Toronja"
+        }
+      },
+      "price_info": {
+        "price": 4500,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": 4102444800
+        }
+      }
+    },
+    {
+      "id": "Papas_con_queso",
+      "title": {
+        "translations": {
+          "en": "Papas con queso"
+        }
+      },
+      "price_info": {
+        "price": 11500,
+        "overrides": []
+      },
+      "modifier_group_ids": {
+        "ids": [
+          "Tamano_de_tu_bebida",
+          "Elige_tu_salsa"
+        ]
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Sandwich_de_tres_q",
+      "title": {
+        "translations": {
+          "en": "Sándwich de tres quesos"
+        }
+      },
+      "price_info": {
+        "price": 13900,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": 1695016799
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": "Chico",
+      "title": {
+        "translations": {
+          "en": "Chico"
+        }
+      },
+      "price_info": {
+        "price": 0,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Grande",
+      "title": {
+        "translations": {
+          "en": "Grande"
+        }
+      },
+      "price_info": {
+        "price": 2000,
+        "overrides": []
+      },
+      "modifier_group_ids": {
+        "ids": [
+          "Le_pones_hielo"
+        ]
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Salsa_de_la_casa_🌶",
+      "title": {
+        "translations": {
+          "en": "Salsa de la casa 🌶"
+        }
+      },
+      "price_info": {
+        "price": 1500,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Sin_salsa",
+      "title": {
+        "translations": {
+          "en": "Sin salsa"
+        }
+      },
+      "price_info": {
+        "price": 0,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Con_hielo",
+      "title": {
+        "translations": {
+          "en": "Con hielo"
+        }
+      },
+      "price_info": {
+        "price": 0,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    },
+    {
+      "id": "Item_que_nadie_refe",
+      "title": {
+        "translations": {
+          "en": "Item huérfano"
+        }
+      },
+      "price_info": {
+        "price": 5000,
+        "overrides": []
+      },
+      "suspension_info": {
+        "suspension": {
+          "suspend_until": null
+        }
+      }
+    }
+  ],
+  "modifier_groups": [
+    {
+      "id": "Tamano_de_tu_bebida",
+      "external_data": "",
+      "title": {
+        "translations": {
+          "en": "Elige el tamaño"
+        }
+      },
+      "quantity_info": {
+        "quantity": {
+          "min_permitted": 1,
+          "max_permitted": 1
+        }
+      },
+      "modifier_options": [
+        {
+          "id": "Chico",
+          "type": "ITEM"
+        },
+        {
+          "id": "Grande",
+          "type": "ITEM"
+        }
+      ]
+    },
+    {
+      "id": "Elige_tu_salsa",
+      "external_data": "",
+      "title": {
+        "translations": {
+          "en": "Elige tu salsa"
+        }
+      },
+      "quantity_info": {
+        "quantity": {
+          "max_permitted": 2
+        }
+      },
+      "modifier_options": [
+        {
+          "id": "Salsa_de_la_casa_🌶",
+          "type": "ITEM"
+        },
+        {
+          "id": "Sin_salsa",
+          "type": "ITEM"
+        },
+        {
+          "id": "Chico",
+          "type": "ITEM"
+        }
+      ]
+    },
+    {
+      "id": "Le_pones_hielo",
+      "external_data": "",
+      "title": {
+        "translations": {
+          "en": "¿Le pones hielo?"
+        }
+      },
+      "quantity_info": {
+        "quantity": {
+          "max_permitted": 1
+        }
+      },
+      "modifier_options": [
+        {
+          "id": "Con_hielo",
+          "type": "ITEM"
+        }
+      ]
+    }
+  ]
+}

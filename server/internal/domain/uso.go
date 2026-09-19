@@ -62,6 +62,11 @@ var pantallasMedibles = map[string]struct{}{
 	"negocio":    {},
 	"impresion":  {},
 	"cuenta":     {},
+	// Menús de plataforma (spec 020). VAN AQUÍ Y EN `rutas-medidas.ts` del front: lo que no está
+	// en esta lista se descarta en el servidor y solo deja un `usage_descartado` en el log, así
+	// que la medición de la pantalla sale vacía SIN un solo error visible.
+	"plataformas": {},
+	"emparejar":   {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -133,6 +138,10 @@ var rolesPorPantalla = map[string][]Role{
 	"usuarios":   {RoleAdmin},
 	"negocio":    {RoleAdmin},
 	"impresion":  {RoleAdmin, RoleGerente},
+	// Menús de plataforma (spec 020): admin y gerente, espejo de lo que deja el router. El cajero
+	// tiene su tablero de pedidos; esto administra el catálogo.
+	"plataformas": {RoleAdmin, RoleGerente},
+	"emparejar":   {RoleAdmin, RoleGerente},
 }
 
 // PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.

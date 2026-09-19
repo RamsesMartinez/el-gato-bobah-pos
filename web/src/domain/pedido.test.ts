@@ -8,8 +8,8 @@ const linea = (l: Partial<TicketLine>): TicketLine => ({
 });
 
 const cuenta = (c: Partial<TicketTab>): TicketTab => ({
-  id: 't1', num: 1, folioName: 'Tigre', lines: [], envio: '', serviceType: 'mostrador',
-  customerName: '', platformId: null, platformOrderRef: '', ...c,
+  id: 't1', num: 1, folioName: 'Tigre', lines: [], envio: '', descuento: '', descuentoModo: 'monto',
+  serviceType: 'mostrador', customerName: '', platformId: null, platformOrderRef: '', ...c,
 });
 
 describe('armarPedido', () => {

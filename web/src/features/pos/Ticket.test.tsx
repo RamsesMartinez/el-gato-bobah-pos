@@ -22,11 +22,13 @@ const props = {
 };
 
 // El renglón del producto también pinta su precio: el total se busca por su etiqueta, no por la
-// cifra suelta.
+// cifra suelta. La etiqueta "Total" comparte grupo con el botón de descuento, y la cifra es el
+// último texto de esa fila —debajo puede ir el renglón chico que explica el descuento—.
 async function totalEnPantalla() {
   const etiqueta = await screen.findByText('Total');
-  return etiqueta.parentElement?.querySelector('p:last-child')?.textContent
-    ?? etiqueta.nextElementSibling?.textContent;
+  const fila = etiqueta.closest('div')?.parentElement;
+  const textos = fila?.querySelectorAll('p');
+  return textos?.[textos.length - 1]?.textContent;
 }
 
 beforeEach(() => {
@@ -156,4 +158,79 @@ test('la papelera no está pegada a los botones de cantidad', () => {
   // No comparten padre inmediato: el − vive con el + y la papelera se fue al otro extremo.
   expect(menos.parentElement, 'la papelera sigue pegada a los controles de cantidad')
     .not.toBe(quitar.parentElement);
+});
+
+// EL DESCUENTO, EN LA PANTALLA DE 600 px.
+//
+// El acceso vive en la fila del Total y no en una fila propia: una fila nueva le cobra ~52 px de
+// alto a TODOS los pedidos —medido: baja de ~3.5 a ~2.9 los renglones de producto visibles en un
+// domicilio— para servir al puñado que lleva promoción.
+test('el descuento no ocupa alto hasta que alguien lo abre', async () => {
+  pinta(<Ticket {...props} />);
+  expect(screen.queryByLabelText('Descuento')).toBeNull();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Aplicar descuento' }));
+  expect(await screen.findByLabelText('Descuento')).toBeInTheDocument();
+});
+
+test('un descuento en pesos baja el total y dice de dónde sale', async () => {
+  useTicketStore.getState().setDescuento('20');
+  pinta(<Ticket {...props} />);
+
+  expect(await totalEnPantalla()).toBe('$75'); // 95 - 20
+  // El renglón chico es lo que deja explicarle al cliente por qué el total no es la suma de los
+  // renglones: sin él, la diferencia se discute en el mostrador.
+  expect(screen.getByText(/de descuento/)).toBeInTheDocument();
+});
+
+test('un porcentaje se pinta en pesos', async () => {
+  useTicketStore.getState().setDescuentoModo('pct');
+  useTicketStore.getState().setDescuento('20');
+  pinta(<Ticket {...props} />);
+
+  expect(await totalEnPantalla()).toBe('$76'); // 95 - 19
+});
+
+// Un descuento ilegible que cayera a cero es una promoción que el cliente ya escuchó y que el
+// ticket no aplica. Y uno mayor que la cuenta cobraría en negativo.
+test('un descuento mal escrito o imposible apaga los botones', async () => {
+  useTicketStore.getState().setDescuento('1,000');
+  const { rerender } = pinta(<Ticket {...props} />);
+  expect(await screen.findByText('Solo números')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+
+  useTicketStore.getState().setDescuento('400'); // la cuenta son $95
+  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
+  expect(await screen.findByText(/Máx/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+});
+
+// FR-011: el descuento existe en los cuatro tipos de pedido. Hoy se cumple por omisión —no hay
+// ninguna condición— y este test es lo que impide que una condición agregada después lo rompa sin
+// que nada falle.
+test.each([
+  ['mostrador', null],
+  ['domicilio', null],
+  ['mostrador', 1],
+  ['domicilio', 1],
+] as const)('el descuento se puede capturar en %s con plataforma %s', async (tipo, plataforma) => {
+  useTicketStore.getState().setServiceType(tipo);
+  useTicketStore.getState().setPlatform(plataforma);
+  pinta(<Ticket {...props} />);
+
+  expect(screen.getByRole('button', { name: 'Aplicar descuento' })).toBeInTheDocument();
+});
+
+// `overflowY` sin un alto no hace scroll: la caja crece. En la tableta eso empuja el botón COBRAR
+// fuera de la pantalla cuando el teclado numérico se abre sobre el campo de descuento, y no hay
+// forma de alcanzarlo. Ningún test puede simular ese teclado; lo que sí se puede verificar es que
+// la zona tenga alto acotado.
+test('la zona de totales tiene alto acotado, no crece con lo que se le agregue', async () => {
+  pinta(<Ticket {...props} />);
+  const cobrar = await screen.findByRole('button', { name: 'COBRAR' });
+  const zona = cobrar.closest('div')?.parentElement;
+  expect(zona).not.toBeNull();
+  const estilo = getComputedStyle(zona!);
+  expect(estilo.maxHeight, 'sin maxH la caja crece y COBRAR se va abajo de la pantalla').not.toBe('none');
+  expect(estilo.overflowY).toBe('auto');
 });

@@ -32,7 +32,32 @@ POS propio para un solo local (reemplaza a FUDO). Monorepo:
   [docs/security-owasp.md](docs/security-owasp.md).
 - **`specs/`** — un directorio por feature (`NNN-slug/`), generado por spec-kit.
 - **`docs/`** — referencia viva, histórico y fixtures; el índice manda ([docs/README.md](docs/README.md), ver §6).
-- **`references/`** — exports reales de FUDO (fuente del importador de catálogo).
+- **`http/`** — peticiones a las APIs de las plataformas, en texto plano, para la extensión
+  **REST Client** de VS Code (`humao.rest-client`, recomendada en `.vscode/extensions.json`). Son
+  **solo lectura a propósito**: el `PUT` de menú de Uber reemplaza el menú publicado completo y no
+  hay deshacer, así que ningún endpoint que escriba vive en un archivo que se dispara con un clic.
+  Las credenciales van en `.vscode/settings.json` —ignorado por git— copiado de
+  [.vscode/settings.json.example](.vscode/settings.json.example).
+- **`references/` YA NO EXISTE EN EL REPOSITORIO**, y es una regla, no un accidente. Los exports de
+  FUDO traen el **costo de compra de cada insumo**, el **nombre de cada proveedor**, las **ventas por
+  día y por hora** y los **gastos por categoría, incluido el pago a colaboradores**. Eso es la
+  estructura de márgenes del negocio, y este repositorio es **público**. Viven en
+  `~/gatobobah-datos/references/`; `make fudo-import` los lee de ahí y falla con un mensaje claro si
+  no están. Se apunta a otro lado con `FUDO_DIR=... make fudo-import`.
+
+  **La regla general, que aplica a cualquier cosa que se quiera agregar:**
+
+  | Va en el repositorio | No va, nunca |
+  | --- | --- |
+  | Código, esquema, pruebas | Exports, respaldos, reportes de ventas o de gastos |
+  | El **porqué** de una decisión | Los **números del negocio** que la motivaron |
+  | Hechos del mundo — «Uber cobra 30%», «la API exige NDA» | Cuánto vende el negocio, cuánto le cuesta un insumo, a quién le compra |
+  | Un techo medido del sistema — «la tabla pesa 16.5 MB» | Documentos fiscales, nómina, datos de clientes |
+
+  La vara: **si el dato sigue siendo cierto en otro restaurante, va; si solo es cierto en éste, no.**
+  Un documento que necesite las dos mitades cita la de afuera sin copiarla — como hace
+  [docs/plataformas-digitales.md](docs/plataformas-digitales.md), que documenta las comisiones
+  medidas y deja los CFDI fuera del repo a propósito.
 
 ### Listas filtradas, ordenables y paginadas
 
@@ -124,6 +149,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
+- **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
+  una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
+  plataforma **ya cobró**. La dirección de la verdad es de arriba hacia abajo: manda lo publicado en
+  Uber, DiDi o Rappi, y el POS va detrás.
+
+  De ahí se siguen tres cosas que se han interpretado al revés y cuestan números falsos:
+  - **El markup por plataforma (`delivery_platforms.price_markup_pct`, hoy 35%) es solo un valor por
+    omisión para lo que nadie ha capturado.** No describe lo que el negocio cobra. Cualquier cálculo
+    de margen o de comisión hecho sobre él describe una tienda hipotética.
+  - **Una diferencia de precio contra la plataforma casi siempre significa «el POS está
+    desactualizado», no «la plataforma está mal».** La acción normal es actualizar abajo.
+  - **Un precio de plataforma muy por debajo del de mostrador es un dedazo de captura, no una
+    promoción**, y hoy nada lo detecta. Medido el 2026-09-15: `Sodas explosivas` se publica en Uber
+    a $110.00 y el POS la tenía capturada a $34.75 — dos ventas registradas a menos de un tercio.
+- **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
+  parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
+  «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
+  cero excepciones de precio en vez de 7, y un catálogo que parece llevar meses quieto cuando se
+  editó anteayer— **sin que nada falle**. En toda consulta manual, filtra por `slug`.
 - **Medición de uso** (spec 017): el POS manda lotes a `POST /api/v1/usage` y la consola los lee en
   `GET /api/v1/platform/usage`. **Agregar una pantalla o una acción se hace en DOS lugares**: la
   lista blanca de [server/internal/domain/uso.go](server/internal/domain/uso.go) —lo que no está ahí
@@ -131,6 +175,28 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   [web/src/app/rutas-medidas.ts](web/src/app/rutas-medidas.ts). La etiqueta que se ve en el mapa va
   en [web/src/consola/etiquetas-de-uso.ts](web/src/consola/etiquetas-de-uso.ts), que es una copia
   deliberada: la consola no importa del POS.
+- **Menús de plataforma** (spec 020): se lee el menú publicado de una tienda y se compara contra el
+  catálogo. Cuatro cosas que no son obvias y que cuestan caro si se olvidan:
+  - **La garantía de que nada escribe en la plataforma vive en el TRANSPORTE**, no en una revisión:
+    [solo_lectura.go](server/internal/uber/solo_lectura.go) rechaza todo verbo distinto de `GET`
+    antes de abrir el socket, y `sin_escrituras_test.go` parsea el AST del paquete para que el
+    intento falle en `go test`. El `PUT` de menú de Uber es reemplazo total y no hay deshacer.
+  - **El emparejamiento tiene DOS vecinos que podrían borrarlo**, y los dos están cerrados:
+    `platform_item_links` **no** referencia `platform_menu_items` (para que podar lecturas no se
+    lleve el trabajo manual) y su FK a `products` es `on delete restrict` (porque el reorg de datos
+    del §6 sí borra productos). Los cubre `emparejamiento_sobrevive_test.go`, y su fallo sería
+    silencioso y semanas después.
+  - **El id de la tienda vive en `platform_connections`, NUNCA en el entorno.** Una empresa tendrá
+    varias sucursales y cada una es una tienda distinta arriba; la llave única incluye
+    `external_store_id` por eso. **Y NO se teclea**: `GET /admin/platform-menus/available-stores`
+    lo trae de la plataforma y la pantalla ofrece "Nombre — Ciudad". Es el único dato del alta que
+    una persona no puede producir ni verificar de memoria, y ese endpoint es el MISMO que servirá
+    cuando exista el consentimiento del comerciante — ahí solo cambia de dónde sale el token, no la
+    pantalla. Deja el campo escrito a mano como salida, nunca como el camino.
+  - **Instrumentar sus pantallas son TRES lugares**, no dos: `pantallasMedibles` y
+    `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
+    [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
+    descartan todos, en silencio.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
@@ -205,6 +271,17 @@ mecánica:
   esa línea: es un render extra al montar, acotado, y React no ofrece otra forma de provocar una
   transición al montar.
 
+- **`overflowY="auto"` SIN un alto no hace scroll: la caja crece.** No falla, no avisa y en el
+  monitor de quien programa se ve bien — el precio lo paga la tableta de 600 px, donde cada renglón
+  de la lista empuja fuera de la pantalla lo que viene debajo. Va con `maxH` en **dvh** (lo que se
+  reparte es el alto de la tableta, no un número de píxeles) o con el patrón `Page fill` +
+  `flex="1" minH={0}` que documenta [Page.tsx](web/src/components/Page.tsx). Pasó en la lista de
+  diferencias de la 020, que sacaba de la pantalla la lista de tiendas y el formulario de alta.
+  **Y un componente que se pinta DENTRO de otra pantalla no trae su propio `Page`**: anidarlos
+  duplica 48 px de relleno que no separa nada y recorta el ancho dos veces. Lo cubren
+  `MenuDePlataformaPage.test.tsx` y `PlataformasPage.test.tsx`, que cuentan los contenedores con la
+  firma del `Page` (`max-width: 1150px`) — en jsdom `getComputedStyle` sí resuelve lo que emite
+  Chakra, así que el defecto de disposición sí deja test.
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
   - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.

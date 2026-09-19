@@ -1,0 +1,34 @@
+// Copia este archivo a `.vscode/settings.json` (ignorado por git) y pon tus credenciales.
+//
+// Es lo que alimenta a `http/uber-eats.http`, que se corre con la extensión REST Client
+// (`humao.rest-client`). Para cambiar de ambiente: Ctrl+Alt+E, o la barra de estado abajo
+// a la derecha.
+//
+// NO pongas aquí el Client Secret: este archivo SÍ se commitea.
+{
+  "rest-client.environmentVariables": {
+    // El id de la tienda es un UUID que sale de `GET /v1/eats/stores` — el request 2 del
+    // archivo. Va en $shared porque la tienda es la misma en los dos ambientes: el sandbox
+    // de Uber devuelve la tienda real del comercio, no una inventada.
+    "$shared": {
+      "storeId": "00000000-0000-0000-0000-000000000000"
+    },
+
+    // Una app de tipo *Testing* en el portal de Uber solo funciona aquí.
+    "sandbox": {
+      "authHost": "https://sandbox-login.uber.com",
+      "apiHost": "https://test-api.uber.com",
+      "clientId": "",
+      "clientSecret": ""
+    },
+
+    // Exige que Uber haya promovido la app a producción. Con una app de pruebas, el token
+    // responde 401 unauthorized_client — que es la señal de que los ambientes están separados.
+    "prod": {
+      "authHost": "https://auth.uber.com",
+      "apiHost": "https://api.uber.com",
+      "clientId": "",
+      "clientSecret": ""
+    }
+  }
+}

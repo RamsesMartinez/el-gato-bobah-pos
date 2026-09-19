@@ -44,6 +44,14 @@ type SaleRow struct {
 	ServiceType string          `json:"serviceType"`
 	Customer    string          `json:"customer"`
 	Total       decimal.Decimal `json:"total"`
+	// Discount: lo que se descontó en este pedido. Viaja con la lista y no solo con el detalle
+	// porque es donde se audita: el renglón del descuento es lo único que explica por qué un pedido
+	// cobró menos de lo que vendió.
+	Discount decimal.Decimal `json:"discount"`
+	// DiscountBy: quién aplicó el descuento, vacío cuando no hubo. Viaja porque ES el control de
+	// esta feature: descontar no pide rol, y lo que sostiene esa decisión es que el rastro se pueda
+	// leer desde el producto. Un rastro que solo se consulta con un psql en la mano no controla nada.
+	DiscountBy  string          `json:"discountBy"`
 	DeliveryFee decimal.Decimal `json:"deliveryFee"`
 	Refund      decimal.Decimal `json:"refund"`
 	Tips        decimal.Decimal `json:"tips"`
@@ -167,6 +175,8 @@ func filaDeVenta(r db.ListSalesRow) SaleRow {
 		OpenedAt: r.OpenedAt, CompletedAt: momento(r.CompletedAt),
 		Status: string(r.Status), ServiceType: string(r.ServiceType),
 		Customer: texto(r.CustomerName), Total: domain.Round2(r.Total),
+		Discount:    domain.Round2(r.DiscountTotal),
+		DiscountBy:  r.DiscountByName,
 		DeliveryFee: domain.Round2(r.DeliveryFee), Refund: domain.Round2(r.RefundAmount),
 		Tips: domain.Round2(r.Tips), Platform: texto(r.Platform), OpenedBy: texto(r.OpenedByName),
 		Methods: string(r.Methods), PlatformOrderRef: texto(r.PlatformOrderRef),

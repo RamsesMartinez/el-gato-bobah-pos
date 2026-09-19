@@ -1,9 +1,11 @@
 import {
   Box, Flex, HStack, VStack, Text, Button, IconButton, Separator, Center, Input,
 } from '@chakra-ui/react';
-import { LuTrash2, LuStickyNote, LuPanelRightClose, LuStore, LuBike } from 'react-icons/lu';
+import { useState } from 'react';
+import { LuTrash2, LuStickyNote, LuPanelRightClose, LuStore, LuBike, LuTag } from 'react-icons/lu';
 import { useTicketStore, useActiveTicket, lineTotal, ticketTotal } from '../../stores/ticket';
 import { envioDeLaCuenta } from '../../domain/envio';
+import { descuentoDeLaCuenta, totalConDescuento } from '../../domain/descuento';
 import type { TicketLine } from '../../types/pos';
 import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
@@ -40,10 +42,14 @@ export function Ticket({
   onCheckout, onEnviar, enviando, onEditLine, onHide, swipeHandlers,
   envioPorDefecto, noDisponibles,
 }: Props) {
-  const { lines, customerName, folioName, serviceType, platformId, envio } = useActiveTicket();
+  const {
+    lines, customerName, folioName, serviceType, platformId, envio, descuento, descuentoModo,
+  } = useActiveTicket();
   const setServiceType = useTicketStore((s) => s.setServiceType);
   const setCustomerName = useTicketStore((s) => s.setCustomerName);
   const setEnvio = useTicketStore((s) => s.setEnvio);
+  const setDescuento = useTicketStore((s) => s.setDescuento);
+  const setDescuentoModo = useTicketStore((s) => s.setDescuentoModo);
   const inc = useTicketStore((s) => s.incrementLine);
   const dec = useTicketStore((s) => s.decrementLine);
   const remove = useTicketStore((s) => s.removeLine);
@@ -55,6 +61,13 @@ export function Ticket({
   const envioDelPedido = envioDeLaCuenta({ serviceType, platformId }, envio, envioPorDefecto);
   const llevaEnvio = envioDelPedido.aplica;
   const envioMalEscrito = envioDelPedido.malEscrito;
+  const descuentoDelPedido = descuentoDeLaCuenta(descuento, descuentoModo, total);
+  const descuentoMalCapturado = descuentoDelPedido.malEscrito || descuentoDelPedido.excede;
+  // El campo se despliega a mano, PERO se queda abierto solo si ya hay algo capturado: un descuento
+  // aplicado es dinero, y esconderlo detrás de un toque haría que se cobre sin que se vea.
+  const [abrioElDescuento, setAbrioElDescuento] = useState(false);
+  const muestraDescuento = abrioElDescuento || descuento !== '';
+  const totalDelPedido = totalConDescuento(total, descuentoDelPedido.monto, envioDelPedido.monto);
 
   return (
     <Flex direction="column" h="100%" bg="bg.panel">
@@ -137,30 +150,92 @@ export function Ticket({
       </VStack>
 
       <Separator />
-      <Box p={3}>
-        {/* Lo que el servidor ya no acepta. Se dice mientras la cuenta se está armando y se puede
-            quitar de un toque; enterarse al cobrar deja al operador resolviéndolo con el cliente
-            enfrente. */}
-        {noDisponibles.length > 0 && (
-          <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
-            bg="colorPalette.subtle" borderRadius="lg" p={2} mb={2}>
-            <Text fontWeight="700" fontSize="sm" color="colorPalette.fg">
-              Ya no están en el menú
-            </Text>
-            <Text fontSize="xs" color="fg.muted" mb={2}>
-              {noDisponibles.map((l) => l.name).join(', ')}
-            </Text>
-            <Button size="sm" minH="44px" variant="outline" colorPalette="orange"
-              onClick={() => noDisponibles.forEach((l) => remove(l.lineId))}>
-              Quitar del pedido
-            </Button>
-          </Box>
-        )}
+      {/* Lo que el servidor ya no acepta. Se dice mientras la cuenta se está armando y se puede
+          quitar de un toque; enterarse al cobrar deja al operador resolviéndolo con el cliente
+          enfrente.
 
+          VIVE FUERA del bloque de totales, y no es cosmético: ese bloque tiene el alto acotado que
+          le impide empujar a COBRAR fuera de la pantalla, y este aviso mide ~120 px. Adentro, un
+          domicilio con un producto dado de baja y el descuento abierto llenaba el techo y mandaba
+          el propio botón COBRAR a un scroll interno. */}
+      {noDisponibles.length > 0 && (
+        <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
+          bg="colorPalette.subtle" borderRadius="lg" p={2} mx={3} mb={2} flexShrink={0}>
+          <Text fontWeight="700" fontSize="sm" color="colorPalette.fg">
+            Ya no están en el menú
+          </Text>
+          <Text fontSize="xs" color="fg.muted" mb={2}>
+            {noDisponibles.map((l) => l.name).join(', ')}
+          </Text>
+          <Button size="sm" minH="44px" variant="outline" colorPalette="orange"
+            onClick={() => noDisponibles.forEach((l) => remove(l.lineId))}>
+            Quitar del pedido
+          </Button>
+        </Box>
+      )}
+
+      {/* maxH en dvh y no en px: lo que se reparte es el alto de la tableta. Sin un alto, un
+          `overflowY` no hace scroll —la caja crece— y con el teclado numérico abierto el botón
+          COBRAR se va abajo de la pantalla sin forma de alcanzarlo. */}
+      <Box p={3} maxH="60dvh" overflowY="auto" flexShrink={0}>
+        {/* El acceso al descuento vive DENTRO de esta fila y no en una propia: una fila nueva le
+            cobra 52 px de alto a todos los pedidos —medido: baja de ~3.5 a ~2.9 los renglones
+            visibles en un domicilio— para servir al puñado que lleva promoción. Aquí el costo es
+            de 4 px, los que la fila crece para cumplir el mínimo tappable. */}
         <Flex justify="space-between" align="center" mb={2}>
-          <Text fontSize="lg" fontWeight="600">Total</Text>
-          <Text fontSize="2xl" fontWeight="800">{money(total + envioDelPedido.monto)}</Text>
+          <HStack gap={1}>
+            <Text fontSize="lg" fontWeight="600">Total</Text>
+            <IconButton aria-label="Aplicar descuento" title="Descuento" size="sm" minH="44px" minW="44px"
+              variant={muestraDescuento ? 'subtle' : 'ghost'} colorPalette="gray"
+              onClick={() => setAbrioElDescuento((v) => !v)}>
+              <LuTag />
+            </IconButton>
+          </HStack>
+          <VStack gap={0} align="end">
+            {/* El renglón chico existe para que el operador pueda decirle al cliente de dónde sale
+                el total: un total rebajado sin decir por qué se discute en el mostrador. */}
+            {descuentoDelPedido.monto > 0 && (
+              <Text fontSize="xs" color="fg.muted">
+                {money(total)} − {money(descuentoDelPedido.monto)} de descuento
+              </Text>
+            )}
+            <Text fontSize="2xl" fontWeight="800">{money(totalDelPedido)}</Text>
+          </VStack>
         </Flex>
+
+        {muestraDescuento && (
+          <HStack gap={2} mb={2}>
+            <HStack gap={1} flexShrink={0}>
+              {/* Dos botones y no un Picker: para dos opciones excluyentes una hoja inferior son
+                  dos toques donde basta uno. Y nunca un <select> nativo, que en una tableta lo
+                  pinta el sistema con renglones de ~20 px. */}
+              <Button size="sm" minH="44px" minW="44px" px={3} aria-label="Descuento en pesos"
+                aria-pressed={descuentoModo === 'monto'}
+                variant={descuentoModo === 'monto' ? 'solid' : 'outline'}
+                colorPalette={descuentoModo === 'monto' ? undefined : 'gray'}
+                onClick={() => setDescuentoModo('monto')}>$</Button>
+              <Button size="sm" minH="44px" minW="44px" px={3} aria-label="Descuento en porcentaje"
+                aria-pressed={descuentoModo === 'pct'}
+                variant={descuentoModo === 'pct' ? 'solid' : 'outline'}
+                colorPalette={descuentoModo === 'pct' ? undefined : 'gray'}
+                onClick={() => setDescuentoModo('pct')}>%</Button>
+            </HStack>
+            <Input flex="1" minW={0} minH="44px" inputMode="decimal" aria-label="Descuento"
+              placeholder={descuentoModo === 'pct' ? '0 %' : money(0)}
+              value={descuento} onChange={(e) => setDescuento(e.target.value)}
+              /* El teclado numérico tapa ~40 % del alto en una tableta en horizontal: sin esto, el
+                 campo enfocado puede quedar debajo de él y COBRAR fuera de la pantalla. */
+              onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })} />
+            {descuentoDelPedido.malEscrito && (
+              <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>
+            )}
+            {descuentoDelPedido.excede && (
+              <Text fontSize="xs" color="red.fg" flexShrink={0}>
+                Máx {descuentoModo === 'pct' ? '100 %' : money(total)}
+              </Text>
+            )}
+          </HStack>
+        )}
 
         {/* El envío solo cuando el pedido lo cobra el negocio. Con plataforma no aparece: lo cobra
             ella, y la regla la contesta `cobraEnvio` en vez de deducirla aquí — deducirla fue como
@@ -204,7 +279,8 @@ export function Ticket({
               control, y quien no lo reconoce como botón termina cobrando para mandar a cocina. El
               azul lo separa además del verde de COBRAR, que es el que mueve dinero. */}
           <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="blue"
-            disabled={lines.length === 0 || envioMalEscrito} loading={enviando} onClick={onEnviar}>
+            disabled={lines.length === 0 || envioMalEscrito || descuentoMalCapturado}
+            loading={enviando} onClick={onEnviar}>
             Enviar a cocina
           </Button>
           {/* COBRAR ya NO manda el pedido a cocina: abre la hoja y el pedido nace al tocar el botón
@@ -217,7 +293,7 @@ export function Ticket({
               pedido que SÍ se creó — con la cuenta ya cerrada, recapturar manda dos veces a cocina. */}
           <Button flex="1.3" size="lg" h="56px" colorPalette="green" fontWeight="800"
             aria-describedby="cobrar-manda-a-cocina" loading={enviando}
-            disabled={lines.length === 0 || envioMalEscrito} onClick={onCheckout}>
+            disabled={lines.length === 0 || envioMalEscrito || descuentoMalCapturado} onClick={onCheckout}>
             COBRAR
           </Button>
         </HStack>

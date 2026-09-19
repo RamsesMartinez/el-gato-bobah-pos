@@ -124,6 +124,10 @@ func TestElCatalogoDeDenominacionesEsUsableYNoAceptaBasura(t *testing.T) {
 // apague el billete de $1000 para un negocio que no lo acepta lo apagaría para TODAS las empresas
 // de la base. Mientras siga global, se cambia como operación deliberada de owner.
 func TestElRolDeLaAppNoPuedeTocarElCatalogo(t *testing.T) {
+	// Siembra su propio esquema. Antes no lo hacía y pasaba igual, porque toda la suite compartía
+	// una base y le quedaba el catálogo del test anterior: dependía del ORDEN de ejecución, que es
+	// justo lo que un test no debe hacer. Corriendo solo (`-run`) siempre habría fallado.
+	newTestStore(t)
 	st := appRoleStore(t)
 	ctx := context.Background()
 

@@ -74,10 +74,17 @@ export function buildReceiptHtml(
     })
     .join('');
 
-  // Desglose solo cuando hubo envío (domicilio): el ticket muestra subtotal + envío antes del total.
-  const totalsHead = Number(order.deliveryFee) > 0
+  // Desglose cuando hubo envío O descuento: sin él, el cliente suma los renglones del papel, le da
+  // otra cifra que el total, y quien atiende no tiene con qué explicarlo.
+  //
+  // Cada renglón aparece SOLO si existe. Un "Descuento $0.00" impreso en cada ticket enseña a no
+  // leer esa zona del papel, que es justo donde vive el dinero.
+  const envioImpreso = Number(order.deliveryFee) > 0;
+  const descuentoImpreso = Number(order.discount) > 0;
+  const totalsHead = envioImpreso || descuentoImpreso
     ? `<tr><td>Subtotal</td><td class="r">${money(order.subtotal)}</td></tr>` +
-      `<tr><td>Envío</td><td class="r">${money(order.deliveryFee)}</td></tr>`
+      (descuentoImpreso ? `<tr><td>Descuento</td><td class="r">-${money(order.discount)}</td></tr>` : '') +
+      (envioImpreso ? `<tr><td>Envío</td><td class="r">${money(order.deliveryFee)}</td></tr>` : '')
     : '';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>Ticket #${order.number}</title>
@@ -214,6 +221,7 @@ export function sampleTicketOrder(): ReceiptOrder {
     serviceType: 'mostrador',
     customerName: null,
     subtotal: '250',
+    discount: '0',
     deliveryFee: '0',
     total: '250',
     currency: 'MXN',

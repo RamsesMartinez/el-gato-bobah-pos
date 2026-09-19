@@ -12,6 +12,7 @@ const order: ReceiptOrder = {
   serviceType: 'mostrador',
   customerName: null,
   subtotal: '100',
+  discount: '0',
   deliveryFee: '0',
   total: '100',
   currency: 'MXN',

@@ -5,13 +5,17 @@
 // rotación/reuso de refresh, la tx de creación de orden + depleción, y el reembolso.
 //
 // Correr: TEST_DATABASE_URL="postgres://…/gatobobah_test?sslmode=disable" go test -tags=integration ./internal/integration/...
-// Sin la env se omiten (Skip). Cada test parte de un esquema limpio (drop+migrate).
+// Sin la env se omiten (Skip). Cada test estrena una base propia, clonada de una plantilla ya
+// migrada (ver sembrarPlantilla).
 package integration
 
 import (
 	"context"
 	"net/url"
 	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +38,29 @@ const defaultCompanyID = 1
 // el bootstrap desde APP_DB_PASSWORD).
 const appRolePassword = "test_app_pw"
 
-func testURL(t *testing.T) string {
+// nombreDePlantilla y prefijoDeBase comparten raíz a propósito: si una prueba muere sin limpiar,
+// un `psql -l` dice de dónde salió la base huérfana.
+const (
+	nombreDePlantilla = "egb_plantilla"
+	prefijoDeBase     = "egb_prueba_"
+)
+
+var (
+	// El pool de administración vive lo que vive el binario de pruebas: crear y soltar bases exige
+	// estar conectado a OTRA base, y abrir esa conexión por prueba costaría más que el clon.
+	adminUna  sync.Once
+	adminPool *store.Store
+
+	plantillaUna sync.Once
+
+	basesMu        sync.Mutex
+	basesPorPrueba = map[string]string{}
+	contadorDeBase atomic.Int64
+)
+
+// baseDeDatosURL es la base MADRE del entorno: de ella cuelgan la plantilla y las bases de cada
+// prueba. Nadie prueba contra ella.
+func baseDeDatosURL(t *testing.T) string {
 	t.Helper()
 	u := os.Getenv("TEST_DATABASE_URL")
 	if u == "" {
@@ -43,46 +69,147 @@ func testURL(t *testing.T) string {
 	return u
 }
 
+// testURL devuelve la base de la prueba EN CURSO, no la madre. Los tests que abren su propia
+// conexión —otro rol, otra goroutine— la usan para caer en la MISMA base que sembró el harness;
+// devolverles la madre los pondría a probar un esquema que nadie preparó.
+func testURL(t *testing.T) string {
+	t.Helper()
+	madre := baseDeDatosURL(t)
+	basesMu.Lock()
+	defer basesMu.Unlock()
+	if u, ok := basesPorPrueba[pruebaRaiz(t.Name())]; ok {
+		return u
+	}
+	return madre
+}
+
+// pruebaRaiz recorta el nombre de una subprueba ("TestX/caso") a su raíz ("TestX"). Una subprueba
+// hereda la base que abrió su padre, que es justo el patrón con el que varias comparten esquema.
+func pruebaRaiz(nombre string) string {
+	if i := strings.IndexByte(nombre, '/'); i >= 0 {
+		return nombre[:i]
+	}
+	return nombre
+}
+
+// conBase reescribe la base de datos de una URL conservando credenciales y parámetros.
+func conBase(rawURL, nombre string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	u.Path = "/" + nombre
+	return u.String()
+}
+
+func admin(t *testing.T) *store.Store {
+	t.Helper()
+	madre := baseDeDatosURL(t)
+	adminUna.Do(func() {
+		st, err := store.New(context.Background(), madre)
+		if err != nil {
+			return
+		}
+		adminPool = st
+	})
+	if adminPool == nil {
+		t.Fatalf("no se pudo abrir el pool de administración contra %s", madre)
+	}
+	return adminPool
+}
+
+// sembrarPlantilla migra UNA vez una base que luego se clona por prueba.
+//
+// Correr las migraciones cuesta ~770 ms y `create database … template` ~30: con las ~364 llamadas
+// a newTestStore que tiene la suite, la diferencia son minutos de CI, no milisegundos. El
+// aislamiento NO se afloja — cada prueba sigue estrenando una base virgen; lo que cambia es de
+// dónde sale el esquema.
+//
+// Se rehace en cada corrida del binario, no se reusa la de la corrida anterior: una plantilla
+// vieja serviría un esquema que ya no es el del repositorio, y eso no falla — pasa en verde.
+func sembrarPlantilla(t *testing.T) {
+	t.Helper()
+	adm := admin(t)
+	ctx := context.Background()
+	var err error
+	plantillaUna.Do(func() {
+		// `with (force)` corta conexiones de una corrida anterior que murió a media prueba.
+		if _, e := adm.Pool.Exec(ctx, "drop database if exists "+nombreDePlantilla+" with (force)"); e != nil {
+			err = e
+			return
+		}
+		if _, e := adm.Pool.Exec(ctx, "create database "+nombreDePlantilla); e != nil {
+			err = e
+			return
+		}
+		tpl, e := store.New(ctx, conBase(baseDeDatosURL(t), nombreDePlantilla))
+		if e != nil {
+			err = e
+			return
+		}
+		// El pool se cierra ANTES de que nadie clone: `create database … template` se niega si
+		// queda una sola sesión abierta contra la plantilla.
+		defer tpl.Close()
+		if e := store.Migrate(ctx, tpl.Pool); e != nil {
+			err = e
+			return
+		}
+		// El rol es de CLUSTER, no de la base: se le fija el password una sola vez y lo heredan
+		// todos los clones. La migración 0024 lo crea sin password, como en producción.
+		if _, e := adm.Pool.Exec(ctx, "alter role gatobobah_app with login password '"+appRolePassword+"'"); e != nil {
+			err = e
+			return
+		}
+	})
+	if err != nil {
+		t.Fatalf("sembrar la plantilla: %v", err)
+	}
+}
+
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	dbURL := testURL(t)
 	ctx := context.Background()
+	sembrarPlantilla(t)
+	adm := admin(t)
 
-	// Fase de setup en un store temporal (owner): schema limpio + migrar + preparar el rol de app.
-	setup, err := store.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("store.New: %v", err)
+	nombre := prefijoDeBase + itoa(int(contadorDeBase.Add(1)))
+	if _, err := adm.Pool.Exec(ctx, "drop database if exists "+nombre+" with (force)"); err != nil {
+		t.Fatalf("soltar la base previa: %v", err)
 	}
-	if _, err := setup.Pool.Exec(ctx, "drop schema public cascade; create schema public;"); err != nil {
-		setup.Close()
-		t.Fatalf("reset schema: %v", err)
+	if _, err := adm.Pool.Exec(ctx, "create database "+nombre+" template "+nombreDePlantilla); err != nil {
+		t.Fatalf("clonar la plantilla: %v", err)
 	}
-	if err := store.Migrate(ctx, setup.Pool); err != nil {
-		setup.Close()
-		t.Fatalf("migrate: %v", err)
-	}
-	// Rol de app usable en los tests de aislamiento (RLS aplica a él, no al owner).
-	u, _ := url.Parse(dbURL)
-	dbName := u.Path[1:]
+	// Se registra ANTES del cierre del pool: los cleanups corren en orden inverso, así que soltar
+	// la base queda de último, cuando ya nadie está conectado a ella.
+	t.Cleanup(func() {
+		basesMu.Lock()
+		delete(basesPorPrueba, pruebaRaiz(t.Name()))
+		basesMu.Unlock()
+		_, _ = adm.Pool.Exec(context.Background(), "drop database if exists "+nombre+" with (force)")
+	})
+
+	// Ni el `grant connect` ni el ajuste del GUC viajan con el clon —Postgres no copia los
+	// privilegios ni los settings de la base plantilla—, así que van por clon.
 	for _, stmt := range []string{
-		"alter role gatobobah_app with login password '" + appRolePassword + "'",
-		"grant connect on database " + dbName + " to gatobobah_app",
+		"grant connect on database " + nombre + " to gatobobah_app",
 		// GUC de tenant por defecto a nivel BD: las conexiones del OWNER (que salta RLS)
 		// auto-sellan company_id=1 en sus inserts sin fijar el GUC en cada test. Aplica a
-		// conexiones NUEVAS → reabrimos el pool abajo.
-		"alter database " + dbName + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
+		// conexiones NUEVAS → va antes de abrir el pool.
+		"alter database " + nombre + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
 	} {
-		if _, err := setup.Pool.Exec(ctx, stmt); err != nil {
-			setup.Close()
-			t.Fatalf("setup rol/guc (%q): %v", stmt, err)
+		if _, err := adm.Pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("preparar la base de la prueba (%q): %v", stmt, err)
 		}
 	}
-	setup.Close()
 
-	// Pool definitivo (owner): sus conexiones heredan app.company_id=1 por el ALTER DATABASE.
+	dbURL := conBase(baseDeDatosURL(t), nombre)
+	basesMu.Lock()
+	basesPorPrueba[pruebaRaiz(t.Name())] = dbURL
+	basesMu.Unlock()
+
 	st, err := store.New(ctx, dbURL)
 	if err != nil {
-		t.Fatalf("store.New (final): %v", err)
+		t.Fatalf("store.New: %v", err)
 	}
 	t.Cleanup(st.Close)
 	return st
