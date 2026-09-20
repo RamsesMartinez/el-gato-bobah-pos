@@ -429,7 +429,7 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 34.61.175.194 >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key ramses_mtz96@34.61.175.194             "cd el-gato-bobah-pos && git pull && API_IMAGE='$API_IMAGE' make deploy-image"
+          ssh -i ~/.ssh/deploy_key ramses_mtz96@34.61.175.194             "cd el-gato-bobah-pos && git fetch origin --prune && git checkout -B develop origin/develop && API_IMAGE='$API_IMAGE' make deploy-image"
       # La VM es spot: Google puede haberla reclamado entre dos pushes. Si no responde, el deploy
       # falla ruidoso en vez de dejar creer que se probó algo.
       - name: Verifica que la API de pruebas quedó arriba
@@ -460,7 +460,18 @@ jobs:
     steps:
       # SSH directo (sin action de terceros): la VM ya acepta esta key vía metadata del
       # proyecto GCP. Ya no compila nada: baja la imagen que publicó el job anterior y
-      # levanta. El `git pull` sigue porque el compose y el .env viven en el checkout.
+      # levanta. El checkout sigue haciendo falta porque el compose y el .env viven ahí.
+      #
+      # `fetch` + `checkout -B` y NO `git pull`, porque `pull` depende del estado en que quedó la
+      # VM. El 2026-09-19 el deploy a producción murió con «Need to specify how to reconcile
+      # divergent branches»: la rama local de la VM había divergido de origin y git se negó a
+      # adivinar. No rompió nada —falló ANTES de tocar la imagen, y el front y la consola quedaron
+      # en `skipped` por sus `needs`— pero dejó el release detenido sin que nada más lo dijera.
+      #
+      # Con esto la VM queda EXACTA a la rama, venga de donde venga: el deploy deja de depender de
+      # su historia. Lo que se descarta es cualquier cambio versionado hecho a mano dentro de la
+      # VM, que es justo lo que no debe existir en producción; `deploy/.env` no está versionado y
+      # sobrevive.
       - name: Deploy por SSH
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -471,7 +482,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 34.68.178.107 >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key ramses_mtz96@34.68.178.107 \
-            "cd el-gato-bobah-pos && git pull && API_IMAGE='$API_IMAGE' make deploy-image"
+            "cd el-gato-bobah-pos && git fetch origin --prune && git checkout -B main origin/main && API_IMAGE='$API_IMAGE' make deploy-image"
       # Un deploy que deja la API caída y nadie se entera es peor que uno que falla ruidoso.
       - name: Verifica que la API quedó arriba
         run: |
