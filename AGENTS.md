@@ -317,6 +317,22 @@ mecánica:
   duplicados en el árbol: quitar estos cinco bajó de 699 a 689.
 - **KNOWN NON-ISSUE (no lo "arregles"):** el aviso de deprecación de `golang.org/x/crypto/blowfish` que aparece dentro de `x/crypto/bcrypt` es **esperado** — bcrypt usa blowfish internamente. `bcrypt.GenerateFromPassword` ([auth.HashSecret](server/internal/auth/password.go)) es la forma correcta y vigente de hashear passwords y **no** está deprecada. No lo cambies por AES ni otro cifrado.
 
+## 3-bis. La VM de producción no se toca sin permiso
+
+`pos-vps` está detrás de un hook: [proteger-produccion.sh](scripts/hooks/proteger-produccion.sh) mira
+cada comando ANTES de correrlo y pide aprobación si nombra esa máquina o su IP. Pasan solos los
+respaldos (`pg_dump` y traerse el archivo), que es la excepción que se autorizó: no cambian nada y
+son lo que uno quiere poder hacer rápido antes de una migración.
+
+`pos-vps-dev` **no** está gateado: ahí se prueba, y frenar cada comando volvería inútil la
+verificación contra el ambiente desplegado.
+
+**Por qué es un hook y no una nota.** El 2026-09-19 hubo que auditar doce transcripciones de sesión
+a mano para responder «¿algún agente escribió en producción?». La respuesta fue que no —solo
+lecturas del `.env` y respaldos—, pero nada impedía que la siguiente vez sí. Un recordatorio se
+olvida; un comando que se detiene, no. Es el mismo argumento de
+[migracion-con-test.sh](scripts/hooks/migracion-con-test.sh).
+
 ## 4. Commits / PR
 
 Qué corre cada hook de **lefthook** ([lefthook.yml](lefthook.yml)):
