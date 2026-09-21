@@ -16,7 +16,7 @@ const negocio = {
 function papel(over: Parameters<typeof preCuentaDeLaCuenta>[0] extends infer T ? Partial<T> : never = {}) {
   const cuenta = preCuentaDeLaCuenta({
     folioName: 'Chartreux', serviceType: 'mostrador', customerName: '',
-    lineas: [linea()], envio: 0, total: 190, ...over,
+    lineas: [linea()], envio: 0, descuento: 0, total: 190, ...over,
   }, ahora);
   return buildReceiptHtml(cuenta, negocio, { preCuenta: true });
 }
@@ -60,7 +60,7 @@ test('conserva el mensaje del negocio', () => {
 test('el total incluye el envío y coincide con lo que se va a cobrar', () => {
   const cuenta = preCuentaDeLaCuenta({
     folioName: 'Chartreux', serviceType: 'domicilio', customerName: 'Ana',
-    lineas: [linea()], envio: 20, total: 210,
+    lineas: [linea()], envio: 20, descuento: 0, total: 210,
   }, ahora);
   expect(cuenta.total).toBe('210.00');
   expect(cuenta.deliveryFee).toBe('20.00');
@@ -73,7 +73,7 @@ test('el total incluye el envío y coincide con lo que se va a cobrar', () => {
 test('el ticket normal conserva su número y su estado de cobro', () => {
   const cuenta = preCuentaDeLaCuenta({
     folioName: 'Chartreux', serviceType: 'mostrador', customerName: '',
-    lineas: [linea()], envio: 0, total: 190,
+    lineas: [linea()], envio: 0, descuento: 0, total: 190,
   }, ahora);
   const html = buildReceiptHtml({ ...cuenta, number: 158, paid: true }, negocio, {});
   expect(html).toContain('Pedido #158');

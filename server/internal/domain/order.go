@@ -110,7 +110,10 @@ type PricedOption struct {
 // --- Resultado priceado (snapshots que van a order_lines) ---
 
 type BuiltOrder struct {
-	Subtotal    decimal.Decimal
+	Subtotal decimal.Decimal
+	// Discount: los pesos que el negocio dejó de cobrar. Se resta del subtotal ANTES del envío
+	// (ver AplicarDescuento); el envío no se descuenta porque no es venta de comida.
+	Discount    decimal.Decimal
 	DeliveryFee decimal.Decimal
 	Total       decimal.Decimal
 	Lines       []BuiltLine
@@ -214,7 +217,10 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 		out.Subtotal = out.Subtotal.Add(line.LineTotal)
 	}
 	out.Subtotal = Round2(out.Subtotal)
-	out.Total = out.Subtotal // sin descuentos en MVP
+	// El total arranca igual al subtotal; quien llama lo rebaja con AplicarDescuento y después le
+	// suma el envío con ApplyDeliveryFee. Decía "sin descuentos en MVP" y dejó de ser cierto con la
+	// feature 022: leído solo, hacía concluir que el sistema no tiene descuentos.
+	out.Total = out.Subtotal
 	// Aunque cada Qty esté acotada, un precio de catálogo alto × muchas líneas podría
 	// desbordar el total: se rechaza antes de tocar el numeric(10,2) (allowZero: un pedido
 	// comped puede totalizar 0).
@@ -231,14 +237,16 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 func ApplyDeliveryFee(o BuiltOrder, fee decimal.Decimal, isDelivery bool) (BuiltOrder, error) {
 	if !isDelivery {
 		o.DeliveryFee = decimal.Zero
-		return o, nil // Total ya = Subtotal, validado en BuildOrder
+		return o, nil // Total ya trae el subtotal menos el descuento, validado antes
 	}
 	fee = Round2(fee)
 	if !ValidMoney(fee, true) {
 		return BuiltOrder{}, ErrValidation
 	}
 	o.DeliveryFee = fee
-	o.Total = Round2(o.Subtotal.Add(fee))
+	// Sobre el TOTAL, no sobre el subtotal: partir del subtotal aquí borraría un descuento ya
+	// aplicado y el pedido se cobraría completo con el papel diciendo otra cosa.
+	o.Total = Round2(o.Total.Add(fee))
 	if !ValidMoney(o.Total, true) {
 		return BuiltOrder{}, ErrValidation
 	}
@@ -281,9 +289,18 @@ func PagosCubren(pagado, total decimal.Decimal) bool {
 // la deuda abierta. Es el corolario del principio III: la lista y el resumen de la misma pantalla
 // salen del mismo predicado, o uno de los dos miente y nadie sabe cuál.
 //
-// El total positivo es parte de la definición: un pedido de $0 no está "pagado", no tiene nada que
-// pagar.
+// UN PEDIDO EN CERO ESTÁ SALDADO. Exigía `total.IsPositive()`, y eso era defendible mientras llegar
+// a cero pedía que cada producto de la cuenta costara $0. Con el descuento de la feature 022 se
+// llega en un toque —una cortesía del 100 %, que es justo el caso que esa feature vino a resolver—
+// y el pedido se quedaba con el ícono naranja y "Falta cobrar $0.00" para siempre: no había forma
+// de saldarlo, porque no había nada que cobrar.
+//
+// Los otros dos caminos a cero —todo comped, o todos los renglones cancelados— dicen lo mismo: el
+// negocio no espera dinero de ese pedido.
 func PedidoSaldado(pagado, total decimal.Decimal) bool {
+	if total.IsZero() {
+		return true
+	}
 	return total.IsPositive() && PagosCubren(pagado, total)
 }
 

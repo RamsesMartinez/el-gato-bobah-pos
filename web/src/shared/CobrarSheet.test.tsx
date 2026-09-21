@@ -10,7 +10,8 @@ import { round2 } from '../domain/cobro';
 const order = vi.hoisted(() => vi.fn());
 const paymentMethods = vi.hoisted(() => vi.fn());
 const chargeOrder = vi.hoisted(() => vi.fn());
-vi.mock('../api/pos', () => ({ posApi: { order, paymentMethods, chargeOrder } }));
+const setOrderDiscount = vi.hoisted(() => vi.fn());
+vi.mock('../api/pos', () => ({ posApi: { order, paymentMethods, chargeOrder, setOrderDiscount } }));
 
 import { CobrarSheet } from './CobrarSheet';
 
@@ -39,6 +40,7 @@ beforeEach(() => {
   order.mockResolvedValue({ ...pedido(), lines: [] });
   paymentMethods.mockResolvedValue({ items: metodos });
   chargeOrder.mockReset();
+  setOrderDiscount.mockReset();
 });
 
 // La hoja tiene que decir las DOS cifras. Pintando solo el faltante donde el operador espera el
@@ -453,4 +455,99 @@ test('al dividir, el segundo pedazo cobra el pedido que creó el primero', async
   expect(crearPedido, 'cada pedazo creó su propio pedido: el cliente acaba con varias cuentas')
     .toHaveBeenCalledTimes(1);
   expect(chargeOrder.mock.calls.map((c) => c[0])).toEqual([77, 77]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// CORREGIR EL DESCUENTO DE UN PEDIDO YA CREADO (023 / la T031 que la 022 dejó abierta).
+//
+// El descuento se teclea con el cliente enfrente y se teclea mal. El momento en que el error se
+// descubre es este: se va a cobrar, se mira el total y no cuadra.
+// ---------------------------------------------------------------------------------------------
+
+test('se puede corregir el descuento y lo que se pinta es lo que devolvió el servidor', async () => {
+  const conDescuentoDe50 = { ...pedido({ total: '450', outstanding: '450' }), discount: '50', lines: [] };
+  const conDescuentoDe30 = { ...pedido({ total: '470', outstanding: '470' }), discount: '30', lines: [] };
+  order.mockResolvedValue(conDescuentoDe50);
+  // El servidor devuelve el pedido ya recalculado Y las lecturas posteriores ven lo mismo: la hoja
+  // invalida la familia `orders` a propósito, para que el tablero y la barra se enteren.
+  setOrderDiscount.mockImplementation(async () => {
+    order.mockResolvedValue(conDescuentoDe30);
+    return conDescuentoDe30;
+  });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /Cambiar el descuento/ }));
+  const campo = await screen.findByLabelText('Descuento');
+  await userEvent.clear(campo);
+  await userEvent.type(campo, '30');
+  await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+  await waitFor(() => expect(setOrderDiscount).toHaveBeenCalledWith(7, { discountAmount: 30 }));
+  // Lo que se pinta después es la respuesta del servidor, no una resta hecha aquí: una segunda
+  // implementación de la misma cifra es como la pantalla llegó a ofrecer cobrar $115 de un pedido
+  // de $95.
+  expect(await screen.findByText(/Falta \$470/)).toBeInTheDocument();
+});
+
+// Un pedido ya cobrado no admite mover su total: el servidor lo rechaza y la pantalla lo dice sin
+// inventar nada.
+test('si el servidor rechaza el cambio, ninguna cifra se mueve', async () => {
+  order.mockResolvedValue({ ...pedido({ total: '450', outstanding: '0', paid: true }), discount: '50', lines: [] });
+  setOrderDiscount.mockRejectedValue(new Error('el pedido ya está cobrado'));
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ paid: true, outstanding: '0' })} onClose={() => {}} onCobrado={() => {}} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /Cambiar el descuento/ }));
+  await userEvent.type(await screen.findByLabelText('Descuento'), '10');
+  await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+  expect(await screen.findByText(/ya está cobrado/)).toBeInTheDocument();
+  expect(screen.getByText(/Total \$450/), 'la cifra se movió con un cambio que el servidor rechazó')
+    .toBeInTheDocument();
+});
+
+// EL DEFECTO QUE ESTE TEST CIERRA: `{}` no significa "sin cambios" para el servidor, significa
+// "quita el descuento". Y un campo ilegible producía exactamente ese `{}`.
+//
+// Un pedido con $50 de descuento, una letra de más al corregir, un toque en Guardar, y el descuento
+// desaparecía: sin aviso, sin confirmación, y sin más rastro que un "Falta" que subió $50.
+test('un descuento mal tecleado no puede borrar el que ya estaba', async () => {
+  order.mockResolvedValue({ ...pedido({ total: '450', outstanding: '450' }), discount: '50', lines: [] });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /Cambiar el descuento/ }));
+  const campo = await screen.findByLabelText('Descuento');
+  await userEvent.clear(campo);
+  await userEvent.type(campo, '1,000');
+
+  expect(await screen.findByText('Solo números')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Guardar' }),
+    'Guardar sigue vivo con un valor ilegible: al tocarlo manda {} y el servidor BORRA el descuento')
+    .toBeDisabled();
+  expect(setOrderDiscount).not.toHaveBeenCalled();
+});
+
+// Lo mismo con un monto imposible: el tope se avisa y no se manda nada.
+test('un descuento mayor que la cuenta tampoco se puede guardar', async () => {
+  order.mockResolvedValue({ ...pedido({ total: '450', outstanding: '450' }), discount: '50', lines: [] });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /Cambiar el descuento/ }));
+  const campo = await screen.findByLabelText('Descuento');
+  await userEvent.clear(campo);
+  await userEvent.type(campo, '9000');
+
+  expect(await screen.findByText(/Máx/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+});
+
+// Un renglón que siempre dice $0.00 enseña a no leer esta zona, que es donde vive el dinero.
+test('un pedido sin descuento no muestra un renglón en cero, pero deja agregar uno', async () => {
+  order.mockResolvedValue({ ...pedido(), discount: '0', lines: [] });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+
+  await screen.findByText(/Falta \$500/);
+  expect(screen.queryByText(/\$0\.00 de descuento/)).toBeNull();
+  // El acceso vive en el encabezado, junto a «Cuenta» y «Dividir»: ahí no cuesta alto nuevo, y el
+  // flujo más común de esta hoja —cobrar un pedido ya mandado— casi nunca lleva descuento.
+  expect(screen.getByRole('button', { name: /Descuento/ })).toBeInTheDocument();
 });

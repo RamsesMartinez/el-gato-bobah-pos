@@ -5,7 +5,8 @@ import type { ReceiptOrder } from '../types/pos';
 const pedido: ReceiptOrder = {
   folioName: 'Tigre',
   id: 1, number: 14, status: 'abierta', serviceType: 'mostrador', customerName: 'Sánchez',
-  subtotal: '275', deliveryFee: '0', total: '275', currency: 'MXN', paid: true,
+  subtotal: '275',
+  discount: '0', deliveryFee: '0', total: '275', currency: 'MXN', paid: true,
   openedAt: '2026-08-31T18:27:10Z',
   lines: [
     {

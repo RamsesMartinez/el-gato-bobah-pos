@@ -22,11 +22,20 @@ const props = {
 };
 
 // El renglón del producto también pinta su precio: el total se busca por su etiqueta, no por la
-// cifra suelta.
+// cifra suelta. La etiqueta "Total" comparte grupo con el botón de descuento, y la cifra es el
+// último texto de esa fila —debajo puede ir el renglón chico que explica el descuento—.
 async function totalEnPantalla() {
   const etiqueta = await screen.findByText('Total');
-  return etiqueta.parentElement?.querySelector('p:last-child')?.textContent
-    ?? etiqueta.nextElementSibling?.textContent;
+  const fila = etiqueta.parentElement;
+  const textos = fila?.querySelectorAll('p');
+  return textos?.[textos.length - 1]?.textContent;
+}
+
+// Abre el campo del menú, que es donde ahora se captura. Los tests que solo necesitan el VALOR
+// siguen escribiéndolo en el store; esto es para los que prueban el camino del dedo.
+async function abrirDelMenu(opcion: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: opcion }));
 }
 
 beforeEach(() => {
@@ -156,4 +165,196 @@ test('la papelera no está pegada a los botones de cantidad', () => {
   // No comparten padre inmediato: el − vive con el + y la papelera se fue al otro extremo.
   expect(menos.parentElement, 'la papelera sigue pegada a los controles de cantidad')
     .not.toBe(quitar.parentElement);
+});
+
+// EL DESCUENTO, EN LA PANTALLA DE 600 px.
+//
+// El acceso vive en la fila del Total y no en una fila propia: una fila nueva le cobra ~52 px de
+// alto a TODOS los pedidos —medido: baja de ~3.5 a ~2.9 los renglones de producto visibles en un
+// domicilio— para servir al puñado que lleva promoción.
+test('el descuento no ocupa alto hasta que alguien lo abre', async () => {
+  pinta(<Ticket {...props} />);
+  expect(screen.queryByLabelText('Descuento')).toBeNull();
+
+  await abrirDelMenu(/Descuento/);
+  expect(await screen.findByLabelText('Descuento')).toBeInTheDocument();
+});
+
+test('un descuento en pesos baja el total y dice de dónde sale', async () => {
+  useTicketStore.getState().setDescuento('20');
+  pinta(<Ticket {...props} />);
+
+  expect(await totalEnPantalla()).toBe('$75'); // 95 - 20
+  // El renglón chico es lo que deja explicarle al cliente por qué el total no es la suma de los
+  // renglones: sin él, la diferencia se discute en el mostrador.
+  expect(screen.getByText(/de descuento/)).toBeInTheDocument();
+});
+
+test('un porcentaje se pinta en pesos', async () => {
+  useTicketStore.getState().setDescuentoModo('pct');
+  useTicketStore.getState().setDescuento('20');
+  pinta(<Ticket {...props} />);
+
+  expect(await totalEnPantalla()).toBe('$76'); // 95 - 19
+});
+
+// Un descuento ilegible que cayera a cero es una promoción que el cliente ya escuchó y que el
+// ticket no aplica. Y uno mayor que la cuenta cobraría en negativo.
+test('un descuento mal escrito o imposible apaga los botones', async () => {
+  useTicketStore.getState().setDescuento('1,000');
+  const { rerender } = pinta(<Ticket {...props} />);
+  expect(await screen.findByText('Solo números')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+
+  useTicketStore.getState().setDescuento('400'); // la cuenta son $95
+  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
+  expect(await screen.findByText(/Máx/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+});
+
+// FR-011: el descuento existe en los cuatro tipos de pedido. Hoy se cumple por omisión —no hay
+// ninguna condición— y este test es lo que impide que una condición agregada después lo rompa sin
+// que nada falle.
+test.each([
+  ['mostrador', null],
+  ['domicilio', null],
+  ['mostrador', 1],
+  ['domicilio', 1],
+] as const)('el descuento se puede capturar en %s con plataforma %s', async (tipo, plataforma) => {
+  useTicketStore.getState().setServiceType(tipo);
+  useTicketStore.getState().setPlatform(plataforma);
+  pinta(<Ticket {...props} />);
+
+  await abrirDelMenu(/Descuento/);
+  expect(await screen.findByLabelText('Descuento')).toBeInTheDocument();
+});
+
+// `overflowY` sin un alto no hace scroll: la caja crece. En la tableta eso empuja el botón COBRAR
+// fuera de la pantalla cuando el teclado numérico se abre sobre el campo de descuento, y no hay
+// forma de alcanzarlo. Ningún test puede simular ese teclado; lo que sí se puede verificar es que
+// la zona tenga alto acotado.
+test('la zona de totales tiene alto acotado, no crece con lo que se le agregue', async () => {
+  pinta(<Ticket {...props} />);
+  const cobrar = await screen.findByRole('button', { name: 'COBRAR' });
+  const zona = cobrar.closest('div')?.parentElement;
+  expect(zona).not.toBeNull();
+  const estilo = getComputedStyle(zona!);
+  expect(estilo.maxHeight, 'sin maxH la caja crece y COBRAR se va abajo de la pantalla').not.toBe('none');
+  expect(estilo.overflowY).toBe('auto');
+});
+
+// ---------------------------------------------------------------------------------------------
+// EL REACOMODO (023): arriba lo que describe el pedido, abajo lo que mueve dinero.
+// ---------------------------------------------------------------------------------------------
+
+function ponerFolio(nombre: string) {
+  useTicketStore.setState((s) => ({ tabs: s.tabs.map((t) => ({ ...t, folioName: nombre })) }));
+}
+
+// La fila de tipo + cliente costaba 52 px en TODO pedido de mostrador, que es el de todos los días.
+test('la zona de totales ya no trae el tipo ni el campo de cliente', async () => {
+  pinta(<Ticket {...props} />);
+  await screen.findByRole('button', { name: 'COBRAR' });
+
+  // El tipo sigue existiendo, pero arriba: junto al nombre del pedido, no pegado a COBRAR.
+  const tipo = screen.getByRole('button', { name: /Mostrador/ });
+  const cobrar = screen.getByRole('button', { name: 'COBRAR' });
+  expect(tipo.compareDocumentPosition(cobrar) & Node.DOCUMENT_POSITION_FOLLOWING,
+    'el tipo quedó DESPUÉS de COBRAR: sigue en la zona del dinero').toBeTruthy();
+
+  // Y el campo de cliente ya no ocupa alto: vive en el menú.
+  expect(screen.queryByPlaceholderText('Cliente')).toBeNull();
+});
+
+// Un pedido de plataforma ES a domicilio: ofrecer el cambio sería ofrecer algo que el servidor
+// rechaza por el check de la tabla.
+test('un pedido de plataforma no ofrece cambiar el tipo', async () => {
+  useTicketStore.getState().setPlatform(1);
+  pinta(<Ticket {...props} />);
+  await screen.findByRole('button', { name: 'COBRAR' });
+
+  expect(screen.queryByRole('button', { name: /Mostrador|Domicilio/ })).toBeNull();
+});
+
+test('el menú del pedido ofrece cliente, descuento y vaciar', async () => {
+  pinta(<Ticket {...props} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+
+  for (const nombre of [/Nombre del cliente/, /Descuento/, /Vaciar/]) {
+    expect(await screen.findByRole('menuitem', { name: nombre })).toBeInTheDocument();
+  }
+});
+
+// Estar dentro de un menú no vuelve inofensivo a lo destructivo.
+test('vaciar desde el menú sigue pidiendo confirmación', async () => {
+  const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  pinta(<Ticket {...props} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: /Vaciar/ }));
+
+  expect(confirmar).toHaveBeenCalled();
+  expect(useTicketStore.getState().tabs[0].lines, 'se vació sin confirmar').toHaveLength(1);
+  confirmar.mockRestore();
+});
+
+// Sin renglones no hay nada que vaciar: igual que hoy no se pinta el botón.
+test('con el carrito vacío el menú no ofrece vaciar', async () => {
+  useTicketStore.setState((s) => ({ tabs: s.tabs.map((t) => ({ ...t, lines: [] })) }));
+  pinta(<Ticket {...props} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+
+  expect(screen.queryByRole('menuitem', { name: /Vaciar/ })).toBeNull();
+});
+
+// El descuento es dinero: esconderlo detrás de un toque sería cobrar de menos sin decir por qué.
+test('un descuento aplicado se ve con el menú cerrado', async () => {
+  useTicketStore.getState().setDescuento('20');
+  pinta(<Ticket {...props} />);
+
+  expect(await screen.findByText(/de descuento/)).toBeInTheDocument();
+  expect(await totalEnPantalla()).toBe('$75');
+});
+
+// El esquema de folio por omisión es `razas`, y ahí los nombres llegan a 20 caracteres
+// ("Colorpoint Shorthair"). Lo que cede es el ancho del nombre, NUNCA la altura de un control.
+test('con un nombre de folio largo ningún control del encabezado baja de 44 px', async () => {
+  ponerFolio('Colorpoint Shorthair');
+  pinta(<Ticket {...props} />);
+
+  const tipo = await screen.findByRole('button', { name: /Mostrador/ });
+  const menu = screen.getByRole('button', { name: 'Más opciones del pedido' });
+  for (const control of [tipo, menu]) {
+    const alto = getComputedStyle(control).minHeight;
+    expect(parseInt(alto, 10), `${control.getAttribute('aria-label') ?? control.textContent} quedó en ${alto}`)
+      .toBeGreaterThanOrEqual(44);
+  }
+});
+
+// El aviso de "ya no están en el menú" vivía dentro de la caja de totales y mandó COBRAR a un
+// scroll interno. El campo del menú no puede repetirlo: va ARRIBA, y lo que se encoge es la lista.
+test('el campo que abre el menú no vive en la caja de totales', async () => {
+  pinta(<Ticket {...props} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: /Nombre del cliente/ }));
+
+  const campo = await screen.findByLabelText('Nombre del cliente');
+  const cobrar = screen.getByRole('button', { name: 'COBRAR' });
+  const cajaDeTotales = cobrar.closest('div')?.parentElement;
+  expect(cajaDeTotales?.contains(campo),
+    'el campo quedó dentro de la caja de alto acotado: con él abierto, COBRAR se va a un scroll interno')
+    .toBe(false);
+});
+
+// Una cuenta guardada puede traer un descuento imposible: el texto tecleado vive en el almacén y
+// sobrevive a un F5. Los botones quedan apagados —eso está bien— pero el aviso que lo explica no
+// puede quedarse escondido dentro de un menú.
+test('un descuento imposible que viene del almacén abre su campo solo', async () => {
+  useTicketStore.getState().setDescuento('1,000');
+  pinta(<Ticket {...props} />);
+
+  expect(await screen.findByText('Solo números')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Listo' }),
+    'se puede cerrar el campo dejando un descuento imposible: los botones quedan apagados sin nada que lo explique')
+    .toBeDisabled();
 });

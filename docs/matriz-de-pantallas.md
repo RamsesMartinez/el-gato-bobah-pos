@@ -521,6 +521,29 @@ Renglones que este documento reconoce como **no cubiertos**. Están aquí porque
 arregla y uno olvidado no. Cada uno cita el hallazgo del
 [barrido](auditoria/barrido-de-pantallas-2026-09.md) que lo describe.
 
+## P. El panel del pedido tras el reacomodo (spec 023)
+
+Lo que este reacomodo podía romper no es una cifra: es que un control quede fuera de alcance, o que
+un dato que se mudó deje de llegar a donde llegaba.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| P1 | Pedido de mostrador | La zona de totales NO trae tipo ni campo de cliente; el tipo está arriba | `Ticket.test.tsx` | Navegador (vitest) |
+| P2 | Pedido de plataforma | No se ofrece cambiar el tipo: el servidor lo rechazaría por el check de la tabla | `Ticket.test.tsx` | Navegador (vitest) |
+| P3 | Folio del esquema `razas` (20 caracteres) | El nombre trunca; ningún control del encabezado baja de 44 px | `Ticket.test.tsx` | Navegador (vitest) |
+| P4 | El campo que abre el menú | Vive FUERA de la caja de alto acotado: los botones de acción no se mueven bajo el dedo | `Ticket.test.tsx` | Navegador (vitest) |
+| P5 | Descuento aplicado | Se ve en la zona de totales **con el menú cerrado**. Esconder el campo no puede esconder el dinero | `Ticket.test.tsx` | Navegador (vitest) |
+| P6 | Vaciar desde el menú | Sigue pidiendo confirmación; con el carrito vacío no se ofrece | `Ticket.test.tsx` | Navegador (vitest) |
+| P7 | El menú abierto cuando el panel se va | Muere con él; no queda flotando sobre el catálogo | `POSPage.test.tsx` | Navegador (vitest) |
+| P8 | El nombre del cliente, ahora capturado en el menú | Sigue viajando en el cuerpo del pedido. Cambió de lugar, no de destino | `pedido.test.ts` | Navegador (vitest) |
+| P9 | Corregir el descuento desde la hoja de cobro | Se repinta con lo que devolvió el SERVIDOR, no con una resta local | `CobrarSheet.test.tsx` | Navegador (vitest) |
+| P10 | El servidor rechaza el cambio (pedido cobrado) | El mensaje se muestra y ninguna cifra se mueve | `CobrarSheet.test.tsx` | Navegador (vitest) |
+| P11 | Pedido sin descuento en la hoja de cobro | No hay renglón en $0.00, pero se puede agregar uno | `CobrarSheet.test.tsx` | Navegador (vitest) |
+
+**Lo que P no cubre:** cuántos renglones de producto se ven de verdad. jsdom no hace layout, así que
+lo que queda probado es la causa —la fila desapareció— y no el efecto. La medida está calculada
+contra el código: 52 px, el alto exacto de la fila retirada.
+
 | # | Caso | Por qué todavía no | Hallazgo |
 |---|---|---|---|
 | X20 | `GET /expenses?page=abc` cae a la página 0 en silencio | `handlers_backoffice.go:496` hace `page, _ := strconv.Atoi(...)` e ignora el error, así que un `page` malformado no se rechaza: devuelve la primera página como si nada. Es el principio V —"un parámetro de frontera inválido se RECHAZA; nunca cae a un default en silencio"— y lo encontró el barrido del 500 de modificadores (2026-09-11), en otra familia. **No se arregló con ese despliegue a propósito**: rechazar un parámetro que hoy se acepta es un cambio de comportamiento, y no se mete de polizón en un deploy a producción que ya lleva dos migraciones. Va solo, con su test | — |

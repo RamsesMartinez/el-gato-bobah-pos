@@ -16,10 +16,10 @@ import { usePopular } from '../../hooks/usePopular';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
-import { round2 } from '../../domain/cobro';
 import { preCuentaDeLaCuenta } from './preCuenta';
 import { useMandarPedido } from './useMandarPedido';
 import { envioDeLaCuenta } from '../../domain/envio';
+import { descuentoDeLaCuenta, totalConDescuento } from '../../domain/descuento';
 import { useAgregarAPedido } from './useAgregarAPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
@@ -214,8 +214,8 @@ export function POSPage() {
     setCobrando({
     id: null, number: null,
     folioName: cuenta.folioName,
-    total: String(round2(total + envio.monto)),
-    outstanding: String(round2(total + envio.monto)),
+    total: String(totalDeLaCuenta),
+    outstanding: String(totalDeLaCuenta),
     // La misma moneda que el resto del POS pinta en esta pantalla. La cuenta no la trae porque no
     // hay dos monedas en un mismo local; el pedido ya creado sí la trae del servidor y desde ese
     // momento manda la suya.
@@ -360,6 +360,13 @@ export function POSPage() {
 
   const total = ticketTotal(lines);
   const count = ticketCount(lines);
+  // Y la MISMA decisión sobre el descuento, por lo mismo: a 1024×600 el panel arranca oculto, así
+  // que la píldora y la barra angosta son las superficies de todos los días. Si restaran el
+  // descuento por su cuenta —o no lo restaran— el operador cobraría una cifra distinta de la que
+  // vio, que es el defecto que ya ocurrió con el envío.
+  const descuento = descuentoDeLaCuenta(cuenta.descuento, cuenta.descuentoModo, total);
+  const totalDeLaCuenta = totalConDescuento(total, descuento.monto, envio.monto);
+
 
   // Producto cuyo precio de plataforma se está corrigiendo. Solo con una lista activa: en
   // mostrador el precio se edita en el catálogo, y confundir las dos listas es el error que esta
@@ -537,11 +544,12 @@ export function POSPage() {
           >
             <HStack as="button" onClick={ticketDrawer.onOpen} flex="1" minW={0} gap={2}>
               <LuShoppingCart />
-              <Text fontWeight="700" truncate>{count} art · {money(total + envio.monto)}</Text>
+              <Text fontWeight="700" truncate>{count} art · {money(totalDeLaCuenta)}</Text>
               <LuChevronUp />
             </HStack>
             <Button size="md" colorPalette="green" fontWeight="800" px={6}
-              disabled={envio.malEscrito} onClick={cobrarLaCuenta}>
+              disabled={envio.malEscrito || descuento.malEscrito || descuento.excede}
+              onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           </HStack>
@@ -564,11 +572,12 @@ export function POSPage() {
           </Box>
           <HStack as="button" onClick={() => setPanelHidden(false)} gap={2} minH="44px" px={1}>
             <LuPanelRightOpen />
-            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(total + envio.monto)}` : 'Ver pedido'}</Text>
+            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(totalDeLaCuenta)}` : 'Ver pedido'}</Text>
           </HStack>
           {count > 0 && (
             <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6}
-              disabled={envio.malEscrito} onClick={cobrarLaCuenta}>
+              disabled={envio.malEscrito || descuento.malEscrito || descuento.excede}
+              onClick={cobrarLaCuenta}>
               Cobrar
             </Button>
           )}
@@ -649,7 +658,8 @@ export function POSPage() {
             customerName: cuenta.customerName,
             lineas: cobrables,
             envio: envio.monto,
-            total: round2(total + envio.monto),
+            descuento: descuento.monto,
+            total: totalDeLaCuenta,
           }, new Date())
           : null}
         onClose={cerrarElCobro}

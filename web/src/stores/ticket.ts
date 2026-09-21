@@ -8,6 +8,7 @@ export type { TicketTab };
 import { uuid } from '../utils/uuid';
 import { nombreLibre } from '../features/pos/folio';
 import { round2 } from '../domain/numeros';
+import type { ModoDeDescuento } from '../domain/descuento';
 
 export function lineUnitPrice(line: TicketLine): number {
   const mods = line.modifiers.reduce((s, m) => s + m.priceDelta * m.qty, 0);
@@ -32,6 +33,7 @@ function emptyTab(num: number): TicketTab {
   // de que exista una petición. Lo rellena bautizarCuentas() en cuanto la lista llega.
   return {
     id: uuid(), num, folioName: '', lines: [], envio: '',
+    descuento: '', descuentoModo: 'monto',
     serviceType: 'mostrador', customerName: '', platformId: null, platformOrderRef: '',
   };
 }
@@ -71,6 +73,8 @@ interface TicketState {
   updateLineModifiers: (lineId: string, modifiers: TicketModifier[], notes?: string) => void;
   setServiceType: (t: ServiceType) => void;
   setEnvio: (v: string) => void;
+  setDescuento: (v: string) => void;
+  setDescuentoModo: (v: ModoDeDescuento) => void;
   setCustomerName: (name: string) => void;
   // El folio de la plataforma, tal como se teclea. No se normaliza aquí: el servidor recorta los
   // extremos y devuelve lo que guardó. Recortar también en la pantalla sería la misma regla escrita
@@ -169,6 +173,10 @@ export const useTicketStore = create<TicketState>()(
           ),
         setServiceType: (serviceType) => set((s) => onActive(s, (t) => ({ ...t, serviceType }))),
         setEnvio: (envio) => set((s) => onActive(s, (t) => ({ ...t, envio }))),
+        setDescuento: (descuento) => set((s) => onActive(s, (t) => ({ ...t, descuento }))),
+        // Cambiar de $ a % NO convierte el número: "50" son cincuenta pesos o cincuenta por ciento
+        // según el modo, y convertirlo solo dejaría al operador viendo una cifra que él no tecleó.
+        setDescuentoModo: (descuentoModo) => set((s) => onActive(s, (t) => ({ ...t, descuentoModo }))),
         setCustomerName: (customerName) => set((s) => onActive(s, (t) => ({ ...t, customerName }))),
         setPlatformOrderRef: (platformOrderRef) =>
           set((s) => onActive(s, (t) => ({ ...t, platformOrderRef }))),
@@ -178,6 +186,7 @@ export const useTicketStore = create<TicketState>()(
         clearActive: () =>
           set((s) => onActive(s, (t) => ({
             ...t, lines: [], customerName: '', serviceType: 'mostrador', platformId: null, envio: '',
+            descuento: '', descuentoModo: 'monto',
             platformOrderRef: '',
           }))),
 

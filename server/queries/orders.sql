@@ -44,13 +44,23 @@ select id from orders where client_uuid = $1;
 -- El trío del folio de plataforma viaja COMPLETO desde el servicio, no se deriva aquí: el esquema
 -- tiene un check todo-o-nada, y armar dos de los tres en SQL dejaría el tercero decidiéndose en un
 -- lugar distinto del que valida.
+--
+-- El descuento entra AQUÍ y no en un update posterior: un pedido que nace sin su descuento y lo
+-- recibe un instante después existe, aunque sea por milisegundos, con un total que nadie cobró —y
+-- es el total que vería una lectura concurrente del tablero.
+--
+-- Su rastro va con `case`: la columna exige autor solo cuando hay monto (check
+-- `orders_descuento_con_rastro`), y un pedido sin descuento no tiene a quién responsabilizar.
 insert into orders (client_uuid, business_date, daily_number, service_type, delivery_platform_id,
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
                     folio_name, status, completed_at,
-                    platform_order_ref, platform_ref_set_by, platform_ref_set_at)
+                    platform_order_ref, platform_ref_set_by, platform_ref_set_at,
+                    discount_total, discount_set_by, discount_set_at)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,@folio_name,
         @status, case when @status::order_status = 'entregada' then now() end,
-        sqlc.narg('platform_order_ref'), sqlc.narg('platform_ref_set_by'), sqlc.narg('platform_ref_set_at'))
+        sqlc.narg('platform_order_ref'), sqlc.narg('platform_ref_set_by'), sqlc.narg('platform_ref_set_at'),
+        @discount_total, case when @discount_total::numeric > 0 then @discount_set_by::bigint end,
+        case when @discount_total::numeric > 0 then now() end)
 returning *;
 
 -- name: FindOrderByPlatformRef :one
@@ -211,11 +221,53 @@ from stock_movements sm where sm.order_id = sqlc.arg(oid) and sm.movement_type =
 -- un café.
 --
 -- El envío no se toca: se decidió al crear el pedido y agregar renglones no lo cambia.
+--
+-- El DESCUENTO tampoco se recalcula, y esa es la razón de guardarlo en pesos y no como porcentaje:
+-- es lo que una persona decidió descontar, no una fórmula viva. Si se recalculara, agregarle un
+-- café a la cuenta cambiaría el descuento sin que nadie lo pidiera, y el ticket que el cliente ya
+-- tiene en la mano dejaría de cuadrar.
+--
+-- `greatest(..., 0)` es el piso: cancelar renglones puede dejar el subtotal por debajo de un
+-- descuento ya capturado, y un total negativo sería devolver dinero que nadie autorizó. Lo que se
+-- recorta es el TOTAL; el descuento registrado se queda, porque es un hecho.
 update orders o
 set subtotal = coalesce((select sum(ol.line_total) from order_lines ol
                           where ol.order_id = o.id and ol.cancelled_at is null), 0),
-    total    = coalesce((select sum(ol.line_total) from order_lines ol
-                          where ol.order_id = o.id and ol.cancelled_at is null), 0) + o.delivery_fee,
+    total    = greatest(coalesce((select sum(ol.line_total) from order_lines ol
+                          where ol.order_id = o.id and ol.cancelled_at is null), 0)
+                        - o.discount_total, 0) + o.delivery_fee,
+    updated_at = now()
+where o.id = $1;
+
+-- name: GetOrderParaDescuento :one
+-- El pedido al que se le va a cambiar el descuento, BLOQUEADO.
+--
+-- El `for update` no es ceremonia: sin él, el tope "descuento ≤ subtotal" se valida contra un
+-- subtotal que otra estación ya movió al agregar renglones, o se pisa un total que un cobro
+-- paralelo acaba de dar por saldado. Es el mismo motivo por el que existe `GetOrderForUpdate`.
+--
+-- Trae lo pagado porque de eso depende si el cambio se permite: un pedido ya cobrado por completo
+-- no admite mover su total, que es contra lo que se registraron esos pagos.
+select o.id, o.status, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
+from orders o
+where o.id = $1
+for update;
+
+-- name: SetOrderDiscount :exec
+-- Escribe el descuento y recalcula el total en la MISMA sentencia.
+--
+-- Juntos a propósito: son la misma decisión, y partirlos deja una ventana en la que el descuento ya
+-- está guardado y el total todavía no lo refleja — que es exactamente lo que leería el tablero.
+--
+-- Quitar el descuento (monto 0) limpia el rastro: el check `orders_descuento_con_rastro` exige que
+-- un descuento positivo tenga autor y que un cero no lo tenga, así que olvidar esta limpieza falla
+-- ruidoso en Postgres en vez de dejar un autor colgado de un descuento que ya no existe.
+update orders o
+set discount_total = @descuento,
+    discount_set_by = case when @descuento::numeric > 0 then @quien::bigint end,
+    discount_set_at = case when @descuento::numeric > 0 then now() end,
+    total = greatest(o.subtotal - @descuento::numeric, 0) + o.delivery_fee,
     updated_at = now()
 where o.id = $1;
 

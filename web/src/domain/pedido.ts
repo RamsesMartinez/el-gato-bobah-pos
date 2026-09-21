@@ -1,6 +1,8 @@
 import type { CreateOrderBody } from '../types/pos';
 import type { TicketLine } from '../types/pos';
 import type { TicketTab } from '../types/pos';
+import { ticketTotal } from '../stores/ticket';
+import { descuentoDeLaCuenta } from './descuento';
 
 // Cómo se traduce una cuenta del POS al cuerpo que espera el servidor, y las reglas del pedido que
 // la pantalla necesita para no contradecirlo.
@@ -37,6 +39,10 @@ export interface ArmarPedidoInput {
 
 export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee }: ArmarPedidoInput): CreateOrderBody {
   const lista = cuenta.platformId;
+  // El descuento se resuelve contra el subtotal de lo COBRABLE, que es lo mismo que el servidor va
+  // a sumar: resolverlo contra el carrito completo mandaría un porcentaje calculado sobre productos
+  // que ya no se venden. Lo que viaja es lo capturado —monto o porcentaje—, nunca el total.
+  const descuento = descuentoDeLaCuenta(cuenta.descuento, cuenta.descuentoModo, ticketTotal(lineas));
   return {
     clientUuid,
     // El animal que la cuenta lleva mostrando desde que se abrió. Se manda para que el ticket salga
@@ -51,6 +57,10 @@ export function armarPedido({ cuenta, lineas, clientUuid, deliveryFee }: ArmarPe
     // divergió una vez.
     deliveryFee: cobraEnvio(cuenta) ? deliveryFee : 0,
     deliveryPlatformId: lista ?? undefined,
+    // Ausente cuando no hay descuento, está mal escrito o excede la cuenta: la pantalla ya apagó el
+    // botón en los dos últimos casos, y mandar un campo vacío sería pedirle al servidor que
+    // interprete un descuento que nadie capturó.
+    ...(descuento.paraElServidor ?? {}),
     // Solo si hay plataforma Y el operador lo escribió. Vacío = tomó la salida explícita, y el
     // servidor rechaza una cadena vacía a propósito: la ausencia se representa como ausencia.
     platformOrderRef: lista !== null && cuenta.platformOrderRef ? cuenta.platformOrderRef : undefined,

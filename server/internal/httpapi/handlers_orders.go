@@ -25,6 +25,12 @@ type createOrderBody struct {
 	CustomerName     *string         `json:"customerName"`
 	Notes            *string         `json:"notes"`
 	DeliveryFee      decimal.Decimal `json:"deliveryFee"`
+	// discountAmount / discountPercent: el descuento tal como se capturó, y son EXCLUYENTES —los
+	// dos juntos se rechazan—. Punteros y no valores porque ausente y cero significan cosas
+	// distintas: ausente es "no hubo descuento"; un cero explícito también guarda cero, pero llegar
+	// aquí con `0` por omisión convertiría cada pedido normal en un descuento capturado.
+	DiscountAmount  *decimal.Decimal `json:"discountAmount"`
+	DiscountPercent *decimal.Decimal `json:"discountPercent"`
 	// folioName: el nombre que la pantalla ya le puso a la cuenta. El servidor lo sanea y resuelve
 	// los choques del día, así que proponerlo no es decidirlo.
 	FolioName string `json:"folioName"`
@@ -70,6 +76,8 @@ func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Notes:              body.Notes,
 		OpenedBy:           u.ID,
 		DeliveryFee:        body.DeliveryFee,
+		DiscountAmount:     body.DiscountAmount,
+		DiscountPercent:    body.DiscountPercent,
 		CompanyID:          u.CompanyID,
 		FolioName:          body.FolioName,
 	}
@@ -464,6 +472,68 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	}
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
+}
+
+type discountBody struct {
+	DiscountAmount  *decimal.Decimal `json:"discountAmount"`
+	DiscountPercent *decimal.Decimal `json:"discountPercent"`
+}
+
+// PUT /orders/{id}/discount
+//
+// PUT y no PATCH porque el cuerpo describe el descuento COMPLETO del pedido: `{}` lo quita. Con
+// PATCH, "no mandé el campo" y "mándalo a cero" se verían igual, y un descuento que se borra por
+// omisión es dinero que cambia sin que nadie lo haya pedido.
+//
+// `{}` y no un cuerpo VACÍO: sin bytes, el decodificador devuelve 400 antes de llegar aquí. La
+// diferencia importa porque quitar un descuento es una acción deliberada y tiene que verse como tal
+// en el cuerpo de la petición.
+//
+// Sub-recurso, como platform-ref: no existe un endpoint de edición de pedido, y abrirlo por una
+// columna pondría todas las demás detrás del mismo gate.
+func (h *Handlers) SetOrderDiscount(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body discountBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	// Falla CERRADO si el contexto no trae usuario. Hoy es inalcanzable —RequireAuth responde 401
+	// antes—, pero esta ruta es la única que escribe dinero sin un RequireRole que vuelva a mirar al
+	// usuario: si algún día se recablea mal, con u.ID = 0 el insert reventaría contra la FK del
+	// rastro y saldría un 500 sobre un descuento aplicado a medias.
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	res, err := h.orders.SetDiscount(r.Context(), app.SetDiscountCmd{
+		OrderID: id, Amount: body.DiscountAmount, Percent: body.DiscountPercent, Actor: u.ID,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// El evento lleva el descuento ANTERIOR por la misma razón que el del folio: el UPDATE es en
+	// sitio y sin historia, así que `discount_set_by` solo guarda al último y dos cambios seguidos
+	// borran la evidencia del primero. Este endpoint no pide rol —esa es la decisión de la
+	// feature— y el rastro es TODO el control que queda; sin el evento, el rastro solo sirve para
+	// el último valor.
+	//
+	// Ni PII ni secreto: son dos cantidades de dinero y quién las movió.
+	logging.SecurityEvent(r.Context(), "order_discount_set",
+		"user_id", u.ID, "order_id", id,
+		"descuento_anterior", res.Anterior.StringFixed(2),
+		"descuento_nuevo", res.Actual.StringFixed(2))
+	// Solo el id, como los otros `order.updated`: cada tableta relee el pedido bajo su propia
+	// autorización. Mandar la vista completa empujaría el nombre del cliente y las notas por el
+	// abanico, y un evento descartado por canal lleno dejaría estado viejo en vez de un refetch.
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res.Vista)
 }
 
 type platformRefBody struct {

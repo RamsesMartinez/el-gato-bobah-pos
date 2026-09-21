@@ -8,8 +8,8 @@ const linea = (l: Partial<TicketLine>): TicketLine => ({
 });
 
 const cuenta = (c: Partial<TicketTab>): TicketTab => ({
-  id: 't1', num: 1, folioName: 'Tigre', lines: [], envio: '', serviceType: 'mostrador',
-  customerName: '', platformId: null, platformOrderRef: '', ...c,
+  id: 't1', num: 1, folioName: 'Tigre', lines: [], envio: '', descuento: '', descuentoModo: 'monto',
+  serviceType: 'mostrador', customerName: '', platformId: null, platformOrderRef: '', ...c,
 });
 
 describe('armarPedido', () => {
@@ -102,4 +102,14 @@ describe('cobraEnvio', () => {
       expect(Number(body.deliveryFee) > 0).toBe(cobraEnvio(c));
     }
   });
+});
+
+// FR-006 de la 023: el nombre del cliente cambió de LUGAR —de un campo siempre visible a un menú—
+// pero no de destino. Mover dónde se escribe no puede cambiar a dónde llega: es lo único que el
+// dueño pidió conservar para el negocio que sí lo use.
+it('el nombre del cliente sigue viajando aunque ahora se capture desde el menú', () => {
+  const body = armarPedido({
+    cuenta: cuenta({ customerName: 'Ana' }), lineas: [linea({})], clientUuid: 'u1', deliveryFee: 0,
+  });
+  expect(body.customerName).toBe('Ana');
 });

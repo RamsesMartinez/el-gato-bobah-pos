@@ -112,8 +112,13 @@ func TestPedidoSaldado(t *testing.T) {
 		// El residuo de dividir en tres: 33.33 x 3 = 99.99.
 		{"un centavo de menos por el redondeo", "99.99", "100", true},
 		{"dos centavos ya es deuda", "99.98", "100", false},
-		// Un pedido de $0 no está pagado: no tiene nada que pagar.
-		{"un pedido en cero", "0", "0", false},
+		// UN PEDIDO EN CERO SÍ ESTÁ SALDADO, y este caso decía lo contrario hasta la feature 022.
+		//
+		// La regla vieja era defendible mientras llegar a cero exigiera que cada producto de la
+		// cuenta costara $0. El descuento lo pone a un toque: una cortesía del 100 % dejaba el
+		// pedido con «Falta cobrar $0.00» en naranja para siempre, sin forma de saldarlo porque no
+		// había nada que cobrar.
+		{"un pedido en cero", "0", "0", true},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {

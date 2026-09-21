@@ -21,6 +21,12 @@ export interface SaleRow {
   serviceType: string;
   customer: string;
   total: string;
+  // Lo descontado en este pedido, "0" cuando no hubo. Es lo único que explica por qué un pedido
+  // cobró menos de lo que vendió.
+  discount: string;
+  // Quién lo aplicó, vacío si no hubo descuento. Es lo que hace auditable un descuento que nadie
+  // tuvo que autorizar.
+  discountBy: string;
   deliveryFee: string;
   refund: string;
   tips: string;

@@ -30,10 +30,13 @@
 -- El desempate fijo (opened_at desc, id desc) evita que dos ventas del mismo total bailen entre
 -- páginas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -41,6 +44,7 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.business_date between @desde and @hasta
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
@@ -61,10 +65,13 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- Gemela de ListSales con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
 -- línea es lo único que las distingue, y se editan juntas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -72,6 +79,7 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
@@ -259,10 +267,13 @@ where o.status not in ('cancelada', 'reembolsada')
 --
 -- Sin filtro de empresa: RLS lo agrega.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
-       o.status, o.service_type, o.customer_name, o.total, o.delivery_fee, o.refund_amount,
+       o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
+       -- Quién aplicó el descuento. Sin esto el rastro solo se lee con un psql en la mano, y la
+       -- decisión de no pedir rol para descontar se apoya justo en que el rastro sea consultable.
+       coalesce(du.name, '') as discount_by_name,
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
@@ -270,5 +281,6 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
+left join users du on du.id = o.discount_set_by
 where o.platform_order_ref = @folio
   and o.business_date between @desde and @hasta;
