@@ -4,10 +4,11 @@ import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuX } from 'react-icons/lu';
+import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuTag, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { medirAccion } from '../api/uso';
 import { posApi } from '../api/pos';
+import { descuentoDeLaCuenta, type ModoDeDescuento } from '../domain/descuento';
 import { ApiError } from '../api/client';
 import { VerTicket } from './tickets/ReprintTicket';
 import { TicketPreview } from './tickets/TicketPreview';
@@ -201,6 +202,42 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
   const falta = vivo ? Number(vivo.outstanding) : Number(order?.outstanding ?? 0);
   const totalDelPedido = vivo ? Number(vivo.total) : Number(order?.total ?? 0);
 
+  // CORREGIR EL DESCUENTO DE UN PEDIDO QUE YA EXISTE.
+  //
+  // Aquí y no en el panel porque el panel es el carrito: un pedido ya mandado no está ahí. Y este
+  // es el momento en que el error se descubre — se va a cobrar, se mira el total y no cuadra.
+  const [editandoDescuento, setEditandoDescuento] = useState(false);
+  const [descuentoTecleado, setDescuentoTecleado] = useState('');
+  const [modoDescuento, setModoDescuento] = useState<ModoDeDescuento>('monto');
+  const descuentoVigente = Number(vivo?.discount ?? 0);
+  // El subtotal contra el que se valida: lo que se cobra HOY más lo que ya está descontado.
+  const baseDelDescuento = totalDelPedido + descuentoVigente;
+  const descuentoTeclado = descuentoDeLaCuenta(descuentoTecleado, modoDescuento, baseDelDescuento);
+  // QUITARLO ES DEJAR EL CAMPO VACÍO, y nada más.
+  //
+  // `{}` no significa "sin cambios" para el servidor: significa "quita el descuento" —está escrito
+  // así a propósito en el handler—. Y `descuentoDeLaCuenta` devuelve `paraElServidor: undefined`
+  // tanto para el campo vacío como para uno ILEGIBLE o imposible. Sin esta distinción, teclear una
+  // letra de más y tocar Guardar borraba un descuento de $50 sin aviso, sin confirmación y sin más
+  // rastro que un "Falta" que subió.
+  const descuentoNoSePuedeGuardar = descuentoTeclado.malEscrito || descuentoTeclado.excede;
+  const guardarDescuento = useMutation({
+    mutationFn: () => posApi.setOrderDiscount(idPedido as number, descuentoTeclado.paraElServidor ?? {}),
+    onSuccess: (pedido) => {
+      // Se repinta con lo que DEVOLVIÓ el servidor, nunca con una resta hecha aquí: dos
+      // implementaciones de la misma cifra es como la pantalla llegó a ofrecer cobrar $115 de un
+      // pedido de $95.
+      qc.setQueryData(['orders', idPedido], pedido);
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      setEditandoDescuento(false);
+      setRebote(null);
+    },
+    onError: (e: unknown) => {
+      const { titulo, detalle } = loQueLee(e);
+      setRebote({ titulo, detalle });
+    },
+  });
+
   // Cobrar completo es el caso de casi todos los pedidos y no puede costar un tap: sin reparto ni
   // monto tecleado, el monto ES lo que falta.
   //
@@ -376,6 +413,12 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                 <LuReceipt /> Cuenta
               </Button>
             )}
+            {idPedido !== null && descuentoVigente === 0 && !editandoDescuento && (
+              <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
+                onClick={() => { setDescuentoTecleado(''); setModoDescuento('monto'); setEditandoDescuento(true); }}>
+                <LuTag /> Descuento
+              </Button>
+            )}
             {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => { setPartes(2); setMontoElegido(null); }}>
@@ -393,6 +436,65 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
 
         <DrawerBody py={3}>
           <VStack align="stretch" gap={3}>
+            {/* El descuento, solo cuando el pedido YA existe: el del carrito se captura en el panel.
+                Sin descuento no se pinta un renglón en $0.00 —un renglón que siempre dice cero
+                enseña a no leer esta zona, que es donde vive el dinero— pero sí se puede agregar
+                uno desde aquí. */}
+            {/* El renglón prominente es SOLO para el pedido que ya trae descuento: ahí es dinero
+                que hay que poder leer. Agregar uno donde no hay vive en el encabezado, junto a
+                "Cuenta" y "Dividir", donde no cuesta alto nuevo — el flujo más común de esta hoja
+                es cobrar un pedido ya mandado a cocina, casi nunca con descuento, y un botón de
+                44 px siempre visible le quitaría sitio a los métodos de pago. */}
+            {idPedido !== null && descuentoVigente > 0 && !editandoDescuento && (
+              <HStack justify="space-between" gap={2}>
+                <Text fontSize="sm" color="fg.muted">
+                  Descuento −{money(String(descuentoVigente), moneda)}
+                </Text>
+                <Button size="sm" minH="44px" px={3} variant="outline" colorPalette="gray"
+                  onClick={() => {
+                    setDescuentoTecleado(String(descuentoVigente));
+                    setModoDescuento('monto');
+                    setEditandoDescuento(true);
+                  }}>
+                  Cambiar el descuento
+                </Button>
+              </HStack>
+            )}
+            {editandoDescuento && (
+              <HStack gap={2}>
+                <HStack gap={1} flexShrink={0}>
+                  <Button size="sm" minH="44px" minW="44px" px={3} aria-label="Descuento en pesos"
+                    aria-pressed={modoDescuento === 'monto'}
+                    variant={modoDescuento === 'monto' ? 'solid' : 'outline'}
+                    colorPalette={modoDescuento === 'monto' ? undefined : 'gray'}
+                    onClick={() => setModoDescuento('monto')}>$</Button>
+                  <Button size="sm" minH="44px" minW="44px" px={3} aria-label="Descuento en porcentaje"
+                    aria-pressed={modoDescuento === 'pct'}
+                    variant={modoDescuento === 'pct' ? 'solid' : 'outline'}
+                    colorPalette={modoDescuento === 'pct' ? undefined : 'gray'}
+                    onClick={() => setModoDescuento('pct')}>%</Button>
+                </HStack>
+                <Input flex="1" minW={0} minH="44px" inputMode="decimal" autoFocus aria-label="Descuento"
+                  value={descuentoTecleado} onChange={(e) => setDescuentoTecleado(e.target.value)} />
+                {/* Los avisos van AQUÍ, junto al campo: un botón apagado sin motivo a la vista deja
+                    al operador tocándolo otra vez con el cliente enfrente. */}
+                {descuentoTeclado.malEscrito && (
+                  <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>
+                )}
+                {descuentoTeclado.excede && (
+                  <Text fontSize="xs" color="red.fg" flexShrink={0}>
+                    Máx {modoDescuento === 'pct' ? '100 %' : money(String(baseDelDescuento), moneda)}
+                  </Text>
+                )}
+                <Button size="sm" minH="44px" px={3} colorPalette="brand" flexShrink={0}
+                  disabled={descuentoNoSePuedeGuardar}
+                  loading={guardarDescuento.isPending} onClick={() => guardarDescuento.mutate()}>
+                  Guardar
+                </Button>
+                <Button size="sm" minH="44px" px={3} variant="ghost" colorPalette="gray" flexShrink={0}
+                  onClick={() => setEditandoDescuento(false)}>Cancelar</Button>
+              </HStack>
+            )}
             {yaCobrado.length > 0 && (
               <HStack gap={2} flexWrap="wrap">
                 {yaCobrado.map((c, i) => (

@@ -90,6 +90,12 @@ export const posApi = {
   // único dato de esta feature que no se puede recuperar después.
   setPlatformRef: (id: number, platformOrderRef: string) =>
     api.patch<{ id: number; platformOrderRef: string }>(`/orders/${id}/platform-ref`, { platformOrderRef }),
+  // Corregir el descuento de un pedido que YA existe. El cuerpo describe el descuento COMPLETO:
+  // `{}` lo quita. El servidor rechaza el cambio si el pedido ya quedó cobrado —movería el total
+  // contra pagos registrados— y devuelve el pedido entero, que es con lo que hay que repintar:
+  // recalcular aquí sería una segunda implementación de la misma cifra.
+  setOrderDiscount: (id: number, body: { discountAmount?: number; discountPercent?: number }) =>
+    api.put<OrderView>(`/orders/${id}/discount`, body),
   setOrderStatus: (id: number, status: string) =>
     api.post<void>(`/orders/${id}/status`, { status }),
   // `devolver` confirma que el dinero se le regresa al cliente. Sin él, un pedido con cobros NO se
