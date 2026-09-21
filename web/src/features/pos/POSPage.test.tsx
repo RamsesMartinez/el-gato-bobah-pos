@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { Provider } from '../../components/ui/provider';
 import { POSPage } from './POSPage';
+import userEvent from '@testing-library/user-event';
 import { useTicketStore } from '../../stores/ticket';
 
 // El estado de caja lo decide el BACKEND (/cash-status contesta la misma regla que el cobro), así
@@ -46,6 +47,19 @@ vi.mock('../../hooks/useContainerWidth', () => ({
   useContainerWidth: () => ({ ref: { current: null }, width: anchoDelPos.width }),
 }));
 vi.mock('../../hooks/useModifierDefaults', () => ({ useModifierDefaults: () => ({ data: {} }) }));
+
+function montarArbol() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={qc}>
+      <Provider>
+        <MemoryRouter>
+          <POSPage />
+        </MemoryRouter>
+      </Provider>
+    </QueryClientProvider>
+  );
+}
 
 function montar() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -136,4 +150,30 @@ test.each([500, 1024])('el descuento baja el total en todas las superficies que 
     expect(s.textContent, 'esta superficie cobra el total SIN descuento: el operador ve una cifra y se cobra otra')
       .toContain('$75');
   }
+});
+
+// EL MENÚ DEL PEDIDO MUERE CON EL PANEL.
+//
+// El menú de Chakra se porta a otro nodo del DOM, así que la pregunta legítima es si sobrevive
+// cuando el panel que lo contiene desaparece — y a 1024×600 el panel desaparece solo, al cruzar el
+// umbral de ancho. Si sobreviviera, quedaría un menú flotando sobre el catálogo, sin dueño.
+test('el menú del pedido no queda flotando cuando el panel se va', async () => {
+  anchoDelPos.width = 1024;
+  tabletaBaja(false);
+  cashStatus.current = { open: true };
+  useTicketStore.setState(useTicketStore.getInitialState(), true);
+  useTicketStore.getState().addLine({ productId: 1, name: 'Crepa', unitPrice: 95, qty: 1, modifiers: [] });
+  const { rerender } = montar();
+  await screen.findByPlaceholderText(/buscar/i);
+
+  const menu = await screen.findByRole('button', { name: 'Más opciones del pedido' });
+  await userEvent.click(menu);
+  expect(await screen.findByRole('menuitem', { name: /Descuento/ })).toBeInTheDocument();
+
+  // El ancho cruza el umbral: el panel lateral deja de existir y <Ticket> se remonta en otro lugar.
+  anchoDelPos.width = 500;
+  rerender(montarArbol());
+
+  expect(screen.queryByRole('menuitem', { name: /Descuento/ }),
+    'el menú sobrevivió al panel: quedó flotando sobre el catálogo, sin nada que lo cierre').toBeNull();
 });
