@@ -10,14 +10,14 @@ import (
 // la lista de Go y el `check` de la migración se separan, el síntoma en producción es un 23514 al
 // guardar un aviso fallido — o sea, el pedido falla Y el registro de por qué falló también.
 func TestLasClasesDeFalloDePedidoCoincidenConElCheck(t *testing.T) {
-	sql, err := os.ReadFile("../../migrations/0072_pedidos_de_plataforma.sql")
+	sql, err := os.ReadFile("../../migrations/0073_pedidos_de_plataforma.sql")
 	if err != nil {
 		t.Fatalf("leer la migración: %v", err)
 	}
 	texto := string(sql)
 	for _, c := range ClasesDeFalloDePedido() {
 		if !strings.Contains(texto, "'"+string(c)+"'") {
-			t.Errorf("la clase %q existe en Go y NO en el check de la 0072", c)
+			t.Errorf("la clase %q existe en Go y NO en el check de la 0073", c)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func TestLeerPedidoDePlataforma(t *testing.T) {
 	}
 }
 
-// UN PEDIDO PARA RECOGER, que hasta la 0072 no cabía en la tabla de pedidos. Es también el camino
+// UN PEDIDO PARA RECOGER, que hasta la 0073 no cabía en la tabla de pedidos. Es también el camino
 // más barato para probar la integración de punta a punta: no entra repartidor.
 func TestUnPedidoParaRecogerSeLeeComoParaLlevar(t *testing.T) {
 	crudo := strings.Replace(detalleDePrueba, `"type": "DELIVERY"`, `"type": "PICK_UP"`, 1)

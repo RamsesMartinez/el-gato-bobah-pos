@@ -93,7 +93,7 @@ const (
 	FalloMapeoImposible ClaseDeFallo = "mapeo_imposible"
 )
 
-// ClasesDeFalloDePedido son las del `check` de platform_webhook_events (0072). No incluye las de
+// ClasesDeFalloDePedido son las del `check` de platform_webhook_events (0073). No incluye las de
 // menú —un pedido no puede venir «vacío» ni «truncado» en el sentido de un menú— y sí las dos de
 // arriba.
 func ClasesDeFalloDePedido() []ClaseDeFallo {

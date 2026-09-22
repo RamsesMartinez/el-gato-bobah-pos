@@ -57,8 +57,21 @@ func TestUnaConexionDeOtraEmpresaNoSeVe(t *testing.T) {
 	sembrarConexion(t, st, otra, "tienda-de-la-otra")
 	propia := sembrarConexion(t, st, defaultCompanyID, "tienda-propia")
 
+	// SIN EMPRESA FIJADA NO SE VE NADA, y esto antes no se probaba: el arnés ponía el default de
+	// empresa a nivel BASE, así que el rol de app heredaba «empresa 1» y este caso medía el
+	// aislamiento de una conexión que ya venía con tenant. Ahora el default es solo del dueño.
+	var sinTenant int
+	if err := appSt.Pool.QueryRow(ctx, `select count(*) from platform_connections`).Scan(&sinTenant); err != nil {
+		t.Fatalf("contar sin tenant: %v", err)
+	}
+	if sinTenant != 0 {
+		t.Fatalf("sin empresa fijada el rol de app vio %d conexiones: RLS debe fallar CERRADO", sinTenant)
+	}
+
+	// Y con la empresa fijada, solo la suya.
+	conn := conexionDeEmpresa(t, appSt, defaultCompanyID)
 	var vistas []int64
-	filas, err := appSt.Pool.Query(ctx, `select id from platform_connections`)
+	filas, err := conn.Query(ctx, `select id from platform_connections`)
 	if err != nil {
 		t.Fatalf("select bajo rol de app: %v", err)
 	}

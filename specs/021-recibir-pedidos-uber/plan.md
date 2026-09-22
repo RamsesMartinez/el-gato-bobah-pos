@@ -126,7 +126,7 @@ specs/021-recibir-pedidos-uber/
 ```text
 server/
 ├── migrations/
-│   └── 0072_pedidos_de_plataforma.sql      # tablas nuevas, llaves de firma, relajar el check
+│   └── 0073_pedidos_de_plataforma.sql      # tablas nuevas, llaves de firma, relajar el check
 ├── queries/
 │   └── pedidos_de_plataforma.sql           # sqlc
 ├── internal/

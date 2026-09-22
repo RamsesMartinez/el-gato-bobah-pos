@@ -84,7 +84,7 @@ type priceCrudo struct {
 // es el principio III — dinero validado en cada frontera, y una sola vez. Dividir entre 100 en cada
 // uso repartiría el redondeo por todo el código.
 //
-// EL TIPO DE SERVICIO PUEDE SER «PARA RECOGER», y hasta la 0072 eso no cabía en la tabla de
+// EL TIPO DE SERVICIO PUEDE SER «PARA RECOGER», y hasta la 0073 eso no cabía en la tabla de
 // pedidos. Es también el camino más barato para probar la integración de punta a punta, porque no
 // entra repartidor.
 func LeerPedidoDePlataforma(crudo []byte) (PedidoDePlataforma, error) {

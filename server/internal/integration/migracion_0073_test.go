@@ -15,7 +15,7 @@ import (
 //   - LOS ÍNDICES DE TENANT que faltaban en tablas VIEJAS. Sin `users (company_id, id)` y
 //     `platform_connections (company_id, id)`, las FK compuestas de esta migración no se pueden
 //     ni crear: el `alter table` truena en seco. Se comprobó contra Postgres real que ninguna de
-//     las dos los tenía antes de la 0072.
+//     las dos los tenía antes de la 0073.
 //   - LOS GRANTS. El `grant` puntual de la 0024 enseñó que una tabla nueva sin su grant responde
 //     `42501` en el primer request de producción y nunca en desarrollo, porque la API de dev se
 //     conecta como owner.
@@ -45,7 +45,7 @@ func TestLosIndicesDeTenantExistenParaLasFKCompuestas(t *testing.T) {
 	}
 }
 
-func TestLasTablasDeLa0072TienenRLSYSusGrants(t *testing.T) {
+func TestLasTablasDeLa0073TienenRLSYSusGrants(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -133,7 +133,7 @@ func TestUnPedidoDePlataformaPuedeSerParaRecoger(t *testing.T) {
 
 // LA GUARDA DE CANCELACIÓN SOBREVIVIÓ AL `drop constraint`.
 //
-// La 0072 borra `orders_check` para relajarlo, y ese nombre lo AUTOGENERÓ Postgres: la 0007 declaró
+// La 0073 borra `orders_check` para relajarlo, y ese nombre lo AUTOGENERÓ Postgres: la 0007 declaró
 // dos checks sin nombre y quedaron `orders_check` y `orders_check1`. Si la numeración se recorre, el
 // `drop` se lleva la guarda equivocada —la que exige que una orden cancelada tenga hora, responsable
 // y motivo— sin que nada falle al migrar. El defecto saldría meses después, en una cancelación sin
@@ -153,7 +153,7 @@ func TestLaGuardaDeCancelacionSobreviveALaRelajacionDelCheck(t *testing.T) {
 		usuario, empresa)
 	if err == nil {
 		t.Fatal("se pudo cancelar una orden sin hora, sin responsable y sin motivo: " +
-			"la 0072 se llevó la guarda equivocada al relajar el check de servicio")
+			"la 0073 se llevó la guarda equivocada al relajar el check de servicio")
 	}
 	if !strings.Contains(err.Error(), "check") && !strings.Contains(err.Error(), "restricción") {
 		t.Fatalf("rebotó por otra razón: %v", err)

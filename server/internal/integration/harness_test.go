@@ -192,10 +192,22 @@ func newTestStore(t *testing.T) *store.Store {
 	// privilegios ni los settings de la base plantilla—, así que van por clon.
 	for _, stmt := range []string{
 		"grant connect on database " + nombre + " to gatobobah_app",
-		// GUC de tenant por defecto a nivel BD: las conexiones del OWNER (que salta RLS)
-		// auto-sellan company_id=1 en sus inserts sin fijar el GUC en cada test. Aplica a
-		// conexiones NUEVAS → va antes de abrir el pool.
-		"alter database " + nombre + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
+		// GUC de tenant por defecto PARA EL DUEÑO Y SOLO PARA ÉL.
+		//
+		// Los helpers de fixtures escriben por el pool del owner (que salta RLS) sin fijar el GUC
+		// en cada prueba, y necesitan que sus inserts se auto-sellen con una empresa. Eso sigue
+		// igual.
+		//
+		// LO QUE CAMBIÓ Y POR QUÉ: antes era `alter database`, así que el default también lo
+		// heredaba `gatobobah_app`. Efecto: `appRoleStore(t)` significaba «empresa 1», NO «sin
+		// empresa» — y las pruebas que creían estar comprobando el aislamiento comprobaban otra
+		// cosa. Dos defectos se escaparon por ahí, los dos en la integración de plataformas: el
+		// `store.Q` de la 020 (22 lugares) y el webhook de la 021, que bajo RLS no resuelve
+		// ninguna tienda. Las dos suites pasaron en verde con el defecto puesto.
+		//
+		// `current_user` y no el literal `gatobobah`: en CI el dueño de la base es otro rol, y un
+		// literal rompería la suite en el primer clon.
+		"alter role current_user in database " + nombre + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
 	} {
 		if _, err := adm.Pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("preparar la base de la prueba (%q): %v", stmt, err)

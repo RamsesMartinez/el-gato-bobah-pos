@@ -1,7 +1,7 @@
 # Phase 1 — Modelo de datos
 
 **Feature**: 021 · Recibir los pedidos de Uber Eats
-**Migración**: `0072_pedidos_de_plataforma.sql`
+**Migración**: `0073_pedidos_de_plataforma.sql`
 **Revisado por `db-architect` el 2026-09-17**; los cambios que pidió están aplicados y marcados.
 
 Cuatro tablas nuevas, dos índices de tenant que faltaban en tablas viejas, y un `check` de la 0007

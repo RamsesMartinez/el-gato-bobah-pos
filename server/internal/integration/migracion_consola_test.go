@@ -189,8 +189,21 @@ func TestLaConsolaVeTodasLasEmpresasYElNegocioNo(t *testing.T) {
 
 	// Y el negocio sigue encerrado en la suya.
 	app := appRoleStore(t)
+
+	// SIN EMPRESA FIJADA, NADA. Antes este caso no lo comprobaba: el arnés ponía el default de
+	// empresa a nivel BASE y el rol de app lo heredaba, así que «el negocio ve 1» era cierto por el
+	// ambiente. Ahora el default es del dueño y esto mide lo que dice medir.
+	var sinTenant int
+	if err := app.Pool.QueryRow(ctx, `select count(*) from companies`).Scan(&sinTenant); err != nil {
+		t.Fatalf("el rol de la aplicación no pudo leer companies: %v", err)
+	}
+	if sinTenant != 0 {
+		t.Fatalf("sin empresa fijada el rol de la aplicación ve %d empresas: RLS debe fallar CERRADO", sinTenant)
+	}
+
+	conn := conexionDeEmpresa(t, app, defaultCompanyID)
 	var vistasPorElNegocio int
-	if err := app.Pool.QueryRow(ctx, `select count(*) from companies`).Scan(&vistasPorElNegocio); err != nil {
+	if err := conn.QueryRow(ctx, `select count(*) from companies`).Scan(&vistasPorElNegocio); err != nil {
 		t.Fatalf("el rol de la aplicación no pudo leer companies: %v", err)
 	}
 	if vistasPorElNegocio != 1 {

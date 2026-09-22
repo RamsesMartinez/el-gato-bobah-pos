@@ -646,3 +646,45 @@ func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
 		t.Fatalf("se reclamaron %d pedidos y deberían ser 2", len(numeros))
 	}
 }
+
+// EL WEBHOOK BAJO EL ROL DE LA APLICACIÓN, que es como corre producción.
+//
+// Todo lo demás de este archivo usa `newTestStore`, que conecta como OWNER y por lo tanto SALTA
+// RLS. En producción la API se conecta como `gatobobah_app` —`config.Validate` lo exige— y ahí las
+// políticas sí aplican.
+//
+// `resolverTienda` corre por el pool SIN empresa fijada, a propósito: la empresa es el resultado.
+// Pero la política `tenant_isolation` de `platform_connections` compara contra
+// `current_setting('app.company_id', true)`, que sin tenant es NULL — y `company_id = NULL` nunca
+// es verdadero. Bajo el rol de la aplicación, la consulta devuelve CERO filas.
+//
+// El síntoma no es un error: es un 401 a cada aviso. La plataforma reintenta siete veces, se rinde,
+// cancela el pedido, y en el log solo queda «firma no autenticada». Nadie sospecha de RLS.
+func TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const llave = "llave-bajo-el-rol-de-la-app"
+	empresa := makeCompany(t, st, "empresa-rol-app")
+	tiendaConLlave(t, st, empresa, "tienda-rol-app", llave)
+
+	// EL MISMO servicio, pero con el store del rol de aplicación: es el único cambio.
+	appSt := appRoleStore(t)
+	svc := app.NewPedidosDePlataformaService(appSt,
+		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}},
+		"sandbox", clock)
+
+	cuerpo := avisoDePedido("evt-rol-app", "tienda-rol-app")
+	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+	})
+	if errors.Is(err, domain.ErrFirmaInvalida) {
+		t.Fatal("bajo el rol de la aplicación el aviso se rechazó como NO AUTENTICADO: " +
+			"RLS bloqueó la consulta que resuelve la tienda, así que no hubo ninguna candidata " +
+			"contra la cual verificar la firma. En producción NINGÚN pedido entraría, y el log " +
+			"solo diría «firma no autenticada»")
+	}
+	if err != nil {
+		t.Fatalf("recibir bajo el rol de la aplicación: %v", err)
+	}
+}

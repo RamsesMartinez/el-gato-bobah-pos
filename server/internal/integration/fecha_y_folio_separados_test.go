@@ -197,8 +197,18 @@ func TestElFolioSeReparteBajoElRolDeLaAplicacion(t *testing.T) {
 	efectivo := paymentMethodID(t, owner, "Efectivo")
 	abrirCajaPrincipal(t, owner, cajero)
 
+	// EL TENANT SE FIJA EXPLÍCITO, como lo hace `WithTenant` en producción. Antes no hacía falta
+	// porque el arnés dejaba el default de empresa a nivel BASE y el rol de app lo heredaba — o
+	// sea, este caso corría con un tenant que nadie pidió. Eso es justo lo que escondió dos
+	// defectos de aislamiento en la integración de plataformas.
+	ctxT, soltar, err := app_.AcquireTenant(ctx, defaultCompanyID)
+	if err != nil {
+		t.Fatalf("tomar la conexión de la empresa: %v", err)
+	}
+	defer soltar()
+
 	svc := app.NewOrdersService(app_, clock)
-	if _, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctxT, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("15")}},

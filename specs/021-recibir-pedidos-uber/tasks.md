@@ -23,7 +23,7 @@ demostrar—, se arregló la ruta de la tarea de apertura de turno, se dijo de d
 
 ## Phase 1 · Setup
 
-- [X] T001 Crear la migración vacía con `make migrate-new name=pedidos_de_plataforma` y confirmar que quedó como `server/migrations/0072_pedidos_de_plataforma.sql`
+- [X] T001 Crear la migración vacía con `make migrate-new name=pedidos_de_plataforma` y confirmar que quedó como `server/migrations/0073_pedidos_de_plataforma.sql`
 
 ---
 
@@ -34,13 +34,13 @@ demostrar—, se arregló la ruta de la tarea de apertura de turno, se dijo de d
 ### La migración, con su test antes
 
 - [X] T002 Escribir `server/internal/integration/migracion_0072_test.go` con **dos empresas**, verificando: que los índices `users_tenant_key` y `platform_connections_tenant_key` existen, que las cuatro tablas nuevas tienen RLS activo y sus grants para `gatobobah_app`, y que el `check` de `orders` ya admite `para_llevar` con plataforma. **Verlo en rojo**
-- [X] T003 Escribir en `server/migrations/0072_pedidos_de_plataforma.sql` la sección 0: `create unique index users_tenant_key on users (company_id, id)` y `platform_connections_tenant_key on platform_connections (company_id, id)`. Sin esto, toda FK compuesta de esta migración falla al aplicarse
-- [X] T004 Agregar en `server/migrations/0072_pedidos_de_plataforma.sql` la tabla `platform_webhook_keys` con su unique, sus dos `check`, su FK compuesta con `on delete no action` explícito, RLS y grants
-- [X] T005 Agregar en `server/migrations/0072_pedidos_de_plataforma.sql` la tabla `platform_webhook_events` con `raw_body text not null`, `unique (event_id)` **global**, los `check` de lista cerrada sobre `outcome` y `failure_kind`, FK compuesta a `platform_connections`, RLS y grants
-- [X] T006 Agregar en `server/migrations/0072_pedidos_de_plataforma.sql` el enum de estado y la tabla `platform_incoming_orders` con `raw_detail`, `settled_at` separado de `decided_by`, las tres columnas nullable para la cancelación que llega primero y su `check`, las FK compuestas a `users`/`orders`/`platform_connections`, los dos índices y los grants. **La matriz estado→columnas va en el comentario**, no solo en Go
-- [X] T007 Agregar en `server/migrations/0072_pedidos_de_plataforma.sql` la tabla `platform_incoming_order_lines` con `quantity numeric(8,2)` (misma precisión que su destino), `product_id` nullable con FK compuesta `on delete restrict`, RLS y grants
-- [X] T008 Agregar en `server/migrations/0072_pedidos_de_plataforma.sql` el `set local lock_timeout = '3s'` y la relajación del `check` de `orders` para admitir `para_llevar` con plataforma
-- [X] T009 Escribir el `Down` de `server/migrations/0072_pedidos_de_plataforma.sql`: **se detiene con un mensaje claro y sin tocar nada** si ya existe un pedido `para_llevar` con plataforma, como hace el de la 0061
+- [X] T003 Escribir en `server/migrations/0073_pedidos_de_plataforma.sql` la sección 0: `create unique index users_tenant_key on users (company_id, id)` y `platform_connections_tenant_key on platform_connections (company_id, id)`. Sin esto, toda FK compuesta de esta migración falla al aplicarse
+- [X] T004 Agregar en `server/migrations/0073_pedidos_de_plataforma.sql` la tabla `platform_webhook_keys` con su unique, sus dos `check`, su FK compuesta con `on delete no action` explícito, RLS y grants
+- [X] T005 Agregar en `server/migrations/0073_pedidos_de_plataforma.sql` la tabla `platform_webhook_events` con `raw_body text not null`, `unique (event_id)` **global**, los `check` de lista cerrada sobre `outcome` y `failure_kind`, FK compuesta a `platform_connections`, RLS y grants
+- [X] T006 Agregar en `server/migrations/0073_pedidos_de_plataforma.sql` el enum de estado y la tabla `platform_incoming_orders` con `raw_detail`, `settled_at` separado de `decided_by`, las tres columnas nullable para la cancelación que llega primero y su `check`, las FK compuestas a `users`/`orders`/`platform_connections`, los dos índices y los grants. **La matriz estado→columnas va en el comentario**, no solo en Go
+- [X] T007 Agregar en `server/migrations/0073_pedidos_de_plataforma.sql` la tabla `platform_incoming_order_lines` con `quantity numeric(8,2)` (misma precisión que su destino), `product_id` nullable con FK compuesta `on delete restrict`, RLS y grants
+- [X] T008 Agregar en `server/migrations/0073_pedidos_de_plataforma.sql` el `set local lock_timeout = '3s'` y la relajación del `check` de `orders` para admitir `para_llevar` con plataforma
+- [X] T009 Escribir el `Down` de `server/migrations/0073_pedidos_de_plataforma.sql`: **se detiene con un mensaje claro y sin tocar nada** si ya existe un pedido `para_llevar` con plataforma, como hace el de la 0061
 - [X] T010 Correr `server/internal/integration/migracion_0072_test.go` en verde y `make api-test` completo
 
 ### La llave de firma: capturarla ANTES de poder verificar nada
@@ -231,7 +231,7 @@ pueden probar. La lógica pura (T016-T021) y el cliente de Uber (T032-T035) sí 
 | T034 y la rama de la migración | `internal/uber/` no toca el esquema |
 | T097, T098 | Documentación y respaldo: nada en común |
 
-**Lo que NO se paraleliza**: todo lo que toca `server/migrations/0072_pedidos_de_plataforma.sql`
+**Lo que NO se paraleliza**: todo lo que toca `server/migrations/0073_pedidos_de_plataforma.sql`
 (T003-T009) va en orden, y todo lo que toca `server/queries/pedidos_de_plataforma.sql` va en orden —
 mismo archivo.
 
