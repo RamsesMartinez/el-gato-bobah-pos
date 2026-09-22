@@ -13,6 +13,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -144,40 +145,87 @@ func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataform
 
 // resolverTienda traduce (plataforma, id de tienda de allá) → (conexión, empresa).
 //
-// **ES LA ÚNICA CONSULTA DEL REPOSITORIO QUE CORRE POR `store.Q` A PROPÓSITO**, y la excepción está
-// acotada por tres cosas:
+// EN DOS PASOS, Y EL ORDEN ES LO QUE MANTIENE EL SECRETO DENTRO DE RLS:
 //
-//  1. Quien llama es la plataforma, no una persona: no hay sesión, no hay JWT y por lo tanto no hay
-//     `app.company_id` que fijar. La empresa ES EL RESULTADO de esta consulta, no su entrada — no
-//     es que `QC` sea peor aquí, es que no hay nada que pasarle.
-//  2. La consulta devuelve SOLO ids y las llaves de firma. Nada del negocio sale por aquí.
-//  3. Todo lo demás corre después con el tenant fijado, y `TestUnAvisoNoCaeEnLaEmpresaEquivocada`
-//     lo comprueba con dos empresas.
+//  1. Las CANDIDATAS salen de una vista con dueño propio, sin empresa fijada — porque la empresa es
+//     el resultado, no la entrada. Esa vista no trae ninguna llave: lo más que revela es qué id de
+//     tienda pertenece a qué empresa.
+//  2. La LLAVE de cada candidata se lee ya con el tenant fijado, o sea bajo RLS y por la vía
+//     ordinaria. El secreto nunca sale del aislamiento.
 //
-// CUANDO HAY VARIAS CANDIDATAS, DECIDE LA FIRMA. Dos empresas pueden registrar el mismo id de
-// tienda —pasa en el ambiente de pruebas, donde las plataformas reparten tiendas de demostración
-// compartidas— y la dueña es aquella cuya llave valide el cuerpo. Es más seguro que un único
-// global: la empresa la determina quién pudo firmar, no un dato que cualquiera escribe en el
-// cuerpo.
+// Sin ese corte, la vista tendría que devolver las llaves de firma y un `select` sin filtro sobre
+// ella las volcaría todas — y quien las tuviera podría firmar avisos a nombre de cualquier empresa.
+//
+// SI MÁS DE UNA CANDIDATA VALIDA, SE RECHAZA. El diseño decía que «cuando hay varias, decide la
+// firma», y eso solo es cierto si las llaves difieren. Con UNA sola aplicación de la plataforma —el
+// despliegue de hoy— la llave es un atributo de esa aplicación, no de la empresa: dos empresas
+// capturan la MISMA del mismo tablero. Ahí quien se lleva el pedido lo decidiría el orden físico de
+// las filas, que cambia con un VACUUM, y el pedido y su dinero entrarían a la empresa equivocada sin
+// que nada falle. Una ambigüedad no se arregla reintentando: elegir a ciegas es peor que no elegir.
 func (s *PedidosDePlataformaService) resolverTienda(ctx context.Context, plataforma, tienda string, in AvisoEntrante) (int64, int64, error) {
-	filas, err := s.store.Q.ResolverTiendaDeAviso(ctx, db.ResolverTiendaDeAvisoParams{
+	candidatas, err := s.store.Q.CandidatasDelAviso(ctx, db.CandidatasDelAvisoParams{
 		ExternalStoreID: tienda, PlatformName: plataforma,
 	})
 	if err != nil {
-		return 0, 0, fmt.Errorf("resolver la tienda del aviso: %w", err)
+		return 0, 0, fmt.Errorf("buscar la tienda del aviso: %w", err)
 	}
-	for _, f := range filas {
-		if !f.IsActive {
+
+	var duenias []db.CandidatasDelAvisoRow
+	for _, c := range candidatas {
+		if !c.IsActive {
 			continue
 		}
-		llaves := domain.LlavesDeFirma{Primaria: textoDe(f.KeyPrimary), Secundaria: textoDe(f.KeySecondary)}
+		llaves, err := s.llavesDe(ctx, c.CompanyID, c.ConnectionID)
+		if err != nil {
+			// Una candidata cuya llave no se puede leer NO se salta en silencio: podría ser la
+			// dueña, y saltarla convertiría un problema de permisos en un «firma inválida» que
+			// manda a quien depure a buscar en el lugar equivocado.
+			return 0, 0, fmt.Errorf("leer la llave de la conexión %d: %w", c.ConnectionID, err)
+		}
 		if llaves.Verifican(in.Crudo, in.Firma) {
-			return f.ConnectionID, f.CompanyID, nil
+			duenias = append(duenias, c)
 		}
 	}
-	// MISMO ERROR para «no conocemos esa tienda» y «la firma no cuadra», a propósito: distinguirlos
-	// le diría a quien prueba a ciegas cuándo va acertando el identificador de una tienda real.
-	return 0, 0, domain.ErrFirmaInvalida
+
+	switch len(duenias) {
+	case 1:
+		return duenias[0].ConnectionID, duenias[0].CompanyID, nil
+	case 0:
+		// MISMO ERROR para «no conocemos esa tienda» y «la firma no cuadra», a propósito:
+		// distinguirlos le diría a quien prueba a ciegas cuándo va acertando el identificador de
+		// una tienda real.
+		return 0, 0, domain.ErrFirmaInvalida
+	default:
+		// Se responde lo MISMO que a una firma inválida —no se delata que la tienda existe ni que
+		// hay dos— pero queda el evento de seguridad, que es lo único que permite notarlo.
+		logging.SecurityEvent(ctx, "webhook_tienda_ambigua",
+			"platform", plataforma, "candidatas", len(duenias))
+		return 0, 0, fmt.Errorf("%w: %d empresas validan ese aviso", domain.ErrFirmaInvalida, len(duenias))
+	}
+}
+
+// llavesDe lee la llave de una conexión CON el tenant de su empresa fijado. Es lo que mantiene el
+// secreto bajo RLS: la vista que resuelve candidatas no lo entrega.
+func (s *PedidosDePlataformaService) llavesDe(ctx context.Context, empresa, conexion int64) (domain.LlavesDeFirma, error) {
+	ctxT, soltar, err := s.store.AcquireTenant(ctx, empresa)
+	if err != nil {
+		return domain.LlavesDeFirma{}, err
+	}
+	defer soltar()
+
+	fila, err := s.store.QC(ctxT).LlaveDeFirmaDeLaConexion(ctxT, conexion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Sin llave capturada esa empresa no puede recibir avisos todavía. No es un error del
+		// sistema: es una configuración que falta, y su aviso simplemente no valida.
+		return domain.LlavesDeFirma{}, nil
+	}
+	if err != nil {
+		return domain.LlavesDeFirma{}, err
+	}
+	return domain.LlavesDeFirma{
+		Primaria:   fila.KeyPrimary,
+		Secundaria: textoDe(fila.KeySecondary),
+	}, nil
 }
 
 // procesar hace lo que el tipo de aviso pida. Devuelve la clase del fallo para registrarla sin

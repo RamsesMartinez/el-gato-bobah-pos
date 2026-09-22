@@ -36,6 +36,65 @@ func (q *Queries) AcceptIncomingOrder(ctx context.Context, arg AcceptIncomingOrd
 	return result.RowsAffected(), nil
 }
 
+const candidatasDelAviso = `-- name: CandidatasDelAviso :many
+
+select connection_id, company_id, is_active
+  from candidatas_del_aviso
+ where external_store_id = $1 and lower(platform_name) = lower($2::text)
+ order by connection_id
+`
+
+type CandidatasDelAvisoParams struct {
+	ExternalStoreID string `json:"external_store_id"`
+	PlatformName    string `json:"platform_name"`
+}
+
+type CandidatasDelAvisoRow struct {
+	ConnectionID int64 `json:"connection_id"`
+	CompanyID    int64 `json:"company_id"`
+	IsActive     bool  `json:"is_active"`
+}
+
+// ---------------------------------------------------------------------------------------------
+// Resolver de qué empresa es un aviso
+// ---------------------------------------------------------------------------------------------
+//
+// LA ÚNICA CONSULTA DEL REPOSITORIO QUE CORRE SIN EMPRESA FIJADA, y tiene que ser así: quien llama
+// al webhook es la plataforma, no una persona. No hay sesión, no hay JWT y por lo tanto no hay
+// `app.company_id` — la empresa ES EL RESULTADO de esta consulta, no su entrada.
+//
+// Va contra la VISTA `candidatas_del_aviso` y no contra las tablas, y esa es toda la diferencia:
+// la vista pertenece a un rol propio que sí ve todas las filas, así que la excepción vive en el
+// catálogo de Postgres —se lee en `\d`— y no en un comentario que defiende un `store.Q`.
+//
+// NO DEVUELVE NINGUNA LLAVE, a propósito. Un `select` sin filtro sobre esta vista revela, como
+// mucho, qué id de tienda es de qué empresa. Con las llaves adentro revelaría las llaves de firma
+// de TODAS las empresas, y cualquiera que la alcanzara podría firmar avisos a nombre de quien
+// quisiera. La llave de cada candidata se lee después, ya con el tenant fijado.
+//
+// DEVUELVE VARIAS FILAS A PROPÓSITO: dos empresas pueden registrar el mismo id de tienda —pasa en
+// el ambiente de pruebas, donde las plataformas reparten tiendas de demostración compartidas—.
+// Quién se lo queda lo decide el servicio, no esta consulta.
+func (q *Queries) CandidatasDelAviso(ctx context.Context, arg CandidatasDelAvisoParams) ([]CandidatasDelAvisoRow, error) {
+	rows, err := q.db.Query(ctx, candidatasDelAviso, arg.ExternalStoreID, arg.PlatformName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CandidatasDelAvisoRow{}
+	for rows.Next() {
+		var i CandidatasDelAvisoRow
+		if err := rows.Scan(&i.ConnectionID, &i.CompanyID, &i.IsActive); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimPlatformOrder = `-- name: ClaimPlatformOrder :exec
 update orders
    set register_session_id = $2, daily_number = $3
@@ -361,7 +420,7 @@ const insertWebhookEvent = `-- name: InsertWebhookEvent :one
 
 insert into platform_webhook_events (event_id, event_type, connection_id, raw_body)
 values ($1, $2, $3, $4)
-on conflict (event_id) do nothing
+on conflict (company_id, event_id) do nothing
 returning id
 `
 
@@ -377,6 +436,9 @@ type InsertWebhookEventParams struct {
 // ---------------------------------------------------------------------------------------------
 // Se escribe ANTES de llamar a la plataforma por el detalle, en su propia transacción: si el
 // proceso se muere a media llamada, el aviso ya está en disco y el reintento lo encuentra.
+// El arbitrio va por (company_id, event_id) porque el único es por empresa: la fila de OTRA
+// empresa es invisible bajo RLS, y arbitrar por `event_id` solo hacía que el insert no devolviera
+// nada, el servicio lo leyera como «ya procesado» y el pedido se perdiera con un 200.
 func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertWebhookEvent,
 		arg.EventID,
@@ -534,6 +596,28 @@ func (q *Queries) ListPendingIncomingOrders(ctx context.Context) ([]ListPendingI
 	return items, nil
 }
 
+const llaveDeFirmaDeLaConexion = `-- name: LlaveDeFirmaDeLaConexion :one
+select k.key_primary, k.key_secondary
+  from platform_connections c
+  join platform_webhook_keys k
+    on k.delivery_platform_id = c.delivery_platform_id
+ where c.id = $1
+`
+
+type LlaveDeFirmaDeLaConexionRow struct {
+	KeyPrimary   string  `json:"key_primary"`
+	KeySecondary *string `json:"key_secondary"`
+}
+
+// La llave con la que se verifica un aviso de ESTA empresa. Corre con el tenant ya fijado, o sea
+// bajo RLS: es lo que mantiene el secreto dentro del aislamiento.
+func (q *Queries) LlaveDeFirmaDeLaConexion(ctx context.Context, id int64) (LlaveDeFirmaDeLaConexionRow, error) {
+	row := q.db.QueryRow(ctx, llaveDeFirmaDeLaConexion, id)
+	var i LlaveDeFirmaDeLaConexionRow
+	err := row.Scan(&i.KeyPrimary, &i.KeySecondary)
+	return i, err
+}
+
 const markWebhookEventDone = `-- name: MarkWebhookEventDone :exec
 update platform_webhook_events
    set processed_at = now(), outcome = $2, failure_kind = $3
@@ -549,73 +633,6 @@ type MarkWebhookEventDoneParams struct {
 func (q *Queries) MarkWebhookEventDone(ctx context.Context, arg MarkWebhookEventDoneParams) error {
 	_, err := q.db.Exec(ctx, markWebhookEventDone, arg.ID, arg.Outcome, arg.FailureKind)
 	return err
-}
-
-const resolverTiendaDeAviso = `-- name: ResolverTiendaDeAviso :many
-
-select c.id as connection_id, c.company_id, c.is_active,
-       k.key_primary, k.key_secondary
-  from platform_connections c
-  join delivery_platforms p
-    on p.id = c.delivery_platform_id and p.company_id = c.company_id
-  left join platform_webhook_keys k
-    on k.delivery_platform_id = c.delivery_platform_id and k.company_id = c.company_id
- where c.external_store_id = $1 and lower(p.name) = lower($2::text)
-`
-
-type ResolverTiendaDeAvisoParams struct {
-	ExternalStoreID string `json:"external_store_id"`
-	PlatformName    string `json:"platform_name"`
-}
-
-type ResolverTiendaDeAvisoRow struct {
-	ConnectionID int64   `json:"connection_id"`
-	CompanyID    int64   `json:"company_id"`
-	IsActive     bool    `json:"is_active"`
-	KeyPrimary   *string `json:"key_primary"`
-	KeySecondary *string `json:"key_secondary"`
-}
-
-// ---------------------------------------------------------------------------------------------
-// Resolver de qué empresa es un aviso
-// ---------------------------------------------------------------------------------------------
-//
-// LA ÚNICA CONSULTA DEL REPOSITORIO QUE CORRE SIN EMPRESA FIJADA, y tiene que ser así: quien llama
-// al webhook es la plataforma, no una persona. No hay sesión, no hay JWT y por lo tanto no hay
-// `app.company_id` — la empresa ES EL RESULTADO de esta consulta, no su entrada.
-//
-// Por eso devuelve SOLO ids y las llaves de firma: nada del negocio sale por aquí. A partir de lo
-// que devuelve, todo lo demás corre con el tenant ya fijado.
-//
-// DEVUELVE VARIAS FILAS A PROPÓSITO. Dos empresas pueden registrar el mismo id de tienda —pasa en
-// el ambiente de pruebas, donde las plataformas reparten tiendas de demostración compartidas— y
-// quien resuelve la ambigüedad es LA FIRMA: la empresa cuya llave valide el cuerpo es la dueña. Un
-// único global de (plataforma, tienda) parecía más limpio y se descartó: dejaría que la empresa la
-// determine un dato que cualquiera escribe en el cuerpo, en vez de quién pudo firmarlo.
-func (q *Queries) ResolverTiendaDeAviso(ctx context.Context, arg ResolverTiendaDeAvisoParams) ([]ResolverTiendaDeAvisoRow, error) {
-	rows, err := q.db.Query(ctx, resolverTiendaDeAviso, arg.ExternalStoreID, arg.PlatformName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ResolverTiendaDeAvisoRow{}
-	for rows.Next() {
-		var i ResolverTiendaDeAvisoRow
-		if err := rows.Scan(
-			&i.ConnectionID,
-			&i.CompanyID,
-			&i.IsActive,
-			&i.KeyPrimary,
-			&i.KeySecondary,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const rotateWebhookKey = `-- name: RotateWebhookKey :execrows

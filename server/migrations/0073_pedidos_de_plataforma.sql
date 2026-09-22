@@ -120,10 +120,21 @@ create table platform_webhook_events (
   company_id    bigint not null default current_setting('app.company_id', true)::bigint
                 references companies(id) on delete cascade,
 
-  -- GLOBAL, NO POR EMPRESA. El identificador lo genera la plataforma y es único en su universo.
-  -- Por empresa permitiría procesar el mismo aviso dos veces si el resolutor de tienda se
-  -- equivocara de empresa — justo el caso que hay que hacer imposible.
-  constraint platform_webhook_events_una_vez unique (event_id),
+  -- POR EMPRESA, Y LA VERSIÓN GLOBAL ERA UN DEFECTO.
+  --
+  -- Nació global con el argumento de que el identificador lo genera la plataforma y es único en su
+  -- universo. Bajo RLS ese argumento se derrumba: la fila de OTRA empresa es INVISIBLE, así que el
+  -- `on conflict do nothing` no devuelve ninguna fila, el servicio lee ese `ErrNoRows` como «ya lo
+  -- procesamos» y contesta 200.
+  --
+  -- La plataforma entonces NO reintenta y el pedido se pierde SIN UNA SOLA LÍNEA DE ERROR. Es el
+  -- peor modo de fallo que tiene este sistema: el cliente espera comida que nadie prepara y el log
+  -- está limpio. Lo reproduce `TestUnAvisoRepetidoDeOtraEmpresaNoSeTraga`.
+  --
+  -- Lo que el único global pretendía cerrar —procesar dos veces el mismo aviso si el resolutor se
+  -- equivoca de empresa— lo cierra ahora el rechazo por ambigüedad del servicio, que es donde
+  -- corresponde: un único no puede arbitrar entre filas que no ve.
+  constraint platform_webhook_events_una_vez unique (company_id, event_id),
   constraint platform_webhook_events_id_acotado check (char_length(event_id) between 1 and 200),
   constraint platform_webhook_events_tipo_acotado check (char_length(event_type) between 1 and 100),
   -- Las listas van como `check` y no solo en Go porque de estas columnas depende una garantía de
@@ -362,6 +373,79 @@ begin
 end $$;
 -- +goose StatementEnd
 
+-- ---------------------------------------------------------------------------------------------
+-- 7. CÓMO SE RESUELVE UNA TIENDA SIN SABER DE QUÉ EMPRESA ES
+--
+-- El webhook no tiene empresa: quien llama es la plataforma. La empresa es el RESULTADO de
+-- autenticar el cuerpo, no su entrada — no hay nada que fijarle a `app.company_id` antes.
+--
+-- Y bajo el rol de la aplicación, una consulta sin tenant devuelve CERO filas: RLS funciona. O sea
+-- que el webhook, tal como estaba, no habría resuelto NINGUNA tienda en producción, y el log solo
+-- habría dicho «firma no autenticada». Nadie sospecharía de RLS. Lo deja en rojo
+-- `TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion`.
+--
+-- LA SALIDA: una vista cuyo DUEÑO es un rol propio con una política que sí ve todas las filas. Las
+-- vistas se ejecutan con los privilegios de su dueño, así que la excepción queda acotada a ESA
+-- proyección y se lee en `\d`, no en veinte renglones de comentario defendiendo un `store.Q`.
+--
+-- POR QUÉ UNA VISTA Y NO UNA FUNCIÓN `security definer`:
+--   - Una función que devuelve conjunto no la tipa sqlc, así que habría que bajar a pgx a mano y
+--     eso rompe el principio I. Una vista se tipa como cualquier relación.
+--   - Una `security definer` cuyo dueño sea el owner de las tablas corre como superusuario, y su
+--     único muro es el `search_path`. Este rol no puede entrar ni saltar RLS.
+--
+-- POR QUÉ LA VISTA NO TRAE NINGUNA LLAVE. Es la diferencia que decide. Un `select` sin filtro sobre
+-- ella revela, como mucho, qué id de tienda es de qué empresa. Con las llaves adentro revelaría las
+-- llaves de firma de TODAS las empresas, y entonces cualquiera que alcanzara la vista podría firmar
+-- avisos a nombre de quien quisiera. El servicio lee la llave de cada candidata DESPUÉS, ya con el
+-- tenant fijado y bajo RLS.
+--
+-- El rol es de CLÚSTER, no de base: por eso se crea con el patrón idempotente de 0024, y el Down
+-- tolera que otra base del mismo clúster ya no lo use.
+-- ---------------------------------------------------------------------------------------------
+-- +goose StatementBegin
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'gatobobah_webhook') then
+    create role gatobobah_webhook nologin;
+  end if;
+end $$;
+-- +goose StatementEnd
+
+-- El rol NO puede entrar ni saltar RLS: solo existe para ser dueño de la vista.
+alter role gatobobah_webhook nologin nobypassrls;
+
+-- EL GRANT Y LA POLÍTICA SON DOS COSAS, y hacen falta las dos. La política decide QUÉ FILAS ve un
+-- rol; el grant decide si puede leer la tabla siquiera. Con la política sola, la vista falla con
+-- `42501 permission denied` — que es lo que pasó al escribir esto, y lo atraparon las pruebas del
+-- webhook. Es la misma lección que el grant puntual de la 0024: un privilegio que no se hereda.
+--
+-- Solo `select`, y solo sobre las dos tablas que la vista une.
+grant select on platform_connections to gatobobah_webhook;
+grant select on delivery_platforms to gatobobah_webhook;
+
+-- Las dos políticas que lo dejan ver todo, acotadas A ESE ROL. Es la misma gramática que ya usan
+-- 0068 para la consola y 0069/0070 para uso y toques: una política permisiva por rol, legible en
+-- el catálogo y revocable en una línea.
+create policy webhook_resuelve_tienda on platform_connections
+  for select to gatobobah_webhook using (true);
+create policy webhook_resuelve_plataforma on delivery_platforms
+  for select to gatobobah_webhook using (true);
+
+create view candidatas_del_aviso as
+  select c.id            as connection_id,
+         c.company_id    as company_id,
+         c.external_store_id,
+         c.is_active,
+         p.name          as platform_name
+    from platform_connections c
+    join delivery_platforms p
+      on p.id = c.delivery_platform_id and p.company_id = c.company_id;
+
+alter view candidatas_del_aviso owner to gatobobah_webhook;
+revoke all on candidatas_del_aviso from public;
+grant select on candidatas_del_aviso to gatobobah_app;
+
 -- +goose Down
 
 -- EL DOWN SE DETIENE SIN HABER TOCADO NADA si ya existe un pedido de plataforma PARA RECOGER.
@@ -395,6 +479,14 @@ begin
   end if;
 end $$;
 -- +goose StatementEnd
+
+-- La vista, sus políticas y su rol, en orden inverso. Una vista con dueño ajeno que sobreviva a un
+-- rollback es un asa que salta RLS sin quien responda por ella.
+drop view if exists candidatas_del_aviso;
+drop policy if exists webhook_resuelve_plataforma on delivery_platforms;
+drop policy if exists webhook_resuelve_tienda on platform_connections;
+-- El rol NO se borra: es de clúster y otra base puede seguir usándolo, igual que gatobobah_app y
+-- gatobobah_platform.
 
 drop table if exists platform_incoming_order_lines;
 drop table if exists platform_incoming_orders;

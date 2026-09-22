@@ -688,3 +688,105 @@ func TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion(t *testing.T) {
 		t.Fatalf("recibir bajo el rol de la aplicación: %v", err)
 	}
 }
+
+// UN AVISO DE OTRA EMPRESA NO SE PUEDE CONFUNDIR CON UNO REPETIDO.
+//
+// `platform_webhook_events` nació con `unique (event_id)` GLOBAL, con el argumento de que el
+// identificador lo genera la plataforma y es único en su universo. Bajo RLS ese argumento se
+// derrumba: la fila de OTRA empresa es invisible, así que el `on conflict do nothing` no devuelve
+// ninguna fila, el servicio lee ese `ErrNoRows` como «ya lo procesamos» y contesta 200.
+//
+// La plataforma entonces NO reintenta, y el pedido se pierde **sin una sola línea de error**. Es el
+// peor modo de fallo del sistema: el cliente espera comida que nadie está preparando y el log está
+// limpio.
+func TestUnAvisoRepetidoDeOtraEmpresaNoSeTraga(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const llaveA = "llave-de-la-empresa-a-colision"
+	const llaveB = "llave-de-la-empresa-b-colision"
+	a := makeCompany(t, st, "colision-a")
+	b := makeCompany(t, st, "colision-b")
+	conexionA := tiendaConLlave(t, st, a, "tienda-de-a", llaveA)
+	conexionB := tiendaConLlave(t, st, b, "tienda-de-b", llaveB)
+	svc := servicioDePedidos(st)
+
+	// EL MISMO `event_id` para las dos. La plataforma no lo haría, pero el argumento del único
+	// global era justamente que no puede pasar — y si el resolutor se equivocara de empresa, sí.
+	const mismoID = "evt-que-choca"
+
+	cuerpoA := avisoDePedido(mismoID, "tienda-de-a")
+	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		Crudo: cuerpoA, Firma: domain.FirmarParaPrueba(cuerpoA, llaveA), Ambiente: "sandbox",
+	}); err != nil {
+		t.Fatalf("el aviso de A no entró: %v", err)
+	}
+
+	cuerpoB := avisoDePedido(mismoID, "tienda-de-b")
+	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		Crudo: cuerpoB, Firma: domain.FirmarParaPrueba(cuerpoB, llaveB), Ambiente: "sandbox",
+	}); err != nil {
+		t.Fatalf("el aviso de B no entró: %v", err)
+	}
+
+	contar := func(conexion int64) int {
+		var n int
+		if err := st.Pool.QueryRow(ctx,
+			`select count(*) from platform_incoming_orders where connection_id = $1`, conexion).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if got := contar(conexionA); got != 1 {
+		t.Fatalf("la empresa A tiene %d pedidos y debería tener 1", got)
+	}
+	if got := contar(conexionB); got != 1 {
+		t.Fatalf("EL PEDIDO DE LA EMPRESA B SE PERDIÓ (tiene %d): su aviso chocó con el de A, que es "+
+			"invisible bajo RLS, el servicio lo leyó como «ya procesado» y contestó 200. La "+
+			"plataforma no reintenta y nadie se entera: el log queda limpio", got)
+	}
+}
+
+// CUANDO MÁS DE UNA CANDIDATA VALIDA LA FIRMA, EL AVISO SE RECHAZA.
+//
+// El diseño dice que «cuando hay varias candidatas, decide la firma», y eso solo es cierto si las
+// llaves difieren. Con UNA sola aplicación de la plataforma —que es el despliegue de hoy— la llave
+// de firma es un atributo de esa aplicación, no de la empresa: dos empresas capturan la MISMA del
+// mismo tablero.
+//
+// Ahí la firma deja de desempatar y quien se lleva el pedido lo decide el orden físico del heap,
+// que cambia con un VACUUM. El pedido y su dinero entran a la empresa equivocada sin que nada
+// falle, y el corte de esa empresa suma una venta ajena.
+//
+// Rechazar es lo correcto: una ambigüedad no se arregla reintentando, y elegir a ciegas es peor
+// que no elegir.
+func TestDosCandidatasConLaMismaLlaveSeRechazan(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const laMisma = "la-misma-llave-de-la-misma-app"
+	const tienda = "tienda-de-demostracion-compartida"
+	a := makeCompany(t, st, "ambigua-a")
+	b := makeCompany(t, st, "ambigua-b")
+	tiendaConLlave(t, st, a, tienda, laMisma)
+	tiendaConLlave(t, st, b, tienda, laMisma)
+	svc := servicioDePedidos(st)
+
+	cuerpo := avisoDePedido("evt-ambiguo", tienda)
+	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, laMisma), Ambiente: "sandbox",
+	})
+	if err == nil {
+		t.Fatal("el aviso entró aunque DOS empresas validan su firma: se lo quedó la que Postgres " +
+			"devolvió primero, y ese orden cambia con un VACUUM. El pedido y su dinero caen en la " +
+			"empresa equivocada sin que nada falle")
+	}
+
+	var pedidos int
+	if err := st.Pool.QueryRow(ctx, `select count(*) from platform_incoming_orders`).Scan(&pedidos); err != nil {
+		t.Fatal(err)
+	}
+	if pedidos != 0 {
+		t.Fatalf("se registraron %d pedidos de un aviso ambiguo", pedidos)
+	}
+}

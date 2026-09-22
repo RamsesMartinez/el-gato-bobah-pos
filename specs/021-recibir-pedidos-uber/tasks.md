@@ -130,7 +130,7 @@ en la tableta en menos de 10 s; aceptarlo y ver el ticket.
 - [ ] T060 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de tres pendientes a la vez: se ve el más urgente con sus acciones y un contador con los demás. **Verlo en rojo**
 - [ ] T061 [US1] Escribir `web/src/features/pos/PedidosEntrantesSheet.tsx` con el contador «+N», copiando el patrón de `web/src/features/pos/PedidosEnCurso.tsx`
 - [X] T062 [US1] Cablear el aviso en `web/src/features/pos/POSPage.tsx` y suscribirlo a `platform.order.received`
-- [ ] T063 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que aceptar dispara la impresión del ticket de cocina respetando `PrintSettings`. **Verlo en rojo**
+- [X] T063 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que aceptar dispara la impresión del ticket de cocina respetando `PrintSettings`. **Verlo en rojo**
 - [ ] T064 [US1] Escribir la impresión al aceptar en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
 
 ---

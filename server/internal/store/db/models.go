@@ -817,6 +817,14 @@ type BusinessSetting struct {
 	BlindCashCount     bool               `json:"blind_cash_count"`
 }
 
+type CandidatasDelAviso struct {
+	ConnectionID    int64  `json:"connection_id"`
+	CompanyID       int64  `json:"company_id"`
+	ExternalStoreID string `json:"external_store_id"`
+	IsActive        bool   `json:"is_active"`
+	PlatformName    string `json:"platform_name"`
+}
+
 type CashDenomination struct {
 	ID       int64           `json:"id"`
 	Currency string          `json:"currency"`

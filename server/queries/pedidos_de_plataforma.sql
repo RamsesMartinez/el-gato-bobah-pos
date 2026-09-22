@@ -43,28 +43,37 @@ select (key_primary is not null) as configurada,
 -- Resolver de qué empresa es un aviso
 -- ---------------------------------------------------------------------------------------------
 
--- name: ResolverTiendaDeAviso :many
+-- name: CandidatasDelAviso :many
 --
 -- LA ÚNICA CONSULTA DEL REPOSITORIO QUE CORRE SIN EMPRESA FIJADA, y tiene que ser así: quien llama
 -- al webhook es la plataforma, no una persona. No hay sesión, no hay JWT y por lo tanto no hay
 -- `app.company_id` — la empresa ES EL RESULTADO de esta consulta, no su entrada.
 --
--- Por eso devuelve SOLO ids y las llaves de firma: nada del negocio sale por aquí. A partir de lo
--- que devuelve, todo lo demás corre con el tenant ya fijado.
+-- Va contra la VISTA `candidatas_del_aviso` y no contra las tablas, y esa es toda la diferencia:
+-- la vista pertenece a un rol propio que sí ve todas las filas, así que la excepción vive en el
+-- catálogo de Postgres —se lee en `\d`— y no en un comentario que defiende un `store.Q`.
 --
--- DEVUELVE VARIAS FILAS A PROPÓSITO. Dos empresas pueden registrar el mismo id de tienda —pasa en
--- el ambiente de pruebas, donde las plataformas reparten tiendas de demostración compartidas— y
--- quien resuelve la ambigüedad es LA FIRMA: la empresa cuya llave valide el cuerpo es la dueña. Un
--- único global de (plataforma, tienda) parecía más limpio y se descartó: dejaría que la empresa la
--- determine un dato que cualquiera escribe en el cuerpo, en vez de quién pudo firmarlo.
-select c.id as connection_id, c.company_id, c.is_active,
-       k.key_primary, k.key_secondary
+-- NO DEVUELVE NINGUNA LLAVE, a propósito. Un `select` sin filtro sobre esta vista revela, como
+-- mucho, qué id de tienda es de qué empresa. Con las llaves adentro revelaría las llaves de firma
+-- de TODAS las empresas, y cualquiera que la alcanzara podría firmar avisos a nombre de quien
+-- quisiera. La llave de cada candidata se lee después, ya con el tenant fijado.
+--
+-- DEVUELVE VARIAS FILAS A PROPÓSITO: dos empresas pueden registrar el mismo id de tienda —pasa en
+-- el ambiente de pruebas, donde las plataformas reparten tiendas de demostración compartidas—.
+-- Quién se lo queda lo decide el servicio, no esta consulta.
+select connection_id, company_id, is_active
+  from candidatas_del_aviso
+ where external_store_id = $1 and lower(platform_name) = lower(sqlc.arg(platform_name)::text)
+ order by connection_id;
+
+-- name: LlaveDeFirmaDeLaConexion :one
+-- La llave con la que se verifica un aviso de ESTA empresa. Corre con el tenant ya fijado, o sea
+-- bajo RLS: es lo que mantiene el secreto dentro del aislamiento.
+select k.key_primary, k.key_secondary
   from platform_connections c
-  join delivery_platforms p
-    on p.id = c.delivery_platform_id and p.company_id = c.company_id
-  left join platform_webhook_keys k
-    on k.delivery_platform_id = c.delivery_platform_id and k.company_id = c.company_id
- where c.external_store_id = $1 and lower(p.name) = lower(sqlc.arg(platform_name)::text);
+  join platform_webhook_keys k
+    on k.delivery_platform_id = c.delivery_platform_id
+ where c.id = $1;
 
 -- ---------------------------------------------------------------------------------------------
 -- Los avisos que llegaron
@@ -75,7 +84,10 @@ select c.id as connection_id, c.company_id, c.is_active,
 -- proceso se muere a media llamada, el aviso ya está en disco y el reintento lo encuentra.
 insert into platform_webhook_events (event_id, event_type, connection_id, raw_body)
 values ($1, $2, $3, $4)
-on conflict (event_id) do nothing
+-- El arbitrio va por (company_id, event_id) porque el único es por empresa: la fila de OTRA
+-- empresa es invisible bajo RLS, y arbitrar por `event_id` solo hacía que el insert no devolviera
+-- nada, el servicio lo leyera como «ya procesado» y el pedido se perdiera con un 200.
+on conflict (company_id, event_id) do nothing
 returning id;
 
 -- name: MarkWebhookEventDone :exec
