@@ -90,18 +90,59 @@ falla diciendo en cuántos métodos apareció el fondo, no "esperaba X obtuve Y"
 #### Unitario o de integración: qué cubre cada uno
 
 La lógica pura va a **unitarios** en `domain`, sin base de datos. Pero hay una familia de fallos que
-un unitario **no puede** ver, y que además es invisible en local, porque la API de desarrollo se
-conecta como owner y sin `APP_DATABASE_URL`: ahí RLS y los grants sencillamente no aplican. Esos
-exigen **test de integración contra Postgres real**, y varios bajo `appRoleStore` (el rol
-`gatobobah_app`, no el owner):
+un unitario **no puede** ver: los que dependen de RLS y de los grants. Esos exigen **test de
+integración contra Postgres real**, y varios bajo `appRoleStore` (el rol `gatobobah_app`, no el
+owner):
 
 | Qué se prueba | Por qué el unitario no basta |
 |---|---|
-| Un `grant` de una tabla nueva | El `grant` de `0024` fue puntual, sin default privileges. Falta uno y en producción sale `42501` en el primer request; en dev nunca |
+| Un `grant` de una tabla nueva | El `grant` de `0024` fue puntual, sin default privileges. Falta uno y el primer request responde `42501` |
 | Aislamiento entre empresas (RLS) | Las políticas no existen para el owner. Una fuga entre tenants no se ve hasta que hay un segundo cliente |
 | Que una FK no cruce empresas | Los chequeos de integridad referencial de Postgres **saltan RLS** por diseño |
 | Una migración | Su efecto es un cambio de esquema y de datos; no hay función que llamar |
 | El corte de caja y cualquier aritmética de dinero sobre datos reales | El error aparece al combinar filas, no en una función aislada |
+
+#### Todo aislamiento se prueba en los tres casos donde RLS ya falló (NO NEGOCIABLE)
+
+RLS falló dos veces en este proyecto, y las dos en silencio: una conexión que el pool recicla trae
+el ajuste de empresa como cadena vacía y la consulta revienta (0074), y una sesión podía quedarse
+con la empresa pegada (7fc1e5b). Ninguna prueba lo vio porque solo probaban «otra empresa». Por eso:
+
+- **Toda consulta o servicio que lea una tabla de empresa lleva su test bajo `appRoleStore` con
+  `inTheThreeCases`**: otra empresa, conexión reciclada y sin empresa. Un test de aislamiento que
+  cubre solo el primero no cuenta.
+- **Toda tabla con `company_id` la vigila `TestEveryCompanyTableIsIsolated`**, que recorre
+  el catálogo: RLS encendido, política con `nullif`, `select` para `gatobobah_app`, y los casos de
+  otra empresa y conexión reciclada. Una tabla nueva sin eso truena sola; no depende de acordarse.
+- **Un secreto de empresa se descifra con la empresa de la SESIÓN, nunca con la de la fila**
+  (`store.CompanyFrom`). Así el cifrado es de verdad una segunda barrera: aunque RLS deje pasar la
+  fila de otra empresa, no descifra. Lo vigila `TestWithBrokenRLSCompanyBCannotDecryptCompanyAsCredential`.
+
+#### La base local niega lo mismo que producción (NO NEGOCIABLE)
+
+**La API de desarrollo sirve con los mismos roles que producción** —`gatobobah_app` para el
+negocio, `gatobobah_platform` para la consola—, **nunca como owner**, y **un respaldo de
+producción se restaura en local con sus dueños y sus GRANT**. El owner salta RLS y todos los
+permisos: una API local que sirve como él devuelve filas de todas las empresas y nunca ve el
+`42501` que en producción tumba el primer request. Lo que se desarrolla contra eso no es lo que
+corre allá, y el defecto no se ve hasta que lo ve un cliente.
+
+- **Costó esto el 2026-09-25**: al restaurar un respaldo con dos empresas, el selector de
+  plataformas salió con cada plataforma dos veces. La consulta es correcta —RLS pone el filtro
+  por empresa—; lo falso era el ambiente.
+- **Prohibido en un restore de producción**: `--no-privileges` (el rol de servicio queda sin un
+  solo GRANT) y `--no-owner` (la vista `candidatas_del_aviso` deja de ser de `gatobobah_webhook` y
+  el webhook resuelve con un bypass que allá no existe). Se restaura con `make db-restaurar`.
+- **Un arreglo que solo funciona como owner no es un arreglo.** Si algo falla en local por
+  permisos, el defecto está en la migración o en el grant, no en el ambiente: se corrige ahí y se
+  deja su test bajo `appRoleStore`. Nunca se "arregla" volviendo a conectar como owner.
+- La mecánica (qué script arma las URLs, de dónde salen los passwords) vive en `AGENTS.md`.
+- **La única excepción, acotada y a propósito: el cifrado de secretos de terceros.** En producción
+  y en la VM de pruebas cifra Cloud KMS con la cuenta de servicio de esa VM; en la máquina de quien
+  programa no hay cuenta de servicio, y cifra AES-GCM con una llave local. El formato, la AAD y el
+  «ilegible» de otro ambiente son los mismos; lo que local no ve —permisos de la cuenta de servicio,
+  la red hacia Google— se prueba en la VM de pruebas, que usa KMS real. La API de producción se
+  niega a arrancar con la llave local.
 
 **Una migración se prueba con su test, no después.** El test corre contra una base restaurada de un
 respaldo real y con **al menos dos empresas**: con una sola, todo camino "por cada otra empresa" es
@@ -145,6 +186,20 @@ Este repo pasó una auditoría OWASP + una segunda ronda adversarial ([docs/secu
 - **Comenta el PORQUÉ, nunca el QUÉ.** Intención, tradeoff, restricción no obvia, el ataque que se cierra. Ver el comentario de `rateKeyIP` (por qué el **último** XFF) o de `Round2` (por qué el techo).
 - **Prohibido el comentario que reformula el código.** Se desincroniza y termina mintiendo. Si el nombre no basta, arregla el nombre — nombres autoexplicativos primero.
 - **Doc-comments estilo Go/Uber**: empiezan con el nombre del símbolo y terminan en punto (`// Validate rejects…`).
+
+#### Idioma: el código en inglés, lo que se lee en español
+
+- **Todo identificador NUEVO va en inglés**: funciones, tipos, variables, constantes, paquetes,
+  archivos, nombres de tests, tablas, columnas, restricciones, índices, variables de entorno y
+  claves estables de log (`platform_credentials_rejected`, no `credenciales_rechazadas`).
+- **En español**: los comentarios, el texto de la interfaz, los mensajes que ve quien opera, los
+  documentos (`docs/`, `specs/`, esta constitución) y los mensajes de commit.
+- **Lo existente en español no se renombra por renombrar.** Se traduce cuando alguien lo toca por
+  otra razón y el cambio es barato; un nombre de tabla o columna ya en producción se deja, porque
+  renombrarlo es una migración sobre datos vivos que no compra nada.
+- Un archivo mezclado es aceptable mientras dure la transición; un símbolo nuevo en español, no.
+- Un formato que se guarda como dato (la AAD de `domain.CredentialAAD`, una clave de log) se elige
+  en inglés desde el principio: cambiarlo después vuelve ilegible o inbuscable lo ya guardado.
 
 ### VIII. No se construye el futuro, pero no se le cierra la puerta
 
@@ -270,4 +325,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.9.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-08
+**Version**: 1.12.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-27
