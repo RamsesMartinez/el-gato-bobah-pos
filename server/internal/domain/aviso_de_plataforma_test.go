@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // LA FIRMA ES LA ÚNICA PUERTA. Esta ruta no tiene sesión: quien llama es la plataforma, no una
 // persona. Si la verificación se puede evadir, cualquiera que conozca la URL mete pedidos en la
@@ -121,5 +124,46 @@ func TestMotivoDeRechazo(t *testing.T) {
 		if MotivoDeRechazoValido(malo) {
 			t.Errorf("%q NO debería pasar: un motivo inventado tiene que rebotar, no caer a OTHER", malo)
 		}
+	}
+}
+
+// LA LLAVE SE CAPTURA PEGÁNDOLA, y lo que se pega trae basura. Una llave guardada con un salto de
+// línea al final no valida NINGUNA firma: no entra un solo pedido y nada falla — la plataforma
+// reintenta, se rinde, y el cliente espera comida que nadie está haciendo.
+func TestNormalizarLlaveDeFirma(t *testing.T) {
+	const buena = "whsec_0123456789abcdef"
+	for _, c := range []struct {
+		nombre, entra, sale string
+	}{
+		{"tal cual", buena, buena},
+		{"con salto de línea al pegar", buena + "\n", buena},
+		{"con espacios alrededor", "  " + buena + "\t", buena},
+		{"con retorno de carro de Windows", buena + "\r\n", buena},
+		{"de 16, el mínimo", "0123456789abcdef", "0123456789abcdef"},
+	} {
+		t.Run(c.nombre, func(t *testing.T) {
+			got, err := NormalizarLlaveDeFirma(c.entra)
+			if err != nil || got != c.sale {
+				t.Fatalf("NormalizarLlaveDeFirma(%q) = %q, %v; se esperaba %q", c.entra, got, err, c.sale)
+			}
+		})
+	}
+	for _, c := range []struct{ nombre, entra string }{
+		{"vacía", ""},
+		{"solo espacios", "   \n"},
+		{"de 15, un dedazo", "0123456789abcde"},
+		{"más de 512", ceros(513)},
+		// Dos renglones pegados juntos: la mitad de la llave y otra cosa.
+		{"con espacio adentro", "whsec_0123 456789abcdef"},
+		{"con salto de línea adentro", "whsec_01234\n56789abcdef"},
+		// Postgres rechaza el byte nulo con un 22021, que llegaría como 500 en vez de 400.
+		{"con byte nulo", "whsec_0123456789\x00abcdef"},
+		{"con caracteres fuera de ASCII", "whsec_0123456789abcdéf"},
+	} {
+		t.Run(c.nombre, func(t *testing.T) {
+			if _, err := NormalizarLlaveDeFirma(c.entra); !errors.Is(err, ErrValidation) {
+				t.Fatalf("NormalizarLlaveDeFirma(%q) = %v; se esperaba ErrValidation", c.entra, err)
+			}
+		})
 	}
 }

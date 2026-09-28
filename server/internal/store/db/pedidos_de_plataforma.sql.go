@@ -166,7 +166,7 @@ func (q *Queries) DenyIncomingOrder(ctx context.Context, arg DenyIncomingOrderPa
 
 const finishWebhookKeyRotation = `-- name: FinishWebhookKeyRotation :execrows
 update platform_webhook_keys
-   set key_secondary = null, rotated_at = null
+   set key_secondary_encrypted = null, rotated_at = null
  where delivery_platform_id = $1
 `
 
@@ -318,17 +318,37 @@ func (q *Queries) GetWebhookEventByExternalID(ctx context.Context, eventID strin
 	return i, err
 }
 
+const getWebhookKeyPrimary = `-- name: GetWebhookKeyPrimary :one
+select company_id, key_primary_encrypted
+  from platform_webhook_keys
+ where delivery_platform_id = $1
+`
+
+type GetWebhookKeyPrimaryRow struct {
+	CompanyID           int64  `json:"company_id"`
+	KeyPrimaryEncrypted []byte `json:"key_primary_encrypted"`
+}
+
+// La vigente, cifrada, para compararla EN CLARO con la que se quiere poner. La base ya no puede
+// hacer esa comparación: dos cifrados del mismo valor salen distintos.
+func (q *Queries) GetWebhookKeyPrimary(ctx context.Context, deliveryPlatformID int16) (GetWebhookKeyPrimaryRow, error) {
+	row := q.db.QueryRow(ctx, getWebhookKeyPrimary, deliveryPlatformID)
+	var i GetWebhookKeyPrimaryRow
+	err := row.Scan(&i.CompanyID, &i.KeyPrimaryEncrypted)
+	return i, err
+}
+
 const getWebhookKeyState = `-- name: GetWebhookKeyState :one
-select (key_primary is not null) as configurada,
-       (key_secondary is not null) as rotando,
+select (key_primary_encrypted is not null)::boolean as configurada,
+       (key_secondary_encrypted is not null)::boolean as rotando,
        rotated_at
   from platform_webhook_keys
  where delivery_platform_id = $1
 `
 
 type GetWebhookKeyStateRow struct {
-	Configurada interface{}        `json:"configurada"`
-	Rotando     interface{}        `json:"rotando"`
+	Configurada bool               `json:"configurada"`
+	Rotando     bool               `json:"rotando"`
 	RotatedAt   pgtype.Timestamptz `json:"rotated_at"`
 }
 
@@ -597,7 +617,7 @@ func (q *Queries) ListPendingIncomingOrders(ctx context.Context) ([]ListPendingI
 }
 
 const llaveDeFirmaDeLaConexion = `-- name: LlaveDeFirmaDeLaConexion :one
-select k.key_primary, k.key_secondary
+select k.company_id, k.delivery_platform_id, k.key_primary_encrypted, k.key_secondary_encrypted
   from platform_connections c
   join platform_webhook_keys k
     on k.delivery_platform_id = c.delivery_platform_id
@@ -605,16 +625,26 @@ select k.key_primary, k.key_secondary
 `
 
 type LlaveDeFirmaDeLaConexionRow struct {
-	KeyPrimary   string  `json:"key_primary"`
-	KeySecondary *string `json:"key_secondary"`
+	CompanyID             int64  `json:"company_id"`
+	DeliveryPlatformID    int16  `json:"delivery_platform_id"`
+	KeyPrimaryEncrypted   []byte `json:"key_primary_encrypted"`
+	KeySecondaryEncrypted []byte `json:"key_secondary_encrypted"`
 }
 
 // La llave con la que se verifica un aviso de ESTA empresa. Corre con el tenant ya fijado, o sea
 // bajo RLS: es lo que mantiene el secreto dentro del aislamiento.
+//
+// Trae la empresa y la plataforma de la FILA porque son la AAD con la que se cifró: un cifrado
+// copiado a la fila de otra empresa no descifra.
 func (q *Queries) LlaveDeFirmaDeLaConexion(ctx context.Context, id int64) (LlaveDeFirmaDeLaConexionRow, error) {
 	row := q.db.QueryRow(ctx, llaveDeFirmaDeLaConexion, id)
 	var i LlaveDeFirmaDeLaConexionRow
-	err := row.Scan(&i.KeyPrimary, &i.KeySecondary)
+	err := row.Scan(
+		&i.CompanyID,
+		&i.DeliveryPlatformID,
+		&i.KeyPrimaryEncrypted,
+		&i.KeySecondaryEncrypted,
+	)
 	return i, err
 }
 
@@ -637,19 +667,19 @@ func (q *Queries) MarkWebhookEventDone(ctx context.Context, arg MarkWebhookEvent
 
 const rotateWebhookKey = `-- name: RotateWebhookKey :execrows
 update platform_webhook_keys
-   set key_secondary = key_primary, key_primary = $2, rotated_at = now()
+   set key_secondary_encrypted = key_primary_encrypted, key_primary_encrypted = $2, rotated_at = now()
  where delivery_platform_id = $1
 `
 
 type RotateWebhookKeyParams struct {
-	DeliveryPlatformID int16  `json:"delivery_platform_id"`
-	KeyPrimary         string `json:"key_primary"`
+	DeliveryPlatformID  int16  `json:"delivery_platform_id"`
+	KeyPrimaryEncrypted []byte `json:"key_primary_encrypted"`
 }
 
 // Empieza una rotación: la llave que estaba pasa a secundaria y entra la nueva como primaria.
 // Durante la rotación las DOS validan, que es el punto: cambiarla sin dejar de recibir pedidos.
 func (q *Queries) RotateWebhookKey(ctx context.Context, arg RotateWebhookKeyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rotateWebhookKey, arg.DeliveryPlatformID, arg.KeyPrimary)
+	result, err := q.db.Exec(ctx, rotateWebhookKey, arg.DeliveryPlatformID, arg.KeyPrimaryEncrypted)
 	if err != nil {
 		return 0, err
 	}
@@ -698,15 +728,15 @@ func (q *Queries) SeedPlatformPaymentMethods(ctx context.Context, arg SeedPlatfo
 const upsertWebhookKey = `-- name: UpsertWebhookKey :exec
 
 
-insert into platform_webhook_keys (delivery_platform_id, key_primary)
+insert into platform_webhook_keys (delivery_platform_id, key_primary_encrypted)
 values ($1, $2)
 on conflict (company_id, delivery_platform_id) do update
-   set key_primary = excluded.key_primary, key_secondary = null, rotated_at = null
+   set key_primary_encrypted = excluded.key_primary_encrypted, key_secondary_encrypted = null, rotated_at = null
 `
 
 type UpsertWebhookKeyParams struct {
-	DeliveryPlatformID int16  `json:"delivery_platform_id"`
-	KeyPrimary         string `json:"key_primary"`
+	DeliveryPlatformID  int16  `json:"delivery_platform_id"`
+	KeyPrimaryEncrypted []byte `json:"key_primary_encrypted"`
 }
 
 // Recibir los pedidos de las plataformas (spec 021).
@@ -720,6 +750,6 @@ type UpsertWebhookKeyParams struct {
 // Capturar o reemplazar la llave primaria. `rotated_at` se limpia: poner una primaria nueva cierra
 // cualquier rotación a medias que hubiera quedado abierta.
 func (q *Queries) UpsertWebhookKey(ctx context.Context, arg UpsertWebhookKeyParams) error {
-	_, err := q.db.Exec(ctx, upsertWebhookKey, arg.DeliveryPlatformID, arg.KeyPrimary)
+	_, err := q.db.Exec(ctx, upsertWebhookKey, arg.DeliveryPlatformID, arg.KeyPrimaryEncrypted)
 	return err
 }

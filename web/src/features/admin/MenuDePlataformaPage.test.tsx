@@ -113,7 +113,7 @@ describe('MenuDePlataformaPage', () => {
       conexion({ credentialsConfigured: false, lastRead: null }),
     ]);
     montar();
-    expect(await screen.findByText(/todavía no está conectada/)).toBeInTheDocument();
+    expect(await screen.findByText(/No se puede leer el menú hasta conectar con la plataforma/)).toBeInTheDocument();
   });
 
   // `overflowY` SIN ALTO NO HACE SCROLL: la caja crece con el contenido y empuja hacia abajo todo

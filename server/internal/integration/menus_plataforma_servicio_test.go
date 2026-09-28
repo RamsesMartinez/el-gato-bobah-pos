@@ -84,11 +84,11 @@ func menuFalso() []domain.ItemDePlataforma {
 func servicioDePrueba(t *testing.T, companyID int64, lector app.LectorDeMenu) (*app.MenusDePlataformaService, context.Context, *store.Store) {
 	t.Helper()
 	appSt := appRoleStore(t)
-	lectores := map[string]app.LectorDeMenu{}
+	readers := map[string]app.LectorDeMenu{}
 	if lector != nil {
-		lectores["Uber Eats"] = lector
+		readers["Uber Eats"] = lector
 	}
-	svc := app.NewMenusDePlataformaService(appSt, lectores, nil)
+	svc := app.NewMenusDePlataformaService(appSt, fixedClients{readers: readers}, nil)
 	tctx, soltar, err := appSt.AcquireTenant(context.Background(), companyID)
 	if err != nil {
 		t.Fatalf("AcquireTenant: %v", err)

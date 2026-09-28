@@ -177,7 +177,7 @@ export function MenuDePlataformaPage() {
           {/* De cuándo es el dato, SIEMPRE. Sin esto la pantalla empieza a mentir el segundo día. */}
           <Text fontSize="sm" color="fg.muted">
             {!conexion?.credentialsConfigured
-              ? 'Esta tienda todavía no está conectada.'
+              ? 'No se puede leer el menú hasta conectar con la plataforma (en «Conexión con las plataformas»).'
               : !ultima
                 ? 'Nunca se ha leído el menú de esta tienda.'
                 : ultima.status === 'en_curso'

@@ -1200,6 +1200,16 @@ type PlatformConnection struct {
 	CompanyID          int64     `json:"company_id"`
 }
 
+type PlatformCredential struct {
+	ID                    int64     `json:"id"`
+	DeliveryPlatformID    int16     `json:"delivery_platform_id"`
+	ClientID              string    `json:"client_id"`
+	ClientSecretEncrypted []byte    `json:"client_secret_encrypted"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	UpdatedBy             int64     `json:"updated_by"`
+	CompanyID             int64     `json:"company_id"`
+}
+
 type PlatformIncomingOrder struct {
 	ID              int64              `json:"id"`
 	ConnectionID    int64              `json:"connection_id"`
@@ -1306,13 +1316,13 @@ type PlatformWebhookEvent struct {
 }
 
 type PlatformWebhookKey struct {
-	ID                 int64              `json:"id"`
-	DeliveryPlatformID int16              `json:"delivery_platform_id"`
-	KeyPrimary         string             `json:"key_primary"`
-	KeySecondary       *string            `json:"key_secondary"`
-	RotatedAt          pgtype.Timestamptz `json:"rotated_at"`
-	CreatedAt          time.Time          `json:"created_at"`
-	CompanyID          int64              `json:"company_id"`
+	ID                    int64              `json:"id"`
+	DeliveryPlatformID    int16              `json:"delivery_platform_id"`
+	RotatedAt             pgtype.Timestamptz `json:"rotated_at"`
+	CreatedAt             time.Time          `json:"created_at"`
+	CompanyID             int64              `json:"company_id"`
+	KeyPrimaryEncrypted   []byte             `json:"key_primary_encrypted"`
+	KeySecondaryEncrypted []byte             `json:"key_secondary_encrypted"`
 }
 
 type Product struct {

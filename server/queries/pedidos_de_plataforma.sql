@@ -11,31 +11,38 @@
 -- name: UpsertWebhookKey :exec
 -- Capturar o reemplazar la llave primaria. `rotated_at` se limpia: poner una primaria nueva cierra
 -- cualquier rotación a medias que hubiera quedado abierta.
-insert into platform_webhook_keys (delivery_platform_id, key_primary)
+insert into platform_webhook_keys (delivery_platform_id, key_primary_encrypted)
 values ($1, $2)
 on conflict (company_id, delivery_platform_id) do update
-   set key_primary = excluded.key_primary, key_secondary = null, rotated_at = null;
+   set key_primary_encrypted = excluded.key_primary_encrypted, key_secondary_encrypted = null, rotated_at = null;
 
 -- name: RotateWebhookKey :execrows
 -- Empieza una rotación: la llave que estaba pasa a secundaria y entra la nueva como primaria.
 -- Durante la rotación las DOS validan, que es el punto: cambiarla sin dejar de recibir pedidos.
 update platform_webhook_keys
-   set key_secondary = key_primary, key_primary = $2, rotated_at = now()
+   set key_secondary_encrypted = key_primary_encrypted, key_primary_encrypted = $2, rotated_at = now()
  where delivery_platform_id = $1;
 
 -- name: FinishWebhookKeyRotation :execrows
 -- Cierra la rotación tirando la llave vieja. Una secundaria que nadie retira se queda válida para
 -- siempre y nadie se entera: `rotated_at` existe para poder delatarla.
 update platform_webhook_keys
-   set key_secondary = null, rotated_at = null
+   set key_secondary_encrypted = null, rotated_at = null
  where delivery_platform_id = $1;
 
 -- name: GetWebhookKeyState :one
 -- Para la pantalla. Devuelve SI HAY llave, no la llave: un secreto que se puede volver a leer desde
 -- la interfaz es un secreto que se filtra por una captura de pantalla.
-select (key_primary is not null) as configurada,
-       (key_secondary is not null) as rotando,
+select (key_primary_encrypted is not null)::boolean as configurada,
+       (key_secondary_encrypted is not null)::boolean as rotando,
        rotated_at
+  from platform_webhook_keys
+ where delivery_platform_id = $1;
+
+-- name: GetWebhookKeyPrimary :one
+-- La vigente, cifrada, para compararla EN CLARO con la que se quiere poner. La base ya no puede
+-- hacer esa comparación: dos cifrados del mismo valor salen distintos.
+select company_id, key_primary_encrypted
   from platform_webhook_keys
  where delivery_platform_id = $1;
 
@@ -69,7 +76,10 @@ select connection_id, company_id, is_active
 -- name: LlaveDeFirmaDeLaConexion :one
 -- La llave con la que se verifica un aviso de ESTA empresa. Corre con el tenant ya fijado, o sea
 -- bajo RLS: es lo que mantiene el secreto dentro del aislamiento.
-select k.key_primary, k.key_secondary
+--
+-- Trae la empresa y la plataforma de la FILA porque son la AAD con la que se cifró: un cifrado
+-- copiado a la fila de otra empresa no descifra.
+select k.company_id, k.delivery_platform_id, k.key_primary_encrypted, k.key_secondary_encrypted
   from platform_connections c
   join platform_webhook_keys k
     on k.delivery_platform_id = c.delivery_platform_id

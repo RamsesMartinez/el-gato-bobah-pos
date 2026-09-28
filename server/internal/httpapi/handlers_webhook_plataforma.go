@@ -10,6 +10,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
 // maxBytesDeAviso acota el cuerpo ANTES de leerlo. Un aviso de la plataforma son unos cientos de
@@ -43,7 +44,7 @@ func (h *Handlers) WebhookDePlataforma(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.pedidosPlataforma.RecibirAviso(r.Context(), plataforma, app.AvisoEntrante{
+	recibido, err := h.pedidosPlataforma.RecibirAviso(r.Context(), plataforma, app.AvisoEntrante{
 		Crudo: crudo,
 		// El nombre de la cabecera lo fija la plataforma.
 		Firma:    r.Header.Get("X-Uber-Signature"),
@@ -52,6 +53,12 @@ func (h *Handlers) WebhookDePlataforma(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case err == nil:
+		// Después de confirmado en la base, nunca antes: una tableta que consulta al oír el evento
+		// tiene que encontrar el pedido. Sin datos, a propósito: la tableta vuelve a pedir la
+		// lista, que ya sale filtrada por su empresa y su rol.
+		if recibido.PedidoNuevo {
+			h.broker.Publish(recibido.Empresa, realtime.Event{Type: "platform.order.received"})
+		}
 		// 200 CON CUERPO VACÍO, que es lo que la plataforma espera. Cualquier otra cosa la hace
 		// reintentar un aviso que ya procesamos.
 		w.WriteHeader(http.StatusOK)

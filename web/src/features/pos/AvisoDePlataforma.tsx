@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toaster } from '../../components/ui/toaster';
 import { aceptarPedidoDePlataforma, type PedidoDePlataforma } from '../../api/pedidosDePlataforma';
+import { posApi } from '../../api/pos';
+import type { OrderView } from '../../types/pos';
+import { KitchenTicket } from '../../shared/tickets/AutoPrintTicket';
 import { AvisoDePedidoEntrante } from './AvisoDePedidoEntrante';
+import { PedidosEntrantesSheet } from './PedidosEntrantesSheet';
 import { CLAVE_PENDIENTES, usePedidosDePlataforma } from './usePedidosDePlataforma';
 
 /**
@@ -14,13 +18,20 @@ import { CLAVE_PENDIENTES, usePedidosDePlataforma } from './usePedidosDePlatafor
  */
 export function AvisoDePlataforma() {
   const { data } = usePedidosDePlataforma();
+  const pedidos = data ?? [];
   const qc = useQueryClient();
-  const [aceptando, setAceptando] = useState(false);
+  const [aceptandoId, setAceptandoId] = useState<number | null>(null);
+  const [listaAbierta, setListaAbierta] = useState(false);
+  // La comanda del último aceptado. KitchenTicket respeta el ajuste del negocio y recuerda lo ya
+  // impreso, así que un re-render no saca un segundo papel. Solo la imprime la tableta que aceptó:
+  // la otra se entera por el evento y no imprime nada.
+  const [comanda, setComanda] = useState<OrderView | null>(null);
 
   const aceptar = async (pedido: PedidoDePlataforma) => {
-    setAceptando(true);
+    setAceptandoId(pedido.id);
+    let creado;
     try {
-      const creado = await aceptarPedidoDePlataforma(pedido.id);
+      creado = await aceptarPedidoDePlataforma(pedido.id);
       toaster.create({
         title: `Pedido #${creado.number} aceptado`,
         description: 'Ya está en cocina.',
@@ -36,21 +47,47 @@ export function AvisoDePlataforma() {
         type: 'error',
       });
     } finally {
-      setAceptando(false);
+      setAceptandoId(null);
       void qc.invalidateQueries({ queryKey: CLAVE_PENDIENTES });
+    }
+    if (!creado) return;
+    // La comanda sale del pedido que quedó en el POS y no del aviso: es la misma que cocina ve en
+    // Pedidos y la que se reimprime desde ahí. Si no se puede traer, el pedido ya está aceptado y
+    // se dice dónde buscarlo, en vez de perder el papel en silencio.
+    try {
+      setComanda(await posApi.order(creado.id));
+    } catch {
+      toaster.create({
+        title: 'No salió la comanda',
+        description: 'El pedido ya está aceptado. Imprímela desde Pedidos.',
+        type: 'warning',
+      });
     }
   };
 
+  // Sin pendientes no hay lista que mostrar: aceptado el último, la hoja se cierra sola.
+  const lista = listaAbierta && pedidos.length > 0;
+
   return (
-    <AvisoDePedidoEntrante
-      pedidos={data ?? []}
-      onAceptar={(p) => void aceptar(p)}
-      // ponytail: la lista completa y rechazar llegan en la siguiente entrega. Mientras tanto el
-      // contador no hace nada al tocarse, así que no se muestra como si hiciera — el aviso solo
-      // aparece con el más urgente. El techo es que con dos pendientes hay que aceptar el primero
-      // para ver el segundo.
-      onVerTodos={() => {}}
-      aceptando={aceptando}
-    />
+    <>
+      {/* La franja se quita mientras la lista está abierta: va por encima de todo, y taparía la
+          hoja que ya muestra lo mismo. */}
+      {!lista && (
+        <AvisoDePedidoEntrante
+          pedidos={pedidos}
+          onAceptar={(p) => void aceptar(p)}
+          onVerTodos={() => setListaAbierta(true)}
+          aceptando={aceptandoId !== null}
+        />
+      )}
+      <PedidosEntrantesSheet
+        abierta={lista}
+        pedidos={pedidos}
+        aceptandoId={aceptandoId}
+        onCerrar={() => setListaAbierta(false)}
+        onAceptar={(p) => void aceptar(p)}
+      />
+      <KitchenTicket order={comanda} />
+    </>
   );
 }

@@ -386,6 +386,28 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Put("/links/{externalId}", h.SetPlatformItemLink)
 						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
 					})
+					// La llave con la que se verifica la firma de los pedidos que llegan (spec 021).
+					// Va por plataforma y no por conexión: es de la aplicación registrada en la
+					// plataforma, y todas las tiendas de la empresa la comparten.
+					// Las credenciales de la app (0075). Escribirlas es SOLO del administrador: con
+					// ellas se aceptan pedidos a nombre del negocio. Y cada escritura habla con la
+					// plataforma, así que va limitada con el mismo contador que las lecturas.
+					if h.credentials != nil {
+						r.Route("/credentials/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetPlatformCredentials)
+							r.With(RequireRole(domain.RoleAdmin), rateLimitUser(h.platformMenuReads)).Put("/", h.PutPlatformCredentials)
+						})
+					}
+					if h.pedidosPlataforma != nil {
+						// Cambiarla y retirar la anterior es SOLO del administrador, igual que las
+						// credenciales: con esta llave se decide qué entra a la cocina, y dos PUT
+						// seguidos dejaban fuera la llave real. El gerente ve el estado.
+						r.Route("/webhook-keys/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetWebhookKeyState)
+							r.With(RequireRole(domain.RoleAdmin)).Put("/", h.PutWebhookKey)
+							r.With(RequireRole(domain.RoleAdmin)).Delete("/previous", h.DeletePreviousWebhookKey)
+						})
+					}
 				})
 
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).

@@ -27,7 +27,9 @@ echo
 echo "Agrega su test en server/internal/integration/ y vuelve a commitear."
 echo "Lo que ese test tiene que cubrir, y que ninguna otra cosa ve:"
 echo "  - los GRANT de las tablas nuevas, probados bajo appRoleStore (rol gatobobah_app, no owner)"
-echo "  - la política de RLS: que una empresa no vea ni escriba lo de otra"
+echo "  - la política de RLS: que una empresa no vea ni escriba lo de otra, con inTheThreeCases"
+echo "    (otra empresa, conexión reciclada y sin empresa: los tres donde RLS ya falló)"
+echo "  - que TestEveryCompanyTableIsIsolated siga en verde con la tabla nueva"
 echo "  - si la migración mueve datos, que el conteo y las sumas de dinero no cambien"
 echo
 echo "Si de verdad no aplica (una migración que solo agrega un índice, por ejemplo), commitea el"

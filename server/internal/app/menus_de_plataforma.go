@@ -42,16 +42,26 @@ type LectorDeMenu interface {
 // `TestElServicioRespetaElTenantBajoElRolDeApp`, que pide el tenant de OTRA empresa justamente para
 // que el default de la base no lo enmascare.
 type MenusDePlataformaService struct {
-	store    *store.Store
-	lectores map[string]LectorDeMenu // por nombre de plataforma: "Uber Eats", …
-	ahora    func() time.Time
+	store *store.Store
+	// clients entrega el lector de la empresa del contexto, armado con SUS credenciales. Nil = el
+	// despliegue no habla con ninguna plataforma.
+	clients PlatformClients
+	ahora   func() time.Time
 }
 
-func NewMenusDePlataformaService(s *store.Store, lectores map[string]LectorDeMenu, now func() time.Time) *MenusDePlataformaService {
+func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now func() time.Time) *MenusDePlataformaService {
 	if now == nil {
 		now = time.Now
 	}
-	return &MenusDePlataformaService{store: s, lectores: lectores, ahora: now}
+	return &MenusDePlataformaService{store: s, clients: clients, ahora: now}
+}
+
+// menuReaderFor devuelve el lector de la plataforma para la empresa del contexto, o por qué no hay.
+func (s *MenusDePlataformaService) menuReaderFor(ctx context.Context, plataforma string) (LectorDeMenu, error) {
+	if s.clients == nil {
+		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plataforma)
+	}
+	return s.clients.MenuReaderFor(ctx, plataforma)
 }
 
 // --- Conexiones ---
@@ -92,7 +102,9 @@ func (s *MenusDePlataformaService) ListarConexiones(ctx context.Context) ([]Cone
 		c := Conexion{
 			ID: f.ID, PlatformID: f.DeliveryPlatformID, PlatformName: f.PlatformName,
 			ExternalStoreID: f.ExternalStoreID, Label: f.Label, Activa: f.IsActive,
-			Configurada: s.lectores[f.PlatformName] != nil,
+		}
+		if _, err := s.menuReaderFor(ctx, f.PlatformName); err == nil {
+			c.Configurada = true
 		}
 		if r, err := s.store.QC(ctx).GetLastMenuRead(ctx, f.ID); err == nil {
 			c.UltimaLectura = s.resumen(r)
@@ -137,9 +149,9 @@ func (s *MenusDePlataformaService) TiendasDisponibles(ctx context.Context, plata
 		}
 		return nil, fmt.Errorf("plataforma %d: %w", plataformaID, err)
 	}
-	lector := s.lectores[plat.Name]
-	if lector == nil {
-		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plat.Name)
+	lector, err := s.menuReaderFor(ctx, plat.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	tiendas, err := lector.ListarTiendas(ctx)
@@ -258,9 +270,9 @@ func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyI
 		}
 		return 0, time.Time{}, fmt.Errorf("conexión %d: %w", conexionID, err)
 	}
-	lector := s.lectores[con.PlatformName]
-	if lector == nil {
-		return 0, time.Time{}, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, con.PlatformName)
+	lector, err := s.menuReaderFor(ctx, con.PlatformName)
+	if err != nil {
+		return 0, time.Time{}, err
 	}
 	corriendo, err := s.store.QC(ctx).HasRunningMenuRead(ctx, conexionID)
 	if err != nil {

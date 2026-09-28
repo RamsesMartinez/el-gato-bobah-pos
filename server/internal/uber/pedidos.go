@@ -137,19 +137,21 @@ func (c *Client) decidirPedido(ctx context.Context, pedidoID, accion string, cue
 	return nil
 }
 
-// ligaDeLaPlataforma acepta solo URLs absolutas del host de la API. Cualquier otra cosa —una IP
-// interna, localhost, otro dominio, un esquema que no sea http(s)— se rechaza sin pedirla.
+// ligaDeLaPlataforma acepta solo URLs absolutas con el MISMO esquema y host que la API configurada.
+// Cualquier otra cosa —una IP interna, localhost, otro dominio, http cuando la API es https— se
+// rechaza sin pedirla. El esquema importa porque para bajar el detalle se manda el token: por http
+// viajaría en claro. Las direcciones configuradas son https; los tests usan un servidor local http.
 func (c *Client) ligaDeLaPlataforma(liga string) (string, error) {
 	u, err := url.Parse(liga)
 	if err != nil || !u.IsAbs() {
 		return "", fmt.Errorf("%w: la liga del pedido no es una dirección completa", ErrRespuesta)
 	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return "", fmt.Errorf("%w: la liga del pedido usa un esquema que no se sigue", ErrRespuesta)
-	}
 	base, err := url.Parse(c.apiBase)
 	if err != nil {
 		return "", err
+	}
+	if !strings.EqualFold(u.Scheme, base.Scheme) {
+		return "", fmt.Errorf("%w: la liga del pedido usa %s y la API es %s", ErrRespuesta, u.Scheme, base.Scheme)
 	}
 	if !strings.EqualFold(u.Host, base.Host) {
 		return "", fmt.Errorf("%w: la liga del pedido apunta a %s y no a %s", ErrRespuesta, u.Host, base.Host)

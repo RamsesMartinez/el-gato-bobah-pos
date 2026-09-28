@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 )
 
 // Menús de plataforma (spec 020): leer lo publicado y decir en qué difiere del catálogo.
@@ -343,4 +345,148 @@ func (h *Handlers) PlatformMenuDifferences(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	JSON(w, http.StatusOK, cmp)
+}
+
+// idDePlataformaDeRuta lee el id de la plataforma de la ruta. Un id malformado se rechaza, no se
+// convierte en otra plataforma.
+func idDePlataformaDeRuta(r *http.Request) (int16, error) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "platformId"), 10, 16)
+	if err != nil || id <= 0 {
+		return 0, domain.ErrValidation
+	}
+	return int16(id), nil
+}
+
+// GET /admin/platform-menus/webhook-keys/{platformId}
+//
+// Dice si hay llave, nunca cuál: el tipo que devuelve no tiene dónde llevarla.
+func (h *Handlers) GetWebhookKeyState(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	estado, err := h.pedidosPlataforma.EstadoDeLlave(r.Context(), plataforma)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, estado)
+}
+
+type llaveDeFirmaBody struct {
+	Key string `json:"key"`
+}
+
+// PUT /admin/platform-menus/webhook-keys/{platformId}
+//
+// Captura la llave o la cambia. Deja evento de seguridad: con esta llave se firma lo que entra a la
+// cocina, y quien la cambia puede meter pedidos a nombre de la plataforma. El evento lleva quién y
+// cuál plataforma, nunca la llave.
+func (h *Handlers) PutWebhookKey(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body llaveDeFirmaBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.pedidosPlataforma.GuardarLlave(r.Context(), u.CompanyID, plataforma, body.Key); err != nil {
+		Error(w, err)
+		return
+	}
+	logging.SecurityEvent(r.Context(), "webhook_llave_cambiada", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/webhook-keys/{platformId}/previous
+//
+// Retira la llave anterior de un cambio: desde aquí solo valida la vigente.
+func (h *Handlers) DeletePreviousWebhookKey(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.pedidosPlataforma.RetirarLlaveAnterior(r.Context(), plataforma); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	logging.SecurityEvent(r.Context(), "webhook_llave_anterior_retirada", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /admin/platform-menus/credentials/{platformId}
+//
+// Qué app está capturada (el client id no es secreto) y si este ambiente puede leerla. Nunca el
+// secreto: el tipo que devuelve no tiene dónde llevarlo.
+func (h *Handlers) GetPlatformCredentials(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	state, err := h.credentials.State(r.Context(), plataforma)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
+}
+
+type credentialsBody struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// PUT /admin/platform-menus/credentials/{platformId}
+//
+// Captura o reemplaza las credenciales de la app, y solo las guarda si la plataforma las acepta.
+// Deja evento de seguridad en los dos desenlaces: con estas credenciales se aceptan pedidos a nombre
+// del negocio, y una racha de rechazos es alguien probando parejas. El evento lleva quién, cuál
+// plataforma y la clase del rechazo, nunca el secreto.
+func (h *Handlers) PutPlatformCredentials(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body credentialsBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.credentials.Save(r.Context(), u.CompanyID, u.ID, plataforma, body.ClientID, body.ClientSecret); err != nil {
+		logging.SecurityEvent(r.Context(), "platform_credentials_rejected",
+			"user_id", u.ID, "platform_id", plataforma, "reason", rejectionReason(err))
+		Error(w, err)
+		return
+	}
+	logging.SecurityEvent(r.Context(), "platform_credentials_saved", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// rejectionReason es la clase estable del rechazo para el log: el texto del error puede traer
+// palabras de un tercero y no es una clave por la que se pueda buscar.
+func rejectionReason(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrCredentialsRejected):
+		return "rejected"
+	case errors.Is(err, domain.ErrCredentialsMissingScopes):
+		return "missing_scopes"
+	case errors.Is(err, domain.ErrPlatformUnavailable):
+		return "platform_unavailable"
+	case errors.Is(err, domain.ErrKeyServiceUnavailable):
+		return "key_service_unavailable"
+	case errors.Is(err, domain.ErrValidation):
+		return "invalid_input"
+	default:
+		return "internal_error"
+	}
 }

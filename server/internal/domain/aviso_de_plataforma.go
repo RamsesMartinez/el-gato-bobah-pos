@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 // Sentinels de los pedidos que llegan de una plataforma. El mapeo a HTTP vive solo en
@@ -61,6 +63,28 @@ func (l LlavesDeFirma) Verifican(cuerpo []byte, firma string) bool {
 		}
 	}
 	return ok
+}
+
+// NormalizarLlaveDeFirma limpia la llave tal como se pegó y la rechaza si no puede ser una llave.
+//
+// Quita el espacio de alrededor porque ahí solo puede haber basura del portapapeles, y guardarla
+// con un salto de línea al final hace que ninguna firma valide: no entra un pedido y nada falla.
+// Lo de adentro NO se limpia, se rechaza: un espacio en medio es media llave pegada junto a otra
+// cosa, y adivinar cuál es la mitad buena es peor que pedir que se vuelva a pegar.
+//
+// Solo ASCII imprimible: las llaves de las plataformas lo son, y así el byte nulo —que Postgres
+// rechaza con un 500— rebota aquí como 400. Los topes son los mismos `check` de la migración.
+func NormalizarLlaveDeFirma(llave string) (string, error) {
+	llave = strings.TrimSpace(llave)
+	if len(llave) < 16 || len(llave) > 512 {
+		return "", fmt.Errorf("%w: la llave va entre 16 y 512 caracteres", ErrValidation)
+	}
+	for i := 0; i < len(llave); i++ {
+		if llave[i] < 0x21 || llave[i] > 0x7e {
+			return "", fmt.Errorf("%w: la llave tiene espacios o caracteres que no son de una llave", ErrValidation)
+		}
+	}
+	return llave, nil
 }
 
 func firmar(cuerpo []byte, llave string) []byte {

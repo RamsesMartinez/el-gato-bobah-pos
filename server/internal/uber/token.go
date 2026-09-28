@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -83,12 +84,15 @@ func (c *Client) token(ctx context.Context) (string, error) {
 		// SIN ENVOLVER EL ERROR DE RED TAL CUAL: un error de http.Client incluye la URL completa, y
 		// aunque aquí el secreto va en el cuerpo, otras plataformas lo mandan en el query string.
 		// Que la costumbre sea no filtrar la dirección, y no acordarse de cuál sí y cuál no.
-		return "", fmt.Errorf("%w: no se pudo pedir el token a %s", ErrAuth, NombreDeLaPlataforma)
+		//
+		// Y NO ES ErrAuth: sin red nadie rechazó nada. Antes salía como `auth_rechazada` y mandaba a
+		// revisar las credenciales por una caída.
+		return "", fmt.Errorf("%w: no se pudo pedir el token a %s", ErrUnavailable, NombreDeLaPlataforma)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%w: %s rechazó las credenciales (HTTP %d)", ErrAuth, NombreDeLaPlataforma, resp.StatusCode)
+		return "", tokenError(resp)
 	}
 	var tr tokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil || tr.AccessToken == "" {
@@ -98,4 +102,35 @@ func (c *Client) token(ctx context.Context) (string, error) {
 	c.tok.emitido = c.ahora()
 	c.tok.vence = c.tok.emitido.Add(time.Duration(tr.ExpiresIn) * time.Second)
 	return c.tok.valor, nil
+}
+
+// Verify pide un token con las credenciales del cliente. Es lo que se hace al GUARDAR unas
+// credenciales: si la plataforma no las acepta, no se guardan. El token queda puesto, así que el
+// cliente comprobado es el que se queda atendiendo sin gastar otro de los 100 por hora.
+func (c *Client) Verify(ctx context.Context) error {
+	_, err := c.token(ctx)
+	return err
+}
+
+// tokenError traduce el rechazo del endpoint de token a lo que quien opera tiene que corregir.
+//
+// Sale del campo `error` del cuerpo y no del código HTTP: la documentación de Uber publica los
+// códigos de error pero no qué estado acompaña a cada uno. El cuerpo se lee acotado y NUNCA se
+// devuelve ni se registra: el `error_description` es texto de un tercero.
+func tokenError(resp *http.Response) error {
+	var body struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body)
+	switch {
+	case body.Error == "invalid_scope":
+		return fmt.Errorf("%w: %w (HTTP %d)", ErrAuth, ErrMissingScopes, resp.StatusCode)
+	case body.Error == "invalid_client", body.Error == "unauthorized_client",
+		resp.StatusCode == http.StatusUnauthorized:
+		return fmt.Errorf("%w: %w (HTTP %d)", ErrAuth, ErrCredentialsRejected, resp.StatusCode)
+	case resp.StatusCode >= 500:
+		return fmt.Errorf("%w: el endpoint de token respondió HTTP %d", ErrUnavailable, resp.StatusCode)
+	default:
+		return fmt.Errorf("%w: %s rechazó la petición de token (HTTP %d, %q)", ErrAuth, NombreDeLaPlataforma, resp.StatusCode, body.Error)
+	}
 }

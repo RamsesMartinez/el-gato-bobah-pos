@@ -17,6 +17,8 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/config"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/httpapi"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/secrets"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
@@ -40,6 +42,37 @@ func (d *decisorFalso) ClaseDeFallo(err error) domain.ClaseDeFallo {
 	return domain.FalloRespuestaInvalida
 }
 
+// cifradorDeLlaves es el respaldo local con una llave fija: el que usan los servicios de estas
+// pruebas para la llave de firma.
+var signingKeyCipher = func() *secrets.Local {
+	l, err := secrets.NewLocal(bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		panic(err)
+	}
+	return l
+}()
+
+// clientesFijos entrega los MISMOS clientes a toda empresa. Es el doble de pruebas del servicio de
+// credenciales: aquí se prueba qué hace el servicio con un cliente, no de dónde sale.
+type fixedClients struct {
+	readers  map[string]app.LectorDeMenu
+	deciders map[string]app.DecisorDePedidos
+}
+
+func (c fixedClients) MenuReaderFor(_ context.Context, plataforma string) (app.LectorDeMenu, error) {
+	if l := c.readers[plataforma]; l != nil {
+		return l, nil
+	}
+	return nil, domain.ErrPlataformaSinCredenciales
+}
+
+func (c fixedClients) OrderDeciderFor(_ context.Context, plataforma string) (app.DecisorDePedidos, error) {
+	if d := c.deciders[plataforma]; d != nil {
+		return d, nil
+	}
+	return nil, domain.ErrPlataformaSinCredenciales
+}
+
 const detalleDeUnPedido = `{
   "id":"ped-1","display_id":"K4T2","placed_at":"2026-09-17T18:04:00Z","type":"DELIVERY",
   "eater":{"first_name":"Ana"},
@@ -52,17 +85,15 @@ const detalleDeUnPedido = `{
 func tiendaConLlave(t *testing.T, st *store.Store, empresa int64, tienda, llave string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	plataforma := platformID(t, st, empresa, "Uber Eats")
-	var conexion int64
-	if err := st.Pool.QueryRow(ctx, `
-		insert into platform_connections (delivery_platform_id, external_store_id, label, company_id)
-		values ($1, $2, $3, $4) returning id`,
-		plataforma, tienda, "Sucursal "+tienda, empresa).Scan(&conexion); err != nil {
-		t.Fatalf("crear la conexión: %v", err)
+	conexion, plataforma := tiendaSinLlave(t, st, empresa, tienda)
+	// Cifrada como la cifraría el servicio: la columna ya no admite texto.
+	cif, err := signingKeyCipher.Encrypt(ctx, []byte(llave), domain.CredentialAAD(empresa, plataforma, domain.SecretSigningKey))
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := st.Pool.Exec(ctx, `
-		insert into platform_webhook_keys (delivery_platform_id, key_primary, company_id)
-		values ($1, $2, $3)`, plataforma, llave, empresa); err != nil {
+		insert into platform_webhook_keys (delivery_platform_id, key_primary_encrypted, company_id)
+		values ($1, $2, $3)`, plataforma, cif, empresa); err != nil {
 		t.Fatalf("guardar la llave: %v", err)
 	}
 	// Los métodos de cobro de la plataforma, que en producción los siembra CrearConexion. Se
@@ -78,6 +109,19 @@ func tiendaConLlave(t *testing.T, st *store.Store, empresa int64, tienda, llave 
 	return conexion
 }
 
+// tiendaSinLlave es la tienda recién conectada, antes de que alguien capture su llave de firma.
+func tiendaSinLlave(t *testing.T, st *store.Store, empresa int64, tienda string) (conexion int64, plataforma int16) {
+	t.Helper()
+	plataforma = platformID(t, st, empresa, "Uber Eats")
+	if err := st.Pool.QueryRow(context.Background(), `
+		insert into platform_connections (delivery_platform_id, external_store_id, label, company_id)
+		values ($1, $2, $3, $4) returning id`,
+		plataforma, tienda, "Sucursal "+tienda, empresa).Scan(&conexion); err != nil {
+		t.Fatalf("crear la conexión: %v", err)
+	}
+	return conexion, plataforma
+}
+
 func avisoDePedido(eventID, tienda string) []byte {
 	cuerpo, _ := json.Marshal(map[string]any{
 		"event_type":    "orders.notification",
@@ -90,7 +134,7 @@ func avisoDePedido(eventID, tienda string) []byte {
 
 func servicioDePedidos(st *store.Store) *app.PedidosDePlataformaService {
 	return app.NewPedidosDePlataformaService(st,
-		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}},
+		fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}}}, signingKeyCipher,
 		"sandbox", clock)
 }
 
@@ -122,7 +166,7 @@ func TestUnAvisoNoCaeEnLaEmpresaEquivocada(t *testing.T) {
 	// atrapa y el inverso no. Firmar con la de A lo dejaría pasar por el orden de las filas.
 	svc := servicioDePedidos(st)
 	cuerpo := avisoDePedido("evt-de-b", tiendaCompartida)
-	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llaveB), Ambiente: "sandbox",
 	})
 	if err != nil {
@@ -168,7 +212,7 @@ func TestUnAvisoSinFirmaValidaNoEscribeNada(t *testing.T) {
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
-			err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+			_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 				Crudo: cuerpo, Firma: c.firma, Ambiente: "sandbox",
 			})
 			if !errors.Is(err, domain.ErrFirmaInvalida) {
@@ -179,7 +223,7 @@ func TestUnAvisoSinFirmaValidaNoEscribeNada(t *testing.T) {
 
 	// Y una tienda que no conocemos: MISMO error, para no delatar cuáles existen.
 	cuerpoAjeno := avisoDePedido("evt-ajeno", "tienda-que-no-es-nuestra")
-	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpoAjeno, Firma: domain.FirmarParaPrueba(cuerpoAjeno, "la-llave-buena-y-larga-aqui"),
 		Ambiente: "sandbox",
 	})
@@ -210,7 +254,7 @@ func TestElMismoAvisoCincoVecesEsUnPedido(t *testing.T) {
 	cuerpo := avisoDePedido("evt-repetido", "tienda-dedup")
 	firma := domain.FirmarParaPrueba(cuerpo, "llave-para-deduplicar-larga")
 	for i := 0; i < 5; i++ {
-		if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 			Crudo: cuerpo, Firma: firma, Ambiente: "sandbox",
 		}); err != nil {
 			t.Fatalf("entrega %d: %v", i+1, err)
@@ -242,7 +286,7 @@ func TestUnAvisoDeProduccionNoEntraAlAmbienteDePruebas(t *testing.T) {
 	svc := servicioDePedidos(st)
 
 	cuerpo := avisoDePedido("evt-prod", "tienda-amb")
-	err := svc.RecibirAviso(context.Background(), "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(context.Background(), "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, "llave-del-ambiente-de-pruebas"),
 		Ambiente: "production",
 	})
@@ -260,11 +304,11 @@ func TestUnDetalleQueNoSeTraeNoSeConfirma(t *testing.T) {
 	empresa := makeCompany(t, st, "empresa-sin-detalle")
 	tiendaConLlave(t, st, empresa, "tienda-sd", "llave-sin-detalle-suficiente")
 	svc := app.NewPedidosDePlataformaService(st,
-		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("la plataforma no contestó")}},
+		fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("la plataforma no contestó")}}}, signingKeyCipher,
 		"sandbox", clock)
 
 	cuerpo := avisoDePedido("evt-sin-detalle", "tienda-sd")
-	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, "llave-sin-detalle-suficiente"),
 		Ambiente: "sandbox",
 	})
@@ -308,7 +352,7 @@ func TestLaPuertaPublicaDelWebhook(t *testing.T) {
 
 	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
 	h := httpapi.NewHandlers(httpapi.Deps{
-		Cfg: config.Config{}, JWT: jm,
+		Cfg: config.Config{}, JWT: jm, Broker: realtime.NewBroker(),
 		PedidosPlataforma: servicioDePedidos(st),
 	})
 	r := httpapi.Router(config.Config{}, jm, h, st)
@@ -385,7 +429,7 @@ func TestLaPuertaPublicaDelWebhook(t *testing.T) {
 		hRoto := httpapi.NewHandlers(httpapi.Deps{
 			Cfg: config.Config{}, JWT: jm,
 			PedidosPlataforma: app.NewPedidosDePlataformaService(st,
-				map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("caída")}},
+				fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{falla: errors.New("caída")}}}, signingKeyCipher,
 				"sandbox", clock),
 		})
 		rRoto := httpapi.Router(config.Config{}, jm, hRoto, st)
@@ -425,10 +469,10 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	  "cart":{"items":[{"id":"cafe","title":"Café","quantity":1,
 	                    "price":{"unit_price":{"amount":4500}}}]}}`
 	svcSinOpciones := app.NewPedidosDePlataformaService(st,
-		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(sinOpciones)}},
+		fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(sinOpciones)}}}, signingKeyCipher,
 		"sandbox", clock)
 	cuerpo := avisoDePedido("evt-sin-opciones", "tienda-pend")
-	if err := svcSinOpciones.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	if _, err := svcSinOpciones.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
 	}); err != nil {
 		t.Fatalf("recibir: %v", err)
@@ -459,7 +503,7 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	}
 
 	// Y sin ningún pendiente, la lista entera también es `[]`.
-	vacio := app.NewPedidosDePlataformaService(newTestStore(t), nil, "sandbox", clock)
+	vacio := app.NewPedidosDePlataformaService(newTestStore(t), nil, signingKeyCipher, "sandbox", clock)
 	st2 := newTestStore(t)
 	otra := makeCompany(t, st2, "empresa-vacia")
 	ctx2, soltar2, err := st2.AcquireTenant(ctx, otra)
@@ -468,7 +512,7 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 	}
 	defer soltar2()
 	_ = vacio
-	svc2 := app.NewPedidosDePlataformaService(st2, nil, "sandbox", clock)
+	svc2 := app.NewPedidosDePlataformaService(st2, nil, signingKeyCipher, "sandbox", clock)
 	lista, err := svc2.Pendientes(ctx2)
 	if err != nil {
 		t.Fatal(err)
@@ -494,7 +538,7 @@ func TestAceptarDejaElPedidoEnElPOSYaPagado(t *testing.T) {
 	svc := servicioDePedidos(st)
 
 	cuerpo := avisoDePedido("evt-aceptar", "tienda-acepta")
-	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
 	}); err != nil {
 		t.Fatalf("recibir: %v", err)
@@ -589,10 +633,10 @@ func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
 	for i, folio := range []string{"ped-h1", "ped-h2"} {
 		detalle := strings.Replace(detalleDeUnPedido, `"id":"ped-1"`, `"id":"`+folio+`"`, 1)
 		svc := app.NewPedidosDePlataformaService(st,
-			map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalle)}},
+			fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalle)}}}, signingKeyCipher,
 			"sandbox", clock)
 		cuerpo := avisoDePedido("evt-huerfano-"+itoa(i), "tienda-huerf")
-		if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+		if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
 		}); err != nil {
 			t.Fatalf("recibir %s: %v", folio, err)
@@ -671,11 +715,11 @@ func TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion(t *testing.T) {
 	// EL MISMO servicio, pero con el store del rol de aplicación: es el único cambio.
 	appSt := appRoleStore(t)
 	svc := app.NewPedidosDePlataformaService(appSt,
-		map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}},
+		fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalleDeUnPedido)}}}, signingKeyCipher,
 		"sandbox", clock)
 
 	cuerpo := avisoDePedido("evt-rol-app", "tienda-rol-app")
-	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
 	})
 	if errors.Is(err, domain.ErrFirmaInvalida) {
@@ -716,14 +760,14 @@ func TestUnAvisoRepetidoDeOtraEmpresaNoSeTraga(t *testing.T) {
 	const mismoID = "evt-que-choca"
 
 	cuerpoA := avisoDePedido(mismoID, "tienda-de-a")
-	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpoA, Firma: domain.FirmarParaPrueba(cuerpoA, llaveA), Ambiente: "sandbox",
 	}); err != nil {
 		t.Fatalf("el aviso de A no entró: %v", err)
 	}
 
 	cuerpoB := avisoDePedido(mismoID, "tienda-de-b")
-	if err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpoB, Firma: domain.FirmarParaPrueba(cuerpoB, llaveB), Ambiente: "sandbox",
 	}); err != nil {
 		t.Fatalf("el aviso de B no entró: %v", err)
@@ -773,7 +817,7 @@ func TestDosCandidatasConLaMismaLlaveSeRechazan(t *testing.T) {
 	svc := servicioDePedidos(st)
 
 	cuerpo := avisoDePedido("evt-ambiguo", tienda)
-	err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+	_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
 		Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, laMisma), Ambiente: "sandbox",
 	})
 	if err == nil {
@@ -788,5 +832,204 @@ func TestDosCandidatasConLaMismaLlaveSeRechazan(t *testing.T) {
 	}
 	if pedidos != 0 {
 		t.Fatalf("se registraron %d pedidos de un aviso ambiguo", pedidos)
+	}
+}
+
+// LA LLAVE SE CAPTURA Y SE CAMBIA SIN DEJAR DE RECIBIR PEDIDOS.
+//
+// Lo que se prueba es la FIRMA, no las filas: que la llave guardada sea la que valida. Una llave
+// que se guarda distinta de como se pegó, o una rotación que tira la vieja antes de tiempo, dejan
+// la tienda sin pedidos sin que nada falle — la plataforma reintenta, se rinde, y el cliente
+// espera.
+//
+// Corre bajo gatobobah_app: el grant de update que la rotación necesita solo falla con RLS puesto.
+func TestLaLlaveDeFirmaSeCapturaYSeCambiaSinPerderAvisos(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	empresa := makeCompany(t, st, "empresa-llave")
+	otra := makeCompany(t, st, "empresa-llave-ajena")
+	_, plataforma := tiendaSinLlave(t, st, empresa, "tienda-llave")
+	plataformaAjena := platformID(t, st, otra, "Uber Eats")
+
+	appSt := appRoleStore(t)
+	svc := servicioDePedidos(appSt)
+	ctxT, soltar, err := appSt.AcquireTenant(ctx, empresa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer soltar()
+
+	const vieja = "whsec_la-llave-de-antes-0001"
+	const nueva = "whsec_la-llave-de-ahora-0002"
+	n := 0
+	entra := func(llave string) error {
+		n++
+		cuerpo, _ := json.Marshal(map[string]any{
+			"event_type": "prueba.de.llave", "event_id": "evt-llave-" + itoa(n),
+			"meta": map[string]any{"user_id": "tienda-llave"},
+		})
+		_, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+		})
+		return err
+	}
+	estado := func() app.EstadoDeLlave {
+		t.Helper()
+		e, err := svc.EstadoDeLlave(ctxT, plataforma)
+		if err != nil {
+			t.Fatalf("leer el estado de la llave: %v", err)
+		}
+		return e
+	}
+
+	if e := estado(); e.Configurada {
+		t.Fatalf("una tienda recién conectada ya dice tener llave: %+v", e)
+	}
+
+	// Una corta es un dedazo, y se rechaza como 400 antes de llegar al `check`.
+	if err := svc.GuardarLlave(ctxT, empresa, plataforma, "corta"); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("una llave corta dio %v; se esperaba ErrValidation", err)
+	}
+
+	// Pegada con el salto de línea del portapapeles: se guarda SIN él, o no valida ninguna firma.
+	if err := svc.GuardarLlave(ctxT, empresa, plataforma, vieja+"\n"); err != nil {
+		t.Fatalf("guardar la primera llave: %v", err)
+	}
+	if e := estado(); !e.Configurada || e.Rotando {
+		t.Fatalf("tras la primera captura el estado es %+v", e)
+	}
+	if err := entra(vieja); err != nil {
+		t.Fatalf("un aviso firmado con la llave recién capturada no entró: %v", err)
+	}
+
+	// Volver a pegar la misma no es un cambio de llave, y no debe dejar la vieja de secundaria.
+	if err := svc.GuardarLlave(ctxT, empresa, plataforma, vieja); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("guardar la misma llave dos veces dio %v; se esperaba ErrValidation", err)
+	}
+
+	// CAMBIARLA DEJA LAS DOS VÁLIDAS: la plataforma tarda en empezar a firmar con la nueva, y los
+	// avisos que ya venían en camino se firmaron con la vieja.
+	if err := svc.GuardarLlave(ctxT, empresa, plataforma, nueva); err != nil {
+		t.Fatalf("cambiar la llave: %v", err)
+	}
+	if e := estado(); !e.Configurada || !e.Rotando || e.RotadaEn == nil {
+		t.Fatalf("a media rotación el estado es %+v", e)
+	}
+	if err := entra(vieja); err != nil {
+		t.Fatalf("a media rotación la llave vieja ya no valida, y los avisos en camino se pierden: %v", err)
+	}
+	if err := entra(nueva); err != nil {
+		t.Fatalf("a media rotación la llave nueva no valida: %v", err)
+	}
+
+	// Retirar la anterior la invalida de verdad: una llave filtrada que se «cambia» y sigue
+	// firmando no se cambió.
+	if err := svc.RetirarLlaveAnterior(ctxT, plataforma); err != nil {
+		t.Fatalf("retirar la llave anterior: %v", err)
+	}
+	if e := estado(); e.Rotando {
+		t.Fatalf("tras retirar la anterior sigue rotando: %+v", e)
+	}
+	if err := entra(vieja); !errors.Is(err, domain.ErrFirmaInvalida) {
+		t.Fatalf("la llave retirada sigue firmando: %v", err)
+	}
+	if err := entra(nueva); err != nil {
+		t.Fatalf("la llave vigente dejó de validar al retirar la anterior: %v", err)
+	}
+
+	// EL ESTADO NUNCA TRAE LA LLAVE: lo que se puede volver a leer desde la pantalla se filtra por
+	// una captura de pantalla.
+	crudo, _ := json.Marshal(estado())
+	if strings.Contains(string(crudo), "whsec_") {
+		t.Fatalf("el estado de la llave expone la llave: %s", crudo)
+	}
+
+	// La plataforma de OTRA empresa no se puede configurar desde ésta, ni se ve su estado.
+	if err := svc.GuardarLlave(ctxT, empresa, plataformaAjena, "whsec_una-llave-para-la-ajena"); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("guardar la llave en la plataforma de otra empresa dio %v; se esperaba ErrValidation", err)
+	}
+	if e, err := svc.EstadoDeLlave(ctxT, plataformaAjena); err != nil || e.Configurada {
+		t.Fatalf("el estado de la plataforma ajena = %+v, %v", e, err)
+	}
+	if err := svc.RetirarLlaveAnterior(ctxT, plataformaAjena); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("retirar la llave de la plataforma ajena dio %v; se esperaba ErrNotFound", err)
+	}
+}
+
+// UN PEDIDO QUE ENTRA SUENA EN LAS TABLETAS DE SU EMPRESA, Y SOLO EN ÉSAS.
+//
+// Sin el evento, la tableta se entera en la siguiente consulta —hasta 30 s después— de un pedido
+// que tiene 90 s antes de que la plataforma llame al local. Y el broker reparte por empresa: un
+// evento publicado con la empresa equivocada le suena la alarma a otro negocio con un pedido que no
+// puede ver.
+func TestUnPedidoRecibidoAvisaASuEmpresa(t *testing.T) {
+	st := newTestStore(t)
+	const llave = "llave-para-el-evento-en-vivo"
+	empresa := makeCompany(t, st, "empresa-evento")
+	otra := makeCompany(t, st, "empresa-evento-ajena")
+	tiendaConLlave(t, st, empresa, "tienda-evento", llave)
+
+	broker := realtime.NewBroker()
+	suyo, soltarSuyo := broker.Subscribe(empresa)
+	defer soltarSuyo()
+	ajeno, soltarAjeno := broker.Subscribe(otra)
+	defer soltarAjeno()
+
+	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
+	h := httpapi.NewHandlers(httpapi.Deps{
+		Cfg: config.Config{}, JWT: jm, Broker: broker,
+		PedidosPlataforma: servicioDePedidos(st),
+	})
+	r := httpapi.Router(config.Config{}, jm, h, st)
+	pegar := func(cuerpo []byte) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/uber-eats", bytes.NewReader(cuerpo))
+		req.Header.Set("X-Uber-Signature", domain.FirmarParaPrueba(cuerpo, llave))
+		req.Header.Set("X-Environment", "sandbox")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+	recibidos := func(ch <-chan realtime.Event) (n int) {
+		for {
+			select {
+			case ev := <-ch:
+				if ev.Type == "platform.order.received" {
+					n++
+				}
+			default:
+				return n
+			}
+		}
+	}
+
+	aviso := avisoDePedido("evt-en-vivo", "tienda-evento")
+	if code := pegar(aviso); code != http.StatusOK {
+		t.Fatalf("el aviso respondió %d", code)
+	}
+	if n := recibidos(suyo); n != 1 {
+		t.Fatalf("la empresa del pedido recibió %d eventos; se esperaba 1", n)
+	}
+	if n := recibidos(ajeno); n != 0 {
+		t.Fatalf("OTRA empresa recibió %d eventos de un pedido que no es suyo", n)
+	}
+
+	// El reintento de la plataforma no vuelve a sonar: el pedido ya estaba en la tableta.
+	if code := pegar(aviso); code != http.StatusOK {
+		t.Fatalf("el reintento respondió %d", code)
+	}
+	// Otro aviso del MISMO pedido (la plataforma no garantiza un solo aviso por pedido).
+	if code := pegar(avisoDePedido("evt-en-vivo-otra-vez", "tienda-evento")); code != http.StatusOK {
+		t.Fatalf("el segundo aviso del mismo pedido respondió %d", code)
+	}
+	// Un aviso que no es de pedido nuevo tampoco suena.
+	otroTipo, _ := json.Marshal(map[string]any{
+		"event_type": "store.provisioned", "event_id": "evt-no-es-pedido",
+		"meta": map[string]any{"user_id": "tienda-evento"},
+	})
+	if code := pegar(otroTipo); code != http.StatusOK {
+		t.Fatalf("el aviso de otro tipo respondió %d", code)
+	}
+	if n := recibidos(suyo); n != 0 {
+		t.Fatalf("sonaron %d eventos de más: reintento, aviso repetido del pedido u otro tipo", n)
 	}
 }

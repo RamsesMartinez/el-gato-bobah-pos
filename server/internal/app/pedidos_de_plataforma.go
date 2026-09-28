@@ -9,11 +9,13 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/secrets"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
@@ -41,8 +43,12 @@ type AvisoEntrante struct {
 
 // PedidosDePlataformaService recibe los pedidos y los deja listos para que alguien decida.
 type PedidosDePlataformaService struct {
-	store     *store.Store
-	decisores map[string]DecisorDePedidos // por nombre de plataforma
+	store *store.Store
+	// clients entrega el decisor de la empresa del contexto, armado con SUS credenciales: con uno
+	// solo para todo el sistema, la empresa B aceptaría pedidos con la aplicación de la A.
+	clients PlatformClients
+	// cipher guarda la llave de firma: un respaldo de la base no debe servir para firmar avisos.
+	cipher Cipher
 	// ambiente es "sandbox" o "production", el de ESTE sistema. Un aviso que declara otro se
 	// rechaza: procesarlo mezclaría un pedido real con datos de prueba.
 	ambiente string
@@ -57,14 +63,131 @@ type PedidosDePlataformaService struct {
 // prometa tiempo que ya no existe.
 const PlazoParaDecidir = 11*time.Minute + 30*time.Second
 
-func NewPedidosDePlataformaService(s *store.Store, decisores map[string]DecisorDePedidos, ambiente string, now func() time.Time) *PedidosDePlataformaService {
+func NewPedidosDePlataformaService(s *store.Store, clients PlatformClients, c Cipher, ambiente string, now func() time.Time) *PedidosDePlataformaService {
 	if now == nil {
 		now = time.Now
 	}
 	return &PedidosDePlataformaService{
-		store: s, decisores: decisores, ambiente: ambiente,
+		store: s, clients: clients, cipher: c, ambiente: ambiente,
 		plazo: PlazoParaDecidir, ahora: now,
 	}
+}
+
+// orderDeciderFor devuelve el decisor de la plataforma para la empresa del contexto, o por qué no hay.
+func (s *PedidosDePlataformaService) orderDeciderFor(ctx context.Context, plataforma string) (DecisorDePedidos, error) {
+	if s.clients == nil {
+		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plataforma)
+	}
+	return s.clients.OrderDeciderFor(ctx, plataforma)
+}
+
+// EstadoDeLlave es lo que la pantalla puede saber de la llave de firma: si hay, no cuál es. Un
+// secreto que se vuelve a leer desde la interfaz se filtra por una captura de pantalla, así que
+// este tipo no tiene dónde llevarlo.
+type EstadoDeLlave struct {
+	Configurada bool `json:"configured"`
+	// Rotando: la llave anterior sigue validando. Mientras nadie la retire se queda válida para
+	// siempre, y RotadaEn es lo que deja ver desde cuándo.
+	Rotando  bool       `json:"rotating"`
+	RotadaEn *time.Time `json:"rotatedAt,omitempty"`
+	// NeedsRecapture: hay llave pero este ambiente no la puede leer (un respaldo de otro ambiente).
+	// Mientras siga así, ningún aviso de esta empresa valida.
+	NeedsRecapture bool `json:"needsRecapture"`
+}
+
+// EstadoDeLlave dice si la empresa ya capturó la llave de esa plataforma.
+func (s *PedidosDePlataformaService) EstadoDeLlave(ctx context.Context, plataforma int16) (EstadoDeLlave, error) {
+	fila, err := s.store.QC(ctx).GetWebhookKeyState(ctx, plataforma)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EstadoDeLlave{}, nil
+	}
+	if err != nil {
+		return EstadoDeLlave{}, fmt.Errorf("leer el estado de la llave: %w", err)
+	}
+	e := EstadoDeLlave{Configurada: fila.Configurada, Rotando: fila.Rotando}
+	if fila.RotatedAt.Valid {
+		e.RotadaEn = &fila.RotatedAt.Time
+	}
+	if _, err := s.currentSigningKey(ctx, plataforma); errors.Is(err, secrets.ErrUnreadable) {
+		e.NeedsRecapture = true
+	}
+	return e, nil
+}
+
+// currentSigningKey descifra la primaria. ErrNoRows si no hay; secrets.ErrUnreadable si es de otro
+// ambiente.
+func (s *PedidosDePlataformaService) currentSigningKey(ctx context.Context, plataforma int16) (string, error) {
+	fila, err := s.store.QC(ctx).GetWebhookKeyPrimary(ctx, plataforma)
+	if err != nil {
+		return "", err
+	}
+	empresa, err := sessionCompanyFor(ctx, fila.CompanyID)
+	if err != nil {
+		return "", err
+	}
+	claro, err := s.cipher.Decrypt(ctx, fila.KeyPrimaryEncrypted,
+		domain.CredentialAAD(empresa, plataforma, domain.SecretSigningKey))
+	return string(claro), err
+}
+
+// GuardarLlave captura la llave de firma o, si ya había una, la cambia.
+//
+// CAMBIARLA NO TIRA LA ANTERIOR: la deja de secundaria y las dos validan. La plataforma no empieza
+// a firmar con la nueva en el mismo instante en que alguien la pega aquí, y los avisos que ya
+// venían en camino traen la firma vieja; tirarla de golpe los rechaza, y un aviso rechazado es un
+// pedido que no entra. La anterior se retira aparte, con RetirarLlaveAnterior.
+//
+// `empresa` entra explícita porque es la AAD con la que se cifra; es la del usuario que captura.
+func (s *PedidosDePlataformaService) GuardarLlave(ctx context.Context, empresa int64, plataforma int16, llave string) error {
+	llave, err := domain.NormalizarLlaveDeFirma(llave)
+	if err != nil {
+		return err
+	}
+	// «Es la misma» se compara aquí, en claro: la base ya no puede, porque dos cifrados del mismo
+	// valor salen distintos. Una vigente ilegible (de otro ambiente) no es «la misma»: se reemplaza.
+	current, err := s.currentSigningKey(ctx, plataforma)
+	switch {
+	case err == nil && current == llave:
+		return fmt.Errorf("%w: es la misma llave que ya está guardada", domain.ErrValidation)
+	case err != nil && !errors.Is(err, pgx.ErrNoRows) && !errors.Is(err, secrets.ErrUnreadable):
+		return fmt.Errorf("leer la llave current: %w", err)
+	}
+	ciphertext, err := s.cipher.Encrypt(ctx, []byte(llave), domain.CredentialAAD(empresa, plataforma, domain.SecretSigningKey))
+	if err != nil {
+		return keyServiceError(ctx, "cifrar la llave de firma", err)
+	}
+	q := s.store.QC(ctx)
+	// Primero se intenta rotar: si ya hay llave, es un cambio. Si no la hay, no toca ninguna fila y
+	// es la primera captura. En ese orden no hace falta leer antes de escribir.
+	filas, err := q.RotateWebhookKey(ctx, db.RotateWebhookKeyParams{DeliveryPlatformID: plataforma, KeyPrimaryEncrypted: ciphertext})
+	if err == nil && filas == 0 {
+		err = q.UpsertWebhookKey(ctx, db.UpsertWebhookKeyParams{DeliveryPlatformID: plataforma, KeyPrimaryEncrypted: ciphertext})
+	}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		switch pg.Code {
+		case "23503":
+			// La FK compuesta: o la plataforma no existe, o es de otra empresa.
+			return fmt.Errorf("%w: esa plataforma no existe para esta empresa", domain.ErrValidation)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("guardar la llave de firma: %w", err)
+	}
+	return nil
+}
+
+// RetirarLlaveAnterior termina el cambio de llave: la anterior deja de validar. Se hace cuando la
+// plataforma ya firma con la nueva; antes, los avisos en camino se pierden.
+func (s *PedidosDePlataformaService) RetirarLlaveAnterior(ctx context.Context, plataforma int16) error {
+	filas, err := s.store.QC(ctx).FinishWebhookKeyRotation(ctx, plataforma)
+	if err != nil {
+		return fmt.Errorf("retirar la llave anterior: %w", err)
+	}
+	if filas == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // sobreDelAviso es lo poco que se lee del cuerpo ANTES de autenticarlo: lo justo para saber a quién
@@ -79,6 +202,14 @@ type sobreDelAviso struct {
 	ResourceHref string `json:"resource_href"`
 }
 
+// AvisoRecibido dice qué dejó un aviso, para que quien lo recibió avise a las tabletas.
+type AvisoRecibido struct {
+	Empresa int64
+	// PedidoNuevo es falso en un reintento, en un segundo aviso del mismo pedido y en cualquier
+	// aviso que no sea de pedido: ninguno de ésos trae nada que la tableta no tenga ya.
+	PedidoNuevo bool
+}
+
 // RecibirAviso es el camino completo de un aviso: autenticar, resolver de quién es, traer el
 // detalle y registrarlo.
 //
@@ -90,27 +221,27 @@ type sobreDelAviso struct {
 // DEVUELVE ERROR CUANDO NO SE PUDO PROCESAR, y eso es lo que hace que la plataforma reintente. Un
 // aviso confirmado que en realidad falló es un pedido perdido en silencio: el cliente espera comida
 // que nadie está haciendo.
-func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataforma string, in AvisoEntrante) error {
+func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataforma string, in AvisoEntrante) (AvisoRecibido, error) {
 	if in.Ambiente != "" && !equalFold(in.Ambiente, s.ambiente) {
-		return fmt.Errorf("%w: llegó de %q y aquí es %q", domain.ErrAmbienteEquivocado, in.Ambiente, s.ambiente)
+		return AvisoRecibido{}, fmt.Errorf("%w: llegó de %q y aquí es %q", domain.ErrAmbienteEquivocado, in.Ambiente, s.ambiente)
 	}
 	var sobre sobreDelAviso
 	if err := json.Unmarshal(in.Crudo, &sobre); err != nil {
-		return fmt.Errorf("%w: el cuerpo no es JSON", domain.ErrValidation)
+		return AvisoRecibido{}, fmt.Errorf("%w: el cuerpo no es JSON", domain.ErrValidation)
 	}
 	if sobre.EventID == "" || sobre.Meta.StoreID == "" {
-		return fmt.Errorf("%w: el aviso no trae identificador ni tienda", domain.ErrValidation)
+		return AvisoRecibido{}, fmt.Errorf("%w: el aviso no trae identificador ni tienda", domain.ErrValidation)
 	}
 
 	conexion, empresa, err := s.resolverTienda(ctx, plataforma, sobre.Meta.StoreID, in)
 	if err != nil {
-		return err
+		return AvisoRecibido{}, err
 	}
 
 	// A partir de aquí TODO corre con el tenant fijado en la empresa que la firma identificó.
 	ctx, soltar, err := s.store.AcquireTenant(ctx, empresa)
 	if err != nil {
-		return fmt.Errorf("tomar la conexión de la empresa: %w", err)
+		return AvisoRecibido{}, fmt.Errorf("tomar la conexión de la empresa: %w", err)
 	}
 	defer soltar()
 
@@ -123,13 +254,13 @@ func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataform
 	if errors.Is(err, pgx.ErrNoRows) {
 		// `on conflict do nothing` no devolvió fila: ya lo habíamos procesado. Se CONFIRMA igual —
 		// no confirmarlo haría que la plataforma lo reintente para siempre.
-		return nil
+		return AvisoRecibido{Empresa: empresa}, nil
 	}
 	if err != nil {
-		return fmt.Errorf("registrar el aviso: %w", err)
+		return AvisoRecibido{}, fmt.Errorf("registrar el aviso: %w", err)
 	}
 
-	claseDeFallo, err := s.procesar(ctx, plataforma, conexion, sobre)
+	nuevo, claseDeFallo, err := s.procesar(ctx, plataforma, conexion, sobre)
 	desenlace := "procesado"
 	var fallo *string
 	if err != nil {
@@ -138,9 +269,12 @@ func (s *PedidosDePlataformaService) RecibirAviso(ctx context.Context, plataform
 	if e := s.store.QC(ctx).MarkWebhookEventDone(ctx, db.MarkWebhookEventDoneParams{
 		ID: eventoID, Outcome: &desenlace, FailureKind: fallo,
 	}); e != nil {
-		return fmt.Errorf("cerrar el aviso: %w", e)
+		return AvisoRecibido{}, fmt.Errorf("cerrar el aviso: %w", e)
 	}
-	return err
+	if err != nil {
+		return AvisoRecibido{}, err
+	}
+	return AvisoRecibido{Empresa: empresa, PedidoNuevo: nuevo}, nil
 }
 
 // resolverTienda traduce (plataforma, id de tienda de allá) → (conexión, empresa).
@@ -222,47 +356,69 @@ func (s *PedidosDePlataformaService) llavesDe(ctx context.Context, empresa, cone
 	if err != nil {
 		return domain.LlavesDeFirma{}, err
 	}
-	return domain.LlavesDeFirma{
-		Primaria:   fila.KeyPrimary,
-		Secundaria: textoDe(fila.KeySecondary),
-	}, nil
+	// La empresa es la de la CANDIDATA con la que se fijó la sesión, no la de la fila: si RLS
+	// dejara pasar la llave de otra empresa, no descifra.
+	if _, err := sessionCompanyFor(ctxT, fila.CompanyID); err != nil {
+		return domain.LlavesDeFirma{}, err
+	}
+	aad := domain.CredentialAAD(empresa, fila.DeliveryPlatformID, domain.SecretSigningKey)
+	primary, err := s.cipher.Decrypt(ctxT, fila.KeyPrimaryEncrypted, aad)
+	if errors.Is(err, secrets.ErrUnreadable) {
+		// Una llave de otro ambiente es como no tener llave: sus avisos no validan. NO se devuelve
+		// error: tumbaría la resolución de TODAS las candidatas y la plataforma reintentaría para
+		// siempre. Queda el evento, y la pantalla dice «por recapturar».
+		logging.SecurityEvent(ctx, "webhook_key_unreadable", "connection_id", conexion)
+		return domain.LlavesDeFirma{}, nil
+	}
+	if err != nil {
+		return domain.LlavesDeFirma{}, err
+	}
+	llaves := domain.LlavesDeFirma{Primaria: string(primary)}
+	if fila.KeySecondaryEncrypted != nil {
+		secondary, err := s.cipher.Decrypt(ctxT, fila.KeySecondaryEncrypted, aad)
+		if err != nil && !errors.Is(err, secrets.ErrUnreadable) {
+			return domain.LlavesDeFirma{}, err
+		}
+		llaves.Secundaria = string(secondary)
+	}
+	return llaves, nil
 }
 
 // procesar hace lo que el tipo de aviso pida. Devuelve la clase del fallo para registrarla sin
 // guardar jamás el mensaje crudo del error: el de una API ajena puede traer la dirección del
 // cliente adentro.
-func (s *PedidosDePlataformaService) procesar(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (domain.ClaseDeFallo, error) {
+func (s *PedidosDePlataformaService) procesar(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (nuevo bool, _ domain.ClaseDeFallo, _ error) {
 	switch domain.ClasificarAviso(sobre.EventType) {
 	case domain.AvisoPedidoNuevo:
 		return s.registrarPedido(ctx, plataforma, conexion, sobre)
 	default:
 		// Se confirma y no se procesa. Los demás tipos llegan en fases posteriores; no confirmarlos
 		// haría que la plataforma los reintente para siempre.
-		return "", nil
+		return false, "", nil
 	}
 }
 
-func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (domain.ClaseDeFallo, error) {
-	decisor, ok := s.decisores[plataforma]
-	if !ok {
-		return domain.FalloSinCredenciales, fmt.Errorf("no hay cliente configurado para %s", plataforma)
+func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataforma string, conexion int64, sobre sobreDelAviso) (nuevo bool, _ domain.ClaseDeFallo, _ error) {
+	decisor, err := s.orderDeciderFor(ctx, plataforma)
+	if err != nil {
+		return false, domain.FalloSinCredenciales, fmt.Errorf("no hay cliente de %s para esta empresa: %w", plataforma, err)
 	}
 	crudo, err := decisor.TraerDetalleDePedido(ctx, sobre.ResourceHref)
 	if err != nil {
 		// NO se confirma: es lo que hace que la plataforma reintente. Confirmar un pedido que no se
 		// pudo leer lo pierde en silencio.
-		return decisor.ClaseDeFallo(err), fmt.Errorf("traer el detalle del pedido: %w", err)
+		return false, decisor.ClaseDeFallo(err), fmt.Errorf("traer el detalle del pedido: %w", err)
 	}
 
 	pedido, err := domain.LeerPedidoDePlataforma(crudo)
 	if err != nil {
-		return domain.FalloDetalleIlegible, fmt.Errorf("interpretar el pedido: %w", err)
+		return false, domain.FalloDetalleIlegible, fmt.Errorf("interpretar el pedido: %w", err)
 	}
 
 	// El catálogo para emparejar: lo que ya se emparejó a mano en la feature anterior.
 	parejas, err := s.store.QC(ctx).ListItemLinks(ctx, conexion)
 	if err != nil {
-		return domain.FalloMapeoImposible, fmt.Errorf("leer el emparejamiento: %w", err)
+		return false, domain.FalloMapeoImposible, fmt.Errorf("leer el emparejamiento: %w", err)
 	}
 	porItem := make(map[string]int64, len(parejas))
 	for _, p := range parejas {
@@ -285,12 +441,13 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 		if err != nil {
 			return err
 		}
+		nuevo = true
 		return insertarRenglones(ctx, q, id, 0, pedido.Renglones, porItem)
 	})
 	if err != nil {
-		return domain.FalloMapeoImposible, fmt.Errorf("registrar el pedido: %w", err)
+		return false, domain.FalloMapeoImposible, fmt.Errorf("registrar el pedido: %w", err)
 	}
-	return "", nil
+	return nuevo, "", nil
 }
 
 // insertarRenglones baja el árbol de renglones y opciones. Una opción es un renglón que apunta a
@@ -491,9 +648,9 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	if ent.State != db.PlatformOrderStatePendiente {
 		return PedidoAceptado{}, fmt.Errorf("%w (está %s)", domain.ErrPedidoYaDecidido, ent.State)
 	}
-	decisor, ok := s.decisores[ent.PlatformName]
-	if !ok {
-		return PedidoAceptado{}, fmt.Errorf("%w: no hay conexión con %s", domain.ErrValidation, ent.PlatformName)
+	decisor, err := s.orderDeciderFor(ctx, ent.PlatformName)
+	if err != nil {
+		return PedidoAceptado{}, err
 	}
 	if err := decisor.AceptarPedido(ctx, ent.ExternalOrderID, ""); err != nil {
 		// La plataforma NO confirmó: no se crea nada. Aceptar aquí y no allá es la peor

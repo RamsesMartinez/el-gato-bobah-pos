@@ -97,7 +97,12 @@ en `platform_connections` la duplicaría por sucursal y las dejaría divergir.
 llave sin dejar de recibir pedidos: durante el cambio las dos son válidas. Que exista una segunda
 columna no es especulación — es un campo que el proveedor ya expone.
 
-**Lo que NO se mueve, y es honesto decirlo**: `UBER_EATS_CLIENT_ID` y `UBER_EATS_CLIENT_SECRET`
+**Actualizado el 2026-09-27**: se movieron. Ver `plan.md` (ampliación) y la migración 0075. Y la
+llave de firma dejó de ir en texto plano: el argumento de la 0073 («cifrar con una llave del entorno
+mueve el secreto») no consideró que la base SALE del servidor en cada respaldo; con KMS la llave no
+viaja ni en el entorno ni en el dump.
+
+**Lo que NO se movía (histórico)**: `UBER_EATS_CLIENT_ID` y `UBER_EATS_CLIENT_SECRET`
 siguen en el entorno. Los usa la llamada **saliente** (traer el detalle, aceptar, rechazar), que la
 020 ya construyó así. O sea: el camino de salida sigue siendo de una sola empresa. Esta feature no
 cierra esa puerta — **ya estaba cerrada** — pero tampoco la abre, y conviene que

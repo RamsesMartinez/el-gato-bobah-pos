@@ -101,8 +101,10 @@ type Deps struct {
 	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
 	MenusPlataforma   *app.MenusDePlataformaService
 	PedidosPlataforma *app.PedidosDePlataformaService
-	Sales             *app.SalesService
-	Settlements       *app.SettlementsService
+	// Credenciales de la app de cada plataforma, capturadas en pantalla (0075).
+	Credentials *app.PlatformCredentialsService
+	Sales       *app.SalesService
+	Settlements *app.SettlementsService
 	// PlatformJWT y Platform son la consola de plataforma (spec 016). Van juntas o no van: el
 	// router no monta el grupo /platform sin las dos, y montarlo a medias respondería 500 donde
 	// debe no existir nada.
@@ -139,6 +141,7 @@ type Handlers struct {
 	platformPrices    *app.PlatformPricesService
 	menusPlataforma   *app.MenusDePlataformaService
 	pedidosPlataforma *app.PedidosDePlataformaService
+	credentials       *app.PlatformCredentialsService
 	sales             *app.SalesService
 	settlements       *app.SettlementsService
 	platformJWT       *auth.ManagerDePlataforma
@@ -176,6 +179,7 @@ func NewHandlers(d Deps) *Handlers {
 		platformPrices:    d.PlatformPrices,
 		menusPlataforma:   d.MenusPlataforma,
 		pedidosPlataforma: d.PedidosPlataforma,
+		credentials:       d.Credentials,
 		sales:             d.Sales,
 		settlements:       d.Settlements,
 		platformJWT:       d.PlatformJWT,

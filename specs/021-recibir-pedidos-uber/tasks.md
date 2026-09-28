@@ -48,11 +48,11 @@ demostrar—, se arregló la ruta de la tarea de apertura de turno, se dijo de d
 **Movido aquí por `/speckit-analyze`.** Sin una llave en la base no se puede verificar una sola
 firma, así que ni la fase fundacional ni US1 se pueden probar. Estaba en Polish y bloqueaba el MVP.
 
-- [X] T011 Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de alta y rotación de llave: se guarda, se puede poner una secundaria, dos iguales se rechazan, una corta se rechaza. **Verlo en rojo**
+- [X] T011 **(Estaba marcada hecha sin que el test existiera; se escribió el 2026-09-23 como `TestLaLlaveDeFirmaSeCapturaYSeCambiaSinPerderAvisos`, que prueba con la firma y no con las filas.)** Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de alta y rotación de llave: se guarda, se puede poner una secundaria, dos iguales se rechazan, una corta se rechaza. **Verlo en rojo**
 - [X] T012 Escribir las consultas de alta, lectura y rotación de llave en `server/queries/pedidos_de_plataforma.sql` y correr `make sqlc`
-- [ ] T013 Escribir el servicio de llaves en `server/internal/app/pedidos_de_plataforma.go` y su handler en `server/internal/httpapi/handlers_menus_plataforma.go`, con su ruta en `server/internal/httpapi/router.go`
-- [ ] T014 Escribir en `web/src/features/admin/PlataformasPage.test.tsx` el test de la captura de llave: se guarda, y la llave **nunca se vuelve a mostrar** una vez guardada. **Verlo en rojo**
-- [ ] T015 Escribir la captura de la llave en `web/src/features/admin/PlataformasPage.tsx`, con su texto para quien opera —dónde la saca del tablero de la aplicación—, no para quien programó
+- [X] T013 Escribir el servicio de llaves en `server/internal/app/pedidos_de_plataforma.go` y su handler en `server/internal/httpapi/handlers_menus_plataforma.go`, con su ruta en `server/internal/httpapi/router.go`
+- [X] T014 Escribir en `web/src/features/admin/PlataformasPage.test.tsx` el test de la captura de llave: se guarda, y la llave **nunca se vuelve a mostrar** una vez guardada. **Verlo en rojo**
+- [X] T015 Escribir la captura de la llave en `web/src/features/admin/PlataformasPage.tsx`, con su texto para quien opera —dónde la saca del tablero de la aplicación—, no para quien programó
 
 ### La firma y la clasificación del aviso — lógica pura
 
@@ -103,8 +103,8 @@ en la tableta en menos de 10 s; aceptarlo y ver el ticket.
 - [X] T039 [US1] Escribir las consultas de alta de aviso, pedido entrante y renglones en `server/queries/pedidos_de_plataforma.sql` y correr `make sqlc`
 - [X] T040 [US1] Escribir `RecibirAviso` en `server/internal/app/pedidos_de_plataforma.go`: guarda el aviso crudo **en su propia transacción antes** de llamar a Uber, trae el detalle con presupuesto, registra, y **no confirma si algo falló**
 - [X] T041 [US1] Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test `TestUnDetalleQueNoSeTraeNoSeConfirma`: 5xx, no 200, con la clase de fallo registrada y ningún pedido. **Verlo en rojo**
-- [ ] T042 [US1] Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de que un pedido recibido publica `platform.order.received` por el broker. **Verlo en rojo**
-- [ ] T043 [US1] Publicar `platform.order.received` por `realtime.Broker` desde `server/internal/httpapi/handlers_webhook_plataforma.go`
+- [X] T042 [US1] Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de que un pedido recibido publica `platform.order.received` por el broker. **Verlo en rojo**
+- [X] T043 [US1] Publicar `platform.order.received` por `realtime.Broker` desde `server/internal/httpapi/handlers_webhook_plataforma.go`
 
 ### Backend — mostrar y aceptar
 
@@ -127,11 +127,11 @@ en la tableta en menos de 10 s; aceptarlo y ver el ticket.
 - [X] T057 [US1] Escribir la cuenta regresiva con sus tres estados en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
 - [X] T058 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que Aceptar cuesta **un toque** y de que Aceptar y Rechazar **no son dos botones iguales**: Aceptar dominante, Rechazar chico y separado. **Verlo en rojo**
 - [X] T059 [US1] Escribir los botones con su separación en `web/src/features/pos/AvisoDePedidoEntrante.tsx`, copiando el criterio de `web/src/features/pos/PedidosEnCurso.tsx`
-- [ ] T060 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de tres pendientes a la vez: se ve el más urgente con sus acciones y un contador con los demás. **Verlo en rojo**
-- [ ] T061 [US1] Escribir `web/src/features/pos/PedidosEntrantesSheet.tsx` con el contador «+N», copiando el patrón de `web/src/features/pos/PedidosEnCurso.tsx`
+- [X] T060 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de tres pendientes a la vez: se ve el más urgente con sus acciones y un contador con los demás. **Verlo en rojo**
+- [X] T061 [US1] Escribir `web/src/features/pos/PedidosEntrantesSheet.tsx` con el contador «+N», copiando el patrón de `web/src/features/pos/PedidosEnCurso.tsx`
 - [X] T062 [US1] Cablear el aviso en `web/src/features/pos/POSPage.tsx` y suscribirlo a `platform.order.received`
-- [X] T063 [US1] Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que aceptar dispara la impresión del ticket de cocina respetando `PrintSettings`. **Verlo en rojo**
-- [ ] T064 [US1] Escribir la impresión al aceptar en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
+- [X] T063 [US1] **(Estaba marcada hecha sin que el test existiera; se escribió el 2026-09-23 en `web/src/features/pos/AvisoDePlataforma.test.tsx`, que es quien acepta, junto con el de la lista completa.)** Escribir en `web/src/features/pos/AvisoDePedidoEntrante.test.tsx` el test de que aceptar dispara la impresión del ticket de cocina respetando `PrintSettings`. **Verlo en rojo**
+- [X] T064 [US1] Escribir la impresión al aceptar en `web/src/features/pos/AvisoDePedidoEntrante.tsx`
 
 ---
 
@@ -187,6 +187,34 @@ en la tableta en menos de 10 s; aceptarlo y ver el ticket.
 
 - [ ] T091 [US6] Escribir en `server/internal/integration/pedidos_de_plataforma_test.go` el test de `store.provisioned` y `store.deprovisioned`: la conexión queda activa o inactiva. **Verlo en rojo**
 - [ ] T092 [US6] Escribir el manejo de los dos eventos en `server/internal/app/pedidos_de_plataforma.go` y reflejarlo en `web/src/features/admin/PlataformasPage.tsx`
+
+---
+
+## Phase 8-bis · Ampliación (2026-09-27): las credenciales de la app se capturan en pantalla, cifradas con KMS
+
+Quita la exención escrita en `plan.md` («Recibir sí; decidir no»): `UBER_EATS_CLIENT_ID` y
+`UBER_EATS_CLIENT_SECRET` salen del entorno y pasan a `platform_credentials`, **por empresa**. El
+client secret y la llave de firma se guardan cifrados con Cloud KMS (una llave por ambiente,
+cuentas de servicio `pos-api-dev` / `pos-api-prod`, ya creadas y verificadas) y atados a su empresa
+con AAD. Decisiones del dueño: por empresa (1-A), KMS (2-A), se eliminan las variables (3-A), se
+comprueban con la plataforma al guardar (4-A) con mensaje entendible y log en el 500.
+
+- [X] T102 Escribir en `server/internal/integration/platform_credentials_test.go` el test de la migración 0075 bajo `appRoleStore`: GRANT de `platform_credentials`, RLS entre dos empresas, que la FK no cruce empresas, y que `platform_webhook_keys` ya no tenga columnas en texto plano. **Verlo en rojo**
+- [X] T103 Escribir `server/migrations/0075_platform_credentials.sql` (revisada por `db-architect` antes de aplicarla)
+- [X] T104 [P] Escribir en `server/internal/secrets/` los tests del respaldo local AES-GCM, del cliente de KMS contra un servidor falso (metadata + KMS) y de la memoria con respuesta vieja ante falla. **Verlos en rojo**
+- [X] T105 [P] Escribir `server/internal/secrets/` (stdlib: token del metadata server, `:encrypt`/`:decrypt` por REST, AES-GCM local, memoria con TTL)
+- [X] T106 [P] Escribir en `server/internal/uber/verify_test.go` el test de que `Verify` distingue `invalid_client`, `invalid_scope` y la plataforma sin responder. **Verlo en rojo**
+- [X] T107 [P] Escribir `Verify` y la clasificación del error de token en `server/internal/uber/token.go`
+- [X] T108 Escribir en `server/internal/domain/` el test de `NormalizeAppCredentials` y en `server/internal/config/config_test.go` el de las variables nuevas (producción exige KMS y rechaza la llave local). **Verlos en rojo**
+- [X] T109 Escribir la normalización en `domain` y la validación en `config`; quitar `UBER_EATS_CLIENT_ID`/`SECRET`
+- [X] T110 Escribir en `server/internal/integration/platform_credentials_test.go` los tests del servicio: guarda solo si la plataforma acepta, nunca devuelve el secreto, un respaldo de otro ambiente queda «por recapturar» y no en 500, la empresa B no usa el cliente de la A, y la llave de firma cifrada sigue validando avisos y rotaciones. **Verlos en rojo**
+- [X] T111 Escribir `server/internal/app/platform_credentials.go` y mover `MenusDePlataformaService` y `PedidosDePlataformaService` a clientes por empresa; cifrar la llave de firma
+- [X] T112 Escribir los handlers y rutas `GET/PUT /admin/platform-menus/credentials/{platformId}` (escritura solo `admin`) y su mapeo de errores en `respond.go`
+- [X] T113 Escribir en `web/src/features/admin/PlataformasPage.test.tsx` el test de la captura: el secreto nunca se vuelve a mostrar, cada rechazo de la plataforma tiene su frase, y «por recapturar» se distingue de «sin configurar». **Verlo en rojo**
+- [X] T114 Escribir la captura en `web/src/features/admin/PlataformasPage.tsx`
+- [X] T115 Mover el cableado de `scripts/dev-api.sh`, `scripts/check-env.sh`, `deploy/.env.example` y `deploy/docker-compose.yml`, y documentar en `AGENTS.md` y la constitución la excepción acotada de local (cifrado local en vez de KMS)
+- [X] T116 Evaluar la pantalla con Playwright a 1024×600 y tres evaluadores independientes de UI/UX; consolidar solo lo que marquen al menos dos
+- [X] T117 Correr `/revision-de-codigo` sobre el diff y todos los gates — **corrida el 2026-09-27**; aplicados el gate de admin en la llave de firma y la AAD con la empresa de la sesión. Aplicados también el tope de 24 h para la copia en memoria y el mismo esquema que la API en la liga del pedido y el 503 si KMS no responde al guardar
 
 ---
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -106,5 +107,32 @@ func TestElFolioRepetidoTieneSuPropioCodigo(t *testing.T) {
 	// del día con el repartidor esperando.
 	if !strings.Contains(sobre.Error.Message, "Tigre") || !strings.Contains(sobre.Error.Message, "#187") {
 		t.Fatalf("el mensaje perdió el pedido que ya tiene el folio: %q", sobre.Error.Message)
+	}
+}
+
+// KMS SIN RESPONDER AL GUARDAR ES UN 503 CON SU CÓDIGO, NO UN 500. No es culpa de quien captura y
+// reintentar es lo correcto; y el mensaje no trae el interior del error (la URL de Google, el estado
+// HTTP), que en un 500 se oculta pero aquí viajaría.
+func TestKeyServiceDownIsA503WithItsOwnCode(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Error(rec, fmt.Errorf("cifrar el client secret: %w: %w", domain.ErrKeyServiceUnavailable,
+		errors.New("secrets: decrypt returned HTTP 503 https://cloudkms.googleapis.com/v1/projects/p")))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("respondió %d y debía ser 503", rec.Code)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "KEY_SERVICE_UNAVAILABLE" {
+		t.Fatalf("código %q", body.Error.Code)
+	}
+	if strings.Contains(body.Error.Message, "googleapis") || strings.Contains(body.Error.Message, "HTTP") {
+		t.Fatalf("el mensaje expone el interior del error: %q", body.Error.Message)
 	}
 }

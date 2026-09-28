@@ -66,13 +66,19 @@ real medido: decenas de pedidos al día, no miles.
 | Puerta | Qué haría este plan | Veredicto |
 |---|---|---|
 | **Varias sucursales por empresa** | El aviso se resuelve por `external_store_id`, y `platform_connections` ya es por tienda | **Abierta**. No se agrega ningún contador ni único "por empresa" que debiera ser por sucursal |
-| **Varias empresas** | La llave de firma va **en la base, por empresa** y no en el entorno: una URL sirve a todas | **Parcialmente abierta.** Recibir sí; decidir no. Ver la nota de abajo |
+| **Varias empresas** | La llave de firma va **en la base, por empresa** y no en el entorno: una URL sirve a todas | **Abierta** desde la ampliación del 2026-09-27 (tareas T102–T117): las credenciales de salida también son por empresa. Ver la nota de abajo |
 | **Más de una caja vendiendo** | Nada asume "la" caja: el pedido nace sin turno y se enlaza al que se abra | **Abierta** |
 | **De quién es un pedido** | `opened_by` = quien aceptó, una persona real, no un usuario de sistema | **Abierta**, y mejorada: se sabe quién aceptó y cuándo |
 | **Promociones de plataforma** | El aviso crudo se guarda tal cual, así que lo que Uber mande sobre promociones queda registrado aunque hoy no se interprete | **No se cierra** |
 | **Costear con recetas** | Los renglones copian nombre y precio del momento | **No se cierra** |
 
-**Por qué "parcialmente" y no "abierta"** (corregido tras la revisión de `db-architect`):
+**Ampliación del 2026-09-27 — la exención de abajo ya no aplica.** `UBER_EATS_CLIENT_ID` y
+`UBER_EATS_CLIENT_SECRET` salieron del entorno a `platform_credentials`, por empresa, capturadas en
+la pantalla de Plataformas y comprobadas contra la plataforma al guardar. El client secret y la
+llave de firma se guardan cifrados con Cloud KMS y atados a su empresa (AAD), de modo que un
+respaldo de la base no los revela. Se deja el texto original porque explica qué riesgo se cerró.
+
+**Por qué "parcialmente" y no "abierta"** (corregido tras la revisión de `db-architect`; histórico):
 `UBER_EATS_CLIENT_ID` y `UBER_EATS_CLIENT_SECRET` siguen en el entorno, porque los usa el camino
 **saliente** que construyó la 020. La firma de **entrada** queda por empresa, pero **aceptar y
 rechazar** —la mitad operativa de la feature— salen con la identidad global.

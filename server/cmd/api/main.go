@@ -23,6 +23,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/mailer"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/secrets"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/uber"
@@ -77,7 +78,8 @@ func main() {
 	// Dual-pool multi-tenant: el store ADMIN (owner/superuser, DATABASE_URL) migra y hace
 	// bootstrap — salta RLS, necesario para DDL/backfills/provisioning. El store de SERVICIO
 	// (rol gatobobah_app, APP_DATABASE_URL) atiende requests SUJETO a RLS (un superuser la
-	// saltaría). Si no hay APP_DATABASE_URL, cae a DATABASE_URL (dev single-tenant sin aislamiento).
+	// saltaría). Si no hay APP_DATABASE_URL, cae a DATABASE_URL, sin aislamiento: dev-api.sh siempre
+	// lo define para que local niegue lo mismo que producción.
 	admin, err := store.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("store", "error", err)
@@ -147,8 +149,8 @@ func main() {
 	defer st.Close()
 
 	// Verificación en runtime de que el aislamiento multi-tenant ES real (no solo config). Solo
-	// cuando servimos con el rol de app dedicado (APP_DATABASE_URL); en dev sin él se sirve como
-	// owner single-tenant a propósito. Aborta si el rol saltaría RLS → jamás servir sin aislar.
+	// cuando servimos con el rol de app dedicado (APP_DATABASE_URL), que dev-api.sh también define.
+	// Aborta si el rol saltaría RLS → jamás servir sin aislar.
 	if cfg.AppDatabaseURL != "" {
 		if err := assertRLSEnforced(ctx, st); err != nil {
 			slog.Error("aislamiento multi-tenant no garantizado", "error", err)
@@ -158,8 +160,8 @@ func main() {
 
 	// Tercer pool: la consola de plataforma (spec 016). Su rol solo puede LEER companies y las
 	// tablas de plataforma, y ese grant —no un `if` del código— es lo que la separa del negocio.
-	// En desarrollo cae al mismo rol con el que ya se sirve, así que el aislamiento se prueba en
-	// la suite de integración y no aquí.
+	// Sin PLATFORM_DATABASE_URL cae al mismo rol con el que ya se sirve; dev-api.sh lo define para
+	// que la consola local choque con los mismos GRANT que en producción.
 	plataforma, err := store.New(ctx, cfg.PlatformDatabaseURLOrDefault())
 	if err != nil {
 		slog.Error("platform store", "error", err)
@@ -195,6 +197,10 @@ func main() {
 	pjm := auth.NewManagerDePlataforma(cfg.PlatformJWTSecret, nil)
 	hibpClient := hibp.New(&http.Client{Timeout: 5 * time.Second})
 	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.MailFrom)
+	// Un solo servicio de credenciales para los dos consumidores: guarda el cliente armado de cada
+	// empresa, y ese cliente guarda su token. Dos copias pedirían dos tokens por empresa.
+	cipher := credentialsCipher(cfg)
+	credentials := app.NewPlatformCredentialsService(st, cipher, platformClientFactories(cfg), cfg.UberEatsEnv)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:        cfg,
 		Version:    version,
@@ -217,8 +223,9 @@ func main() {
 		// funciona capturando las líneas del gasto a mano (el handler responde 501).
 		PurchaseDoc:       app.NewPurchaseDocService(cfg.AnthropicAPIKey, cfg.AnthropicModel),
 		PlatformPrices:    app.NewPlatformPricesService(st),
-		MenusPlataforma:   app.NewMenusDePlataformaService(st, lectoresDePlataforma(cfg), nil),
-		PedidosPlataforma: app.NewPedidosDePlataformaService(st, decisoresDePlataforma(cfg), cfg.UberEatsEnv, nil),
+		MenusPlataforma:   app.NewMenusDePlataformaService(st, credentials, nil),
+		PedidosPlataforma: app.NewPedidosDePlataformaService(st, credentials, cipher, cfg.UberEatsEnv, nil),
+		Credentials:       credentials,
 		Sales:             app.NewSalesService(st, nil),
 		Settlements:       app.NewSettlementsService(st),
 		// La consola, sobre su propio pool: es la conexión la que le impide leer la operación de
@@ -689,82 +696,89 @@ func runHealthcheck(port string) int {
 	return 0
 }
 
-// lectoresDePlataforma arma los lectores de menú que estén CONFIGURADOS.
+// platformClientFactories arma, por plataforma, cómo se construye un cliente con las credenciales que
+// capturó cada empresa. Un mapa vacío es un estado normal: un negocio que no vende por plataformas
+// arranca igual y la pantalla dice que esa app no se puede conectar desde aquí.
 //
-// Un mapa vacío es un estado normal, no un error: un negocio que no vende por plataformas arranca
-// igual y la pantalla dice «esta tienda no está conectada». Fallar aquí dejaría sin cobrar a quien
-// no usa la feature.
-//
-// El cliente que entra al mapa es de SOLO LECTURA por construcción: su transporte rechaza todo
-// verbo distinto de GET antes de abrir el socket, y la interfaz `app.LectorDeMenu` solo declara
-// métodos de lectura — aunque alguien agregara una escritura al paquete, el servicio no podría
-// llamarla.
-func lectoresDePlataforma(cfg config.Config) map[string]app.LectorDeMenu {
-	lectores := map[string]app.LectorDeMenu{}
+// El cliente de Uber es de SOLO LECTURA salvo dos rutas: su transporte rechaza todo verbo distinto
+// de GET antes de abrir el socket, excepto aceptar y rechazar pedidos (ver internal/uber). Y el
+// servicio de menús lo recibe como `app.LectorDeMenu`, que no declara ninguna escritura.
+func platformClientFactories(cfg config.Config) map[string]app.PlatformClientFactory {
+	factories := map[string]app.PlatformClientFactory{}
 	if cfg.UberEatsEnabled() {
-		c, err := uber.New(cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv)
-		if err != nil {
-			// config.Validate ya rechazó un ambiente desconocido al arrancar, así que llegar aquí
-			// significa que las dos validaciones se separaron.
-			slog.Error("cliente de Uber Eats", "error", err)
-			os.Exit(1)
+		factories[nombreDeUberEnElCatalogo] = func(c domain.AppCredentials) (app.PlatformClient, error) {
+			cl, err := uber.New(c.ClientID, c.ClientSecret, cfg.UberEatsEnv)
+			if err != nil {
+				return nil, err
+			}
+			return uberClient{cl}, nil
 		}
-		lectores[nombreDeUberEnElCatalogo] = lectorDeUber{c}
 	}
-	return lectores
+	return factories
 }
 
-// decisoresDePlataforma arma lo que hace falta para RECIBIR y decidir pedidos.
-//
-// Es un mapa aparte del de lectores y no una ampliación de aquél, a propósito: el de lectura
-// garantiza por tipo que el servicio de menús no pueda escribir nada en la plataforma, y meterle un
-// método de escritura tiraría esa garantía para las dos features.
-func decisoresDePlataforma(cfg config.Config) map[string]app.DecisorDePedidos {
-	decisores := map[string]app.DecisorDePedidos{}
-	if cfg.UberEatsEnabled() {
-		c, err := uber.New(cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv)
-		if err != nil {
-			slog.Error("cliente de pedidos de Uber Eats", "error", err)
-			os.Exit(1)
-		}
-		decisores[nombreDeUberEnElCatalogo] = decisorDeUber{c}
+// credentialsCipher elige KMS o la llave local según la configuración, que ya exigió
+// exactamente una (y solo KMS en producción). La memoria va encima: un aviso de la plataforma no
+// puede ser un viaje a Google, y Google caído no debe tumbar lo que ya funcionaba.
+func credentialsCipher(cfg config.Config) *secrets.Cache {
+	if cfg.CredentialsKMSKey != "" {
+		return secrets.WithCache(secrets.NewKMS(cfg.CredentialsKMSKey), 15*time.Minute, 24*time.Hour)
 	}
-	return decisores
+	local, err := secrets.NewLocal(cfg.LocalKey())
+	if err != nil {
+		// config.Validate ya revisó los 32 bytes: llegar aquí es que las dos validaciones se separaron.
+		slog.Error("llave local de cifrado", "error", err)
+		os.Exit(1)
+	}
+	return secrets.WithCache(local, 15*time.Minute, 24*time.Hour)
 }
-
-// decisorDeUber adapta el cliente igual que lectorDeUber, y por la misma razón: la traducción entre
-// los errores de una API ajena y el vocabulario del negocio vive en el borde.
-type decisorDeUber struct{ c *uber.Client }
-
-func (d decisorDeUber) TraerDetalleDePedido(ctx context.Context, liga string) ([]byte, error) {
-	return d.c.TraerDetalleDePedido(ctx, liga)
-}
-
-func (d decisorDeUber) AceptarPedido(ctx context.Context, pedidoID, ref string) error {
-	return d.c.AceptarPedido(ctx, pedidoID, ref)
-}
-
-func (d decisorDeUber) RechazarPedido(ctx context.Context, pedidoID, motivo, expl string) error {
-	return d.c.RechazarPedido(ctx, pedidoID, motivo, expl)
-}
-
-func (d decisorDeUber) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }
 
 // nombreDeUberEnElCatalogo es cómo se llama la plataforma en `delivery_platforms`, que es la llave
-// con la que el servicio encuentra su lector. Si se renombra la fila, esto deja de empatar y la
+// con la que el servicio encuentra su fábrica. Si se renombra la fila, esto deja de empatar y la
 // pantalla dice «no configurada» sin que nada falle — por eso está nombrado y no interpolado.
 const nombreDeUberEnElCatalogo = "Uber Eats"
 
-// lectorDeUber adapta el cliente a lo que el servicio necesita. El paquete `uber` no conoce el
+// uberClient adapta el cliente a lo que los servicios necesitan. El paquete `uber` no conoce el
 // vocabulario del negocio y `app` no conoce los errores de Uber: la traducción vive en el borde.
-type lectorDeUber struct{ c *uber.Client }
+type uberClient struct{ c *uber.Client }
 
-func (l lectorDeUber) LeerMenu(ctx context.Context, storeID string) ([]domain.ItemDePlataforma, error) {
-	return l.c.LeerMenu(ctx, storeID)
+func (u uberClient) LeerMenu(ctx context.Context, storeID string) ([]domain.ItemDePlataforma, error) {
+	return u.c.LeerMenu(ctx, storeID)
 }
 
-func (l lectorDeUber) ListarTiendas(ctx context.Context) ([]domain.TiendaDePlataforma, error) {
-	return l.c.ListarTiendas(ctx)
+func (u uberClient) ListarTiendas(ctx context.Context) ([]domain.TiendaDePlataforma, error) {
+	return u.c.ListarTiendas(ctx)
 }
 
-func (l lectorDeUber) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }
+func (u uberClient) TraerDetalleDePedido(ctx context.Context, liga string) ([]byte, error) {
+	return u.c.TraerDetalleDePedido(ctx, liga)
+}
+
+func (u uberClient) AceptarPedido(ctx context.Context, pedidoID, ref string) error {
+	return u.c.AceptarPedido(ctx, pedidoID, ref)
+}
+
+func (u uberClient) RechazarPedido(ctx context.Context, pedidoID, motivo, expl string) error {
+	return u.c.RechazarPedido(ctx, pedidoID, motivo, expl)
+}
+
+func (u uberClient) ClaseDeFallo(err error) domain.ClaseDeFallo { return uber.ClaseDeFalloDe(err) }
+
+// Verify traduce el rechazo de Uber a lo que la pantalla le dice a quien captura.
+func (u uberClient) Verify(ctx context.Context) error {
+	err := u.c.Verify(ctx)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, uber.ErrMissingScopes):
+		return domain.ErrCredentialsMissingScopes
+	case errors.Is(err, uber.ErrCredentialsRejected):
+		return domain.ErrCredentialsRejected
+	case errors.Is(err, uber.ErrUnavailable), errors.Is(err, context.DeadlineExceeded):
+		return domain.ErrPlatformUnavailable
+	default:
+		// Cualquier otro rechazo (un 400 con un código que no conocemos) se trata como credencial
+		// no aceptada: no guardarla es lo seguro, y el detalle queda en el error envuelto.
+		return fmt.Errorf("%w: %w", domain.ErrCredentialsRejected, err)
+	}
+}
