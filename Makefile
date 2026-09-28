@@ -2,7 +2,7 @@
 .PHONY: help install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
@@ -116,6 +116,9 @@ sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) �
 # TEST_DATABASE_URL porque el harness de integración borra el esquema al empezar cada test.
 respaldo-anonimo: ## Baja producción, borra los datos personales y restaura en TEST_RESTORED_DATABASE_URL
 	bash scripts/respaldo-anonimo.sh
+
+db-restaurar: deps-up ## Restaura en dev un respaldo de prod CON sus permisos: make db-restaurar [dump=backups/prod/x.dump]
+	@bash scripts/restaurar-respaldo.sh $(dump)
 
 migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql

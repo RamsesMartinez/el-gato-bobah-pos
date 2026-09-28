@@ -6,15 +6,15 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-Prende o apaga el ambiente de pruebas. La VM es **spot**, así que cuesta ~4 veces menos que una
-normal a cambio de que Google pueda reclamarla con 30 segundos de aviso; cuando eso pasa se
-**detiene** (no se destruye) y basta volver a prenderla.
+Prende o apaga el ambiente de pruebas. La VM era **spot** y se pasó a **estándar** en
+septiembre de 2026, cuando las pruebas se volvieron diarias: una spot se detenía sola a media
+corrida. Ya no la reclama Google; apagarla sigue siendo lo que ahorra.
 
 Lo que cuesta, para que la decisión de apagarla tenga sentido (estimado):
 
 | | Prendida | Apagada |
 |---|---|---|
-| VM spot e2-micro | ~3 USD/mes | 0 |
+| VM estándar e2-micro | ~6 USD/mes | 0 |
 | IP fija reservada | ~3 USD/mes | ~3 USD/mes (se cobra igual) |
 | Disco de 20 GB | ~1 USD/mes | ~1 USD/mes |
 
@@ -29,6 +29,7 @@ registro DNS de `api-dev` se rompería en cada arranque.
 | IP fija | `34.61.175.194` |
 | API de pruebas | `api-dev.elgatobobah.com` (la sirve esta VM) |
 | Front de pruebas | `app-dev.elgatobobah.com` (proyecto de Pages `el-gato-bobah-pos-dev`) |
+| Cuenta de servicio | `pos-api-dev`: solo cifrar/descifrar con la llave KMS `pos-dev/credenciales`, scope `cloud-platform` |
 | Producción (NO tocar) | `pos-vps`, IP `34.68.178.107` |
 
 > El ambiente de pruebas tiene su **propio proyecto de Pages** (`el-gato-bobah-pos-dev`), no una
@@ -90,5 +91,5 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api-dev.elgatobobah.com/readyz
   "prendida pero la API no responde todavía"; nunca "ya la prendí" a secas.
 - Si `gcloud` no está autenticado (`gcloud auth list` sin cuentas), dilo y para: el login abre un
   navegador y lo tiene que hacer una persona.
-- Que la VM sea spot significa que **puede aparecer apagada sin que nadie la haya apagado**. Si el
-  estado es `TERMINATED` y nadie corrió `off`, fue Google reclamándola: préndela y sigue.
+- Si el estado es `TERMINATED` y nadie corrió `off`, ya **no** es Google reclamándola (la VM dejó
+  de ser spot): alguien la apagó. Préndela, pero dilo en el reporte.

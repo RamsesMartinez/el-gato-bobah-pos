@@ -98,6 +98,6 @@ está cerrada desde antes, dilo y no lo cuentes contra este cambio.
 
 ## Cómo verificas
 
-Trabaja contra la base real cuando puedas, no solo contra el archivo de migración: el esquema vivo es la verdad. Local es el contenedor `deploy-postgres-1` (`psql -U gatobobah -d gatobobah`). Si vas a inspeccionar producción, **solo lecturas**.
+Trabaja contra la base real cuando puedas, no solo contra el archivo de migración: el esquema vivo es la verdad. Local es el contenedor `deploy-postgres-1` (`psql -U gatobobah -d gatobobah`). Esa sesión es owner y salta RLS y los GRANT: para ver lo que ve la API, `set role gatobobah_app; set app.company_id = '2';` antes de la consulta. Si vas a inspeccionar producción, **solo lecturas**.
 
 No repitas lo que ya dice un linter ni recites teoría de bases de datos: cada hallazgo se juzga por el fallo concreto que evita, con el escenario que lo dispara.
