@@ -248,8 +248,9 @@ guarda quién», no «es imposible saber quién».
 - [ ] Rotar `ADMIN_PASSWORD`/`ADMIN_PIN` tras el primer login (`make reset-admin`).
 
 **Durabilidad (día uno):**
-- [ ] Backup nocturno: `pg_dump | gzip`, retención 7–14 días, **copiado fuera del VPS**
-  (un backup en el mismo disco no sobrevive a un fallo de disco). Redis no necesita backup (cache).
+- [x] Backup nocturno (2026-09-29): dump verificado a las 00:45, 14 en la VM y 90 días en un bucket
+  donde la VM solo puede crear, más snapshot diario del disco (14 días). Ver
+  [respaldos-produccion.md](respaldos-produccion.md). Falta la alerta si falla. Redis no necesita backup (cache).
 
 **Smoke post-deploy:**
 - [ ] `/auth/login` responde 429 tras repetidos fallos (B1 vivo).
