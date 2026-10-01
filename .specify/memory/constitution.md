@@ -279,6 +279,12 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
   - Vara para revisar una pantalla: **si el renglón solo tiene sentido para alguien que leyó el código, no va.**
+- **Con la API de una plataforma conectada, el precio lo pone la plataforma** (decidido el
+  2026-09-28). El precio por plataforma del POS de un producto emparejado se sobrescribe con el de
+  la plataforma en cada lectura del menú; nadie lo decide ni lo corrige a mano, y nunca se escribe
+  en la plataforma desde el POS. Tiene que ser **explícito en pantalla**: donde se ve ese precio,
+  se ve que lo pone la plataforma y cuándo se actualizó. La captura a mano queda solo para
+  plataformas no conectadas. Preguntas abiertas: [docs/emparejamiento-de-plataformas.md](../../docs/emparejamiento-de-plataformas.md).
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
 - **El local tiene conexión, y el sistema puede contar con ella** (decidido el 2026-09-08). No se
   construye captura sin red: el servidor es la única fuente de verdad y una pantalla puede exigirlo.
@@ -325,4 +331,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.12.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-27
+**Version**: 1.13.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-28
