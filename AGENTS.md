@@ -192,6 +192,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un precio de plataforma muy por debajo del de mostrador es un dedazo de captura, no una
     promoción**, y hoy nada lo detecta. Medido el 2026-09-15: `Sodas explosivas` se publica en Uber
     a $110.00 y el POS la tenía capturada a $34.75 — dos ventas registradas a menos de un tercio.
+  - **Con la API de la plataforma conectada, el precio lo pone la plataforma y se sobrescribe solo**
+    (decidido el 2026-09-28; regla en la constitución, *Restricciones del producto*). La captura a
+    mano queda para las plataformas no conectadas, y la pantalla lo dice: bloqueado con «Lo pone
+    Uber» en el catálogo y un aviso fijo en la tienda. **Todavía no está construido.** El precio se guarda por platillo de la
+    plataforma, no por producto, y la sucursal entra antes en la base; decisiones en
+    [docs/emparejamiento-de-plataformas.md](docs/emparejamiento-de-plataformas.md).
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
