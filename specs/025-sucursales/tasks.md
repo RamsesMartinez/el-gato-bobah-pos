@@ -65,8 +65,8 @@ sobre `restoredStore` (respaldo con dos empresas).
 - [x] T027 [P] Nota en AGENTS.md (§1, listas y consultas): `current_branch_id()` es la única forma de resolver la sucursal, un insert como owner con otra empresa pasa `branch_id` explícito, y el restore no debe disparar la creación de matrices
 - [x] T028 [P] docs/emparejamiento-de-plataformas.md: la sucursal ya existe; el precio por platillo cuelga de la tienda, que cuelga de la sucursal
 - [x] T029 `cd server && go build ./... && go test ./...`; `make lint`
-- [ ] T030 Ensayo en `pos-vps-dev` con el respaldo más reciente de producción según quickstart.md §«En el ambiente de pruebas»; cobrar todo pedido de prueba; apagar la VM
-- [ ] T031 `/revision-de-codigo` sobre el diff
+- [x] T030 Ensayo en `pos-vps-dev` con el respaldo más reciente de producción según quickstart.md §«En el ambiente de pruebas»; cobrar todo pedido de prueba; apagar la VM
+- [x] T031 `/revision-de-codigo` sobre el diff
 
 ## Dependencies
 
