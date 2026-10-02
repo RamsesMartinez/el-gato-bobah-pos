@@ -35,6 +35,11 @@ var (
 	// no ve, y el faltante se descubre al cerrar sin manera de reconstruir de dónde salió.
 	// Solo la caja PRINCIPAL habilita el cobro — las secundarias existen para traspasos y gastos.
 	ErrNoOpenRegister = errors.New("no hay una caja abierta: abre el turno antes de cobrar")
+	// ErrBranchAmbiguous: la operación necesita saber en qué sucursal ocurre y no hay cómo
+	// saberlo — la empresa tiene más de una activa y todavía no existe el selector (0076). Se
+	// rechaza en vez de escoger la matriz: adivinar mezclaría las ventas de dos sucursales y el
+	// corte de cada una dejaría de cuadrar sin que nada lo avise.
+	ErrBranchAmbiguous = errors.New("este negocio tiene más de una sucursal y falta elegir en cuál trabajar")
 	// ErrInvalidTimezone: la zona horaria capturada no es un nombre IANA real. Se rechaza al
 	// GUARDAR y no al usar: donde se usa está el camino de una venta, que cae a UTC antes que
 	// tumbar un cobro, y sin este rechazo ese fallback correría las fechas en silencio.

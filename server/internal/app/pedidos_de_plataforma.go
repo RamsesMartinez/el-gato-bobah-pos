@@ -663,7 +663,7 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		return PedidoAceptado{}, fmt.Errorf("leer los renglones: %w", err)
 	}
 
-	plataformaID, err := s.plataformaDeLaConexion(ctx, ent.ConnectionID)
+	plataformaID, sucursal, err := s.plataformaDeLaConexion(ctx, ent.ConnectionID)
 	if err != nil {
 		return PedidoAceptado{}, err
 	}
@@ -691,7 +691,7 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		// trata cada fila como distinta. El folio real se lo da el turno al reclamarlo. Hasta
 		// entonces, la identidad del pedido es su folio en la plataforma, que además es el que el
 		// cliente dice por teléfono.
-		sesion, numero, err := s.turnoYFolio(ctx, q)
+		sesion, numero, err := s.turnoYFolio(ctx, q, sucursal)
 		if err != nil {
 			return err
 		}
@@ -713,6 +713,9 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 			PlatformOrderRef: &ent.ExternalOrderID,
 			PlatformRefSetBy: &usuarioID,
 			PlatformRefSetAt: pgtype.Timestamptz{Time: s.ahora(), Valid: true},
+			// La de la tienda, también cuando no hay turno: sin ella el trigger pondría «la única de
+			// la empresa», que con dos sucursales truena.
+			BranchID: &sucursal,
 		})
 		if err != nil {
 			return err
@@ -748,13 +751,15 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	return creado, nil
 }
 
-// turnoYFolio devuelve el turno abierto y el folio que le toca, o (nil, 0) si no hay turno.
+// turnoYFolio devuelve el turno abierto de la sucursal de la tienda y el folio que le toca, o
+// (nil, 0) si no hay turno. Es el turno de ESA sucursal y no «el» de la empresa: con dos, un pedido
+// de la tienda de una no puede caer en el corte de la otra.
 //
 // Aceptar NO exige turno abierto: la cocina no puede esperar a que alguien abra caja. Es la
 // decisión del dueño del 2026-09-16, y lo que la paga es que al ABRIR turno se vea de un vistazo
 // qué pedidos quedan considerados en esa apertura.
-func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Queries) (*int64, int32, error) {
-	sess, err := q.GetOpenPrimarySession(ctx)
+func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Queries, sucursal int64) (*int64, int32, error) {
+	sess, err := q.GetOpenPrimarySessionOfBranch(ctx, sucursal)
 	if err != nil {
 		return nil, 0, nil //nolint:nilerr // sin turno abierto NO es un error: es el camino normal de madrugada
 	}
@@ -773,7 +778,7 @@ func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Quer
 // momento de asignarle el turno, ese 0 compite con los folios reales de ese turno — y dos pedidos
 // huérfanos chocan entre ellos.
 func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, sesionID int64, fecha pgtype.Date) error {
-	ids, err := q.ListOrphanPlatformOrders(ctx, fecha)
+	ids, err := q.ListOrphanPlatformOrders(ctx, db.ListOrphanPlatformOrdersParams{BusinessDate: fecha, SessionID: sesionID})
 	if err != nil {
 		return fmt.Errorf("buscar pedidos de plataforma sin turno: %w", err)
 	}
@@ -791,12 +796,13 @@ func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, se
 	return nil
 }
 
-func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context, conexion int64) (int16, error) {
+// plataformaDeLaConexion devuelve la plataforma y la sucursal de la tienda que recibió el pedido.
+func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context, conexion int64) (int16, int64, error) {
 	c, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexion)
 	if err != nil {
-		return 0, fmt.Errorf("%w: la tienda del pedido ya no está conectada", domain.ErrNotFound)
+		return 0, 0, fmt.Errorf("%w: la tienda del pedido ya no está conectada", domain.ErrNotFound)
 	}
-	return c.DeliveryPlatformID, nil
+	return c.DeliveryPlatformID, c.BranchID, nil
 }
 
 // copiarRenglones pasa los renglones del pedido entrante al pedido del POS.

@@ -12,7 +12,7 @@ order by p.name, c.label;
 
 -- name: GetPlatformConnection :one
 select c.id, c.delivery_platform_id, p.name as platform_name,
-       c.external_store_id, c.label, c.is_active
+       c.external_store_id, c.label, c.is_active, c.branch_id
 from platform_connections c
 join delivery_platforms p on p.id = c.delivery_platform_id
 where c.id = $1;

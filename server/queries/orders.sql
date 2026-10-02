@@ -55,12 +55,15 @@ insert into orders (client_uuid, business_date, daily_number, service_type, deli
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
                     folio_name, status, completed_at,
                     platform_order_ref, platform_ref_set_by, platform_ref_set_at,
-                    discount_total, discount_set_by, discount_set_at)
+                    discount_total, discount_set_by, discount_set_at, branch_id)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,@folio_name,
         @status, case when @status::order_status = 'entregada' then now() end,
         sqlc.narg('platform_order_ref'), sqlc.narg('platform_ref_set_by'), sqlc.narg('platform_ref_set_at'),
         @discount_total, case when @discount_total::numeric > 0 then @discount_set_by::bigint end,
-        case when @discount_total::numeric > 0 then now() end)
+        case when @discount_total::numeric > 0 then now() end,
+        -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
+        -- el pedido de plataforma, cuya sucursal es la de su tienda.
+        sqlc.narg('branch_id'))
 returning *;
 
 -- name: FindOrderByPlatformRef :one

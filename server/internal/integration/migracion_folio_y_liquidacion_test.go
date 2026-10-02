@@ -88,13 +88,17 @@ func TestLaMigracionDelFolioCorreSobreDatosRealesDeDosEmpresas(t *testing.T) {
 
 	// Y ninguno de los pedidos que ya estaban se movió: una migración que "corre" no basta, lo que
 	// importa es que no toque una fila.
+	//
+	// Sin autor y no «ninguno con folio»: los respaldos posteriores a la 0065 ya traen folios que
+	// alguien capturó de verdad, y con la cuenta vieja esta prueba fallaba por los datos, no por la
+	// migración. Un folio inventado por la migración no tendría quién lo puso.
 	var conFolio int
 	if err := st.Pool.QueryRow(ctx,
-		`select count(*) from orders where platform_order_ref is not null`).Scan(&conFolio); err != nil {
+		`select count(*) from orders where platform_order_ref is not null and platform_ref_set_by is null`).Scan(&conFolio); err != nil {
 		t.Fatalf("contar folios: %v", err)
 	}
 	if conFolio != 0 {
-		t.Fatalf("la migración le puso folio a %d pedidos del histórico; debía dejarlos todos en null", conFolio)
+		t.Fatalf("hay %d pedidos con folio y sin quién lo capturó: la migración inventó folios en el histórico", conFolio)
 	}
 }
 

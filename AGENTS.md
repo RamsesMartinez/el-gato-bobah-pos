@@ -198,6 +198,18 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     Uber» en el catálogo y un aviso fijo en la tienda. **Todavía no está construido.** El precio se guarda por platillo de la
     plataforma, no por producto, y la sucursal entra antes en la base; decisiones en
     [docs/emparejamiento-de-plataformas.md](docs/emparejamiento-de-plataformas.md).
+- **Sucursales** (spec 025, 0076): cajas, pedidos, tiendas de plataforma y existencias guardan
+  `branch_id`; catálogo, empleados y lo fiscal siguen por empresa. Tres cosas que muerden:
+  - **«La sucursal» la resuelve SOLO la base**: `branch_for_company(empresa)` y su envoltura
+    `current_branch_id()`. Con una sucursal activa la devuelven; con dos y sin selector truenan con
+    `EGB01`, que `store.DomainError` traduce a `domain.ErrBranchAmbiguous` (409 `BRANCH_AMBIGUOUS`).
+    No escribas en Go un «toma la matriz»: es justo el adivinar que mezcla las ventas de dos locales.
+  - **Un insert sin `branch_id` lo llena un trigger con la sucursal de la EMPRESA DE LA FILA**, no
+    la de la sesión. Por eso un insert como owner para otra empresa funciona sin pasarla. Un pedido
+    toma la de la caja de su turno; uno de plataforma, la de su tienda (explícita en `CreateOrder`).
+  - **La matriz nace en `CreateCompany`, no en un trigger sobre `companies`**: `pg_restore` carga con
+    COPY, que dispara triggers, y duplicaría la matriz que el respaldo ya trae. Un script que cree
+    empresas a mano crea también su matriz (ver `docs/corte-produccion/01_nueva_empresa.sql`).
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,

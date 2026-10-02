@@ -8,6 +8,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 type errorEnvelope struct {
@@ -41,6 +42,7 @@ func JSON(w http.ResponseWriter, status int, v any) {
 // Error maps a domain error to an HTTP status + stable code and writes the envelope.
 func Error(w http.ResponseWriter, err error) {
 	status, code := http.StatusInternalServerError, "INTERNAL"
+	err = store.DomainError(err)
 	msg := err.Error()
 
 	switch {
@@ -86,6 +88,11 @@ func Error(w http.ResponseWriter, err error) {
 		// operador al tablero con los folios que faltan, en vez de mostrar un error que no puede
 		// accionar desde la pantalla de cierre.
 		status, code = http.StatusConflict, "OPEN_ORDERS"
+	case errors.Is(err, domain.ErrBranchAmbiguous):
+		// 409 y código propio: es el estado del negocio (dos sucursales y nadie eligió), no algo
+		// que el operador mandó mal. Con un 500 genérico parecería una caída.
+		status, code = http.StatusConflict, "BRANCH_AMBIGUOUS"
+		msg = domain.ErrBranchAmbiguous.Error()
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a

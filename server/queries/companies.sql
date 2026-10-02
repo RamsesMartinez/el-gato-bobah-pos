@@ -12,7 +12,17 @@ select * from companies where id = $1;
 
 -- name: CreateCompany :one
 -- Provisioning de plataforma (corre como owner en bootstrap; el rol del app no puede insertar).
-insert into companies (slug, name) values ($1, $2) returning *;
+--
+-- La matriz nace en la MISMA consulta: no puede existir un momento con empresa y sin sucursal
+-- (FR-002). No es un trigger sobre `companies` porque `pg_restore` carga con COPY, que dispara
+-- triggers, y duplicaría la matriz que el respaldo ya trae (0076).
+with company as (
+  insert into companies (slug, name) values ($1, $2) returning *
+), headquarters as (
+  insert into branches (company_id, branch_number, code, name, is_headquarters)
+  select id, 1, headquarters_code(slug), left(name, 60), true from company
+)
+select * from company;
 
 -- name: UpdateCompany :one
 -- El admin de la empresa edita nombre/slug de SU empresa (RLS with-check impide tocar otra).

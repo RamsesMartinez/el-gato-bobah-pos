@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
@@ -107,6 +109,34 @@ func TestElFolioRepetidoTieneSuPropioCodigo(t *testing.T) {
 	// del día con el repartidor esperando.
 	if !strings.Contains(sobre.Error.Message, "Tigre") || !strings.Contains(sobre.Error.Message, "#187") {
 		t.Fatalf("el mensaje perdió el pedido que ya tiene el folio: %q", sobre.Error.Message)
+	}
+}
+
+// DOS SUCURSALES Y NADIE ELIGIÓ ES UN 409 CON SU CÓDIGO, NO UN 500. El error nace en un trigger de
+// la base (EGB01) y llega crudo de pgx; si la traducción no estuviera en Error, la pantalla diría
+// «algo salió mal» y el mensaje de Postgres —con el id de la empresa— viajaría al log como caída.
+func TestAmbiguousBranchFromTheDatabaseIsA409WithItsOwnCode(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Error(rec, fmt.Errorf("crear pedido: %w", &pgconn.PgError{
+		Code: "EGB01", Message: "branch_ambiguous: la empresa 2 tiene 2 sucursales activas",
+	}))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("respondió %d y debía ser 409", rec.Code)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "BRANCH_AMBIGUOUS" {
+		t.Fatalf("código %q", body.Error.Code)
+	}
+	if strings.Contains(body.Error.Message, "empresa 2") {
+		t.Fatalf("el mensaje expone el interior del error: %q", body.Error.Message)
 	}
 }
 

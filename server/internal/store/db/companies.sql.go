@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 )
 
 const countUsersInCompany = `-- name: CountUsersInCompany :one
@@ -21,7 +22,13 @@ func (q *Queries) CountUsersInCompany(ctx context.Context) (int64, error) {
 }
 
 const createCompany = `-- name: CreateCompany :one
-insert into companies (slug, name) values ($1, $2) returning id, slug, name, is_active, created_at, updated_at
+with company as (
+  insert into companies (slug, name) values ($1, $2) returning id, slug, name, is_active, created_at, updated_at
+), headquarters as (
+  insert into branches (company_id, branch_number, code, name, is_headquarters)
+  select id, 1, headquarters_code(slug), left(name, 60), true from company
+)
+select id, slug, name, is_active, created_at, updated_at from company
 `
 
 type CreateCompanyParams struct {
@@ -29,10 +36,23 @@ type CreateCompanyParams struct {
 	Name string `json:"name"`
 }
 
+type CreateCompanyRow struct {
+	ID        int64     `json:"id"`
+	Slug      string    `json:"slug"`
+	Name      string    `json:"name"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Provisioning de plataforma (corre como owner en bootstrap; el rol del app no puede insertar).
-func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (Company, error) {
+//
+// La matriz nace en la MISMA consulta: no puede existir un momento con empresa y sin sucursal
+// (FR-002). No es un trigger sobre `companies` porque `pg_restore` carga con COPY, que dispara
+// triggers, y duplicaría la matriz que el respaldo ya trae (0076).
+func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (CreateCompanyRow, error) {
 	row := q.db.QueryRow(ctx, createCompany, arg.Slug, arg.Name)
-	var i Company
+	var i CreateCompanyRow
 	err := row.Scan(
 		&i.ID,
 		&i.Slug,

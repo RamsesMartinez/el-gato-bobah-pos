@@ -37,7 +37,9 @@ La captura a mano de precios por plataforma queda solo para las plataformas **no
 2. **Sucursales en la base desde ahora, aunque no se vean.** Toda empresa nace con una sucursal y
    puede tener N (otra sucursal, una cocina oculta). Cruza la puerta «Más de una sucursal» del
    principio VIII: va en **su propio spec, antes** que el rediseño de emparejar, porque una tienda de
-   plataforma pertenece a una sucursal y su precio también.
+   plataforma pertenece a una sucursal y su precio también. **Hecho en el spec 025**:
+   `platform_connections.branch_id` existe, así que el precio por platillo de la tienda ya cuelga de
+   una sucursal.
 3. **Extras: hoy su precio también viene de la plataforma.** A futuro se quiere el camino inverso
    —crear un producto en el POS y publicarlo en la plataforma— y ligar bien lo creado allá. Eso
    **reabre** la decisión del §5 (hoy Uber manda y el POS solo lee): cuando llegue, habrá que decidir

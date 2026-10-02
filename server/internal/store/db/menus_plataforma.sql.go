@@ -226,7 +226,7 @@ func (q *Queries) GetLastOKMenuRead(ctx context.Context, connectionID int64) (Ge
 
 const getPlatformConnection = `-- name: GetPlatformConnection :one
 select c.id, c.delivery_platform_id, p.name as platform_name,
-       c.external_store_id, c.label, c.is_active
+       c.external_store_id, c.label, c.is_active, c.branch_id
 from platform_connections c
 join delivery_platforms p on p.id = c.delivery_platform_id
 where c.id = $1
@@ -239,6 +239,7 @@ type GetPlatformConnectionRow struct {
 	ExternalStoreID    string `json:"external_store_id"`
 	Label              string `json:"label"`
 	IsActive           bool   `json:"is_active"`
+	BranchID           int64  `json:"branch_id"`
 }
 
 func (q *Queries) GetPlatformConnection(ctx context.Context, id int64) (GetPlatformConnectionRow, error) {
@@ -251,6 +252,7 @@ func (q *Queries) GetPlatformConnection(ctx context.Context, id int64) (GetPlatf
 		&i.ExternalStoreID,
 		&i.Label,
 		&i.IsActive,
+		&i.BranchID,
 	)
 	return i, err
 }
