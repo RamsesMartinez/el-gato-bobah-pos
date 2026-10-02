@@ -229,7 +229,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 
 | Puerta | Qué la cerraría | Dónde está hoy |
 |---|---|---|
-| **Más de una sucursal** dentro de una empresa | Un único o un contador por `company_id` que en realidad debería ser por sucursal | Multi-tenant por empresa resuelto con RLS; sucursal **no** existe como concepto |
+| ~~**Más de una sucursal** dentro de una empresa~~ **CRUZADA (spec 025, 2026-10-02)** | — | `branches` con matriz por empresa; cajas, pedidos, tiendas de plataforma y existencias guardan su sucursal con llave compuesta. Sigue abierto: el selector de sucursal, quién trabaja en cuál, y precio o disponibilidad por sucursal sobre el catálogo maestro |
 | **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
 | **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
 | ~~**Cuánto deja cada plataforma**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `platform_settlements` guarda por pedido lo que dice el documento de pago: comisión (monto y tasa), retenciones, neto y quién financió el descuento. Dejó de ser puerta y es feature |
@@ -242,6 +242,11 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
 [docs/plataformas-digitales.md](../../docs/plataformas-digitales.md) y
 [docs/respaldo-fudo.md](../../docs/respaldo-fudo.md).
+
+**La de sucursales se cruzó el 2026-10-02 con el spec 025.** Lo que enseña: un hecho de lugar
+(dónde se vendió, dónde está la existencia) cuesta una columna mientras hay una sola sucursal y es
+irrecuperable en cuanto hay dos. «La sucursal» la resuelve una sola función en la base, que con dos
+y sin selector truena en vez de escoger la matriz.
 
 **Dos puertas se cruzaron el 2026-09-08 con el spec 014** y se dejan tachadas en vez de borradas:
 lo que enseñan —qué hecho era irrecuperable y por qué— es lo que hace que la siguiente puerta se
@@ -331,4 +336,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.13.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-28
+**Version**: 1.14.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-02
