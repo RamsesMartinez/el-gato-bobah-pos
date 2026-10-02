@@ -1178,6 +1178,9 @@ select s.id, s.register_id, s.business_date
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- El MISMO predicado que GetOpenPrimarySession (0076): si divergen, una consulta decide que se
+  -- puede cobrar en un turno y la otra graba el pago en el de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 for share of s
 `

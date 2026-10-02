@@ -136,7 +136,9 @@ begin
   if new.branch_number is null then
     -- Candado por empresa: dos altas a la vez sacarían el mismo número. No se bloquea la fila de
     -- `companies` porque el rol de la app no tiene `update` sobre ella.
-    perform pg_advisory_xact_lock(7600, new.company_id::int);
+    -- Llave de 64 bits derivada de la empresa: la variante de dos enteros truena con un id que no
+    -- quepa en int4.
+    perform pg_advisory_xact_lock(hashtextextended('branches:' || new.company_id, 0));
     select coalesce(max(branch_number), 0) + 1 into new.branch_number
       from branches where company_id = new.company_id;
   end if;

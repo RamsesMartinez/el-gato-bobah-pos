@@ -38,7 +38,7 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping: %w", err)
 	}
-	return &Store{Pool: pool, Q: db.New(pool)}, nil
+	return &Store{Pool: pool, Q: queriesOn(pool)}, nil
 }
 
 func (s *Store) Close() { s.Pool.Close() }
@@ -67,7 +67,7 @@ func (s *Store) AcquireTenant(ctx context.Context, companyID int64) (context.Con
 		conn.Release()
 		return ctx, func() {}, err
 	}
-	tc := &tenantConn{conn: conn, q: db.New(conn), company: companyID}
+	tc := &tenantConn{conn: conn, q: queriesOn(conn), company: companyID}
 	release := func() {
 		// Fail-closed: si el RESET falla, NO devolver la conexión al pool con el GUC del tenant
 		// "pegado" (otro request la tomaría y leería datos del tenant anterior). Se destruye.
@@ -114,7 +114,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error 
 			return err
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-		if err := fn(db.New(tx)); err != nil {
+		if err := fn(queriesOn(tx)); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
@@ -124,7 +124,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error 
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-	if err := fn(s.Q.WithTx(tx)); err != nil {
+	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -144,7 +144,7 @@ func (s *Store) WithTenant(ctx context.Context, companyID int64, fn func(q *db.Q
 	if _, err := tx.Exec(ctx, "select set_config('app.company_id', $1, true)", strconv.FormatInt(companyID, 10)); err != nil {
 		return err
 	}
-	if err := fn(s.Q.WithTx(tx)); err != nil {
+	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

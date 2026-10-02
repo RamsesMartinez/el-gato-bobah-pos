@@ -98,11 +98,10 @@ func TestCurrentBranchInTheThreeCases(t *testing.T) {
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		got, err := st.QC(ctx).CurrentBranch(ctx)
 		if err != nil {
-			if code := pgCode(err); code != "EGB01" {
-				t.Fatalf("sin empresa la sucursal debe fallar con EGB01 (error de negocio), fue %s: %v", code, err)
-			}
-			if !errors.Is(store.DomainError(err), domain.ErrBranchAmbiguous) {
-				t.Fatalf("EGB01 debe traducirse a ErrBranchAmbiguous: %v", err)
+			// store traduce EGB01 a ErrBranchAmbiguous; un 22P02 por el cast de '' no se traduce y
+			// cae aquí.
+			if !errors.Is(err, domain.ErrBranchAmbiguous) {
+				t.Fatalf("sin empresa la sucursal debe fallar con el error de negocio, fue: %v", err)
 			}
 			return
 		}
@@ -278,7 +277,7 @@ func TestBranchScopedQueriesInTheThreeCases(t *testing.T) {
 					t.Fatalf("otra sesión ve las existencias de la empresa dueña")
 				}
 			}
-		} else if pgCode(err) != "EGB01" {
+		} else if !errors.Is(err, domain.ErrBranchAmbiguous) {
 			t.Fatalf("ListStockLevels: %v", err)
 		}
 		if _, err := q.GetOpenPrimarySession(ctx); err == nil {

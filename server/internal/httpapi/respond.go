@@ -8,7 +8,6 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
-	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 type errorEnvelope struct {
@@ -42,7 +41,6 @@ func JSON(w http.ResponseWriter, status int, v any) {
 // Error maps a domain error to an HTTP status + stable code and writes the envelope.
 func Error(w http.ResponseWriter, err error) {
 	status, code := http.StatusInternalServerError, "INTERNAL"
-	err = store.DomainError(err)
 	msg := err.Error()
 
 	switch {

@@ -139,6 +139,9 @@ la suya.
 - **FR-007c**: Cuando el sistema necesite «la sucursal» y no haya selector, MUST usar la única
   sucursal activa; si hubiera más de una, MUST rechazar la operación con un error claro en vez de
   escoger una en silencio.
+- **FR-007d**: Con dos sucursales activas y sin selector, cobrar, abrir caja, ver almacén e insumos
+  responden «falta elegir en qué sucursal trabajar» (409). Es a propósito: es el aviso de dónde hace
+  falta el selector, en vez de mezclar las dos sucursales en silencio.
 - **FR-008**: Ninguna pantalla MUST pedir elegir sucursal mientras la empresa tenga una sola
   activa. Esta entrega no agrega pantallas.
 - **FR-009**: Una caja, tienda o pedido MUST NOT poder ligarse a una sucursal de otra empresa.

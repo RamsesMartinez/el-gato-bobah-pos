@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
@@ -113,13 +111,12 @@ func TestElFolioRepetidoTieneSuPropioCodigo(t *testing.T) {
 }
 
 // DOS SUCURSALES Y NADIE ELIGIÓ ES UN 409 CON SU CÓDIGO, NO UN 500. El error nace en un trigger de
-// la base (EGB01) y llega crudo de pgx; si la traducción no estuviera en Error, la pantalla diría
-// «algo salió mal» y el mensaje de Postgres —con el id de la empresa— viajaría al log como caída.
+// la base (EGB01) y store lo traduce envolviendo el mensaje de Postgres, que trae el id de la
+// empresa: la respuesta lleva el texto para quien opera, no ese interior.
 func TestAmbiguousBranchFromTheDatabaseIsA409WithItsOwnCode(t *testing.T) {
 	rec := httptest.NewRecorder()
-	Error(rec, fmt.Errorf("crear pedido: %w", &pgconn.PgError{
-		Code: "EGB01", Message: "branch_ambiguous: la empresa 2 tiene 2 sucursales activas",
-	}))
+	Error(rec, fmt.Errorf("crear pedido: %w (branch_ambiguous: la empresa 2 tiene 2 sucursales activas)",
+		domain.ErrBranchAmbiguous))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("respondió %d y debía ser 409", rec.Code)
 	}
