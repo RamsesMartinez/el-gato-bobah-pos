@@ -147,3 +147,46 @@ Eats Manager; la regla del §1 queda igual y la guarda de solo lectura del trans
 Descartados por ahora: (2) el POS manda precio y disponibilidad por ítem, y (3) el POS administra el
 menú completo. Reabrirlos exige antes una tienda de prueba pedida a Integration Tech Support y el
 permiso de escritura confirmado por Uber.
+
+## 6. Combos y almacén: lo verificado (2026-10-03)
+
+El dueño aclaró que un platillo de Uber se liga a **un solo** producto del POS, y que la duda real
+eran los combos: venderlos en Uber y que el POS descuente del almacén cada componente.
+
+**Cómo los modela Uber** (developer.uber.com; la página se renderiza con JS, así que es alta
+confianza, no lectura del código fuente):
+
+- **Combo fijo**: `bundled_items` en el ítem, la lista de lo que va incluido siempre y el cliente no
+  elige (las papas de la hamburguesa). Reusa ítems del menú.
+- **Combo con elección** («crepa + bebida a escoger»): un ítem con un grupo de modificadores cuyas
+  opciones **son ítems del menú**. Es el mismo patrón que la tienda real ya usa para los tamaños
+  (`server/internal/uber/testdata/menu.json`).
+- **En el pedido** llega el renglón padre y, anidado, lo que se eligió, cada cosa con su propio id y
+  precio. No hay un tipo «combo» aparte.
+- **Promociones** (2x1, producto gratis) no son combos: viven en `payment.promotions` del pedido,
+  separadas del carrito.
+
+**Consecuencia para el diseño**: no hace falta una tabla de combos para emparejar. Cada componente
+se liga por su id a lo suyo en el POS (el platillo a un producto, la opción a una opción) y el
+almacén se descuenta componente por componente.
+
+**Lo que hoy impide que funcione** (medido en el código):
+
+1. **Los pedidos de plataforma aceptados no descuentan nada del almacén.** Aceptar crea el pedido,
+   los renglones y el pago, pero nunca llama a la depleción. Y los renglones hijos (extras,
+   componentes) se descartan: solo viajan dentro del nombre.
+2. **En el mostrador tampoco se descuentan los extras.** La depleción mira solo el producto del
+   renglón; ignora la receta o el producto ligado de cada opción elegida. Un combo del POS no
+   descuenta nada (no tiene receta), y la leche deslactosada elegida como extra tampoco.
+3. **Una opción de Uber no tiene dónde ligarse**: el emparejamiento solo guarda `product_id`, no hay
+   columna para una opción de modificador. Por eso el defecto 3 del §2 no es solo de pantalla.
+4. **No está confirmado cómo llega el detalle de un pedido**: el lector espera
+   `selected_modifier_groups_items`, la documentación dice `selected_modifier_groups`. Si es lo
+   segundo, hoy se pierden los extras de todo pedido de Uber. Se zanja con un pedido real de prueba
+   con un extra.
+
+**Combos del POS hoy**: las tablas `combo_slots` existen y están vacías; los combos del menú real
+son productos simples con sus componentes como modificadores.
+
+**Propuesta pendiente de decisión del dueño**: el emparejamiento (spec 026) agrega el destino
+«opción»; descontar extras y pedidos de plataforma va en su propio spec, antes del de insumos.
