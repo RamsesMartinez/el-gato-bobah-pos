@@ -44,8 +44,9 @@ type MenusDePlataformaService struct {
 	store *store.Store
 	// clients entrega el lector de la empresa del contexto, armado con SUS credenciales. Nil = el
 	// despliegue no habla con ninguna plataforma.
-	clients PlatformClients
-	ahora   func() time.Time
+	clients        PlatformClients
+	ahora          func() time.Time
+	onPricesSynced func(ctx context.Context, companyID int64)
 }
 
 func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now func() time.Time) *MenusDePlataformaService {
@@ -53,6 +54,12 @@ func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now fu
 		now = time.Now
 	}
 	return &MenusDePlataformaService{store: s, clients: clients, ahora: now}
+}
+
+// OnPricesSynced registra qué hacer cuando una lectura copia precios: invalidar el menú cacheado y
+// avisar a las tabletas. Lo pone httpapi, que es quien tiene el caché y el canal de avisos.
+func (s *MenusDePlataformaService) OnPricesSynced(fn func(ctx context.Context, companyID int64)) {
+	s.onPricesSynced = fn
 }
 
 // menuReaderFor devuelve el lector de la plataforma para la empresa del contexto, o por qué no hay.

@@ -150,6 +150,8 @@ type PriceChangeView struct {
 }
 
 type PairingView struct {
+	Platform string             `json:"platformName"`
+	Store    string             `json:"storeLabel"`
 	ReadAt   time.Time          `json:"readAt"`
 	Counts   domain.GroupCounts `json:"counts"`
 	Items    []PairingRow       `json:"items"`
@@ -181,7 +183,14 @@ func (s *MenusDePlataformaService) Pairing(ctx context.Context, conexionID int64
 		excluido[e.ExternalID] = true
 	}
 
-	out := &PairingView{ReadAt: lectura.StartedAt, Items: []PairingRow{}, Excluded: []string{}, Changes: []PriceChangeView{}}
+	con, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexionID)
+	if err != nil {
+		return nil, fmt.Errorf("conexión %d: %w", conexionID, err)
+	}
+	out := &PairingView{
+		Platform: con.PlatformName, Store: con.Label, ReadAt: lectura.StartedAt,
+		Items: []PairingRow{}, Excluded: []string{}, Changes: []PriceChangeView{},
+	}
 	var grupos []domain.PairingGroup
 	for _, clase := range []domain.ClaseDeItem{domain.ItemPlatillo, domain.ItemOpcion} {
 		arriba, err := s.itemsDeLectura(ctx, lectura.ID, clase)
@@ -516,6 +525,9 @@ func (s *MenusDePlataformaService) syncPrices(ctx context.Context, companyID, co
 		}
 		return nil
 	})
+	if err == nil && s.onPricesSynced != nil {
+		s.onPricesSynced(ctx, companyID)
+	}
 	if err != nil {
 		// Clave estable y sin el mensaje: puede traer datos del catálogo.
 		clase := "error"

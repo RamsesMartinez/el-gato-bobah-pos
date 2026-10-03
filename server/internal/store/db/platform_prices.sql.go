@@ -78,12 +78,13 @@ func (q *Queries) GetOptionPlatformPriceSource(ctx context.Context, arg GetOptio
 }
 
 const getOptionPlatformPrices = `-- name: GetOptionPlatformPrices :many
-select option_id, price_delta from modifier_option_platform_prices where platform_id = $1
+select option_id, price_delta, synced_at from modifier_option_platform_prices where platform_id = $1
 `
 
 type GetOptionPlatformPricesRow struct {
-	OptionID   int64           `json:"option_id"`
-	PriceDelta decimal.Decimal `json:"price_delta"`
+	OptionID   int64              `json:"option_id"`
+	PriceDelta decimal.Decimal    `json:"price_delta"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 func (q *Queries) GetOptionPlatformPrices(ctx context.Context, platformID int16) ([]GetOptionPlatformPricesRow, error) {
@@ -95,7 +96,7 @@ func (q *Queries) GetOptionPlatformPrices(ctx context.Context, platformID int16)
 	items := []GetOptionPlatformPricesRow{}
 	for rows.Next() {
 		var i GetOptionPlatformPricesRow
-		if err := rows.Scan(&i.OptionID, &i.PriceDelta); err != nil {
+		if err := rows.Scan(&i.OptionID, &i.PriceDelta, &i.SyncedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -153,12 +154,13 @@ func (q *Queries) GetProductPlatformPriceSource(ctx context.Context, arg GetProd
 }
 
 const getProductPlatformPrices = `-- name: GetProductPlatformPrices :many
-select product_id, price from product_platform_prices where platform_id = $1
+select product_id, price, synced_at from product_platform_prices where platform_id = $1
 `
 
 type GetProductPlatformPricesRow struct {
-	ProductID int64           `json:"product_id"`
-	Price     decimal.Decimal `json:"price"`
+	ProductID int64              `json:"product_id"`
+	Price     decimal.Decimal    `json:"price"`
+	SyncedAt  pgtype.Timestamptz `json:"synced_at"`
 }
 
 // Solo las EXCEPCIONES de una plataforma. Un producto ausente usa el precio calculado.
@@ -171,7 +173,7 @@ func (q *Queries) GetProductPlatformPrices(ctx context.Context, platformID int16
 	items := []GetProductPlatformPricesRow{}
 	for rows.Next() {
 		var i GetProductPlatformPricesRow
-		if err := rows.Scan(&i.ProductID, &i.Price); err != nil {
+		if err := rows.Scan(&i.ProductID, &i.Price, &i.SyncedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

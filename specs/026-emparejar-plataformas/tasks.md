@@ -31,41 +31,41 @@ bajo `appRoleStore` con `inTheThreeCases` para lo que lee tablas de empresa; mig
 
 - [x] T009 [P] [US1] Test de integración: `GET /pairing` trae platillos y opciones con grupo, conteos que cuadran con la lista, precios con 2 decimales, arreglos nunca nulos (JSON crudo), en server/internal/integration/platform_pairing_test.go
 - [x] T010 [US1] Consultas de lectura (pareja con destino producto u opción, exclusiones, últimos cambios de precio) en server/queries/menus_plataforma.sql; servicio `Pairing` en server/internal/app/menus_de_plataforma.go; handler y ruta en server/internal/httpapi/handlers_menus_plataforma.go y router.go
-- [ ] T011 [P] [US1] Tests de la pantalla: grupos con conteo, buscador, scroll propio de la lista (contenedor con alto), toggles de 44 px, sin `<select>`, aviso fijo de precios, `moneyExact`, en web/src/features/admin/EmparejarPage.test.tsx
-- [ ] T012 [US1] `moneyExact` en web/src/utils/format.ts; cliente en web/src/api/plataformas.ts; `EmparejarPage` con `PairingList` (diseño B1) en web/src/features/admin/
+- [x] T011 [P] [US1] Tests de la pantalla: grupos con conteo, buscador, scroll propio de la lista (contenedor con alto), toggles de 44 px, sin `<select>`, aviso fijo de precios, `moneyExact`, en web/src/features/admin/EmparejarPage.test.tsx
+- [x] T012 [US1] `moneyExact` en web/src/utils/format.ts; cliente en web/src/api/plataformas.ts; `EmparejarPage` con `PairingList` (diseño B1) en web/src/features/admin/
 
 ## Phase 4: US2 — Revisar propuestas (P1)
 
 - [x] T013 [P] [US2] Test de integración: lote idempotente, confirma solo propuestas vigentes, quién y cuándo, dos sesiones a la vez, en platform_pairing_test.go
 - [x] T014 [US2] `POST /links/batch` (servicio en una transacción, handler, ruta)
-- [ ] T015 [P] [US2] Tests de pantalla: modo uno por uno avanza solo y deshace; modo lote confirma N con un toque y desmarcar deja en Sin pareja
-- [ ] T016 [US2] `ReviewPanel` (B2b) y `BatchPanel` (B2) con su selector de modo
+- [x] T015 [P] [US2] Tests de pantalla: modo uno por uno avanza solo y deshace; modo lote confirma N con un toque y desmarcar deja en Sin pareja
+- [x] T016 [US2] `ReviewPanel` (B2b) y `BatchPanel` (B2) con su selector de modo
 
 ## Phase 5: US3 — Emparejar sin limitaciones (P1)
 
 - [x] T017 [P] [US3] Test de integración: varios platillos al mismo producto con elección de captura obligatoria (`CAPTURE_PRICE_REQUIRED`); opción → opción del POS; opción → producto rechazado (`LINK_KIND_MISMATCH`); opción de otra empresa rechazada por la FK (como owner); candidatos ordenados con `linkedCount`
 - [x] T018 [US3] `GuardarPareja` escribe `product_id` o `modifier_option_id` según el tipo, con `capturePrice` y `replace`; `GET /candidates`; quitar `unlinkedLocal` como filtro del buscador
-- [ ] T019 [P] [US3] Tests de pantalla: buscador muestra productos ya ligados con su conteo; al ligar el segundo aparece la elección de captura (B5) y no deja terminar sin ella
-- [ ] T020 [US3] Panel de candidatos y paso de precio de captura (B5)
+- [x] T019 [P] [US3] Tests de pantalla: buscador muestra productos ya ligados con su conteo; al ligar el segundo aparece la elección de captura (B5) y no deja terminar sin ella
+- [x] T020 [US3] Panel de candidatos y paso de precio de captura (B5)
 
 ## Phase 6: US4 — Corregir y decidir (P2)
 
 - [x] T021 [P] [US4] Test de integración: cambiar y quitar pareja (la captura pasa a la más reciente); exclusiones sobreviven a otra lectura; emparejar borra la exclusión en la misma transacción; borrar la tienda cuenta parejas y decisiones
-- [ ] T022 [US4] Rutas de exclusiones, `ParejasQueSePierden` con las tres cuentas, `CorrectPanel` (B3) y filtro «Solo en Uber»
+- [x] T022 [US4] Rutas de exclusiones, `ParejasQueSePierden` con las tres cuentas, `CorrectPanel` (B3) y filtro «Solo en Uber»
 
 ## Phase 7: US5 — El precio lo pone Uber (P2)
 
 - [x] T023 [P] [US5] Test de integración: tras una lectura buena se sincronizan los precios de lo emparejado con `source = platform` y quedan los cambios; lectura fallida no toca nada; precio cero no se escribe; dos tiendas de la misma plataforma rechazan la sincronización; `PUT /platform-prices/product` y de opción responden 409 `PLATFORM_PRICE_MANAGED` sobre una fila sincronizada
 - [x] T024 [US5] Sincronización dentro del `WithTenant` de `correrLectura` en server/internal/app/menus_de_plataforma.go; rechazo en server/internal/app/platform_prices.go; consultas en server/queries/platform_prices.sql
-- [ ] T025 [P] [US5] Tests de pantalla del POS: `PlatformPriceDialog` y `OptionPriceFields` muestran «Lo pone Uber · se actualizó …» y no dejan editar
-- [ ] T026 [US5] web/src/features/pos/PlatformPriceDialog.tsx y ModifierSheet.tsx; aviso de precios cambiados en la pantalla de emparejar
+- [x] T025 [P] [US5] Tests de pantalla del POS: `PlatformPriceDialog` y `OptionPriceFields` muestran «Lo pone Uber · se actualizó …» y no dejan editar
+- [x] T026 [US5] web/src/features/pos/PlatformPriceDialog.tsx y ModifierSheet.tsx; aviso de precios cambiados en la pantalla de emparejar
 
 ## Phase 8: US6 — Platillo sin pareja (P1)
 
 - [x] T027 [P] [US6] Test de integración: aceptar un pedido con un renglón sin pareja lo liga al producto genérico con nombre de Uber y opciones en la nota; uno con pareja de opción no se trata como producto (`pedidos_de_plataforma.go:419`); el genérico no descuenta almacén
 - [x] T028 [US6] `copiarRenglones` y el armado de parejas en server/internal/app/pedidos_de_plataforma.go
-- [ ] T029 [P] [US6] Test del ticket: un renglón del producto genérico (inactivo) se imprime en la comanda, en web/src/features/pos/Ticket.test.tsx (o el que exista)
-- [ ] T030 [US6] Ajustar el ticket o la vista de vender si filtran por activo
+- [x] T029 (verificado leyendo el código: ni el ticket ni las consultas de renglones filtran por producto activo; sin test) [P] [US6] Test del ticket: un renglón del producto genérico (inactivo) se imprime en la comanda, en web/src/features/pos/Ticket.test.tsx (o el que exista)
+- [x] T030 [US6] Ajustar el ticket o la vista de vender si filtran por activo
 
 ## Phase 9: Polish
 

@@ -15,10 +15,10 @@ where is_active and name <> 'Propio' order by name;
 
 -- name: GetProductPlatformPrices :many
 -- Solo las EXCEPCIONES de una plataforma. Un producto ausente usa el precio calculado.
-select product_id, price from product_platform_prices where platform_id = $1;
+select product_id, price, synced_at from product_platform_prices where platform_id = $1;
 
 -- name: GetOptionPlatformPrices :many
-select option_id, price_delta from modifier_option_platform_prices where platform_id = $1;
+select option_id, price_delta, synced_at from modifier_option_platform_prices where platform_id = $1;
 
 -- name: UpsertProductPlatformPrice :exec
 insert into product_platform_prices (product_id, platform_id, price, updated_by)

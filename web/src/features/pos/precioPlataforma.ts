@@ -51,6 +51,8 @@ export interface DesglosePrecio {
   calculado: number; // base + margen de la plataforma
   vigente: number;   // lo que se cobra hoy: el manual si existe, si no el calculado
   esManual: boolean;
+  // Cuándo lo copió la plataforma conectada. Presente = lo pone la plataforma y no se edita aquí.
+  sincronizadoEn?: string;
 }
 
 // desglosePrecio abre el número en sus partes para que el operador vea de dónde sale antes de
@@ -70,7 +72,8 @@ export function desglosePrecio(
   if (manual === undefined) {
     return { base, calculado, vigente: calculado, esManual: false };
   }
-  return { base, calculado, vigente: round2(Number(manual)), esManual: true };
+  const sincronizadoEn = menu.platformSynced?.[lista]?.[productId];
+  return { base, calculado, vigente: round2(Number(manual)), esManual: true, ...(sincronizadoEn ? { sincronizadoEn } : {}) };
 }
 
 // desgloseDelta: lo mismo para el cargo de un extra. Va aparte de desglosePrecio y no como un
@@ -90,7 +93,8 @@ export function desgloseDelta(
   if (manual === undefined) {
     return { base, calculado, vigente: calculado, esManual: false };
   }
-  return { base, calculado, vigente: round2(Number(manual)), esManual: true };
+  const sincronizadoEn = menu.platformModSynced?.[lista]?.[optionId];
+  return { base, calculado, vigente: round2(Number(manual)), esManual: true, ...(sincronizadoEn ? { sincronizadoEn } : {}) };
 }
 
 // repreciador devuelve la función que el store usa al cambiar de lista: toma una línea y dice cuál

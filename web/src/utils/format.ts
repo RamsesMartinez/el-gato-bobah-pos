@@ -10,6 +10,17 @@ export function money(v: string | number, currency: string = 'MXN'): string {
   });
 }
 
+// moneyExact siempre con dos decimales ($82.80, no $82.8). Va en las pantallas de plataforma,
+// donde el precio se compara contra el que publica la plataforma y «$82.8» se lee como un error.
+// money() no cambia: en el POS «$45» es lo correcto.
+export function moneyExact(v: string | number, currency: string = 'MXN'): string {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return n.toLocaleString('es-MX', {
+    style: 'currency', currency,
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+}
+
 // Hash estable → hue, para colorear categorías consistentemente entre sesiones.
 export function categoryColor(id: number, override?: string | null): string {
   if (override) return override;
@@ -30,3 +41,4 @@ export function normalize(s: string): string {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
 }
+

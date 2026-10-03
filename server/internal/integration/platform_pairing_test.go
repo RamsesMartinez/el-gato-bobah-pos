@@ -205,11 +205,22 @@ func TestAGoodReadCopiesThePlatformPriceAndLocksIt(t *testing.T) {
 		t.Fatalf("antes de la lectura el precio todavía se captura a mano: %v", err)
 	}
 
+	// Sin aviso, el menú cacheado dura 24 horas y las tabletas cobrarían con el precio viejo.
+	avisos := make(chan int64, 1)
+	f.svc.OnPricesSynced(func(_ context.Context, company int64) { avisos <- company })
 	if _, _, err := f.svc.DispararLecturaPor(f.ctx, defaultCompanyID, f.conn, f.user); err != nil {
 		t.Fatal(err)
 	}
 	esperarLectura(t, f.svc, f.ctx, f.conn, f.lector)
 	esperarPrecio(t, f.st, f.mango, plat, "99.00")
+	select {
+	case c := <-avisos:
+		if c != defaultCompanyID {
+			t.Fatalf("el aviso debe ser para la empresa de la tienda, fue %d", c)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("copiar precios no avisó al POS: el menú cacheado seguiría con el precio viejo")
+	}
 
 	var source string
 	if err := f.st.Pool.QueryRow(context.Background(),
@@ -225,6 +236,14 @@ func TestAGoodReadCopiesThePlatformPriceAndLocksIt(t *testing.T) {
 	}
 	if _, err := prices.DeleteProductPrice(f.ctx, f.mango, plat); !errors.Is(err, domain.ErrPlatformPriceManaged) {
 		t.Fatalf("tampoco se borra a mano: %v", err)
+	}
+	// Y el menú del POS lo marca, para que el diálogo de precio lo muestre bloqueado.
+	doc, err := app.NewMenuService(f.appSt, clock).Build(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc.PlatformSynced[plat][f.mango]; !ok {
+		t.Fatalf("el menú debe decir que ese precio lo pone la plataforma: %v", doc.PlatformSynced)
 	}
 }
 
