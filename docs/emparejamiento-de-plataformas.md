@@ -212,3 +212,16 @@ desarrollador de Uber manda un aviso de prueba y sirve para comprobar que llega 
 cuadra. El contenido del pedido no viene en el aviso: se pide aparte al enlace que el aviso trae, y
 solo existe si el pedido existe. Si el panel no crea pedidos de prueba con contenido, hace falta la
 tienda de prueba de Uber o un pedido real chico. Sin verificar todavía qué ofrece el panel.
+
+## 7. Construido (spec 026, 2026-10-03)
+
+En la rama de la integración con Uber, sin desplegar todavía:
+
+- Pantalla con el diseño B y sus dos modos de revisión; elección del precio de captura (tablero B5).
+- Parejas a opciones del POS; decisiones «solo existe en la plataforma» y «no se vende ahí».
+- Precio que pone la plataforma: copiado en cada lectura buena, bloqueado en el POS y avisado a las
+  tabletas. Con dos tiendas de la misma plataforma no se copia (precio por sucursal pendiente).
+- Producto genérico para renglones de pedido sin pareja, con las opciones en la nota.
+
+Pendiente: descontar del almacén los extras y los pedidos de plataforma (§6), y confirmar con un
+pedido real el nombre del campo de las opciones en el detalle del pedido.

@@ -210,6 +210,21 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La matriz nace en `CreateCompany`, no en un trigger sobre `companies`**: `pg_restore` carga con
     COPY, que dispara triggers, y duplicaría la matriz que el respaldo ya trae. Un script que cree
     empresas a mano crea también su matriz (ver `docs/corte-produccion/01_nueva_empresa.sql`).
+- **Emparejar con la plataforma** (spec 026, 0077). Cuatro cosas que no se ven en la pantalla:
+  - **Una pareja apunta a un producto O a una opción** (`product_id` / `modifier_option_id` según
+    `local_kind`, con `check`). Antes la opción se guardaba en `product_id`; la 0077 aborta si
+    encuentra una así en vez de adivinar.
+  - **El precio por plataforma lo escribe la lectura del menú** cuando la tienda está conectada
+    (`source = platform`); la captura a mano de esa fila responde 409 `PLATFORM_PRICE_MANAGED`. Con
+    dos tiendas de la misma plataforma no se copia nada, porque el precio es por plataforma y una
+    pisaría a la otra (log `platform_price_sync_failed reason=several_stores_same_platform`).
+  - **La copia de precios avisa al POS** por `OnPricesSynced`, que httpapi conecta al caché del
+    menú y al canal de avisos. Un camino nuevo que escriba precios fuera de un handler tiene que
+    avisar igual, o las tabletas cobran con el precio viejo hasta 24 horas.
+  - **El producto genérico** (`products.system_kind = 'platform_unpaired'`, inactivo, sale en la
+    comanda) recibe los renglones de pedidos de plataforma sin pareja. Se resuelve con
+    `ensure_platform_unpaired_product(empresa)`, que filtra por la empresa explícita: con un
+    `where system_kind = …` a secas, como owner devolvía el de otra empresa.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
