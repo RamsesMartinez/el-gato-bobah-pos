@@ -527,7 +527,7 @@ func (q *Queries) InsertPlatformPriceChange(ctx context.Context, arg InsertPlatf
 }
 
 const listActiveOptionsForCompare = `-- name: ListActiveOptionsForCompare :many
-select o.id, o.name, o.price_delta
+select o.id, o.name, o.price_delta, g.name::text as group_name
 from modifier_options o
 join modifier_groups g on g.id = o.group_id
 where o.is_active and g.is_active
@@ -538,12 +538,15 @@ type ListActiveOptionsForCompareRow struct {
 	ID         int64           `json:"id"`
 	Name       string          `json:"name"`
 	PriceDelta decimal.Decimal `json:"price_delta"`
+	GroupName  string          `json:"group_name"`
 }
 
 // `g.is_active` ADEMÁS de `o.is_active`, igual que la consulta que arma el menú del POS. Desactivar
 // el grupo entero es la forma normal de ocultar algo estacional sin tocar opción por opción; sin
 // este filtro, esas opciones se siguen reportando como vendidas y salen como diferencia contra un
 // menú que ya no las ofrece.
+// El grupo viaja para distinguir opciones repetidas: «Ranch Cremoso» existe en dos grupos, y sin
+// él el buscador muestra dos renglones idénticos y quien empareja elige al azar.
 func (q *Queries) ListActiveOptionsForCompare(ctx context.Context) ([]ListActiveOptionsForCompareRow, error) {
 	rows, err := q.db.Query(ctx, listActiveOptionsForCompare)
 	if err != nil {
@@ -553,7 +556,12 @@ func (q *Queries) ListActiveOptionsForCompare(ctx context.Context) ([]ListActive
 	items := []ListActiveOptionsForCompareRow{}
 	for rows.Next() {
 		var i ListActiveOptionsForCompareRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.PriceDelta); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.PriceDelta,
+			&i.GroupName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -566,13 +574,17 @@ func (q *Queries) ListActiveOptionsForCompare(ctx context.Context) ([]ListActive
 
 const listActiveProductsForCompare = `-- name: ListActiveProductsForCompare :many
 
-select id, name, price from products where is_active order by name
+select p.id, p.name, p.price, c.name::text as category_name
+from products p
+join categories c on c.id = p.category_id
+where p.is_active order by p.name
 `
 
 type ListActiveProductsForCompareRow struct {
-	ID    int64           `json:"id"`
-	Name  string          `json:"name"`
-	Price decimal.Decimal `json:"price"`
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	Price        decimal.Decimal `json:"price"`
+	CategoryName string          `json:"category_name"`
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -581,6 +593,7 @@ type ListActiveProductsForCompareRow struct {
 // Nombre y precio base de lo que el negocio vende hoy. El precio POR PLATAFORMA no sale de aquí:
 // se calcula con el markup y las excepciones, igual que en el menú del POS, para no duplicar esa
 // regla en dos lugares que se desincronizan.
+// La categoría viaja para distinguir dos productos con el mismo nombre al emparejar.
 func (q *Queries) ListActiveProductsForCompare(ctx context.Context) ([]ListActiveProductsForCompareRow, error) {
 	rows, err := q.db.Query(ctx, listActiveProductsForCompare)
 	if err != nil {
@@ -590,7 +603,12 @@ func (q *Queries) ListActiveProductsForCompare(ctx context.Context) ([]ListActiv
 	items := []ListActiveProductsForCompareRow{}
 	for rows.Next() {
 		var i ListActiveProductsForCompareRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Price); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Price,
+			&i.CategoryName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

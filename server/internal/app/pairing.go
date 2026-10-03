@@ -264,6 +264,7 @@ type CandidateView struct {
 	LocalKind   string `json:"localKind"`
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
+	Context     string `json:"context"`
 	LinkedCount int    `json:"linkedCount"`
 }
 
@@ -327,7 +328,7 @@ func (s *MenusDePlataformaService) Candidates(ctx context.Context, conexionID in
 		if len(out) == maxCandidates {
 			break
 		}
-		out = append(out, CandidateView{LocalKind: string(local), ID: p.ID, Name: p.Nombre, LinkedCount: usados[p.ID]})
+		out = append(out, CandidateView{LocalKind: string(local), ID: p.ID, Name: p.Nombre, Context: p.Contexto, LinkedCount: usados[p.ID]})
 	}
 	return out, nil
 }

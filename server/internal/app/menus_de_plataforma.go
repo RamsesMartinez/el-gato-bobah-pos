@@ -715,7 +715,7 @@ func (s *MenusDePlataformaService) catalogoLocal(ctx context.Context, conexionID
 				m = &v
 			}
 			out = append(out, domain.ProductoLocal{
-				ID: f.ID, Nombre: f.Name, Activo: true,
+				ID: f.ID, Nombre: f.Name, Activo: true, Contexto: f.GroupName,
 				PrecioDePlataforma: domain.PlatformPrice(f.PriceDelta, plat.PriceMarkupPct, m),
 			})
 		}
@@ -741,7 +741,7 @@ func (s *MenusDePlataformaService) catalogoLocal(ctx context.Context, conexionID
 			m = &v
 		}
 		out = append(out, domain.ProductoLocal{
-			ID: f.ID, Nombre: f.Name, Activo: true,
+			ID: f.ID, Nombre: f.Name, Activo: true, Contexto: f.CategoryName,
 			PrecioDePlataforma: domain.PlatformPrice(f.Price, plat.PriceMarkupPct, m),
 		})
 	}

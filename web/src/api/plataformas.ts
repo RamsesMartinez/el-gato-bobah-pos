@@ -224,6 +224,8 @@ export interface CandidatoDelPOS {
   localKind: ClaseLocal;
   id: number;
   name: string;
+  /** La categoría de un producto o el grupo de una opción: distingue dos con el mismo nombre. */
+  context?: string;
   /** Cuántos platillos de esta tienda ya están ligados a él. */
   linkedCount: number;
 }

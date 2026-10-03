@@ -69,7 +69,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.tablero).mockResolvedValue(datos());
   vi.mocked(api.candidatos).mockResolvedValue([
-    { localKind: 'producto', id: 50, name: 'Arma tu Crepa', linkedCount: 2 },
+    { localKind: 'producto', id: 50, name: 'Arma tu Crepa', context: 'Crepas', linkedCount: 2 },
     { localKind: 'producto', id: 51, name: 'Crepa Nutella', linkedCount: 0 },
   ]);
   vi.mocked(api.guardarPareja).mockResolvedValue(undefined as never);
@@ -87,6 +87,21 @@ describe('EmparejarPage (diseño B)', () => {
     // «$82.8» se lee como un error al compararlo con lo que publica la plataforma.
     expect(screen.getByText('$82.80')).toBeInTheDocument();
     expect(screen.getByText(/1 precio cambió/)).toBeInTheDocument();
+  });
+
+  // Lo vio el ensayo con datos de producción: «Sin pareja 1» y la lista vacía, porque el conteo
+  // sumaba platillos y opciones y la lista mostraba solo platillos. Conteo y lista, el mismo filtro.
+  it('el conteo de cada grupo es el de la lista que se ve, del nivel elegido', async () => {
+    const user = userEvent.setup();
+    const d = datos();
+    d.items!.push(renglon({ externalId: 'ranch', kind: 'opcion', name: 'Ranch Cremoso' }));
+    d.counts.unpaired = 3; // el servidor cuenta los dos niveles
+    vi.mocked(api.tablero).mockResolvedValue(d);
+    montar();
+    expect(await screen.findByRole('button', { name: /Sin pareja 2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Opciones' }));
+    expect(await screen.findByRole('button', { name: /Sin pareja 1/ })).toBeInTheDocument();
+    expect(within(screen.getByTestId('lista-de-la-tienda')).getByText('Ranch Cremoso')).toBeInTheDocument();
   });
 
   it('no usa select nativo y todo control tappable mide al menos 44 px', async () => {
@@ -116,6 +131,8 @@ describe('EmparejarPage (diseño B)', () => {
     const panel = await screen.findByRole('region', { name: 'Decidir' });
     expect(await within(panel).findByText('Arma tu Crepa')).toBeInTheDocument();
     expect(within(panel).getByText(/ya ligado a 2 platillos/)).toBeInTheDocument();
+    // Dos productos u opciones con el mismo nombre se distinguen por su categoría o grupo.
+    expect(within(panel).getByText('Categoría: Crepas')).toBeInTheDocument();
   });
 
   it('el segundo platillo al mismo producto pide el precio de captura y no liga sin elegir', async () => {

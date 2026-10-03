@@ -97,6 +97,15 @@ export function EmparejarPage({ conexionId }: Props) {
 
   const actual = visibles.find((i) => i.externalId === seleccion) ?? visibles[0];
 
+  // Los conteos salen de los MISMOS renglones que pinta la lista (nivel elegido), no de los del
+  // servidor, que suman platillos y opciones: con eso el botón decía «Sin pareja 1» sobre una lista
+  // vacía de platillos.
+  const conteos = useMemo(() => {
+    const c: Record<GrupoDeEmparejamiento, number> = { unpaired: 0, toReview: 0, done: 0, excluded: 0 };
+    for (const i of items) if (i.kind === nivel) c[i.group]++;
+    return c;
+  }, [items, nivel]);
+
   const elegirGrupo = (g: GrupoDeEmparejamiento) => {
     setGrupo(g);
     setSeleccion(null);
@@ -222,7 +231,7 @@ export function EmparejarPage({ conexionId }: Props) {
 
       <HStack gap={2} wrap="wrap">
         {(['unpaired', 'toReview', 'done', 'excluded'] as GrupoDeEmparejamiento[]).map((g) => {
-          const n = datos.counts[g];
+          const n = conteos[g];
           const etiqueta = g === 'excluded' ? `Solo en ${plataforma} ${n}` : `${NOMBRE_DEL_GRUPO[g]} ${n}`;
           return (
             <Button
@@ -553,6 +562,11 @@ function PanelDeCandidatos({ conexionId, item, plataforma, onLigar, onSoloEnPlat
         <Button key={c.id} minH="56px" variant="outline" justifyContent="space-between" onClick={() => onLigar(c)}>
           <VStack align="start" gap={0}>
             <Text fontWeight="medium">{c.name}</Text>
+            {c.context && (
+              <Text fontSize="xs" color="fg.muted">
+                {c.localKind === 'opcion_de_modificador' ? 'Grupo' : 'Categoría'}: {c.context}
+              </Text>
+            )}
             {c.linkedCount > 0 && (
               <Text fontSize="xs" color="fg.muted">
                 ya ligado a {c.linkedCount} {c.linkedCount === 1 ? 'platillo' : 'platillos'} de {plataforma}

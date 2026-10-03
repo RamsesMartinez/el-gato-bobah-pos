@@ -242,14 +242,20 @@ delete from platform_item_links where connection_id = $1 and external_id = $2;
 -- Nombre y precio base de lo que el negocio vende hoy. El precio POR PLATAFORMA no sale de aquí:
 -- se calcula con el markup y las excepciones, igual que en el menú del POS, para no duplicar esa
 -- regla en dos lugares que se desincronizan.
-select id, name, price from products where is_active order by name;
+-- La categoría viaja para distinguir dos productos con el mismo nombre al emparejar.
+select p.id, p.name, p.price, c.name::text as category_name
+from products p
+join categories c on c.id = p.category_id
+where p.is_active order by p.name;
 
 -- name: ListActiveOptionsForCompare :many
 -- `g.is_active` ADEMÁS de `o.is_active`, igual que la consulta que arma el menú del POS. Desactivar
 -- el grupo entero es la forma normal de ocultar algo estacional sin tocar opción por opción; sin
 -- este filtro, esas opciones se siguen reportando como vendidas y salen como diferencia contra un
 -- menú que ya no las ofrece.
-select o.id, o.name, o.price_delta
+-- El grupo viaja para distinguir opciones repetidas: «Ranch Cremoso» existe en dos grupos, y sin
+-- él el buscador muestra dos renglones idénticos y quien empareja elige al azar.
+select o.id, o.name, o.price_delta, g.name::text as group_name
 from modifier_options o
 join modifier_groups g on g.id = o.group_id
 where o.is_active and g.is_active

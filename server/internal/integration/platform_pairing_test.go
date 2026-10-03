@@ -133,6 +133,19 @@ func TestBatchDoesNotReportWhatItDidNotWrite(t *testing.T) {
 	}
 }
 
+// Lo vio el ensayo con producción: «Ranch Cremoso» existe en dos grupos y el buscador mostraba dos
+// renglones idénticos. Cada candidato dice su grupo (opción) o su categoría (producto).
+func TestCandidatesCarryTheirGroupToTellTwinsApart(t *testing.T) {
+	f := newPairingFixture(t)
+	c, err := f.svc.Candidates(f.ctx, f.conn, "Con_hielo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c) == 0 || c[0].Name != "Con hielo" || c[0].Context != "Hielo" {
+		t.Fatalf("el candidato de una opción trae el nombre de su grupo: %+v", c)
+	}
+}
+
 func TestUnexcludeLocalRejectsAnUnknownKind(t *testing.T) {
 	f := newPairingFixture(t)
 	if err := f.svc.UnexcludeLocal(f.ctx, f.conn, domain.ClaseLocal("productoo"), f.mango); !errors.Is(err, domain.ErrValidation) {
