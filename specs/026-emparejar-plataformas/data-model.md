@@ -57,3 +57,16 @@ lectura); `external_id`; uno de `product_id` / `modifier_option_id`; `old_price`
 | Por revisar | sin pareja confirmada y con propuesta (nombre normalizado igual a uno solo del POS) |
 | Sin pareja | lo demás, salvo que tenga decisión «solo existe en Uber» |
 | (fuera de los grupos) | decisión «solo existe en Uber»: se ve en un filtro propio y se revierte |
+
+## Producto genérico de plataforma (historia 6)
+
+- `products.system_kind text null`, check `in ('platform_unpaired')`, único parcial
+  `(company_id, system_kind) where system_kind is not null`. Así el código lo encuentra sin depender
+  del nombre, que quien opera puede cambiar.
+- Uno por empresa: nombre «Platillo de plataforma sin pareja», `needs_prep = true` (sale en la
+  comanda), `is_active = false` (no aparece al vender), sin receta ni `track_stock` (no descuenta),
+  en una categoría «Plataformas» que se crea si no existe, precio 0.01 si el `check` de precio lo
+  exige (el renglón lleva el precio de Uber, no el del producto).
+- La 0077 lo crea para cada empresa existente; `CreateCompany` lo crea al dar de alta una empresa.
+- Al aceptar, el renglón sin pareja usa ese producto; `product_name` lleva el nombre de Uber y
+  `notes` las opciones con su precio.

@@ -132,6 +132,10 @@ nadie decide nada al operar (constitución 1.15.0)
     tablero B5 del lienzo.
 13. **Deshacer un lote**: no hay deshacer del lote completo; una pareja mal confirmada se quita
     desde «Listos». Aceptado porque el lote se revisa antes con los dos nombres a la vista.
+14. **Producto genérico** (historia 6): `products.system_kind = 'platform_unpaired'`, uno por
+    empresa, inactivo y con `needs_prep`. `copiarRenglones` lo usa cuando el renglón no tiene pareja
+    y escribe las opciones en la nota. Verificar con el ticket (`web/src/features/pos/Ticket.tsx`)
+    que un producto inactivo sí se imprime en la comanda; si el ticket filtra por activo, se ajusta.
 
 ## Project Structure
 

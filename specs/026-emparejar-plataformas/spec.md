@@ -163,6 +163,32 @@ el precio del POS queda igual al de Uber, el aviso lo cuenta y el catálogo lo m
 
 ---
 
+### User Story 6 - Un platillo de Uber sin pareja entra igual y sale en la comanda (Priority: P1)
+
+Llega un pedido de Uber con un platillo que el POS no tiene emparejado. Se acepta como cualquier
+otro y el renglón queda ligado a un producto genérico del negocio, «Platillo de plataforma sin
+pareja», con el detalle de lo que mandó Uber: el nombre del platillo, sus opciones y su precio.
+Sale en la comanda de cocina como un renglón normal, y nadie decide nada al aceptarlo.
+
+**Why this priority**: hoy ese renglón entra sin producto (decisión del dueño, 2026-10-03: no
+esperar al spec del almacén). Sin producto no sigue el camino de un renglón normal en reportes y
+comanda.
+
+**Independent Test**: aceptar un pedido con un platillo sin pareja y ver el renglón ligado al genérico,
+con el nombre y las opciones de Uber, en la comanda impresa.
+
+**Acceptance Scenarios**:
+
+1. **Given** un platillo sin pareja en un pedido, **When** se acepta, **Then** el renglón queda en el
+   producto genérico con el nombre de Uber como nombre del renglón y las opciones como nota.
+2. **Given** el producto genérico, **When** se abre la pantalla de vender, **Then** no aparece: no se
+   vende a mano.
+3. **Given** un negocio nuevo, **When** se da de alta, **Then** ya tiene su producto genérico.
+4. **Given** el renglón genérico, **When** se cuenta el almacén, **Then** no descuenta nada (no se
+   sabe qué lleva) y queda contado como venta de plataforma.
+
+---
+
 ### Edge Cases
 
 - **Menú vacío o sin leer**: la pantalla dice que hay que leer el menú, con el botón para hacerlo,
@@ -215,6 +241,11 @@ el precio del POS queda igual al de Uber, el aviso lo cuenta y el catálogo lo m
 - **FR-019**: Aceptar un pedido de Uber MUST seguir siendo un solo toque y nunca pedir una decisión
   al operador: lo que no tenga pareja entra igual y sale a cocina.
 
+- **FR-020**: Todo renglón de un pedido de plataforma sin pareja MUST ligarse al producto genérico
+  de su empresa, con el nombre de Uber como nombre del renglón y sus opciones y precio en la nota.
+- **FR-021**: Toda empresa MUST tener su producto genérico desde que nace; MUST salir en la comanda
+  de cocina y MUST NOT aparecer en la pantalla de vender.
+
 ### Key Entities
 
 - **Platillo de la tienda**: lo que Uber publica en una tienda (nombre, precio, disponible), de la
@@ -243,7 +274,7 @@ el precio del POS queda igual al de Uber, el aviso lo cuenta y el catálogo lo m
 
 - La plataforma es Uber; DiDi y Rappi no tienen API conectada todavía, pero el diseño no asume Uber
   en los nombres de las tablas.
-- El producto «OTRO» para pedidos con platillos sin pareja queda fuera: es otro spec.
+- El producto genérico («OTRO») entró a este spec por decisión del dueño (2026-10-03, historia 6).
 - Insumos, tamaños y variantes que heredan quedan fuera: es otro spec.
 - La lectura del menú y la conexión de la tienda ya existen (spec 020); la conexión y las llaves
   salen de la vista de trabajo diario y quedan en su propia sección.
