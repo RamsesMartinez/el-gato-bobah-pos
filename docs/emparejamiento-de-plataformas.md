@@ -188,5 +188,27 @@ almacén se descuenta componente por componente.
 **Combos del POS hoy**: las tablas `combo_slots` existen y están vacías; los combos del menú real
 son productos simples con sus componentes como modificadores.
 
-**Propuesta pendiente de decisión del dueño**: el emparejamiento (spec 026) agrega el destino
-«opción»; descontar extras y pedidos de plataforma va en su propio spec, antes del de insumos.
+### Decidido por el dueño (2026-10-03)
+
+1. **Un platillo u opción de Uber se liga a una sola cosa del POS.** Varios de Uber pueden ir al
+   mismo producto; entonces quien configura elige cuál da el precio de la captura a mano.
+2. **Nadie decide nada al operar** (regla en la constitución): un pedido de Uber se acepta y sale a
+   cocina. Toda ambigüedad se resuelve al configurar.
+3. **Los extras que no descuentan son un defecto que se corrige** en su propio spec, sin perder cómo
+   está hoy el negocio. Al llegar ahí: respaldar producción, ensayar en local la migración que
+   corrige y vuelve a ligar las variantes (hay grupos y opciones repetidos, ver `docs/reorg/16_*`), y
+   solo entonces aplicarla.
+4. **Paquetes y promociones**: además del combo, cubrir el 2x1 y el paquete con nombre propio que
+   adentro trae varios productos (crepa + papas, frappé + crepa), con conteo e histórico por
+   producto, ingrediente, insumo y sus sub-recetas, no solo por insumo.
+5. **Aproximados de recetas y almacén** se sacan de los históricos de FUDO
+   (`~/gatobobah-datos/references/`, fuera del repo; ver [respaldo-fudo.md](respaldo-fudo.md)).
+
+**Orden de los specs**: emparejar (026, con el destino «opción») → almacén de extras, paquetes y
+pedidos de plataforma → insumos, tamaños y variantes que heredan.
+
+**Cómo confirmar el formato del pedido (punto 4 de arriba)**: el probador de webhooks del panel de
+desarrollador de Uber manda un aviso de prueba y sirve para comprobar que llega y que la firma
+cuadra. El contenido del pedido no viene en el aviso: se pide aparte al enlace que el aviso trae, y
+solo existe si el pedido existe. Si el panel no crea pedidos de prueba con contenido, hace falta la
+tienda de prueba de Uber o un pedido real chico. Sin verificar todavía qué ofrece el panel.
