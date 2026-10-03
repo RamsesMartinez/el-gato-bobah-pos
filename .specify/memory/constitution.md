@@ -290,6 +290,13 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   en la plataforma desde el POS. Tiene que ser **explícito en pantalla**: donde se ve ese precio,
   se ve que lo pone la plataforma y cuándo se actualizó. La captura a mano queda solo para
   plataformas no conectadas. Preguntas abiertas: [docs/emparejamiento-de-plataformas.md](../../docs/emparejamiento-de-plataformas.md).
+- **Quien opera nunca decide en el momento lo que se puede decidir al configurar** (decidido el
+  2026-10-03). En un negocio de alto flujo, con varios pedidos a la vez y permisos repartidos, una
+  pregunta del sistema a media operación es un pedido que se atrasa y una mala reseña en la
+  plataforma. Toda ambigüedad (qué precio, qué producto, qué sucursal) se resuelve antes, en la
+  configuración y por quien tiene el permiso; al operar, el sistema aplica esa decisión sin
+  preguntar. Un pedido de plataforma se acepta y sale a cocina, y ya. Si una regla no se puede
+  aplicar sola, el defecto está en la configuración que la permitió, no en el operador.
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
 - **El local tiene conexión, y el sistema puede contar con ella** (decidido el 2026-09-08). No se
   construye captura sin red: el servidor es la única fuente de verdad y una pantalla puede exigirlo.
@@ -336,4 +343,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.14.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-02
+**Version**: 1.15.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-03
