@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -240,7 +239,13 @@ func (s *MenusDePlataformaService) ParejasQueSePierden(ctx context.Context, cone
 	if err != nil {
 		return 0, fmt.Errorf("contar parejas de la conexión %d: %w", conexionID, err)
 	}
-	return n, nil
+	// Las decisiones «solo existe en la plataforma» y «no se vende ahí» también se van con la tienda
+	// (0077): el aviso que se muestra antes de borrar las cuenta igual que a las parejas.
+	e, err := s.store.QC(ctx).CountExclusionsOfConnection(ctx, conexionID)
+	if err != nil {
+		return 0, fmt.Errorf("contar decisiones de la conexión %d: %w", conexionID, err)
+	}
+	return n + int64(e), nil
 }
 
 func (s *MenusDePlataformaService) BorrarConexion(ctx context.Context, id int64) error {
@@ -263,6 +268,13 @@ func (s *MenusDePlataformaService) BorrarConexion(ctx context.Context, id int64)
 // dentro del request dejaría una conexión ocupada un segundo largo — SC-006 exige que esto no toque
 // el tiempo de respuesta de la captura de un pedido en el mostrador.
 func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyID, conexionID int64) (int64, time.Time, error) {
+	return s.DispararLecturaPor(ctx, companyID, conexionID, 0)
+}
+
+// DispararLecturaPor es DispararLectura sabiendo quién la pidió. Con usuario, la lectura buena copia
+// los precios de lo emparejado (0077) y los firma con él; sin usuario no los copia, porque el precio
+// por plataforma exige quién lo escribió.
+func (s *MenusDePlataformaService) DispararLecturaPor(ctx context.Context, companyID, conexionID, usuarioID int64) (int64, time.Time, error) {
 	con, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -298,14 +310,14 @@ func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyI
 	// El contexto del request muere al responder, y con él moriría la lectura a media descarga; la
 	// goroutine arma el suyo con timeout propio. Es lo que SC-006 pide: leer 211 KB de un tercero
 	// dentro del request dejaría una conexión ocupada un segundo largo.
-	go s.correrLectura(companyID, conexionID, lectura.ID, con.ExternalStoreID, lector) //nolint:gosec // G118: ver arriba
+	go s.correrLectura(companyID, conexionID, lectura.ID, usuarioID, con.ExternalStoreID, lector) //nolint:gosec // G118: ver arriba
 	return lectura.ID, lectura.StartedAt, nil
 }
 
 // correrLectura hace el trabajo fuera del request. Tiene condición de término siempre: el contexto
 // lleva timeout propio, así que ninguna goroutine se queda colgada esperando a una plataforma que
 // no responde (principio II).
-func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaID int64, storeID string, lector LectorDeMenu) {
+func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaID, usuarioID int64, storeID string, lector LectorDeMenu) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -339,6 +351,10 @@ func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaI
 	})
 	if err != nil {
 		s.cerrarConFallo(ctx, companyID, lecturaID, domain.FalloRespuestaInvalida)
+		return
+	}
+	if usuarioID != 0 {
+		s.syncPrices(ctx, companyID, conexionID, lecturaID, usuarioID, items)
 	}
 }
 
@@ -488,6 +504,9 @@ type AltaDePareja struct {
 	LocalID    int64
 	ClaseLocal domain.ClaseLocal
 	UsuarioID  int64
+	// PrecioDeCaptura: si esta pareja da el precio de la captura a mano. Obligatorio decirlo cuando el
+	// producto u opción ya tiene otra pareja en la tienda (nil = no se dijo).
+	PrecioDeCaptura *bool
 	// Reemplazar una pareja YA CONFIRMADA hay que pedirlo aparte. Sin esto, un `PUT` pisa en
 	// silencio una decisión que alguien tomó a mano, y el emparejamiento es una sesión completa de
 	// trabajo que no se reconstruye. La pantalla lo pregunta antes de mandarlo.
@@ -506,7 +525,7 @@ func (s *MenusDePlataformaService) GuardarPareja(ctx context.Context, in AltaDeP
 	// Un platillo se empareja con un producto y una opción con una opción. Cruzarlos produce una
 	// fila que pasa los tipos y **nunca empata con nada**, sin que nadie vea un error.
 	if in.ClaseLocal != esperada {
-		return fmt.Errorf("%w: un %q se empareja con %q, no con %q", domain.ErrValidation, in.Clase, esperada, in.ClaseLocal)
+		return fmt.Errorf("%w (un %q se empareja con %q, no con %q)", domain.ErrLinkKindMismatch, in.Clase, esperada, in.ClaseLocal)
 	}
 
 	lectura, err := s.ultimaLecturaValida(ctx, in.ConexionID)
@@ -528,60 +547,48 @@ func (s *MenusDePlataformaService) GuardarPareja(ctx context.Context, in AltaDeP
 		return domain.ErrItemInexistente
 	}
 
-	// Una pareja CONFIRMADA no se pisa sin decirlo. El upsert de abajo sobrescribe sin chistar, y
-	// el contrato promete un 409 en este caso: sin este chequeo la promesa era solo del documento.
-	if !in.Reemplazar {
-		previa, err := s.store.QC(ctx).GetItemLink(ctx, db.GetItemLinkParams{
-			ConnectionID: in.ConexionID, ExternalID: in.ExternalID,
-		})
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("pareja previa en la conexión %d: %w", in.ConexionID, err)
-		}
-		if err == nil && previa.ConfirmedAt.Valid && previa.ProductID != in.LocalID {
-			return domain.ErrParejaOcupada
-		}
-	}
-
-	// Sin usuario se guarda NULL, no cero: `confirmed_by` referencia `users(id)` y un cero viola la
-	// FK. El `check` de la tabla ya permite confirmar sin saber quién —el día que un proceso
-	// automático empareje, no habrá persona— y lo que no puede es reventar con un error que además
-	// dice otra cosa.
-	var confirmadaPor *int64
-	if in.UsuarioID != 0 {
-		confirmadaPor = &in.UsuarioID
-	}
-	err = s.store.QC(ctx).UpsertItemLink(ctx, db.UpsertItemLinkParams{
-		ConnectionID: in.ConexionID, ExternalID: in.ExternalID,
-		Kind: db.PlatformItemKind(in.Clase), ProductID: in.LocalID,
-		LocalKind: string(in.ClaseLocal), ConfirmedBy: confirmadaPor,
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		return guardarPareja(ctx, q, in)
 	})
-	if err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23503" {
-			// Se nombra la constraint en vez de adivinar: las dos FK de esta tabla dan 23503, y
-			// mandar siempre el mensaje del producto hacía que un usuario inexistente se reportara
-			// como «ese producto no es de esta empresa» — una pista falsa que cuesta una hora.
-			if strings.Contains(pg.ConstraintName, "producto_de_la_empresa") {
-				// La FK compuesta con company_id. Los chequeos de integridad saltan RLS, así que
-				// esta es la barrera real contra emparejar el catálogo de otra empresa.
-				return fmt.Errorf("%w: ese producto no es de esta empresa", domain.ErrValidation)
-			}
-			return fmt.Errorf("%w: el emparejamiento apunta a algo que ya no existe", domain.ErrValidation)
-		}
-		return fmt.Errorf("guardar una pareja en la conexión %d: %w", in.ConexionID, err)
-	}
-	return nil
 }
 
+// BorrarPareja quita una pareja. Si daba el precio de captura, pasa a la más reciente de las que
+// quedan en el mismo producto u opción, sin preguntar: la captura a mano no se queda sin precio.
 func (s *MenusDePlataformaService) BorrarPareja(ctx context.Context, conexionID int64, externalID string) error {
-	n, err := s.store.QC(ctx).DeleteItemLink(ctx, db.DeleteItemLinkParams{ConnectionID: conexionID, ExternalID: externalID})
-	if err != nil {
-		return fmt.Errorf("deshacer una pareja de la conexión %d: %w", conexionID, err)
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		previa, err := q.GetItemLink(ctx, db.GetItemLinkParams{ConnectionID: conexionID, ExternalID: externalID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("pareja %q de la conexión %d: %w", externalID, conexionID, err)
+		}
+		if _, err := q.DeleteItemLink(ctx, db.DeleteItemLinkParams{ConnectionID: conexionID, ExternalID: externalID}); err != nil {
+			return fmt.Errorf("deshacer una pareja de la conexión %d: %w", conexionID, err)
+		}
+		if !previa.IsCapturePrice {
+			return nil
+		}
+		resto, err := q.ListLinksOfTarget(ctx, db.ListLinksOfTargetParams{
+			ConnectionID: conexionID, ProductID: previa.ProductID, ModifierOptionID: previa.ModifierOptionID,
+		})
+		if err != nil {
+			return fmt.Errorf("parejas restantes: %w", err)
+		}
+		siguiente, ok := domain.CapturePriceAfterUnlink(linksOf(resto))
+		if !ok {
+			return nil
+		}
+		return q.SetCapturePrice(ctx, db.SetCapturePriceParams{ConnectionID: conexionID, ExternalID: siguiente})
+	})
+}
+
+func linksOf(rows []db.ListLinksOfTargetRow) []domain.PairingLink {
+	out := make([]domain.PairingLink, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.PairingLink{ExternalID: r.ExternalID, CapturePrice: r.IsCapturePrice, CreatedAt: r.CreatedAt})
 	}
-	if n == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	return out
 }
 
 // --- Comparación ---
@@ -743,7 +750,7 @@ func (s *MenusDePlataformaService) parejasDe(ctx context.Context, conexionID int
 	for _, f := range filas {
 		p := domain.Pareja{
 			ExternalID: f.ExternalID, Clase: domain.ClaseDeItem(f.Kind),
-			LocalID: f.ProductID, ClaseLocal: domain.ClaseLocal(f.LocalKind),
+			LocalID: linkTarget(f.ProductID, f.ModifierOptionID), ClaseLocal: domain.ClaseLocal(f.LocalKind),
 			Confirmada: f.ConfirmedAt.Valid,
 		}
 		if f.ConfirmedAt.Valid {
@@ -753,4 +760,15 @@ func (s *MenusDePlataformaService) parejasDe(ctx context.Context, conexionID int
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// linkTarget es el id del lado del POS de una pareja: producto u opción, según cuál tenga (0077).
+func linkTarget(product, option *int64) int64 {
+	if product != nil {
+		return *product
+	}
+	if option != nil {
+		return *option
+	}
+	return 0
 }

@@ -1042,6 +1042,16 @@ type IngredientPurchaseFormat struct {
 	IsDefault    bool             `json:"is_default"`
 }
 
+type LocalItemExclusion struct {
+	ID               int64     `json:"id"`
+	ConnectionID     int64     `json:"connection_id"`
+	ProductID        *int64    `json:"product_id"`
+	ModifierOptionID *int64    `json:"modifier_option_id"`
+	DecidedBy        int64     `json:"decided_by"`
+	DecidedAt        time.Time `json:"decided_at"`
+	CompanyID        int64     `json:"company_id"`
+}
+
 type ModifierGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
@@ -1065,12 +1075,14 @@ type ModifierOption struct {
 }
 
 type ModifierOptionPlatformPrice struct {
-	OptionID   int64           `json:"option_id"`
-	PlatformID int16           `json:"platform_id"`
-	PriceDelta decimal.Decimal `json:"price_delta"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	OptionID   int64              `json:"option_id"`
+	PlatformID int16              `json:"platform_id"`
+	PriceDelta decimal.Decimal    `json:"price_delta"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Order struct {
@@ -1261,16 +1273,27 @@ type PlatformIncomingOrderLine struct {
 	CompanyID       int64           `json:"company_id"`
 }
 
+type PlatformItemExclusion struct {
+	ConnectionID int64            `json:"connection_id"`
+	ExternalID   string           `json:"external_id"`
+	Kind         PlatformItemKind `json:"kind"`
+	DecidedBy    int64            `json:"decided_by"`
+	DecidedAt    time.Time        `json:"decided_at"`
+	CompanyID    int64            `json:"company_id"`
+}
+
 type PlatformItemLink struct {
-	ConnectionID int64              `json:"connection_id"`
-	ExternalID   string             `json:"external_id"`
-	Kind         PlatformItemKind   `json:"kind"`
-	ProductID    int64              `json:"product_id"`
-	LocalKind    string             `json:"local_kind"`
-	ConfirmedAt  pgtype.Timestamptz `json:"confirmed_at"`
-	ConfirmedBy  *int64             `json:"confirmed_by"`
-	CreatedAt    time.Time          `json:"created_at"`
-	CompanyID    int64              `json:"company_id"`
+	ConnectionID     int64              `json:"connection_id"`
+	ExternalID       string             `json:"external_id"`
+	Kind             PlatformItemKind   `json:"kind"`
+	ProductID        *int64             `json:"product_id"`
+	LocalKind        string             `json:"local_kind"`
+	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
+	ConfirmedBy      *int64             `json:"confirmed_by"`
+	CreatedAt        time.Time          `json:"created_at"`
+	CompanyID        int64              `json:"company_id"`
+	ModifierOptionID *int64             `json:"modifier_option_id"`
+	IsCapturePrice   bool               `json:"is_capture_price"`
 }
 
 type PlatformMenuItem struct {
@@ -1302,6 +1325,18 @@ type PlatformOperator struct {
 	IsActive     bool      `json:"is_active"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PlatformPriceChange struct {
+	ID               int64            `json:"id"`
+	ReadID           int64            `json:"read_id"`
+	ExternalID       string           `json:"external_id"`
+	Name             string           `json:"name"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	OldPrice         *decimal.Decimal `json:"old_price"`
+	NewPrice         decimal.Decimal  `json:"new_price"`
+	CompanyID        int64            `json:"company_id"`
 }
 
 type PlatformSettlement struct {
@@ -1369,6 +1404,7 @@ type Product struct {
 	AvailableFrom  pgtype.Date      `json:"available_from"`
 	AvailableUntil pgtype.Date      `json:"available_until"`
 	NeedsPrep      bool             `json:"needs_prep"`
+	SystemKind     *string          `json:"system_kind"`
 }
 
 type ProductChannel struct {
@@ -1388,12 +1424,14 @@ type ProductModifierGroup struct {
 }
 
 type ProductPlatformPrice struct {
-	ProductID  int64           `json:"product_id"`
-	PlatformID int16           `json:"platform_id"`
-	Price      decimal.Decimal `json:"price"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	ProductID  int64              `json:"product_id"`
+	PlatformID int16              `json:"platform_id"`
+	Price      decimal.Decimal    `json:"price"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Recipe struct {

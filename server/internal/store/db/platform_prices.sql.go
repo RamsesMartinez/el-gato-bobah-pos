@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
@@ -58,6 +59,22 @@ func (q *Queries) DeleteProductPlatformPrice(ctx context.Context, arg DeleteProd
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getOptionPlatformPriceSource = `-- name: GetOptionPlatformPriceSource :one
+select source from modifier_option_platform_prices where option_id = $1 and platform_id = $2
+`
+
+type GetOptionPlatformPriceSourceParams struct {
+	OptionID   int64 `json:"option_id"`
+	PlatformID int16 `json:"platform_id"`
+}
+
+func (q *Queries) GetOptionPlatformPriceSource(ctx context.Context, arg GetOptionPlatformPriceSourceParams) (string, error) {
+	row := q.db.QueryRow(ctx, getOptionPlatformPriceSource, arg.OptionID, arg.PlatformID)
+	var source string
+	err := row.Scan(&source)
+	return source, err
 }
 
 const getOptionPlatformPrices = `-- name: GetOptionPlatformPrices :many
@@ -118,6 +135,23 @@ func (q *Queries) GetPlatformByID(ctx context.Context, id int16) (GetPlatformByI
 	return i, err
 }
 
+const getProductPlatformPriceSource = `-- name: GetProductPlatformPriceSource :one
+select source from product_platform_prices where product_id = $1 and platform_id = $2
+`
+
+type GetProductPlatformPriceSourceParams struct {
+	ProductID  int64 `json:"product_id"`
+	PlatformID int16 `json:"platform_id"`
+}
+
+// Quién puso el precio (0077). El de una plataforma conectada no se captura a mano.
+func (q *Queries) GetProductPlatformPriceSource(ctx context.Context, arg GetProductPlatformPriceSourceParams) (string, error) {
+	row := q.db.QueryRow(ctx, getProductPlatformPriceSource, arg.ProductID, arg.PlatformID)
+	var source string
+	err := row.Scan(&source)
+	return source, err
+}
+
 const getProductPlatformPrices = `-- name: GetProductPlatformPrices :many
 select product_id, price from product_platform_prices where platform_id = $1
 `
@@ -138,6 +172,36 @@ func (q *Queries) GetProductPlatformPrices(ctx context.Context, platformID int16
 	for rows.Next() {
 		var i GetProductPlatformPricesRow
 		if err := rows.Scan(&i.ProductID, &i.Price); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOptionPlatformPricesOfPlatform = `-- name: ListOptionPlatformPricesOfPlatform :many
+select option_id, price_delta, source from modifier_option_platform_prices where platform_id = $1
+`
+
+type ListOptionPlatformPricesOfPlatformRow struct {
+	OptionID   int64           `json:"option_id"`
+	PriceDelta decimal.Decimal `json:"price_delta"`
+	Source     string          `json:"source"`
+}
+
+func (q *Queries) ListOptionPlatformPricesOfPlatform(ctx context.Context, platformID int16) ([]ListOptionPlatformPricesOfPlatformRow, error) {
+	rows, err := q.db.Query(ctx, listOptionPlatformPricesOfPlatform, platformID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOptionPlatformPricesOfPlatformRow{}
+	for rows.Next() {
+		var i ListOptionPlatformPricesOfPlatformRow
+		if err := rows.Scan(&i.OptionID, &i.PriceDelta, &i.Source); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -181,6 +245,36 @@ func (q *Queries) ListPlatformsWithMarkup(ctx context.Context) ([]ListPlatformsW
 	return items, nil
 }
 
+const listProductPlatformPricesOfPlatform = `-- name: ListProductPlatformPricesOfPlatform :many
+select product_id, price, source from product_platform_prices where platform_id = $1
+`
+
+type ListProductPlatformPricesOfPlatformRow struct {
+	ProductID int64           `json:"product_id"`
+	Price     decimal.Decimal `json:"price"`
+	Source    string          `json:"source"`
+}
+
+func (q *Queries) ListProductPlatformPricesOfPlatform(ctx context.Context, platformID int16) ([]ListProductPlatformPricesOfPlatformRow, error) {
+	rows, err := q.db.Query(ctx, listProductPlatformPricesOfPlatform, platformID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProductPlatformPricesOfPlatformRow{}
+	for rows.Next() {
+		var i ListProductPlatformPricesOfPlatformRow
+		if err := rows.Scan(&i.ProductID, &i.Price, &i.Source); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const optionExists = `-- name: OptionExists :one
 select exists(select 1 from modifier_options where id = $1)
 `
@@ -204,6 +298,61 @@ func (q *Queries) ProductExists(ctx context.Context, id int64) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const syncOptionPlatformPrice = `-- name: SyncOptionPlatformPrice :exec
+insert into modifier_option_platform_prices (option_id, platform_id, price_delta, updated_by, source, synced_at)
+values ($1, $2, $3, $4, 'platform', $5)
+on conflict (option_id, platform_id)
+do update set price_delta = excluded.price_delta, updated_by = excluded.updated_by,
+              source = 'platform', synced_at = excluded.synced_at, updated_at = now()
+`
+
+type SyncOptionPlatformPriceParams struct {
+	OptionID   int64              `json:"option_id"`
+	PlatformID int16              `json:"platform_id"`
+	PriceDelta decimal.Decimal    `json:"price_delta"`
+	UpdatedBy  int64              `json:"updated_by"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
+}
+
+func (q *Queries) SyncOptionPlatformPrice(ctx context.Context, arg SyncOptionPlatformPriceParams) error {
+	_, err := q.db.Exec(ctx, syncOptionPlatformPrice,
+		arg.OptionID,
+		arg.PlatformID,
+		arg.PriceDelta,
+		arg.UpdatedBy,
+		arg.SyncedAt,
+	)
+	return err
+}
+
+const syncProductPlatformPrice = `-- name: SyncProductPlatformPrice :exec
+insert into product_platform_prices (product_id, platform_id, price, updated_by, source, synced_at)
+values ($1, $2, $3, $4, 'platform', $5)
+on conflict (product_id, platform_id)
+do update set price = excluded.price, updated_by = excluded.updated_by,
+              source = 'platform', synced_at = excluded.synced_at, updated_at = now()
+`
+
+type SyncProductPlatformPriceParams struct {
+	ProductID  int64              `json:"product_id"`
+	PlatformID int16              `json:"platform_id"`
+	Price      decimal.Decimal    `json:"price"`
+	UpdatedBy  int64              `json:"updated_by"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
+}
+
+// Lo escribe la lectura del menú, no una persona: `source = platform` bloquea la captura a mano.
+func (q *Queries) SyncProductPlatformPrice(ctx context.Context, arg SyncProductPlatformPriceParams) error {
+	_, err := q.db.Exec(ctx, syncProductPlatformPrice,
+		arg.ProductID,
+		arg.PlatformID,
+		arg.Price,
+		arg.UpdatedBy,
+		arg.SyncedAt,
+	)
+	return err
 }
 
 const upsertOptionPlatformPrice = `-- name: UpsertOptionPlatformPrice :exec

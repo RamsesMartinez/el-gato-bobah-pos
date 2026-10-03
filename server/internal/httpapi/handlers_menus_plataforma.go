@@ -160,7 +160,7 @@ func (h *Handlers) ReadPlatformMenu(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrValidation)
 		return
 	}
-	lecturaID, inicio, err := h.menusPlataforma.DispararLectura(r.Context(), u.CompanyID, id)
+	lecturaID, inicio, err := h.menusPlataforma.DispararLecturaPor(r.Context(), u.CompanyID, id, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -234,6 +234,9 @@ type parejaBody struct {
 	// Reemplazar una pareja ya confirmada se pide explícito: el `PUT` a secas responde 409 para que
 	// la pantalla pregunte antes de pisar una decisión que alguien tomó a mano.
 	Replace bool `json:"replace"`
+	// CapturePrice: si esta pareja da el precio de la captura a mano. Obligatorio cuando el producto
+	// ya tiene otra pareja en la tienda; ausente en los demás casos (0077).
+	CapturePrice *bool `json:"capturePrice"`
 }
 
 // PUT /admin/platform-menus/connections/{id}/links/{externalId}
@@ -267,11 +270,12 @@ func (h *Handlers) SetPlatformItemLink(w http.ResponseWriter, r *http.Request) {
 	}
 	err = h.menusPlataforma.GuardarPareja(r.Context(), app.AltaDePareja{
 		ConexionID: id, ExternalID: externalID,
-		Clase:      domain.ClaseDeItem(body.Kind),
-		LocalID:    body.LocalID,
-		ClaseLocal: domain.ClaseLocal(body.LocalKind),
-		UsuarioID:  u.ID,
-		Reemplazar: body.Replace,
+		Clase:           domain.ClaseDeItem(body.Kind),
+		LocalID:         body.LocalID,
+		ClaseLocal:      domain.ClaseLocal(body.LocalKind),
+		UsuarioID:       u.ID,
+		Reemplazar:      body.Replace,
+		PrecioDeCaptura: body.CapturePrice,
 	})
 	if err != nil {
 		Error(w, err)
@@ -489,4 +493,174 @@ func rejectionReason(err error) string {
 	default:
 		return "internal_error"
 	}
+}
+
+// GET /admin/platform-menus/connections/{id}/board — la pantalla de emparejar (spec 026): platillos
+// y opciones en sus grupos, con los conteos de esos mismos grupos.
+func (h *Handlers) PlatformPairingBoard(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	v, err := h.menusPlataforma.Pairing(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// GET /admin/platform-menus/connections/{id}/candidates?externalId=…&q=…
+func (h *Handlers) PlatformPairingCandidates(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext := r.URL.Query().Get("externalId")
+	q := r.URL.Query().Get("q")
+	if ext == "" || len(ext) > 200 || len(q) > 100 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	c, err := h.menusPlataforma.Candidates(r.Context(), id, ext, q)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"candidates": c})
+}
+
+// maxBatch acota el lote: el menú real tiene 90 renglones, y un cuerpo con miles sería un abuso.
+const maxBatch = 500
+
+// POST /admin/platform-menus/connections/{id}/links/batch
+func (h *Handlers) ConfirmPlatformLinksBatch(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Confirm []string `json:"confirm"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if len(body.Confirm) == 0 || len(body.Confirm) > maxBatch {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	res, err := h.menusPlataforma.ConfirmBatch(r.Context(), id, u.ID, body.Confirm)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, res)
+}
+
+// PUT /admin/platform-menus/connections/{id}/exclusions/{externalId} — «solo existe en la plataforma».
+func (h *Handlers) SetPlatformItemExclusion(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext, err := externalIDDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.menusPlataforma.ExcludeItem(r.Context(), id, u.ID, ext); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/connections/{id}/exclusions/{externalId}
+func (h *Handlers) DeletePlatformItemExclusion(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext, err := externalIDDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.menusPlataforma.UnexcludeItem(r.Context(), id, ext); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type localExclusionBody struct {
+	LocalKind string `json:"localKind"`
+	LocalID   int64  `json:"localId"`
+}
+
+// PUT /admin/platform-menus/connections/{id}/local-exclusions — «no se vende en la plataforma».
+func (h *Handlers) SetLocalItemExclusion(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body localExclusionBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.LocalID <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.menusPlataforma.ExcludeLocal(r.Context(), id, u.ID, domain.ClaseLocal(body.LocalKind), body.LocalID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/connections/{id}/local-exclusions
+func (h *Handlers) DeleteLocalItemExclusion(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body localExclusionBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.LocalID <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.menusPlataforma.UnexcludeLocal(r.Context(), id, domain.ClaseLocal(body.LocalKind), body.LocalID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

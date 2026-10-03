@@ -86,6 +86,14 @@ func Error(w http.ResponseWriter, err error) {
 		// operador al tablero con los folios que faltan, en vez de mostrar un error que no puede
 		// accionar desde la pantalla de cierre.
 		status, code = http.StatusConflict, "OPEN_ORDERS"
+	// Emparejamiento (spec 026). Códigos propios porque cada uno pide a la pantalla algo distinto:
+	// el precio bloqueado se explica, el de captura abre la elección y el de tipo no debería pasar.
+	case errors.Is(err, domain.ErrPlatformPriceManaged):
+		status, code = http.StatusConflict, "PLATFORM_PRICE_MANAGED"
+	case errors.Is(err, domain.ErrCapturePriceRequired):
+		status, code = http.StatusUnprocessableEntity, "CAPTURE_PRICE_REQUIRED"
+	case errors.Is(err, domain.ErrLinkKindMismatch):
+		status, code = http.StatusUnprocessableEntity, "LINK_KIND_MISMATCH"
 	case errors.Is(err, domain.ErrBranchAmbiguous):
 		// 409 y código propio: es el estado del negocio (dos sucursales y nadie eligió), no algo
 		// que el operador mandó mal. Con un 500 genérico parecería una caída.

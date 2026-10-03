@@ -420,9 +420,13 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 	if err != nil {
 		return false, domain.FalloMapeoImposible, fmt.Errorf("leer el emparejamiento: %w", err)
 	}
+	// Solo las parejas de PRODUCTO: una opción ligada a una opción del POS (0077) no es un producto,
+	// y tratarla como tal cargaría la venta a lo que tenga ese número en el catálogo.
 	porItem := make(map[string]int64, len(parejas))
 	for _, p := range parejas {
-		porItem[p.ExternalID] = p.ProductID
+		if p.ProductID != nil && p.LocalKind == string(domain.LocalProducto) {
+			porItem[p.ExternalID] = *p.ProductID
+		}
 	}
 
 	ahora := s.ahora()
@@ -720,7 +724,11 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		if err != nil {
 			return err
 		}
-		if err := copiarRenglones(ctx, q, ord.ID, renglones); err != nil {
+		generico, err := productoGenerico(ctx, q)
+		if err != nil {
+			return err
+		}
+		if err := copiarRenglones(ctx, q, ord.ID, generico, renglones); err != nil {
 			return err
 		}
 		// YA PAGADO POR LA PLATAFORMA. Dejarlo por cobrar inventa un faltante en el corte por un
@@ -808,23 +816,41 @@ func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context,
 // copiarRenglones pasa los renglones del pedido entrante al pedido del POS.
 //
 // EL PRECIO ES EL DE LA PLATAFORMA, no el del catálogo: la dirección de la verdad en precio es de
-// arriba hacia abajo. Un renglón sin pareja entra igual, con el nombre que mandó la plataforma —
-// rechazar un pedido pagado por un hueco de nuestra contabilidad interna no es defendible.
-func copiarRenglones(ctx context.Context, q *db.Queries, pedido int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+// arriba hacia abajo. Un renglón sin pareja entra igual, ligado al producto genérico de la empresa
+// (0077) con el nombre que mandó la plataforma: rechazar un pedido pagado por un hueco de nuestra
+// contabilidad interna no es defendible, y sin producto el renglón no sigue el camino de los demás.
+//
+// Las opciones van en la NOTA del renglón: `order_line_modifiers` exige una opción del catálogo y
+// la de la plataforma puede no tenerla. Así cocina lee lo que el cliente pidió.
+func copiarRenglones(ctx context.Context, q *db.Queries, pedido, generico int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+	opciones := map[int64][]domain.PlatformLineOption{}
 	for _, r := range renglones {
 		if r.ParentLineID != nil {
-			// Las opciones viajan dentro del nombre del renglón por ahora: `order_line_modifiers`
-			// exige una opción del catálogo, y un modificador de la plataforma sin pareja no la
-			// tiene. Se ve en el ticket y no se pierde.
+			opciones[*r.ParentLineID] = append(opciones[*r.ParentLineID], domain.PlatformLineOption{
+				Name: r.ExternalName, Quantity: r.Quantity, UnitPrice: r.UnitPrice,
+			})
+		}
+	}
+	for _, r := range renglones {
+		if r.ParentLineID != nil {
 			continue
+		}
+		producto := r.ProductID
+		if producto == nil {
+			producto = &generico
+		}
+		var nota *string
+		if n := domain.PlatformLineNotes(opciones[r.ID]); n != "" {
+			nota = &n
 		}
 		if _, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 			OrderID:     pedido,
-			ProductID:   r.ProductID,
+			ProductID:   producto,
 			ProductName: r.ExternalName,
 			Quantity:    r.Quantity,
 			UnitPrice:   r.UnitPrice,
 			LineTotal:   r.Quantity.Mul(r.UnitPrice).Round(2),
+			Notes:       nota,
 		}); err != nil {
 			return err
 		}
@@ -833,3 +859,14 @@ func copiarRenglones(ctx context.Context, q *db.Queries, pedido int64, renglones
 }
 
 func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }
+
+// productoGenerico devuelve el producto al que va un renglón de plataforma sin pareja: el de la
+// empresa de la sesión, creado si faltara (una empresa de antes de la 0077 que se saltó ambos
+// caminos). Crearlo es mejor que rechazar un pedido ya pagado.
+func productoGenerico(ctx context.Context, q *db.Queries) (int64, error) {
+	id, err := q.GetPlatformUnpairedProduct(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("producto genérico: %w", err)
+	}
+	return id, nil
+}

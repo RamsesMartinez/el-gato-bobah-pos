@@ -358,7 +358,15 @@ func TestElEmparejamientoDeExtremoAExtremo(t *testing.T) {
 	if err := alta("Chamoyada_de_Mango", chamoyada, false); err != nil {
 		t.Fatalf("primera pareja: %v", err)
 	}
-	if err := alta("Chamoyada_de_Fresa", chamoyada, false); err != nil {
+	// Desde la 0077 la segunda pareja al mismo producto exige decir cuál da el precio de captura.
+	if err := alta("Chamoyada_de_Fresa", chamoyada, false); !errors.Is(err, domain.ErrCapturePriceRequired) {
+		t.Fatalf("segunda pareja al mismo producto sin precio de captura: %v", err)
+	}
+	no := false
+	if err := svc.GuardarPareja(ctx, app.AltaDePareja{
+		ConexionID: id, ExternalID: "Chamoyada_de_Fresa", Clase: domain.ItemPlatillo,
+		LocalID: chamoyada, ClaseLocal: domain.LocalProducto, UsuarioID: quien, PrecioDeCaptura: &no,
+	}); err != nil {
 		t.Fatalf("segunda pareja al mismo producto: %v", err)
 	}
 
@@ -379,8 +387,8 @@ func TestElEmparejamientoDeExtremoAExtremo(t *testing.T) {
 		ConexionID: id, ExternalID: "Con_hielo", Clase: domain.ItemOpcion,
 		LocalID: chamoyada, ClaseLocal: domain.LocalProducto,
 	})
-	if !errors.Is(err, domain.ErrValidation) {
-		t.Fatalf("emparejar una opción con un producto debería ser ErrValidation, dio %v", err)
+	if !errors.Is(err, domain.ErrLinkKindMismatch) {
+		t.Fatalf("emparejar una opción con un producto debería ser ErrLinkKindMismatch (0077), dio %v", err)
 	}
 
 	// Deshacer, y que la comparación lo refleje de inmediato.

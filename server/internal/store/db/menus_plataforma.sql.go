@@ -13,6 +13,83 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const clearCapturePrice = `-- name: ClearCapturePrice :exec
+update platform_item_links set is_capture_price = false
+where connection_id = $1
+  and (product_id = $2 or modifier_option_id = $3)
+`
+
+type ClearCapturePriceParams struct {
+	ConnectionID     int64  `json:"connection_id"`
+	ProductID        *int64 `json:"product_id"`
+	ModifierOptionID *int64 `json:"modifier_option_id"`
+}
+
+func (q *Queries) ClearCapturePrice(ctx context.Context, arg ClearCapturePriceParams) error {
+	_, err := q.db.Exec(ctx, clearCapturePrice, arg.ConnectionID, arg.ProductID, arg.ModifierOptionID)
+	return err
+}
+
+const confirmItemLinkProposal = `-- name: ConfirmItemLinkProposal :exec
+insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
+                                 local_kind, confirmed_at, confirmed_by, is_capture_price)
+values ($1, $2, $3, $4, $5,
+        $6, now(), $7, $8)
+on conflict (connection_id, external_id) do nothing
+`
+
+type ConfirmItemLinkProposalParams struct {
+	ConnectionID     int64            `json:"connection_id"`
+	ExternalID       string           `json:"external_id"`
+	Kind             PlatformItemKind `json:"kind"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	LocalKind        string           `json:"local_kind"`
+	ConfirmedBy      *int64           `json:"confirmed_by"`
+	IsCapturePrice   bool             `json:"is_capture_price"`
+}
+
+// Confirma una propuesta del lote. Mismo upsert que una pareja suelta: dos personas confirmando a la
+// vez dejan la misma fila, no un error.
+func (q *Queries) ConfirmItemLinkProposal(ctx context.Context, arg ConfirmItemLinkProposalParams) error {
+	_, err := q.db.Exec(ctx, confirmItemLinkProposal,
+		arg.ConnectionID,
+		arg.ExternalID,
+		arg.Kind,
+		arg.ProductID,
+		arg.ModifierOptionID,
+		arg.LocalKind,
+		arg.ConfirmedBy,
+		arg.IsCapturePrice,
+	)
+	return err
+}
+
+const countConnectionsOfPlatform = `-- name: CountConnectionsOfPlatform :one
+select count(*) from platform_connections where delivery_platform_id = $1
+`
+
+// Más de una tienda de la misma plataforma impide copiar precios (ver domain.PriceSync).
+func (q *Queries) CountConnectionsOfPlatform(ctx context.Context, deliveryPlatformID int16) (int64, error) {
+	row := q.db.QueryRow(ctx, countConnectionsOfPlatform, deliveryPlatformID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countExclusionsOfConnection = `-- name: CountExclusionsOfConnection :one
+select (select count(*) from platform_item_exclusions e where e.connection_id = $1)
+     + (select count(*) from local_item_exclusions l where l.connection_id = $1)
+`
+
+// Para el aviso antes de borrar la tienda: las decisiones también se pierden.
+func (q *Queries) CountExclusionsOfConnection(ctx context.Context, connectionID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countExclusionsOfConnection, connectionID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countLinksOfConnection = `-- name: CountLinksOfConnection :one
 select count(*) from platform_item_links where connection_id = $1
 `
@@ -45,6 +122,23 @@ func (q *Queries) CreatePlatformConnection(ctx context.Context, arg CreatePlatfo
 	return id, err
 }
 
+const deleteItemExclusion = `-- name: DeleteItemExclusion :execrows
+delete from platform_item_exclusions where connection_id = $1 and external_id = $2
+`
+
+type DeleteItemExclusionParams struct {
+	ConnectionID int64  `json:"connection_id"`
+	ExternalID   string `json:"external_id"`
+}
+
+func (q *Queries) DeleteItemExclusion(ctx context.Context, arg DeleteItemExclusionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteItemExclusion, arg.ConnectionID, arg.ExternalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteItemLink = `-- name: DeleteItemLink :execrows
 delete from platform_item_links where connection_id = $1 and external_id = $2
 `
@@ -56,6 +150,26 @@ type DeleteItemLinkParams struct {
 
 func (q *Queries) DeleteItemLink(ctx context.Context, arg DeleteItemLinkParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteItemLink, arg.ConnectionID, arg.ExternalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteLocalExclusion = `-- name: DeleteLocalExclusion :execrows
+delete from local_item_exclusions
+where connection_id = $1
+  and (product_id = $2 or modifier_option_id = $3)
+`
+
+type DeleteLocalExclusionParams struct {
+	ConnectionID     int64  `json:"connection_id"`
+	ProductID        *int64 `json:"product_id"`
+	ModifierOptionID *int64 `json:"modifier_option_id"`
+}
+
+func (q *Queries) DeleteLocalExclusion(ctx context.Context, arg DeleteLocalExclusionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLocalExclusion, arg.ConnectionID, arg.ProductID, arg.ModifierOptionID)
 	if err != nil {
 		return 0, err
 	}
@@ -74,6 +188,18 @@ func (q *Queries) DeletePlatformConnection(ctx context.Context, id int64) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const ensurePlatformUnpairedProduct = `-- name: EnsurePlatformUnpairedProduct :one
+select ensure_platform_unpaired_product($1::bigint)::bigint
+`
+
+// Al dar de alta una empresa: crea su categoría «Plataformas» y su producto genérico si faltan.
+func (q *Queries) EnsurePlatformUnpairedProduct(ctx context.Context, companyID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, ensurePlatformUnpairedProduct, companyID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const failMenuRead = `-- name: FailMenuRead :exec
@@ -129,7 +255,7 @@ func (q *Queries) FinishMenuReadOK(ctx context.Context, arg FinishMenuReadOKPara
 }
 
 const getItemLink = `-- name: GetItemLink :one
-select external_id, kind, product_id, local_kind, confirmed_at
+select external_id, kind, product_id, modifier_option_id, local_kind, confirmed_at, is_capture_price
 from platform_item_links
 where connection_id = $1 and external_id = $2
 `
@@ -140,11 +266,13 @@ type GetItemLinkParams struct {
 }
 
 type GetItemLinkRow struct {
-	ExternalID  string             `json:"external_id"`
-	Kind        PlatformItemKind   `json:"kind"`
-	ProductID   int64              `json:"product_id"`
-	LocalKind   string             `json:"local_kind"`
-	ConfirmedAt pgtype.Timestamptz `json:"confirmed_at"`
+	ExternalID       string             `json:"external_id"`
+	Kind             PlatformItemKind   `json:"kind"`
+	ProductID        *int64             `json:"product_id"`
+	ModifierOptionID *int64             `json:"modifier_option_id"`
+	LocalKind        string             `json:"local_kind"`
+	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
+	IsCapturePrice   bool               `json:"is_capture_price"`
 }
 
 // Con qué está emparejado hoy ese item. Se consulta ANTES de escribir: el upsert pisa en silencio
@@ -156,8 +284,10 @@ func (q *Queries) GetItemLink(ctx context.Context, arg GetItemLinkParams) (GetIt
 		&i.ExternalID,
 		&i.Kind,
 		&i.ProductID,
+		&i.ModifierOptionID,
 		&i.LocalKind,
 		&i.ConfirmedAt,
+		&i.IsCapturePrice,
 	)
 	return i, err
 }
@@ -257,6 +387,21 @@ func (q *Queries) GetPlatformConnection(ctx context.Context, id int64) (GetPlatf
 	return i, err
 }
 
+const getPlatformUnpairedProduct = `-- name: GetPlatformUnpairedProduct :one
+select ensure_platform_unpaired_product(nullif(current_setting('app.company_id', true), '')::bigint)::bigint
+`
+
+// El producto genérico de la empresa DE LA SESIÓN (0077), creado si faltara. Filtra por la empresa
+// explícitamente y no deja el filtro a RLS: como owner (pruebas, scripts) RLS no aplica y un
+// `where system_kind = …` a secas devolvía el genérico de otra empresa, que la llave compuesta del
+// renglón rechaza con un pedido ya pagado esperando.
+func (q *Queries) GetPlatformUnpairedProduct(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, getPlatformUnpairedProduct)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const hasRunningMenuRead = `-- name: HasRunningMenuRead :one
 select exists (
   select 1 from platform_menu_reads where connection_id = $1 and status = 'en_curso'
@@ -270,6 +415,52 @@ func (q *Queries) HasRunningMenuRead(ctx context.Context, connectionID int64) (b
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const insertItemExclusion = `-- name: InsertItemExclusion :exec
+insert into platform_item_exclusions (connection_id, external_id, kind, decided_by)
+values ($1, $2, $3, $4)
+on conflict (connection_id, external_id) do nothing
+`
+
+type InsertItemExclusionParams struct {
+	ConnectionID int64            `json:"connection_id"`
+	ExternalID   string           `json:"external_id"`
+	Kind         PlatformItemKind `json:"kind"`
+	DecidedBy    int64            `json:"decided_by"`
+}
+
+func (q *Queries) InsertItemExclusion(ctx context.Context, arg InsertItemExclusionParams) error {
+	_, err := q.db.Exec(ctx, insertItemExclusion,
+		arg.ConnectionID,
+		arg.ExternalID,
+		arg.Kind,
+		arg.DecidedBy,
+	)
+	return err
+}
+
+const insertLocalExclusion = `-- name: InsertLocalExclusion :exec
+insert into local_item_exclusions (connection_id, product_id, modifier_option_id, decided_by)
+values ($1, $2, $3, $4)
+on conflict do nothing
+`
+
+type InsertLocalExclusionParams struct {
+	ConnectionID     int64  `json:"connection_id"`
+	ProductID        *int64 `json:"product_id"`
+	ModifierOptionID *int64 `json:"modifier_option_id"`
+	DecidedBy        int64  `json:"decided_by"`
+}
+
+func (q *Queries) InsertLocalExclusion(ctx context.Context, arg InsertLocalExclusionParams) error {
+	_, err := q.db.Exec(ctx, insertLocalExclusion,
+		arg.ConnectionID,
+		arg.ProductID,
+		arg.ModifierOptionID,
+		arg.DecidedBy,
+	)
+	return err
 }
 
 const insertMenuItem = `-- name: InsertMenuItem :exec
@@ -298,6 +489,35 @@ func (q *Queries) InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) 
 		arg.Name,
 		arg.PriceCents,
 		arg.Available,
+	)
+	return err
+}
+
+const insertPlatformPriceChange = `-- name: InsertPlatformPriceChange :exec
+insert into platform_price_changes (read_id, external_id, name, product_id, modifier_option_id, old_price, new_price)
+values ($1, $2, $3, $4, $5,
+        $6, $7)
+`
+
+type InsertPlatformPriceChangeParams struct {
+	ReadID           int64            `json:"read_id"`
+	ExternalID       string           `json:"external_id"`
+	Name             string           `json:"name"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	OldPrice         *decimal.Decimal `json:"old_price"`
+	NewPrice         decimal.Decimal  `json:"new_price"`
+}
+
+func (q *Queries) InsertPlatformPriceChange(ctx context.Context, arg InsertPlatformPriceChangeParams) error {
+	_, err := q.db.Exec(ctx, insertPlatformPriceChange,
+		arg.ReadID,
+		arg.ExternalID,
+		arg.Name,
+		arg.ProductID,
+		arg.ModifierOptionID,
+		arg.OldPrice,
+		arg.NewPrice,
 	)
 	return err
 }
@@ -377,20 +597,54 @@ func (q *Queries) ListActiveProductsForCompare(ctx context.Context) ([]ListActiv
 	return items, nil
 }
 
+const listItemExclusions = `-- name: ListItemExclusions :many
+select external_id, kind, decided_at from platform_item_exclusions where connection_id = $1
+`
+
+type ListItemExclusionsRow struct {
+	ExternalID string           `json:"external_id"`
+	Kind       PlatformItemKind `json:"kind"`
+	DecidedAt  time.Time        `json:"decided_at"`
+}
+
+func (q *Queries) ListItemExclusions(ctx context.Context, connectionID int64) ([]ListItemExclusionsRow, error) {
+	rows, err := q.db.Query(ctx, listItemExclusions, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListItemExclusionsRow{}
+	for rows.Next() {
+		var i ListItemExclusionsRow
+		if err := rows.Scan(&i.ExternalID, &i.Kind, &i.DecidedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItemLinks = `-- name: ListItemLinks :many
 
-select external_id, kind, product_id, local_kind, confirmed_at, confirmed_by
+select external_id, kind, product_id, modifier_option_id, local_kind, confirmed_at, confirmed_by,
+       is_capture_price, created_at
 from platform_item_links
 where connection_id = $1
 `
 
 type ListItemLinksRow struct {
-	ExternalID  string             `json:"external_id"`
-	Kind        PlatformItemKind   `json:"kind"`
-	ProductID   int64              `json:"product_id"`
-	LocalKind   string             `json:"local_kind"`
-	ConfirmedAt pgtype.Timestamptz `json:"confirmed_at"`
-	ConfirmedBy *int64             `json:"confirmed_by"`
+	ExternalID       string             `json:"external_id"`
+	Kind             PlatformItemKind   `json:"kind"`
+	ProductID        *int64             `json:"product_id"`
+	ModifierOptionID *int64             `json:"modifier_option_id"`
+	LocalKind        string             `json:"local_kind"`
+	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
+	ConfirmedBy      *int64             `json:"confirmed_by"`
+	IsCapturePrice   bool               `json:"is_capture_price"`
+	CreatedAt        time.Time          `json:"created_at"`
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -412,10 +666,84 @@ func (q *Queries) ListItemLinks(ctx context.Context, connectionID int64) ([]List
 			&i.ExternalID,
 			&i.Kind,
 			&i.ProductID,
+			&i.ModifierOptionID,
 			&i.LocalKind,
 			&i.ConfirmedAt,
 			&i.ConfirmedBy,
+			&i.IsCapturePrice,
+			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinksOfTarget = `-- name: ListLinksOfTarget :many
+select external_id, is_capture_price, created_at
+from platform_item_links
+where connection_id = $1
+  and (product_id = $2 or modifier_option_id = $3)
+`
+
+type ListLinksOfTargetParams struct {
+	ConnectionID     int64  `json:"connection_id"`
+	ProductID        *int64 `json:"product_id"`
+	ModifierOptionID *int64 `json:"modifier_option_id"`
+}
+
+type ListLinksOfTargetRow struct {
+	ExternalID     string    `json:"external_id"`
+	IsCapturePrice bool      `json:"is_capture_price"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// Las parejas de la tienda que van al mismo producto u opción del POS: deciden si hace falta elegir
+// el precio de captura y a quién pasa cuando se quita la que lo daba.
+func (q *Queries) ListLinksOfTarget(ctx context.Context, arg ListLinksOfTargetParams) ([]ListLinksOfTargetRow, error) {
+	rows, err := q.db.Query(ctx, listLinksOfTarget, arg.ConnectionID, arg.ProductID, arg.ModifierOptionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinksOfTargetRow{}
+	for rows.Next() {
+		var i ListLinksOfTargetRow
+		if err := rows.Scan(&i.ExternalID, &i.IsCapturePrice, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLocalExclusions = `-- name: ListLocalExclusions :many
+select product_id, modifier_option_id, decided_at from local_item_exclusions where connection_id = $1
+`
+
+type ListLocalExclusionsRow struct {
+	ProductID        *int64    `json:"product_id"`
+	ModifierOptionID *int64    `json:"modifier_option_id"`
+	DecidedAt        time.Time `json:"decided_at"`
+}
+
+func (q *Queries) ListLocalExclusions(ctx context.Context, connectionID int64) ([]ListLocalExclusionsRow, error) {
+	rows, err := q.db.Query(ctx, listLocalExclusions, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLocalExclusionsRow{}
+	for rows.Next() {
+		var i ListLocalExclusionsRow
+		if err := rows.Scan(&i.ProductID, &i.ModifierOptionID, &i.DecidedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -572,6 +900,42 @@ func (q *Queries) ListPlatformConnections(ctx context.Context) ([]ListPlatformCo
 	return items, nil
 }
 
+const listPlatformPriceChanges = `-- name: ListPlatformPriceChanges :many
+select external_id, name, old_price, new_price from platform_price_changes where read_id = $1 order by name
+`
+
+type ListPlatformPriceChangesRow struct {
+	ExternalID string           `json:"external_id"`
+	Name       string           `json:"name"`
+	OldPrice   *decimal.Decimal `json:"old_price"`
+	NewPrice   decimal.Decimal  `json:"new_price"`
+}
+
+func (q *Queries) ListPlatformPriceChanges(ctx context.Context, readID int64) ([]ListPlatformPriceChangesRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformPriceChanges, readID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlatformPriceChangesRow{}
+	for rows.Next() {
+		var i ListPlatformPriceChangesRow
+		if err := rows.Scan(
+			&i.ExternalID,
+			&i.Name,
+			&i.OldPrice,
+			&i.NewPrice,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const menuItemExistsInRead = `-- name: MenuItemExistsInRead :one
 select exists (
   select 1 from platform_menu_items where read_id = $1 and external_id = $2 and kind = $3
@@ -615,6 +979,21 @@ func (q *Queries) PruneMenuReads(ctx context.Context, startedAt time.Time) (int6
 	return result.RowsAffected(), nil
 }
 
+const setCapturePrice = `-- name: SetCapturePrice :exec
+update platform_item_links set is_capture_price = true
+where connection_id = $1 and external_id = $2
+`
+
+type SetCapturePriceParams struct {
+	ConnectionID int64  `json:"connection_id"`
+	ExternalID   string `json:"external_id"`
+}
+
+func (q *Queries) SetCapturePrice(ctx context.Context, arg SetCapturePriceParams) error {
+	_, err := q.db.Exec(ctx, setCapturePrice, arg.ConnectionID, arg.ExternalID)
+	return err
+}
+
 const startMenuRead = `-- name: StartMenuRead :one
 
 insert into platform_menu_reads (connection_id) values ($1) returning id, started_at
@@ -638,33 +1017,42 @@ func (q *Queries) StartMenuRead(ctx context.Context, connectionID int64) (StartM
 }
 
 const upsertItemLink = `-- name: UpsertItemLink :exec
-insert into platform_item_links (connection_id, external_id, kind, product_id, local_kind, confirmed_at, confirmed_by)
-values ($1, $2, $3, $4, $5, now(), $6)
+insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
+                                 local_kind, confirmed_at, confirmed_by, is_capture_price)
+values ($1, $2, $3, $4, $5,
+        $6, now(), $7, $8)
 on conflict (connection_id, external_id)
-do update set product_id    = excluded.product_id,
-              kind          = excluded.kind,
-              local_kind    = excluded.local_kind,
-              confirmed_at  = excluded.confirmed_at,
-              confirmed_by  = excluded.confirmed_by
+do update set product_id         = excluded.product_id,
+              modifier_option_id = excluded.modifier_option_id,
+              kind               = excluded.kind,
+              local_kind         = excluded.local_kind,
+              confirmed_at       = excluded.confirmed_at,
+              confirmed_by       = excluded.confirmed_by,
+              is_capture_price   = excluded.is_capture_price
 `
 
 type UpsertItemLinkParams struct {
-	ConnectionID int64            `json:"connection_id"`
-	ExternalID   string           `json:"external_id"`
-	Kind         PlatformItemKind `json:"kind"`
-	ProductID    int64            `json:"product_id"`
-	LocalKind    string           `json:"local_kind"`
-	ConfirmedBy  *int64           `json:"confirmed_by"`
+	ConnectionID     int64            `json:"connection_id"`
+	ExternalID       string           `json:"external_id"`
+	Kind             PlatformItemKind `json:"kind"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	LocalKind        string           `json:"local_kind"`
+	ConfirmedBy      *int64           `json:"confirmed_by"`
+	IsCapturePrice   bool             `json:"is_capture_price"`
 }
 
+// Producto u opción según `local_kind` (0077): el `check` de la tabla exige exactamente uno.
 func (q *Queries) UpsertItemLink(ctx context.Context, arg UpsertItemLinkParams) error {
 	_, err := q.db.Exec(ctx, upsertItemLink,
 		arg.ConnectionID,
 		arg.ExternalID,
 		arg.Kind,
 		arg.ProductID,
+		arg.ModifierOptionID,
 		arg.LocalKind,
 		arg.ConfirmedBy,
+		arg.IsCapturePrice,
 	)
 	return err
 }

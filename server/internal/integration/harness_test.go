@@ -275,6 +275,9 @@ func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 		t.Fatalf("makeCompany(%s): %v", slug, err)
 	}
 	id := co.ID
+	if _, err := st.Q.EnsurePlatformUnpairedProduct(context.Background(), id); err != nil {
+		t.Fatalf("producto genérico de %s: %v", slug, err)
+	}
 	// Espeja a provisionCompany: una empresa sin métodos de pago no puede cobrar, así que un test
 	// que la creara pelada estaría probando un mundo que el sistema no produce.
 	if err := st.Q.SeedBasePaymentMethods(context.Background(), id); err != nil {

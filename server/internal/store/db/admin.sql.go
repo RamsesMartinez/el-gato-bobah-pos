@@ -124,7 +124,10 @@ from (
            where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count
   from products p
   join categories c on c.id = p.category_id
-  where ($1::text = ''
+  -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
+  -- sin pareja. Editarlo o borrarlo desde aquí dejaría a esos pedidos sin a dónde ir.
+  where p.system_kind is null
+    and ($1::text = ''
           or ($1 = 'act' and p.is_active)
           or ($1 = 'inact' and not p.is_active))
     and ($2::text = '' or p.name ilike '%' || $2 || '%')
