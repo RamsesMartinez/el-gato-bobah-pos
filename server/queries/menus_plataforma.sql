@@ -180,9 +180,10 @@ where connection_id = @connection_id
 update platform_item_links set is_capture_price = true
 where connection_id = $1 and external_id = $2;
 
--- name: ConfirmItemLinkProposal :exec
--- Confirma una propuesta del lote. Mismo upsert que una pareja suelta: dos personas confirmando a la
--- vez dejan la misma fila, no un error.
+-- name: ConfirmItemLinkProposal :execrows
+-- Confirma una propuesta del lote. `do nothing` si ya existe: dos personas confirmando a la vez
+-- dejan la misma fila. :execrows para saber si ESTA escribió, y no reportar como confirmado lo que
+-- ya estaba (quizá apuntando a otro producto).
 insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
                                  local_kind, confirmed_at, confirmed_by, is_capture_price)
 values (@connection_id, @external_id, @kind, sqlc.narg('product_id'), sqlc.narg('modifier_option_id'),

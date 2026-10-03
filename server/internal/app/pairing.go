@@ -371,12 +371,19 @@ func (s *MenusDePlataformaService) ConfirmBatch(ctx context.Context, conexionID,
 			if err != nil {
 				return err
 			}
-			if err := q.ConfirmItemLinkProposal(ctx, db.ConfirmItemLinkProposalParams{
+			n, err := q.ConfirmItemLinkProposal(ctx, db.ConfirmItemLinkProposalParams{
 				ConnectionID: conexionID, ExternalID: id, Kind: db.PlatformItemKind(fila.Kind),
 				ProductID: product, ModifierOptionID: option, LocalKind: string(kind),
 				ConfirmedBy: confirmadaPor, IsCapturePrice: len(otras) == 0,
-			}); err != nil {
+			})
+			if err != nil {
 				return fmt.Errorf("confirmar %q: %w", id, err)
+			}
+			if n == 0 {
+				// Ya había pareja (un id repetido en el lote, u otra persona primero): no la escribió
+				// este lote y no se reporta como suya.
+				res.Skipped = append(res.Skipped, id)
+				continue
 			}
 			res.Confirmed = append(res.Confirmed, id)
 		}
@@ -440,6 +447,10 @@ func (s *MenusDePlataformaService) ExcludeLocal(ctx context.Context, conexionID,
 }
 
 func (s *MenusDePlataformaService) UnexcludeLocal(ctx context.Context, conexionID int64, kind domain.ClaseLocal, localID int64) error {
+	// Mismo rechazo que ExcludeLocal: un tipo mal escrito NO se lee como «producto» (principio V).
+	if kind != domain.LocalProducto && kind != domain.LocalOpcion {
+		return fmt.Errorf("%w: tipo local desconocido %q", domain.ErrValidation, kind)
+	}
 	product, option := targetOf(kind, localID)
 	n, err := s.store.QC(ctx).DeleteLocalExclusion(ctx, db.DeleteLocalExclusionParams{ConnectionID: conexionID, ProductID: product, ModifierOptionID: option})
 	if err != nil {

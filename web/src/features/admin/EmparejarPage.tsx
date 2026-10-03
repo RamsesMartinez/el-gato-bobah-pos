@@ -30,7 +30,6 @@ import {
 
 interface Props {
   conexionId: number;
-  onListo?: () => void;
 }
 
 // Un solo alto para todo lo que se toca: la constitución pide 44 px como mínimo.
@@ -52,7 +51,7 @@ interface Captura {
   elegido: string;
 }
 
-export function EmparejarPage({ conexionId, onListo }: Props) {
+export function EmparejarPage({ conexionId }: Props) {
   const { fechaYHora } = useHoraDelNegocio();
   const [datos, setDatos] = useState<TableroDeEmparejamiento | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +61,9 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [modo, setModo] = useState<'uno' | 'lote'>('uno');
   const [desmarcados, setDesmarcados] = useState<Set<string>>(new Set());
-  const [ultima, setUltima] = useState<RenglonDelTablero | null>(null);
+  // Lo último que se confirmó, para deshacerlo con UN toque aunque haya sido un lote de doce:
+  // corregir doce parejas una por una cuesta más que el error.
+  const [ultimas, setUltimas] = useState<RenglonDelTablero[]>([]);
   const [captura, setCaptura] = useState<Captura | null>(null);
   const [buscarOtro, setBuscarOtro] = useState(false);
   const [verCambios, setVerCambios] = useState(false);
@@ -127,7 +128,7 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
         }),
         'No se pudo guardar la pareja.',
       );
-      setUltima(item);
+      setUltimas([item]);
       setSeleccion(null);
       setBuscarOtro(false);
     } catch (e) {
@@ -155,10 +156,29 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
           localId: destino.id, localKind: destino.localKind, kind: otro.kind, capturePrice: true,
         });
       }
-    }, 'No se pudo guardar la pareja.').catch(() => undefined);
+    }, 'No se pudo guardar la pareja.')
+      .then(() => setUltimas([item]))
+      .catch(() => undefined);
     setCaptura(null);
     setSeleccion(null);
   };
+
+  const botonDeshacer =
+    ultimas.length === 0 ? null : (
+      <Button
+        minH={TOQUE}
+        variant="ghost"
+        onClick={() =>
+          conError(async () => {
+            for (const u of ultimas) await borrarPareja(conexionId, u.externalId);
+          }, 'No se pudo deshacer.')
+            .then(() => setUltimas([]))
+            .catch(() => undefined)
+        }
+      >
+        <LuUndo2 /> {ultimas.length === 1 ? `Deshacer «${ultimas[0].name}»` : `Deshacer ${ultimas.length}`}
+      </Button>
+    );
 
   if (error) return <Text color="red.600">{error}</Text>;
   if (!datos) return <Text color="fg.muted">Cargando…</Text>;
@@ -178,11 +198,6 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
           Leído {fechaYHora(datos.readAt)} · {datos.counts.done} de {total} emparejados ·{' '}
           <LuLock style={{ display: 'inline', verticalAlign: '-2px' }} aria-hidden /> Precios: los pone {plataforma}
         </Text>
-        {onListo && (
-          <Button minH={TOQUE} variant="outline" onClick={onListo}>
-            Listo
-          </Button>
-        )}
       </HStack>
 
       {cambios.length > 0 && (
@@ -330,7 +345,7 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
                     <Button
                       flex="1"
                       minH="52px"
-                      colorPalette="red"
+                      colorPalette="green"
                       onClick={() =>
                         ligar(actual, { localKind: actual.proposal!.localKind, id: actual.proposal!.localId, name: actual.proposal!.localName, linkedCount: 0 })
                       }
@@ -345,19 +360,7 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
                     Al confirmar pasa sola a la siguiente.
                   </Text>
                   <HStack>
-                    {ultima && (
-                      <Button
-                        minH={TOQUE}
-                        variant="ghost"
-                        onClick={() =>
-                          conError(() => borrarPareja(conexionId, ultima.externalId), 'No se pudo deshacer.')
-                            .then(() => setUltima(null))
-                            .catch(() => undefined)
-                        }
-                      >
-                        <LuUndo2 /> Deshacer «{ultima.name}»
-                      </Button>
-                    )}
+                    {botonDeshacer}
                     <Box flex="1" />
                     <Button
                       minH={TOQUE}
@@ -397,18 +400,21 @@ export function EmparejarPage({ conexionId, onListo }: Props) {
                     </HStack>
                   ))}
                   <HStack justify="flex-end">
+                    {botonDeshacer}
+                    <Box flex="1" />
                     <Text fontSize="sm">
                       {marcados.length} de {porRevisar.length} marcadas
                     </Text>
                     <Button
                       minH="48px"
-                      colorPalette="red"
+                      colorPalette="green"
                       disabled={marcados.length === 0}
                       onClick={() =>
-                        conError(
-                          () => confirmarLote(conexionId, marcados.map((m) => m.externalId)),
-                          'No se pudieron confirmar.',
-                        ).catch(() => undefined)
+                        conError(async () => {
+                          const r = await confirmarLote(conexionId, marcados.map((m) => m.externalId));
+                          const hechas = new Set(r.confirmed ?? []);
+                          setUltimas(marcados.filter((m) => hechas.has(m.externalId)));
+                        }, 'No se pudieron confirmar.').catch(() => undefined)
                       }
                     >
                       ✓ Confirmar {marcados.length}
@@ -629,7 +635,7 @@ function PanelDeCaptura({
           Elegir otro producto
         </Button>
         <Box flex="1" />
-        <Button minH="48px" colorPalette="red" onClick={onLigar}>
+        <Button minH="48px" colorPalette="green" onClick={onLigar}>
           ✓ Ligar
         </Button>
       </HStack>

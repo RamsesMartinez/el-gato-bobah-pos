@@ -30,7 +30,7 @@ func (q *Queries) ClearCapturePrice(ctx context.Context, arg ClearCapturePricePa
 	return err
 }
 
-const confirmItemLinkProposal = `-- name: ConfirmItemLinkProposal :exec
+const confirmItemLinkProposal = `-- name: ConfirmItemLinkProposal :execrows
 insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
                                  local_kind, confirmed_at, confirmed_by, is_capture_price)
 values ($1, $2, $3, $4, $5,
@@ -49,10 +49,11 @@ type ConfirmItemLinkProposalParams struct {
 	IsCapturePrice   bool             `json:"is_capture_price"`
 }
 
-// Confirma una propuesta del lote. Mismo upsert que una pareja suelta: dos personas confirmando a la
-// vez dejan la misma fila, no un error.
-func (q *Queries) ConfirmItemLinkProposal(ctx context.Context, arg ConfirmItemLinkProposalParams) error {
-	_, err := q.db.Exec(ctx, confirmItemLinkProposal,
+// Confirma una propuesta del lote. `do nothing` si ya existe: dos personas confirmando a la vez
+// dejan la misma fila. :execrows para saber si ESTA escribió, y no reportar como confirmado lo que
+// ya estaba (quizá apuntando a otro producto).
+func (q *Queries) ConfirmItemLinkProposal(ctx context.Context, arg ConfirmItemLinkProposalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmItemLinkProposal,
 		arg.ConnectionID,
 		arg.ExternalID,
 		arg.Kind,
@@ -62,7 +63,10 @@ func (q *Queries) ConfirmItemLinkProposal(ctx context.Context, arg ConfirmItemLi
 		arg.ConfirmedBy,
 		arg.IsCapturePrice,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const countConnectionsOfPlatform = `-- name: CountConnectionsOfPlatform :one

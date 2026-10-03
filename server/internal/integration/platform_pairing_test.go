@@ -120,6 +120,51 @@ func TestBatchConfirmsOnlyCurrentProposals(t *testing.T) {
 	}
 }
 
+// El lote no puede reportar como confirmado lo que no escribió: un id repetido, o uno que otra
+// persona confirmó primero, quedaría «confirmado» en la pantalla apuntando a otra cosa.
+func TestBatchDoesNotReportWhatItDidNotWrite(t *testing.T) {
+	f := newPairingFixture(t)
+	res, err := f.svc.ConfirmBatch(f.ctx, f.conn, f.user, []string{"Chamoyada_de_Mango", "Chamoyada_de_Mango"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Confirmed) != 1 || len(res.Skipped) != 1 {
+		t.Fatalf("un id repetido se confirma una vez y la otra se omite: %+v", res)
+	}
+}
+
+func TestUnexcludeLocalRejectsAnUnknownKind(t *testing.T) {
+	f := newPairingFixture(t)
+	if err := f.svc.UnexcludeLocal(f.ctx, f.conn, domain.ClaseLocal("productoo"), f.mango); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("un tipo mal escrito se rechaza, no se lee como producto: %v", err)
+	}
+}
+
+// El producto genérico se crea bajo el rol de la aplicación, con RLS: es el camino real de un
+// pedido aceptado en una empresa que no lo tenía.
+func TestTheGenericProductIsCreatedUnderTheAppRole(t *testing.T) {
+	st := newTestStore(t)
+	otra := makeCompany(t, st, "sin-generico")
+	if _, err := st.Pool.Exec(context.Background(),
+		`delete from products where company_id = $1 and system_kind = 'platform_unpaired'`, otra); err != nil {
+		t.Fatal(err)
+	}
+	app := appRoleStore(t)
+	ctx, release, err := app.AcquireTenant(context.Background(), otra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	id, err := app.QC(ctx).GetPlatformUnpairedProduct(ctx)
+	if err != nil {
+		t.Fatalf("el rol de la aplicación debe poder crear el genérico de su empresa: %v", err)
+	}
+	var company int64
+	if err := st.Pool.QueryRow(context.Background(), `select company_id from products where id = $1`, id).Scan(&company); err != nil || company != otra {
+		t.Fatalf("el genérico debe ser de la empresa de la sesión (%d), es de %d: %v", otra, company, err)
+	}
+}
+
 func TestSeveralPlatformItemsToOneProductRequireTheCapturePrice(t *testing.T) {
 	f := newPairingFixture(t)
 	if err := f.link(t, "Chamoyada_de_Mango", domain.ItemPlatillo, domain.LocalProducto, f.mango, nil); err != nil {

@@ -73,7 +73,7 @@ bajo `appRoleStore` con `inTheThreeCases` para lo que lee tablas de empresa; mig
 - [x] T032 [P] docs/emparejamiento-de-plataformas.md: estado de lo construido
 - [x] T033 Gates: `go build`, `go test`, integración, `make lint`, `bun run lint`, vitest, build
 - [ ] T034 Ensayo en `pos-vps-dev` con el respaldo de producción según quickstart.md; cobrar lo creado; regresar el ambiente y apagarlo
-- [ ] T035 `/revision-de-codigo` sobre el diff
+- [x] T035 `/revision-de-codigo` sobre el diff
 
 ## Dependencies
 

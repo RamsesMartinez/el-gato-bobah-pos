@@ -144,6 +144,20 @@ describe('EmparejarPage (diseño B)', () => {
     await waitFor(() => expect(api.confirmarLote).toHaveBeenCalledWith(1, ['chai']));
   });
 
+  // Un lote de doce mal confirmado no puede costar doce toques de corregir.
+  it('un lote se deshace completo con un toque', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.borrarPareja).mockResolvedValue(undefined as never);
+    montar();
+    await user.click(await screen.findByRole('button', { name: /Por revisar 2/ }));
+    await user.click(screen.getByRole('button', { name: 'En lote' }));
+    await user.click(screen.getByRole('button', { name: /Confirmar 2/ }));
+    await user.click(await screen.findByRole('button', { name: /Deshacer 2/ }));
+    await waitFor(() => expect(api.borrarPareja).toHaveBeenCalledTimes(2));
+    expect(api.borrarPareja).toHaveBeenCalledWith(1, 'chai');
+    expect(api.borrarPareja).toHaveBeenCalledWith(1, 'capu');
+  });
+
   it('uno por uno confirma la propuesta y avanza sola', async () => {
     const user = userEvent.setup();
     montar();

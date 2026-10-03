@@ -32,7 +32,7 @@ export function EmparejarConexionPage() {
           <LuArrowLeft /> Tiendas
         </Button>
       </HStack>
-      <EmparejarPage conexionId={conexionId} onListo={() => navegar('/plataformas')} />
+      <EmparejarPage conexionId={conexionId} />
     </Page>
   );
 }
