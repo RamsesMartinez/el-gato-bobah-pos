@@ -496,8 +496,8 @@ where o.id = $1;
 -- El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
 --
 -- `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
--- repondrían el insumo dos veces. Solo el renglón, no el pedido: bloquear el pedido entero pararía
--- al que está cobrando en la otra tableta.
+-- repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
+-- cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
 select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
        o.status as order_status
 from order_lines ol

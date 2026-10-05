@@ -511,8 +511,8 @@ type GetOrderLineForCancelRow struct {
 // El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
 //
 // `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
-// repondrían el insumo dos veces. Solo el renglón, no el pedido: bloquear el pedido entero pararía
-// al que está cobrando en la otra tableta.
+// repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
+// cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
 func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineForCancelParams) (GetOrderLineForCancelRow, error) {
 	row := q.db.QueryRow(ctx, getOrderLineForCancel, arg.ID, arg.OrderID)
 	var i GetOrderLineForCancelRow
