@@ -1,5 +1,5 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
-.PHONY: help install start stop check check-env deps-up deps-down \
+.PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
         prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo
@@ -137,15 +137,22 @@ fudo-import: deps-up ## Importa el catálogo FUDO desde $FUDO_DIR (y limpia la c
 build: ## Build de imágenes de producción (API + web, self-contained, sin bun en host)
 	GIT_SHA="$$(git rev-parse --short HEAD)" BUILT_AT="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 		docker compose -f deploy/docker-compose.yml build
-deploy: ## Deploy compilando en la máquina local (fallback; en el VPS usa deploy-image)
+deploy: deploy-journald ## Deploy compilando en la máquina local (fallback; en el VPS usa deploy-image)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	$(MAKE) build
 	docker compose -f deploy/docker-compose.yml up -d
-deploy-image: ## Deploy bajando la imagen ya compilada por CI (API_IMAGE=ghcr.io/...:sha-xxxx)
+deploy-image: deploy-journald ## Deploy bajando la imagen ya compilada por CI (API_IMAGE=ghcr.io/...:sha-xxxx)
 	@bash scripts/check-env.sh || (echo "Configura deploy/.env antes de desplegar"; exit 1)
 	docker compose -f deploy/docker-compose.yml pull api
 	docker compose -f deploy/docker-compose.yml up -d
 	@docker image prune -f >/dev/null 2>&1 || true
+
+# Solo reinicia journald si la config cambió. Falla ruidoso sin sudo: un deploy que deja la
+# bitácora en memoria sin decirlo es justo lo que esto viene a quitar.
+deploy-journald: ## Instala la retención de 30 días del journal (bitácora de la API)
+	@cmp -s deploy/journald.conf /etc/systemd/journald.conf.d/pos.conf || { \
+		sudo -n install -D -m 0644 deploy/journald.conf /etc/systemd/journald.conf.d/pos.conf && \
+		sudo -n systemctl restart systemd-journald && echo "journald: retención de 30 días instalada"; }
 
 # Túnel SSH a Postgres de la VPS, para inspeccionar con DataGrip/psql sin exponer el puerto a
 # internet. Resuelve la IP interna del contenedor en cada corrida (puede cambiar si se recrea).

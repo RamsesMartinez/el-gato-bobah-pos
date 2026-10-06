@@ -8,6 +8,15 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# La API va al journal del host: sobrevive a cada deploy y se guarda 30 días (deploy/journald.conf).
+# Ahí queda la IP de cada request. `docker logs` sigue funcionando por la caché local de Docker.
+# Consulta (la VM está en UTC: las 18:00 de CDMX son las 00:00 UTC del día siguiente):
+#   journalctl CONTAINER_NAME=deploy-api-1 --since "2026-09-15 00:00" --until "2026-09-15 04:00" -o cat
+x-logging-journal: &journal-logging
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 services:
   api:
     # La imagen la compila y publica CI (job `image` en ci.yml) y el VPS solo la BAJA: en un
@@ -22,7 +31,7 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-dev}
         BUILT_AT: ${BUILT_AT:-}
-    logging: *default-logging
+    logging: *journal-logging
     env_file:
       - path: .env
         required: false

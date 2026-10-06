@@ -222,6 +222,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (la tabla nace vacía: una credencial sembrada por una migración vive en este repositorio, que es
   público).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
+- **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
+  contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
+  [deploy/journald.conf](deploy/journald.conf) (necesita `sudo` sin password en la VM). Ahí queda la
+  IP y el usuario de cada request; se lee con
+  `sudo journalctl CONTAINER_NAME=deploy-api-1 --since "…" -o cat`, **en hora UTC**. Lo demás
+  (postgres, redis, caddy) sigue en el archivo del contenedor: cambiarles el driver los recrea, y
+  postgres se reinicia a media operación.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
 - **Frontend siempre con bun** (`bun install`, `bun run`, `bun audit`). `web/package.json` bloquea npm (`preinstall: only-allow bun`). Nunca crees `package-lock.json`.
 
