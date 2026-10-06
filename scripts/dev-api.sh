@@ -25,6 +25,27 @@ export APP_BASE_URL="${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-3000}}"
 # el binario carga los secretos de aquí (JWT_SECRET, ADMIN_*, etc.) de forma literal
 export ENV_FILE="$ROOT/deploy/.env"
 
+# La API de dev sirve con los MISMOS roles que producción, no como owner. El owner salta RLS y
+# todos los GRANT, así que una API local que sirve como él devuelve filas de todas las empresas
+# (el selector de plataformas salía duplicado) y nunca ve un 42501 que en producción tumba el
+# primer request. Con estas dos URLs, el arranque corre assertRLSEnforced y AssertPlatformGrants
+# igual que allá y se niega a servir si el aislamiento no es real.
+valor_env() { grep -E "^$1=" "$ROOT/deploy/.env" | head -1 | cut -d= -f2- || true; }
+APP_DB_PASSWORD_DEV="$(valor_env APP_DB_PASSWORD)"
+PLATFORM_DB_PASSWORD_DEV="$(valor_env PLATFORM_DB_PASSWORD)"
+for par in "APP_DB_PASSWORD:$APP_DB_PASSWORD_DEV" "PLATFORM_DB_PASSWORD:$PLATFORM_DB_PASSWORD_DEV"; do
+  nombre="${par%%:*}"; valor="${par#*:}"
+  # Solo caracteres que no hay que escapar dentro de una URL: openssl rand -hex 24 ya los cumple.
+  if [[ -z "$valor" || "$valor" == cambia-esto* || ! "$valor" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+    echo "Falta $nombre en deploy/.env (vacío, de ejemplo o con caracteres fuera de [A-Za-z0-9._~-])." >&2
+    echo "Genéralo con: openssl rand -hex 24 — ver AGENTS.md, «La base local se comporta como producción»." >&2
+    exit 1
+  fi
+done
+HOST_PG="localhost:${PG_PORT:-5490}"
+export APP_DATABASE_URL="${DEV_APP_DATABASE_URL:-postgres://gatobobah_app:${APP_DB_PASSWORD_DEV}@${HOST_PG}/gatobobah?sslmode=disable}"
+export PLATFORM_DATABASE_URL="${DEV_PLATFORM_DATABASE_URL:-postgres://gatobobah_platform:${PLATFORM_DB_PASSWORD_DEV}@${HOST_PG}/gatobobah?sslmode=disable}"
+
 cd "$ROOT/server"
 
 if [ "${1:-}" = "air" ]; then exec "$(go env GOPATH)/bin/air"; fi

@@ -908,6 +908,18 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 			return err
 		}
 		sess = abierta
+		// LOS PEDIDOS DE PLATAFORMA QUE SE ACEPTARON SIN TURNO ENTRAN A ÉSTE (spec 021).
+		//
+		// Aceptar no exige turno abierto: la cocina no puede esperar a que alguien abra caja. Lo
+		// que paga esa decisión es este renglón — sin él, esos pedidos quedan fuera de todo corte
+		// para siempre, y el dinero que el negocio sí recibió no aparece en ninguna parte.
+		//
+		// Va DENTRO de esta transacción a propósito: si la apertura se deshace, los pedidos tienen
+		// que quedar huérfanos otra vez y no colgando de un turno que no existe.
+		if err := ReclamarPedidosDePlataformaHuerfanos(ctx, q, abierta.ID,
+			pgtype.Date{Time: s.businessDate(ctx), Valid: true}); err != nil {
+			return err
+		}
 		// Sin esperado: al abrir no hay nada que esperar — el fondo ES lo que se contó. El check del
 		// esquema lo exige nulo justo aquí.
 		return s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total, nil,

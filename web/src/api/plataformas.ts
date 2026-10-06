@@ -22,7 +22,7 @@ export type ClaseDeFallo =
 
 /** Cómo se le dice a cada fallo en pantalla. El operador no lee `failureKind`. */
 export const TEXTO_DE_FALLO: Record<ClaseDeFallo, string> = {
-  sin_credenciales: 'Esta tienda todavía no está conectada.',
+  sin_credenciales: 'No se puede leer el menú hasta conectar con la plataforma (en «Conexión con las plataformas»).',
   auth_rechazada: 'La plataforma no aceptó el acceso.',
   tiempo_agotado: 'La plataforma tardó demasiado en responder.',
   respuesta_invalida: 'La plataforma respondió algo que no se pudo leer.',
@@ -133,6 +133,29 @@ export const crearConexion = (body: { platformId: number; externalStoreId: strin
 
 export const borrarConexion = (id: number) => api.del<void>(`${RAIZ}/connections/${id}`);
 
+/**
+ * Lo que se puede saber de la llave con la que se verifican los pedidos que llegan: si hay, nunca
+ * cuál. Va por plataforma y no por tienda: es de la aplicación registrada en la plataforma.
+ */
+export interface EstadoDeLlave {
+  configured: boolean;
+  /** La anterior sigue sirviendo: se cambió y todavía nadie la retiró. */
+  rotating: boolean;
+  rotatedAt?: string;
+  /** Hay llave, pero este ambiente no la puede leer (un respaldo de otro): hay que volver a ponerla. */
+  needsRecapture?: boolean;
+}
+
+export const estadoDeLlave = (platformId: number) =>
+  api.get<EstadoDeLlave>(`${RAIZ}/webhook-keys/${platformId}`);
+
+/** Captura la llave o la cambia. Cambiarla deja la anterior sirviendo hasta que se retire. */
+export const guardarLlave = (platformId: number, key: string) =>
+  api.put<void>(`${RAIZ}/webhook-keys/${platformId}`, { key });
+
+export const retirarLlaveAnterior = (platformId: number) =>
+  api.del<void>(`${RAIZ}/webhook-keys/${platformId}/previous`);
+
 /** Cuántas parejas se pierden al dar de baja la tienda. Se muestra ANTES de confirmar. */
 export const parejasDeLaConexion = (id: number) =>
   api.get<{ links: number }>(`${RAIZ}/connections/${id}/links/count`).then((r) => r.links);
@@ -165,3 +188,27 @@ export const diferencias = (id: number, kinds?: ClaseDeDiferencia[]) => {
   const qs = kinds?.length ? '?' + kinds.map((k) => `kind=${k}`).join('&') : '';
   return api.get<Comparacion>(`${RAIZ}/connections/${id}/differences${qs}`);
 };
+
+/**
+ * Lo que se puede saber del acceso a la app de la plataforma: cuál app (el Client ID no es
+ * secreto) y si este sistema la puede usar. Nunca el Client Secret.
+ */
+export interface CredentialsState {
+  /** Este sistema sabe hablar con esa plataforma. Si no, no se piden credenciales. */
+  available: boolean;
+  /** De cuál app copiar: 'sandbox' es la de pruebas, 'production' la real. */
+  environment?: 'sandbox' | 'production';
+  configured: boolean;
+  clientId?: string;
+  /** Hay credenciales, pero este sistema no las puede leer: hay que capturarlas otra vez. */
+  needsRecapture: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const getCredentialsState = (platformId: number) =>
+  api.get<CredentialsState>(`${RAIZ}/credentials/${platformId}`);
+
+/** Se comprueban con la plataforma antes de guardarse: si no las acepta, no se guarda nada. */
+export const saveCredentials = (platformId: number, body: { clientId: string; clientSecret: string }) =>
+  api.put<void>(`${RAIZ}/credentials/${platformId}`, body);

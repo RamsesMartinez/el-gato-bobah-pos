@@ -9,6 +9,9 @@ func base() Config {
 		// El de la consola es OTRO, y el default de este helper lo refleja: un base() con los dos
 		// iguales haría pasar en verde al test que existe para prohibirlo.
 		PlatformJWTSecret: "fedcba9876543210fedcba9876543210",
+		// KMS y no la llave local: es lo único válido en los dos ambientes, así que los tests de
+		// producción que parten de aquí no fallan por la razón equivocada.
+		CredentialsKMSKey: "projects/p/locations/us-central1/keyRings/pos-dev/cryptoKeys/credenciales",
 		Env:               "development",
 	}
 }
@@ -227,44 +230,60 @@ func TestValidate_ExigeLaContrasenaDelRolDeLaConsolaEnProduccion(t *testing.T) {
 // La integración con Uber Eats es OPCIONAL: sin credenciales el POS arranca igual y la feature de
 // menús de plataforma queda apagada. Ese es el caso normal de una instalación que no vende por
 // plataformas, y romper el arranque por eso dejaría sin cobrar a un negocio que no la usa.
-func TestValidate_SinCredencialesDeUberArrancaIgual(t *testing.T) {
+// Sin UBER_EATS_ENV la integración está apagada y el POS arranca igual: un negocio que no vende
+// por plataformas no tiene por qué configurar nada para poder cobrar.
+func TestValidate_WithoutUberEnvStartsAnyway(t *testing.T) {
 	if err := Validate(base()); err != nil {
-		t.Fatalf("sin UBER_EATS_* debe pasar, got %v", err)
+		t.Fatalf("sin UBER_EATS_ENV debe pasar, got %v", err)
 	}
 }
 
-// Pero una credencial a medias o copiada del ejemplo NO arranca: el síntoma de dejarla pasar es un
-// 401 opaco en la primera lectura de menú, horas después y sin relación visible con la config.
-func TestValidate_RechazaCredencialesDeUberAMedias(t *testing.T) {
-	casos := []struct {
-		nombre                string
-		id, secreto, ambiente string
-	}{
-		{"secreto sin id", "", "secreto-de-verdad-largo", "sandbox"},
-		{"id sin secreto", "un-client-id", "", "sandbox"},
-		{"secreto placeholder", "un-client-id", "cambia-esto-por-un-secreto", "sandbox"},
-		{"ambiente inventado", "un-client-id", "secreto-de-verdad-largo", "staging"},
-		{"ambiente vacío", "un-client-id", "secreto-de-verdad-largo", ""},
+// Un ambiente mal escrito es peor que un error: hablaría con la tienda equivocada sin decirlo.
+func TestValidate_UberEnv(t *testing.T) {
+	for env, ok := range map[string]bool{"sandbox": true, "production": true, "staging": false, "prod": false} {
+		cfg := base()
+		cfg.UberEatsEnv = env
+		if err := Validate(cfg); (err == nil) != ok {
+			t.Errorf("UBER_EATS_ENV=%q: aceptado=%v, se esperaba %v", env, err == nil, ok)
+		}
 	}
-	for _, c := range casos {
-		t.Run(c.nombre, func(t *testing.T) {
+}
+
+// LAS CREDENCIALES DE TERCEROS SE CIFRAN, Y EN PRODUCCIÓN SOLO CON KMS. La llave local vive en el
+// mismo .env que todo lo demás: en producción no protegería el respaldo, que es lo único que el
+// cifrado viene a proteger. Y sin ninguna de las dos no hay dónde guardar lo que se captura.
+func TestValidate_CredentialsCipher(t *testing.T) {
+	const goodLocalKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" // 32 bytes en base64
+	cases := []struct {
+		name       string
+		env        string
+		kms, local string
+		ok         bool
+	}{
+		{"producción con KMS", "production", base().CredentialsKMSKey, "", true},
+		{"producción con la llave local", "production", "", goodLocalKey, false},
+		{"producción sin ninguna", "production", "", "", false},
+		{"desarrollo con la llave local", "development", "", goodLocalKey, true},
+		{"desarrollo sin ninguna", "development", "", "", false},
+		{"las dos a la vez", "development", base().CredentialsKMSKey, goodLocalKey, false},
+		{"llave local que no es base64", "development", "", "no-es-base64!!", false},
+		{"llave local de 16 bytes", "development", "", "AAECAwQFBgcICQoLDA0ODw==", false},
+		{"llave local de ejemplo", "development", "", "cambia-esto-por-una-llave", false},
+		{"KMS mal escrita", "development", "credenciales", "", false},
+		{"KMS sin la llave", "development", "projects/p/locations/us-central1/keyRings/pos-dev", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			cfg := base()
-			cfg.UberEatsClientID, cfg.UberEatsClientSecret, cfg.UberEatsEnv = c.id, c.secreto, c.ambiente
-			if err := Validate(cfg); err == nil {
-				t.Errorf("%s debería rechazarse", c.nombre)
+			cfg.Env, cfg.CredentialsKMSKey, cfg.CredentialsLocalKey = c.env, c.kms, c.local
+			if c.env == "production" {
+				cfg.AppDatabaseURL = "postgres://gatobobah_app:pw@x"
+				cfg.PlatformDatabaseURL = "postgres://gatobobah_platform:pw@x"
+				cfg.PlatformDBPassword = "pw"
+			}
+			if err := Validate(cfg); (err == nil) != c.ok {
+				t.Fatalf("aceptado=%v, se esperaba %v (%v)", err == nil, c.ok, err)
 			}
 		})
-	}
-}
-
-func TestValidate_AceptaCredencialesDeUberCompletas(t *testing.T) {
-	for _, ambiente := range []string{"sandbox", "production"} {
-		cfg := base()
-		cfg.UberEatsClientID = "un-client-id"
-		cfg.UberEatsClientSecret = "secreto-de-verdad-largo"
-		cfg.UberEatsEnv = ambiente
-		if err := Validate(cfg); err != nil {
-			t.Errorf("ambiente %q debería aceptarse: %v", ambiente, err)
-		}
 	}
 }

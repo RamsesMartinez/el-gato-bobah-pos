@@ -402,6 +402,51 @@ func (ns NullPlatformItemKind) Value() (driver.Value, error) {
 	return string(ns.PlatformItemKind), nil
 }
 
+type PlatformOrderState string
+
+const (
+	PlatformOrderStatePendiente PlatformOrderState = "pendiente"
+	PlatformOrderStateAceptado  PlatformOrderState = "aceptado"
+	PlatformOrderStateRechazado PlatformOrderState = "rechazado"
+	PlatformOrderStateCancelado PlatformOrderState = "cancelado"
+	PlatformOrderStateExpirado  PlatformOrderState = "expirado"
+)
+
+func (e *PlatformOrderState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlatformOrderState(s)
+	case string:
+		*e = PlatformOrderState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlatformOrderState: %T", src)
+	}
+	return nil
+}
+
+type NullPlatformOrderState struct {
+	PlatformOrderState PlatformOrderState `json:"platform_order_state"`
+	Valid              bool               `json:"valid"` // Valid is true if PlatformOrderState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatformOrderState) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlatformOrderState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlatformOrderState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatformOrderState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlatformOrderState), nil
+}
+
 type PlatformReadStatus string
 
 const (
@@ -772,6 +817,14 @@ type BusinessSetting struct {
 	BlindCashCount     bool               `json:"blind_cash_count"`
 }
 
+type CandidatasDelAviso struct {
+	ConnectionID    int64  `json:"connection_id"`
+	CompanyID       int64  `json:"company_id"`
+	ExternalStoreID string `json:"external_store_id"`
+	IsActive        bool   `json:"is_active"`
+	PlatformName    string `json:"platform_name"`
+}
+
 type CashDenomination struct {
 	ID       int64           `json:"id"`
 	Currency string          `json:"currency"`
@@ -1047,7 +1100,7 @@ type OrderCounter struct {
 type OrderLine struct {
 	ID               int64              `json:"id"`
 	OrderID          int64              `json:"order_id"`
-	ProductID        int64              `json:"product_id"`
+	ProductID        *int64             `json:"product_id"`
 	ParentLineID     *int64             `json:"parent_line_id"`
 	ProductName      string             `json:"product_name"`
 	Quantity         decimal.Decimal    `json:"quantity"`
@@ -1147,6 +1200,48 @@ type PlatformConnection struct {
 	CompanyID          int64     `json:"company_id"`
 }
 
+type PlatformCredential struct {
+	ID                    int64     `json:"id"`
+	DeliveryPlatformID    int16     `json:"delivery_platform_id"`
+	ClientID              string    `json:"client_id"`
+	ClientSecretEncrypted []byte    `json:"client_secret_encrypted"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	UpdatedBy             int64     `json:"updated_by"`
+	CompanyID             int64     `json:"company_id"`
+}
+
+type PlatformIncomingOrder struct {
+	ID              int64              `json:"id"`
+	ConnectionID    int64              `json:"connection_id"`
+	ExternalOrderID string             `json:"external_order_id"`
+	DisplayID       *string            `json:"display_id"`
+	PlacedAt        pgtype.Timestamptz `json:"placed_at"`
+	DecideBefore    pgtype.Timestamptz `json:"decide_before"`
+	Total           *decimal.Decimal   `json:"total"`
+	State           PlatformOrderState `json:"state"`
+	SettledAt       pgtype.Timestamptz `json:"settled_at"`
+	DecidedBy       *int64             `json:"decided_by"`
+	DenyReason      *string            `json:"deny_reason"`
+	OrderID         *int64             `json:"order_id"`
+	ServiceType     ServiceType        `json:"service_type"`
+	CustomerName    *string            `json:"customer_name"`
+	RawDetail       *string            `json:"raw_detail"`
+	CreatedAt       time.Time          `json:"created_at"`
+	CompanyID       int64              `json:"company_id"`
+}
+
+type PlatformIncomingOrderLine struct {
+	ID              int64           `json:"id"`
+	IncomingOrderID int64           `json:"incoming_order_id"`
+	ParentLineID    *int64          `json:"parent_line_id"`
+	ExternalItemID  string          `json:"external_item_id"`
+	ExternalName    string          `json:"external_name"`
+	Quantity        decimal.Decimal `json:"quantity"`
+	UnitPrice       decimal.Decimal `json:"unit_price"`
+	ProductID       *int64          `json:"product_id"`
+	CompanyID       int64           `json:"company_id"`
+}
+
 type PlatformItemLink struct {
 	ConnectionID int64              `json:"connection_id"`
 	ExternalID   string             `json:"external_id"`
@@ -1205,6 +1300,29 @@ type PlatformSettlement struct {
 	CapturedAt       time.Time        `json:"captured_at"`
 	UpdatedAt        time.Time        `json:"updated_at"`
 	CompanyID        int64            `json:"company_id"`
+}
+
+type PlatformWebhookEvent struct {
+	ID           int64              `json:"id"`
+	EventID      string             `json:"event_id"`
+	EventType    string             `json:"event_type"`
+	ConnectionID int64              `json:"connection_id"`
+	ReceivedAt   time.Time          `json:"received_at"`
+	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
+	Outcome      *string            `json:"outcome"`
+	FailureKind  *string            `json:"failure_kind"`
+	RawBody      *string            `json:"raw_body"`
+	CompanyID    int64              `json:"company_id"`
+}
+
+type PlatformWebhookKey struct {
+	ID                    int64              `json:"id"`
+	DeliveryPlatformID    int16              `json:"delivery_platform_id"`
+	RotatedAt             pgtype.Timestamptz `json:"rotated_at"`
+	CreatedAt             time.Time          `json:"created_at"`
+	CompanyID             int64              `json:"company_id"`
+	KeyPrimaryEncrypted   []byte             `json:"key_primary_encrypted"`
+	KeySecondaryEncrypted []byte             `json:"key_secondary_encrypted"`
 }
 
 type Product struct {

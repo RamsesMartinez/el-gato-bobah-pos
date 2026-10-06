@@ -21,6 +21,8 @@ func TestPinPepperSeValidaSoloSiEstaPuesto(t *testing.T) {
 			// fallaría por una razón que no tiene nada que ver con el pepper.
 			PlatformJWTSecret: strings.Repeat("c", 48),
 			DatabaseURL:       "postgres://x",
+			// Y la llave de cifrado de credenciales, por lo mismo.
+			CredentialsLocalKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		}
 	}
 	casos := []struct {

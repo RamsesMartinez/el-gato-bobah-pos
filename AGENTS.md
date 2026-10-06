@@ -113,6 +113,35 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
+- **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
+  en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
+  **no se afloja para que algo "funcione en local"**.
+
+  | Pieza | Cómo queda en local |
+  | --- | --- |
+  | Migraciones y bootstrap | Como owner (`DATABASE_URL`), igual que en producción |
+  | Requests del POS | Como `gatobobah_app` (`APP_DATABASE_URL`), sujeto a RLS |
+  | Consola de plataforma | Como `gatobobah_platform` (`PLATFORM_DATABASE_URL`), solo sus GRANT |
+  | Passwords de los dos roles | `APP_DB_PASSWORD` y `PLATFORM_DB_PASSWORD` en `deploy/.env`, obligatorios también en dev (`make check-env` los exige y los genera al crear el archivo) |
+
+  [scripts/dev-api.sh](scripts/dev-api.sh) arma las dos URLs y **se niega a arrancar** si falta un
+  password; el bootstrap se los fija a los roles, y el arranque corre `assertRLSEnforced` y
+  `AssertPlatformGrants` igual que allá. Se sobreescriben con `DEV_APP_DATABASE_URL` /
+  `DEV_PLATFORM_DATABASE_URL`, pero apuntarlas al owner es justo lo prohibido.
+
+  **Datos de producción en local: `make db-restaurar`** (el `.dump` más reciente de
+  `backups/prod/`, o `dump=…`). Detén la API antes: recrea la base entera. Restaura **con**
+  dueños y GRANT y termina comprobando que `gatobobah_app` puede leer `orders` sin saltar RLS. Los
+  dos flags que "hacen que el restore no se queje" están prohibidos:
+  - `--no-privileges`: el rol de servicio queda sin un solo GRANT y la API no arranca.
+  - `--no-owner`: `candidatas_del_aviso` (0073) pasa a ser del owner en vez de `gatobobah_webhook`,
+    y el webhook resuelve tiendas con un bypass que en producción no existe.
+
+  **Cómo se ve si alguien lo rompe**: datos de las dos empresas mezclados en una pantalla. Pasó el
+  2026-09-25 con el selector de plataformas, que salió con cada una dos veces: la consulta
+  (`ListPlatformsWithMarkup`) no filtra por empresa porque ese filtro lo pone RLS. **Un `psql -U
+  gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
+  app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
 - **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
   1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
@@ -163,6 +192,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un precio de plataforma muy por debajo del de mostrador es un dedazo de captura, no una
     promoción**, y hoy nada lo detecta. Medido el 2026-09-15: `Sodas explosivas` se publica en Uber
     a $110.00 y el POS la tenía capturada a $34.75 — dos ventas registradas a menos de un tercio.
+  - **Con la API de la plataforma conectada, el precio lo pone la plataforma y se sobrescribe solo**
+    (decidido el 2026-09-28; regla en la constitución, *Restricciones del producto*). La captura a
+    mano queda para las plataformas no conectadas, y la pantalla lo dice: bloqueado con «Lo pone
+    Uber» en el catálogo y un aviso fijo en la tienda. **Todavía no está construido.** El precio se guarda por platillo de la
+    plataforma, no por producto, y la sucursal entra antes en la base; decisiones en
+    [docs/emparejamiento-de-plataformas.md](docs/emparejamiento-de-plataformas.md).
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
@@ -197,6 +232,26 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
     descartan todos, en silencio.
+- **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
+  de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
+  empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
+  - **El secreto se guarda cifrado, y en producción solo con Cloud KMS.** El paquete
+    [internal/secrets](server/internal/secrets/) habla con KMS por REST con el token del metadata
+    server de la VM; no hay SDK ni archivo de llave de Google. Cada VM tiene su cuenta de servicio
+    (`pos-api-dev`, `pos-api-prod`) con un solo permiso: cifrar y descifrar con SU llave
+    (`keyRings/pos-dev` o `pos-prod`, `cryptoKeys/credenciales`). En `deploy/.env` del servidor va
+    `CREDENTIALS_KMS_KEY` con el nombre de la llave; **sin ella la API de producción no arranca**,
+    así que se pone ANTES de desplegar. En tu máquina va `CREDENTIALS_LOCAL_KEY`, que
+    `make check-env` genera y que producción rechaza.
+  - **Un respaldo de producción restaurado en local trae las credenciales ilegibles**: es la
+    protección funcionando. La pantalla dice «hay que volver a capturar el acceso», no un 500
+    (`TestABackupFromAnotherEnvironmentNeedsRecapture`). Lo mismo con la llave de firma.
+  - **El cliente armado se reusa por empresa, y no es optimización**: guarda su token, y Uber da 100
+    por hora e invalida el más viejo a partir del 101. El que se comprobó al guardar es el que se
+    queda atendiendo. Un servicio de credenciales por proceso, compartido por menús y pedidos.
+  - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](server/internal/domain/platform_credentials.go)).
+    No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
+    tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
@@ -222,6 +277,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   (la tabla nace vacía: una credencial sembrada por una migración vive en este repositorio, que es
   público).
 - `make deploy-image` — deploy del backend **sin compilar**: baja de ghcr.io la imagen que publicó CI y hace `up -d`. Es lo que corre el VPS. `make deploy` (compila local) queda como fallback si CI está caído.
+- **La bitácora de la API se guarda 30 días en el journal de la VM**, no en el archivo del
+  contenedor: ése se borra en cada deploy y llegaba a ~5 días. `make deploy-image` instala
+  [deploy/journald.conf](deploy/journald.conf) (necesita `sudo` sin password en la VM). Ahí queda la
+  IP y el usuario de cada request; se lee con
+  `sudo journalctl CONTAINER_NAME=deploy-api-1 --since "…" -o cat`, **en hora UTC**. Lo demás
+  (postgres, redis, caddy) sigue en el archivo del contenedor: cambiarles el driver los recrea, y
+  postgres se reinicia a media operación.
 - `make sqlc` (regenera código de queries) · `make migrate-new name=xxx` (nueva migración goose).
 - **Frontend siempre con bun** (`bun install`, `bun run`, `bun audit`). `web/package.json` bloquea npm (`preinstall: only-allow bun`). Nunca crees `package-lock.json`.
 
@@ -399,10 +461,15 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
   - **La salida confiable es levantar la API en contenedor** (Linux, fuera del alcance de SAC), contra el postgres/redis del compose dev. Es lo que hay que usar cuando `make start` muere con *Permission denied* en `server/tmp/api`:
 
     ```bash
+    # Los roles de producción también aquí (ver §2, «La base local se comporta como producción»).
+    APP_PW=$(grep '^APP_DB_PASSWORD=' deploy/.env | cut -d= -f2-)
+    PLAT_PW=$(grep '^PLATFORM_DB_PASSWORD=' deploy/.env | cut -d= -f2-)
     MSYS_NO_PATHCONV=1 docker run --rm --name gatobobah-api-dev --network deploy_default -p 8080:8080 \
       -v "d:/git/el-gato-bobah-pos/server:/src" -v "d:/git/el-gato-bobah-pos/deploy/.env:/env/.env:ro" \
       -v gatobobah_gocache:/root/.cache/go-build -v gatobobah_gomod:/go/pkg/mod -w /src \
       -e DATABASE_URL='postgres://gatobobah:gatobobah@postgres:5432/gatobobah?sslmode=disable' \
+      -e APP_DATABASE_URL="postgres://gatobobah_app:$APP_PW@postgres:5432/gatobobah?sslmode=disable" \
+      -e PLATFORM_DATABASE_URL="postgres://gatobobah_platform:$PLAT_PW@postgres:5432/gatobobah?sslmode=disable" \
       -e REDIS_URL='redis://redis:6379' -e APP_ENV=development -e PORT=8080 -e ENV_FILE=/env/.env \
       -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e APP_BASE_URL='http://localhost:3000' \
       golang:1.27 go run ./cmd/api

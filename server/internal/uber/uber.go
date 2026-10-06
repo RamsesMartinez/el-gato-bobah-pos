@@ -31,9 +31,14 @@ const tiempoDeLectura = 60 * time.Second
 // Errores del paquete. Se traducen a domain.ClaseDeFallo en el servicio: aquí no se conoce la base
 // de datos ni el vocabulario del negocio (principio I).
 var (
-	ErrAuth      = errors.New("uber: autenticación rechazada")
-	ErrRespuesta = errors.New("uber: respuesta inválida")
-	ErrVacio     = errors.New("uber: el menú volvió sin productos")
+	ErrAuth = errors.New("uber: autenticación rechazada")
+	// Los dos rechazos que quien opera puede corregir, y la falla que no es suya. Los dos primeros
+	// van envueltos en ErrAuth para que la clase de fallo de siempre no cambie.
+	ErrCredentialsRejected = errors.New("uber: la plataforma no reconoce esas credenciales")
+	ErrMissingScopes       = errors.New("uber: la app no tiene los permisos que el sistema pide")
+	ErrUnavailable         = errors.New("uber: la plataforma no respondió")
+	ErrRespuesta           = errors.New("uber: respuesta inválida")
+	ErrVacio               = errors.New("uber: el menú volvió sin productos")
 	// ErrTruncado: la respuesta pasó el techo. Comparar un menú a medias reporta como «falta
 	// arriba» lo que sí está publicado — el edge case que el spec nombra.
 	ErrTruncado = errors.New("uber: el menú no cabe en una lectura")
@@ -154,7 +159,8 @@ func ClaseDeFalloDe(err error) domain.ClaseDeFallo {
 		return domain.FalloMenuVacio
 	case errors.Is(err, ErrTruncado):
 		return domain.FalloMenuTruncado
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled),
+		errors.Is(err, ErrUnavailable):
 		return domain.FalloTiempoAgotado
 	default:
 		return domain.FalloRespuestaInvalida

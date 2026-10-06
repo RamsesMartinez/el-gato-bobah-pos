@@ -103,6 +103,27 @@ func Error(w http.ResponseWriter, err error) {
 		// 412 y no 404: la tienda existe, lo que falta es la configuración del despliegue. La
 		// pantalla dice «esta tienda no está conectada», que es distinto de «no hay diferencias».
 		status, code = http.StatusPreconditionFailed, "PLATFORM_NOT_CONFIGURED"
+	// Captura de credenciales (0075). Un código por caso porque cada uno pide corregir algo
+	// distinto, y la pantalla lo dice en palabras de quien opera, no las de Uber.
+	case errors.Is(err, domain.ErrCredentialsRejected):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_REJECTED"
+		msg = domain.ErrCredentialsRejected.Error()
+	case errors.Is(err, domain.ErrCredentialsMissingScopes):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_MISSING_SCOPES"
+		msg = domain.ErrCredentialsMissingScopes.Error()
+	case errors.Is(err, domain.ErrPlatformUnavailable):
+		// 503: no es culpa de quien captura y reintentar más tarde es lo correcto.
+		status, code = http.StatusServiceUnavailable, "PLATFORM_UNAVAILABLE"
+		msg = domain.ErrPlatformUnavailable.Error()
+	case errors.Is(err, domain.ErrKeyServiceUnavailable):
+		// 503 como la plataforma caída: no es culpa de quien captura y reintentar es lo correcto.
+		// Mensaje fijo: el error envuelto trae el estado HTTP de Google, que no le sirve a nadie aquí.
+		status, code = http.StatusServiceUnavailable, "KEY_SERVICE_UNAVAILABLE"
+		msg = domain.ErrKeyServiceUnavailable.Error()
+	case errors.Is(err, domain.ErrCredentialsUnreadable):
+		// 412 como «sin credenciales»: la tienda existe, lo que falta es configurar — pero con su
+		// propio código, porque la pantalla dice «vuelve a capturarlas», no «nunca se capturaron».
+		status, code = http.StatusPreconditionFailed, "PLATFORM_CREDENTIALS_UNREADABLE"
 	case errors.Is(err, domain.ErrLecturaEnCurso):
 		status, code = http.StatusConflict, "READ_IN_PROGRESS"
 	case errors.Is(err, domain.ErrSinLecturaValida), errors.Is(err, domain.ErrLecturaVacia):

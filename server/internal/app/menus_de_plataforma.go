@@ -42,16 +42,26 @@ type LectorDeMenu interface {
 // `TestElServicioRespetaElTenantBajoElRolDeApp`, que pide el tenant de OTRA empresa justamente para
 // que el default de la base no lo enmascare.
 type MenusDePlataformaService struct {
-	store    *store.Store
-	lectores map[string]LectorDeMenu // por nombre de plataforma: "Uber Eats", …
-	ahora    func() time.Time
+	store *store.Store
+	// clients entrega el lector de la empresa del contexto, armado con SUS credenciales. Nil = el
+	// despliegue no habla con ninguna plataforma.
+	clients PlatformClients
+	ahora   func() time.Time
 }
 
-func NewMenusDePlataformaService(s *store.Store, lectores map[string]LectorDeMenu, now func() time.Time) *MenusDePlataformaService {
+func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now func() time.Time) *MenusDePlataformaService {
 	if now == nil {
 		now = time.Now
 	}
-	return &MenusDePlataformaService{store: s, lectores: lectores, ahora: now}
+	return &MenusDePlataformaService{store: s, clients: clients, ahora: now}
+}
+
+// menuReaderFor devuelve el lector de la plataforma para la empresa del contexto, o por qué no hay.
+func (s *MenusDePlataformaService) menuReaderFor(ctx context.Context, plataforma string) (LectorDeMenu, error) {
+	if s.clients == nil {
+		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plataforma)
+	}
+	return s.clients.MenuReaderFor(ctx, plataforma)
 }
 
 // --- Conexiones ---
@@ -92,7 +102,9 @@ func (s *MenusDePlataformaService) ListarConexiones(ctx context.Context) ([]Cone
 		c := Conexion{
 			ID: f.ID, PlatformID: f.DeliveryPlatformID, PlatformName: f.PlatformName,
 			ExternalStoreID: f.ExternalStoreID, Label: f.Label, Activa: f.IsActive,
-			Configurada: s.lectores[f.PlatformName] != nil,
+		}
+		if _, err := s.menuReaderFor(ctx, f.PlatformName); err == nil {
+			c.Configurada = true
 		}
 		if r, err := s.store.QC(ctx).GetLastMenuRead(ctx, f.ID); err == nil {
 			c.UltimaLectura = s.resumen(r)
@@ -137,9 +149,9 @@ func (s *MenusDePlataformaService) TiendasDisponibles(ctx context.Context, plata
 		}
 		return nil, fmt.Errorf("plataforma %d: %w", plataformaID, err)
 	}
-	lector := s.lectores[plat.Name]
-	if lector == nil {
-		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plat.Name)
+	lector, err := s.menuReaderFor(ctx, plat.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	tiendas, err := lector.ListarTiendas(ctx)
@@ -194,6 +206,30 @@ func (s *MenusDePlataformaService) CrearConexion(ctx context.Context, in AltaDeC
 		}
 		return 0, fmt.Errorf("crear conexión de plataforma: %w", err)
 	}
+
+	// LOS MÉTODOS DE COBRO DE ESA PLATAFORMA SE CREAN AQUÍ, y este es el lugar correcto por lo que
+	// dice el propio comentario de `SeedBasePaymentMethods`: los deja fuera porque «vender por Uber
+	// exige que ese negocio haya hecho su propia vinculación con la plataforma». Conectar la tienda
+	// ES esa vinculación.
+	//
+	// Sin esto, aceptar el primer pedido falla con «falta el método de pago» y el operador no tiene
+	// desde dónde arreglarlo: los métodos de plataforma no se crean desde ninguna pantalla. Se
+	// descubrió al escribir la prueba de aceptar con una empresa nueva — la empresa del negocio ya
+	// los tenía de antes y eso lo tapaba.
+	//
+	// No tumba el alta si falla: la conexión ya existe y sirve para leer el menú, que es la feature
+	// anterior. Lo que no se puede es aceptar pedidos, y eso se ve al intentarlo.
+	nombre, err := s.store.QC(ctx).GetPlatformByID(ctx, in.PlatformID)
+	if err == nil {
+		if e := s.store.QC(ctx).SeedPlatformPaymentMethods(ctx, db.SeedPlatformPaymentMethodsParams{
+			DeliveryPlatformID: &in.PlatformID,
+			NombreEnLinea:      nombre.Name + " en línea",
+			NombreEfectivo:     nombre.Name + " efectivo",
+		}); e != nil {
+			logging.SecurityEvent(ctx, "metodos_de_plataforma_no_sembrados",
+				"connection_id", id, "platform_id", in.PlatformID)
+		}
+	}
 	return id, nil
 }
 
@@ -234,9 +270,9 @@ func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyI
 		}
 		return 0, time.Time{}, fmt.Errorf("conexión %d: %w", conexionID, err)
 	}
-	lector := s.lectores[con.PlatformName]
-	if lector == nil {
-		return 0, time.Time{}, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, con.PlatformName)
+	lector, err := s.menuReaderFor(ctx, con.PlatformName)
+	if err != nil {
+		return 0, time.Time{}, err
 	}
 	corriendo, err := s.store.QC(ctx).HasRunningMenuRead(ctx, conexionID)
 	if err != nil {

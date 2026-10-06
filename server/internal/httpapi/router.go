@@ -40,6 +40,21 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// LA PUERTA PÚBLICA DE LAS PLATAFORMAS (spec 021), y está aquí arriba a propósito: FUERA
+		// del grupo de RequireAuth y FUERA de WithTenant.
+		//
+		// No es un descuido ni una excepción cómoda. Quien llama es la plataforma, no una persona:
+		// no hay sesión que exigir, y no puede haber empresa en el contexto porque LA EMPRESA ES EL
+		// RESULTADO de autenticar el cuerpo con la firma. Montarla dentro del grupo de tenant haría
+		// que todo aviso fuera rechazado antes de poder verificarlo.
+		//
+		// Lo único que la protege es la firma, y por eso lleva su propio límite por IP: es la única
+		// ruta del negocio que cualquiera puede alcanzar.
+		if h.pedidosPlataforma != nil {
+			r.With(rateLimit(h.webhookIPs, cfg.Env == "production")).
+				Post("/webhooks/{plataforma}", h.WebhookDePlataforma)
+		}
+
 		// LA CONSOLA DE PLATAFORMA (spec 016), y ni una de sus rutas dentro del grupo del negocio.
 		//
 		// No se monta si falta el manager o el servicio: una consola a medias respondería 500 en un
@@ -144,6 +159,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
+					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
+					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
+					// la plataforma no espera a que llegue un gerente.
+					if h.pedidosPlataforma != nil {
+						r.Get("/platform/pending", h.PlatformPendingOrders)
+						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
+					}
 					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
 					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
 					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
@@ -364,6 +386,28 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Put("/links/{externalId}", h.SetPlatformItemLink)
 						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
 					})
+					// La llave con la que se verifica la firma de los pedidos que llegan (spec 021).
+					// Va por plataforma y no por conexión: es de la aplicación registrada en la
+					// plataforma, y todas las tiendas de la empresa la comparten.
+					// Las credenciales de la app (0075). Escribirlas es SOLO del administrador: con
+					// ellas se aceptan pedidos a nombre del negocio. Y cada escritura habla con la
+					// plataforma, así que va limitada con el mismo contador que las lecturas.
+					if h.credentials != nil {
+						r.Route("/credentials/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetPlatformCredentials)
+							r.With(RequireRole(domain.RoleAdmin), rateLimitUser(h.platformMenuReads)).Put("/", h.PutPlatformCredentials)
+						})
+					}
+					if h.pedidosPlataforma != nil {
+						// Cambiarla y retirar la anterior es SOLO del administrador, igual que las
+						// credenciales: con esta llave se decide qué entra a la cocina, y dos PUT
+						// seguidos dejaban fuera la llave real. El gerente ve el estado.
+						r.Route("/webhook-keys/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetWebhookKeyState)
+							r.With(RequireRole(domain.RoleAdmin)).Put("/", h.PutWebhookKey)
+							r.With(RequireRole(domain.RoleAdmin)).Delete("/previous", h.DeletePreviousWebhookKey)
+						})
+					}
 				})
 
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
