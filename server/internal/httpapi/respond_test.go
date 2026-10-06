@@ -110,6 +110,33 @@ func TestElFolioRepetidoTieneSuPropioCodigo(t *testing.T) {
 	}
 }
 
+// DOS SUCURSALES Y NADIE ELIGIÓ ES UN 409 CON SU CÓDIGO, NO UN 500. El error nace en un trigger de
+// la base (EGB01) y store lo traduce envolviendo el mensaje de Postgres, que trae el id de la
+// empresa: la respuesta lleva el texto para quien opera, no ese interior.
+func TestAmbiguousBranchFromTheDatabaseIsA409WithItsOwnCode(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Error(rec, fmt.Errorf("crear pedido: %w (branch_ambiguous: la empresa 2 tiene 2 sucursales activas)",
+		domain.ErrBranchAmbiguous))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("respondió %d y debía ser 409", rec.Code)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "BRANCH_AMBIGUOUS" {
+		t.Fatalf("código %q", body.Error.Code)
+	}
+	if strings.Contains(body.Error.Message, "empresa 2") {
+		t.Fatalf("el mensaje expone el interior del error: %q", body.Error.Message)
+	}
+}
+
 // KMS SIN RESPONDER AL GUARDAR ES UN 503 CON SU CÓDIGO, NO UN 500. No es culpa de quien captura y
 // reintentar es lo correcto; y el mensaje no trae el interior del error (la URL de Google, el estado
 // HTTP), que en un 500 se oculta pero aquí viajaría.

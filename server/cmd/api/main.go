@@ -350,6 +350,10 @@ func defaultCompany(ctx context.Context, st *store.Store) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Su producto genérico de plataforma (0077): un pedido de plataforma sin pareja va a él.
+	if _, err := st.Q.EnsurePlatformUnpairedProduct(ctx, co.ID); err != nil {
+		return 0, err
+	}
 	return co.ID, nil
 }
 
@@ -388,6 +392,9 @@ func provisionCompany(ctx context.Context, st *store.Store, pepper string) error
 	}
 	co, err := st.Q.CreateCompany(ctx, db.CreateCompanyParams{Slug: slug, Name: name})
 	if err != nil {
+		return err
+	}
+	if _, err := st.Q.EnsurePlatformUnpairedProduct(ctx, co.ID); err != nil {
 		return err
 	}
 	pwHash, err := auth.HashSecret(password)

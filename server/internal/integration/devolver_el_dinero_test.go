@@ -402,21 +402,13 @@ func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
-	ord, alitas, _ := pedidoDeAlitas(t, st, svc, "mensaje_cierto")
+	// pedidoDeAlitas devuelve los ids de los RENGLONES, no de los productos. Esta prueba los usaba
+	// como producto y pasaba porque los dos números coincidían; el producto genérico de la 0077
+	// recorrió la numeración de productos y la coincidencia se acabó.
+	ord, lineaAlitas, lineaPapas := pedidoDeAlitas(t, st, svc, "mensaje_cierto")
 	cajero := makeUser(t, st, "cajero_mensaje", "cajero")
 
 	// Se entrega UN renglón: el pedido entra en entrega parcial.
-	var lineaAlitas, lineaPapas int64
-	if err := st.Pool.QueryRow(ctx,
-		`select id from order_lines where order_id = $1 and product_id = $2`,
-		ord.ID, alitas).Scan(&lineaAlitas); err != nil {
-		t.Fatalf("leer renglón de alitas: %v", err)
-	}
-	if err := st.Pool.QueryRow(ctx,
-		`select id from order_lines where order_id = $1 and id <> $2 limit 1`,
-		ord.ID, lineaAlitas).Scan(&lineaPapas); err != nil {
-		t.Fatalf("leer el otro renglón: %v", err)
-	}
 	if err := svc.DeliverLine(ctx, ord.ID, lineaAlitas, decimal.RequireFromString("5")); err != nil {
 		t.Fatalf("entregar alitas: %v", err)
 	}

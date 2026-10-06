@@ -420,9 +420,13 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 	if err != nil {
 		return false, domain.FalloMapeoImposible, fmt.Errorf("leer el emparejamiento: %w", err)
 	}
+	// Solo las parejas de PRODUCTO: una opción ligada a una opción del POS (0077) no es un producto,
+	// y tratarla como tal cargaría la venta a lo que tenga ese número en el catálogo.
 	porItem := make(map[string]int64, len(parejas))
 	for _, p := range parejas {
-		porItem[p.ExternalID] = p.ProductID
+		if p.ProductID != nil && p.LocalKind == string(domain.LocalProducto) {
+			porItem[p.ExternalID] = *p.ProductID
+		}
 	}
 
 	ahora := s.ahora()
@@ -663,7 +667,7 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		return PedidoAceptado{}, fmt.Errorf("leer los renglones: %w", err)
 	}
 
-	plataformaID, err := s.plataformaDeLaConexion(ctx, ent.ConnectionID)
+	plataformaID, sucursal, err := s.plataformaDeLaConexion(ctx, ent.ConnectionID)
 	if err != nil {
 		return PedidoAceptado{}, err
 	}
@@ -691,7 +695,7 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		// trata cada fila como distinta. El folio real se lo da el turno al reclamarlo. Hasta
 		// entonces, la identidad del pedido es su folio en la plataforma, que además es el que el
 		// cliente dice por teléfono.
-		sesion, numero, err := s.turnoYFolio(ctx, q)
+		sesion, numero, err := s.turnoYFolio(ctx, q, sucursal)
 		if err != nil {
 			return err
 		}
@@ -713,11 +717,18 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 			PlatformOrderRef: &ent.ExternalOrderID,
 			PlatformRefSetBy: &usuarioID,
 			PlatformRefSetAt: pgtype.Timestamptz{Time: s.ahora(), Valid: true},
+			// La de la tienda, también cuando no hay turno: sin ella el trigger pondría «la única de
+			// la empresa», que con dos sucursales truena.
+			BranchID: &sucursal,
 		})
 		if err != nil {
 			return err
 		}
-		if err := copiarRenglones(ctx, q, ord.ID, renglones); err != nil {
+		generico, err := productoGenerico(ctx, q)
+		if err != nil {
+			return err
+		}
+		if err := copiarRenglones(ctx, q, ord.ID, generico, renglones); err != nil {
 			return err
 		}
 		// YA PAGADO POR LA PLATAFORMA. Dejarlo por cobrar inventa un faltante en el corte por un
@@ -748,13 +759,15 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	return creado, nil
 }
 
-// turnoYFolio devuelve el turno abierto y el folio que le toca, o (nil, 0) si no hay turno.
+// turnoYFolio devuelve el turno abierto de la sucursal de la tienda y el folio que le toca, o
+// (nil, 0) si no hay turno. Es el turno de ESA sucursal y no «el» de la empresa: con dos, un pedido
+// de la tienda de una no puede caer en el corte de la otra.
 //
 // Aceptar NO exige turno abierto: la cocina no puede esperar a que alguien abra caja. Es la
 // decisión del dueño del 2026-09-16, y lo que la paga es que al ABRIR turno se vea de un vistazo
 // qué pedidos quedan considerados en esa apertura.
-func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Queries) (*int64, int32, error) {
-	sess, err := q.GetOpenPrimarySession(ctx)
+func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Queries, sucursal int64) (*int64, int32, error) {
+	sess, err := q.GetOpenPrimarySessionOfBranch(ctx, sucursal)
 	if err != nil {
 		return nil, 0, nil //nolint:nilerr // sin turno abierto NO es un error: es el camino normal de madrugada
 	}
@@ -773,7 +786,7 @@ func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Quer
 // momento de asignarle el turno, ese 0 compite con los folios reales de ese turno — y dos pedidos
 // huérfanos chocan entre ellos.
 func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, sesionID int64, fecha pgtype.Date) error {
-	ids, err := q.ListOrphanPlatformOrders(ctx, fecha)
+	ids, err := q.ListOrphanPlatformOrders(ctx, db.ListOrphanPlatformOrdersParams{BusinessDate: fecha, SessionID: sesionID})
 	if err != nil {
 		return fmt.Errorf("buscar pedidos de plataforma sin turno: %w", err)
 	}
@@ -791,34 +804,53 @@ func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, se
 	return nil
 }
 
-func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context, conexion int64) (int16, error) {
+// plataformaDeLaConexion devuelve la plataforma y la sucursal de la tienda que recibió el pedido.
+func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context, conexion int64) (int16, int64, error) {
 	c, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexion)
 	if err != nil {
-		return 0, fmt.Errorf("%w: la tienda del pedido ya no está conectada", domain.ErrNotFound)
+		return 0, 0, fmt.Errorf("%w: la tienda del pedido ya no está conectada", domain.ErrNotFound)
 	}
-	return c.DeliveryPlatformID, nil
+	return c.DeliveryPlatformID, c.BranchID, nil
 }
 
 // copiarRenglones pasa los renglones del pedido entrante al pedido del POS.
 //
 // EL PRECIO ES EL DE LA PLATAFORMA, no el del catálogo: la dirección de la verdad en precio es de
-// arriba hacia abajo. Un renglón sin pareja entra igual, con el nombre que mandó la plataforma —
-// rechazar un pedido pagado por un hueco de nuestra contabilidad interna no es defendible.
-func copiarRenglones(ctx context.Context, q *db.Queries, pedido int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+// arriba hacia abajo. Un renglón sin pareja entra igual, ligado al producto genérico de la empresa
+// (0077) con el nombre que mandó la plataforma: rechazar un pedido pagado por un hueco de nuestra
+// contabilidad interna no es defendible, y sin producto el renglón no sigue el camino de los demás.
+//
+// Las opciones van en la NOTA del renglón: `order_line_modifiers` exige una opción del catálogo y
+// la de la plataforma puede no tenerla. Así cocina lee lo que el cliente pidió.
+func copiarRenglones(ctx context.Context, q *db.Queries, pedido, generico int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+	opciones := map[int64][]domain.PlatformLineOption{}
 	for _, r := range renglones {
 		if r.ParentLineID != nil {
-			// Las opciones viajan dentro del nombre del renglón por ahora: `order_line_modifiers`
-			// exige una opción del catálogo, y un modificador de la plataforma sin pareja no la
-			// tiene. Se ve en el ticket y no se pierde.
+			opciones[*r.ParentLineID] = append(opciones[*r.ParentLineID], domain.PlatformLineOption{
+				Name: r.ExternalName, Quantity: r.Quantity, UnitPrice: r.UnitPrice,
+			})
+		}
+	}
+	for _, r := range renglones {
+		if r.ParentLineID != nil {
 			continue
+		}
+		producto := r.ProductID
+		if producto == nil {
+			producto = &generico
+		}
+		var nota *string
+		if n := domain.PlatformLineNotes(opciones[r.ID]); n != "" {
+			nota = &n
 		}
 		if _, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 			OrderID:     pedido,
-			ProductID:   r.ProductID,
+			ProductID:   producto,
 			ProductName: r.ExternalName,
 			Quantity:    r.Quantity,
 			UnitPrice:   r.UnitPrice,
 			LineTotal:   r.Quantity.Mul(r.UnitPrice).Round(2),
+			Notes:       nota,
 		}); err != nil {
 			return err
 		}
@@ -827,3 +859,14 @@ func copiarRenglones(ctx context.Context, q *db.Queries, pedido int64, renglones
 }
 
 func ptrUUID(u uuid.UUID) *uuid.UUID { return &u }
+
+// productoGenerico devuelve el producto al que va un renglón de plataforma sin pareja: el de la
+// empresa de la sesión, creado si faltara (una empresa de antes de la 0077 que se saltó ambos
+// caminos). Crearlo es mejor que rechazar un pedido ya pagado.
+func productoGenerico(ctx context.Context, q *db.Queries) (int64, error) {
+	id, err := q.GetPlatformUnpairedProduct(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("producto genérico: %w", err)
+	}
+	return id, nil
+}

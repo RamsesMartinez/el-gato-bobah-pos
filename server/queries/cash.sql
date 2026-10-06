@@ -268,7 +268,23 @@ select s.id, s.register_id, s.business_date, s.opened_at
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- La caja principal es una por sucursal (0076). Sin selector, `current_branch_id()` es la única
+  -- activa y truena si hay dos: nunca cobra en el turno de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1;
+
+-- name: GetOpenPrimarySessionOfBranch :one
+-- La de una sucursal dada. La usa un pedido de plataforma: su sucursal es la de su tienda, no la
+-- de la sesión de quien lo acepta.
+select s.id, s.register_id, s.business_date, s.opened_at
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active and r.branch_id = $1
+limit 1;
+
+-- name: CurrentBranch :one
+-- La sucursal de la sesión (0076). Error EGB01 si la empresa tiene cero o más de una activa.
+select current_branch_id()::bigint;
 
 -- name: LockOpenPrimarySession :one
 -- La misma sesión, pero BLOQUEADA hasta que la transacción del cobro termine.
@@ -288,6 +304,9 @@ select s.id, s.register_id, s.business_date
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- El MISMO predicado que GetOpenPrimarySession (0076): si divergen, una consulta decide que se
+  -- puede cobrar en un turno y la otra graba el pago en el de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 for share of s;
 

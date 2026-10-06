@@ -67,13 +67,16 @@ insert into orders (client_uuid, business_date, daily_number, service_type, deli
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
                     folio_name, status, completed_at,
                     platform_order_ref, platform_ref_set_by, platform_ref_set_at,
-                    discount_total, discount_set_by, discount_set_at)
+                    discount_total, discount_set_by, discount_set_at, branch_id)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
         $14, case when $14::order_status = 'entregada' then now() end,
         $15, $16, $17,
         $18, case when $18::numeric > 0 then $19::bigint end,
-        case when $18::numeric > 0 then now() end)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at
+        case when $18::numeric > 0 then now() end,
+        -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
+        -- el pedido de plataforma, cuya sucursal es la de su tienda.
+        $20)
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id
 `
 
 type CreateOrderParams struct {
@@ -96,6 +99,7 @@ type CreateOrderParams struct {
 	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
 	DiscountTotal      decimal.Decimal    `json:"discount_total"`
 	DiscountSetBy      int64              `json:"discount_set_by"`
+	BranchID           *int64             `json:"branch_id"`
 }
 
 // status y completed_at los decide quien llama: un pedido que se cobra y se entrega en el mismo
@@ -132,6 +136,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.PlatformRefSetAt,
 		arg.DiscountTotal,
 		arg.DiscountSetBy,
+		arg.BranchID,
 	)
 	var i Order
 	err := row.Scan(
@@ -168,6 +173,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.PlatformRefSetAt,
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
+		&i.BranchID,
 	)
 	return i, err
 }
@@ -399,7 +405,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -439,6 +445,7 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.PlatformRefSetAt,
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
+		&i.BranchID,
 	)
 	return i, err
 }

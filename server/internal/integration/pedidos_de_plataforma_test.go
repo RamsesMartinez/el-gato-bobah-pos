@@ -652,9 +652,14 @@ func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
 
 	// SE ABRE EL TURNO POR EL CAMINO REAL, no insertando la fila: lo que este caso prueba es que
 	// `OpenSession` reclama los huérfanos, y un insert directo se saltaría justo eso.
+	//
+	// La caja es la de ESTA empresa. Antes se tomaba «la primera principal» por el pool del owner,
+	// que salta RLS, y el turno se abría en la caja de otra empresa; con sucursales (0076) los
+	// huérfanos se reclaman por la sucursal de la caja, y ese cruce dejó de pasar desapercibido.
 	var principal int64
 	if err := st.Pool.QueryRow(ctxT,
-		`select id from cash_registers where is_primary and is_active limit 1`).Scan(&principal); err != nil {
+		`insert into cash_registers (company_id, name, is_primary) values ($1, 'Caja', true) returning id`,
+		empresa).Scan(&principal); err != nil {
 		t.Fatalf("caja principal: %v", err)
 	}
 	vista, err := app.NewBackofficeService(st, clock).OpenSession(ctxT, principal, app.AperturaCmd{}, usuario)

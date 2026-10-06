@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { LuLock } from 'react-icons/lu';
 
 import { Field } from '../../components/ui/field';
 import { toaster } from '../../components/ui/toaster';
 import { usePlatformOptionPrice } from '../../hooks/usePlatformPrice';
 import { money } from '../../utils/format';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import type { DesglosePrecio } from './precioPlataforma';
 import { montoTecleado } from '../../domain/numeros';
 
@@ -23,6 +25,7 @@ export function OptionPriceFields({ optionId, optionName, plataforma, plataforma
   desglose: DesglosePrecio;
   onDone: () => void;
 }) {
+  const { fechaYHora } = useHoraDelNegocio();
   const { guardar, quitar } = usePlatformOptionPrice();
   const [delta, setDelta] = useState(String(desglose.vigente));
 
@@ -65,6 +68,16 @@ export function OptionPriceFields({ optionId, optionName, plataforma, plataforma
           <Text fontSize="sm" fontWeight="600">{money(desglose.calculado)}</Text>
         </HStack>
       </VStack>
+      {desglose.sincronizadoEn ? (
+        <HStack justify="space-between" color="blue.700">
+          <HStack gap={2}>
+            <LuLock aria-hidden />
+            <Text fontSize="sm">Lo pone {plataforma} · se actualizó {fechaYHora(desglose.sincronizadoEn)}</Text>
+          </HStack>
+          <Text fontWeight="700">{money(desglose.vigente)}</Text>
+        </HStack>
+      ) : (
+      <>
       <Field label={`Cargo en ${plataforma}`}>
         <Input
           type="number" inputMode="decimal" step="0.01" min="0"
@@ -80,6 +93,8 @@ export function OptionPriceFields({ optionId, optionName, plataforma, plataforma
         <Button size="lg" minH="48px" variant="outline" loading={quitar.isPending} onClick={onQuitar}>
           Quitar cargo capturado
         </Button>
+      )}
+      </>
       )}
     </VStack>
   );

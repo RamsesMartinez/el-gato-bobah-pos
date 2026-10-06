@@ -184,6 +184,18 @@ func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransfer
 	return id, err
 }
 
+const currentBranch = `-- name: CurrentBranch :one
+select current_branch_id()::bigint
+`
+
+// La sucursal de la sesión (0076). Error EGB01 si la empresa tiene cero o más de una activa.
+func (q *Queries) CurrentBranch(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, currentBranch)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(dp.name, '') as platform_name,
@@ -345,6 +357,9 @@ select s.id, s.register_id, s.business_date, s.opened_at
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- La caja principal es una por sucursal (0076). Sin selector, ` + "`" + `current_branch_id()` + "`" + ` es la única
+  -- activa y truena si hay dos: nunca cobra en el turno de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 `
 
@@ -364,6 +379,35 @@ type GetOpenPrimarySessionRow struct {
 func (q *Queries) GetOpenPrimarySession(ctx context.Context) (GetOpenPrimarySessionRow, error) {
 	row := q.db.QueryRow(ctx, getOpenPrimarySession)
 	var i GetOpenPrimarySessionRow
+	err := row.Scan(
+		&i.ID,
+		&i.RegisterID,
+		&i.BusinessDate,
+		&i.OpenedAt,
+	)
+	return i, err
+}
+
+const getOpenPrimarySessionOfBranch = `-- name: GetOpenPrimarySessionOfBranch :one
+select s.id, s.register_id, s.business_date, s.opened_at
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active and r.branch_id = $1
+limit 1
+`
+
+type GetOpenPrimarySessionOfBranchRow struct {
+	ID           int64       `json:"id"`
+	RegisterID   int64       `json:"register_id"`
+	BusinessDate pgtype.Date `json:"business_date"`
+	OpenedAt     time.Time   `json:"opened_at"`
+}
+
+// La de una sucursal dada. La usa un pedido de plataforma: su sucursal es la de su tienda, no la
+// de la sesión de quien lo acepta.
+func (q *Queries) GetOpenPrimarySessionOfBranch(ctx context.Context, branchID int64) (GetOpenPrimarySessionOfBranchRow, error) {
+	row := q.db.QueryRow(ctx, getOpenPrimarySessionOfBranch, branchID)
+	var i GetOpenPrimarySessionOfBranchRow
 	err := row.Scan(
 		&i.ID,
 		&i.RegisterID,
@@ -1134,6 +1178,9 @@ select s.id, s.register_id, s.business_date
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- El MISMO predicado que GetOpenPrimarySession (0076): si divergen, una consulta decide que se
+  -- puede cobrar en un turno y la otra graba el pago en el de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 for share of s
 `

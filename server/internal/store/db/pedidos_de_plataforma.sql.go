@@ -522,13 +522,23 @@ func (q *Queries) ListLinesOfIncomingOrders(ctx context.Context, ids []int64) ([
 }
 
 const listOrphanPlatformOrders = `-- name: ListOrphanPlatformOrders :many
-select id
-  from orders
- where register_session_id is null
-   and delivery_platform_id is not null
-   and business_date = $1
- order by opened_at
+select o.id
+  from orders o
+ where o.register_session_id is null
+   and o.delivery_platform_id is not null
+   and o.business_date = $1
+   -- Solo los de la sucursal del turno (0076): el turno de una sucursal no se queda con los
+   -- pedidos que llegaron a la tienda de otra.
+   and o.branch_id = (select r.branch_id from register_sessions rs
+                        join cash_registers r on r.id = rs.register_id
+                       where rs.id = $2)
+ order by o.opened_at
 `
+
+type ListOrphanPlatformOrdersParams struct {
+	BusinessDate pgtype.Date `json:"business_date"`
+	SessionID    int64       `json:"session_id"`
+}
 
 // Los pedidos de plataforma que se aceptaron SIN turno abierto y que le tocan al turno que se abre.
 //
@@ -540,8 +550,8 @@ select id
 // NULL de `register_session_id` como distintos entre sí. En el momento en que se le asigna el
 // turno, ese 0 entra a competir con los folios reales de ese turno — y si hay dos pedidos
 // huérfanos, chocan entre ellos. Por eso cada uno toma su número del contador del turno.
-func (q *Queries) ListOrphanPlatformOrders(ctx context.Context, businessDate pgtype.Date) ([]int64, error) {
-	rows, err := q.db.Query(ctx, listOrphanPlatformOrders, businessDate)
+func (q *Queries) ListOrphanPlatformOrders(ctx context.Context, arg ListOrphanPlatformOrdersParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listOrphanPlatformOrders, arg.BusinessDate, arg.SessionID)
 	if err != nil {
 		return nil, err
 	}

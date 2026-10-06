@@ -385,6 +385,14 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Get("/differences", h.PlatformMenuDifferences)
 						r.Put("/links/{externalId}", h.SetPlatformItemLink)
 						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
+						// El rediseño (spec 026): la pantalla agrupada, candidatos, lote y decisiones.
+						r.Get("/board", h.PlatformPairingBoard)
+						r.Get("/candidates", h.PlatformPairingCandidates)
+						r.Post("/links/batch", h.ConfirmPlatformLinksBatch)
+						r.Put("/exclusions/{externalId}", h.SetPlatformItemExclusion)
+						r.Delete("/exclusions/{externalId}", h.DeletePlatformItemExclusion)
+						r.Put("/local-exclusions", h.SetLocalItemExclusion)
+						r.Delete("/local-exclusions", h.DeleteLocalItemExclusion)
 					})
 					// La llave con la que se verifica la firma de los pedidos que llegan (spec 021).
 					// Va por plataforma y no por conexión: es de la aplicación registrada en la

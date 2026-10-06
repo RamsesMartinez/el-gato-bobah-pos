@@ -15,10 +15,10 @@ where is_active and name <> 'Propio' order by name;
 
 -- name: GetProductPlatformPrices :many
 -- Solo las EXCEPCIONES de una plataforma. Un producto ausente usa el precio calculado.
-select product_id, price from product_platform_prices where platform_id = $1;
+select product_id, price, synced_at from product_platform_prices where platform_id = $1;
 
 -- name: GetOptionPlatformPrices :many
-select option_id, price_delta from modifier_option_platform_prices where platform_id = $1;
+select option_id, price_delta, synced_at from modifier_option_platform_prices where platform_id = $1;
 
 -- name: UpsertProductPlatformPrice :exec
 insert into product_platform_prices (product_id, platform_id, price, updated_by)
@@ -53,3 +53,31 @@ select exists(select 1 from products where id = $1);
 
 -- name: OptionExists :one
 select exists(select 1 from modifier_options where id = $1);
+
+-- name: GetProductPlatformPriceSource :one
+-- Quién puso el precio (0077). El de una plataforma conectada no se captura a mano.
+select source from product_platform_prices where product_id = $1 and platform_id = $2;
+
+-- name: GetOptionPlatformPriceSource :one
+select source from modifier_option_platform_prices where option_id = $1 and platform_id = $2;
+
+-- name: ListProductPlatformPricesOfPlatform :many
+select product_id, price, source from product_platform_prices where platform_id = $1;
+
+-- name: ListOptionPlatformPricesOfPlatform :many
+select option_id, price_delta, source from modifier_option_platform_prices where platform_id = $1;
+
+-- name: SyncProductPlatformPrice :exec
+-- Lo escribe la lectura del menú, no una persona: `source = platform` bloquea la captura a mano.
+insert into product_platform_prices (product_id, platform_id, price, updated_by, source, synced_at)
+values (@product_id, @platform_id, @price, @updated_by, 'platform', @synced_at)
+on conflict (product_id, platform_id)
+do update set price = excluded.price, updated_by = excluded.updated_by,
+              source = 'platform', synced_at = excluded.synced_at, updated_at = now();
+
+-- name: SyncOptionPlatformPrice :exec
+insert into modifier_option_platform_prices (option_id, platform_id, price_delta, updated_by, source, synced_at)
+values (@option_id, @platform_id, @price_delta, @updated_by, 'platform', @synced_at)
+on conflict (option_id, platform_id)
+do update set price_delta = excluded.price_delta, updated_by = excluded.updated_by,
+              source = 'platform', synced_at = excluded.synced_at, updated_at = now();

@@ -12,7 +12,7 @@ order by p.name, c.label;
 
 -- name: GetPlatformConnection :one
 select c.id, c.delivery_platform_id, p.name as platform_name,
-       c.external_store_id, c.label, c.is_active
+       c.external_store_id, c.label, c.is_active, c.branch_id
 from platform_connections c
 join delivery_platforms p on p.id = c.delivery_platform_id
 where c.id = $1;
@@ -136,26 +136,100 @@ select exists (
 -- `confirmed_at` viaja hasta la pantalla y no es adorno: sin él, «deshacer el último» tiene que
 -- adivinar cuál fue, y la lista llega ordenada por NOMBRE. Adivinar ahí no falla ruidoso — deshace
 -- otra pareja.
-select external_id, kind, product_id, local_kind, confirmed_at, confirmed_by
+select external_id, kind, product_id, modifier_option_id, local_kind, confirmed_at, confirmed_by,
+       is_capture_price, created_at
 from platform_item_links
 where connection_id = $1;
 
 -- name: GetItemLink :one
 -- Con qué está emparejado hoy ese item. Se consulta ANTES de escribir: el upsert pisa en silencio
 -- una pareja confirmada, y eso es trabajo manual que no se reconstruye.
-select external_id, kind, product_id, local_kind, confirmed_at
+select external_id, kind, product_id, modifier_option_id, local_kind, confirmed_at, is_capture_price
 from platform_item_links
 where connection_id = $1 and external_id = $2;
 
 -- name: UpsertItemLink :exec
-insert into platform_item_links (connection_id, external_id, kind, product_id, local_kind, confirmed_at, confirmed_by)
-values ($1, $2, $3, $4, $5, now(), $6)
+-- Producto u opción según `local_kind` (0077): el `check` de la tabla exige exactamente uno.
+insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
+                                 local_kind, confirmed_at, confirmed_by, is_capture_price)
+values (@connection_id, @external_id, @kind, sqlc.narg('product_id'), sqlc.narg('modifier_option_id'),
+        @local_kind, now(), sqlc.narg('confirmed_by'), @is_capture_price)
 on conflict (connection_id, external_id)
-do update set product_id    = excluded.product_id,
-              kind          = excluded.kind,
-              local_kind    = excluded.local_kind,
-              confirmed_at  = excluded.confirmed_at,
-              confirmed_by  = excluded.confirmed_by;
+do update set product_id         = excluded.product_id,
+              modifier_option_id = excluded.modifier_option_id,
+              kind               = excluded.kind,
+              local_kind         = excluded.local_kind,
+              confirmed_at       = excluded.confirmed_at,
+              confirmed_by       = excluded.confirmed_by,
+              is_capture_price   = excluded.is_capture_price;
+
+-- name: ListLinksOfTarget :many
+-- Las parejas de la tienda que van al mismo producto u opción del POS: deciden si hace falta elegir
+-- el precio de captura y a quién pasa cuando se quita la que lo daba.
+select external_id, is_capture_price, created_at
+from platform_item_links
+where connection_id = @connection_id
+  and (product_id = sqlc.narg('product_id') or modifier_option_id = sqlc.narg('modifier_option_id'));
+
+-- name: ClearCapturePrice :exec
+update platform_item_links set is_capture_price = false
+where connection_id = @connection_id
+  and (product_id = sqlc.narg('product_id') or modifier_option_id = sqlc.narg('modifier_option_id'));
+
+-- name: SetCapturePrice :exec
+update platform_item_links set is_capture_price = true
+where connection_id = $1 and external_id = $2;
+
+-- name: ConfirmItemLinkProposal :execrows
+-- Confirma una propuesta del lote. `do nothing` si ya existe: dos personas confirmando a la vez
+-- dejan la misma fila. :execrows para saber si ESTA escribió, y no reportar como confirmado lo que
+-- ya estaba (quizá apuntando a otro producto).
+insert into platform_item_links (connection_id, external_id, kind, product_id, modifier_option_id,
+                                 local_kind, confirmed_at, confirmed_by, is_capture_price)
+values (@connection_id, @external_id, @kind, sqlc.narg('product_id'), sqlc.narg('modifier_option_id'),
+        @local_kind, now(), sqlc.narg('confirmed_by'), @is_capture_price)
+on conflict (connection_id, external_id) do nothing;
+
+-- name: ListItemExclusions :many
+select external_id, kind, decided_at from platform_item_exclusions where connection_id = $1;
+
+-- name: InsertItemExclusion :exec
+insert into platform_item_exclusions (connection_id, external_id, kind, decided_by)
+values ($1, $2, $3, $4)
+on conflict (connection_id, external_id) do nothing;
+
+-- name: DeleteItemExclusion :execrows
+delete from platform_item_exclusions where connection_id = $1 and external_id = $2;
+
+-- name: ListLocalExclusions :many
+select product_id, modifier_option_id, decided_at from local_item_exclusions where connection_id = $1;
+
+-- name: InsertLocalExclusion :exec
+insert into local_item_exclusions (connection_id, product_id, modifier_option_id, decided_by)
+values (@connection_id, sqlc.narg('product_id'), sqlc.narg('modifier_option_id'), @decided_by)
+on conflict do nothing;
+
+-- name: DeleteLocalExclusion :execrows
+delete from local_item_exclusions
+where connection_id = @connection_id
+  and (product_id = sqlc.narg('product_id') or modifier_option_id = sqlc.narg('modifier_option_id'));
+
+-- name: CountExclusionsOfConnection :one
+-- Para el aviso antes de borrar la tienda: las decisiones también se pierden.
+select (select count(*) from platform_item_exclusions e where e.connection_id = $1)
+     + (select count(*) from local_item_exclusions l where l.connection_id = $1);
+
+-- name: CountConnectionsOfPlatform :one
+-- Más de una tienda de la misma plataforma impide copiar precios (ver domain.PriceSync).
+select count(*) from platform_connections where delivery_platform_id = $1;
+
+-- name: InsertPlatformPriceChange :exec
+insert into platform_price_changes (read_id, external_id, name, product_id, modifier_option_id, old_price, new_price)
+values (@read_id, @external_id, @name, sqlc.narg('product_id'), sqlc.narg('modifier_option_id'),
+        sqlc.narg('old_price'), @new_price);
+
+-- name: ListPlatformPriceChanges :many
+select external_id, name, old_price, new_price from platform_price_changes where read_id = $1 order by name;
 
 -- name: DeleteItemLink :execrows
 delete from platform_item_links where connection_id = $1 and external_id = $2;
@@ -168,15 +242,32 @@ delete from platform_item_links where connection_id = $1 and external_id = $2;
 -- Nombre y precio base de lo que el negocio vende hoy. El precio POR PLATAFORMA no sale de aquí:
 -- se calcula con el markup y las excepciones, igual que en el menú del POS, para no duplicar esa
 -- regla en dos lugares que se desincronizan.
-select id, name, price from products where is_active order by name;
+-- La categoría viaja para distinguir dos productos con el mismo nombre al emparejar.
+select p.id, p.name, p.price, c.name::text as category_name
+from products p
+join categories c on c.id = p.category_id
+where p.is_active order by p.name;
 
 -- name: ListActiveOptionsForCompare :many
 -- `g.is_active` ADEMÁS de `o.is_active`, igual que la consulta que arma el menú del POS. Desactivar
 -- el grupo entero es la forma normal de ocultar algo estacional sin tocar opción por opción; sin
 -- este filtro, esas opciones se siguen reportando como vendidas y salen como diferencia contra un
 -- menú que ya no las ofrece.
-select o.id, o.name, o.price_delta
+-- El grupo viaja para distinguir opciones repetidas: «Ranch Cremoso» existe en dos grupos, y sin
+-- él el buscador muestra dos renglones idénticos y quien empareja elige al azar.
+select o.id, o.name, o.price_delta, g.name::text as group_name
 from modifier_options o
 join modifier_groups g on g.id = o.group_id
 where o.is_active and g.is_active
 order by o.name;
+
+-- name: GetPlatformUnpairedProduct :one
+-- El producto genérico de la empresa DE LA SESIÓN (0077), creado si faltara. Filtra por la empresa
+-- explícitamente y no deja el filtro a RLS: como owner (pruebas, scripts) RLS no aplica y un
+-- `where system_kind = …` a secas devolvía el genérico de otra empresa, que la llave compuesta del
+-- renglón rechaza con un pedido ya pagado esperando.
+select ensure_platform_unpaired_product(nullif(current_setting('app.company_id', true), '')::bigint)::bigint;
+
+-- name: EnsurePlatformUnpairedProduct :one
+-- Al dar de alta una empresa: crea su categoría «Plataformas» y su producto genérico si faltan.
+select ensure_platform_unpaired_product(@company_id::bigint)::bigint;

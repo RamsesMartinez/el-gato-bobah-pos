@@ -229,7 +229,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 
 | Puerta | Qué la cerraría | Dónde está hoy |
 |---|---|---|
-| **Más de una sucursal** dentro de una empresa | Un único o un contador por `company_id` que en realidad debería ser por sucursal | Multi-tenant por empresa resuelto con RLS; sucursal **no** existe como concepto |
+| ~~**Más de una sucursal** dentro de una empresa~~ **CRUZADA (spec 025, 2026-10-02)** | — | `branches` con matriz por empresa; cajas, pedidos, tiendas de plataforma y existencias guardan su sucursal con llave compuesta. Sigue abierto: el selector de sucursal, quién trabaja en cuál, y precio o disponibilidad por sucursal sobre el catálogo maestro |
 | **Más de una caja vendiendo a la vez** | Cualquier cosa que asuma "la" caja abierta | `GetOpenPrimarySession` asume una sola; 3 configuradas, 1 que vende |
 | **Saber de quién es un pedido** | Un pedido que no guarda quién lo capturó, o guardarlo con una identidad que no distingue estaciones | `orders.opened_by` existe, pero dos tabletas comparten la misma cuenta: hoy no distingue |
 | ~~**Cuánto deja cada plataforma**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `platform_settlements` guarda por pedido lo que dice el documento de pago: comisión (monto y tasa), retenciones, neto y quién financió el descuento. Dejó de ser puerta y es feature |
@@ -242,6 +242,11 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
 [docs/plataformas-digitales.md](../../docs/plataformas-digitales.md) y
 [docs/respaldo-fudo.md](../../docs/respaldo-fudo.md).
+
+**La de sucursales se cruzó el 2026-10-02 con el spec 025.** Lo que enseña: un hecho de lugar
+(dónde se vendió, dónde está la existencia) cuesta una columna mientras hay una sola sucursal y es
+irrecuperable en cuanto hay dos. «La sucursal» la resuelve una sola función en la base, que con dos
+y sin selector truena en vez de escoger la matriz.
 
 **Dos puertas se cruzaron el 2026-09-08 con el spec 014** y se dejan tachadas en vez de borradas:
 lo que enseñan —qué hecho era irrecuperable y por qué— es lo que hace que la siguiente puerta se
@@ -285,6 +290,13 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   en la plataforma desde el POS. Tiene que ser **explícito en pantalla**: donde se ve ese precio,
   se ve que lo pone la plataforma y cuándo se actualizó. La captura a mano queda solo para
   plataformas no conectadas. Preguntas abiertas: [docs/emparejamiento-de-plataformas.md](../../docs/emparejamiento-de-plataformas.md).
+- **Quien opera nunca decide en el momento lo que se puede decidir al configurar** (decidido el
+  2026-10-03). En un negocio de alto flujo, con varios pedidos a la vez y permisos repartidos, una
+  pregunta del sistema a media operación es un pedido que se atrasa y una mala reseña en la
+  plataforma. Toda ambigüedad (qué precio, qué producto, qué sucursal) se resuelve antes, en la
+  configuración y por quien tiene el permiso; al operar, el sistema aplica esa decisión sin
+  preguntar. Un pedido de plataforma se acepta y sale a cocina, y ya. Si una regla no se puede
+  aplicar sola, el defecto está en la configuración que la permitió, no en el operador.
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
 - **El local tiene conexión, y el sistema puede contar con ella** (decidido el 2026-09-08). No se
   construye captura sin red: el servidor es la única fuente de verdad y una pantalla puede exigirlo.
@@ -331,4 +343,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.13.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-09-28
+**Version**: 1.15.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-03

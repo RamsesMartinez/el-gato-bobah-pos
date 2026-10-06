@@ -187,12 +187,17 @@ update platform_incoming_orders
 -- NULL de `register_session_id` como distintos entre sí. En el momento en que se le asigna el
 -- turno, ese 0 entra a competir con los folios reales de ese turno — y si hay dos pedidos
 -- huérfanos, chocan entre ellos. Por eso cada uno toma su número del contador del turno.
-select id
-  from orders
- where register_session_id is null
-   and delivery_platform_id is not null
-   and business_date = $1
- order by opened_at;
+select o.id
+  from orders o
+ where o.register_session_id is null
+   and o.delivery_platform_id is not null
+   and o.business_date = $1
+   -- Solo los de la sucursal del turno (0076): el turno de una sucursal no se queda con los
+   -- pedidos que llegaron a la tienda de otra.
+   and o.branch_id = (select r.branch_id from register_sessions rs
+                        join cash_registers r on r.id = rs.register_id
+                       where rs.id = sqlc.arg('session_id'))
+ order by o.opened_at;
 
 -- name: ClaimPlatformOrder :exec
 -- Le da turno y folio real a UN pedido huérfano. Va dentro de la transacción que abre el turno.

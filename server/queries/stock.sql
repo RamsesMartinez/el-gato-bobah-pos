@@ -32,6 +32,8 @@ from stock_levels sl
 left join ingredients i on i.id = sl.ingredient_id
 left join units iu on iu.id = i.base_unit_id
 left join products p on p.id = sl.product_id
+-- Las de la sucursal (0076): con dos, el mismo insumo saldría dos veces sin decir de cuál es.
+where sl.branch_id = current_branch_id()
 order by item_name;
 
 -- name: ListStockMovements :many

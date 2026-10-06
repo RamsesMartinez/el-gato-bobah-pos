@@ -792,6 +792,21 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type Branch struct {
+	ID             int64     `json:"id"`
+	CompanyID      int64     `json:"company_id"`
+	BranchNumber   int32     `json:"branch_number"`
+	Code           string    `json:"code"`
+	Name           string    `json:"name"`
+	IsHeadquarters bool      `json:"is_headquarters"`
+	IsActive       bool      `json:"is_active"`
+	Address        *string   `json:"address"`
+	Phone          *string   `json:"phone"`
+	PostalCode     *string   `json:"postal_code"`
+	Timezone       *string   `json:"timezone"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type BusinessSetting struct {
 	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
 	UpdatedAt          time.Time          `json:"updated_at"`
@@ -840,6 +855,7 @@ type CashRegister struct {
 	IsPrimary bool   `json:"is_primary"`
 	IsActive  bool   `json:"is_active"`
 	CompanyID int64  `json:"company_id"`
+	BranchID  int64  `json:"branch_id"`
 }
 
 type CashTransfer struct {
@@ -927,6 +943,7 @@ type Expense struct {
 	DocKind      *string            `json:"doc_kind"`
 	DocFolio     *string            `json:"doc_folio"`
 	DocRaw       []byte             `json:"doc_raw"`
+	BranchID     *int64             `json:"branch_id"`
 }
 
 type ExpenseCategory struct {
@@ -1025,6 +1042,16 @@ type IngredientPurchaseFormat struct {
 	IsDefault    bool             `json:"is_default"`
 }
 
+type LocalItemExclusion struct {
+	ID               int64     `json:"id"`
+	ConnectionID     int64     `json:"connection_id"`
+	ProductID        *int64    `json:"product_id"`
+	ModifierOptionID *int64    `json:"modifier_option_id"`
+	DecidedBy        int64     `json:"decided_by"`
+	DecidedAt        time.Time `json:"decided_at"`
+	CompanyID        int64     `json:"company_id"`
+}
+
 type ModifierGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
@@ -1048,12 +1075,14 @@ type ModifierOption struct {
 }
 
 type ModifierOptionPlatformPrice struct {
-	OptionID   int64           `json:"option_id"`
-	PlatformID int16           `json:"platform_id"`
-	PriceDelta decimal.Decimal `json:"price_delta"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	OptionID   int64              `json:"option_id"`
+	PlatformID int16              `json:"platform_id"`
+	PriceDelta decimal.Decimal    `json:"price_delta"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Order struct {
@@ -1090,6 +1119,7 @@ type Order struct {
 	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
 	DiscountSetBy      *int64             `json:"discount_set_by"`
 	DiscountSetAt      pgtype.Timestamptz `json:"discount_set_at"`
+	BranchID           int64              `json:"branch_id"`
 }
 
 type OrderCounter struct {
@@ -1198,6 +1228,7 @@ type PlatformConnection struct {
 	IsActive           bool      `json:"is_active"`
 	CreatedAt          time.Time `json:"created_at"`
 	CompanyID          int64     `json:"company_id"`
+	BranchID           int64     `json:"branch_id"`
 }
 
 type PlatformCredential struct {
@@ -1242,16 +1273,27 @@ type PlatformIncomingOrderLine struct {
 	CompanyID       int64           `json:"company_id"`
 }
 
+type PlatformItemExclusion struct {
+	ConnectionID int64            `json:"connection_id"`
+	ExternalID   string           `json:"external_id"`
+	Kind         PlatformItemKind `json:"kind"`
+	DecidedBy    int64            `json:"decided_by"`
+	DecidedAt    time.Time        `json:"decided_at"`
+	CompanyID    int64            `json:"company_id"`
+}
+
 type PlatformItemLink struct {
-	ConnectionID int64              `json:"connection_id"`
-	ExternalID   string             `json:"external_id"`
-	Kind         PlatformItemKind   `json:"kind"`
-	ProductID    int64              `json:"product_id"`
-	LocalKind    string             `json:"local_kind"`
-	ConfirmedAt  pgtype.Timestamptz `json:"confirmed_at"`
-	ConfirmedBy  *int64             `json:"confirmed_by"`
-	CreatedAt    time.Time          `json:"created_at"`
-	CompanyID    int64              `json:"company_id"`
+	ConnectionID     int64              `json:"connection_id"`
+	ExternalID       string             `json:"external_id"`
+	Kind             PlatformItemKind   `json:"kind"`
+	ProductID        *int64             `json:"product_id"`
+	LocalKind        string             `json:"local_kind"`
+	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
+	ConfirmedBy      *int64             `json:"confirmed_by"`
+	CreatedAt        time.Time          `json:"created_at"`
+	CompanyID        int64              `json:"company_id"`
+	ModifierOptionID *int64             `json:"modifier_option_id"`
+	IsCapturePrice   bool               `json:"is_capture_price"`
 }
 
 type PlatformMenuItem struct {
@@ -1283,6 +1325,18 @@ type PlatformOperator struct {
 	IsActive     bool      `json:"is_active"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PlatformPriceChange struct {
+	ID               int64            `json:"id"`
+	ReadID           int64            `json:"read_id"`
+	ExternalID       string           `json:"external_id"`
+	Name             string           `json:"name"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	OldPrice         *decimal.Decimal `json:"old_price"`
+	NewPrice         decimal.Decimal  `json:"new_price"`
+	CompanyID        int64            `json:"company_id"`
 }
 
 type PlatformSettlement struct {
@@ -1350,6 +1404,7 @@ type Product struct {
 	AvailableFrom  pgtype.Date      `json:"available_from"`
 	AvailableUntil pgtype.Date      `json:"available_until"`
 	NeedsPrep      bool             `json:"needs_prep"`
+	SystemKind     *string          `json:"system_kind"`
 }
 
 type ProductChannel struct {
@@ -1369,12 +1424,14 @@ type ProductModifierGroup struct {
 }
 
 type ProductPlatformPrice struct {
-	ProductID  int64           `json:"product_id"`
-	PlatformID int16           `json:"platform_id"`
-	Price      decimal.Decimal `json:"price"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	ProductID  int64              `json:"product_id"`
+	PlatformID int16              `json:"platform_id"`
+	Price      decimal.Decimal    `json:"price"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Recipe struct {
@@ -1465,6 +1522,7 @@ type StockLevel struct {
 	ProductID    *int64          `json:"product_id"`
 	OnHand       decimal.Decimal `json:"on_hand"`
 	UpdatedAt    time.Time       `json:"updated_at"`
+	BranchID     int64           `json:"branch_id"`
 }
 
 type StockMovement struct {
@@ -1482,6 +1540,7 @@ type StockMovement struct {
 	Note         *string           `json:"note"`
 	CreatedAt    time.Time         `json:"created_at"`
 	OrderLineID  *int64            `json:"order_line_id"`
+	BranchID     int64             `json:"branch_id"`
 }
 
 type Supplier struct {

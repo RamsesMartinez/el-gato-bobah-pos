@@ -150,6 +150,9 @@ type ProductoLocal struct {
 	Nombre             string          `json:"name"`
 	PrecioDePlataforma decimal.Decimal `json:"platformPrice"`
 	Activo             bool            `json:"active"`
+	// Contexto: la categoría de un producto o el grupo de una opción. Distingue dos con el mismo
+	// nombre al emparejar (el catálogo real tiene opciones repetidas en grupos distintos).
+	Contexto string `json:"context,omitempty"`
 }
 
 // Pareja es un emparejamiento guardado. Sin `ConfirmadaEn` es una PROPUESTA, no un hecho.

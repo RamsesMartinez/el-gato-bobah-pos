@@ -66,6 +66,10 @@ begin
   -- el POS, y con otro slug nadie cae ahí por accidente.
 
   insert into companies (slug, name) values ('gatobobah', 'El Gato Bobah') returning id into v_new;
+  -- Desde la 0076 toda empresa nace con su matriz; `CreateCompany` la crea en la misma consulta y
+  -- aquí se replica a mano porque este script no pasa por ella.
+  insert into branches (company_id, branch_number, code, name, is_headquarters)
+  values (v_new, 1, headquarters_code('gatobobah'), 'El Gato Bobah', true);
   raise notice 'empresa pruebas=% | empresa produccion=%', v_old, v_new;
 
   -- Pasada 1: el offset de cada tabla. Va ANTES de copiar nada porque una FK necesita el offset de
@@ -100,6 +104,9 @@ begin
              case
                -- El tenant se sella explícito; el DEFAULT de la columna lee el GUC y aquí no hay GUC.
                when c.column_name = 'company_id' then v_new::text
+               -- La sucursal NO se copia: la de origen es de la otra empresa y la llave compuesta
+               -- la rechazaría. Nula, el trigger de la 0076 pone la matriz de la empresa nueva.
+               when c.column_name = 'branch_id' then 'null'
                -- La llave propia lleva el offset de SU tabla.
                when c.is_identity = 'YES'
                  then quote_ident(c.column_name) || ' + ' ||

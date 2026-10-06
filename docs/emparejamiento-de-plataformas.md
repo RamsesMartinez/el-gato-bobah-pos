@@ -37,7 +37,9 @@ La captura a mano de precios por plataforma queda solo para las plataformas **no
 2. **Sucursales en la base desde ahora, aunque no se vean.** Toda empresa nace con una sucursal y
    puede tener N (otra sucursal, una cocina oculta). Cruza la puerta «Más de una sucursal» del
    principio VIII: va en **su propio spec, antes** que el rediseño de emparejar, porque una tienda de
-   plataforma pertenece a una sucursal y su precio también.
+   plataforma pertenece a una sucursal y su precio también. **Hecho en el spec 025**:
+   `platform_connections.branch_id` existe, así que el precio por platillo de la tienda ya cuelga de
+   una sucursal.
 3. **Extras: hoy su precio también viene de la plataforma.** A futuro se quiere el camino inverso
    —crear un producto en el POS y publicarlo en la plataforma— y ligar bien lo creado allá. Eso
    **reabre** la decisión del §5 (hoy Uber manda y el POS solo lee): cuando llegue, habrá que decidir
@@ -145,3 +147,81 @@ Eats Manager; la regla del §1 queda igual y la guarda de solo lectura del trans
 Descartados por ahora: (2) el POS manda precio y disponibilidad por ítem, y (3) el POS administra el
 menú completo. Reabrirlos exige antes una tienda de prueba pedida a Integration Tech Support y el
 permiso de escritura confirmado por Uber.
+
+## 6. Combos y almacén: lo verificado (2026-10-03)
+
+El dueño aclaró que un platillo de Uber se liga a **un solo** producto del POS, y que la duda real
+eran los combos: venderlos en Uber y que el POS descuente del almacén cada componente.
+
+**Cómo los modela Uber** (developer.uber.com; la página se renderiza con JS, así que es alta
+confianza, no lectura del código fuente):
+
+- **Combo fijo**: `bundled_items` en el ítem, la lista de lo que va incluido siempre y el cliente no
+  elige (las papas de la hamburguesa). Reusa ítems del menú.
+- **Combo con elección** («crepa + bebida a escoger»): un ítem con un grupo de modificadores cuyas
+  opciones **son ítems del menú**. Es el mismo patrón que la tienda real ya usa para los tamaños
+  (`server/internal/uber/testdata/menu.json`).
+- **En el pedido** llega el renglón padre y, anidado, lo que se eligió, cada cosa con su propio id y
+  precio. No hay un tipo «combo» aparte.
+- **Promociones** (2x1, producto gratis) no son combos: viven en `payment.promotions` del pedido,
+  separadas del carrito.
+
+**Consecuencia para el diseño**: no hace falta una tabla de combos para emparejar. Cada componente
+se liga por su id a lo suyo en el POS (el platillo a un producto, la opción a una opción) y el
+almacén se descuenta componente por componente.
+
+**Lo que hoy impide que funcione** (medido en el código):
+
+1. **Los pedidos de plataforma aceptados no descuentan nada del almacén.** Aceptar crea el pedido,
+   los renglones y el pago, pero nunca llama a la depleción. Y los renglones hijos (extras,
+   componentes) se descartan: solo viajan dentro del nombre.
+2. **En el mostrador tampoco se descuentan los extras.** La depleción mira solo el producto del
+   renglón; ignora la receta o el producto ligado de cada opción elegida. Un combo del POS no
+   descuenta nada (no tiene receta), y la leche deslactosada elegida como extra tampoco.
+3. **Una opción de Uber no tiene dónde ligarse**: el emparejamiento solo guarda `product_id`, no hay
+   columna para una opción de modificador. Por eso el defecto 3 del §2 no es solo de pantalla.
+4. **No está confirmado cómo llega el detalle de un pedido**: el lector espera
+   `selected_modifier_groups_items`, la documentación dice `selected_modifier_groups`. Si es lo
+   segundo, hoy se pierden los extras de todo pedido de Uber. Se zanja con un pedido real de prueba
+   con un extra.
+
+**Combos del POS hoy**: las tablas `combo_slots` existen y están vacías; los combos del menú real
+son productos simples con sus componentes como modificadores.
+
+### Decidido por el dueño (2026-10-03)
+
+1. **Un platillo u opción de Uber se liga a una sola cosa del POS.** Varios de Uber pueden ir al
+   mismo producto; entonces quien configura elige cuál da el precio de la captura a mano.
+2. **Nadie decide nada al operar** (regla en la constitución): un pedido de Uber se acepta y sale a
+   cocina. Toda ambigüedad se resuelve al configurar.
+3. **Los extras que no descuentan son un defecto que se corrige** en su propio spec, sin perder cómo
+   está hoy el negocio. Al llegar ahí: respaldar producción, ensayar en local la migración que
+   corrige y vuelve a ligar las variantes (hay grupos y opciones repetidos, ver `docs/reorg/16_*`), y
+   solo entonces aplicarla.
+4. **Paquetes y promociones**: además del combo, cubrir el 2x1 y el paquete con nombre propio que
+   adentro trae varios productos (crepa + papas, frappé + crepa), con conteo e histórico por
+   producto, ingrediente, insumo y sus sub-recetas, no solo por insumo.
+5. **Aproximados de recetas y almacén** se sacan de los históricos de FUDO
+   (`~/gatobobah-datos/references/`, fuera del repo; ver [respaldo-fudo.md](respaldo-fudo.md)).
+
+**Orden de los specs**: emparejar (026, con el destino «opción») → almacén de extras, paquetes y
+pedidos de plataforma → insumos, tamaños y variantes que heredan.
+
+**Cómo confirmar el formato del pedido (punto 4 de arriba)**: el probador de webhooks del panel de
+desarrollador de Uber manda un aviso de prueba y sirve para comprobar que llega y que la firma
+cuadra. El contenido del pedido no viene en el aviso: se pide aparte al enlace que el aviso trae, y
+solo existe si el pedido existe. Si el panel no crea pedidos de prueba con contenido, hace falta la
+tienda de prueba de Uber o un pedido real chico. Sin verificar todavía qué ofrece el panel.
+
+## 7. Construido (spec 026, 2026-10-03)
+
+En la rama de la integración con Uber, sin desplegar todavía:
+
+- Pantalla con el diseño B y sus dos modos de revisión; elección del precio de captura (tablero B5).
+- Parejas a opciones del POS; decisiones «solo existe en la plataforma» y «no se vende ahí».
+- Precio que pone la plataforma: copiado en cada lectura buena, bloqueado en el POS y avisado a las
+  tabletas. Con dos tiendas de la misma plataforma no se copia (precio por sucursal pendiente).
+- Producto genérico para renglones de pedido sin pareja, con las opciones en la nota.
+
+Pendiente: descontar del almacén los extras y los pedidos de plataforma (§6), y confirmar con un
+pedido real el nombre del campo de las opciones en el detalle del pedido.

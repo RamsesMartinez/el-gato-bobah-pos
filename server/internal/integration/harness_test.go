@@ -268,10 +268,15 @@ func itoa(n int) string {
 
 func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 	t.Helper()
-	var id int64
-	if err := st.Pool.QueryRow(context.Background(),
-		`insert into companies (slug, name) values ($1, $2) returning id`, slug, "Test "+slug).Scan(&id); err != nil {
+	// Por CreateCompany y no con un insert crudo: es la consulta que crea también la matriz (0076),
+	// y una empresa sin sucursal es un mundo que el sistema ya no produce.
+	co, err := st.Q.CreateCompany(context.Background(), db.CreateCompanyParams{Slug: slug, Name: "Test " + slug})
+	if err != nil {
 		t.Fatalf("makeCompany(%s): %v", slug, err)
+	}
+	id := co.ID
+	if _, err := st.Q.EnsurePlatformUnpairedProduct(context.Background(), id); err != nil {
+		t.Fatalf("producto genérico de %s: %v", slug, err)
 	}
 	// Espeja a provisionCompany: una empresa sin métodos de pago no puede cobrar, así que un test
 	// que la creara pelada estaría probando un mundo que el sistema no produce.

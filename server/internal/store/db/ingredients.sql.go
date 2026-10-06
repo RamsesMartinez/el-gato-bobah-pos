@@ -137,7 +137,7 @@ select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id
-left join stock_levels sl on sl.ingredient_id = i.id
+left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
 where ($1::boolean is not true or i.is_active)
 order by i.name
 `
@@ -157,6 +157,8 @@ type ListIngredientsRow struct {
 	OnHand       decimal.Decimal  `json:"on_hand"`
 }
 
+// Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
+// veces sin decir de cuál es.
 func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]ListIngredientsRow, error) {
 	rows, err := q.db.Query(ctx, listIngredients, onlyActive)
 	if err != nil {

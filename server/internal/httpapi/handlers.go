@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -171,6 +172,19 @@ type Handlers struct {
 }
 
 func NewHandlers(d Deps) *Handlers {
+	h := newHandlers(d)
+	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). Sin este
+	// aviso el menú cacheado dura 24 horas y las tabletas cobrarían con el precio viejo.
+	if h.menusPlataforma != nil && h.menuCache != nil && h.broker != nil {
+		h.menusPlataforma.OnPricesSynced(func(ctx context.Context, companyID int64) {
+			h.menuCache.Invalidate(ctx, companyID)
+			h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
+		})
+	}
+	return h
+}
+
+func newHandlers(d Deps) *Handlers {
 	return &Handlers{
 		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,

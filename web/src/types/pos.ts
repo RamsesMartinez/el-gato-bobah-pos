@@ -66,6 +66,10 @@ export interface Menu {
   // Un id ausente usa base × (1 + margen). El dinero viaja como string decimal exacto.
   platformPrices: Record<number, Record<number, string>>;
   platformModPrices: Record<number, Record<number, string>>;
+  // Cuándo copió la plataforma conectada cada precio. Un id presente aquí no se edita en el POS:
+  // lo pone la plataforma. Opcionales para que el compilador obligue a la guarda.
+  platformSynced?: Record<number, Record<number, string>>;
+  platformModSynced?: Record<number, Record<number, string>>;
 }
 
 export interface MenuPlatform {

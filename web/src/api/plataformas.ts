@@ -173,8 +173,81 @@ export const emparejamiento = (id: number, kind: ClaseDeItem = 'platillo') =>
 export const guardarPareja = (
   id: number,
   externalId: string,
-  body: { localId: number; localKind: ClaseLocal; kind: ClaseDeItem },
+  body: {
+    localId: number;
+    localKind: ClaseLocal;
+    kind: ClaseDeItem;
+    /** Pisar una pareja ya confirmada se pide explícito. */
+    replace?: boolean;
+    /** Si esta pareja da el precio de la captura a mano. Obligatorio cuando el producto ya tiene
+     *  otra pareja en la tienda: el servidor responde CAPTURE_PRICE_REQUIRED si falta. */
+    capturePrice?: boolean;
+  },
 ) => api.put<void>(`${RAIZ}/connections/${id}/links/${encodeURIComponent(externalId)}`, body);
+
+// --- La pantalla de emparejar (spec 026) ---
+
+export type GrupoDeEmparejamiento = 'unpaired' | 'toReview' | 'done' | 'excluded';
+
+export interface ParejaDelTablero {
+  localKind: ClaseLocal;
+  localId: number;
+  localName: string;
+  /** Esta pareja da el precio de la captura a mano de su producto u opción. */
+  isCapturePrice: boolean;
+  confirmedAt?: string | null;
+}
+
+export interface RenglonDelTablero {
+  externalId: string;
+  kind: ClaseDeItem;
+  name: string;
+  /** Texto decimal con dos cifras ("82.80"). */
+  price: string;
+  available: boolean;
+  group: GrupoDeEmparejamiento;
+  link?: ParejaDelTablero | null;
+  proposal?: { localKind: ClaseLocal; localId: number; localName: string } | null;
+}
+
+export interface TableroDeEmparejamiento {
+  platformName: string;
+  storeLabel: string;
+  readAt: string;
+  counts: { unpaired: number; toReview: number; done: number; excluded: number };
+  /** Opcional para que el compilador obligue a la guarda: un arreglo ausente tumba la pantalla. */
+  items?: RenglonDelTablero[];
+  priceChanges?: { name: string; old?: string | null; new: string }[];
+}
+
+export interface CandidatoDelPOS {
+  localKind: ClaseLocal;
+  id: number;
+  name: string;
+  /** La categoría de un producto o el grupo de una opción: distingue dos con el mismo nombre. */
+  context?: string;
+  /** Cuántos platillos de esta tienda ya están ligados a él. */
+  linkedCount: number;
+}
+
+export const tablero = (id: number) => api.get<TableroDeEmparejamiento>(`${RAIZ}/connections/${id}/board`);
+
+export const candidatos = (id: number, externalId: string, q = '') =>
+  api
+    .get<{ candidates?: CandidatoDelPOS[] }>(
+      `${RAIZ}/connections/${id}/candidates?externalId=${encodeURIComponent(externalId)}&q=${encodeURIComponent(q)}`,
+    )
+    .then((r) => r.candidates ?? []);
+
+export const confirmarLote = (id: number, confirm: string[]) =>
+  api.post<{ confirmed?: string[]; skipped?: string[] }>(`${RAIZ}/connections/${id}/links/batch`, { confirm });
+
+/** «Solo existe en la plataforma»: lo saca de «Sin pareja» sin ligarlo a nada. */
+export const marcarSoloEnPlataforma = (id: number, externalId: string) =>
+  api.put<void>(`${RAIZ}/connections/${id}/exclusions/${encodeURIComponent(externalId)}`, {});
+
+export const quitarSoloEnPlataforma = (id: number, externalId: string) =>
+  api.del<void>(`${RAIZ}/connections/${id}/exclusions/${encodeURIComponent(externalId)}`);
 
 export const borrarPareja = (id: number, externalId: string) =>
   api.del<void>(`${RAIZ}/connections/${id}/links/${encodeURIComponent(externalId)}`);

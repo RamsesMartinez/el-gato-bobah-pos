@@ -128,3 +128,18 @@ test('desgloseDelta distingue el calculado del capturado', () => {
 test('un extra sin costo no gana margen', () => {
   expect(desgloseDelta(menu, 5, 999, 0)).toEqual({ base: 0, calculado: 0, vigente: 0, esManual: false });
 });
+
+describe('precio que pone la plataforma (0077)', () => {
+  it('el desglose dice cuándo lo copió la plataforma', () => {
+    const menu = {
+      categories: [], products: [], version: 1,
+      platforms: [{ id: 5, name: 'Uber Eats', markupPct: '35' }],
+      platformPrices: { 5: { 77: '99.00' } },
+      platformModPrices: {},
+      platformSynced: { 5: { 77: '2026-10-03T16:42:00Z' } },
+      platformModSynced: {},
+    } as unknown as Menu;
+    expect(desglosePrecio(menu, 5, 77, 100)?.sincronizadoEn).toBe('2026-10-03T16:42:00Z');
+    expect(desglosePrecio(menu, 5, 78, 100)?.sincronizadoEn).toBeUndefined();
+  });
+});
