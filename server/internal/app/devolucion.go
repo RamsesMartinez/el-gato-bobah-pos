@@ -246,6 +246,21 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 		return false, err
 	}
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Pedido y luego renglones, en el MISMO orden que DeliverLine. Tomando solo el renglón, una
+		// entrega y una cancelación simultáneas se cruzaban: la entrega tenía el pedido y esperaba
+		// este renglón, y esto tenía el renglón y esperaba al pedido en RecalcOrderTotals —
+		// interbloqueo, y Postgres mataba una de las dos (500). Y sin serializarse, cada una veía al
+		// otro renglón pendiente y ninguna cerraba el pedido.
+		if _, err := q.GetOrderForUpdate(ctx, orderID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		lineas, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
 		l, err := q.GetOrderLineForCancel(ctx, db.GetOrderLineForCancelParams{ID: lineID, OrderID: orderID})
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -276,7 +291,18 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 			}
 		}
 		// El total baja igual, haya repuesto o no: el cliente no paga lo que se canceló.
-		return q.RecalcOrderTotals(ctx, orderID)
+		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
+			return err
+		}
+		// Cancelar lo último que faltaba también termina el pedido, igual que entregarlo. Sin esto
+		// un pedido con todo lo vivo entregado se quedaba abierto para siempre: el tablero ya no
+		// ofrecía entregarlo, cancelarlo completo rebota porque soltó comida, y bloqueaba el corte.
+		for i := range lineas {
+			if lineas[i].ID == lineID {
+				lineas[i].Cancelada = true
+			}
+		}
+		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
 	})
 	return repuso, err
 }

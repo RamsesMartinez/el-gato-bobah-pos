@@ -419,7 +419,8 @@ jobs:
       cancel-in-progress: false
     steps:
       # Misma llave que producción: las SSH keys son metadata del PROYECTO en GCP, así que el
-      # mismo usuario alcanza las dos VMs sin secreto nuevo.
+      # mismo usuario alcanza las dos VMs sin secreto nuevo. Se entra por nombre y no por IP: la VM
+      # de pruebas tiene IP efímera y la skill ambiente-dev mueve el registro DNS en cada arranque.
       - name: Deploy por SSH
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -428,8 +429,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 34.61.175.194 >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key ramses_mtz96@34.61.175.194             "cd el-gato-bobah-pos && git fetch origin --prune && git checkout -B develop origin/develop && API_IMAGE='$API_IMAGE' make deploy-image"
+          ssh-keyscan -H api-dev.elgatobobah.com >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key ramses_mtz96@api-dev.elgatobobah.com             "cd el-gato-bobah-pos && git fetch origin --prune && git checkout -B develop origin/develop && API_IMAGE='$API_IMAGE' make deploy-image"
       # La VM es spot: Google puede haberla reclamado entre dos pushes. Si no responde, el deploy
       # falla ruidoso en vez de dejar creer que se probó algo.
       - name: Verifica que la API de pruebas quedó arriba
