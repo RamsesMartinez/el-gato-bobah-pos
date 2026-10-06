@@ -48,6 +48,25 @@ func (q *Queries) CancelOrderLine(ctx context.Context, arg CancelOrderLineParams
 	return err
 }
 
+const copyOrderLineModifiers = `-- name: CopyOrderLineModifiers :exec
+insert into order_line_modifiers (order_line_id, modifier_option_id, group_title, option_name,
+                                  quantity, price_delta, unit_cost)
+select $1, m.modifier_option_id, m.group_title, m.option_name, m.quantity, m.price_delta, m.unit_cost
+from order_line_modifiers m
+where m.order_line_id = $2
+`
+
+type CopyOrderLineModifiersParams struct {
+	NewLineID int64 `json:"new_line_id"`
+	LineID    int64 `json:"line_id"`
+}
+
+// Los modificadores del renglón partido. Son por unidad, así que se copian tal cual.
+func (q *Queries) CopyOrderLineModifiers(ctx context.Context, arg CopyOrderLineModifiersParams) error {
+	_, err := q.db.Exec(ctx, copyOrderLineModifiers, arg.NewLineID, arg.LineID)
+	return err
+}
+
 const countLinesPendingDelivery = `-- name: CountLinesPendingDelivery :one
 select count(*) from order_lines
 where order_id = $1 and cancelled_at is null and delivered_qty < quantity
@@ -493,9 +512,10 @@ func (q *Queries) GetOrderIDByClientUUID(ctx context.Context, clientUuid uuid.UU
 
 const getOrderLineForCancel = `-- name: GetOrderLineForCancel :one
 select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
-       o.status as order_status
+       o.status as order_status, p.needs_prep
 from order_lines ol
 join orders o on o.id = ol.order_id
+join products p on p.id = ol.product_id
 where ol.id = $1 and ol.order_id = $2
 for update of ol
 `
@@ -513,6 +533,7 @@ type GetOrderLineForCancelRow struct {
 	CancelledAt      pgtype.Timestamptz `json:"cancelled_at"`
 	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 	OrderStatus      OrderStatus        `json:"order_status"`
+	NeedsPrep        bool               `json:"needs_prep"`
 }
 
 // El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
@@ -520,6 +541,8 @@ type GetOrderLineForCancelRow struct {
 // `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
 // repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
 // cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
+//
+// `needs_prep` porque lo que no se prepara vuelve al almacén aunque haya «salido a cocina».
 func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineForCancelParams) (GetOrderLineForCancelRow, error) {
 	row := q.db.QueryRow(ctx, getOrderLineForCancel, arg.ID, arg.OrderID)
 	var i GetOrderLineForCancelRow
@@ -531,6 +554,7 @@ func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineFor
 		&i.CancelledAt,
 		&i.EnviadoACocinaAt,
 		&i.OrderStatus,
+		&i.NeedsPrep,
 	)
 	return i, err
 }
@@ -884,6 +908,51 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 	return items, nil
 }
 
+const listLineSaleMovements = `-- name: ListLineSaleMovements :many
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id
+from stock_movements
+where order_line_id = $1 and movement_type = 'venta'
+order by id
+`
+
+type ListLineSaleMovementsRow struct {
+	ItemType     StockItemType    `json:"item_type"`
+	IngredientID *int64           `json:"ingredient_id"`
+	ProductID    *int64           `json:"product_id"`
+	Quantity     decimal.Decimal  `json:"quantity"`
+	UnitCost     *decimal.Decimal `json:"unit_cost"`
+	OrderID      *int64           `json:"order_id"`
+}
+
+// Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
+// pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando.
+func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64) ([]ListLineSaleMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listLineSaleMovements, orderLineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLineSaleMovementsRow{}
+	for rows.Next() {
+		var i ListLineSaleMovementsRow
+		if err := rows.Scan(
+			&i.ItemType,
+			&i.IngredientID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.UnitCost,
+			&i.OrderID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinesForDelivery = `-- name: ListLinesForDelivery :many
 select id, quantity, delivered_qty, cancelled_at
 from order_lines
@@ -968,6 +1037,60 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 			&i.DeliveredQty,
 			&i.Notes,
 			&i.EnviadoACocina,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinesToSplit = `-- name: ListLinesToSplit :many
+select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
+       ol.enviado_a_cocina_at, p.needs_prep
+from order_lines ol
+join products p on p.id = ol.product_id
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id
+`
+
+type ListLinesToSplitRow struct {
+	ID               int64              `json:"id"`
+	ProductID        *int64             `json:"product_id"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
+	UnitPrice        decimal.Decimal    `json:"unit_price"`
+	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
+	NeedsPrep        bool               `json:"needs_prep"`
+}
+
+// Lo que hace falta para quitar o partir los renglones vivos de un pedido: precio y costo para
+// copiar el renglón al partirlo, y si el producto se prepara para decidir si se repone.
+//
+// Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
+// (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
+func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLinesToSplitRow, error) {
+	rows, err := q.db.Query(ctx, listLinesToSplit, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinesToSplitRow{}
+	for rows.Next() {
+		var i ListLinesToSplitRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.DeliveredQty,
+			&i.UnitPrice,
+			&i.ModifiersTotal,
+			&i.EnviadoACocinaAt,
+			&i.NeedsPrep,
 		); err != nil {
 			return nil, err
 		}
@@ -1516,7 +1639,9 @@ insert into stock_movements (item_type, ingredient_id, product_id, movement_type
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
        $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
+left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
+  and ol.cancelled_at is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0
@@ -1532,6 +1657,11 @@ type RestockCancelledOrderParams struct {
 // Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
 // volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
 // agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
+//
+// Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
+// quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
+// movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
+// salieron.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
 	return err
@@ -1616,6 +1746,64 @@ func (q *Queries) SetPlatformRef(ctx context.Context, arg SetPlatformRefParams) 
 	var i SetPlatformRefRow
 	err := row.Scan(&i.ID, &i.PlatformOrderRef, &i.DeliveryPlatformID)
 	return i, err
+}
+
+const shrinkOrderLine = `-- name: ShrinkOrderLine :exec
+update order_lines
+   set quantity = $1, delivered_qty = $2, line_total = $3
+ where id = $4
+`
+
+type ShrinkOrderLineParams struct {
+	Quantity     decimal.Decimal `json:"quantity"`
+	DeliveredQty decimal.Decimal `json:"delivered_qty"`
+	LineTotal    decimal.Decimal `json:"line_total"`
+	ID           int64           `json:"id"`
+}
+
+// Lo que se queda en el renglón original después de partirlo.
+func (q *Queries) ShrinkOrderLine(ctx context.Context, arg ShrinkOrderLineParams) error {
+	_, err := q.db.Exec(ctx, shrinkOrderLine,
+		arg.Quantity,
+		arg.DeliveredQty,
+		arg.LineTotal,
+		arg.ID,
+	)
+	return err
+}
+
+const splitOffOrderLine = `-- name: SplitOffOrderLine :one
+insert into order_lines (order_id, product_id, product_name, quantity, unit_price, modifiers_total,
+                         unit_cost, line_total, notes, delivered_qty, enviado_a_cocina_at)
+select $1, ol.product_id, ol.product_name, $2, ol.unit_price, ol.modifiers_total,
+       ol.unit_cost, $3, ol.notes, $4, ol.enviado_a_cocina_at
+from order_lines ol
+where ol.id = $5
+returning id
+`
+
+type SplitOffOrderLineParams struct {
+	OrderID      int64           `json:"order_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	LineTotal    decimal.Decimal `json:"line_total"`
+	DeliveredQty decimal.Decimal `json:"delivered_qty"`
+	LineID       int64           `json:"line_id"`
+}
+
+// Parte un renglón: crea uno nuevo con `quantity` piezas que copia precio, modificadores por
+// unidad, costo, nota y estado de cocina del original. `order_id` puede ser otro pedido (pasar
+// productos). `parent_line_id` no se copia: nadie lo escribe y partir no arrastra hijos.
+func (q *Queries) SplitOffOrderLine(ctx context.Context, arg SplitOffOrderLineParams) (int64, error) {
+	row := q.db.QueryRow(ctx, splitOffOrderLine,
+		arg.OrderID,
+		arg.Quantity,
+		arg.LineTotal,
+		arg.DeliveredQty,
+		arg.LineID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const sumOrderPayments = `-- name: SumOrderPayments :one

@@ -20,7 +20,10 @@ import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { DevolucionSheet } from './DevolucionSheet';
 import { CancelarRenglonDialog } from './CancelarRenglonDialog';
+import { CancelPendingSheet } from './CancelPendingSheet';
 import { useSessionStore } from '../../stores/session';
+import { can } from '../../app/permissions';
+import { round2 } from '../../domain/numeros';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
 
@@ -48,10 +51,12 @@ export function OrdersBoardPage() {
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
   const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
   const [quitando, setQuitando] = useState<{ orderId: number; linea: BoardLine } | null>(null);
+  const [quitandoFaltante, setQuitandoFaltante] = useState<BoardOrder | null>(null);
   const qc = useQueryClient();
   // Reembolsar = salida de dinero → solo admin/gerente ven las entregadas y la acción. El backend
   // igual aplica el 403; esto es UX (no mostrar lo que no pueden usar).
-  const role = useSessionStore((s) => s.user?.role);
+  const user = useSessionStore((s) => s.user);
+  const role = user?.role;
   const canRefund = role === 'admin' || role === 'gerente';
 
   // Cobrar es del punto de venta. Este tablero prepara y entrega, y solo recupera el botón donde
@@ -109,7 +114,7 @@ export function OrdersBoardPage() {
     onSuccess: (r) => {
       invalidateAll();
       toaster.create({
-        title: 'Renglón quitado',
+        title: 'Producto quitado',
         description: r.repusoInventario
           ? 'El ingrediente volvió al almacén.'
           : 'Ya se estaba preparando: el ingrediente no vuelve al almacén.',
@@ -117,6 +122,23 @@ export function OrdersBoardPage() {
       });
     },
     onError: conError('No se pudo quitar'),
+  });
+
+  // Quitar lo que falta. La hoja espera la respuesta para cerrarse, así que aquí no se atrapa el
+  // error: lo pinta la hoja, que sigue abierta.
+  const quitarFaltante = (o: BoardOrder, reason: string) =>
+    posApi.cancelPendingLines(o.id, reason).then((r) => {
+      invalidateAll();
+      toaster.create({
+        title: r.removed === 1 ? 'Producto quitado' : `${r.removed} productos quitados`,
+        type: 'success',
+      });
+    });
+  // Cerrar un pedido que ya no tiene productos ni pagos. Sin motivo: lo pone el servidor.
+  const cerrarVacio = useMutation({
+    mutationFn: (id: number) => posApi.cancelPendingLines(id),
+    onSuccess: invalidateAll,
+    onError: conError('No se pudo cerrar'),
   });
 
   const refundMut = useMutation({
@@ -141,7 +163,15 @@ export function OrdersBoardPage() {
   // null y la acción deja de hacer nada, en silencio y sin aviso.
   //
   // La misma hoja para las dos: con cobros pide cuánto devolver, sin ellos solo el motivo.
-  const cancel = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: true });
+  //
+  // Con algo ya entregado, cancelar el pedido entero lo rechaza el servidor —reponer lo que el
+  // cliente se llevó le inventaría existencias al almacén—, así que «Cancelar pedido» lleva a lo que
+  // sí se puede hacer: quitar lo que falta.
+  const cancel = (o: BoardOrder) => {
+    const algoEntregado = renglonesDe(o).some((l) => Number(l.delivered) > 0);
+    if (algoEntregado && pendientes(o).length > 0) setQuitandoFaltante(o);
+    else setDevolviendo({ pedido: o, cancelando: true });
+  };
   const refund = (o: BoardOrder) => setDevolviendo({ pedido: o, cancelando: false });
 
   // La comanda COMPLETA, como acción explícita. La que sale sola al agregar lleva solo lo nuevo
@@ -169,6 +199,15 @@ export function OrdersBoardPage() {
     ticket: (o) => setTicketOrderID(o.id),
     comanda: reimprimirComanda,
     cancelar: cancel,
+    quitarFaltante: setQuitandoFaltante,
+    cerrarVacio: (o) => cerrarVacio.mutate(o.id),
+    // Por pedido, no global: la petición de una tarjeta no tiene por qué congelar las demás.
+    cerrando: (o) =>
+      (entregarTodo.isPending && entregarTodo.variables === o.id) ||
+      (cerrarVacio.isPending && cerrarVacio.variables === o.id),
+    puedeDevolverPagos: can('payments.void', user),
+    puedeCancelar: can('orders.cancel', user),
+    puedeQuitarFaltante: can('orders.cancel_pending', user),
   };
 
   return (
@@ -213,6 +252,15 @@ export function OrdersBoardPage() {
         />
       )}
 
+      {quitandoFaltante && (
+        <CancelPendingSheet
+          key={quitandoFaltante.id}
+          order={quitandoFaltante}
+          onClose={() => setQuitandoFaltante(null)}
+          onConfirm={(reason) => quitarFaltante(quitandoFaltante, reason)}
+        />
+      )}
+
       {devolviendo && (
         <DevolucionSheet
           key={devolviendo.pedido.id}
@@ -248,7 +296,17 @@ interface Acciones {
   ticket: (o: BoardOrder) => void;
   comanda: (o: BoardOrder) => void;
   cancelar: (o: BoardOrder) => void;
+  quitarFaltante: (o: BoardOrder) => void;
+  cerrarVacio: (o: BoardOrder) => void;
+  cerrando: (o: BoardOrder) => boolean;
+  // Se pregunta por permiso, nunca por nombre de rol (app/permissions.ts).
+  puedeCancelar: boolean;
+  puedeDevolverPagos: boolean;
+  puedeQuitarFaltante: boolean;
 }
+
+// Con más pendientes que esto, la lista de la tarjeta se recorta y hace scroll propio.
+const PENDIENTES_A_LA_VISTA = 5;
 
 function Columna({ titulo, orders, acciones }: { titulo: string; orders: BoardOrder[]; acciones: Acciones }) {
   return (
@@ -272,11 +330,20 @@ function Columna({ titulo, orders, acciones }: { titulo: string; orders: BoardOr
 function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
   const Svc = SERVICE_META[o.serviceType]?.icon;
   const faltan = pendientes(o);
+  const sinProductos = renglonesDe(o).length === 0;
   const listo = faltan.length === 0;
   const debe = Number(o.outstanding) > 0;
+  // El tablero no trae los pagos; lo cobrado sale de lo que el pedido ya no debe. Basta para un
+  // pedido sin productos, cuyo total es a lo más el envío: si algo se cobró, hay que devolverlo
+  // antes de cerrarlo, y si la cifra se equivoca el servidor lo rechaza con su texto.
+  const tienePagos = round2(Number(o.total) - Number(o.outstanding)) > 0;
+  const algoEntregado = renglonesDe(o).some((l) => Number(l.delivered) > 0);
+  // Con todo entregado, cancelar el pedido lo rechaza el servidor y la salida es «Cerrar pedido».
+  const ofreceCancelar = acciones.puedeCancelar && !(listo && algoEntregado);
+  const ofreceQuitarFaltante = acciones.puedeQuitarFaltante && faltan.length > 0;
 
   return (
-    <Box bg="bg.panel" borderWidth="1px" borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg" p={2.5}>
+    <Box data-order-card bg="bg.panel" borderWidth="1px" borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg" p={2.5}>
       <Flex justify="space-between" align="start" gap={2} mb={2}>
         <Box minW={0}>
           {/* El nombre manda: es con lo que se canta el pedido. El número queda en el renglón de
@@ -303,7 +370,11 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
         </VStack>
       </Flex>
 
-      <VStack align="stretch" gap={1} mb={2}>
+      {/* Con muchos pendientes la lista se recorta y hace scroll propio: una tarjeta de once
+          productos medía ~620 px y en una tableta de 600 los botones quedaban fuera, sin salida a
+          la vista. El alto en dvh porque lo que se reparte es el alto de la tableta. */}
+      <VStack role="list" aria-label="Falta por entregar" align="stretch" gap={1} mb={2}
+        {...(faltan.length > PENDIENTES_A_LA_VISTA ? { maxH: '40dvh', overflowY: 'auto' } : {})}>
         {faltan.map((l) => (
           // La clave lleva lo ya entregado a propósito: el contador del renglón es estado local, y
           // sin esto seguiría en 3 después de entregar 3 de 5 — el botón mandaría al servidor una
@@ -312,14 +383,18 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             onEntregar={(qty) => acciones.entregarLinea(o.id, l.id, qty)}
             onQuitar={() => acciones.quitarRenglon(o.id, l)} />
         ))}
-        {listo && (
+        {listo && !sinProductos && (
           <HStack color="green.600" py={1} gap={1}>
             <LuCheck size={16} />
             <Text fontSize="sm" fontWeight="600">Todo entregado</Text>
           </HStack>
         )}
+        {sinProductos && <Text fontSize="sm" color="fg.muted" py={1}>Sin productos</Text>}
       </VStack>
 
+      {/* Toda combinación ofrece algo que cierra el pedido o dice dónde se cierra. El incidente fue
+          una tarjeta con todo entregado, sin deuda y sin un solo botón: la única salida era
+          cancelar, y el servidor la rechaza porque ya salió comida. */}
       <HStack gap={2}>
         {/* Entregar todo desaparece cuando ya no falta nada: un botón que no hace nada enseña a
             ignorar el que sí hace. */}
@@ -328,11 +403,39 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Entregar todo
           </Button>
         )}
-        {debe && acciones.puedeCobrar && (
-          <Button flex="1" minH={TAP} colorPalette="orange" variant={listo ? 'solid' : 'outline'}
+        {!listo && debe && acciones.puedeCobrar && (
+          <Button flex="1" minH={TAP} colorPalette="orange" variant="outline"
             onClick={() => acciones.cobrar(o)}>
             Cobrar
           </Button>
+        )}
+        {/* Lo vivo entregado y sin deuda: entregar el pedido lo cierra. */}
+        {listo && !sinProductos && !debe && (
+          <Button flex="1" minH={TAP} colorPalette="green" loading={acciones.cerrando(o)}
+            disabled={acciones.cerrando(o)} onClick={() => acciones.entregarTodo(o)}>
+            Cerrar pedido
+          </Button>
+        )}
+        {listo && !sinProductos && debe && acciones.puedeCobrar && (
+          <Button flex="1" minH={TAP} colorPalette="orange" onClick={() => acciones.cobrar(o)}>
+            Cobrar {money(o.outstanding, o.currency)}
+          </Button>
+        )}
+        {listo && !sinProductos && debe && !acciones.puedeCobrar && (
+          <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
+            Falta cobrar {money(o.outstanding, o.currency)} en caja
+          </Text>
+        )}
+        {sinProductos && !tienePagos && (
+          <Button flex="1" minH={TAP} colorPalette="gray" loading={acciones.cerrando(o)}
+            disabled={acciones.cerrando(o)} onClick={() => acciones.cerrarVacio(o)}>
+            Cerrar pedido
+          </Button>
+        )}
+        {sinProductos && tienePagos && (
+          <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
+            {acciones.puedeDevolverPagos ? 'Tiene pagos por devolver' : 'Tiene pagos por devolver: avisa al gerente'}
+          </Text>
         )}
         <MenuRoot>
           <MenuTrigger asChild>
@@ -348,9 +451,16 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
           <MenuContent minW="220px">
             <MenuItem value="ticket" minH={TAP} px={3} onClick={() => acciones.ticket(o)}>Ver ticket</MenuItem>
             <MenuItem value="comanda" minH={TAP} px={3} onClick={() => acciones.comanda(o)}>Reimprimir comanda</MenuItem>
-            <MenuSeparator />
-            <MenuItem value="cancel" minH={TAP} px={3} mt={1} color="red.500"
-              onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
+            {(ofreceQuitarFaltante || ofreceCancelar) && <MenuSeparator />}
+            {ofreceQuitarFaltante && (
+              <MenuItem value="cancel-pending" minH={TAP} px={3} mt={1}
+                onClick={() => acciones.quitarFaltante(o)}>Quitar lo que falta</MenuItem>
+            )}
+            {ofreceQuitarFaltante && ofreceCancelar && <MenuSeparator />}
+            {ofreceCancelar && (
+              <MenuItem value="cancel" minH={TAP} px={3} mt={1} color="red.500"
+                onClick={() => acciones.cancelar(o)}>Cancelar pedido</MenuItem>
+            )}
           </MenuContent>
         </MenuRoot>
       </HStack>
@@ -372,7 +482,7 @@ function Renglon({ l, onEntregar, onQuitar }: {
   const extras = [...(l.modifiers ?? []), ...(l.notes ? [l.notes] : [])];
 
   return (
-    <HStack gap={1.5} align="center" borderWidth="1px" borderColor="border" borderRadius="md" px={1.5} py={1}>
+    <HStack role="listitem" gap={1.5} align="center" borderWidth="1px" borderColor="border" borderRadius="md" px={1.5} py={1}>
       <Text fontWeight="800" fontSize="sm" minW="1.75rem" textAlign="center" flexShrink={0}>
         {Number(l.qty)}
       </Text>
@@ -391,12 +501,12 @@ function Renglon({ l, onEntregar, onQuitar }: {
       </Box>
       {parcial && (
         <HStack gap={0.5} flexShrink={0}>
-          <IconButton aria-label="Uno menos" size="sm" variant="ghost" minH={TAP} minW="2rem"
+          <IconButton aria-label="Uno menos" size="sm" variant="ghost" minH={TAP} minW={TAP}
             disabled={cantidad <= 1} onClick={() => setCantidad((c) => Math.max(1, c - 1))}>
             <LuMinus />
           </IconButton>
           <Text minW="1.25rem" textAlign="center" fontWeight="700" fontSize="sm">{cantidad}</Text>
-          <IconButton aria-label="Uno más" size="sm" variant="ghost" minH={TAP} minW="2rem"
+          <IconButton aria-label="Uno más" size="sm" variant="ghost" minH={TAP} minW={TAP}
             disabled={cantidad >= falta} onClick={() => setCantidad((c) => Math.min(falta, c + 1))}>
             <LuPlus />
           </IconButton>
@@ -411,7 +521,7 @@ function Renglon({ l, onEntregar, onQuitar }: {
           seguridad de verdad, así que la barrera real es el diálogo: no borra al tocar, pregunta —
           y de paso dice qué pasa con el ingrediente. */}
       <IconButton aria-label={`Quitar ${l.name}`} size="sm" variant="ghost" colorPalette="red"
-        minH={TAP} minW="2rem" ml={1} flexShrink={0} onClick={onQuitar}>
+        minH={TAP} minW={TAP} ml={1} flexShrink={0} onClick={onQuitar}>
         <LuTrash2 />
       </IconButton>
     </HStack>

@@ -187,7 +187,7 @@ test('al quedar saldado se cierra', async () => {
 // `String(e)` ahí es un objeto de error crudo en la pantalla de quien tiene que decidir qué hacer.
 test('traduce el rebote de otra caja a algo accionable', async () => {
   const u = userEvent.setup();
-  chargeOrder.mockRejectedValue(new Error('conflicto: ese pedido ya está cobrado'));
+  chargeOrder.mockRejectedValue(new Error('ese pedido ya está cobrado'));
   pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
 
   await u.click(await screen.findByRole('button', { name: 'Tarjeta' }));

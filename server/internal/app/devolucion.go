@@ -284,7 +284,7 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 			return err
 		}
 		// La regla la decide el dominio con lo que la base ya sabe, no el cajero.
-		repuso = domain.ReponeInventario(nullTime(l.EnviadoACocinaAt))
+		repuso = domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt))
 		if repuso {
 			if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{
 				LineID: &lineID, ActorID: &actor,
@@ -343,3 +343,172 @@ func (s *OrdersService) PorDevolver(ctx context.Context, orderID int64, lineID *
 	}
 	return domain.MontoDevolvible(cobrado, ya), nil
 }
+
+// CancelPendingResult dice cuántos productos se quitaron y cuántos repusieron inventario.
+type CancelPendingResult struct {
+	Removed   int `json:"removed"`
+	Restocked int `json:"restocked"`
+}
+
+// emptyOrderReason es el motivo fijo de cancelar un pedido que ya no tiene productos: no se le
+// pregunta a nadie porque no hay nada que decidir.
+const emptyOrderReason = "Sin productos"
+
+// CancelPending quita de un pedido todo lo que falta por entregar, en una transacción.
+//
+// Es la salida de un pedido con algo entregado: cancelarlo completo rebota porque soltó comida, y
+// quitar renglón por renglón un pedido de once productos es justo lo que no se hace con el cliente
+// enfrente. Un renglón con entrega parcial se PARTE: lo pendiente se va a un renglón nuevo que se
+// quita, y lo entregado se queda.
+//
+// Sobre un pedido sin productos vivos y sin pagos lo cancela con un motivo fijo; ahí el motivo que
+// mande la pantalla se ignora («Cerrar pedido» no pregunta nada).
+func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64, reason string) (CancelPendingResult, error) {
+	var res CancelPendingResult
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Pedido y luego renglones, en el mismo orden que CancelarRenglon y DeliverLine: en otro
+		// orden, una entrega simultánea se interbloquea con esto.
+		o, err := q.GetOrderForUpdate(ctx, orderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: Ese pedido no existe", domain.ErrNotFound)
+			}
+			return err
+		}
+		if !domain.PuedeRecibirLineas(string(o.Status)) && string(o.Status) != domain.StatusEntregada {
+			return fmt.Errorf("%w: Ese pedido ya se cerró", domain.ErrConflict)
+		}
+		lineas, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		pagos, err := q.SumOrderPayments(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		closeEmpty, err := domain.PlanCancelPending(lineas, pagos.Pagado)
+		if err != nil {
+			return err
+		}
+		if closeEmpty {
+			// Una entregada a la que se le quitó todo después: ya salió y ya contó como venta.
+			if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
+				return fmt.Errorf("%w: Ese pedido ya se cerró", domain.ErrConflict)
+			}
+			// Sin reponer: cada renglón ya resolvió su inventario al quitarse, y reponer aquí lo
+			// haría dos veces.
+			motivo := emptyOrderReason
+			return q.CancelOrder(ctx, db.CancelOrderParams{ID: orderID, CancelledBy: &actor, CancelReason: &motivo})
+		}
+
+		razon, err := domain.ReasonToRemove(reason)
+		if err != nil {
+			return err
+		}
+		renglones, err := q.ListLinesToSplit(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		for _, l := range renglones {
+			pending := l.Quantity.Sub(l.DeliveredQty)
+			if !pending.IsPositive() {
+				continue
+			}
+			lineID := l.ID
+			if l.DeliveredQty.IsPositive() {
+				if lineID, err = splitOrderLine(ctx, q, l, pending, orderID, orderID, actor); err != nil {
+					return err
+				}
+			}
+			if err := q.CancelOrderLine(ctx, db.CancelOrderLineParams{
+				ID: lineID, CancelledBy: &actor, CancelReason: &razon,
+			}); err != nil {
+				return err
+			}
+			res.Removed++
+			if domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt)) {
+				if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{LineID: &lineID, ActorID: &actor}); err != nil {
+					return err
+				}
+				res.Restocked++
+			}
+		}
+		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
+			return err
+		}
+		despues, err := q.GetOrder(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		if err := domain.RemovalKeepsPayments(despues.Total, pagos.Pagado); err != nil {
+			return err
+		}
+		lineas, err = lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
+	})
+	return res, err
+}
+
+// splitOrderLine saca k piezas de un renglón del pedido fromOrderID a uno nuevo del pedido
+// toOrderID, y devuelve su id.
+//
+// El inventario se parte INSERTANDO un par de movimientos «renglón partido» por cada venta del
+// original —lo que se lleva el nuevo sale del original y entra al nuevo—, nunca editando las
+// cantidades: el trigger de existencias solo corre al insertar, y cada par se anula, así que partir
+// no mueve el almacén. Cada renglón queda con los movimientos de sus piezas, que es lo que
+// RestockCancelledLine revierte.
+func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow, k decimal.Decimal, fromOrderID, toOrderID, actor int64) (int64, error) {
+	parts, err := domain.SplitLine(domain.LinePieces{Qty: l.Quantity, Delivered: l.DeliveredQty}, k)
+	if err != nil {
+		return 0, err
+	}
+	unit := l.UnitPrice.Add(l.ModifiersTotal)
+	newID, err := q.SplitOffOrderLine(ctx, db.SplitOffOrderLineParams{
+		OrderID: toOrderID, LineID: l.ID, Quantity: parts.Move.Qty, DeliveredQty: parts.Move.Delivered,
+		LineTotal: domain.Round2(unit.Mul(parts.Move.Qty)),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := q.CopyOrderLineModifiers(ctx, db.CopyOrderLineModifiersParams{NewLineID: newID, LineID: l.ID}); err != nil {
+		return 0, err
+	}
+	if err := q.ShrinkOrderLine(ctx, db.ShrinkOrderLineParams{
+		ID: l.ID, Quantity: parts.Keep.Qty, DeliveredQty: parts.Keep.Delivered,
+		LineTotal: domain.Round2(unit.Mul(parts.Keep.Qty)),
+	}); err != nil {
+		return 0, err
+	}
+	origID := l.ID
+	movs, err := q.ListLineSaleMovements(ctx, &origID)
+	if err != nil {
+		return 0, err
+	}
+	reason := splitLineReason
+	for _, m := range movs {
+		_, move := domain.SplitMovement(m.Quantity, l.Quantity, k)
+		if move.IsZero() {
+			continue
+		}
+		for _, half := range []struct {
+			line, order int64
+			qty         decimal.Decimal
+		}{{origID, fromOrderID, move.Neg()}, {newID, toOrderID, move}} {
+			if err := q.InsertStockMovement(ctx, db.InsertStockMovementParams{
+				ItemType: m.ItemType, IngredientID: m.IngredientID, ProductID: m.ProductID,
+				MovementType: db.StockMovementTypeVenta, Quantity: half.qty, UnitCost: m.UnitCost,
+				OrderID: &half.order, OrderLineID: &half.line, UserID: &actor, Reason: &reason,
+			}); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return newID, nil
+}
+
+// splitLineReason marca en el kárdex los pares de movimientos de un renglón partido, para que se
+// distingan de una venta.
+const splitLineReason = "renglón partido"

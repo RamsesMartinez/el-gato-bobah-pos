@@ -215,12 +215,19 @@ where id = $1;
 -- Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
 -- volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
 -- agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
+--
+-- Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
+-- quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
+-- movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
+-- salieron.
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
        sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
+left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
+  and ol.cancelled_at is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0;
@@ -516,10 +523,13 @@ where o.id = $1;
 -- `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
 -- repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
 -- cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
+--
+-- `needs_prep` porque lo que no se prepara vuelve al almacén aunque haya «salido a cocina».
 select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
-       o.status as order_status
+       o.status as order_status, p.needs_prep
 from order_lines ol
 join orders o on o.id = ol.order_id
+join products p on p.id = ol.product_id
 where ol.id = $1 and ol.order_id = $2
 for update of ol;
 
@@ -563,3 +573,50 @@ returning order_id;
 -- A qué pedido se aplicó un lote. Se consulta cuando el insert de arriba no devolvió nada, para
 -- distinguir el reenvío legítimo —misma llave, mismo pedido— del reintento mal dirigido.
 select order_id from order_line_batches where client_uuid = $1;
+
+-- name: ListLinesToSplit :many
+-- Lo que hace falta para quitar o partir los renglones vivos de un pedido: precio y costo para
+-- copiar el renglón al partirlo, y si el producto se prepara para decidir si se repone.
+--
+-- Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
+-- (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
+select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
+       ol.enviado_a_cocina_at, p.needs_prep
+from order_lines ol
+join products p on p.id = ol.product_id
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id;
+
+-- name: SplitOffOrderLine :one
+-- Parte un renglón: crea uno nuevo con `quantity` piezas que copia precio, modificadores por
+-- unidad, costo, nota y estado de cocina del original. `order_id` puede ser otro pedido (pasar
+-- productos). `parent_line_id` no se copia: nadie lo escribe y partir no arrastra hijos.
+insert into order_lines (order_id, product_id, product_name, quantity, unit_price, modifiers_total,
+                         unit_cost, line_total, notes, delivered_qty, enviado_a_cocina_at)
+select sqlc.arg(order_id), ol.product_id, ol.product_name, sqlc.arg(quantity), ol.unit_price, ol.modifiers_total,
+       ol.unit_cost, sqlc.arg(line_total), ol.notes, sqlc.arg(delivered_qty), ol.enviado_a_cocina_at
+from order_lines ol
+where ol.id = sqlc.arg(line_id)
+returning id;
+
+-- name: CopyOrderLineModifiers :exec
+-- Los modificadores del renglón partido. Son por unidad, así que se copian tal cual.
+insert into order_line_modifiers (order_line_id, modifier_option_id, group_title, option_name,
+                                  quantity, price_delta, unit_cost)
+select sqlc.arg(new_line_id), m.modifier_option_id, m.group_title, m.option_name, m.quantity, m.price_delta, m.unit_cost
+from order_line_modifiers m
+where m.order_line_id = sqlc.arg(line_id);
+
+-- name: ShrinkOrderLine :exec
+-- Lo que se queda en el renglón original después de partirlo.
+update order_lines
+   set quantity = sqlc.arg(quantity), delivered_qty = sqlc.arg(delivered_qty), line_total = sqlc.arg(line_total)
+ where id = sqlc.arg(id);
+
+-- name: ListLineSaleMovements :many
+-- Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
+-- pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando.
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id
+from stock_movements
+where order_line_id = $1 and movement_type = 'venta'
+order by id;

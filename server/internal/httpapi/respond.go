@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -194,7 +195,34 @@ func Error(w http.ResponseWriter, err error) {
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
 	}
-	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg, Details: details}})
+	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
+}
+
+// sentinelPrefixes son los sentinels base que deciden el status. Se envuelven con `%w: texto`, y
+// su nombre («conflicto», «datos inválidos») quedaba pegado delante de todo 400, 403, 404 y 409:
+// un detalle de cómo se arman los errores en Go que quien opera no puede accionar.
+var sentinelPrefixes = []string{
+	domain.ErrConflict.Error() + ": ",
+	domain.ErrValidation.Error() + ": ",
+	domain.ErrForbidden.Error() + ": ",
+	domain.ErrNotFound.Error() + ": ",
+}
+
+// operatorMessage quita los prefijos de los sentinels base del INICIO del mensaje, también los
+// encadenados («conflicto: datos inválidos: …»). Solo del inicio: en medio del texto «no
+// encontrado» es parte de la frase («Producto no encontrado: Taco»), no un prefijo. El status ya
+// lo decidió errors.Is; el texto es solo para quien opera.
+func operatorMessage(msg string) string {
+	for {
+		stripped := msg
+		for _, p := range sentinelPrefixes {
+			stripped = strings.TrimPrefix(stripped, p)
+		}
+		if stripped == msg {
+			return msg
+		}
+		msg = stripped
+	}
 }
 
 // Decode parses a JSON request body into v, returning a validation error on failure.

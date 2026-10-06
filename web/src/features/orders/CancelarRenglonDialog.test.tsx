@@ -38,8 +38,37 @@ describe('quitar un renglón del pedido', () => {
       onCerrar={() => {}} onConfirmar={onConfirmar} />);
 
     expect(onConfirmar).not.toHaveBeenCalled();
-    await u.click(await screen.findByRole('button', { name: 'Quitar del pedido' }));
-    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith('Ya no lo quiere'));
+    await u.click(await screen.findByRole('radio', { name: 'Sin insumos' }));
+    await u.click(screen.getByRole('button', { name: 'Quitar del pedido' }));
+    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith('Sin insumos'));
+  });
+
+  // Con un motivo ya puesto, quitar es un solo toque y el motivo que queda es el que nadie eligió:
+  // el reporte de cancelaciones se llena de «Ya no lo quiere» y deja de decir por qué se quita.
+  it('no trae motivo puesto: «Quitar» espera a que se elija uno', async () => {
+    const u = userEvent.setup();
+    pintar(<CancelarRenglonDialog nombre="Alitas" yaSalioACocina={false} enviando={false}
+      onCerrar={() => {}} onConfirmar={() => {}} />);
+
+    const quitar = await screen.findByRole('button', { name: 'Quitar del pedido' });
+    expect(quitar).toBeDisabled();
+    for (const r of screen.getAllByRole('radio')) expect(r).toHaveAttribute('aria-checked', 'false');
+
+    await u.click(screen.getByRole('radio', { name: 'Se capturó de más' }));
+    expect(quitar).toBeEnabled();
+  });
+
+  // Una sola lista de motivos para quitar, la misma que la hoja de quitar lo que falta: dos listas
+  // parecidas reparten la misma causa en dos nombres y el reporte las cuenta por separado.
+  it('ofrece la lista única de motivos, en filas tocables y sin texto libre', async () => {
+    pintar(<CancelarRenglonDialog nombre="Alitas" yaSalioACocina={false} enviando={false}
+      onCerrar={() => {}} onConfirmar={() => {}} />);
+
+    const motivos = await screen.findAllByRole('radio');
+    expect(motivos.map((m) => m.textContent)).toEqual(
+      ['Ya no lo quiere', 'Se capturó de más', 'Sin insumos', 'Se equivocó el pedido']);
+    for (const m of motivos) expect(m).toHaveStyle({ minHeight: '44px' });
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
   it('se puede salir sin quitar nada', async () => {

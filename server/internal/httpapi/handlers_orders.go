@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"uuid"
@@ -472,6 +475,33 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	}
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
+}
+
+// POST /orders/{id}/lines/cancel-pending  {reason}
+//
+// El cuerpo es opcional: «Cerrar pedido» lo manda vacío sobre un pedido sin productos, donde el
+// motivo es fijo. Con productos pendientes, el servicio exige el motivo.
+func (h *Handlers) CancelPendingLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, fmt.Errorf("%w: Ese número de pedido no es válido", domain.ErrValidation))
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, fmt.Errorf("%w: No se pudo leer el motivo", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.CancelPending(r.Context(), id, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
 }
 
 type discountBody struct {

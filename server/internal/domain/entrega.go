@@ -14,7 +14,9 @@ var (
 	// ErrLineaCancelada: el renglón se canceló, así que no hay nada que entregar.
 	ErrLineaCancelada = fmt.Errorf("%w: ese producto está cancelado", ErrConflict)
 	// ErrCancelarConEntregas: el pedido ya soltó comida y cancelarlo repondría stock inexistente.
-	ErrCancelarConEntregas = fmt.Errorf("%w: este pedido ya tiene productos entregados; cancela los que falten o haz un reembolso", ErrConflict)
+	// No sugiere un reembolso: lo que hace falta ahí es quitar lo pendiente o cerrar el pedido, y
+	// un reembolso es salida de dinero que nadie pidió.
+	ErrCancelarConEntregas = fmt.Errorf("%w: este pedido ya tiene productos entregados; quita lo que falta o ciérralo", ErrConflict)
 )
 
 // LineaEntrega es lo que el dominio necesita saber de un renglón para razonar sobre su entrega.
@@ -81,4 +83,68 @@ func HayEntregaParcial(lineas []LineaEntrega) bool {
 		}
 	}
 	return false
+}
+
+// CanDeliverAll rechaza entregar un pedido sin productos vivos.
+//
+// «Entregar todo» sobre un pedido al que se le quitó todo lo cerraba como entregado: una venta de
+// $0 que el corte y Ventas contaban como venta. Ese pedido no se entregó; se cierra como
+// cancelación («Cerrar pedido»).
+func CanDeliverAll(lineas []LineaEntrega) error {
+	for _, l := range lineas {
+		if !l.Cancelada {
+			return nil
+		}
+	}
+	return ErrNoProducts
+}
+
+// ErrNothingPending: se pidió quitar lo que falta de un pedido al que ya no le falta nada.
+var ErrNothingPending = fmt.Errorf("%w: Ya no falta nada por entregar", ErrConflict)
+
+// PlanCancelPending decide qué hace «Quitar lo que falta»: quitar lo pendiente, o —si el pedido ya
+// no tiene productos vivos— cancelarlo vacío.
+//
+// Un pedido vacío y sin pagos se cancela aunque quien lo pida no pueda «Cancelar pedido»: si no, se
+// quedaría en el tablero sin una sola acción que lo cierre. Con pagos no: cancelarlo sacaría ese
+// dinero del corte sin que nadie lo devolviera; primero se devuelven.
+func PlanCancelPending(lineas []LineaEntrega, paid decimal.Decimal) (closeEmpty bool, err error) {
+	vivas, pendientes := 0, 0
+	for _, l := range lineas {
+		if l.Cancelada {
+			continue
+		}
+		vivas++
+		if l.Falta().IsPositive() {
+			pendientes++
+		}
+	}
+	switch {
+	case vivas == 0 && paid.IsPositive():
+		return false, ErrOrderHasPayments
+	case vivas == 0:
+		return true, nil
+	case pendientes == 0:
+		return false, ErrNothingPending
+	}
+	return false, nil
+}
+
+// RemovalKeepsPayments rechaza quitar productos si el total quedaría por debajo de lo ya cobrado.
+//
+// Ese dinero se quedaría sin venta que lo explique y el corte lo contaría como ingreso de un pedido
+// que ya no lo vale. Lo que procede es devolver un pago primero.
+func RemovalKeepsPayments(newTotal, paid decimal.Decimal) error {
+	if paid.GreaterThan(newTotal) {
+		return ErrOrderWouldBeOverpaid
+	}
+	return nil
+}
+
+// ReasonToRemove limpia el motivo de quitar productos y lo exige.
+func ReasonToRemove(reason string) (string, error) {
+	if MotivoLimpio(reason) == "" {
+		return "", fmt.Errorf("%w: Elige por qué se quitan", ErrValidation)
+	}
+	return MotivoValido(reason)
 }

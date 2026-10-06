@@ -1286,6 +1286,13 @@ func (s *OrdersService) DeliverAll(ctx context.Context, orderID int64) error {
 		if !domain.CanTransition(string(o.Status), domain.StatusEntregada) {
 			return domain.ErrConflict
 		}
+		lineas, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		if err := domain.CanDeliverAll(lineas); err != nil {
+			return err
+		}
 		if err := q.DeliverAllOrderLines(ctx, orderID); err != nil {
 			return err
 		}

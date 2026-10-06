@@ -107,6 +107,11 @@ export const posApi = {
   // pero no devuelve el insumo, y la pantalla tiene que poder decirlo.
   cancelOrderLine: (id: number, lineId: number, reason: string) =>
     api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`, { reason }),
+  // Quitar todo lo que falta por entregar, en una sola petición, y dejar lo entregado. Sin productos
+  // vivos va SIN cuerpo: el servidor cierra el pedido con el motivo fijo «Sin productos».
+  cancelPendingLines: (id: number, reason?: string) =>
+    api.post<{ removed: number; restocked: number }>(`/orders/${id}/lines/cancel-pending`,
+      reason === undefined ? undefined : { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en

@@ -84,3 +84,49 @@ var (
 	// para que el operador sepa cuáles resolver — un error que no dice cuáles no se puede accionar.
 	ErrOpenOrders = errors.New("hay pedidos sin terminar")
 )
+
+// Dividir la cuenta (spec 027). Cada uno envuelve al sentinel base que decide el status; el texto
+// es el que lee quien opera, porque httpapi.Error quita el nombre del sentinel base del mensaje.
+var (
+	ErrPieceAlreadyPaid           = fmt.Errorf("%w: Ese producto ya se pagó", ErrConflict)
+	ErrSplitPartAlreadyCharged    = fmt.Errorf("%w: Esa parte ya se cobró", ErrConflict)
+	ErrChargeKeyMismatch          = fmt.Errorf("%w: Ese cobro ya se hizo con otros productos. Vuelve a intentarlo", ErrConflict)
+	ErrPaymentVoidedKey           = fmt.Errorf("%w: Ese pago ya se devolvió. Vuelve a cobrar", ErrConflict)
+	ErrPaymentAlreadyVoided       = fmt.Errorf("%w: Ese pago ya se devolvió", ErrConflict)
+	ErrPaymentFromClosedShift     = fmt.Errorf("%w: Ese pago es de un turno cerrado: devuélvelo desde Pedidos entregados", ErrConflict)
+	ErrOrderFromClosedShift       = fmt.Errorf("%w: Ese pedido es de un turno cerrado; no se divide", ErrConflict)
+	ErrPlatformOrderNotSplittable = fmt.Errorf("%w: Los pedidos de plataforma no se dividen", ErrConflict)
+	ErrOrderWouldBeOverpaid       = fmt.Errorf("%w: Ya se cobró más de lo que quedaría. Primero hay que devolver un pago", ErrConflict)
+	ErrMixedDeliveredPieces       = fmt.Errorf("%w: Ese producto tiene piezas entregadas y otras sin entregar. Pásalas todas juntas", ErrConflict)
+	ErrAlreadyItsOwnOrder         = fmt.Errorf("%w: Ya es su propio pedido; no hace falta pasarlo", ErrConflict)
+	ErrMoveKeyMismatch            = fmt.Errorf("%w: Esto ya se pasó a otro pedido", ErrConflict)
+	ErrOrderHasPayments           = fmt.Errorf("%w: Tiene pagos: hay que devolverlos primero", ErrConflict)
+	ErrNoProducts                 = fmt.Errorf("%w: Este pedido ya no tiene productos: ciérralo", ErrConflict)
+	ErrDiscountWithPayments       = fmt.Errorf("%w: Ya hay pagos; el descuento se pone antes de cobrar", ErrConflict)
+	ErrOneChargeShape             = fmt.Errorf("%w: Elige una sola forma de cobrar", ErrValidation)
+	ErrEmptySelection             = fmt.Errorf("%w: Elige qué productos paga", ErrValidation)
+	ErrTooManyPieces              = fmt.Errorf("%w: No hay tantas piezas por quitar", ErrValidation)
+
+	// Variantes por operación: el mismo rechazo dice qué hacer según desde dónde se intentó.
+	ErrPieceAlreadyPaidToMove     = Reword(ErrPieceAlreadyPaid, "Ese producto ya se pagó; no se puede pasar")
+	ErrPieceAlreadyPaidToRemove   = Reword(ErrPieceAlreadyPaid, "Ese producto ya se pagó. Primero hay que devolver el pago")
+	ErrOrderFromClosedShiftToMove = Reword(ErrOrderFromClosedShift, "Ese pedido es de un turno cerrado; no se puede pasar")
+)
+
+// reworded conserva el sentinel para errors.Is y cambia el texto entero.
+type reworded struct {
+	base error
+	text string
+}
+
+func (e reworded) Error() string { return e.text }
+func (e reworded) Unwrap() error { return e.base }
+
+// Reword devuelve un error que es base para errors.Is pero se lee como text.
+//
+// Existe porque `%w: texto` siempre arrastra el texto del sentinel delante, y hay rechazos que
+// reusan un sentinel (y su status) con una frase propia que no es continuación de la de él: «Ya se
+// cobraron $X sin elegir productos…» es ErrCobroExcede, pero no empieza con «no puedes cobrar…».
+func Reword(base error, text string) error {
+	return reworded{base: base, text: text}
+}
