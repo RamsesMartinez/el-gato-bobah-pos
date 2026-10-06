@@ -10,23 +10,24 @@ Prende o apaga el ambiente de pruebas. La VM era **spot** y se pasó a **estánd
 septiembre de 2026, cuando las pruebas se volvieron diarias: una spot se detenía sola a media
 corrida. Ya no la reclama Google; apagarla sigue siendo lo que ahorra.
 
-Lo que cuesta, para que la decisión de apagarla tenga sentido (estimado):
+Lo que cuesta, para que la decisión de apagarla tenga sentido (estimado, precios de lista):
 
 | | Prendida | Apagada |
 |---|---|---|
 | VM estándar e2-micro | ~6 USD/mes | 0 |
-| IP fija reservada | ~3 USD/mes | ~3 USD/mes (se cobra igual) |
+| IP pública (efímera desde 2026-10-01) | ~3.6 USD/mes | 0 |
 | Disco de 20 GB | ~1 USD/mes | ~1 USD/mes |
 
-O sea: apagarla ahorra la VM, no la IP ni el disco. La IP se conserva a propósito — sin ella el
-registro DNS de `api-dev` se rompería en cada arranque.
+Ya **no tiene IP fija**: una IP reservada sin usar se cobra al doble (~0.01 USD/h), y esta VM pasa
+casi todo el tiempo apagada. Cada arranque puede traer otra IP, y por eso `on` actualiza el DNS de
+`api-dev` con [scripts/dns-ambiente-dev.sh](../../../scripts/dns-ambiente-dev.sh).
 
 ## Datos fijos
 
 | | |
 |---|---|
 | Instancia | `pos-vps-dev`, zona `us-central1-a`, proyecto `el-gato-bobah-pos` |
-| IP fija | `34.61.175.194` |
+| IP | efímera; la que tenga se ve con `describe` y la pone el script en `api-dev` |
 | API de pruebas | `api-dev.elgatobobah.com` (la sirve esta VM) |
 | Front de pruebas | `app-dev.elgatobobah.com` (proyecto de Pages `el-gato-bobah-pos-dev`) |
 | Cuenta de servicio | `pos-api-dev`: solo cifrar/descifrar con la llave KMS `pos-dev/credenciales`, scope `cloud-platform` |
@@ -49,7 +50,17 @@ registro DNS de `api-dev` se rompería en cada arranque.
 gcloud compute instances start pos-vps-dev --zone us-central1-a
 ```
 
-Después espera a que responda y repórtalo. El arranque completo tarda ~40s; los contenedores
+Después apunta el DNS a la IP de este arranque (ruta relativa a la raíz del repo):
+
+```bash
+scripts/dns-ambiente-dev.sh
+```
+
+Imprime `OK … ya apunta a` o `OK …: vieja -> nueva`. Si dice `FALLO`, repórtalo tal cual: lo más
+probable es que el token de Cloudflare (`CLOUDFLARE_API_TOKEN` en `~/.claude/settings.json`,
+permiso Zone·DNS·Edit) haya vencido o falte. El registro tiene TTL de 60 s.
+
+Luego espera a que responda y repórtalo. El arranque completo tarda ~40s; los contenedores
 suben solos por `restart: unless-stopped`:
 
 ```bash
