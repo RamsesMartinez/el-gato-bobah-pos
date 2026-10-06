@@ -413,6 +413,10 @@ cada comando ANTES de correrlo y pide aprobación si nombra esa máquina o su IP
 respaldos (`pg_dump` y traerse el archivo), que es la excepción que se autorizó: no cambian nada y
 son lo que uno quiere poder hacer rápido antes de una migración.
 
+**`pos-vps` se apaga sola a la 01:00 y enciende a las 08:00** (hora del centro), con respaldo
+verificado a las 00:45 y snapshot del disco a las 02:00: un deploy o un SSH en esa ventana falla
+porque la máquina no está. Es temporal: se quita al firmar el primer cliente externo. Runbook: [docs/respaldos-produccion.md](docs/respaldos-produccion.md).
+
 `pos-vps-dev` **no** está gateado: ahí se prueba, y frenar cada comando volvería inútil la
 verificación contra el ambiente desplegado.
 
