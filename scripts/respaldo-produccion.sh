@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Respaldo diario de la base de producción. Corre EN LA VM (pos-vps), por cron, a las 00:45 hora del
-# centro de México: 15 minutos antes de que el horario de la instancia la apague a la 01:00.
+# centro de México, cuando el local ya cerró. (Se eligió esa hora cuando la VM se apagaba a la 01:00;
+# desde el 2026-10-05 ya no se apaga, y la hora se quedó porque sigue siendo la de menos uso.)
 #
 #   1. pg_dump en formato custom dentro del contenedor de Postgres.
 #   2. Comprueba que el archivo se puede leer (pg_restore -l). Un respaldo que no se verificó es un

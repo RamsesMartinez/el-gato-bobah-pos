@@ -6,16 +6,17 @@ programado, ni bucket. Los únicos respaldos eran los que se tomaban a mano ante
 
 ## 1. La noche, en orden (hora del centro de México, UTC−6 todo el año)
 
+**La VM ya no se apaga** (decidido el 2026-10-05): ni producción ni pruebas tienen horario adjunto.
+La política `pos-vps-horario` sigue existiendo pero no está asignada a ninguna VM. Lo que corre cada
+noche:
+
 | Hora | Qué | Dónde se configura |
 |---|---|---|
 | 00:45 | `pg_dump` de la base, verificado y subido fuera de la VM | cron de la VM, `/etc/cron.d/respaldo-gatobobah` (06:45 UTC: la VM corre en UTC) |
-| 01:00 | La VM se apaga | política `pos-vps-horario` (instance schedule) |
-| 02:00 | Snapshot del disco completo, con la VM apagada | política `pos-vps-diario` (snapshot schedule, 08:00 UTC) sobre el disco `pos-vps` |
-| 08:00 | La VM se enciende; los contenedores suben solos (`restart: unless-stopped`) | `pos-vps-horario` |
+| 02:00 | Snapshot del disco completo, con la VM prendida | política `pos-vps-diario` (snapshot schedule, 08:00 UTC) sobre el disco `pos-vps` |
 
-El horario de instancia de Google no es exacto al minuto: el arranque y el apagado pueden tardar
-hasta ~15 minutos. El respaldo va 15 minutos antes del apagado por eso, y el apagado es ordenado
-(Docker detiene Postgres con SIGTERM), no un corte de luz.
+Con la VM prendida, el snapshot es del disco en uso: sirve para reconstruir la máquina, pero la base
+se recupera del dump, que es consistente por construcción.
 
 ## 2. Dos copias, y por qué dos
 
@@ -59,19 +60,10 @@ correo).
 Verificado el 2026-09-29: el primer dump del bucket se bajó, coincidió su sha256 y restauró sin
 errores en una base temporal.
 
-## 5. Lo que cuesta tener la VM apagada de 01:00 a 08:00
+## 5. Si se vuelve a apagar de noche
 
-**Es temporal, a propósito** (decidido el 2026-09-29): ahorra costo mientras el sistema sirve a un
-solo negocio, que no opera de noche. **Se quita al firmar el primer cliente externo**: otro negocio
-puede operar de madrugada y la API tiene que estar siempre arriba. Al quitarlo se desasocia
-`pos-vps-horario` y se conservan el respaldo y el snapshot, moviendo su hora si hace falta.
-
-- **La API no existe en esa ventana**: la tableta que quede abierta ve errores de red.
-- **Un deploy de CI en esa ventana falla** (el job entra por SSH). Se reintenta después de las 08:00.
-- **Los pedidos de Uber por webhook (spec 021) no pueden llegar**: la tienda de Uber tiene que
-  estar cerrada en ese horario. Hoy los webhooks no están activos en producción.
-- **Cambiar el horario** es editar la política (`gcloud compute resource-policies` no la edita:
-  se crea otra, se desasocia la vieja y se asocia la nueva) y mover el cron del respaldo para que
-  siga 15 minutos antes del apagado.
-- El agente de servicio de Compute (`service-<número>@compute-system`) tiene
-  `compute.instanceAdmin.v1` en el proyecto: el horario de instancia no funciona sin él.
+Se apagó de 01:00 a 08:00 entre el 2026-09-29 y el 2026-10-05 para ahorrar mientras el sistema sirve
+a un solo negocio; se quitó porque encontrar la VM apagada a media sesión costaba más que el ahorro.
+Si se vuelve a poner: asignar `pos-vps-horario` a la VM y mover el cron del respaldo para que corra
+15 minutos antes del apagado. Mientras esté apagada no hay API, un deploy de CI falla y los pedidos
+de Uber por webhook no pueden llegar.

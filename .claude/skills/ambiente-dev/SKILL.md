@@ -1,14 +1,19 @@
 ---
 name: "ambiente-dev"
-description: "Prende, apaga o revisa la VM de pruebas (pos-vps-dev) en Google Cloud. Úsalo para no dejarla corriendo y pagando cuando no se ocupa, y para saber en qué estado quedó."
+description: "Revisa, prende o (solo si el dueño lo pide) apaga la VM de pruebas (pos-vps-dev) en Google Cloud. Se queda prendida todo el día; úsalo para saber en qué estado está y para levantarla si se cayó."
 argument-hint: "on | off | estado (sin argumento = estado)"
 user-invocable: true
 disable-model-invocation: false
 ---
 
-Prende o apaga el ambiente de pruebas. La VM era **spot** y se pasó a **estándar** en
+Prende, revisa o apaga el ambiente de pruebas. La VM era **spot** y se pasó a **estándar** en
 septiembre de 2026, cuando las pruebas se volvieron diarias: una spot se detenía sola a media
-corrida. Ya no la reclama Google; apagarla sigue siendo lo que ahorra.
+corrida.
+
+> **Se queda prendida (decidido por el dueño el 2026-10-05).** Ni producción ni pruebas se apagan
+> solas: no hay horario adjunto a ninguna de las dos y no se vuelve a poner. Un agente **no** corre
+> `off` al terminar sus pruebas; solo cuando el dueño lo pide. Costó varias corridas fallidas
+> encontrarla apagada a media sesión, y el ahorro (~10 USD/mes) no lo compensa.
 
 Lo que cuesta, para que la decisión de apagarla tenga sentido (estimado, precios de lista):
 
@@ -18,8 +23,9 @@ Lo que cuesta, para que la decisión de apagarla tenga sentido (estimado, precio
 | IP pública (efímera desde 2026-10-01) | ~3.6 USD/mes | 0 |
 | Disco de 20 GB | ~1 USD/mes | ~1 USD/mes |
 
-Ya **no tiene IP fija**: una IP reservada sin usar se cobra al doble (~0.01 USD/h), y esta VM pasa
-casi todo el tiempo apagada. Cada arranque puede traer otra IP, y por eso `on` actualiza el DNS de
+Ya **no tiene IP fija** (se quitó cuando pasaba casi todo el tiempo apagada: una IP reservada sin
+usar se cobra al doble). Prendida todo el día, reservarla de nuevo costaría lo mismo que la efímera
+y ahorraría mover el DNS; queda como opción, no hace falta. Cada arranque puede traer otra IP, y por eso `on` actualiza el DNS de
 `api-dev` con [scripts/dns-ambiente-dev.sh](../../../scripts/dns-ambiente-dev.sh).
 
 ## Datos fijos
@@ -71,7 +77,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api-dev.elgatobobah.com/readyz
 Si `/readyz` no contesta 200 al minuto, entra y mira los contenedores antes de reportar que está
 lista.
 
-### `off` — apagarla
+### `off` — apagarla (solo si el dueño lo pide)
 
 ```bash
 gcloud compute instances stop pos-vps-dev --zone us-central1-a
