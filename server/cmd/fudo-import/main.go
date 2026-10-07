@@ -29,6 +29,8 @@ func main() {
 	dir := flag.String("dir", "../references", "carpeta con los exports FUDO (usa dir/csv/*.csv)")
 	force := flag.Bool("force", false, "reimportar aunque existan órdenes (borra el catálogo)")
 	company := flag.String("company", "", "slug de la empresa destino (obligatorio si hay más de una)")
+	compositions := flag.Bool("compositions", false, "solo carga lo que lleva cada producto, extra e insumo, como estimado, sin borrar nada")
+	dryRun := flag.Bool("dry-run", false, "con -compositions: reporta lo que haría sin escribir")
 	flag.Parse()
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -67,6 +69,13 @@ func main() {
 	//nolint:gosec // G706: el slug no viene del usuario, sale de companies y ya se validó contra
 	// esa lista en resolveCompanySlug; además %q lo entrecomilla.
 	log.Printf("importando al tenant %q", slug)
+
+	if *compositions {
+		if err := loadCompositions(ctx, pool, slug, filepath.Join(*dir, "csv"), *dryRun); err != nil {
+			log.Fatalf("carga de composiciones falló: %v", err)
+		}
+		return
+	}
 
 	imp := &importer{pool: pool, csvDir: filepath.Join(*dir, "csv")}
 	if err := imp.run(ctx, *force); err != nil {

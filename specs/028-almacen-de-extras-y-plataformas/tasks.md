@@ -44,8 +44,8 @@
 
 ## Phase 7: Carga de FUDO
 
-- [ ] T022 Test (con CSV de prueba en testdata, sin datos del negocio): no pisa lo capturado; marca estimada; reporta nombres ambiguos e insumos inexistentes; filtra por empresa
-- [ ] T023 `cmd/fudo-import -compositions -company <slug>` (server/cmd/fudo-import/compositions.go)
+- [x] T022 Test (con CSV de prueba en testdata, sin datos del negocio): no pisa lo capturado; marca estimada; reporta nombres ambiguos e insumos inexistentes; filtra por empresa
+- [x] T023 `cmd/fudo-import -compositions -company <slug> [-dry-run]` (server/cmd/fudo-import/compositions.go, lógica en server/internal/fudoimport). Los paquetes de FUDO se reportan y no se convierten: cambiar un producto a paquete cambia cómo se vende
 
 ## Phase 8: Cierre
 
