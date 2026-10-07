@@ -177,6 +177,13 @@ describe('la hoja «Qué lleva»', () => {
     expect(screen.queryByRole('button', { name: 'No lleva nada' })).not.toBeInTheDocument();
   });
 
+  it('un paquete que deja elegir no se edita aquí y lo dice al abrir', async () => {
+    api.composition.mockResolvedValue({ ...sinCapturar, status: 'confirmed', editable: false, reason: 'package_choices' });
+    montar('product');
+    expect(await screen.findByText(/deja elegir entre productos/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
+  });
+
   it('un producto con existencias propias no se edita aquí y lo dice', async () => {
     api.composition.mockResolvedValue({ ...sinCapturar, status: 'confirmed', editable: false, reason: 'own_stock' });
     montar('product');

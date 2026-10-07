@@ -155,6 +155,13 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 			v.Editable, v.Reason = false, "own_stock"
 		}
 		if p.Type == db.ProductTypeCombo {
+			choices, err := q.PackageHasChoices(ctx, id)
+			if err != nil {
+				return v, err
+			}
+			if choices {
+				v.Editable, v.Reason = false, "package_choices"
+			}
 			comps, err := q.ListPackageComponents(ctx, id)
 			if err != nil {
 				return v, err
@@ -329,7 +336,7 @@ func validateComposition(ctx context.Context, q *db.Queries, kind CompositionKin
 			return nil, err
 		}
 		if choices {
-			return nil, fmt.Errorf("%w: este paquete deja elegir entre productos; capturarlo aquí borraría esas opciones", domain.ErrConflict)
+			return nil, fmt.Errorf("%w: este paquete deja elegir entre productos o tiene un hueco vacío; capturarlo aquí lo borraría", domain.ErrConflict)
 		}
 	}
 	if len(req.Components) > 0 {

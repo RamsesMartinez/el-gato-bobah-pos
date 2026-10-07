@@ -108,12 +108,14 @@ select pg_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company
 
 -- name: PackageHasChoices :one
 -- Un paquete armado fuera de «Qué lleva» puede dejar elegir (un hueco con varios productos o con
--- mínimo distinto del máximo). Reescribirlo con huecos fijos borraría esas opciones sin avisar.
+-- mínimo distinto del máximo) o tener un hueco sin producto por omisión, que «Qué lleva» no muestra.
+-- Reescribirlo con lo que se ve borraría esas opciones o ese hueco sin avisar.
 select exists (
   select 1 from combo_slots cs
    where cs.combo_id = $1
      and (cs.min_select <> cs.max_select
-          or (select count(*) from combo_slot_products csp where csp.slot_id = cs.id) > 1)
+          or (select count(*) from combo_slot_products csp where csp.slot_id = cs.id) > 1
+          or not exists (select 1 from combo_slot_products csp where csp.slot_id = cs.id and csp.is_default))
 )::boolean as has_choices;
 
 -- name: ListPackageComponents :many

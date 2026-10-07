@@ -158,7 +158,11 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
     return (
       <>
         <DrawerBody>
-          <Text>Este producto descuenta sus propias existencias: cada venta baja una pieza de él.</Text>
+          <Text>
+            {data.reason === 'package_choices'
+              ? 'Este paquete deja elegir entre productos o tiene un hueco sin producto. Cada venta descuenta lo que lleva por omisión; aquí no se cambia, para no perder esas opciones.'
+              : 'Este producto descuenta sus propias existencias: cada venta baja una pieza de él.'}
+          </Text>
         </DrawerBody>
         <DrawerFooter><Button minH="44px" onClick={onClose}>Cerrar</Button></DrawerFooter>
       </>

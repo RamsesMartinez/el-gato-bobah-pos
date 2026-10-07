@@ -51,7 +51,7 @@ export interface Composition {
   yield?: string;
   yieldUnitCode?: string;
   editable: boolean;
-  reason?: 'own_stock';
+  reason?: 'own_stock' | 'package_choices';
 }
 export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];

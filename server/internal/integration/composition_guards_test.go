@@ -79,6 +79,35 @@ func TestCompositionGuards(t *testing.T) {
 		}
 	})
 
+	// Un hueco sin producto por omisión no sale en «Qué lleva»: guardar lo borraría sin que nadie lo
+	// viera y el paquete quedaría confirmado a medias. Lo encontró la revisión de código.
+	t.Run("un paquete con un hueco vacío no se reescribe en silencio", func(t *testing.T) {
+		gap := makeProduct(t, owner, "Paquete con hueco barreras", decimal.RequireFromString("80"), false)
+		if _, err := owner.Pool.Exec(ctx, `update products set type = 'combo' where id = $1`, gap); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := owner.Pool.Exec(ctx, `
+			with a as (insert into combo_slots (combo_id, name, position) values ($1, 'Crepa', 0) returning id),
+			     b as (insert into combo_slots (combo_id, name, position) values ($1, 'Bebida', 1) returning id)
+			insert into combo_slot_products (slot_id, product_id, is_default)
+			select id, $2::bigint, true from a union all select id, $3::bigint, false from b`, gap, crepe, soda); err != nil {
+			t.Fatal(err)
+		}
+		err := svc.SaveComposition(tctx, app.CompositionOfProduct, gap,
+			app.CompositionRequest{Components: []app.CompositionComponent{{ProductID: crepe, Quantity: 1}}}, admin)
+		if !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("debe rechazarse como conflicto: %v", err)
+		}
+		// Y la hoja lo dice al abrir, no al guardar.
+		v, err := svc.Composition(tctx, app.CompositionOfProduct, gap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Editable || v.Reason != "package_choices" {
+			t.Fatalf("la hoja debe avisar que este paquete no se captura aquí: %+v", v)
+		}
+	})
+
 	t.Run("un producto de otra empresa no entra en un paquete", func(t *testing.T) {
 		err := svc.SaveComposition(tctx, app.CompositionOfProduct, crepe,
 			app.CompositionRequest{Components: []app.CompositionComponent{{ProductID: foreignProduct, Quantity: 1}}}, admin)
