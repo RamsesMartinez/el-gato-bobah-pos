@@ -265,3 +265,39 @@ func TestCounterSaleDepletesExtrasAndPackages(t *testing.T) {
 		t.Fatalf("la perla extra se repone con el renglón: quedó %s", got)
 	}
 }
+
+// EL MOVIMIENTO DE UNA VENTA QUEDA EN LA SUCURSAL DEL PEDIDO.
+//
+// La 0076 llenaba la sucursal de un movimiento con «la de la empresa», como cualquier fila sin
+// sucursal. La venta no la pasa, así que con dos sucursales cada venta tronaba con BRANCH_AMBIGUOUS:
+// el segundo local no podía vender nada. La prueba de la 0076 insertaba el movimiento con la
+// sucursal ya puesta, y por eso no lo vio.
+func TestASaleMovementTakesTheBranchOfItsOrder(t *testing.T) {
+	owner := newTestStore(t)
+	ctx := context.Background()
+	cashier := makeUser(t, owner, "cajero_sur", "cajero")
+	product := makeProduct(t, owner, "Galleta sur", decimal.RequireFromString("20.00"), true)
+	southBranch, southRegister := addBranch(t, owner, defaultCompanyID, "SUR")
+
+	var session, order int64
+	if err := owner.Pool.QueryRow(ctx,
+		`insert into register_sessions (business_date, opening_cash, opened_by, register_id) values ($1, 0, $2, $3) returning id`,
+		fixedNow, cashier, southRegister).Scan(&session); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Pool.QueryRow(ctx,
+		`insert into orders (client_uuid, business_date, daily_number, service_type, subtotal, total, opened_by, register_session_id)
+		 values (gen_random_uuid(), current_date, 1, 'mostrador', 20, 20, $1, $2) returning id`,
+		cashier, session).Scan(&order); err != nil {
+		t.Fatal(err)
+	}
+	var branch int64
+	if err := owner.Pool.QueryRow(ctx,
+		`insert into stock_movements (item_type, product_id, movement_type, quantity, order_id, user_id)
+		 values ('producto', $1, 'venta', -1, $2, $3) returning branch_id`, product, order, cashier).Scan(&branch); err != nil {
+		t.Fatalf("con dos sucursales, la venta del segundo local no puede descontar: %v", err)
+	}
+	if branch != southBranch {
+		t.Fatalf("el movimiento debe quedar en la sucursal del pedido (%d), quedó en %d", southBranch, branch)
+	}
+}

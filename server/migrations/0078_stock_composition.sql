@@ -94,9 +94,42 @@ alter table platform_incoming_order_lines add column modifier_option_id bigint;
 alter table platform_incoming_order_lines add constraint platform_incoming_order_lines_option_of_company
   foreign key (modifier_option_id, company_id) references modifier_options (id, company_id) on delete restrict;
 
+-- ---------------------------------------------------------------------------------------------
+-- 5. EL MOVIMIENTO DE UNA VENTA VA A LA SUCURSAL DE SU PEDIDO
+--
+-- La 0076 lo llenaba con «la de la empresa», como cualquier fila sin sucursal. Las ventas y sus
+-- reposiciones no la pasan, así que con dos sucursales cada venta tronaba con EGB01: el segundo
+-- local no podía vender. Solo si el pedido es de la misma empresa; si no, que la llave compuesta
+-- lo rechace, no este trigger.
+-- ---------------------------------------------------------------------------------------------
+-- +goose StatementBegin
+create function fill_stock_movement_branch_id() returns trigger
+language plpgsql as $$
+begin
+  if new.branch_id is null and new.order_id is not null then
+    select o.branch_id into new.branch_id
+      from orders o where o.id = new.order_id and o.company_id = new.company_id;
+  end if;
+  if new.branch_id is null then
+    new.branch_id := branch_for_company(new.company_id);
+  end if;
+  return new;
+end;
+$$;
+-- +goose StatementEnd
+
+drop trigger trg_stock_movements_branch on stock_movements;
+create trigger trg_stock_movements_branch before insert on stock_movements
+  for each row execute function fill_stock_movement_branch_id();
+
 -- +goose Down
 
 set local lock_timeout = '3s';
+
+drop trigger trg_stock_movements_branch on stock_movements;
+create trigger trg_stock_movements_branch before insert on stock_movements
+  for each row execute function fill_branch_id();
+drop function fill_stock_movement_branch_id();
 
 alter table platform_incoming_order_lines drop constraint platform_incoming_order_lines_option_of_company;
 alter table platform_incoming_order_lines drop column modifier_option_id;

@@ -207,6 +207,9 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un insert sin `branch_id` lo llena un trigger con la sucursal de la EMPRESA DE LA FILA**, no
     la de la sesión. Por eso un insert como owner para otra empresa funciona sin pasarla. Un pedido
     toma la de la caja de su turno; uno de plataforma, la de su tienda (explícita en `CreateOrder`).
+    Un movimiento de almacén con `order_id` toma la de su pedido (0078): antes tomaba la de la
+    empresa, y con dos sucursales toda venta tronaba con `BRANCH_AMBIGUOUS`. Una tabla nueva que
+    cuelgue de un pedido necesita el mismo trigger, no el genérico.
   - **La matriz nace en `CreateCompany`, no en un trigger sobre `companies`**: `pg_restore` carga con
     COPY, que dispara triggers, y duplicaría la matriz que el respaldo ya trae. Un script que cree
     empresas a mano crea también su matriz (ver `docs/corte-produccion/01_nueva_empresa.sql`).
