@@ -215,6 +215,15 @@ func TestValidateCompositionInput(t *testing.T) {
 		{"vacía borra", CompositionInput{}, nil},
 		{"las dos cosas", CompositionInput{LinkedProductID: ip(9), Items: []CompositionItem{item(1, "1", gramo)}}, ErrValidation},
 		{"cantidad cero", CompositionInput{Items: []CompositionItem{item(1, "0", gramo)}}, ErrValidation},
+		// Pasaba la validación y en la base quedaba en 0.0000: el check de la receta la rechazaba y
+		// la pantalla recibía un 500 en vez de «cantidad inválida».
+		{"cantidad que redondea a cero", CompositionInput{Items: []CompositionItem{item(1, "0.00003", gramo)}}, ErrValidation},
+		{"paquete", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 2}, {ProductID: 8, Qty: 1}}}, nil},
+		{"paquete con insumos", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1}}, Items: []CompositionItem{item(1, "1", gramo)}}, ErrValidation},
+		{"paquete y producto ligado", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1}}, LinkedProductID: ip(9)}, ErrValidation},
+		{"componente sin cantidad", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 0}}}, ErrValidation},
+		{"componente absurdo", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1000}}}, ErrValidation},
+		{"componente repetido", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1}, {ProductID: 7, Qty: 2}}}, ErrValidation},
 		{"cantidad negativa", CompositionInput{Items: []CompositionItem{item(1, "-1", gramo)}}, ErrValidation},
 		{"cantidad absurda", CompositionInput{Items: []CompositionItem{item(1, "100000000", gramo)}}, ErrValidation},
 		{"insumo repetido", CompositionInput{Items: []CompositionItem{item(1, "1", gramo), item(1, "2", gramo)}}, ErrValidation},

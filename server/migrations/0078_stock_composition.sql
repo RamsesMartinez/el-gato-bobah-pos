@@ -29,10 +29,17 @@ alter table ingredients add column composition_status text;
 alter table ingredients add column composition_confirmed_by bigint references users(id) on delete set null;
 alter table ingredients add column composition_confirmed_at timestamptz;
 
--- Un paquete ya armado en el POS lo configuró alguien aquí, no vino de FUDO: queda confirmado. El
--- confirmador nulo dice que lo confirmó la migración y no una persona.
-update products set composition_status = 'confirmed', composition_confirmed_at = now()
- where track_stock or type = 'combo';
+-- Un paquete ya armado en el POS lo configuró alguien aquí, no vino de FUDO: queda confirmado, pero
+-- solo si cada hueco tiene su producto por omisión. Uno a medias no descuenta ese hueco, y
+-- confirmarlo lo escondería de «sin capturar» para siempre. El confirmador nulo dice que lo confirmó
+-- la migración y no una persona.
+update products p set composition_status = 'confirmed', composition_confirmed_at = now()
+ where p.track_stock
+    or (p.type = 'combo'
+        and exists (select 1 from combo_slots cs where cs.combo_id = p.id)
+        and not exists (select 1 from combo_slots cs where cs.combo_id = p.id
+                          and not exists (select 1 from combo_slot_products csp
+                                           where csp.slot_id = cs.id and csp.is_default)));
 update products set composition_status = 'estimated'
  where composition_status is null and recipe_id is not null;
 update modifier_options set composition_status = 'estimated'
@@ -56,6 +63,14 @@ alter table ingredients add constraint ingredients_composition_status check (
 -- por sus movimientos ni se los lleva; se pierde la etiqueta, no el movimiento. Compuesta no puede
 -- ser: con `set null` pondría en nulo también `company_id`.
 -- ---------------------------------------------------------------------------------------------
+-- El movimiento de una venta se liga a su pedido CON la empresa. La llave simple dejaba colgar un
+-- movimiento de la empresa A del pedido de la B —la integridad referencial salta RLS (0041)— y el
+-- trigger de abajo, al no encontrar el pedido en la empresa del movimiento, le ponía una sucursal
+-- que parecía válida. Así truena al insertar.
+alter table stock_movements drop constraint stock_movements_order_id_fkey;
+alter table stock_movements add constraint stock_movements_order_of_company
+  foreign key (order_id, company_id) references orders (id, company_id);
+
 alter table stock_movements add column modifier_option_id bigint references modifier_options(id) on delete set null;
 alter table stock_movements add column component_of_product_id bigint references products(id) on delete set null;
 
@@ -99,8 +114,7 @@ alter table platform_incoming_order_lines add constraint platform_incoming_order
 --
 -- La 0076 lo llenaba con «la de la empresa», como cualquier fila sin sucursal. Las ventas y sus
 -- reposiciones no la pasan, así que con dos sucursales cada venta tronaba con EGB01: el segundo
--- local no podía vender. Solo si el pedido es de la misma empresa; si no, que la llave compuesta
--- lo rechace, no este trigger.
+-- local no podía vender. Un pedido de otra empresa lo rechaza la llave compuesta de la sección 2.
 -- ---------------------------------------------------------------------------------------------
 -- +goose StatementBegin
 create function fill_stock_movement_branch_id() returns trigger
@@ -138,6 +152,9 @@ drop table order_line_components;
 alter table order_lines drop constraint order_lines_id_company_key;
 
 alter table stock_movements drop column component_of_product_id;
+alter table stock_movements drop constraint stock_movements_order_of_company;
+alter table stock_movements add constraint stock_movements_order_id_fkey
+  foreign key (order_id) references orders (id);
 alter table stock_movements drop column modifier_option_id;
 
 alter table ingredients drop constraint ingredients_composition_status;

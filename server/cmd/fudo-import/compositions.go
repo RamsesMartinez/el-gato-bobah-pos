@@ -63,6 +63,7 @@ func logReport(p fudoimport.Plan) {
 	section("nombres que empatan con más de uno (no se adivinan)", r.Ambiguous)
 	section("insumos que no existen en el POS (la receta no se cargó)", r.MissingIngredients)
 	section("unidades de otro tipo (la receta no se cargó)", r.UnitMismatch)
+	section("insumos que se llevarían a sí mismos, directo o por otro (no se cargaron)", r.Cycles)
 	section("cantidades inválidas (la receta no se cargó)", r.InvalidQuantity)
 	section("recetas de FUDO sin producto ni extra en el POS", r.NotInCatalog)
 	section("paquetes de FUDO: se capturan a mano en el POS", r.Packages)

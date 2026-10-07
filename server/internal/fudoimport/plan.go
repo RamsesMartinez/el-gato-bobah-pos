@@ -8,10 +8,11 @@ package fudoimport
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
 // Row es un renglón de un CSV de FUDO, por nombre de columna.
@@ -60,6 +61,9 @@ type Catalog struct {
 	Products    []Product
 	Options     []Option
 	Ingredients []Ingredient
+	// PrepComponents son los insumos que ya lleva cada insumo compuesto del POS: sin ellos, un
+	// insumo nuevo podría cerrar un ciclo con uno que ya existía.
+	PrepComponents map[int64][]int64
 }
 
 // Line es un renglón de receta, ya en la unidad base del insumo.
@@ -83,6 +87,7 @@ type Report struct {
 	InvalidQuantity    []string
 	NotInCatalog       []string
 	Packages           []string
+	Cycles             []string
 	AlreadyCaptured    int
 }
 
@@ -262,6 +267,11 @@ func PlanCompositions(src Sources, cat Catalog) Plan {
 		}
 	}
 
+	preps := prepGraph{domain.StockGraph{Ingredients: map[int64]domain.StockIngredient{}, Recipes: map[int64][]domain.RecipeLine{}}}
+	for id, comps := range cat.PrepComponents {
+		preps.addPrep(id, comps)
+	}
+
 	// Insumos compuestos: la receta de FUDO es por UNA unidad del insumo, así que rinde esa unidad
 	// expresada en la base del POS (1 L → 1000 ml).
 	for _, rc := range collect(src.SubIngredients, "Ingrediente") {
@@ -286,10 +296,17 @@ func PlanCompositions(src Sources, cat Catalog) Plan {
 			continue
 		}
 		if ls, ok := lines(rc.name, rc.rows, "Subingrediente"); ok {
-			if slices.ContainsFunc(ls, func(l Line) bool { return l.IngredientID == in.ID }) {
-				p.Report.UnitMismatch = append(p.Report.UnitMismatch, fmt.Sprintf("%s: se contiene a sí mismo", rc.name))
+			components := make([]int64, 0, len(ls))
+			for _, l := range ls {
+				components = append(components, l.IngredientID)
+			}
+			// La misma regla que la captura a mano: ni directo (A lleva A) ni indirecto (A lleva B y B
+			// lleva A), contando lo que ya había en el POS y lo que esta carga ya aceptó.
+			if err := preps.ValidatePrepIngredient(in.ID, components); err != nil {
+				p.Report.Cycles = append(p.Report.Cycles, rc.name)
 				continue
 			}
+			preps.addPrep(in.ID, components)
 			p.PrepIngredients[in.ID] = Prep{Lines: ls, Yield: u.ToBase}
 		}
 	}
@@ -298,6 +315,20 @@ func PlanCompositions(src Sources, cat Catalog) Plan {
 		p.Report.Packages = append(p.Report.Packages, rc.name)
 	}
 	return p
+}
+
+// prepGraph es el grafo de insumos compuestos que valida los ciclos. Cada insumo usa su propio id
+// como id de receta: aquí solo importa quién lleva a quién, no cuánto.
+type prepGraph struct{ domain.StockGraph }
+
+func (g prepGraph) addPrep(id int64, components []int64) {
+	rid := id
+	g.Ingredients[id] = domain.StockIngredient{ID: id, IsPrep: true, RecipeID: &rid, YieldQty: decimal.NewFromInt(1)}
+	lines := make([]domain.RecipeLine, 0, len(components))
+	for _, c := range components {
+		lines = append(lines, domain.RecipeLine{IngredientID: c, QtyBase: decimal.NewFromInt(1)})
+	}
+	g.Recipes[rid] = lines
 }
 
 func fudoUnitOf(units map[string]string, name string) string {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 // LO VENDIDO POR PRODUCTO CUENTA LO QUE SALIÓ DENTRO DE UN PAQUETE (spec 028, historia 4).
@@ -85,6 +86,21 @@ func TestProductsSoldCountsWhatWentInsidePackages(t *testing.T) {
 	if g := got["Refresco vendidos"]; g != (sold{"0", "4"}) {
 		t.Fatalf("refresco: 0 suelto y 4 en paquetes, salió %+v", g)
 	}
+
+	// Lo filtra RLS, no la consulta: desde otra empresa, una conexión reciclada o sin empresa no
+	// aparece nada de lo vendido aquí.
+	other := makeCompany(t, st, "empresa-otra-vendidos")
+	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
+		rows, err := app.NewBackofficeService(st, clock).ProductsSold(ctx, day, day, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			if r.ProductName == "Crepa vendidos" || r.ProductName == "Refresco vendidos" {
+				t.Fatalf("se vio lo vendido por otra empresa: %+v", r)
+			}
+		}
+	})
 }
 
 // UN INSUMO PREPARADO DESCUENTA LO QUE LO COMPONE (spec 028, historia 5).

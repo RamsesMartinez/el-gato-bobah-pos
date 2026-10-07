@@ -77,6 +77,24 @@ func LoadCatalog(ctx context.Context, q pgx.Tx, company int64) (Catalog, error) 
 		cat.Ingredients = append(cat.Ingredients, in)
 	}
 	rows.Close()
+
+	cat.PrepComponents = map[int64][]int64{}
+	rows, err = q.Query(ctx, `
+		select i.id, ri.ingredient_id
+		  from ingredients i join recipe_items ri on ri.recipe_id = i.recipe_id
+		 where i.company_id = $1 and i.is_prep`, company)
+	if err != nil {
+		return cat, err
+	}
+	for rows.Next() {
+		var id, comp int64
+		if err := rows.Scan(&id, &comp); err != nil {
+			rows.Close()
+			return cat, err
+		}
+		cat.PrepComponents[id] = append(cat.PrepComponents[id], comp)
+	}
+	rows.Close()
 	return cat, rows.Err()
 }
 

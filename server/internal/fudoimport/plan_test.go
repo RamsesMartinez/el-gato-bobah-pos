@@ -154,6 +154,41 @@ func TestPlanCompositions(t *testing.T) {
 	})
 }
 
+// UN INSUMO COMPUESTO CIRCULAR NO ENTRA, NI DIRECTO NI INDIRECTO.
+//
+// Solo se revisaba que un insumo no se contuviera a sí mismo. A lleva B y B lleva A pasaba, y la venta
+// descontaba un número sin sentido hasta cortar por profundidad, sin que nadie se enterara.
+func TestPlanRejectsCircularPrepIngredients(t *testing.T) {
+	cat := sampleCatalog()
+	cat.Ingredients = append(cat.Ingredients,
+		Ingredient{ID: 40, Name: "Base A", BaseKind: "masa"},
+		Ingredient{ID: 41, Name: "Base B", BaseKind: "masa"},
+		// Ya compuesto en el POS: lleva la Base C, así que la Base C no puede llevarlo a él.
+		Ingredient{ID: 42, Name: "Base Ya Hecha", BaseKind: "masa", HasComposition: true},
+		Ingredient{ID: 43, Name: "Base C", BaseKind: "masa"},
+	)
+	cat.PrepComponents = map[int64][]int64{42: {43}}
+	sub := func(owner, comp string) Row {
+		return Row{"Ingrediente": owner, "Subingrediente": comp, "Cantidad": "1", "Unidad": "kg"}
+	}
+	src := Sources{
+		SubIngredients:  []Row{sub("Base A", "Base B"), sub("Base B", "Base A"), sub("Base C", "Base Ya Hecha")},
+		IngredientUnits: map[string]string{"Base A": "kg", "Base B": "kg", "Base C": "kg"},
+	}
+	p := PlanCompositions(src, cat)
+	_, a := p.PrepIngredients[40]
+	_, b := p.PrepIngredients[41]
+	if a && b {
+		t.Fatal("A lleva B y B lleva A: no pueden entrar los dos")
+	}
+	if _, ok := p.PrepIngredients[43]; ok {
+		t.Fatal("la Base C llevaría a la Base Ya Hecha, que ya la lleva a ella")
+	}
+	if len(p.Report.Cycles) != 2 {
+		t.Fatalf("los dos ciclos se reportan: %v", p.Report.Cycles)
+	}
+}
+
 func sameLines(a, b []Line) bool {
 	return slices.EqualFunc(a, b, func(x, y Line) bool {
 		return x.IngredientID == y.IngredientID && x.Qty.Equal(y.Qty) && x.UnitID == y.UnitID

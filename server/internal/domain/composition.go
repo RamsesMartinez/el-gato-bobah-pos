@@ -31,23 +31,41 @@ type CompositionItem struct {
 	IngredientUnitKind string
 }
 
-// CompositionInput es lo que se captura de un producto o un extra: insumos, o el producto del
-// catálogo que es. Vacía quita la composición.
+// PackageComponent es un producto dentro de un paquete, con cuántas piezas lleva.
+type PackageComponent struct {
+	ProductID int64
+	Qty       int
+}
+
+// MaxPackageQty acota cuántas piezas de un producto lleva un paquete: el hueco se guarda en un
+// smallint, y un paquete de mil crepas es un dedazo, no un paquete.
+const MaxPackageQty = 99
+
+// CompositionInput es lo que se captura de un producto o un extra: insumos, el producto del
+// catálogo que es, o los productos que lleva un paquete. Vacía quita la composición.
 type CompositionInput struct {
 	Items           []CompositionItem
 	LinkedProductID *int64
+	Components      []PackageComponent
 }
 
-// Validate rechaza lo que el almacén no podría descontar bien: cantidades fuera de rango, un insumo
-// dos veces (la receta lo guarda una vez por insumo) y una unidad que no convierte a la del insumo:
-// gramos de algo que se lleva en litros descontarían un número sin sentido.
+// Validate rechaza lo que el almacén no podría descontar bien: dos formas de composición a la vez,
+// cantidades fuera de rango —juzgadas ya redondeadas, que es como se guardan: 0.00003 se vuelve 0—,
+// un insumo o un producto dos veces y una unidad que no convierte a la del insumo: gramos de algo
+// que se lleva en litros descontarían un número sin sentido.
 func (c CompositionInput) Validate() error {
-	if c.LinkedProductID != nil && len(c.Items) > 0 {
-		return fmt.Errorf("%w: lleva insumos o es un producto, no las dos cosas", ErrValidation)
+	kinds := 0
+	for _, has := range []bool{len(c.Items) > 0, c.LinkedProductID != nil, len(c.Components) > 0} {
+		if has {
+			kinds++
+		}
+	}
+	if kinds > 1 {
+		return fmt.Errorf("%w: lleva insumos, es un producto o es un paquete; solo una de las tres", ErrValidation)
 	}
 	seen := map[int64]bool{}
 	for _, it := range c.Items {
-		if !it.Quantity.IsPositive() || !ValidQty(it.Quantity, MaxStockQty, false) {
+		if !Round4(it.Quantity).IsPositive() || !ValidQty(it.Quantity, MaxStockQty, false) {
 			return fmt.Errorf("%w: cantidad inválida (insumo %d)", ErrValidation, it.IngredientID)
 		}
 		if seen[it.IngredientID] {
@@ -57,6 +75,16 @@ func (c CompositionInput) Validate() error {
 		if it.UnitKind != it.IngredientUnitKind {
 			return fmt.Errorf("%w (insumo %d)", ErrRecipeUnitMismatch, it.IngredientID)
 		}
+	}
+	seenProduct := map[int64]bool{}
+	for _, pc := range c.Components {
+		if pc.Qty < 1 || pc.Qty > MaxPackageQty {
+			return fmt.Errorf("%w: cantidad inválida (producto %d)", ErrValidation, pc.ProductID)
+		}
+		if seenProduct[pc.ProductID] {
+			return fmt.Errorf("%w: el producto %d va dos veces", ErrValidation, pc.ProductID)
+		}
+		seenProduct[pc.ProductID] = true
 	}
 	return nil
 }
