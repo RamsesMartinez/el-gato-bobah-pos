@@ -123,6 +123,19 @@ func TestExpandSalePackageUsesTheCostingRule(t *testing.T) {
 	}
 }
 
+// Un extra que es un paquete («agrega frappé y crepa») descuenta lo que el paquete lleva, con el
+// extra y el paquete como origen. Antes se ignoraba en silencio.
+func TestExpandSaleExtraThatIsAPackage(t *testing.T) {
+	g := sampleGraph()
+	g.Options[10] = StockOption{ID: 10, LinkedProductID: ip(400)}
+	ds, _ := g.ExpandSale(SaleLine{ProductID: 600, Qty: d("1"), Options: []SaleOption{{OptionID: 10, Qty: d("1")}}})
+	got := byKey(ds)
+	// Frappé ×1 (200 de leche) y crepa ×2 (2 × 100).
+	if !got[key{kind: "ingrediente", id: 1, option: 10, of: 400}].Equal(d("400")) {
+		t.Fatalf("el extra-paquete descuenta lo que lleva: %v", got)
+	}
+}
+
 func TestExpandSaleCutsOldCycles(t *testing.T) {
 	g := sampleGraph()
 	g.Ingredients[4] = StockIngredient{ID: 4, IsPrep: true, RecipeID: ip(41), YieldQty: d("1")}

@@ -67,18 +67,19 @@ func (h *Handlers) putComposition(kind app.CompositionKind) http.HandlerFunc {
 			Error(w, err)
 			return
 		}
-		var body struct {
-			Items           []app.CompositionInputItem `json:"items"`
-			LinkedProductID *int64                     `json:"linkedProductId"`
-		}
+		var body app.CompositionRequest
 		if err := Decode(r, &body); err != nil {
 			Error(w, err)
 			return
 		}
 		u, _ := userFrom(r.Context())
-		if err := h.admin.SaveComposition(r.Context(), kind, id, body.Items, body.LinkedProductID, u.ID); err != nil {
+		if err := h.admin.SaveComposition(r.Context(), kind, id, body, u.ID); err != nil {
 			Error(w, err)
 			return
+		}
+		// Un producto que se vuelve paquete cambia de tipo en el menú que tienen las tabletas.
+		if kind == app.CompositionOfProduct {
+			h.menuChanged(r.Context())
 		}
 		v, err := h.admin.Composition(r.Context(), kind, id)
 		if err != nil {

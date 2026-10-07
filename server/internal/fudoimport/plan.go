@@ -132,8 +132,9 @@ func unitCode(s string) string {
 // Un extra que se llama igual que un producto ES ese producto (FUDO modelaba los extras como
 // productos) y se liga a él; si no, recibe la receta de FUDO con su nombre. Una receta con un insumo
 // que no existe o con una unidad de otro tipo se deja fuera entera: a medias descontaría de menos y
-// nadie lo notaría. Los paquetes no se convierten: cambiar un producto a paquete cambia cómo se
-// vende, y eso lo decide una persona.
+// nadie lo notaría. Los paquetes de FUDO no se cargan: sus cantidades no siempre son piezas por
+// paquete (hay renglones de decenas), y un paquete mal armado descuenta de más en cada venta. Se
+// reportan para armarlos en «Qué lleva».
 func PlanCompositions(src Sources, cat Catalog) Plan {
 	p := Plan{
 		ProductRecipes: map[int64][]Line{}, OptionRecipes: map[int64][]Line{},
@@ -228,7 +229,7 @@ func PlanCompositions(src Sources, cat Catalog) Plan {
 			usedByOption[k] = true
 			continue
 		}
-		if ps := products[k]; len(ps) == 1 && !ps[0].IsCombo {
+		if ps := products[k]; len(ps) == 1 {
 			p.OptionLinks[o.ID] = ps[0].ID
 			usedByOption[k] = true
 			continue

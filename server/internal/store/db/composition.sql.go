@@ -64,19 +64,30 @@ func (q *Queries) CreateCompositionRecipe(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+const deletePackageSlots = `-- name: DeletePackageSlots :exec
+delete from combo_slots where combo_id = $1
+`
+
+// Los productos de cada hueco se van en cascada.
+func (q *Queries) DeletePackageSlots(ctx context.Context, comboID int64) error {
+	_, err := q.db.Exec(ctx, deletePackageSlots, comboID)
+	return err
+}
+
 const getLinkableProduct = `-- name: GetLinkableProduct :one
-select id, type from products where id = $1
+select id, type, name::text as name from products where id = $1
 `
 
 type GetLinkableProductRow struct {
 	ID   int64       `json:"id"`
 	Type ProductType `json:"type"`
+	Name string      `json:"name"`
 }
 
 func (q *Queries) GetLinkableProduct(ctx context.Context, id int64) (GetLinkableProductRow, error) {
 	row := q.db.QueryRow(ctx, getLinkableProduct, id)
 	var i GetLinkableProductRow
-	err := row.Scan(&i.ID, &i.Type)
+	err := row.Scan(&i.ID, &i.Type, &i.Name)
 	return i, err
 }
 
@@ -186,6 +197,58 @@ func (q *Queries) InsertOrderLineComponent(ctx context.Context, arg InsertOrderL
 	return err
 }
 
+const insertPackageSlot = `-- name: InsertPackageSlot :one
+insert into combo_slots (combo_id, name, min_select, max_select, position)
+values ($1, $2, $3, $3, $4)
+returning id
+`
+
+type InsertPackageSlotParams struct {
+	ComboID  int64  `json:"combo_id"`
+	Name     string `json:"name"`
+	Quantity int16  `json:"quantity"`
+	Position int32  `json:"position"`
+}
+
+// Un hueco por producto, con un solo producto: min = max = las piezas que lleva.
+func (q *Queries) InsertPackageSlot(ctx context.Context, arg InsertPackageSlotParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertPackageSlot,
+		arg.ComboID,
+		arg.Name,
+		arg.Quantity,
+		arg.Position,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertPackageSlotProduct = `-- name: InsertPackageSlotProduct :exec
+insert into combo_slot_products (slot_id, product_id, is_default) values ($1, $2, true)
+`
+
+type InsertPackageSlotProductParams struct {
+	SlotID    int64 `json:"slot_id"`
+	ProductID int64 `json:"product_id"`
+}
+
+func (q *Queries) InsertPackageSlotProduct(ctx context.Context, arg InsertPackageSlotProductParams) error {
+	_, err := q.db.Exec(ctx, insertPackageSlotProduct, arg.SlotID, arg.ProductID)
+	return err
+}
+
+const isPackageComponent = `-- name: IsPackageComponent :one
+select exists (select 1 from combo_slot_products where product_id = $1)::boolean as used
+`
+
+// Si el producto va dentro de algún paquete: entonces no puede volverse paquete él mismo.
+func (q *Queries) IsPackageComponent(ctx context.Context, productID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, isPackageComponent, productID)
+	var used bool
+	err := row.Scan(&used)
+	return used, err
+}
+
 const listCompositionItems = `-- name: ListCompositionItems :many
 select ri.ingredient_id, i.name as ingredient_name, ri.quantity, ri.unit_id, u.code as unit_code
   from recipe_items ri
@@ -252,6 +315,42 @@ func (q *Queries) ListIngredientUnitKinds(ctx context.Context, ids []int64) ([]L
 	for rows.Next() {
 		var i ListIngredientUnitKindsRow
 		if err := rows.Scan(&i.ID, &i.Kind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPackageComponents = `-- name: ListPackageComponents :many
+select csp.product_id, p.name::text as product_name, cs.min_select
+  from combo_slots cs
+  join combo_slot_products csp on csp.slot_id = cs.id and csp.is_default
+  join products p on p.id = csp.product_id
+ where cs.combo_id = $1
+ order by cs.position, cs.id
+`
+
+type ListPackageComponentsRow struct {
+	ProductID   int64  `json:"product_id"`
+	ProductName string `json:"product_name"`
+	MinSelect   int16  `json:"min_select"`
+}
+
+// Lo que lleva un paquete: el producto por omisión de cada hueco y cuántas piezas.
+func (q *Queries) ListPackageComponents(ctx context.Context, comboID int64) ([]ListPackageComponentsRow, error) {
+	rows, err := q.db.Query(ctx, listPackageComponents, comboID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPackageComponentsRow{}
+	for rows.Next() {
+		var i ListPackageComponentsRow
+		if err := rows.Scan(&i.ProductID, &i.ProductName, &i.MinSelect); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -363,22 +462,26 @@ func (q *Queries) SetOptionComposition(ctx context.Context, arg SetOptionComposi
 
 const setProductComposition = `-- name: SetProductComposition :execrows
 update products
-   set recipe_id = $1,
-       composition_status = $2,
-       composition_confirmed_by = $3,
-       composition_confirmed_at = case when $2::text = 'confirmed' then now() end
- where id = $4
+   set type = $1::product_type,
+       recipe_id = $2,
+       composition_status = $3,
+       composition_confirmed_by = $4,
+       composition_confirmed_at = case when $3::text = 'confirmed' then now() end
+ where id = $5
 `
 
 type SetProductCompositionParams struct {
-	RecipeID    *int64  `json:"recipe_id"`
-	Status      *string `json:"status"`
-	ConfirmedBy *int64  `json:"confirmed_by"`
-	ID          int64   `json:"id"`
+	ProductType ProductType `json:"product_type"`
+	RecipeID    *int64      `json:"recipe_id"`
+	Status      *string     `json:"status"`
+	ConfirmedBy *int64      `json:"confirmed_by"`
+	ID          int64       `json:"id"`
 }
 
+// El tipo va con la composición: un paquete es `combo` y no lleva receta (check de 0004).
 func (q *Queries) SetProductComposition(ctx context.Context, arg SetProductCompositionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setProductComposition,
+		arg.ProductType,
 		arg.RecipeID,
 		arg.Status,
 		arg.ConfirmedBy,

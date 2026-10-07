@@ -86,17 +86,25 @@ type CompositionItemView struct {
 	UnitCode       string          `json:"unitCode"`
 }
 
+// CompositionComponentView es un producto dentro de un paquete.
+type CompositionComponentView struct {
+	ProductID   int64  `json:"productId"`
+	ProductName string `json:"productName"`
+	Quantity    int    `json:"quantity"`
+}
+
 // CompositionView es lo que lleva un producto o un extra y si está confirmado.
 type CompositionView struct {
 	// Status: "" sin capturar, "estimated" o "confirmed".
-	Status            string                `json:"status"`
-	ConfirmedBy       string                `json:"confirmedBy,omitempty"`
-	ConfirmedAt       *time.Time            `json:"confirmedAt,omitempty"`
-	LinkedProductID   *int64                `json:"linkedProductId,omitempty"`
-	LinkedProductName string                `json:"linkedProductName,omitempty"`
-	Items             []CompositionItemView `json:"items"`
-	// Editable es falso en un producto con existencias propias o un paquete: lo que descuentan no
-	// se captura aquí.
+	Status            string                     `json:"status"`
+	ConfirmedBy       string                     `json:"confirmedBy,omitempty"`
+	ConfirmedAt       *time.Time                 `json:"confirmedAt,omitempty"`
+	LinkedProductID   *int64                     `json:"linkedProductId,omitempty"`
+	LinkedProductName string                     `json:"linkedProductName,omitempty"`
+	Items             []CompositionItemView      `json:"items"`
+	Components        []CompositionComponentView `json:"components"`
+	// Editable es falso en un producto con existencias propias: descuenta él mismo, y no hay nada
+	// que capturar.
 	Editable bool   `json:"editable"`
 	Reason   string `json:"reason,omitempty"`
 }
@@ -108,10 +116,24 @@ type CompositionInputItem struct {
 	UnitID       int16           `json:"unitId"`
 }
 
+// CompositionComponent es un producto capturado dentro de un paquete.
+type CompositionComponent struct {
+	ProductID int64 `json:"productId"`
+	Quantity  int   `json:"quantity"`
+}
+
+// CompositionRequest es lo que se captura: insumos, el producto que es (solo un extra) o los
+// productos que lleva (un paquete). Vacía quita la composición.
+type CompositionRequest struct {
+	Items           []CompositionInputItem `json:"items"`
+	LinkedProductID *int64                 `json:"linkedProductId"`
+	Components      []CompositionComponent `json:"components"`
+}
+
 // Composition devuelve lo que lleva un producto o un extra.
 func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id int64) (CompositionView, error) {
 	q := s.store.QC(ctx)
-	v := CompositionView{Items: []CompositionItemView{}, Editable: true}
+	v := CompositionView{Items: []CompositionItemView{}, Components: []CompositionComponentView{}, Editable: true}
 	var recipe *int64
 	var status, by *string
 	var at pgtype.Timestamptz
@@ -122,11 +144,19 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 			return v, notFound(err)
 		}
 		recipe, status, by, at = p.RecipeID, p.CompositionStatus, p.ConfirmedByName, p.CompositionConfirmedAt
-		switch {
-		case p.Type == db.ProductTypeCombo:
-			v.Editable, v.Reason = false, "package"
-		case p.TrackStock:
+		if p.TrackStock {
 			v.Editable, v.Reason = false, "own_stock"
+		}
+		if p.Type == db.ProductTypeCombo {
+			comps, err := q.ListPackageComponents(ctx, id)
+			if err != nil {
+				return v, err
+			}
+			for _, c := range comps {
+				v.Components = append(v.Components, CompositionComponentView{
+					ProductID: c.ProductID, ProductName: c.ProductName, Quantity: max(int(c.MinSelect), 1),
+				})
+			}
 		}
 	case CompositionOfOption:
 		o, err := q.GetOptionComposition(ctx, id)
@@ -164,50 +194,71 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 
 // SaveComposition guarda lo que lleva un producto o un extra. Quien lo captura lo confirma: es una
 // persona decidiendo, no un estimado. Vacía quita la composición y deja de descontar.
-func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind, id int64,
-	items []CompositionInputItem, linkedProduct *int64, actor int64,
-) error {
+//
+// Un producto se vuelve paquete al capturarle productos, y deja de serlo al capturarle insumos: el
+// tipo sigue a la composición, para que nadie tenga que cambiarlo aparte. El POS vende igual un
+// paquete que un producto suelto; solo cambia lo que sale del almacén.
+func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind, id int64, req CompositionRequest, actor int64) error {
 	if kind != CompositionOfProduct && kind != CompositionOfOption {
 		return domain.ErrValidation
 	}
-	if kind == CompositionOfProduct && linkedProduct != nil {
+	if kind == CompositionOfProduct && req.LinkedProductID != nil {
 		return fmt.Errorf("%w: un producto no se liga a otro; un paquete se arma con sus productos", domain.ErrValidation)
 	}
+	if kind == CompositionOfOption && len(req.Components) > 0 {
+		return fmt.Errorf("%w: un extra que lleva varios productos se liga a un paquete", domain.ErrValidation)
+	}
 	q := s.store.QC(ctx)
-	in, err := compositionInput(ctx, q, items, linkedProduct)
+	in, err := compositionInput(ctx, q, req)
 	if err != nil {
 		return err
 	}
 	if err := in.Validate(); err != nil {
 		return err
 	}
-	if linkedProduct != nil {
-		lp, err := q.GetLinkableProduct(ctx, *linkedProduct)
-		if err != nil {
+	if req.LinkedProductID != nil {
+		if _, err := q.GetLinkableProduct(ctx, *req.LinkedProductID); err != nil {
 			return fmt.Errorf("%w: ese producto no existe", domain.ErrValidation)
 		}
-		if lp.Type == db.ProductTypeCombo {
-			return fmt.Errorf("%w (producto %d)", domain.ErrPackageInPackage, lp.ID)
-		}
 	}
+	names := map[int64]string{}
 	if kind == CompositionOfProduct {
 		p, err := q.GetProductComposition(ctx, id)
 		if err != nil {
 			return notFound(err)
 		}
-		if p.Type == db.ProductTypeCombo || (p.TrackStock && len(items) > 0) {
-			return fmt.Errorf("%w: este producto descuenta sus propias existencias o sus productos", domain.ErrValidation)
+		if p.TrackStock && (len(req.Items) > 0 || len(req.Components) > 0) {
+			return fmt.Errorf("%w: este producto descuenta sus propias existencias", domain.ErrValidation)
+		}
+		if len(req.Components) > 0 {
+			used, err := q.IsPackageComponent(ctx, id)
+			if err != nil {
+				return err
+			}
+			if used {
+				return fmt.Errorf("%w: este producto va dentro de otro paquete", domain.ErrPackageInPackage)
+			}
+		}
+		for _, c := range req.Components {
+			cp, err := q.GetLinkableProduct(ctx, c.ProductID)
+			if err != nil {
+				return fmt.Errorf("%w: el producto %d no existe", domain.ErrValidation, c.ProductID)
+			}
+			if c.ProductID == id || cp.Type == db.ProductTypeCombo {
+				return fmt.Errorf("%w (producto %d)", domain.ErrPackageInPackage, c.ProductID)
+			}
+			names[c.ProductID] = cp.Name
 		}
 	}
 
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		var recipe *int64
-		if len(items) > 0 {
+		if len(req.Items) > 0 {
 			rid, err := q.CreateCompositionRecipe(ctx)
 			if err != nil {
 				return err
 			}
-			for i, it := range items {
+			for i, it := range req.Items {
 				if err := q.InsertCompositionItem(ctx, db.InsertCompositionItemParams{
 					RecipeID: rid, IngredientID: it.IngredientID, Quantity: domain.Round4(it.Quantity),
 					UnitID: it.UnitID, Position: int32(i),
@@ -219,19 +270,37 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		}
 		var status *string
 		var by *int64
-		if recipe != nil || linkedProduct != nil {
+		if recipe != nil || req.LinkedProductID != nil || len(req.Components) > 0 {
 			confirmed := "confirmed"
 			status, by = &confirmed, &actor
 		}
 		var n int64
 		var err error
-		if kind == CompositionOfProduct {
-			n, err = q.SetProductComposition(ctx, db.SetProductCompositionParams{
-				ID: id, RecipeID: recipe, Status: status, ConfirmedBy: by,
+		if kind == CompositionOfOption {
+			n, err = q.SetOptionComposition(ctx, db.SetOptionCompositionParams{
+				ID: id, RecipeID: recipe, LinkedProductID: req.LinkedProductID, Status: status, ConfirmedBy: by,
 			})
 		} else {
-			n, err = q.SetOptionComposition(ctx, db.SetOptionCompositionParams{
-				ID: id, RecipeID: recipe, LinkedProductID: linkedProduct, Status: status, ConfirmedBy: by,
+			if err := q.DeletePackageSlots(ctx, id); err != nil {
+				return err
+			}
+			for i, c := range req.Components {
+				slot, err := q.InsertPackageSlot(ctx, db.InsertPackageSlotParams{
+					ComboID: id, Name: names[c.ProductID], Quantity: int16(c.Quantity), Position: int32(i),
+				})
+				if err != nil {
+					return err
+				}
+				if err := q.InsertPackageSlotProduct(ctx, db.InsertPackageSlotProductParams{SlotID: slot, ProductID: c.ProductID}); err != nil {
+					return err
+				}
+			}
+			typ := db.ProductTypeSimple
+			if len(req.Components) > 0 {
+				typ = db.ProductTypeCombo
+			}
+			n, err = q.SetProductComposition(ctx, db.SetProductCompositionParams{
+				ID: id, ProductType: typ, RecipeID: recipe, Status: status, ConfirmedBy: by,
 			})
 		}
 		if err == nil && n == 0 {
@@ -262,8 +331,12 @@ func (s *AdminService) ConfirmComposition(ctx context.Context, kind CompositionK
 
 // compositionInput completa los tipos de unidad para que el dominio valide. Un insumo que no sale
 // (de otra empresa, o que no existe) se rechaza aquí.
-func compositionInput(ctx context.Context, q *db.Queries, items []CompositionInputItem, linked *int64) (domain.CompositionInput, error) {
-	in := domain.CompositionInput{LinkedProductID: linked}
+func compositionInput(ctx context.Context, q *db.Queries, req CompositionRequest) (domain.CompositionInput, error) {
+	items := req.Items
+	in := domain.CompositionInput{LinkedProductID: req.LinkedProductID}
+	for _, c := range req.Components {
+		in.Components = append(in.Components, domain.PackageComponent{ProductID: c.ProductID, Qty: c.Quantity})
+	}
 	if len(items) == 0 {
 		return in, nil
 	}

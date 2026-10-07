@@ -182,6 +182,7 @@ type expansion struct {
 	g     StockGraph
 	order []deltaKey
 	sums  map[deltaKey]decimal.Decimal
+	comps []SaleComponent
 }
 
 func (e *expansion) add(itemType string, id int64, qty decimal.Decimal, option, component int64) {
@@ -196,19 +197,8 @@ func (e *expansion) add(itemType string, id int64, qty decimal.Decimal, option, 
 // qué productos se vendieron dentro si es un paquete. Lo que no tiene composición no descuenta.
 func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 	e := &expansion{g: g, sums: map[deltaKey]decimal.Decimal{}}
-	var comps []SaleComponent
-	if p, ok := g.Products[line.ProductID]; ok && p.IsCombo {
-		for _, c := range g.ComboDefaults[p.ID] {
-			qty := line.Qty.Mul(decimal.NewFromInt(int64(max(c.MinSelect, 1)))).Round(internalScale)
-			comps = append(comps, SaleComponent{ProductID: c.ProductID, Qty: qty})
-			// Un paquete dentro de un paquete no se expande: la captura lo prohíbe y un dato viejo
-			// no debe multiplicar el descuento.
-			if cp, ok := g.Products[c.ProductID]; ok && !cp.IsCombo {
-				e.product(cp, qty, 0, p.ID)
-			}
-		}
-	} else if ok {
-		e.product(p, line.Qty, 0, 0)
+	if p, ok := g.Products[line.ProductID]; ok {
+		e.product(p, line.Qty, 0)
 	}
 	for _, o := range line.Options {
 		opt, ok := g.Options[o.OptionID]
@@ -218,8 +208,8 @@ func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 		qty := line.Qty.Mul(o.Qty).Round(internalScale)
 		switch {
 		case opt.LinkedProductID != nil:
-			if lp, ok := g.Products[*opt.LinkedProductID]; ok && !lp.IsCombo {
-				e.product(lp, qty, opt.ID, 0)
+			if lp, ok := g.Products[*opt.LinkedProductID]; ok {
+				e.product(lp, qty, opt.ID)
 			}
 		case opt.RecipeID != nil:
 			e.recipe(*opt.RecipeID, qty, opt.ID, 0, 0)
@@ -245,10 +235,29 @@ func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 		}
 		out = append(out, d)
 	}
-	return out, comps
+	return out, e.comps
 }
 
-func (e *expansion) product(p StockProduct, qty decimal.Decimal, option, component int64) {
+// product descuenta un producto vendido, suelto o como extra. Un paquete descuenta lo que lleva —el
+// producto por omisión de cada hueco por max(min_select, 1), la regla del costeo— y anota cada
+// componente para el historial.
+func (e *expansion) product(p StockProduct, qty decimal.Decimal, option int64) {
+	if !p.IsCombo {
+		e.single(p, qty, option, 0)
+		return
+	}
+	for _, c := range e.g.ComboDefaults[p.ID] {
+		cq := qty.Mul(decimal.NewFromInt(int64(max(c.MinSelect, 1)))).Round(internalScale)
+		e.comps = append(e.comps, SaleComponent{ProductID: c.ProductID, Qty: cq})
+		// Un paquete dentro de un paquete no se expande: la captura lo prohíbe y un dato viejo no
+		// debe multiplicar el descuento.
+		if cp, ok := e.g.Products[c.ProductID]; ok && !cp.IsCombo {
+			e.single(cp, cq, option, p.ID)
+		}
+	}
+}
+
+func (e *expansion) single(p StockProduct, qty decimal.Decimal, option, component int64) {
 	switch {
 	case p.TrackStock:
 		e.add("producto", p.ID, qty, option, component)

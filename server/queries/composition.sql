@@ -36,7 +36,7 @@ select i.id, u.kind::text as kind
 select id, kind::text as kind from units where id = any(sqlc.arg(ids)::smallint[]);
 
 -- name: GetLinkableProduct :one
-select id, type from products where id = $1;
+select id, type, name::text as name from products where id = $1;
 
 -- name: CreateCompositionRecipe :one
 -- Receta nueva en cada captura y no editar la que había: `recipe_id` es único por tabla, pero un
@@ -48,8 +48,10 @@ insert into recipes default values returning id;
 insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id, position) values ($1, $2, $3, $4, $5);
 
 -- name: SetProductComposition :execrows
+-- El tipo va con la composición: un paquete es `combo` y no lleva receta (check de 0004).
 update products
-   set recipe_id = sqlc.narg(recipe_id),
+   set type = sqlc.arg(product_type)::product_type,
+       recipe_id = sqlc.narg(recipe_id),
        composition_status = sqlc.narg(status),
        composition_confirmed_by = sqlc.narg(confirmed_by),
        composition_confirmed_at = case when sqlc.narg(status)::text = 'confirmed' then now() end
@@ -73,6 +75,32 @@ update products set composition_status = 'confirmed', composition_confirmed_by =
 -- name: ConfirmOptionComposition :execrows
 update modifier_options set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
  where id = $1 and composition_status is distinct from 'confirmed';
+
+-- name: ListPackageComponents :many
+-- Lo que lleva un paquete: el producto por omisión de cada hueco y cuántas piezas.
+select csp.product_id, p.name::text as product_name, cs.min_select
+  from combo_slots cs
+  join combo_slot_products csp on csp.slot_id = cs.id and csp.is_default
+  join products p on p.id = csp.product_id
+ where cs.combo_id = $1
+ order by cs.position, cs.id;
+
+-- name: IsPackageComponent :one
+-- Si el producto va dentro de algún paquete: entonces no puede volverse paquete él mismo.
+select exists (select 1 from combo_slot_products where product_id = $1)::boolean as used;
+
+-- name: DeletePackageSlots :exec
+-- Los productos de cada hueco se van en cascada.
+delete from combo_slots where combo_id = $1;
+
+-- name: InsertPackageSlot :one
+-- Un hueco por producto, con un solo producto: min = max = las piezas que lleva.
+insert into combo_slots (combo_id, name, min_select, max_select, position)
+values (sqlc.arg(combo_id), sqlc.arg(name), sqlc.arg(quantity), sqlc.arg(quantity), sqlc.arg(position))
+returning id;
+
+-- name: InsertPackageSlotProduct :exec
+insert into combo_slot_products (slot_id, product_id, is_default) values ($1, $2, true);
 
 -- name: InsertOrderLineComponent :exec
 -- Lo que se vendió dentro de un paquete, copiado al vender: editar el paquete después no reescribe

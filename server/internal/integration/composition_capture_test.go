@@ -62,7 +62,7 @@ func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
 
 	t.Run("dos insumos se guardan confirmados por quien los capturó", func(t *testing.T) {
 		if err := svc.SaveComposition(tctx, app.CompositionOfOption, extra,
-			[]app.CompositionInputItem{item(milk, "250", g), item(sugar, "5", g)}, nil, admin); err != nil {
+			app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "250", g), item(sugar, "5", g)}}, admin); err != nil {
 			t.Fatal(err)
 		}
 		v, err := svc.Composition(tctx, app.CompositionOfOption, extra)
@@ -75,7 +75,7 @@ func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
 	})
 
 	t.Run("un extra que es un producto del catálogo", func(t *testing.T) {
-		if err := svc.SaveComposition(tctx, app.CompositionOfOption, cokeExtra, nil, &soda, admin); err != nil {
+		if err := svc.SaveComposition(tctx, app.CompositionOfOption, cokeExtra, app.CompositionRequest{LinkedProductID: &soda}, admin); err != nil {
 			t.Fatal(err)
 		}
 		v, err := svc.Composition(tctx, app.CompositionOfOption, cokeExtra)
@@ -127,22 +127,74 @@ func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
 		}
 	})
 
+	pkg := func(parts ...int64) app.CompositionRequest {
+		r := app.CompositionRequest{}
+		for i := 0; i < len(parts); i += 2 {
+			r.Components = append(r.Components, app.CompositionComponent{ProductID: parts[i], Quantity: int(parts[i+1])})
+		}
+		return r
+	}
+	party := makeProduct(t, owner, "Paquete fiesta captura", decimal.RequireFromString("150"), false)
+
+	t.Run("un producto se arma como paquete con sus productos y cantidades", func(t *testing.T) {
+		if err := svc.SaveComposition(tctx, app.CompositionOfProduct, party, pkg(frappe, 1, soda, 2), admin); err != nil {
+			t.Fatal(err)
+		}
+		v, err := svc.Composition(tctx, app.CompositionOfProduct, party)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(v.Components) != 2 || v.Components[1].ProductName != "Coca captura" || v.Components[1].Quantity != 2 || v.Status != "confirmed" {
+			t.Fatalf("paquete guardado: %+v", v)
+		}
+	})
+
+	t.Run("un extra puede ser un paquete", func(t *testing.T) {
+		if err := svc.SaveComposition(tctx, app.CompositionOfOption, cokeExtra, app.CompositionRequest{LinkedProductID: &party}, admin); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("un paquete que se captura con insumos deja de ser paquete", func(t *testing.T) {
+		if err := svc.SaveComposition(tctx, app.CompositionOfProduct, combo, pkg(frappe, 1), admin); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.SaveComposition(tctx, app.CompositionOfProduct, combo,
+			app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "200", g)}}, admin); err != nil {
+			t.Fatal(err)
+		}
+		v, err := svc.Composition(tctx, app.CompositionOfProduct, combo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var slots int
+		if err := owner.Pool.QueryRow(ctx, `select count(*) from combo_slots where combo_id = $1`, combo).Scan(&slots); err != nil {
+			t.Fatal(err)
+		}
+		if len(v.Components) != 0 || len(v.Items) != 1 || slots != 0 {
+			t.Fatalf("quedan restos del paquete: %+v, %d huecos", v, slots)
+		}
+	})
+
 	rejections := []struct {
-		name   string
-		kind   app.CompositionKind
-		id     int64
-		items  []app.CompositionInputItem
-		linked *int64
+		name string
+		kind app.CompositionKind
+		id   int64
+		req  app.CompositionRequest
 	}{
-		{"insumo de otra empresa", app.CompositionOfProduct, frappe, []app.CompositionInputItem{item(foreignIngredient, "1", g)}, nil},
-		{"unidad de otro tipo", app.CompositionOfProduct, frappe, []app.CompositionInputItem{item(milk, "1", ml)}, nil},
-		{"extra ligado a un paquete", app.CompositionOfOption, cokeExtra, nil, &combo},
-		{"producto con existencias propias", app.CompositionOfProduct, soda, []app.CompositionInputItem{item(milk, "1", g)}, nil},
-		{"paquete con insumos", app.CompositionOfProduct, combo, []app.CompositionInputItem{item(milk, "1", g)}, nil},
+		{"insumo de otra empresa", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(foreignIngredient, "1", g)}}},
+		{"unidad de otro tipo", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "1", ml)}}},
+		{"cantidad que redondea a cero", app.CompositionOfProduct, frappe, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "0.00003", g)}}},
+		{"producto con existencias propias con insumos", app.CompositionOfProduct, soda, app.CompositionRequest{Items: []app.CompositionInputItem{item(milk, "1", g)}}},
+		{"producto con existencias propias como paquete", app.CompositionOfProduct, soda, pkg(frappe, 1)},
+		{"paquete dentro de un paquete", app.CompositionOfProduct, frappe, pkg(party, 1)},
+		{"paquete que se lleva a sí mismo", app.CompositionOfProduct, party, pkg(party, 1)},
+		{"producto que va en un paquete y se quiere volver paquete", app.CompositionOfProduct, frappe, pkg(soda, 1)},
+		{"un producto ligado a otro producto", app.CompositionOfProduct, frappe, app.CompositionRequest{LinkedProductID: &soda}},
 	}
 	for _, c := range rejections {
 		t.Run("rechaza "+c.name, func(t *testing.T) {
-			if err := svc.SaveComposition(tctx, c.kind, c.id, c.items, c.linked, admin); !errors.Is(err, domain.ErrValidation) {
+			if err := svc.SaveComposition(tctx, c.kind, c.id, c.req, admin); !errors.Is(err, domain.ErrValidation) {
 				t.Fatalf("debe rechazarse como validación: %v", err)
 			}
 		})
@@ -153,7 +205,7 @@ func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
 		if _, err := svc.Composition(ctx, app.CompositionOfOption, extra); err == nil {
 			t.Fatal("la composición de otra empresa se leyó")
 		}
-		if err := svc.SaveComposition(ctx, app.CompositionOfOption, extra, nil, nil, admin); err == nil {
+		if err := svc.SaveComposition(ctx, app.CompositionOfOption, extra, app.CompositionRequest{}, admin); err == nil {
 			t.Fatal("la composición de otra empresa se borró")
 		}
 		if err := svc.ConfirmComposition(ctx, app.CompositionOfOption, extra, admin); err == nil {
