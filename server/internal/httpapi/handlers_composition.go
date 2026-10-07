@@ -36,6 +36,18 @@ func (h *Handlers) ConfirmOptionComposition(w http.ResponseWriter, r *http.Reque
 	h.confirmComposition(app.CompositionOfOption)(w, r)
 }
 
+func (h *Handlers) GetIngredientComposition(w http.ResponseWriter, r *http.Request) {
+	h.getComposition(app.CompositionOfIngredient)(w, r)
+}
+
+func (h *Handlers) PutIngredientComposition(w http.ResponseWriter, r *http.Request) {
+	h.putComposition(app.CompositionOfIngredient)(w, r)
+}
+
+func (h *Handlers) ConfirmIngredientComposition(w http.ResponseWriter, r *http.Request) {
+	h.confirmComposition(app.CompositionOfIngredient)(w, r)
+}
+
 func compositionTarget(r *http.Request, kind app.CompositionKind) (app.CompositionKind, int64, error) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {

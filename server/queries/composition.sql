@@ -17,6 +17,29 @@ select o.id, o.recipe_id, o.linked_product_id, lp.name as linked_product_name,
   left join users u on u.id = o.composition_confirmed_by
  where o.id = $1;
 
+-- name: GetIngredientComposition :one
+select i.id, i.is_prep, i.recipe_id, i.yield_qty, bu.code as base_unit_code,
+       i.composition_status, i.composition_confirmed_at, u.name as confirmed_by_name
+  from ingredients i
+  join units bu on bu.id = i.base_unit_id
+  left join users u on u.id = i.composition_confirmed_by
+ where i.id = $1;
+
+-- name: SetIngredientComposition :execrows
+-- Preparado = con receta y rendimiento (check de 0003); sin receta vuelve a ser un insumo que se compra.
+update ingredients
+   set is_prep = sqlc.arg(is_prep),
+       recipe_id = sqlc.narg(recipe_id),
+       yield_qty = sqlc.narg(yield_qty),
+       composition_status = sqlc.narg(status),
+       composition_confirmed_by = sqlc.narg(confirmed_by),
+       composition_confirmed_at = case when sqlc.narg(status)::text = 'confirmed' then now() end
+ where id = sqlc.arg(id);
+
+-- name: ConfirmIngredientComposition :execrows
+update ingredients set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
+ where id = $1 and composition_status = 'estimated';
+
 -- name: ListCompositionItems :many
 select ri.ingredient_id, i.name as ingredient_name, ri.quantity, ri.unit_id, u.code as unit_code
   from recipe_items ri

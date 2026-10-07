@@ -133,7 +133,8 @@ func (q *Queries) ListIngredientCategories(ctx context.Context) ([]ListIngredien
 const listIngredients = `-- name: ListIngredients :many
 select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
-       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.is_prep, i.composition_status
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id
@@ -143,18 +144,20 @@ order by i.name
 `
 
 type ListIngredientsRow struct {
-	ID           int64            `json:"id"`
-	Name         string           `json:"name"`
-	IsActive     bool             `json:"is_active"`
-	TrackStock   bool             `json:"track_stock"`
-	IsPackaging  bool             `json:"is_packaging"`
-	MinStock     *decimal.Decimal `json:"min_stock"`
-	CurrentCost  decimal.Decimal  `json:"current_cost"`
-	BaseUnitID   int16            `json:"base_unit_id"`
-	BaseUnitCode string           `json:"base_unit_code"`
-	BaseUnitKind UnitKind         `json:"base_unit_kind"`
-	Category     *string          `json:"category"`
-	OnHand       decimal.Decimal  `json:"on_hand"`
+	ID                int64            `json:"id"`
+	Name              string           `json:"name"`
+	IsActive          bool             `json:"is_active"`
+	TrackStock        bool             `json:"track_stock"`
+	IsPackaging       bool             `json:"is_packaging"`
+	MinStock          *decimal.Decimal `json:"min_stock"`
+	CurrentCost       decimal.Decimal  `json:"current_cost"`
+	BaseUnitID        int16            `json:"base_unit_id"`
+	BaseUnitCode      string           `json:"base_unit_code"`
+	BaseUnitKind      UnitKind         `json:"base_unit_kind"`
+	Category          *string          `json:"category"`
+	OnHand            decimal.Decimal  `json:"on_hand"`
+	IsPrep            bool             `json:"is_prep"`
+	CompositionStatus *string          `json:"composition_status"`
 }
 
 // Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
@@ -181,6 +184,8 @@ func (q *Queries) ListIngredients(ctx context.Context, onlyActive *bool) ([]List
 			&i.BaseUnitKind,
 			&i.Category,
 			&i.OnHand,
+			&i.IsPrep,
+			&i.CompositionStatus,
 		); err != nil {
 			return nil, err
 		}

@@ -231,6 +231,10 @@ func TestValidateCompositionInput(t *testing.T) {
 		// Pasaba la validación y en la base quedaba en 0.0000: el check de la receta la rechazaba y
 		// la pantalla recibía un 500 en vez de «cantidad inválida».
 		{"cantidad que redondea a cero", CompositionInput{Items: []CompositionItem{item(1, "0.00003", gramo)}}, ErrValidation},
+		{"insumo preparado con su rendimiento", CompositionInput{Items: []CompositionItem{item(1, "500", gramo)}, Yield: ptrDec("1000")}, nil},
+		{"rendimiento sin insumos", CompositionInput{Yield: ptrDec("1000")}, ErrValidation},
+		{"rendimiento en cero", CompositionInput{Items: []CompositionItem{item(1, "500", gramo)}, Yield: ptrDec("0.00001")}, ErrValidation},
+		{"rendimiento absurdo", CompositionInput{Items: []CompositionItem{item(1, "500", gramo)}, Yield: ptrDec("100000000")}, ErrValidation},
 		{"paquete", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 2}, {ProductID: 8, Qty: 1}}}, nil},
 		{"paquete con insumos", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1}}, Items: []CompositionItem{item(1, "1", gramo)}}, ErrValidation},
 		{"paquete y producto ligado", CompositionInput{Components: []PackageComponent{{ProductID: 7, Qty: 1}}, LinkedProductID: ip(9)}, ErrValidation},
@@ -250,4 +254,9 @@ func TestValidateCompositionInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func ptrDec(s string) *decimal.Decimal {
+	v := d(s)
+	return &v
 }

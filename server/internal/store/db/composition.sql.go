@@ -12,6 +12,24 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const confirmIngredientComposition = `-- name: ConfirmIngredientComposition :execrows
+update ingredients set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
+ where id = $1 and composition_status = 'estimated'
+`
+
+type ConfirmIngredientCompositionParams struct {
+	ID                     int64  `json:"id"`
+	CompositionConfirmedBy *int64 `json:"composition_confirmed_by"`
+}
+
+func (q *Queries) ConfirmIngredientComposition(ctx context.Context, arg ConfirmIngredientCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmIngredientComposition, arg.ID, arg.CompositionConfirmedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const confirmOptionComposition = `-- name: ConfirmOptionComposition :execrows
 update modifier_options set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
  where id = $1 and composition_status is distinct from 'confirmed'
@@ -72,6 +90,42 @@ delete from combo_slots where combo_id = $1
 func (q *Queries) DeletePackageSlots(ctx context.Context, comboID int64) error {
 	_, err := q.db.Exec(ctx, deletePackageSlots, comboID)
 	return err
+}
+
+const getIngredientComposition = `-- name: GetIngredientComposition :one
+select i.id, i.is_prep, i.recipe_id, i.yield_qty, bu.code as base_unit_code,
+       i.composition_status, i.composition_confirmed_at, u.name as confirmed_by_name
+  from ingredients i
+  join units bu on bu.id = i.base_unit_id
+  left join users u on u.id = i.composition_confirmed_by
+ where i.id = $1
+`
+
+type GetIngredientCompositionRow struct {
+	ID                     int64              `json:"id"`
+	IsPrep                 bool               `json:"is_prep"`
+	RecipeID               *int64             `json:"recipe_id"`
+	YieldQty               *decimal.Decimal   `json:"yield_qty"`
+	BaseUnitCode           string             `json:"base_unit_code"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	ConfirmedByName        *string            `json:"confirmed_by_name"`
+}
+
+func (q *Queries) GetIngredientComposition(ctx context.Context, id int64) (GetIngredientCompositionRow, error) {
+	row := q.db.QueryRow(ctx, getIngredientComposition, id)
+	var i GetIngredientCompositionRow
+	err := row.Scan(
+		&i.ID,
+		&i.IsPrep,
+		&i.RecipeID,
+		&i.YieldQty,
+		&i.BaseUnitCode,
+		&i.CompositionStatus,
+		&i.CompositionConfirmedAt,
+		&i.ConfirmedByName,
+	)
+	return i, err
 }
 
 const getLinkableProduct = `-- name: GetLinkableProduct :one
@@ -426,6 +480,42 @@ func (q *Queries) ListUnitKinds(ctx context.Context, ids []int16) ([]ListUnitKin
 		return nil, err
 	}
 	return items, nil
+}
+
+const setIngredientComposition = `-- name: SetIngredientComposition :execrows
+update ingredients
+   set is_prep = $1,
+       recipe_id = $2,
+       yield_qty = $3,
+       composition_status = $4,
+       composition_confirmed_by = $5,
+       composition_confirmed_at = case when $4::text = 'confirmed' then now() end
+ where id = $6
+`
+
+type SetIngredientCompositionParams struct {
+	IsPrep      bool             `json:"is_prep"`
+	RecipeID    *int64           `json:"recipe_id"`
+	YieldQty    *decimal.Decimal `json:"yield_qty"`
+	Status      *string          `json:"status"`
+	ConfirmedBy *int64           `json:"confirmed_by"`
+	ID          int64            `json:"id"`
+}
+
+// Preparado = con receta y rendimiento (check de 0003); sin receta vuelve a ser un insumo que se compra.
+func (q *Queries) SetIngredientComposition(ctx context.Context, arg SetIngredientCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setIngredientComposition,
+		arg.IsPrep,
+		arg.RecipeID,
+		arg.YieldQty,
+		arg.Status,
+		arg.ConfirmedBy,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setOptionComposition = `-- name: SetOptionComposition :execrows

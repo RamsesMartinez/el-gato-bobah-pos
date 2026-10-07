@@ -18,7 +18,8 @@ insert into ingredient_categories (name) values ($1) returning id, name;
 -- name: ListIngredients :many
 select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
-       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.is_prep, i.composition_status
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id

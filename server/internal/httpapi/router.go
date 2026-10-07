@@ -323,6 +323,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/levels", h.StockLevels)
 					r.Get("/movements", h.StockMovements)
 					r.Post("/movements", h.CreateStockMovement)
+					// Insumos que se preparan en el local: qué llevan y cuánto rinden.
+					r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
+					r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
+					r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
 				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)

@@ -47,6 +47,8 @@ type CompositionInput struct {
 	Items           []CompositionItem
 	LinkedProductID *int64
 	Components      []PackageComponent
+	// Yield es cuánto rinde la receta de un insumo preparado, en la unidad base del insumo.
+	Yield *decimal.Decimal
 }
 
 // Validate rechaza lo que el almacén no podría descontar bien: dos formas de composición a la vez,
@@ -62,6 +64,16 @@ func (c CompositionInput) Validate() error {
 	}
 	if kinds > 1 {
 		return fmt.Errorf("%w: lleva insumos, es un producto o es un paquete; solo una de las tres", ErrValidation)
+	}
+	// Un insumo preparado sin rendimiento no se puede descontar en proporción: rinde 1000 ml con
+	// 500 g de azúcar, y sin el 1000 no se sabe cuánta azúcar lleva un ml.
+	if c.Yield != nil {
+		if len(c.Items) == 0 {
+			return fmt.Errorf("%w: el rendimiento va con los insumos que lo componen", ErrValidation)
+		}
+		if !Round4(*c.Yield).IsPositive() || !ValidQty(*c.Yield, MaxStockQty, false) {
+			return fmt.Errorf("%w: rendimiento inválido", ErrValidation)
+		}
 	}
 	seen := map[int64]bool{}
 	for _, it := range c.Items {

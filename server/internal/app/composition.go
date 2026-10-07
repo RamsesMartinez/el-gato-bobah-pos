@@ -75,6 +75,8 @@ type CompositionKind string
 const (
 	CompositionOfProduct CompositionKind = "product"
 	CompositionOfOption  CompositionKind = "option"
+	// CompositionOfIngredient es un insumo que se prepara en el local con otros insumos.
+	CompositionOfIngredient CompositionKind = "ingredient"
 )
 
 // CompositionItemView es un renglón de la composición, para la hoja «Qué lleva».
@@ -103,6 +105,9 @@ type CompositionView struct {
 	LinkedProductName string                     `json:"linkedProductName,omitempty"`
 	Items             []CompositionItemView      `json:"items"`
 	Components        []CompositionComponentView `json:"components"`
+	// Yield es cuánto rinde un insumo preparado, en su unidad base (YieldUnitCode).
+	Yield         *decimal.Decimal `json:"yield,omitempty"`
+	YieldUnitCode string           `json:"yieldUnitCode,omitempty"`
 	// Editable es falso en un producto con existencias propias: descuenta él mismo, y no hay nada
 	// que capturar.
 	Editable bool   `json:"editable"`
@@ -128,6 +133,8 @@ type CompositionRequest struct {
 	Items           []CompositionInputItem `json:"items"`
 	LinkedProductID *int64                 `json:"linkedProductId"`
 	Components      []CompositionComponent `json:"components"`
+	// Yield: cuánto rinde, solo para un insumo preparado y en su unidad base.
+	Yield *decimal.Decimal `json:"yield"`
 }
 
 // Composition devuelve lo que lleva un producto o un extra.
@@ -168,6 +175,16 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 		if o.LinkedProductName != nil {
 			v.LinkedProductName = *o.LinkedProductName
 		}
+	case CompositionOfIngredient:
+		in, err := q.GetIngredientComposition(ctx, id)
+		if err != nil {
+			return v, notFound(err)
+		}
+		recipe, status, by, at = in.RecipeID, in.CompositionStatus, in.ConfirmedByName, in.CompositionConfirmedAt
+		v.YieldUnitCode = in.BaseUnitCode
+		if in.IsPrep {
+			v.Yield = in.YieldQty
+		}
 	default:
 		return v, domain.ErrValidation
 	}
@@ -199,8 +216,14 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 // tipo sigue a la composición, para que nadie tenga que cambiarlo aparte. El POS vende igual un
 // paquete que un producto suelto; solo cambia lo que sale del almacén.
 func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind, id int64, req CompositionRequest, actor int64) error {
+	if kind == CompositionOfIngredient {
+		return s.savePreparedIngredient(ctx, id, req, actor)
+	}
 	if kind != CompositionOfProduct && kind != CompositionOfOption {
 		return domain.ErrValidation
+	}
+	if req.Yield != nil {
+		return fmt.Errorf("%w: solo un insumo preparado lleva rendimiento", domain.ErrValidation)
 	}
 	if kind == CompositionOfProduct && req.LinkedProductID != nil {
 		return fmt.Errorf("%w: un producto no se liga a otro; un paquete se arma con sus productos", domain.ErrValidation)
@@ -320,6 +343,8 @@ func (s *AdminService) ConfirmComposition(ctx context.Context, kind CompositionK
 		n, err = q.ConfirmProductComposition(ctx, db.ConfirmProductCompositionParams{ID: id, CompositionConfirmedBy: &actor})
 	case CompositionOfOption:
 		n, err = q.ConfirmOptionComposition(ctx, db.ConfirmOptionCompositionParams{ID: id, CompositionConfirmedBy: &actor})
+	case CompositionOfIngredient:
+		n, err = q.ConfirmIngredientComposition(ctx, db.ConfirmIngredientCompositionParams{ID: id, CompositionConfirmedBy: &actor})
 	default:
 		return domain.ErrValidation
 	}
@@ -329,11 +354,74 @@ func (s *AdminService) ConfirmComposition(ctx context.Context, kind CompositionK
 	return err
 }
 
+// savePreparedIngredient guarda un insumo que se prepara en el local: qué insumos lleva y cuánto
+// rinde. Sin insumos vuelve a ser uno que se compra hecho. Rechaza los ciclos contra todo el
+// catálogo de la empresa, no solo contra lo capturado: A no puede llevar B si B ya lleva A.
+func (s *AdminService) savePreparedIngredient(ctx context.Context, id int64, req CompositionRequest, actor int64) error {
+	if req.LinkedProductID != nil || len(req.Components) > 0 {
+		return fmt.Errorf("%w: un insumo lleva insumos, no productos", domain.ErrValidation)
+	}
+	if len(req.Items) > 0 && req.Yield == nil {
+		return fmt.Errorf("%w: falta cuánto rinde", domain.ErrValidation)
+	}
+	q := s.store.QC(ctx)
+	if _, err := q.GetIngredientComposition(ctx, id); err != nil {
+		return notFound(err)
+	}
+	in, err := compositionInput(ctx, q, req)
+	if err != nil {
+		return err
+	}
+	if err := in.Validate(); err != nil {
+		return err
+	}
+	if len(req.Items) > 0 {
+		graph, err := loadStockGraph(ctx, q)
+		if err != nil {
+			return err
+		}
+		components := make([]int64, 0, len(req.Items))
+		for _, it := range req.Items {
+			components = append(components, it.IngredientID)
+		}
+		if err := graph.ValidatePrepIngredient(id, components); err != nil {
+			return err
+		}
+	}
+
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		params := db.SetIngredientCompositionParams{ID: id}
+		if len(req.Items) > 0 {
+			rid, err := q.CreateCompositionRecipe(ctx)
+			if err != nil {
+				return err
+			}
+			for i, it := range req.Items {
+				if err := q.InsertCompositionItem(ctx, db.InsertCompositionItemParams{
+					RecipeID: rid, IngredientID: it.IngredientID, Quantity: domain.Round4(it.Quantity),
+					UnitID: it.UnitID, Position: int32(i),
+				}); err != nil {
+					return err
+				}
+			}
+			yield := domain.Round4(*req.Yield)
+			confirmed := "confirmed"
+			params.IsPrep, params.RecipeID, params.YieldQty = true, &rid, &yield
+			params.Status, params.ConfirmedBy = &confirmed, &actor
+		}
+		n, err := q.SetIngredientComposition(ctx, params)
+		if err == nil && n == 0 {
+			return domain.ErrNotFound
+		}
+		return err
+	})
+}
+
 // compositionInput completa los tipos de unidad para que el dominio valide. Un insumo que no sale
 // (de otra empresa, o que no existe) se rechaza aquí.
 func compositionInput(ctx context.Context, q *db.Queries, req CompositionRequest) (domain.CompositionInput, error) {
 	items := req.Items
-	in := domain.CompositionInput{LinkedProductID: req.LinkedProductID}
+	in := domain.CompositionInput{LinkedProductID: req.LinkedProductID, Yield: req.Yield}
 	for _, c := range req.Components {
 		in.Components = append(in.Components, domain.PackageComponent{ProductID: c.ProductID, Qty: c.Quantity})
 	}
