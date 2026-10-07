@@ -10,6 +10,7 @@ import { useMutation } from '@tanstack/react-query';
 import { adminApi, type GroupOption } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
 import { montoTecleado } from '../../domain/numeros';
+import { CompositionSheet } from '../../shared/CompositionSheet';
 
 // Crear/editar una opción de modificador (nombre, precio extra, máx por línea).
 // option=null → crear en groupId; option set → editar.
@@ -26,6 +27,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
   const [name, setName] = useState(option?.name ?? '');
   const [price, setPrice] = useState(String(option?.priceDelta ?? 0));
   const [maxPerLine, setMaxPerLine] = useState(String(option?.maxPerLine ?? 1));
+  const [composing, setComposing] = useState(false);
 
   const save = useMutation({
     mutationFn: () => {
@@ -53,6 +55,9 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
             <Field label="Máx. por línea">
               <Input type="number" min={1} value={maxPerLine} onChange={(e) => setMaxPerLine(e.target.value)} />
             </Field>
+            {option && (
+              <Button variant="outline" minH="44px" onClick={() => setComposing(true)}>Qué lleva ›</Button>
+            )}
           </VStack>
         </DialogBody>
         <DialogFooter>
@@ -60,6 +65,10 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
           <Button loading={save.isPending} disabled={!name.trim()} onClick={() => save.mutate()}>Guardar</Button>
         </DialogFooter>
       </DialogContent>
+      {option && (
+        <CompositionSheet kind="option" id={option.id} name={option.name} open={composing}
+          onClose={() => setComposing(false)} />
+      )}
     </DialogRoot>
   );
 }

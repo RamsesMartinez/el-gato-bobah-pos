@@ -15,6 +15,8 @@ import { adminApi, type AdminProduct, type Category } from '../api/admin';
 import { Picker, type PickerOption } from '../components/Picker';
 import { useUiStore } from '../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
+import { CompositionSheet } from './CompositionSheet';
+import { compositionLabel } from './compositionLabel';
 
 interface Props {
   product: AdminProduct | null;
@@ -29,6 +31,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const palette = useUiStore((s) => s.palette);
   const [edit, setEdit] = useState<AdminProduct | null>(product);
   useEffect(() => { setEdit(product); }, [product]);
+  const [composing, setComposing] = useState(false);
   // Solo se piden al abrir el diálogo: es un catálogo chico que casi nunca cambia y no vale un
   // viaje por cada producto que se lista.
   const { data: cats } = useQuery({
@@ -74,6 +77,10 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   <Input type="number" value={edit.price}
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
+                <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
+                  <Text>Qué lleva</Text>
+                  <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
+                </Button>
                 <Field label="Categoría">
                   {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
                       sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
@@ -134,6 +141,10 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
           </>
         )}
       </DialogContent>
+      {edit && (
+        <CompositionSheet kind="product" id={edit.id} name={edit.name} open={composing}
+          onClose={() => setComposing(false)} />
+      )}
     </DialogRoot>
   );
 }

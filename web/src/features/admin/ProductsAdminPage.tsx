@@ -47,6 +47,7 @@ export function ProductsAdminPage() {
   const [dsearch, setDsearch] = useState(''); // debounced: 1 request por pausa de tecleo, no por tecla
   const [status, setStatus] = useState<'act' | 'inact' | 'all'>('act');
   const [groupsFilter, setGroupsFilter] = useState<GroupsFilter>(''); // con/sin grupos
+  const [compositionFilter, setCompositionFilter] = useState<'' | 'none' | 'estimated'>(''); // qué lleva
   const [categoryId, setCategoryId] = useState(''); // '' = todas
   const [sort, setSort] = useState<ProductSort>('name');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
@@ -67,10 +68,11 @@ export function ProductsAdminPage() {
   const catOptions = useMemo(() => categoryOptions(catData?.items ?? []), [catData]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, categoryId, sort, dir, page }],
+    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, compositionFilter, categoryId, sort, dir, page }],
     queryFn: () => adminApi.products({
       status, search: dsearch,
       groups: groupsFilter || undefined,
+      composition: compositionFilter || undefined,
       categoryId: categoryId ? Number(categoryId) : undefined,
       sort, dir,
       limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
@@ -103,7 +105,7 @@ export function ProductsAdminPage() {
   });
 
   // Filtros no-default activos (para el badge del botón «Filtros»): estado ≠ Activos y grupos ≠ todos.
-  const activeFilters = (status !== 'act' ? 1 : 0) + (groupsFilter !== '' ? 1 : 0);
+  const activeFilters = (status !== 'act' ? 1 : 0) + (groupsFilter !== '' ? 1 : 0) + (compositionFilter !== '' ? 1 : 0);
 
   // Orden por columna: 1er clic ordena (texto asc / número desc); reclics alternan asc/desc.
   const onSort = (col: ProductSort, numeric = false) => {
@@ -148,6 +150,14 @@ export function ProductsAdminPage() {
                 <MenuRadioItem value="">Todos</MenuRadioItem>
                 <MenuRadioItem value="some">Con grupos</MenuRadioItem>
                 <MenuRadioItem value="none">Sin grupos</MenuRadioItem>
+              </MenuRadioItemGroup>
+            </MenuItemGroup>
+            <MenuSeparator />
+            <MenuItemGroup title="Qué lleva">
+              <MenuRadioItemGroup value={compositionFilter} onValueChange={(e) => { setCompositionFilter(e.value as typeof compositionFilter); setPage(1); }}>
+                <MenuRadioItem value="">Todos</MenuRadioItem>
+                <MenuRadioItem value="none">Sin capturar</MenuRadioItem>
+                <MenuRadioItem value="estimated">Estimado, por revisar</MenuRadioItem>
               </MenuRadioItemGroup>
             </MenuItemGroup>
           </MenuContent>

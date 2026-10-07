@@ -25,6 +25,33 @@ export interface AdminProduct {
   availableUntil: string | null;
   groupCount: number;    // grupos de modificadores activos ligados al producto
   overrideCount: number; // grupos con min/max personalizado en este producto
+  compositionStatus?: CompositionStatus;
+}
+
+// Qué lleva un producto o un extra: lo que descuenta del almacén al venderse.
+export type CompositionStatus = '' | 'estimated' | 'confirmed';
+export type CompositionKind = 'product' | 'option';
+export interface CompositionItem {
+  ingredientId: number;
+  ingredientName: string;
+  quantity: string;
+  unitId: number;
+  unitCode: string;
+}
+export interface Composition {
+  status: CompositionStatus;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  linkedProductId?: number;
+  linkedProductName?: string;
+  // Opcional a propósito: obliga a la guarda si el servidor llegara a mandar null.
+  items?: CompositionItem[];
+  editable: boolean;
+  reason?: 'own_stock' | 'package';
+}
+export interface CompositionBody {
+  items: { ingredientId: number; quantity: string; unitId: number }[];
+  linkedProductId: number | null;
 }
 
 // Categoría (para filtro y alta de productos).
@@ -44,6 +71,7 @@ export interface ProductsQuery {
   sort?: 'options' | 'products' | ProductSort;
   dir?: 'asc' | 'desc';
   groups?: 'none' | 'some'; // solo productos: filtra por con/sin grupos activos
+  composition?: 'none' | 'estimated'; // productos y extras: sin capturar / por revisar
   categoryId?: number;      // solo productos: filtra por categoría (incluye subcategorías)
   limit?: number;
   offset?: number;
@@ -75,10 +103,15 @@ function pageQs(p: ProductsQuery): string {
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   if (p.groups) qs.set('groups', p.groups);
+  if (p.composition) qs.set('composition', p.composition);
   if (p.categoryId) qs.set('categoryId', String(p.categoryId));
   qs.set('limit', String(p.limit ?? 25));
   qs.set('offset', String(p.offset ?? 0));
   return qs.toString();
+}
+
+function compositionPath(kind: CompositionKind, id: number): string {
+  return `/admin/${kind === 'product' ? 'products' : 'modifier-options'}/${id}/composition`;
 }
 
 export const adminApi = {
@@ -101,6 +134,13 @@ export const adminApi = {
     api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name }),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
+
+  composition: (kind: CompositionKind, id: number) =>
+    api.get<Composition>(`${compositionPath(kind, id)}`),
+  saveComposition: (kind: CompositionKind, id: number, b: CompositionBody) =>
+    api.put<Composition>(`${compositionPath(kind, id)}`, b),
+  confirmComposition: (kind: CompositionKind, id: number) =>
+    api.post<Composition>(`${compositionPath(kind, id)}/confirm`),
 
   modifierOptions: (p: ProductsQuery = {}) => api.get<OptionsPage>(`/admin/modifier-options?${pageQs(p)}`),
   setOptionFavorite: (id: number, favorite: boolean) =>
@@ -188,6 +228,7 @@ export interface AdminModifierOption {
   priceDelta: string;
   favorite: boolean;
   active: boolean;
+  compositionStatus?: CompositionStatus;
 }
 export interface OptionsPage {
   items: AdminModifierOption[];
