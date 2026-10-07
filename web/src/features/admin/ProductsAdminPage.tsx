@@ -5,7 +5,7 @@ import {
 } from '@chakra-ui/react';
 import {
   LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuPlus,
-  LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy,
+  LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy, LuPackage,
 } from 'react-icons/lu';
 import { SortHead } from '../../components/SortHead';
 import { toaster } from '../../components/ui/toaster';
@@ -105,7 +105,7 @@ export function ProductsAdminPage() {
   });
 
   // Filtros no-default activos (para el badge del botón «Filtros»): estado ≠ Activos y grupos ≠ todos.
-  const activeFilters = (status !== 'act' ? 1 : 0) + (groupsFilter !== '' ? 1 : 0) + (compositionFilter !== '' ? 1 : 0);
+  const activeFilters = (status !== 'act' ? 1 : 0) + (groupsFilter !== '' ? 1 : 0);
 
   // Orden por columna: 1er clic ordena (texto asc / número desc); reclics alternan asc/desc.
   const onSort = (col: ProductSort, numeric = false) => {
@@ -152,14 +152,25 @@ export function ProductsAdminPage() {
                 <MenuRadioItem value="none">Sin grupos</MenuRadioItem>
               </MenuRadioItemGroup>
             </MenuItemGroup>
-            <MenuSeparator />
-            <MenuItemGroup title="Qué lleva">
-              <MenuRadioItemGroup value={compositionFilter} onValueChange={(e) => { setCompositionFilter(e.value as typeof compositionFilter); setPage(1); }}>
-                <MenuRadioItem value="">Todos</MenuRadioItem>
-                <MenuRadioItem value="none">Sin capturar</MenuRadioItem>
-                <MenuRadioItem value="estimated">Estimado, por revisar</MenuRadioItem>
-              </MenuRadioItemGroup>
-            </MenuItemGroup>
+          </MenuContent>
+        </MenuRoot>
+        {/* Menú propio y no un tercer grupo de «Filtros»: con los tres, a 44 px por renglón, ese
+            menú ya no cabía en los 600 px de la tableta y «Qué lleva» quedaba abajo del pliegue. */}
+        <MenuRoot>
+          <MenuTrigger asChild>
+            <Button size="sm" variant="outline" colorPalette={compositionFilter ? 'blue' : 'gray'} flexShrink={0}>
+              <LuPackage />
+              <Box as="span" display={{ base: 'none', sm: 'inline' }}>
+                {compositionFilter === 'none' ? 'Sin capturar' : compositionFilter === 'estimated' ? 'Por revisar' : 'Qué lleva'}
+              </Box>
+            </Button>
+          </MenuTrigger>
+          <MenuContent minW="220px">
+            <MenuRadioItemGroup value={compositionFilter} onValueChange={(e) => { setCompositionFilter(e.value as typeof compositionFilter); setPage(1); }}>
+              <MenuRadioItem value="">Todos</MenuRadioItem>
+              <MenuRadioItem value="none">Sin capturar</MenuRadioItem>
+              <MenuRadioItem value="estimated">Estimado, por revisar</MenuRadioItem>
+            </MenuRadioItemGroup>
           </MenuContent>
         </MenuRoot>
         <Button size="sm" colorPalette="green" flexShrink={0} onClick={newModal.onOpen} title="Nuevo producto">

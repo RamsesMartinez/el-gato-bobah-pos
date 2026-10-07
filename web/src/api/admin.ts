@@ -46,12 +46,14 @@ export interface Composition {
   linkedProductName?: string;
   // Opcional a propósito: obliga a la guarda si el servidor llegara a mandar null.
   items?: CompositionItem[];
+  components?: { productId: number; productName: string; quantity: number }[];
   editable: boolean;
-  reason?: 'own_stock' | 'package';
+  reason?: 'own_stock';
 }
 export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];
   linkedProductId: number | null;
+  components: { productId: number; quantity: number }[];
 }
 
 // Categoría (para filtro y alta de productos).

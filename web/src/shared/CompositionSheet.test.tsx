@@ -6,14 +6,19 @@ import { Provider } from '../components/ui/provider';
 import { CompositionSheet } from './CompositionSheet';
 import type { Composition } from '../api/admin';
 
-const sinCapturar: Composition = { status: '', items: [], editable: true };
+const sinCapturar: Composition = { status: '', items: [], components: [], editable: true };
 
 const api = vi.hoisted(() => ({
   composition: vi.fn(),
   saveComposition: vi.fn((_k: string, _id: number, _b: unknown) => Promise.resolve({ status: 'confirmed', items: [], editable: true })),
   confirmComposition: vi.fn((_k: string, _id: number) => Promise.resolve({ status: 'confirmed', items: [], editable: true })),
   products: vi.fn(() => Promise.resolve({
-    items: [{ id: 7, name: 'Coca-Cola 600 ml' }], total: 1, counts: { act: 1, inact: 0 },
+    items: [
+      { id: 7, name: 'Coca-Cola 600 ml', type: 'simple' },
+      { id: 8, name: 'Crepa de Nutella', type: 'simple' },
+      { id: 9, name: 'Paquete Fiesta', type: 'combo' },
+      { id: 55, name: 'Leche deslactosada', type: 'simple' },
+    ], total: 4, counts: { act: 4, inact: 0 },
   })),
 }));
 const back = vi.hoisted(() => ({
@@ -59,7 +64,7 @@ describe('la hoja «Qué lleva»', () => {
     fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '250' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, {
-      items: [{ ingredientId: 1, quantity: '250', unitId: 3 }], linkedProductId: null,
+      items: [{ ingredientId: 1, quantity: '250', unitId: 3 }], linkedProductId: null, components: [],
     }));
   });
 
@@ -85,7 +90,40 @@ describe('la hoja «Qué lleva»', () => {
     fireEvent.click(await screen.findByText('Coca-Cola 600 ml'));
     // La hoja del selector se cierra con animación: hasta entonces lo de abajo queda oculto.
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, { items: [], linkedProductId: 7 }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, { items: [], linkedProductId: 7, components: [] }));
+  });
+
+  it('un extra puede ser un paquete del catálogo', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Es un producto' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir producto/ }));
+    expect(await screen.findByText('Paquete Fiesta')).toBeInTheDocument();
+  });
+
+  // ARMAR UN PAQUETE: productos con cuántas piezas lleva cada uno, con el mismo número de toques que
+  // un renglón de insumo.
+  it('un producto se arma como paquete con productos y piezas', async () => {
+    montar('product');
+    fireEvent.click(await screen.findByRole('button', { name: 'Es un paquete' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Agregar producto/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir producto/ }));
+    // Ni él mismo ni otro paquete se ofrecen: un paquete no lleva paquetes.
+    expect(screen.queryByText('Paquete Fiesta')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByText('Crepa de Nutella'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Una pieza más de Crepa de Nutella' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, {
+      items: [], linkedProductId: null, components: [{ productId: 8, quantity: 2 }],
+    }));
+  });
+
+  it('un paquete guardado se ve con sus productos', async () => {
+    api.composition.mockResolvedValue({
+      ...sinCapturar, status: 'confirmed', components: [{ productId: 8, productName: 'Crepa de Nutella', quantity: 2 }],
+    });
+    montar('product');
+    expect(await screen.findByRole('button', { name: 'Es un paquete' })).toHaveAttribute('data-active');
+    expect(screen.getByText('2')).toBeInTheDocument();
   });
 
   it('lo estimado se ve como estimado y se confirma sin editar', async () => {
