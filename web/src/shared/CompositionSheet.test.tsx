@@ -39,7 +39,7 @@ const back = vi.hoisted(() => ({
 vi.mock('../api/admin', () => ({ adminApi: api }));
 vi.mock('../api/backoffice', () => ({ backofficeApi: back }));
 
-function montar(kind: 'product' | 'option' = 'option') {
+function montar(kind: 'product' | 'option' | 'ingredient' = 'option') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -141,6 +141,40 @@ describe('la hoja «Qué lleva»', () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: 'No lleva nada' }));
     await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 55));
+  });
+
+  // UN INSUMO QUE SE PREPARA AQUÍ: lo que lleva y cuánto rinde, en la unidad del insumo.
+  it('un insumo se captura como preparado con su rendimiento', async () => {
+    api.composition.mockResolvedValue({ ...sinCapturar, yieldUnitCode: 'ml' });
+    montar('ingredient');
+    fireEvent.click(await screen.findByRole('button', { name: 'Lo preparo aquí' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir insumo/ }));
+    fireEvent.click(await screen.findByText('Azúcar'));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '500' } });
+    fireEvent.change(screen.getByLabelText('Rinde'), { target: { value: '1000' } });
+    expect(screen.getByText('ml')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('ingredient', 55, {
+      items: [{ ingredientId: 2, quantity: '500', unitId: 1 }], linkedProductId: null, components: [], yield: '1000',
+    }));
+  });
+
+  it('un insumo preparado sin rendimiento no se puede guardar', async () => {
+    api.composition.mockResolvedValue({ ...sinCapturar, yieldUnitCode: 'ml' });
+    montar('ingredient');
+    fireEvent.click(await screen.findByRole('button', { name: 'Lo preparo aquí' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Elegir insumo/ }));
+    fireEvent.click(await screen.findByText('Azúcar'));
+    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '500' } });
+    expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  it('un insumo que se compra hecho no ofrece «No lleva nada»', async () => {
+    montar('ingredient');
+    expect(await screen.findByRole('button', { name: 'Lo compro hecho' })).toHaveAttribute('data-active');
+    expect(screen.queryByRole('button', { name: 'No lleva nada' })).not.toBeInTheDocument();
   });
 
   it('un producto con existencias propias no se edita aquí y lo dice', async () => {

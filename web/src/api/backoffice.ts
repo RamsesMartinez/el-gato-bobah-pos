@@ -304,6 +304,9 @@ export interface Ingredient {
   baseUnitId: number;
   baseUnitCode: string;
   baseUnitKind: string;
+  // Se prepara en el local con otros insumos, y si su composición está estimada o confirmada.
+  isPrep?: boolean;
+  compositionStatus?: '' | 'estimated' | 'confirmed';
   category: string | null;
   onHand: string;
 }

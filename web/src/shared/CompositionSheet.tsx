@@ -53,10 +53,11 @@ interface Part {
   quantity: number;
 }
 
-type Mode = 'items' | 'product' | 'package';
+type Mode = 'items' | 'product' | 'package' | 'bought';
 
 // Lo que hace cada modo, en una línea, para quien captura.
 const AYUDA: Record<Mode, string> = {
+  bought: 'Cada venta descuenta este insumo de sus existencias, tal cual.',
   items: 'Cada venta descuenta del almacén estos insumos.',
   product: 'Cada venta descuenta lo que lleva ese producto, como si se vendiera solo.',
   package: 'Cada venta descuenta lo que lleva cada producto, por las piezas indicadas.',
@@ -68,8 +69,11 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
   const qc = useQueryClient();
   const components = useMemo(() => data.components ?? [], [data.components]);
   const [mode, setMode] = useState<Mode>(
-    data.linkedProductId ? 'product' : components.length > 0 ? 'package' : 'items',
+    kind === 'ingredient'
+      ? (data.yield ? 'items' : 'bought')
+      : data.linkedProductId ? 'product' : components.length > 0 ? 'package' : 'items',
   );
+  const [yieldQty, setYieldQty] = useState(data.yield ?? '');
   const [rows, setRows] = useState<Row[]>(() => (data.items ?? []).map((it) => ({
     ingredientId: it.ingredientId, quantity: it.quantity, unitId: it.unitId,
   })));
@@ -90,12 +94,15 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
   const ingById = useMemo(() => new Map((ingredients.data?.items ?? []).map((i) => [i.id, i])), [ingredients.data]);
   // Los que ya trae la composición, aunque estén inactivos: si no, el renglón se vería vacío.
   const ingOptions = useMemo(() => {
-    const opts: Opt[] = (ingredients.data?.items ?? []).map((i) => ({ value: String(i.id), label: i.name }));
+    // Un insumo preparado no se lleva a sí mismo.
+    const opts: Opt[] = (ingredients.data?.items ?? [])
+      .filter((i) => kind !== 'ingredient' || i.id !== id)
+      .map((i) => ({ value: String(i.id), label: i.name }));
     for (const it of data.items ?? []) {
       if (!ingById.has(it.ingredientId)) opts.push({ value: String(it.ingredientId), label: it.ingredientName });
     }
     return opts;
-  }, [ingredients.data, ingById, data.items]);
+  }, [ingredients.data, ingById, data.items, kind, id]);
   const productName = useMemo(() => {
     const m = new Map((products.data?.items ?? []).map((p) => [p.id, p.name]));
     for (const c of components) if (!m.has(c.productId)) m.set(c.productId, c.productName);
@@ -117,6 +124,7 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
   const done = (c: Composition, title: string) => {
     qc.setQueryData(['admin', 'composition', kind, id], c);
     qc.invalidateQueries({ queryKey: ['admin'] });
+    qc.invalidateQueries({ queryKey: ['ingredients'] });
     toaster.create({ title, type: 'success' });
     onClose();
   };
@@ -129,6 +137,7 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
         : [],
       linkedProductId: mode === 'product' ? linked : null,
       components: mode === 'package' ? parts.map((p) => ({ productId: p.productId!, quantity: p.quantity })) : [],
+      ...(kind === 'ingredient' ? { yield: mode === 'items' ? yieldQty : null } : {}),
     }),
     onSuccess: (c) => done(c, 'Guardado'),
     onError: fail,
@@ -154,11 +163,17 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
     ? linked !== null
     : mode === 'package'
       ? parts.every((p) => p.productId !== null)
-      : rows.every((r) => r.ingredientId !== null && r.unitId !== null && Number(r.quantity) > 0);
-  const empty = mode === 'items' && rows.length === 0;
+      : mode === 'bought'
+        ? true
+        : rows.every((r) => r.ingredientId !== null && r.unitId !== null && Number(r.quantity) > 0)
+          && (kind !== 'ingredient' || (rows.length > 0 && Number(yieldQty) > 0));
+  // «No lleva nada» es para un extra o un producto; un insumo que se compra hecho ya dice eso.
+  const empty = kind !== 'ingredient' && mode === 'items' && rows.length === 0;
   const modes: { k: Mode; label: string }[] = kind === 'option'
     ? [{ k: 'items', label: 'Lleva insumos' }, { k: 'product', label: 'Es un producto' }]
-    : [{ k: 'items', label: 'Lleva insumos' }, { k: 'package', label: 'Es un paquete' }];
+    : kind === 'ingredient'
+      ? [{ k: 'bought', label: 'Lo compro hecho' }, { k: 'items', label: 'Lo preparo aquí' }]
+      : [{ k: 'items', label: 'Lleva insumos' }, { k: 'package', label: 'Es un paquete' }];
 
   const remove = (label: string, undo: () => void, drop: () => void) => edit(() => {
     setRemoved({ name: label, undo });
@@ -183,7 +198,19 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
                 onClick={() => edit(() => { setMode(m.k); setRemoved(null); })}>{m.label}</Button>
             ))}
           </HStack>
-          <Text fontSize="sm" color="fg.muted">{AYUDA[mode]}</Text>
+          <Text fontSize="sm" color="fg.muted">
+            {kind === 'ingredient' && mode === 'items'
+              ? 'Cada venta descuenta los insumos que lo componen, en proporción a lo que rinde.'
+              : AYUDA[mode]}
+          </Text>
+          {kind === 'ingredient' && mode === 'items' && (
+            <HStack gap={2}>
+              <Text>Con esto salen</Text>
+              <Input aria-label="Rinde" type="number" inputMode="decimal" min={0} w="120px" minH="44px"
+                value={yieldQty} onChange={(e) => edit(() => setYieldQty(e.target.value))} />
+              <Text>{data.yieldUnitCode}</Text>
+            </HStack>
+          )}
 
           {mode === 'product' && (
             <Picker title="Producto" placeholder="Elegir producto"

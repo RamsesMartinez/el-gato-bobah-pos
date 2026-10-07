@@ -247,6 +247,9 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     aparte: capturarle productos lo vuelve `combo` con un hueco por producto, y capturarle insumos lo
     regresa. El POS vende igual un paquete que un producto suelto; un paquete no lleva paquetes ni
     se lleva a sí mismo.
+  - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
+    base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
+    en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,

@@ -30,7 +30,7 @@ export interface AdminProduct {
 
 // Qué lleva un producto o un extra: lo que descuenta del almacén al venderse.
 export type CompositionStatus = '' | 'estimated' | 'confirmed';
-export type CompositionKind = 'product' | 'option';
+export type CompositionKind = 'product' | 'option' | 'ingredient';
 export interface CompositionItem {
   ingredientId: number;
   ingredientName: string;
@@ -47,6 +47,9 @@ export interface Composition {
   // Opcional a propósito: obliga a la guarda si el servidor llegara a mandar null.
   items?: CompositionItem[];
   components?: { productId: number; productName: string; quantity: number }[];
+  // Solo un insumo: cuánto rinde si se prepara aquí, en su unidad base.
+  yield?: string;
+  yieldUnitCode?: string;
   editable: boolean;
   reason?: 'own_stock';
 }
@@ -54,6 +57,7 @@ export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];
   linkedProductId: number | null;
   components: { productId: number; quantity: number }[];
+  yield?: string | null;
 }
 
 // Categoría (para filtro y alta de productos).
@@ -113,6 +117,7 @@ function pageQs(p: ProductsQuery): string {
 }
 
 function compositionPath(kind: CompositionKind, id: number): string {
+  if (kind === 'ingredient') return `/stock/ingredients/${id}/composition`;
   return `/admin/${kind === 'product' ? 'products' : 'modifier-options'}/${id}/composition`;
 }
 

@@ -249,5 +249,5 @@ Sigue abierto:
 - **Cancelar un pedido completo repone también lo ya enviado a cocina**, como antes. Cambiarlo es
   una decisión del dueño, no un arreglo.
 - **Algunos insumos compuestos de FUDO parecen invertidos** (un frasco «hecho de» cucharadas): se
-  cargan como estimados y hoy **no hay pantalla para verlos ni corregirlos**; «Qué lleva» cubre
-  productos y extras, no insumos.
+  cargan como estimados y se revisan en Almacén → Insumos, donde cada uno dice si se compra o se
+  prepara aquí y abre su «Qué lleva» con lo que rinde.

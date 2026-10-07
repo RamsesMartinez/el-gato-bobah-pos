@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import {
-  Box, Heading, Table, Center, Spinner, Badge, Tabs, Text,
+  Box, Button, Heading, Table, Center, Spinner, Badge, Tabs, Text,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
+import { CompositionSheet } from '../../shared/CompositionSheet';
 import { backofficeApi } from '../../api/backoffice';
 import { Page } from '../../components/Page';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -10,6 +12,8 @@ export function StockPage() {
   const horaNegocio = useHoraDelNegocio();
   const levels = useQuery({ queryKey: ['stock', 'levels'], queryFn: backofficeApi.stockLevels });
   const moves = useQuery({ queryKey: ['stock', 'moves'], queryFn: backofficeApi.stockMovements });
+  const ingredients = useQuery({ queryKey: ['ingredients', 'stock'], queryFn: () => backofficeApi.ingredients() });
+  const [composing, setComposing] = useState<{ id: number; name: string } | null>(null);
 
   if (levels.isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
@@ -20,6 +24,7 @@ export function StockPage() {
         <Tabs.List>
           <Tabs.Trigger value="existencias">Existencias</Tabs.Trigger>
           <Tabs.Trigger value="movimientos">Movimientos</Tabs.Trigger>
+          <Tabs.Trigger value="insumos">Insumos</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="existencias" px={0}>
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
@@ -64,7 +69,36 @@ export function StockPage() {
             </Table.Root>
           </Box>
         </Tabs.Content>
+        {/* Qué insumos se preparan en el local y qué llevan. Lo que vino estimado de FUDO se revisa
+            aquí: no había otro lugar donde verlo. */}
+        <Tabs.Content value="insumos" px={0}>
+          <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
+            <Table.Root size="sm">
+              <Table.Header><Table.Row><Table.ColumnHeader>Insumo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader>Qué lleva</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Body>
+                {(ingredients.data?.items ?? []).map((i) => (
+                  <Table.Row key={i.id}>
+                    <Table.Cell>{i.name}</Table.Cell>
+                    <Table.Cell textAlign="end">{Number(i.onHand)} {i.baseUnitCode}</Table.Cell>
+                    <Table.Cell>
+                      <Button aria-label={`Qué lleva ${i.name}`} size="sm" variant="ghost" minH="44px" px={2}
+                        onClick={() => setComposing({ id: i.id, name: i.name })}>
+                        {i.isPrep ? 'Se prepara aquí' : 'Se compra'}
+                        {i.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
+                        {' ›'}
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          </Box>
+        </Tabs.Content>
       </Tabs.Root>
+      {composing && (
+        <CompositionSheet kind="ingredient" id={composing.id} name={composing.name} open
+          onClose={() => setComposing(null)} />
+      )}
     </Page>
   );
 }
