@@ -28,6 +28,27 @@ Hoy el almacén solo descuenta el producto principal de cada venta de mostrador.
 
 Con existencias que no bajan, el almacén no sirve para saber qué comprar ni cuánto costó lo vendido.
 
+## Vocabulario en pantalla (decidido por el dueño, 2026-10-07)
+
+La primera versión de la pantalla mezclaba «ingrediente» e «insumo» para lo mismo y hablaba en
+palabras de sistema («sin capturar», «composición»); el dueño la vio y no se entendía. Las palabras
+salen de cómo habla un negocio de comida y de lo que el equipo trae de FUDO; una pantalla con estas
+palabras no necesita explicarse.
+
+| Se dice | No se dice | Qué es |
+|---|---|---|
+| Producto | platillo, artículo | Lo que se vende |
+| Insumo | ingrediente, materia prima | Todo lo que se compra y se gasta, vasos y sellos incluidos |
+| Preparado | subingrediente, subreceta | Insumo que se hace en el local con otros insumos |
+| Extra | modificador, opción | Lo que se agrega a un producto, «Sin hielo» incluido |
+| Combo | paquete | Producto que junta otros productos |
+| Receta | composición, «qué lleva» | Lo que sale del almacén al vender o preparar algo |
+| Pendiente · Por revisar · Lista | sin capturar · estimada · confirmada | Estado de una receta |
+| No gasta insumos | no lleva nada | Lo que se vende sin sacar nada del almacén |
+| Se descuenta solo | existencias propias | Lo que se compra y se vende tal cual |
+
+Los identificadores del código no cambian (constitución VII): esto rige el texto que ve quien opera.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Capturar qué lleva cada producto y cada extra (Priority: P1)
