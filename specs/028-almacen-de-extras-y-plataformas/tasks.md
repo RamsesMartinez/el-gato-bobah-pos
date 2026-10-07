@@ -5,11 +5,11 @@
 
 ## Phase 1: Defectos existentes (se reproducen primero)
 
-- [ ] T001 Test: cancelar un renglón antes de cocina y después el pedido entero repone una sola vez; cancelar un pedido con un renglón ya enviado a cocina no repone ese renglón (server/internal/integration/stock_composition_test.go)
-- [ ] T002 `RestockCancelledOrder` neto por renglón con `ReponeInventario` (server/queries/orders.sql), y `CancelarConDevolucion` con `GetOrderForUpdate` (server/internal/app/devolucion.go)
-- [ ] T003 [P] Test de tableta: `ProductEditDialog` y `OptionFormDialog` hacen scroll en el cuerpo y «Guardar» queda visible (web/src/features/admin/shared/*.test.tsx)
-- [ ] T004 `scrollBehavior="inside"` y `placement="center"` en los dos diálogos
-- [ ] T005 [P] `fudo-import`: la consulta de recetas filtra la empresa explícita (server/cmd/fudo-import/main.go:504)
+- [x] T001 Test: cancelar un renglón antes de cocina y después el pedido entero repone una sola vez; cancelar un pedido con un renglón ya enviado a cocina no repone ese renglón (server/internal/integration/stock_composition_test.go)
+- [x] T002 `RestockCancelledOrder` neto por renglón (server/queries/orders.sql). La regla de no reponer lo ya enviado a cocina NO se aplicó al pedido completo: sería un cambio de negocio y queda para el dueño, y `CancelarConDevolucion` con `GetOrderForUpdate` (server/internal/app/devolucion.go)
+- [x] T003 [P] Test de tableta: `ProductEditDialog` y `OptionFormDialog` hacen scroll en el cuerpo y «Guardar» queda visible (web/src/features/admin/shared/*.test.tsx)
+- [x] T004 `scrollBehavior="inside"` y `placement="center"` en los dos diálogos
+- [x] T005 [P] `fudo-import`: la consulta de recetas filtra la empresa explícita (server/cmd/fudo-import/main.go:504)
 
 ## Phase 2: Fundación
 

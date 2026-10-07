@@ -501,7 +501,10 @@ func (im *importer) importModifiers(ctx context.Context) error {
 
 func (im *importer) validateCosts(ctx context.Context) error {
 	rows, err := im.pool.Query(ctx,
-		`select name, current_cost, cost_source from products where cost_source='receta'`)
+		// La empresa explícita: el import corre como owner, que salta RLS, y sin el filtro comparaba
+		// contra FUDO los costos de TODAS las empresas.
+		`select name, current_cost, cost_source from products
+		  where cost_source='receta' and company_id = nullif(current_setting('app.company_id', true), '')::bigint`)
 	if err != nil {
 		return err
 	}

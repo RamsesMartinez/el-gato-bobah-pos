@@ -210,10 +210,18 @@ update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2,
 where id = $1;
 
 -- name: RestockCancelledOrder :exec
--- Repone el stock de una orden cancelada: movimientos 'cancelacion' que invierten las ventas.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, user_id, reason)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sqlc.arg(actor_id), 'cancelación de orden'
-from stock_movements sm where sm.order_id = sqlc.arg(oid) and sm.movement_type = 'venta';
+-- Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+--
+-- Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
+-- volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
+-- agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+       sqlc.arg(actor_id), 'cancelación de orden'
+from stock_movements sm
+where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id
+having sum(sm.quantity) <> 0;
 
 -- name: RecalcOrderTotals :exec
 -- Recalcula el total del pedido desde SUS renglones, después de agregarle más.

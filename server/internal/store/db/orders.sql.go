@@ -1510,9 +1510,13 @@ func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelled
 }
 
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, user_id, reason)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, $1, 'cancelación de orden'
-from stock_movements sm where sm.order_id = $2 and sm.movement_type = 'venta'
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+       $1, 'cancelación de orden'
+from stock_movements sm
+where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id
+having sum(sm.quantity) <> 0
 `
 
 type RestockCancelledOrderParams struct {
@@ -1520,7 +1524,11 @@ type RestockCancelledOrderParams struct {
 	Oid     *int64 `json:"oid"`
 }
 
-// Repone el stock de una orden cancelada: movimientos 'cancelacion' que invierten las ventas.
+// Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+//
+// Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
+// volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
+// agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
 	return err

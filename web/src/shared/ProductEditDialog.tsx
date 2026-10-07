@@ -58,7 +58,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   });
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>Editar producto</DialogTitle></DialogHeader>

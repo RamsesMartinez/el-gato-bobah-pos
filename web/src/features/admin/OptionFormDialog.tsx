@@ -37,7 +37,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
   });
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>{option ? 'Editar opción' : 'Nueva opción'}</DialogTitle></DialogHeader>

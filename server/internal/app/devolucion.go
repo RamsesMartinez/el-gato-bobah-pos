@@ -175,7 +175,9 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		o, err := q.GetOrder(ctx, cmd.OrderID)
+		// Con candado, como CancelarRenglon: la reposición neta lee lo que ya repuso un renglón, y
+		// una cancelación de renglón concurrente no debe colarse entre esa lectura y la escritura.
+		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
