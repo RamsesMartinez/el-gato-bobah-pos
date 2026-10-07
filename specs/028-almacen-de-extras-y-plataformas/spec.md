@@ -188,8 +188,9 @@ y suma el ingreso de uno.
   insumos con cantidad y unidad, o el producto del catálogo que es.
 - **FR-002**: Toda composición MUST guardar si es estimada o confirmada, y quién la confirmó y cuándo.
 - **FR-003**: El sistema MUST ofrecer la carga inicial de estimados desde los archivos de FUDO, sin
-  pisar lo ya capturado. [NEEDS CLARIFICATION: ¿un estimado descuenta desde que se carga, o solo
-  después de que alguien lo confirma?]
+  pisar lo ya capturado. Un estimado MUST descontar desde que se carga, marcado como estimado
+  (decisión del dueño, 2026-10-07: un número aproximado sirve más que ninguno para saber qué
+  comprar); la lista «por confirmar» dice qué revisar.
 - **FR-004**: La venta de mostrador MUST descontar la composición de cada extra elegido, por la
   cantidad del extra y la del renglón.
 - **FR-005**: Aceptar un pedido de plataforma MUST descontar la composición del producto emparejado
