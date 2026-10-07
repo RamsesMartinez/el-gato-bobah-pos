@@ -195,8 +195,8 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Con la API de la plataforma conectada, el precio lo pone la plataforma y se sobrescribe solo**
     (decidido el 2026-09-28; regla en la constitución, *Restricciones del producto*). La captura a
     mano queda para las plataformas no conectadas, y la pantalla lo dice: bloqueado con «Lo pone
-    Uber» en el catálogo y un aviso fijo en la tienda. **Todavía no está construido.** El precio se guarda por platillo de la
-    plataforma, no por producto, y la sucursal entra antes en la base; decisiones en
+    Uber» en el POS y un aviso fijo en la tienda. Construido en la spec 026: la mecánica está en
+    «Emparejar con la plataforma» más abajo y las decisiones en
     [docs/emparejamiento-de-plataformas.md](docs/emparejamiento-de-plataformas.md).
 - **Sucursales** (spec 025, 0076): cajas, pedidos, tiendas de plataforma y existencias guardan
   `branch_id`; catálogo, empleados y lo fiscal siguen por empresa. Tres cosas que muerden:
