@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, Box, Button, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
 import { LuMinus, LuPlus, LuTrash2 } from 'react-icons/lu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,8 +26,14 @@ export function CompositionSheet({ kind, id, name, open, onClose }: {
     queryFn: () => adminApi.composition(kind, id),
     enabled: open,
   });
+  // Una hoja que nace con `open` puesto no se monta con Chakra 3.37 (AGENTS.md §3, CobrarSheet): la
+  // pestaña de Insumos la monta y la abre en el mismo toque. Se abre en el render siguiente para que
+  // haya una transición de cerrado a abierto, venga como venga el `open`.
+  const [visible, setVisible] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setVisible(open); }, [open]);
   return (
-    <DrawerRoot open={open} placement="bottom" size="md" onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DrawerRoot open={visible} placement="bottom" size="md" onOpenChange={(e) => { if (!e.open) onClose(); }}>
       <DrawerBackdrop />
       <DrawerContent borderTopRadius="2xl" maxH="90dvh">
         <DrawerCloseTrigger />
