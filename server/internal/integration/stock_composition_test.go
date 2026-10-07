@@ -77,3 +77,191 @@ func TestCancellingALineThenTheOrderRestocksOnce(t *testing.T) {
 		t.Fatalf("el agua se repone al cancelar el pedido, como hoy: quería 0, hay %s", got)
 	}
 }
+
+func onHandIngredient(t *testing.T, st *store.Store, ingredient int64) decimal.Decimal {
+	t.Helper()
+	var q decimal.Decimal
+	if err := st.Pool.QueryRow(context.Background(),
+		`select coalesce(sum(on_hand), 0) from stock_levels where ingredient_id = $1`, ingredient).Scan(&q); err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func makeIngredient(t *testing.T, st *store.Store, name string) int64 {
+	t.Helper()
+	var id int64
+	if err := st.Pool.QueryRow(context.Background(), `
+		insert into ingredients (name, base_unit_id) select $1, id from units where code = 'g' returning id`,
+		name).Scan(&id); err != nil {
+		t.Fatalf("insumo %s: %v", name, err)
+	}
+	return id
+}
+
+// makeRecipe crea una receta en gramos: insumo → cantidad.
+func makeRecipe(t *testing.T, st *store.Store, items map[int64]string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	var id int64
+	if err := st.Pool.QueryRow(ctx, `insert into recipes default values returning id`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for ing, qty := range items {
+		if _, err := st.Pool.Exec(ctx, `
+			insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id)
+			select $1, $2, $3::numeric, id from units where code = 'g'`, id, ing, qty); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return id
+}
+
+type movimiento struct {
+	itemType            string
+	item                int64
+	option, componentOf int64
+	branchOK            bool
+}
+
+// movimientosDelRenglon suma por insumo/producto y origen lo que salió por un renglón.
+func movimientosDelRenglon(t *testing.T, st *store.Store, line int64) map[movimiento]decimal.Decimal {
+	t.Helper()
+	rows, err := st.Pool.Query(context.Background(), `
+		select sm.item_type::text, coalesce(sm.ingredient_id, sm.product_id),
+		       coalesce(sm.modifier_option_id, 0), coalesce(sm.component_of_product_id, 0),
+		       sm.branch_id = o.branch_id, sum(sm.quantity)
+		  from stock_movements sm join orders o on o.id = sm.order_id
+		 where sm.order_line_id = $1
+		 group by 1, 2, 3, 4, 5`, line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[movimiento]decimal.Decimal{}
+	for rows.Next() {
+		var m movimiento
+		var q decimal.Decimal
+		if err := rows.Scan(&m.itemType, &m.item, &m.option, &m.componentOf, &m.branchOK, &q); err != nil {
+			t.Fatal(err)
+		}
+		out[m] = q
+	}
+	return out
+}
+
+// LA VENTA DE MOSTRADOR DESCUENTA LOS EXTRAS Y LOS COMPONENTES DEL PAQUETE.
+//
+// Antes solo bajaba el producto principal: la perla extra, el refresco del combo y lo que lleva un
+// paquete salían del local sin tocar el almacén, y el inventario se veía más lleno cada día.
+func TestCounterSaleDepletesExtrasAndPackages(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	cashier := makeUser(t, st, "cajero_extras", "cajero")
+	abrirCajaPrincipal(t, st, cashier)
+	svc := app.NewOrdersService(st, clock)
+
+	milk := makeIngredient(t, st, "Leche extras")
+	pearl := makeIngredient(t, st, "Perla extras")
+	frappe := makeProduct(t, st, "Frappé extras", decimal.RequireFromString("70"), false)
+	soda := makeProduct(t, st, "Refresco extras", decimal.RequireFromString("30"), true)
+	if _, err := st.Pool.Exec(ctx, `update products set recipe_id = $1 where id = $2`,
+		makeRecipe(t, st, map[int64]string{milk: "200"}), frappe); err != nil {
+		t.Fatal(err)
+	}
+	pearlExtra := opcionConTope(t, st, "Extras almacén", "Perla extra", decimal.RequireFromString("10"), 3)
+	sodaExtra := opcionConTope(t, st, "Extras almacén", "Refresco del combo", decimal.RequireFromString("20"), 1)
+	noIce := opcionConTope(t, st, "Extras almacén", "Sin hielo", decimal.Zero, 1)
+	if _, err := st.Pool.Exec(ctx, `update modifier_options set recipe_id = $1 where id = $2`,
+		makeRecipe(t, st, map[int64]string{pearl: "50"}), pearlExtra); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pool.Exec(ctx, `update modifier_options set linked_product_id = $1 where id = $2`, soda, sodaExtra); err != nil {
+		t.Fatal(err)
+	}
+
+	pkg := makeProduct(t, st, "Paquete extras", decimal.RequireFromString("120"), false)
+	if _, err := st.Pool.Exec(ctx, `update products set type = 'combo' where id = $1`, pkg); err != nil {
+		t.Fatal(err)
+	}
+	for _, slot := range []struct {
+		product int64
+		min     int
+	}{{frappe, 1}, {soda, 2}} {
+		if _, err := st.Pool.Exec(ctx, `
+			with s as (insert into combo_slots (combo_id, name, min_select, max_select) values ($1, 'hueco', $3, $3) returning id)
+			insert into combo_slot_products (slot_id, product_id, is_default) select id, $2, true from s`,
+			pkg, slot.product, slot.min); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	order, err := svc.Create(ctx, app.CreateOrderCmd{
+		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cashier,
+		Lines: []domain.OrderLineInput{
+			{ProductID: frappe, Qty: decimal.RequireFromString("2"), Modifiers: []domain.OrderModInput{
+				{OptionID: pearlExtra, Qty: 2}, {OptionID: sodaExtra, Qty: 1}, {OptionID: noIce, Qty: 1},
+			}},
+			{ProductID: pkg, Qty: decimal.RequireFromString("1")},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frappeLine, pkgLine int64
+	for _, l := range order.Lines {
+		switch l.ProductName {
+		case "Frappé extras":
+			frappeLine = l.ID
+		case "Paquete extras":
+			pkgLine = l.ID
+		}
+	}
+
+	got := movimientosDelRenglon(t, st, frappeLine)
+	want := map[movimiento]string{
+		{itemType: "ingrediente", item: milk, branchOK: true}:                      "-400",
+		{itemType: "ingrediente", item: pearl, option: pearlExtra, branchOK: true}: "-200",
+		{itemType: "producto", item: soda, option: sodaExtra, branchOK: true}:      "-2",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("el frappé con extras debe dejar %d movimientos con su origen y en la sucursal del pedido; dejó %v", len(want), got)
+	}
+	for k, v := range want {
+		if !got[k].Equal(decimal.RequireFromString(v)) {
+			t.Fatalf("%+v: quería %s, salió %s (todo: %v)", k, v, got[k], got)
+		}
+	}
+
+	got = movimientosDelRenglon(t, st, pkgLine)
+	if !got[movimiento{itemType: "ingrediente", item: milk, componentOf: pkg, branchOK: true}].Equal(decimal.RequireFromString("-200")) ||
+		!got[movimiento{itemType: "producto", item: soda, componentOf: pkg, branchOK: true}].Equal(decimal.RequireFromString("-2")) {
+		t.Fatalf("el paquete descuenta lo que lleva, con el paquete como origen: %v", got)
+	}
+	var comps int
+	if err := st.Pool.QueryRow(ctx, `
+		select count(*) from order_line_components
+		 where order_line_id = $1 and ((product_id = $2 and quantity = 1) or (product_id = $3 and quantity = 2))`,
+		pkgLine, frappe, soda).Scan(&comps); err != nil {
+		t.Fatal(err)
+	}
+	if comps != 2 {
+		t.Fatalf("los componentes vendidos se copian al renglón: hay %d de 2", comps)
+	}
+
+	// Cancelar el renglón antes de cocina repone TODO lo que salió por él, extras incluidos.
+	if _, err := st.Pool.Exec(ctx, `update order_lines set enviado_a_cocina_at = null where id = $1`, frappeLine); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CancelarRenglon(ctx, order.ID, frappeLine, cashier, "se equivocó de sabor"); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range movimientosDelRenglon(t, st, frappeLine) {
+		if !v.IsZero() {
+			t.Fatalf("cancelar el renglón dejó %s de %+v sin reponer", v, k)
+		}
+	}
+	if got := onHandIngredient(t, st, pearl); !got.IsZero() {
+		t.Fatalf("la perla extra se repone con el renglón: quedó %s", got)
+	}
+}

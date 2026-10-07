@@ -215,12 +215,14 @@ where id = $1;
 -- Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
 -- volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
 -- agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
-       sqlc.arg(actor_id), 'cancelación de orden'
+       sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+         sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0;
 
 -- name: RecalcOrderTotals :exec
@@ -536,9 +538,10 @@ where id = $1 and cancelled_at is null;
 -- Un renglón anterior a la migración 0060 no tiene movimientos ligados y no repone nada. Es la
 -- decisión: de un movimiento viejo no consta a qué renglón pertenecía, y adivinarlo inventaría
 -- existencias.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
-       sqlc.arg(actor_id), 'cancelación de renglón'
+       sqlc.arg(actor_id), 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
 where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type = 'venta';
 

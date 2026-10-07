@@ -12,91 +12,36 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const getRecipeDepletion = `-- name: GetRecipeDepletion :many
-
-select p.id as product_id, ri.ingredient_id, (ri.quantity * u.to_base)::numeric(20,6) as qty_base
-from products p
-join recipe_items ri on ri.recipe_id = p.recipe_id
-join units u on u.id = ri.unit_id
-where p.id = any($1::bigint[])
-`
-
-type GetRecipeDepletionRow struct {
-	ProductID    int64           `json:"product_id"`
-	IngredientID int64           `json:"ingredient_id"`
-	QtyBase      decimal.Decimal `json:"qty_base"`
-}
-
-// Depleción en venta
-// Ingredientes a descontar por producto (cantidad en unidad base, sin merma).
-func (q *Queries) GetRecipeDepletion(ctx context.Context, dollar_1 []int64) ([]GetRecipeDepletionRow, error) {
-	rows, err := q.db.Query(ctx, getRecipeDepletion, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetRecipeDepletionRow{}
-	for rows.Next() {
-		var i GetRecipeDepletionRow
-		if err := rows.Scan(&i.ProductID, &i.IngredientID, &i.QtyBase); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getTrackStockProductIDs = `-- name: GetTrackStockProductIDs :many
-select id from products where id = any($1::bigint[]) and track_stock
-`
-
-func (q *Queries) GetTrackStockProductIDs(ctx context.Context, dollar_1 []int64) ([]int64, error) {
-	rows, err := q.db.Query(ctx, getTrackStockProductIDs, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const insertStockMovement = `-- name: InsertStockMovement :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note)
-values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, unit_cost, order_id, order_line_id, user_id, reason, note,
+                             modifier_option_id, component_of_product_id)
+values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 `
 
 type InsertStockMovementParams struct {
-	ItemType     StockItemType     `json:"item_type"`
-	IngredientID *int64            `json:"ingredient_id"`
-	ProductID    *int64            `json:"product_id"`
-	MovementType StockMovementType `json:"movement_type"`
-	Quantity     decimal.Decimal   `json:"quantity"`
-	UnitCost     *decimal.Decimal  `json:"unit_cost"`
-	OrderID      *int64            `json:"order_id"`
-	OrderLineID  *int64            `json:"order_line_id"`
-	UserID       *int64            `json:"user_id"`
-	Reason       *string           `json:"reason"`
-	Note         *string           `json:"note"`
+	ItemType             StockItemType     `json:"item_type"`
+	IngredientID         *int64            `json:"ingredient_id"`
+	ProductID            *int64            `json:"product_id"`
+	MovementType         StockMovementType `json:"movement_type"`
+	Quantity             decimal.Decimal   `json:"quantity"`
+	UnitCost             *decimal.Decimal  `json:"unit_cost"`
+	OrderID              *int64            `json:"order_id"`
+	OrderLineID          *int64            `json:"order_line_id"`
+	UserID               *int64            `json:"user_id"`
+	Reason               *string           `json:"reason"`
+	Note                 *string           `json:"note"`
+	ModifierOptionID     *int64            `json:"modifier_option_id"`
+	ComponentOfProductID *int64            `json:"component_of_product_id"`
 }
 
+// Depleción en venta
 // order_line_id: de QUÉ renglón salió este descuento.
 //
 // Sin él, reponer un renglón cancelado obliga a recalcular su consumo con la receta de HOY, y una
 // receta que cambió entre la venta y la cancelación repondría una cantidad distinta de la que salió.
 // NULL en los movimientos que no vienen de una venta (ajustes, compras, mermas).
+// modifier_option_id / component_of_product_id: el extra o el paquete que originó el descuento.
 func (q *Queries) InsertStockMovement(ctx context.Context, arg InsertStockMovementParams) error {
 	_, err := q.db.Exec(ctx, insertStockMovement,
 		arg.ItemType,
@@ -110,6 +55,8 @@ func (q *Queries) InsertStockMovement(ctx context.Context, arg InsertStockMoveme
 		arg.UserID,
 		arg.Reason,
 		arg.Note,
+		arg.ModifierOptionID,
+		arg.ComponentOfProductID,
 	)
 	return err
 }

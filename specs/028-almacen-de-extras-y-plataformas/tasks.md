@@ -18,12 +18,12 @@
 - [x] T008 Test de la migración 0078 sobre respaldo real: estados rellenados (receta o producto ligado → estimada; `track_stock` → confirmada), columnas nuevas, único en `order_lines`, Down
 - [x] T009 server/migrations/0078_stock_composition.sql según data-model.md
 - [x] T010 `domain/composition.go`: `ExpandSale`, `ValidatePackage`, `ValidatePrepIngredient`, sentinels. Envuelven `ErrValidation`, así que respond.go no cambia. Un insumo preparado que no se puede descomponer (ciclo viejo, sin rendimiento) se descuenta él mismo
-- [ ] T011 Consultas del grafo de composición por empresa (server/queries/composition.sql) y cargador en server/internal/app/composition.go, reusando `ListComboSlotDefaultsForCosting`
+- [x] T011 Consultas del grafo de composición por empresa (server/queries/composition.sql) y cargador en server/internal/app/composition.go, reusando `ListComboSlotDefaultsForCosting`
 
 ## Phase 3: US2 — El mostrador descuenta los extras
 
-- [ ] T012 Test: venta con extras (receta, producto ligado, sin composición) y paquete; movimientos con su origen; cancelar renglón repone todo lo del renglón; sucursal correcta
-- [ ] T013 `Create` y `AddLines` usan `ExpandSale` en lugar de `descontarRenglon`; escriben `order_line_components` para paquetes (server/internal/app/orders.go)
+- [x] T012 Test: venta con extras (receta, producto ligado, sin composición) y paquete; movimientos con su origen; cancelar renglón repone todo lo del renglón; sucursal correcta
+- [x] T013 `Create` y `AddLines` usan `ExpandSale` en lugar de `descontarRenglon`; escriben `order_line_components` para paquetes (server/internal/app/orders.go)
 
 ## Phase 4: US3 — Los pedidos de plataforma descuentan
 

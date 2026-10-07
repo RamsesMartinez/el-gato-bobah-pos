@@ -1484,9 +1484,10 @@ func (q *Queries) RegistrarLoteDeRenglones(ctx context.Context, arg RegistrarLot
 }
 
 const restockCancelledLine = `-- name: RestockCancelledLine :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
-       $1, 'cancelación de renglón'
+       $1, 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
 where sm.order_line_id = $2 and sm.movement_type = 'venta'
 `
@@ -1510,12 +1511,14 @@ func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelled
 }
 
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
-       $1, 'cancelación de orden'
+       $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
 where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+         sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0
 `
 
