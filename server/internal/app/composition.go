@@ -231,50 +231,14 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 	if kind == CompositionOfOption && len(req.Components) > 0 {
 		return fmt.Errorf("%w: un extra que lleva varios productos se liga a un paquete", domain.ErrValidation)
 	}
-	q := s.store.QC(ctx)
-	in, err := compositionInput(ctx, q, req)
-	if err != nil {
-		return err
-	}
-	if err := in.Validate(); err != nil {
-		return err
-	}
-	if req.LinkedProductID != nil {
-		if _, err := q.GetLinkableProduct(ctx, *req.LinkedProductID); err != nil {
-			return fmt.Errorf("%w: ese producto no existe", domain.ErrValidation)
-		}
-	}
-	names := map[int64]string{}
-	if kind == CompositionOfProduct {
-		p, err := q.GetProductComposition(ctx, id)
-		if err != nil {
-			return notFound(err)
-		}
-		if p.TrackStock && (len(req.Items) > 0 || len(req.Components) > 0) {
-			return fmt.Errorf("%w: este producto descuenta sus propias existencias", domain.ErrValidation)
-		}
-		if len(req.Components) > 0 {
-			used, err := q.IsPackageComponent(ctx, id)
-			if err != nil {
-				return err
-			}
-			if used {
-				return fmt.Errorf("%w: este producto va dentro de otro paquete", domain.ErrPackageInPackage)
-			}
-		}
-		for _, c := range req.Components {
-			cp, err := q.GetLinkableProduct(ctx, c.ProductID)
-			if err != nil {
-				return fmt.Errorf("%w: el producto %d no existe", domain.ErrValidation, c.ProductID)
-			}
-			if c.ProductID == id || cp.Type == db.ProductTypeCombo {
-				return fmt.Errorf("%w (producto %d)", domain.ErrPackageInPackage, c.ProductID)
-			}
-			names[c.ProductID] = cp.Name
-		}
-	}
-
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
+		names, err := validateComposition(ctx, q, kind, id, req)
+		if err != nil {
+			return err
+		}
 		var recipe *int64
 		if len(req.Items) > 0 {
 			rid, err := q.CreateCompositionRecipe(ctx)
@@ -298,7 +262,6 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 			status, by = &confirmed, &actor
 		}
 		var n int64
-		var err error
 		if kind == CompositionOfOption {
 			n, err = q.SetOptionComposition(ctx, db.SetOptionCompositionParams{
 				ID: id, RecipeID: recipe, LinkedProductID: req.LinkedProductID, Status: status, ConfirmedBy: by,
@@ -333,6 +296,64 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 	})
 }
 
+// validateComposition revisa la captura de un producto o un extra contra el catálogo. Corre dentro
+// de la transacción y detrás de LockCompositionEdits: fuera de ella, dos capturas cruzadas
+// (P1 := [P2] y P2 := [P3]) pasaban las dos. Devuelve el nombre de cada componente para sus huecos.
+func validateComposition(ctx context.Context, q *db.Queries, kind CompositionKind, id int64, req CompositionRequest) (map[int64]string, error) {
+	in, err := compositionInput(ctx, q, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	if req.LinkedProductID != nil {
+		if _, err := q.GetLinkableProduct(ctx, *req.LinkedProductID); err != nil {
+			return nil, fmt.Errorf("%w: ese producto no existe", domain.ErrValidation)
+		}
+	}
+	names := map[int64]string{}
+	if kind != CompositionOfProduct {
+		return names, nil
+	}
+	p, err := q.GetProductComposition(ctx, id)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	if p.TrackStock && (len(req.Items) > 0 || len(req.Components) > 0) {
+		return nil, fmt.Errorf("%w: este producto descuenta sus propias existencias", domain.ErrValidation)
+	}
+	if p.Type == db.ProductTypeCombo {
+		choices, err := q.PackageHasChoices(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if choices {
+			return nil, fmt.Errorf("%w: este paquete deja elegir entre productos; capturarlo aquí borraría esas opciones", domain.ErrConflict)
+		}
+	}
+	if len(req.Components) > 0 {
+		used, err := q.IsPackageComponent(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if used {
+			return nil, fmt.Errorf("%w: este producto va dentro de otro paquete", domain.ErrPackageInPackage)
+		}
+	}
+	for _, c := range req.Components {
+		cp, err := q.GetLinkableProduct(ctx, c.ProductID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: el producto %d no existe", domain.ErrValidation, c.ProductID)
+		}
+		if c.ProductID == id || cp.Type == db.ProductTypeCombo {
+			return nil, fmt.Errorf("%w (producto %d)", domain.ErrPackageInPackage, c.ProductID)
+		}
+		names[c.ProductID] = cp.Name
+	}
+	return names, nil
+}
+
 // ConfirmComposition marca como confirmada una composición estimada, con quién y cuándo.
 func (s *AdminService) ConfirmComposition(ctx context.Context, kind CompositionKind, id, actor int64) error {
 	q := s.store.QC(ctx)
@@ -364,32 +385,35 @@ func (s *AdminService) savePreparedIngredient(ctx context.Context, id int64, req
 	if len(req.Items) > 0 && req.Yield == nil {
 		return fmt.Errorf("%w: falta cuánto rinde", domain.ErrValidation)
 	}
-	q := s.store.QC(ctx)
-	if _, err := q.GetIngredientComposition(ctx, id); err != nil {
-		return notFound(err)
-	}
-	in, err := compositionInput(ctx, q, req)
-	if err != nil {
-		return err
-	}
-	if err := in.Validate(); err != nil {
-		return err
-	}
-	if len(req.Items) > 0 {
-		graph, err := loadStockGraph(ctx, q)
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El ciclo se juzga contra el catálogo de DENTRO de la transacción y con el candado: fuera,
+		// A := [B] y B := [A] al mismo tiempo pasaban las dos.
+		if err := q.LockCompositionEdits(ctx); err != nil {
+			return err
+		}
+		if _, err := q.GetIngredientComposition(ctx, id); err != nil {
+			return notFound(err)
+		}
+		in, err := compositionInput(ctx, q, req)
 		if err != nil {
 			return err
 		}
-		components := make([]int64, 0, len(req.Items))
-		for _, it := range req.Items {
-			components = append(components, it.IngredientID)
-		}
-		if err := graph.ValidatePrepIngredient(id, components); err != nil {
+		if err := in.Validate(); err != nil {
 			return err
 		}
-	}
-
-	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		if len(req.Items) > 0 {
+			graph, err := loadStockGraph(ctx, q)
+			if err != nil {
+				return err
+			}
+			components := make([]int64, 0, len(req.Items))
+			for _, it := range req.Items {
+				components = append(components, it.IngredientID)
+			}
+			if err := graph.ValidatePrepIngredient(id, components); err != nil {
+				return err
+			}
+		}
 		params := db.SetIngredientCompositionParams{ID: id}
 		if len(req.Items) > 0 {
 			rid, err := q.CreateCompositionRecipe(ctx)

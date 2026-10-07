@@ -101,10 +101,6 @@ func (c CompositionInput) Validate() error {
 	return nil
 }
 
-// maxCompositionDepth corta la descomposición de insumos preparados. La captura rechaza los
-// ciclos, pero un dato viejo no pasó por ella, y una venta no puede colgarse por eso.
-const maxCompositionDepth = 8
-
 // StockIngredient es un insumo; si es preparado, se descuenta en lo que lo compone.
 type StockIngredient struct {
 	ID       int64
@@ -195,6 +191,10 @@ type expansion struct {
 	order []deltaKey
 	sums  map[deltaKey]decimal.Decimal
 	comps []SaleComponent
+	// memo y visiting son de bases: lo ya descompuesto, y lo que se está descomponiendo ahora (un
+	// insumo que reaparece en su propio camino es un ciclo).
+	memo     map[int64][]baseLine
+	visiting map[int64]bool
 }
 
 func (e *expansion) add(itemType string, id int64, qty decimal.Decimal, option, component int64) {
@@ -208,7 +208,7 @@ func (e *expansion) add(itemType string, id int64, qty decimal.Decimal, option, 
 // ExpandSale dice qué sale del almacén por un renglón, agrupado por insumo o producto y origen, y
 // qué productos se vendieron dentro si es un paquete. Lo que no tiene composición no descuenta.
 func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
-	e := &expansion{g: g, sums: map[deltaKey]decimal.Decimal{}}
+	e := &expansion{g: g, sums: map[deltaKey]decimal.Decimal{}, memo: map[int64][]baseLine{}, visiting: map[int64]bool{}}
 	if p, ok := g.Products[line.ProductID]; ok {
 		e.product(p, line.Qty, 0)
 	}
@@ -224,7 +224,7 @@ func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 				e.product(lp, qty, opt.ID)
 			}
 		case opt.RecipeID != nil:
-			e.recipe(*opt.RecipeID, qty, opt.ID, 0, 0)
+			e.recipe(*opt.RecipeID, qty, opt.ID, 0)
 		}
 	}
 
@@ -274,7 +274,7 @@ func (e *expansion) single(p StockProduct, qty decimal.Decimal, option, componen
 	case p.TrackStock:
 		e.add("producto", p.ID, qty, option, component)
 	case p.RecipeID != nil:
-		e.recipe(*p.RecipeID, qty, option, component, 0)
+		e.recipe(*p.RecipeID, qty, option, component)
 	}
 }
 
@@ -283,22 +283,55 @@ func (e *expansion) single(p StockProduct, qty decimal.Decimal, option, componen
 // ValidQty y la venta tronaba. 12 decimales sobran para redondear al final a 4.
 const internalScale = 12
 
-func (e *expansion) recipe(recipeID int64, qty decimal.Decimal, option, component int64, depth int) {
+func (e *expansion) recipe(recipeID int64, qty decimal.Decimal, option, component int64) {
 	for _, it := range e.g.Recipes[recipeID] {
-		e.ingredient(it.IngredientID, it.QtyBase.Mul(qty).Round(internalScale), option, component, depth)
+		lineQty := it.QtyBase.Mul(qty).Round(internalScale)
+		for _, b := range e.bases(it.IngredientID) {
+			e.add("ingrediente", b.ingredientID, lineQty.Mul(b.perUnit).Round(internalScale), option, component)
+		}
 	}
 }
 
-// ingredient descuenta un insumo; uno preparado se descuenta en lo que lo compone, en proporción a
-// su rendimiento. Si no se puede descomponer —sin rendimiento, o un ciclo de datos viejos— se
-// descuenta él mismo: mejor un insumo preparado en negativo que una venta que no descuenta nada.
-func (e *expansion) ingredient(id int64, qty decimal.Decimal, option, component int64, depth int) {
-	in := e.g.Ingredients[id]
-	if !in.IsPrep || in.RecipeID == nil || !in.YieldQty.IsPositive() || depth >= maxCompositionDepth {
-		e.add("ingrediente", id, qty, option, component)
-		return
+// baseLine es cuánto de un insumo que se compra lleva UNA unidad de otro insumo.
+type baseLine struct {
+	ingredientID int64
+	perUnit      decimal.Decimal
+}
+
+// bases descompone un insumo en lo que se compra, por unidad. Uno preparado se descompone en lo que
+// lo compone en proporción a su rendimiento; si no se puede —sin rendimiento, o un ciclo de datos
+// viejos— se descuenta él mismo: mejor un insumo preparado en negativo que una venta que no
+// descuenta nada.
+//
+// Recuerda cada insumo ya descompuesto. Sin eso el recorrido seguía cada camino del árbol, y unas
+// capas de insumos que se llevan entre sí multiplicaban los caminos hasta tardar minutos por renglón.
+// Así es lineal en insumos y renglones de receta.
+func (e *expansion) bases(id int64) []baseLine {
+	if b, ok := e.memo[id]; ok {
+		return b
 	}
-	e.recipe(*in.RecipeID, qty.Div(in.YieldQty).Round(internalScale), option, component, depth+1)
+	in := e.g.Ingredients[id]
+	if !in.IsPrep || in.RecipeID == nil || !in.YieldQty.IsPositive() || e.visiting[id] {
+		return []baseLine{{ingredientID: id, perUnit: decimal.NewFromInt(1)}}
+	}
+	e.visiting[id] = true
+	var out []baseLine
+	pos := map[int64]int{}
+	for _, it := range e.g.Recipes[*in.RecipeID] {
+		factor := it.QtyBase.Div(in.YieldQty).Round(internalScale)
+		for _, b := range e.bases(it.IngredientID) {
+			q := factor.Mul(b.perUnit).Round(internalScale)
+			if i, ok := pos[b.ingredientID]; ok {
+				out[i].perUnit = out[i].perUnit.Add(q)
+				continue
+			}
+			pos[b.ingredientID] = len(out)
+			out = append(out, baseLine{ingredientID: b.ingredientID, perUnit: q})
+		}
+	}
+	delete(e.visiting, id)
+	e.memo[id] = out
+	return out
 }
 
 // ValidatePackage rechaza un paquete que se contiene o que lleva otro paquete.

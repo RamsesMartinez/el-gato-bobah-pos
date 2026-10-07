@@ -482,6 +482,37 @@ func (q *Queries) ListUnitKinds(ctx context.Context, ids []int16) ([]ListUnitKin
 	return items, nil
 }
 
+const lockCompositionEdits = `-- name: LockCompositionEdits :exec
+select pg_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0))
+`
+
+// Una captura de composición a la vez por empresa, hasta el fin de la transacción. Las reglas
+// (paquete dentro de paquete, insumo circular) miran a otros productos e insumos: validadas sin
+// este candado, dos capturas cruzadas pasaban las dos. Capturar es raro; esperar unos
+// milisegundos no le cuesta nada a nadie.
+func (q *Queries) LockCompositionEdits(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockCompositionEdits)
+	return err
+}
+
+const packageHasChoices = `-- name: PackageHasChoices :one
+select exists (
+  select 1 from combo_slots cs
+   where cs.combo_id = $1
+     and (cs.min_select <> cs.max_select
+          or (select count(*) from combo_slot_products csp where csp.slot_id = cs.id) > 1)
+)::boolean as has_choices
+`
+
+// Un paquete armado fuera de «Qué lleva» puede dejar elegir (un hueco con varios productos o con
+// mínimo distinto del máximo). Reescribirlo con huecos fijos borraría esas opciones sin avisar.
+func (q *Queries) PackageHasChoices(ctx context.Context, comboID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, packageHasChoices, comboID)
+	var has_choices bool
+	err := row.Scan(&has_choices)
+	return has_choices, err
+}
+
 const setIngredientComposition = `-- name: SetIngredientComposition :execrows
 update ingredients
    set is_prep = $1,

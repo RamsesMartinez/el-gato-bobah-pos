@@ -13,7 +13,7 @@
 
 ## Phase 2: Fundación
 
-- [x] T006 [P] Tests de dominio de `ExpandSale` (server/internal/domain/composition_test.go): receta por cantidad; existencias propias; extra con receta y extra ligado a producto, multiplicados por cantidad del extra y del renglón; paquete con la semántica de `productCost`; insumo preparado por rendimiento; cantidad positiva que no redondea a cero; corte por profundidad ante un ciclo viejo; origen de cada delta
+- [x] T006 [P] Tests de dominio de `ExpandSale` (server/internal/domain/composition_test.go): receta por cantidad; existencias propias; extra con receta y extra ligado a producto, multiplicados por cantidad del extra y del renglón; paquete con la semántica de `productCost`; insumo preparado por rendimiento; cantidad positiva que no redondea a cero; un ciclo viejo que no cuelga la venta; recorrido lineal ante capas de insumos (auditoría); origen de cada delta
 - [x] T007 [P] Tests de `ValidateComposition`: ciclo directo e indirecto, paquete en paquete. La unidad de otro tipo va con los endpoints (T016): el grafo no carga unidades
 - [x] T008 Test de la migración 0078 sobre respaldo real: estados rellenados (receta o producto ligado → estimada; `track_stock` → confirmada), columnas nuevas, único en `order_lines`, Down
 - [x] T009 server/migrations/0078_stock_composition.sql según data-model.md

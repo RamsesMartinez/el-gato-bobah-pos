@@ -99,6 +99,23 @@ update products set composition_status = 'confirmed', composition_confirmed_by =
 update modifier_options set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
  where id = $1 and composition_status is distinct from 'confirmed';
 
+-- name: LockCompositionEdits :exec
+-- Una captura de composición a la vez por empresa, hasta el fin de la transacción. Las reglas
+-- (paquete dentro de paquete, insumo circular) miran a otros productos e insumos: validadas sin
+-- este candado, dos capturas cruzadas pasaban las dos. Capturar es raro; esperar unos
+-- milisegundos no le cuesta nada a nadie.
+select pg_advisory_xact_lock(28028, coalesce(nullif(current_setting('app.company_id', true), '')::int, 0));
+
+-- name: PackageHasChoices :one
+-- Un paquete armado fuera de «Qué lleva» puede dejar elegir (un hueco con varios productos o con
+-- mínimo distinto del máximo). Reescribirlo con huecos fijos borraría esas opciones sin avisar.
+select exists (
+  select 1 from combo_slots cs
+   where cs.combo_id = $1
+     and (cs.min_select <> cs.max_select
+          or (select count(*) from combo_slot_products csp where csp.slot_id = cs.id) > 1)
+)::boolean as has_choices;
+
 -- name: ListPackageComponents :many
 -- Lo que lleva un paquete: el producto por omisión de cada hueco y cuántas piezas.
 select csp.product_id, p.name::text as product_name, cs.min_select

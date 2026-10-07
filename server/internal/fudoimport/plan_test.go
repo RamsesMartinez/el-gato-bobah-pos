@@ -157,7 +157,7 @@ func TestPlanCompositions(t *testing.T) {
 // UN INSUMO COMPUESTO CIRCULAR NO ENTRA, NI DIRECTO NI INDIRECTO.
 //
 // Solo se revisaba que un insumo no se contuviera a sí mismo. A lleva B y B lleva A pasaba, y la venta
-// descontaba un número sin sentido hasta cortar por profundidad, sin que nadie se enterara.
+// descontaba un número sin sentido, sin que nadie se enterara.
 func TestPlanRejectsCircularPrepIngredients(t *testing.T) {
 	cat := sampleCatalog()
 	cat.Ingredients = append(cat.Ingredients,

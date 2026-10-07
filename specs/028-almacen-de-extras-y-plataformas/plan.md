@@ -67,8 +67,10 @@ sobre respaldo real con dos empresas, vitest para la pantalla
 3. **Insumo preparado**: se descuenta por su rendimiento (`yield_qty`). El esquema ya exige
    rendimiento mayor que cero (0003); la guarda de `ExpandSale` es solo defensiva para datos viejos.
 4. **Ciclos**: un paquete que se contiene a sí mismo, un insumo preparado circular o un extra ligado
-   a un producto cuyo extra lo liga de vuelta se rechazan al capturar. Al vender, la expansión corta
-   por profundidad, para que un dato viejo no cuelgue una venta.
+   a un producto cuyo extra lo liga de vuelta se rechazan al capturar. Al vender, la expansión
+   recuerda cada insumo ya descompuesto y trata como hoja al que reaparece en su propio camino: un
+   dato viejo circular no cuelga una venta, y unas capas de insumos que se llevan entre sí tampoco
+   (se cortaba por profundidad y era exponencial; lo encontró la auditoría de seguridad).
 5. **Paquete dentro de paquete**: se rechaza al capturar.
 6. **Producto con existencias propias**: descuenta el producto, no su receta (no puede tener ambas).
 7. **Extra sin composición**: no descuenta y la venta no falla.

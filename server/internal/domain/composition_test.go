@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -133,6 +134,45 @@ func TestExpandSaleExtraThatIsAPackage(t *testing.T) {
 	// Frappé ×1 (200 de leche) y crepa ×2 (2 × 100).
 	if !got[key{kind: "ingrediente", id: 1, option: 10, of: 400}].Equal(d("400")) {
 		t.Fatalf("el extra-paquete descuenta lo que lleva: %v", got)
+	}
+}
+
+// UNA VENTA NO PUEDE COSTAR MINUTOS DE PROCESADOR.
+//
+// El recorrido seguía cada camino del árbol de insumos preparados sin recordar lo ya calculado: nueve
+// capas de ocho insumos, cada uno lleva a los ocho de la siguiente, son 8^8 caminos por renglón. Con
+// la captura de insumos preparados abierta a gerencia, una receta así tumbaba el servidor que
+// comparten todas las empresas. Lo encontró la auditoría de seguridad de la spec 028.
+func TestExpandSaleIsLinearOnLayeredPreparedIngredients(t *testing.T) {
+	const layers, width = 9, 8
+	g := StockGraph{Ingredients: map[int64]StockIngredient{}, Recipes: map[int64][]RecipeLine{}, Products: map[int64]StockProduct{}}
+	id := func(layer, i int) int64 { return int64(layer*100 + i + 1) }
+	for layer := 0; layer < layers; layer++ {
+		for i := 0; i < width; i++ {
+			in := StockIngredient{ID: id(layer, i)}
+			if layer < layers-1 {
+				rid := id(layer, i)
+				in = StockIngredient{ID: rid, IsPrep: true, RecipeID: &rid, YieldQty: d("1")}
+				for j := 0; j < width; j++ {
+					g.Recipes[rid] = append(g.Recipes[rid], RecipeLine{IngredientID: id(layer+1, j), QtyBase: d("1")})
+				}
+			}
+			g.Ingredients[in.ID] = in
+		}
+	}
+	top := int64(999)
+	g.Recipes[top] = []RecipeLine{{IngredientID: id(0, 0), QtyBase: d("1")}}
+	g.Products[1] = StockProduct{ID: 1, RecipeID: &top}
+
+	start := time.Now()
+	ds, _ := g.ExpandSale(SaleLine{ProductID: 1, Qty: d("1")})
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("un renglón tardó %s en expandirse", elapsed)
+	}
+	// Cada insumo de la última capa llega por 8^7 caminos, uno por pieza.
+	got := byKey(ds)
+	if len(ds) != width || !got[key{kind: "ingrediente", id: id(layers-1, 0)}].Equal(d("2097152")) {
+		t.Fatalf("el resultado tiene que ser el mismo que recorriendo cada camino: %d renglones, %v", len(ds), got)
 	}
 }
 
