@@ -50,9 +50,16 @@
 ## Phase 8: Cierre
 
 - [x] T024 AGENTS.md (cómo se descuenta, la carga de FUDO) y docs/emparejamiento-de-plataformas.md §6
-- [ ] T025 Gates completos
-- [ ] T026 Ensayo en pruebas con respaldo de producción y carga de FUDO; cobrar lo creado
-- [ ] T027 `/revision-de-codigo`
+- [x] T025 Gates completos
+- [x] T026 Ensayo en pruebas con respaldo de producción y carga de FUDO; cobrar lo creado. La 0078
+  corrió en ~150 ms sobre la copia de producción (incluye el único nuevo de `order_lines`, que
+  bloquea ventas mientras se construye). Venta con extra, paquete armado en «Qué lleva» y vendido,
+  insumo preparado confirmado, reporte de unidades y filtros: todo con su origen y en la sucursal
+  del pedido. Pedidos cobrados y entregados; el ambiente se regresó a su base. **No se ensayó**
+  aceptar un pedido de plataforma: no hay credenciales de Uber en pruebas (lo cubren las pruebas
+  de integración)
+- [x] T027 `/revision-de-codigo`, dos rondas. La segunda encontró la expansión exponencial, las
+  validaciones fuera de la transacción, el paquete con hueco vacío y la hoja que nacía abierta
 
 ## Dependencies
 
