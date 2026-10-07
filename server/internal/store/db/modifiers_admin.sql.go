@@ -126,21 +126,22 @@ func (q *Queries) AdminGroupCounts(ctx context.Context) (AdminGroupCountsRow, er
 const adminGroupOptions = `-- name: AdminGroupOptions :many
 
 select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line,
-       mo.current_cost, mo.is_favorite, mo.is_active
+       mo.current_cost, mo.is_favorite, mo.is_active, mo.composition_status
 from modifier_options mo
 where mo.group_id = $1
 order by mo.sort_key, mo.name
 `
 
 type AdminGroupOptionsRow struct {
-	ID          int64           `json:"id"`
-	GroupID     int64           `json:"group_id"`
-	Name        string          `json:"name"`
-	PriceDelta  decimal.Decimal `json:"price_delta"`
-	MaxPerLine  int16           `json:"max_per_line"`
-	CurrentCost decimal.Decimal `json:"current_cost"`
-	IsFavorite  bool            `json:"is_favorite"`
-	IsActive    bool            `json:"is_active"`
+	ID                int64           `json:"id"`
+	GroupID           int64           `json:"group_id"`
+	Name              string          `json:"name"`
+	PriceDelta        decimal.Decimal `json:"price_delta"`
+	MaxPerLine        int16           `json:"max_per_line"`
+	CurrentCost       decimal.Decimal `json:"current_cost"`
+	IsFavorite        bool            `json:"is_favorite"`
+	IsActive          bool            `json:"is_active"`
+	CompositionStatus *string         `json:"composition_status"`
 }
 
 // Opciones ------------------------------------------------------------------
@@ -163,6 +164,7 @@ func (q *Queries) AdminGroupOptions(ctx context.Context, groupID int64) ([]Admin
 			&i.CurrentCost,
 			&i.IsFavorite,
 			&i.IsActive,
+			&i.CompositionStatus,
 		); err != nil {
 			return nil, err
 		}

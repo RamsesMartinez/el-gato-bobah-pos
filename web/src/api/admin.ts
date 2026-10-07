@@ -197,6 +197,7 @@ export interface GroupOption {
   currentCost: string;
   favorite: boolean;
   active: boolean;
+  compositionStatus?: CompositionStatus;
 }
 export interface ProductGroup {
   groupId: number;

@@ -106,6 +106,8 @@ type GroupOptionView struct {
 	CurrentCost decimal.Decimal `json:"currentCost"`
 	Favorite    bool            `json:"favorite"`
 	Active      bool            `json:"active"`
+	// CompositionStatus: "" sin capturar, "estimated" o "confirmed" (spec 028).
+	CompositionStatus string `json:"compositionStatus"`
 }
 
 func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]GroupOptionView, error) {
@@ -118,6 +120,7 @@ func (s *AdminService) GroupOptions(ctx context.Context, groupID int64) ([]Group
 		out = append(out, GroupOptionView{
 			ID: r.ID, GroupID: r.GroupID, Name: r.Name, PriceDelta: r.PriceDelta,
 			MaxPerLine: int(r.MaxPerLine), CurrentCost: r.CurrentCost, Favorite: r.IsFavorite, Active: r.IsActive,
+			CompositionStatus: textoDe(r.CompositionStatus),
 		})
 	}
 	return out, nil

@@ -56,6 +56,9 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
   })));
   const [linked, setLinked] = useState<number | null>(data.linkedProductId ?? null);
   const [dirty, setDirty] = useState(false);
+  // El último renglón quitado, para deshacerlo con un toque: quitar es un toque y recapturar son
+  // varios (insumo, cantidad, unidad).
+  const [removed, setRemoved] = useState<{ row: Row; index: number; name: string } | null>(null);
 
   const ingredients = useQuery({ queryKey: ['ingredients', 'all'], queryFn: () => backofficeApi.ingredients(), enabled: data.editable });
   const units = useQuery({ queryKey: ['units'], queryFn: () => backofficeApi.units(), enabled: data.editable });
@@ -165,15 +168,28 @@ function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number
                       <Picker title="Unidad" placeholder="Unidad" value={r.unitId ? String(r.unitId) : ''}
                         options={unitOpts} onChange={(v) => set({ unitId: Number(v) })} />
                     </Box>
-                    {/* Separado del «Agregar» y del lado opuesto: quitar por error un renglón
-                        obliga a recapturarlo. */}
-                    <IconButton aria-label={`Quitar ${ingName}`} variant="ghost" colorPalette="red" minH="44px" minW="44px"
-                      onClick={() => edit(() => setRows((rs) => rs.filter((_, j) => j !== i)))}>
+                    {/* Separado de la unidad, que es lo último que se toca en cada renglón, y con
+                        «Deshacer» abajo: quitar por error obliga a recapturar el renglón entero. */}
+                    <IconButton aria-label={`Quitar ${ingName}`} variant="ghost" colorPalette="red" minH="44px" minW="44px" ml={3}
+                      onClick={() => edit(() => {
+                        setRemoved({ row: r, index: i, name: ingName });
+                        setRows((rs) => rs.filter((_, j) => j !== i));
+                      })}>
                       <LuTrash2 />
                     </IconButton>
                   </HStack>
                 );
               })}
+              {removed && (
+                <HStack justify="space-between" bg="bg.muted" borderRadius="md" px={3}>
+                  <Text fontSize="sm">Quitaste {removed.name || 'un renglón'}</Text>
+                  <Button variant="ghost" minH="44px" onClick={() => {
+                    const back = removed;
+                    setRows((rs) => [...rs.slice(0, back.index), back.row, ...rs.slice(back.index)]);
+                    setRemoved(null);
+                  }}>Deshacer</Button>
+                </HStack>
+              )}
               <Button variant="outline" minH="44px" alignSelf="start"
                 onClick={() => edit(() => setRows((rs) => [...rs, { ingredientId: null, quantity: '', unitId: null }]))}>
                 <LuPlus /> Agregar insumo

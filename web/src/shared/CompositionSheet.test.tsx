@@ -63,7 +63,7 @@ describe('la hoja «Qué lleva»', () => {
     }));
   });
 
-  it('quitar es un botón de 44 px', async () => {
+  it('quitar es un botón de 44 px y se deshace con un toque', async () => {
     api.composition.mockResolvedValue({
       ...sinCapturar, status: 'confirmed',
       items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }],
@@ -73,6 +73,9 @@ describe('la hoja «Qué lleva»', () => {
     expect(getComputedStyle(quitar).minHeight).toBe('44px');
     fireEvent.click(quitar);
     expect(screen.queryByRole('button', { name: /Quitar Azúcar/ })).not.toBeInTheDocument();
+    // Un toque para deshacer: recapturar el renglón serían varios.
+    fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }));
+    expect(screen.getByRole('button', { name: /Quitar Azúcar/ })).toBeInTheDocument();
   });
 
   it('un extra que es un producto del catálogo se liga a él', async () => {

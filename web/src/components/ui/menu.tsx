@@ -38,7 +38,7 @@ export const MenuCheckboxItem = React.forwardRef<
   ChakraMenu.CheckboxItemProps
 >(function MenuCheckboxItem(props, ref) {
   return (
-    <ChakraMenu.CheckboxItem ps="8" ref={ref} {...props}>
+    <ChakraMenu.CheckboxItem ps="8" minH="44px" ref={ref} {...props}>
       <AbsoluteCenter axis="horizontal" insetStart="4" asChild>
         <ChakraMenu.ItemIndicator>
           <LuCheck />
@@ -55,7 +55,7 @@ export const MenuRadioItem = React.forwardRef<
 >(function MenuRadioItem(props, ref) {
   const { children, ...rest } = props
   return (
-    <ChakraMenu.RadioItem ps="8" ref={ref} {...rest}>
+    <ChakraMenu.RadioItem ps="8" minH="44px" ref={ref} {...rest}>
       <AbsoluteCenter axis="horizontal" insetStart="4" asChild>
         <ChakraMenu.ItemIndicator>
           <LuCheck />
@@ -106,7 +106,13 @@ export const MenuContextTrigger = ChakraMenu.ContextTrigger
 export const MenuRoot = ChakraMenu.Root
 export const MenuSeparator = ChakraMenu.Separator
 
-export const MenuItem = ChakraMenu.Item
+// Todo renglón tocable mide al menos 44 px (constitución, Restricciones del producto): la receta de
+// Chakra los deja en ~32 px y en la tableta el dedo cae en el de al lado.
+export const MenuItem = React.forwardRef<HTMLDivElement, ChakraMenu.ItemProps>(
+  function MenuItem(props, ref) {
+    return <ChakraMenu.Item minH="44px" ref={ref} {...props} />
+  },
+)
 export const MenuItemText = ChakraMenu.ItemText
 export const MenuItemCommand = ChakraMenu.ItemCommand
 export const MenuTrigger = ChakraMenu.Trigger

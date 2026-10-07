@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Input, Button, VStack } from '@chakra-ui/react';
+import { Input, Button, Text, VStack } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
   DialogTitle, DialogCloseTrigger,
@@ -11,6 +11,7 @@ import { adminApi, type GroupOption } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
 import { montoTecleado } from '../../domain/numeros';
 import { CompositionSheet } from '../../shared/CompositionSheet';
+import { compositionLabel } from '../../shared/compositionLabel';
 
 // Crear/editar una opción de modificador (nombre, precio extra, máx por línea).
 // option=null → crear en groupId; option set → editar.
@@ -56,7 +57,10 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
               <Input type="number" min={1} value={maxPerLine} onChange={(e) => setMaxPerLine(e.target.value)} />
             </Field>
             {option && (
-              <Button variant="outline" minH="44px" onClick={() => setComposing(true)}>Qué lleva ›</Button>
+              <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
+                <Text>Qué lleva</Text>
+                <Text color="fg.muted" fontWeight="normal">{compositionLabel(option.compositionStatus)} ›</Text>
+              </Button>
             )}
           </VStack>
         </DialogBody>
