@@ -241,8 +241,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
-    ese momento (decisión del dueño, 2026-10-07). No convierte paquetes: cambiar un producto a
-    paquete cambia cómo se vende, y eso se captura a mano.
+    ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
+    siempre son piezas por paquete— y rechaza insumos circulares.
+  - **Un producto es paquete porque tiene productos en «Qué lleva»**, no por un interruptor
+    aparte: capturarle productos lo vuelve `combo` con un hueco por producto, y capturarle insumos lo
+    regresa. El POS vende igual un paquete que un producto suelto; un paquete no lleva paquetes ni
+    se lleva a sí mismo.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,

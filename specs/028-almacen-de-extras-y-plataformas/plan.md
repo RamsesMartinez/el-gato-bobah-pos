@@ -76,7 +76,8 @@ sobre respaldo real con dos empresas, vitest para la pantalla
    composición aunque no haya `order_line_modifiers` (las opciones de la plataforma viajan en la
    nota).
 9. **Doble reposición**: cancelar un renglón y luego el pedido repone una sola vez. Cancelar el pedido
-   no repone lo ya enviado a cocina.
+   completo sigue reponiendo lo ya enviado a cocina, como antes: cambiarlo es decisión del dueño y
+   no se tomó aquí (tasks T002).
 10. **Carga de FUDO**: no pisa lo capturado. Un nombre de FUDO que empata con dos del POS no se
     adivina: se reporta. Un insumo que no existe en el POS se reporta, no se crea.
 11. **Sucursal**: el movimiento cae en la sucursal del pedido (0076), también los de extras y
