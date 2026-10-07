@@ -6,7 +6,7 @@
 -- pedidos de plataforma salían del local sin tocar el almacén. Cuatro cosas:
 --
 -- 1. SI LA COMPOSICIÓN ES ESTIMADA O CONFIRMADA. Lo que vino de FUDO es un estimado y descuenta desde
---    que se carga (decisión del dueño, 2026-10-06); confirmarlo es de quien administra, no de la
+--    que se carga (decisión del dueño, 2026-10-07); confirmarlo es de quien administra, no de la
 --    carga. Un producto con existencias propias queda confirmado: su composición es él mismo, y sin
 --    esto llenaría el filtro «sin capturar» desde el primer día.
 -- 2. EL ORIGEN DE CADA MOVIMIENTO: el extra que lo causó o el paquete del que salió el componente.

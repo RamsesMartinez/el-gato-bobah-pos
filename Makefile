@@ -1,7 +1,7 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
 .PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
-        sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
+        sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import fudo-composiciones reset-admin reset-password build deploy \
         prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar
 .DEFAULT_GOAL := help
 
@@ -134,6 +134,13 @@ fudo-import: deps-up ## Importa el catálogo FUDO desde $FUDO_DIR (y limpia la c
 	@# ver internal/cache/menu.go). Borrar la clave vieja no invalidaba nada y el POS seguía
 	@# sirviendo el menú anterior — o vacío, si se importó con la base recién migrada.
 	@docker compose -f deploy/docker-compose.dev.yml exec -T redis sh -c "redis-cli --scan --pattern 'pos:*' | xargs -r redis-cli DEL" >/dev/null 2>&1 || true
+
+# No borra nada: solo llena lo que no tiene composición, marcado como estimado (spec 028). La empresa
+# es obligatoria porque corre como owner, que salta RLS.
+fudo-composiciones: deps-up ## Carga desde FUDO lo que lleva cada producto, extra e insumo: make fudo-composiciones empresa=slug [prueba=1]
+	@test -d "$(FUDO_DIR)" || { echo "No existe $(FUDO_DIR). Los exports de FUDO viven fuera del repositorio; ver AGENTS.md §1."; exit 1; }
+	@test -n "$(empresa)" || { echo "Falta empresa=slug (la de El Gato Bobah es gatobobah)."; exit 1; }
+	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir "$(FUDO_DIR)" -company "$(empresa)" -compositions $(if $(prueba),-dry-run,)
 	@echo "cache del menú limpiada"
 
 # --- Producción ---

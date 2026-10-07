@@ -228,6 +228,21 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     comanda) recibe los renglones de pedidos de plataforma sin pareja. Se resuelve con
     `ensure_platform_unpaired_product(empresa)`, que filtra por la empresa explícita: con un
     `where system_kind = …` a secas, como owner devolvía el de otra empresa.
+- **El almacén descuenta lo que de verdad se vendió** (spec 028, 0078). Cuatro cosas que no se ven:
+  - **Una sola función decide qué sale**: `domain.ExpandSale` (receta o existencias propias, cada
+    extra, lo que lleva un paquete, y los insumos preparados por su rendimiento). La usan crear
+    pedido, agregar renglones y aceptar un pedido de plataforma, por `descontarRenglon`. **Un camino
+    nuevo que venda tiene que pasar por ahí**, o vende sin descontar y nada truena.
+  - **Un paquete descuenta con la misma regla que lo costea** (`CostGraph`: el producto por omisión
+    de cada hueco × `max(min_select, 1)`). Si cambia una, cambia la otra: si no, el costo y el
+    almacén hablan de paquetes distintos.
+  - **Cada movimiento guarda su origen** (`modifier_option_id`, `component_of_product_id`) y las
+    cancelaciones reponen con el mismo origen. Los componentes vendidos se copian en
+    `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
+  - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
+    reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
+    ese momento (decisión del dueño, 2026-10-07). No convierte paquetes: cambiar un producto a
+    paquete cambia cómo se vende, y eso se captura a mano.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,

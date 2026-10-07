@@ -223,5 +223,29 @@ En la rama de la integración con Uber, sin desplegar todavía:
   tabletas. Con dos tiendas de la misma plataforma no se copia (precio por sucursal pendiente).
 - Producto genérico para renglones de pedido sin pareja, con las opciones en la nota.
 
-Pendiente: descontar del almacén los extras y los pedidos de plataforma (§6), y confirmar con un
-pedido real el nombre del campo de las opciones en el detalle del pedido.
+Pendiente: confirmar con un pedido real el nombre del campo de las opciones en el detalle del
+pedido. El almacén quedó en el §8.
+
+## 8. Construido (spec 028, 2026-10-07): el almacén descuenta extras, paquetes y plataforma
+
+Resuelve los puntos 1 y 2 del §6 y el 4 de lo decidido:
+
+- El mostrador descuenta cada extra (su receta o el producto que es) y lo que lleva un paquete.
+- Aceptar un pedido de plataforma descuenta el platillo y las opciones emparejadas; el producto
+  genérico no descuenta.
+- «Qué lleva» en el producto y en el extra: insumos o el producto que es, estimado o confirmado, y
+  «No lleva nada» para lo que no descuenta (un «Sin hielo»).
+- Reportes cuenta las unidades por producto, sueltas y dentro de paquetes.
+- La carga de FUDO llena lo que falta como estimado. Medido en seco contra el respaldo: 79 extras
+  con receta, 127 extras ligados a su producto y 8 insumos compuestos; nada de lo ya capturado se
+  toca.
+
+Sigue abierto:
+
+- **Las promociones de plataforma** (2x1, regalo): sin un pedido real no hay formato que leer.
+- **La cantidad de una opción de plataforma** se toma por unidad del platillo, como en mostrador. No
+  está comprobado con un pedido real de cantidad mayor a uno.
+- **Cancelar un pedido completo repone también lo ya enviado a cocina**, como antes. Cambiarlo es
+  una decisión del dueño, no un arreglo.
+- **Algunos insumos compuestos de FUDO parecen invertidos** (un frasco «hecho de» cucharadas): se
+  cargan como estimados para que alguien los revise, no se corrigen solos.

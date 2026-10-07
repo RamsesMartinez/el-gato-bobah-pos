@@ -49,7 +49,7 @@
 
 ## Phase 8: Cierre
 
-- [ ] T024 AGENTS.md (cómo se descuenta, la carga de FUDO) y docs/emparejamiento-de-plataformas.md §6
+- [x] T024 AGENTS.md (cómo se descuenta, la carga de FUDO) y docs/emparejamiento-de-plataformas.md §6
 - [ ] T025 Gates completos
 - [ ] T026 Ensayo en pruebas con respaldo de producción y carga de FUDO; cobrar lo creado
 - [ ] T027 `/revision-de-codigo`
