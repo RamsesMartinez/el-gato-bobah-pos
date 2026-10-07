@@ -32,15 +32,15 @@
 
 ## Phase 5: US1 — Capturar la composición
 
-- [ ] T016 Test de integración: guardar composición (insumos o producto ligado) de producto, extra e insumo; confirmar; rechazos de ciclo y de insumo de otra empresa; aislamiento en los tres casos; solo admin y gerente
-- [ ] T017 Endpoints de composición (leer, guardar, confirmar) en server/internal/app/composition.go y httpapi/handlers_composition.go; filtro de composición en la lista del catálogo
-- [ ] T018 [P] Tests de la hoja «Qué lleva»: renglones con Picker y cantidad, quitar de 44 px, «Es el producto…», confirmar, estado estimado visible
-- [ ] T019 `CompositionSheet` y el botón «Qué lleva ›» en los dos diálogos; filtro en el menú de `ProductsAdminPage`
+- [x] T016 Test de integración: guardar composición (insumos o producto ligado) de producto y extra (la del insumo compuesto va con T020); confirmar; rechazos de ciclo y de insumo de otra empresa; aislamiento en los tres casos; solo admin y gerente
+- [x] T017 Endpoints de composición (leer, guardar, confirmar) en server/internal/app/composition.go y httpapi/handlers_composition.go; filtro de composición en la lista del catálogo
+- [x] T018 [P] Tests de la hoja «Qué lleva»: renglones con Picker y cantidad, quitar de 44 px, «Es el producto…», confirmar, estado estimado visible
+- [x] T019 `CompositionSheet` y el botón «Qué lleva ›» en los dos diálogos; filtro en el menú de `ProductsAdminPage`
 
 ## Phase 6: US4 y US5 — Paquetes e insumos compuestos
 
-- [ ] T020 Test: el historial por producto cuenta componentes de paquete sin los renglones cancelados; un insumo preparado descuenta sus componentes
-- [ ] T021 Consulta de vendidos por producto incluyendo componentes, y su lugar en Almacén
+- [x] T020 Test: el historial por producto cuenta componentes de paquete sin los renglones cancelados; un insumo preparado descuenta sus componentes
+- [x] T021 Consulta de vendidos por producto incluyendo componentes. Quedó en Reportes y no en Almacén: comparte el periodo de la utilidad por producto, y en Almacén no hay rango de fechas
 
 ## Phase 7: Carga de FUDO
 

@@ -49,6 +49,12 @@ export function ReportsPage() {
     placeholderData: (previa) => previa,
     enabled: puedeConsultar,
   });
+  const sold = useQuery({
+    queryKey: ['report', 'products-sold', periodo],
+    queryFn: () => backofficeApi.reportProductsSold(periodo),
+    placeholderData: (previa) => previa,
+    enabled: puedeConsultar,
+  });
   const tips = useQuery({
     queryKey: ['report', 'tips', periodo],
     queryFn: () => backofficeApi.reportTips(periodo),
@@ -123,6 +129,29 @@ export function ReportsPage() {
               ))}
             </Table.Body>
           </Table.Root>
+        </Box>
+
+        {/* Lo que salió dentro de un paquete cuenta aparte: la utilidad de arriba lo trae dentro
+            del renglón del paquete, y sin esta tabla «cuántas crepas salieron» contesta solo las
+            sueltas. */}
+        <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} overflowX="auto">
+          <Text fontWeight="700" mb={2}>Unidades por producto</Text>
+          {(sold.data?.items.length ?? 0) === 0 ? (
+            <Text fontSize="sm" color="fg.muted">Sin ventas en el periodo.</Text>
+          ) : (
+            <Table.Root size="sm">
+              <Table.Header><Table.Row><Table.ColumnHeader>Producto</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Sueltas</Table.ColumnHeader><Table.ColumnHeader textAlign="end">En paquetes</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Body>
+                {sold.data?.items.slice(0, 20).map((p) => (
+                  <Table.Row key={p.product_name}>
+                    <Table.Cell>{p.product_name}</Table.Cell>
+                    <Table.Cell textAlign="end">{Number(p.alone)}</Table.Cell>
+                    <Table.Cell textAlign="end">{Number(p.in_packages)}</Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+          )}
         </Box>
 
         {/* Propinas (pass-through): para repartir entre el personal. */}

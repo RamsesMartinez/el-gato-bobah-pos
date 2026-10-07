@@ -327,6 +327,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)
 					r.Get("/margins", h.ReportMargins)
+					r.Get("/products-sold", h.ReportProductsSold)
 					r.Get("/tips", h.ReportTips)
 				})
 

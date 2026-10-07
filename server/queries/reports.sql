@@ -91,3 +91,36 @@ where o.status not in ('cancelada', 'reembolsada')
 group by ol.product_name
 order by margin desc
 limit $3;
+
+-- name: ProductsSold :many
+-- Unidades vendidas por producto, sueltas y dentro de paquetes (spec 028). Mismo predicado que la
+-- venta: pedido no cancelado ni reembolsado, renglón no cancelado, día de negocio en el rango. Los
+-- componentes salen de la copia hecha al vender (order_line_components), no del paquete de hoy.
+--
+-- Cada rama se agrega por producto antes de unir: unir renglones y componentes en la misma consulta
+-- multiplicaría las filas (AGENTS.md §1).
+with alone as (
+  select ol.product_id, sum(ol.quantity) as qty
+    from order_lines ol join orders o on o.id = ol.order_id
+   where o.status not in ('cancelada', 'reembolsada') and ol.cancelled_at is null
+     and o.business_date between sqlc.arg(from_date) and sqlc.arg(to_date)
+     and ol.product_id is not null
+   group by ol.product_id
+), packed as (
+  select c.product_id, sum(c.quantity) as qty
+    from order_line_components c
+    join order_lines ol on ol.id = c.order_line_id
+    join orders o on o.id = ol.order_id
+   where o.status not in ('cancelada', 'reembolsada') and ol.cancelled_at is null
+     and o.business_date between sqlc.arg(from_date) and sqlc.arg(to_date)
+   group by c.product_id
+)
+select p.name as product_name,
+       coalesce(a.qty, 0)::numeric(14,2) as alone,
+       coalesce(k.qty, 0)::numeric(14,2) as in_packages
+  from products p
+  left join alone a on a.product_id = p.id
+  left join packed k on k.product_id = p.id
+ where (a.qty is not null or k.qty is not null) and p.type <> 'combo'
+ order by coalesce(a.qty, 0) + coalesce(k.qty, 0) desc, p.name
+ limit sqlc.arg(row_limit);

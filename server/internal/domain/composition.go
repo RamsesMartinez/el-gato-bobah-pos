@@ -171,7 +171,7 @@ func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 	var comps []SaleComponent
 	if p, ok := g.Products[line.ProductID]; ok && p.IsCombo {
 		for _, c := range g.ComboDefaults[p.ID] {
-			qty := line.Qty.Mul(decimal.NewFromInt(int64(max(c.MinSelect, 1))))
+			qty := line.Qty.Mul(decimal.NewFromInt(int64(max(c.MinSelect, 1)))).Round(internalScale)
 			comps = append(comps, SaleComponent{ProductID: c.ProductID, Qty: qty})
 			// Un paquete dentro de un paquete no se expande: la captura lo prohíbe y un dato viejo
 			// no debe multiplicar el descuento.
@@ -187,7 +187,7 @@ func (g StockGraph) ExpandSale(line SaleLine) ([]StockDelta, []SaleComponent) {
 		if !ok {
 			continue
 		}
-		qty := line.Qty.Mul(o.Qty)
+		qty := line.Qty.Mul(o.Qty).Round(internalScale)
 		switch {
 		case opt.LinkedProductID != nil:
 			if lp, ok := g.Products[*opt.LinkedProductID]; ok && !lp.IsCombo {
@@ -229,9 +229,14 @@ func (e *expansion) product(p StockProduct, qty decimal.Decimal, option, compone
 	}
 }
 
+// internalScale acota los decimales de cada paso. La base entrega recetas con 6 decimales y cada
+// nivel los suma: sin acotar, un insumo preparado dentro de otro pasaba el tope de escala de
+// ValidQty y la venta tronaba. 12 decimales sobran para redondear al final a 4.
+const internalScale = 12
+
 func (e *expansion) recipe(recipeID int64, qty decimal.Decimal, option, component int64, depth int) {
 	for _, it := range e.g.Recipes[recipeID] {
-		e.ingredient(it.IngredientID, it.QtyBase.Mul(qty), option, component, depth)
+		e.ingredient(it.IngredientID, it.QtyBase.Mul(qty).Round(internalScale), option, component, depth)
 	}
 }
 
@@ -244,7 +249,7 @@ func (e *expansion) ingredient(id int64, qty decimal.Decimal, option, component 
 		e.add("ingrediente", id, qty, option, component)
 		return
 	}
-	e.recipe(*in.RecipeID, qty.Div(in.YieldQty), option, component, depth+1)
+	e.recipe(*in.RecipeID, qty.Div(in.YieldQty).Round(internalScale), option, component, depth+1)
 }
 
 // ValidatePackage rechaza un paquete que se contiene o que lleva otro paquete.

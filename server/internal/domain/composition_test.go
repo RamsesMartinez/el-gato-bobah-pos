@@ -167,6 +167,39 @@ func TestValidateComposition(t *testing.T) {
 	}
 }
 
+// La base entrega las cantidades de receta con 6 decimales (numeric(20,6)) y el rendimiento con 4.
+// Multiplicar y dividir eso por cada nivel acumulaba decimales hasta pasar el tope de escala de
+// ValidQty, y la venta de un té con jarabe tronaba con «datos inválidos». Las pruebas de arriba
+// usaban cantidades sin decimales y no lo veían.
+func TestExpandSaleKeepsTheScaleOfDatabaseQuantities(t *testing.T) {
+	g := StockGraph{
+		Ingredients: map[int64]StockIngredient{
+			1: {ID: 1}, 2: {ID: 2},
+			3: {ID: 3, IsPrep: true, RecipeID: ip(20), YieldQty: d("1000.0000")},
+			4: {ID: 4, IsPrep: true, RecipeID: ip(30), YieldQty: d("3.0000")},
+		},
+		Recipes: map[int64][]RecipeLine{
+			10: {{IngredientID: 4, QtyBase: d("30.000000")}},
+			20: {{IngredientID: 1, QtyBase: d("500.000000")}, {IngredientID: 2, QtyBase: d("500.000000")}},
+			30: {{IngredientID: 3, QtyBase: d("7.000000")}},
+		},
+		Products: map[int64]StockProduct{100: {ID: 100, RecipeID: ip(10)}},
+	}
+	ds, _ := g.ExpandSale(SaleLine{ProductID: 100, Qty: d("2.00")})
+	if len(ds) != 2 {
+		t.Fatalf("dos insumos comprados: %+v", ds)
+	}
+	for _, x := range ds {
+		if !ValidQty(x.Qty.Neg(), MaxStockQty, true) {
+			t.Fatalf("la cantidad %s (exponente %d) no pasa la validación de la frontera", x.Qty, x.Qty.Exponent())
+		}
+		// 2 × 30 / 3 × 7 / 1000 × 500 = 70
+		if !x.Qty.Equal(d("70")) {
+			t.Fatalf("cantidad: quería 70, salió %s", x.Qty)
+		}
+	}
+}
+
 func TestValidateCompositionInput(t *testing.T) {
 	gramo, litro := "masa", "volumen"
 	item := func(ing int64, qty string, kind string) CompositionItem {

@@ -7,7 +7,7 @@ import { Provider } from '../../components/ui/provider';
 import { ReportsPage } from './ReportsPage';
 
 const api = vi.hoisted(() => ({
-  reportSales: vi.fn(), reportMargins: vi.fn(), reportTips: vi.fn(),
+  reportSales: vi.fn(), reportMargins: vi.fn(), reportTips: vi.fn(), reportProductsSold: vi.fn(),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({
   ...(await orig<object>()), backofficeApi: api,
@@ -31,6 +31,19 @@ describe('pantalla de Reportes', () => {
     api.reportSales.mockResolvedValue({ range: rango, byDay: [], byMethod: [] });
     api.reportMargins.mockResolvedValue({ range: rango, items: [] });
     api.reportTips.mockResolvedValue({ range: rango, byEmployee: [], byDay: [] });
+    api.reportProductsSold.mockResolvedValue({ range: rango, items: [] });
+  });
+
+  // LO VENDIDO DENTRO DE UN PAQUETE SE VE, SEPARADO DE LO SUELTO (spec 028).
+  it('las unidades por producto distinguen sueltas de en paquetes', async () => {
+    api.reportProductsSold.mockResolvedValue({
+      range: rango, items: [{ product_name: 'Crepa de Nutella', alone: '12.00', in_packages: '5.00' }],
+    });
+    montar();
+    const fila = (await screen.findByText('Crepa de Nutella')).closest('tr')!;
+    expect(fila).toHaveTextContent('12');
+    expect(fila).toHaveTextContent('5');
+    expect(screen.getByText('En paquetes')).toBeInTheDocument();
   });
 
   // EL ENCABEZADO DICE EL PERIODO QUE EL SERVIDOR CONSULTÓ, NO UNA FRASE FIJA.
@@ -64,6 +77,7 @@ describe('pantalla de Reportes', () => {
       expect(api.reportSales).toHaveBeenCalledWith(expect.objectContaining(periodo));
       expect(api.reportMargins).toHaveBeenCalledWith(expect.objectContaining(periodo));
       expect(api.reportTips).toHaveBeenCalledWith(expect.objectContaining(periodo));
+      expect(api.reportProductsSold).toHaveBeenCalledWith(expect.objectContaining(periodo));
     });
   });
 

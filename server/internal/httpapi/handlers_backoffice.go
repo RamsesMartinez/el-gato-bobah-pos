@@ -819,6 +819,27 @@ func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "items": rows})
 }
 
+// GET /reports/products-sold?preset=&from=&to=&limit= — unidades por producto, sueltas y dentro de
+// paquetes (spec 028).
+func (h *Handlers) ReportProductsSold(w http.ResponseWriter, r *http.Request) {
+	rango, err := h.rangoDeReporte(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	limite, err := limiteDeQuery(r.URL.Query(), 50)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rows, err := h.backoffice.ProductsSold(r.Context(), rango.From, rango.To, limite)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "items": rows})
+}
+
 // rangoDeReporte resuelve el periodo de los tres reportes con LAS MISMAS reglas que la pantalla de
 // Ventas: la zona del negocio decide qué día es hoy, un preset desconocido se rechaza, un rango
 // invertido se rechaza y hay un tope de días.

@@ -597,6 +597,12 @@ export const backofficeApi = {
       range: ReportRange;
       items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }>;
     }>(`/reports/margins?${qsReporte({ ...q, limit: 50 })}`),
+  // Unidades por producto, sueltas y dentro de paquetes.
+  reportProductsSold: (q: ReportQuery = {}) =>
+    api.get<{
+      range: ReportRange;
+      items: Array<{ product_name: string; alone: string; in_packages: string }>;
+    }>(`/reports/products-sold?${qsReporte({ ...q, limit: 50 })}`),
   // Propinas (pass-through, para repartir): por empleado que cobró y por día.
   reportTips: (q: ReportQuery = {}) =>
     api.get<{

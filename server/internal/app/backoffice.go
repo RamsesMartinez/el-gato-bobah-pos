@@ -1827,6 +1827,16 @@ func (s *BackofficeService) SalesByMethod(ctx context.Context, from, to time.Tim
 		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
 	})
 }
+
+// ProductsSold son las unidades vendidas por producto, sueltas y dentro de paquetes.
+func (s *BackofficeService) ProductsSold(ctx context.Context, from, to time.Time, limit int32) ([]db.ProductsSoldRow, error) {
+	return s.store.QC(ctx).ProductsSold(ctx, db.ProductsSoldParams{
+		FromDate: pgtype.Date{Time: from, Valid: true},
+		ToDate:   pgtype.Date{Time: to, Valid: true},
+		RowLimit: limit,
+	})
+}
+
 func (s *BackofficeService) ProductMargins(ctx context.Context, from, to time.Time, limit int32) ([]db.ProductMarginsRow, error) {
 	return s.store.QC(ctx).ProductMargins(ctx, db.ProductMarginsParams{
 		BusinessDate:   pgtype.Date{Time: from, Valid: true},
