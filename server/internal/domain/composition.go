@@ -16,9 +16,50 @@ import (
 // ErrCompositionCycle y ErrPackageInPackage son de validación: responden 422 como cualquier
 // ErrValidation, y se distinguen para el mensaje.
 var (
-	ErrCompositionCycle = fmt.Errorf("%w: la composición se contiene a sí misma", ErrValidation)
-	ErrPackageInPackage = fmt.Errorf("%w: un paquete no puede llevar otro paquete", ErrValidation)
+	ErrCompositionCycle   = fmt.Errorf("%w: la composición se contiene a sí misma", ErrValidation)
+	ErrPackageInPackage   = fmt.Errorf("%w: un paquete no puede llevar otro paquete", ErrValidation)
+	ErrRecipeUnitMismatch = fmt.Errorf("%w: la unidad no es del tipo del insumo", ErrValidation)
 )
+
+// CompositionItem es un renglón capturado: insumo, cantidad y la unidad en que se capturó. Los
+// tipos de unidad (masa, volumen, pieza) los llena quien carga los datos.
+type CompositionItem struct {
+	IngredientID       int64
+	Quantity           decimal.Decimal
+	UnitID             int16
+	UnitKind           string
+	IngredientUnitKind string
+}
+
+// CompositionInput es lo que se captura de un producto o un extra: insumos, o el producto del
+// catálogo que es. Vacía quita la composición.
+type CompositionInput struct {
+	Items           []CompositionItem
+	LinkedProductID *int64
+}
+
+// Validate rechaza lo que el almacén no podría descontar bien: cantidades fuera de rango, un insumo
+// dos veces (la receta lo guarda una vez por insumo) y una unidad que no convierte a la del insumo:
+// gramos de algo que se lleva en litros descontarían un número sin sentido.
+func (c CompositionInput) Validate() error {
+	if c.LinkedProductID != nil && len(c.Items) > 0 {
+		return fmt.Errorf("%w: lleva insumos o es un producto, no las dos cosas", ErrValidation)
+	}
+	seen := map[int64]bool{}
+	for _, it := range c.Items {
+		if !it.Quantity.IsPositive() || !ValidQty(it.Quantity, MaxStockQty, false) {
+			return fmt.Errorf("%w: cantidad inválida (insumo %d)", ErrValidation, it.IngredientID)
+		}
+		if seen[it.IngredientID] {
+			return fmt.Errorf("%w: el insumo %d va dos veces", ErrValidation, it.IngredientID)
+		}
+		seen[it.IngredientID] = true
+		if it.UnitKind != it.IngredientUnitKind {
+			return fmt.Errorf("%w (insumo %d)", ErrRecipeUnitMismatch, it.IngredientID)
+		}
+	}
+	return nil
+}
 
 // maxCompositionDepth corta la descomposición de insumos preparados. La captura rechaza los
 // ciclos, pero un dato viejo no pasó por ella, y una venta no puede colgarse por eso.

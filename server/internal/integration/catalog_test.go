@@ -43,7 +43,7 @@ func TestAdminCreateListSortAndCategoryFilter(t *testing.T) {
 	mk("Flan", postres, "60")
 
 	// Orden por precio ascendente (ejercita el CASE numérico del order-by).
-	page, err := admin.ListProducts(ctx, "", "", 0, "", "price", "asc", 25, 0)
+	page, err := admin.ListProducts(ctx, "", "", 0, "", "", "price", "asc", 25, 0)
 	if err != nil {
 		t.Fatalf("ListProducts price asc: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAdminCreateListSortAndCategoryFilter(t *testing.T) {
 	}
 
 	// Filtro por la categoría raíz 'Bebidas' → incluye los de la subcategoría 'Calientes' (2), no el Flan.
-	beb, err := admin.ListProducts(ctx, "", "", bebidas, "", "name", "asc", 25, 0)
+	beb, err := admin.ListProducts(ctx, "", "", bebidas, "", "", "name", "asc", 25, 0)
 	if err != nil {
 		t.Fatalf("ListProducts filtro categoría: %v", err)
 	}

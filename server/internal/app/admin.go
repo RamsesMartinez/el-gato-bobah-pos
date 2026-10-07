@@ -38,8 +38,10 @@ type AdminProductView struct {
 	CategoryID     int64   `json:"categoryId"`
 	AvailableFrom  *string `json:"availableFrom"`
 	AvailableUntil *string `json:"availableUntil"`
-	GroupCount     int     `json:"groupCount"`    // grupos de modificadores activos ligados al producto
-	OverrideCount  int     `json:"overrideCount"` // grupos con min/max personalizado en este producto
+	// CompositionStatus: "" sin capturar, "estimated" o "confirmed" (spec 028).
+	CompositionStatus string `json:"compositionStatus"`
+	GroupCount        int    `json:"groupCount"`    // grupos de modificadores activos ligados al producto
+	OverrideCount     int    `json:"overrideCount"` // grupos con min/max personalizado en este producto
 }
 
 const dateFmt = "2006-01-02"
@@ -181,9 +183,9 @@ func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, new
 
 // ListProducts pagina el catálogo en el backend. status: ""=todos | "act" | "inact".
 // categoryID=0 → todas; sort/dir ordenan por columna (ver AdminListProducts).
-func (s *AdminService) ListProducts(ctx context.Context, status, search string, categoryID int64, groups, sort, dir string, limit, offset int32) (ProductsPage, error) {
+func (s *AdminService) ListProducts(ctx context.Context, status, search string, categoryID int64, groups, composition, sort, dir string, limit, offset int32) (ProductsPage, error) {
 	rows, err := s.store.QC(ctx).AdminListProducts(ctx, db.AdminListProductsParams{
-		Status: status, Search: search, CategoryID: categoryID, Groups: groups, Sort: sort, Dir: dir, Lim: limit, Off: offset,
+		Status: status, Search: search, CategoryID: categoryID, Groups: groups, Composition: composition, Sort: sort, Dir: dir, Lim: limit, Off: offset,
 	})
 	if err != nil {
 		return ProductsPage{}, err
@@ -199,6 +201,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			Category:  r.Category, CategoryID: r.CategoryID,
 			AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
+			CompositionStatus: textoDe(r.CompositionStatus),
 		})
 	}
 	c, err := s.store.QC(ctx).AdminProductCounts(ctx)
@@ -234,6 +237,8 @@ type AdminOptionView struct {
 	PriceDelta decimal.Decimal `json:"priceDelta"`
 	Favorite   bool            `json:"favorite"`
 	Active     bool            `json:"active"`
+	// CompositionStatus: "" sin capturar, "estimated" o "confirmed" (spec 028).
+	CompositionStatus string `json:"compositionStatus"`
 }
 
 // OptionsPage: página de opciones (items + total del filtro) más los conteos por estado
@@ -245,9 +250,9 @@ type OptionsPage struct {
 }
 
 // ListModifierOptions pagina las opciones en el backend. status: ""=todas | "act" | "inact".
-func (s *AdminService) ListModifierOptions(ctx context.Context, status, search string, limit, offset int32) (OptionsPage, error) {
+func (s *AdminService) ListModifierOptions(ctx context.Context, status, search, composition string, limit, offset int32) (OptionsPage, error) {
 	rows, err := s.store.QC(ctx).AdminListModifierOptions(ctx, db.AdminListModifierOptionsParams{
-		Status: status, Search: search, Lim: limit, Off: offset,
+		Status: status, Search: search, Composition: composition, Lim: limit, Off: offset,
 	})
 	if err != nil {
 		return OptionsPage{}, err
@@ -259,6 +264,7 @@ func (s *AdminService) ListModifierOptions(ctx context.Context, status, search s
 		out = append(out, AdminOptionView{
 			ID: r.ID, GroupID: r.GroupID, GroupName: r.GroupName, Name: r.Name,
 			PriceDelta: r.PriceDelta, Favorite: r.IsFavorite, Active: r.IsActive,
+			CompositionStatus: textoDe(r.CompositionStatus),
 		})
 	}
 	c, err := s.store.QC(ctx).AdminModifierOptionCounts(ctx)

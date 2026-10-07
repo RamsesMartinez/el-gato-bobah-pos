@@ -166,3 +166,33 @@ func TestValidateComposition(t *testing.T) {
 		t.Fatalf("lo normal es válido: %v", err)
 	}
 }
+
+func TestValidateCompositionInput(t *testing.T) {
+	gramo, litro := "masa", "volumen"
+	item := func(ing int64, qty string, kind string) CompositionItem {
+		return CompositionItem{IngredientID: ing, Quantity: d(qty), UnitKind: kind, IngredientUnitKind: gramo}
+	}
+	cases := []struct {
+		name string
+		in   CompositionInput
+		err  error
+	}{
+		{"insumos", CompositionInput{Items: []CompositionItem{item(1, "200", gramo), item(2, "0.5", gramo)}}, nil},
+		{"producto ligado", CompositionInput{LinkedProductID: ip(9)}, nil},
+		{"vacía borra", CompositionInput{}, nil},
+		{"las dos cosas", CompositionInput{LinkedProductID: ip(9), Items: []CompositionItem{item(1, "1", gramo)}}, ErrValidation},
+		{"cantidad cero", CompositionInput{Items: []CompositionItem{item(1, "0", gramo)}}, ErrValidation},
+		{"cantidad negativa", CompositionInput{Items: []CompositionItem{item(1, "-1", gramo)}}, ErrValidation},
+		{"cantidad absurda", CompositionInput{Items: []CompositionItem{item(1, "100000000", gramo)}}, ErrValidation},
+		{"insumo repetido", CompositionInput{Items: []CompositionItem{item(1, "1", gramo), item(1, "2", gramo)}}, ErrValidation},
+		{"unidad de otro tipo", CompositionInput{Items: []CompositionItem{item(1, "1", litro)}}, ErrRecipeUnitMismatch},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.in.Validate()
+			if c.err == nil && err != nil || c.err != nil && !errors.Is(err, c.err) {
+				t.Fatalf("Validate() = %v, quería %v", err, c.err)
+			}
+		})
+	}
+}

@@ -338,6 +338,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
 					r.Patch("/{id}", h.AdminUpdateProduct)
 					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+					r.Get("/{id}/composition", h.GetProductComposition)
+					r.Put("/{id}/composition", h.PutProductComposition)
+					r.Post("/{id}/composition/confirm", h.ConfirmProductComposition)
 					r.Get("/{id}/groups", h.AdminProductGroups)
 					r.Post("/{id}/groups", h.AdminAttachProductGroup)
 					r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
@@ -346,6 +349,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
 					r.Get("/", h.AdminListModifierOptions)
 					r.Patch("/{id}", h.AdminUpdateOption)
+					r.Get("/{id}/composition", h.GetOptionComposition)
+					r.Put("/{id}/composition", h.PutOptionComposition)
+					r.Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
 				})
 
 				// catálogo global de grupos + sus opciones

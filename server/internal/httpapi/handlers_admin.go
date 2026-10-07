@@ -25,6 +25,11 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 		groups = ""
 	}
 	categoryID := max(int64(atoiOr(q.Get("categoryId"), 0)), 0) // 0 = todas las categorías
+	composition, err := compositionFilter(q.Get("composition"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	// Orden por columna: solo valores conocidos (lo demás → nombre asc, el default del query).
 	sort := q.Get("sort")
 	switch sort {
@@ -36,7 +41,7 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	if dir != "desc" {
 		dir = "asc"
 	}
-	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, sort, dir, int32(limit), int32(offset))
+	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, composition, sort, dir, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return
@@ -125,7 +130,12 @@ func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Reque
 	}
 	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (el POS pide todas)
 	offset := max(atoiOr(q.Get("offset"), 0), 0)
-	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), int32(limit), int32(offset))
+	composition, err := compositionFilter(q.Get("composition"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), composition, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return

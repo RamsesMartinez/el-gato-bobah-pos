@@ -8,6 +8,7 @@ select q.*, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
+         p.composition_status,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -23,6 +24,10 @@ from (
           or (@status = 'inact' and not p.is_active))
     and (@search::text = '' or p.name ilike '%' || @search || '%')
     and (@category_id::bigint = 0 or p.category_id = @category_id or c.parent_id = @category_id)
+    -- Composición (spec 028): ''=todas | 'none'=sin capturar | 'estimated'=por revisar.
+    and (@composition::text = ''
+          or (@composition = 'none' and p.composition_status is null)
+          or (@composition = 'estimated' and p.composition_status = 'estimated'))
 ) q
 where (@groups::text = ''
         or (@groups = 'none' and q.group_count = 0)
@@ -119,7 +124,7 @@ where id = $1;
 -- búsqueda (nombre de opción o de grupo). count(*) over() = total del filtro, para el paginador.
 -- Incluye inactivas y price_delta: el POS puede mostrar/cobrar una opción archivada al reactivarla.
 select mo.id, mo.group_id, mg.name as group_name, mo.name, mo.price_delta, mo.is_favorite, mo.is_active,
-       count(*) over() as total
+       mo.composition_status, count(*) over() as total
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mg.is_active
@@ -127,6 +132,9 @@ where mg.is_active
         or (@status = 'act' and mo.is_active)
         or (@status = 'inact' and not mo.is_active))
   and (@search::text = '' or mo.name ilike '%' || @search || '%' or mg.name ilike '%' || @search || '%')
+  and (@composition::text = ''
+        or (@composition = 'none' and mo.composition_status is null)
+        or (@composition = 'estimated' and mo.composition_status = 'estimated'))
 order by mg.name, mo.sort_key, mo.name
 limit nullif(@lim::int, 0) offset @off;  -- lim=0 → sin límite (el POS pide todas)
 

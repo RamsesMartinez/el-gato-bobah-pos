@@ -8,8 +8,166 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
+
+const confirmOptionComposition = `-- name: ConfirmOptionComposition :execrows
+update modifier_options set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
+ where id = $1 and composition_status is distinct from 'confirmed'
+`
+
+type ConfirmOptionCompositionParams struct {
+	ID                     int64  `json:"id"`
+	CompositionConfirmedBy *int64 `json:"composition_confirmed_by"`
+}
+
+func (q *Queries) ConfirmOptionComposition(ctx context.Context, arg ConfirmOptionCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmOptionComposition, arg.ID, arg.CompositionConfirmedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const confirmProductComposition = `-- name: ConfirmProductComposition :execrows
+update products set composition_status = 'confirmed', composition_confirmed_by = $2, composition_confirmed_at = now()
+ where id = $1 and composition_status is distinct from 'confirmed'
+`
+
+type ConfirmProductCompositionParams struct {
+	ID                     int64  `json:"id"`
+	CompositionConfirmedBy *int64 `json:"composition_confirmed_by"`
+}
+
+// Confirmar sin composición es decidir «no lleva nada que se descuente» (un «Sin hielo»): así deja
+// de salir en «sin capturar», y lo pendiente no se confunde con lo decidido.
+func (q *Queries) ConfirmProductComposition(ctx context.Context, arg ConfirmProductCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmProductComposition, arg.ID, arg.CompositionConfirmedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const createCompositionRecipe = `-- name: CreateCompositionRecipe :one
+insert into recipes default values returning id
+`
+
+// Receta nueva en cada captura y no editar la que había: `recipe_id` es único por tabla, pero un
+// producto y un extra cargados de FUDO pueden apuntar a la misma, y editarla en su lugar cambiaría
+// lo que descuenta el otro sin que nadie lo viera.
+func (q *Queries) CreateCompositionRecipe(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, createCompositionRecipe)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getLinkableProduct = `-- name: GetLinkableProduct :one
+select id, type from products where id = $1
+`
+
+type GetLinkableProductRow struct {
+	ID   int64       `json:"id"`
+	Type ProductType `json:"type"`
+}
+
+func (q *Queries) GetLinkableProduct(ctx context.Context, id int64) (GetLinkableProductRow, error) {
+	row := q.db.QueryRow(ctx, getLinkableProduct, id)
+	var i GetLinkableProductRow
+	err := row.Scan(&i.ID, &i.Type)
+	return i, err
+}
+
+const getOptionComposition = `-- name: GetOptionComposition :one
+select o.id, o.recipe_id, o.linked_product_id, lp.name as linked_product_name,
+       o.composition_status, o.composition_confirmed_at, u.name as confirmed_by_name
+  from modifier_options o
+  left join products lp on lp.id = o.linked_product_id
+  left join users u on u.id = o.composition_confirmed_by
+ where o.id = $1
+`
+
+type GetOptionCompositionRow struct {
+	ID                     int64              `json:"id"`
+	RecipeID               *int64             `json:"recipe_id"`
+	LinkedProductID        *int64             `json:"linked_product_id"`
+	LinkedProductName      *string            `json:"linked_product_name"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	ConfirmedByName        *string            `json:"confirmed_by_name"`
+}
+
+func (q *Queries) GetOptionComposition(ctx context.Context, id int64) (GetOptionCompositionRow, error) {
+	row := q.db.QueryRow(ctx, getOptionComposition, id)
+	var i GetOptionCompositionRow
+	err := row.Scan(
+		&i.ID,
+		&i.RecipeID,
+		&i.LinkedProductID,
+		&i.LinkedProductName,
+		&i.CompositionStatus,
+		&i.CompositionConfirmedAt,
+		&i.ConfirmedByName,
+	)
+	return i, err
+}
+
+const getProductComposition = `-- name: GetProductComposition :one
+select p.id, p.type, p.track_stock, p.recipe_id, p.composition_status, p.composition_confirmed_at,
+       u.name as confirmed_by_name
+  from products p left join users u on u.id = p.composition_confirmed_by
+ where p.id = $1
+`
+
+type GetProductCompositionRow struct {
+	ID                     int64              `json:"id"`
+	Type                   ProductType        `json:"type"`
+	TrackStock             bool               `json:"track_stock"`
+	RecipeID               *int64             `json:"recipe_id"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
+	ConfirmedByName        *string            `json:"confirmed_by_name"`
+}
+
+func (q *Queries) GetProductComposition(ctx context.Context, id int64) (GetProductCompositionRow, error) {
+	row := q.db.QueryRow(ctx, getProductComposition, id)
+	var i GetProductCompositionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.TrackStock,
+		&i.RecipeID,
+		&i.CompositionStatus,
+		&i.CompositionConfirmedAt,
+		&i.ConfirmedByName,
+	)
+	return i, err
+}
+
+const insertCompositionItem = `-- name: InsertCompositionItem :exec
+insert into recipe_items (recipe_id, ingredient_id, quantity, unit_id, position) values ($1, $2, $3, $4, $5)
+`
+
+type InsertCompositionItemParams struct {
+	RecipeID     int64           `json:"recipe_id"`
+	IngredientID int64           `json:"ingredient_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	UnitID       int16           `json:"unit_id"`
+	Position     int32           `json:"position"`
+}
+
+func (q *Queries) InsertCompositionItem(ctx context.Context, arg InsertCompositionItemParams) error {
+	_, err := q.db.Exec(ctx, insertCompositionItem,
+		arg.RecipeID,
+		arg.IngredientID,
+		arg.Quantity,
+		arg.UnitID,
+		arg.Position,
+	)
+	return err
+}
 
 const insertOrderLineComponent = `-- name: InsertOrderLineComponent :exec
 insert into order_line_components (order_line_id, product_id, quantity) values ($1, $2, $3)
@@ -26,6 +184,82 @@ type InsertOrderLineComponentParams struct {
 func (q *Queries) InsertOrderLineComponent(ctx context.Context, arg InsertOrderLineComponentParams) error {
 	_, err := q.db.Exec(ctx, insertOrderLineComponent, arg.OrderLineID, arg.ProductID, arg.Quantity)
 	return err
+}
+
+const listCompositionItems = `-- name: ListCompositionItems :many
+select ri.ingredient_id, i.name as ingredient_name, ri.quantity, ri.unit_id, u.code as unit_code
+  from recipe_items ri
+  join ingredients i on i.id = ri.ingredient_id
+  join units u on u.id = ri.unit_id
+ where ri.recipe_id = $1
+ order by ri.position, ri.id
+`
+
+type ListCompositionItemsRow struct {
+	IngredientID   int64           `json:"ingredient_id"`
+	IngredientName string          `json:"ingredient_name"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	UnitID         int16           `json:"unit_id"`
+	UnitCode       string          `json:"unit_code"`
+}
+
+func (q *Queries) ListCompositionItems(ctx context.Context, recipeID int64) ([]ListCompositionItemsRow, error) {
+	rows, err := q.db.Query(ctx, listCompositionItems, recipeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCompositionItemsRow{}
+	for rows.Next() {
+		var i ListCompositionItemsRow
+		if err := rows.Scan(
+			&i.IngredientID,
+			&i.IngredientName,
+			&i.Quantity,
+			&i.UnitID,
+			&i.UnitCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngredientUnitKinds = `-- name: ListIngredientUnitKinds :many
+select i.id, u.kind::text as kind
+  from ingredients i join units u on u.id = i.base_unit_id
+ where i.id = any($1::bigint[])
+`
+
+type ListIngredientUnitKindsRow struct {
+	ID   int64  `json:"id"`
+	Kind string `json:"kind"`
+}
+
+// El tipo de unidad base de cada insumo. Uno de otra empresa no sale (RLS), y eso es lo que impide
+// ligarlo: la FK de recipe_items es simple.
+func (q *Queries) ListIngredientUnitKinds(ctx context.Context, ids []int64) ([]ListIngredientUnitKindsRow, error) {
+	rows, err := q.db.Query(ctx, listIngredientUnitKinds, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIngredientUnitKindsRow{}
+	for rows.Next() {
+		var i ListIngredientUnitKindsRow
+		if err := rows.Scan(&i.ID, &i.Kind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProductsForStock = `-- name: ListProductsForStock :many
@@ -64,4 +298,94 @@ func (q *Queries) ListProductsForStock(ctx context.Context) ([]ListProductsForSt
 		return nil, err
 	}
 	return items, nil
+}
+
+const listUnitKinds = `-- name: ListUnitKinds :many
+select id, kind::text as kind from units where id = any($1::smallint[])
+`
+
+type ListUnitKindsRow struct {
+	ID   int16  `json:"id"`
+	Kind string `json:"kind"`
+}
+
+func (q *Queries) ListUnitKinds(ctx context.Context, ids []int16) ([]ListUnitKindsRow, error) {
+	rows, err := q.db.Query(ctx, listUnitKinds, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnitKindsRow{}
+	for rows.Next() {
+		var i ListUnitKindsRow
+		if err := rows.Scan(&i.ID, &i.Kind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setOptionComposition = `-- name: SetOptionComposition :execrows
+update modifier_options
+   set recipe_id = $1,
+       linked_product_id = $2,
+       composition_status = $3,
+       composition_confirmed_by = $4,
+       composition_confirmed_at = case when $3::text = 'confirmed' then now() end
+ where id = $5
+`
+
+type SetOptionCompositionParams struct {
+	RecipeID        *int64  `json:"recipe_id"`
+	LinkedProductID *int64  `json:"linked_product_id"`
+	Status          *string `json:"status"`
+	ConfirmedBy     *int64  `json:"confirmed_by"`
+	ID              int64   `json:"id"`
+}
+
+func (q *Queries) SetOptionComposition(ctx context.Context, arg SetOptionCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setOptionComposition,
+		arg.RecipeID,
+		arg.LinkedProductID,
+		arg.Status,
+		arg.ConfirmedBy,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProductComposition = `-- name: SetProductComposition :execrows
+update products
+   set recipe_id = $1,
+       composition_status = $2,
+       composition_confirmed_by = $3,
+       composition_confirmed_at = case when $2::text = 'confirmed' then now() end
+ where id = $4
+`
+
+type SetProductCompositionParams struct {
+	RecipeID    *int64  `json:"recipe_id"`
+	Status      *string `json:"status"`
+	ConfirmedBy *int64  `json:"confirmed_by"`
+	ID          int64   `json:"id"`
+}
+
+func (q *Queries) SetProductComposition(ctx context.Context, arg SetProductCompositionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProductComposition,
+		arg.RecipeID,
+		arg.Status,
+		arg.ConfirmedBy,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
