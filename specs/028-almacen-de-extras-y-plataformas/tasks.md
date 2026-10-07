@@ -13,11 +13,11 @@
 
 ## Phase 2: Fundación
 
-- [ ] T006 [P] Tests de dominio de `ExpandSale` (server/internal/domain/composition_test.go): receta por cantidad; existencias propias; extra con receta y extra ligado a producto, multiplicados por cantidad del extra y del renglón; paquete con la semántica de `productCost`; insumo preparado por rendimiento; cantidad positiva que no redondea a cero; corte por profundidad ante un ciclo viejo; origen de cada delta
-- [ ] T007 [P] Tests de `ValidateComposition`: ciclo directo e indirecto, paquete en paquete, unidad de otro tipo
-- [ ] T008 Test de la migración 0078 sobre respaldo real: estados rellenados (receta o producto ligado → estimada; `track_stock` → confirmada), columnas nuevas, único en `order_lines`, Down
-- [ ] T009 server/migrations/0078_stock_composition.sql según data-model.md
-- [ ] T010 `domain/composition.go`: `ExpandSale`, `ValidateComposition`, sentinels; mapeo en httpapi/respond.go
+- [x] T006 [P] Tests de dominio de `ExpandSale` (server/internal/domain/composition_test.go): receta por cantidad; existencias propias; extra con receta y extra ligado a producto, multiplicados por cantidad del extra y del renglón; paquete con la semántica de `productCost`; insumo preparado por rendimiento; cantidad positiva que no redondea a cero; corte por profundidad ante un ciclo viejo; origen de cada delta
+- [x] T007 [P] Tests de `ValidateComposition`: ciclo directo e indirecto, paquete en paquete. La unidad de otro tipo va con los endpoints (T016): el grafo no carga unidades
+- [x] T008 Test de la migración 0078 sobre respaldo real: estados rellenados (receta o producto ligado → estimada; `track_stock` → confirmada), columnas nuevas, único en `order_lines`, Down
+- [x] T009 server/migrations/0078_stock_composition.sql según data-model.md
+- [x] T010 `domain/composition.go`: `ExpandSale`, `ValidatePackage`, `ValidatePrepIngredient`, sentinels. Envuelven `ErrValidation`, así que respond.go no cambia. Un insumo preparado que no se puede descomponer (ciclo viejo, sin rendimiento) se descuenta él mismo
 - [ ] T011 Consultas del grafo de composición por empresa (server/queries/composition.sql) y cargador en server/internal/app/composition.go, reusando `ListComboSlotDefaultsForCosting`
 
 ## Phase 3: US2 — El mostrador descuenta los extras
