@@ -125,8 +125,8 @@ returning id;
 -- name: InsertIncomingOrderLine :one
 insert into platform_incoming_order_lines (
   incoming_order_id, parent_line_id, external_item_id, external_name,
-  quantity, unit_price, product_id
-) values ($1, $2, $3, $4, $5, $6, $7)
+  quantity, unit_price, product_id, modifier_option_id
+) values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning id;
 
 -- name: ListPendingIncomingOrders :many
@@ -144,7 +144,7 @@ select o.id, o.connection_id, p.name as platform_name, o.external_order_id, o.di
 -- Los renglones de varios pedidos de un golpe. Uno por pedido sería N+1 sobre la consulta que la
 -- tableta repite cada pocos segundos.
 select id, incoming_order_id, parent_line_id, external_item_id, external_name,
-       quantity, unit_price, product_id
+       quantity, unit_price, product_id, modifier_option_id
   from platform_incoming_order_lines
  where incoming_order_id = any(sqlc.arg(ids)::bigint[])
  order by incoming_order_id, parent_line_id nulls first, id;

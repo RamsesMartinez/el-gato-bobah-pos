@@ -406,19 +406,20 @@ func (q *Queries) InsertIncomingOrder(ctx context.Context, arg InsertIncomingOrd
 const insertIncomingOrderLine = `-- name: InsertIncomingOrderLine :one
 insert into platform_incoming_order_lines (
   incoming_order_id, parent_line_id, external_item_id, external_name,
-  quantity, unit_price, product_id
-) values ($1, $2, $3, $4, $5, $6, $7)
+  quantity, unit_price, product_id, modifier_option_id
+) values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning id
 `
 
 type InsertIncomingOrderLineParams struct {
-	IncomingOrderID int64           `json:"incoming_order_id"`
-	ParentLineID    *int64          `json:"parent_line_id"`
-	ExternalItemID  string          `json:"external_item_id"`
-	ExternalName    string          `json:"external_name"`
-	Quantity        decimal.Decimal `json:"quantity"`
-	UnitPrice       decimal.Decimal `json:"unit_price"`
-	ProductID       *int64          `json:"product_id"`
+	IncomingOrderID  int64           `json:"incoming_order_id"`
+	ParentLineID     *int64          `json:"parent_line_id"`
+	ExternalItemID   string          `json:"external_item_id"`
+	ExternalName     string          `json:"external_name"`
+	Quantity         decimal.Decimal `json:"quantity"`
+	UnitPrice        decimal.Decimal `json:"unit_price"`
+	ProductID        *int64          `json:"product_id"`
+	ModifierOptionID *int64          `json:"modifier_option_id"`
 }
 
 func (q *Queries) InsertIncomingOrderLine(ctx context.Context, arg InsertIncomingOrderLineParams) (int64, error) {
@@ -430,6 +431,7 @@ func (q *Queries) InsertIncomingOrderLine(ctx context.Context, arg InsertIncomin
 		arg.Quantity,
 		arg.UnitPrice,
 		arg.ProductID,
+		arg.ModifierOptionID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -473,21 +475,22 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 
 const listLinesOfIncomingOrders = `-- name: ListLinesOfIncomingOrders :many
 select id, incoming_order_id, parent_line_id, external_item_id, external_name,
-       quantity, unit_price, product_id
+       quantity, unit_price, product_id, modifier_option_id
   from platform_incoming_order_lines
  where incoming_order_id = any($1::bigint[])
  order by incoming_order_id, parent_line_id nulls first, id
 `
 
 type ListLinesOfIncomingOrdersRow struct {
-	ID              int64           `json:"id"`
-	IncomingOrderID int64           `json:"incoming_order_id"`
-	ParentLineID    *int64          `json:"parent_line_id"`
-	ExternalItemID  string          `json:"external_item_id"`
-	ExternalName    string          `json:"external_name"`
-	Quantity        decimal.Decimal `json:"quantity"`
-	UnitPrice       decimal.Decimal `json:"unit_price"`
-	ProductID       *int64          `json:"product_id"`
+	ID               int64           `json:"id"`
+	IncomingOrderID  int64           `json:"incoming_order_id"`
+	ParentLineID     *int64          `json:"parent_line_id"`
+	ExternalItemID   string          `json:"external_item_id"`
+	ExternalName     string          `json:"external_name"`
+	Quantity         decimal.Decimal `json:"quantity"`
+	UnitPrice        decimal.Decimal `json:"unit_price"`
+	ProductID        *int64          `json:"product_id"`
+	ModifierOptionID *int64          `json:"modifier_option_id"`
 }
 
 // Los renglones de varios pedidos de un golpe. Uno por pedido sería N+1 sobre la consulta que la
@@ -510,6 +513,7 @@ func (q *Queries) ListLinesOfIncomingOrders(ctx context.Context, ids []int64) ([
 			&i.Quantity,
 			&i.UnitPrice,
 			&i.ProductID,
+			&i.ModifierOptionID,
 		); err != nil {
 			return nil, err
 		}

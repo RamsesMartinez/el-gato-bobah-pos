@@ -423,9 +423,13 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 	// Solo las parejas de PRODUCTO: una opción ligada a una opción del POS (0077) no es un producto,
 	// y tratarla como tal cargaría la venta a lo que tenga ese número en el catálogo.
 	porItem := make(map[string]int64, len(parejas))
+	porOpcion := make(map[string]int64, len(parejas))
 	for _, p := range parejas {
-		if p.ProductID != nil && p.LocalKind == string(domain.LocalProducto) {
+		switch {
+		case p.ProductID != nil && p.LocalKind == string(domain.LocalProducto):
 			porItem[p.ExternalID] = *p.ProductID
+		case p.ModifierOptionID != nil:
+			porOpcion[p.ExternalID] = *p.ModifierOptionID
 		}
 	}
 
@@ -446,7 +450,7 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 			return err
 		}
 		nuevo = true
-		return insertarRenglones(ctx, q, id, 0, pedido.Renglones, porItem)
+		return insertarRenglones(ctx, q, id, 0, pedido.Renglones, porItem, porOpcion)
 	})
 	if err != nil {
 		return false, domain.FalloMapeoImposible, fmt.Errorf("registrar el pedido: %w", err)
@@ -456,12 +460,18 @@ func (s *PedidosDePlataformaService) registrarPedido(ctx context.Context, plataf
 
 // insertarRenglones baja el árbol de renglones y opciones. Una opción es un renglón que apunta a
 // otro renglón, igual que en la plataforma, donde un modificador ES un item.
-func insertarRenglones(ctx context.Context, q *db.Queries, pedido int64, padre int64, renglones []domain.RenglonDePlataforma, porItem map[string]int64) error {
+//
+// La opción emparejada se guarda solo en un renglón hijo: es lo que se descuenta al aceptar como
+// extra de su platillo.
+func insertarRenglones(ctx context.Context, q *db.Queries, pedido int64, padre int64, renglones []domain.RenglonDePlataforma, porItem, porOpcion map[string]int64) error {
 	for _, r := range renglones {
-		var padreID *int64
+		var padreID, opcion *int64
 		if padre != 0 {
 			p := padre
 			padreID = &p
+			if id, ok := porOpcion[r.ItemID]; ok {
+				opcion = &id
+			}
 		}
 		var producto *int64
 		if id, ok := porItem[r.ItemID]; ok {
@@ -474,11 +484,12 @@ func insertarRenglones(ctx context.Context, q *db.Queries, pedido int64, padre i
 			IncomingOrderID: pedido, ParentLineID: padreID,
 			ExternalItemID: r.ItemID, ExternalName: r.Nombre,
 			Quantity: r.Cantidad, UnitPrice: r.PrecioUnitario, ProductID: producto,
+			ModifierOptionID: opcion,
 		})
 		if err != nil {
 			return err
 		}
-		if err := insertarRenglones(ctx, q, pedido, id, r.Opciones, porItem); err != nil {
+		if err := insertarRenglones(ctx, q, pedido, id, r.Opciones, porItem, porOpcion); err != nil {
 			return err
 		}
 	}
@@ -687,6 +698,10 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 	}
 	fecha := pgtype.Date{Time: domain.BusinessDate(s.ahora(), domain.LoadBusinessLocation(tz)), Valid: true}
 	total := valor(ent.Total)
+	stockGraph, err := loadStockGraph(ctx, s.store.QC(ctx))
+	if err != nil {
+		return PedidoAceptado{}, fmt.Errorf("leer la composición: %w", err)
+	}
 
 	var creado PedidoAceptado
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
@@ -728,7 +743,7 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 		if err != nil {
 			return err
 		}
-		if err := copiarRenglones(ctx, q, ord.ID, generico, renglones); err != nil {
+		if err := copiarRenglones(ctx, q, stockGraph, ord.ID, generico, usuarioID, renglones); err != nil {
 			return err
 		}
 		// YA PAGADO POR LA PLATAFORMA. Dejarlo por cobrar inventa un faltante en el corte por un
@@ -822,13 +837,24 @@ func (s *PedidosDePlataformaService) plataformaDeLaConexion(ctx context.Context,
 //
 // Las opciones van en la NOTA del renglón: `order_line_modifiers` exige una opción del catálogo y
 // la de la plataforma puede no tenerla. Así cocina lee lo que el cliente pidió.
-func copiarRenglones(ctx context.Context, q *db.Queries, pedido, generico int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
+//
+// Y descuenta el almacén como el mostrador: el platillo emparejado y sus opciones emparejadas. El
+// genérico no lleva composición y no descuenta; una opción emparejada sobre él sí.
+func copiarRenglones(ctx context.Context, q *db.Queries, graph domain.StockGraph, pedido, generico, actor int64, renglones []db.ListLinesOfIncomingOrdersRow) error {
 	opciones := map[int64][]domain.PlatformLineOption{}
+	extras := map[int64][]domain.SaleOption{}
 	for _, r := range renglones {
 		if r.ParentLineID != nil {
 			opciones[*r.ParentLineID] = append(opciones[*r.ParentLineID], domain.PlatformLineOption{
 				Name: r.ExternalName, Quantity: r.Quantity, UnitPrice: r.UnitPrice,
 			})
+			// ponytail: la cantidad de la opción se toma por unidad del platillo, como en el
+			// mostrador. Sin un pedido real de la plataforma con cantidad > 1 no está comprobado.
+			if r.ModifierOptionID != nil {
+				extras[*r.ParentLineID] = append(extras[*r.ParentLineID], domain.SaleOption{
+					OptionID: *r.ModifierOptionID, Qty: r.Quantity,
+				})
+			}
 		}
 	}
 	for _, r := range renglones {
@@ -843,7 +869,7 @@ func copiarRenglones(ctx context.Context, q *db.Queries, pedido, generico int64,
 		if n := domain.PlatformLineNotes(opciones[r.ID]); n != "" {
 			nota = &n
 		}
-		if _, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
+		lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 			OrderID:     pedido,
 			ProductID:   producto,
 			ProductName: r.ExternalName,
@@ -851,7 +877,12 @@ func copiarRenglones(ctx context.Context, q *db.Queries, pedido, generico int64,
 			UnitPrice:   r.UnitPrice,
 			LineTotal:   r.Quantity.Mul(r.UnitPrice).Round(2),
 			Notes:       nota,
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+		venta := domain.SaleLine{ProductID: *producto, Qty: r.Quantity, Options: extras[r.ID]}
+		if err := descontarRenglon(ctx, q, graph, pedido, lineID, actor, venta); err != nil {
 			return err
 		}
 	}

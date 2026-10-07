@@ -27,8 +27,8 @@
 
 ## Phase 4: US3 — Los pedidos de plataforma descuentan
 
-- [ ] T014 Test: aceptar un pedido con platillo y opción emparejados descuenta los dos; el genérico no; registrar guarda la opción emparejada del renglón hijo
-- [ ] T015 `registrarPedido` guarda `modifier_option_id` de los hijos emparejados; `Aceptar` expande y descuenta en su transacción (server/internal/app/pedidos_de_plataforma.go)
+- [x] T014 Test: aceptar un pedido con platillo y opción emparejados descuenta los dos; el genérico no; registrar guarda la opción emparejada del renglón hijo
+- [x] T015 `registrarPedido` guarda `modifier_option_id` de los hijos emparejados; `Aceptar` expande y descuenta en su transacción (server/internal/app/pedidos_de_plataforma.go). La cantidad de la opción se toma por unidad del platillo, como en mostrador: sin un pedido real con cantidad > 1, no verificado
 
 ## Phase 5: US1 — Capturar la composición
 
