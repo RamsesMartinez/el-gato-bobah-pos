@@ -243,7 +243,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
     siempre son piezas por paquete— y rechaza insumos circulares.
-  - **Un producto es paquete porque tiene productos en «Qué lleva»**, no por un interruptor
+  - **Un producto es paquete porque su receta lleva productos (Catálogo › Recetas, «Es un combo»)**, no por un interruptor
     aparte: capturarle productos lo vuelve `combo` con un hueco por producto, y capturarle insumos lo
     regresa. El POS vende igual un paquete que un producto suelto; un paquete no lleva paquetes ni
     se lleva a sí mismo.

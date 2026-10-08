@@ -233,13 +233,13 @@ Resuelve los puntos 1 y 2 del §6 y el 4 de lo decidido:
 - El mostrador descuenta cada extra (su receta o el producto que es) y lo que lleva un paquete.
 - Aceptar un pedido de plataforma descuenta el platillo y las opciones emparejadas; el producto
   genérico no descuenta.
-- «Qué lleva» en el producto y en el extra: insumos, el producto que es (un extra) o los productos
+- La receta del producto y del extra (Catálogo › Recetas): insumos, el producto que es (un extra) o los productos
   que lleva con sus piezas (un paquete); estimado o confirmado, y «No lleva nada» para lo que no
   descuenta (un «Sin hielo»). Un producto se vuelve paquete al capturarle productos; el POS lo vende
   igual que antes.
 - Reportes cuenta las unidades por producto, sueltas y dentro de paquetes.
 - La carga de FUDO llena lo que falta como estimado y no toca lo ya capturado. Rechaza insumos
-  circulares y no arma paquetes: los reporta para armarlos en «Qué lleva».
+  circulares y no arma paquetes: los reporta para armarlos en Catálogo › Recetas.
 
 Sigue abierto:
 
@@ -250,4 +250,4 @@ Sigue abierto:
   una decisión del dueño, no un arreglo.
 - **Algunos insumos compuestos de FUDO parecen invertidos** (un frasco «hecho de» cucharadas): se
   cargan como estimados y se revisan en Almacén → Insumos, donde cada uno dice si se compra o se
-  prepara aquí y abre su «Qué lleva» con lo que rinde.
+  prepara aquí y abre su receta con lo que rinde.

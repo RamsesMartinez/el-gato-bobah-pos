@@ -61,6 +61,23 @@
 - [x] T027 `/revision-de-codigo`, dos rondas. La segunda encontró la expansión exponencial, las
   validaciones fuera de la transacción, el paquete con hueco vacío y la hoja que nacía abierta
 
+## Phase 9: Catálogo › Recetas (rediseño tras revisar la pantalla con el dueño)
+
+La hoja «Qué lleva» funcionaba pero no se entendía: no decía qué faltaba ni por dónde empezar. El
+vocabulario (Receta, Insumo, Preparado, Extra, Combo; Pendiente, Por revisar, Lista) y el prototipo
+los aprobó el dueño el 2026-10-07.
+
+- [x] T028 Test y consulta: lista de recetas por producto, extra y preparado con estado, resumen,
+  ventas de 30 días, búsqueda sin acentos que también busca por insumo, y su `Count` con el mismo
+  `where` (server/queries/recipes.sql, app/recipes.go, domain/recipes.go)
+- [x] T029 Test y servicio: confirmar de una vez las estimadas cargadas; guardar la misma receta en
+  los extras del mismo nombre; aviso de copia vieja (409) también para esos extras
+- [x] T030 Pestaña Catálogo › Recetas (RecipesPage) y hoja de receta reescrita (CompositionSheet,
+  SearchSheet): cantidades escritas, cambio de unidad, copiar de otro, abrir la siguiente al guardar
+- [x] T031 Revisiones (base de datos, Go, seguridad, tableta) y capturas a 1024×600 contra una copia
+  de producción. Lo que salió se arregló con su test: extra repetido, desde desbordado, NUL en la
+  búsqueda, gemelo pisado, aislamiento de extras y preparados, «0.215 kg» en vez de «215 g»
+
 ## Dependencies
 
 Phase 1 primero (defectos). Phase 2 bloquea 3 a 7. US2 antes que US3 (comparten la expansión). La
