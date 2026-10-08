@@ -557,7 +557,7 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 			}
 			return err
 		}
-		if !domain.PuedeRecibirLineas(string(o.Status)) && string(o.Status) != domain.StatusEntregada {
+		if !domain.OrderNotVoided(string(o.Status)) {
 			return fmt.Errorf("%w: Ese pedido ya se cerró", domain.ErrConflict)
 		}
 		lineas, err := lineasDeEntrega(ctx, q, orderID)

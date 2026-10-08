@@ -33,7 +33,7 @@ archivo ni depende de otra tarea abierta de la misma fase.
 ## Phase 1: Setup
 
 - [ ] T001 Confirmar el punto de partida en verde en el worktree: `cd server && go build ./... && go test ./...`, integración contra `egb030-pg` (`TEST_DATABASE_URL=…:5502/gatobobah_test`), `cd web && bun run lint && bun run vitest run && bun run build`. Anotar cualquier rojo previo en este archivo antes de empezar
-- [ ] T002 [P] Preparar `gatobobah_restored` en `egb030-pg` con un respaldo real de **dos empresas**, con dueños y GRANT (`PG_CONTAINER=egb030-pg POSTGRES_DB=gatobobah_restored bash scripts/restaurar-respaldo.sh`), y exportar `TEST_RESTORED_DATABASE_URL` (ver [quickstart.md](./quickstart.md))
+- [X] T002 [P] Preparar `gatobobah_restored` en `egb030-pg` con un respaldo real de **dos empresas**, con dueños y GRANT (`PG_CONTAINER=egb030-pg POSTGRES_DB=gatobobah_restored bash scripts/restaurar-respaldo.sh`), y exportar `TEST_RESTORED_DATABASE_URL` (ver [quickstart.md](./quickstart.md))
 - [ ] T003 Congelar el contrato: los dos implementadores leen [contracts/api.md](./contracts/api.md) y [data-model.md](./data-model.md); cualquier cambio posterior se hace en el mismo commit que lo implementa en los dos lados
 
 ---
@@ -42,22 +42,22 @@ archivo ni depende de otra tarea abierta de la misma fase.
 
 ### Dominio puro — BE
 
-- [ ] T004 [P] **BE** Test table-driven en server/internal/domain/draft_test.go:
+- [X] T004 [P] **BE** Test table-driven en server/internal/domain/draft_test.go:
   - `ValidateDraftLine`: qty 0, negativa, NaN, mayor que `MaxOrderQty` → error; modificador con `optionId ≤ 0`, `qty < 1`, `portion = "C"` → error; nota de 201 caracteres → error; 200 → pasa;
   - `MergeTarget`: sin modificadores ni nota se fusiona con el renglón igual; con modificadores, con nota, o producto distinto → renglón nuevo; el renglón igual con nota no recibe la fusión;
   - `DraftExpired`: 11h59m59s → no; 12h exactas → sí;
   - `MaxDraftLines = 200`
-- [ ] T005 **BE** Implementar `server/internal/domain/draft.go` (`DraftLine`, `DraftModifier`, `ValidateDraftLine`, `MergeTarget`, `DraftIdleLimit`, `DraftExpired`, `MaxDraftLines`) con el porqué en los comentarios (research R-2, R-8)
-- [ ] T006 [P] **BE** Test table-driven en server/internal/domain/account_test.go:
+- [X] T005 **BE** Implementar `server/internal/domain/draft.go` (`DraftLine`, `DraftModifier`, `ValidateDraftLine`, `MergeTarget`, `DraftIdleLimit`, `DraftExpired`, `MaxDraftLines`) con el porqué en los comentarios (research R-2, R-8)
+- [X] T006 [P] **BE** Test table-driven en server/internal/domain/account_test.go:
   - `AccountState`: abierta sin pagos → `in_kitchen`; abierta saldada → `paid_in_kitchen`; lista con pago parcial → `partly_paid`; entregada con deuda → `delivered_owes`; entregada saldada → cerrada (no listada); entregada de **$0** → cerrada; entregada con **$0.01** de diferencia → cerrada (misma tolerancia de `PedidoSaldado`); cancelada y reembolsada → no listada; borrador → `capturing`;
   - `AccountGroup`: entregada que debe de hoy → `delivered_owes`; de ayer → `previous_days`; abierta de ayer → `in_kitchen` (sigue en cocina)
-- [ ] T007 **BE** Implementar `server/internal/domain/account.go` (`AccountState`, `AccountGroup` y sus constantes en inglés)
-- [ ] T008 [P] **BE** Test en server/internal/domain/order_test.go para `CanReceiveLines` (reemplaza los casos de `PuedeRecibirLineas`): entregada y saldada → `ErrOrderClosed`; entregada que debe $5 → ok; abierta saldada → ok (pagada en cocina recibe, US1 AS2); de plataforma en cualquier estado → `ErrPlatformOrderNoLines`; cancelada y reembolsada → `ErrConflict`
-- [ ] T009 **BE** Implementar `CanReceiveLines` y los sentinels `ErrOrderClosed`, `ErrPlatformOrderNoLines`, `ErrDraftChanged`, `ErrDraftDiscarded`, `ErrDraftAlreadySent`, `ErrDraftHasOrderHeader` en server/internal/domain/order.go y errors.go (textos para quien opera, sin internals). Borrar `PuedeRecibirLineas` y mover **en la misma tarea** a sus llamadores (`AddLines` en server/internal/app/orders.go y el destino de server/internal/app/move_lines.go); `go build ./...` y los tests existentes de agregar en verde
-- [ ] T010 [P] **BE** Test en server/internal/domain/folio_test.go para `AvailableNames(lista, consumidos, usadosTurno, vivos)`: un nombre vivo nunca sale; tampoco cuando la bolsa se vacía (vuelta nueva); un propuesto que está vivo se rechaza; sin vivos se comporta igual que `DisponiblesDeLaBolsa`
-- [ ] T011 **BE** Implementar `AvailableNames` en server/internal/domain/folio.go como envoltura de `DisponiblesDeLaBolsa` (un solo predicado, research R-3)
-- [ ] T012 [P] **BE** Test en server/internal/httpapi/respond_test.go: cada sentinel nuevo → su HTTP y `code` de la tabla de contracts/api.md; un `ErrDraftChanged` envuelto con `%w` sigue mapeando
-- [ ] T013 **BE** Mapear los códigos nuevos en server/internal/httpapi/respond.go
+- [X] T007 **BE** Implementar `server/internal/domain/account.go` (`AccountState`, `AccountGroup` y sus constantes en inglés)
+- [X] T008 [P] **BE** Test en server/internal/domain/order_test.go para `CanReceiveLines` (reemplaza los casos de `PuedeRecibirLineas`): entregada y saldada → `ErrOrderClosed`; entregada que debe $5 → ok; abierta saldada → ok (pagada en cocina recibe, US1 AS2); de plataforma en cualquier estado → `ErrPlatformOrderNoLines`; cancelada y reembolsada → `ErrConflict`
+- [X] T009 **BE** Implementar `CanReceiveLines` y los sentinels `ErrOrderClosed`, `ErrPlatformOrderNoLines`, `ErrDraftChanged`, `ErrDraftDiscarded`, `ErrDraftAlreadySent`, `ErrDraftHasOrderHeader` en server/internal/domain/order.go y errors.go (textos para quien opera, sin internals). Borrar `PuedeRecibirLineas` y mover **en la misma tarea** a sus llamadores (`AddLines` en server/internal/app/orders.go y el destino de server/internal/app/move_lines.go); `go build ./...` y los tests existentes de agregar en verde
+- [X] T010 [P] **BE** Test en server/internal/domain/folio_test.go para `AvailableNames(lista, consumidos, usadosTurno, vivos)`: un nombre vivo nunca sale; tampoco cuando la bolsa se vacía (vuelta nueva); un propuesto que está vivo se rechaza; sin vivos se comporta igual que `DisponiblesDeLaBolsa`
+- [X] T011 **BE** Implementar `AvailableNames` en server/internal/domain/folio.go como envoltura de `DisponiblesDeLaBolsa` (un solo predicado, research R-3)
+- [X] T012 [P] **BE** Test en server/internal/httpapi/respond_test.go: cada sentinel nuevo → su HTTP y `code` de la tabla de contracts/api.md; un `ErrDraftChanged` envuelto con `%w` sigue mapeando
+- [X] T013 **BE** Mapear los códigos nuevos en server/internal/httpapi/respond.go
 
 ### Esquema — BE
 

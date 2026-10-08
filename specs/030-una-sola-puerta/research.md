@@ -200,6 +200,11 @@ D-5: «lo que agrega cada una se suma; cambiar o quitar algo que la otra ya camb
   para plataforma (D-11) y `ErrConflict` para cancelada/reembolsada. Reemplaza a
   `PuedeRecibirLineas`; sus llamadores (`AddLines`, `move_lines` destino) se mueven juntos (el
   hermano que no se movió, constitución IV).
+- **Corregido al implementar**: `PuedeRecibirLineas` tenía seis llamadores, no dos. Los otros cuatro
+  (entregar un renglón, cancelar un renglón, devolver un pago y el **origen** de pasar productos) no
+  agregan nada: preguntan solo si el dinero del pedido sigue sin decidirse. Para ellos queda
+  `domain.OrderNotVoided(status)` con la misma semántica de antes; el destino de pasar productos sí
+  pasa a `CanReceiveLines` (un pedido cerrado ya no recibe por ningún camino).
 - `ReabreAlAgregar` no cambia: la entregada que debe vuelve a `abierta`.
 
 ## R-12. Tiempo real: un evento nuevo y el POS escucha

@@ -255,40 +255,74 @@ func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	}
 }
 
-// AL PEDIDO ENTREGADO SE LE PUEDE AGREGAR, Y DEJA DE ESTAR ENTREGADO.
+// QUIÉN RECIBE PRODUCTOS (D-9, D-11).
 //
-// El cliente que ya recibió su comida y sigue en la mesa pide una más. Antes eso se rechazaba y el
-// operador tenía que abrir un pedido aparte: dos cuentas para la misma mesa, y una de las dos se
-// pierde de vista.
+// Antes bastaba el estado: el entregado recibía siempre, porque el cliente que sigue en la mesa pide
+// una más. Con la 030 «cerrada» es pagada Y entregada: esa cuenta ya no recibe —lo que pidan después
+// es otra cuenta—, y la entregada que todavía debe sí, y vuelve a cocina. La pagada que sigue en
+// cocina también recibe: era el caso 2 del lienzo, al que no había forma de agregarle nada.
 //
-// Las dos mitades van juntas en un solo test a propósito: permitir el agregado SIN reabrir el
-// pedido es peor que rechazarlo — el renglón entra, el tablero solo lista abierta y lista, y nadie
-// prepara la comida que el cliente acaba de pedir y ya se le cobró.
-func TestElEntregadoRecibeRenglonesYVuelveAEstarEnCurso(t *testing.T) {
+// Las dos mitades (recibe y reabre) van juntas a propósito: permitir el agregado SIN reabrir es peor
+// que rechazarlo — el renglón entra, el tablero solo lista abierta y lista, y nadie prepara la comida.
+func TestCanReceiveLines(t *testing.T) {
+	d := decimal.RequireFromString
+	uber := int16(2)
 	casos := []struct {
-		estado string
-		recibe bool
+		nombre string
+		o      OrderForAdd
+		want   error
 		reabre bool
-		porQue string
 	}{
-		{StatusAbierta, true, false, "sigue en curso"},
-		{StatusLista, true, false, "sigue en curso"},
-		{StatusEntregada, true, true, "el cliente sigue en la mesa y pide una más"},
-		{StatusCancelada, false, false, "su dinero ya se decidió"},
-		{StatusReembolsada, false, false, "un arqueo firmado ya contó ese dinero"},
-		// La tableta suspendida media hora vuelve con un estado viejo en pantalla; uno que no
-		// existe no abre la puerta.
-		{"", false, false, "un estado que no existe no abre la puerta"},
+		{"abierta", OrderForAdd{Status: StatusAbierta, Paid: d("0"), Total: d("100")}, nil, false},
+		{"pagada en cocina recibe (caso 2)", OrderForAdd{Status: StatusAbierta, Paid: d("100"), Total: d("100")}, nil, false},
+		{"lista", OrderForAdd{Status: StatusLista, Paid: d("0"), Total: d("100")}, nil, false},
+		{"entregada que debe $5", OrderForAdd{Status: StatusEntregada, Paid: d("95"), Total: d("100")}, nil, true},
+		{"entregada y saldada: cerrada", OrderForAdd{Status: StatusEntregada, Paid: d("100"), Total: d("100")}, ErrOrderClosed, false},
+		// Un centavo de diferencia es la tolerancia de PedidoSaldado: está cerrada, no «debe $0.01».
+		{"entregada con $0.01 de diferencia", OrderForAdd{Status: StatusEntregada, Paid: d("99.99"), Total: d("100")}, ErrOrderClosed, false},
+		{"entregada de $0", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("0")}, ErrOrderClosed, false},
+		{"de plataforma abierta", OrderForAdd{Status: StatusAbierta, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"de plataforma entregada", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"de plataforma cancelada", OrderForAdd{Status: StatusCancelada, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"cancelada: su dinero ya se decidió", OrderForAdd{Status: StatusCancelada, Paid: d("0"), Total: d("100")}, ErrConflict, false},
+		{"reembolsada: un arqueo firmado ya la contó", OrderForAdd{Status: StatusReembolsada, Paid: d("100"), Total: d("100")}, ErrConflict, false},
+		// La tableta suspendida vuelve con un estado viejo; uno que no existe no abre la puerta.
+		{"estado desconocido", OrderForAdd{Status: "", Paid: d("0"), Total: d("100")}, ErrConflict, false},
 	}
 	for _, c := range casos {
-		t.Run(c.estado, func(t *testing.T) {
-			if got := PuedeRecibirLineas(c.estado); got != c.recibe {
-				t.Errorf("PuedeRecibirLineas(%s) = %v, quiere %v: %s", c.estado, got, c.recibe, c.porQue)
+		t.Run(c.nombre, func(t *testing.T) {
+			err := CanReceiveLines(c.o)
+			if c.want == nil && err != nil {
+				t.Fatalf("CanReceiveLines = %v, quería nil", err)
 			}
-			if got := ReabreAlAgregar(c.estado); got != c.reabre {
-				t.Errorf("ReabreAlAgregar(%s) = %v, quiere %v", c.estado, got, c.reabre)
+			if c.want != nil && !errors.Is(err, c.want) {
+				t.Fatalf("CanReceiveLines = %v, quería %v", err, c.want)
+			}
+			if err == nil {
+				if got := ReabreAlAgregar(c.o.Status); got != c.reabre {
+					t.Fatalf("ReabreAlAgregar(%s) = %v, quería %v", c.o.Status, got, c.reabre)
+				}
 			}
 		})
+	}
+	// ErrOrderClosed no es el ErrConflict genérico: la pantalla ofrece «empezar cuenta nueva».
+	if errors.Is(ErrOrderClosed, ErrPlatformOrderNoLines) || errors.Is(ErrPlatformOrderNoLines, ErrConflict) {
+		t.Fatal("los dos rechazos tienen que distinguirse: uno ofrece cuenta nueva y el otro no")
+	}
+}
+
+// OrderNotVoided es lo que queda de PuedeRecibirLineas para los caminos que NO agregan: entregar un
+// renglón, cancelarlo, devolver un pago, pasar productos desde un pedido. Ahí la pregunta sigue
+// siendo solo «¿el dinero de este pedido ya se decidió?».
+func TestOrderNotVoided(t *testing.T) {
+	casos := map[string]bool{
+		StatusAbierta: true, StatusLista: true, StatusEntregada: true,
+		StatusCancelada: false, StatusReembolsada: false, "": false,
+	}
+	for estado, want := range casos {
+		if got := OrderNotVoided(estado); got != want {
+			t.Errorf("OrderNotVoided(%q) = %v, quería %v", estado, got, want)
+		}
 	}
 }
 

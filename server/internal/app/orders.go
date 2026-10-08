@@ -1148,9 +1148,14 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		}
 		return nil, err
 	}
-	if !domain.PuedeRecibirLineas(string(ord.Status)) {
-		return nil, fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
-			domain.ErrConflict, ord.DailyNumber, ord.Status)
+	pagado, err := s.store.QC(ctx).SumOrderPayments(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if err := domain.CanReceiveLines(domain.OrderForAdd{
+		Status: string(ord.Status), Paid: pagado.Pagado, Total: ord.Total, PlatformID: ord.DeliveryPlatformID,
+	}); err != nil {
+		return nil, err
 	}
 
 	// La lista de precios es la del PEDIDO, no la de la pantalla: un agregado a un pedido de Uber se
@@ -1214,9 +1219,14 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		// Entre las dos cabe que la otra estación CANCELE o reembolse el pedido, y el renglón sigue
 		// en pantalla hasta el siguiente refresco. Sin esto entra un renglón sobre un reembolso y
 		// `RecalcOrderTotals` le sube el total: mover dinero que un arqueo firmado ya contó.
-		if !domain.PuedeRecibirLineas(string(o.Status)) {
-			return fmt.Errorf("%w: el pedido #%d ya está %s y no admite más renglones",
-				domain.ErrConflict, ord.DailyNumber, o.Status)
+		pagado, err := q.SumOrderPayments(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		if err := domain.CanReceiveLines(domain.OrderForAdd{
+			Status: string(o.Status), Paid: pagado.Pagado, Total: o.Total, PlatformID: o.DeliveryPlatformID,
+		}); err != nil {
+			return err
 		}
 
 		// IDEMPOTENCIA DEL LOTE. Va DENTRO de la tx y sobre el pedido ya bloqueado: dos reintentos
@@ -1352,7 +1362,7 @@ func (s *OrdersService) DeliverLine(ctx context.Context, orderID, lineID int64, 
 			}
 			return err
 		}
-		if !domain.PuedeRecibirLineas(string(o.Status)) {
+		if !domain.OrderNotVoided(string(o.Status)) {
 			return fmt.Errorf("%w: este pedido ya está cerrado", domain.ErrConflict)
 		}
 
