@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/shopspring/decimal"
 )
@@ -255,4 +256,71 @@ func SplitPartAmount(outstanding decimal.Decimal, part, of int, charged []int) (
 		return decimal.Zero, err
 	}
 	return parts[0], nil
+}
+
+// ChargeShape es la forma de un cobro: qué decide su monto.
+type ChargeShape int
+
+const (
+	// ShapeAmount: el monto lo teclea quien cobra.
+	ShapeAmount ChargeShape = iota + 1
+	// ShapeLines: los productos que paga esta persona.
+	ShapeLines
+	// ShapeAllRemaining: todo lo que falta.
+	ShapeAllRemaining
+	// ShapeSplit: una parte de N entre personas.
+	ShapeSplit
+)
+
+// ChargeShapeOf decide la forma de un cobro. Las formas se excluyen: si llegan dos, cualquiera que
+// se respete deja a quien cobra creyendo que se respetó la otra.
+func ChargeShapeOf(hasAmount, hasLines, allRemaining, hasSplit bool) (ChargeShape, error) {
+	n := 0
+	shape := ChargeShape(0)
+	for _, s := range []struct {
+		on    bool
+		shape ChargeShape
+	}{{hasAmount, ShapeAmount}, {hasLines, ShapeLines}, {allRemaining, ShapeAllRemaining}, {hasSplit, ShapeSplit}} {
+		if s.on {
+			n++
+			shape = s.shape
+		}
+	}
+	switch {
+	case n > 1:
+		return 0, ErrOneChargeShape
+	case n == 0:
+		return 0, ErrValidation
+	}
+	return shape, nil
+}
+
+// CoverageKey es la huella de una selección: renglón y piezas, en orden de renglón y con la escala
+// de la columna. Dos envíos del mismo cobro dan la misma huella aunque la pantalla mande los
+// renglones en otro orden o escriba «1» en vez de «1.00»; así un reenvío se reconoce y otra
+// selección con la misma llave se rechaza.
+func CoverageKey(sel []SelectedPieces) string {
+	sum := map[int64]decimal.Decimal{}
+	ids := []int64{}
+	for _, s := range sel {
+		if _, ok := sum[s.LineID]; !ok {
+			ids = append(ids, s.LineID)
+		}
+		sum[s.LineID] = sum[s.LineID].Add(s.Qty)
+	}
+	slices.Sort(ids)
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = fmt.Sprintf("%d:%s", id, Round2(sum[id]).StringFixed(2))
+	}
+	return strings.Join(parts, ",")
+}
+
+// CoveredKey es la huella de lo que un pago ya cubrió, con la misma forma que CoverageKey.
+func CoveredKey(lines []CoveredLine) string {
+	sel := make([]SelectedPieces, len(lines))
+	for i, l := range lines {
+		sel[i] = SelectedPieces{LineID: l.LineID, Qty: l.Qty}
+	}
+	return CoverageKey(sel)
 }

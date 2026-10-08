@@ -159,6 +159,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
+					// Cuánto cobraría /pay por una selección, sin cobrarla. Mismo gate: quien puede
+					// cobrar puede preguntar cuánto.
+					r.Post("/{id}/quote", h.QuoteOrder)
 					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
 					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
 					// la plataforma no espera a que llegue un gerente.

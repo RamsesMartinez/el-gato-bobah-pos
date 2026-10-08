@@ -674,6 +674,85 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 	return i, err
 }
 
+const getOrderForCharge = `-- name: GetOrderForCharge :one
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o
+`
+
+type GetOrderForChargeRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+}
+
+// El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
+// turno. El candado es el mismo de siempre: entre leer lo cobrado y escribir el pago cabe otro
+// cajero, y sin él los dos cubrirían la misma pieza.
+func (q *Queries) GetOrderForCharge(ctx context.Context, id int64) (GetOrderForChargeRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForCharge, id)
+	var i GetOrderForChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.Subtotal,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
+	)
+	return i, err
+}
+
+const getOrderForQuote = `-- name: GetOrderForQuote :one
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+`
+
+type GetOrderForQuoteRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+}
+
+// Lo mismo sin candado: la cotización solo lee. Es una cotización, no una reserva; /pay recalcula.
+func (q *Queries) GetOrderForQuote(ctx context.Context, id int64) (GetOrderForQuoteRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForQuote, id)
+	var i GetOrderForQuoteRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.Subtotal,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
+	)
+	return i, err
+}
+
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
 select id, status, service_type, delivery_platform_id, total
 from orders where id = $1
@@ -846,7 +925,7 @@ func (q *Queries) GetOrderPaymentByClientUUID(ctx context.Context, clientUuid *u
 const getOrderPaymentForVoid = `-- name: GetOrderPaymentForVoid :one
 select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.reference, p.register_session_id,
        p.received_by, p.created_at, p.client_uuid, p.split_part, p.split_of, p.payment_number,
-       rs.status::text as session_status,
+       coalesce(rs.status::text, '')::text as session_status,
        coalesce((select jsonb_agg(jsonb_build_object('lineId', pl.order_line_id, 'qty', pl.qty, 'amount', pl.amount)
                                   order by pl.order_line_id)
                    from order_payment_lines pl where pl.order_payment_id = p.id), '[]'::jsonb)::jsonb as covered
@@ -898,7 +977,7 @@ func (q *Queries) GetOrderPaymentForVoid(ctx context.Context, id int64) (GetOrde
 }
 
 const getOrderPaymentShapeByClientUUID = `-- name: GetOrderPaymentShapeByClientUUID :one
-select p.id, p.order_id, p.split_part, p.split_of, p.payment_number,
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.split_part, p.split_of, p.payment_number,
        coalesce((select string_agg(pl.order_line_id || ':' || pl.qty, ',' order by pl.order_line_id)
                    from order_payment_lines pl where pl.order_payment_id = p.id), '')::text as covered
 from order_payments p
@@ -906,12 +985,15 @@ where p.client_uuid = $1
 `
 
 type GetOrderPaymentShapeByClientUUIDRow struct {
-	ID            int64  `json:"id"`
-	OrderID       int64  `json:"order_id"`
-	SplitPart     *int16 `json:"split_part"`
-	SplitOf       *int16 `json:"split_of"`
-	PaymentNumber *int16 `json:"payment_number"`
-	Covered       string `json:"covered"`
+	ID              int64           `json:"id"`
+	OrderID         int64           `json:"order_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	TipAmount       decimal.Decimal `json:"tip_amount"`
+	SplitPart       *int16          `json:"split_part"`
+	SplitOf         *int16          `json:"split_of"`
+	PaymentNumber   *int16          `json:"payment_number"`
+	Covered         string          `json:"covered"`
 }
 
 // Lo que decide si un reenvío con la misma llave es el mismo cobro: la parte y lo que cubrió.
@@ -922,6 +1004,9 @@ func (q *Queries) GetOrderPaymentShapeByClientUUID(ctx context.Context, clientUu
 	err := row.Scan(
 		&i.ID,
 		&i.OrderID,
+		&i.PaymentMethodID,
+		&i.Amount,
+		&i.TipAmount,
 		&i.SplitPart,
 		&i.SplitOf,
 		&i.PaymentNumber,

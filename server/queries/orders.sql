@@ -674,7 +674,7 @@ insert into order_payment_lines (order_payment_id, order_line_id, qty, amount) v
 -- name: GetOrderPaymentShapeByClientUUID :one
 -- Lo que decide si un reenvío con la misma llave es el mismo cobro: la parte y lo que cubrió.
 -- `covered` va como texto ordenado («renglón:piezas,…») para compararlo de un golpe.
-select p.id, p.order_id, p.split_part, p.split_of, p.payment_number,
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.split_part, p.split_of, p.payment_number,
        coalesce((select string_agg(pl.order_line_id || ':' || pl.qty, ',' order by pl.order_line_id)
                    from order_payment_lines pl where pl.order_payment_id = p.id), '')::text as covered
 from order_payments p
@@ -728,7 +728,7 @@ group by pl.order_line_id;
 -- El pago a devolver con el estado de su turno. Se lee DESPUÉS de bloquear el pedido.
 select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.reference, p.register_session_id,
        p.received_by, p.created_at, p.client_uuid, p.split_part, p.split_of, p.payment_number,
-       rs.status::text as session_status,
+       coalesce(rs.status::text, '')::text as session_status,
        coalesce((select jsonb_agg(jsonb_build_object('lineId', pl.order_line_id, 'qty', pl.qty, 'amount', pl.amount)
                                   order by pl.order_line_id)
                    from order_payment_lines pl where pl.order_payment_id = p.id), '[]'::jsonb)::jsonb as covered
@@ -779,3 +779,22 @@ update orders
    set status = 'cancelada', cancelled_at = now(), cancelled_by = sqlc.arg(actor_id),
        cancel_reason = 'Se juntó con otro pedido', merged_into_order_id = sqlc.arg(into_order_id)
  where id = sqlc.arg(id);
+
+-- name: GetOrderForCharge :one
+-- El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
+-- turno. El candado es el mismo de siempre: entre leer lo cobrado y escribir el pago cabe otro
+-- cajero, y sin él los dos cubrirían la misma pieza.
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o;
+
+-- name: GetOrderForQuote :one
+-- Lo mismo sin candado: la cotización solo lee. Es una cotización, no una reserva; /pay recalcula.
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1;

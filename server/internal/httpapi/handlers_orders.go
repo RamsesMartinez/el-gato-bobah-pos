@@ -377,6 +377,24 @@ type chargeOrderBody struct {
 	// que el reenvío de una mitad deje el pedido saldado con la otra sin cobrar.
 	ClientUuid uuid.UUID `json:"clientUuid"`
 	Reference  *string   `json:"reference"`
+	// Lines, AllRemaining y Split: las otras formas de cobrar, excluyentes entre sí y con amount.
+	// Con cualquiera de ellas el monto lo calcula el servidor.
+	Lines        []selectedPiecesBody `json:"lines"`
+	AllRemaining bool                 `json:"allRemaining"`
+	Split        *app.ChargeSplit     `json:"split"`
+}
+
+type selectedPiecesBody struct {
+	LineID int64           `json:"lineId"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+func selectedPieces(in []selectedPiecesBody) []domain.SelectedPieces {
+	out := make([]domain.SelectedPieces, len(in))
+	for i, l := range in {
+		out[i] = domain.SelectedPieces{LineID: l.LineID, Qty: l.Qty}
+	}
+	return out
 }
 
 // POST /orders/{id}/pay
@@ -401,6 +419,7 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	res, err := h.orders.Charge(r.Context(), app.ChargeCmd{
 		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
 		ClientUUID: body.ClientUuid, Reference: body.Reference, ActorID: u.ID,
+		Lines: selectedPieces(body.Lines), AllRemaining: body.AllRemaining, Split: body.Split,
 	})
 	if err != nil {
 		Error(w, err)
@@ -414,6 +433,35 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	// Este comentario decía que cobrar era la ÚNICA mutación que no avisaba, y era falso: entregar
 	// tampoco lo hacía. Ya avisan las dos.
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
+}
+
+// POST /orders/{id}/quote — cuánto cobraría /pay por una selección, sin cobrarla.
+//
+// Mismo cuerpo que /pay con lines, split o allRemaining, sin método ni monto. Existe para que la
+// hoja muestre el monto antes de cobrar sin calcularlo ella (spec 027, D-3).
+func (h *Handlers) QuoteOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Lines        []selectedPiecesBody `json:"lines"`
+		AllRemaining bool                 `json:"allRemaining"`
+		Split        *app.ChargeSplit     `json:"split"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	res, err := h.orders.Quote(r.Context(), app.QuoteCmd{
+		OrderID: id, Lines: selectedPieces(body.Lines), AllRemaining: body.AllRemaining, Split: body.Split,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	JSON(w, http.StatusOK, res)
 }
 

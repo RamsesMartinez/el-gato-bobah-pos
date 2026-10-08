@@ -205,9 +205,9 @@ selección, registra su cobertura e imprime el ticket de esa persona.
 **Independent Test**: en un pedido de 11 renglones se cobra solo el Soju con tarjeta; «Falta» baja en
 ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
 
-- [ ] T040 [P] [US1] IT `TestTheIncidentTableSplitsWithoutCancellingAnything` en server/internal/integration/split_by_products_test.go: la mesa del incidente con pagos de 1, 4 y «Todo lo que falta»; suma = total, 0 cancelaciones, sin cambio neto en existencias, cobertura correcta. Y **[H7]** `TestAllRemainingWithNothingUncoveredChargesTheBalance`: con todas las piezas cubiertas y saldo positivo (estado armado en la base de prueba; en operación aparece al devolver un pago por monto), «Todo lo que falta» cobra el saldo sin cobertura
-- [ ] T041 [US1] IT `TestDiscountedSplitAddsUpToTheTotal` en el mismo archivo (el último absorbe el centavo; falla nombrando el peso que se duplicó o faltó), con el caso **[H6]**: tras un pago por monto, «Todo lo que falta» deja Σ `order_payment_lines.amount` = monto del pago
-- [ ] T042 [US1] IT y IT HTTP del contrato de `/pay` con `lines` y `allRemaining`, en el mismo archivo:
+- [x] T040 [P] [US1] IT `TestTheIncidentTableSplitsWithoutCancellingAnything` en server/internal/integration/split_by_products_test.go: la mesa del incidente con pagos de 1, 4 y «Todo lo que falta»; suma = total, 0 cancelaciones, sin cambio neto en existencias, cobertura correcta. Y **[H7]** `TestAllRemainingWithNothingUncoveredChargesTheBalance`: con todas las piezas cubiertas y saldo positivo (estado armado en la base de prueba; en operación aparece al devolver un pago por monto), «Todo lo que falta» cobra el saldo sin cobertura
+- [x] T041 [US1] IT `TestDiscountedSplitAddsUpToTheTotal` en el mismo archivo (el último absorbe el centavo; falla nombrando el peso que se duplicó o faltó), con el caso **[H6]**: tras un pago por monto, «Todo lo que falta» deja Σ `order_payment_lines.amount` = monto del pago
+- [x] T042 [US1] IT y IT HTTP del contrato de `/pay` con `lines` y `allRemaining`, en el mismo archivo:
   - `lines`, `allRemaining` y `amount` se excluyen → 400;
   - la misma llave con otra selección → 409;
   - la respuesta trae `paymentId`, `number` y el monto cobrado; si la cotización quedó vieja, cobra lo que calcula el servidor y lo devuelve;
@@ -215,21 +215,21 @@ ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
   - **[H2]** pedido de plataforma → «Los pedidos de plataforma no se dividen»;
   - **[H9]** pedido de un turno cerrado → «Ese pedido es de un turno cerrado; no se divide»;
   - **[D1]** `inTheThreeCases` sobre el servicio `Charge` con `lines` y `allRemaining`, que empieza a leer `order_payment_lines`
-- [ ] T043 [P] [US1] **[U1]** IT e IT HTTP de `POST /orders/{id}/quote` en server/internal/integration/quote_test.go:
+- [x] T043 [P] [US1] **[U1]** IT e IT HTTP de `POST /orders/{id}/quote` en server/internal/integration/quote_test.go:
   - no escribe nada: mismas filas en `orders`, `order_payments` y `order_payment_lines` antes y después;
   - con `lines` y con `allRemaining` devuelve `{ amount, lines, outstandingAfter }`, y `amount` es el que `/pay` cobra después con la misma selección;
   - no pide `methodId`; las formas se excluyen → 400;
   - los mismos rechazos que `/pay`, sin los de idempotencia (pieza cubierta, plataforma, turno cerrado, excede);
   - mismo gate que `/pay`;
   - `inTheThreeCases` sobre el servicio `Quote`
-- [ ] T044 [US1] Extender `Charge` y `ChargeCmd` en server/internal/app/orders.go (`split` no: va en T067):
+- [x] T044 [US1] Extender `Charge` y `ChargeCmd` en server/internal/app/orders.go (`split` no: va en T067):
   - `lines` y `allRemaining`, excluyentes entre sí y con `amount` (el handler en server/internal/httpapi/handlers_orders.go responde 400);
   - monto calculado siempre con `SelectionAmount` bajo el `FOR UPDATE` del pedido, con el prorrateo de D-3;
   - inserción de la cobertura y de `payment_number` (D-12), calculado bajo el candado;
   - rechazos de plataforma y de turno cerrado;
   - idempotencia que compara también la selección;
   - `ChargeResult` con `paymentId`, `number` y el monto cobrado
-- [ ] T045 [US1] Implementar `OrdersService.Quote` en server/internal/app/orders.go con la misma función de `domain` que `Charge`, bajo un `SELECT` sin `FOR UPDATE` y sin escribir, y la ruta `POST /orders/{id}/quote` con el mismo gate que `/pay`, en server/internal/httpapi/router.go y handlers_orders.go
+- [x] T045 [US1] Implementar `OrdersService.Quote` en server/internal/app/orders.go con la misma función de `domain` que `Charge`, bajo un `SELECT` sin `FOR UPDATE` y sin escribir, y la ruta `POST /orders/{id}/quote` con el mismo gate que `/pay`, en server/internal/httpapi/router.go y handlers_orders.go
 - [ ] T046 [P] [US1] Test de orden de la lista (pendientes arriba, pagados al final y agrupados con más de 4) en web/src/shared/cobro/listOrder.test.ts
 - [ ] T047 [US1] Implementar web/src/shared/cobro/listOrder.ts
 - [ ] T048 [P] [US1] Casos C16+ en web/src/shared/CobrarSheet.test.tsx:
@@ -306,12 +306,12 @@ pagar y el pago anterior sigue intacto.
 **Independent Test**: se cobra en tres partes, se recarga tras la primera y las partes pagadas siguen
 marcadas; la suma es lo que faltaba.
 
-- [ ] T066 [P] [US4] IT en server/internal/integration/split_parts_test.go:
+- [x] T066 [P] [US4] IT en server/internal/integration/split_parts_test.go:
   - `TestTheSameSplitPartCannotBeChargedTwice` y `TestSplitPartsSurviveAReload`;
   - IT HTTP: `split` junto con `lines`, `allRemaining` o `amount` → 400;
   - `split` en pedido de plataforma o de turno cerrado → rechazo (H2, H9);
   - `quote` con `split` devuelve la parte que `/pay` cobra después
-- [ ] T067 [US4] `Charge` y `Quote` con `split`: monto con `SplitPartAmount`, validación de parte ya cobrada (`ErrSplitPartAlreadyCharged`), columnas `split_part`/`split_of`, exclusión con las otras formas
+- [x] T067 [US4] `Charge` y `Quote` con `split`: monto con `SplitPartAmount`, validación de parte ya cobrada (`ErrSplitPartAlreadyCharged`), columnas `split_part`/`split_of`, exclusión con las otras formas
 - [ ] T068 [P] [US4] Casos en web/src/shared/CobrarSheet.test.tsx:
   - Entre personas reparte lo que falta y muestra fichas por parte (tablero A7), con el monto de cada parte pedido a `quote` con `split`;
   - Por monto con teclado propio de 52 px, montos rápidos y «Lo que falta» (A8);

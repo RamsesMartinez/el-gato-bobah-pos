@@ -1615,6 +1615,17 @@ type ChargeCmd struct {
 	ClientUUID uuid.UUID
 	Reference  *string
 	ActorID    int64
+	// Lines, AllRemaining y Split son las otras formas de cobrar (spec 027), excluyentes entre sí y
+	// con Amount: con cualquiera de ellas el monto lo calcula el servidor y Amount va en cero.
+	Lines        []domain.SelectedPieces
+	AllRemaining bool
+	Split        *ChargeSplit
+}
+
+// ChargeSplit es la parte de una cuenta repartida entre personas.
+type ChargeSplit struct {
+	Part int `json:"part"`
+	Of   int `json:"of"`
 }
 
 // ChargeResult es lo que queda del pedido después de cobrar.
@@ -1629,6 +1640,11 @@ type ChargeResult struct {
 	// YaEstaba dice que este cobro ya se había registrado y esta llamada no movió dinero. La
 	// pantalla lo necesita para no volver a sumar la propina ni cantar un cobro que no ocurrió.
 	YaEstaba bool `json:"yaEstaba"`
+	// PaymentID y Number identifican el pago, y Amount es lo que se cobró: con productos o por
+	// partes lo calcula el servidor, y la pantalla refresca el botón y «Falta» con esta cifra.
+	PaymentID int64           `json:"paymentId"`
+	Number    int             `json:"number"`
+	Amount    decimal.Decimal `json:"amount"`
 }
 
 // Charge cobra un pedido que se mandó a cocina sin cobrar.
@@ -1641,20 +1657,30 @@ type ChargeResult struct {
 // El pago entra en el turno ABIERTO AHORA, no en el del pedido: el dinero cae en el cajón de hoy,
 // y meterlo en un arqueo ya firmado dejaría ese turno cuadrando contra efectivo que no estaba.
 func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResult, error) {
-	if !domain.ValidMoney(domain.Round2(cmd.Amount), false) || !domain.ValidMoney(domain.Round2(cmd.Tip), true) {
+	shape, err := domain.ChargeShapeOf(!cmd.Amount.IsZero(), len(cmd.Lines) > 0, cmd.AllRemaining, cmd.Split != nil)
+	if err != nil {
+		return nil, err
+	}
+	if shape == domain.ShapeAmount && !domain.ValidMoney(domain.Round2(cmd.Amount), false) {
+		return nil, domain.ErrValidation
+	}
+	if !domain.ValidMoney(domain.Round2(cmd.Tip), true) {
 		return nil, domain.ErrValidation
 	}
 	var res ChargeResult
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		// FOR UPDATE: entre leer lo cobrado y escribir el pago cabe otro cajero haciendo lo mismo,
 		// y sin el lock los dos verían el pedido a cero y registrarían el total completo cada uno.
-		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
+		// Con la cuenta dividida es además lo que impide que dos tabletas cubran la misma pieza.
+		row, err := q.GetOrderForCharge(ctx, cmd.OrderID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
 			return err
 		}
+		o := chargeOrderFrom(row.ID, string(row.Status), row.DeliveryPlatformID, row.Subtotal, row.DiscountTotal,
+			row.DeliveryFee, row.Total, row.SessionStatus)
 		sumas, err := q.SumOrderPayments(ctx, cmd.OrderID)
 		if err != nil {
 			return err
@@ -1670,7 +1696,14 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		// está registrado manda al operador a borrar el renglón y rehacerlo con llave nueva, que es
 		// exactamente el cobro doble que esta llave existe para impedir.
 		if cmd.ClientUUID != uuid.Nil() {
-			ya, err := q.GetOrderPaymentByClientUUID(ctx, &cmd.ClientUUID)
+			// Una llave de un pago devuelto no lo revive: reenviarla volvería a cobrar justo lo que
+			// se acaba de devolver.
+			if _, err := q.GetPaymentVoidByClientUUID(ctx, &cmd.ClientUUID); err == nil {
+				return domain.ErrPaymentVoidedKey
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			ya, err := q.GetOrderPaymentShapeByClientUUID(ctx, &cmd.ClientUUID)
 			switch {
 			case err == nil && ya.OrderID == cmd.OrderID:
 				// Mismo pedido, MISMA carga: es el reenvío de una llamada que ya entró.
@@ -1680,15 +1713,18 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 				// cambia el método y vuelve a tocar. Darlo por hecho deja la pantalla cantando
 				// cobrado, los billetes en el cajón, y el corte esperando la tarjeta que nunca llegó
 				// sin esperar el efectivo que sí está: descuadre en los dos métodos a la vez.
-				if ya.PaymentMethodID != cmd.MethodID ||
-					!ya.Amount.Equal(domain.Round2(cmd.Amount)) ||
-					!ya.TipAmount.Equal(domain.Round2(cmd.Tip)) {
+				if ya.PaymentMethodID != cmd.MethodID || !ya.TipAmount.Equal(domain.Round2(cmd.Tip)) ||
+					(shape == domain.ShapeAmount && !ya.Amount.Equal(domain.Round2(cmd.Amount))) {
 					return fmt.Errorf("%w: ese cobro ya se registró con otro método o monto", domain.ErrConflict)
+				}
+				if !sameChargeShape(shape, cmd, ya.Covered, ya.SplitPart, ya.SplitOf) {
+					return domain.ErrChargeKeyMismatch
 				}
 				res = ChargeResult{
 					Outstanding: domain.PorCobrar(o.Total, pagado),
 					Paid:        domain.PedidoSaldado(pagado, o.Total),
 					YaEstaba:    true,
+					PaymentID:   ya.ID, Number: int(deref16(ya.PaymentNumber)), Amount: ya.Amount,
 				}
 				return nil
 			case err == nil:
@@ -1709,7 +1745,11 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 			}
 			return err
 		}
-		if err := domain.ValidarCobro(string(o.Status), o.Total, pagado, cmd.Amount); err != nil {
+		amount, covered, err := chargeAmount(ctx, q, o, pagado, shape, cmd.Amount, cmd.Lines, cmd.Split)
+		if err != nil {
+			return err
+		}
+		if err := domain.ValidarCobro(o.Status, o.Total, pagado, amount); err != nil {
 			return err
 		}
 		// La propina se topa contra la cuenta, POR PAGO y no acumulada.
@@ -1735,25 +1775,49 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		if !m.IsActive {
 			return domain.ErrMetodoInactivo
 		}
-		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.DeliveryPlatformID) {
+		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.PlatformID) {
 			return domain.ErrPaymentMethodPlatform
 		}
-		if err := q.CreateOrderPayment(ctx, db.CreateOrderPaymentParams{
+		// El número cuenta los pagos vivos y los devueltos, viejos sin número incluidos: el que se
+		// imprime en el ticket no se repite aunque un pago se devuelva.
+		n, err := q.CountOrderPaymentsForNumber(ctx, cmd.OrderID)
+		if err != nil {
+			return err
+		}
+		number := int16(n + 1)
+		var part, of *int16
+		if cmd.Split != nil {
+			p, f := int16(cmd.Split.Part), int16(cmd.Split.Of)
+			part, of = &p, &f
+		}
+		paymentID, err := q.CreateOrderPaymentNumbered(ctx, db.CreateOrderPaymentNumberedParams{
 			OrderID:           cmd.OrderID,
 			PaymentMethodID:   cmd.MethodID,
-			Amount:            domain.Round2(cmd.Amount),
+			Amount:            amount,
 			TipAmount:         domain.Round2(cmd.Tip),
 			RegisterSessionID: &sess.ID,
 			ReceivedBy:        &cmd.ActorID,
 			Reference:         cmd.Reference,
 			ClientUuid:        llaveDeCobro(cmd.ClientUUID),
-		}); err != nil {
+			PaymentNumber:     &number,
+			SplitPart:         part,
+			SplitOf:           of,
+		})
+		if err != nil {
 			return err
 		}
-		yaPagado := pagado.Add(domain.Round2(cmd.Amount))
+		for _, c := range covered {
+			if err := q.CreateOrderPaymentLine(ctx, db.CreateOrderPaymentLineParams{
+				OrderPaymentID: paymentID, OrderLineID: c.LineID, Qty: c.Qty, Amount: c.Amount,
+			}); err != nil {
+				return err
+			}
+		}
+		yaPagado := pagado.Add(amount)
 		res = ChargeResult{
 			Outstanding: domain.PorCobrar(o.Total, yaPagado),
 			Paid:        domain.PedidoSaldado(yaPagado, o.Total),
+			PaymentID:   paymentID, Number: int(number), Amount: amount,
 		}
 
 		// El pedido que no pasa por cocina y queda SALDADO se cierra aquí mismo.
@@ -1767,14 +1831,14 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		// Las dos condiciones siguen siendo necesarias: cerrar algo que cocina tiene que preparar lo
 		// borraría del tablero antes de hacerlo, y cerrar algo sin saldar escondería el faltante
 		// hasta el corte.
-		if !domain.PagosCubren(pagado.Add(domain.Round2(cmd.Amount)), o.Total) {
+		if !domain.PagosCubren(yaPagado, o.Total) {
 			return nil
 		}
 		necesita, err := q.PedidoNecesitaPreparacion(ctx, cmd.OrderID)
 		if err != nil {
 			return err
 		}
-		if necesita || !domain.CanTransition(string(o.Status), domain.StatusEntregada) {
+		if necesita || !domain.CanTransition(o.Status, domain.StatusEntregada) {
 			return nil
 		}
 		if err := q.DeliverAllOrderLines(ctx, cmd.OrderID); err != nil {
@@ -1788,6 +1852,158 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		return nil, err
 	}
 	return &res, nil
+}
+
+// QuoteCmd es una selección sin cobrarla: las mismas formas de Charge salvo el monto tecleado.
+type QuoteCmd struct {
+	OrderID      int64
+	Lines        []domain.SelectedPieces
+	AllRemaining bool
+	Split        *ChargeSplit
+}
+
+// QuoteResult es lo que /pay cobraría con esa selección, y lo que faltaría después.
+type QuoteResult struct {
+	Amount           decimal.Decimal   `json:"amount"`
+	Lines            []PaymentLineView `json:"lines"`
+	OutstandingAfter decimal.Decimal   `json:"outstandingAfter"`
+}
+
+// Quote dice cuánto se cobraría por una selección, sin cobrarla y sin escribir nada.
+//
+// Existe para que la pantalla muestre el monto antes de cobrar SIN calcularlo ella: si lo
+// calculara, habría dos reglas de dinero y tarde o temprano dirían cosas distintas con el cliente
+// enfrente. Usa la misma función que Charge. Es una cotización, no una reserva: lee sin candado y
+// /pay recalcula siempre, así que si otra tableta cobró entre medias, /pay cobra lo de ese momento.
+func (s *OrdersService) Quote(ctx context.Context, cmd QuoteCmd) (*QuoteResult, error) {
+	shape, err := domain.ChargeShapeOf(false, len(cmd.Lines) > 0, cmd.AllRemaining, cmd.Split != nil)
+	if err != nil {
+		return nil, err
+	}
+	q := s.store.QC(ctx)
+	row, err := q.GetOrderForQuote(ctx, cmd.OrderID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	o := chargeOrderFrom(row.ID, string(row.Status), row.DeliveryPlatformID, row.Subtotal, row.DiscountTotal,
+		row.DeliveryFee, row.Total, row.SessionStatus)
+	sumas, err := q.SumOrderPayments(ctx, cmd.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	amount, covered, err := chargeAmount(ctx, q, o, sumas.Pagado, shape, decimal.Zero, cmd.Lines, cmd.Split)
+	if err != nil {
+		return nil, err
+	}
+	if err := domain.ValidarCobro(o.Status, o.Total, sumas.Pagado, amount); err != nil {
+		return nil, err
+	}
+	lines := make([]PaymentLineView, len(covered))
+	for i, c := range covered {
+		lines[i] = PaymentLineView{LineID: c.LineID, Qty: c.Qty, Amount: c.Amount}
+	}
+	return &QuoteResult{Amount: amount, Lines: lines, OutstandingAfter: domain.PorCobrar(o.Total, sumas.Pagado.Add(amount))}, nil
+}
+
+// chargeOrder es el pedido como lo necesita el cálculo de un cobro.
+type chargeOrder struct {
+	ID         int64
+	Status     string
+	PlatformID *int16
+	Subtotal   decimal.Decimal
+	Discount   decimal.Decimal
+	Shipping   decimal.Decimal
+	Total      decimal.Decimal
+	// ShiftOpen dice si el turno del pedido sigue abierto. Un pedido sin turno (de antes) cuenta
+	// como cerrado.
+	ShiftOpen bool
+}
+
+func chargeOrderFrom(id int64, status string, platform *int16, subtotal, discount, shipping, total decimal.Decimal, session string) chargeOrder {
+	return chargeOrder{ID: id, Status: status, PlatformID: platform, Subtotal: subtotal, Discount: discount,
+		Shipping: shipping, Total: total, ShiftOpen: session == string(db.SessionStatusAbierta)}
+}
+
+// chargeAmount decide cuánto se cobra y qué cubre, para Charge y para Quote: una sola regla.
+//
+// Por monto, lo tecleado y sin cobertura. Por partes, la parte sobre lo que falta ahora. Por
+// productos o «todo lo que falta», domain.SelectionAmount con las piezas que ya cubren pagos vivos.
+// Las tres formas nuevas no aplican a un pedido de plataforma (lo cobró la plataforma entero) ni a
+// uno de un turno cerrado (su dinero ya se arqueó).
+func chargeAmount(ctx context.Context, q *db.Queries, o chargeOrder, paid decimal.Decimal, shape domain.ChargeShape,
+	typed decimal.Decimal, sel []domain.SelectedPieces, split *ChargeSplit,
+) (decimal.Decimal, []domain.CoveredLine, error) {
+	if shape == domain.ShapeAmount {
+		return domain.Round2(typed), nil, nil
+	}
+	if o.Status == domain.StatusCancelada || o.Status == domain.StatusReembolsada {
+		return decimal.Zero, nil, fmt.Errorf("%w (%s)", domain.ErrPedidoNoCobrable, o.Status)
+	}
+	if o.PlatformID != nil {
+		return decimal.Zero, nil, domain.ErrPlatformOrderNotSplittable
+	}
+	if !o.ShiftOpen {
+		return decimal.Zero, nil, domain.ErrOrderFromClosedShift
+	}
+	outstanding := domain.PorCobrar(o.Total, paid)
+	if shape == domain.ShapeSplit {
+		of := int16(split.Of)
+		charged, err := q.ListChargedSplitParts(ctx, db.ListChargedSplitPartsParams{OrderID: o.ID, SplitOf: &of})
+		if err != nil {
+			return decimal.Zero, nil, err
+		}
+		parts := make([]int, len(charged))
+		for i, c := range charged {
+			parts[i] = int(c)
+		}
+		amount, err := domain.SplitPartAmount(outstanding, split.Part, split.Of, parts)
+		return amount, nil, err
+	}
+	rows, err := q.ListLinesForSelection(ctx, o.ID)
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	lines := make([]domain.SelectionLine, len(rows))
+	for i, r := range rows {
+		lines[i] = domain.SelectionLine{LineID: r.ID, Qty: r.Quantity, UnitPrice: r.UnitPrice.Add(r.ModifiersTotal), CoveredQty: r.CoveredQty}
+	}
+	cover, err := q.ListOrderPaymentCoverage(ctx, o.ID)
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	coveredMoney := decimal.Zero
+	for _, c := range cover {
+		coveredMoney = coveredMoney.Add(c.Amount)
+	}
+	res, err := domain.SelectionAmount(domain.SelectionInput{
+		Lines: lines, Selection: sel, AllRemaining: shape == domain.ShapeAllRemaining,
+		Discount: o.Discount, Subtotal: o.Subtotal, Shipping: o.Shipping, Outstanding: outstanding,
+		PaidWithoutProducts: decimal.Max(decimal.Zero, paid.Sub(coveredMoney)),
+	})
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	return res.Amount, res.Lines, nil
+}
+
+// sameChargeShape dice si un reenvío con la misma llave pide lo mismo que el pago que ya entró.
+// Con productos compara la selección; por partes, la parte; «todo lo que falta» cubre lo que
+// faltaba entonces, así que solo exige que no fuera por partes.
+func sameChargeShape(shape domain.ChargeShape, cmd ChargeCmd, covered string, part, of *int16) bool {
+	wasSplit := part != nil
+	switch shape {
+	case domain.ShapeLines:
+		return !wasSplit && covered == domain.CoverageKey(cmd.Lines)
+	case domain.ShapeSplit:
+		return wasSplit && int(*part) == cmd.Split.Part && int(deref16(of)) == cmd.Split.Of
+	case domain.ShapeAllRemaining:
+		return !wasSplit
+	default:
+		return !wasSplit && covered == ""
+	}
 }
 
 // llaveDeCobro traduce "sin llave" al NULL de la columna: el índice único es PARCIAL, así que un

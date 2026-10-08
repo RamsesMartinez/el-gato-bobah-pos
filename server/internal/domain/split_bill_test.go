@@ -322,3 +322,54 @@ func TestSplitPartAmount(t *testing.T) {
 		t.Errorf("sin nada que falte = %v, quiere ErrPedidoYaPagado", err)
 	}
 }
+
+// Las formas de cobrar se excluyen: si llegan dos, nadie sabe cuál se respetó. Ninguna también es
+// un error: un cobro sin monto ni productos no es un cobro.
+func TestChargeShapeOf(t *testing.T) {
+	cases := []struct {
+		name                                  string
+		amount, lines, allRemaining, hasSplit bool
+		want                                  ChargeShape
+		wantErr                               error
+	}{
+		{"por monto", true, false, false, false, ShapeAmount, nil},
+		{"por productos", false, true, false, false, ShapeLines, nil},
+		{"todo lo que falta", false, false, true, false, ShapeAllRemaining, nil},
+		{"entre personas", false, false, false, true, ShapeSplit, nil},
+		{"monto y productos", true, true, false, false, 0, ErrOneChargeShape},
+		{"productos y todo lo que falta", false, true, true, false, 0, ErrOneChargeShape},
+		{"partes y monto", true, false, false, true, 0, ErrOneChargeShape},
+		{"nada", false, false, false, false, 0, ErrValidation},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := ChargeShapeOf(c.amount, c.lines, c.allRemaining, c.hasSplit)
+			if c.wantErr != nil {
+				if !errors.Is(err, c.wantErr) {
+					t.Fatalf("= %v, quiere %v", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil || got != c.want {
+				t.Fatalf("= %v %v, quiere %v", got, err, c.want)
+			}
+		})
+	}
+}
+
+// La llave de una selección no depende del orden en que la pantalla mandó los renglones ni de
+// cómo escribió la cantidad: el mismo cobro reenviado tiene que reconocerse como el mismo.
+func TestCoverageKey(t *testing.T) {
+	a := CoverageKey([]SelectedPieces{{LineID: 9, Qty: d("1")}, {LineID: 3, Qty: d("2.0")}})
+	b := CoverageKey([]SelectedPieces{{LineID: 3, Qty: d("2")}, {LineID: 9, Qty: d("1.00")}})
+	if a != b || a != "3:2.00,9:1.00" {
+		t.Fatalf("llaves %q y %q, quiere las dos «3:2.00,9:1.00»", a, b)
+	}
+	// El mismo renglón dos veces se suma, igual que al cobrar.
+	if k := CoverageKey([]SelectedPieces{{LineID: 3, Qty: d("1")}, {LineID: 3, Qty: d("1")}}); k != "3:2.00" {
+		t.Fatalf("renglón repetido = %q, quiere «3:2.00»", k)
+	}
+	if k := CoverageKey(nil); k != "" {
+		t.Fatalf("sin selección = %q", k)
+	}
+}
