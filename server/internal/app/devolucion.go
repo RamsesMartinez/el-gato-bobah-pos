@@ -501,6 +501,7 @@ func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow
 				ItemType: m.ItemType, IngredientID: m.IngredientID, ProductID: m.ProductID,
 				MovementType: db.StockMovementTypeVenta, Quantity: half.qty, UnitCost: m.UnitCost,
 				OrderID: &half.order, OrderLineID: &half.line, UserID: &actor, Reason: &reason,
+				ModifierOptionID: m.ModifierOptionID, ComponentOfProductID: m.ComponentOfProductID,
 			}); err != nil {
 				return 0, err
 			}

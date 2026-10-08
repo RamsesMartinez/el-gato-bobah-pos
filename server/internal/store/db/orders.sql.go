@@ -909,23 +909,28 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 }
 
 const listLineSaleMovements = `-- name: ListLineSaleMovements :many
-select item_type, ingredient_id, product_id, quantity, unit_cost, order_id
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
+       modifier_option_id, component_of_product_id
 from stock_movements
 where order_line_id = $1 and movement_type = 'venta'
 order by id
 `
 
 type ListLineSaleMovementsRow struct {
-	ItemType     StockItemType    `json:"item_type"`
-	IngredientID *int64           `json:"ingredient_id"`
-	ProductID    *int64           `json:"product_id"`
-	Quantity     decimal.Decimal  `json:"quantity"`
-	UnitCost     *decimal.Decimal `json:"unit_cost"`
-	OrderID      *int64           `json:"order_id"`
+	ItemType             StockItemType    `json:"item_type"`
+	IngredientID         *int64           `json:"ingredient_id"`
+	ProductID            *int64           `json:"product_id"`
+	Quantity             decimal.Decimal  `json:"quantity"`
+	UnitCost             *decimal.Decimal `json:"unit_cost"`
+	OrderID              *int64           `json:"order_id"`
+	ModifierOptionID     *int64           `json:"modifier_option_id"`
+	ComponentOfProductID *int64           `json:"component_of_product_id"`
 }
 
 // Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
-// pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando.
+// pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando. El
+// extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
+// producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
 func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64) ([]ListLineSaleMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listLineSaleMovements, orderLineID)
 	if err != nil {
@@ -942,6 +947,8 @@ func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64)
 			&i.Quantity,
 			&i.UnitCost,
 			&i.OrderID,
+			&i.ModifierOptionID,
+			&i.ComponentOfProductID,
 		); err != nil {
 			return nil, err
 		}

@@ -615,8 +615,11 @@ update order_lines
 
 -- name: ListLineSaleMovements :many
 -- Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
--- pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando.
-select item_type, ingredient_id, product_id, quantity, unit_cost, order_id
+-- pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando. El
+-- extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
+-- producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
+       modifier_option_id, component_of_product_id
 from stock_movements
 where order_line_id = $1 and movement_type = 'venta'
 order by id;
