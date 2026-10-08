@@ -1134,6 +1134,54 @@ type OrderCounter struct {
 	LastNumber   int32       `json:"last_number"`
 }
 
+type OrderDraft struct {
+	ID                 uuid.UUID          `json:"id"`
+	CompanyID          int64              `json:"company_id"`
+	OrderID            *int64             `json:"order_id"`
+	Status             string             `json:"status"`
+	FolioName          *string            `json:"folio_name"`
+	FolioScheme        *FolioScheme       `json:"folio_scheme"`
+	ServiceType        ServiceType        `json:"service_type"`
+	CustomerName       *string            `json:"customer_name"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	PlatformOrderRef   *string            `json:"platform_order_ref"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	DiscountAmount     *decimal.Decimal   `json:"discount_amount"`
+	DiscountPercent    *decimal.Decimal   `json:"discount_percent"`
+	DiscountSetBy      *int64             `json:"discount_set_by"`
+	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
+	OpenedBy           int64              `json:"opened_by"`
+	HeaderVersion      int32              `json:"header_version"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	SentAt             pgtype.Timestamptz `json:"sent_at"`
+	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
+	DiscardedBy        *int64             `json:"discarded_by"`
+	DiscardReason      *string            `json:"discard_reason"`
+}
+
+type OrderDraftAdd struct {
+	CompanyID int64     `json:"company_id"`
+	OpID      uuid.UUID `json:"op_id"`
+	DraftID   uuid.UUID `json:"draft_id"`
+	LineID    uuid.UUID `json:"line_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type OrderDraftLine struct {
+	ID        uuid.UUID       `json:"id"`
+	CompanyID int64           `json:"company_id"`
+	DraftID   uuid.UUID       `json:"draft_id"`
+	ProductID int64           `json:"product_id"`
+	Qty       decimal.Decimal `json:"qty"`
+	Modifiers []byte          `json:"modifiers"`
+	Notes     *string         `json:"notes"`
+	Position  int32           `json:"position"`
+	Version   int32           `json:"version"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
 type OrderLine struct {
 	ID               int64              `json:"id"`
 	OrderID          int64              `json:"order_id"`

@@ -76,15 +76,11 @@ func ValidateDraftLine(in DraftLineInput) (DraftLineInput, error) {
 	if in.ProductID <= 0 {
 		return in, fmt.Errorf("%w: falta el producto", ErrValidation)
 	}
-	// La escala se mira ANTES de redondear: redondear un exponente absurdo es el ataque de CPU que
-	// escalaSana existe para cerrar.
-	if !escalaSana(in.Qty) {
-		return in, ErrValidation
+	qty, err := ValidateDraftQty(in.Qty)
+	if err != nil {
+		return in, err
 	}
-	in.Qty = Round2(in.Qty)
-	if !ValidQty(in.Qty, MaxOrderQty, false) {
-		return in, fmt.Errorf("%w: la cantidad no es válida", ErrValidation)
-	}
+	in.Qty = qty
 	if utf8.RuneCountInString(in.Notes) > maxDraftNote {
 		return in, fmt.Errorf("%w: la nota es demasiado larga", ErrValidation)
 	}
@@ -94,6 +90,21 @@ func ValidateDraftLine(in DraftLineInput) (DraftLineInput, error) {
 		}
 	}
 	return in, nil
+}
+
+// ValidateDraftQty valida una cantidad de la frontera y la devuelve redondeada a 2 decimales (la
+// escala de la columna). Lo usa también el «+» de un renglón, que solo trae cantidad.
+func ValidateDraftQty(qty decimal.Decimal) (decimal.Decimal, error) {
+	// La escala se mira ANTES de redondear: redondear un exponente absurdo es el ataque de CPU que
+	// escalaSana existe para cerrar.
+	if !escalaSana(qty) {
+		return qty, ErrValidation
+	}
+	qty = Round2(qty)
+	if !ValidQty(qty, MaxOrderQty, false) {
+		return qty, fmt.Errorf("%w: la cantidad no es válida", ErrValidation)
+	}
+	return qty, nil
 }
 
 func validDraftModifier(m DraftModifier) error {

@@ -83,6 +83,11 @@ type CreateOrderCmd struct {
 	// ticket; el servidor lo sanea y resuelve los choques, así que proponerlo no es decidirlo.
 	// Vacío = que lo reparta el servidor (clientes de API, tests).
 	FolioName string
+	// BoundFolioName es el nombre que una cuenta en captura amarró al nacer (spec 030, D-2). A
+	// diferencia de FolioName, no es una propuesta: se respeta aunque ya esté fuera de la bolsa —lo
+	// sacó esa misma cuenta— y solo cambia de número si el turno ya lo cantó («Persa 2»), nunca de
+	// animal: el cliente ya lo oyó.
+	BoundFolioName string
 }
 
 type OrderView struct {
@@ -1076,6 +1081,12 @@ type listaDePrecios struct {
 }
 
 func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (listaDePrecios, error) {
+	return listaDePreciosQ(ctx, s.store.QC(ctx), platformID)
+}
+
+// listaDePreciosQ es listaDePrecios sobre unas Queries dadas: la cuenta en captura la lee dentro de
+// su transacción, donde lo recién escrito todavía no se ve desde otra conexión.
+func listaDePreciosQ(ctx context.Context, q *db.Queries, platformID *int16) (listaDePrecios, error) {
 	lista := listaDePrecios{
 		producto: map[int64]*decimal.Decimal{},
 		opcion:   map[int64]*decimal.Decimal{},
@@ -1087,7 +1098,7 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 	// que un id de otra empresa pasaría el insert. Si aquí se cayera a margen 0, la venta se
 	// cobraría a precio de mostrador en Uber con el ticket bien impreso, y el descuadre aparecería
 	// semanas después al conciliar el depósito.
-	plat, err := s.store.QC(ctx).GetPlatformByID(ctx, *platformID)
+	plat, err := q.GetPlatformByID(ctx, *platformID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return lista, domain.ErrPlatformNotFound
@@ -1096,7 +1107,7 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 	}
 	lista.margen = plat.PriceMarkupPct
 
-	precios, err := s.store.QC(ctx).GetProductPlatformPrices(ctx, *platformID)
+	precios, err := q.GetProductPlatformPrices(ctx, *platformID)
 	if err != nil {
 		return lista, err
 	}
@@ -1104,7 +1115,7 @@ func (s *OrdersService) listaDePrecios(ctx context.Context, platformID *int16) (
 		precio := p.Price
 		lista.producto[p.ProductID] = &precio
 	}
-	deltas, err := s.store.QC(ctx).GetOptionPlatformPrices(ctx, *platformID)
+	deltas, err := q.GetOptionPlatformPrices(ctx, *platformID)
 	if err != nil {
 		return lista, err
 	}
@@ -1468,29 +1479,50 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, sessi
 	if err != nil {
 		return "", err
 	}
-	lista := domain.NombresDelEsquema(esquema)
-	consumidos, err := q.FolioNamesConsumidos(ctx, db.FolioScheme(esquema))
-	if err != nil {
-		return "", err
-	}
-
 	marcar := func(nombre string) error {
 		return q.MarcarFolioConsumido(ctx, db.MarcarFolioConsumidoParams{
 			Scheme: db.FolioScheme(esquema), Name: nombre,
 		})
 	}
 
-	if base := domain.SanitizarFolio(cmd.FolioName); base != "" &&
-		contiene(lista, base) && !contiene(consumidos, base) && !contiene(usados, base) {
-		return base, marcar(base)
+	// El nombre que amarró una cuenta en captura (D-2) gana siempre: el cliente ya lo oyó. Se acepta
+	// aunque esté fuera de la bolsa —lo sacó esa misma cuenta— y se vuelve a marcar por si la bolsa
+	// se vació entretanto. Si el turno ya lo cantó (la cuenta cruzó un cierre de turno), cambia de
+	// número y no de animal.
+	if bound := domain.SanitizarFolio(cmd.BoundFolioName); bound != "" {
+		if err := marcar(bound); err != nil {
+			return "", err
+		}
+		if libre := domain.SiguienteFolioLibre(bound, usados); libre != "" {
+			return libre, nil
+		}
+		return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
 	}
 
-	nombre, vaciar := domain.SiguienteDeLaBolsa(lista, consumidos, usados, rand.IntN)
-	if nombre == "" {
-		// Lista vacía: no puede pasar con las dos del dominio, pero un pedido sin nombre se queda
-		// sin con qué cantarse y el 500 crudo no le dice nada al operador.
+	lista := domain.NombresDelEsquema(esquema)
+	consumidos, err := q.FolioNamesConsumidos(ctx, db.FolioScheme(esquema))
+	if err != nil {
+		return "", err
+	}
+	// Los nombres de las cuentas vivas se leen AQUÍ, dentro de la transacción que crea el pedido, y
+	// no antes: la ventana con una cuenta que nace a la vez queda en milisegundos. Sin excluirlos, un
+	// pedido creado por otro camino (pasar productos, la API) se llevaría el nombre que ya se le dijo
+	// a un cliente al empezar su cuenta.
+	vivos, err := q.ListLiveDraftNames(ctx)
+	if err != nil {
+		return "", err
+	}
+	opciones, vaciar := domain.AvailableNames(lista, consumidos, usados, vivos)
+
+	if base := domain.SanitizarFolio(cmd.FolioName); base != "" && contiene(opciones, base) && !contiene(consumidos, base) && !contiene(usados, base) {
+		return base, marcar(base)
+	}
+	if len(opciones) == 0 {
+		// Todo nombre está vivo en una cuenta: no puede pasar con 88 nombres y la operación de un
+		// local, pero un pedido sin nombre se queda sin con qué cantarse y el 500 crudo no dice nada.
 		return "", fmt.Errorf("%w: no hay nombres con qué nombrar el pedido", domain.ErrConflict)
 	}
+	nombre := opciones[rand.IntN(len(opciones))] //nolint:gosec // G404: el nombre de un pedido se canta en voz alta; no es secreto
 	if vaciar {
 		if err := q.VaciarBolsaDeFolios(ctx, db.FolioScheme(esquema)); err != nil {
 			return "", err
@@ -1534,7 +1566,12 @@ func (s *OrdersService) NombresDisponibles(ctx context.Context) ([]string, error
 	if err != nil {
 		return nil, err
 	}
-	disponibles, _ := domain.DisponiblesDeLaBolsa(domain.NombresDelEsquema(esquema), consumidos, usados)
+	// Sin los nombres de las cuentas vivas: es el mismo predicado con el que reparte el servidor.
+	vivos, err := q.ListLiveDraftNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	disponibles, _ := domain.AvailableNames(domain.NombresDelEsquema(esquema), consumidos, usados, vivos)
 	return disponibles, nil
 }
 

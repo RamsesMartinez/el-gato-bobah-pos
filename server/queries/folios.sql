@@ -24,3 +24,11 @@ on conflict do nothing;
 -- Borra SOLO el esquema que se agotó. La bolsa del otro sigue donde iba: un negocio que prueba
 -- animales una semana y vuelve a razas no pierde su vuelta a medias.
 delete from folio_consumido where scheme = $1;
+
+-- name: ReleaseFolioName :exec
+-- Devuelve a la bolsa el nombre de una cuenta descartada (D-7).
+--
+-- La guarda de `taken_at` no es decorativa: si entre que la cuenta nació y que se descartó la bolsa
+-- se vació y un pedido nuevo volvió a sacar ese nombre, la fila es DE ESE PEDIDO, y soltarla haría
+-- que el nombre se repitiera antes de acabar la vuelta.
+delete from folio_consumido where scheme = @scheme and name = @name and taken_at <= @taken_before;

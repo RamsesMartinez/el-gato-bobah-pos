@@ -81,17 +81,19 @@ const (
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
-	Cfg        config.Config
-	Version    string // SHA del build (ldflags); "dev" en local
-	BuiltAt    string // timestamp del build (ldflags); "" en local
-	JWT        *auth.Manager
-	Auth       *app.AuthService
-	Users      *app.UsersService
-	Menu       *app.MenuService
-	MenuCache  *cache.MenuCache
-	Suggest    *app.SuggestService
-	Costing    *app.CostingService
-	Orders     *app.OrdersService
+	Cfg       config.Config
+	Version   string // SHA del build (ldflags); "dev" en local
+	BuiltAt   string // timestamp del build (ldflags); "" en local
+	JWT       *auth.Manager
+	Auth      *app.AuthService
+	Users     *app.UsersService
+	Menu      *app.MenuService
+	MenuCache *cache.MenuCache
+	Suggest   *app.SuggestService
+	Costing   *app.CostingService
+	Orders    *app.OrdersService
+	// Drafts es la cuenta en captura (spec 030).
+	Drafts     *app.DraftsService
 	Backoffice *app.BackofficeService
 	Admin      *app.AdminService
 	Settings   *app.SettingsService
@@ -140,6 +142,7 @@ type Handlers struct {
 	suggest           *app.SuggestService
 	costing           *app.CostingService
 	orders            *app.OrdersService
+	drafts            *app.DraftsService
 	backoffice        *app.BackofficeService
 	admin             *app.AdminService
 	settings          *app.SettingsService
@@ -203,7 +206,7 @@ func newHandlers(d Deps) *Handlers {
 	return &Handlers{
 		permissions: permissions,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
+		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,

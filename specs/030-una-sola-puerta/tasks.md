@@ -94,15 +94,15 @@ mismo nombre; no está en Ventas, corte, tablero ni almacén.
 
 ### Backend
 
-- [ ] T027 [US2] **BE** IT en server/internal/integration/drafts_create_test.go:
+- [X] T027 [US2] **BE** IT en server/internal/integration/drafts_create_test.go:
   - crear con el primer renglón: nombre de la bolsa, `opened_by`, `folio_scheme`; reintento con el mismo `id` devuelve la misma cuenta sin duplicar renglones;
   - nombre propuesto libre → se respeta; propuesto vivo en otra cuenta → otro nombre;
   - `TestTwoDraftsNeverShareAName`: dos goroutines, mismo nombre propuesto, dos nombres distintos;
   - sin turno abierto la cuenta se crea igual (D-6) y no tiene turno, fecha ni movimientos de almacén;
   - `product_id` de la otra empresa → rechazado;
   - 3C sobre crear, leer y la consulta de nombres vivos
-- [ ] T028 [US2] **BE** IT `TestADraftIsNeverASale` en server/internal/integration/draft_is_not_a_sale_test.go (SC-001): con una cuenta de 3 productos, cada consulta de dinero y de operación da lo mismo que sin ella — ventas del día, corte (`sessionWithExpected`), reportes, recetas/costeo, Top/populares, tablero (`Board`), `stock_movements`, existencias. Falla nombrando la consulta que la contó
-- [ ] T029 [US2] **BE** IT en server/internal/integration/drafts_edit_test.go:
+- [X] T028 [US2] **BE** IT `TestADraftIsNeverASale` en server/internal/integration/draft_is_not_a_sale_test.go (SC-001): con una cuenta de 3 productos, cada consulta de dinero y de operación da lo mismo que sin ella — ventas del día, corte (`sessionWithExpected`), reportes, recetas/costeo, Top/populares, tablero (`Board`), `stock_movements`, existencias. Falla nombrando la consulta que la contó
+- [X] T029 [US2] **BE** IT en server/internal/integration/drafts_edit_test.go:
   - agregar es idempotente por `opId`; `TestConcurrentAddsMergeIntoOneLine` (dos goroutines, mismo producto: un renglón, qty 2, posiciones únicas); `intoLineId` suma; `intoLineId` de un renglón quitado → 404;
   - `TestStaleChangeIsRejected`: cambiar o quitar con versión vieja → `ErrDraftChanged` y nada se aplica;
   - quitar el último renglón deja la cuenta vacía y viva con su nombre;
@@ -110,13 +110,13 @@ mismo nombre; no está en Ventas, corte, tablero ni almacén.
   - producto desactivado con la cuenta viva → `available=false`, no suma al total;
   - agregar o cambiar una cuenta enviada o descartada → 409;
   - 3C sobre cada escritura
-- [ ] T030 [US2] **BE** Escribir en server/queries/drafts.sql las consultas que T027–T029 ejercen (`make sqlc`) e implementar `DraftsService` en server/internal/app/drafts.go: `Create` (barrido primero; nombre con `AvailableNames` dentro de la tx; reintento ×3 ante `23505` del nombre), `Get`, `AddLine`, `ChangeLine`, `RemoveLine`, `PatchHeader` y la vista con precios calculados por la lista de la cuenta (reusa `listaDePrecios`/`BuildOrder` sin guardar precios). **Toda escritura toma `for update` sobre la cuenta primero**
-- [ ] T031 [US2] **BE** IT en server/internal/integration/folio_live_names_test.go: `GET /pos/folio-names` no ofrece nombres vivos; `TestMoveLinesSkipsLiveDraftNames`; `TestBagRefillSkipsLiveDrafts` (vaciar la bolsa con cuentas vivas no reparte sus nombres); `Create` directo no se lleva un nombre vivo
-- [ ] T032 [US2] **BE** En server/internal/app/orders.go: `resolverFolio` y `NombresDisponibles` excluyen los nombres vivos leídos **dentro de la tx**; `CreateOrderCmd.BoundFolioName` acepta el nombre amarrado aunque esté en `folio_consumido` y lo vuelve a marcar; si ya se usó en el turno cae a `SiguienteFolioLibre`
-- [ ] T033 [US2] **BE** IT en server/internal/integration/drafts_import_test.go: importar crea cuentas con el id de la pestaña y sus renglones; reintentar el mismo import no duplica; `TestImportDoesNotResendASentTab` (id ya en `orders.client_uuid` → `already_sent` con el pedido; id ya en `order_line_batches` → igual); pestaña sin renglones → `skipped_empty`; 21 cuentas → 400; 3C
-- [ ] T034 [US2] **BE** Implementar `DraftsService.Import` en server/internal/app/drafts.go
-- [ ] T035 [US2] **BE** IT HTTP en server/internal/integration/drafts_http_test.go: las rutas de esta fase (crear, leer, agregar, cambiar, quitar, cabecera, importar) con su status; `lines`, `modifiers` y `unavailable` salen `[]`, nunca `null`, sobre el JSON crudo; parámetros inválidos (uuid mal formado, `expectedVersion` no numérico) → 400; cada escritura publica `draft.updated` con `{id, orderId, status, updatedAt}` (broker suscrito en el test); `PATCH` de cabecera con descuento: el tope por usuario responde 429 al pasarse y deja `draft_discount_set` en el log con el anterior y el nuevo (el control del endpoint viejo no se salta por el camino nuevo)
-- [ ] T036 [US2] **BE** Handlers finos en server/internal/httpapi/handlers_drafts.go y rutas en server/internal/httpapi/router.go (dentro del grupo con tenant, sin `RequireRole`, junto a `/pos/*`; `PATCH /pos/drafts/{id}` con `rateLimitUser(h.descuentoWrites)` y `SecurityEvent("draft_discount_set")`); publicar `draft.updated`
+- [X] T030 [US2] **BE** Escribir en server/queries/drafts.sql las consultas que T027–T029 ejercen (`make sqlc`) e implementar `DraftsService` en server/internal/app/drafts.go: `Create` (barrido primero; nombre con `AvailableNames` dentro de la tx; reintento ×3 ante `23505` del nombre), `Get`, `AddLine`, `ChangeLine`, `RemoveLine`, `PatchHeader` y la vista con precios calculados por la lista de la cuenta (reusa `listaDePrecios`/`BuildOrder` sin guardar precios). **Toda escritura toma `for update` sobre la cuenta primero**
+- [X] T031 [US2] **BE** IT en server/internal/integration/folio_live_names_test.go: `GET /pos/folio-names` no ofrece nombres vivos; `TestMoveLinesSkipsLiveDraftNames`; `TestBagRefillSkipsLiveDrafts` (vaciar la bolsa con cuentas vivas no reparte sus nombres); `Create` directo no se lleva un nombre vivo
+- [X] T032 [US2] **BE** En server/internal/app/orders.go: `resolverFolio` y `NombresDisponibles` excluyen los nombres vivos leídos **dentro de la tx**; `CreateOrderCmd.BoundFolioName` acepta el nombre amarrado aunque esté en `folio_consumido` y lo vuelve a marcar; si ya se usó en el turno cae a `SiguienteFolioLibre`
+- [X] T033 [US2] **BE** IT en server/internal/integration/drafts_import_test.go: importar crea cuentas con el id de la pestaña y sus renglones; reintentar el mismo import no duplica; `TestImportDoesNotResendASentTab` (id ya en `orders.client_uuid` → `already_sent` con el pedido; id ya en `order_line_batches` → igual); pestaña sin renglones → `skipped_empty`; 21 cuentas → 400; 3C
+- [X] T034 [US2] **BE** Implementar `DraftsService.Import` en server/internal/app/drafts.go
+- [X] T035 [US2] **BE** IT HTTP en server/internal/integration/drafts_http_test.go: las rutas de esta fase (crear, leer, agregar, cambiar, quitar, cabecera, importar) con su status; `lines`, `modifiers` y `unavailable` salen `[]`, nunca `null`, sobre el JSON crudo; parámetros inválidos (uuid mal formado, `expectedVersion` no numérico) → 400; cada escritura publica `draft.updated` con `{id, orderId, status, updatedAt}` (broker suscrito en el test); `PATCH` de cabecera con descuento: el tope por usuario responde 429 al pasarse y deja `draft_discount_set` en el log con el anterior y el nuevo (el control del endpoint viejo no se salta por el camino nuevo)
+- [X] T036 [US2] **BE** Handlers finos en server/internal/httpapi/handlers_drafts.go y rutas en server/internal/httpapi/router.go (dentro del grupo con tenant, sin `RequireRole`, junto a `/pos/*`; `PATCH /pos/drafts/{id}` con `rateLimitUser(h.descuentoWrites)` y `SecurityEvent("draft_discount_set")`); publicar `draft.updated`
 
 ### Frontend
 

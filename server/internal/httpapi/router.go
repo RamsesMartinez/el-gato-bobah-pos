@@ -128,6 +128,20 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// despliegue, así que la pantalla lo pide una vez por carga; vive aquí y no en
 				// una copia del front para que la lista tenga un solo dueño.
 				r.Get("/pos/folio-names", h.FolioNames)
+				// LA CUENTA EN CAPTURA (spec 030). Sin RequireRole: es el mismo gate que crear un
+				// pedido —quien levanta el pedido puede capturarlo— (contracts/api.md). Montadas solo
+				// con el servicio: sin él, mejor 404 que un 500 por puntero nulo.
+				if h.drafts != nil {
+					r.Post("/pos/drafts", h.CreateDraft)
+					r.Post("/pos/drafts/import", h.ImportDrafts)
+					r.Get("/pos/drafts/{id}", h.GetDraft)
+					r.Post("/pos/drafts/{id}/lines", h.AddDraftLine)
+					r.Patch("/pos/drafts/{id}/lines/{lineId}", h.ChangeDraftLine)
+					r.Delete("/pos/drafts/{id}/lines/{lineId}", h.RemoveDraftLine)
+					// La cabecera lleva el tope por usuario del descuento: es un camino nuevo para poner un
+					// descuento, y no nace sin el control del viejo (PUT /orders/{id}/discount).
+					r.With(rateLimitUser(h.descuentoWrites)).Patch("/pos/drafts/{id}", h.PatchDraft)
+				}
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 

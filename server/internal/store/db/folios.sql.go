@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 )
 
 const folioNamesConsumidos = `-- name: FolioNamesConsumidos :many
@@ -66,6 +67,26 @@ type MarcarFolioConsumidoParams struct {
 // el índice único del día es el que decide quién se lo queda, y aquí anotar dos veces es inofensivo.
 func (q *Queries) MarcarFolioConsumido(ctx context.Context, arg MarcarFolioConsumidoParams) error {
 	_, err := q.db.Exec(ctx, marcarFolioConsumido, arg.Scheme, arg.Name)
+	return err
+}
+
+const releaseFolioName = `-- name: ReleaseFolioName :exec
+delete from folio_consumido where scheme = $1 and name = $2 and taken_at <= $3
+`
+
+type ReleaseFolioNameParams struct {
+	Scheme      FolioScheme `json:"scheme"`
+	Name        string      `json:"name"`
+	TakenBefore time.Time   `json:"taken_before"`
+}
+
+// Devuelve a la bolsa el nombre de una cuenta descartada (D-7).
+//
+// La guarda de `taken_at` no es decorativa: si entre que la cuenta nació y que se descartó la bolsa
+// se vació y un pedido nuevo volvió a sacar ese nombre, la fila es DE ESE PEDIDO, y soltarla haría
+// que el nombre se repitiera antes de acabar la vuelta.
+func (q *Queries) ReleaseFolioName(ctx context.Context, arg ReleaseFolioNameParams) error {
+	_, err := q.db.Exec(ctx, releaseFolioName, arg.Scheme, arg.Name, arg.TakenBefore)
 	return err
 }
 
