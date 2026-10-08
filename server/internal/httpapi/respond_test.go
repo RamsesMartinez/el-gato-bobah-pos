@@ -257,6 +257,13 @@ func TestSplitBillSentinelsMapToStatusCodeAndText(t *testing.T) {
 		{domain.ErrOneChargeShape, 400, "VALIDATION", "Elige una sola forma de cobrar"},
 		{domain.ErrEmptySelection, 400, "VALIDATION", "Elige qué productos paga"},
 		{domain.ErrTooManyPieces, 400, "VALIDATION", "No hay tantas piezas por quitar"},
+		{domain.ErrMoveWithDiscount, 409, "CONFLICT", "Quita el descuento antes de pasar productos"},
+		{domain.ErrMoveTargetClosed, 409, "CONFLICT", "Ese pedido ya no recibe productos"},
+		{domain.ErrMoveTargetOtherShift, 409, "CONFLICT", "Ese pedido es de otro turno"},
+		{domain.ErrMergeWithShipping, 409, "CONFLICT", "Ese pedido tiene envío; cóbralo o quítalo antes de juntarlo"},
+		{domain.ErrMoveRefundedLine, 409, "CONFLICT", "Ese producto tiene una devolución; no se puede pasar"},
+		{domain.ErrMoveLegacyLine, 409, "CONFLICT", "Ese producto es de un pedido viejo; no se puede pasar"},
+		{domain.ErrOrderClosedForVoid, 409, "CONFLICT", "Ese pedido ya se cerró; no se le pueden devolver pagos"},
 		// Las variantes por operación conservan el sentinel y llevan su cola.
 		{domain.ErrPieceAlreadyPaidToMove, 409, "CONFLICT", "Ese producto ya se pagó; no se puede pasar"},
 		{domain.ErrPieceAlreadyPaidToRemove, 409, "CONFLICT", "Ese producto ya se pagó. Primero hay que devolver el pago"},

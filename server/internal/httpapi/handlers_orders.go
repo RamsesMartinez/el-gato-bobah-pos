@@ -470,6 +470,43 @@ func (h *Handlers) VoidOrderPayment(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, res)
 }
 
+// POST /orders/{id}/lines/move  {clientUuid, toOrderId, lines}
+//
+// Pasa productos a otro pedido abierto, o a uno nuevo con toOrderId null. Responde los dos pedidos
+// como quedaron.
+func (h *Handlers) MoveOrderLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		ClientUuid uuid.UUID            `json:"clientUuid"`
+		ToOrderID  *int64               `json:"toOrderId"`
+		Lines      []selectedPiecesBody `json:"lines"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.MoveLines(r.Context(), app.MoveLinesCmd{
+		ClientUUID: body.ClientUuid, FromOrderID: id, ToOrderID: body.ToOrderID,
+		Lines: selectedPieces(body.Lines), ActorID: u.ID,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	kind := "order.updated"
+	if body.ToOrderID == nil {
+		kind = "order.created"
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: kind, Data: map[string]any{"id": res.To.ID}})
+	JSON(w, http.StatusOK, res)
+}
+
 // POST /orders/{id}/quote — cuánto cobraría /pay por una selección, sin cobrarla.
 //
 // Mismo cuerpo que /pay con lines, split o allRemaining, sin método ni monto. Existe para que la

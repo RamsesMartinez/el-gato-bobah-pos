@@ -430,7 +430,7 @@ func (s *OrdersService) VoidPayment(ctx context.Context, orderID, paymentID, act
 			return err
 		}
 		if o.Status == db.OrderStatusCancelada || o.Status == db.OrderStatusReembolsada {
-			return fmt.Errorf("%w: Ese pedido ya se cerró; no se le pueden devolver pagos", domain.ErrConflict)
+			return domain.ErrOrderClosedForVoid
 		}
 		p, err := q.GetOrderPaymentForVoid(ctx, paymentID)
 		if errors.Is(err, pgx.ErrNoRows) {

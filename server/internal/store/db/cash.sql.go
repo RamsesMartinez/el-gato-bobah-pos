@@ -108,6 +108,7 @@ select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 `
 
 type CountSessionSalesRow struct {
@@ -1607,6 +1608,7 @@ select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type
        o.total, o.refund_amount
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 order by o.opened_at desc, o.id desc
 limit $3 offset $2
 `
@@ -1639,6 +1641,8 @@ type SessionSalesRow struct {
 //
 // Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
 // las incluye es el total, y de eso se encarga la gemela de abajo.
+// El pedido juntado con otro (spec 027) no es venta ni cancelación del turno: sus productos están
+// en el pedido con el que se juntó. La gemela lleva la misma línea.
 func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]SessionSalesRow, error) {
 	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Off, arg.Lim)
 	if err != nil {

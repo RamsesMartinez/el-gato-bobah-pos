@@ -16,6 +16,7 @@ import (
 const countSales = `-- name: CountSales :one
 select count(*) from orders o
 where o.business_date between $1 and $2
+  and o.merged_into_order_id is null
   and ($3::order_status is null or o.status = $3)
   and ($4::service_type is null or o.service_type = $4)
 `
@@ -44,6 +45,7 @@ const countSalesSinFolio = `-- name: CountSalesSinFolio :one
 select count(*) from orders o
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between $1 and $2
+  and o.merged_into_order_id is null
   and ($3::order_status is null or o.status = $3)
   and ($4::service_type is null or o.service_type = $4)
 `
@@ -194,6 +196,7 @@ left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.business_date between $1 and $2
+  and o.merged_into_order_id is null
   and ($3::order_status is null or o.status = $3)
   and ($4::service_type is null or o.service_type = $4)
 order by
@@ -264,6 +267,11 @@ type ListSalesRow struct {
 // `gatobobah_app`. Además sqlc NO conoce la columna —la migración 0023 la agregó con SQL dinámico
 // que su parser no puede leer—, así que nombrarla aquí rompería `sqlc generate` por una columna que
 // sí existe en Postgres.
+//
+// EL PEDIDO JUNTADO (spec 027) NO ES UNA VENTA NI UNA CANCELACIÓN. Al pasarle todos sus productos a
+// otro pedido queda `cancelada` con `merged_into_order_id`, y sus productos se cuentan en el pedido
+// con el que se juntó. Lista, conteo y resumen lo excluyen con la misma línea
+// (`o.merged_into_order_id is null`); `SalesTotalsByMethod` ya lo deja fuera por estado.
 //
 // El resumen va en tres consultas y no en una: `order_payments` y `order_lines` son ambas 1:N con
 // `orders`, así que unirlas en la misma consulta multiplica las filas (2 pagos × 3 líneas = 6) y
@@ -340,6 +348,7 @@ left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between $1 and $2
+  and o.merged_into_order_id is null
   and ($3::order_status is null or o.status = $3)
   and ($4::service_type is null or o.service_type = $4)
 order by
@@ -445,7 +454,7 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
+where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
   and o.business_date between $1 and $2
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
@@ -466,6 +475,8 @@ type SalesCancelledLinesRow struct {
 
 // Líneas canceladas dentro de ventas que NO se cancelaron enteras: es la merma que se pierde de
 // vista, porque el pedido se cobró y el renglón no.
+// Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
+// pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
 func (q *Queries) SalesCancelledLines(ctx context.Context, arg SalesCancelledLinesParams) (SalesCancelledLinesRow, error) {
 	row := q.db.QueryRow(ctx, salesCancelledLines, arg.Desde, arg.Hasta, arg.ServiceType)
 	var i SalesCancelledLinesRow
@@ -478,7 +489,7 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
+where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
   and o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between $1 and $2
   and ol.cancelled_at is not null
@@ -500,6 +511,8 @@ type SalesCancelledLinesSinFolioRow struct {
 
 // Gemela de SalesCancelledLines con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
 // línea es lo único que las distingue, y se editan juntas.
+// Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
+// pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
 func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCancelledLinesSinFolioParams) (SalesCancelledLinesSinFolioRow, error) {
 	row := q.db.QueryRow(ctx, salesCancelledLinesSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
 	var i SalesCancelledLinesSinFolioRow
@@ -642,6 +655,7 @@ with filtrado as (
   select o.id, o.status, o.total, o.delivery_fee
   from orders o
   where o.business_date between $1 and $2
+    and o.merged_into_order_id is null
     and ($3::service_type is null or o.service_type = $3)
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount
@@ -717,6 +731,7 @@ with filtrado as (
   from orders o
   where o.delivery_platform_id is not null and o.platform_order_ref is null
     and o.business_date between $1 and $2
+    and o.merged_into_order_id is null
     and ($3::service_type is null or o.service_type = $3)
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount

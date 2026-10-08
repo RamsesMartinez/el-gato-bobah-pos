@@ -802,3 +802,25 @@ where o.id = $1;
 -- name: GetPaymentVoidByOriginalID :one
 -- ¿Este pago ya se devolvió? Distingue «ya se devolvió» de «no existe» al devolver dos veces.
 select order_id from order_payment_voids where original_payment_id = $1;
+
+-- name: GetOrderForMove :one
+-- Un pedido de «Pasar», BLOQUEADO, con lo que decide si puede dar o recibir productos y lo que
+-- hereda el pedido nuevo. Quien llama bloquea origen y destino en orden ascendente de id.
+select o.id, o.status, o.delivery_platform_id, o.register_session_id,
+       coalesce(rs.status::text, '')::text as session_status,
+       o.business_date, o.service_type, o.opened_by, o.branch_id, o.discount_total, o.delivery_fee, o.total
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o;
+
+-- name: ListRefundedLinesOfOrder :many
+-- Los renglones con una devolución: no se pasan, la devolución guarda su propio pedido.
+select distinct order_line_id::bigint as order_line_id from order_refunds
+where order_id = $1 and order_line_id is not null;
+
+-- name: CountUnattributedSales :one
+-- Ventas de inventario del pedido sin renglón (anteriores a 0060): de ellas no consta de qué
+-- renglón salieron, así que pasar un producto no sabría qué consumo llevarse.
+select count(*)::int from stock_movements
+where order_id = $1 and order_line_id is null and movement_type = 'venta';

@@ -95,6 +95,20 @@ func (q *Queries) CountOrderPaymentsForNumber(ctx context.Context, orderID int64
 	return n, err
 }
 
+const countUnattributedSales = `-- name: CountUnattributedSales :one
+select count(*)::int from stock_movements
+where order_id = $1 and order_line_id is null and movement_type = 'venta'
+`
+
+// Ventas de inventario del pedido sin renglón (anteriores a 0060): de ellas no consta de qué
+// renglón salieron, así que pasar un producto no sabría qué consumo llevarse.
+func (q *Queries) CountUnattributedSales(ctx context.Context, orderID *int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countUnattributedSales, orderID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createLineMove = `-- name: CreateLineMove :exec
 insert into order_line_moves (client_uuid, order_line_id, split_from_line_id, qty) values ($1, $2, $3, $4)
 `
@@ -711,6 +725,53 @@ func (q *Queries) GetOrderForCharge(ctx context.Context, id int64) (GetOrderForC
 		&i.Total,
 		&i.RegisterSessionID,
 		&i.SessionStatus,
+	)
+	return i, err
+}
+
+const getOrderForMove = `-- name: GetOrderForMove :one
+select o.id, o.status, o.delivery_platform_id, o.register_session_id,
+       coalesce(rs.status::text, '')::text as session_status,
+       o.business_date, o.service_type, o.opened_by, o.branch_id, o.discount_total, o.delivery_fee, o.total
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o
+`
+
+type GetOrderForMoveRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
+	ServiceType        ServiceType     `json:"service_type"`
+	OpenedBy           int64           `json:"opened_by"`
+	BranchID           int64           `json:"branch_id"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+}
+
+// Un pedido de «Pasar», BLOQUEADO, con lo que decide si puede dar o recibir productos y lo que
+// hereda el pedido nuevo. Quien llama bloquea origen y destino en orden ascendente de id.
+func (q *Queries) GetOrderForMove(ctx context.Context, id int64) (GetOrderForMoveRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForMove, id)
+	var i GetOrderForMoveRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
+		&i.BusinessDate,
+		&i.ServiceType,
+		&i.OpenedBy,
+		&i.BranchID,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
 	)
 	return i, err
 }
@@ -2086,6 +2147,32 @@ func (q *Queries) ListPaidQtyForOrders(ctx context.Context, orderIds []int64) ([
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRefundedLinesOfOrder = `-- name: ListRefundedLinesOfOrder :many
+select distinct order_line_id::bigint as order_line_id from order_refunds
+where order_id = $1 and order_line_id is not null
+`
+
+// Los renglones con una devolución: no se pasan, la devolución guarda su propio pedido.
+func (q *Queries) ListRefundedLinesOfOrder(ctx context.Context, orderID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listRefundedLinesOfOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var order_line_id int64
+		if err := rows.Scan(&order_line_id); err != nil {
+			return nil, err
+		}
+		items = append(items, order_line_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -222,6 +222,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// empresa. Tope por usuario porque es una escritura de dinero.
 					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid), rateLimitUser(h.splitWrites)).
 						Post("/{id}/payments/{paymentId}/void", h.VoidOrderPayment)
+					// Pasar productos a otro pedido. Hoy todos los roles: es corregir dónde se
+					// capturó, no mover dinero (rechaza lo pagado).
+					r.With(RequirePermission(h.permissions, domain.PermOrdersMoveLines), rateLimitUser(h.splitWrites)).
+						Post("/{id}/lines/move", h.MoveOrderLines)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los

@@ -361,11 +361,11 @@ lo correcto y lista el devuelto.
 **Independent Test**: se pasan dos productos ya enviados a cocina a un pedido nuevo; no hay comanda
 nueva, existencias iguales, y origen y destino tienen sus totales correctos.
 
-- [ ] T078 [P] [US5] IT en server/internal/integration/move_lines_test.go:
+- [x] T078 [P] [US5] IT en server/internal/integration/move_lines_test.go:
   - `TestMovedLinesKeepKitchenStateAndStock`;
   - `TestTheNewOrderInheritsTheOriginShift`: turno, día, servicio y `opened_by` del origen (quien capturó esos productos); quien los pasó queda en `moved_by`;
   - **[C2]** `TestAPartialMoveClosesBothOrdersWhenNothingIsLeft`: tras pasar **parte** de los productos, el origen y el destino se cierran solos si ya no les falta nada por entregar y están pagados (AS5)
-- [ ] T079 [US5] IT en el mismo archivo:
+- [x] T079 [US5] IT en el mismo archivo:
   - `TestMoveRejections` (tabla con todos los rechazos de contracts/api.md, incluidos otro turno u otro día, **[H9]** origen de un turno cerrado, todos los productos hacia un pedido nuevo y todos hacia uno existente con envío en el origen);
   - `TestMoveIsIdempotentByBatch`;
   - `TestMovingEverythingMergesTheOriginWithoutRestock`: hacia un pedido existente, el origen queda `cancelada` con el motivo fijo y `merged_into_order_id` = destino, sin reponer inventario;
@@ -373,10 +373,10 @@ nueva, existencias iguales, y origen y destino tienen sus totales correctos.
     - el reporte de cancelaciones (`SalesTotalsByStatus` y su gemela) no cuenta el origen, y lista y resumen de Ventas siguen derivándose del mismo predicado;
     - **[C1]** las ventas del turno del corte (`SessionSales` y `CountSessionSales`) tampoco lo listan como cancelado, con el mismo predicado en lista y conteo;
     - **[M2]** `SalesCancelledLines` y su gemela cuentan los productos que se quitaron del origen antes de juntarlo. Hoy **no** los cuentan: filtran `o.status not in ('cancelada', 'reembolsada')`, así que el test se ve en rojo antes de T082
-- [ ] T080 [US5] Aislamiento y permiso de «Pasar», en el mismo archivo:
+- [x] T080 [US5] Aislamiento y permiso de «Pasar», en el mismo archivo:
   - `inTheThreeCases` sobre el servicio `MoveLines`, cada consulta nueva de T081 y las consultas que cambia T082;
   - IT HTTP: `POST /orders/{id}/lines/move` → 403 con un resolutor de permisos inyectado que no da ninguno (**[U3]**: hoy todos los roles tienen `orders.move_lines`), con «Tu usuario no puede pasar productos»
-- [ ] T081 [US5] Implementar `MoveLines` en server/internal/app/move_lines.go:
+- [x] T081 [US5] Implementar `MoveLines` en server/internal/app/move_lines.go:
   - candados en orden ascendente de id;
   - lote idempotente (D-12b);
   - pedido nuevo con turno, día, servicio y `opened_by` del origen, y folio de ese turno;
@@ -384,7 +384,7 @@ nueva, existencias iguales, y origen y destino tienen sus totales correctos.
   - mover renglones y sus movimientos por `order_line_id`;
   - recalcular y cerrar los dos; el origen vacío se junta con el destino (D-5) y su `OrderView` sale con `mergedIntoOrderId`.
   Ruta `POST /orders/{id}/lines/move` con `RequirePermission(orders.move_lines)` y `rateLimitUser`; publica eventos para los dos pedidos
-- [ ] T082 [US5] Ajustar los reportes para el pedido juntado (D-5), con `make sqlc`:
+- [x] T082 [US5] Ajustar los reportes para el pedido juntado (D-5), con `make sqlc`:
   - server/queries/sales.sql: las gemelas de Ventas (`ListSales`, `CountSales`, `SalesTotalsByStatus`, `SalesTotalsByMethod` y sus `…SinFolio`) excluyen el pedido con `merged_into_order_id` con el mismo predicado en lista y resumen; **[M2]** `SalesCancelledLines` y su gemela agregan `or o.merged_into_order_id is not null` a su filtro de estado, para que lo quitado antes de juntar siga contando como producto cancelado;
   - server/queries/cash.sql: `SessionSales` y `CountSessionSales` con el mismo predicado en lista y conteo (la lista de ventas del turno en web/src/features/backoffice/CashPage.tsx pinta lo que trae la consulta).
 - [ ] T083 [P] [US5] Test de `ListRow` en web/src/components/ListRow.test.tsx (alto parametrizable, 56 px para pedidos) y de que `Picker` sigue igual

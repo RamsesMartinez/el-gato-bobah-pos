@@ -106,6 +106,13 @@ var (
 	ErrOneChargeShape             = fmt.Errorf("%w: Elige una sola forma de cobrar", ErrValidation)
 	ErrEmptySelection             = fmt.Errorf("%w: Elige qué productos paga", ErrValidation)
 	ErrTooManyPieces              = fmt.Errorf("%w: No hay tantas piezas por quitar", ErrValidation)
+	ErrMoveWithDiscount           = fmt.Errorf("%w: Quita el descuento antes de pasar productos", ErrConflict)
+	ErrMoveTargetClosed           = fmt.Errorf("%w: Ese pedido ya no recibe productos", ErrConflict)
+	ErrMoveTargetOtherShift       = fmt.Errorf("%w: Ese pedido es de otro turno", ErrConflict)
+	ErrMergeWithShipping          = fmt.Errorf("%w: Ese pedido tiene envío; cóbralo o quítalo antes de juntarlo", ErrConflict)
+	ErrMoveRefundedLine           = fmt.Errorf("%w: Ese producto tiene una devolución; no se puede pasar", ErrConflict)
+	ErrMoveLegacyLine             = fmt.Errorf("%w: Ese producto es de un pedido viejo; no se puede pasar", ErrConflict)
+	ErrOrderClosedForVoid         = fmt.Errorf("%w: Ese pedido ya se cerró; no se le pueden devolver pagos", ErrConflict)
 
 	// Variantes por operación: el mismo rechazo dice qué hacer según desde dónde se intentó.
 	ErrPieceAlreadyPaidToMove     = Reword(ErrPieceAlreadyPaid, "Ese producto ya se pagó; no se puede pasar")
