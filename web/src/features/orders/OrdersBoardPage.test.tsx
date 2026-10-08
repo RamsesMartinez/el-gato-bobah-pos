@@ -30,6 +30,12 @@ vi.mock('../../api/uso', () => ({ medirAccion }));
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: toast } }));
 
+const navegar = vi.hoisted(() => vi.fn());
+vi.mock('react-router', async () => ({
+  ...(await vi.importActual<typeof import('react-router')>('react-router')),
+  useNavigate: () => navegar,
+}));
+
 import { OrdersBoardPage } from './OrdersBoardPage';
 
 const linea = (id: number, qty: number, delivered = 0): BoardLine => ({
@@ -92,7 +98,9 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
       cobra,
       espera: (c) => {
         expect(within(c).getByRole('button', { name: 'Entregar todo' })).toBeInTheDocument();
-        expect(within(c).queryByRole('button', { name: /^Cobrar/ }) !== null).toBe(debe && cobra);
+        // Caso 25: el tablero ya no cobra; lleva a la cuenta, que es la única puerta.
+        expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
       },
     }))),
@@ -110,7 +118,9 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
       o: { ...todoEntregado, outstanding: '65' },
       cobra: true,
       espera: (c) => {
-        expect(within(c).getByRole('button', { name: /^Cobrar \$65/ })).toBeInTheDocument();
+        expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument();
+        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
       },
     },
@@ -119,7 +129,8 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
       o: { ...todoEntregado, outstanding: '65' },
       cobra: false,
       espera: (c) => {
-        expect(within(c).getByText(/^Falta cobrar \$65.* en caja$/)).toBeInTheDocument();
+        expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument();
+        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
       },
@@ -459,5 +470,28 @@ describe('la medición del tablero', () => {
     await waitFor(() => expect(api.cancelPendingLines).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
     expect(medirAccion).not.toHaveBeenCalled();
+  });
+});
+
+// «ABRIR CUENTA» (spec 030, FR-019; caso 25 del lienzo, A4).
+//
+// El tablero tenía su propia puerta de cobro, y con ella eran tres: el ticket, el botón naranja y
+// el tablero. Ahora cada tarjeta lleva a la cuenta en Vender, donde se agrega o se cobra.
+describe('«Abrir cuenta» lleva a la cuenta en Vender', () => {
+  test('cada tarjeta lo ofrece, mide 44 px y navega a /pos?pedido=<id>', async () => {
+    pintar(pedido({ id: 42 }));
+    const c = await tarjeta();
+    const b = within(c).getByRole('button', { name: 'Abrir cuenta' });
+    expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(b);
+    expect(navegar).toHaveBeenCalledWith('/pos?pedido=42');
+  });
+
+  test('el tablero ya no abre su propia hoja de cobro', async () => {
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
+    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    const c = await tarjeta();
+    await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^Cobrar/ })).toBeNull();
   });
 });

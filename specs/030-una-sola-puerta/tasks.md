@@ -173,8 +173,8 @@ o en «+N» con su estado; tocar cualquiera la carga.
 - [ ] T054 [US1] **FE** Primero el test en POSPage.test.tsx (la fila no desborda con 10 cuentas; no queda `TicketTabs` ni el botón naranja), después la fila 2 en web/src/features/pos/POSPage.tsx: `FilaDeCuentas` en lugar de `TicketTabs` y `PedidosEnCurso`; buscador `clamp(120px,20%,200px)` que se pliega a botón de 44 px con el panel abierto. Borrar web/src/features/pos/TicketTabs.tsx, PedidosEnCurso.tsx y PedidosEnCurso.test.tsx (sus casos vivos pasan a T050/T052) y `posApi.openOrders`
 - [ ] T055 [P] [US1] **FE** Test en web/src/features/pos/abrirDesdeLaUrl.test.tsx: `/pos?pedido=12` selecciona ese pedido y limpia el parámetro; `?cuenta=<uuid>` igual; un id que no existe → «Esa cuenta ya no existe» y no selecciona otra; un valor malformado se rechaza igual (no cae a otra cuenta)
 - [ ] T056 [US1] **FE** Implementar la lectura del parámetro en web/src/features/pos/POSPage.tsx
-- [ ] T057 [P] [US1] **FE** Test en web/src/features/orders/OrdersBoardPage.test.tsx: cada tarjeta tiene «Abrir cuenta» (44 px) que navega a `/pos?pedido=<id>`; reemplaza la puerta de «Cobrar» del tablero como única ruta al cobro (caso 25)
-- [ ] T058 [US1] **FE** Implementar «Abrir cuenta» en web/src/features/orders/OrdersBoardPage.tsx
+- [X] T057 [P] [US1] **FE** Test en web/src/features/orders/OrdersBoardPage.test.tsx: cada tarjeta tiene «Abrir cuenta» (44 px) que navega a `/pos?pedido=<id>`; reemplaza la puerta de «Cobrar» del tablero como única ruta al cobro (caso 25)
+- [X] T058 [US1] **FE** Implementar «Abrir cuenta» en web/src/features/orders/OrdersBoardPage.tsx
 
 **Checkpoint (MVP)**: US2 + US1 — una sola fila, todas las tabletas, nada se pierde.
 
