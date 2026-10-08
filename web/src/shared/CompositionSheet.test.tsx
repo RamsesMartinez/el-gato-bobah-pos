@@ -194,6 +194,30 @@ describe('la receta', () => {
     await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
   });
 
+  // Lo encontró una persona nueva: «También en…» quedaba marcado y al escoger «No gasta insumos»
+  // desaparecía; los otros extras seguían pendientes.
+  it('«No gasta insumos» también se guarda en el extra que se llama igual', async () => {
+    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '' }] });
+    montar('option');
+    fireEvent.click(await screen.findByText('No gasta insumos'));
+    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
+    await guardar();
+    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 77));
+    expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], alsoOptionIds: [77] }));
+  });
+
+  it('una receta nueva no empieza con un aviso de error', async () => {
+    montar();
+    await screen.findByRole('button', { name: '+ Vaso 16 oz' });
+    expect(screen.queryByText('Agrega al menos un insumo.')).not.toBeInTheDocument();
+  });
+
+  it('al agregar un insumo el cursor queda en su cantidad', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    await waitFor(() => expect(screen.getByLabelText('Cantidad de Vaso 16 oz')).toHaveFocus());
+  });
+
   it('si otra persona la cambió, lo dice y ofrece abrirla de nuevo', async () => {
     api.saveComposition.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'otra persona cambió esta receta mientras la editabas', 'r1'));
     montar();

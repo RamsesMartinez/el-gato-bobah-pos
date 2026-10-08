@@ -81,7 +81,17 @@ export function RecipesPage() {
     }),
   });
 
-  const pickKind = (k: RecipeKind) => { setKind(k); setCategory(''); setSearch(''); setQ(''); setStatus('pending'); };
+  // Abre en el primer estado con recetas: Preparados no tiene «Pendientes» y abría en una lista vacía
+  // sin ningún botón marcado.
+  const pickKind = (k: RecipeKind) => {
+    const t = totals?.[k];
+    const firstWithRecipes = STATUSES.find((x) => !(k === 'prep' && x.s === 'pending') && (t?.[x.s] ?? 0) > 0)?.s;
+    setKind(k); setCategory(''); setSearch(''); setQ('');
+    setStatus(firstWithRecipes ?? (k === 'prep' ? 'review' : 'pending'));
+  };
+  // Lo buscado que sí está, pero en otro estado: decir «nada coincide» con «Por revisar · 1» a la
+  // vista es mentir.
+  const elsewhere = q ? STATUSES.filter((x) => x.s !== status && counts[x.s] > 0) : [];
   // La siguiente de la lista que se ve, en su orden: así se avanza sin regresar a la lista.
   const openNext = () => {
     if (!open) return;
@@ -89,7 +99,8 @@ export function RecipesPage() {
     const next = rows.slice(i + 1).find((r) => r.status !== 'done') ?? rows.slice(0, Math.max(i, 0)).find((r) => r.status !== 'done');
     setOpen(status === 'done' ? null : next ?? null);
   };
-  const emptyTitle = q ? `Nada coincide con «${q}»`
+  const emptyTitle = q && elsewhere.length ? `Aquí no hay «${q}», pero sí en otro estado`
+    : q ? `Nada coincide con «${q}»`
     : all > 0 && kindTotals.done === all ? 'Todas las recetas de esta lista están listas'
       : status === 'pending' ? 'No hay pendientes aquí' : status === 'review' ? 'No hay nada por revisar' : 'Todavía no hay recetas listas';
 
@@ -181,7 +192,10 @@ export function RecipesPage() {
           {!list.isLoading && rows.length === 0 && (
             <VStack py={12} px={6} gap={2} textAlign="center">
               <Text fontWeight="600" fontSize="lg">{emptyTitle}</Text>
-              {q && <Text color="fg.muted">Busca por nombre o por un insumo, como «tapioca».</Text>}
+              {q && !elsewhere.length && <Text color="fg.muted">Busca por nombre o por un insumo, como «tapioca».</Text>}
+              {elsewhere.map((x) => (
+                <Button key={x.s} minH="44px" colorPalette="orange" onClick={() => setStatus(x.s)}>Ver en {x.label} · {counts[x.s]}</Button>
+              ))}
               {(q || category) && <Button minH="44px" variant="outline" onClick={() => { setSearch(''); setQ(''); setCategory(''); }}>Quitar la búsqueda</Button>}
             </VStack>
           )}

@@ -143,6 +143,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const [pickerError, setPickerError] = useState('');
   const [failure, setFailure] = useState<null | { conflict: boolean; message: string }>(null);
   const [typing, setTyping] = useState(false);
+  // El insumo recién agregado recibe el cursor: lo siguiente que se hace siempre es su cantidad.
+  const [justAdded, setJustAdded] = useState<number | null>(null);
 
   const edit = (fn: () => void) => { fn(); setDirtyState(true); onDirty(true); setFailure(null); };
 
@@ -186,6 +188,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     const ing = ingById.get(ingId);
     if (!ing) return false;
     edit(() => setRows((rs) => [...rs, { ingredientId: ing.id, name: ing.name, text: ing.baseUnitKind === 'pieza' ? '1' : '', unitId: ing.baseUnitId }]));
+    setJustAdded(ing.id);
     return true;
   };
   const createIngredient = useMutation({
@@ -193,6 +196,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     onSuccess: (ing) => {
       qc.setQueryData(['ingredients', 'all'], (old: { items: typeof ing[] } | undefined) => ({ items: [...(old?.items ?? []), ing] }));
       edit(() => setRows((rs) => [...rs, { ingredientId: ing.id, name: ing.name, text: ing.baseUnitKind === 'pieza' ? '1' : '', unitId: ing.baseUnitId }]));
+      setJustAdded(ing.id);
       setPicker(null);
       toaster.create({ title: `Insumo creado: ${ing.name}`, type: 'success' });
     },
@@ -217,7 +221,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         : true;
   const confirmOnly = data.status === 'estimated' && !dirty;
   const twins = kind === 'option' ? (data.sameName ?? []) : [];
-  const offerTwins = twins.length > 0 && (mode === 'items' || mode === 'product') && !confirmOnly;
+  const offerTwins = twins.length > 0 && (mode === 'items' || mode === 'product' || mode === 'nothing') && !confirmOnly;
 
   const body = (): CompositionBody => ({
     items: mode === 'items' ? rows.map((r) => ({ ingredientId: r.ingredientId, quantity: fmt(toNumber(r.text)), unitId: r.unitId })) : [],
@@ -236,6 +240,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       if (mode === 'nothing') {
         // «No gasta insumos» es una receta vacía confirmada por una persona.
         await adminApi.saveComposition(kind, id, { ...body(), items: [], components: [], linkedProductId: null });
+        if (offerTwins && applyTwins) for (const t of twins) await adminApi.confirmComposition(kind, t.id);
         return adminApi.confirmComposition(kind, id);
       }
       return adminApi.saveComposition(kind, id, body());
@@ -292,7 +297,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       : mode === 'product' ? (linked ? `1 ${productName.get(linked) ?? ''}` : '— todavía nada —')
         : mode === 'package' ? (parts.length ? parts.map((p) => `${p.quantity} ${productName.get(p.productId) ?? ''}`).join(' + ') : '— todavía nada —')
           : rows.filter(rowValid).map((r) => `${r.text.replace(',', '.')} ${unitLabel(unitById.get(r.unitId)?.code ?? '')} ${r.name}`).join(' · ') || '— todavía nada —';
-  const hint = confirmOnly || valid ? ''
+  // Sin tocar nada no hay error que señalar: el aviso en naranja antes de empezar se leía como falta.
+  const hint = confirmOnly || valid || !dirty ? ''
     : mode === 'items' ? (rows.length === 0 ? 'Agrega al menos un insumo.' : !rows.every(rowValid) ? 'Escribe la cantidad de cada insumo.' : 'Falta cuánto rinde.')
       : mode === 'package' ? 'Agrega al menos un producto.' : 'Elige el producto.';
   const remove = (label: string, undo: () => void, drop: () => void) => edit(() => { setRemoved({ label, undo }); drop(); });
@@ -358,7 +364,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                     borderColor={bad ? 'red.300' : 'border.muted'} bg={bad ? 'red.50' : undefined}>
                     <Text flex="1" minW={0} truncate>{r.name}</Text>
                     <Input aria-label={`Cantidad de ${r.name}`} inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600"
-                      borderColor={bad ? 'red.500' : undefined} value={r.text}
+                      borderColor={bad ? 'red.500' : undefined} value={r.text} autoFocus={r.ingredientId === justAdded}
                       onFocus={(e) => { setTyping(true); e.currentTarget.scrollIntoView({ block: 'center' }); }} onBlur={() => setTyping(false)}
                       onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, text: v } : x)))); }} />
                     <HStack gap={0} borderWidth="1px" borderRadius="md" overflow="hidden">

@@ -41,6 +41,8 @@ describe('Catálogo › Recetas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.recipes.mockImplementation((q: RecipeQuery) => {
+      if (q.q === 'tapioca' && q.status !== 'review') return Promise.resolve({ items: [], total: 0, counts: { pending: 0, review: 1, done: 1 }, totals });
+      if (q.q === 'tapioca') return Promise.resolve({ items: [row(11, 'Frappé Taro', { status: 'review', mode: 'items', summary: '25 g Tapioca', lines: 1 })], total: 1, counts: { pending: 0, review: 1, done: 1 }, totals });
       if (q.q === 'zzz') return Promise.resolve({ items: [], total: 0, counts: { pending: 0, review: 0, done: 0 }, totals });
       if (q.status === 'review') {
         return Promise.resolve({ items: [row(11, 'Frappé Taro', { status: 'review', mode: 'items', summary: '180 ml Leche · 150 g Hielo · 25 g Taro', lines: 6 }), row(12, 'Frappé Oreo', { status: 'review', mode: 'items', summary: '180 ml Leche', lines: 1 })], total: 2, counts: { pending: 30, review: 2, done: 8 }, totals });
@@ -101,5 +103,21 @@ describe('Catálogo › Recetas', () => {
     fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(api.composition).toHaveBeenCalledWith('product', 101));
+  });
+
+  // Lo encontró una persona nueva: «Nada coincide con «tapioca»» con «Por revisar · 1» a la vista.
+  it('si lo buscado está en otro estado, lo dice y lleva ahí', async () => {
+    montar();
+    fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: 'tapioca' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver en Por revisar · 1' }, { timeout: 2000 }));
+    expect(await screen.findByText('Frappé Taro')).toBeInTheDocument();
+    expect(screen.queryByText(/Nada coincide/)).not.toBeInTheDocument();
+  });
+
+  // Preparados no tiene «Pendientes»: abría en un estado sin botón y con la lista vacía.
+  it('una pestaña abre en el primer estado que tiene recetas', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('tab', { name: /Preparados/ }));
+    await waitFor(() => expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ kind: 'prep', status: 'review' })));
   });
 });
