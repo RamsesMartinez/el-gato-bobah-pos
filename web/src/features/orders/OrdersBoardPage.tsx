@@ -9,6 +9,7 @@ import type { IconType } from 'react-icons';
 import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
 import { posApi } from '../../api/pos';
+import { medirAccion } from '../../api/uso';
 import type { BoardLine, BoardOrder } from '../../types/pos';
 import { resumenPorCobrar } from './porCobrar';
 import { entregados, faltante, pendientes, renglonesDe } from './entrega';
@@ -109,8 +110,8 @@ export function OrdersBoardPage() {
   // Cancelar UN renglón. El servidor responde si repuso el inventario, y eso se le dice al operador:
   // lo que ya salió a cocina baja de la cuenta pero no devuelve el ingrediente.
   const cancelarRenglonMut = useMutation({
-    mutationFn: ({ id, lineId, reason }: { id: number; lineId: number; reason: string }) =>
-      posApi.cancelOrderLine(id, lineId, reason),
+    mutationFn: ({ id, lineId, reason, qty }: { id: number; lineId: number; reason: string; qty: number }) =>
+      posApi.cancelOrderLine(id, lineId, reason, qty),
     onSuccess: (r) => {
       invalidateAll();
       toaster.create({
@@ -129,6 +130,7 @@ export function OrdersBoardPage() {
   const quitarFaltante = (o: BoardOrder, reason: string) =>
     posApi.cancelPendingLines(o.id, reason).then((r) => {
       invalidateAll();
+      medirAccion('pedidos', 'cancel-pending');
       toaster.create({
         title: r.removed === 1 ? 'Producto quitado' : `${r.removed} productos quitados`,
         type: 'success',
@@ -137,7 +139,7 @@ export function OrdersBoardPage() {
   // Cerrar un pedido que ya no tiene productos ni pagos. Sin motivo: lo pone el servidor.
   const cerrarVacio = useMutation({
     mutationFn: (id: number) => posApi.cancelPendingLines(id),
-    onSuccess: invalidateAll,
+    onSuccess: () => { invalidateAll(); medirAccion('pedidos', 'close-order'); },
     onError: conError('No se pudo cerrar'),
   });
 
@@ -195,6 +197,11 @@ export function OrdersBoardPage() {
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
     entregarTodo: (o) => entregarTodo.mutate(o.id),
+    // La misma petición que «Entregar todo», pero se cuenta aparte: cerrar es la salida que el
+    // incidente no tenía, y medir cada entrega normal como cierre la ahogaría.
+    cerrarEntregado: (o) => entregarTodo.mutate(o.id, {
+      onSuccess: () => medirAccion('pedidos', 'close-order'),
+    }),
     cobrar: setCobrando,
     ticket: (o) => setTicketOrderID(o.id),
     comanda: reimprimirComanda,
@@ -242,11 +249,12 @@ export function OrdersBoardPage() {
       {quitando && (
         <CancelarRenglonDialog
           nombre={quitando.linea.name}
+          pendientes={faltante(quitando.linea)}
           yaSalioACocina={quitando.linea.enviadoACocina === true}
           enviando={cancelarRenglonMut.isPending}
           onCerrar={() => setQuitando(null)}
-          onConfirmar={(motivo) => {
-            cancelarRenglonMut.mutate({ id: quitando.orderId, lineId: quitando.linea.id, reason: motivo });
+          onConfirmar={(motivo, qty) => {
+            cancelarRenglonMut.mutate({ id: quitando.orderId, lineId: quitando.linea.id, reason: motivo, qty });
             setQuitando(null);
           }}
         />
@@ -292,6 +300,7 @@ interface Acciones {
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   quitarRenglon: (id: number, linea: BoardLine) => void;
   entregarTodo: (o: BoardOrder) => void;
+  cerrarEntregado: (o: BoardOrder) => void;
   cobrar: (o: BoardOrder) => void;
   ticket: (o: BoardOrder) => void;
   comanda: (o: BoardOrder) => void;
@@ -412,7 +421,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
         {/* Lo vivo entregado y sin deuda: entregar el pedido lo cierra. */}
         {listo && !sinProductos && !debe && (
           <Button flex="1" minH={TAP} colorPalette="green" loading={acciones.cerrando(o)}
-            disabled={acciones.cerrando(o)} onClick={() => acciones.entregarTodo(o)}>
+            disabled={acciones.cerrando(o)} onClick={() => acciones.cerrarEntregado(o)}>
             Cerrar pedido
           </Button>
         )}
@@ -436,6 +445,13 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
           <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
             {acciones.puedeDevolverPagos ? 'Tiene pagos por devolver' : 'Tiene pagos por devolver: avisa al gerente'}
           </Text>
+        )}
+        {/* El camino para devolverlos: la hoja de cobro con las fichas de sus pagos. Solo con el
+            permiso; sin él, el texto de arriba dice a quién acudir. */}
+        {sinProductos && tienePagos && acciones.puedeDevolverPagos && (
+          <Button minH={TAP} variant="outline" colorPalette="gray" onClick={() => acciones.cobrar(o)}>
+            Devolver pagos
+          </Button>
         )}
         <MenuRoot>
           <MenuTrigger asChild>
@@ -479,6 +495,9 @@ function Renglon({ l, onEntregar, onQuitar }: {
   const falta = faltante(l);
   const [cantidad, setCantidad] = useState(falta);
   const parcial = falta > 1;
+  // Con piezas pagadas el servidor rechaza quitarlo: primero se devuelve el pago. El bote se queda
+  // en su lugar, apagado y diciendo por qué, para que la fila no cambie de forma.
+  const pagado = Number(l.paidQty ?? 0) > 0;
   const extras = [...(l.modifiers ?? []), ...(l.notes ? [l.notes] : [])];
 
   return (
@@ -520,10 +539,18 @@ function Renglon({ l, onEntregar, onQuitar }: {
           fila y la constitución pide separarla. En una fila tan apretada no hay distancia que dé
           seguridad de verdad, así que la barrera real es el diálogo: no borra al tocar, pregunta —
           y de paso dice qué pasa con el ingrediente. */}
-      <IconButton aria-label={`Quitar ${l.name}`} size="sm" variant="ghost" colorPalette="red"
-        minH={TAP} minW={TAP} ml={1} flexShrink={0} onClick={onQuitar}>
-        <LuTrash2 />
-      </IconButton>
+      {pagado ? (
+        <Button aria-label={`Quitar ${l.name}`} size="sm" variant="ghost" colorPalette="gray"
+          minH={TAP} minW={TAP} ml={1} px={1} flexShrink={0} disabled flexDirection="column" gap={0}>
+          <LuTrash2 />
+          <Text as="span" fontSize="2xs" lineHeight="1">Pagado</Text>
+        </Button>
+      ) : (
+        <IconButton aria-label={`Quitar ${l.name}`} size="sm" variant="ghost" colorPalette="red"
+          minH={TAP} minW={TAP} ml={1} flexShrink={0} onClick={onQuitar}>
+          <LuTrash2 />
+        </IconButton>
+      )}
     </HStack>
   );
 }

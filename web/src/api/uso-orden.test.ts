@@ -16,6 +16,7 @@ const ARCHIVOS = [
   'src/shared/CobrarSheet.tsx',
   'src/shared/ProductEditDialog.tsx',
   'src/features/backoffice/CashPage.tsx',
+  'src/features/orders/OrdersBoardPage.tsx',
   'src/app/MedidorDeUso.tsx',
   'src/app/MedidorDeToques.tsx',
   'src/api/uso.ts',

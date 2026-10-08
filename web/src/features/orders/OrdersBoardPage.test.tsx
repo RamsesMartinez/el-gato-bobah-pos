@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api/pos', () => ({ posApi: api }));
 vi.mock('../../hooks/useOrderEvents', () => ({ useOrderEvents: () => true }));
+const medirAccion = vi.hoisted(() => vi.fn());
+vi.mock('../../api/uso', () => ({ medirAccion }));
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: toast } }));
 
@@ -327,6 +329,17 @@ describe('a quién toca devolver los pagos de un pedido vacío', () => {
     pintar(pedido(vacioCobrado));
     expect(within(await tarjeta()).getByText('Tiene pagos por devolver')).toBeInTheDocument();
   });
+  // Y le da el camino: la hoja de cobro con las fichas de sus pagos, donde se devuelven.
+  test('con permiso, la tarjeta ofrece Devolver pagos; sin él, no', async () => {
+    entrar(['payments.void', 'orders.cancel_pending']);
+    const { unmount } = pintar(pedido(vacioCobrado));
+    const boton = within(await tarjeta()).getByRole('button', { name: 'Devolver pagos' });
+    expect(parseInt(getComputedStyle(boton).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    unmount();
+    entrar(['orders.cancel_pending']);
+    pintar(pedido(vacioCobrado));
+    expect(within(await tarjeta()).queryByRole('button', { name: 'Devolver pagos' })).toBeNull();
+  });
 });
 
 // Los botones del renglón medían 32 px de ancho (`2rem`): en 7" el dedo atinaba al vecino, y el
@@ -337,4 +350,114 @@ test('los botones del renglón miden al menos 44 px de ancho', async () => {
   for (const nombre of ['Uno menos', 'Uno más', 'Quitar Producto 1']) {
     expect(getComputedStyle(within(c).getByRole('button', { name: nombre })).minWidth, nombre).toBe('44px');
   }
+});
+
+// QUITAR UNA DE DOS (spec 027, US7): el contador del diálogo llega al servidor como `qty`. Sin él,
+// el servidor quita todas las piezas pendientes.
+test('quitar una pieza de un producto con dos pendientes manda qty 1', async () => {
+  const u = userEvent.setup();
+  api.cancelOrderLine.mockResolvedValue({ repusoInventario: true });
+  pintar(pedido({ lines: [linea(1, 3, 1)] }));
+
+  await u.click(within(await tarjeta()).getByRole('button', { name: 'Quitar Producto 1' }));
+  const hoja = await screen.findByRole('dialog');
+  expect(within(hoja).getByText('1 de 2')).toBeInTheDocument();
+  await u.click(within(hoja).getByRole('radio', { name: 'Ya no lo quiere' }));
+  await u.click(within(hoja).getByRole('button', { name: 'Quitar del pedido' }));
+
+  await waitFor(() => expect(api.cancelOrderLine).toHaveBeenCalledWith(5, 1, 'Ya no lo quiere', 1));
+});
+
+// UN PRODUCTO PAGADO NO SE QUITA DESDE EL TABLERO (spec 027, US3).
+//
+// El servidor lo rechaza —primero hay que devolver el pago—, y ofrecer el bote era mandar al
+// operador a un error después de elegir el motivo. Se dice en la fila por qué no se puede.
+describe('el bote de un producto pagado', () => {
+  test('con piezas pagadas, el bote está apagado y dice «Pagado»', async () => {
+    pintar(pedido({ lines: [{ ...linea(1, 2), paidQty: '1' }, linea(2, 1)] }));
+    const c = await tarjeta();
+
+    const pagado = within(c).getByRole('button', { name: 'Quitar Producto 1' });
+    expect(pagado).toBeDisabled();
+    expect(pagado.textContent).toMatch(/Pagado/);
+    expect(within(c).getByRole('button', { name: 'Quitar Producto 2' })).toBeEnabled();
+  });
+
+  // paidQty llega ausente desde un servidor sin la feature, y «0» cuando nada se pagó: los dos
+  // dejan quitar.
+  test.each([['ausente', undefined], ['en cero', '0']])('con paidQty %s se puede quitar', async (_, paidQty) => {
+    pintar(pedido({ lines: [{ ...linea(1, 2), paidQty }] }));
+    const bote = within(await tarjeta()).getByRole('button', { name: 'Quitar Producto 1' });
+    expect(bote).toBeEnabled();
+    expect(bote.textContent).not.toMatch(/Pagado/);
+  });
+});
+
+// MEDICIÓN (D-15): qué tanto se cierran pedidos y se quita lo que falta desde el tablero. Se cuenta
+// DESPUÉS de que el servidor respondió: un toque que falló no es un pedido cerrado.
+describe('la medición del tablero', () => {
+  test('«Cerrar pedido» con todo entregado cuenta close-order al terminar', async () => {
+    const u = userEvent.setup();
+    let responder: () => void = () => {};
+    api.deliverOrder.mockReturnValue(new Promise<void>((r) => { responder = r; }));
+    pintar(pedido({ lines: [linea(1, 1, 1)], outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalled());
+    expect(medirAccion).not.toHaveBeenCalled();
+    responder();
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'close-order'));
+  });
+
+  test('«Cerrar pedido» sin productos cuenta close-order', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 0, restocked: 0 });
+    pintar(pedido({ lines: [], total: '0', outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'close-order'));
+    expect(medirAccion).not.toHaveBeenCalledWith('pedidos', 'cancel-pending');
+  });
+
+  // «Entregar todo» usa la misma petición que «Cerrar pedido», pero no es cerrar: contarlo inflaría
+  // la acción con cada entrega normal.
+  test('«Entregar todo» no cuenta como cerrar', async () => {
+    const u = userEvent.setup();
+    api.deliverOrder.mockResolvedValue(undefined);
+    pintar(pedido({ lines: [linea(1, 2, 1)] }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Entregar todo' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(medirAccion).not.toHaveBeenCalled();
+  });
+
+  test('confirmar «Quitar los que faltan» cuenta cancel-pending', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 2, restocked: 1 });
+    pintar(pedido({ lines: [linea(1, 1, 1), linea(2, 1), linea(3, 1)] }));
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('radio', { name: 'Sin insumos' }));
+    await u.click(within(hoja).getByRole('button', { name: 'Quitar los 2 que faltan' }));
+
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'cancel-pending'));
+    expect(medirAccion).toHaveBeenCalledTimes(1);
+  });
+
+  test('si el servidor rechaza quitar lo que falta, no se cuenta', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockRejectedValue(new Error('no'));
+    pintar(pedido({ lines: [linea(1, 1, 1), linea(2, 1), linea(3, 1)] }));
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('radio', { name: 'Sin insumos' }));
+    await u.click(within(hoja).getByRole('button', { name: 'Quitar los 2 que faltan' }));
+
+    await waitFor(() => expect(api.cancelPendingLines).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(medirAccion).not.toHaveBeenCalled();
+  });
 });

@@ -149,6 +149,13 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
                     {/* El cliente ya se fue con la comida: se dice, no se deja adivinar. */}
                     {!o.enPreparacion ? ' · ya se entregó' : ''}
                   </Text>
+                  {/* Con la cuenta dividida, el total y el «Cobrar» de la derecha son dos cifras
+                      sin nombre: aquí se dice cuál ya entró a la caja. Sin pagos no se pinta. */}
+                  {pagadoDe(o) > 0 && (
+                    <Text fontSize="xs" fontWeight="600" color="green.700" lineClamp={1}>
+                      Pagado {money(String(pagadoDe(o)), o.currency)} · falta {money(o.outstanding, o.currency)}
+                    </Text>
+                  )}
                 </Box>
                 {/* Botones ANCHOS y bien separados. Son tres acciones seguidas en un renglón, dos
                     de ellas irreversibles de hecho —agregar manda a cocina, cobrar mueve dinero— y
@@ -183,4 +190,10 @@ function PedidosEnCursoSheet({ abierta, pedidos, total, hayQueAgregar, onCerrar,
       </DrawerContent>
     </DrawerRoot>
   );
+}
+
+// Lo pagado sale de las dos cifras que el servidor ya manda; redondeado porque son flotantes y la
+// resta de dos pesos con centavos pinta un centavo fantasma.
+function pagadoDe(o: BoardOrder): number {
+  return round2(Number(o.total) - Number(o.outstanding));
 }
