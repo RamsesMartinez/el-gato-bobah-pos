@@ -29,11 +29,15 @@ var (
 	// Cancelarlo a secas lo sacaba de los reportes y dejaba los cobros en la base, con el arqueo
 	// esperando ese dinero en el cajón: devolverlo dejaba el corte con un faltante que ningún renglón
 	// explicaba, y no devolverlo dejaba al negocio con dinero que no aparecía en ninguna venta.
+	ErrCancelarSinDevolver = fmt.Errorf("%w: este pedido ya tiene cobros; para cancelarlo hay que devolver ese dinero", ErrConflict)
 	// ErrRefundOnRefundedOrder: el pedido ya se reembolsó por el flujo anterior al libro de
 	// devoluciones. Ese flujo no escribía el libro, así que para él el pedido no tenía nada
-	// devuelto y se podía devolver completo otra vez (D18).
+	// devuelto y se podía devolver completo otra vez (spec 031, D18).
 	ErrRefundOnRefundedOrder = fmt.Errorf("%w: ese pedido ya devolvió su dinero", ErrConflict)
-	ErrCancelarSinDevolver   = fmt.Errorf("%w: este pedido ya tiene cobros; para cancelarlo hay que devolver ese dinero", ErrConflict)
+	// ErrCashRefundNeedsOpenRegister: devolver dinero del cajón sin turno principal abierto. La
+	// salida no quedaría en ningún arqueo: la apertura siguiente cuenta su fondo ya sin esos
+	// billetes y nadie sabría por qué (spec 031, D7).
+	ErrCashRefundNeedsOpenRegister = fmt.Errorf("%w: abre la caja para devolver efectivo", ErrConflict)
 )
 
 // CobradoPorMetodo: cuánto entró por cada medio de pago en un pedido.

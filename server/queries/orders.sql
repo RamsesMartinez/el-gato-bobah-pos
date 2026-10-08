@@ -530,8 +530,14 @@ select coalesce(sum(amount), 0)::numeric(10,2) as devuelto_total,
 from order_refunds where order_id = sqlc.arg('order_id');
 
 -- name: InsertOrderRefund :one
-insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+-- Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
+-- los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
+-- la reclama el turno que se abra después.
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
+                           cash_movement_id, register_session_id, business_date)
+values (sqlc.arg(order_id), sqlc.narg(order_line_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
+        sqlc.arg(reason), sqlc.arg(refunded_by), sqlc.narg(cash_movement_id), sqlc.narg(register_session_id),
+        sqlc.arg(business_date))
 returning id;
 
 -- name: RecalcOrderRefundAmount :exec
@@ -688,11 +694,13 @@ select split_part::int as part from order_payments
 where order_id = $1 and split_of = $2 and split_part is not null;
 
 -- name: CreateOrderPaymentNumbered :one
+-- `business_date`: el día del COBRO por el reloj de la app, no el del pedido (spec 031). Un pedido
+-- de ayer cobrado hoy es dinero de hoy.
 insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
-                            reference, client_uuid, payment_number, split_part, split_of)
+                            reference, client_uuid, payment_number, split_part, split_of, business_date)
 values (sqlc.arg(order_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
         sqlc.narg(register_session_id), sqlc.narg(received_by), sqlc.narg(reference), sqlc.narg(client_uuid),
-        sqlc.arg(payment_number), sqlc.narg(split_part), sqlc.narg(split_of))
+        sqlc.arg(payment_number), sqlc.narg(split_part), sqlc.narg(split_of), sqlc.arg(business_date))
 returning id;
 
 -- name: CreateOrderPaymentLine :exec

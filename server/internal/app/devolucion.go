@@ -92,32 +92,71 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	// efectivo lo que entró por tarjeta saca de la caja dinero que nunca estuvo ahí, y el arqueo
 	// cierra con un faltante inventado; no registrar la salida del efectivo de una app hace lo
 	// mismo con el signo contrario.
-	for _, parte := range domain.RepartirDevolucion(entradas, cmd.Monto) {
-		var movimiento *int64
-		if parte.SaleDelCajon {
-			id, err := s.salidaDeCaja(ctx, q, parte.Monto, motivo, cmd.ActorID)
-			if err != nil {
-				return err
-			}
-			movimiento = id
-		}
-		if _, err := q.InsertOrderRefund(ctx, db.InsertOrderRefundParams{
-			OrderID:         cmd.OrderID,
-			OrderLineID:     cmd.LineID,
-			PaymentMethodID: parte.MetodoID,
-			Amount:          parte.Monto,
-			Reason:          motivo,
-			RefundedBy:      cmd.ActorID,
-			CashMovementID:  movimiento,
-		}); err != nil {
-			return err
-		}
+	if err := s.registrarPartes(ctx, q, cmd.OrderID, cmd.LineID, domain.RepartirDevolucion(entradas, cmd.Monto), motivo, cmd.ActorID); err != nil {
+		return err
 	}
 
 	// `orders.refund_amount` pasa a ser la SUMA del libro, no un número que se escribe aparte:
 	// `RefundsByDay` ya lo lee y dos verdades sobre el mismo dinero es lo que el principio III
 	// prohíbe.
 	return q.RecalcOrderRefundAmount(ctx, cmd.OrderID)
+}
+
+// registrarPartes escribe en el libro cada parte de una devolución, con su turno y su día, y la
+// salida de caja de lo que estaba en el cajón. Lo comparten devolver y cancelar con devolución.
+//
+// El turno es el de AHORA, no el del pedido (decisión del dueño, spec 031): una devolución cuenta
+// en el turno y el día en que se hizo. Se lee con candado compartido también cuando nada sale del
+// cajón, para que un cierre simultáneo la espere o ella lo vea cerrado.
+func (s *OrdersService) registrarPartes(ctx context.Context, q *db.Queries, orderID int64, lineID *int64,
+	partes []domain.ParteDeDevolucion, motivo string, actor int64,
+) error {
+	var turno *int64
+	sess, err := q.LockOpenPrimarySession(ctx)
+	switch {
+	case err == nil:
+		turno = &sess.ID
+	case !errors.Is(err, pgx.ErrNoRows):
+		return err
+	}
+	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
+	for _, parte := range partes {
+		var movimiento *int64
+		if parte.SaleDelCajon {
+			// Sin turno NO se devuelve efectivo: la salida no quedaría en ningún arqueo, y la
+			// apertura siguiente contaría su fondo ya sin esos billetes sin que nadie supiera por qué
+			// (D7). Lo que no toca el cajón sí se registra: lo reclama el turno que se abra.
+			if turno == nil {
+				return domain.ErrCashRefundNeedsOpenRegister
+			}
+			mov, err := q.InsertCashMovement(ctx, db.InsertCashMovementParams{
+				SessionID: *turno,
+				Kind:      "salida",
+				Amount:    domain.Round2(parte.Monto.Add(parte.Propina)),
+				Concept:   fmt.Sprintf("Devolución: %s", motivo),
+				UserID:    actor,
+			})
+			if err != nil {
+				return err
+			}
+			movimiento = &mov.ID
+		}
+		if _, err := q.InsertOrderRefund(ctx, db.InsertOrderRefundParams{
+			OrderID:           orderID,
+			OrderLineID:       lineID,
+			PaymentMethodID:   parte.MetodoID,
+			Amount:            domain.Round2(parte.Monto),
+			TipAmount:         domain.Round2(parte.Propina),
+			Reason:            motivo,
+			RefundedBy:        actor,
+			CashMovementID:    movimiento,
+			RegisterSessionID: turno,
+			BusinessDate:      dia,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // cobradoPorMetodo traduce lo que la base sabe al tipo del dominio, que es donde vive la regla.
@@ -182,32 +221,6 @@ func (s *OrdersService) refundable(ctx context.Context, q *db.Queries, orderID i
 		t.queda = domain.MontoDevolvibleDeRenglon(t.cobrado, t.devueltoTotal, importe, devuelto.DevueltoDelRenglon)
 	}
 	return t, nil
-}
-
-// salidaDeCaja registra que el efectivo salió del cajón, para que el arqueo lo descuente solo.
-//
-// Sin turno abierto NO se rechaza la devolución: el dinero ya se le regresó al cliente y negarse a
-// registrarlo no lo devuelve a la caja — solo lo deja sin rastro. Se anota la devolución sin
-// movimiento, y el corte siguiente muestra la diferencia con su explicación en el libro.
-func (s *OrdersService) salidaDeCaja(ctx context.Context, q *db.Queries, monto decimal.Decimal, motivo string, actor int64) (*int64, error) {
-	sess, err := q.LockOpenPrimarySession(ctx)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	mov, err := q.InsertCashMovement(ctx, db.InsertCashMovementParams{
-		SessionID: sess.ID,
-		Kind:      "salida",
-		Amount:    domain.Round2(monto),
-		Concept:   fmt.Sprintf("Devolución: %s", motivo),
-		UserID:    actor,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &mov.ID, nil
 }
 
 // CancelarConDevolucion cancela un pedido resolviendo su dinero en la MISMA transacción.

@@ -395,10 +395,10 @@ func (q *Queries) CreateOrderPaymentLine(ctx context.Context, arg CreateOrderPay
 
 const createOrderPaymentNumbered = `-- name: CreateOrderPaymentNumbered :one
 insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
-                            reference, client_uuid, payment_number, split_part, split_of)
+                            reference, client_uuid, payment_number, split_part, split_of, business_date)
 values ($1, $2, $3, $4,
         $5, $6, $7, $8,
-        $9, $10, $11)
+        $9, $10, $11, $12)
 returning id
 `
 
@@ -414,8 +414,11 @@ type CreateOrderPaymentNumberedParams struct {
 	PaymentNumber     *int16          `json:"payment_number"`
 	SplitPart         *int16          `json:"split_part"`
 	SplitOf           *int16          `json:"split_of"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
+// `business_date`: el día del COBRO por el reloj de la app, no el del pedido (spec 031). Un pedido
+// de ayer cobrado hoy es dinero de hoy.
 func (q *Queries) CreateOrderPaymentNumbered(ctx context.Context, arg CreateOrderPaymentNumberedParams) (int64, error) {
 	row := q.db.QueryRow(ctx, createOrderPaymentNumbered,
 		arg.OrderID,
@@ -429,6 +432,7 @@ func (q *Queries) CreateOrderPaymentNumbered(ctx context.Context, arg CreateOrde
 		arg.PaymentNumber,
 		arg.SplitPart,
 		arg.SplitOf,
+		arg.BusinessDate,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1212,30 +1216,42 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 }
 
 const insertOrderRefund = `-- name: InsertOrderRefund :one
-insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
+                           cash_movement_id, register_session_id, business_date)
+values ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10)
 returning id
 `
 
 type InsertOrderRefundParams struct {
-	OrderID         int64           `json:"order_id"`
-	OrderLineID     *int64          `json:"order_line_id"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Amount          decimal.Decimal `json:"amount"`
-	Reason          string          `json:"reason"`
-	RefundedBy      int64           `json:"refunded_by"`
-	CashMovementID  *int64          `json:"cash_movement_id"`
+	OrderID           int64           `json:"order_id"`
+	OrderLineID       *int64          `json:"order_line_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reason            string          `json:"reason"`
+	RefundedBy        int64           `json:"refunded_by"`
+	CashMovementID    *int64          `json:"cash_movement_id"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
+// Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
+// los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
+// la reclama el turno que se abra después.
 func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertOrderRefund,
 		arg.OrderID,
 		arg.OrderLineID,
 		arg.PaymentMethodID,
 		arg.Amount,
+		arg.TipAmount,
 		arg.Reason,
 		arg.RefundedBy,
 		arg.CashMovementID,
+		arg.RegisterSessionID,
+		arg.BusinessDate,
 	)
 	var id int64
 	err := row.Scan(&id)

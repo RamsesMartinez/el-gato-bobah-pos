@@ -752,6 +752,8 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 			OrderID: ord.ID, PaymentMethodID: metodo, Amount: total,
 			RegisterSessionID: sesion, ReceivedBy: &usuarioID,
 			Reference: &ent.ExternalOrderID, ClientUuid: ptrUUID(uuid.New()),
+			// El día del cobro, que es el de la aceptación: la plataforma ya cobró.
+			BusinessDate: fecha,
 		}); err != nil {
 			return err
 		}
@@ -814,6 +816,13 @@ func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, se
 			ID: id, RegisterSessionID: &sesionID, DailyNumber: num,
 		}); err != nil {
 			return fmt.Errorf("darle turno al pedido %d: %w", id, err)
+		}
+		// Su pago va al MISMO turno: reclamar solo el pedido dejaba la venta en el corte y el dinero
+		// en ninguno (spec 031, D5).
+		if err := q.ClaimPlatformOrderPayments(ctx, db.ClaimPlatformOrderPaymentsParams{
+			OrderID: id, RegisterSessionID: &sesionID,
+		}); err != nil {
+			return fmt.Errorf("darle turno al pago del pedido %d: %w", id, err)
 		}
 	}
 	return nil

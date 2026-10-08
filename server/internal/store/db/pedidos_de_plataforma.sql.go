@@ -113,10 +113,29 @@ func (q *Queries) ClaimPlatformOrder(ctx context.Context, arg ClaimPlatformOrder
 	return err
 }
 
+const claimPlatformOrderPayments = `-- name: ClaimPlatformOrderPayments :exec
+update order_payments
+   set register_session_id = $2
+ where order_id = $1 and register_session_id is null
+`
+
+type ClaimPlatformOrderPaymentsParams struct {
+	OrderID           int64  `json:"order_id"`
+	RegisterSessionID *int64 `json:"register_session_id"`
+}
+
+// Los pagos del pedido huérfano entran al MISMO turno que el pedido (spec 031, D5). Reclamar solo el
+// pedido dejaba su venta en el corte y su dinero en ninguno: el esperado filtra los pagos por su
+// propio turno.
+func (q *Queries) ClaimPlatformOrderPayments(ctx context.Context, arg ClaimPlatformOrderPaymentsParams) error {
+	_, err := q.db.Exec(ctx, claimPlatformOrderPayments, arg.OrderID, arg.RegisterSessionID)
+	return err
+}
+
 const createPlatformOrderPayment = `-- name: CreatePlatformOrderPayment :exec
 insert into order_payments (order_id, payment_method_id, amount, register_session_id, received_by,
-                            reference, client_uuid)
-values ($1, $2, $3, $4, $5, $6, $7)
+                            reference, client_uuid, business_date)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type CreatePlatformOrderPaymentParams struct {
@@ -127,10 +146,13 @@ type CreatePlatformOrderPaymentParams struct {
 	ReceivedBy        *int64          `json:"received_by"`
 	Reference         *string         `json:"reference"`
 	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
 // El pago de un pedido de plataforma. `register_session_id` puede ir NULL: la cocina no espera a
 // que alguien abra caja, y el pedido se enlaza al turno que se abra después.
+//
+// `business_date`: el día de negocio del cobro, por el reloj de la app (spec 031).
 func (q *Queries) CreatePlatformOrderPayment(ctx context.Context, arg CreatePlatformOrderPaymentParams) error {
 	_, err := q.db.Exec(ctx, createPlatformOrderPayment,
 		arg.OrderID,
@@ -140,6 +162,7 @@ func (q *Queries) CreatePlatformOrderPayment(ctx context.Context, arg CreatePlat
 		arg.ReceivedBy,
 		arg.Reference,
 		arg.ClientUuid,
+		arg.BusinessDate,
 	)
 	return err
 }

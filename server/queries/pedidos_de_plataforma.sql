@@ -205,6 +205,14 @@ update orders
    set register_session_id = $2, daily_number = $3
  where id = $1 and register_session_id is null;
 
+-- name: ClaimPlatformOrderPayments :exec
+-- Los pagos del pedido huérfano entran al MISMO turno que el pedido (spec 031, D5). Reclamar solo el
+-- pedido dejaba su venta en el corte y su dinero en ninguno: el esperado filtra los pagos por su
+-- propio turno.
+update order_payments
+   set register_session_id = $2
+ where order_id = $1 and register_session_id is null;
+
 -- name: GetPlatformPaymentMethod :one
 -- El método de pago de una plataforma, en línea o en efectivo.
 --
@@ -221,9 +229,11 @@ select id from payment_methods
 -- name: CreatePlatformOrderPayment :exec
 -- El pago de un pedido de plataforma. `register_session_id` puede ir NULL: la cocina no espera a
 -- que alguien abra caja, y el pedido se enlaza al turno que se abra después.
+--
+-- `business_date`: el día de negocio del cobro, por el reloj de la app (spec 031).
 insert into order_payments (order_id, payment_method_id, amount, register_session_id, received_by,
-                            reference, client_uuid)
-values ($1, $2, $3, $4, $5, $6, $7);
+                            reference, client_uuid, business_date)
+values ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: SeedPlatformPaymentMethods :exec
 -- Los dos métodos de cobro de una plataforma, al CONECTAR la tienda.
