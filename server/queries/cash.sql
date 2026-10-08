@@ -169,7 +169,12 @@ returning *;
 -- name: ListCashMovements :many
 -- expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
 -- de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
+--
+-- is_refund: la salida de caja de una devolución (spec 029). El corte la presenta en
+-- «Devoluciones» de su medio y no en «Salidas de efectivo»; el esperado no cambia, porque el neto
+-- de movimientos la sigue restando.
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id,
+       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -241,10 +246,16 @@ with pagos as (
    where op.register_session_id = sqlc.arg(session_id)::bigint
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount + r.tip_amount) as refunded
+  -- Partidas por si salieron del cajón (spec 029). Solo `refunded` se resta del esperado; las del
+  -- cajón ya bajan por su salida de caja. Las otras tres viajan para PRESENTAR: el corte pone toda
+  -- devolución en «Devoluciones» de su medio, venta y propina por separado, igual que Ventas.
+  select r.payment_method_id,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is null) as refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is null) as refunded_tips,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded_tips
     from order_refunds r
    where r.register_session_id = sqlc.arg(session_id)::bigint
-     and r.cash_movement_id is null
    group by r.payment_method_id
 )
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
@@ -252,7 +263,10 @@ select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.
        coalesce(p.expected, 0)::numeric(10,2) as expected,
        coalesce(p.tips, 0)::numeric(10,2) as tips,
        coalesce(p.earlier, 0)::numeric(10,2) as earlier,
-       coalesce(d.refunded, 0)::numeric(10,2) as refunded
+       coalesce(d.refunded, 0)::numeric(10,2) as refunded,
+       coalesce(d.refunded_tips, 0)::numeric(10,2) as refunded_tips,
+       coalesce(d.drawer_refunded, 0)::numeric(10,2) as drawer_refunded,
+       coalesce(d.drawer_refunded_tips, 0)::numeric(10,2) as drawer_refunded_tips
 from payment_methods pm
 left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 left join pagos p on p.payment_method_id = pm.id

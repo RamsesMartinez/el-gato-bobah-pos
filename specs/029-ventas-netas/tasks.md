@@ -36,10 +36,10 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
 ## Phase 5: US3 — el corte y Ventas clasifican igual (P1)
 
-- [ ] T012 [P] [US3] Unitario de la clasificación del desglose (devolución de venta vs propina devuelta, salidas que son devolución fuera de «Salidas», nota del negativo) en `server/internal/domain/cash_test.go` (`SplitRefunds`, `NegativeMethodNote`)
-- [ ] T013 [US3] Integración `server/internal/integration/ventas_netas_corte_test.go`: devolución en efectivo y con tarjeta en el mismo turno → las dos en «Devoluciones» de su medio, ninguna en «Salidas de efectivo», esperado igual y fondo + ingresos − egresos del desglose = esperado del efectivo (falla nombrando el concepto); cancelar $100+$10 en efectivo → tips del efectivo 0, «Devoluciones» −100; Histórico de turno abierto con totales en vivo (y ciego ocultando); medio negativo con nota; misma cifra devuelta que Ventas
-- [ ] T014 [US3] `refunded_tips`, `drawer_refunded`, `drawer_refunded_tips` en `ExpectedByMethodForSession` e `is_refund` en `ListCashMovements` (`server/queries/cash.sql`); `make sqlc`
-- [ ] T015 [US3] `corteBreakdown`, `sessionWithExpected`, `SessionDetail` (turno abierto en vivo) en `server/internal/app/backoffice.go`
+- [X] T012 [P] [US3] Unitario de la clasificación del desglose (devolución de venta vs propina devuelta, salidas que son devolución fuera de «Salidas», nota del negativo) en `server/internal/domain/cash_test.go` (`SplitRefunds`, `NegativeMethodNote`)
+- [X] T013 [US3] Integración `server/internal/integration/ventas_netas_corte_test.go`: devolución en efectivo y con tarjeta en el mismo turno → las dos en «Devoluciones» de su medio, ninguna en «Salidas de efectivo», esperado igual y fondo + ingresos − egresos del desglose = esperado del efectivo (falla nombrando el concepto); cancelar $100+$10 en efectivo → tips del efectivo 0, «Devoluciones» −100; Histórico de turno abierto con totales en vivo (y ciego ocultando); medio negativo con nota; misma cifra devuelta que Ventas
+- [X] T014 [US3] `refunded_tips`, `drawer_refunded`, `drawer_refunded_tips` en `ExpectedByMethodForSession` e `is_refund` en `ListCashMovements` (`server/queries/cash.sql`); `make sqlc`
+- [X] T015 [US3] `corteBreakdown`, `sessionWithExpected`, `SessionDetail` (turno abierto en vivo) en `server/internal/app/backoffice.go`
 - [ ] T016 [P] [US3] Vitest `web/src/features/backoffice/CashPage.test.tsx`: nota del negativo visible
 - [ ] T017 [US3] Nota y tipos en `web/src/features/backoffice/CashPage.tsx` y `web/src/api/backoffice.ts`
 
