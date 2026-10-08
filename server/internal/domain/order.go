@@ -335,3 +335,17 @@ func PuedeRecibirLineas(estado string) bool {
 func ReabreAlAgregar(estado string) bool {
 	return estado == StatusEntregada
 }
+
+// ErrPlatformOrderAtCounter: un pedido de plataforma no se entrega en el mostrador.
+var ErrPlatformOrderAtCounter = fmt.Errorf("%w: un pedido de plataforma es para llevar o a domicilio, no de mostrador", ErrValidation)
+
+// ValidPlatformServiceType rechaza un pedido de plataforma de mostrador ANTES de la base. El check
+// `orders_servicio_de_plataforma` lo rechaza también, pero ese rechazo llegaba como 500 — «el
+// servidor se rompió» — por una combinación que quien opera puede corregir (spec 029). El check
+// queda como red; esta es la barrera que habla.
+func ValidPlatformServiceType(serviceType string, platformID *int16) error {
+	if platformID != nil && serviceType == "mostrador" {
+		return ErrPlatformOrderAtCounter
+	}
+	return nil
+}

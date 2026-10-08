@@ -9,7 +9,7 @@ Rutas relativas a la raíz del worktree. `[P]` = archivo distinto, sin dependenc
 
 ## Phase 1: Setup
 
-- [ ] T001 Postgres propio `egb029-pg` en :5503 y `TEST_DATABASE_URL` para la integración (quickstart §1)
+- [X] T001 Postgres propio `egb029-pg` en :5503 y `TEST_DATABASE_URL` para la integración (quickstart §1)
 
 ## Phase 2: Foundational
 
@@ -45,9 +45,9 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
 ## Phase 6: US4 — el detalle y la API dicen la verdad (P2)
 
-- [ ] T018 [P] [US4] Unitarios en `server/internal/domain/{devolucion,cobro,order}_test.go`: nada por devolver (pedido y renglón), cobro < $0.01, plataforma en mostrador
-- [ ] T019 [US4] Integración en `ventas_netas_test.go`: `GET /orders/:id` (vía `Detail`) con `refund` real; renglón ya devuelto sin monto → mensaje de nada por devolver; pedido de plataforma en mostrador → `ErrValidation`; cobrar 0.005 → rechazo y sigue debiendo
-- [ ] T020 [US4] `ValidarDevolucion` y ruta de renglón en `server/internal/domain/devolucion.go` + `server/internal/app/devolucion.go`; `ValidChargeAmount` en `cobro.go` + `Charge`; `ValidPlatformServiceType` en `domain` + `Create`; `Refund` en `OrdersService.load`
+- [X] T018 [P] [US4] Unitarios en `server/internal/domain/{devolucion,cobro,order}_test.go`: nada por devolver (pedido y renglón), cobro < $0.01, plataforma en mostrador
+- [X] T019 [US4] Integración en `ventas_netas_test.go`: `GET /orders/:id` (vía `Detail`) con `refund` real; renglón ya devuelto sin monto → mensaje de nada por devolver; pedido de plataforma en mostrador → `ErrValidation`; cobrar 0.005 → rechazo y sigue debiendo
+- [X] T020 [US4] `ValidarDevolucion` y ruta de renglón en `server/internal/domain/devolucion.go` + `server/internal/app/devolucion.go`; `ValidChargeAmount` en `cobro.go` + `Charge`; `ValidPlatformServiceType` en `domain` + `Create`; `Refund` en `OrdersService.load`
 
 ## Phase 7: US5 — se lee sin ambigüedad en la tableta (P2)
 

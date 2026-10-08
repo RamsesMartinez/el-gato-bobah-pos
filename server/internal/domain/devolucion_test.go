@@ -268,3 +268,25 @@ func TestCancelarDevuelveCuentaYPropinaPorMedio(t *testing.T) {
 		t.Fatalf("tarjeta = %+v, quiere 60 de cuenta y 6 de propina", partes[1])
 	}
 }
+
+// NADA POR DEVOLVER SE DICE COMO TAL (spec 029). Devolver sin monto pide «lo que queda», y cuando lo
+// que queda es cero el monto llegaba en $0 y rebotaba con «el monto a devolver no es una cantidad de
+// dinero»: el operador revisaba un campo que nunca tecleó. Medido en el ambiente de pruebas.
+func TestNadaPorDevolverSeDiceComoTal(t *testing.T) {
+	err := ValidarDevolucion(d("0"), d("100"), d("100"))
+	if !errors.Is(err, ErrNothingLeftToRefund) {
+		t.Fatalf("pedido ya devuelto completo: err = %v, quiere ErrNothingLeftToRefund", err)
+	}
+	if err := ValidateLineRefund(d("0"), d("0")); !errors.Is(err, ErrNothingLeftOnLine) {
+		t.Fatalf("renglón ya devuelto: err = %v, quiere ErrNothingLeftOnLine", err)
+	}
+	if err := ValidateLineRefund(d("61"), d("60")); !errors.Is(err, ErrDevolucionExcede) {
+		t.Fatalf("más de lo que queda del renglón: err = %v, quiere ErrDevolucionExcede", err)
+	}
+	if err := ValidateLineRefund(d("60"), d("60")); err != nil {
+		t.Fatalf("lo que queda del renglón debe pasar: %v", err)
+	}
+	if !errors.Is(ErrNothingLeftOnLine, ErrValidation) || !errors.Is(ErrNothingLeftToRefund, ErrValidation) {
+		t.Fatal("los dos tienen que llegar como 4xx")
+	}
+}

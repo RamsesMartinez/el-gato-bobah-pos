@@ -80,11 +80,15 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	if err != nil {
 		return err
 	}
+	// El renglón primero: con el producto ya devuelto, lo que importa decir es eso, aunque además
+	// el pedido entero ya no tenga nada.
+	if cmd.LineID != nil {
+		if err := domain.ValidateLineRefund(cmd.Monto, tope.remaining); err != nil {
+			return err
+		}
+	}
 	if err := domain.ValidarDevolucion(cmd.Monto, tope.paid, tope.refundedTotal); err != nil {
 		return err
-	}
-	if cmd.LineID != nil && domain.Round2(cmd.Monto).GreaterThan(tope.remaining) {
-		return fmt.Errorf("%w: de ese producto solo quedan %s por devolver", domain.ErrDevolucionExcede, tope.remaining)
 	}
 	entradas := tope.entries
 
