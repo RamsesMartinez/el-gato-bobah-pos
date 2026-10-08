@@ -44,7 +44,8 @@ Restricciones e índices:
   and folio_name is not null` — dos cuentas vivas no comparten nombre (FR-001, US2 AS2).
 - `order_drafts_live_per_order` **único parcial** `(company_id, order_id) where status =
   'capturando' and order_id is not null` — una sola «Nuevo» viva por pedido.
-- `order_drafts_live` `(company_id, updated_at) where status = 'capturando'` — la lista y el barrido.
+- ~~`order_drafts_live`~~ — quitado en la revisión de código: ninguna consulta lo usaba y `updated_at`
+  cambia en cada toque (impedía updates HOT).
 - `order_drafts_by_order` `(company_id, order_id) where order_id is not null` — lo usan el barrido de «Nuevo» de pedidos cancelados y la lista (pegar la «Nuevo» a su pedido); la enviada también se busca por él.
 
 **La migración no crea índices en tablas existentes**: todos los unique que piden las FKs compuestas ya existen (`products` 0040/0071, `delivery_platforms` 0037, `orders` 0065, `users` 0073). Solo crea tablas nuevas, así que no toma locks sobre tablas vivas.
@@ -56,7 +57,7 @@ Grants: `select, insert, update` a `gatobobah_app`. **Sin `delete`**: la descart
 
 | Columna | Tipo | Nota |
 |---|---|---|
-| `id` | `uuid primary key` | Lo pone la tableta (= `opId` del agregado que lo creó) |
+| `id` | `uuid not null`, `primary key (company_id, id)` | Lo pone la tableta (= `opId` del agregado que lo creó). Por empresa y no global (revisión de código): un uuid de otra empresa chocaba con 23505 y servía de oráculo |
 | `company_id` | igual que arriba | |
 | `draft_id` | `uuid not null` | FK `(draft_id, company_id) → order_drafts (id, company_id) on delete cascade` |
 | `product_id` | `bigint not null` | FK `(company_id, product_id) → products (company_id, id) on delete no action` — `restrict` no se difiere y abortaría el borrado en cascada de una empresa (0079); `no action` igual bloquea el reorg de datos que borra un producto con cuenta viva |
@@ -67,7 +68,9 @@ Grants: `select, insert, update` a `gatobobah_app`. **Sin `delete`**: la descart
 | `version` | `int not null default 1` | Versión esperada para cambiar o quitar (R-2) |
 | `created_at`, `updated_at` | `timestamptz not null default now()` | |
 
-Índice `(company_id, draft_id, position)`. `position` y la fusión son seguras porque **toda escritura de renglones toma primero `select … from order_drafts where id = $1 for update`** (serializa por cuenta; dos tabletas no duplican posición ni crean dos renglones del mismo producto). Grants: `select, insert, update, delete` — quitar un
+Al **enviarse** la cuenta sus renglones se borran (ya viven en el pedido; con FK `no action` a
+`products` bloqueaban para siempre borrar un producto). Los de una descartada se quedan como rastro, y
+el reorg de datos tiene que borrarlos antes de borrar productos. Índice `(company_id, draft_id, position)`. `position` y la fusión son seguras porque **toda escritura de renglones toma primero `select … from order_drafts where id = $1 for update`** (serializa por cuenta; dos tabletas no duplican posición ni crean dos renglones del mismo producto). Grants: `select, insert, update, delete` — quitar un
 renglón de una cuenta que no se ha mandado sí lo borra (no es dinero ni venta: D-1).
 
 ### `order_draft_adds` — idempotencia de cada «agregar»
