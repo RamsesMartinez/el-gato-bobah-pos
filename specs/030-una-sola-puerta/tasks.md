@@ -72,7 +72,7 @@ archivo ni depende de otra tarea abierta de la misma fase.
 - [X] T019 **FE** Implementar los tipos `DraftView`, `DraftLineView`, `AccountItem`, `SendResult` en web/src/types/pos.ts (campos de arreglo **opcionales** donde el compilador deba obligar a la guarda, AGENTS.md §1) y las funciones en web/src/api/pos.ts; textos de `DRAFT_CHANGED`, `DRAFT_DISCARDED`, `DRAFT_SENT`, `ORDER_CLOSED`, `PLATFORM_ORDER_NO_LINES` en web/src/api/mensajes.ts (sin «borrador», «versión» ni códigos)
 - [X] T020 [P] **FE** Test en web/src/components/ConfirmSheet.test.tsx y ReasonSheet.test.tsx: botones ≥ 44 px; la acción destructiva separada de la principal; cerrar con el fondo o Escape = cancelar; `ReasonSheet` devuelve el texto o `null` y su campo no es obligatorio si así se pide
 - [X] T021 **FE** Implementar web/src/components/ConfirmSheet.tsx y ReasonSheet.tsx (hoja inferior de la app, `maxH` en dvh)
-- [ ] T022 [P] **FE** Test estático web/src/sinDialogosDelSistema.test.ts: recorre `web/src` y falla nombrando archivo y línea ante `confirm(`, `prompt(` o `alert(` del navegador (excluye `shared/pwa/installPrompt.ts`, que es la API de PWA, y **los comentarios**: `PrintSettingsPage.tsx` nombra `confirm()` en uno). **Queda en rojo** hasta T088; es la vara de FR-015/SC-005
+- [X] T022 [P] **FE** Test estático web/src/sinDialogosDelSistema.test.ts: recorre `web/src` y falla nombrando archivo y línea ante `confirm(`, `prompt(` o `alert(` del navegador (excluye `shared/pwa/installPrompt.ts`, que es la API de PWA, y **los comentarios**: `PrintSettingsPage.tsx` nombra `confirm()` en uno). **Queda en rojo** hasta T088; es la vara de FR-015/SC-005
 - [X] T023 [P] **FE** Test en web/src/stores/pos.test.ts: persiste solo `{ selected }` bajo `egb:pos:v3`; un `selected` con forma rara se descarta al cargar (no tumba la pantalla, caso 18); un `selected` que el servidor no encuentra (otra empresa en la tableta, cuenta ya descartada) se limpia sin aviso; no hay renglones ni cabeceras en el almacenamiento
 - [X] T024 **FE** Implementar web/src/stores/pos.ts
 - [X] T025 [P] **FE** Test en web/src/features/pos/useSinConexion.test.ts: `offline` del navegador → sin conexión; un fallo de red en una mutación → sin conexión aunque `navigator.onLine` diga lo contrario; vuelve sola al primer éxito
@@ -256,8 +256,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 - [ ] T074 [US5] **BE** Escribir `ReleaseFolioName` en server/queries/folios.sql y la consulta de descartar; implementar `DraftsService.Discard` en server/internal/app/drafts.go, handler y ruta `POST /pos/drafts/{id}/discard`
 - [ ] T075 [P] [US5] **FE** Test en web/src/features/pos/DescartarCuentaSheet.test.tsx: cuenta vacía → se descarta sin hoja; con productos → «¿Descartar la cuenta de Levkoy? Se pierden 2 productos ($74)…»; «Seguir capturando» es la principal y no cambia nada; «Descartar» rojo, separado, descarta y deja sin selección. El ⋮ de cabecera ofrece «Descartar cuenta» solo en captura y «Cancelar pedido» solo en enviada (y solo con permiso `orders.cancel`); una enviada no tiene ninguna otra forma de cerrarse
 - [ ] T076 [US5] **FE** Implementar web/src/features/pos/DescartarCuentaSheet.tsx y el ⋮ de cabecera del ticket: «Descartar cuenta» solo en captura, «Cancelar pedido» (permiso `orders.cancel`, flujo existente) solo en enviada; ninguna otra forma de cerrar una enviada (US5 AS3). Quitar el `confirm('¿Vaciar pedido?')` de Ticket.tsx
-- [ ] T077 [P] [US5] **FE** Test en web/src/features/backoffice/ExpensesPage.test.tsx: cancelar un gasto pide el motivo en `ReasonSheet` (opcional) y no llama a `prompt`
-- [ ] T078 [US5] **FE** Reemplazar el `prompt()` de web/src/features/backoffice/ExpensesPage.tsx por `ReasonSheet`
+- [X] T077 [P] [US5] **FE** Test en web/src/features/backoffice/ExpensesPage.test.tsx: cancelar un gasto pide el motivo en `ReasonSheet` (opcional) y no llama a `prompt`
+- [X] T078 [US5] **FE** Reemplazar el `prompt()` de web/src/features/backoffice/ExpensesPage.tsx por `ReasonSheet`
 
 ---
 
@@ -283,8 +283,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 - [ ] T085 [US8] **BE** IT `TestCloseLiveAccountsDoNotBlock` en server/internal/integration/cierre_con_cuentas_vivas_test.go: con un pedido en cocina el cierre sigue bloqueado (`OPEN_ORDERS`, `Pending` sin cambio); con solo cuentas en captura y entregadas que deben (una de hace 100 días) cierra, `liveAccounts` las lista, y al día siguiente las que deben están en `previous_days` y las capturando siguen vivas; JSON crudo `liveAccounts: []`
 - [ ] T086 [US8] **BE** Agregar `LiveAccounts` a `SessionView` en server/internal/app/backoffice.go desde `AccountsService.Live(ctx, true)` filtrado a los grupos no bloqueantes; `sinPedidosPendientes` no se toca
-- [ ] T087 [P] [US8] **FE** Test en web/src/features/backoffice/CashPage.test.tsx: bloqueantes arriba con «Abrir» (navega a `/pos?pedido=`); sección plegada «Cuentas pendientes (N)» con «Abrir» y «Descartar» de 44 px y separados; «Descartar» confirma con `ConfirmSheet`; «Cerrar caja» confirma con `ConfirmSheet` y no llama a `confirm`
-- [ ] T088 [US8] **FE** Implementar en web/src/features/backoffice/CashPage.tsx; con esto `sinDialogosDelSistema.test.ts` (T022) queda **verde**
+- [X] T087 [P] [US8] **FE** Test en web/src/features/backoffice/CashPage.test.tsx: bloqueantes arriba con «Abrir» (navega a `/pos?pedido=`); sección plegada «Cuentas pendientes (N)» con «Abrir» y «Descartar» de 44 px y separados; «Descartar» confirma con `ConfirmSheet`; «Cerrar caja» confirma con `ConfirmSheet` y no llama a `confirm`
+- [X] T088 [US8] **FE** Implementar en web/src/features/backoffice/CashPage.tsx; con esto `sinDialogosDelSistema.test.ts` (T022) queda **verde**
 
 ---
 

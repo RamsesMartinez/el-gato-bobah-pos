@@ -1,7 +1,11 @@
 import { useState, Fragment, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { posApi } from '../../api/pos';
+import type { AccountItem } from '../../types/pos';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, Wrap, useBreakpointValue,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
 } from '@chakra-ui/react';
 import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
 import { medirAccion } from '../../api/uso';
@@ -9,7 +13,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -673,6 +677,18 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [transferOpen, setTransferOpen] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
+  const navigate = useNavigate();
+  // Descartar una cuenta que se capturaba y nadie mandó. No bloquea el cierre, pero quien cierra
+  // puede limpiarla desde aquí (D-8).
+  const descartarCuenta = async (draftId: string) => {
+    try {
+      await posApi.discardDraft(draftId);
+    } catch (e) {
+      toaster.create({ title: 'No se pudo descartar', description: mensajeDeError(e), type: 'error' });
+    }
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+  };
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
     // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
@@ -835,28 +851,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
-          {/* Lo que falta por entregar, ANTES de intentar cerrar. Antes solo se sabía al presionar
-              el botón y recibir el error: el operador terminaba de contar el efectivo para
-              enterarse entonces de que le faltaba sacar comida. */}
-          {session.pending.length > 0 && (
-            <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
-              _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
-              <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
-                Falta entregar {session.pending.length === 1 ? '1 pedido' : `${session.pending.length} pedidos`}
-              </Text>
-              <Text fontSize="sm" color="fg.muted" mb={2}>
-                La caja no cierra hasta que salgan o se cancelen. Estar cobrado no cuenta: lo que
-                falta es la comida.
-              </Text>
-              <Wrap gap={2}>
-                {session.pending.map((o) => (
-                  <Badge key={o.number} colorPalette="orange" px={2} py={1} fontSize="sm">
-                    {o.name ? `${o.name} · #${o.number}` : `#${o.number}`}
-                  </Badge>
-                ))}
-              </Wrap>
-            </Box>
-          )}
+          {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
+              de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
+          <CuentasDelCierre pending={session.pending} cuentas={session.liveAccounts ?? []}
+            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarCuenta} />
 
           {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
               decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
@@ -880,11 +878,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
             currency={session.currency} />
 
-          <Button colorPalette="red" size="lg" loading={closeMut.isPending}
+          <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
             disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0}
-            onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
-            Cerrar caja
-          </Button>
+            onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
 
@@ -1284,4 +1280,126 @@ function colorDeEstadoDeVenta(estado: string) {
   if (estado === 'cancelada') return 'red';
   if (estado === 'reembolsada') return 'orange';
   return 'gray';
+}
+
+// LAS CUENTAS VIVAS EN EL CIERRE (spec 030, US8; D-10; lienzo V2-7).
+//
+// Arriba lo que BLOQUEA: pedidos en cocina o listos, con «Abrir» para ir a su cuenta. Debajo, plegado,
+// lo que NO bloquea —las que se capturan y las entregadas que deben, de cualquier día—: una cuenta
+// fiada tiene que poder pasar al día siguiente. Plegado porque en 600 px de alto la lista empujaba el
+// botón de cerrar fuera de la pantalla.
+export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
+  pending: PendingOrder[];
+  cuentas: AccountItem[];
+  onAbrir: (ruta: string) => void;
+  onDescartar: (draftId: string) => void;
+}) {
+  const [abierta, setAbierta] = useState(false);
+  const [descartando, setDescartando] = useState<AccountItem | null>(null);
+  if (pending.length === 0 && cuentas.length === 0) return null;
+  const nombre = (c: AccountItem) => c.folioName || c.customerName || 'Cuenta nueva';
+  const estado: Record<AccountItem['state'], string> = {
+    capturing: 'capturando · sin enviar',
+    in_kitchen: 'en cocina',
+    paid_in_kitchen: 'pagada · en cocina',
+    partly_paid: 'pago parcial',
+    delivered_owes: 'entregada, debe',
+  };
+  return (
+    <VStack align="stretch" gap={2}>
+      {pending.length > 0 && (
+        <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
+          _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
+          <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
+            Falta entregar {pending.length === 1 ? '1 pedido' : `${pending.length} pedidos`}
+          </Text>
+          <Text fontSize="sm" color="fg.muted" mb={2}>
+            La caja no cierra hasta que salgan o se cancelen.
+          </Text>
+          <VStack align="stretch" gap={1}>
+            {pending.map((o) => (
+              <HStack key={o.number} justify="space-between" gap={2}>
+                <Text fontWeight="600" truncate>{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                {o.id !== undefined && (
+                  <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${o.name || `#${o.number}`}`}
+                    onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Abrir</Button>
+                )}
+              </HStack>
+            ))}
+          </VStack>
+        </Box>
+      )}
+      {cuentas.length > 0 && (
+        <Box borderWidth="1px" borderRadius="lg" p={2}>
+          <Button variant="ghost" minH="44px" w="100%" justifyContent="space-between"
+            onClick={() => setAbierta((v) => !v)}>
+            <Text fontWeight="700">Cuentas pendientes ({cuentas.length})</Text>
+            {abierta ? <LuChevronUp /> : <LuChevronDown />}
+          </Button>
+          {!abierta && (
+            <Text fontSize="xs" color="fg.muted" px={4}>No impiden cerrar: siguen en la fila de cuentas.</Text>
+          )}
+          {abierta && (
+            <VStack align="stretch" gap={1} maxH="40dvh" overflowY="auto" mt={1}>
+              {cuentas.map((c) => (
+                <HStack key={c.key} justify="space-between" gap={3} px={2} py={1} borderTopWidth="1px">
+                  <Box minW={0} flex="1">
+                    <Text fontWeight="600" truncate>{nombre(c)}</Text>
+                    <Text fontSize="xs" color="fg.muted" truncate>
+                      {c.number !== null ? `#${c.number} · ` : ''}{estado[c.state]}
+                    </Text>
+                  </Box>
+                  <Text fontWeight="700" flexShrink={0}>{money(c.state === 'capturing' ? c.total : c.outstanding)}</Text>
+                  <Box flexShrink={0}>
+                    <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${nombre(c)}`}
+                      onClick={() => onAbrir(c.kind === 'draft' ? `/pos?cuenta=${c.draftId}` : `/pos?pedido=${c.orderId}`)}>
+                      Abrir
+                    </Button>
+                  </Box>
+                  {c.kind === 'draft' && c.draftId && (
+                    <Box flexShrink={0} pl={2}>
+                      <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Descartar ${nombre(c)}`}
+                        onClick={() => setDescartando(c)}>
+                        Descartar
+                      </Button>
+                    </Box>
+                  )}
+                </HStack>
+              ))}
+            </VStack>
+          )}
+        </Box>
+      )}
+      <ConfirmSheet isOpen={descartando !== null} destructive
+        title={`¿Descartar la cuenta de ${descartando ? nombre(descartando) : ''}?`}
+        description="No se ha mandado a cocina; su nombre vuelve a quedar libre."
+        cancelLabel="Volver" confirmLabel="Descartar"
+        onCancel={() => setDescartando(null)}
+        onConfirm={() => {
+          const c = descartando;
+          setDescartando(null);
+          if (c?.draftId) onDescartar(c.draftId);
+        }} />
+    </VStack>
+  );
+}
+
+// «Cerrar caja» confirma en una hoja de la app, no con el `confirm()` del navegador: el del sistema
+// se pinta fuera de la app con botones que en la tableta se aciertan al revés.
+export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar }: {
+  nombre: string; disabled: boolean; loading: boolean; onCerrar: () => void;
+}) {
+  const [preguntando, setPreguntando] = useState(false);
+  return (
+    <>
+      <Button colorPalette="red" size="lg" minH="52px" loading={loading} disabled={disabled}
+        onClick={() => setPreguntando(true)}>
+        Cerrar caja
+      </Button>
+      <ConfirmSheet isOpen={preguntando} title={`¿Cerrar «${nombre}»?`}
+        description="No podrás modificarla después." cancelLabel="Volver" confirmLabel="Cerrar caja"
+        onCancel={() => setPreguntando(false)}
+        onConfirm={() => { setPreguntando(false); onCerrar(); }} />
+    </>
+  );
 }

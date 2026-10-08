@@ -6,6 +6,7 @@ import {
 import { LuPlus, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
+import { ReasonSheet } from '../../components/ReasonSheet';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -64,6 +65,9 @@ function GastosTab() {
   const [newOpen, setNewOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<Expense | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  // El gasto que se está cancelando. El motivo se pide en una hoja de la app, no con el `prompt()`
+  // del navegador (spec 030, caso 10).
+  const [cancelando, setCancelando] = useState<Expense | null>(null);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['expenses'] });
@@ -141,11 +145,7 @@ function GastosTab() {
                       {e.status === 'pendiente' && (
                         <>
                           <Button size="xs" colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button>
-                          <Button size="xs" variant="outline" colorPalette="red" onClick={() => {
-                            const reason = prompt('Motivo de cancelación (opcional):');
-                            if (reason === null) return;
-                            cancel.mutate({ id: e.id, reason });
-                          }}>Cancelar</Button>
+                          <Button size="xs" variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button>
                         </>
                       )}
                     </HStack>
@@ -177,6 +177,14 @@ function GastosTab() {
       <ExpenseDialog open={newOpen} onClose={() => setNewOpen(false)}
         onSaved={() => { setNewOpen(false); invalidate(); }} />
       <ExpenseDetailDialog key={detailId ?? 'none'} id={detailId} onClose={() => setDetailId(null)} onChanged={invalidate} />
+      <ReasonSheet isOpen={cancelando !== null} title="Cancelar gasto" label="Motivo"
+        confirmLabel="Cancelar gasto" loading={cancel.isPending}
+        onDone={(reason) => {
+          const g = cancelando;
+          setCancelando(null);
+          if (reason === null || !g) return;
+          cancel.mutate({ id: g.id, reason });
+        }} />
       <PayDialog expense={payTarget} methods={methods?.items ?? []}
         onClose={() => setPayTarget(null)} onPaid={invalidate} />
     </VStack>

@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { PaymentMethod } from '../types/pos';
+import type { PaymentMethod, AccountItem } from '../types/pos';
 
 // Dinero/cantidades = string decimal exacto desde el backend (ver types/pos.ts).
 export interface MethodTotal {
@@ -145,6 +145,9 @@ export interface CashSession {
   // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
   // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
   voidedPayments?: VoidedPayment[];
+  // Las cuentas vivas que NO bloquean el cierre (spec 030, D-10): las que se capturan y las
+  // entregadas que deben, de cualquier día. Opcional para que el compilador obligue a la guarda.
+  liveAccounts?: AccountItem[];
 }
 
 export interface VoidedPayment {
@@ -171,6 +174,9 @@ export interface CashierTotal {
 export interface PendingOrder {
   number: number;
   name: string;
+  // El pedido, para «Abrir» su cuenta desde el cierre. Opcional: un servidor que todavía no lo
+  // manda deja el renglón sin el botón, no roto.
+  id?: number;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {
