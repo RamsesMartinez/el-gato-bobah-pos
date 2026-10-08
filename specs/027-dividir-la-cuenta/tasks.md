@@ -191,7 +191,7 @@ enviado y no se repone; cancelar el pedido después no repone ninguno de los dos
   - IT HTTP en server/internal/integration/order_view_http_test.go, sobre JSON crudo: `GET /orders/{id}` trae `payments` y cada `lines` como arreglo aunque estén vacíos; un pago devuelto aparece con `voided: true` y su número; `mergedIntoOrderId` viene `null` en un pedido que no se juntó;
   - `inTheThreeCases` sobre `load` con `payments` en server/internal/integration/split_bill_isolation_test.go
 - [x] T038 Agregar `payments` y `mergedIntoOrderId` a `OrderView` en server/internal/app/orders.go (`load`), con la numeración de D-12: los pagos sin número se numeran por `created_at` contando vivos y devueltos; los devueltos salen de la bitácora con el número que guardó
-- [ ] T039 [P] Tipos `PaymentView`, `payments?: PaymentView[]` y `mergedIntoOrderId?: number | null` en `OrderView` de web/src/types/pos.ts (opcional para que `tsc` obligue a la guarda) y métodos nuevos de `posApi` en web/src/api/pos.ts (incluido `quote`); agregar cada método nuevo a los `vi.mock` existentes
+- [x] T039 [P] Tipos `PaymentView`, `payments?: PaymentView[]` y `mergedIntoOrderId?: number | null` en `OrderView` de web/src/types/pos.ts (opcional para que `tsc` obligue a la guarda) y métodos nuevos de `posApi` en web/src/api/pos.ts (incluido `quote`); agregar cada método nuevo a los `vi.mock` existentes
 
 **Checkpoint**: esquema y vista listos; `TestEveryCompanyTableIsIsolated` pasa con las cuatro tablas nuevas.
 
@@ -230,9 +230,9 @@ ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
   - idempotencia que compara también la selección;
   - `ChargeResult` con `paymentId`, `number` y el monto cobrado
 - [x] T045 [US1] Implementar `OrdersService.Quote` en server/internal/app/orders.go con la misma función de `domain` que `Charge`, bajo un `SELECT` sin `FOR UPDATE` y sin escribir, y la ruta `POST /orders/{id}/quote` con el mismo gate que `/pay`, en server/internal/httpapi/router.go y handlers_orders.go
-- [ ] T046 [P] [US1] Test de orden de la lista (pendientes arriba, pagados al final y agrupados con más de 4) en web/src/shared/cobro/listOrder.test.ts
-- [ ] T047 [US1] Implementar web/src/shared/cobro/listOrder.ts
-- [ ] T048 [P] [US1] Casos C16+ en web/src/shared/CobrarSheet.test.tsx:
+- [x] T046 [P] [US1] Test de orden de la lista (pendientes arriba, pagados al final y agrupados con más de 4) en web/src/shared/cobro/listOrder.test.ts
+- [x] T047 [US1] Implementar web/src/shared/cobro/listOrder.ts
+- [x] T048 [P] [US1] Casos C16+ en web/src/shared/CobrarSheet.test.tsx:
   - el selector solo aparece tras tocar «Dividir»;
   - Por productos muestra los renglones con casillas de 48 px en dos columnas;
   - el contador «1 de 2» con − y + de 44 px, que arranca en 1;
@@ -242,18 +242,18 @@ ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
   - **[U2]** las fichas de pagos muestran número, método y monto;
   - **[U2]** «Todo lo que falta» manda `allRemaining`, no una lista de renglones;
   - **[U1]** en un pedido de plataforma o de un turno cerrado no se ofrece «Dividir»
-- [ ] T049 [US1] Partir web/src/shared/CobrarSheet.tsx en componentes bajo web/src/shared/cobro/ (`ModePicker`, `ByProducts`, `PaymentChips`):
+- [x] T049 [US1] Partir web/src/shared/CobrarSheet.tsx en componentes bajo web/src/shared/cobro/ (`ModePicker`, `ByProducts`, `PaymentChips`):
   - estado `view` para cambiar el contenido del mismo `DrawerContent`;
   - pie fijo mínimo (método, «Esta persona: N productos», botones);
   - propina y recibido dentro de la zona con scroll;
   - hoja a `100dvh` con el pie encogible en dvh (D-13);
   - contador «1 de 2» por renglón;
   - monto del botón desde `quote` con debounce
-- [ ] T050 [P] [US1] Tests en web/src/utils/printReceipt.test.ts y de los tickets:
+- [x] T050 [P] [US1] Tests en web/src/utils/printReceipt.test.ts y de los tickets:
   - `buildReceiptHtml` con `opts.payment`: solo sus renglones y piezas, «Pago N», método, propina, cambio, «Del pedido quedan por pagar»;
   - `AutoPrintTicket` recuerda por id de pago;
   - `VerTicket` usa el prefijo `['orders', …]`: se refresca cuando cambia el pedido
-- [ ] T051 [US1] Implementar el ticket por pago en web/src/utils/printReceipt.ts y web/src/shared/tickets/AutoPrintTicket.tsx; pasar `VerTicket` al prefijo `['orders', …]` en web/src/shared/tickets/ReprintTicket.tsx
+- [x] T051 [US1] Implementar el ticket por pago en web/src/utils/printReceipt.ts y web/src/shared/tickets/AutoPrintTicket.tsx; pasar `VerTicket` al prefijo `['orders', …]` en web/src/shared/tickets/ReprintTicket.tsx
 
 **Checkpoint**: el caso B del incidente se resuelve sin cancelar nada.
 
@@ -290,12 +290,12 @@ pagar y el pago anterior sigue intacto.
 - [x] T057 [US3] En server/internal/app/devolucion.go, **una sola función** de validación de pagos —rechazar piezas cubiertas y dejar el total bajo lo pagado— que llaman `CancelarRenglon` y `CancelPending` (no una copia en cada una). `CancelarRenglon` gana `qty` usando `SplitLine` y las consultas de partir de T021. El handler acepta `qty` opcional. **`CancelPending` y `splitOrderLine` hoy llaman `SplitLine` con `Covered` en cero**: con esta tarea pasan las piezas cubiertas por pagos vivos en `LinePieces.Covered` y, si lo que se quita está pagado, devuelven `domain.ErrPieceAlreadyPaidToRemove` («Ese producto ya se pagó. Primero hay que devolver el pago»), ya definido en server/internal/domain/errors.go
 - [x] T058 [US3] IT `TestDiscountIsRejectedOncePaymentsExist` en server/internal/integration/split_by_products_test.go, y el caso de CobrarSheet.test.tsx: «Descuento» oculto con pagos
 - [x] T059 [US3] Rechazar en `SetDiscount` (server/internal/app/orders.go) un pedido con pagos (D-17). Ocultar «Descuento» con pagos en la hoja
-- [ ] T060 [P] [US7] Test del contador «1 de 2» en web/src/features/orders/CancelarRenglonDialog.test.tsx (arranca en 1, − y + de 44 px, manda `qty`). Va aquí porque depende de T057
-- [ ] T061 [US7] Implementar el contador en web/src/features/orders/CancelarRenglonDialog.tsx
+- [x] T060 [P] [US7] Test del contador «1 de 2» en web/src/features/orders/CancelarRenglonDialog.test.tsx (arranca en 1, − y + de 44 px, manda `qty`). Va aquí porque depende de T057
+- [x] T061 [US7] Implementar el contador en web/src/features/orders/CancelarRenglonDialog.tsx
 - [x] T062 [US3] **[C1]** Tests de los renglones del tablero en server/internal/integration/split_by_products_test.go: IT HTTP sobre JSON crudo de la respuesta del tablero (`OrdersService.Board`), donde cada `BoardLine` trae sus piezas cubiertas por pagos (`paidQty`, 0 si no hay pagos, nunca ausente); e `inTheThreeCases` sobre la consulta que las suma (junto a `ListLinesOfActiveOrders`)
 - [x] T063 [US3] Agregar las piezas cubiertas a `BoardLine` (server/internal/app/orders.go, `lineasDelTablero`) con su consulta en server/queries/orders.sql y `make sqlc`
-- [ ] T064 [P] [US3] Tests vitest: «Pedidos por cobrar» dice cuánto se pagó y cuánto falta, sin «1 de 3» (web/src/features/pos/PedidosEnCurso.test.tsx); el caso del bote deshabilitado con «Pagado» en productos pagados vive en web/src/features/orders/OrdersBoardPage.test.tsx y usa `paidQty` de `BoardLine`
-- [ ] T065 [US3] Implementar los dos en web/src/features/pos/PedidosEnCurso.tsx y web/src/features/orders/OrdersBoardPage.tsx
+- [x] T064 [P] [US3] Tests vitest: «Pedidos por cobrar» dice cuánto se pagó y cuánto falta, sin «1 de 3» (web/src/features/pos/PedidosEnCurso.test.tsx); el caso del bote deshabilitado con «Pagado» en productos pagados vive en web/src/features/orders/OrdersBoardPage.test.tsx y usa `paidQty` de `BoardLine`
+- [x] T065 [US3] Implementar los dos en web/src/features/pos/PedidosEnCurso.tsx y web/src/features/orders/OrdersBoardPage.tsx
 
 ---
 
@@ -312,11 +312,11 @@ marcadas; la suma es lo que faltaba.
   - `split` en pedido de plataforma o de turno cerrado → rechazo (H2, H9);
   - `quote` con `split` devuelve la parte que `/pay` cobra después
 - [x] T067 [US4] `Charge` y `Quote` con `split`: monto con `SplitPartAmount`, validación de parte ya cobrada (`ErrSplitPartAlreadyCharged`), columnas `split_part`/`split_of`, exclusión con las otras formas
-- [ ] T068 [P] [US4] Casos en web/src/shared/CobrarSheet.test.tsx:
+- [x] T068 [P] [US4] Casos en web/src/shared/CobrarSheet.test.tsx:
   - Entre personas reparte lo que falta y muestra fichas por parte (tablero A7), con el monto de cada parte pedido a `quote` con `split`;
   - Por monto con teclado propio de 52 px, montos rápidos y «Lo que falta» (A8);
   - el mensaje cuando la selección por productos excede tras un pago por monto
-- [ ] T069 [US4] Implementar `EvenSplit` (montos desde `quote`) y `ByAmount` en web/src/shared/cobro/; quitar `dividirEnPartes`/`montoDeLaParte` de web/src/domain/cobro.ts (ya viven en el servidor) y ajustar cobro.test.ts
+- [x] T069 [US4] Implementar `EvenSplit` (montos desde `quote`) y `ByAmount` en web/src/shared/cobro/; quitar `dividirEnPartes`/`montoDeLaParte` de web/src/domain/cobro.ts (ya viven en el servidor) y ajustar cobro.test.ts
 
 ---
 
@@ -341,16 +341,16 @@ lo correcto y lista el devuelto.
   - copia completa a la bitácora, con el número que la vista le daba, y borrado;
   - consulta de la bitácora en la idempotencia de `Charge`.
   Ruta `POST /orders/{id}/payments/{paymentId}/void` con `RequirePermission(payments.void)`, `rateLimitUser` y `SecurityEvent "order_payment_voided"`
-- [ ] T074 [US6] Tests de la lista de devueltos en el corte: IT HTTP sobre JSON crudo de la vista del turno con `voidedPayments` siempre arreglo (void_payment_test.go), y web/src/features/backoffice/CashPage.test.tsx
-- [ ] T075 [US6] Agregar `voidedPayments` a la vista del turno en server/internal/app/backoffice.go y mostrarlo en web/src/features/backoffice/CashPage.tsx
-- [ ] T076 [P] [US6] Casos en web/src/shared/CobrarSheet.test.tsx:
+- [x] T074 [US6] Tests de la lista de devueltos en el corte: IT HTTP sobre JSON crudo de la vista del turno con `voidedPayments` siempre arreglo (void_payment_test.go), y web/src/features/backoffice/CashPage.test.tsx
+- [x] T075 [US6] Agregar `voidedPayments` a la vista del turno en server/internal/app/backoffice.go y mostrarlo en web/src/features/backoffice/CashPage.tsx
+- [x] T076 [P] [US6] Casos en web/src/shared/CobrarSheet.test.tsx:
   - la ficha abre el detalle;
   - «Devolver este pago» deshabilitado sin `can('payments.void')`, con «Tu usuario no puede devolver pagos»;
   - motivo sin preselección;
   - aviso según método (tarjeta: el reembolso en la terminal va aparte);
   - el pago devuelto queda tachado con su número;
   - y en web/src/features/orders/OrdersBoardPage.test.tsx: la tarjeta sin productos y con pagos ofrece, junto a «Tiene pagos por devolver», el acceso a devolverlos solo con `can('payments.void')`
-- [ ] T077 [US6] Implementar `PaymentDetail` en web/src/shared/cobro/ (vista del mismo Drawer; «Reimprimir» abre el `Dialog` existente) y el acceso a devolver desde la tarjeta sin productos en web/src/features/orders/OrdersBoardPage.tsx
+- [x] T077 [US6] Implementar `PaymentDetail` en web/src/shared/cobro/ (vista del mismo Drawer; «Reimprimir» abre el `Dialog` existente) y el acceso a devolver desde la tarjeta sin productos en web/src/features/orders/OrdersBoardPage.tsx
 
 ---
 
@@ -387,9 +387,9 @@ nueva, existencias iguales, y origen y destino tienen sus totales correctos.
 - [x] T082 [US5] Ajustar los reportes para el pedido juntado (D-5), con `make sqlc`:
   - server/queries/sales.sql: las gemelas de Ventas (`ListSales`, `CountSales`, `SalesTotalsByStatus`, `SalesTotalsByMethod` y sus `…SinFolio`) excluyen el pedido con `merged_into_order_id` con el mismo predicado en lista y resumen; **[M2]** `SalesCancelledLines` y su gemela agregan `or o.merged_into_order_id is not null` a su filtro de estado, para que lo quitado antes de juntar siga contando como producto cancelado;
   - server/queries/cash.sql: `SessionSales` y `CountSessionSales` con el mismo predicado en lista y conteo (la lista de ventas del turno en web/src/features/backoffice/CashPage.tsx pinta lo que trae la consulta).
-- [ ] T083 [P] [US5] Test de `ListRow` en web/src/components/ListRow.test.tsx (alto parametrizable, 56 px para pedidos) y de que `Picker` sigue igual
-- [ ] T084 [US5] Sacar `PickerRow` a web/src/components/ListRow.tsx (`ListRow`) y que web/src/components/Picker.tsx la importe sin cambiar su comportamiento
-- [ ] T085 [P] [US5] Casos en web/src/shared/CobrarSheet.test.tsx:
+- [x] T083 [P] [US5] Test de `ListRow` en web/src/components/ListRow.test.tsx (alto parametrizable, 56 px para pedidos) y de que `Picker` sigue igual
+- [x] T084 [US5] Sacar `PickerRow` a web/src/components/ListRow.tsx (`ListRow`) y que web/src/components/Picker.tsx la importe sin cambiar su comportamiento
+- [x] T085 [P] [US5] Casos en web/src/shared/CobrarSheet.test.tsx:
   - «Pasar a otro pedido» deshabilitado con su motivo cuando se sabe de antemano;
   - con todo seleccionado, «+ Pedido nuevo» deshabilitado con «Ya es su propio pedido; no hace falta pasarlo»;
   - la lista con «+ Pedido nuevo» y filas de 56 px;
@@ -397,18 +397,18 @@ nueva, existencias iguales, y origen y destino tienen sus totales correctos.
   - tocar destino marca y pide confirmar;
   - tras «+ Pedido nuevo» aparece «Cobrar #N»;
   - origen vacío cierra la hoja con aviso
-- [ ] T086 [US5] Implementar `MoveToOrder` en web/src/shared/cobro/ como vista del mismo Drawer, y el salto a cobrar el pedido nuevo sin cerrar una hoja y abrir otra en el mismo update (AGENTS.md §3)
+- [x] T086 [US5] Implementar `MoveToOrder` en web/src/shared/cobro/ como vista del mismo Drawer, y el salto a cobrar el pedido nuevo sin cerrar una hoja y abrir otra en el mismo update (AGENTS.md §3)
 
 ---
 
 ## Phase 12: Polish & Cross-Cutting
 
 - [x] T087 IT `TestNoSequenceLeavesAnOrderWithoutAWayOut` en server/internal/integration/no_way_out_test.go (SC-003): recorre secuencias de cobrar, quitar (un producto y **lo que falta**, incluidos sus rechazos por pagos), pasar y devolver en varios órdenes, y al final verifica que cada pedido abierto tiene una acción que lo cierra. Si encuentra uno, el arreglo lleva su test de regresión antes
-- [ ] T088 [P] Medición (D-15): test primero en server/internal/domain/uso_test.go; acciones `split-by-products`, `move-lines`, `void-payment`, `close-order` y `cancel-pending` en server/internal/domain/uso.go y llamadas a `medirAccion` en el front; actualizar `ARCHIVOS` en web/src/api/uso-orden.test.ts
+- [x] T088 [P] Medición (D-15): test primero en server/internal/domain/uso_test.go; acciones `split-by-products`, `move-lines`, `void-payment`, `close-order` y `cancel-pending` en server/internal/domain/uso.go y llamadas a `medirAccion` en el front; actualizar `ARCHIVOS` en web/src/api/uso-orden.test.ts
 - [ ] T089 [P] E7 bis en web/e2e/cabe-en-la-tableta.spec.ts, a 600 px de alto: la hoja de cobro con Efectivo, propina y la lista de productos, y con el teclado del sistema abierto «Cobrar» sigue alcanzable; **[L3]** `CancelPendingSheet` y la vista `MoveToOrder` también caben con su botón de confirmar visible
 - [ ] T090 Reescribir web/e2e/dividir-cuenta-incidente.spec.ts como regresión y renombrarlo a web/e2e/split-bill-incident.spec.ts: la misma mesa con «Dividir → Por productos», ≤ 20 toques contados y ningún pedido abierto al final; usa `tokenDeRequest` y deja todo cobrado y entregado
-- [ ] T091 [P] Actualizar docs/matriz-de-cobro.md y docs/matriz-de-pantallas.md con los casos nuevos y lo que **no** queda cubierto
-- [ ] T092 [P] Documentar en AGENTS.md la mecánica nueva (cobertura, cotización, bitácora de pagos devueltos, pedidos juntados, permisos)
+- [x] T091 [P] Actualizar docs/matriz-de-cobro.md y docs/matriz-de-pantallas.md con los casos nuevos y lo que **no** queda cubierto
+- [x] T092 [P] Documentar en AGENTS.md la mecánica nueva (cobertura, cotización, bitácora de pagos devueltos, pedidos juntados, permisos)
 - [ ] T093 Gates completos en el worktree: `go build ./... && go test ./...`, integración contra `egb027-pg` con `TEST_DATABASE_URL` **y** `TEST_RESTORED_DATABASE_URL`, incluido `TestEveryCompanyTableIsIsolated`; verificar que el test de la migración corrió de verdad: `go test -tags=integration -v -run MigrationSplitBill ./internal/integration/... | grep -c SKIP` da 0; golangci-lint, `bun run lint`, `bun run vitest run`, `bun run build`, `bun audit --audit-level=high`
 - [ ] T094 Correr `/revision-de-codigo` sobre el diff (hook `after_implement`)
 

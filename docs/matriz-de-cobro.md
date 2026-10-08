@@ -321,7 +321,37 @@ decisión del dueño (2026-09-19), y reconstruirlo exige el documento de pago de
 Uber expone 31 días y Rappi 3 meses. Tampoco cubre la corrección del descuento de un pedido **ya
 creado** desde la pantalla: el endpoint existe y está probado, la pantalla para usarlo no.
 
+## K. Dividir la cuenta por productos (spec 027)
+
+Origen: el incidente del 2026-10-04, una mesa de tres que quiso pagar cada quien lo suyo y se
+resolvió quitando renglones y recapturándolos. Lo que se cobra lo calcula el servidor con la misma
+función para `/quote` y `/pay`; la pantalla nunca suma una selección.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| K1 | La mesa del incidente: pagos de 1, 4 y «Todo lo que falta» | 3 pagos que suman el total, 0 cancelaciones, sin cambio en existencias | `TestTheIncidentTableSplitsWithoutCancellingAnything` | Postgres |
+| K2 | Descuento de $50 sobre $907 en tres pagos por productos | Suman el total; el último absorbe el centavo; lo cubierto por producto suma cada pago | `TestDiscountedSplitAddsUpToTheTotal` | Postgres |
+| K3 | Tras un pago por monto, «Todo lo que falta» | Lo cubierto por producto se prorratea y suma exacto el pago | `TestAllRemainingAfterAnAmountPaymentProratesCoverage` | Postgres |
+| K4 | Todas las piezas cubiertas y saldo positivo | «Todo lo que falta» cobra el saldo sin cobertura | `TestAllRemainingWithNothingUncoveredChargesTheBalance` | Postgres |
+| K5 | Dos tabletas cobran la misma pieza a la vez | Una pasa; la otra «Ese producto ya se pagó» | `TestTheSamePieceCannotBePaidTwiceConcurrently` | Postgres |
+| K6 | La misma parte de «entre N personas» dos veces | «Esa parte ya se cobró» | `TestTheSameSplitPartCannotBeChargedTwiceAndSurvivesAReload` | Postgres |
+| K7 | La misma llave con otra selección | «Ese cobro ya se hizo con otros productos» | `TestPayByProductsContract` | Postgres |
+| K8 | La cotización y el cobro | `/quote` no escribe nada y da lo que `/pay` cobra | `TestQuoteMatchesWhatPayChargesAndWritesNothing` | Postgres |
+| K9 | Devolver un pago y cobrarlo a otra persona | Cuenta cero veces en el cajón: esperado, propinas y pendiente como si no hubiera entrado | `TestAVoidedPaymentCountsZeroTimesInTheDrawer` | Postgres |
+| K10 | Reenviar la llave de un pago devuelto, también a la vez que se devuelve | No revive | `TestAVoidedPaymentCannotBeRevivedByItsKey` | Postgres |
+| K11 | Devolver un pago de un turno cerrado o sin turno | Se rechaza: ese dinero ya se arqueó | `TestAPaymentIsVoidedOnceAndOnlyInItsOpenShift` | Postgres |
+| K12 | Quitar un producto pagado, o dejar el total bajo lo cobrado | Se rechaza (FR-023, defecto confirmado antes del arreglo) | `TestRemovingAPaidLineIsRejected`, `TestCancelPendingRespectsPayments` | Postgres |
+| K13 | Descuento con pagos hechos | Se rechaza | `TestDiscountIsRejectedOncePaymentsExist` | Postgres |
+| K14 | Pasar productos que ya se pagaron, o dejar el origen sobrepagado | Se rechaza | `TestMoveRejections` | Postgres |
+| K15 | Pasar todo a un pedido existente | El origen queda juntado; ni Ventas ni las ventas del turno lo cuentan como cancelación; lo quitado antes sí | `TestMovingEverythingMergesTheOriginAndIsNotACancellation` | Postgres |
+| K16 | Cualquier secuencia de cobrar, quitar, pasar, entregar y devolver | Ningún pedido queda sin una salida que lo cierre | `TestNoSequenceLeavesAnOrderWithoutAWayOut` (235 secuencias) | Postgres |
+| K17 | La mesa del incidente por la pantalla | Se resuelve con «Dividir → Por productos» en ≤ 20 toques | `split-bill-incident.spec.ts` | **No medido**: corre contra el ambiente de pruebas con esta rama desplegada |
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
+
+- **Devolver un pago de un turno cerrado.** Va por la devolución de siempre, que no resta de lo
+  pagado ni de los reportes (hallazgo fuera de alcance del spec 027, research.md).
+- **Qué persona de la mesa pagó.** No se modela (decisión del dueño, spec 027).
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.
   Por eso el cobro se registra de a un pedazo, en el instante en que el dinero está en la mano.

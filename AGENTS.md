@@ -304,6 +304,27 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](server/internal/domain/platform_credentials.go)).
     No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
     tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
+- **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
+  - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
+    cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos
+    no filtran devueltos: no hay devueltos ahí. Una consulta nueva que lea la bitácora como si fueran
+    pagos cuenta el dinero dos veces.
+  - **Qué cubrió cada pago vive en `order_payment_lines`**, y toda lectura que decide si una pieza
+    está pagada va bajo el `FOR UPDATE` del pedido (`GetOrderForCharge`, `GetOrderForUpdate`): es lo
+    que impide que dos tabletas cobren la misma pieza. Quitar un producto o lo que falta pasa por
+    **una sola** validación (`paymentGuard` en `devolucion.go`); un camino nuevo que quite
+    renglones la llama, no la copia.
+  - **El monto lo calcula el servidor**: `/quote` y `/pay` usan la misma función (`chargeAmount` →
+    `domain.SelectionAmount` / `SplitPartAmount`). La hoja no suma ni reparte; pide la cotización.
+  - **Pasar productos mueve el renglón y sus movimientos por `order_line_id`**, nunca por
+    `order_id`, y partir un renglón inserta pares de movimientos «renglón partido» (el trigger de
+    existencias es solo de insert) y reparte `order_line_components`. Pasar todo a otro pedido deja
+    el origen `cancelada` con `merged_into_order_id`: lista, conteo y resumen de Ventas y las ventas
+    del turno lo excluyen con la misma línea, y no es una cancelación.
+  - **Los controles nuevos preguntan por permiso** (`domain.Permission`, `RequirePermission`,
+    `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
+    principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
+    desplegarla, el rollback es restaurar el respaldo.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
