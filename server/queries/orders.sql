@@ -772,13 +772,21 @@ update order_lines set order_id = sqlc.arg(to_order_id) where id = sqlc.arg(id);
 -- que cambiar el pedido no mueve existencias.
 update stock_movements set order_id = sqlc.arg(to_order_id) where order_line_id = sqlc.arg(line_id);
 
--- name: MarkOrderMerged :exec
+-- name: MarkOrderMerged :execrows
 -- El origen vacío al pasarle todo a otro pedido: cancelado, sin reponer (el consumo viajó con los
--- productos), y marcado para que ningún reporte lo cuente como cancelación.
+-- productos), y marcado para que ningún reporte lo cuente como cancelación. Se protege sola: solo un
+-- pedido vivo y no juntado, para que un camino futuro que la llame sin sus guardas no cancele uno
+-- cobrado o entregado.
 update orders
    set status = 'cancelada', cancelled_at = now(), cancelled_by = sqlc.arg(actor_id),
        cancel_reason = 'Se juntó con otro pedido', merged_into_order_id = sqlc.arg(into_order_id)
- where id = sqlc.arg(id);
+ where id = sqlc.arg(id) and status in ('abierta', 'lista') and merged_into_order_id is null;
+
+-- name: ListMovedLinesOfBatch :many
+-- Qué renglones del origen y cuántas piezas pasó un lote, para reconocer un reenvío: la misma llave
+-- con otra selección no es el mismo «Pasar».
+select coalesce(split_from_line_id, order_line_id)::bigint as line_id, qty
+from order_line_moves where client_uuid = $1;
 
 -- name: GetOrderForCharge :one
 -- El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
@@ -824,3 +832,9 @@ where order_id = $1 and order_line_id is not null;
 -- renglón salieron, así que pasar un producto no sabría qué consumo llevarse.
 select count(*)::int from stock_movements
 where order_id = $1 and order_line_id is null and movement_type = 'venta';
+
+-- name: LockSessionStatusForShare :one
+-- El estado del turno de un pago, con candado compartido: un cierre de turno que corre a la vez
+-- termina antes, y devolver ve que ya cerró. Sin él, devolver leía «abierto», el corte confirmaba
+-- con ese pago en su esperado y luego la devolución lo borraba.
+select status::text from register_sessions where id = $1 for share;

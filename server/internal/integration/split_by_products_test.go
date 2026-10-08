@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"uuid"
 
@@ -574,5 +575,36 @@ func TestBoardLinesCarryTheirPaidPieces(t *testing.T) {
 	if len(paid) != 2 || !pesos(paid[float64(s.order.Lines[0].ID)].(string)).Equal(pesos("1")) ||
 		!pesos(paid[float64(s.order.Lines[1].ID)].(string)).IsZero() {
 		t.Fatalf("paidQty = %v; quiere 1 en el pagado y 0 en el otro", paid)
+	}
+}
+
+// UNA CANTIDAD DE PIEZAS ABSURDA ES UN 400 AL INSTANTE, EN LAS CUATRO PUERTAS.
+//
+// «1e-20000000» quemaba 22 s de CPU por petición en /quote y /pay —unas cuantas en paralelo tiran
+// la API de la VM de 1 GB— y 0.004 piezas terminaba en un 500 por el check de la columna.
+func TestAbsurdPieceCountsAreRejectedFast(t *testing.T) {
+	st := newTestStore(t)
+	r, token := ordersAPI(t, st, nil)
+	_, tok := token("http_piezas_absurdas", "cajero")
+	s := newSplitTable(t, st, "piezas_absurdas", "50", "60")
+	cash := s.cash
+	id := strconv.FormatInt(s.order.ID, 10)
+	line := strconv.FormatInt(s.order.Lines[0].ID, 10)
+	for _, qty := range []string{`"1e-20000000"`, `"0.004"`, `"0.005"`, `"-1"`} {
+		for _, c := range []struct{ path, body string }{
+			{"/quote", `{"lines":[{"lineId":` + line + `,"qty":` + qty + `}]}`},
+			{"/pay", `{"methodId":` + strconv.Itoa(int(cash)) + `,"clientUuid":"` + uuid.New().String() + `","lines":[{"lineId":` + line + `,"qty":` + qty + `}]}`},
+			{"/lines/move", `{"clientUuid":"` + uuid.New().String() + `","toOrderId":null,"lines":[{"lineId":` + line + `,"qty":` + qty + `}]}`},
+			{"/lines/" + line + "/cancel", `{"reason":"Ya no lo quiere","qty":` + qty + `}`},
+		} {
+			start := time.Now()
+			w := do(t, r, http.MethodPost, "/api/v1/orders/"+id+c.path, tok, []byte(c.body), "application/json")
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("%s con qty %s = %d %s; quiere 400", c.path, qty, w.Code, w.Body.String())
+			}
+			if el := time.Since(start); el > time.Second {
+				t.Errorf("%s con qty %s tardó %s", c.path, qty, el)
+			}
+		}
 	}
 }

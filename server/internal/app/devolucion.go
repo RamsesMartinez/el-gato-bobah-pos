@@ -257,8 +257,8 @@ func (s *OrdersService) RemovePieces(ctx context.Context, orderID, lineID, actor
 	if err != nil {
 		return false, err
 	}
-	if qty != nil && !domain.ValidQty(*qty, domain.MaxOrderQty, false) {
-		return false, domain.ErrValidation
+	if qty != nil && !domain.ValidPieces(*qty) {
+		return false, fmt.Errorf("%w: Esa cantidad de piezas no se puede quitar", domain.ErrValidation)
 	}
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		// Pedido y luego renglones, en el MISMO orden que DeliverLine. Tomando solo el renglón, una
@@ -295,7 +295,7 @@ func (s *OrdersService) RemovePieces(ctx context.Context, orderID, lineID, actor
 		}
 		k := pending
 		if qty != nil {
-			k = domain.Round2(*qty)
+			k = *qty
 		}
 		if k.GreaterThan(pending) {
 			return domain.ErrTooManyPieces
@@ -445,7 +445,16 @@ func (s *OrdersService) VoidPayment(ctx context.Context, orderID, paymentID, act
 		if p.OrderID != orderID {
 			return fmt.Errorf("%w: Ese pago no es de este pedido", domain.ErrNotFound)
 		}
-		if p.RegisterSessionID == nil || p.SessionStatus != string(db.SessionStatusAbierta) {
+		if p.RegisterSessionID == nil {
+			return domain.ErrPaymentFromClosedShift
+		}
+		// El turno se lee con candado compartido y no del join de arriba: un cierre que corre a la
+		// vez termina antes y aquí se ve cerrado (el mismo hueco que cierra Charge al bloquear la caja).
+		status, err := q.LockSessionStatusForShare(ctx, *p.RegisterSessionID)
+		if err != nil {
+			return err
+		}
+		if status != string(db.SessionStatusAbierta) {
 			return domain.ErrPaymentFromClosedShift
 		}
 		// El número que la vista le daba, también si es de los viejos sin número.

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"uuid"
 
@@ -301,4 +302,60 @@ func mustJSON(t *testing.T, f func() (any, error)) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// DEVOLVER NO SE CUELA MIENTRAS SE CIERRA EL TURNO.
+//
+// Si devolver lee «abierto», el corte confirma con ese pago en su esperado y luego la devolución lo
+// borra, el corte cerrado espera un dinero que ya no figura en los pagos. El cierre bloquea el turno
+// mientras corre; devolver tiene que esperarlo y ver que ya cerró.
+func TestVoidingWaitsForAShiftThatIsClosing(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "devolver_mientras_cierra", "50", "50")
+	paid := s.pay(t, 0)
+	session := openSession(t, st)
+	ctx := context.Background()
+
+	closer, err := st.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = closer.Rollback(ctx) }()
+	if _, err := closer.Exec(ctx, `select id from register_sessions where id = $1 for update`, session); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.svc.VoidPayment(s.ctx, s.order.ID, paid.PaymentID, s.cashier, "Se le cobró a otra persona")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("devolver no esperó al cierre del turno (err=%v): el corte quedaría esperando un pago que ya no está", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := closer.Exec(ctx, `update register_sessions set status = 'cerrada', closed_at = now() where id = $1`, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := closer.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, domain.ErrPaymentFromClosedShift) {
+		t.Fatalf("tras el cierre, devolver = %v; quiere «Ese pago es de un turno cerrado»", err)
+	}
+}
+
+// EL PAGO DE OTRO PEDIDO DE LA MISMA EMPRESA NO SE DEVUELVE DESDE ÉSTE.
+func TestVoidingAPaymentOfAnotherOrderIsRejected(t *testing.T) {
+	st := newTestStore(t)
+	a := newSplitTable(t, st, "devolver_ajeno_a", "50")
+	b := newSplitTable(t, st, "devolver_ajeno_b", "50")
+	paid := b.pay(t, 0)
+	if _, err := a.svc.VoidPayment(a.ctx, a.order.ID, paid.PaymentID, a.cashier, "Se le cobró a otra persona"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("devolver el pago de otro pedido = %v; quiere «Ese pago no es de este pedido»", err)
+	}
+	var n int
+	if err := st.Pool.QueryRow(context.Background(), `select count(*) from order_payments where id = $1`, paid.PaymentID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("el pago del otro pedido desapareció (n=%d, err=%v)", n, err)
+	}
 }

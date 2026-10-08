@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -371,5 +372,38 @@ func TestCoverageKey(t *testing.T) {
 	}
 	if k := CoverageKey(nil); k != "" {
 		t.Fatalf("sin selección = %q", k)
+	}
+}
+
+// LAS PIEZAS QUE LLEGAN DE LA FRONTERA SE RECHAZAN SI NO SON UNA CANTIDAD DE VERDAD.
+//
+// Un exponente absurdo («1e-20000000», 47 bytes de cuerpo) quemaba 22 s de CPU al sumarse o
+// redondearse, y unas cuantas peticiones tiraban la API. Y más de dos decimales se redondeaban en
+// silencio o terminaban en un 500: 0.005 piezas cobraba la mitad y guardaba una pieza «pagada».
+func TestValidPieces(t *testing.T) {
+	for _, c := range []struct {
+		qty  string
+		want bool
+	}{
+		{"1", true}, {"2", true}, {"0.5", true}, {"1.25", true},
+		{"0", false}, {"-1", false}, {"0.004", false}, {"0.005", false}, {"1.001", false},
+		{"1e-20000000", false}, {"1e100000000", false}, {"100000", false},
+	} {
+		start := time.Now()
+		if got := ValidPieces(d(c.qty)); got != c.want {
+			t.Errorf("ValidPieces(%s) = %v, quiere %v", c.qty, got, c.want)
+		}
+		if el := time.Since(start); el > 100*time.Millisecond {
+			t.Errorf("ValidPieces(%s) tardó %s: un exponente absurdo no puede costar CPU", c.qty, el)
+		}
+	}
+	// SelectionAmount rechaza antes de sumar: la defensa no depende de que quien llame se acuerde.
+	start := time.Now()
+	_, err := SelectionAmount(SelectionInput{
+		Lines:     []SelectionLine{{LineID: 1, Qty: d("1"), UnitPrice: d("100")}},
+		Selection: []SelectedPieces{{LineID: 1, Qty: d("1e-20000000")}}, Outstanding: d("100"), Subtotal: d("100"),
+	})
+	if !errors.Is(err, ErrEmptySelection) || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("selección con exponente absurdo = %v en %s; quiere «Elige qué productos paga» al instante", err, time.Since(start))
 	}
 }

@@ -24,6 +24,10 @@ type MoveLinesCmd struct {
 	ActorID     int64
 }
 
+// errChooseWhatToMove es la selección vacía o malformada de «Pasar»: pasar no es pagar, y el texto
+// de cobrar («Elige qué productos paga») ahí no dice nada.
+var errChooseWhatToMove = fmt.Errorf("%w: Elige qué productos pasar", domain.ErrValidation)
+
 // MoveLinesResult son los dos pedidos como quedaron.
 type MoveLinesResult struct {
 	From *OrderView `json:"from"`
@@ -45,11 +49,11 @@ type MoveLinesResult struct {
 // que el pedido no sea ya, y se rechaza.
 func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveLinesResult, error) {
 	if cmd.ClientUUID == uuid.Nil() || len(cmd.Lines) == 0 {
-		return nil, domain.ErrEmptySelection
+		return nil, errChooseWhatToMove
 	}
 	for _, l := range cmd.Lines {
-		if !domain.ValidQty(l.Qty, domain.MaxOrderQty, false) {
-			return nil, domain.ErrEmptySelection
+		if !domain.ValidPieces(l.Qty) {
+			return nil, errChooseWhatToMove
 		}
 	}
 	var toID int64
@@ -62,6 +66,17 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 		// lo ve.
 		if b, err := q.GetLineMoveBatch(ctx, cmd.ClientUUID); err == nil {
 			if b.FromOrderID != cmd.FromOrderID || (cmd.ToOrderID != nil && *cmd.ToOrderID != b.ToOrderID) {
+				return domain.ErrMoveKeyMismatch
+			}
+			moved, err := q.ListMovedLinesOfBatch(ctx, cmd.ClientUUID)
+			if err != nil {
+				return err
+			}
+			done := make([]domain.SelectedPieces, len(moved))
+			for i, m := range moved {
+				done[i] = domain.SelectedPieces{LineID: m.LineID, Qty: m.Qty}
+			}
+			if domain.CoverageKey(done) != domain.CoverageKey(cmd.Lines) {
 				return domain.ErrMoveKeyMismatch
 			}
 			toID = b.ToOrderID
@@ -115,21 +130,37 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 		if err := plan.guard.keepsPayments(ctx, q, from.ID); err != nil {
 			return err
 		}
+		// El destino: si estaba entregado y recibió algo pendiente se REABRE, como al agregarle; el
+		// tablero solo lista abiertos y listos, y entregado escondería esa comida. Si todo lo que
+		// tiene ya salió, se cierra solo.
+		lineas, err := lineasDeEntrega(ctx, q, toID)
+		if err != nil {
+			return err
+		}
+		if to != nil && domain.ReabreAlAgregar(string(to.Status)) && !domain.TodoEntregado(lineas) {
+			if err := q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: toID, Status: db.OrderStatusAbierta}); err != nil {
+				return err
+			}
+		} else if err := cerrarSiYaSeEntregoTodo(ctx, q, toID, lineas); err != nil {
+			return err
+		}
 		if plan.everything {
 			// Sin reponer: el consumo viajó con los productos.
 			actor := cmd.ActorID
-			return q.MarkOrderMerged(ctx, db.MarkOrderMergedParams{ActorID: &actor, IntoOrderID: &toID, ID: from.ID})
-		}
-		for _, id := range []int64{from.ID, toID} {
-			lineas, err := lineasDeEntrega(ctx, q, id)
+			n, err := q.MarkOrderMerged(ctx, db.MarkOrderMergedParams{ActorID: &actor, IntoOrderID: &toID, ID: from.ID})
 			if err != nil {
 				return err
 			}
-			if err := cerrarSiYaSeEntregoTodo(ctx, q, id, lineas); err != nil {
-				return err
+			if n != 1 {
+				return fmt.Errorf("%w: Ese pedido ya se cerró", domain.ErrConflict)
 			}
+			return nil
 		}
-		return nil
+		lineas, err = lineasDeEntrega(ctx, q, from.ID)
+		if err != nil {
+			return err
+		}
+		return cerrarSiYaSeEntregoTodo(ctx, q, from.ID, lineas)
 	})
 	if err != nil {
 		return nil, err
@@ -246,7 +277,7 @@ func planMove(ctx context.Context, q *db.Queries, from db.GetOrderForMoveRow, se
 	}
 	want := map[int64]decimal.Decimal{}
 	for _, s := range sel {
-		want[s.LineID] = want[s.LineID].Add(domain.Round2(s.Qty))
+		want[s.LineID] = want[s.LineID].Add(s.Qty)
 	}
 	plan := movePlan{guard: guard, everything: true}
 	for _, r := range rows {

@@ -143,7 +143,7 @@ func TestSplitBillQueriesStayIsolated(t *testing.T) {
 				_ = q.MoveLineStockMovements(c, db.MoveLineStockMovementsParams{ToOrderID: &dest.ID, LineID: &line})
 			}},
 			{"MarkOrderMerged", func() {
-				_ = q.MarkOrderMerged(c, db.MarkOrderMergedParams{ActorID: &actor, IntoOrderID: &dest.ID, ID: ord.ID})
+				_, _ = q.MarkOrderMerged(c, db.MarkOrderMergedParams{ActorID: &actor, IntoOrderID: &dest.ID, ID: ord.ID})
 			}},
 		}
 		for _, w := range writes {

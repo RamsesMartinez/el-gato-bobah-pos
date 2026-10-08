@@ -205,6 +205,15 @@ func TestMoveRejections(t *testing.T) {
 			_, err := s.move(t, nil, 0)
 			return err
 		}, domain.ErrPlatformOrderNotSplittable},
+		{"todo hacia uno existente con un pago hecho", func(t *testing.T) error {
+			s := newSplitTable(t, st, "rechazo_junta_pagado", "50", "60")
+			d := newSplitTable(t, st, "rechazo_junta_pagado_b", "50")
+			if _, err := s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: s.order.ID, MethodID: s.cash, Amount: pesos("20"), ActorID: s.cashier}); err != nil {
+				t.Fatal(err)
+			}
+			_, err := s.move(t, &d.order.ID, 0, 1)
+			return err
+		}, domain.ErrOrderWouldBeOverpaid},
 		{"dejaría el origen sobrepagado", func(t *testing.T) error {
 			s := newSplitTable(t, st, "rechazo_sobrepagado", "50", "60")
 			if _, err := s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: s.order.ID, MethodID: s.cash, Amount: pesos("100"), ActorID: s.cashier}); err != nil {
@@ -370,4 +379,62 @@ func businessDateOf(t *testing.T, st *store.Store, orderID int64) string {
 		t.Fatal(err)
 	}
 	return d
+}
+
+// PASAR ALGO PENDIENTE A UN PEDIDO YA ENTREGADO LO REABRE, COMO AGREGARLE.
+//
+// El tablero solo lista abiertos y listos: un destino que se quedara «entregado» con una pieza por
+// entregar esconde esa comida, y nadie la entrega.
+func TestMovingPendingLinesReopensADeliveredTarget(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "pasa_a_entregado", "50", "60")
+	d := newSplitTable(t, st, "pasa_a_entregado_b", "40")
+	if err := d.svc.DeliverAll(d.ctx, d.order.ID); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, _, _, _, _ := orderRow(t, st, d.order.ID); status != domain.StatusEntregada {
+		t.Fatalf("el destino quedó %s antes de pasar", status)
+	}
+	if _, err := s.move(t, &d.order.ID, 1); err != nil {
+		t.Fatalf("MoveLines: %v", err)
+	}
+	if status, _, _, _, _, _ := orderRow(t, st, d.order.ID); status != domain.StatusAbierta {
+		t.Fatalf("el destino recibió algo pendiente y quedó %s; quiere abierta, o nadie lo entrega", status)
+	}
+}
+
+// LA MISMA LLAVE DE «PASAR» CON OTRA SELECCIÓN NO SE DA POR HECHA.
+//
+// Responder éxito sin pasar nada deja a quien opera creyendo que pasó lo nuevo.
+func TestTheSameMoveKeyWithAnotherSelectionIsRejected(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "pasa_otra_seleccion", "50", "60", "70")
+	key := uuid.New()
+	cmd := app.MoveLinesCmd{ClientUUID: key, FromOrderID: s.order.ID, ActorID: s.cashier,
+		Lines: []domain.SelectedPieces{{LineID: s.order.Lines[1].ID, Qty: pesos("1")}}}
+	first, err := s.svc.MoveLines(s.ctx, cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.ToOrderID = &first.To.ID
+	cmd.Lines = []domain.SelectedPieces{{LineID: s.order.Lines[2].ID, Qty: pesos("1")}}
+	if _, err := s.svc.MoveLines(s.ctx, cmd); !errors.Is(err, domain.ErrMoveKeyMismatch) {
+		t.Fatalf("misma llave, otra selección = %v; quiere «Esto ya se pasó a otro pedido»", err)
+	}
+}
+
+// UN DESTINO DE OTRA EMPRESA NO RECIBE NADA.
+func TestAMoveTargetFromAnotherCompanyIsRejected(t *testing.T) {
+	st := newTestStore(t)
+	other := makeCompany(t, st, "ajena-destino")
+	s := newSplitTable(t, st, "pasa_a_ajeno", "50", "60")
+	var foreign int64
+	if err := st.Pool.QueryRow(context.Background(), `
+		insert into orders (company_id, client_uuid, business_date, daily_number, service_type, opened_by, subtotal, total, status)
+		values ($1, gen_random_uuid(), current_date, 99, 'mostrador', $2, 0, 0, 'abierta') returning id`, other, s.cashier).Scan(&foreign); err != nil {
+		t.Skipf("no se pudo sembrar el pedido ajeno: %v", err)
+	}
+	if _, err := s.move(t, &foreign, 0); !errors.Is(err, domain.ErrMoveTargetClosed) {
+		t.Fatalf("destino de otra empresa = %v; quiere «Ese pedido ya no recibe productos»", err)
+	}
 }

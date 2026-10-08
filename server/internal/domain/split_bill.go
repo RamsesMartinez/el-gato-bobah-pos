@@ -131,7 +131,7 @@ func piecesToCharge(in SelectionInput) ([]pickedLine, error) {
 	// El mismo renglón dos veces se suma: así no se cuela como dos selecciones que caben cada una.
 	want := map[int64]decimal.Decimal{}
 	for _, s := range in.Selection {
-		if !s.Qty.IsPositive() {
+		if !ValidPieces(s.Qty) {
 			return nil, ErrEmptySelection
 		}
 		want[s.LineID] = want[s.LineID].Add(s.Qty)
@@ -158,6 +158,12 @@ func piecesToCharge(in SelectionInput) ([]pickedLine, error) {
 }
 
 // discountShare es la parte del descuento del pedido que le toca a un bruto, sin redondear.
+//
+// ponytail: el reparto usa el subtotal de AHORA. Si después de un pago por productos se agregan más
+// productos a un pedido con descuento, los pagos siguientes reparten sobre un subtotal mayor y cobran
+// un poco menos por renglón; el último absorbe la diferencia con lo que falta, así que el total cuadra
+// pero la cobertura por renglón no es exacta. Es un caso raro (descuento + pago parcial + agregar);
+// el camino de upgrade es guardar el descuento por renglón al ponerlo.
 func discountShare(gross, discount, subtotal decimal.Decimal) decimal.Decimal {
 	if !discount.IsPositive() || !subtotal.IsPositive() {
 		return decimal.Zero
@@ -256,6 +262,16 @@ func SplitPartAmount(outstanding decimal.Decimal, part, of int, charged []int) (
 		return decimal.Zero, err
 	}
 	return parts[0], nil
+}
+
+// ValidPieces dice si una cantidad de piezas que llegó de la frontera se puede usar: positiva, dentro
+// del tope de un renglón y con dos decimales a lo más, que es la escala de la columna.
+//
+// Se rechaza y no se redondea: 0.005 piezas redondeado guardaba una pieza «pagada» por la mitad de su
+// precio. Y el exponente se mira ANTES de cualquier aritmética: sumar «1e-20000000» calcula
+// 10^20000000 y tira la API (ver escalaSana).
+func ValidPieces(q decimal.Decimal) bool {
+	return ValidQty(q, MaxOrderQty, false) && q.Equal(Round2(q))
 }
 
 // ChargeShape es la forma de un cobro: qué decide su monto.

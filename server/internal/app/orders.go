@@ -1682,6 +1682,11 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 	if err != nil {
 		return nil, err
 	}
+	// Antes de cualquier aritmética, también la de la huella de un reenvío (sameChargeShape): una
+	// cantidad con exponente absurdo calcula 10^|exp| y tira la API.
+	if err := validSelection(cmd.Lines); err != nil {
+		return nil, err
+	}
 	if shape == domain.ShapeAmount && !domain.ValidMoney(domain.Round2(cmd.Amount), false) {
 		return nil, domain.ErrValidation
 	}
@@ -1901,6 +1906,9 @@ func (s *OrdersService) Quote(ctx context.Context, cmd QuoteCmd) (*QuoteResult, 
 	if err != nil {
 		return nil, err
 	}
+	if err := validSelection(cmd.Lines); err != nil {
+		return nil, err
+	}
 	q := s.store.QC(ctx)
 	row, err := q.GetOrderForQuote(ctx, cmd.OrderID)
 	if err != nil {
@@ -1927,6 +1935,16 @@ func (s *OrdersService) Quote(ctx context.Context, cmd QuoteCmd) (*QuoteResult, 
 		lines[i] = PaymentLineView{LineID: c.LineID, Qty: c.Qty, Amount: c.Amount}
 	}
 	return &QuoteResult{Amount: amount, Lines: lines, OutstandingAfter: domain.PorCobrar(o.Total, sumas.Pagado.Add(amount))}, nil
+}
+
+// validSelection rechaza una selección con cantidades que no son piezas (ver domain.ValidPieces).
+func validSelection(sel []domain.SelectedPieces) error {
+	for _, l := range sel {
+		if !domain.ValidPieces(l.Qty) {
+			return domain.ErrEmptySelection
+		}
+	}
+	return nil
 }
 
 // chargeOrder es el pedido como lo necesita el cálculo de un cobro.

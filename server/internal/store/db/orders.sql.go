@@ -1725,6 +1725,38 @@ func (q *Queries) ListModifiersOfActiveOrders(ctx context.Context) ([]ListModifi
 	return items, nil
 }
 
+const listMovedLinesOfBatch = `-- name: ListMovedLinesOfBatch :many
+select coalesce(split_from_line_id, order_line_id)::bigint as line_id, qty
+from order_line_moves where client_uuid = $1
+`
+
+type ListMovedLinesOfBatchRow struct {
+	LineID int64           `json:"line_id"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+// Qué renglones del origen y cuántas piezas pasó un lote, para reconocer un reenvío: la misma llave
+// con otra selección no es el mismo «Pasar».
+func (q *Queries) ListMovedLinesOfBatch(ctx context.Context, clientUuid uuid.UUID) ([]ListMovedLinesOfBatchRow, error) {
+	rows, err := q.db.Query(ctx, listMovedLinesOfBatch, clientUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMovedLinesOfBatchRow{}
+	for rows.Next() {
+		var i ListMovedLinesOfBatchRow
+		if err := rows.Scan(&i.LineID, &i.Qty); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenOrders = `-- name: ListOpenOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
        o.customer_name, o.total, o.currency, o.opened_at, o.business_date,
@@ -2180,6 +2212,20 @@ func (q *Queries) ListRefundedLinesOfOrder(ctx context.Context, orderID int64) (
 	return items, nil
 }
 
+const lockSessionStatusForShare = `-- name: LockSessionStatusForShare :one
+select status::text from register_sessions where id = $1 for share
+`
+
+// El estado del turno de un pago, con candado compartido: un cierre de turno que corre a la vez
+// termina antes, y devolver ve que ya cerró. Sin él, devolver leía «abierto», el corte confirmaba
+// con ese pago en su esperado y luego la devolución lo borraba.
+func (q *Queries) LockSessionStatusForShare(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, lockSessionStatusForShare, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
 const marcarRenglonesEnviadosACocina = `-- name: MarcarRenglonesEnviadosACocina :exec
 update order_lines set enviado_a_cocina_at = now()
 where order_id = $1 and id = any($2::bigint[])
@@ -2215,11 +2261,11 @@ func (q *Queries) MarcarTodoElPedidoEnviadoACocina(ctx context.Context, orderID 
 	return err
 }
 
-const markOrderMerged = `-- name: MarkOrderMerged :exec
+const markOrderMerged = `-- name: MarkOrderMerged :execrows
 update orders
    set status = 'cancelada', cancelled_at = now(), cancelled_by = $1,
        cancel_reason = 'Se juntó con otro pedido', merged_into_order_id = $2
- where id = $3
+ where id = $3 and status in ('abierta', 'lista') and merged_into_order_id is null
 `
 
 type MarkOrderMergedParams struct {
@@ -2229,10 +2275,15 @@ type MarkOrderMergedParams struct {
 }
 
 // El origen vacío al pasarle todo a otro pedido: cancelado, sin reponer (el consumo viajó con los
-// productos), y marcado para que ningún reporte lo cuente como cancelación.
-func (q *Queries) MarkOrderMerged(ctx context.Context, arg MarkOrderMergedParams) error {
-	_, err := q.db.Exec(ctx, markOrderMerged, arg.ActorID, arg.IntoOrderID, arg.ID)
-	return err
+// productos), y marcado para que ningún reporte lo cuente como cancelación. Se protege sola: solo un
+// pedido vivo y no juntado, para que un camino futuro que la llame sin sus guardas no cancele uno
+// cobrado o entregado.
+func (q *Queries) MarkOrderMerged(ctx context.Context, arg MarkOrderMergedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOrderMerged, arg.ActorID, arg.IntoOrderID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const moveLineStockMovements = `-- name: MoveLineStockMovements :exec
