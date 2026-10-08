@@ -86,6 +86,9 @@ type MethodTotals struct {
 	Payments int32           `json:"payments"`
 	Total    decimal.Decimal `json:"total"`
 	Tips     decimal.Decimal `json:"tips"`
+	// Refunds: lo devuelto por este medio en el periodo, ya restado de Total (spec 031). Un cobro
+	// cuenta el día en que se cobró y una devolución el día en que se devolvió.
+	Refunds decimal.Decimal `json:"refunds"`
 }
 
 // SalesSummaryView es el resumen de arriba. Agrega al de dominio el desglose por método y las
@@ -263,7 +266,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 		}
 		for _, r := range rows {
 			out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas)})
+				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Devoluciones)})
 		}
 		return out, nil
 	}
@@ -275,7 +278,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 	}
 	for _, r := range rows {
 		out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas)})
+			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Devoluciones)})
 	}
 	return out, nil
 }

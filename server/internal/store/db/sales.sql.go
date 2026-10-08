@@ -454,8 +454,7 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
-  and o.business_date between $1 and $2
+where o.business_date between $1 and $2
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
   -- seguía mostrando la merma de mostrador y las cifras dejaban de ser del mismo conjunto.
@@ -473,10 +472,12 @@ type SalesCancelledLinesRow struct {
 	Monto  decimal.Decimal `json:"monto"`
 }
 
-// Líneas canceladas dentro de ventas que NO se cancelaron enteras: es la merma que se pierde de
-// vista, porque el pedido se cobró y el renglón no.
-// Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
-// pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
+// Los renglones QUITADOS: la merma que se pierde de vista, porque el renglón no se cobró.
+//
+// Cuentan aunque el pedido se haya cancelado después (spec 031, D14). Excluir los pedidos cancelados
+// borraba lo que se les quitó antes: tres frappés quitados y el pedido cerrado sin productos salían
+// en $0 en las dos cifras. No hay doble conteo con «Canceladas»: el total del pedido ya no incluye
+// lo quitado (RecalcOrderTotals), y cancelar el pedido no toca sus renglones.
 func (q *Queries) SalesCancelledLines(ctx context.Context, arg SalesCancelledLinesParams) (SalesCancelledLinesRow, error) {
 	row := q.db.QueryRow(ctx, salesCancelledLines, arg.Desde, arg.Hasta, arg.ServiceType)
 	var i SalesCancelledLinesRow
@@ -489,8 +490,7 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
-  and o.delivery_platform_id is not null and o.platform_order_ref is null
+where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between $1 and $2
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
@@ -511,8 +511,6 @@ type SalesCancelledLinesSinFolioRow struct {
 
 // Gemela de SalesCancelledLines con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
 // línea es lo único que las distingue, y se editan juntas.
-// Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
-// pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
 func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCancelledLinesSinFolioParams) (SalesCancelledLinesSinFolioRow, error) {
 	row := q.db.QueryRow(ctx, salesCancelledLinesSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
 	var i SalesCancelledLinesSinFolioRow
@@ -521,17 +519,33 @@ func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCanc
 }
 
 const salesTotalsByMethod = `-- name: SalesTotalsByMethod :many
+with pagos as (
+  select op.payment_method_id, count(*) as pagos, sum(op.amount) as cobrado, sum(op.tip_amount) as propinas
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where (op.business_date between $1 and $2
+          or (op.business_date is null and o.business_date between $1 and $2))
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+     and ($3::service_type is null or o.service_type = $3)
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+    join orders o on o.id = r.order_id
+   where coalesce(r.business_date, o.business_date) between $1 and $2
+     and ($3::service_type is null or o.service_type = $3)
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name as method,
-       count(*)::int as pagos,
-       coalesce(sum(op.amount), 0)::numeric(12,2) as total,
-       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as propinas
-from order_payments op
-join orders o on o.id = op.order_id
-join payment_methods pm on pm.id = op.payment_method_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.business_date between $1 and $2
-  and ($3::service_type is null or o.service_type = $3)
-group by pm.id, pm.name
+       coalesce(p.pagos, 0)::int as pagos,
+       (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
+       (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
+       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+from payment_methods pm
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where p.payment_method_id is not null or d.payment_method_id is not null
 order by total desc
 `
 
@@ -542,30 +556,25 @@ type SalesTotalsByMethodParams struct {
 }
 
 type SalesTotalsByMethodRow struct {
-	MethodID int16           `json:"method_id"`
-	Method   string          `json:"method"`
-	Pagos    int32           `json:"pagos"`
-	Total    decimal.Decimal `json:"total"`
-	Propinas decimal.Decimal `json:"propinas"`
+	MethodID     int16           `json:"method_id"`
+	Method       string          `json:"method"`
+	Pagos        int32           `json:"pagos"`
+	Total        decimal.Decimal `json:"total"`
+	Propinas     decimal.Decimal `json:"propinas"`
+	Devoluciones decimal.Decimal `json:"devoluciones"`
 }
 
 // Desglose por medio de pago: lo COBRADO, que no es lo mismo que lo vendido (una venta mandada a
-// cocina sin cobrar suma al total y no aparece aquí). Sale de order_payments porque una venta puede
-// pagarse con varios métodos.
+// cocina sin cobrar suma al total y no aparece aquí).
+//
+// Desde la spec 031 cada cobro cuenta el día en que se COBRÓ y cada devolución resta el día en que
+// se DEVOLVIÓ (decisión del dueño): es dinero, no venta, y así un mes cerrado no cambia porque un
+// pedido se cobre o se devuelva después. Es la misma regla que `SalesByMethod` de reports.sql —se
+// editan juntas— y la explicación completa de qué pedidos cuentan vive ahí.
 //
 // El filtro de ESTADO DE LA PANTALLA no aplica, por el mismo motivo que SalesTotalsByStatus: el
 // resumen dice cuánto entró por cada medio aunque la tabla esté filtrada a un estado. El de tipo de
-// venta sí aplica.
-//
-// Lo que SÍ se excluye son canceladas y reembolsadas, que no son un filtro de la pantalla sino la
-// misma regla que aplica el total de arriba. Sin ellas, los $500 de una venta devuelta salían en el
-// tile "Reembolsadas" Y en el de "Tarjeta" mientras el total —que sí las excluye— los ignoraba: el
-// mismo peso contado de tres maneras en tres renglones hermanos. Reconciliar contra la terminal
-// bancaria es trabajo del corte de caja, que es por turno y sí mira el flujo bruto; esta pantalla
-// responde qué VENDIÓ el negocio.
-//
-// El hermano de esta consulta vive en reports.sql (`SalesByMethod`) y se corrigió primero; esta
-// copia se quedó con el defecto una versión entera. Se editan juntas.
+// venta sí aplica, en las dos ramas.
 func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMethodParams) ([]SalesTotalsByMethodRow, error) {
 	rows, err := q.db.Query(ctx, salesTotalsByMethod, arg.Desde, arg.Hasta, arg.ServiceType)
 	if err != nil {
@@ -581,6 +590,7 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 			&i.Pagos,
 			&i.Total,
 			&i.Propinas,
+			&i.Devoluciones,
 		); err != nil {
 			return nil, err
 		}
@@ -593,18 +603,35 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 }
 
 const salesTotalsByMethodSinFolio = `-- name: SalesTotalsByMethodSinFolio :many
+with pagos as (
+  select op.payment_method_id, count(*) as pagos, sum(op.amount) as cobrado, sum(op.tip_amount) as propinas
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where o.delivery_platform_id is not null and o.platform_order_ref is null
+     and (op.business_date between $1 and $2
+          or (op.business_date is null and o.business_date between $1 and $2))
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+     and ($3::service_type is null or o.service_type = $3)
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+    join orders o on o.id = r.order_id
+   where o.delivery_platform_id is not null and o.platform_order_ref is null
+     and coalesce(r.business_date, o.business_date) between $1 and $2
+     and ($3::service_type is null or o.service_type = $3)
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name as method,
-       count(*)::int as pagos,
-       coalesce(sum(op.amount), 0)::numeric(12,2) as total,
-       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as propinas
-from order_payments op
-join orders o on o.id = op.order_id
-join payment_methods pm on pm.id = op.payment_method_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.delivery_platform_id is not null and o.platform_order_ref is null
-  and o.business_date between $1 and $2
-  and ($3::service_type is null or o.service_type = $3)
-group by pm.id, pm.name
+       coalesce(p.pagos, 0)::int as pagos,
+       (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
+       (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
+       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+from payment_methods pm
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where p.payment_method_id is not null or d.payment_method_id is not null
 order by total desc
 `
 
@@ -615,15 +642,16 @@ type SalesTotalsByMethodSinFolioParams struct {
 }
 
 type SalesTotalsByMethodSinFolioRow struct {
-	MethodID int16           `json:"method_id"`
-	Method   string          `json:"method"`
-	Pagos    int32           `json:"pagos"`
-	Total    decimal.Decimal `json:"total"`
-	Propinas decimal.Decimal `json:"propinas"`
+	MethodID     int16           `json:"method_id"`
+	Method       string          `json:"method"`
+	Pagos        int32           `json:"pagos"`
+	Total        decimal.Decimal `json:"total"`
+	Propinas     decimal.Decimal `json:"propinas"`
+	Devoluciones decimal.Decimal `json:"devoluciones"`
 }
 
-// Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
-// línea es lo único que las distingue, y se editan juntas.
+// Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL, en las dos ramas. Ver la
+// cabecera del archivo: esa línea es lo único que las distingue, y se editan juntas.
 func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTotalsByMethodSinFolioParams) ([]SalesTotalsByMethodSinFolioRow, error) {
 	rows, err := q.db.Query(ctx, salesTotalsByMethodSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
 	if err != nil {
@@ -639,6 +667,7 @@ func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTota
 			&i.Pagos,
 			&i.Total,
 			&i.Propinas,
+			&i.Devoluciones,
 		); err != nil {
 			return nil, err
 		}

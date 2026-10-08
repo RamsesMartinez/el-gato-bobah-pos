@@ -1985,8 +1985,8 @@ func (s *BackofficeService) SalesByDay(ctx context.Context, from, to time.Time) 
 }
 func (s *BackofficeService) SalesByMethod(ctx context.Context, from, to time.Time) ([]db.SalesByMethodRow, error) {
 	return s.store.QC(ctx).SalesByMethod(ctx, db.SalesByMethodParams{
-		BusinessDate:   pgtype.Date{Time: from, Valid: true},
-		BusinessDate_2: pgtype.Date{Time: to, Valid: true},
+		Desde: pgtype.Date{Time: from, Valid: true},
+		Hasta: pgtype.Date{Time: to, Valid: true},
 	})
 }
 

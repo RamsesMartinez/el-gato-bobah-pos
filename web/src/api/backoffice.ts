@@ -145,6 +145,21 @@ export interface CashSession {
   // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
   // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
   voidedPayments?: VoidedPayment[];
+  // Dinero devuelto al cliente en el turno (spec 031). Opcional por la misma razón que el anterior.
+  refunds?: SessionRefund[];
+}
+
+// Una devolución del turno. `fromDrawer`: salió del cajón (con su salida de caja); si no, ya bajó
+// el esperado de su medio.
+export interface SessionRefund {
+  method: string;
+  amount: string;
+  tip: string;
+  orderFolio: string;
+  fromDrawer: boolean;
+  refundedBy: string;
+  refundedAt: string;
+  reason: string;
 }
 
 export interface VoidedPayment {
@@ -217,6 +232,7 @@ export interface CashSessionDetail {
   // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
   // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
   voidedPayments?: VoidedPayment[];
+  refunds?: SessionRefund[];
 }
 
 export interface CorteSale {

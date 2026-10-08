@@ -15,12 +15,14 @@ import (
 const productMargins = `-- name: ProductMargins :many
 select ol.product_name,
        sum(ol.quantity)::numeric(12,2) as qty,
-       coalesce(sum(ol.line_total), 0)::numeric(12,2) as revenue,
+       coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)::numeric(12,2) as revenue,
        coalesce(sum(ol.unit_cost * ol.quantity), 0)::numeric(12,2) as cost,
-       coalesce(sum(ol.line_total) - sum(ol.unit_cost * ol.quantity), 0)::numeric(12,2) as margin
+       (coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)
+        - coalesce(sum(ol.unit_cost * ol.quantity), 0))::numeric(12,2) as margin
 from order_lines ol
 join orders o on o.id = ol.order_id
 where o.status not in ('cancelada', 'reembolsada')
+  and ol.cancelled_at is null
   and o.business_date between $1 and $2
 group by ol.product_name
 order by margin desc
@@ -48,6 +50,10 @@ type ProductMarginsRow struct {
 // seguido contestando "desde esa fecha hasta hoy" mientras el resto de la pantalla contestaba el
 // rango elegido. Y `opened_at` es un instante en UTC, no el día con el que el negocio cuadra su
 // caja: un pedido abierto a las 19:00 de México ya es del día siguiente en UTC.
+//
+// Spec 031 (D10): sin los renglones QUITADOS —no se vendieron, y ProductsSold y el total del pedido
+// ya los excluían— y con el descuento del pedido repartido entre sus renglones en proporción a su
+// importe. Así el ingreso por producto suma lo vendido menos envíos, que no es de ningún producto.
 func (q *Queries) ProductMargins(ctx context.Context, arg ProductMarginsParams) ([]ProductMarginsRow, error) {
 	rows, err := q.db.Query(ctx, productMargins, arg.BusinessDate, arg.BusinessDate_2, arg.Limit)
 	if err != nil {
@@ -225,42 +231,65 @@ func (q *Queries) SalesByDay(ctx context.Context, arg SalesByDayParams) ([]Sales
 }
 
 const salesByMethod = `-- name: SalesByMethod :many
+with pagos as (
+  select op.payment_method_id, count(*) as payments, sum(op.amount) as cobrado
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where (op.business_date between $1 and $2
+          or (op.business_date is null and o.business_date between $1 and $2))
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto
+    from order_refunds r
+    join orders o on o.id = r.order_id
+   where coalesce(r.business_date, o.business_date) between $1 and $2
+   group by r.payment_method_id
+)
 select pm.name as method,
-       count(*)::int as payments,
-       coalesce(sum(op.amount), 0)::numeric(12,2) as total
-from order_payments op
-join orders o on o.id = op.order_id
-join payment_methods pm on pm.id = op.payment_method_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.business_date between $1 and $2
-group by pm.name
+       coalesce(p.payments, 0)::int as payments,
+       (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
+from payment_methods pm
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where p.payment_method_id is not null or d.payment_method_id is not null
 order by total desc
 `
 
 type SalesByMethodParams struct {
-	BusinessDate   pgtype.Date `json:"business_date"`
-	BusinessDate_2 pgtype.Date `json:"business_date_2"`
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
 }
 
 type SalesByMethodRow struct {
 	Method   string          `json:"method"`
 	Payments int32           `json:"payments"`
 	Total    decimal.Decimal `json:"total"`
+	Refunds  decimal.Decimal `json:"refunds"`
 }
 
-// Cobros por medio de pago, con EL MISMO predicado que SalesByDay. No es cosmético: las dos tablas
-// viven en la misma pantalla, y si una responde otro periodo o incluye otras ventas, la suma de los
-// métodos no cuadra con el total de arriba y quien lo lee no tiene forma de saber cuál miente.
+// Cobros por medio de pago: lo que ENTRÓ cada día menos lo que se DEVOLVIÓ cada día (spec 031).
 //
-// Dos cosas cambiaron y las dos habían costado:
-//   - Filtraba por `op.created_at >= $1`, SIN cota superior: elegir julio mostraba julio en una
-//     tabla y "de julio a hoy" en la otra. Además `created_at` es el instante del cobro y no el día
-//     de negocio, así que un cobro de un turno que cruza la medianoche caía en otro día que su venta.
-//   - No excluía canceladas ni reembolsadas. El cobro de una venta reembolsada seguía sumando aquí
-//     mientras el total de arriba —que sí la excluye— no lo contaba: ingreso que no ocurrió,
-//     clasificado dos veces distinto en la misma pantalla.
+// El dueño decidió que el dinero se clasifica por la hora de CADA movimiento: un cobro cuenta el día
+// en que se cobró y una devolución el día en que se devolvió. Antes los dos tomaban el día del
+// PEDIDO, así que un fiado cobrado días después aparecía en un día ya cerrado —mientras el corte de
+// caja lo esperaba hoy— y una devolución del mes siguiente borraba el cobro del mes en que entró.
+// Esto ya no es la venta del día (SalesByDay): es el dinero, y por eso puede diferir de ella.
+//
+// Qué pedidos cuentan: los no cancelados ni reembolsados, más los cancelados que tienen su
+// devolución en el libro (su cobro cuenta en su día y su devolución resta en el suyo). Un cancelado
+// SIN libro es anterior a 0060 —cancelar no miraba los cobros— o un reembolsado por el flujo viejo,
+// que no escribía el libro: contarlos inflaría periodos cerrados con dinero que sí se regresó.
+//
+// Cobros y devoluciones se agregan por método cada uno antes de unirse —son dos 1:N del pedido— y
+// se unen por el método, para que uno que solo tuvo devoluciones en el periodo también salga.
+//
+// El predicado del día va partido para usar `order_payments_company_day`: el `or` cubre solo los
+// pagos que un binario anterior pudiera dejar sin día.
 func (q *Queries) SalesByMethod(ctx context.Context, arg SalesByMethodParams) ([]SalesByMethodRow, error) {
-	rows, err := q.db.Query(ctx, salesByMethod, arg.BusinessDate, arg.BusinessDate_2)
+	rows, err := q.db.Query(ctx, salesByMethod, arg.Desde, arg.Hasta)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +297,12 @@ func (q *Queries) SalesByMethod(ctx context.Context, arg SalesByMethodParams) ([
 	items := []SalesByMethodRow{}
 	for rows.Next() {
 		var i SalesByMethodRow
-		if err := rows.Scan(&i.Method, &i.Payments, &i.Total); err != nil {
+		if err := rows.Scan(
+			&i.Method,
+			&i.Payments,
+			&i.Total,
+			&i.Refunds,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
