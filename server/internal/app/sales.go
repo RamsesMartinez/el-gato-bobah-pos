@@ -266,7 +266,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 		}
 		for _, r := range rows {
 			out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Devoluciones)})
+				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds)})
 		}
 		return out, nil
 	}
@@ -278,7 +278,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 	}
 	for _, r := range rows {
 		out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Devoluciones)})
+			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds)})
 	}
 	return out, nil
 }

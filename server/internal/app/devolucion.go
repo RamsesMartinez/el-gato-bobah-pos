@@ -80,19 +80,19 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	if err != nil {
 		return err
 	}
-	if err := domain.ValidarDevolucion(cmd.Monto, tope.cobrado, tope.devueltoTotal); err != nil {
+	if err := domain.ValidarDevolucion(cmd.Monto, tope.paid, tope.refundedTotal); err != nil {
 		return err
 	}
-	if cmd.LineID != nil && domain.Round2(cmd.Monto).GreaterThan(tope.queda) {
-		return fmt.Errorf("%w: de ese producto solo quedan %s por devolver", domain.ErrDevolucionExcede, tope.queda)
+	if cmd.LineID != nil && domain.Round2(cmd.Monto).GreaterThan(tope.remaining) {
+		return fmt.Errorf("%w: de ese producto solo quedan %s por devolver", domain.ErrDevolucionExcede, tope.remaining)
 	}
-	entradas := tope.entradas
+	entradas := tope.entries
 
 	// El dinero sale por donde entró, y sale del cajón lo que estaba en el cajón. Devolver en
 	// efectivo lo que entró por tarjeta saca de la caja dinero que nunca estuvo ahí, y el arqueo
 	// cierra con un faltante inventado; no registrar la salida del efectivo de una app hace lo
 	// mismo con el signo contrario.
-	if err := s.registrarPartes(ctx, q, cmd.OrderID, cmd.LineID, domain.RepartirDevolucion(entradas, cmd.Monto), motivo, cmd.ActorID); err != nil {
+	if err := s.recordRefundParts(ctx, q, cmd.OrderID, cmd.LineID, domain.RepartirDevolucion(entradas, cmd.Monto), motivo, cmd.ActorID); err != nil {
 		return err
 	}
 
@@ -102,13 +102,13 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	return q.RecalcOrderRefundAmount(ctx, cmd.OrderID)
 }
 
-// registrarPartes escribe en el libro cada parte de una devolución, con su turno y su día, y la
+// recordRefundParts escribe en el libro cada parte de una devolución, con su turno y su día, y la
 // salida de caja de lo que estaba en el cajón. Lo comparten devolver y cancelar con devolución.
 //
 // El turno es el de AHORA, no el del pedido (decisión del dueño, spec 031): una devolución cuenta
 // en el turno y el día en que se hizo. Se lee con candado compartido también cuando nada sale del
 // cajón, para que un cierre simultáneo la espere o ella lo vea cerrado.
-func (s *OrdersService) registrarPartes(ctx context.Context, q *db.Queries, orderID int64, lineID *int64,
+func (s *OrdersService) recordRefundParts(ctx context.Context, q *db.Queries, orderID int64, lineID *int64,
 	partes []domain.ParteDeDevolucion, motivo string, actor int64,
 ) error {
 	var turno *int64
@@ -132,7 +132,7 @@ func (s *OrdersService) registrarPartes(ctx context.Context, q *db.Queries, orde
 			mov, err := q.InsertCashMovement(ctx, db.InsertCashMovementParams{
 				SessionID: *turno,
 				Kind:      "salida",
-				Amount:    domain.Round2(parte.Monto.Add(parte.Propina)),
+				Amount:    domain.Round2(parte.Monto.Add(parte.Tip)),
 				Concept:   fmt.Sprintf("Devolución: %s", motivo),
 				UserID:    actor,
 			})
@@ -146,7 +146,7 @@ func (s *OrdersService) registrarPartes(ctx context.Context, q *db.Queries, orde
 			OrderLineID:       lineID,
 			PaymentMethodID:   parte.MetodoID,
 			Amount:            domain.Round2(parte.Monto),
-			TipAmount:         domain.Round2(parte.Propina),
+			TipAmount:         domain.Round2(parte.Tip),
 			Reason:            motivo,
 			RefundedBy:        actor,
 			CashMovementID:    movimiento,
@@ -173,10 +173,10 @@ func (s *OrdersService) cobradoPorMetodo(ctx context.Context, q *db.Queries, ord
 			TocaElCajon: f.TocaElCajon,
 			Activo:      f.IsActive,
 			Monto:       f.Cobrado,
-			Devuelto:    f.Devuelto,
-			Propina:     f.Propina,
+			Refunded:    f.Refunded,
+			Tip:         f.Tip,
 
-			PropinaDevuelta: f.PropinaDevuelta,
+			TipRefunded: f.TipRefunded,
 		})
 	}
 	return entradas, nil
@@ -184,11 +184,11 @@ func (s *OrdersService) cobradoPorMetodo(ctx context.Context, q *db.Queries, ord
 
 // refundTop es lo que una devolución puede sacar de un pedido, y de dónde.
 type refundTop struct {
-	entradas      []domain.CobradoPorMetodo
-	cobrado       decimal.Decimal
-	devueltoTotal decimal.Decimal
-	// queda: lo que todavía se puede devolver; con renglón, el menor entre el pedido y el renglón.
-	queda decimal.Decimal
+	entries       []domain.CobradoPorMetodo
+	paid          decimal.Decimal
+	refundedTotal decimal.Decimal
+	// remaining: lo que todavía se puede devolver; con renglón, el menor entre el pedido y el renglón.
+	remaining decimal.Decimal
 }
 
 // refundable calcula el tope de una devolución. Lo comparten Devolver —con el pedido bloqueado— y
@@ -200,16 +200,16 @@ func (s *OrdersService) refundable(ctx context.Context, q *db.Queries, orderID i
 		return refundTop{}, err
 	}
 	var t refundTop
-	t.entradas = entradas
+	t.entries = entradas
 	for _, e := range entradas {
-		t.cobrado = t.cobrado.Add(e.Monto)
+		t.paid = t.paid.Add(e.Monto)
 	}
 	devuelto, err := q.SumOrderRefunds(ctx, db.SumOrderRefundsParams{OrderID: orderID, LineID: lineID})
 	if err != nil {
 		return refundTop{}, err
 	}
-	t.devueltoTotal = devuelto.DevueltoTotal
-	t.queda = domain.MontoDevolvible(t.cobrado, t.devueltoTotal)
+	t.refundedTotal = devuelto.DevueltoTotal
+	t.remaining = domain.MontoDevolvible(t.paid, t.refundedTotal)
 	if lineID != nil {
 		importe, err := q.GetOrderLineForRefund(ctx, db.GetOrderLineForRefundParams{LineID: *lineID, OrderID: orderID})
 		if err != nil {
@@ -218,7 +218,7 @@ func (s *OrdersService) refundable(ctx context.Context, q *db.Queries, orderID i
 			}
 			return refundTop{}, err
 		}
-		t.queda = domain.MontoDevolvibleDeRenglon(t.cobrado, t.devueltoTotal, importe, devuelto.DevueltoDelRenglon)
+		t.remaining = domain.LineRefundable(t.paid, t.refundedTotal, importe, devuelto.DevueltoDelRenglon)
 	}
 	return t, nil
 }
@@ -265,12 +265,12 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		// Lo que queda por devolver de CADA medio, cuenta y propina: cancelar dice que la venta no
 		// ocurrió, así que el cliente recibe lo que dio (spec 031, D9). Lo ya devuelto antes no se
 		// devuelve otra vez.
-		partes := domain.RepartirCancelacion(entradas)
+		partes := domain.SplitCancellationRefund(entradas)
 		if len(entradas) > 0 && !cmd.Devolver {
 			return domain.ErrCancelarSinDevolver
 		}
 		if len(partes) > 0 {
-			if err := s.registrarPartes(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID); err != nil {
+			if err := s.recordRefundParts(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID); err != nil {
 				return err
 			}
 			if err := q.RecalcOrderRefundAmount(ctx, cmd.OrderID); err != nil {
@@ -535,7 +535,7 @@ func (s *OrdersService) VoidPayment(ctx context.Context, orderID, paymentID, act
 		}
 		for _, e := range entradas {
 			if e.MetodoID == p.PaymentMethodID {
-				if err := domain.VoidKeepsRefunds(e.Monto.Sub(p.Amount), e.Devuelto); err != nil {
+				if err := domain.VoidKeepsRefunds(e.Monto.Sub(p.Amount), e.Refunded); err != nil {
 					return err
 				}
 			}
@@ -593,7 +593,7 @@ func (s *OrdersService) PorDevolver(ctx context.Context, orderID int64, lineID *
 	if err != nil {
 		return decimal.Zero, err
 	}
-	return t.queda, nil
+	return t.remaining, nil
 }
 
 // CancelPendingResult dice cuántos productos se quitaron y cuántos repusieron inventario.

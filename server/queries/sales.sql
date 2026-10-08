@@ -215,7 +215,7 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id
@@ -249,7 +249,7 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id

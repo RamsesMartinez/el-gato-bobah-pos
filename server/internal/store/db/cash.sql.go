@@ -72,6 +72,7 @@ update order_refunds r
   join cash_registers c on c.id = s.register_id,
        orders o
  where s.id = $1
+   and c.is_primary
    and o.id = r.order_id
    and o.branch_id = c.branch_id
    and r.register_session_id is null

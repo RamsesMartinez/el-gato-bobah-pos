@@ -67,7 +67,7 @@ export function TotalsTable({ totals, currency, withTotalRow, drawerDifference }
 }) {
   if (!totals?.length) return null;
   const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
-  const diffTotal = sum((t) => t.difference) + (Number(drawerDifference) || 0);
+  const diffTotal = round2(sum((t) => t.difference) + (Number(drawerDifference) || 0));
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
@@ -843,12 +843,15 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           )}
 
           <VoidedPaymentsList payments={session.voidedPayments} currency={session.currency} zona={horaNegocio.zona} />
-          <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
 
           <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
             declared={declared} onDeclared={setDeclared}
             cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
             diferencias={diferencias} />
+
+          {/* Después de la tabla del cierre y no antes: es lo que se viene a llenar, y la lista
+              abierta la empujaría fuera de los 600 px de la tableta. */}
+          <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
 
           <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
             value={notes} onChange={(e) => setNotes(e.target.value)} />

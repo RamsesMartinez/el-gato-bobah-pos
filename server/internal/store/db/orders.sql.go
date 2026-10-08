@@ -2807,9 +2807,9 @@ with pagos as (
 )
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
        coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
-       coalesce(d.devuelto, 0)::numeric(10,2) as devuelto,
-       coalesce(p.propina, 0)::numeric(10,2) as propina,
-       coalesce(d.propina_devuelta, 0)::numeric(10,2) as propina_devuelta
+       coalesce(d.devuelto, 0)::numeric(10,2) as refunded,
+       coalesce(p.propina, 0)::numeric(10,2) as tip,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as tip_refunded
 from pagos p
 join payment_methods pm on pm.id = p.payment_method_id
 left join devueltos d on d.payment_method_id = p.payment_method_id
@@ -2817,14 +2817,14 @@ order by p.primero
 `
 
 type SumOrderPaymentsByMethodRow struct {
-	MethodID        int16           `json:"method_id"`
-	Name            string          `json:"name"`
-	TocaElCajon     bool            `json:"toca_el_cajon"`
-	IsActive        bool            `json:"is_active"`
-	Cobrado         decimal.Decimal `json:"cobrado"`
-	Devuelto        decimal.Decimal `json:"devuelto"`
-	Propina         decimal.Decimal `json:"propina"`
-	PropinaDevuelta decimal.Decimal `json:"propina_devuelta"`
+	MethodID    int16           `json:"method_id"`
+	Name        string          `json:"name"`
+	TocaElCajon bool            `json:"toca_el_cajon"`
+	IsActive    bool            `json:"is_active"`
+	Cobrado     decimal.Decimal `json:"cobrado"`
+	Refunded    decimal.Decimal `json:"refunded"`
+	Tip         decimal.Decimal `json:"tip"`
+	TipRefunded decimal.Decimal `json:"tip_refunded"`
 }
 
 // Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró, y cuánto ya salió
@@ -2860,9 +2860,9 @@ func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) (
 			&i.TocaElCajon,
 			&i.IsActive,
 			&i.Cobrado,
-			&i.Devuelto,
-			&i.Propina,
-			&i.PropinaDevuelta,
+			&i.Refunded,
+			&i.Tip,
+			&i.TipRefunded,
 		); err != nil {
 			return nil, err
 		}

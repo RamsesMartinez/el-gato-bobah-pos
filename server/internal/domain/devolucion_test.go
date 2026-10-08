@@ -176,7 +176,7 @@ func TestElRepartoNoInventaDinero(t *testing.T) {
 // tarjeta: el libro decía que salieron $80 en efectivo de $40 que entraron.
 func TestLaSegundaDevolucionNoRepiteElPrimerMedio(t *testing.T) {
 	entradas := []CobradoPorMetodo{
-		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Devuelto: d("40")},
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Refunded: d("40")},
 		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("60")},
 	}
 	partes := RepartirDevolucion(entradas, d("60"))
@@ -185,7 +185,7 @@ func TestLaSegundaDevolucionNoRepiteElPrimerMedio(t *testing.T) {
 	}
 
 	// A medias: lo que queda del efectivo sale primero, y nunca más de eso.
-	entradas[0].Devuelto = d("25")
+	entradas[0].Refunded = d("25")
 	partes = RepartirDevolucion(entradas, d("75"))
 	if len(partes) != 2 || !partes[0].Monto.Equal(d("15")) || !partes[1].Monto.Equal(d("60")) {
 		t.Fatalf("reparto de 75 con 25 ya devueltos en efectivo = %+v, quiere 15 de efectivo y 60 de tarjeta", partes)
@@ -211,7 +211,7 @@ func TestElTopeDeUnRenglon(t *testing.T) {
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
-			got := MontoDevolvibleDeRenglon(d(c.cobrado), d(c.devueltoTotal), d(c.importe), d(c.devueltoRenglon))
+			got := LineRefundable(d(c.cobrado), d(c.devueltoTotal), d(c.importe), d(c.devueltoRenglon))
 			if !got.Equal(d(c.quiere)) {
 				t.Fatalf("tope = %s, quiere %s", got, c.quiere)
 			}
@@ -253,18 +253,18 @@ func TestDevolverUnPagoRespetaLasDevoluciones(t *testing.T) {
 // propinas la contaba, porque el pedido estaba cancelado.
 func TestCancelarDevuelveCuentaYPropinaPorMedio(t *testing.T) {
 	entradas := []CobradoPorMetodo{
-		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Devuelto: d("40"), Propina: d("5")},
-		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("60"), Propina: d("10"), PropinaDevuelta: d("4")},
-		{MetodoID: 3, Nombre: "Transferencia", Monto: d("20"), Devuelto: d("20")},
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Refunded: d("40"), Tip: d("5")},
+		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("60"), Tip: d("10"), TipRefunded: d("4")},
+		{MetodoID: 3, Nombre: "Transferencia", Monto: d("20"), Refunded: d("20")},
 	}
-	partes := RepartirCancelacion(entradas)
+	partes := SplitCancellationRefund(entradas)
 	if len(partes) != 2 {
 		t.Fatalf("partes = %+v, quiere dos: efectivo (solo propina) y tarjeta", partes)
 	}
-	if partes[0].MetodoID != 1 || !partes[0].Monto.IsZero() || !partes[0].Propina.Equal(d("5")) || !partes[0].SaleDelCajon {
+	if partes[0].MetodoID != 1 || !partes[0].Monto.IsZero() || !partes[0].Tip.Equal(d("5")) || !partes[0].SaleDelCajon {
 		t.Fatalf("efectivo = %+v, quiere 0 de cuenta y 5 de propina, del cajón", partes[0])
 	}
-	if partes[1].MetodoID != 2 || !partes[1].Monto.Equal(d("60")) || !partes[1].Propina.Equal(d("6")) {
+	if partes[1].MetodoID != 2 || !partes[1].Monto.Equal(d("60")) || !partes[1].Tip.Equal(d("6")) {
 		t.Fatalf("tarjeta = %+v, quiere 60 de cuenta y 6 de propina", partes[1])
 	}
 }

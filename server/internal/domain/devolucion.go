@@ -55,13 +55,13 @@ type CobradoPorMetodo struct {
 	TocaElCajon bool
 	Activo      bool
 	Monto       decimal.Decimal
-	// Devuelto: lo que ya salió por este medio. El reparto trabaja sobre lo que QUEDA de cada medio;
+	// Refunded: lo que ya salió por este medio. El reparto trabaja sobre lo que QUEDA de cada medio;
 	// con lo cobrado en bruto, una segunda devolución volvía a sacar del primer medio lo que ya
 	// había salido por él (D1).
-	Devuelto decimal.Decimal
-	// Propina y PropinaDevuelta: lo mismo para la propina, que solo regresa al cancelar.
-	Propina         decimal.Decimal
-	PropinaDevuelta decimal.Decimal
+	Refunded decimal.Decimal
+	// Tip y TipRefunded: lo mismo para la propina, que solo regresa al cancelar.
+	Tip         decimal.Decimal
+	TipRefunded decimal.Decimal
 }
 
 // ParteDeDevolucion: cuánto se devuelve por un medio, y si eso sale del cajón.
@@ -69,9 +69,9 @@ type ParteDeDevolucion struct {
 	MetodoID int16
 	Nombre   string
 	Monto    decimal.Decimal
-	// Propina: propina que regresa por este medio. Va aparte del monto porque no es ingreso del
+	// Tip: propina que regresa por este medio. Va aparte del monto porque no es ingreso del
 	// negocio: no entra a lo devuelto de la venta.
-	Propina      decimal.Decimal
+	Tip          decimal.Decimal
 	SaleDelCajon bool
 }
 
@@ -131,7 +131,7 @@ func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []Pa
 		if restante.LessThanOrEqual(decimal.Zero) {
 			break
 		}
-		disponible := Round2(e.Monto.Sub(e.Devuelto))
+		disponible := Round2(e.Monto.Sub(e.Refunded))
 		if disponible.LessThanOrEqual(decimal.Zero) {
 			continue
 		}
@@ -147,13 +147,13 @@ func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []Pa
 	return partes
 }
 
-// MontoDevolvibleDeRenglon: cuánto se puede devolver contra UN renglón.
+// LineRefundable: cuánto se puede devolver contra UN renglón.
 //
 // El menor de dos topes: lo que queda del pedido y lo que vale el renglón menos lo ya devuelto
 // contra él. Con solo el del pedido, un platillo de $60 en un pedido de $500 devolvía $500, y otra
 // vez por cada platillo (D4). El importe es el del renglón sin prorratear el descuento: el tope del
 // pedido sigue mandando.
-func MontoDevolvibleDeRenglon(cobrado, devueltoTotal, importe, devueltoRenglon decimal.Decimal) decimal.Decimal {
+func LineRefundable(cobrado, devueltoTotal, importe, devueltoRenglon decimal.Decimal) decimal.Decimal {
 	delPedido := MontoDevolvible(cobrado, devueltoTotal)
 	delRenglon := MontoDevolvible(importe, devueltoRenglon)
 	if delRenglon.LessThan(delPedido) {
@@ -178,22 +178,22 @@ func VoidKeepsRefunds(quedaDelMedio, devueltoDelMedio decimal.Decimal) error {
 	return nil
 }
 
-// RepartirCancelacion: lo que regresa cada medio al cancelar con devolución, cuenta y propina.
+// SplitCancellationRefund: lo que regresa cada medio al cancelar con devolución, cuenta y propina.
 //
 // Cancelar dice que la venta no ocurrió, así que el cliente recibe lo que dio, propina incluida.
 // Devolver solo la cuenta dejaba la propina en el esperado del cajón y fuera de todo reparto,
 // porque el pedido cancelado ya no cuenta para propinas (D9). Un medio cuya cuenta ya se devolvió
 // puede regresar solo su propina.
-func RepartirCancelacion(entradas []CobradoPorMetodo) []ParteDeDevolucion {
+func SplitCancellationRefund(entradas []CobradoPorMetodo) []ParteDeDevolucion {
 	var partes []ParteDeDevolucion
 	for _, e := range entradas {
-		monto := MontoDevolvible(e.Monto, e.Devuelto)
-		propina := MontoDevolvible(e.Propina, e.PropinaDevuelta)
+		monto := MontoDevolvible(e.Monto, e.Refunded)
+		propina := MontoDevolvible(e.Tip, e.TipRefunded)
 		if monto.IsZero() && propina.IsZero() {
 			continue
 		}
 		partes = append(partes, ParteDeDevolucion{
-			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: monto, Propina: propina, SaleDelCajon: e.TocaElCajon,
+			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: monto, Tip: propina, SaleDelCajon: e.TocaElCajon,
 		})
 	}
 	return partes

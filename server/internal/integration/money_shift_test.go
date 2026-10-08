@@ -418,3 +418,118 @@ func TestTheShiftRefundQueriesAreIsolated(t *testing.T) {
 		t.Fatalf("una sesión ajena reclamó la devolución de la dueña al turno %d", *claimed)
 	}
 }
+
+// D7 (revisión): UNA CAJA SECUNDARIA QUE ABRE PRIMERO NO SE QUEDA CON LA DEVOLUCIÓN HUÉRFANA.
+//
+// La secundaria no vende y su esperado ignora las devoluciones: si la reclamaba, la devolución no
+// restaba de ningún corte y la principal cerraba con sobrante.
+func TestASecondaryRegisterDoesNotClaimAnOrphanRefund(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_d7c", "gerente")
+	tarjeta := paymentMethodID(t, st, "Tarjeta débito")
+	principal := registerID(t, st, "Caja principal")
+	sess := abrirCajaPrincipal(t, st, cajero)
+	ord := pedidoCobradoParcial(t, ctx, st, orders, "d7c", "70", "70", cajero, tarjeta, false)
+	closeBySQL(t, st, sess)
+	refund(t, ctx, orders, ord, nil, "70", cajero)
+
+	secundaria, err := back.CreateCashRegister(ctx, "Barra d7c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := back.OpenSession(ctx, secundaria.ID, aperturaAMano(decimal.Zero), cajero); err != nil {
+		t.Fatal(err)
+	}
+	nueva, err := back.OpenSession(ctx, principal, aperturaAMano(decimal.Zero), cajero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := totalOf(t, nueva.Totals, "Tarjeta débito"); !got.Equal(dec("-70")) {
+		t.Fatalf("la principal espera %s de tarjeta, quiere -70: la secundaria se quedó con la devolución", got)
+	}
+}
+
+// D8 (revisión): ACEPTAR UN PEDIDO DE PLATAFORMA MIENTRAS SE CIERRA EL TURNO.
+//
+// Aceptar leía el turno abierto sin candado: un cierre que firmaba entre esa lectura y el pago
+// dejaba el pago en un turno cerrado y fuera de su esperado. Ahora o entra al esperado firmado, o
+// queda sin turno y lo reclama la apertura siguiente.
+func TestAcceptingAPlatformOrderDuringTheCloseStaysInsideTheSignedExpected(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	const llave = "llave-para-cerrar-y-aceptar"
+	empresa := makeCompany(t, st, "empresa-cierre-aceptar")
+	usuario := makeUserIn(t, st, empresa, "cajera-cierre-aceptar", "gerente")
+	tiendaConLlave(t, st, empresa, "tienda-cierre-a", llave)
+	ctxT, soltar, err := st.AcquireTenant(ctx, empresa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer soltar()
+	var principal int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into cash_registers (company_id, name, is_primary) values ($1, 'Caja', true) returning id`, empresa).Scan(&principal); err != nil {
+		t.Fatal(err)
+	}
+	back := app.NewBackofficeService(st, clock)
+
+	for intento := 0; intento < 10; intento++ {
+		folio := "ped-cierre-" + itoa(intento)
+		detalle := strings.Replace(detalleDeUnPedido, `"id":"ped-1"`, `"id":"`+folio+`"`, 1)
+		svc := app.NewPedidosDePlataformaService(st,
+			fixedClients{deciders: map[string]app.DecisorDePedidos{"Uber Eats": &decisorFalso{detalle: []byte(detalle)}}}, signingKeyCipher,
+			"sandbox", clock)
+		cuerpo := avisoDePedido("evt-cierre-"+itoa(intento), "tienda-cierre-a")
+		if _, err := svc.RecibirAviso(ctx, "Uber Eats", app.AvisoEntrante{
+			Crudo: cuerpo, Firma: domain.FirmarParaPrueba(cuerpo, llave), Ambiente: "sandbox",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		pend, err := svc.Pendientes(ctxT)
+		if err != nil || len(pend) != 1 {
+			t.Fatalf("pendientes: %v %d", err, len(pend))
+		}
+		sess, err := back.OpenSession(ctxT, principal, app.AperturaCmd{}, usuario)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Cada goroutine con su propia conexión de empresa: compartir una no es lo que pasa en producción.
+		concurrently(2, func(i int) error {
+			c, rel, err := st.AcquireTenant(ctx, empresa)
+			if err != nil {
+				return err
+			}
+			defer rel()
+			if i == 0 {
+				_, err := back.CloseSession(c, principal, usuario, app.CierreCmd{})
+				return err
+			}
+			_, err = svc.Aceptar(c, pend[0].ID, usuario)
+			return err
+		})
+		var status string
+		if err := st.Pool.QueryRow(ctx, `select status from register_sessions where id = $1`, sess.ID).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status != "cerrada" {
+			if _, err := st.Pool.Exec(ctx, `update register_sessions set status = 'cerrada', closed_at = now() where id = $1`, sess.ID); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		var stored, live decimal.Decimal
+		if err := st.Pool.QueryRow(ctx, `
+			select coalesce((select sum(expected) from register_session_totals where session_id = $1), 0),
+			       coalesce((select sum(amount) from order_payments where register_session_id = $1), 0)`, sess.ID).Scan(&stored, &live); err != nil {
+			t.Fatal(err)
+		}
+		if !stored.Equal(live) {
+			t.Fatalf("intento %d: el corte firmó %s y el turno cerrado tiene %s en pagos", intento, stored, live)
+		}
+	}
+}

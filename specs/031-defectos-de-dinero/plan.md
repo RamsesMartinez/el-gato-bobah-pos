@@ -77,11 +77,11 @@ specs/031-defectos-de-dinero/
 
 ```text
 server/
-├── migrations/0080_dinero_por_turno_y_dia.sql, 0081_dia_de_cada_pago.sql
+├── migrations/0080_money_by_shift_and_day.sql, 0081_day_of_each_payment.sql
 ├── queries/{orders,cash,sales,reports,pedidos_de_plataforma}.sql
 ├── internal/domain/{devolucion,order,split_bill}.go (+ _test)
 ├── internal/app/{devolucion,orders,backoffice,pedidos_de_plataforma,sales}.go
-└── internal/integration/dinero_*_test.go, migracion_dinero_por_turno_test.go
+└── internal/integration/money_*_test.go, migration_money_by_shift_test.go
 web/src/
 ├── api/backoffice.ts
 └── features/backoffice/CashPage.tsx (+ test), features/sales/SalesPage.test.tsx

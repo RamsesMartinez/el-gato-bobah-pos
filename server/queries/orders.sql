@@ -501,9 +501,9 @@ with pagos as (
 )
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
        coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
-       coalesce(d.devuelto, 0)::numeric(10,2) as devuelto,
-       coalesce(p.propina, 0)::numeric(10,2) as propina,
-       coalesce(d.propina_devuelta, 0)::numeric(10,2) as propina_devuelta
+       coalesce(d.devuelto, 0)::numeric(10,2) as refunded,
+       coalesce(p.propina, 0)::numeric(10,2) as tip,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as tip_refunded
 from pagos p
 join payment_methods pm on pm.id = p.payment_method_id
 left join devueltos d on d.payment_method_id = p.payment_method_id

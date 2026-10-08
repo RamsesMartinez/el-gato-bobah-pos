@@ -1,6 +1,6 @@
 # Data model: 031
 
-**0080_dinero_por_turno_y_dia.sql** (esquema + backfill de `order_refunds`) y **0081_dia_de_cada_pago.sql** (backfill de `order_payments.business_date`).
+**0080_money_by_shift_and_day.sql** (esquema + backfill de `order_refunds`) y **0081_day_of_each_payment.sql** (backfill de `order_payments.business_date`).
 
 ## order_refunds (existe desde 0060)
 

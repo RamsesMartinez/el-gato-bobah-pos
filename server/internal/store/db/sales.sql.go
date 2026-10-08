@@ -541,7 +541,7 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id
@@ -556,12 +556,12 @@ type SalesTotalsByMethodParams struct {
 }
 
 type SalesTotalsByMethodRow struct {
-	MethodID     int16           `json:"method_id"`
-	Method       string          `json:"method"`
-	Pagos        int32           `json:"pagos"`
-	Total        decimal.Decimal `json:"total"`
-	Propinas     decimal.Decimal `json:"propinas"`
-	Devoluciones decimal.Decimal `json:"devoluciones"`
+	MethodID int16           `json:"method_id"`
+	Method   string          `json:"method"`
+	Pagos    int32           `json:"pagos"`
+	Total    decimal.Decimal `json:"total"`
+	Propinas decimal.Decimal `json:"propinas"`
+	Refunds  decimal.Decimal `json:"refunds"`
 }
 
 // Desglose por medio de pago: lo COBRADO, que no es lo mismo que lo vendido (una venta mandada a
@@ -590,7 +590,7 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 			&i.Pagos,
 			&i.Total,
 			&i.Propinas,
-			&i.Devoluciones,
+			&i.Refunds,
 		); err != nil {
 			return nil, err
 		}
@@ -627,7 +627,7 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as devoluciones
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id
@@ -642,12 +642,12 @@ type SalesTotalsByMethodSinFolioParams struct {
 }
 
 type SalesTotalsByMethodSinFolioRow struct {
-	MethodID     int16           `json:"method_id"`
-	Method       string          `json:"method"`
-	Pagos        int32           `json:"pagos"`
-	Total        decimal.Decimal `json:"total"`
-	Propinas     decimal.Decimal `json:"propinas"`
-	Devoluciones decimal.Decimal `json:"devoluciones"`
+	MethodID int16           `json:"method_id"`
+	Method   string          `json:"method"`
+	Pagos    int32           `json:"pagos"`
+	Total    decimal.Decimal `json:"total"`
+	Propinas decimal.Decimal `json:"propinas"`
+	Refunds  decimal.Decimal `json:"refunds"`
 }
 
 // Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL, en las dos ramas. Ver la
@@ -667,7 +667,7 @@ func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTota
 			&i.Pagos,
 			&i.Total,
 			&i.Propinas,
-			&i.Devoluciones,
+			&i.Refunds,
 		); err != nil {
 			return nil, err
 		}
