@@ -14,7 +14,7 @@ export interface SearchOption {
 // SearchSheet es una hoja con buscador para elegir de una lista larga (cientos de insumos o
 // productos). Como el Picker, pero el renglón «crear» lo pone quien la usa: crear un insumo pide
 // además en qué se mide, y eso no cabe en un solo toque.
-export function SearchSheet({ open, title, options, onPick, onClose, error, renderCreate, emptyText }: {
+export function SearchSheet({ open, title, options, onPick, onClose, error, renderCreate, emptyText, restoreFocus = true, onExitComplete }: {
   open: boolean;
   title: string;
   options: SearchOption[];
@@ -24,6 +24,9 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
   // Se muestra cuando lo buscado no coincide exacto con ninguna opción.
   renderCreate?: (query: string) => ReactNode;
   emptyText?: string;
+  // false cuando quien la abre pone el foco en otro lado al cerrarse (la cantidad del insumo elegido).
+  restoreFocus?: boolean;
+  onExitComplete?: () => void;
 }) {
   const [q, setQ] = useState('');
   // Monta cerrada y abre en el render siguiente: una hoja que nace abierta no se monta con
@@ -37,7 +40,7 @@ export function SearchSheet({ open, title, options, onPick, onClose, error, rend
   const exact = !!n && options.some((o) => normalize(o.label) === n);
 
   return (
-    <DrawerRoot open={visible} placement="bottom" size="md" onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DrawerRoot open={visible} placement="bottom" size="md" restoreFocus={restoreFocus} onExitComplete={onExitComplete} onOpenChange={(e) => { if (!e.open) onClose(); }}>
       <DrawerBackdrop />
       <DrawerContent borderTopRadius="2xl" maxH="85dvh">
         <DrawerCloseTrigger />

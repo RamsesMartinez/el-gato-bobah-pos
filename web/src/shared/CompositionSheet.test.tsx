@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../components/ui/provider';
@@ -280,5 +280,71 @@ describe('la receta', () => {
     api.composition.mockResolvedValue({ ...vacia, status: 'confirmed', editable: false, reason: 'package_choices' });
     montar();
     expect(await screen.findByText(/deja elegir entre productos/)).toBeInTheDocument();
+  });
+
+  // Lo pidió el dueño: al abrir una receta guardada no se distinguía lo que ya lleva de lo que se
+  // acaba de agregar o cambiar.
+  describe('lo guardado contra lo que se está cambiando', () => {
+    const guardada: Composition = {
+      ...vacia, status: 'confirmed', items: [
+        { ingredientId: 1, ingredientName: 'Leche', quantity: '200', unitId: 3, unitCode: 'ml' },
+        { ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' },
+      ],
+    };
+    const fila = (nombre: string) => screen.getByLabelText(`Cantidad de ${nombre}`).closest('[data-row]') as HTMLElement;
+
+    it('dice qué significa el número y que eso es lo guardado', async () => {
+      api.composition.mockResolvedValue(guardada);
+      montar();
+      expect(await screen.findByText('Por cada venta')).toBeInTheDocument();
+      expect(screen.getByText('Guardado · 2 insumos')).toBeInTheDocument();
+      expect(screen.queryByText(/Sin guardar/)).not.toBeInTheDocument();
+    });
+
+    it('lo nuevo y lo cambiado se marcan, con lo que tenía antes', async () => {
+      api.composition.mockResolvedValue(guardada);
+      montar();
+      fireEvent.change(await screen.findByLabelText('Cantidad de Leche'), { target: { value: '250' } });
+      expect(fila('Leche')).toHaveTextContent('Antes 200 ml');
+      expect(fila('Azúcar')).not.toHaveTextContent('Antes');
+      fireEvent.click(screen.getByRole('button', { name: '+ Vaso 16 oz' }));
+      expect(fila('Vaso 16 oz')).toHaveTextContent('Nuevo');
+      expect(screen.getByText('Sin guardar: 1 nuevo · 1 cambiado')).toBeInTheDocument();
+    });
+
+    it('cambiar de unidad sin cambiar la cantidad no es un cambio', async () => {
+      api.composition.mockResolvedValue(guardada);
+      montar();
+      await screen.findByLabelText('Cantidad de Leche');
+      fireEvent.click(within(fila('Leche')).getByRole('button', { name: 'L' }));
+      expect(screen.getByLabelText('Cantidad de Leche')).toHaveValue('0.2');
+      expect(fila('Leche')).not.toHaveTextContent('Antes');
+    });
+
+    it('quitar algo guardado lo deja tachado hasta guardar, y se puede regresar', async () => {
+      api.composition.mockResolvedValue(guardada);
+      montar();
+      fireEvent.click(await screen.findByRole('button', { name: 'Quitar Azúcar' }));
+      expect(screen.getByText('Sin guardar: 1 quitado')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Regresar Azúcar' }));
+      expect(screen.getByLabelText('Cantidad de Azúcar')).toHaveValue('5');
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar Azúcar' }));
+      await guardar();
+      await waitFor(() => expect(api.saveComposition).toHaveBeenCalled());
+      const body = api.saveComposition.mock.calls[0][2] as { items: { ingredientId: number }[] };
+      expect(body.items.map((i) => i.ingredientId)).toEqual([1]);
+    });
+  });
+
+  // Al salir de la cantidad la franja reaparecía, la hoja crecía hacia arriba y el botón que se iba
+  // a tocar (quitar, guardar) se movía bajo el dedo: el toque caía en otra cosa.
+  it('la franja «Al vender 1» no aparece ni desaparece al escribir', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    const qty = await screen.findByLabelText('Cantidad de Vaso 16 oz');
+    fireEvent.focus(qty);
+    expect(screen.getByText('Al vender 1:')).toBeInTheDocument();
+    fireEvent.blur(qty);
+    expect(screen.getByText('Al vender 1:')).toBeInTheDocument();
   });
 });

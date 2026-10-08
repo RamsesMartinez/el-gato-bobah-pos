@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Box, Button, Grid, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Badge, Box, Button, Grid, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
 import { LuMinus, LuPlus, LuTrash2 } from 'react-icons/lu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -133,6 +133,9 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     ingredientId: it.ingredientId, name: it.ingredientName, ...friendlyQuantity(Number(it.quantity), it.unitId, units.data?.items ?? []),
   }));
   const [rows, setRows] = useState<Row[]>(() => toRows(data.items));
+  // Lo guardado, para marcar contra ello lo nuevo, lo cambiado y lo quitado: al abrir una receta no
+  // se distinguía lo que ya llevaba de lo que se acababa de tocar.
+  const [original] = useState<Row[]>(() => toRows(data.items));
   const [parts, setParts] = useState<Part[]>(() => components.map((c) => ({ productId: c.productId, quantity: c.quantity })));
   const [linked, setLinked] = useState<number | null>(data.linkedProductId ?? null);
   const [yieldText, setYieldText] = useState(data.yield ? fmt(Number(data.yield)) : '');
@@ -142,9 +145,16 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const [picker, setPicker] = useState<null | 'ing' | 'part' | 'link' | 'copy'>(null);
   const [pickerError, setPickerError] = useState('');
   const [failure, setFailure] = useState<null | { conflict: boolean; message: string }>(null);
-  const [typing, setTyping] = useState(false);
   // El insumo recién agregado recibe el cursor: lo siguiente que se hace siempre es su cantidad.
   const [justAdded, setJustAdded] = useState<number | null>(null);
+  const qtyInputs = useRef(new Map<number, HTMLInputElement>());
+  const focusJustAdded = () => { if (justAdded !== null) qtyInputs.current.get(justAdded)?.focus(); };
+  // Agregado con un atajo, el foco va directo. Desde el buscador, hasta que termina de cerrarse: antes
+  // la hoja de abajo lo recupera y lo deja en su X.
+  useEffect(() => {
+    if (picker === null) focusJustAdded();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justAdded]);
 
   const edit = (fn: () => void) => { fn(); setDirtyState(true); onDirty(true); setFailure(null); };
 
@@ -172,6 +182,19 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     return m;
   }, [products.data, components, data.linkedProductId, data.linkedProductName]);
 
+  const origById = useMemo(() => new Map(original.map((o) => [o.ingredientId, o])), [original]);
+  // En la unidad base: 200 ml y 0.2 L son lo mismo y no cuentan como cambio.
+  const baseQty = (r: Row) => toNumber(r.text) * Number(unitById.get(r.unitId)?.toBase ?? 1);
+  const changeOf = (r: Row): 'new' | 'changed' | '' => {
+    const o = origById.get(r.ingredientId);
+    if (!o) return 'new';
+    return Math.abs(baseQty(o) - baseQty(r)) <= 1e-6 * Math.max(1, Math.abs(baseQty(o))) ? '' : 'changed';
+  };
+  const dropped = mode === 'items' ? original.filter((o) => !rows.some((x) => x.ingredientId === o.ingredientId)) : [];
+  const restore = (o: Row) => edit(() => setRows((rs) => {
+    const at = original.indexOf(o);
+    return [...rs.slice(0, at), o, ...rs.slice(at)];
+  }));
   const kindOfRow = (r: Row) => ingById.get(r.ingredientId)?.baseUnitKind ?? unitById.get(r.unitId)?.kind ?? 'pieza';
   const unitChoices = (r: Row): Unit[] => {
     const k = kindOfRow(r);
@@ -301,6 +324,13 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const hint = confirmOnly || valid || !dirty ? ''
     : mode === 'items' ? (rows.length === 0 ? 'Agrega al menos un insumo.' : !rows.every(rowValid) ? 'Escribe la cantidad de cada insumo.' : 'Falta cuánto rinde.')
       : mode === 'package' ? 'Agrega al menos un producto.' : 'Elige el producto.';
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const pending: string[] = mode === 'items'
+    ? ([[rows.filter((x) => changeOf(x) === 'new').length, 'nuevo'],
+      [rows.filter((x) => changeOf(x) === 'changed').length, 'cambiado'],
+      [dropped.length, 'quitado']] as [number, string][]).filter(([n]) => n > 0).map(([n, w]) => plural(n, w))
+    : [];
+  const unsaved = pending.length ? `Sin guardar: ${pending.join(' · ')}` : '';
   const remove = (label: string, undo: () => void, drop: () => void) => edit(() => { setRemoved({ label, undo }); drop(); });
 
   return (
@@ -357,15 +387,36 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                   <Button size="sm" minH="44px" variant="outline" colorPalette="blue" borderRadius="full" onClick={() => setPicker('copy')}>Buscar otra…</Button>
                 </HStack>
               )}
+              {(rows.length > 0 || dropped.length > 0) && (
+                <HStack px={3} fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
+                  <Text flex="1">{original.length ? `Guardado · ${plural(original.length, 'insumo')}` : 'Insumo'}</Text>
+                  <Text>{isIng ? 'Para prepararlo' : 'Por cada venta'}</Text>
+                  <Box w="148px" />
+                </HStack>
+              )}
               {rows.map((r, i) => {
-                const bad = dirty && !rowValid(r);
+                // El recién agregado todavía no tiene cantidad porque es lo que sigue, no un error.
+                const bad = dirty && !rowValid(r) && !(r.ingredientId === justAdded && r.text === '');
+                const change = changeOf(r);
+                const before = origById.get(r.ingredientId);
                 return (
-                  <HStack key={`${r.ingredientId}-${i}`} gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderRadius="lg"
-                    borderColor={bad ? 'red.300' : 'border.muted'} bg={bad ? 'red.50' : undefined}>
-                    <Text flex="1" minW={0} truncate>{r.name}</Text>
+                  <HStack key={`${r.ingredientId}-${i}`} data-row gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderRadius="lg"
+                    borderLeftWidth={change ? '4px' : '1px'}
+                    borderColor={bad ? 'red.300' : 'border.muted'} borderLeftColor={change === 'new' ? 'green.500' : change === 'changed' ? 'orange.400' : undefined}
+                    bg={bad ? 'red.50' : undefined}>
+                    <VStack flex="1" minW={0} align="start" gap={0}>
+                      <HStack gap={2} maxW="100%">
+                        <Text truncate>{r.name}</Text>
+                        {change === 'new' && <Badge colorPalette="green" variant="subtle" flexShrink={0}>Nuevo</Badge>}
+                      </HStack>
+                      {change === 'changed' && before && (
+                        <Text fontSize="xs" color="orange.700">Antes {before.text} {unitLabel(unitById.get(before.unitId)?.code ?? '')}</Text>
+                      )}
+                    </VStack>
                     <Input aria-label={`Cantidad de ${r.name}`} inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600"
-                      borderColor={bad ? 'red.500' : undefined} value={r.text} autoFocus={r.ingredientId === justAdded}
-                      onFocus={(e) => { setTyping(true); e.currentTarget.scrollIntoView({ block: 'center' }); }} onBlur={() => setTyping(false)}
+                      borderColor={bad ? 'red.500' : undefined} value={r.text}
+                      ref={(el) => { if (el) qtyInputs.current.set(r.ingredientId, el); else qtyInputs.current.delete(r.ingredientId); }}
+                      onFocus={(e) => e.currentTarget.scrollIntoView?.({ block: 'center' })}
                       onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, text: v } : x)))); }} />
                     <HStack gap={0} borderWidth="1px" borderRadius="md" overflow="hidden">
                       {unitChoices(r).map((u) => (
@@ -383,18 +434,31 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
                       ))}
                     </HStack>
                     <IconButton aria-label={`Quitar ${r.name}`} variant="ghost" colorPalette="red" minH="44px" minW="44px" ml={3}
-                      onClick={() => remove(r.name, () => setRows((rs) => [...rs.slice(0, i), r, ...rs.slice(i)]), () => setRows((rs) => rs.filter((_, j) => j !== i)))}>
+                      onClick={() => (before
+                        // Lo guardado se queda a la vista, tachado, hasta guardar: ahí se regresa.
+                        ? edit(() => setRows((rs) => rs.filter((_, j) => j !== i)))
+                        : remove(r.name, () => setRows((rs) => [...rs.slice(0, i), r, ...rs.slice(i)]), () => setRows((rs) => rs.filter((_, j) => j !== i))))}>
                       <LuTrash2 />
                     </IconButton>
                   </HStack>
                 );
               })}
+              {dropped.map((o) => (
+                <HStack key={`quitado-${o.ingredientId}`} data-row gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderLeftWidth="4px"
+                  borderRadius="lg" borderStyle="dashed" borderColor="border.muted" borderLeftColor="red.400" bg="bg.subtle" color="fg.muted">
+                  <VStack flex="1" minW={0} align="start" gap={0}>
+                    <Text truncate textDecoration="line-through">{o.name}</Text>
+                    <Text fontSize="xs">Antes {o.text} {unitLabel(unitById.get(o.unitId)?.code ?? '')} · se quita al guardar</Text>
+                  </VStack>
+                  <Button aria-label={`Regresar ${o.name}`} variant="outline" minH="44px" onClick={() => restore(o)}>Regresar</Button>
+                </HStack>
+              ))}
               {isIng && (
                 <HStack gap={2} pl={3} pr={1} py={1} borderRadius="lg" bg="blue.50" borderWidth="1px" borderColor="blue.200">
                   <Text flex="1">Con esto salen</Text>
                   <Input aria-label="Cuánto rinde" inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600" bg="white"
                     borderColor={dirty && !(yieldNum > 0) ? 'red.500' : undefined} value={yieldText}
-                    onFocus={(e) => { setTyping(true); e.currentTarget.scrollIntoView({ block: 'center' }); }} onBlur={() => setTyping(false)}
+                    onFocus={(e) => e.currentTarget.scrollIntoView?.({ block: 'center' })}
                     onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setYieldText(v)); }} />
                   <Text w="58px">{unitLabel(data.yieldUnitCode ?? '')}</Text>
                 </HStack>
@@ -452,27 +516,26 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         </VStack>
       </DrawerBody>
 
-      {/* La vista previa se esconde mientras se teclea: el teclado de la tableta ocupa media pantalla. */}
-      {!typing && (
-        <HStack mx={6} px={3} py={2} borderRadius="lg" bg="green.50" borderWidth="1px" borderColor="green.200" fontSize="sm" align="baseline">
-          <Text fontWeight="700" flexShrink={0}>{isIng && mode === 'items' ? `Para ${yieldText || '…'} ${unitLabel(data.yieldUnitCode ?? '')}:` : mode === 'bought' ? 'Cada uso:' : 'Al vender 1:'}</Text>
-          <Text truncate>{preview}</Text>
-        </HStack>
-      )}
+      {/* Siempre a la vista: esconderla al teclear movía la hoja, y el botón que se iba a tocar
+          quedaba en otro lugar bajo el dedo. */}
+      <HStack mx={6} px={3} py={2} borderRadius="lg" bg="green.50" borderWidth="1px" borderColor="green.200" fontSize="sm" align="baseline">
+        <Text fontWeight="700" flexShrink={0}>{isIng && mode === 'items' ? `Para ${yieldText || '…'} ${unitLabel(data.yieldUnitCode ?? '')}:` : mode === 'bought' ? 'Cada uso:' : 'Al vender 1:'}</Text>
+        <Text truncate>{preview}</Text>
+      </HStack>
       <DrawerFooter gap={2}>
         {offerTwins && (
           <Button minH="44px" variant="outline" aria-pressed={applyTwins} onClick={() => setApplyTwins((v) => !v)}>
             {applyTwins ? '☑' : '☐'} También en «{twins.map((t) => t.group).join('», «')}»
           </Button>
         )}
-        <Text flex="1" fontSize="sm" color="orange.700">{hint}</Text>
+        <Text flex="1" fontSize="sm" color={hint ? 'orange.700' : 'fg.muted'}>{hint || unsaved}</Text>
         <Button variant="ghost" minH="48px" onClick={requestClose}>Cancelar</Button>
         <Button minH="48px" colorPalette="red" disabled={!confirmOnly && !valid} loading={save.isPending} onClick={() => save.mutate()}>
           {failure && !failure.conflict ? 'Reintentar' : confirmOnly ? 'Está bien' : 'Guardar'}
         </Button>
       </DrawerFooter>
 
-      <SearchSheet open={picker === 'ing'} title="Agregar insumo" error={pickerError}
+      <SearchSheet open={picker === 'ing'} title="Agregar insumo" error={pickerError} restoreFocus={false} onExitComplete={focusJustAdded}
         options={(ingredients.data?.items ?? []).filter((i) => !(isIng && i.id === id))
           .sort((a, b) => (b.recipeUses ?? 0) - (a.recipeUses ?? 0) || a.name.localeCompare(b.name, 'es'))
           .map((i) => ({ value: String(i.id), label: i.name, hint: `${i.isPrep ? 'preparado · ' : ''}${unitLabel(i.baseUnitCode)}` }))}
