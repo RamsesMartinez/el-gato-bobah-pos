@@ -245,7 +245,9 @@ de plataforma. El POS ya no lo llama directo (pasa por `send`), pero el endpoint
 "liveAccounts": [ AccountItem ]   // cuentas en captura y entregadas que deben; NO bloquean
 ```
 
-`Pending` (bloquea) y su guardia `sinPedidosPendientes` **no cambian** (D-10). `liveAccounts` sale
+`Pending` (bloquea) y su guardia `sinPedidosPendientes` **no cambian** (D-10), salvo que cada
+`PendingOrder` trae ahora su `id` (`{"id": 12, "number": 7, "name": "Persa"}`) para que el cierre
+ofrezca «Abrir» (`/pos?pedido=<id>`). `liveAccounts` sale
 del mismo servicio que `GET /pos/accounts?olderDebts=true` filtrado a `group ∈ {capturing, delivered_owes,
 previous_days}`.
 
