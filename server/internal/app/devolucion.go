@@ -262,27 +262,19 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		if err != nil {
 			return err
 		}
-		cobrado := decimal.Zero
-		for _, e := range entradas {
-			cobrado = cobrado.Add(e.Monto)
+		// Lo que queda por devolver de CADA medio, cuenta y propina: cancelar dice que la venta no
+		// ocurrió, así que el cliente recibe lo que dio (spec 031, D9). Lo ya devuelto antes no se
+		// devuelve otra vez.
+		partes := domain.RepartirCancelacion(entradas)
+		if len(entradas) > 0 && !cmd.Devolver {
+			return domain.ErrCancelarSinDevolver
 		}
-		if cobrado.GreaterThan(decimal.Zero) {
-			if !cmd.Devolver {
-				return domain.ErrCancelarSinDevolver
-			}
-			// Lo que queda por devolver, no lo cobrado: un pedido al que ya se le devolvió una
-			// parte no puede devolver esa parte otra vez al cancelarse.
-			yaDevuelto, err := q.SumOrderRefunds(ctx, db.SumOrderRefundsParams{OrderID: cmd.OrderID})
-			if err != nil {
+		if len(partes) > 0 {
+			if err := s.registrarPartes(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID); err != nil {
 				return err
 			}
-			porDevolver := domain.MontoDevolvible(cobrado, yaDevuelto.DevueltoTotal)
-			if porDevolver.GreaterThan(decimal.Zero) {
-				if err := s.devolverEnTx(ctx, q, DevolucionCmd{
-					OrderID: cmd.OrderID, Monto: porDevolver, Motivo: motivo, ActorID: cmd.ActorID,
-				}, motivo); err != nil {
-					return err
-				}
+			if err := q.RecalcOrderRefundAmount(ctx, cmd.OrderID); err != nil {
+				return err
 			}
 		}
 

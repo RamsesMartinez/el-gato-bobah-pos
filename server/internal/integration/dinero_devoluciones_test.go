@@ -335,3 +335,61 @@ func concurrently(n int, f func(i int) error) []error {
 	done.Wait()
 	return errs
 }
+
+// D9: CANCELAR CON DEVOLUCIÓN REGRESA TAMBIÉN LA PROPINA; DEVOLVER UNA PARTE, NO.
+//
+// Se devolvía solo la cuenta: la propina se quedaba en el esperado del cajón y ningún reparto la
+// contaba, porque el pedido estaba cancelado. Si el cajero le regresaba al cliente lo que dio, el
+// corte cerraba con ese faltante.
+func TestCancellingWithRefundReturnsTheTipToo(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_d9", "gerente")
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	principal := registerID(t, st, "Caja principal")
+	abrirCajaPrincipal(t, st, cajero)
+	prod := makeProduct(t, st, "Propina d9", decimal.RequireFromString("100"), false)
+
+	ord := crearPedidoSimple(t, ctx, orders, prod, cajero)
+	if _, err := orders.Charge(ctx, app.ChargeCmd{OrderID: ord, MethodID: efectivo, Amount: decimal.RequireFromString("100"),
+		Tip: decimal.RequireFromString("10"), ActorID: cajero}); err != nil {
+		t.Fatal(err)
+	}
+	before := salidasDeCaja(t, st)
+	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "se fue", ActorID: cajero, Devolver: true}); err != nil {
+		t.Fatal(err)
+	}
+	if out := salidasDeCaja(t, st).Sub(before); !out.Equal(decimal.RequireFromString("110")) {
+		t.Fatalf("del cajón salieron %s, quiere 110: el cliente recibe lo que dio, propina incluida", out)
+	}
+	var refunded, tip decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `select o.refund_amount, (select sum(tip_amount) from order_refunds where order_id = o.id)
+		from orders o where o.id = $1`, ord).Scan(&refunded, &tip); err != nil {
+		t.Fatal(err)
+	}
+	if !refunded.Equal(decimal.RequireFromString("100")) || !tip.Equal(decimal.RequireFromString("10")) {
+		t.Fatalf("devuelto de venta %s y de propina %s, quiere 100 y 10: la propina no es ingreso y va aparte", refunded, tip)
+	}
+	view, err := back.CurrentByRegister(ctx, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := totalOf(t, view.Totals, "Efectivo"); !got.IsZero() {
+		t.Fatalf("el cajón espera %s después de devolverlo todo, quiere 0", got)
+	}
+
+	// Devolver una parte no toca la propina.
+	ord2 := crearPedidoSimple(t, ctx, orders, prod, cajero)
+	if _, err := orders.Charge(ctx, app.ChargeCmd{OrderID: ord2, MethodID: efectivo, Amount: decimal.RequireFromString("100"),
+		Tip: decimal.RequireFromString("10"), ActorID: cajero}); err != nil {
+		t.Fatal(err)
+	}
+	before = salidasDeCaja(t, st)
+	refund(t, ctx, orders, ord2, nil, "100", cajero)
+	if out := salidasDeCaja(t, st).Sub(before); !out.Equal(decimal.RequireFromString("100")) {
+		t.Fatalf("devolver la cuenta sacó %s, quiere 100: la propina se queda", out)
+	}
+}
