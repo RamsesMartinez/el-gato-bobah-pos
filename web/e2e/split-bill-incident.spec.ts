@@ -67,14 +67,16 @@ test('la mesa del incidente se divide por productos sin cancelar nada', async ({
   const nuevo = page.getByRole('button', { name: 'Nuevo pedido' });
   if (await nuevo.isVisible().catch(() => false)) await nuevo.click();
 
-  // Desde el tablero, la hoja de cobro del pedido.
-  await page.getByRole('link', { name: 'Pedidos' }).first().click();
-  const tarjeta = page.locator('div').filter({ has: page.getByText(new RegExp(`^#${pedido!.number} · `)) })
-    .filter({ has: page.getByRole('button', { name: 'Más' }) }).last();
+  // Desde «Pedidos por cobrar» del POS: en el tablero, un pedido con algo por entregar ofrece
+  // entregar, no cobrar (se cobra cuando está listo).
   taps = 0;
-  await tap(tarjeta.getByRole('button', { name: /^Cobrar/ }));
+  await tap(page.getByRole('button', { name: /^\$[\d,.]+ \(\d+\)$/ }));
+  const lista = page.getByRole('dialog').last();
+  const renglon = lista.locator('div').filter({ has: page.getByText(new RegExp(`^#${pedido!.number} · `)) })
+    .filter({ has: page.getByRole('button', { name: /^Cobrar/ }) }).last();
+  await tap(renglon.getByRole('button', { name: /^Cobrar/ }));
   const hoja = page.getByRole('dialog').last();
-  await tap(hoja.getByRole('button', { name: 'Dividir' }));
+  await tap(hoja.getByRole('button', { name: /Dividir/ }));
   await expect(hoja.getByRole('button', { name: 'Por productos', pressed: true })).toBeVisible();
 
   const cobrarA = async (productos: string[]) => {
@@ -85,9 +87,9 @@ test('la mesa del incidente se divide por productos sin cancelar nada', async ({
     await tap(cobrar);
   };
   await cobrarA(A);
-  await expect(hoja.getByText(/^Pago 1 · Efectivo/)).toBeVisible();
+  await expect(hoja.getByRole('button', { name: 'Pago 1' })).toBeVisible();
   await cobrarA(B);
-  await expect(hoja.getByText(/^Pago 2 · Efectivo/)).toBeVisible();
+  await expect(hoja.getByRole('button', { name: 'Pago 2' })).toBeVisible();
   // La tercera persona paga lo que falta, sin elegir uno por uno.
   await tap(hoja.getByRole('button', { name: 'Todo lo que falta' }));
   await tap(hoja.getByRole('button', { name: 'Efectivo' }));
