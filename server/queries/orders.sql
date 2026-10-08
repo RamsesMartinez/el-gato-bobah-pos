@@ -798,3 +798,7 @@ select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.d
 from orders o
 left join register_sessions rs on rs.id = o.register_session_id
 where o.id = $1;
+
+-- name: GetPaymentVoidByOriginalID :one
+-- ¿Este pago ya se devolvió? Distingue «ya se devolvió» de «no existe» al devolver dos veces.
+select order_id from order_payment_voids where original_payment_id = $1;

@@ -72,6 +72,11 @@ const (
 	// la bitácora de eventos y pelearía por el lock de la fila.
 	descuentoMax    = 120
 	descuentoWindow = 5 * time.Minute
+	// splitWritesMax/Window: devolver pagos y pasar productos, por usuario (spec 027). Son
+	// escrituras de dinero y de pedidos que en un turno se cuentan por decenas; el tope corta el
+	// bucle, no el uso.
+	splitWritesMax    = 120
+	splitWritesWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -170,9 +175,11 @@ type Handlers struct {
 	platformRefWrites *rateLimiter
 	// descuentoWrites limita los cambios de descuento por usuario (ver descuentoMax).
 	descuentoWrites *rateLimiter
-	authFails       *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs         *rateLimiter // per-IP request throttle for the /auth group
-	permissions     PermissionResolver
+	// splitWrites limita devolver pagos y pasar productos por usuario (ver splitWritesMax).
+	splitWrites *rateLimiter
+	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs     *rateLimiter // per-IP request throttle for the /auth group
+	permissions PermissionResolver
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -234,6 +241,7 @@ func newHandlers(d Deps) *Handlers {
 			platformRefMax, platformRefWindow),
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
 			descuentoMax, descuentoWindow),
+		splitWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:split:", splitWritesMax, splitWritesWindow),
 	}
 }
 

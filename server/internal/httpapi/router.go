@@ -218,6 +218,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// fila y bitácora. El tope cuenta al usuario, que aquí es siempre alguien
 					// autenticado.
 					r.With(rateLimitUser(h.descuentoWrites)).Put("/{id}/discount", h.SetOrderDiscount)
+					// Devolver un pago (spec 027). Por permiso y no por rol: los roles serán de cada
+					// empresa. Tope por usuario porque es una escritura de dinero.
+					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid), rateLimitUser(h.splitWrites)).
+						Post("/{id}/payments/{paymentId}/void", h.VoidOrderPayment)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los

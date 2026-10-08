@@ -1028,6 +1028,18 @@ func (q *Queries) GetPaymentVoidByClientUUID(ctx context.Context, clientUuid *uu
 	return order_id, err
 }
 
+const getPaymentVoidByOriginalID = `-- name: GetPaymentVoidByOriginalID :one
+select order_id from order_payment_voids where original_payment_id = $1
+`
+
+// ¿Este pago ya se devolvió? Distingue «ya se devolvió» de «no existe» al devolver dos veces.
+func (q *Queries) GetPaymentVoidByOriginalID(ctx context.Context, originalPaymentID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, getPaymentVoidByOriginalID, originalPaymentID)
+	var order_id int64
+	err := row.Scan(&order_id)
+	return order_id, err
+}
+
 const getPricedOptions = `-- name: GetPricedOptions :many
 select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo

@@ -639,7 +639,7 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		})
 	}
 	view.MergedIntoOrderID = o.MergedIntoOrderID
-	if view.Payments, err = s.paymentsOf(ctx, id); err != nil {
+	if view.Payments, err = paymentsOf(ctx, s.store.QC(ctx), id); err != nil {
 		return nil, err
 	}
 	return view, nil
@@ -650,8 +650,7 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 // Los pagos anteriores a la migración no tienen número: se numeran por hora contando también los
 // devueltos, que es la misma regla con la que Charge da el siguiente. Así el número que se ve es el
 // que se imprimió y uno nuevo nunca repite el de uno viejo.
-func (s *OrdersService) paymentsOf(ctx context.Context, orderID int64) ([]PaymentView, error) {
-	q := s.store.QC(ctx)
+func paymentsOf(ctx context.Context, q *db.Queries, orderID int64) ([]PaymentView, error) {
 	live, err := q.ListOrderPaymentsForView(ctx, orderID)
 	if err != nil {
 		return nil, err

@@ -436,6 +436,40 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, res)
 }
 
+// POST /orders/{id}/payments/{paymentId}/void  {reason}
+//
+// Devuelve un pago de un turno abierto: sale de los pagos y queda en la bitácora, y lo que cubrió
+// vuelve a quedar por cobrar.
+func (h *Handlers) VoidOrderPayment(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	paymentID, err := strconv.ParseInt(chi.URLParam(r, "paymentId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.VoidPayment(r.Context(), id, paymentID, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Salida de dinero del pedido: evento de seguridad con quién y qué pago, sin montos ni PII.
+	logging.SecurityEvent(r.Context(), "order_payment_voided", "user_id", u.ID, "order_id", id, "payment_id", paymentID)
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
+}
+
 // POST /orders/{id}/quote — cuánto cobraría /pay por una selección, sin cobrarla.
 //
 // Mismo cuerpo que /pay con lines, split o allRemaining, sin método ni monto. Existe para que la

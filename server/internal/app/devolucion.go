@@ -397,6 +397,91 @@ func (g paymentGuard) keepsPayments(ctx context.Context, q *db.Queries, orderID 
 	return domain.RemovalKeepsPayments(o.Total, g.paid)
 }
 
+// VoidResult es lo que queda del pedido después de devolver un pago.
+type VoidResult struct {
+	Outstanding decimal.Decimal `json:"outstanding"`
+	Paid        bool            `json:"paid"`
+}
+
+// VoidPayment devuelve un pago de un turno abierto: lo SACA de order_payments a la bitácora.
+//
+// Se saca y no se marca: las ~32 consultas que suman pagos —corte por método, propinas, ventas por
+// método— quedan correctas sin tocarlas, porque para el cajón un pago devuelto en su mismo turno es
+// un pago que no ocurrió. La bitácora guarda la copia completa, con el número que el ticket impreso
+// lleva, y lo que cubrió vuelve a quedar por cobrar.
+//
+// Solo de un turno abierto: el de un turno cerrado ya se arqueó, y devolverlo aquí movería un corte
+// firmado. Ese va por la devolución de siempre.
+func (s *OrdersService) VoidPayment(ctx context.Context, orderID, paymentID, actor int64, reason string) (VoidResult, error) {
+	why := domain.MotivoLimpio(reason)
+	if why == "" {
+		return VoidResult{}, fmt.Errorf("%w: Elige por qué se devuelve", domain.ErrValidation)
+	}
+	var res VoidResult
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado del pedido ANTES de leer el pago, el mismo de Charge. Sin él, un reintento del
+		// cobro con la misma llave podía ver el pago, perderlo por este borrado y volver a
+		// insertarlo: el pago revivía.
+		o, err := q.GetOrderForUpdate(ctx, orderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: Ese pedido no existe", domain.ErrNotFound)
+			}
+			return err
+		}
+		if o.Status == db.OrderStatusCancelada || o.Status == db.OrderStatusReembolsada {
+			return fmt.Errorf("%w: Ese pedido ya se cerró; no se le pueden devolver pagos", domain.ErrConflict)
+		}
+		p, err := q.GetOrderPaymentForVoid(ctx, paymentID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if v, verr := q.GetPaymentVoidByOriginalID(ctx, paymentID); verr == nil && v == orderID {
+				return domain.ErrPaymentAlreadyVoided
+			}
+			return fmt.Errorf("%w: Ese pago no es de este pedido", domain.ErrNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if p.OrderID != orderID {
+			return fmt.Errorf("%w: Ese pago no es de este pedido", domain.ErrNotFound)
+		}
+		if p.RegisterSessionID == nil || p.SessionStatus != string(db.SessionStatusAbierta) {
+			return domain.ErrPaymentFromClosedShift
+		}
+		// El número que la vista le daba, también si es de los viejos sin número.
+		number := deref16(p.PaymentNumber)
+		if number == 0 {
+			views, err := paymentsOf(ctx, q, orderID)
+			if err != nil {
+				return err
+			}
+			for _, v := range views {
+				if v.ID == p.ID && !v.Voided {
+					number = int16(v.Number)
+				}
+			}
+		}
+		if err := q.CreateOrderPaymentVoid(ctx, db.CreateOrderPaymentVoidParams{
+			OrderID: orderID, OriginalPaymentID: p.ID, PaymentNumber: number, PaymentMethodID: p.PaymentMethodID,
+			Amount: p.Amount, TipAmount: p.TipAmount, Reference: p.Reference, RegisterSessionID: *p.RegisterSessionID,
+			ReceivedBy: p.ReceivedBy, PaidAt: p.CreatedAt, ClientUuid: p.ClientUuid, SplitPart: p.SplitPart, SplitOf: p.SplitOf,
+			Covered: p.Covered, VoidedBy: actor, Reason: why,
+		}); err != nil {
+			return err
+		}
+		if err := q.DeleteOrderPayment(ctx, p.ID); err != nil {
+			return err
+		}
+		sums, err := q.SumOrderPayments(ctx, orderID)
+		if err != nil {
+			return err
+		}
+		res = VoidResult{Outstanding: domain.PorCobrar(o.Total, sums.Pagado), Paid: domain.PedidoSaldado(sums.Pagado, o.Total)}
+		return nil
+	})
+	return res, err
+}
+
 // nullTime traduce el timestamptz opcional de pgx a lo que el dominio entiende.
 func nullTime(t pgtype.Timestamptz) *time.Time {
 	if !t.Valid {

@@ -327,16 +327,16 @@ marcadas; la suma es lo que faltaba.
 **Independent Test**: se devuelve un pago y se cobra a la persona correcta; el corte espera por método
 lo correcto y lista el devuelto.
 
-- [ ] T070 [P] [US6] IT `TestAVoidedPaymentCountsZeroTimesInTheDrawer` en server/internal/integration/void_payment_test.go (corte por método, propinas y lo pendiente; falla nombrando dónde reapareció)
-- [ ] T071 [US6] IT en el mismo archivo:
+- [x] T070 [P] [US6] IT `TestAVoidedPaymentCountsZeroTimesInTheDrawer` en server/internal/integration/void_payment_test.go (corte por método, propinas y lo pendiente; falla nombrando dónde reapareció)
+- [x] T071 [US6] IT en el mismo archivo:
   - `TestAVoidedPaymentCannotBeRevivedByItsKey` (secuencial **y** concurrente con la devolución);
   - `TestAPaymentIsVoidedOnce`;
   - `TestAPaymentFromAClosedShiftCannotBeVoided` (incluye sesión nula);
   - `TestPaymentNumbersSurviveAVoid`, con un pago viejo sin número: la bitácora guarda el número que la vista le daba, y el siguiente pago no lo repite
-- [ ] T072 [US6] Aislamiento y permiso de la devolución, en el mismo archivo:
+- [x] T072 [US6] Aislamiento y permiso de la devolución, en el mismo archivo:
   - `inTheThreeCases` sobre el servicio `VoidPayment` y sobre la vista del turno con `voidedPayments`;
   - IT HTTP: `POST /orders/{id}/payments/{paymentId}/void` con un cajero → 403 con «Tu usuario no puede devolver pagos»
-- [ ] T073 [US6] Implementar `VoidPayment` en server/internal/app/devolucion.go:
+- [x] T073 [US6] Implementar `VoidPayment` en server/internal/app/devolucion.go:
   - `GetOrderForUpdate` antes de leer el pago;
   - copia completa a la bitácora, con el número que la vista le daba, y borrado;
   - consulta de la bitácora en la idempotencia de `Charge`.
