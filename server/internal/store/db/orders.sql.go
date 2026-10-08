@@ -1076,6 +1076,68 @@ func (q *Queries) GetOrderPaymentShapeByClientUUID(ctx context.Context, clientUu
 	return i, err
 }
 
+const getOrdersForAccounts = `-- name: GetOrdersForAccounts :many
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
+from orders o
+where o.id = any($1::bigint[])
+order by o.opened_at
+`
+
+type GetOrdersForAccountsRow struct {
+	ID                 int64           `json:"id"`
+	DailyNumber        int32           `json:"daily_number"`
+	FolioName          *string         `json:"folio_name"`
+	Status             OrderStatus     `json:"status"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	CustomerName       *string         `json:"customer_name"`
+	Total              decimal.Decimal `json:"total"`
+	OpenedAt           time.Time       `json:"opened_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
+	Paid               decimal.Decimal `json:"paid"`
+	Renglones          int32           `json:"renglones"`
+}
+
+// Los pedidos que la fila tiene que mostrar aunque ya no estén vivos: los cerrados que conservan una
+// «Nuevo» viva (research R-9). Sin esto lo capturado quedaría en una cuenta que nadie ve.
+func (q *Queries) GetOrdersForAccounts(ctx context.Context, ids []int64) ([]GetOrdersForAccountsRow, error) {
+	rows, err := q.db.Query(ctx, getOrdersForAccounts, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetOrdersForAccountsRow{}
+	for rows.Next() {
+		var i GetOrdersForAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Status,
+			&i.ServiceType,
+			&i.DeliveryPlatformID,
+			&i.CustomerName,
+			&i.Total,
+			&i.OpenedAt,
+			&i.UpdatedAt,
+			&i.BusinessDate,
+			&i.Paid,
+			&i.Renglones,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPaymentVoidByClientUUID = `-- name: GetPaymentVoidByClientUUID :one
 select order_id from order_payment_voids where client_uuid = $1
 `
@@ -1688,6 +1750,97 @@ func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLi
 	return items, nil
 }
 
+const listLiveOrders = `-- name: ListLiveOrders :many
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       pagos.paid::numeric(10,2) as paid,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
+from orders o
+left join lateral (
+  select coalesce(sum(p.amount), 0) as paid from order_payments p where p.order_id = o.id
+) pagos on true
+where o.status not in ('cancelada', 'reembolsada')
+  -- Redundante a propósito, y no se puede quitar. El OR de abajo referencia ` + "`" + `pagos.paid` + "`" + `, que sale
+  -- del lateral, así que Postgres no lo puede empujar al scan de ` + "`" + `orders` + "`" + `: sin este predicado
+  -- calculaba los pagos de CADA pedido histórico antes de descartarlo (medido: 175 ms y 90 mil
+  -- buffers con 30 mil pedidos). Los dos ` + "`" + `since` + "`" + ` se mueven juntos.
+  and (o.status in ('abierta', 'lista') or o.business_date >= $1::date)
+  and (
+    -- SIN filtro de fecha en los que siguen en curso: un pedido abierto se ve hasta que alguien lo
+    -- cierre. Un pedido que nadie ve es un pedido que nadie cierra.
+    o.status in ('abierta', 'lista')
+    -- El centavo de tolerancia es el MISMO de ` + "`" + `domain.PedidoSaldado` + "`" + `, y tiene que moverse con él.
+    or (o.total - pagos.paid > 0.01 and o.business_date >= $1::date)
+  )
+order by o.opened_at
+`
+
+type ListLiveOrdersRow struct {
+	ID                 int64           `json:"id"`
+	DailyNumber        int32           `json:"daily_number"`
+	FolioName          *string         `json:"folio_name"`
+	Status             OrderStatus     `json:"status"`
+	ServiceType        ServiceType     `json:"service_type"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	CustomerName       *string         `json:"customer_name"`
+	Total              decimal.Decimal `json:"total"`
+	OpenedAt           time.Time       `json:"opened_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
+	Paid               decimal.Decimal `json:"paid"`
+	Renglones          int32           `json:"renglones"`
+}
+
+// Los pedidos de la fila de cuentas del POS (spec 030): los que siguen en cocina, de cualquier fecha,
+// y los entregados que todavía deben dinero desde `since`.
+//
+// Es la UNIÓN de dos conjuntos, y confundirlos ya costó una vez: el pedido ya cobrado que sigue en
+// cocina es al que el cliente le pide algo más, y el ENTREGADO sin cobrar es el pendiente caro — el
+// cliente ya se fue. Cancelada y reembolsada quedan fuera: su dinero ya se decidió.
+//
+// Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where.
+//
+// ponytail: `since` es la ventana de la deuda. La fila, que cada tableta pide cada 30 s, la acota a
+// 90 días (techo medido en accounts_live_perf_test: ~6 ms con 30 mil pedidos); la hoja «+N» y el
+// cierre de caja la piden desde el principio de los tiempos, y ese modo crece lineal con el
+// histórico (~21 ms con 30 mil). Camino de subida: `orders.owes` mantenida por trigger sobre
+// order_payments y orders.total, con índice parcial; se rellena desde order_payments al mismo costo
+// que hoy. Partirla en UNION ALL de las dos ramas se midió y fue más lenta (~22 ms): la rama de
+// cocina no puede acotar por fecha y Postgres la lee por el índice de empresa de todos modos.
+func (q *Queries) ListLiveOrders(ctx context.Context, since pgtype.Date) ([]ListLiveOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listLiveOrders, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLiveOrdersRow{}
+	for rows.Next() {
+		var i ListLiveOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Status,
+			&i.ServiceType,
+			&i.DeliveryPlatformID,
+			&i.CustomerName,
+			&i.Total,
+			&i.OpenedAt,
+			&i.UpdatedAt,
+			&i.BusinessDate,
+			&i.Paid,
+			&i.Renglones,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listModifiersOfActiveOrders = `-- name: ListModifiersOfActiveOrders :many
 select olm.order_line_id, olm.option_name, olm.quantity
 from order_line_modifiers olm
@@ -1747,110 +1900,6 @@ func (q *Queries) ListMovedLinesOfBatch(ctx context.Context, clientUuid uuid.UUI
 	for rows.Next() {
 		var i ListMovedLinesOfBatchRow
 		if err := rows.Scan(&i.LineID, &i.Qty); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listOpenOrders = `-- name: ListOpenOrders :many
-select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.opened_at, o.business_date,
-       pagos.paid::numeric(10,2) as paid,
-       (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
-       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
-from orders o
-left join lateral (
-  select coalesce(sum(p.amount), 0) as paid from order_payments p where p.order_id = o.id
-) pagos on true
-where o.status not in ('cancelada', 'reembolsada')
-  -- Redundante a propósito, y no se puede quitar. El OR de abajo referencia ` + "`" + `pagos.paid` + "`" + `, que sale
-  -- del lateral, así que Postgres no lo puede empujar al scan de ` + "`" + `orders` + "`" + `: calculaba los pagos de
-  -- CADA pedido histórico no cancelado antes de descartarlo. Medido con 30 mil pedidos: 175 ms y
-  -- 90 mil buffers, en una consulta que cada tableta pide cada 30 segundos. Este predicado dice lo
-  -- mismo pero sin tocar el lateral, y baja a 20 ms y 155 buffers usando los índices que ya hay.
-  and (o.status in ('abierta', 'lista') or o.business_date = $1)
-  and (
-    -- SIN filtro de fecha en los que siguen en curso, a propósito: un pedido abierto se ve hasta que
-    -- alguien lo cierre, sin importar de qué día sea. Es el mecanismo con el que se limpia el
-    -- rezago — un pedido que nadie ve es un pedido que nadie cierra, y así había once desde julio.
-    o.status in ('abierta', 'lista')
-    -- Los que deben dinero sí se acotan al día en curso: el pendiente de hace tres meses ya no es
-    -- algo que el cajero de hoy pueda cobrar, y traerlos convertiría la barra en un histórico.
-    --
-    -- El centavo de tolerancia es el MISMO de ` + "`" + `domain.PedidoSaldado` + "`" + `, y tiene que moverse con él.
-    -- Escrito como ` + "`" + `pagos.paid < o.total` + "`" + ` a secas, dividir $100 en tres partes de $33.33 cerraba el
-    -- pedido —con el predicado tolerante— y esta consulta lo seguía listando con $0.01 de deuda que
-    -- nadie podía cobrar. Lo cubre TestUnPedidoCerradoNoDejaCentavosDeDeuda, que pasa por los dos.
-    or (o.total - pagos.paid > 0.01 and o.business_date = $1)
-  )
-order by o.opened_at
-`
-
-type ListOpenOrdersRow struct {
-	ID                 int64           `json:"id"`
-	DailyNumber        int32           `json:"daily_number"`
-	FolioName          *string         `json:"folio_name"`
-	Status             OrderStatus     `json:"status"`
-	ServiceType        ServiceType     `json:"service_type"`
-	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
-	CustomerName       *string         `json:"customer_name"`
-	Total              decimal.Decimal `json:"total"`
-	Currency           string          `json:"currency"`
-	OpenedAt           time.Time       `json:"opened_at"`
-	BusinessDate       pgtype.Date     `json:"business_date"`
-	Paid               decimal.Decimal `json:"paid"`
-	EnPreparacion      bool            `json:"en_preparacion"`
-	Renglones          int32           `json:"renglones"`
-}
-
-// Los pedidos que el punto de venta tiene que seguir viendo: la barra de pedidos en curso.
-//
-// Es la UNIÓN de dos conjuntos que no son el mismo, y confundirlos ya costó una vez:
-//
-//   - en preparación — `abierta` o `lista`: se les puede AGREGAR y cobrar. Es al que el cliente le
-//     pide algo más, y el que antes desaparecía de la pantalla al mandarlo a cocina.
-//   - con saldo — debe dinero y no está cancelada ni reembolsada. Incluye el pedido ENTREGADO y sin
-//     cobrar, que es el caro: el cliente ya se fue. Esa es la razón de ser de la píldora que esta
-//     lista reemplaza, y quedarse solo con "en preparación" lo habría borrado del encabezado.
-//
-// `en_preparacion` viaja como dato y no se deduce del estado en el front: la pantalla tiene que
-// poder decir cuál se puede ampliar sin volver a implementar la regla.
-//
-// Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
-// operador a perseguir cobros que nadie debe.
-// Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where. Escrito
-// como dos subconsultas iguales, Postgres no las deduplica: en el plan real salían dos SubPlan y el
-// mismo agregado se recorría dos veces por cada pedido entregado sin cobrar.
-func (q *Queries) ListOpenOrders(ctx context.Context, businessDate pgtype.Date) ([]ListOpenOrdersRow, error) {
-	rows, err := q.db.Query(ctx, listOpenOrders, businessDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListOpenOrdersRow{}
-	for rows.Next() {
-		var i ListOpenOrdersRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.DailyNumber,
-			&i.FolioName,
-			&i.Status,
-			&i.ServiceType,
-			&i.DeliveryPlatformID,
-			&i.CustomerName,
-			&i.Total,
-			&i.Currency,
-			&i.OpenedAt,
-			&i.BusinessDate,
-			&i.Paid,
-			&i.EnPreparacion,
-			&i.Renglones,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -142,6 +142,11 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// descuento, y no nace sin el control del viejo (PUT /orders/{id}/discount).
 					r.With(rateLimitUser(h.descuentoWrites)).Patch("/pos/drafts/{id}", h.PatchDraft)
 				}
+				// La fila de cuentas vivas: reemplaza a GET /orders/open (la barra de «Pedidos por
+				// cobrar»). Sin gate de rol: quien está en la caja es quien tiene que poder saldarlas.
+				if h.accounts != nil {
+					r.Get("/pos/accounts", h.LiveAccounts)
+				}
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 
@@ -183,11 +188,6 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Get("/platform/pending", h.PlatformPendingOrders)
 						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
 					}
-					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
-					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
-					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
-					// reembolsar, que es salida de dinero.
-					r.Get("/open", h.OpenOrders)
 					// Mismo alcance que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
 					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
 					// que mueve dinero sin la barrera que su gemelo sí exige. Por permiso y no por

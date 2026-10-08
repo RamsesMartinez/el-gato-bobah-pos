@@ -109,13 +109,15 @@ func TestElAvisoDelPOSListaLoQueFaltaPorCobrar(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	items, _, err := svc.Open(ctx, false)
+	fila, err := app.NewAccountsService(st, svc).Live(ctx, false)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Live: %v", err)
 	}
 	falta := map[int64]string{}
-	for _, o := range items {
-		falta[o.ID] = o.Outstanding.String()
+	for _, o := range fila.Items {
+		if o.OrderID != nil {
+			falta[*o.OrderID] = o.Outstanding.String()
+		}
 	}
 
 	// El pedido ya cobrado SÍ sale, y debe cero. La lista dejó de ser solo de impagos cuando pasó a

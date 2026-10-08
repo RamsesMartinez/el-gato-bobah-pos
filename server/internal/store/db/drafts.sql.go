@@ -429,6 +429,91 @@ func (q *Queries) ListLiveDraftNames(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const listLiveDrafts = `-- name: ListLiveDrafts :many
+select d.id, d.company_id, d.order_id, d.status, d.folio_name, d.folio_scheme, d.service_type, d.customer_name, d.delivery_platform_id, d.platform_order_ref, d.delivery_fee, d.discount_amount, d.discount_percent, d.discount_set_by, d.platform_ref_set_by, d.opened_by, d.header_version, d.created_at, d.updated_at, d.sent_at, d.discarded_at, d.discarded_by, d.discard_reason, u.name as opened_by_name,
+       (select count(*) from order_draft_lines l where l.draft_id = d.id)::int as line_count
+from order_drafts d
+join users u on u.id = d.opened_by
+where d.status = 'capturando'
+order by d.created_at
+`
+
+type ListLiveDraftsRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	CompanyID          int64              `json:"company_id"`
+	OrderID            *int64             `json:"order_id"`
+	Status             string             `json:"status"`
+	FolioName          *string            `json:"folio_name"`
+	FolioScheme        *FolioScheme       `json:"folio_scheme"`
+	ServiceType        ServiceType        `json:"service_type"`
+	CustomerName       *string            `json:"customer_name"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	PlatformOrderRef   *string            `json:"platform_order_ref"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	DiscountAmount     *decimal.Decimal   `json:"discount_amount"`
+	DiscountPercent    *decimal.Decimal   `json:"discount_percent"`
+	DiscountSetBy      *int64             `json:"discount_set_by"`
+	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
+	OpenedBy           int64              `json:"opened_by"`
+	HeaderVersion      int32              `json:"header_version"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	SentAt             pgtype.Timestamptz `json:"sent_at"`
+	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
+	DiscardedBy        *int64             `json:"discarded_by"`
+	DiscardReason      *string            `json:"discard_reason"`
+	OpenedByName       string             `json:"opened_by_name"`
+	LineCount          int32              `json:"line_count"`
+}
+
+// Las cuentas vivas para la fila: las nuevas se pintan como ficha propia; lo «Nuevo» de un pedido se
+// pega a su pedido (order_id) con su número de renglones.
+func (q *Queries) ListLiveDrafts(ctx context.Context) ([]ListLiveDraftsRow, error) {
+	rows, err := q.db.Query(ctx, listLiveDrafts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLiveDraftsRow{}
+	for rows.Next() {
+		var i ListLiveDraftsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.OrderID,
+			&i.Status,
+			&i.FolioName,
+			&i.FolioScheme,
+			&i.ServiceType,
+			&i.CustomerName,
+			&i.DeliveryPlatformID,
+			&i.PlatformOrderRef,
+			&i.DeliveryFee,
+			&i.DiscountAmount,
+			&i.DiscountPercent,
+			&i.DiscountSetBy,
+			&i.PlatformRefSetBy,
+			&i.OpenedBy,
+			&i.HeaderVersion,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SentAt,
+			&i.DiscardedAt,
+			&i.DiscardedBy,
+			&i.DiscardReason,
+			&i.OpenedByName,
+			&i.LineCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockDraft = `-- name: LockDraft :one
 select id, company_id, order_id, status, folio_name, folio_scheme, service_type, customer_name, delivery_platform_id, platform_order_ref, delivery_fee, discount_amount, discount_percent, discount_set_by, platform_ref_set_by, opened_by, header_version, created_at, updated_at, sent_at, discarded_at, discarded_by, discard_reason from order_drafts where id = $1 for update
 `

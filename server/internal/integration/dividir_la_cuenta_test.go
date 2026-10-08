@@ -155,9 +155,9 @@ func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
 	if !tras.Paid {
 		t.Fatal("tres tercios de $33.33 no saldaron un pedido de $100")
 	}
-	// El tablero lee `outstanding` de ListOpenOrders, no `Paid`: es la cifra que ve el operador.
-	for _, o := range abiertosDelTablero(t, svc) {
-		if o.ID == ord.ID {
+	// La fila de cuentas lee `outstanding` de ListLiveOrders, no `Paid`: es la cifra que ve el operador.
+	for _, o := range abiertosDelTablero(t, st, svc) {
+		if o.OrderID != nil && *o.OrderID == ord.ID {
 			t.Fatalf("el pedido quedó saldado y cerrado pero la barra del POS lo sigue listando "+
 				"(outstanding=%s): cierra con un predicado tolerante y decide qué mostrar con uno exacto",
 				o.Outstanding)
@@ -180,13 +180,13 @@ func sumaDePagos(t *testing.T, st *store.Store, orderID int64) (decimal.Decimal,
 
 // abiertosDelTablero es lo que ve el operador en la barra del POS: la lista de la que salen la
 // píldora y su total, no el campo Paid del detalle.
-func abiertosDelTablero(t *testing.T, svc *app.OrdersService) []app.BoardOrder {
+func abiertosDelTablero(t *testing.T, st *store.Store, svc *app.OrdersService) []app.AccountItem {
 	t.Helper()
-	items, _, err := svc.Open(context.Background(), false)
+	res, err := app.NewAccountsService(st, svc).Live(context.Background(), false)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Live: %v", err)
 	}
-	return items
+	return res.Items
 }
 
 // EL DEFECTO QUE ESTO PREVIENE: tomar por reintento un cobro mal dirigido.

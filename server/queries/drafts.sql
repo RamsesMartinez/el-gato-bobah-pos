@@ -102,3 +102,13 @@ set status = 'descartada', discarded_at = now(), discarded_by = sqlc.narg('disca
 where id = @id and status = 'capturando'
   and (sqlc.narg('seen')::timestamptz is null or updated_at = sqlc.narg('seen')::timestamptz)
 returning folio_name, folio_scheme, created_at;
+
+-- name: ListLiveDrafts :many
+-- Las cuentas vivas para la fila: las nuevas se pintan como ficha propia; lo «Nuevo» de un pedido se
+-- pega a su pedido (order_id) con su número de renglones.
+select d.*, u.name as opened_by_name,
+       (select count(*) from order_draft_lines l where l.draft_id = d.id)::int as line_count
+from order_drafts d
+join users u on u.id = d.opened_by
+where d.status = 'capturando'
+order by d.created_at;

@@ -72,7 +72,7 @@ archivo ni depende de otra tarea abierta de la misma fase.
 - [X] T019 **FE** Implementar los tipos `DraftView`, `DraftLineView`, `AccountItem`, `SendResult` en web/src/types/pos.ts (campos de arreglo **opcionales** donde el compilador deba obligar a la guarda, AGENTS.md §1) y las funciones en web/src/api/pos.ts; textos de `DRAFT_CHANGED`, `DRAFT_DISCARDED`, `DRAFT_SENT`, `ORDER_CLOSED`, `PLATFORM_ORDER_NO_LINES` en web/src/api/mensajes.ts (sin «borrador», «versión» ni códigos)
 - [X] T020 [P] **FE** Test en web/src/components/ConfirmSheet.test.tsx y ReasonSheet.test.tsx: botones ≥ 44 px; la acción destructiva separada de la principal; cerrar con el fondo o Escape = cancelar; `ReasonSheet` devuelve el texto o `null` y su campo no es obligatorio si así se pide
 - [X] T021 **FE** Implementar web/src/components/ConfirmSheet.tsx y ReasonSheet.tsx (hoja inferior de la app, `maxH` en dvh)
-- [X] T022 [P] **FE** Test estático web/src/sinDialogosDelSistema.test.ts: recorre `web/src` y falla nombrando archivo y línea ante `confirm(`, `prompt(` o `alert(` del navegador (excluye `shared/pwa/installPrompt.ts`, que es la API de PWA, y **los comentarios**: `PrintSettingsPage.tsx` nombra `confirm()` en uno). **Queda en rojo** hasta T088; es la vara de FR-015/SC-005
+- [ ] T022 [P] **FE** Test estático web/src/sinDialogosDelSistema.test.ts: recorre `web/src` y falla nombrando archivo y línea ante `confirm(`, `prompt(` o `alert(` del navegador (excluye `shared/pwa/installPrompt.ts`, que es la API de PWA, y **los comentarios**: `PrintSettingsPage.tsx` nombra `confirm()` en uno). **Queda en rojo** hasta T088; es la vara de FR-015/SC-005
 - [X] T023 [P] **FE** Test en web/src/stores/pos.test.ts: persiste solo `{ selected }` bajo `egb:pos:v3`; un `selected` con forma rara se descarta al cargar (no tumba la pantalla, caso 18); un `selected` que el servidor no encuentra (otra empresa en la tableta, cuenta ya descartada) se limpia sin aviso; no hay renglones ni cabeceras en el almacenamiento
 - [X] T024 **FE** Implementar web/src/stores/pos.ts
 - [X] T025 [P] **FE** Test en web/src/features/pos/useSinConexion.test.ts: `offline` del navegador → sin conexión; un fallo de red en una mutación → sin conexión aunque `navigator.onLine` diga lo contrario; vuelve sola al primer éxito
@@ -145,18 +145,18 @@ o en «+N» con su estado; tocar cualquiera la carga.
 
 ### Backend
 
-- [ ] T042 [US1] **BE** IT en server/internal/integration/accounts_live_test.go (reemplaza los casos de pedidos_en_curso_test.go y barra_solo_por_cobrar_test.go, que se borran al pasar sus casos aquí):
+- [X] T042 [US1] **BE** IT en server/internal/integration/accounts_live_test.go (reemplaza los casos de pedidos_en_curso_test.go y barra_solo_por_cobrar_test.go, que se borran al pasar sus casos aquí):
   - `TestLiveAccountsStates`: capturando, en cocina, pagada en cocina, pago parcial, entregada que debe de hoy y de hace 10 días (`previous_days`), con `state`, `group`, `outstanding` correctos; pagada y entregada no aparece; cancelada no aparece; plataforma aparece;
   - entregada que debe de hace 100 días: no aparece sin `olderDebts`; aparece con `olderDebts=true`;
   - pedido cerrado con «Nuevo» viva → `closedWithPending`;
   - `outstanding` total = suma de los `items` **de pedido**; una cuenta en captura de $500 no lo mueve (falla nombrando «la cuenta en captura se contó como deuda», constitución III);
   - el barrido descarta la cuenta de 13 h y suelta su nombre antes de listar;
   - 3C
-- [ ] T043 [US1] **BE** IT `TestLiveAccountsStaysFast` en server/internal/integration/accounts_live_perf_test.go: 30 mil pedidos sintéticos en dos empresas; la consulta sin `olderDebts` ≤ 30 ms y su `EXPLAIN` usa `orders_company_date_status`; con `olderDebts` se anota el tiempo medido (techo del `ponytail`)
-- [ ] T044 [US1] **BE** Consulta `ListLiveOrders` en server/queries/orders.sql (reemplaza `ListOpenOrders`; predicado redundante `>= $desde` en sus dos lugares; `// ponytail:` con techo y camino de subida, research R-7) y `ListLiveDrafts`/`ListPendingDraftsByOrder` en server/queries/drafts.sql; `make sqlc`
-- [ ] T045 [US1] **BE** Implementar `AccountsService.Live(ctx, olderDebts bool)` en server/internal/app/accounts.go (barrido + unión + `domain.AccountState/AccountGroup`); borrar `OrdersService.Open`
-- [ ] T046 [US1] **BE** IT HTTP en server/internal/integration/accounts_http_test.go: `GET /pos/accounts` con `items: []` en JSON crudo cuando no hay nada; `olderDebts=maybe` → 400; `GET /orders/open` ya no existe (404)
-- [ ] T047 [US1] **BE** Handler `LiveAccounts` en server/internal/httpapi/handlers_drafts.go, ruta `GET /pos/accounts`; borrar `OpenOrders` y la ruta `/orders/open`
+- [X] T043 [US1] **BE** IT `TestLiveAccountsStaysFast` en server/internal/integration/accounts_live_perf_test.go: 30 mil pedidos sintéticos en dos empresas; la consulta sin `olderDebts` ≤ 30 ms y su `EXPLAIN` usa `orders_company_date_status`; con `olderDebts` se anota el tiempo medido (techo del `ponytail`)
+- [X] T044 [US1] **BE** Consulta `ListLiveOrders` en server/queries/orders.sql (reemplaza `ListOpenOrders`; predicado redundante `>= $desde` en sus dos lugares; `// ponytail:` con techo y camino de subida, research R-7) y `ListLiveDrafts`/`ListPendingDraftsByOrder` en server/queries/drafts.sql; `make sqlc`
+- [X] T045 [US1] **BE** Implementar `AccountsService.Live(ctx, olderDebts bool)` en server/internal/app/accounts.go (barrido + unión + `domain.AccountState/AccountGroup`); borrar `OrdersService.Open`
+- [X] T046 [US1] **BE** IT HTTP en server/internal/integration/accounts_http_test.go: `GET /pos/accounts` con `items: []` en JSON crudo cuando no hay nada; `olderDebts=maybe` → 400; `GET /orders/open` ya no existe (404)
+- [X] T047 [US1] **BE** Handler `LiveAccounts` en server/internal/httpapi/handlers_drafts.go, ruta `GET /pos/accounts`; borrar `OpenOrders` y la ruta `/orders/open`
 
 ### Frontend
 
@@ -173,8 +173,8 @@ o en «+N» con su estado; tocar cualquiera la carga.
 - [ ] T054 [US1] **FE** Primero el test en POSPage.test.tsx (la fila no desborda con 10 cuentas; no queda `TicketTabs` ni el botón naranja), después la fila 2 en web/src/features/pos/POSPage.tsx: `FilaDeCuentas` en lugar de `TicketTabs` y `PedidosEnCurso`; buscador `clamp(120px,20%,200px)` que se pliega a botón de 44 px con el panel abierto. Borrar web/src/features/pos/TicketTabs.tsx, PedidosEnCurso.tsx y PedidosEnCurso.test.tsx (sus casos vivos pasan a T050/T052) y `posApi.openOrders`
 - [ ] T055 [P] [US1] **FE** Test en web/src/features/pos/abrirDesdeLaUrl.test.tsx: `/pos?pedido=12` selecciona ese pedido y limpia el parámetro; `?cuenta=<uuid>` igual; un id que no existe → «Esa cuenta ya no existe» y no selecciona otra; un valor malformado se rechaza igual (no cae a otra cuenta)
 - [ ] T056 [US1] **FE** Implementar la lectura del parámetro en web/src/features/pos/POSPage.tsx
-- [X] T057 [P] [US1] **FE** Test en web/src/features/orders/OrdersBoardPage.test.tsx: cada tarjeta tiene «Abrir cuenta» (44 px) que navega a `/pos?pedido=<id>`; reemplaza la puerta de «Cobrar» del tablero como única ruta al cobro (caso 25)
-- [X] T058 [US1] **FE** Implementar «Abrir cuenta» en web/src/features/orders/OrdersBoardPage.tsx
+- [ ] T057 [P] [US1] **FE** Test en web/src/features/orders/OrdersBoardPage.test.tsx: cada tarjeta tiene «Abrir cuenta» (44 px) que navega a `/pos?pedido=<id>`; reemplaza la puerta de «Cobrar» del tablero como única ruta al cobro (caso 25)
+- [ ] T058 [US1] **FE** Implementar «Abrir cuenta» en web/src/features/orders/OrdersBoardPage.tsx
 
 **Checkpoint (MVP)**: US2 + US1 — una sola fila, todas las tabletas, nada se pierde.
 
@@ -256,8 +256,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 - [ ] T074 [US5] **BE** Escribir `ReleaseFolioName` en server/queries/folios.sql y la consulta de descartar; implementar `DraftsService.Discard` en server/internal/app/drafts.go, handler y ruta `POST /pos/drafts/{id}/discard`
 - [ ] T075 [P] [US5] **FE** Test en web/src/features/pos/DescartarCuentaSheet.test.tsx: cuenta vacía → se descarta sin hoja; con productos → «¿Descartar la cuenta de Levkoy? Se pierden 2 productos ($74)…»; «Seguir capturando» es la principal y no cambia nada; «Descartar» rojo, separado, descarta y deja sin selección. El ⋮ de cabecera ofrece «Descartar cuenta» solo en captura y «Cancelar pedido» solo en enviada (y solo con permiso `orders.cancel`); una enviada no tiene ninguna otra forma de cerrarse
 - [ ] T076 [US5] **FE** Implementar web/src/features/pos/DescartarCuentaSheet.tsx y el ⋮ de cabecera del ticket: «Descartar cuenta» solo en captura, «Cancelar pedido» (permiso `orders.cancel`, flujo existente) solo en enviada; ninguna otra forma de cerrar una enviada (US5 AS3). Quitar el `confirm('¿Vaciar pedido?')` de Ticket.tsx
-- [X] T077 [P] [US5] **FE** Test en web/src/features/backoffice/ExpensesPage.test.tsx: cancelar un gasto pide el motivo en `ReasonSheet` (opcional) y no llama a `prompt`
-- [X] T078 [US5] **FE** Reemplazar el `prompt()` de web/src/features/backoffice/ExpensesPage.tsx por `ReasonSheet`
+- [ ] T077 [P] [US5] **FE** Test en web/src/features/backoffice/ExpensesPage.test.tsx: cancelar un gasto pide el motivo en `ReasonSheet` (opcional) y no llama a `prompt`
+- [ ] T078 [US5] **FE** Reemplazar el `prompt()` de web/src/features/backoffice/ExpensesPage.tsx por `ReasonSheet`
 
 ---
 
@@ -283,8 +283,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 - [ ] T085 [US8] **BE** IT `TestCloseLiveAccountsDoNotBlock` en server/internal/integration/cierre_con_cuentas_vivas_test.go: con un pedido en cocina el cierre sigue bloqueado (`OPEN_ORDERS`, `Pending` sin cambio); con solo cuentas en captura y entregadas que deben (una de hace 100 días) cierra, `liveAccounts` las lista, y al día siguiente las que deben están en `previous_days` y las capturando siguen vivas; JSON crudo `liveAccounts: []`
 - [ ] T086 [US8] **BE** Agregar `LiveAccounts` a `SessionView` en server/internal/app/backoffice.go desde `AccountsService.Live(ctx, true)` filtrado a los grupos no bloqueantes; `sinPedidosPendientes` no se toca
-- [X] T087 [P] [US8] **FE** Test en web/src/features/backoffice/CashPage.test.tsx: bloqueantes arriba con «Abrir» (navega a `/pos?pedido=`); sección plegada «Cuentas pendientes (N)» con «Abrir» y «Descartar» de 44 px y separados; «Descartar» confirma con `ConfirmSheet`; «Cerrar caja» confirma con `ConfirmSheet` y no llama a `confirm`
-- [X] T088 [US8] **FE** Implementar en web/src/features/backoffice/CashPage.tsx; con esto `sinDialogosDelSistema.test.ts` (T022) queda **verde**
+- [ ] T087 [P] [US8] **FE** Test en web/src/features/backoffice/CashPage.test.tsx: bloqueantes arriba con «Abrir» (navega a `/pos?pedido=`); sección plegada «Cuentas pendientes (N)» con «Abrir» y «Descartar» de 44 px y separados; «Descartar» confirma con `ConfirmSheet`; «Cerrar caja» confirma con `ConfirmSheet` y no llama a `confirm`
+- [ ] T088 [US8] **FE** Implementar en web/src/features/backoffice/CashPage.tsx; con esto `sinDialogosDelSistema.test.ts` (T022) queda **verde**
 
 ---
 

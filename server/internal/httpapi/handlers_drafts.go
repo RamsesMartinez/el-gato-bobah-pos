@@ -337,3 +337,25 @@ func (h *Handlers) ImportDrafts(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{"results": res})
 }
+
+// GET /pos/accounts[?olderDebts=true]
+//
+// `olderDebts` acepta SOLO `true` o nada: un valor que no se entiende no cae a la ventana de 90 días
+// en silencio — la hoja diría «no hay deudas de otros días» sobre un número que nadie pidió
+// (constitución V).
+func (h *Handlers) LiveAccounts(w http.ResponseWriter, r *http.Request) {
+	olderDebts := false
+	if v, ok := r.URL.Query()["olderDebts"]; ok {
+		if len(v) != 1 || v[0] != "true" {
+			Error(w, fmt.Errorf("%w: olderDebts solo admite true", domain.ErrValidation))
+			return
+		}
+		olderDebts = true
+	}
+	res, err := h.accounts.Live(r.Context(), olderDebts)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, res)
+}

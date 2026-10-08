@@ -109,7 +109,7 @@ func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
 	ord, cafe, cajero := pedidoEnCurso(t, st, svc, "cobrado", true)
 
 	// Saldado: no debe nada. Sigue en la barra porque sigue en cocina.
-	antes := buscarEnCurso(t, svc, ord.ID)
+	antes := buscarEnCurso(t, st, svc, ord.ID)
 	if !antes.Outstanding.IsZero() {
 		t.Fatalf("el pedido nace debiendo %s y se cobró completo", antes.Outstanding)
 	}
@@ -120,26 +120,26 @@ func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
 		t.Fatalf("AddLines: %v", err)
 	}
 
-	tras := buscarEnCurso(t, svc, ord.ID)
+	tras := buscarEnCurso(t, st, svc, ord.ID)
 	if !tras.Outstanding.Equal(decimal.RequireFromString("200")) {
 		t.Errorf("saldo = %s, quiere 200: el agregado a un pedido cobrado quedó como deuda invisible",
 			tras.Outstanding)
 	}
 }
 
-func buscarEnCurso(t *testing.T, svc *app.OrdersService, id int64) app.BoardOrder {
+func buscarEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, id int64) app.AccountItem {
 	t.Helper()
-	lista, _, err := svc.Open(context.Background(), false)
+	lista, err := app.NewAccountsService(st, svc).Live(context.Background(), false)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Live: %v", err)
 	}
-	for _, o := range lista {
-		if o.ID == id {
+	for _, o := range lista.Items {
+		if o.OrderID != nil && *o.OrderID == id {
 			return o
 		}
 	}
-	t.Fatalf("el pedido %d no está en la barra de en curso", id)
-	return app.BoardOrder{}
+	t.Fatalf("el pedido %d no está en la fila de cuentas", id)
+	return app.AccountItem{}
 }
 
 // EL ENTREGADO QUE RECIBE MÁS VUELVE A COCINA.
@@ -191,9 +191,9 @@ func TestElEntregadoQueRecibeMasVuelveACocina(t *testing.T) {
 	if estaEnLaLista(entregados, ord.ID) {
 		t.Errorf("sigue en Entregados hoy con comida sin salir: la misma venta se lee terminada en una pantalla y pendiente en otra")
 	}
-	enCurso := buscarEnCurso(t, svc, ord.ID)
-	if !enCurso.EnPreparacion {
-		t.Errorf("enPreparacion = false: la hoja del POS no ofrecería agregarle, y cocina no lo ve")
+	enCurso := buscarEnCurso(t, st, svc, ord.ID)
+	if enCurso.Group != domain.GroupInKitchen {
+		t.Errorf("group = %s: la fila no lo muestra en cocina, y nadie prepararía lo nuevo", enCurso.Group)
 	}
 	if !enCurso.Outstanding.Equal(decimal.RequireFromString("200")) {
 		t.Errorf("saldo = %s, quiere 200", enCurso.Outstanding)

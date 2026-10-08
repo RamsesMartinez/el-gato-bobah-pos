@@ -216,6 +216,7 @@ func main() {
 		Costing:    app.NewCostingService(st),
 		Orders:     orders,
 		Drafts:     app.NewDraftsService(st, orders),
+		Accounts:   app.NewAccountsService(st, orders),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
 		Settings:   app.NewSettingsService(st, cfg.PinPepper),

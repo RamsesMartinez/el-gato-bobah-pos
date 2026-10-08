@@ -93,7 +93,9 @@ type Deps struct {
 	Costing   *app.CostingService
 	Orders    *app.OrdersService
 	// Drafts es la cuenta en captura (spec 030).
-	Drafts     *app.DraftsService
+	Drafts *app.DraftsService
+	// Accounts es la fila de cuentas vivas del POS (spec 030).
+	Accounts   *app.AccountsService
 	Backoffice *app.BackofficeService
 	Admin      *app.AdminService
 	Settings   *app.SettingsService
@@ -143,6 +145,7 @@ type Handlers struct {
 	costing           *app.CostingService
 	orders            *app.OrdersService
 	drafts            *app.DraftsService
+	accounts          *app.AccountsService
 	backoffice        *app.BackofficeService
 	admin             *app.AdminService
 	settings          *app.SettingsService
@@ -206,7 +209,7 @@ func newHandlers(d Deps) *Handlers {
 	return &Handlers{
 		permissions: permissions,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts,
+		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,

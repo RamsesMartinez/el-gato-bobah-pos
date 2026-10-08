@@ -155,6 +155,12 @@ D-5: «lo que agrega cada una se suma; cambiar o quitar algo que la otra ya camb
   pero sí aparece al abrir «+N» (grupo «De días anteriores») y en el cierre de caja.
 - **Descartado**: sin ventana en la consulta de cada 30 s (crece lineal); columna con trigger ahora
   (toca todos los caminos de dinero para un caso que hoy no existe).
+- **Corregido al implementar (medido, `accounts_live_perf_test`)**: con 30 mil pedidos la ventana de
+  90 días tarda ~6 ms y `olderDebts` ~21 ms. El plan **no** entra por `orders_company_date_status`:
+  la rama de cocina es de cualquier fecha, así que Postgres entra por un índice de empresa
+  (`orders_branch`) y filtra. Sigue siendo lineal con el histórico de la empresa (lee sus pedidos por
+  índice antes de filtrar), pero sin calcular pagos fuera de la ventana. Partirla en `UNION ALL` se
+  midió y fue más lenta (~22 ms). El test topa el tiempo y exige un índice de empresa, no un nombre.
 
 ## R-8. Las 12 horas: barrido perezoso, no un job
 
