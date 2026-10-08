@@ -135,11 +135,15 @@ func (h *Handlers) CreateDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		cmd.Header = &p
 	}
+	if !h.allowDiscount(w, r, u.ID, cmd.Header) {
+		return
+	}
 	v, created, err := h.drafts.Create(r.Context(), cmd)
 	if err != nil {
 		Error(w, err)
 		return
 	}
+	h.discountEvent(r, u.ID, v.ID, cmd.Header)
 	h.publishDraft(r, v)
 	status := http.StatusOK
 	if created {
@@ -282,6 +286,12 @@ func (h *Handlers) PatchDraft(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	if res.RefChanged {
+		// Como `platform_ref_set` del pedido: el cambio es en sitio, y sin el anterior dos cambios
+		// seguidos borran la evidencia del primero. No es PII: es el identificador de la plataforma.
+		logging.SecurityEvent(r.Context(), "draft_platform_ref_set",
+			"user_id", u.ID, "draft_id", id.String(), "folio_anterior", res.RefBefore)
+	}
 	if res.DiscountChanged {
 		logging.SecurityEvent(r.Context(), "draft_discount_set",
 			"user_id", u.ID, "draft_id", id.String(),
@@ -320,6 +330,9 @@ func (h *Handlers) ImportDrafts(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			acc.Header = &p
+			if !h.allowDiscount(w, r, u.ID, acc.Header) {
+				return
+			}
 		}
 		accounts = append(accounts, acc)
 	}
@@ -328,7 +341,10 @@ func (h *Handlers) ImportDrafts(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	for _, x := range res {
+	for i, x := range res {
+		if x.Outcome == "created" {
+			h.discountEvent(r, u.ID, x.ID, accounts[i].Header)
+		}
 		if x.DraftID != nil {
 			if v, err := h.drafts.Get(r.Context(), *x.DraftID); err == nil {
 				h.publishDraft(r, v)
@@ -416,4 +432,32 @@ func (h *Handlers) DiscardDraft(w http.ResponseWriter, r *http.Request) {
 		h.publishDraft(r, v)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// allowDiscount aplica a una cuenta que NACE con descuento (crear o importar) el mismo tope por
+// usuario que `PATCH /pos/drafts/{id}` y `PUT /orders/{id}/discount`. Sin esto, crear cuentas en bucle
+// con `header.discount` era un camino para descontar sin límite. Escribe la respuesta si se niega.
+func (h *Handlers) allowDiscount(w http.ResponseWriter, r *http.Request, userID int64, p *app.DraftHeaderPatch) bool {
+	if p == nil || !p.Discount.Set || p.Discount.Value == nil || h.descuentoWrites == nil {
+		return true
+	}
+	ctx, key := r.Context(), strconv.FormatInt(userID, 10)
+	if h.descuentoWrites.blocked(ctx, key) {
+		logging.SecurityEvent(ctx, "rate_limited_user", "user_id", userID, "path", r.URL.Path, "ip", clientIP(r))
+		tooManyRequests(w, h.descuentoWrites.retryAfter(ctx, key))
+		return false
+	}
+	h.descuentoWrites.record(ctx, key)
+	return true
+}
+
+// discountEvent deja el MISMO evento que el PATCH cuando una cuenta nace con descuento: anterior en
+// cero, nuevo el capturado.
+func (h *Handlers) discountEvent(r *http.Request, userID int64, draftID uuid.UUID, p *app.DraftHeaderPatch) {
+	if p == nil || !p.Discount.Set || p.Discount.Value == nil {
+		return
+	}
+	logging.SecurityEvent(r.Context(), "draft_discount_set",
+		"user_id", userID, "draft_id", draftID.String(),
+		"descuento_anterior", "0.00", "descuento_nuevo", app.DraftDiscountText(p.Discount.Value))
 }

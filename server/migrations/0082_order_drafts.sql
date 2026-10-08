@@ -21,11 +21,16 @@
 -- Van `no action` y no `restrict`: `restrict` no se difiere y aborta el borrado en cascada de una
 -- empresa (mismo motivo que 0079).
 --
--- CRECIMIENTO (estimado, sin `delete` a propósito: la descartada es rastro): ~30 mil cuentas, ~150
--- mil renglones y ~200 mil agregados por año a 40–80 pedidos/día; decenas de MB/año. Techo y camino:
--- cuando pese, purgar `order_draft_adds` de cuentas terminales con más de 30 días (los agregados solo
--- sirven para que un reintento no duplique, y una cuenta enviada o descartada ya no recibe
--- reintentos). No se construye hoy.
+-- CRECIMIENTO (estimado, sin `delete` de cuentas a propósito: la descartada es rastro): ~30 mil
+-- cuentas y ~200 mil agregados por año a 40–80 pedidos/día; decenas de MB/año. Los renglones de una
+-- cuenta ENVIADA se borran al enviarla (ya viven en el pedido); los de una descartada se quedan como
+-- rastro. Techo y camino: cuando pese, purgar `order_draft_adds` y los renglones de cuentas terminales
+-- con más de 30 días (un reintento ya no llega a una cuenta enviada o descartada). No se construye hoy.
+--
+-- OJO con el reorg de datos (docs/reorg): la FK de renglones a `products` es `no action`, así que un
+-- producto que quedó en una cuenta DESCARTADA no se puede borrar. Antes de borrar productos hay que
+-- borrar esos renglones (`delete from order_draft_lines l using order_drafts d where l.draft_id = d.id
+-- and d.status = 'descartada' and l.product_id = …`).
 
 -- ---------------------------------------------------------------------------------------------
 -- La cuenta
@@ -109,17 +114,18 @@ create unique index order_drafts_live_name on order_drafts (company_id, folio_na
 -- Una sola «Nuevo» viva por pedido: la segunda tableta recibe la que ya existe.
 create unique index order_drafts_live_per_order on order_drafts (company_id, order_id)
   where status = 'capturando' and order_id is not null;
--- La lista de cuentas vivas y el barrido de las 12 horas.
-create index order_drafts_live on order_drafts (company_id, updated_at) where status = 'capturando';
--- Pegar lo «Nuevo» a su pedido en la lista, y el barrido de lo «Nuevo» de pedidos cancelados.
+-- Sostiene el chequeo de la FK `order_drafts_order` cuando se borran pedidos (el borrado en cascada
+-- de una empresa): sin él, cada pedido borrado recorre la tabla entera.
 create index order_drafts_by_order on order_drafts (company_id, order_id) where order_id is not null;
 
 -- ---------------------------------------------------------------------------------------------
 -- Sus renglones
 -- ---------------------------------------------------------------------------------------------
 create table order_draft_lines (
-  -- Lo pone la tableta: el `opId` del agregado que creó el renglón.
-  id         uuid primary key,
+  -- Lo pone la tableta: el `opId` del agregado que creó el renglón. Único POR EMPRESA, como los
+  -- agregados: una llave global dejaría que el uuid de otra empresa chocara (un oráculo de existencia
+  -- y un 23505 sin dueño).
+  id         uuid not null,
   company_id bigint not null default nullif(current_setting('app.company_id', true), '')::bigint
                references companies(id) on delete cascade,
   draft_id   uuid not null,
@@ -133,6 +139,7 @@ create table order_draft_lines (
   version    int not null default 1,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  primary key (company_id, id),
   constraint order_draft_lines_draft foreign key (draft_id, company_id)
     references order_drafts (id, company_id) on delete cascade,
   -- `no action` y no `restrict` (ver arriba). Igual bloquea el reorg de datos que borre un producto

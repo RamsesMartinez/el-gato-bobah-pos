@@ -86,11 +86,18 @@ select folio_name::text from order_drafts where status = 'capturando' and folio_
 -- name: ListDraftsToSweep :many
 -- Las cuentas vivas con lo que el barrido necesita para decidir: cuándo se tocaron (contra el reloj
 -- de la BASE, el mismo que escribió `updated_at`) y si su pedido ya se canceló o reembolsó.
+--
+-- `for update skip locked` en orden de id: una cuenta que otra transacción tiene tomada (la están
+-- mandando, agregando o descartando) no está abandonada, y esperarla es como el barrido se
+-- interbloqueaba con un envío que toma pedido y luego cuenta. El orden fijo evita el cruce entre dos
+-- barridos simultáneos.
 select d.id, d.updated_at, now()::timestamptz as db_now,
        coalesce(o.status in ('cancelada', 'reembolsada'), false)::boolean as order_voided
 from order_drafts d
 left join orders o on o.id = d.order_id
-where d.status = 'capturando';
+where d.status = 'capturando'
+order by d.id
+for update of d skip locked;
 
 -- name: DiscardDraft :one
 -- `status = 'capturando'` en el propio update: un barrido que corre mientras otra tableta manda la
@@ -121,3 +128,8 @@ where id = @id and status = 'capturando';
 -- name: ListOrderLineIDs :many
 -- Los renglones vivos de un pedido recién nacido: la comanda del pedido completo.
 select id from order_lines where order_id = $1 and cancelled_at is null order by id;
+
+-- name: DeleteDraftLinesOf :exec
+-- Al mandar la cuenta, sus renglones ya viven en el pedido. Quedarse con ellos bloquearía para
+-- siempre el borrado de cualquier producto que alguna vez se capturó (FK `no action`).
+delete from order_draft_lines where draft_id = $1;

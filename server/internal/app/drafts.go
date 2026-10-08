@@ -12,6 +12,7 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -133,6 +134,10 @@ type PatchDraftResult struct {
 	DiscountChanged bool
 	DiscountBefore  string
 	DiscountAfter   string
+	// RefChanged y RefBefore: el folio de plataforma cambió, y cuál era. Viajan para el evento de
+	// seguridad, como en `PATCH /orders/{id}/platform-ref`: el cambio es en sitio y sin historia.
+	RefChanged bool
+	RefBefore  string
 }
 
 // draftCreateRetries: cuántas veces se reintenta crear cuando otra tableta se llevó el nombre (o abrió
@@ -152,6 +157,9 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 	if cmd.ID == uuid.Nil() || len(cmd.Lines) == 0 {
 		return nil, false, fmt.Errorf("%w: la cuenta nace con su primer producto", domain.ErrValidation)
 	}
+	if len(cmd.Lines) > domain.MaxDraftLines {
+		return nil, false, tooManyLines()
+	}
 	if cmd.OrderID != nil && cmd.Header != nil {
 		return nil, false, fmt.Errorf("%w: lo nuevo de un pedido no lleva datos propios", domain.ErrValidation)
 	}
@@ -163,14 +171,16 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 			return nil, false, fmt.Errorf("%w: una cuenta nueva no tiene renglones a los cuales sumar", domain.ErrValidation)
 		}
 	}
+	// El barrido va en SU transacción, antes: dentro de la de crear tomaría cuentas y luego, al abrir
+	// una «Nuevo», el pedido — el orden inverso al de enviar, y los dos se interbloqueaban.
+	if err := s.store.WithTx(ctx, func(q *db.Queries) error { return sweepDrafts(ctx, q) }); err != nil {
+		return nil, false, err
+	}
 	var id uuid.UUID
 	var created bool
 	var err error
 	for range draftCreateRetries {
 		err = s.store.WithTx(ctx, func(q *db.Queries) error {
-			if err := sweepDrafts(ctx, q); err != nil {
-				return err
-			}
 			if d, err := q.GetDraft(ctx, cmd.ID); err == nil {
 				// Reintento: la misma cuenta, sin volver a aplicar nada.
 				if err := draftStatusErr(d.Status); err != nil {
@@ -188,11 +198,11 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 			}
 			return err
 		})
-		if !isUniqueViolation(err) {
+		if !isDraftRace(err) {
 			break
 		}
 	}
-	if isUniqueViolation(err) {
+	if isDraftRace(err) {
 		return nil, false, fmt.Errorf("%w: otra tableta abrió una cuenta al mismo tiempo; vuelve a intentarlo", domain.ErrConflict)
 	}
 	if err != nil {
@@ -200,6 +210,18 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 	}
 	v, err := draftView(ctx, s.store.QC(ctx), id)
 	return v, created, err
+}
+
+// isDraftRace dice si un 23505 es la carrera de dos tabletas por el mismo nombre o la misma «Nuevo»,
+// que se resuelve reintentando. Cualquier otro choque no es una carrera y no se reintenta.
+func isDraftRace(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		(pgErr.ConstraintName == "order_drafts_live_name" || pgErr.ConstraintName == "order_drafts_live_per_order")
+}
+
+func tooManyLines() error {
+	return fmt.Errorf("%w: una cuenta lleva a lo más %d productos distintos", domain.ErrValidation, domain.MaxDraftLines)
 }
 
 // createAccount abre una cuenta nueva: amarra su nombre (D-2) y le aplica los renglones.
@@ -259,15 +281,19 @@ func (s *DraftsService) createNewOfOrder(ctx context.Context, q *db.Queries, cmd
 	}
 	// Otra tableta ya abrió la «Nuevo» de este pedido: lo de ésta se le suma a aquélla (R-9).
 	if existing, err := q.GetLiveDraftOfOrder(ctx, &o.ID); err == nil {
-		if _, err := q.LockDraft(ctx, existing); err != nil {
+		// Se bloquea y se REVISA viva: otra tableta pudo descartarla o mandarla entre la lectura y el
+		// candado, y agregarle a una cuenta muerta perdería el producto respondiendo 200. Si murió, se
+		// abre una «Nuevo» nueva (el único parcial ya no la cuenta).
+		if _, err := lockLiveDraft(ctx, q, existing); err == nil {
+			for _, l := range cmd.Lines {
+				if err := addDraftLineInTx(ctx, q, existing, l); err != nil {
+					return uuid.UUID{}, false, err
+				}
+			}
+			return existing, false, nil
+		} else if !errors.Is(err, domain.ErrDraftDiscarded) && !errors.Is(err, domain.ErrDraftAlreadySent) {
 			return uuid.UUID{}, false, err
 		}
-		for _, l := range cmd.Lines {
-			if err := addDraftLineInTx(ctx, q, existing, l); err != nil {
-				return uuid.UUID{}, false, err
-			}
-		}
-		return existing, false, nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return uuid.UUID{}, false, err
 	}
@@ -316,9 +342,19 @@ func bindDraftName(ctx context.Context, q *db.Queries, propuesto string) (string
 	if err != nil {
 		return "", "", err
 	}
-	opciones, vaciar := domain.AvailableNames(domain.NombresDelEsquema(esquema), consumidos, usados, vivos)
+	lista := domain.NombresDelEsquema(esquema)
+	opciones, vaciar := domain.AvailableNames(lista, consumidos, usados, vivos)
 	if len(opciones) == 0 {
-		return "", "", fmt.Errorf("%w: no quedan nombres libres; cierra o manda alguna cuenta", domain.ErrConflict)
+		// Todos los nombres están en cuentas vivas. Responder «no hay nombres» dejaría a TODAS las
+		// tabletas sin poder vender hasta que alguien descarte (o pasen 12 horas), y bastan unas
+		// decenas de cuentas para provocarlo. Un nombre con número es mejor que no vender; no se marca
+		// en la bolsa porque no es de la bolsa.
+		base := lista[rand.IntN(len(lista))] //nolint:gosec // G404: el nombre de un pedido se canta en voz alta; no es secreto
+		nombre := domain.SiguienteFolioLibre(base, append(append([]string(nil), vivos...), usados...))
+		if nombre == "" {
+			return "", "", fmt.Errorf("%w: no quedan nombres libres; cierra o manda alguna cuenta", domain.ErrConflict)
+		}
+		return nombre, db.FolioScheme(esquema), nil
 	}
 	nombre := opciones[rand.IntN(len(opciones))] //nolint:gosec // G404: el nombre de un pedido se canta en voz alta; no es secreto
 	if base := domain.SanitizarFolio(propuesto); base != "" && contiene(opciones, base) {
@@ -476,6 +512,9 @@ func (s *DraftsService) PatchHeader(ctx context.Context, id uuid.UUID, p DraftHe
 		if n == 0 {
 			return domain.ErrDraftChanged
 		}
+		if !sameStr(before.platformRef, h.platformRef) {
+			res.RefChanged, res.RefBefore = true, derefStr(before.platformRef)
+		}
 		if p.Discount.Set {
 			if err := checkDraftDiscount(ctx, q, id); err != nil {
 				return err
@@ -560,12 +599,19 @@ func addDraftLineInTx(ctx context.Context, q *db.Queries, draftID uuid.UUID, c D
 	var lineID uuid.UUID
 	switch {
 	case c.IntoLineID != nil:
-		n, err := q.AddToDraftLine(ctx, db.AddToDraftLineParams{Qty: c.Qty, ID: *c.IntoLineID, DraftID: draftID})
+		rows, err := q.ListDraftLines(ctx, draftID)
 		if err != nil {
 			return err
 		}
-		if n == 0 {
+		cur, ok := findLine(rows, *c.IntoLineID)
+		if !ok {
 			return fmt.Errorf("%w: ese producto ya no está en la cuenta", domain.ErrNotFound)
+		}
+		if err := checkSum(cur.Qty, c.Qty); err != nil {
+			return err
+		}
+		if _, err := q.AddToDraftLine(ctx, db.AddToDraftLineParams{Qty: c.Qty, ID: *c.IntoLineID, DraftID: draftID}); err != nil {
+			return err
 		}
 		lineID = *c.IntoLineID
 	default:
@@ -585,6 +631,10 @@ func addDraftLineInTx(ctx context.Context, q *db.Queries, draftID uuid.UUID, c D
 		}
 		in := domain.DraftLineInput{ProductID: c.ProductID, Qty: c.Qty, Modifiers: c.Modifiers, Notes: c.Notes}
 		if target, ok := domain.MergeTarget(lines, in); ok {
+			cur, _ := findLine(rows, target)
+			if err := checkSum(cur.Qty, c.Qty); err != nil {
+				return err
+			}
 			if _, err := q.AddToDraftLine(ctx, db.AddToDraftLineParams{Qty: c.Qty, ID: target, DraftID: draftID}); err != nil {
 				return err
 			}
@@ -608,6 +658,24 @@ func addDraftLineInTx(ctx context.Context, q *db.Queries, draftID uuid.UUID, c D
 		return fmt.Errorf("%w: ese producto ya se agregó a otra cuenta", domain.ErrConflict)
 	}
 	return q.TouchDraft(ctx, draftID)
+}
+
+func findLine(rows []db.OrderDraftLine, id uuid.UUID) (db.OrderDraftLine, bool) {
+	for _, r := range rows {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return db.OrderDraftLine{}, false
+}
+
+// checkSum topa la cantidad ACUMULADA de un renglón, no solo el toque: cien «+» de 10 000 desbordan
+// la columna (500) y, antes, guardan una cantidad que el pedido rechazaría al enviar.
+func checkSum(cur, add decimal.Decimal) error {
+	if !domain.ValidQty(cur.Add(add), domain.MaxOrderQty, false) {
+		return fmt.Errorf("%w: ese producto ya llegó al máximo de piezas", domain.ErrValidation)
+	}
+	return nil
 }
 
 // checkProduct rechaza el producto que no está en el menú de ESTA empresa (bajo RLS: el de otra
@@ -798,11 +866,24 @@ func applyHeader(ctx context.Context, q *db.Queries, h draftHeader, p DraftHeade
 
 // discountText describe el descuento para el evento de seguridad: dinero y quién, nunca PII.
 func (h draftHeader) discountText() string {
+	return discountText(h.discountAmount, h.discountPercent)
+}
+
+// DraftDiscountText describe el descuento con que nace una cuenta (crear o importar), con el mismo
+// formato que el evento del PATCH.
+func DraftDiscountText(d *DraftDiscount) string {
+	if d == nil {
+		return "0.00"
+	}
+	return discountText(d.Amount, d.Percent)
+}
+
+func discountText(amount, percent *decimal.Decimal) string {
 	switch {
-	case h.discountAmount != nil:
-		return h.discountAmount.StringFixed(2)
-	case h.discountPercent != nil:
-		return h.discountPercent.StringFixed(2) + "%"
+	case amount != nil:
+		return domain.Round2(*amount).StringFixed(2)
+	case percent != nil:
+		return domain.Round2(*percent).StringFixed(2) + "%"
 	}
 	return "0.00"
 }
@@ -1038,6 +1119,8 @@ type ImportResult struct {
 	Outcome string     `json:"outcome"`
 	DraftID *uuid.UUID `json:"draftId"`
 	OrderID *int64     `json:"orderId"`
+	// Reason dice por qué una pestaña se rechazó (`outcome: "rejected"`), en palabras de quien opera.
+	Reason string `json:"reason,omitempty"`
 }
 
 // maxImportAccounts acota una subida: una tableta real trae dos o tres pestañas. Sin tope, una sola
@@ -1061,6 +1144,9 @@ func (s *DraftsService) Import(ctx context.Context, accounts []ImportAccount, ac
 		if a.ID == uuid.Nil() {
 			return nil, fmt.Errorf("%w: una cuenta sin id", domain.ErrValidation)
 		}
+		if len(a.Lines) > domain.MaxDraftLines {
+			return nil, tooManyLines()
+		}
 	}
 	out := make([]ImportResult, 0, len(accounts))
 	q := s.store.QC(ctx)
@@ -1080,47 +1166,81 @@ func (s *DraftsService) Import(ctx context.Context, accounts []ImportAccount, ac
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		lines := a.Lines
-		for {
-			if len(lines) == 0 {
-				r.Outcome = "skipped_empty"
-				break
-			}
-			v, created, err := s.Create(ctx, CreateDraftCmd{ID: a.ID, FolioName: a.FolioName, Header: a.Header, Lines: lines, Actor: actor})
-			var gone domain.ProductUnavailable
-			if errors.As(err, &gone) {
-				lines = withoutProduct(lines, gone.ProductID)
-				continue
-			}
-			if errors.Is(err, domain.ErrDraftDiscarded) {
-				// Ya subió y alguien la cerró en otra tableta: para esta tableta es «ya está», y puede
-				// borrar su copia. Volver a abrirla resucitaría una cuenta que alguien decidió cerrar.
-				id := a.ID
-				r.Outcome, r.DraftID = "exists", &id
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
+		lines, err := sellableLines(ctx, q, a.Lines)
+		if err != nil {
+			return nil, err
+		}
+		if len(lines) == 0 {
+			r.Outcome = "skipped_empty"
+			out = append(out, r)
+			continue
+		}
+		v, created, err := s.Create(ctx, CreateDraftCmd{ID: a.ID, FolioName: a.FolioName, Header: a.Header, Lines: lines, Actor: actor})
+		switch {
+		case errors.Is(err, domain.ErrDraftDiscarded):
+			// Ya subió y alguien la cerró en otra tableta: para esta tableta es «ya está», y puede
+			// borrar su copia. Volver a abrirla resucitaría una cuenta que alguien decidió cerrar.
+			id := a.ID
+			r.Outcome, r.DraftID = "exists", &id
+		case isRejection(err):
+			// Una pestaña inservible (opción borrada, cabecera que ya no vale) se reporta sola: si tumbara
+			// la subida, la tableta no borraría su copia y reintentaría para siempre con las demás.
+			r.Outcome, r.Reason = "rejected", operatorText(err)
+		case err != nil:
+			return nil, err
+		default:
 			r.Outcome, r.DraftID = "created", &v.ID
 			if !created {
 				r.Outcome = "exists"
 			}
-			break
 		}
 		out = append(out, r)
 	}
 	return out, nil
 }
 
-func withoutProduct(lines []DraftLineCmd, productID int64) []DraftLineCmd {
+// sellableLines deja fuera, en UNA lectura, los renglones cuyo producto ya no está en el menú: lo
+// demás que se capturó sí sube. Antes se reintentaba la creación entera por cada producto faltante.
+func sellableLines(ctx context.Context, q *db.Queries, lines []DraftLineCmd) ([]DraftLineCmd, error) {
+	ids := make([]int64, 0, len(lines))
+	for _, l := range lines {
+		ids = append(ids, l.ProductID)
+	}
+	rows, err := q.GetPricedProducts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	active := make(map[int64]bool, len(rows))
+	for _, p := range rows {
+		active[p.ID] = p.IsActive
+	}
 	out := make([]DraftLineCmd, 0, len(lines))
 	for _, l := range lines {
-		if l.ProductID != productID {
+		if active[l.ProductID] {
 			out = append(out, l)
 		}
 	}
-	return out
+	return out, nil
+}
+
+// isRejection dice si un error es de LA PESTAÑA (lo que mandó no vale) y no de la base o del servidor.
+func isRejection(err error) bool {
+	for _, e := range []error{domain.ErrValidation, domain.ErrOptionNotFound, domain.ErrOptionOverMax,
+		domain.ErrProductNotSell, domain.ErrPlatformNotFound, domain.ErrDescuentoMayorQueLaVenta, domain.ErrDraftAlreadySent} {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
+}
+
+// operatorText quita del mensaje el nombre del sentinel base, como hace httpapi con las respuestas.
+func operatorText(err error) string {
+	msg := err.Error()
+	for _, p := range []string{domain.ErrValidation.Error() + ": ", domain.ErrConflict.Error() + ": "} {
+		msg = strings.TrimPrefix(msg, p)
+	}
+	return msg
 }
 
 // SendResult es lo que vuelve de mandar una cuenta a cocina.
@@ -1242,8 +1362,7 @@ func (s *DraftsService) sendAccount(ctx context.Context, d db.GetDraftRow, lines
 			}
 			created = true
 		}
-		_, err = q.MarkDraftSent(ctx, db.MarkDraftSentParams{OrderID: &orderID, ID: d.ID})
-		return err
+		return markSent(ctx, q, d.ID, orderID)
 	})
 	if err != nil {
 		return nil, false, s.orders.traduceFolioRepetido(ctx, err, plan.folio, cmd.DeliveryPlatformID)
@@ -1255,7 +1374,7 @@ func (s *DraftsService) sendAccount(ctx context.Context, d db.GetDraftRow, lines
 	if err != nil {
 		return nil, false, err
 	}
-	res := &SendResult{Order: o, PrintLineIDs: []int64{}, Created: true}
+	res := &SendResult{Order: o, PrintLineIDs: []int64{}, Created: created}
 	if created {
 		res.PrintLineIDs = liveLineIDs(o)
 	}
@@ -1294,8 +1413,7 @@ func (s *DraftsService) sendNew(ctx context.Context, d db.GetDraftRow, lines []d
 		if agregados, err = addLinesInTx(ctx, q, *d.OrderID, plan, actor, d.ID); err != nil {
 			return err
 		}
-		_, err = q.MarkDraftSent(ctx, db.MarkDraftSentParams{OrderID: d.OrderID, ID: d.ID})
-		return err
+		return markSent(ctx, q, d.ID, *d.OrderID)
 	})
 	if err != nil || retry {
 		return nil, retry, err
@@ -1308,6 +1426,20 @@ func (s *DraftsService) sendNew(ctx context.Context, d db.GetDraftRow, lines []d
 		agregados = []int64{}
 	}
 	return &SendResult{Order: o, PrintLineIDs: agregados, Created: false}, false, nil
+}
+
+// markSent marca la cuenta enviada y borra sus renglones, que ya viven en el pedido.
+func markSent(ctx context.Context, q *db.Queries, id uuid.UUID, orderID int64) error {
+	n, err := q.MarkDraftSent(ctx, db.MarkDraftSentParams{OrderID: &orderID, ID: id})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		// Imposible con la cuenta bloqueada y revisada viva; si pasa, mejor abortar que dejar un pedido
+		// con su cuenta todavía viva (otra tableta la volvería a mandar).
+		return domain.ErrDraftChanged
+	}
+	return q.DeleteDraftLinesOf(ctx, id)
 }
 
 // alreadySent responde el reintento de una cuenta ya enviada: el mismo pedido, nada que imprimir.

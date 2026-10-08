@@ -95,6 +95,17 @@ func (q *Queries) DeleteDraftLine(ctx context.Context, arg DeleteDraftLineParams
 	return result.RowsAffected(), nil
 }
 
+const deleteDraftLinesOf = `-- name: DeleteDraftLinesOf :exec
+delete from order_draft_lines where draft_id = $1
+`
+
+// Al mandar la cuenta, sus renglones ya viven en el pedido. Quedarse con ellos bloquearía para
+// siempre el borrado de cualquier producto que alguna vez se capturó (FK `no action`).
+func (q *Queries) DeleteDraftLinesOf(ctx context.Context, draftID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDraftLinesOf, draftID)
+	return err
+}
+
 const discardDraft = `-- name: DiscardDraft :one
 update order_drafts
 set status = 'descartada', discarded_at = now(), discarded_by = $1,
@@ -367,6 +378,8 @@ select d.id, d.updated_at, now()::timestamptz as db_now,
 from order_drafts d
 left join orders o on o.id = d.order_id
 where d.status = 'capturando'
+order by d.id
+for update of d skip locked
 `
 
 type ListDraftsToSweepRow struct {
@@ -378,6 +391,11 @@ type ListDraftsToSweepRow struct {
 
 // Las cuentas vivas con lo que el barrido necesita para decidir: cuándo se tocaron (contra el reloj
 // de la BASE, el mismo que escribió `updated_at`) y si su pedido ya se canceló o reembolsó.
+//
+// `for update skip locked` en orden de id: una cuenta que otra transacción tiene tomada (la están
+// mandando, agregando o descartando) no está abandonada, y esperarla es como el barrido se
+// interbloqueaba con un envío que toma pedido y luego cuenta. El orden fijo evita el cruce entre dos
+// barridos simultáneos.
 func (q *Queries) ListDraftsToSweep(ctx context.Context) ([]ListDraftsToSweepRow, error) {
 	rows, err := q.db.Query(ctx, listDraftsToSweep)
 	if err != nil {
