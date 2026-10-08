@@ -437,6 +437,41 @@ type SessionView struct {
 	// Drawer: el arqueo del cajón físico. Nil = este turno no tiene arqueo de efectivo (un corte
 	// anterior a la spec 015, o una caja que no maneja efectivo).
 	Drawer *ArqueoDelCajonView `json:"drawer"`
+	// VoidedPayments: los pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el
+	// pago devuelto ya no está en order_payments, así que el esperado por método no cambia de
+	// fórmula. Siempre arreglo.
+	VoidedPayments []VoidedPaymentView `json:"voidedPayments"`
+}
+
+// VoidedPaymentView es un pago devuelto en el turno, para la lista del corte.
+type VoidedPaymentView struct {
+	Method     string          `json:"method"`
+	Amount     decimal.Decimal `json:"amount"`
+	Tip        decimal.Decimal `json:"tip"`
+	OrderFolio string          `json:"orderFolio"`
+	VoidedBy   string          `json:"voidedBy"`
+	VoidedAt   time.Time       `json:"voidedAt"`
+	Reason     string          `json:"reason"`
+}
+
+// voidedPayments lista los pagos devueltos de un turno. Slice no-nil → [] en JSON.
+func (s *BackofficeService) voidedPayments(ctx context.Context, sessionID int64) ([]VoidedPaymentView, error) {
+	rows, err := s.store.QC(ctx).ListSessionPaymentVoids(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VoidedPaymentView, 0, len(rows))
+	for _, v := range rows {
+		folio := fmt.Sprintf("#%d", v.DailyNumber)
+		if v.FolioName != "" {
+			folio = fmt.Sprintf("%s #%d", v.FolioName, v.DailyNumber)
+		}
+		out = append(out, VoidedPaymentView{
+			Method: v.MethodName, Amount: v.Amount, Tip: v.TipAmount, OrderFolio: folio,
+			VoidedBy: v.VoidedBy, VoidedAt: v.VoidedAt, Reason: v.Reason,
+		})
+	}
+	return out, nil
 }
 
 // CashierTotal es lo que cobró una persona en el turno. El efectivo va aparte de lo demás porque
@@ -486,6 +521,8 @@ type SessionDetailView struct {
 	// convivirían con el filtro de fechas y bastaría elegir un rango que no toque el corte para
 	// llegar a una pantalla vacía sin explicación.
 	Sales []SessionSaleView `json:"sales"`
+	// VoidedPayments: ver SessionView.VoidedPayments.
+	VoidedPayments []VoidedPaymentView `json:"voidedPayments"`
 	// Cuántas hay EN TOTAL, no cuántas se mandaron. Un recorte silencioso se lee como "esto es todo".
 	SalesCount int `json:"salesCount"`
 	SalesShown int `json:"salesShown"`
@@ -1132,6 +1169,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
+	if view.VoidedPayments, err = s.voidedPayments(ctx, sess.ID); err != nil {
+		return nil, err
+	}
 	methods := []methodExpected{}
 	for _, r := range rows {
 		// Caja secundaria: los métodos no-efectivo no aplican (no vende por ellos) → se omiten.
@@ -1600,6 +1640,9 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	}
 	view.Counts = conteos
 	view.Drawer = arqueoGuardado(delCorte, conteos)
+	if view.VoidedPayments, err = s.voidedPayments(ctx, sess.ID); err != nil {
+		return nil, err
+	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{

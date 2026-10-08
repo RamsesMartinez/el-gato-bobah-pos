@@ -108,6 +108,7 @@ select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 `
 
 type CountSessionSalesRow struct {
@@ -1040,6 +1041,59 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 	return items, nil
 }
 
+const listSessionPaymentVoids = `-- name: ListSessionPaymentVoids :many
+select pm.name as method_name, v.amount, v.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       coalesce(u.name, '')::text as voided_by, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+join orders o on o.id = v.order_id
+left join users u on u.id = v.voided_by
+where v.register_session_id = $1
+order by v.voided_at, v.id
+`
+
+type ListSessionPaymentVoidsRow struct {
+	MethodName  string          `json:"method_name"`
+	Amount      decimal.Decimal `json:"amount"`
+	TipAmount   decimal.Decimal `json:"tip_amount"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   string          `json:"folio_name"`
+	VoidedBy    string          `json:"voided_by"`
+	VoidedAt    time.Time       `json:"voided_at"`
+	Reason      string          `json:"reason"`
+}
+
+// Los pagos devueltos en un turno, para la lista aparte del corte (spec 027). No cambian el
+// esperado por método: el pago devuelto ya no está en order_payments.
+func (q *Queries) ListSessionPaymentVoids(ctx context.Context, registerSessionID int64) ([]ListSessionPaymentVoidsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionPaymentVoids, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionPaymentVoidsRow{}
+	for rows.Next() {
+		var i ListSessionPaymentVoidsRow
+		if err := rows.Scan(
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.VoidedBy,
+			&i.VoidedAt,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionTotals = `-- name: ListSessionTotals :many
 select t.payment_method_id, pm.name, pm.kind, t.affects_cash_drawer, t.expected, t.declared, t.tips,
        coalesce(dp.name, '') as platform_name,
@@ -1554,6 +1608,7 @@ select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type
        o.total, o.refund_amount
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 order by o.opened_at desc, o.id desc
 limit $3 offset $2
 `
@@ -1586,6 +1641,8 @@ type SessionSalesRow struct {
 //
 // Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
 // las incluye es el total, y de eso se encarga la gemela de abajo.
+// El pedido juntado con otro (spec 027) no es venta ni cancelación del turno: sus productos están
+// en el pedido con el que se juntó. La gemela lleva la misma línea.
 func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]SessionSalesRow, error) {
 	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Off, arg.Lim)
 	if err != nil {

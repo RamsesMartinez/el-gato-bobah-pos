@@ -254,3 +254,34 @@ test('ver el ticket no cierra la lista de pedidos por cobrar', async () => {
   await waitFor(() => expect(order).toHaveBeenCalled());
   expect(screen.getByText('Pedidos por cobrar')).toBeInTheDocument();
 });
+
+// UN PEDIDO A MEDIO PAGAR DICE CUÁNTO SE PAGÓ Y CUÁNTO FALTA (spec 027, US3).
+//
+// Con la cuenta dividida, el renglón decía el total y el botón «Cobrar» lo que falta: dos cifras sin
+// nombre, y quien lleva la cuenta a la mesa no sabe si la diferencia ya entró a la caja. Y sin
+// «1 de 3»: con productos no hay partes que contar, y un conteo inventado se lee como lo que falta.
+test('a medio pagar, el renglón dice lo pagado y lo que falta, sin contar partes', async () => {
+  const u = userEvent.setup();
+  openOrders.mockResolvedValue({
+    items: [pedido({ id: 3, folioName: 'Nutria', total: '250', outstanding: '100' })],
+    outstanding: '100',
+  });
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /100/ }));
+  const nutria = await screen.findByText('Nutria');
+  const renglon = nutria.closest('div')!.parentElement!;
+  expect(renglon.textContent).toMatch(/Pagado \$150 · falta \$100/);
+  expect(renglon.textContent).not.toMatch(/\d+ de \d+/);
+});
+
+// Sin nada pagado, «Pagado $0» es una cifra que no dice nada y le quita ancho al nombre.
+test('sin pagos, el renglón no habla de lo pagado', async () => {
+  const u = userEvent.setup();
+  openOrders.mockResolvedValue({ items: [pedido({ folioName: 'Tejón' })], outstanding: '250' });
+  pinta(<PedidosEnCurso onAbrir={() => {}} onCobrado={() => {}} hayQueAgregar />);
+
+  await u.click(await screen.findByRole('button', { name: /250/ }));
+  await screen.findByText('Tejón');
+  expect(screen.queryByText(/Pagado/)).toBeNull();
+});

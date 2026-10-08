@@ -48,6 +48,25 @@ func (q *Queries) CancelOrderLine(ctx context.Context, arg CancelOrderLineParams
 	return err
 }
 
+const copyOrderLineModifiers = `-- name: CopyOrderLineModifiers :exec
+insert into order_line_modifiers (order_line_id, modifier_option_id, group_title, option_name,
+                                  quantity, price_delta, unit_cost)
+select $1, m.modifier_option_id, m.group_title, m.option_name, m.quantity, m.price_delta, m.unit_cost
+from order_line_modifiers m
+where m.order_line_id = $2
+`
+
+type CopyOrderLineModifiersParams struct {
+	NewLineID int64 `json:"new_line_id"`
+	LineID    int64 `json:"line_id"`
+}
+
+// Los modificadores del renglón partido. Son por unidad, así que se copian tal cual.
+func (q *Queries) CopyOrderLineModifiers(ctx context.Context, arg CopyOrderLineModifiersParams) error {
+	_, err := q.db.Exec(ctx, copyOrderLineModifiers, arg.NewLineID, arg.LineID)
+	return err
+}
+
 const countLinesPendingDelivery = `-- name: CountLinesPendingDelivery :one
 select count(*) from order_lines
 where order_id = $1 and cancelled_at is null and delivered_qty < quantity
@@ -60,6 +79,82 @@ func (q *Queries) CountLinesPendingDelivery(ctx context.Context, orderID int64) 
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countOrderPaymentsForNumber = `-- name: CountOrderPaymentsForNumber :one
+select ((select count(*) from order_payments p where p.order_id = $1)
+      + (select count(*) from order_payment_voids v where v.order_id = $1))::int as n
+`
+
+// Cuántos pagos ha tenido el pedido, vivos y devueltos, contando los viejos sin número. El número
+// del siguiente es éste más uno: así uno nuevo nunca repite el de un pago viejo ni el de uno devuelto.
+func (q *Queries) CountOrderPaymentsForNumber(ctx context.Context, orderID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countOrderPaymentsForNumber, orderID)
+	var n int32
+	err := row.Scan(&n)
+	return n, err
+}
+
+const countUnattributedSales = `-- name: CountUnattributedSales :one
+select count(*)::int from stock_movements
+where order_id = $1 and order_line_id is null and movement_type = 'venta'
+`
+
+// Ventas de inventario del pedido sin renglón (anteriores a 0060): de ellas no consta de qué
+// renglón salieron, así que pasar un producto no sabría qué consumo llevarse.
+func (q *Queries) CountUnattributedSales(ctx context.Context, orderID *int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countUnattributedSales, orderID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const createLineMove = `-- name: CreateLineMove :exec
+insert into order_line_moves (client_uuid, order_line_id, split_from_line_id, qty) values ($1, $2, $3, $4)
+`
+
+type CreateLineMoveParams struct {
+	ClientUuid      uuid.UUID       `json:"client_uuid"`
+	OrderLineID     int64           `json:"order_line_id"`
+	SplitFromLineID *int64          `json:"split_from_line_id"`
+	Qty             decimal.Decimal `json:"qty"`
+}
+
+func (q *Queries) CreateLineMove(ctx context.Context, arg CreateLineMoveParams) error {
+	_, err := q.db.Exec(ctx, createLineMove,
+		arg.ClientUuid,
+		arg.OrderLineID,
+		arg.SplitFromLineID,
+		arg.Qty,
+	)
+	return err
+}
+
+const createLineMoveBatch = `-- name: CreateLineMoveBatch :one
+insert into order_line_move_batches (client_uuid, from_order_id, to_order_id, moved_by)
+values ($1, $2, $3, $4)
+on conflict do nothing
+returning client_uuid
+`
+
+type CreateLineMoveBatchParams struct {
+	ClientUuid  uuid.UUID `json:"client_uuid"`
+	FromOrderID int64     `json:"from_order_id"`
+	ToOrderID   int64     `json:"to_order_id"`
+	MovedBy     int64     `json:"moved_by"`
+}
+
+// Marca el lote de «Pasar». Cero filas significa que esta llave ya estaba: es un reintento.
+func (q *Queries) CreateLineMoveBatch(ctx context.Context, arg CreateLineMoveBatchParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createLineMoveBatch,
+		arg.ClientUuid,
+		arg.FromOrderID,
+		arg.ToOrderID,
+		arg.MovedBy,
+	)
+	var client_uuid uuid.UUID
+	err := row.Scan(&client_uuid)
+	return client_uuid, err
 }
 
 const createOrder = `-- name: CreateOrder :one
@@ -76,7 +171,7 @@ values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
         -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
         -- el pedido de plataforma, cuya sucursal es la de su tienda.
         $20)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id
 `
 
 type CreateOrderParams struct {
@@ -174,6 +269,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
 		&i.BranchID,
+		&i.MergedIntoOrderID,
 	)
 	return i, err
 }
@@ -273,6 +369,131 @@ func (q *Queries) CreateOrderPayment(ctx context.Context, arg CreateOrderPayment
 		arg.Reference,
 		arg.ClientUuid,
 	)
+	return err
+}
+
+const createOrderPaymentLine = `-- name: CreateOrderPaymentLine :exec
+insert into order_payment_lines (order_payment_id, order_line_id, qty, amount) values ($1, $2, $3, $4)
+`
+
+type CreateOrderPaymentLineParams struct {
+	OrderPaymentID int64           `json:"order_payment_id"`
+	OrderLineID    int64           `json:"order_line_id"`
+	Qty            decimal.Decimal `json:"qty"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+func (q *Queries) CreateOrderPaymentLine(ctx context.Context, arg CreateOrderPaymentLineParams) error {
+	_, err := q.db.Exec(ctx, createOrderPaymentLine,
+		arg.OrderPaymentID,
+		arg.OrderLineID,
+		arg.Qty,
+		arg.Amount,
+	)
+	return err
+}
+
+const createOrderPaymentNumbered = `-- name: CreateOrderPaymentNumbered :one
+insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
+                            reference, client_uuid, payment_number, split_part, split_of)
+values ($1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10, $11)
+returning id
+`
+
+type CreateOrderPaymentNumberedParams struct {
+	OrderID           int64           `json:"order_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	Reference         *string         `json:"reference"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	PaymentNumber     *int16          `json:"payment_number"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+}
+
+func (q *Queries) CreateOrderPaymentNumbered(ctx context.Context, arg CreateOrderPaymentNumberedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createOrderPaymentNumbered,
+		arg.OrderID,
+		arg.PaymentMethodID,
+		arg.Amount,
+		arg.TipAmount,
+		arg.RegisterSessionID,
+		arg.ReceivedBy,
+		arg.Reference,
+		arg.ClientUuid,
+		arg.PaymentNumber,
+		arg.SplitPart,
+		arg.SplitOf,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createOrderPaymentVoid = `-- name: CreateOrderPaymentVoid :exec
+insert into order_payment_voids (order_id, original_payment_id, payment_number, payment_method_id, amount, tip_amount,
+                                 reference, register_session_id, received_by, paid_at, client_uuid, split_part, split_of,
+                                 covered, voided_by, reason)
+values ($1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10, $11, $12, $13,
+        $14, $15, $16)
+`
+
+type CreateOrderPaymentVoidParams struct {
+	OrderID           int64           `json:"order_id"`
+	OriginalPaymentID int64           `json:"original_payment_id"`
+	PaymentNumber     int16           `json:"payment_number"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reference         *string         `json:"reference"`
+	RegisterSessionID int64           `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	PaidAt            time.Time       `json:"paid_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	Covered           []byte          `json:"covered"`
+	VoidedBy          int64           `json:"voided_by"`
+	Reason            string          `json:"reason"`
+}
+
+func (q *Queries) CreateOrderPaymentVoid(ctx context.Context, arg CreateOrderPaymentVoidParams) error {
+	_, err := q.db.Exec(ctx, createOrderPaymentVoid,
+		arg.OrderID,
+		arg.OriginalPaymentID,
+		arg.PaymentNumber,
+		arg.PaymentMethodID,
+		arg.Amount,
+		arg.TipAmount,
+		arg.Reference,
+		arg.RegisterSessionID,
+		arg.ReceivedBy,
+		arg.PaidAt,
+		arg.ClientUuid,
+		arg.SplitPart,
+		arg.SplitOf,
+		arg.Covered,
+		arg.VoidedBy,
+		arg.Reason,
+	)
+	return err
+}
+
+const deleteOrderPayment = `-- name: DeleteOrderPayment :exec
+delete from order_payments where id = $1
+`
+
+// Saca el pago devuelto de order_payments: su cobertura cae en cascada y la copia ya está en la
+// bitácora. Es lo que deja correctas sin tocarlas todas las consultas que suman pagos.
+func (q *Queries) DeleteOrderPayment(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteOrderPayment, id)
 	return err
 }
 
@@ -391,6 +612,22 @@ func (q *Queries) FolioNamesUsedInSession(ctx context.Context, registerSessionID
 	return items, nil
 }
 
+const getLineMoveBatch = `-- name: GetLineMoveBatch :one
+select from_order_id, to_order_id from order_line_move_batches where client_uuid = $1
+`
+
+type GetLineMoveBatchRow struct {
+	FromOrderID int64 `json:"from_order_id"`
+	ToOrderID   int64 `json:"to_order_id"`
+}
+
+func (q *Queries) GetLineMoveBatch(ctx context.Context, clientUuid uuid.UUID) (GetLineMoveBatchRow, error) {
+	row := q.db.QueryRow(ctx, getLineMoveBatch, clientUuid)
+	var i GetLineMoveBatchRow
+	err := row.Scan(&i.FromOrderID, &i.ToOrderID)
+	return i, err
+}
+
 const getLoteDeRenglones = `-- name: GetLoteDeRenglones :one
 select order_id from order_line_batches where client_uuid = $1
 `
@@ -405,7 +642,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -446,6 +683,133 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
 		&i.BranchID,
+		&i.MergedIntoOrderID,
+	)
+	return i, err
+}
+
+const getOrderForCharge = `-- name: GetOrderForCharge :one
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o
+`
+
+type GetOrderForChargeRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+}
+
+// El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
+// turno. El candado es el mismo de siempre: entre leer lo cobrado y escribir el pago cabe otro
+// cajero, y sin él los dos cubrirían la misma pieza.
+func (q *Queries) GetOrderForCharge(ctx context.Context, id int64) (GetOrderForChargeRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForCharge, id)
+	var i GetOrderForChargeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.Subtotal,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
+	)
+	return i, err
+}
+
+const getOrderForMove = `-- name: GetOrderForMove :one
+select o.id, o.status, o.delivery_platform_id, o.register_session_id,
+       coalesce(rs.status::text, '')::text as session_status,
+       o.business_date, o.service_type, o.opened_by, o.branch_id, o.discount_total, o.delivery_fee, o.total
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o
+`
+
+type GetOrderForMoveRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+	BusinessDate       pgtype.Date     `json:"business_date"`
+	ServiceType        ServiceType     `json:"service_type"`
+	OpenedBy           int64           `json:"opened_by"`
+	BranchID           int64           `json:"branch_id"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+}
+
+// Un pedido de «Pasar», BLOQUEADO, con lo que decide si puede dar o recibir productos y lo que
+// hereda el pedido nuevo. Quien llama bloquea origen y destino en orden ascendente de id.
+func (q *Queries) GetOrderForMove(ctx context.Context, id int64) (GetOrderForMoveRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForMove, id)
+	var i GetOrderForMoveRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
+		&i.BusinessDate,
+		&i.ServiceType,
+		&i.OpenedBy,
+		&i.BranchID,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+	)
+	return i, err
+}
+
+const getOrderForQuote = `-- name: GetOrderForQuote :one
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+`
+
+type GetOrderForQuoteRow struct {
+	ID                 int64           `json:"id"`
+	Status             OrderStatus     `json:"status"`
+	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
+	Subtotal           decimal.Decimal `json:"subtotal"`
+	DiscountTotal      decimal.Decimal `json:"discount_total"`
+	DeliveryFee        decimal.Decimal `json:"delivery_fee"`
+	Total              decimal.Decimal `json:"total"`
+	RegisterSessionID  *int64          `json:"register_session_id"`
+	SessionStatus      string          `json:"session_status"`
+}
+
+// Lo mismo sin candado: la cotización solo lee. Es una cotización, no una reserva; /pay recalcula.
+func (q *Queries) GetOrderForQuote(ctx context.Context, id int64) (GetOrderForQuoteRow, error) {
+	row := q.db.QueryRow(ctx, getOrderForQuote, id)
+	var i GetOrderForQuoteRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.DeliveryPlatformID,
+		&i.Subtotal,
+		&i.DiscountTotal,
+		&i.DeliveryFee,
+		&i.Total,
+		&i.RegisterSessionID,
+		&i.SessionStatus,
 	)
 	return i, err
 }
@@ -493,9 +857,10 @@ func (q *Queries) GetOrderIDByClientUUID(ctx context.Context, clientUuid uuid.UU
 
 const getOrderLineForCancel = `-- name: GetOrderLineForCancel :one
 select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
-       o.status as order_status
+       o.status as order_status, p.needs_prep
 from order_lines ol
 join orders o on o.id = ol.order_id
+join products p on p.id = ol.product_id
 where ol.id = $1 and ol.order_id = $2
 for update of ol
 `
@@ -513,6 +878,7 @@ type GetOrderLineForCancelRow struct {
 	CancelledAt      pgtype.Timestamptz `json:"cancelled_at"`
 	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 	OrderStatus      OrderStatus        `json:"order_status"`
+	NeedsPrep        bool               `json:"needs_prep"`
 }
 
 // El renglón y el estado de su pedido, para decidir si se puede cancelar y si repone inventario.
@@ -520,6 +886,8 @@ type GetOrderLineForCancelRow struct {
 // `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
 // repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
 // cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
+//
+// `needs_prep` porque lo que no se prepara vuelve al almacén aunque haya «salido a cocina».
 func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineForCancelParams) (GetOrderLineForCancelRow, error) {
 	row := q.db.QueryRow(ctx, getOrderLineForCancel, arg.ID, arg.OrderID)
 	var i GetOrderLineForCancelRow
@@ -531,6 +899,7 @@ func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineFor
 		&i.CancelledAt,
 		&i.EnviadoACocinaAt,
 		&i.OrderStatus,
+		&i.NeedsPrep,
 	)
 	return i, err
 }
@@ -612,6 +981,124 @@ func (q *Queries) GetOrderPaymentByClientUUID(ctx context.Context, clientUuid *u
 		&i.TipAmount,
 	)
 	return i, err
+}
+
+const getOrderPaymentForVoid = `-- name: GetOrderPaymentForVoid :one
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.reference, p.register_session_id,
+       p.received_by, p.created_at, p.client_uuid, p.split_part, p.split_of, p.payment_number,
+       coalesce(rs.status::text, '')::text as session_status,
+       coalesce((select jsonb_agg(jsonb_build_object('lineId', pl.order_line_id, 'qty', pl.qty, 'amount', pl.amount)
+                                  order by pl.order_line_id)
+                   from order_payment_lines pl where pl.order_payment_id = p.id), '[]'::jsonb)::jsonb as covered
+from order_payments p
+left join register_sessions rs on rs.id = p.register_session_id
+where p.id = $1
+`
+
+type GetOrderPaymentForVoidRow struct {
+	ID                int64           `json:"id"`
+	OrderID           int64           `json:"order_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reference         *string         `json:"reference"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	CreatedAt         time.Time       `json:"created_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	PaymentNumber     *int16          `json:"payment_number"`
+	SessionStatus     string          `json:"session_status"`
+	Covered           []byte          `json:"covered"`
+}
+
+// El pago a devolver con el estado de su turno. Se lee DESPUÉS de bloquear el pedido.
+func (q *Queries) GetOrderPaymentForVoid(ctx context.Context, id int64) (GetOrderPaymentForVoidRow, error) {
+	row := q.db.QueryRow(ctx, getOrderPaymentForVoid, id)
+	var i GetOrderPaymentForVoidRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.PaymentMethodID,
+		&i.Amount,
+		&i.TipAmount,
+		&i.Reference,
+		&i.RegisterSessionID,
+		&i.ReceivedBy,
+		&i.CreatedAt,
+		&i.ClientUuid,
+		&i.SplitPart,
+		&i.SplitOf,
+		&i.PaymentNumber,
+		&i.SessionStatus,
+		&i.Covered,
+	)
+	return i, err
+}
+
+const getOrderPaymentShapeByClientUUID = `-- name: GetOrderPaymentShapeByClientUUID :one
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.split_part, p.split_of, p.payment_number,
+       coalesce((select string_agg(pl.order_line_id || ':' || pl.qty, ',' order by pl.order_line_id)
+                   from order_payment_lines pl where pl.order_payment_id = p.id), '')::text as covered
+from order_payments p
+where p.client_uuid = $1
+`
+
+type GetOrderPaymentShapeByClientUUIDRow struct {
+	ID              int64           `json:"id"`
+	OrderID         int64           `json:"order_id"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	Amount          decimal.Decimal `json:"amount"`
+	TipAmount       decimal.Decimal `json:"tip_amount"`
+	SplitPart       *int16          `json:"split_part"`
+	SplitOf         *int16          `json:"split_of"`
+	PaymentNumber   *int16          `json:"payment_number"`
+	Covered         string          `json:"covered"`
+}
+
+// Lo que decide si un reenvío con la misma llave es el mismo cobro: la parte y lo que cubrió.
+// `covered` va como texto ordenado («renglón:piezas,…») para compararlo de un golpe.
+func (q *Queries) GetOrderPaymentShapeByClientUUID(ctx context.Context, clientUuid *uuid.UUID) (GetOrderPaymentShapeByClientUUIDRow, error) {
+	row := q.db.QueryRow(ctx, getOrderPaymentShapeByClientUUID, clientUuid)
+	var i GetOrderPaymentShapeByClientUUIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.PaymentMethodID,
+		&i.Amount,
+		&i.TipAmount,
+		&i.SplitPart,
+		&i.SplitOf,
+		&i.PaymentNumber,
+		&i.Covered,
+	)
+	return i, err
+}
+
+const getPaymentVoidByClientUUID = `-- name: GetPaymentVoidByClientUUID :one
+select order_id from order_payment_voids where client_uuid = $1
+`
+
+// ¿Esta llave es de un pago que ya se devolvió? Sin esto, reenviarla volvería a cobrar el pago que
+// se acaba de devolver, como si nada.
+func (q *Queries) GetPaymentVoidByClientUUID(ctx context.Context, clientUuid *uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getPaymentVoidByClientUUID, clientUuid)
+	var order_id int64
+	err := row.Scan(&order_id)
+	return order_id, err
+}
+
+const getPaymentVoidByOriginalID = `-- name: GetPaymentVoidByOriginalID :one
+select order_id from order_payment_voids where original_payment_id = $1
+`
+
+// ¿Este pago ya se devolvió? Distingue «ya se devolvió» de «no existe» al devolver dos veces.
+func (q *Queries) GetPaymentVoidByOriginalID(ctx context.Context, originalPaymentID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, getPaymentVoidByOriginalID, originalPaymentID)
+	var order_id int64
+	err := row.Scan(&order_id)
+	return order_id, err
 }
 
 const getPricedOptions = `-- name: GetPricedOptions :many
@@ -804,6 +1291,37 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 	return items, nil
 }
 
+const listChargedSplitParts = `-- name: ListChargedSplitParts :many
+select split_part::int as part from order_payments
+where order_id = $1 and split_of = $2 and split_part is not null
+`
+
+type ListChargedSplitPartsParams struct {
+	OrderID int64  `json:"order_id"`
+	SplitOf *int16 `json:"split_of"`
+}
+
+// Las partes ya cobradas de una serie «entre N personas» de este pedido.
+func (q *Queries) ListChargedSplitParts(ctx context.Context, arg ListChargedSplitPartsParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listChargedSplitParts, arg.OrderID, arg.SplitOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var part int32
+		if err := rows.Scan(&part); err != nil {
+			return nil, err
+		}
+		items = append(items, part)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDeliveredToday = `-- name: ListDeliveredToday :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
        o.customer_name, o.total, o.currency, o.refund_amount,
@@ -884,6 +1402,90 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 	return items, nil
 }
 
+const listLineComponents = `-- name: ListLineComponents :many
+select id, product_id, quantity from order_line_components where order_line_id = $1 order by id
+`
+
+type ListLineComponentsRow struct {
+	ID        int64           `json:"id"`
+	ProductID int64           `json:"product_id"`
+	Quantity  decimal.Decimal `json:"quantity"`
+}
+
+// Lo que lleva el paquete de UN renglón, para repartirlo al partir el renglón. La cantidad es la
+// del renglón entero, no por pieza.
+func (q *Queries) ListLineComponents(ctx context.Context, orderLineID int64) ([]ListLineComponentsRow, error) {
+	rows, err := q.db.Query(ctx, listLineComponents, orderLineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLineComponentsRow{}
+	for rows.Next() {
+		var i ListLineComponentsRow
+		if err := rows.Scan(&i.ID, &i.ProductID, &i.Quantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLineSaleMovements = `-- name: ListLineSaleMovements :many
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
+       modifier_option_id, component_of_product_id
+from stock_movements
+where order_line_id = $1 and movement_type = 'venta'
+order by id
+`
+
+type ListLineSaleMovementsRow struct {
+	ItemType             StockItemType    `json:"item_type"`
+	IngredientID         *int64           `json:"ingredient_id"`
+	ProductID            *int64           `json:"product_id"`
+	Quantity             decimal.Decimal  `json:"quantity"`
+	UnitCost             *decimal.Decimal `json:"unit_cost"`
+	OrderID              *int64           `json:"order_id"`
+	ModifierOptionID     *int64           `json:"modifier_option_id"`
+	ComponentOfProductID *int64           `json:"component_of_product_id"`
+}
+
+// Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
+// pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando. El
+// extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
+// producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
+func (q *Queries) ListLineSaleMovements(ctx context.Context, orderLineID *int64) ([]ListLineSaleMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listLineSaleMovements, orderLineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLineSaleMovementsRow{}
+	for rows.Next() {
+		var i ListLineSaleMovementsRow
+		if err := rows.Scan(
+			&i.ItemType,
+			&i.IngredientID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.UnitCost,
+			&i.OrderID,
+			&i.ModifierOptionID,
+			&i.ComponentOfProductID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinesForDelivery = `-- name: ListLinesForDelivery :many
 select id, quantity, delivered_qty, cancelled_at
 from order_lines
@@ -916,6 +1518,59 @@ func (q *Queries) ListLinesForDelivery(ctx context.Context, orderID int64) ([]Li
 			&i.Quantity,
 			&i.DeliveredQty,
 			&i.CancelledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinesForSelection = `-- name: ListLinesForSelection :many
+
+select ol.id, ol.quantity, ol.unit_price, ol.modifiers_total, ol.delivered_qty,
+       coalesce((select sum(pl.qty) from order_payment_lines pl where pl.order_line_id = ol.id), 0)::numeric(8,2) as covered_qty
+from order_lines ol
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id
+`
+
+type ListLinesForSelectionRow struct {
+	ID             int64           `json:"id"`
+	Quantity       decimal.Decimal `json:"quantity"`
+	UnitPrice      decimal.Decimal `json:"unit_price"`
+	ModifiersTotal decimal.Decimal `json:"modifiers_total"`
+	DeliveredQty   decimal.Decimal `json:"delivered_qty"`
+	CoveredQty     decimal.Decimal `json:"covered_qty"`
+}
+
+// ---------------------------------------------------------------------------------------------
+// DIVIDIR LA CUENTA (spec 027)
+//
+// Ninguna filtra por empresa: RLS lo agrega, y toda tabla nueva lleva la empresa en sus FKs.
+// ---------------------------------------------------------------------------------------------
+// Los renglones vivos de un pedido con lo que decide el monto de una selección: el precio de una
+// pieza con sus modificadores, cuántas lleva y cuántas ya cubren pagos vivos. Un pago devuelto ya
+// no está en order_payments y su cobertura se fue con él en cascada, así que no cuenta.
+func (q *Queries) ListLinesForSelection(ctx context.Context, orderID int64) ([]ListLinesForSelectionRow, error) {
+	rows, err := q.db.Query(ctx, listLinesForSelection, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinesForSelectionRow{}
+	for rows.Next() {
+		var i ListLinesForSelectionRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.ModifiersTotal,
+			&i.DeliveredQty,
+			&i.CoveredQty,
 		); err != nil {
 			return nil, err
 		}
@@ -979,6 +1634,60 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 	return items, nil
 }
 
+const listLinesToSplit = `-- name: ListLinesToSplit :many
+select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
+       ol.enviado_a_cocina_at, p.needs_prep
+from order_lines ol
+join products p on p.id = ol.product_id
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id
+`
+
+type ListLinesToSplitRow struct {
+	ID               int64              `json:"id"`
+	ProductID        *int64             `json:"product_id"`
+	Quantity         decimal.Decimal    `json:"quantity"`
+	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
+	UnitPrice        decimal.Decimal    `json:"unit_price"`
+	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
+	NeedsPrep        bool               `json:"needs_prep"`
+}
+
+// Lo que hace falta para quitar o partir los renglones vivos de un pedido: precio y costo para
+// copiar el renglón al partirlo, y si el producto se prepara para decidir si se repone.
+//
+// Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
+// (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
+func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLinesToSplitRow, error) {
+	rows, err := q.db.Query(ctx, listLinesToSplit, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinesToSplitRow{}
+	for rows.Next() {
+		var i ListLinesToSplitRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.DeliveredQty,
+			&i.UnitPrice,
+			&i.ModifiersTotal,
+			&i.EnviadoACocinaAt,
+			&i.NeedsPrep,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listModifiersOfActiveOrders = `-- name: ListModifiersOfActiveOrders :many
 select olm.order_line_id, olm.option_name, olm.quantity
 from order_line_modifiers olm
@@ -1006,6 +1715,38 @@ func (q *Queries) ListModifiersOfActiveOrders(ctx context.Context) ([]ListModifi
 	for rows.Next() {
 		var i ListModifiersOfActiveOrdersRow
 		if err := rows.Scan(&i.OrderLineID, &i.OptionName, &i.Quantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMovedLinesOfBatch = `-- name: ListMovedLinesOfBatch :many
+select coalesce(split_from_line_id, order_line_id)::bigint as line_id, qty
+from order_line_moves where client_uuid = $1
+`
+
+type ListMovedLinesOfBatchRow struct {
+	LineID int64           `json:"line_id"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+// Qué renglones del origen y cuántas piezas pasó un lote, para reconocer un reenvío: la misma llave
+// con otra selección no es el mismo «Pasar».
+func (q *Queries) ListMovedLinesOfBatch(ctx context.Context, clientUuid uuid.UUID) ([]ListMovedLinesOfBatchRow, error) {
+	rows, err := q.db.Query(ctx, listMovedLinesOfBatch, clientUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMovedLinesOfBatchRow{}
+	for rows.Next() {
+		var i ListMovedLinesOfBatchRow
+		if err := rows.Scan(&i.LineID, &i.Qty); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1211,6 +1952,109 @@ func (q *Queries) ListOrderLines(ctx context.Context, orderID int64) ([]ListOrde
 	return items, nil
 }
 
+const listOrderPaymentCoverage = `-- name: ListOrderPaymentCoverage :many
+select pl.order_payment_id, pl.order_line_id, pl.qty, pl.amount
+from order_payment_lines pl
+join order_payments p on p.id = pl.order_payment_id
+where p.order_id = $1
+order by pl.order_payment_id, pl.order_line_id
+`
+
+type ListOrderPaymentCoverageRow struct {
+	OrderPaymentID int64           `json:"order_payment_id"`
+	OrderLineID    int64           `json:"order_line_id"`
+	Qty            decimal.Decimal `json:"qty"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+// Qué cubrió cada pago vivo de un pedido.
+func (q *Queries) ListOrderPaymentCoverage(ctx context.Context, orderID int64) ([]ListOrderPaymentCoverageRow, error) {
+	rows, err := q.db.Query(ctx, listOrderPaymentCoverage, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOrderPaymentCoverageRow{}
+	for rows.Next() {
+		var i ListOrderPaymentCoverageRow
+		if err := rows.Scan(
+			&i.OrderPaymentID,
+			&i.OrderLineID,
+			&i.Qty,
+			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderPaymentVoids = `-- name: ListOrderPaymentVoids :many
+select v.original_payment_id, v.payment_number, v.payment_method_id, pm.name as method_name, v.amount, v.tip_amount,
+       coalesce(v.reference, '')::text as reference, v.paid_at, coalesce(u.name, '')::text as received_by,
+       v.split_part, v.split_of, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+left join users u on u.id = v.received_by
+where v.order_id = $1
+order by v.payment_number
+`
+
+type ListOrderPaymentVoidsRow struct {
+	OriginalPaymentID int64           `json:"original_payment_id"`
+	PaymentNumber     int16           `json:"payment_number"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	MethodName        string          `json:"method_name"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reference         string          `json:"reference"`
+	PaidAt            time.Time       `json:"paid_at"`
+	ReceivedBy        string          `json:"received_by"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	VoidedAt          time.Time       `json:"voided_at"`
+	Reason            string          `json:"reason"`
+}
+
+// Los pagos devueltos de un pedido, para pintarlos tachados con el número que tenían.
+func (q *Queries) ListOrderPaymentVoids(ctx context.Context, orderID int64) ([]ListOrderPaymentVoidsRow, error) {
+	rows, err := q.db.Query(ctx, listOrderPaymentVoids, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOrderPaymentVoidsRow{}
+	for rows.Next() {
+		var i ListOrderPaymentVoidsRow
+		if err := rows.Scan(
+			&i.OriginalPaymentID,
+			&i.PaymentNumber,
+			&i.PaymentMethodID,
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.Reference,
+			&i.PaidAt,
+			&i.ReceivedBy,
+			&i.SplitPart,
+			&i.SplitOf,
+			&i.VoidedAt,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrderPayments = `-- name: ListOrderPayments :many
 select id, payment_method_id, amount, tip_amount, created_at from order_payments where order_id = $1
 `
@@ -1249,6 +2093,139 @@ func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListO
 	return items, nil
 }
 
+const listOrderPaymentsForView = `-- name: ListOrderPaymentsForView :many
+select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, p.amount, p.tip_amount,
+       coalesce(p.reference, '')::text as reference, p.created_at, coalesce(u.name, '')::text as received_by,
+       p.split_part, p.split_of
+from order_payments p
+join payment_methods pm on pm.id = p.payment_method_id
+left join users u on u.id = p.received_by
+where p.order_id = $1
+order by p.created_at, p.id
+`
+
+type ListOrderPaymentsForViewRow struct {
+	ID              int64           `json:"id"`
+	PaymentNumber   *int16          `json:"payment_number"`
+	PaymentMethodID int16           `json:"payment_method_id"`
+	MethodName      string          `json:"method_name"`
+	Amount          decimal.Decimal `json:"amount"`
+	TipAmount       decimal.Decimal `json:"tip_amount"`
+	Reference       string          `json:"reference"`
+	CreatedAt       time.Time       `json:"created_at"`
+	ReceivedBy      string          `json:"received_by"`
+	SplitPart       *int16          `json:"split_part"`
+	SplitOf         *int16          `json:"split_of"`
+}
+
+// Los pagos vivos de un pedido como los pinta la hoja de cobro.
+func (q *Queries) ListOrderPaymentsForView(ctx context.Context, orderID int64) ([]ListOrderPaymentsForViewRow, error) {
+	rows, err := q.db.Query(ctx, listOrderPaymentsForView, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOrderPaymentsForViewRow{}
+	for rows.Next() {
+		var i ListOrderPaymentsForViewRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PaymentNumber,
+			&i.PaymentMethodID,
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.Reference,
+			&i.CreatedAt,
+			&i.ReceivedBy,
+			&i.SplitPart,
+			&i.SplitOf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaidQtyForOrders = `-- name: ListPaidQtyForOrders :many
+select pl.order_line_id, sum(pl.qty)::numeric(8,2) as paid_qty
+from order_payment_lines pl
+join order_lines ol on ol.id = pl.order_line_id
+where ol.order_id = any($1::bigint[])
+group by pl.order_line_id
+`
+
+type ListPaidQtyForOrdersRow struct {
+	OrderLineID int64           `json:"order_line_id"`
+	PaidQty     decimal.Decimal `json:"paid_qty"`
+}
+
+// Cuántas piezas de cada renglón cubren pagos vivos, para varios pedidos a la vez (el tablero). Un
+// renglón sin pagos no aparece: quien lee pone el cero.
+func (q *Queries) ListPaidQtyForOrders(ctx context.Context, orderIds []int64) ([]ListPaidQtyForOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listPaidQtyForOrders, orderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPaidQtyForOrdersRow{}
+	for rows.Next() {
+		var i ListPaidQtyForOrdersRow
+		if err := rows.Scan(&i.OrderLineID, &i.PaidQty); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRefundedLinesOfOrder = `-- name: ListRefundedLinesOfOrder :many
+select distinct order_line_id::bigint as order_line_id from order_refunds
+where order_id = $1 and order_line_id is not null
+`
+
+// Los renglones con una devolución: no se pasan, la devolución guarda su propio pedido.
+func (q *Queries) ListRefundedLinesOfOrder(ctx context.Context, orderID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listRefundedLinesOfOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var order_line_id int64
+		if err := rows.Scan(&order_line_id); err != nil {
+			return nil, err
+		}
+		items = append(items, order_line_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockSessionStatusForShare = `-- name: LockSessionStatusForShare :one
+select status::text from register_sessions where id = $1 for share
+`
+
+// El estado del turno de un pago, con candado compartido: un cierre de turno que corre a la vez
+// termina antes, y devolver ve que ya cerró. Sin él, devolver leía «abierto», el corte confirmaba
+// con ese pago en su esperado y luego la devolución lo borraba.
+func (q *Queries) LockSessionStatusForShare(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, lockSessionStatusForShare, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
 const marcarRenglonesEnviadosACocina = `-- name: MarcarRenglonesEnviadosACocina :exec
 update order_lines set enviado_a_cocina_at = now()
 where order_id = $1 and id = any($2::bigint[])
@@ -1281,6 +2258,62 @@ where order_id = $1 and enviado_a_cocina_at is null and cancelled_at is null
 // prepararía dos veces lo que ya tenía en la plancha.
 func (q *Queries) MarcarTodoElPedidoEnviadoACocina(ctx context.Context, orderID int64) error {
 	_, err := q.db.Exec(ctx, marcarTodoElPedidoEnviadoACocina, orderID)
+	return err
+}
+
+const markOrderMerged = `-- name: MarkOrderMerged :execrows
+update orders
+   set status = 'cancelada', cancelled_at = now(), cancelled_by = $1,
+       cancel_reason = 'Se juntó con otro pedido', merged_into_order_id = $2
+ where id = $3 and status in ('abierta', 'lista') and merged_into_order_id is null
+`
+
+type MarkOrderMergedParams struct {
+	ActorID     *int64 `json:"actor_id"`
+	IntoOrderID *int64 `json:"into_order_id"`
+	ID          int64  `json:"id"`
+}
+
+// El origen vacío al pasarle todo a otro pedido: cancelado, sin reponer (el consumo viajó con los
+// productos), y marcado para que ningún reporte lo cuente como cancelación. Se protege sola: solo un
+// pedido vivo y no juntado, para que un camino futuro que la llame sin sus guardas no cancele uno
+// cobrado o entregado.
+func (q *Queries) MarkOrderMerged(ctx context.Context, arg MarkOrderMergedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOrderMerged, arg.ActorID, arg.IntoOrderID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const moveLineStockMovements = `-- name: MoveLineStockMovements :exec
+update stock_movements set order_id = $1 where order_line_id = $2
+`
+
+type MoveLineStockMovementsParams struct {
+	ToOrderID *int64 `json:"to_order_id"`
+	LineID    *int64 `json:"line_id"`
+}
+
+// Los movimientos de inventario viajan con su renglón, nunca filtrando por pedido: en el pedido
+// quedan los de los renglones que no se pasaron. El trigger de existencias es solo de insert, así
+// que cambiar el pedido no mueve existencias.
+func (q *Queries) MoveLineStockMovements(ctx context.Context, arg MoveLineStockMovementsParams) error {
+	_, err := q.db.Exec(ctx, moveLineStockMovements, arg.ToOrderID, arg.LineID)
+	return err
+}
+
+const moveOrderLineToOrder = `-- name: MoveOrderLineToOrder :exec
+update order_lines set order_id = $1 where id = $2
+`
+
+type MoveOrderLineToOrderParams struct {
+	ToOrderID int64 `json:"to_order_id"`
+	ID        int64 `json:"id"`
+}
+
+func (q *Queries) MoveOrderLineToOrder(ctx context.Context, arg MoveOrderLineToOrderParams) error {
+	_, err := q.db.Exec(ctx, moveOrderLineToOrder, arg.ToOrderID, arg.ID)
 	return err
 }
 
@@ -1516,7 +2549,9 @@ insert into stock_movements (item_type, ingredient_id, product_id, movement_type
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
        $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
+left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
+  and ol.cancelled_at is null
 group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0
@@ -1532,8 +2567,28 @@ type RestockCancelledOrderParams struct {
 // Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
 // volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
 // agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
+//
+// Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
+// quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
+// movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
+// salieron.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
+	return err
+}
+
+const setLineComponentQty = `-- name: SetLineComponentQty :exec
+update order_line_components set quantity = $1 where id = $2
+`
+
+type SetLineComponentQtyParams struct {
+	Quantity decimal.Decimal `json:"quantity"`
+	ID       int64           `json:"id"`
+}
+
+// Lo que se queda con el renglón original después de partirlo.
+func (q *Queries) SetLineComponentQty(ctx context.Context, arg SetLineComponentQtyParams) error {
+	_, err := q.db.Exec(ctx, setLineComponentQty, arg.Quantity, arg.ID)
 	return err
 }
 
@@ -1616,6 +2671,64 @@ func (q *Queries) SetPlatformRef(ctx context.Context, arg SetPlatformRefParams) 
 	var i SetPlatformRefRow
 	err := row.Scan(&i.ID, &i.PlatformOrderRef, &i.DeliveryPlatformID)
 	return i, err
+}
+
+const shrinkOrderLine = `-- name: ShrinkOrderLine :exec
+update order_lines
+   set quantity = $1, delivered_qty = $2, line_total = $3
+ where id = $4
+`
+
+type ShrinkOrderLineParams struct {
+	Quantity     decimal.Decimal `json:"quantity"`
+	DeliveredQty decimal.Decimal `json:"delivered_qty"`
+	LineTotal    decimal.Decimal `json:"line_total"`
+	ID           int64           `json:"id"`
+}
+
+// Lo que se queda en el renglón original después de partirlo.
+func (q *Queries) ShrinkOrderLine(ctx context.Context, arg ShrinkOrderLineParams) error {
+	_, err := q.db.Exec(ctx, shrinkOrderLine,
+		arg.Quantity,
+		arg.DeliveredQty,
+		arg.LineTotal,
+		arg.ID,
+	)
+	return err
+}
+
+const splitOffOrderLine = `-- name: SplitOffOrderLine :one
+insert into order_lines (order_id, product_id, product_name, quantity, unit_price, modifiers_total,
+                         unit_cost, line_total, notes, delivered_qty, enviado_a_cocina_at)
+select $1, ol.product_id, ol.product_name, $2, ol.unit_price, ol.modifiers_total,
+       ol.unit_cost, $3, ol.notes, $4, ol.enviado_a_cocina_at
+from order_lines ol
+where ol.id = $5
+returning id
+`
+
+type SplitOffOrderLineParams struct {
+	OrderID      int64           `json:"order_id"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	LineTotal    decimal.Decimal `json:"line_total"`
+	DeliveredQty decimal.Decimal `json:"delivered_qty"`
+	LineID       int64           `json:"line_id"`
+}
+
+// Parte un renglón: crea uno nuevo con `quantity` piezas que copia precio, modificadores por
+// unidad, costo, nota y estado de cocina del original. `order_id` puede ser otro pedido (pasar
+// productos). `parent_line_id` no se copia: nadie lo escribe y partir no arrastra hijos.
+func (q *Queries) SplitOffOrderLine(ctx context.Context, arg SplitOffOrderLineParams) (int64, error) {
+	row := q.db.QueryRow(ctx, splitOffOrderLine,
+		arg.OrderID,
+		arg.Quantity,
+		arg.LineTotal,
+		arg.DeliveredQty,
+		arg.LineID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const sumOrderPayments = `-- name: SumOrderPayments :one

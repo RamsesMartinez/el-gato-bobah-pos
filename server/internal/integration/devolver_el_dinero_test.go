@@ -207,11 +207,15 @@ func crearPedidoSimple(t *testing.T, ctx context.Context, svc *app.OrdersService
 	return ord.ID
 }
 
-// EL INSUMO VUELVE SOLO SI LA COMIDA NO SE HIZO.
+// EL INSUMO VUELVE SOLO SI NO SE CONSUMIÓ.
 //
 // Cancelar un renglón no existía: la columna estaba y ninguna consulta la escribía, mientras el
 // error de cancelar un pedido con entregas parciales mandaba al operador a "cancela los que falten".
 // La única salida practicable era marcar como entregado lo que seguía en la plancha.
+//
+// Todo renglón nace «enviado a cocina», así que el caso que repone en producción es el producto que
+// no se prepara. Antes esta prueba desmarcaba la cocina a mano para llegar aquí: un estado que
+// ningún pedido real alcanza.
 func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -220,17 +224,10 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_renglon", "cajero")
 	abrirCajaPrincipal(t, st, cajero)
 	prod := makeProduct(t, st, "Renglon cancelable", decimal.RequireFromString("80"), true)
+	sinPreparacion(t, st, prod)
 	ord := crearPedidoSimple(t, ctx, ordenes, prod, cajero)
 
-	linea, enviado := primerRenglon(t, st, ord)
-	if enviado {
-		// El pedido nace con sus renglones ya en cocina: se desmarca para probar el camino de "no
-		// salió", que es el que repone.
-		if _, err := st.Pool.Exec(ctx,
-			`update order_lines set enviado_a_cocina_at = null where id = $1`, linea); err != nil {
-			t.Fatalf("desmarcar: %v", err)
-		}
-	}
+	linea, _ := primerRenglon(t, st, ord)
 
 	antes := existencias(t, st, prod)
 	repuso, err := ordenes.CancelarRenglon(ctx, ord, linea, cajero, "el cliente lo quitó")
@@ -238,7 +235,7 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 		t.Fatalf("cancelar renglón: %v", err)
 	}
 	if !repuso {
-		t.Fatal("un renglón que no salió a cocina debe reponer: la comida no se hizo")
+		t.Fatal("un renglón que no se prepara debe reponer: no se consumió nada")
 	}
 	if e := existencias(t, st, prod); !e.GreaterThan(antes) {
 		t.Fatalf("las existencias pasaron de %s a %s: el insumo no volvió", antes, e)
@@ -394,7 +391,7 @@ func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
 
 // EL MENSAJE DE ERROR YA NO MANDA A UNA ACCIÓN QUE NO EXISTE (FR-008).
 //
-// `ErrCancelarConEntregas` dice "cancela los que falten o haz un reembolso". Cancelar un renglón NO
+// `ErrCancelarConEntregas` dice "quita lo que falta o ciérralo". Cancelar un renglón NO
 // existía: ninguna consulta escribía `order_lines.cancelled_at`, así que la única salida practicable
 // era marcar como entregado lo que seguía en la plancha. Ahora la frase es cierta, y esto lo prueba
 // haciendo lo que el mensaje dice.
@@ -418,8 +415,10 @@ func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
 		t.Fatalf("cancelar con entrega parcial = %v, quiere ErrCancelarConEntregas", err)
 	}
 
-	// Y lo que el mensaje manda a hacer, se puede hacer: cancelar el que falta.
-	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); err != nil {
-		t.Fatalf("cancelar el renglón que falta: %v — el error manda a una acción que no funciona", err)
+	// Lo que el mensaje manda a hacer —quitar el que falta— se rechaza en ESTE pedido porque está
+	// cobrado completo: quitarlo dejaría el total bajo lo pagado sin devolver nada (FR-023, spec
+	// 027). El rechazo dice qué hacer antes, y eso también es una acción que existe.
+	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); !errors.Is(err, domain.ErrOrderWouldBeOverpaid) {
+		t.Fatalf("quitar de un pedido cobrado completo = %v; quiere «Primero hay que devolver un pago»", err)
 	}
 }

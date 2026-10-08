@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"uuid"
@@ -374,6 +377,24 @@ type chargeOrderBody struct {
 	// que el reenvío de una mitad deje el pedido saldado con la otra sin cobrar.
 	ClientUuid uuid.UUID `json:"clientUuid"`
 	Reference  *string   `json:"reference"`
+	// Lines, AllRemaining y Split: las otras formas de cobrar, excluyentes entre sí y con amount.
+	// Con cualquiera de ellas el monto lo calcula el servidor.
+	Lines        []selectedPiecesBody `json:"lines"`
+	AllRemaining bool                 `json:"allRemaining"`
+	Split        *app.ChargeSplit     `json:"split"`
+}
+
+type selectedPiecesBody struct {
+	LineID int64           `json:"lineId"`
+	Qty    decimal.Decimal `json:"qty"`
+}
+
+func selectedPieces(in []selectedPiecesBody) []domain.SelectedPieces {
+	out := make([]domain.SelectedPieces, len(in))
+	for i, l := range in {
+		out[i] = domain.SelectedPieces{LineID: l.LineID, Qty: l.Qty}
+	}
+	return out
 }
 
 // POST /orders/{id}/pay
@@ -398,6 +419,7 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	res, err := h.orders.Charge(r.Context(), app.ChargeCmd{
 		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
 		ClientUUID: body.ClientUuid, Reference: body.Reference, ActorID: u.ID,
+		Lines: selectedPieces(body.Lines), AllRemaining: body.AllRemaining, Split: body.Split,
 	})
 	if err != nil {
 		Error(w, err)
@@ -411,6 +433,106 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 	// Este comentario decía que cobrar era la ÚNICA mutación que no avisaba, y era falso: entregar
 	// tampoco lo hacía. Ya avisan las dos.
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
+}
+
+// POST /orders/{id}/payments/{paymentId}/void  {reason}
+//
+// Devuelve un pago de un turno abierto: sale de los pagos y queda en la bitácora, y lo que cubrió
+// vuelve a quedar por cobrar.
+func (h *Handlers) VoidOrderPayment(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	paymentID, err := strconv.ParseInt(chi.URLParam(r, "paymentId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.VoidPayment(r.Context(), id, paymentID, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Salida de dinero del pedido: evento de seguridad con quién y qué pago, sin montos ni PII.
+	logging.SecurityEvent(r.Context(), "order_payment_voided", "user_id", u.ID, "order_id", id, "payment_id", paymentID)
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
+}
+
+// POST /orders/{id}/lines/move  {clientUuid, toOrderId, lines}
+//
+// Pasa productos a otro pedido abierto, o a uno nuevo con toOrderId null. Responde los dos pedidos
+// como quedaron.
+func (h *Handlers) MoveOrderLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		ClientUuid uuid.UUID            `json:"clientUuid"`
+		ToOrderID  *int64               `json:"toOrderId"`
+		Lines      []selectedPiecesBody `json:"lines"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.MoveLines(r.Context(), app.MoveLinesCmd{
+		ClientUUID: body.ClientUuid, FromOrderID: id, ToOrderID: body.ToOrderID,
+		Lines: selectedPieces(body.Lines), ActorID: u.ID,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	kind := "order.updated"
+	if body.ToOrderID == nil {
+		kind = "order.created"
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: kind, Data: map[string]any{"id": res.To.ID}})
+	JSON(w, http.StatusOK, res)
+}
+
+// POST /orders/{id}/quote — cuánto cobraría /pay por una selección, sin cobrarla.
+//
+// Mismo cuerpo que /pay con lines, split o allRemaining, sin método ni monto. Existe para que la
+// hoja muestre el monto antes de cobrar sin calcularlo ella (spec 027, D-3).
+func (h *Handlers) QuoteOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Lines        []selectedPiecesBody `json:"lines"`
+		AllRemaining bool                 `json:"allRemaining"`
+		Split        *app.ChargeSplit     `json:"split"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	res, err := h.orders.Quote(r.Context(), app.QuoteCmd{
+		OrderID: id, Lines: selectedPieces(body.Lines), AllRemaining: body.AllRemaining, Split: body.Split,
+	})
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	JSON(w, http.StatusOK, res)
 }
 
@@ -459,19 +581,48 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Reason string `json:"reason"`
+		// Qty es cuántas piezas quitar; sin él, todas las pendientes.
+		Qty *decimal.Decimal `json:"qty"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	repuso, err := h.orders.CancelarRenglon(r.Context(), id, lineID, u.ID, body.Reason)
+	repuso, err := h.orders.RemovePieces(r.Context(), id, lineID, u.ID, body.Reason, body.Qty)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
 	JSON(w, http.StatusOK, map[string]any{"repusoInventario": repuso})
+}
+
+// POST /orders/{id}/lines/cancel-pending  {reason}
+//
+// El cuerpo es opcional: «Cerrar pedido» lo manda vacío sobre un pedido sin productos, donde el
+// motivo es fijo. Con productos pendientes, el servicio exige el motivo.
+func (h *Handlers) CancelPendingLines(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, fmt.Errorf("%w: Ese número de pedido no es válido", domain.ErrValidation))
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, fmt.Errorf("%w: No se pudo leer el motivo", domain.ErrValidation))
+		return
+	}
+	u, _ := userFrom(r.Context())
+	res, err := h.orders.CancelPending(r.Context(), id, u.ID, body.Reason)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, res)
 }
 
 type discountBody struct {

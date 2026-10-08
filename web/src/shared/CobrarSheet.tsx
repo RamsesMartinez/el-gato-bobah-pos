@@ -1,10 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
+import { can } from '../app/permissions';
+import { useSessionStore } from '../stores/session';
+import { useHoraDelNegocio } from '../hooks/useHoraDelNegocio';
+import { ModePicker, type SplitMode } from './cobro/ModePicker';
+import { ByProducts } from './cobro/ByProducts';
+import { PaymentChips } from './cobro/PaymentChips';
+import { EvenSplit } from './cobro/EvenSplit';
+import { nextPart } from './cobro/split';
+import { ByAmount } from './cobro/ByAmount';
+import { PaymentDetail } from './cobro/PaymentDetail';
+import { MoveToOrder, NEW_ORDER, type MoveTarget } from './cobro/MoveToOrder';
+import { listOrder, type ListRowState } from './cobro/listOrder';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
 import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuCheck, LuMinus, LuPlus, LuReceipt, LuSplit, LuTag, LuX } from 'react-icons/lu';
+import { LuArrowRightLeft, LuReceipt, LuSplit, LuTag } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { medirAccion } from '../api/uso';
 import { posApi } from '../api/pos';
@@ -12,16 +24,13 @@ import { descuentoDeLaCuenta, type ModoDeDescuento } from '../domain/descuento';
 import { ApiError } from '../api/client';
 import { VerTicket } from './tickets/ReprintTicket';
 import { TicketPreview } from './tickets/TicketPreview';
-import type { CobroHecho, Currency, OrderView, PedidoParaCobrar, ReceiptOrder } from '../types/pos';
+import type { ChargeShape, CobroHecho, Currency, OrderView, PedidoParaCobrar, ReceiptOrder, SelectedPieces } from '../types/pos';
 import { money } from '../utils/format';
 import { TAP_LG, TAP_XL } from '../theme/ui';
 import { useUiStore } from '../stores/ui';
 import { uuid } from '../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
-import {
-  billetesUtiles, montoDeLaParte, partesPosibles, partesQueQuedan, presetsDePropina,
-  validarCobro, round2,
-} from '../domain/cobro';
+import { billetesUtiles, presetsDePropina, validarCobro, round2 } from '../domain/cobro';
 import type { MotivoInvalido } from '../domain/cobro';
 
 // CuentaParaCobrar es lo que la hoja necesita para pintarse y cobrar.
@@ -94,99 +103,104 @@ function loQueLee(e: unknown): { titulo: string; detalle?: string; recargar: boo
       recargar: false,
     };
   }
+  // Los rechazos de dividir la cuenta ya vienen escritos para quien opera (spec 027). Los que dicen
+  // que algo cambió entretanto —otra tableta cobró esa pieza, ese pago ya se devolvió— refrescan el
+  // pedido para que la lista deje de ofrecerlo.
+  if (/ya se pagó|ya se cobró|ya se devolvió|Vuelve a cobrar|otros productos|Ya es su propio|ya no recibe|otro turno/i.test(msg)) {
+    return { titulo: msg, recargar: true };
+  }
+  if (/no se divide|no se puede pasar|Quita el descuento|tiene envío|devolución|pedido viejo|Ya se cobró más|sin elegir productos|Elige/i.test(msg)) {
+    return { titulo: msg, recargar: false };
+  }
   if (/plataforma/i.test(msg)) {
     return { titulo: 'Con ese método no se puede cobrar este pedido', recargar: false };
   }
   return { titulo: 'No se pudo cobrar', detalle: msg, recargar: true };
 }
 
+// shapeKey es la huella de una forma de cobro, para la llave de la cotización.
+function shapeKey(shape: ChargeShape | null): string {
+  if (shape === null) return '';
+  if ('lines' in shape) return shape.lines.map((l) => `${l.lineId}:${l.qty}`).join(',');
+  if ('split' in shape) return `split:${shape.split.part}/${shape.split.of}`;
+  return 'all';
+}
+
+// useDebounced devuelve `value` cuando lleva `ms` sin cambiar: la cotización se pide una vez por
+// ráfaga de toques, no una por toque.
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}
+
 // Cobra un pedido que se mandó a cocina sin cobrar, entero o por pedazos.
 //
 // UN PEDAZO A LA VEZ, y de ahí sale toda la forma de la pantalla. Capturar tres pagos y mandarlos de
 // un golpe registra dinero que todavía no se recibió: si la terminal declina la tarjeta del segundo
-// comensal DESPUÉS de que el servidor acusó, el sistema ya lo dio por cobrado y no hay forma de
-// deshacer un pago — no existe endpoint que lo quite y el reembolso es de la cuenta entera, con los
-// tres comensales parados enfrente. Cobrando de a uno, el registro coincide con el instante en que
-// el dinero está en la mano, y lo que falta lo dice el servidor entre uno y otro.
+// comensal DESPUÉS de que el servidor acusó, el sistema ya lo dio por cobrado. Cobrando de a uno, el
+// registro coincide con el instante en que el dinero está en la mano.
 //
-// Lo que se elige aquí es CUÁNTO se cobra ahora; el resto de la hoja es el mismo cobro simple de
-// siempre. No hay un "modo dividido" con su propio estado que reconstruir tras una recarga: el
-// estado entero es el faltante, y ese vive en el servidor.
+// «Dividir» abre tres formas (spec 027): por productos —cada quien paga lo suyo—, entre personas y
+// por monto. En las dos primeras el monto lo calcula el SERVIDOR (quote) con la misma regla con la
+// que cobra; aquí no hay una segunda regla de dinero. Lo pagado vive en el servidor: tras recargar
+// la tableta, las fichas y lo gris siguen ahí.
+//
+// Detalle de un pago y «Pasar a otro pedido» son VISTAS de la misma hoja, no hojas apiladas.
 export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onClose, onCobrado, pantalla }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
+  const user = useSessionStore((s) => s.user);
+  const { zona } = useHoraDelNegocio();
   const [metodo, setMetodo] = useState<number | null>(null);
   const [recibido, setRecibido] = useState('');
-  // null = "todo lo que falta". No es un string vacío ni un efecto que lo rellene: el faltante baja
-  // del servidor y cambia con cada pedazo cobrado, así que sembrarlo en el estado obligaría a
-  // resincronizarlo, y esa resincronización es de donde salen las dos cifras que divergen.
-  const [montoElegido, setMontoElegido] = useState<string | null>(null);
   // El pedido, una vez que existe. Nulo mientras la hoja se abrió sobre una cuenta sin confirmar.
   //
   // Se guarda aquí y no se recalcula: al dividir la cuenta, el primer cobro crea el pedido y los
-  // siguientes tienen que ir CONTRA ESE MISMO. Sin recordarlo, cada pedazo crearía uno nuevo y el
-  // cliente acabaría con tres pedidos de un tercio cada uno.
+  // siguientes tienen que ir CONTRA ESE MISMO. También es a donde salta la hoja tras pasar productos
+  // a un pedido nuevo y tocar «Cobrar #N».
   const [pedidoCreado, setPedidoCreado] = useState<PedidoParaCobrar | null>(null);
-  // Si el papel está a la vista. La hoja se queda abierta detrás, con su método y su monto.
-  const [viendoPapel, setViendoPapel] = useState(false);
-  // En cuántas partes se está repartiendo lo que falta. null = no se está repartiendo, que es el
-  // caso de casi todos los pedidos: se cobra todo a una persona y la hoja no gasta un solo píxel
-  // en el repartidor. Antes eran cuatro botones fijos —Todo, entre 2, 3 y 4— siempre en pantalla,
-  // en una hoja donde el alto es lo que escasea.
-  const [partes, setPartes] = useState<number | null>(null);
+  const [viendoPapel, setViendoPapel] = useState<false | { paymentId?: number }>(false);
+  const [mode, setMode] = useState<SplitMode>('none');
+  const [view, setView] = useState<'charge' | 'detail' | 'move'>('charge');
+  const [detailId, setDetailId] = useState<number | null>(null);
+  // Cuántas piezas de cada renglón paga esta persona.
+  const [selection, setSelection] = useState<Record<number, number>>({});
+  // «Todo lo que falta» se manda como tal y no como lista: la lista que la hoja tiene puede estar
+  // vieja, y el servidor sabe qué falta.
+  const [allRemaining, setAllRemaining] = useState(false);
+  const [people, setPeople] = useState(2);
+  const [typedAmount, setTypedAmount] = useState('');
   const [propina, setPropina] = useState('');
-  // Lo que ESTA hoja lleva cobrado, para que el operador vea qué pedazos ya entraron sin tener que
-  // acordarse. No se pide al servidor: es la sesión de esta pantalla.
-  const [yaCobrado, setYaCobrado] = useState<Array<{ monto: number; metodo: string }>>([]);
   // El último rebote del servidor, EN LA HOJA y no solo en un toast: el toast se va solo, y esto se
-  // lee justo cuando el operador tiene el dinero del cliente en la mano y necesita decidir qué hacer.
+  // lee justo cuando el operador tiene el dinero del cliente en la mano.
   const [rebote, setRebote] = useState<{ titulo: string; detalle?: string } | null>(null);
-  // La llave de ESTE pedazo, estable mientras el pedazo siga sin cobrarse.
-  //
-  // Generarla en cada envío rompía justo el caso para el que existe: el cobro entra, la respuesta se
-  // pierde en la red, el operador vuelve a tocar, y con llave nueva el servidor lo registra otra vez.
-  // Rota SOLO al cobrar con éxito, que es cuando empieza el pedazo siguiente. Si el operador edita
-  // el monto o el método antes de reintentar, la llave sigue siendo la misma a propósito: el
-  // servidor la sella contra la carga y responde que ese cobro ya entró con otro método, en vez de
-  // registrar un segundo pago sobre uno que quizá sí aterrizó.
+  // La llave de ESTE pedazo, estable mientras el pedazo siga sin cobrarse. Rota SOLO al cobrar con
+  // éxito: generarla en cada envío volvería a cobrar el pago cuya respuesta se perdió.
   const [llave, setLlave] = useState(uuid);
+  // Tras pasar productos a un pedido nuevo, la hoja ofrece cobrarlo sin cerrar una y abrir otra.
+  const [movedTo, setMovedTo] = useState<PedidoParaCobrar | null>(null);
 
-  // La hoja monta CERRADA y se abre en el render siguiente, en vez de nacer con `open` puesto.
-  //
-  // Suena a rodeo y no lo es: quien abre esta hoja normalmente cierra otra en la MISMA
-  // actualización —tocar "Cobrar" dentro de la lista de pedidos por cobrar hace las dos cosas—, y
-  // sin una transición de cerrado a abierto la hoja no llega a montarse. Medido contra Chakra
-  // 3.37: cero diálogos en el árbol, o sea que tocar Cobrar no abría nada y el operador se quedaba
-  // con el cliente enfrente y sin pantalla. Con 3.36 el mismo código funcionaba, así que es la
-  // clase de defecto que aparece sola en una actualización de dependencias.
-  //
-  // El `key` de quien la monta la vuelve a crear por pedido, así que esto arranca en false cada
-  // vez que se abre para otro.
-  //
-  // La regla `set-state-in-effect` se apaga a propósito y solo aquí: avisa de renders en cascada, y
-  // esto es UN render extra al montar, acotado por el array vacío. React no da otra forma de
-  // provocar una transición al montar, y las dos alternativas se probaron y no sirven: `defaultOpen`
-  // no dispara la transición, y partir el cierre y la apertura en dos commits con `flushSync`
-  // arregla unos casos y no otros.
+  // La hoja monta CERRADA y se abre en el render siguiente. Quien la abre normalmente cierra otra en
+  // la MISMA actualización, y sin una transición de cerrado a abierto Chakra 3.37 no la monta (ver
+  // AGENTS.md §3). React no da otra forma de provocar una transición al montar.
   const [visible, setVisible] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setVisible(true); }, []);
 
-  // El id con el que se habla del pedido: el recién creado si la hoja lo confirmó, y si no el que
-  // vino en el prop. Nulo mientras la cuenta no se haya confirmado.
   const idPedido = pedidoCreado?.id ?? order?.id ?? null;
   const numero = pedidoCreado?.number ?? order?.number ?? null;
+  const folio = pedidoCreado?.folioName ?? order?.folioName ?? '';
+  const plataforma = pedidoCreado?.deliveryPlatformId ?? order?.deliveryPlatformId ?? null;
 
-  // El pedido VIVO, no la foto que traía el prop.
-  //
-  // La hoja recibía el objeto que la lista tenía al abrirla y nunca se actualizaba, así que un
-  // pedido que otra caja cobró entretanto seguía diciendo "Falta $500" indefinidamente. Ahora la
-  // cifra baja del servidor, y cobrar emite su evento SSE, que invalida esta query.
+  // El pedido VIVO, no la foto que traía el prop: un pedido que otra caja cobró entretanto dejaría de
+  // decir la verdad. Cobrar emite su evento SSE, que invalida esta query.
   const { data: vivo } = useQuery({
     queryKey: ['orders', idPedido],
     queryFn: () => posApi.order(idPedido as number),
-    // Solo cuando el pedido EXISTE. Sobre una cuenta sin confirmar no hay nada que releer, y las
-    // cifras salen de lo que la pantalla ya tiene capturado.
     enabled: idPedido !== null,
   });
 
@@ -199,34 +213,39 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
     refetchOnMount: 'always',
   });
 
-  const falta = vivo ? Number(vivo.outstanding) : Number(order?.outstanding ?? 0);
-  const totalDelPedido = vivo ? Number(vivo.total) : Number(order?.total ?? 0);
+  const falta = vivo ? Number(vivo.outstanding) : Number(pedidoCreado?.outstanding ?? order?.outstanding ?? 0);
+  const totalDelPedido = vivo ? Number(vivo.total) : Number(pedidoCreado?.total ?? order?.total ?? 0);
+  const payments = useMemo(() => vivo?.payments ?? [], [vivo]);
+  const livePayments = payments.filter((p) => !p.voided);
+  const lines = useMemo(() => vivo?.lines ?? [], [vivo]);
+  const rows = useMemo(() => listOrder(lines, payments), [lines, payments]);
 
-  // CORREGIR EL DESCUENTO DE UN PEDIDO QUE YA EXISTE.
-  //
-  // Aquí y no en el panel porque el panel es el carrito: un pedido ya mandado no está ahí. Y este
-  // es el momento en que el error se descubre — se va a cobrar, se mira el total y no cuadra.
+  // QUÉ FORMAS DE DIVIDIR ADMITE ESTE PEDIDO. Uno de plataforma lo cobró la plataforma entero: solo
+  // se reparte por monto. Uno de un turno cerrado tampoco se divide por productos ni partes. Por
+  // productos necesita el pedido ya creado: sobre una cuenta sin confirmar no hay renglones aún.
+  const splittable = plataforma === null && (vivo ? vivo.canSplit !== false : idPedido === null);
+  const available: Array<Exclude<SplitMode, 'none'>> = [
+    ...(splittable && idPedido !== null && rows.pending.length > 0 ? ['products' as const] : []),
+    ...(splittable ? ['people' as const] : []),
+    'amount' as const,
+  ];
+
+  // CORREGIR EL DESCUENTO DE UN PEDIDO QUE YA EXISTE. Con un pago hecho ya no se ofrece (D-17): el
+  // servidor lo rechaza, porque reescribiría el monto de lo pendiente.
   const [editandoDescuento, setEditandoDescuento] = useState(false);
   const [descuentoTecleado, setDescuentoTecleado] = useState('');
   const [modoDescuento, setModoDescuento] = useState<ModoDeDescuento>('monto');
   const descuentoVigente = Number(vivo?.discount ?? 0);
-  // El subtotal contra el que se valida: lo que se cobra HOY más lo que ya está descontado.
   const baseDelDescuento = totalDelPedido + descuentoVigente;
   const descuentoTeclado = descuentoDeLaCuenta(descuentoTecleado, modoDescuento, baseDelDescuento);
-  // QUITARLO ES DEJAR EL CAMPO VACÍO, y nada más.
-  //
-  // `{}` no significa "sin cambios" para el servidor: significa "quita el descuento" —está escrito
-  // así a propósito en el handler—. Y `descuentoDeLaCuenta` devuelve `paraElServidor: undefined`
-  // tanto para el campo vacío como para uno ILEGIBLE o imposible. Sin esta distinción, teclear una
-  // letra de más y tocar Guardar borraba un descuento de $50 sin aviso, sin confirmación y sin más
-  // rastro que un "Falta" que subió.
+  // QUITARLO ES DEJAR EL CAMPO VACÍO, y nada más: `{}` le dice al servidor «quita el descuento», y
+  // un campo ilegible no puede borrar uno de $50 sin aviso.
   const descuentoNoSePuedeGuardar = descuentoTeclado.malEscrito || descuentoTeclado.excede;
+  const puedeDescontar = idPedido !== null && livePayments.length === 0;
   const guardarDescuento = useMutation({
     mutationFn: () => posApi.setOrderDiscount(idPedido as number, descuentoTeclado.paraElServidor ?? {}),
     onSuccess: (pedido) => {
-      // Se repinta con lo que DEVOLVIÓ el servidor, nunca con una resta hecha aquí: dos
-      // implementaciones de la misma cifra es como la pantalla llegó a ofrecer cobrar $115 de un
-      // pedido de $95.
+      // Se repinta con lo que DEVOLVIÓ el servidor, nunca con una resta hecha aquí.
       qc.setQueryData(['orders', idPedido], pedido);
       qc.invalidateQueries({ queryKey: ['orders'] });
       setEditandoDescuento(false);
@@ -238,42 +257,70 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
     },
   });
 
-  // Cobrar completo es el caso de casi todos los pedidos y no puede costar un tap: sin reparto ni
-  // monto tecleado, el monto ES lo que falta.
-  //
-  // El monto tecleado gana sobre el reparto: es más específico. Tocar el repartidor lo borra, para
-  // que no queden dos intenciones en pantalla y una ganando en silencio.
-  const monto = montoElegido ?? String(montoDeLaParte(falta, partes ?? 1) ?? falta);
+  // LA FORMA DEL COBRO. Nula = monto tecleado o todo lo que falta, que es el cobro de siempre.
+  const selected: SelectedPieces[] = Object.entries(selection)
+    .filter(([, q]) => q > 0).map(([id, q]) => ({ lineId: Number(id), qty: String(q) }));
+  const part = mode === 'people' ? nextPart(people, payments) : null;
+  let shape: ChargeShape | null = null;
+  if (mode === 'products') {
+    if (allRemaining) shape = { allRemaining: true };
+    else if (selected.length > 0) shape = { lines: selected };
+  } else if (mode === 'people' && part !== null) {
+    shape = { split: { part, of: people } };
+  }
+  const key = shapeKey(shape);
+  const settledKey = useDebounced(key, 250);
+  const { data: quote, isFetching: quoting, error: quoteError } = useQuery({
+    queryKey: ['quote', idPedido, settledKey, vivo?.outstanding],
+    queryFn: () => posApi.quoteOrder(idPedido as number, shape as ChargeShape),
+    enabled: shape !== null && idPedido !== null && settledKey === key,
+    retry: false,
+  });
+  const quoteFresh = quote !== undefined && settledKey === key && !quoting;
+
+  // El monto que se cobra. Con una forma, el de la cotización; tecleado, lo tecleado; sin dividir,
+  // todo lo que falta. Una parte de una cuenta sin confirmar no tiene cotización todavía: el monto
+  // lo dice el servidor al cobrarla.
+  const firstPartUnconfirmed = mode === 'people' && idPedido === null;
+  let monto: string;
+  if (mode === 'amount') monto = typedAmount;
+  else if (shape !== null) monto = quoteFresh ? quote.amount : '';
+  else if (mode === 'products') monto = '';
+  else monto = String(falta);
 
   const elegibles = useMemo(
     // Espejo de domain.MetodoCorrespondeALaPlataforma: ofrecer un método que va a rebotar manda al
     // operador a adivinar cuál sirve, con el cliente enfrente.
-    () => metodosDeLaLista(metodos?.items ?? [], order?.deliveryPlatformId ?? null),
-    [metodos, order?.deliveryPlatformId],
+    () => metodosDeLaLista(metodos?.items ?? [], plataforma),
+    [metodos, plataforma],
   );
   const elegido = elegibles.find((m) => m.id === metodo);
   const efectivo = esEfectivo(elegido);
 
   const v = validarCobro({
-    monto, metodoId: metodo, propina, recibido, esEfectivo: efectivo,
-    falta, totalDelPedido,
+    monto: firstPartUnconfirmed ? String(falta) : monto, metodoId: metodo, propina, recibido,
+    esEfectivo: efectivo && !firstPartUnconfirmed, falta, totalDelPedido,
   });
+
+  // Rota todo lo de ESTE pedazo para el siguiente.
+  const nextPiece = () => {
+    setLlave(uuid());
+    setSelection({});
+    setAllRemaining(false);
+    setTypedAmount('');
+    // El método NO se hereda: cada persona paga con lo suyo.
+    setMetodo(null);
+    setRecibido('');
+    setPropina('');
+  };
 
   const cobrar = useMutation({
     mutationFn: async () => {
-      // EL PEDIDO NACE AQUÍ, no al abrir la hoja.
-      //
-      // Antes tocar COBRAR lo creaba y lo mandaba a cocina, así que un toque por equivocación
-      // dejaba comida preparándose y una cuenta que alguien tenía que ir a cancelar. Ahora no pasa
-      // nada hasta este momento — el del botón que dice cuánto se cobra.
-      //
-      // La creación es idempotente por el id de la cuenta, así que un reintento tras una respuesta
-      // perdida devuelve el mismo pedido en vez de crear otro.
+      // EL PEDIDO NACE AQUÍ, no al abrir la hoja: un toque por equivocación en COBRAR no manda
+      // comida a cocina. La creación es idempotente por el id de la cuenta.
       let id = pedidoCreado?.id ?? order?.id ?? null;
       if (id === null) {
         if (!crearPedido) {
-          // No debería ocurrir: quien abre la hoja sobre una cuenta sin confirmar tiene que decir
-          // cómo se confirma. Falla ruidoso antes que cobrar contra un pedido que no existe.
           throw new Error('la cuenta no está confirmada y no hay cómo confirmarla');
         }
         const creado = await crearPedido();
@@ -281,150 +328,237 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
         onPedidoCreado?.(creado);
         id = creado.id;
       }
-      return posApi.chargeOrder(id, {
-        methodId: metodo!, amount: v.monto,
-        ...(v.propina > 0 ? { tip: v.propina } : {}),
-        clientUuid: llave,
-      });
+      const tip = v.propina > 0 ? { tip: v.propina } : {};
+      const splitShape: ChargeShape | null = firstPartUnconfirmed ? { split: { part: 1, of: people } } : shape;
+      if (splitShape !== null) {
+        return posApi.chargeOrderShape(id, { methodId: metodo!, clientUuid: llave, ...tip, ...splitShape });
+      }
+      return posApi.chargeOrder(id, { methodId: metodo!, amount: v.monto, ...tip, clientUuid: llave });
     },
     onSuccess: (res) => {
-      // Se mide DESPUÉS de que el servidor cobró, dentro del onSuccess y nunca antes de la
-      // mutación: medir primero convertiría un cobro en algo que espera a la medición (spec 017,
-      // US3). Si esta línea desapareciera, lo único que se pierde es el conteo.
+      // Se mide DESPUÉS de que el servidor cobró, nunca antes: medir primero convertiría un cobro en
+      // algo que espera a la medición (spec 017).
       medirAccion(pantalla, 'cobrar');
+      if (mode === 'products') medirAccion(pantalla, 'split-by-products');
       setRebote(null);
       if (res.yaEstaba) {
-        // El cobro ya estaba registrado: esta llamada no movió dinero, y decirlo evita que el
-        // operador crea que cobró dos veces. El pedazo sí está cobrado —entró en el intento cuya
-        // respuesta se perdió— así que cuenta en la lista igual que los demás.
         toaster.create({ title: 'Ese cobro ya estaba registrado', type: 'info' });
       }
-      setYaCobrado((xs) => [...xs, { monto: v.monto, metodo: elegido?.name ?? '' }]);
-      const resta = Number(res.outstanding);
-      // La respuesta del cobro entra al MISMO caché del que la hoja lee, no a un estado paralelo.
-      //
-      // Es la cifra que acaba de calcular el servidor, así que sirve de inmediato mientras el
-      // refetch viaja; guardándola aparte habría dos lugares con lo que falta, y ésa es justamente
-      // la deuda que dejó a la barra diciendo $2,141 y a su lista $1,928.
+      // La respuesta entra al MISMO caché del que la hoja lee: es la cifra que acaba de calcular el
+      // servidor, y guardarla aparte daría dos lugares con lo que falta.
       const idCobrado = pedidoCreado?.id ?? order?.id;
       qc.setQueryData(['orders', idCobrado], (prev: OrderView | undefined) =>
         (prev ? { ...prev, outstanding: res.outstanding, paid: res.paid } : prev));
       qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['quote'] });
       if (idCobrado !== undefined && idCobrado !== null) onCobrado(res, idCobrado);
-      if (res.paid || resta <= 0) {
+      if (res.paid || Number(res.outstanding) <= 0) {
         toaster.create({ title: 'Cobrado', type: 'success' });
         onClose();
         return;
       }
-      // Queda saldo: la hoja NO se cierra. Se prepara para el siguiente comensal con lo que falta,
-      // y con llave nueva: el pedazo que viene es otro cobro.
-      setLlave(uuid());
-      setMontoElegido(null);
-      // Entró una parte: queda una persona menos. Al llegar a la última se sale del reparto y la
-      // hoja vuelve a ofrecer todo lo que falta — que es exactamente lo que esa persona debe, con
-      // el residuo de los redondeos ya incluido.
-      setPartes((p) => {
-        if (p === null) return null;
-        const quedan = partesQueQuedan(p);
-        return quedan > 1 ? quedan : null;
-      });
-      // El método NO se hereda del pedazo anterior: cada persona paga con lo suyo, y arrastrarlo
-      // registraría con tarjeta dinero que entró en efectivo.
-      setMetodo(null);
-      setRecibido('');
-      setPropina('');
+      // Queda saldo: la hoja NO se cierra. Se prepara para la siguiente persona.
+      nextPiece();
     },
     onError: (e) => {
       const { titulo, detalle, recargar } = loQueLee(e);
       setRebote({ titulo, detalle });
       toaster.create({ title: titulo, description: detalle, type: 'error' });
-      // Tras un error la cifra de la pantalla puede estar vieja: se vuelve a preguntar en vez de
-      // congelar la última buena.
-      if (recargar) qc.invalidateQueries({ queryKey: ['orders'] });
+      // Tras un error la cifra y lo pagado pueden estar viejos: otra tableta cobró esa pieza.
+      if (recargar) {
+        qc.invalidateQueries({ queryKey: ['orders'] });
+        qc.invalidateQueries({ queryKey: ['quote'] });
+        setSelection({});
+        setAllRemaining(false);
+      }
+    },
+  });
+
+  const devolver = useMutation({
+    mutationFn: ({ paymentId, reason }: { paymentId: number; reason: string }) =>
+      posApi.voidPayment(idPedido as number, paymentId, reason),
+    onSuccess: () => {
+      medirAccion(pantalla, 'void-payment');
+      toaster.create({ title: 'Pago devuelto', type: 'success' });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['quote'] });
+      setView('charge');
+      setDetailId(null);
+      setRebote(null);
+    },
+    onError: (e) => {
+      const { titulo, detalle } = loQueLee(e);
+      setRebote({ titulo, detalle });
+      toaster.create({ title: titulo, description: detalle, type: 'error' });
+    },
+  });
+
+  // Lo elegido para pasar: la selección, o todo lo pendiente con «Todo lo que falta».
+  const toMove: SelectedPieces[] = allRemaining
+    ? rows.pending.map((r) => ({ lineId: r.line.id, qty: String(r.free) }))
+    : selected;
+  const movingEverything = rows.paid.length === 0 && rows.pending.length > 0
+    && rows.pending.every((r) => toMove.some((m) => m.lineId === r.line.id && Number(m.qty) >= Number(r.line.quantity)));
+  const pasar = useMutation({
+    mutationFn: ({ target }: { target: MoveTarget; label: string }) => posApi.moveLines(idPedido as number, {
+      clientUuid: llave, toOrderId: target === NEW_ORDER ? null : target, lines: toMove,
+    }),
+    onSuccess: (res, { target, label }) => {
+      medirAccion(pantalla, 'move-lines');
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['quote'] });
+      setRebote(null);
+      if (res.from.mergedIntoOrderId) {
+        toaster.create({ title: `Se juntó con ${label}`, type: 'success' });
+        onClose();
+        return;
+      }
+      toaster.create({ title: `Pasado a ${target === NEW_ORDER ? `#${res.to.number}` : label}`, type: 'success' });
+      nextPiece();
+      setView('charge');
+      if (target === NEW_ORDER) {
+        setMovedTo({
+          id: res.to.id, number: res.to.number, folioName: res.to.folioName, total: res.to.total,
+          outstanding: res.to.outstanding, currency: res.to.currency, deliveryPlatformId: res.to.deliveryPlatformId,
+        });
+      }
+    },
+    onError: (e) => {
+      const { titulo, detalle } = loQueLee(e);
+      setRebote({ titulo, detalle });
+      toaster.create({ title: titulo, description: detalle, type: 'error' });
     },
   });
 
   if (!order) return null;
 
   const moneda = order.currency;
+  const sending = cobrar.isPending || pasar.isPending;
   const aCubrirEnEfectivo = round2(v.monto + v.propina);
   const billetes = billetesUtiles(aCubrirEnEfectivo);
   // El cambio que sobra se puede dejar como propina de un toque, en vez de que el operador teclee la
-  // resta. Sin este gesto, "quédese con el cambio" obligaba a capturar el total recibido como monto
-  // y eso rebota con ErrCobroExcede: el operador quedaba atorado con el cliente enfrente.
+  // resta: sin este gesto, «quédese con el cambio» rebotaba con ErrCobroExcede.
   const cambioComoPropina = efectivo && v.cambio > 0 && v.propina === 0
     && round2(v.propina + v.cambio) <= totalDelPedido ? v.cambio : 0;
-
-  // Un pedido sin saldo no se cobra, y decirlo importa: la hoja se puede abrir sobre un pedido que
-  // otra caja acaba de saldar, y "escribe cuánto vas a cobrar" ahí manda al operador a buscar un
-  // problema que no existe.
   const saldado = falta <= 0;
 
-  // `Record<MotivoInvalido, string>` EXHAUSTIVO, y ese tipo es el punto: agregar un motivo de
-  // rechazo en `domain/cobro` sin escribir aquí qué lee el operador NO COMPILA. Sin él, un motivo
-  // nuevo apagaría el botón sin decir por qué, que es la peor forma de rechazar algo — el operador
-  // ve un botón muerto y no tiene ninguna acción que tomar.
+  // `Record<MotivoInvalido, string>` EXHAUSTIVO: un motivo de rechazo nuevo en `domain/cobro` sin
+  // escribir aquí qué lee el operador NO COMPILA.
   const textos: Record<MotivoInvalido, string> = {
-    'sin-monto': 'Escribe cuánto vas a cobrar.',
+    'sin-monto': mode === 'products' ? 'Elige qué productos paga.' : 'Escribe cuánto vas a cobrar.',
     'monto-invalido': 'Escribe el monto solo con números y punto, sin comas.',
     'sin-metodo': 'Falta con qué paga.',
     excede: `Es más de lo que falta (${money(String(falta), moneda)}).`,
     'propina-excede': 'La propina no puede ser mayor que la cuenta.',
     'falta-efectivo': `Faltan ${money(String(v.faltaEfectivo), moneda)}.`,
   };
-  const aviso = saldado ? 'Este pedido ya está cobrado.' : textos[v.motivo ?? 'sin-monto'];
+  const waitingQuote = shape !== null && idPedido !== null && !quoteFresh && !quoteError;
+  const aviso = saldado ? 'Este pedido ya está cobrado.'
+    : waitingQuote ? 'Calculando…'
+      : quoteError ? loQueLee(quoteError).titulo
+        : textos[v.motivo ?? 'sin-monto'];
+  const canCharge = (v.ok || (firstPartUnconfirmed && metodo !== null)) && !waitingQuote && !quoteError;
+
+  const chosenCount = allRemaining ? rows.pending.reduce((n, r) => n + r.free, 0) : selected.reduce((n, s) => n + Number(s.qty), 0);
+  const chosenNames = (allRemaining ? rows.pending.map((r) => r.line) : selected.map((s) => lines.find((l) => l.id === s.lineId)))
+    .filter((l) => l !== undefined).map((l) => l!.productName);
+  // Lo que se sabe de antemano que «Pasar» rechazaría deshabilita el botón con su motivo, antes de
+  // abrir la lista: descubrirlo al confirmar es hacer el recorrido dos veces.
+  const moveBlocked = descuentoVigente > 0 ? 'Quita el descuento antes de pasar productos'
+    : toMove.some((m) => {
+      const l = lines.find((x) => x.id === m.lineId);
+      if (!l) return false;
+      const pending = Number(l.quantity) - Number(l.delivered);
+      const k = Number(m.qty);
+      return Number(l.delivered) > 0 && pending > 0 && k > pending && k < Number(l.quantity);
+    }) ? 'Ese producto tiene piezas entregadas y otras sin entregar. Pásalas todas juntas' : null;
+  const canMove = mode === 'products' && toMove.length > 0 && can('orders.move_lines', user);
+
+  const toggle = (r: ListRowState) => {
+    setAllRemaining(false);
+    setSelection((s) => {
+      const next = { ...s };
+      if (next[r.line.id]) delete next[r.line.id];
+      else next[r.line.id] = 1;
+      return next;
+    });
+  };
+
+  const detail = detailId === null ? null : payments.find((p) => p.id === detailId && (p.voided || true)) ?? null;
+  const startSplit = () => {
+    setMode(available[0]);
+    setRebote(null);
+  };
+
+  // La fila de método. Sin dividir va arriba, en el cuerpo, donde siempre ha estado; dividiendo sube
+  // al pie fijo (D-13): debajo de la lista de productos o del teclado del monto quedaba fuera de la
+  // vista, y «Cobrar» se apagaba sin que se viera por qué.
+  const methodButton = (m: (typeof elegibles)[number]) => (
+    <Button key={m.id} minH={TAP_LG} flexShrink={0} variant={metodo === m.id ? 'solid' : 'outline'}
+      colorPalette={metodo === m.id ? undefined : 'gray'} disabled={sending}
+      onClick={() => { setMetodo(m.id); setRecibido(''); }}>
+      {m.name}
+    </Button>
+  );
+  // Botones y no un desplegable. NINGUNO viene preseleccionado, a propósito: un dedo que va directo
+  // a Cobrar registraría con tarjeta dinero que entró en efectivo.
+  const methodsBlock = elegibles.length === 0 ? (
+    <Text fontSize="sm" color="fg.muted">
+      Este pedido no tiene métodos de pago configurados. Agrégalos en Ajustes para poder cobrarlo.
+    </Text>
+  ) : mode === 'none' ? (
+    <Box>
+      <Text fontSize="sm" fontWeight="600" mb={2}>¿Con qué paga?</Text>
+      <SimpleGrid columns={{ base: 2, sm: 4 }} gap={2}>{elegibles.map(methodButton)}</SimpleGrid>
+    </Box>
+  ) : (
+    // En el pie, una sola fila con scroll horizontal: con diez métodos, una cuadrícula empujaría
+    // «Cobrar» fuera del pie.
+    <Box overflowX="auto" mx={-1} px={1} aria-label="¿Con qué paga?" role="group">
+      <HStack gap={2} w="max-content">{elegibles.map(methodButton)}</HStack>
+    </Box>
+  );
 
   return (
     <DrawerRoot open={visible} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
       <DrawerBackdrop />
-      {/* La paleta del negocio, como el resto del POS. Los estados de selección estaban quemados en
-          verde: el mismo sistema se veía de un color en una pantalla y de otro en la de al lado, y
-          un negocio que cambiaba su color lo veía cambiar en todas menos en la que cobra.
-          El verde SÍ se queda en las dos acciones que meten dinero —COBRAR y "el cambio es
-          propina"—, que es semántico y es el mismo criterio del botón COBRAR del panel. */}
-      <DrawerContent colorPalette={palette} borderTopRadius="2xl"
+      {/* La paleta del negocio, como el resto del POS. El verde se queda solo en las dos acciones
+          que meten dinero —COBRAR y "el cambio es propina"—. La hoja usa el alto de la tableta
+          (dvh) y lo que crece va dentro de la zona con scroll: el pie con el botón nunca sale de
+          la pantalla, tampoco con el teclado del sistema abierto. */}
+      <DrawerContent colorPalette={palette} borderTopRadius="2xl" maxH="100dvh"
         maxW={{ base: '100%', lg: '960px' }} mx="auto">
         <DrawerHeader borderBottomWidth="1px" py={3}>
           <HStack justify="space-between" align="start">
             <Box minW={0}>
               <Text fontWeight="800" fontSize="lg" lineClamp={1}>
-                {order.folioName || (numero !== null ? `#${numero}` : 'Cuenta')}
+                {folio || (numero !== null ? `#${numero}` : 'Cuenta')}
               </Text>
-              {/* El folio lo asigna el SERVIDOR al confirmar. Mientras la cuenta no se confirma no
-                  hay número que enseñar, y enseñar uno inventado es peor que no enseñar ninguno:
-                  el operador se lo diría al cliente y después no coincidiría con el ticket. */}
+              {/* El folio lo asigna el SERVIDOR al confirmar: enseñar uno inventado es peor que no
+                  enseñar ninguno. */}
               <Text fontSize="sm" color="fg.muted">
                 {numero !== null ? `#${numero}` : 'Sin confirmar'}
               </Text>
             </Box>
-            {/* Las DOS cifras. Pintando solo el faltante donde el operador espera el total, un
-                pedido de $500 con $300 abonados se veía idéntico a uno de $200. */}
-            {/* Dividir vive en el ENCABEZADO, que ya existe, y no en una fila propia: casi siempre
-                se cobra a una sola persona, y una fila que no se usa es alto que se le quita a lo
-                que sí. Aparece solo cuando hay algo que repartir. */}
-            {/* La cuenta que el cliente revisa antes de pagar.
-                Si el pedido ya existe —el camino del botón naranja— sale su ticket real. Si no,
-                sale el papel de la cuenta: mismo formato, marcado ** PRE-CUENTA **, sin número de
-                pedido y sin el estado del cobro. Ver specs/012-imprimir-la-cuenta.
-                Va en el encabezado porque es horizontal y no le quita alto a los métodos de pago. */}
             {(idPedido !== null || preCuenta) && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
-                onClick={() => setViendoPapel(true)}>
+                onClick={() => setViendoPapel({})}>
                 <LuReceipt /> Cuenta
               </Button>
             )}
-            {idPedido !== null && descuentoVigente === 0 && !editandoDescuento && (
+            {puedeDescontar && descuentoVigente === 0 && !editandoDescuento && view === 'charge' && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => { setDescuentoTecleado(''); setModoDescuento('monto'); setEditandoDescuento(true); }}>
                 <LuTag /> Descuento
               </Button>
             )}
-            {falta > 0 && partes === null && partesPosibles(falta) > 1 && (
-              <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
-                onClick={() => { setPartes(2); setMontoElegido(null); }}>
+            {falta > 0 && mode === 'none' && view === 'charge' && (
+              <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0} onClick={startSplit}>
                 <LuSplit /> Dividir
               </Button>
             )}
+            {/* Las DOS cifras: pintando solo el faltante, un pedido de $500 con $300 abonados se
+                veía idéntico a uno de $200. */}
             <Box textAlign="right" flexShrink={0}>
               <Text fontSize="xs" color="fg.muted">Total {money(String(totalDelPedido), moneda)}</Text>
               <Text fontWeight="800" fontSize="2xl" lineHeight="1.1">
@@ -435,29 +569,48 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
         </DrawerHeader>
 
         <DrawerBody py={3}>
-          <VStack align="stretch" gap={3}>
-            {/* El descuento, solo cuando el pedido YA existe: el del carrito se captura en el panel.
-                Sin descuento no se pinta un renglón en $0.00 —un renglón que siempre dice cero
-                enseña a no leer esta zona, que es donde vive el dinero— pero sí se puede agregar
-                uno desde aquí. */}
-            {/* El renglón prominente es SOLO para el pedido que ya trae descuento: ahí es dinero
-                que hay que poder leer. Agregar uno donde no hay vive en el encabezado, junto a
-                "Cuenta" y "Dividir", donde no cuesta alto nuevo — el flujo más común de esta hoja
-                es cobrar un pedido ya mandado a cocina, casi nunca con descuento, y un botón de
-                44 px siempre visible le quitaría sitio a los métodos de pago. */}
+          <Box hidden={view !== 'detail'}>
+            {detail && (
+              <PaymentDetail payment={detail} lines={lines} currency={moneda} zona={zona}
+                canVoid={can('payments.void', user)} voiding={devolver.isPending}
+                onBack={() => { setView('charge'); setDetailId(null); }}
+                onReprint={() => setViendoPapel({ paymentId: detail.id })}
+                onVoid={(reason) => devolver.mutate({ paymentId: detail.id, reason })} />
+            )}
+          </Box>
+          <Box hidden={view !== 'move'}>
+            {view === 'move' && idPedido !== null && (
+              <MoveToOrder fromOrderId={idPedido} count={chosenCount} names={chosenNames} currency={moneda}
+                everything={movingEverything} moving={pasar.isPending}
+                onBack={() => setView('charge')}
+                onConfirm={(target, label) => pasar.mutate({ target, label })} />
+            )}
+          </Box>
+          <VStack align="stretch" gap={3} hidden={view !== 'charge'}>
+            {movedTo && (
+              <HStack justify="space-between" px={3} py={2} borderRadius="md" bg="bg.muted">
+                <Text fontSize="sm">Se abrió {movedTo.folioName || `#${movedTo.number}`} con lo que se pasó.</Text>
+                <Button size="sm" minH="44px" colorPalette="brand"
+                  onClick={() => { setPedidoCreado(movedTo); setMovedTo(null); setMode('none'); nextPiece(); }}>
+                  Cobrar #{movedTo.number}
+                </Button>
+              </HStack>
+            )}
             {idPedido !== null && descuentoVigente > 0 && !editandoDescuento && (
               <HStack justify="space-between" gap={2}>
                 <Text fontSize="sm" color="fg.muted">
                   Descuento −{money(String(descuentoVigente), moneda)}
                 </Text>
-                <Button size="sm" minH="44px" px={3} variant="outline" colorPalette="gray"
-                  onClick={() => {
-                    setDescuentoTecleado(String(descuentoVigente));
-                    setModoDescuento('monto');
-                    setEditandoDescuento(true);
-                  }}>
-                  Cambiar el descuento
-                </Button>
+                {puedeDescontar && (
+                  <Button size="sm" minH="44px" px={3} variant="outline" colorPalette="gray"
+                    onClick={() => {
+                      setDescuentoTecleado(String(descuentoVigente));
+                      setModoDescuento('monto');
+                      setEditandoDescuento(true);
+                    }}>
+                    Cambiar el descuento
+                  </Button>
+                )}
               </HStack>
             )}
             {editandoDescuento && (
@@ -476,8 +629,6 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                 </HStack>
                 <Input flex="1" minW={0} minH="44px" inputMode="decimal" autoFocus aria-label="Descuento"
                   value={descuentoTecleado} onChange={(e) => setDescuentoTecleado(e.target.value)} />
-                {/* Los avisos van AQUÍ, junto al campo: un botón apagado sin motivo a la vista deja
-                    al operador tocándolo otra vez con el cliente enfrente. */}
                 {descuentoTeclado.malEscrito && (
                   <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>
                 )}
@@ -495,84 +646,32 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                   onClick={() => setEditandoDescuento(false)}>Cancelar</Button>
               </HStack>
             )}
-            {yaCobrado.length > 0 && (
-              <HStack gap={2} flexWrap="wrap">
-                {yaCobrado.map((c, i) => (
-                  <HStack key={i} gap={1} px={2} py={1} borderRadius="md" bg="green.subtle" color="green.fg">
-                    <LuCheck size={14} />
-                    <Text fontSize="sm" fontWeight="600">
-                      {money(String(c.monto), moneda)} {c.metodo}
-                    </Text>
-                  </HStack>
-                ))}
-              </HStack>
+            {mode !== 'none' && (
+              <ModePicker mode={mode} available={available} disabled={sending}
+                onChange={(m) => { setMode(m); setSelection({}); setAllRemaining(false); setTypedAmount(''); }}
+                onStop={() => { setMode('none'); setSelection({}); setAllRemaining(false); setTypedAmount(''); }} />
+            )}
+            <PaymentChips payments={payments} currency={moneda}
+              onOpen={(p) => { setDetailId(p.id); setView('detail'); }} />
+
+            {mode === 'products' && (
+              <ByProducts rows={rows} selection={allRemaining
+                ? Object.fromEntries(rows.pending.map((r) => [r.line.id, r.free])) : selection}
+                payments={payments} currency={moneda} disabled={sending}
+                onToggle={toggle}
+                onQty={(lineId, qty) => { setAllRemaining(false); setSelection((s) => ({ ...s, [lineId]: qty })); }} />
+            )}
+            {mode === 'people' && (
+              <EvenSplit of={people} payments={payments} outstanding={String(falta)} currency={moneda}
+                currentAmount={quoteFresh ? quote.amount : null} disabled={sending} onChange={setPeople} />
+            )}
+            {mode === 'amount' && (
+              <ByAmount value={typedAmount} outstanding={falta} currency={moneda} disabled={sending} onChange={setTypedAmount} />
             )}
 
-            {/* El repartidor, SOLO cuando se está repartiendo.
-                Cerrado no ocupa nada: el control que lo abre vive en el encabezado, que ya existía.
-                Abierto es una fila, y el número de partes es libre —no dos, tres o cuatro— porque
-                una mesa de seis es tan común como una de tres. */}
-            {partes !== null && (
-              <Box borderWidth="1px" borderColor="border" borderRadius="lg" px={3} py={2}>
-                <Flex align="center" justify="space-between" gap={2} flexWrap="wrap">
-                  <HStack gap={2}>
-                    <Button aria-label="Una parte menos" minH={TAP_LG} minW={TAP_LG} variant="outline"
-                      colorPalette="gray" disabled={partes <= 2}
-                      onClick={() => { setPartes((p) => Math.max(2, (p ?? 2) - 1)); setMontoElegido(null); }}>
-                      <LuMinus />
-                    </Button>
-                    <VStack gap={0} minW="6.5rem">
-                      <Text fontSize="2xs" color="fg.muted">Entre</Text>
-                      <Text fontWeight="800" fontSize="lg">{partes} personas</Text>
-                    </VStack>
-                    <Button aria-label="Una parte más" minH={TAP_LG} minW={TAP_LG} variant="outline"
-                      colorPalette="gray" disabled={partes >= partesPosibles(falta)}
-                      onClick={() => { setPartes((p) => Math.min(partesPosibles(falta), (p ?? 2) + 1)); setMontoElegido(null); }}>
-                      <LuPlus />
-                    </Button>
-                  </HStack>
-                  <HStack gap={2}>
-                    {/* Teclear un monto sigue disponible para el caso que no es parejo: "yo pago
-                        los tacos y ella el refresco". */}
-                    <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro monto"
-                      aria-label="Otro monto"
-                      value={monto} onChange={(e) => setMontoElegido(e.target.value)} />
-                    <Button aria-label="Dejar de dividir" minH={TAP_LG} minW={TAP_LG}
-                      variant="ghost" colorPalette="gray"
-                      onClick={() => { setPartes(null); setMontoElegido(null); }}>
-                      <LuX />
-                    </Button>
-                  </HStack>
-                </Flex>
-              </Box>
-            )}
+            {mode === 'none' && methodsBlock}
 
-            <Box>
-              <Text fontSize="sm" fontWeight="600" mb={2}>¿Con qué paga?</Text>
-              {/* Botones y no un desplegable: son pocos y se tocan con el dedo.
-                  Y NINGUNO viene preseleccionado, a propósito: aquí el pedido ya existe y un dedo
-                  que va directo a Cobrar registraría con tarjeta dinero que entró en efectivo,
-                  descuadrando el corte en los dos métodos a la vez. El tap es la confirmación. */}
-              {elegibles.length === 0 ? (
-                <Text fontSize="sm" color="fg.muted">
-                  Este pedido no tiene métodos de pago configurados. Agrégalos en Ajustes para poder
-                  cobrarlo.
-                </Text>
-              ) : (
-                <SimpleGrid columns={{ base: 2, sm: 3 }} gap={2}>
-                  {elegibles.map((m) => (
-                    <Button key={m.id} minH={TAP_LG} variant={metodo === m.id ? 'solid' : 'outline'}
-                      colorPalette={metodo === m.id ? undefined : 'gray'}
-                      onClick={() => { setMetodo(m.id); setRecibido(''); }}>
-                      {m.name}
-                    </Button>
-                  ))}
-                </SimpleGrid>
-              )}
-            </Box>
-
-            {/* Propina. El porcentaje es de lo que se cobra AHORA: sobre el total del pedido, un
-                "15%" salía siendo 37.5% de la cifra que la pantalla tiene enfrente. */}
+            {/* Propina. El porcentaje es de lo que se cobra AHORA, no del total del pedido. */}
             {metodo !== null && v.monto > 0 && (
               <Box>
                 <Text fontSize="sm" fontWeight="600" mb={2}>Propina</Text>
@@ -588,7 +687,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                         variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                         onClick={() => setPropina(String(p.monto))}>
                         <VStack gap={0}>
-                          <Text fontSize="2xs" opacity={0.8}>{p.etiqueta}</Text>
+                          <Text fontSize="xs" opacity={0.8}>{p.etiqueta}</Text>
                           <Text fontWeight="700">{money(String(p.monto), moneda)}</Text>
                         </VStack>
                       </Button>
@@ -602,7 +701,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
             )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}
-            {efectivo && (
+            {efectivo && !firstPartUnconfirmed && (
               <Box>
                 <Text fontSize="sm" fontWeight="600" mb={2}>¿Con cuánto paga?</Text>
                 <HStack gap={2} flexWrap="wrap">
@@ -640,38 +739,66 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
           </VStack>
         </DrawerBody>
 
-        <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch">
-          {rebote && (
-            <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
-              <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
-              {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
-            </Box>
-          )}
-          {!v.ok && aviso && (
-            <Text fontSize="sm" color="fg.muted" textAlign="center">{aviso}</Text>
-          )}
-          {/* Se cobra el MONTO capturado, no lo que entregó el cliente: el excedente es cambio, no
-              ingreso. Registrarlo como ingreso inflaría la venta y descuadraría el corte. */}
-          {saldado ? (
-            <Button w="100%" size="lg" minH={TAP_XL} variant="outline" colorPalette="gray" onClick={onClose}>
-              Cerrar
-            </Button>
-          ) : (
-            <Button w="100%" size="lg" minH={TAP_XL} colorPalette="green"
-              disabled={!v.ok} loading={cobrar.isPending}
-              onClick={() => cobrar.mutate()}>
-              Cobrar {money(String(round2(v.monto + v.propina)), moneda)}
-            </Button>
-          )}
-        </DrawerFooter>
+        {view === 'charge' && (
+          <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" maxH="55dvh" overflowY="auto">
+            {rebote && (
+              <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
+                <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
+                {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
+              </Box>
+            )}
+            {mode === 'products' && (
+              <HStack justify="space-between" gap={2} flexWrap="wrap">
+                <Text fontSize="sm" fontWeight="600" lineClamp={1} flex="1" minW={0}>
+                  Esta persona: {chosenCount} producto{chosenCount === 1 ? '' : 's'}
+                  {chosenNames.length > 0 ? ` · ${chosenNames.join(' · ')}` : ''}
+                </Text>
+                <HStack gap={2} flexShrink={0}>
+                  <Button minH="44px" size="sm" variant={allRemaining ? 'solid' : 'outline'} colorPalette="gray"
+                    disabled={sending || rows.pending.length === 0} aria-pressed={allRemaining}
+                    onClick={() => { setAllRemaining((a) => !a); setSelection({}); }}>
+                    Todo lo que falta
+                  </Button>
+                  {can('orders.move_lines', user) && (
+                    <Button minH="44px" size="sm" variant="outline" colorPalette="gray"
+                      disabled={sending || !canMove || moveBlocked !== null}
+                      onClick={() => setView('move')}>
+                      <LuArrowRightLeft /> Pasar a otro pedido
+                    </Button>
+                  )}
+                </HStack>
+              </HStack>
+            )}
+            {mode === 'products' && toMove.length > 0 && moveBlocked && (
+              <Text fontSize="xs" color="fg.muted" textAlign="right">{moveBlocked}</Text>
+            )}
+            {mode !== 'none' && methodsBlock}
+            {!canCharge && aviso && (
+              <Text fontSize="sm" color="fg.muted" textAlign="center">{aviso}</Text>
+            )}
+            {/* Se cobra el MONTO, no lo que entregó el cliente: el excedente es cambio, no ingreso. */}
+            {saldado ? (
+              <Button w="100%" size="lg" minH={TAP_XL} variant="outline" colorPalette="gray" onClick={onClose}>
+                Cerrar
+              </Button>
+            ) : (
+              <Button w="100%" size="lg" minH={TAP_XL} colorPalette="green"
+                disabled={!canCharge} loading={cobrar.isPending}
+                onClick={() => cobrar.mutate()}>
+                {firstPartUnconfirmed
+                  ? `Cobrar parte 1 de ${people}`
+                  : `Cobrar ${money(String(round2(v.monto + v.propina)), moneda)}`}
+              </Button>
+            )}
+          </DrawerFooter>
+        )}
       </DrawerContent>
-      {/* Dos papeles distintos según lo que exista. Se monta dentro del mismo Drawer para que la
-          hoja de cobro se quede abierta detrás: cerrar el papel devuelve al operador su cobro tal
-          como lo dejó. */}
+      {/* El papel se monta dentro del mismo Drawer para que la hoja se quede abierta detrás. */}
       {idPedido !== null
-        ? <VerTicket orderId={viendoPapel ? idPedido : null} onClose={() => setViendoPapel(false)} />
+        ? <VerTicket orderId={viendoPapel ? idPedido : null} paymentId={viendoPapel ? viendoPapel.paymentId : undefined}
+            onClose={() => setViendoPapel(false)} />
         : <TicketPreview order={preCuenta ?? null} preCuenta
-            isOpen={viendoPapel} onClose={() => setViendoPapel(false)} />}
+            isOpen={viendoPapel !== false} onClose={() => setViendoPapel(false)} />}
     </DrawerRoot>
   );
 }

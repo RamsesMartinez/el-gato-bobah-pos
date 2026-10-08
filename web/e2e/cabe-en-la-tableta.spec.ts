@@ -148,3 +148,49 @@ test('T-cuenta · el papel de la cuenta sale marcado y la hoja cabe en 600 px', 
     'el estado del cobro lo confunde con el ticket de un pedido real').toHaveCount(0);
   console.log(`[e2e] hoja de cobro con boton de cuenta: ${alto}px de 600px`);
 });
+
+// E7 BIS · DIVIDIR POR PRODUCTOS CABE EN LA TABLETA (spec 027, D-13).
+//
+// La hoja crece por dentro: la lista, la propina y el efectivo van en la zona con scroll, y el pie
+// con «Cobrar» se queda a la vista. Se mide a 600 px y con el teclado del sistema abierto, que en la
+// tableta deja ~330 px: si el botón sale de la pantalla, el operador tiene que cerrar el teclado para
+// cobrar, con el cliente enfrente. La vista de «Pasar a otro pedido» también deja su botón visible.
+test('E7 bis · por productos, con efectivo y propina, Cobrar sigue a la vista', async ({ page }) => {
+  await entrar(page);
+  for (const p of ['Dedos de Queso Pza', 'Coca Cola 355ml', 'Chai Miel', 'Kit Kat']) {
+    await ponerUnProductoEnLaCuenta(page, p);
+    const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
+    if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+    const buscador = page.getByPlaceholder('Buscar producto…');
+    if (await buscador.isVisible().catch(() => false)) await buscador.fill('');
+  }
+  const pildora = page.getByRole('button', { name: /art ·/ });
+  if (await pildora.isVisible().catch(() => false)) await pildora.click();
+  await page.getByRole('button', { name: 'Enviar a cocina' }).click();
+  const nuevo = page.getByRole('button', { name: 'Nuevo pedido' });
+  await nuevo.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+  if (await nuevo.isVisible().catch(() => false)) await nuevo.click();
+
+  await page.getByRole('link', { name: 'Pedidos' }).first().click();
+  await page.getByRole('button', { name: /^Cobrar \$/ }).first().click();
+  const hoja = page.getByRole('dialog').last();
+  await hoja.getByRole('button', { name: 'Dividir' }).click();
+  await hoja.getByRole('button', { name: 'Coca Cola 355ml' }).click();
+  await hoja.getByRole('button', { name: 'Efectivo' }).click();
+  await hoja.getByRole('button', { name: /^10%/ }).first().click().catch(() => {});
+
+  const cobrar = hoja.getByRole('button', { name: /^Cobrar/ });
+  const alto = Math.round((await hoja.boundingBox())?.height ?? 0);
+  expect(alto, 'la hoja por productos no cabe en 600 px').toBeLessThanOrEqual(600);
+  await expect(cobrar).toBeInViewport();
+
+  // El teclado del sistema abierto: el viewport baja a ~330 px.
+  await page.setViewportSize({ width: 1024, height: 330 });
+  await expect(cobrar, 'con el teclado abierto, «Cobrar» salió de la pantalla').toBeInViewport();
+  await page.setViewportSize({ width: 1024, height: 600 });
+
+  await hoja.getByRole('button', { name: /Pasar a otro pedido/ }).click();
+  const pasar = hoja.getByRole('button', { name: /^(Pasar a|Elige a qué pedido)/ });
+  await expect(pasar, 'la vista de pasar no deja ver su botón').toBeInViewport();
+  console.log(`[e2e] hoja por productos: ${alto}px de 600px`);
+});

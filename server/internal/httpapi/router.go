@@ -159,6 +159,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
+					// Cuánto cobraría /pay por una selección, sin cobrarla. Mismo gate: quien puede
+					// cobrar puede preguntar cuánto.
+					r.Post("/{id}/quote", h.QuoteOrder)
 					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
 					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
 					// la plataforma no espera a que llegue un gerente.
@@ -171,16 +174,22 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
 					// reembolsar, que es salida de dinero.
 					r.Get("/open", h.OpenOrders)
-					// Mismo rol que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
+					// Mismo alcance que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
 					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
-					// que mueve dinero sin la barrera que su gemelo sí exige.
-					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/cancel", h.CancelOrder)
+					// que mueve dinero sin la barrera que su gemelo sí exige. Por permiso y no por
+					// rol: la tarjeta del tablero pregunta lo mismo para ofrecer «Cancelar pedido».
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/cancel", h.CancelOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
+					// Quitar lo que falta por entregar, de un jalón. Hoy lo tienen todos los roles:
+					// es también la única salida de un pedido que se quedó sin productos, y negárselo
+					// a quien atiende el mostrador lo deja en el tablero sin nada que lo cierre.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancelPending)).
+						Post("/{id}/lines/cancel-pending", h.CancelPendingLines)
 					// Escribir o corregir el folio de la plataforma. Alcanza al cajero porque es el
 					// mismo dato que captura al levantar el pedido, movido en el tiempo, y mandarlo
 					// a buscar un gerente para teclear un identificador cuesta más de lo que
@@ -209,6 +218,14 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// fila y bitácora. El tope cuenta al usuario, que aquí es siempre alguien
 					// autenticado.
 					r.With(rateLimitUser(h.descuentoWrites)).Put("/{id}/discount", h.SetOrderDiscount)
+					// Devolver un pago (spec 027). Por permiso y no por rol: los roles serán de cada
+					// empresa. Tope por usuario porque es una escritura de dinero.
+					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid), rateLimitUser(h.splitWrites)).
+						Post("/{id}/payments/{paymentId}/void", h.VoidOrderPayment)
+					// Pasar productos a otro pedido. Hoy todos los roles: es corregir dónde se
+					// capturó, no mover dinero (rechaza lo pagado).
+					r.With(RequirePermission(h.permissions, domain.PermOrdersMoveLines), rateLimitUser(h.splitWrites)).
+						Post("/{id}/lines/move", h.MoveOrderLines)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los

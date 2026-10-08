@@ -9,6 +9,9 @@ export interface SessionUser {
   name: string;
   role: string;
   mustChangePassword?: boolean; // tras alta/reset por admin: forzar cambio en el primer login
+  // Lo que este usuario puede hacer, según el servidor. Opcional porque una sesión emitida antes de
+  // que existiera no lo trae; se consulta solo con `can()` (app/permissions.ts).
+  permissions?: string[];
 }
 
 // 'loading' hasta que el arranque intenta canjear la cookie de refresh; luego 'authed' o

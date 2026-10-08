@@ -20,6 +20,11 @@
 -- que su parser no puede leer—, así que nombrarla aquí rompería `sqlc generate` por una columna que
 -- sí existe en Postgres.
 --
+-- EL PEDIDO JUNTADO (spec 027) NO ES UNA VENTA NI UNA CANCELACIÓN. Al pasarle todos sus productos a
+-- otro pedido queda `cancelada` con `merged_into_order_id`, y sus productos se cuentan en el pedido
+-- con el que se juntó. Lista, conteo y resumen lo excluyen con la misma línea
+-- (`o.merged_into_order_id is null`); `SalesTotalsByMethod` ya lo deja fuera por estado.
+--
 -- El resumen va en tres consultas y no en una: `order_payments` y `order_lines` son ambas 1:N con
 -- `orders`, así que unirlas en la misma consulta multiplica las filas (2 pagos × 3 líneas = 6) y
 -- duplica las sumas.
@@ -46,6 +51,7 @@ left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 order by
@@ -82,6 +88,7 @@ left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 order by
@@ -101,6 +108,7 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- El mismo `where` que ListSales, palabra por palabra. Es el total del filtro para el paginador.
 select count(*) from orders o
 where o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
@@ -110,6 +118,7 @@ where o.business_date between @desde and @hasta
 select count(*) from orders o
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
@@ -130,6 +139,7 @@ with filtrado as (
   select o.id, o.status, o.total, o.delivery_fee
   from orders o
   where o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount
@@ -154,6 +164,7 @@ with filtrado as (
   from orders o
   where o.delivery_platform_id is not null and o.platform_order_ref is null
     and o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount
@@ -225,7 +236,9 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
+-- Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
+-- pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
+where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
   and o.business_date between @desde and @hasta
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
@@ -239,7 +252,9 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
+-- Lo quitado de un pedido que luego se juntó con otro sí cuenta: el pedido queda cancelado,
+-- pero lo que se le quitó antes de juntarlo se canceló de verdad (spec 027).
+where (o.status not in ('cancelada', 'reembolsada') or o.merged_into_order_id is not null)
   and o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
   and ol.cancelled_at is not null

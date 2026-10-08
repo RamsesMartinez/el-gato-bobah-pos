@@ -79,8 +79,8 @@ var pantallasMedibles = map[string]struct{}{
 // como «nadie la usa» y no como «nadie la midió» — el mismo modo de falla que el comentario de
 // arriba describe para las pantallas. Agregar una es una línea aquí y una llamada allá, juntas.
 var accionesMedibles = map[string]map[string]struct{}{
-	"pos":      {"cobrar": {}},
-	"pedidos":  {"cobrar": {}},
+	"pos":      {"cobrar": {}, "split-by-products": {}, "move-lines": {}, "void-payment": {}},
+	"pedidos":  {"cobrar": {}, "split-by-products": {}, "move-lines": {}, "void-payment": {}, "close-order": {}, "cancel-pending": {}},
 	"caja":     {"abrir-turno": {}, "cerrar-turno": {}, "contar-efectivo": {}, "traspaso": {}},
 	"catalogo": {"editar-producto": {}},
 }

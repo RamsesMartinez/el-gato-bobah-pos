@@ -72,6 +72,11 @@ const (
 	// la bitácora de eventos y pelearía por el lock de la fila.
 	descuentoMax    = 120
 	descuentoWindow = 5 * time.Minute
+	// splitWritesMax/Window: devolver pagos y pasar productos, por usuario (spec 027). Son
+	// escrituras de dinero y de pedidos que en un turno se cuentan por decenas; el tope corta el
+	// bucle, no el uso.
+	splitWritesMax    = 120
+	splitWritesWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
@@ -118,6 +123,9 @@ type Deps struct {
 	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
 	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
 	UsageConsola *app.UsageService
+	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
+	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
+	Permissions PermissionResolver
 }
 
 type Handlers struct {
@@ -167,8 +175,11 @@ type Handlers struct {
 	platformRefWrites *rateLimiter
 	// descuentoWrites limita los cambios de descuento por usuario (ver descuentoMax).
 	descuentoWrites *rateLimiter
-	authFails       *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs         *rateLimiter // per-IP request throttle for the /auth group
+	// splitWrites limita devolver pagos y pasar productos por usuario (ver splitWritesMax).
+	splitWrites *rateLimiter
+	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs     *rateLimiter // per-IP request throttle for the /auth group
+	permissions PermissionResolver
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -185,8 +196,13 @@ func NewHandlers(d Deps) *Handlers {
 }
 
 func newHandlers(d Deps) *Handlers {
+	permissions := d.Permissions
+	if permissions == nil {
+		permissions = domain.PermissionsFor
+	}
 	return &Handlers{
-		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		permissions: permissions,
+		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
 		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
@@ -225,12 +241,20 @@ func newHandlers(d Deps) *Handlers {
 			platformRefMax, platformRefWindow),
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
 			descuentoMax, descuentoWindow),
+		splitWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:split:", splitWritesMax, splitWritesWindow),
 	}
 }
 
 type sessionResponse struct {
 	AccessToken string      `json:"accessToken"`
-	User        domain.User `json:"user"`
+	User        sessionUser `json:"user"`
+}
+
+// sessionUser es el usuario de la sesión con sus permisos. La pantalla pregunta por permiso
+// (`can()`), nunca por nombre de rol; por eso viajan con cada sesión y no se deducen del rol allá.
+type sessionUser struct {
+	domain.User
+	Permissions []domain.Permission `json:"permissions"`
 }
 
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
@@ -273,7 +297,16 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
 	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
-	JSON(w, status, sessionResponse{AccessToken: s.AccessToken, User: s.User})
+	JSON(w, status, sessionResponse{AccessToken: s.AccessToken,
+		User: sessionUser{User: s.User, Permissions: h.permissionsOf(s.User.Role)}})
+}
+
+// permissionsOf nunca devuelve nil: un nil saldría como `null` y la pantalla truena al preguntar.
+func (h *Handlers) permissionsOf(role domain.Role) []domain.Permission {
+	if p := h.permissions(role); p != nil {
+		return p
+	}
+	return []domain.Permission{}
 }
 
 // POST /auth/login  {username, slug, password}. El identificador es username@slug; también se
@@ -520,6 +553,7 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
+		"permissions": h.permissionsOf(u.Role),
 	})
 }
 

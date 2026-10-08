@@ -455,7 +455,10 @@ order by s.closed_at desc limit 1;
 select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type,
        o.total, o.refund_amount
 from orders o
+-- El pedido juntado con otro (spec 027) no es venta ni cancelación del turno: sus productos están
+-- en el pedido con el que se juntó. La gemela lleva la misma línea.
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 order by o.opened_at desc, o.id desc
 limit sqlc.arg('lim') offset sqlc.arg('off');
 
@@ -472,7 +475,8 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
 from orders o
-where o.register_session_id = $1;
+where o.register_session_id = $1
+  and o.merged_into_order_id is null;
 
 -- name: ListDenominations :many
 -- Qué piezas se pueden contar en una moneda. Solo las activas: una denominación retirada de
@@ -526,3 +530,15 @@ from session_cash_count_lines l
 join cash_denominations d on d.id = l.denomination_id
 where l.count_id = $1
 order by d.sort_key;
+
+-- name: ListSessionPaymentVoids :many
+-- Los pagos devueltos en un turno, para la lista aparte del corte (spec 027). No cambian el
+-- esperado por método: el pago devuelto ya no está en order_payments.
+select pm.name as method_name, v.amount, v.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       coalesce(u.name, '')::text as voided_by, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+join orders o on o.id = v.order_id
+left join users u on u.id = v.voided_by
+where v.register_session_id = $1
+order by v.voided_at, v.id;

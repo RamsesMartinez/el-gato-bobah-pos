@@ -237,6 +237,7 @@ que el negocio ya sabe que va a querer. Un plan que cierre una de ellas es un ha
 | **Descuentos** | Cobrar sin dejar rastro de que hubo un descuento | `orders.discount_total` existe y siempre vale cero: la columna está, la feature no |
 | **Una lista de productos por plataforma** — activar y desactivar lo que se ofrece en cada app, con nombres propios ligados al mismo producto interno | Asumir que un producto del catálogo es un producto de la plataforma. Ya no lo es: en el POS se vende "Arma tu Crepa" y en Uber cada crepa por sabor, a propósito | `product_platform_prices` ya es por `(producto, plataforma)`: la llave correcta existe. Falta el nombre, el estado y la relación uno-a-varios |
 | **Promociones de plataforma** (2x1, producto de regalo) | Registrar el cobro sin poder reconstruir qué se regaló ni quién lo pagó — el restaurante o la plataforma | No existe el concepto. Los reportes de plataforma traen columnas de promoción y hoy vienen en cero |
+| **Roles y permisos configurables por empresa** — cada cliente crea sus roles y decide qué puede hacer cada uno (decidido el 2026-10-05) | Un control nuevo que pregunta por el **nombre** de un rol (`RequireRole(admin, gerente)`, `role === 'gerente'`) en lugar de por un **permiso**; o una lista de roles congelada en una columna o en una pantalla | `users.role` es el enum `user_role` de cuatro valores (0001), 32 rutas usan `RequireRole` y `web/src/app/roles.ts` lo espeja. Lo nuevo se pregunta por permiso (`domain.Permission`), resuelto hoy por un mapa fijo rol → permisos en `domain`; ese mapa es lo único que pasa a la base cuando lleguen los roles por empresa |
 | ~~**Conciliar el depósito de una plataforma contra los pedidos que lo formaron**~~ **CRUZADA (spec 014, 2026-09-08)** | — | `orders.platform_order_ref` guarda el folio completo, único por empresa y plataforma, y `platform_settlements.payout_reference` la referencia del depósito. La conciliación dejó de ser por monto y fecha |
 
 Los tres renglones nuevos salieron de medir documentos reales; el detalle está en
@@ -247,6 +248,10 @@ Los tres renglones nuevos salieron de medir documentos reales; el detalle está 
 (dónde se vendió, dónde está la existencia) cuesta una columna mientras hay una sola sucursal y es
 irrecuperable en cuanto hay dos. «La sucursal» la resuelve una sola función en la base, que con dos
 y sin selector truena en vez de escoger la matriz.
+
+La puerta de **roles y permisos** la abrió el dueño el 2026-10-05, al planear el spec 027: los
+clientes van a definir sus propios roles. No se construye todavía; lo que se exige desde ya es que
+ningún control nuevo pregunte por el nombre de un rol.
 
 **Dos puertas se cruzaron el 2026-09-08 con el spec 014** y se dejan tachadas en vez de borradas:
 lo que enseñan —qué hecho era irrecuperable y por qué— es lo que hace que la siguiente puerta se
@@ -343,4 +348,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.15.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-03
+**Version**: 1.16.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-07

@@ -98,3 +98,78 @@ func TestHayEntregaParcial(t *testing.T) {
 		})
 	}
 }
+
+// Sin productos vivos no hay nada que entregar: cerrarlo como entregado sería una venta de $0.
+func TestCanDeliverAllNeedsALiveProduct(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []LineaEntrega
+		want  error
+	}{
+		{"sin renglones", nil, ErrNoProducts},
+		{"todos quitados", []LineaEntrega{{ID: 1, Cantidad: d("1"), Cancelada: true}}, ErrNoProducts},
+		{"uno vivo", []LineaEntrega{{ID: 1, Cantidad: d("1"), Cancelada: true}, {ID: 2, Cantidad: d("2")}}, nil},
+	}
+	for _, c := range cases {
+		if err := CanDeliverAll(c.lines); !errors.Is(err, c.want) || (c.want == nil && err != nil) {
+			t.Errorf("%s: CanDeliverAll = %v, quiere %v", c.name, err, c.want)
+		}
+	}
+}
+
+// Qué hace «Quitar lo que falta» según el pedido. Un pedido vacío con pagos no se cancela: ese
+// dinero saldría del corte sin rastro; uno sin nada pendiente no tiene qué quitar.
+func TestPlanCancelPending(t *testing.T) {
+	vivo := LineaEntrega{ID: 1, Cantidad: d("2"), Entregado: d("2")}
+	pendiente := LineaEntrega{ID: 2, Cantidad: d("2"), Entregado: d("1")}
+	quitado := LineaEntrega{ID: 3, Cantidad: d("1"), Cancelada: true}
+	cases := []struct {
+		name      string
+		lines     []LineaEntrega
+		paid      string
+		wantEmpty bool
+		wantErr   error
+	}{
+		{"con pendientes", []LineaEntrega{vivo, pendiente}, "0", false, nil},
+		{"con pendientes y pagos", []LineaEntrega{pendiente}, "50", false, nil},
+		{"todo lo vivo entregado", []LineaEntrega{vivo, quitado}, "0", false, ErrNothingPending},
+		{"sin productos y sin pagos", []LineaEntrega{quitado}, "0", true, nil},
+		{"sin renglones", nil, "0", true, nil},
+		{"sin productos y con pagos", []LineaEntrega{quitado}, "0.01", false, ErrOrderHasPayments},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			empty, err := PlanCancelPending(c.lines, d(c.paid))
+			if !errors.Is(err, c.wantErr) || (c.wantErr == nil && err != nil) {
+				t.Fatalf("err = %v, quiere %v", err, c.wantErr)
+			}
+			if empty != c.wantEmpty {
+				t.Fatalf("cerrar vacío = %v, quiere %v", empty, c.wantEmpty)
+			}
+		})
+	}
+}
+
+// Quitar no puede dejar el total por debajo de lo ya cobrado: ese dinero se quedaría sin venta que
+// lo explique, y el corte lo contaría como ingreso de un pedido que ya no lo vale.
+func TestRemovalCannotLeaveTheOrderOverpaid(t *testing.T) {
+	if err := RemovalKeepsPayments(d("70"), d("70")); err != nil {
+		t.Fatalf("total igual a lo pagado = %v, quiere nil", err)
+	}
+	if err := RemovalKeepsPayments(d("70"), d("0")); err != nil {
+		t.Fatalf("sin pagos = %v, quiere nil", err)
+	}
+	if err := RemovalKeepsPayments(d("69.99"), d("70")); !errors.Is(err, ErrOrderWouldBeOverpaid) {
+		t.Fatalf("total bajo lo pagado = %v, quiere ErrOrderWouldBeOverpaid", err)
+	}
+}
+
+// El motivo de quitar es obligatorio, y su falta se dice en palabras de quien opera.
+func TestReasonToRemove(t *testing.T) {
+	if _, err := ReasonToRemove(" \u200b "); !errors.Is(err, ErrValidation) || err.Error() != "datos inválidos: Elige por qué se quitan" {
+		t.Fatalf("motivo vacío = %v, quiere «Elige por qué se quitan»", err)
+	}
+	if m, err := ReasonToRemove("  Ya no lo quiere "); err != nil || m != "Ya no lo quiere" {
+		t.Fatalf("motivo = %q, %v", m, err)
+	}
+}

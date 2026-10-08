@@ -163,3 +163,127 @@ func TestKeyServiceDownIsA503WithItsOwnCode(t *testing.T) {
 		t.Fatalf("el mensaje expone el interior del error: %q", body.Error.Message)
 	}
 }
+
+// errorOf corre Error y devuelve el status y el sobre, para leer lo que ve quien opera.
+func errorOf(t *testing.T, err error) (int, errorBody) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	Error(w, err)
+	var env errorEnvelope
+	if e := json.Unmarshal(w.Body.Bytes(), &env); e != nil {
+		t.Fatalf("respuesta ilegible: %v (%s)", e, w.Body.String())
+	}
+	return w.Code, env.Error
+}
+
+// El prefijo del sentinel («conflicto:», «datos inválidos:») es un detalle de cómo se envuelven los
+// errores en Go, no algo que quien opera pueda accionar. Llegaba a la pantalla en TODOS los 400 y
+// 409, también en los que envuelven dos veces, y en los 422 que cuelgan de ErrValidation.
+func TestOperatorMessagesCarryNoSentinelPrefix(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantMsg    string
+	}{
+		{"409 envuelto una vez", domain.ErrPedidoYaPagado, 409, "ese pedido ya está cobrado"},
+		{"409 con contexto", fmt.Errorf("%w (línea %d)", domain.ErrLineaCancelada, 5), 409, "ese producto está cancelado (línea 5)"},
+		{"400 envuelto una vez", domain.ErrEntregaInvalida, 400, "la cantidad a entregar tiene que ser mayor que cero"},
+		{"400 envuelto dos veces", fmt.Errorf("%w: faltan 150 y se intentó cobrar 151", domain.ErrCobroExcede), 400,
+			"no puedes cobrar más de lo que falta de ese pedido: faltan 150 y se intentó cobrar 151"},
+		{"422 que envuelve ErrValidation", domain.ErrCobroFueraDeLugar, 422,
+			"el pedido se confirma primero y se cobra después, con /pay"},
+		{"403 con texto", fmt.Errorf("%w: %s", domain.ErrForbidden, "Tu usuario no puede devolver pagos"), 403,
+			"Tu usuario no puede devolver pagos"},
+		{"404 con texto", fmt.Errorf("%w: Ese producto ya no está en el pedido", domain.ErrNotFound), 404,
+			"Ese producto ya no está en el pedido"},
+		{"sentinels encadenados al inicio", fmt.Errorf("%w: %w: Ese número no existe", domain.ErrConflict, domain.ErrValidation), 400,
+			"Ese número no existe"},
+		// El nombre del sentinel también es español de todos los días: en medio del texto es parte
+		// de la frase, no un prefijo. Quitarlo ahí dejaba «Producto Taco».
+		{"el nombre del sentinel en medio del texto se queda", fmt.Errorf("%w: Producto no encontrado: Taco", domain.ErrNotFound), 404,
+			"Producto no encontrado: Taco"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, body := errorOf(t, c.err)
+			if status != c.wantStatus {
+				t.Fatalf("status = %d, quiere %d", status, c.wantStatus)
+			}
+			if body.Message != c.wantMsg {
+				t.Fatalf("mensaje = %q, quiere %q", body.Message, c.wantMsg)
+			}
+		})
+	}
+}
+
+// Cancelar un pedido con algo entregado ofrece «Quitar lo que falta» y «Cerrar pedido». El texto
+// viejo mandaba a «hacer un reembolso», que es salida de dinero y no lo que hace falta ahí.
+func TestCancelWithDeliveriesDoesNotSuggestARefund(t *testing.T) {
+	_, body := errorOf(t, domain.ErrCancelarConEntregas)
+	if strings.Contains(strings.ToLower(body.Message), "reembols") {
+		t.Fatalf("el texto sugiere un reembolso: %q", body.Message)
+	}
+	if strings.HasPrefix(body.Message, "conflicto") {
+		t.Fatalf("el texto lleva el prefijo del sentinel: %q", body.Message)
+	}
+}
+
+// Cada sentinel nuevo de dividir la cuenta sale con su status, su código y el texto exacto de
+// contracts/api.md. Un sentinel que cayera al caso por defecto respondería 500 con «Error interno»
+// justo cuando quien opera tiene al cliente enfrente.
+func TestSplitBillSentinelsMapToStatusCodeAndText(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		code   string
+		text   string
+	}{
+		{domain.ErrPieceAlreadyPaid, 409, "CONFLICT", "Ese producto ya se pagó"},
+		{domain.ErrSplitPartAlreadyCharged, 409, "CONFLICT", "Esa parte ya se cobró"},
+		{domain.ErrChargeKeyMismatch, 409, "CONFLICT", "Ese cobro ya se hizo con otros productos. Vuelve a intentarlo"},
+		{domain.ErrPaymentVoidedKey, 409, "CONFLICT", "Ese pago ya se devolvió. Vuelve a cobrar"},
+		{domain.ErrPaymentAlreadyVoided, 409, "CONFLICT", "Ese pago ya se devolvió"},
+		{domain.ErrPaymentFromClosedShift, 409, "CONFLICT", "Ese pago es de un turno cerrado: devuélvelo desde Pedidos entregados"},
+		{domain.ErrOrderFromClosedShift, 409, "CONFLICT", "Ese pedido es de un turno cerrado; no se divide"},
+		{domain.ErrPlatformOrderNotSplittable, 409, "CONFLICT", "Los pedidos de plataforma no se dividen"},
+		{domain.ErrOrderWouldBeOverpaid, 409, "CONFLICT", "Ya se cobró más de lo que quedaría. Primero hay que devolver un pago"},
+		{domain.ErrMixedDeliveredPieces, 409, "CONFLICT", "Ese producto tiene piezas entregadas y otras sin entregar. Pásalas todas juntas"},
+		{domain.ErrAlreadyItsOwnOrder, 409, "CONFLICT", "Ya es su propio pedido; no hace falta pasarlo"},
+		{domain.ErrMoveKeyMismatch, 409, "CONFLICT", "Esto ya se pasó a otro pedido"},
+		{domain.ErrOrderHasPayments, 409, "CONFLICT", "Tiene pagos: hay que devolverlos primero"},
+		{domain.ErrNoProducts, 409, "CONFLICT", "Este pedido ya no tiene productos: ciérralo"},
+		{domain.ErrDiscountWithPayments, 409, "CONFLICT", "Ya hay pagos; el descuento se pone antes de cobrar"},
+		{domain.ErrOneChargeShape, 400, "VALIDATION", "Elige una sola forma de cobrar"},
+		{domain.ErrEmptySelection, 400, "VALIDATION", "Elige qué productos paga"},
+		{domain.ErrTooManyPieces, 400, "VALIDATION", "No hay tantas piezas por quitar"},
+		{domain.ErrMoveWithDiscount, 409, "CONFLICT", "Quita el descuento antes de pasar productos"},
+		{domain.ErrMoveTargetClosed, 409, "CONFLICT", "Ese pedido ya no recibe productos"},
+		{domain.ErrMoveTargetOtherShift, 409, "CONFLICT", "Ese pedido es de otro turno"},
+		{domain.ErrMergeWithShipping, 409, "CONFLICT", "Ese pedido tiene envío; cóbralo o quítalo antes de juntarlo"},
+		{domain.ErrMoveRefundedLine, 409, "CONFLICT", "Ese producto tiene una devolución; no se puede pasar"},
+		{domain.ErrMoveLegacyLine, 409, "CONFLICT", "Ese producto es de un pedido viejo; no se puede pasar"},
+		{domain.ErrOrderClosedForVoid, 409, "CONFLICT", "Ese pedido ya se cerró; no se le pueden devolver pagos"},
+		// Las variantes por operación conservan el sentinel y llevan su cola.
+		{domain.ErrPieceAlreadyPaidToMove, 409, "CONFLICT", "Ese producto ya se pagó; no se puede pasar"},
+		{domain.ErrPieceAlreadyPaidToRemove, 409, "CONFLICT", "Ese producto ya se pagó. Primero hay que devolver el pago"},
+		{domain.ErrOrderFromClosedShiftToMove, 409, "CONFLICT", "Ese pedido es de un turno cerrado; no se puede pasar"},
+	}
+	for _, c := range cases {
+		t.Run(c.text, func(t *testing.T) {
+			status, body := errorOf(t, c.err)
+			if status != c.status || body.Code != c.code || body.Message != c.text {
+				t.Fatalf("= %d %s %q, quiere %d %s %q", status, body.Code, body.Message, c.status, c.code, c.text)
+			}
+		})
+	}
+	for variant, base := range map[error]error{
+		domain.ErrPieceAlreadyPaidToMove:     domain.ErrPieceAlreadyPaid,
+		domain.ErrPieceAlreadyPaidToRemove:   domain.ErrPieceAlreadyPaid,
+		domain.ErrOrderFromClosedShiftToMove: domain.ErrOrderFromClosedShift,
+	} {
+		if !errors.Is(variant, base) {
+			t.Errorf("%q no es %q: quien lo compare con errors.Is no lo reconocería", variant, base)
+		}
+	}
+}

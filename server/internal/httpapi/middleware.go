@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -93,6 +95,31 @@ func RequireRole(roles ...domain.Role) func(http.Handler) http.Handler {
 					"user_id", u.ID, "role", string(u.Role),
 					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
 				Error(w, domain.ErrForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// PermissionResolver dice qué permisos tiene un rol. Hoy es domain.PermissionsFor; cuando cada
+// empresa defina sus roles saldrá de la base, y es lo único que cambia ese día.
+type PermissionResolver func(domain.Role) []domain.Permission
+
+// RequirePermission gates a route to users whose role grants p. Must run after RequireAuth.
+//
+// Pregunta por permiso y no por nombre de rol para que los roles por empresa no obliguen a
+// reescribir ningún control. El texto no nombra roles: con roles propios, el que sí puede quizá
+// no se llame «gerente».
+func RequirePermission(resolve PermissionResolver, p domain.Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := userFrom(r.Context())
+			if !ok || !slices.Contains(resolve(u.Role), p) {
+				logging.SecurityEvent(r.Context(), "forbidden",
+					"user_id", u.ID, "role", string(u.Role), "permission", string(p),
+					"method", r.Method, "path", r.URL.Path, "ip", clientIP(r))
+				Error(w, fmt.Errorf("%w: %s", domain.ErrForbidden, domain.PermissionDeniedMessage(p)))
 				return
 			}
 			next.ServeHTTP(w, r)

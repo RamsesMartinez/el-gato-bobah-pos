@@ -9,7 +9,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -247,6 +247,42 @@ function Collapsible({ title, children }: { title: string; children: ReactNode }
   );
 }
 
+// VoidedPaymentsList: los pagos que se devolvieron en el turno (spec 027).
+//
+// NO SUMA NADA, a propósito: un pago devuelto no es una salida de caja ni dinero del turno, y el
+// esperado del servidor ya lo excluye. Un total aquí invitaría a restarlo otra vez del cierre.
+// Sin devoluciones no se pinta: es el caso normal y cada renglón vacío le quita alto a la tableta.
+// El tope en dvh es para que en 600 px de alto la lista no empuje fuera la tabla del cierre.
+export function VoidedPaymentsList({ payments, currency, zona = DEFAULT_TIMEZONE }: {
+  payments?: VoidedPayment[]; currency: string; zona?: string;
+}) {
+  if (!payments?.length) return null;
+  return (
+    <Section title="Pagos devueltos">
+      <Box as="ul" aria-label="Pagos devueltos" listStyleType="none" m={0} p={0}
+        bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="35dvh" overflowY="auto">
+        {payments.map((p, i) => (
+          <Box as="li" key={i} px={3} py={2} borderTopWidth={i === 0 ? 0 : '1px'} fontSize="sm">
+            <HStack justify="space-between" gap={2}>
+              <HStack gap={2} minW={0}>
+                <Text fontWeight="600">{p.method}</Text>
+                <Text color="fg.muted" truncate>Pedido {p.orderFolio}</Text>
+              </HStack>
+              <HStack gap={2} flexShrink={0}>
+                {Number(p.tip) > 0 && <Text color="fg.muted">+ propina {money(p.tip, currency)}</Text>}
+                <Text fontWeight="600">{money(p.amount, currency)}</Text>
+              </HStack>
+            </HStack>
+            <Text color="fg.muted">
+              {hhmm(p.voidedAt, zona)} · {p.voidedBy}: {p.reason}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+    </Section>
+  );
+}
+
 // Datos mínimos del resumen (los cumplen CashSession y CashSessionDetail por estructura).
 interface CorteData {
   openingCash: string;
@@ -257,6 +293,7 @@ interface CorteData {
   expenses: CashExpenseLine[];
   counts?: ConteosDelTurno | null;
   drawer?: ArqueoDelCajon | null;
+  voidedPayments?: VoidedPayment[];
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -284,6 +321,7 @@ function CorteSummary({ data }: { data: CorteData }) {
           <ExpensesTable expenses={expenses} currency={cur} />
         </Collapsible>
       )}
+      <VoidedPaymentsList payments={data.voidedPayments} currency={cur} zona={horaNegocio.zona} />
     </VStack>
   );
 }
@@ -744,6 +782,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               <ExpensesTable expenses={session.expenses ?? []} currency={session.currency} />
             </Section>
           )}
+
+          <VoidedPaymentsList payments={session.voidedPayments} currency={session.currency} zona={horaNegocio.zona} />
 
           <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
             declared={declared} onDeclared={setDeclared}
