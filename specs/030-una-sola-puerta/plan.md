@@ -136,8 +136,11 @@ en navegador (`cabe-en-la-tableta.spec.ts`) las vuelve medidas.
   teclado abierto la lista se queda en ~150 px). Al abrirse pide `olderDebts=true`.
 - **Ticket** (panel `clamp(300px,32%,380px)` o la píldora). Presupuesto estimado del panel a 600 px:
   cabecera 48 + totales 70 + pie 56 + motivo 20 ≈ 194 px de cromo → ~350 px de renglones.
-  - **Nuevo · aún no va a cocina** va **primero**, con −/+ (renglón de 64 px).
-  - **En cocina** y **Pagado** van debajo, compactos (40 px, sin −/+), y se pliegan solos con más de
+  - **Nuevo · aún no va a cocina** va **primero**, con −/+, en un renglón de una línea de 44 px
+    (papelera a la izquierda, nombre y precio al centro, −/cantidad/+ a la derecha). En dos líneas
+    medía ~80 px y cabían tres renglones (revisión de tableta, 2026-10-08).
+  - **En cocina** y **Pagado** van debajo, compactos (44 px «En cocina», por el ⋮ del renglón; 40 px
+    «Pagado», sin controles; sin −/+), y se pliegan solos con más de
     3 renglones («En cocina · 5 ›»).
   - **Objetivo**: con las tres secciones se ven ≥ 4 renglones (3 de «Nuevo» + encabezados plegados).
   - «En cocina» solo muestra la marca de entregado; **quitar** sale del ⋮ del renglón y abre la hoja de
