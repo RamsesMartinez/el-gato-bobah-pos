@@ -191,9 +191,11 @@ func TestLaListaYElResumenDescribenElMismoConjunto(t *testing.T) {
 			"sin el filtro, y quien lee la pantalla no tiene forma de saber cuál mitad miente",
 			pagina.Total, resumen.Count)
 	}
-	// Y el total de dinero también sale del mismo conjunto.
-	if !resumen.Total.Equal(pagina.Items[0].Total) {
-		t.Fatalf("el resumen suma %s y el único pedido de la lista vale %s", resumen.Total, pagina.Items[0].Total)
+	// Y el dinero también sale del mismo conjunto. Desde la spec 029 el Total es solo lo cobrado y
+	// lo que falta va en «por cobrar»: entre los dos dicen el importe del único pedido de la lista.
+	if dicho := resumen.Total.Add(resumen.Pending.Amount); !dicho.Equal(pagina.Items[0].Total) {
+		t.Fatalf("el resumen dice %s cobrado + %s por cobrar y el único pedido de la lista vale %s",
+			resumen.Total, resumen.Pending.Amount, pagina.Items[0].Total)
 	}
 }
 

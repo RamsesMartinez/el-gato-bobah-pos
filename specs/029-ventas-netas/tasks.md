@@ -20,17 +20,17 @@ Sin tareas: no hay migración ni tipo compartido que bloquee a las historias.
 **Independent test**: un día con un pedido cobrado, uno devuelto completo y uno abierto → Total = solo
 el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
-- [ ] T002 [P] [US1] Unitario `NetCollected` (Σ medios, con un medio negativo) y que `SummarizeSales` ya no fija el Total en `server/internal/domain/sales_test.go`
-- [ ] T003 [US1] Integración `server/internal/integration/ventas_netas_test.go`: Total sin el devuelto ni el abierto, `pending` con monto y conteo, Total = Σ `byMethod`, cobro de septiembre devuelto en octubre (dos meses), propina devuelta en `tipRefunds` y fuera del Total; `SalesPending` bajo `inTheThreeCases`
-- [ ] T004 [US1] `SalesPending` + `SalesPendingSinFolio` y `tip_refunds` en `SalesTotalsByMethod`(+gemela) en `server/queries/sales.sql`; `make sqlc`
-- [ ] T005 [US1] `NetCollected` en `server/internal/domain/sales.go`; resumen con Total neto, `Pending`, `TipRefunds` y Total de la búsqueda por folio en `server/internal/app/sales.go`
+- [X] T002 [P] [US1] Unitario `NetCollected` (Σ medios, con un medio negativo) y que `SummarizeSales` ya no fija el Total en `server/internal/domain/sales_test.go`
+- [X] T003 [US1] Integración `server/internal/integration/ventas_netas_test.go`: Total sin el devuelto ni el abierto, `pending` con monto y conteo, Total = Σ `byMethod`, cobro de septiembre devuelto en octubre (dos meses), propina devuelta en `tipRefunds` y fuera del Total; `SalesPending` bajo `inTheThreeCases`
+- [X] T004 [US1] `SalesPending` + `SalesPendingSinFolio` y `tip_refunds` en `SalesTotalsByMethod`(+gemela) en `server/queries/sales.sql`; `make sqlc`
+- [X] T005 [US1] `NetCollected` en `server/internal/domain/sales.go`; resumen con Total neto, `Pending`, `TipRefunds` y Total de la búsqueda por folio en `server/internal/app/sales.go`
 - [ ] T006 [P] [US1] Vitest en `web/src/features/sales/SalesPage.test.tsx`: tile «Por cobrar» fuera del total, medio con «ya restado» y propina devuelta, Total rotulado «cobrado, neto»
 - [ ] T007 [US1] Tipos en `web/src/api/sales.ts`; tiles en `web/src/features/sales/SalesSummaryTiles.tsx` (orden Total → medios compactos → Por cobrar → separador → resto; «Ticket promedio · de los pedidos», «Ventas · sin canceladas», Por cobrar sin tooltip)
 
 ## Phase 4: US2 — devolución a primera vista en Ventas (P1)
 
-- [ ] T008 [US2] Integración en `ventas_netas_test.go`: la lista trae `paid` y `lastRefundAt`, `null` en el JSON crudo de un pedido sin devoluciones (y la búsqueda por folio igual)
-- [ ] T009 [US2] `paid` y `last_refund_at` en `ListSales`, `ListSalesSinFolio`, `FindSaleByPlatformRef` (`server/queries/sales.sql`); `SaleRow` en `server/internal/app/sales.go`
+- [X] T008 [US2] Integración en `ventas_netas_test.go`: la lista trae `paid` y `lastRefundAt`, `null` en el JSON crudo de un pedido sin devoluciones (y la búsqueda por folio igual)
+- [X] T009 [US2] `paid` y `last_refund_at` en `ListSales`, `ListSalesSinFolio`, `FindSaleByPlatformRef` (`server/queries/sales.sql`); `SaleRow` en `server/internal/app/sales.go`
 - [ ] T010 [P] [US2] Vitest en `SalesPage.test.tsx`: renglón con día y hora, «Devuelto $X · fecha hora», «Por cobrar $Y», pie «N pedidos en la lista»
 - [ ] T011 [US2] Título en la fila del rango, marcas como 2ª línea de la celda Estado, pie, en `web/src/features/sales/SalesPage.tsx`; devuelto en `SaleDetailDialog.tsx`
 
