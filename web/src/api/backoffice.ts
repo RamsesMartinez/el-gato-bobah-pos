@@ -307,6 +307,8 @@ export interface Ingredient {
   // Se prepara en el local con otros insumos, y si su composición está estimada o confirmada.
   isPrep?: boolean;
   compositionStatus?: '' | 'estimated' | 'confirmed';
+  // En cuántas recetas aparece: los más usados van arriba en el buscador.
+  recipeUses?: number;
   category: string | null;
   onHand: string;
 }

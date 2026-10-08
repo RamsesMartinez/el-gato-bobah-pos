@@ -164,8 +164,8 @@ function OptionRow({ o, fav, arch, onEdit, handle, innerRef, style }: {
         <Text fontSize="xs" color="fg.muted">
           {Number(o.priceDelta) === 0 ? 'sin costo extra' : money(o.priceDelta)} · máx {o.maxPerLine}/línea
           {/* Lo que falta capturar se ve en la lista, sin abrir cada extra. */}
-          {o.compositionStatus === 'estimated' && ' · qué lleva: por revisar'}
-          {o.compositionStatus === '' && ' · qué lleva: sin capturar'}
+          {o.compositionStatus === 'estimated' && ' · receta por revisar'}
+          {o.compositionStatus === '' && ' · receta pendiente'}
         </Text>
       </Box>
       <IconButton aria-label="Editar opción" size="md" variant="ghost" onClick={() => onEdit(o)}><LuPencil /></IconButton>

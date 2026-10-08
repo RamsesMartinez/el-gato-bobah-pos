@@ -4,28 +4,35 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../components/ui/provider';
 import { CompositionSheet } from './CompositionSheet';
-import type { Composition } from '../api/admin';
+import { ApiError } from '../api/client';
+import type { Composition, RecipeQuery, RecipeRow } from '../api/admin';
 
-const sinCapturar: Composition = { status: '', items: [], components: [], editable: true };
+// LA HOJA DE LA RECETA: las palabras del dueño (spec 028, «Vocabulario») y los casos de borde del
+// prototipo, uno por prueba.
+
+const vacia: Composition = { status: '', items: [], components: [], editable: true, stamp: '', sameName: [] };
 
 const api = vi.hoisted(() => ({
   composition: vi.fn(),
-  saveComposition: vi.fn((_k: string, _id: number, _b: unknown) => Promise.resolve({ status: 'confirmed', items: [], editable: true })),
-  confirmComposition: vi.fn((_k: string, _id: number) => Promise.resolve({ status: 'confirmed', items: [], editable: true })),
+  saveComposition: vi.fn((_k: string, _id: number, _b: unknown) => Promise.resolve({ status: 'confirmed', items: [], components: [], editable: true })),
+  confirmComposition: vi.fn((_k: string, _id: number) => Promise.resolve({ status: 'confirmed', items: [], components: [], editable: true })),
   products: vi.fn(() => Promise.resolve({
     items: [
       { id: 7, name: 'Coca-Cola 600 ml', type: 'simple' },
-      { id: 8, name: 'Crepa de Nutella', type: 'simple' },
-      { id: 9, name: 'Paquete Fiesta', type: 'combo' },
-      { id: 55, name: 'Leche deslactosada', type: 'simple' },
+      { id: 8, name: 'Chai Latte M', type: 'simple' },
+      { id: 9, name: 'Combo Fiesta', type: 'combo' },
+      { id: 55, name: 'Chai Latte G', type: 'simple' },
     ], total: 4, counts: { act: 4, inact: 0 },
   })),
+  recipes: vi.fn((_q: RecipeQuery) => Promise.resolve({ items: [] as RecipeRow[], total: 0, counts: { pending: 0, review: 0, done: 0 }, totals: {} })),
 }));
 const back = vi.hoisted(() => ({
   ingredients: vi.fn(() => Promise.resolve({
     items: [
-      { id: 1, name: 'Leche deslactosada', baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen' },
-      { id: 2, name: 'Azúcar', baseUnitId: 1, baseUnitCode: 'g', baseUnitKind: 'masa' },
+      { id: 1, name: 'Leche', baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', recipeUses: 9, isPrep: false },
+      { id: 2, name: 'Azúcar', baseUnitId: 1, baseUnitCode: 'g', baseUnitKind: 'masa', recipeUses: 4, isPrep: false },
+      { id: 3, name: 'Vaso 16 oz', baseUnitId: 5, baseUnitCode: 'pieza', baseUnitKind: 'pieza', recipeUses: 12, isPrep: false },
+      { id: 4, name: 'Jarabe natural', baseUnitId: 3, baseUnitCode: 'ml', baseUnitKind: 'volumen', recipeUses: 0, isPrep: true },
     ],
   })),
   units: vi.fn(() => Promise.resolve({
@@ -33,161 +40,221 @@ const back = vi.hoisted(() => ({
       { id: 1, code: 'g', name: 'Gramo', kind: 'masa', toBase: '1' },
       { id: 2, code: 'kg', name: 'Kilogramo', kind: 'masa', toBase: '1000' },
       { id: 3, code: 'ml', name: 'Mililitro', kind: 'volumen', toBase: '1' },
+      { id: 4, code: 'l', name: 'Litro', kind: 'volumen', toBase: '1000' },
+      { id: 5, code: 'pieza', name: 'Pieza', kind: 'pieza', toBase: '1' },
     ],
   })),
+  createIngredient: vi.fn((b: { name: string; baseUnitId: number }) => Promise.resolve({ id: 99, name: b.name, baseUnitId: b.baseUnitId, baseUnitCode: 'ml', baseUnitKind: 'volumen', recipeUses: 0 })),
 }));
 vi.mock('../api/admin', () => ({ adminApi: api }));
 vi.mock('../api/backoffice', () => ({ backofficeApi: back }));
+vi.mock('../api/pos', () => ({ posApi: { businessSettings: vi.fn(() => Promise.resolve({ timezone: 'America/Mexico_City' })) } }));
 
-function montar(kind: 'product' | 'option' | 'ingredient' = 'option') {
+function montar(kind: 'product' | 'option' | 'ingredient' = 'product', extra: { onClose?: () => void; onSaved?: () => void } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <Provider>
-        <CompositionSheet kind={kind} id={55} name="Leche deslactosada" open onClose={() => {}} />
+        <CompositionSheet kind={kind} id={55} name="Chai Latte G" open onClose={extra.onClose ?? (() => {})} onSaved={extra.onSaved} />
       </Provider>
     </QueryClientProvider>,
   );
 }
+const guardar = async () => fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+async function agregarInsumo(nombre: string) {
+  fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${nombre}`) }));
+}
 
-describe('la hoja «Qué lleva»', () => {
+describe('la receta', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.composition.mockResolvedValue(sinCapturar);
+    api.composition.mockResolvedValue(vacia);
   });
 
-  it('agregar un insumo con su cantidad y guardar manda el renglón en la unidad del insumo', async () => {
+  it('se titula como receta y dice qué sale al vender', async () => {
+    montar();
+    expect(await screen.findByText('Receta de Chai Latte G')).toBeInTheDocument();
+    expect(screen.getByText('Al vender 1, del almacén sale:')).toBeInTheDocument();
+    for (const t of ['Lleva insumos', 'Es un combo', 'No gasta insumos']) expect(screen.getByText(t)).toBeInTheDocument();
+  });
+
+  it('la cantidad se escribe; cambiar a litros convierte el número', async () => {
+    montar();
+    await agregarInsumo('Leche');
+    fireEvent.change(await screen.findByLabelText('Cantidad de Leche'), { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'L' }));
+    expect(screen.getByLabelText('Cantidad de Leche')).toHaveValue('0.2');
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({
+      items: [{ ingredientId: 1, quantity: '0.2', unitId: 4 }], basedOn: '',
+    })));
+  });
+
+  it('acepta coma decimal', async () => {
+    montar();
+    await agregarInsumo('Azúcar');
+    fireEvent.change(await screen.findByLabelText('Cantidad de Azúcar'), { target: { value: '7,5' } });
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({
+      items: [{ ingredientId: 2, quantity: '7.5', unitId: 1 }],
+    })));
+  });
+
+  it('sin cantidad no deja guardar y dice qué falta', async () => {
+    montar();
+    await agregarInsumo('Leche');
+    fireEvent.change(await screen.findByLabelText('Cantidad de Leche'), { target: { value: '' } });
+    expect(await screen.findByText('Escribe la cantidad de cada insumo.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+  });
+
+  it('los más usados se agregan de un toque', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    expect(await screen.findByLabelText('Cantidad de Vaso 16 oz')).toHaveValue('1');
+  });
+
+  it('un insumo repetido se avisa', async () => {
+    montar();
+    await agregarInsumo('Leche');
+    await agregarInsumo('Leche');
+    expect(await screen.findByText('Leche ya está en la receta.')).toBeInTheDocument();
+  });
+
+  it('un insumo que no existe se crea ahí mismo, diciendo en qué se mide', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Elegir insumo/ }));
-    fireEvent.click(await screen.findByText('Leche deslactosada'));
-    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '250' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, {
-      items: [{ ingredientId: 1, quantity: '250', unitId: 3 }], linkedProductId: null, components: [],
+    fireEvent.change(await screen.findByLabelText('Buscar'), { target: { value: 'Leche de coco' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Mililitros (ml)' }));
+    await waitFor(() => expect(back.createIngredient).toHaveBeenCalledWith({ name: 'Leche de coco', baseUnitId: 3 }));
+    expect(await screen.findByLabelText('Cantidad de Leche de coco')).toBeInTheDocument();
+  });
+
+  it('copiar la receta de otro parecido', async () => {
+    api.recipes.mockImplementation((q: RecipeQuery) => Promise.resolve({
+      items: q.status === 'done' ? [{ id: 8, name: 'Chai Latte M', group: '', status: 'done', mode: 'items', summary: '', lines: 2, soldPerMonth: '0' }] : [],
+      total: 1, counts: { pending: 0, review: 0, done: 1 }, totals: {},
     }));
+    api.composition.mockImplementation((_k: string, id: number) => Promise.resolve(id === 8
+      ? { ...vacia, status: 'confirmed', items: [{ ingredientId: 1, ingredientName: 'Leche', quantity: '200.0000', unitId: 3, unitCode: 'ml' }] }
+      : vacia));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: 'Chai Latte M' }));
+    expect(await screen.findByLabelText('Cantidad de Leche')).toHaveValue('200');
   });
 
-  it('quitar es un botón de 44 px y se deshace con un toque', async () => {
-    api.composition.mockResolvedValue({
-      ...sinCapturar, status: 'confirmed',
-      items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }],
-    });
+  it('un combo: productos con piezas; no ofrece combos ni a sí mismo', async () => {
     montar();
-    const quitar = await screen.findByRole('button', { name: /Quitar Azúcar/ });
-    expect(getComputedStyle(quitar).minHeight).toBe('44px');
-    fireEvent.click(quitar);
-    expect(screen.queryByRole('button', { name: /Quitar Azúcar/ })).not.toBeInTheDocument();
-    // Un toque para deshacer: recapturar el renglón serían varios.
-    fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }));
-    expect(screen.getByRole('button', { name: /Quitar Azúcar/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByText('Es un combo'));
+    fireEvent.click(await screen.findByRole('button', { name: /Agregar producto al combo/ }));
+    await screen.findByRole('button', { name: /^Chai Latte M/ });
+    expect(screen.queryByRole('button', { name: /^Combo Fiesta/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Chai Latte G/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Chai Latte M/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Una pieza más de Chai Latte M' }));
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, expect.objectContaining({
+      items: [], components: [{ productId: 8, quantity: 2 }],
+    })));
   });
 
-  it('un extra que es un producto del catálogo se liga a él', async () => {
-    montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'Es un producto' }));
+  it('un extra puede ser otro producto, combo incluido', async () => {
+    montar('option');
+    fireEvent.click(await screen.findByText('Es otro producto'));
     fireEvent.click(await screen.findByRole('button', { name: /Elegir producto/ }));
-    fireEvent.click(await screen.findByText('Coca-Cola 600 ml'));
-    // La hoja del selector se cierra con animación: hasta entonces lo de abajo queda oculto.
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, { items: [], linkedProductId: 7, components: [] }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Combo Fiesta/ }));
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ linkedProductId: 9 })));
   });
 
-  it('un extra puede ser un paquete del catálogo', async () => {
-    montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'Es un producto' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Elegir producto/ }));
-    expect(await screen.findByText('Paquete Fiesta')).toBeInTheDocument();
-  });
-
-  // ARMAR UN PAQUETE: productos con cuántas piezas lleva cada uno, con el mismo número de toques que
-  // un renglón de insumo.
-  it('un producto se arma como paquete con productos y piezas', async () => {
-    montar('product');
-    fireEvent.click(await screen.findByRole('button', { name: 'Es un paquete' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Agregar producto/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Elegir producto/ }));
-    // Ni él mismo ni otro paquete se ofrecen: un paquete no lleva paquetes.
-    expect(screen.queryByText('Paquete Fiesta')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByText('Crepa de Nutella'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Una pieza más de Crepa de Nutella' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('product', 55, {
-      items: [], linkedProductId: null, components: [{ productId: 8, quantity: 2 }],
-    }));
-  });
-
-  it('un paquete guardado se ve con sus productos', async () => {
-    api.composition.mockResolvedValue({
-      ...sinCapturar, status: 'confirmed', components: [{ productId: 8, productName: 'Crepa de Nutella', quantity: 2 }],
-    });
-    montar('product');
-    expect(await screen.findByRole('button', { name: 'Es un paquete' })).toHaveAttribute('data-active');
-    expect(screen.getByText('2')).toBeInTheDocument();
-  });
-
-  it('lo estimado se ve como estimado y se confirma sin editar', async () => {
-    api.composition.mockResolvedValue({
-      ...sinCapturar, status: 'estimated',
-      items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }],
-    });
-    montar();
-    expect(await screen.findByText(/Estimado/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+  it('«No gasta insumos» se guarda vacía y se confirma', async () => {
+    montar('option');
+    fireEvent.click(await screen.findByText('No gasta insumos'));
+    await guardar();
     await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 55));
+    expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], components: [], linkedProductId: null }));
   });
 
-  it('lo que no lleva nada se confirma así', async () => {
+  it('lo que vino de FUDO se confirma con «Está bien» sin tocar nada', async () => {
+    api.composition.mockResolvedValue({ ...vacia, status: 'estimated', items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }] });
     montar();
-    fireEvent.click(await screen.findByRole('button', { name: 'No lleva nada' }));
-    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 55));
+    expect(await screen.findByText(/vino de FUDO/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Está bien' }));
+    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('product', 55));
+    expect(api.saveComposition).not.toHaveBeenCalled();
   });
 
-  // UN INSUMO QUE SE PREPARA AQUÍ: lo que lleva y cuánto rinde, en la unidad del insumo.
-  it('un insumo se captura como preparado con su rendimiento', async () => {
-    api.composition.mockResolvedValue({ ...sinCapturar, yieldUnitCode: 'ml' });
+  it('un extra que se llama igual en otro grupo recibe la misma receta, si se deja marcado', async () => {
+    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé' }] });
+    montar('option');
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77] })));
+  });
+
+  it('si otra persona la cambió, lo dice y ofrece abrirla de nuevo', async () => {
+    api.saveComposition.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'otra persona cambió esta receta mientras la editabas', 'r1'));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    await guardar();
+    expect(await screen.findByText(/otra persona cambió esta receta/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir de nuevo' })).toBeInTheDocument();
+  });
+
+  it('sin conexión, lo escrito se queda y el botón dice «Reintentar»', async () => {
+    api.saveComposition.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    await guardar();
+    expect(await screen.findByText(/no hay conexión/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Cantidad de Vaso 16 oz')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledTimes(2));
+  });
+
+  it('cerrar con cambios pregunta antes de descartarlos', async () => {
+    const onClose = vi.fn();
+    montar('product', { onClose });
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByText('¿Descartar los cambios?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('al guardar avisa a la lista para abrir la siguiente', async () => {
+    const onSaved = vi.fn();
+    montar('product', { onSaved });
+    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+    await guardar();
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it('un preparado necesita cuánto rinde', async () => {
+    api.composition.mockResolvedValue({ ...vacia, yieldUnitCode: 'ml' });
     montar('ingredient');
-    fireEvent.click(await screen.findByRole('button', { name: 'Lo preparo aquí' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Elegir insumo/ }));
-    fireEvent.click(await screen.findByText('Azúcar'));
-    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '500' } });
-    fireEvent.change(screen.getByLabelText('Rinde'), { target: { value: '1000' } });
-    expect(screen.getByText('ml')).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('ingredient', 55, {
-      items: [{ ingredientId: 2, quantity: '500', unitId: 1 }], linkedProductId: null, components: [], yield: '1000',
-    }));
+    fireEvent.click(await screen.findByText('Es un preparado'));
+    await agregarInsumo('Azúcar');
+    fireEvent.change(await screen.findByLabelText('Cantidad de Azúcar'), { target: { value: '500' } });
+    expect(await screen.findByText('Falta cuánto rinde.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Cuánto rinde'), { target: { value: '1000' } });
+    await guardar();
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('ingredient', 55, expect.objectContaining({ yield: '1000' })));
   });
 
-  it('un insumo preparado sin rendimiento no se puede guardar', async () => {
-    api.composition.mockResolvedValue({ ...sinCapturar, yieldUnitCode: 'ml' });
-    montar('ingredient');
-    fireEvent.click(await screen.findByRole('button', { name: 'Lo preparo aquí' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Agregar insumo/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Elegir insumo/ }));
-    fireEvent.click(await screen.findByText('Azúcar'));
-    fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '500' } });
-    expect(await screen.findByRole('button', { name: 'Guardar' })).toBeDisabled();
+  it('lo que se descuenta solo no tiene nada que capturar', async () => {
+    api.composition.mockResolvedValue({ ...vacia, status: 'confirmed', editable: false, reason: 'own_stock' });
+    montar();
+    expect(await screen.findByText(/Se descuenta solo/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
   });
 
-  it('un insumo que se compra hecho no ofrece «No lleva nada»', async () => {
-    montar('ingredient');
-    expect(await screen.findByRole('button', { name: 'Lo compro hecho' })).toHaveAttribute('data-active');
-    expect(screen.queryByRole('button', { name: 'No lleva nada' })).not.toBeInTheDocument();
-  });
-
-  it('un paquete que deja elegir no se edita aquí y lo dice al abrir', async () => {
-    api.composition.mockResolvedValue({ ...sinCapturar, status: 'confirmed', editable: false, reason: 'package_choices' });
-    montar('product');
+  it('un combo que deja elegir no se reescribe', async () => {
+    api.composition.mockResolvedValue({ ...vacia, status: 'confirmed', editable: false, reason: 'package_choices' });
+    montar();
     expect(await screen.findByText(/deja elegir entre productos/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
-  });
-
-  it('un producto con existencias propias no se edita aquí y lo dice', async () => {
-    api.composition.mockResolvedValue({ ...sinCapturar, status: 'confirmed', editable: false, reason: 'own_stock' });
-    montar('product');
-    expect(await screen.findByText(/sus propias existencias/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
   });
 });

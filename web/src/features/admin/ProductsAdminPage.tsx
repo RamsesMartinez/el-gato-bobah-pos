@@ -5,7 +5,7 @@ import {
 } from '@chakra-ui/react';
 import {
   LuStar, LuChevronLeft, LuChevronRight, LuSettings2, LuPlus,
-  LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy, LuPackage,
+  LuListFilter, LuPencil, LuLayers, LuArchive, LuRotateCcw, LuCopy,
 } from 'react-icons/lu';
 import { SortHead } from '../../components/SortHead';
 import { toaster } from '../../components/ui/toaster';
@@ -47,7 +47,6 @@ export function ProductsAdminPage() {
   const [dsearch, setDsearch] = useState(''); // debounced: 1 request por pausa de tecleo, no por tecla
   const [status, setStatus] = useState<'act' | 'inact' | 'all'>('act');
   const [groupsFilter, setGroupsFilter] = useState<GroupsFilter>(''); // con/sin grupos
-  const [compositionFilter, setCompositionFilter] = useState<'' | 'none' | 'estimated'>(''); // qué lleva
   const [categoryId, setCategoryId] = useState(''); // '' = todas
   const [sort, setSort] = useState<ProductSort>('name');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
@@ -68,11 +67,10 @@ export function ProductsAdminPage() {
   const catOptions = useMemo(() => categoryOptions(catData?.items ?? []), [catData]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, compositionFilter, categoryId, sort, dir, page }],
+    queryKey: ['admin', 'products', { status, dsearch, groupsFilter, categoryId, sort, dir, page }],
     queryFn: () => adminApi.products({
       status, search: dsearch,
       groups: groupsFilter || undefined,
-      composition: compositionFilter || undefined,
       categoryId: categoryId ? Number(categoryId) : undefined,
       sort, dir,
       limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
@@ -152,25 +150,6 @@ export function ProductsAdminPage() {
                 <MenuRadioItem value="none">Sin grupos</MenuRadioItem>
               </MenuRadioItemGroup>
             </MenuItemGroup>
-          </MenuContent>
-        </MenuRoot>
-        {/* Menú propio y no un tercer grupo de «Filtros»: con los tres, a 44 px por renglón, ese
-            menú ya no cabía en los 600 px de la tableta y «Qué lleva» quedaba abajo del pliegue. */}
-        <MenuRoot>
-          <MenuTrigger asChild>
-            <Button size="sm" variant="outline" colorPalette={compositionFilter ? 'blue' : 'gray'} flexShrink={0}>
-              <LuPackage />
-              <Box as="span" display={{ base: 'none', sm: 'inline' }}>
-                {compositionFilter === 'none' ? 'Sin capturar' : compositionFilter === 'estimated' ? 'Por revisar' : 'Qué lleva'}
-              </Box>
-            </Button>
-          </MenuTrigger>
-          <MenuContent minW="220px">
-            <MenuRadioItemGroup value={compositionFilter} onValueChange={(e) => { setCompositionFilter(e.value as typeof compositionFilter); setPage(1); }}>
-              <MenuRadioItem value="">Todos</MenuRadioItem>
-              <MenuRadioItem value="none">Sin capturar</MenuRadioItem>
-              <MenuRadioItem value="estimated">Estimado, por revisar</MenuRadioItem>
-            </MenuRadioItemGroup>
           </MenuContent>
         </MenuRoot>
         <Button size="sm" colorPalette="green" flexShrink={0} onClick={newModal.onOpen} title="Nuevo producto">

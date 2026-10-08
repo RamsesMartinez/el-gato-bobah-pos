@@ -78,7 +78,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
                 <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
-                  <Text>Qué lleva</Text>
+                  <Text>Receta</Text>
                   <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
                 </Button>
                 <Field label="Categoría">

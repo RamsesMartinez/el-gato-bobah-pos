@@ -17,7 +17,8 @@ const back = vi.hoisted(() => ({
   })),
 }));
 const admin = vi.hoisted(() => ({
-  composition: vi.fn(() => Promise.resolve({ status: 'estimated', items: [], components: [], editable: true, yield: '1000', yieldUnitCode: 'ml' })),
+  composition: vi.fn(() => Promise.resolve({ status: 'estimated', items: [], components: [], editable: true, yield: '1000', yieldUnitCode: 'ml', stamp: '', sameName: [] })),
+  recipes: vi.fn(() => Promise.resolve({ items: [], total: 0, counts: { pending: 0, review: 0, done: 0 }, totals: {} })),
   products: vi.fn(() => Promise.resolve({ items: [], total: 0, counts: { act: 0, inact: 0 } })),
 }));
 vi.mock('../../api/backoffice', async (orig) => ({ ...(await orig<object>()), backofficeApi: back }));
@@ -42,16 +43,16 @@ describe('Almacén › Insumos', () => {
     montar();
     fireEvent.click(await screen.findByRole('tab', { name: 'Insumos' }));
     const jarabe = (await screen.findByText('Jarabe natural')).closest('tr')!;
-    expect(jarabe).toHaveTextContent('Se prepara aquí');
+    expect(jarabe).toHaveTextContent('Es un preparado');
     expect(jarabe).toHaveTextContent('por revisar');
-    expect((await screen.findByText('Azúcar')).closest('tr')!).toHaveTextContent('Se compra');
+    expect((await screen.findByText('Azúcar')).closest('tr')!).toHaveTextContent('Se compra hecho');
   });
 
-  it('«Qué lleva» abre la composición del insumo', async () => {
+  it('tocar el insumo abre su receta', async () => {
     montar();
     fireEvent.click(await screen.findByRole('tab', { name: 'Insumos' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Qué lleva Jarabe natural' }));
-    expect(await screen.findByText(/Qué lleva · Jarabe natural/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Receta de Jarabe natural' }));
+    expect(await screen.findByText('Para prepararlo se usa:')).toBeInTheDocument();
     expect(admin.composition).toHaveBeenCalledWith('ingredient', 2);
   });
 });

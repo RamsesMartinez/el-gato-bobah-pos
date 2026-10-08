@@ -58,7 +58,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
             </Field>
             {option && (
               <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
-                <Text>Qué lleva</Text>
+                <Text>Receta</Text>
                 <Text color="fg.muted" fontWeight="normal">{compositionLabel(option.compositionStatus)} ›</Text>
               </Button>
             )}

@@ -1,334 +1,503 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Box, Button, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Grid, HStack, IconButton, Input, Text, VStack } from '@chakra-ui/react';
 import { LuMinus, LuPlus, LuTrash2 } from 'react-icons/lu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger, DrawerHeader, DrawerBody, DrawerFooter, DrawerTitle,
 } from '../components/ui/drawer';
-import { Picker } from '../components/Picker';
+import {
+  DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle,
+} from '../components/ui/dialog';
 import { toaster } from '../components/ui/toaster';
-import { adminApi, type Composition, type CompositionKind } from '../api/admin';
-import { backofficeApi } from '../api/backoffice';
+import { adminApi, type Composition, type CompositionBody, type CompositionKind, type RecipeKind } from '../api/admin';
+import { ApiError } from '../api/client';
+import { backofficeApi, type Unit } from '../api/backoffice';
 import { useHoraDelNegocio } from '../hooks/useHoraDelNegocio';
 import { soloFecha } from '../utils/horaDelNegocio';
+import { normalize } from '../utils/format';
+import { SearchSheet } from './SearchSheet';
 
-// «Qué lleva»: lo que un producto o un extra descuenta del almacén cada vez que se vende. Es una
-// hoja propia y no una sección del diálogo, para no meter un diálogo dentro de otro.
-export function CompositionSheet({ kind, id, name, open, onClose }: {
+// La receta de un producto, un extra o un preparado: lo que sale del almacén cada vez que se vende o
+// se prepara. Las palabras de esta hoja son las que decidió el dueño (spec 028, «Vocabulario»).
+export function CompositionSheet({ kind, id, name, group, open, onClose, onSaved, pendingLeft }: {
   kind: CompositionKind;
   id: number;
   name: string;
+  group?: string;
   open: boolean;
   onClose: () => void;
+  // Lo llama la lista de recetas para abrir la siguiente pendiente sin regresar a la lista.
+  onSaved?: () => void;
+  pendingLeft?: number;
 }) {
   const comp = useQuery({
     queryKey: ['admin', 'composition', kind, id],
     queryFn: () => adminApi.composition(kind, id),
     enabled: open,
   });
-  // Una hoja que nace con `open` puesto no se monta con Chakra 3.37 (AGENTS.md §3, CobrarSheet): la
-  // pestaña de Insumos la monta y la abre en el mismo toque. Se abre en el render siguiente para que
-  // haya una transición de cerrado a abierto, venga como venga el `open`.
+  // Una hoja que nace con `open` puesto no se monta con Chakra 3.37 (AGENTS.md §3, CobrarSheet):
+  // Almacén › Insumos la monta y la abre en el mismo toque. Se abre en el render siguiente.
   const [visible, setVisible] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setVisible(open); }, [open]);
+  const [askDiscard, setAskDiscard] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const requestClose = () => (dirty ? setAskDiscard(true) : onClose());
+
   return (
-    <DrawerRoot open={visible} placement="bottom" size="md" onOpenChange={(e) => { if (!e.open) onClose(); }}>
-      <DrawerBackdrop />
-      <DrawerContent borderTopRadius="2xl" maxH="90dvh">
-        <DrawerCloseTrigger />
-        <DrawerHeader pb={2}>
-          <DrawerTitle>Qué lleva · {name}</DrawerTitle>
-        </DrawerHeader>
-        {comp.data
-          ? <Editor key={comp.dataUpdatedAt} kind={kind} id={id} data={comp.data} onClose={onClose} />
-          : <DrawerBody><Text color="fg.muted">{comp.isError ? 'No se pudo cargar.' : 'Cargando…'}</Text></DrawerBody>}
-      </DrawerContent>
-    </DrawerRoot>
+    <>
+      <DrawerRoot open={visible} placement="bottom" size="md" onOpenChange={(e) => { if (!e.open) requestClose(); }}>
+        <DrawerBackdrop />
+        <DrawerContent borderTopRadius="2xl" maxH="94dvh">
+          <DrawerCloseTrigger />
+          <DrawerHeader pb={1}>
+            <HStack align="baseline" gap={3} pr={10}>
+              <VStack align="start" gap={0} flex="1" minW={0}>
+                <DrawerTitle truncate maxW="100%">
+                  {kind === 'ingredient' ? name : `Receta de ${name}`}{group ? ` · ${group}` : ''}
+                </DrawerTitle>
+              </VStack>
+              {!!pendingLeft && <Text fontSize="sm" color="fg.muted" flexShrink={0}>Faltan {pendingLeft} en esta lista</Text>}
+            </HStack>
+          </DrawerHeader>
+          {comp.data
+            ? <Editor key={comp.dataUpdatedAt} kind={kind} id={id} name={name} data={comp.data}
+                onDirty={setDirty} onClose={onClose} onSaved={onSaved} requestClose={requestClose} />
+            : <DrawerBody><Text color="fg.muted">{comp.isError ? 'No se pudo abrir la receta.' : 'Cargando…'}</Text></DrawerBody>}
+        </DrawerContent>
+      </DrawerRoot>
+      <DialogRoot open={askDiscard} role="alertdialog" placement="center" onOpenChange={(e) => { if (!e.open) setAskDiscard(false); }}>
+        <DialogBackdrop />
+        <DialogContent>
+          <DialogHeader><DialogTitle>¿Descartar los cambios?</DialogTitle></DialogHeader>
+          <DialogBody><Text>Lo que cambiaste en la receta de {name} no se guardará.</Text></DialogBody>
+          <DialogFooter>
+            <Button variant="outline" minH="44px" onClick={() => setAskDiscard(false)}>Seguir editando</Button>
+            <Button colorPalette="red" minH="44px" onClick={() => { setAskDiscard(false); setDirty(false); onClose(); }}>Descartar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+    </>
   );
 }
 
+type Mode = 'items' | 'package' | 'product' | 'nothing' | 'bought';
+
 interface Row {
-  ingredientId: number | null;
-  quantity: string;
-  unitId: number | null;
+  ingredientId: number;
+  name: string;
+  text: string; // lo que se tecleó, con coma o punto
+  unitId: number;
 }
 
 interface Part {
-  productId: number | null;
+  productId: number;
   quantity: number;
 }
 
-type Mode = 'items' | 'product' | 'package' | 'bought';
+const recipeKindOf: Record<CompositionKind, RecipeKind> = { product: 'product', option: 'extra', ingredient: 'prep' };
 
-// Lo que hace cada modo, en una línea, para quien captura.
-const AYUDA: Record<Mode, string> = {
-  bought: 'Cada venta descuenta este insumo de sus existencias, tal cual.',
-  items: 'Cada venta descuenta del almacén estos insumos.',
-  product: 'Cada venta descuenta lo que lleva ese producto, como si se vendiera solo.',
-  package: 'Cada venta descuenta lo que lleva cada producto, por las piezas indicadas.',
-};
+// La unidad base y la grande de cada tipo: lo que se ofrece en cada renglón.
+const UNIT_CHOICES: Record<string, string[]> = { masa: ['g', 'kg'], volumen: ['ml', 'l'], pieza: ['pieza'] };
+const unitLabel = (code: string) => (code === 'l' ? 'L' : code === 'pieza' ? 'pza' : code);
 
-type Opt = { value: string; label: string };
+// toNumber acepta «0,5» y «0.5»; vacío o inválido es NaN.
+function toNumber(text: string): number {
+  const t = text.trim().replace(',', '.');
+  return t === '' ? NaN : Number(t);
+}
+function fmt(n: number): string {
+  return String(Number(n.toFixed(4)));
+}
 
-function Editor({ kind, id, data, onClose }: { kind: CompositionKind; id: number; data: Composition; onClose: () => void }) {
+function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose }: {
+  kind: CompositionKind; id: number; name: string; data: Composition;
+  onDirty: (d: boolean) => void; onClose: () => void; onSaved?: () => void; requestClose: () => void;
+}) {
   const qc = useQueryClient();
+  const { zona } = useHoraDelNegocio();
+  const isIng = kind === 'ingredient';
   const components = useMemo(() => data.components ?? [], [data.components]);
-  const [mode, setMode] = useState<Mode>(
-    kind === 'ingredient'
-      ? (data.yield ? 'items' : 'bought')
-      : data.linkedProductId ? 'product' : components.length > 0 ? 'package' : 'items',
-  );
-  const [yieldQty, setYieldQty] = useState(data.yield ?? '');
+  const [mode, setMode] = useState<Mode>(() => {
+    if (isIng) return data.yield ? 'items' : 'bought';
+    if (data.linkedProductId) return 'product';
+    if (components.length) return 'package';
+    if (data.status === 'confirmed' && !(data.items ?? []).length) return 'nothing';
+    return 'items';
+  });
   const [rows, setRows] = useState<Row[]>(() => (data.items ?? []).map((it) => ({
-    ingredientId: it.ingredientId, quantity: it.quantity, unitId: it.unitId,
+    ingredientId: it.ingredientId, name: it.ingredientName, text: fmt(Number(it.quantity)), unitId: it.unitId,
   })));
   const [parts, setParts] = useState<Part[]>(() => components.map((c) => ({ productId: c.productId, quantity: c.quantity })));
   const [linked, setLinked] = useState<number | null>(data.linkedProductId ?? null);
-  const [dirty, setDirty] = useState(false);
-  // Lo último que se quitó, para deshacerlo con un toque: quitar es un toque y recapturar son varios.
-  const [removed, setRemoved] = useState<{ undo: () => void; name: string } | null>(null);
+  const [yieldText, setYieldText] = useState(data.yield ? fmt(Number(data.yield)) : '');
+  const [dirty, setDirtyState] = useState(false);
+  const [removed, setRemoved] = useState<{ undo: () => void; label: string } | null>(null);
+  const [applyTwins, setApplyTwins] = useState(true);
+  const [picker, setPicker] = useState<null | 'ing' | 'part' | 'link' | 'copy'>(null);
+  const [pickerError, setPickerError] = useState('');
+  const [failure, setFailure] = useState<null | { conflict: boolean; message: string }>(null);
+  const [typing, setTyping] = useState(false);
+
+  const edit = (fn: () => void) => { fn(); setDirtyState(true); onDirty(true); setFailure(null); };
 
   const ingredients = useQuery({ queryKey: ['ingredients', 'all'], queryFn: () => backofficeApi.ingredients(), enabled: data.editable });
   const units = useQuery({ queryKey: ['units'], queryFn: () => backofficeApi.units(), enabled: data.editable });
-  const products = useQuery({
-    queryKey: ['admin', 'products', 'linkable'],
-    queryFn: () => adminApi.products({ status: 'act', limit: 0 }),
-    enabled: data.editable,
+  const products = useQuery({ queryKey: ['admin', 'products', 'linkable'], queryFn: () => adminApi.products({ status: 'act', limit: 0 }), enabled: data.editable && !isIng });
+  const recipeKind = recipeKindOf[kind];
+  const sources = useQuery({
+    queryKey: ['admin', 'recipes', 'copy-sources', recipeKind],
+    queryFn: async () => {
+      const [a, b] = await Promise.all([
+        adminApi.recipes({ kind: recipeKind, status: 'done', sort: 'az', limit: 100 }),
+        adminApi.recipes({ kind: recipeKind, status: 'review', sort: 'az', limit: 100 }),
+      ]);
+      return [...(a.items ?? []), ...(b.items ?? [])].filter((r) => r.mode === 'items' && r.id !== id);
+    },
+    enabled: data.editable && mode === 'items' && rows.length === 0,
   });
 
+  const unitById = useMemo(() => new Map((units.data?.items ?? []).map((u) => [u.id, u])), [units.data]);
   const ingById = useMemo(() => new Map((ingredients.data?.items ?? []).map((i) => [i.id, i])), [ingredients.data]);
-  // Los que ya trae la composición, aunque estén inactivos: si no, el renglón se vería vacío.
-  const ingOptions = useMemo(() => {
-    // Un insumo preparado no se lleva a sí mismo.
-    const opts: Opt[] = (ingredients.data?.items ?? [])
-      .filter((i) => kind !== 'ingredient' || i.id !== id)
-      .map((i) => ({ value: String(i.id), label: i.name }));
-    for (const it of data.items ?? []) {
-      if (!ingById.has(it.ingredientId)) opts.push({ value: String(it.ingredientId), label: it.ingredientName });
-    }
-    return opts;
-  }, [ingredients.data, ingById, data.items, kind, id]);
   const productName = useMemo(() => {
-    const m = new Map((products.data?.items ?? []).map((p) => [p.id, p.name]));
+    const m = new Map<number, string>((products.data?.items ?? []).map((p) => [p.id, p.name]));
     for (const c of components) if (!m.has(c.productId)) m.set(c.productId, c.productName);
     if (data.linkedProductId && data.linkedProductName) m.set(data.linkedProductId, data.linkedProductName);
     return m;
   }, [products.data, components, data.linkedProductId, data.linkedProductName]);
-  // Un extra se liga a cualquier producto, paquete incluido; un paquete solo lleva productos sueltos
-  // y nunca a sí mismo.
-  const linkOptions: Opt[] = (products.data?.items ?? []).map((p) => ({ value: String(p.id), label: p.name }));
-  const partOptions: Opt[] = (products.data?.items ?? [])
-    .filter((p) => p.type !== 'combo' && p.id !== id)
-    .map((p) => ({ value: String(p.id), label: p.name }));
-  const withCurrent = (opts: Opt[], current: number | null): Opt[] =>
-    current && !opts.some((o) => o.value === String(current))
-      ? [...opts, { value: String(current), label: productName.get(current) ?? '' }]
-      : opts;
 
-  const edit = (fn: () => void) => { fn(); setDirty(true); };
-  const done = (c: Composition, title: string) => {
-    qc.setQueryData(['admin', 'composition', kind, id], c);
-    qc.invalidateQueries({ queryKey: ['admin'] });
-    qc.invalidateQueries({ queryKey: ['ingredients'] });
-    toaster.create({ title, type: 'success' });
-    onClose();
+  const kindOfRow = (r: Row) => ingById.get(r.ingredientId)?.baseUnitKind ?? unitById.get(r.unitId)?.kind ?? 'pieza';
+  const unitChoices = (r: Row): Unit[] => {
+    const k = kindOfRow(r);
+    const codes = UNIT_CHOICES[k] ?? [];
+    return (units.data?.items ?? []).filter((u) => u.kind === k && (codes.includes(u.code) || u.id === r.unitId))
+      .sort((a, b) => Number(a.toBase) - Number(b.toBase));
   };
-  const fail = (e: unknown) => toaster.create({ title: 'No se guardó', description: String(e), type: 'error' });
+
+  const addIngredient = (ingId: number): boolean => {
+    if (rows.some((r) => r.ingredientId === ingId)) {
+      setPickerError(`${ingById.get(ingId)?.name ?? 'Ese insumo'} ya está en la receta.`);
+      return false;
+    }
+    const ing = ingById.get(ingId);
+    if (!ing) return false;
+    edit(() => setRows((rs) => [...rs, { ingredientId: ing.id, name: ing.name, text: ing.baseUnitKind === 'pieza' ? '1' : '', unitId: ing.baseUnitId }]));
+    return true;
+  };
+  const createIngredient = useMutation({
+    mutationFn: (b: { name: string; baseUnitId: number }) => backofficeApi.createIngredient(b),
+    onSuccess: (ing) => {
+      qc.setQueryData(['ingredients', 'all'], (old: { items: typeof ing[] } | undefined) => ({ items: [...(old?.items ?? []), ing] }));
+      edit(() => setRows((rs) => [...rs, { ingredientId: ing.id, name: ing.name, text: ing.baseUnitKind === 'pieza' ? '1' : '', unitId: ing.baseUnitId }]));
+      setPicker(null);
+      toaster.create({ title: `Insumo creado: ${ing.name}`, type: 'success' });
+    },
+    onError: (e) => setPickerError(String(e instanceof Error ? e.message : e)),
+  });
+
+  const copyFrom = async (srcId: number) => {
+    const src = await adminApi.composition(kind, srcId);
+    edit(() => {
+      setMode('items');
+      setRows((src.items ?? []).map((it) => ({ ingredientId: it.ingredientId, name: it.ingredientName, text: fmt(Number(it.quantity)), unitId: it.unitId })));
+    });
+    setPicker(null);
+  };
+
+  const rowValid = (r: Row) => toNumber(r.text) > 0;
+  const yieldNum = toNumber(yieldText);
+  const valid = mode === 'items'
+    ? rows.length > 0 && rows.every(rowValid) && (!isIng || yieldNum > 0)
+    : mode === 'package' ? parts.length > 0
+      : mode === 'product' ? linked !== null
+        : true;
+  const confirmOnly = data.status === 'estimated' && !dirty;
+  const twins = kind === 'option' ? (data.sameName ?? []) : [];
+  const offerTwins = twins.length > 0 && (mode === 'items' || mode === 'product') && !confirmOnly;
+
+  const body = (): CompositionBody => ({
+    items: mode === 'items' ? rows.map((r) => ({ ingredientId: r.ingredientId, quantity: fmt(toNumber(r.text)), unitId: r.unitId })) : [],
+    linkedProductId: mode === 'product' ? linked : null,
+    components: mode === 'package' ? parts : [],
+    ...(isIng ? { yield: mode === 'items' ? fmt(yieldNum) : null } : {}),
+    ...(offerTwins && applyTwins ? { alsoOptionIds: twins.map((t) => t.id) } : {}),
+    basedOn: data.stamp ?? '',
+  });
 
   const save = useMutation({
-    mutationFn: () => adminApi.saveComposition(kind, id, {
-      items: mode === 'items'
-        ? rows.map((r) => ({ ingredientId: r.ingredientId!, quantity: r.quantity, unitId: r.unitId! }))
-        : [],
-      linkedProductId: mode === 'product' ? linked : null,
-      components: mode === 'package' ? parts.map((p) => ({ productId: p.productId!, quantity: p.quantity })) : [],
-      ...(kind === 'ingredient' ? { yield: mode === 'items' ? yieldQty : null } : {}),
-    }),
-    onSuccess: (c) => done(c, 'Guardado'),
-    onError: fail,
-  });
-  const confirm = useMutation({
-    mutationFn: () => adminApi.confirmComposition(kind, id),
-    onSuccess: (c) => done(c, 'Confirmado'),
-    onError: fail,
+    mutationFn: async () => {
+      if (confirmOnly) return adminApi.confirmComposition(kind, id);
+      if (mode === 'nothing') {
+        // «No gasta insumos» es una receta vacía confirmada por una persona.
+        await adminApi.saveComposition(kind, id, { ...body(), items: [], components: [], linkedProductId: null });
+        return adminApi.confirmComposition(kind, id);
+      }
+      return adminApi.saveComposition(kind, id, body());
+    },
+    onSuccess: (c) => {
+      qc.setQueryData(['admin', 'composition', kind, id], c);
+      qc.invalidateQueries({ queryKey: ['admin'] });
+      qc.invalidateQueries({ queryKey: ['ingredients'] });
+      const extra = offerTwins && applyTwins ? ` (y ${twins.length} con el mismo nombre)` : '';
+      toaster.create({ title: `${confirmOnly ? 'Confirmada' : 'Lista'}: ${name}${extra}`, type: 'success' });
+      onDirty(false);
+      if (onSaved) onSaved(); else onClose();
+    },
+    onError: (e) => {
+      if (e instanceof ApiError) {
+        setFailure({ conflict: e.status === 409, message: e.message });
+      } else {
+        setFailure({ conflict: false, message: 'No se guardó: no hay conexión. Lo que escribiste sigue aquí.' });
+      }
+    },
   });
 
   if (!data.editable) {
     return (
       <>
         <DrawerBody>
-          <Text>
-            {data.reason === 'package_choices'
-              ? 'Este paquete deja elegir entre productos o tiene un hueco sin producto. Cada venta descuenta lo que lleva por omisión; aquí no se cambia, para no perder esas opciones.'
-              : 'Este producto descuenta sus propias existencias: cada venta baja una pieza de él.'}
-          </Text>
+          <Box p={4} borderRadius="xl" bg="blue.50" borderWidth="1px" borderColor="blue.200">
+            <Text>
+              {data.reason === 'package_choices'
+                ? 'Este combo deja elegir entre productos o tiene un hueco sin producto. Cada venta descuenta lo que lleva por omisión; aquí no se cambia, para no perder esas opciones.'
+                : `Se descuenta solo: cada venta baja 1 pieza de ${name}. No necesita receta.`}
+            </Text>
+          </Box>
         </DrawerBody>
-        <DrawerFooter><Button minH="44px" onClick={onClose}>Cerrar</Button></DrawerFooter>
+        <DrawerFooter><Button minH="48px" onClick={onClose}>Entendido</Button></DrawerFooter>
       </>
     );
   }
 
-  const valid = mode === 'product'
-    ? linked !== null
-    : mode === 'package'
-      ? parts.every((p) => p.productId !== null)
-      : mode === 'bought'
-        ? true
-        : rows.every((r) => r.ingredientId !== null && r.unitId !== null && Number(r.quantity) > 0)
-          && (kind !== 'ingredient' || (rows.length > 0 && Number(yieldQty) > 0));
-  // «No lleva nada» es para un extra o un producto; un insumo que se compra hecho ya dice eso.
-  const empty = kind !== 'ingredient' && mode === 'items' && rows.length === 0;
-  const modes: { k: Mode; label: string }[] = kind === 'option'
-    ? [{ k: 'items', label: 'Lleva insumos' }, { k: 'product', label: 'Es un producto' }]
-    : kind === 'ingredient'
-      ? [{ k: 'bought', label: 'Lo compro hecho' }, { k: 'items', label: 'Lo preparo aquí' }]
-      : [{ k: 'items', label: 'Lleva insumos' }, { k: 'package', label: 'Es un paquete' }];
+  const modes: { k: Mode; title: string; example: string }[] = isIng
+    ? [{ k: 'items', title: 'Es un preparado', example: 'Se hace aquí con otros insumos' }, { k: 'bought', title: 'Se compra hecho', example: 'Baja de sus existencias' }]
+    : kind === 'option'
+      ? [{ k: 'items', title: 'Lleva insumos', example: 'Ej. 45 g de tapioca' }, { k: 'product', title: 'Es otro producto', example: 'Ej. la Coca del combo' }, { k: 'nothing', title: 'No gasta insumos', example: 'Ej. «Sin hielo»' }]
+      : [{ k: 'items', title: 'Lleva insumos', example: 'Ej. leche, café, vaso' }, { k: 'package', title: 'Es un combo', example: 'Productos con sus piezas' }, { k: 'nothing', title: 'No gasta insumos', example: 'Nada sale del almacén' }];
 
-  const remove = (label: string, undo: () => void, drop: () => void) => edit(() => {
-    setRemoved({ name: label, undo });
-    drop();
-  });
-  // Separado de lo último que se toca en cada renglón, y con «Deshacer» abajo.
-  const removeButton = (label: string, onClick: () => void) => (
-    <IconButton aria-label={`Quitar ${label}`} variant="ghost" colorPalette="red" minH="44px" minW="44px" ml={3} onClick={onClick}>
-      <LuTrash2 />
-    </IconButton>
-  );
+  const mostUsed = (ingredients.data?.items ?? [])
+    .filter((i) => (i.recipeUses ?? 0) > 0 && !rows.some((r) => r.ingredientId === i.id) && !(isIng && i.id === id))
+    .sort((a, b) => (b.recipeUses ?? 0) - (a.recipeUses ?? 0)).slice(0, 3);
+  const firstWord = normalize(name.split(' ')[0] ?? '');
+  const copyChips = (sources.data ?? []).slice().sort((a, b) => Number(normalize(b.name).startsWith(firstWord)) - Number(normalize(a.name).startsWith(firstWord))).slice(0, 2);
+
+  const preview = mode === 'nothing' ? 'nada.'
+    : mode === 'bought' ? 'baja de sus existencias.'
+      : mode === 'product' ? (linked ? `1 ${productName.get(linked) ?? ''}` : '— todavía nada —')
+        : mode === 'package' ? (parts.length ? parts.map((p) => `${p.quantity} ${productName.get(p.productId) ?? ''}`).join(' + ') : '— todavía nada —')
+          : rows.filter(rowValid).map((r) => `${r.text.replace(',', '.')} ${unitLabel(unitById.get(r.unitId)?.code ?? '')} ${r.name}`).join(' · ') || '— todavía nada —';
+  const hint = confirmOnly || valid ? ''
+    : mode === 'items' ? (rows.length === 0 ? 'Agrega al menos un insumo.' : !rows.every(rowValid) ? 'Escribe la cantidad de cada insumo.' : 'Falta cuánto rinde.')
+      : mode === 'package' ? 'Agrega al menos un producto.' : 'Elige el producto.';
+  const remove = (label: string, undo: () => void, drop: () => void) => edit(() => { setRemoved({ label, undo }); drop(); });
 
   return (
     <>
-      <DrawerBody>
+      <DrawerBody pt={0}>
         <VStack align="stretch" gap={3}>
-          <StatusLine data={data} />
-          <HStack gap={2}>
-            {modes.map((m) => (
-              <Button key={m.k} flex="1" minH="44px" variant={mode === m.k ? 'solid' : 'outline'}
-                data-active={mode === m.k ? '' : undefined}
-                onClick={() => edit(() => { setMode(m.k); setRemoved(null); })}>{m.label}</Button>
-            ))}
-          </HStack>
           <Text fontSize="sm" color="fg.muted">
-            {kind === 'ingredient' && mode === 'items'
-              ? 'Cada venta descuenta los insumos que lo componen, en proporción a lo que rinde.'
-              : AYUDA[mode]}
+            {isIng ? (mode === 'items' ? 'Para prepararlo se usa:' : 'Insumo') : 'Al vender 1, del almacén sale:'}
           </Text>
-          {kind === 'ingredient' && mode === 'items' && (
-            <HStack gap={2}>
-              <Text>Con esto salen</Text>
-              <Input aria-label="Rinde" type="number" inputMode="decimal" min={0} w="120px" minH="44px"
-                value={yieldQty} onChange={(e) => edit(() => setYieldQty(e.target.value))} />
-              <Text>{data.yieldUnitCode}</Text>
+          {data.status === 'estimated' && (
+            <HStack px={3} py={2} borderRadius="lg" bg="orange.50" borderWidth="1px" borderColor="orange.200" fontSize="sm">
+              <Text>Esta receta vino de FUDO. Revísala: si está bien, toca <b>Está bien</b>.</Text>
             </HStack>
+          )}
+          {data.status === 'confirmed' && data.confirmedBy && (
+            <Text fontSize="sm" color="fg.muted">
+              La guardó {data.confirmedBy}{data.confirmedAt ? ` el ${soloFecha(data.confirmedAt, zona)}` : ''}.
+            </Text>
+          )}
+          {failure && (
+            <HStack role="alert" px={3} py={2} borderRadius="lg" bg="red.50" borderWidth="1px" borderColor="red.200" color="red.800" fontSize="sm">
+              <Text flex="1">{failure.message}</Text>
+              {failure.conflict && (
+                <Button size="sm" minH="44px" variant="outline" onClick={() => { onDirty(false); qc.invalidateQueries({ queryKey: ['admin', 'composition', kind, id] }); }}>
+                  Abrir de nuevo
+                </Button>
+              )}
+            </HStack>
+          )}
+
+          <Grid templateColumns={`repeat(${modes.length}, minmax(0, 1fr))`} gap={2}>
+            {modes.map((m) => (
+              <Button key={m.k} h="auto" minH="64px" py={2} px={3} variant="outline" justifyContent="start" textAlign="left"
+                data-active={mode === m.k ? '' : undefined} aria-pressed={mode === m.k}
+                borderWidth={mode === m.k ? '2px' : '1px'} borderColor={mode === m.k ? 'red.600' : 'border'}
+                bg={mode === m.k ? 'red.50' : undefined}
+                onClick={() => edit(() => { setMode(m.k); setRemoved(null); })}>
+                <VStack align="start" gap={0}>
+                  <Text fontWeight="600">{m.title}</Text>
+                  <Text fontSize="xs" color="fg.muted" fontWeight="normal" whiteSpace="normal">{m.example}</Text>
+                </VStack>
+              </Button>
+            ))}
+          </Grid>
+
+          {mode === 'items' && (
+            <VStack align="stretch" gap={2}>
+              {rows.length === 0 && (copyChips.length > 0 || (sources.data ?? []).length > 0) && (
+                <HStack wrap="wrap" gap={2}>
+                  <Text fontSize="sm" color="fg.muted">Copiar la receta de</Text>
+                  {copyChips.map((c) => (
+                    <Button key={c.id} size="sm" minH="44px" variant="subtle" colorPalette="blue" borderRadius="full" onClick={() => copyFrom(c.id)}>{c.name}</Button>
+                  ))}
+                  <Button size="sm" minH="44px" variant="outline" colorPalette="blue" borderRadius="full" onClick={() => setPicker('copy')}>Buscar otra…</Button>
+                </HStack>
+              )}
+              {rows.map((r, i) => {
+                const bad = dirty && !rowValid(r);
+                return (
+                  <HStack key={`${r.ingredientId}-${i}`} gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderRadius="lg"
+                    borderColor={bad ? 'red.300' : 'border.muted'} bg={bad ? 'red.50' : undefined}>
+                    <Text flex="1" minW={0} truncate>{r.name}</Text>
+                    <Input aria-label={`Cantidad de ${r.name}`} inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600"
+                      borderColor={bad ? 'red.500' : undefined} value={r.text}
+                      onFocus={(e) => { setTyping(true); e.currentTarget.scrollIntoView({ block: 'center' }); }} onBlur={() => setTyping(false)}
+                      onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, text: v } : x)))); }} />
+                    <HStack gap={0} borderWidth="1px" borderRadius="md" overflow="hidden">
+                      {unitChoices(r).map((u) => (
+                        <Button key={u.id} size="sm" minH="44px" minW="46px" borderRadius={0} variant={u.id === r.unitId ? 'solid' : 'ghost'}
+                          aria-pressed={u.id === r.unitId}
+                          onClick={() => edit(() => setRows((rs) => rs.map((x, j) => {
+                            if (j !== i || x.unitId === u.id) return x;
+                            // Cambiar de unidad convierte el número: 200 ml son 0.2 L, no 200 L.
+                            const from = unitById.get(x.unitId); const n = toNumber(x.text);
+                            const text = from && n > 0 ? fmt((n * Number(from.toBase)) / Number(u.toBase)) : x.text;
+                            return { ...x, unitId: u.id, text };
+                          })))}>
+                          {unitLabel(u.code)}
+                        </Button>
+                      ))}
+                    </HStack>
+                    <IconButton aria-label={`Quitar ${r.name}`} variant="ghost" colorPalette="red" minH="44px" minW="44px" ml={3}
+                      onClick={() => remove(r.name, () => setRows((rs) => [...rs.slice(0, i), r, ...rs.slice(i)]), () => setRows((rs) => rs.filter((_, j) => j !== i)))}>
+                      <LuTrash2 />
+                    </IconButton>
+                  </HStack>
+                );
+              })}
+              {isIng && (
+                <HStack gap={2} pl={3} pr={1} py={1} borderRadius="lg" bg="blue.50" borderWidth="1px" borderColor="blue.200">
+                  <Text flex="1">Con esto salen</Text>
+                  <Input aria-label="Cuánto rinde" inputMode="decimal" w="96px" minH="44px" textAlign="end" fontWeight="600" bg="white"
+                    borderColor={dirty && !(yieldNum > 0) ? 'red.500' : undefined} value={yieldText}
+                    onFocus={(e) => { setTyping(true); e.currentTarget.scrollIntoView({ block: 'center' }); }} onBlur={() => setTyping(false)}
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9.,]/g, ''); edit(() => setYieldText(v)); }} />
+                  <Text w="58px">{unitLabel(data.yieldUnitCode ?? '')}</Text>
+                </HStack>
+              )}
+              <HStack wrap="wrap" gap={2}>
+                <Button minH="44px" variant="outline" onClick={() => { setPickerError(''); setPicker('ing'); }}><LuPlus /> Agregar insumo</Button>
+                {mostUsed.length > 0 && <Text fontSize="sm" color="fg.muted">Más usados:</Text>}
+                {mostUsed.map((i) => (
+                  <Button key={i.id} size="sm" minH="44px" variant="outline" borderStyle="dashed" borderRadius="full" onClick={() => addIngredient(i.id)}>+ {i.name}</Button>
+                ))}
+              </HStack>
+            </VStack>
+          )}
+
+          {mode === 'package' && (
+            <VStack align="stretch" gap={2}>
+              {parts.map((p, i) => {
+                const pname = productName.get(p.productId) ?? '';
+                return (
+                  <HStack key={`${p.productId}-${i}`} gap={2} pl={3} pr={1} py={1} borderWidth="1px" borderRadius="lg" borderColor="border.muted">
+                    <Text flex="1" minW={0} truncate>{pname}</Text>
+                    {/* Piezas con − y +: en un combo casi siempre son 1 o 2, y teclear abre el teclado. */}
+                    <IconButton aria-label={`Una pieza menos de ${pname}`} variant="outline" minH="44px" minW="44px" disabled={p.quantity <= 1}
+                      onClick={() => edit(() => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, quantity: x.quantity - 1 } : x))))}><LuMinus /></IconButton>
+                    <Text w="72px" textAlign="center" fontWeight="600">{p.quantity} {p.quantity === 1 ? 'pieza' : 'piezas'}</Text>
+                    <IconButton aria-label={`Una pieza más de ${pname}`} variant="outline" minH="44px" minW="44px" disabled={p.quantity >= 99}
+                      onClick={() => edit(() => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x))))}><LuPlus /></IconButton>
+                    <IconButton aria-label={`Quitar ${pname}`} variant="ghost" colorPalette="red" minH="44px" minW="44px" ml={3}
+                      onClick={() => remove(pname, () => setParts((ps) => [...ps.slice(0, i), p, ...ps.slice(i)]), () => setParts((ps) => ps.filter((_, j) => j !== i)))}>
+                      <LuTrash2 />
+                    </IconButton>
+                  </HStack>
+                );
+              })}
+              <Box><Button minH="44px" variant="outline" onClick={() => setPicker('part')}><LuPlus /> Agregar producto al combo</Button></Box>
+            </VStack>
           )}
 
           {mode === 'product' && (
-            <Picker title="Producto" placeholder="Elegir producto"
-              value={linked ? String(linked) : ''} options={withCurrent(linkOptions, linked)}
-              onChange={(v) => edit(() => setLinked(Number(v)))} />
+            <HStack gap={3}>
+              <Text color="fg.muted">Es:</Text>
+              <Button minH="48px" variant="outline" borderWidth={linked ? '2px' : '1px'} borderStyle={linked ? 'solid' : 'dashed'}
+                onClick={() => setPicker('link')}>{linked ? productName.get(linked) : 'Elegir producto'} ▾</Button>
+            </HStack>
           )}
-
-          {mode === 'items' && rows.map((r, i) => {
-            const ing = r.ingredientId ? ingById.get(r.ingredientId) : undefined;
-            const ingName = ing?.name ?? (data.items ?? []).find((x) => x.ingredientId === r.ingredientId)?.ingredientName ?? '';
-            const unitOpts = (units.data?.items ?? [])
-              .filter((u) => !ing || u.kind === ing.baseUnitKind)
-              .map((u) => ({ value: String(u.id), label: u.code }));
-            const set = (patch: Partial<Row>) => edit(() => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, ...patch } : x))));
-            return (
-              <HStack key={i} gap={2} align="center">
-                <Box flex="1" minW={0}>
-                  <Picker title="Insumo" placeholder="Elegir insumo" value={r.ingredientId ? String(r.ingredientId) : ''}
-                    options={ingOptions}
-                    onChange={(v) => {
-                      const picked = ingById.get(Number(v));
-                      set({ ingredientId: Number(v), unitId: picked?.baseUnitId ?? r.unitId });
-                    }} />
-                </Box>
-                <Input aria-label="Cantidad" type="number" inputMode="decimal" min={0} w="96px" minH="44px"
-                  value={r.quantity} onChange={(e) => set({ quantity: e.target.value })} />
-                <Box w="88px">
-                  <Picker title="Unidad" placeholder="Unidad" value={r.unitId ? String(r.unitId) : ''}
-                    options={unitOpts} onChange={(v) => set({ unitId: Number(v) })} />
-                </Box>
-                {removeButton(ingName, () => remove(ingName || 'un renglón',
-                  () => setRows((rs) => [...rs.slice(0, i), r, ...rs.slice(i)]),
-                  () => setRows((rs) => rs.filter((_, j) => j !== i))))}
-              </HStack>
-            );
-          })}
-
-          {mode === 'package' && parts.map((p, i) => {
-            const name = p.productId ? productName.get(p.productId) ?? '' : '';
-            const set = (patch: Partial<Part>) => edit(() => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, ...patch } : x))));
-            return (
-              <HStack key={i} gap={2} align="center">
-                <Box flex="1" minW={0}>
-                  <Picker title="Producto" placeholder="Elegir producto" value={p.productId ? String(p.productId) : ''}
-                    options={withCurrent(partOptions, p.productId)} onChange={(v) => set({ productId: Number(v) })} />
-                </Box>
-                {/* Piezas con − y +: en un paquete casi siempre son 1 o 2, y teclear abre el teclado
-                    y tapa media tableta. */}
-                <IconButton aria-label={`Una pieza menos de ${name}`} variant="outline" minH="44px" minW="44px"
-                  disabled={p.quantity <= 1} onClick={() => set({ quantity: p.quantity - 1 })}><LuMinus /></IconButton>
-                <Text w="32px" textAlign="center" fontWeight="600">{p.quantity}</Text>
-                <IconButton aria-label={`Una pieza más de ${name}`} variant="outline" minH="44px" minW="44px"
-                  disabled={p.quantity >= 99} onClick={() => set({ quantity: p.quantity + 1 })}><LuPlus /></IconButton>
-                {removeButton(name, () => remove(name || 'un producto',
-                  () => setParts((ps) => [...ps.slice(0, i), p, ...ps.slice(i)]),
-                  () => setParts((ps) => ps.filter((_, j) => j !== i))))}
-              </HStack>
-            );
-          })}
+          {mode === 'nothing' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Al venderlo no sale nada del almacén.</Box>}
+          {mode === 'bought' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Se compra hecho: cada vez que una receta lo usa, baja de sus existencias.</Box>}
 
           {removed && (
             <HStack justify="space-between" bg="bg.muted" borderRadius="md" px={3}>
-              <Text fontSize="sm">Quitaste {removed.name}</Text>
+              <Text fontSize="sm">Quitaste {removed.label}</Text>
               <Button variant="ghost" minH="44px" onClick={() => { removed.undo(); setRemoved(null); }}>Deshacer</Button>
             </HStack>
           )}
-          {mode === 'items' && (
-            <Button variant="outline" minH="44px" alignSelf="start"
-              onClick={() => edit(() => setRows((rs) => [...rs, { ingredientId: null, quantity: '', unitId: null }]))}>
-              <LuPlus /> Agregar insumo
-            </Button>
-          )}
-          {mode === 'package' && (
-            <Button variant="outline" minH="44px" alignSelf="start"
-              onClick={() => edit(() => setParts((ps) => [...ps, { productId: null, quantity: 1 }]))}>
-              <LuPlus /> Agregar producto
-            </Button>
-          )}
         </VStack>
       </DrawerBody>
+
+      {/* La vista previa se esconde mientras se teclea: el teclado de la tableta ocupa media pantalla. */}
+      {!typing && (
+        <HStack mx={6} px={3} py={2} borderRadius="lg" bg="green.50" borderWidth="1px" borderColor="green.200" fontSize="sm" align="baseline">
+          <Text fontWeight="700" flexShrink={0}>{isIng && mode === 'items' ? `Para ${yieldText || '…'} ${unitLabel(data.yieldUnitCode ?? '')}:` : mode === 'bought' ? 'Cada uso:' : 'Al vender 1:'}</Text>
+          <Text truncate>{preview}</Text>
+        </HStack>
+      )}
       <DrawerFooter gap={2}>
-        <Button variant="ghost" minH="44px" onClick={onClose}>Cancelar</Button>
-        {!dirty && data.status === 'estimated' && (
-          <Button minH="44px" loading={confirm.isPending} onClick={() => confirm.mutate()}>Confirmar</Button>
+        {offerTwins && (
+          <Button minH="44px" variant="outline" aria-pressed={applyTwins} onClick={() => setApplyTwins((v) => !v)}>
+            {applyTwins ? '☑' : '☐'} También en «{twins.map((t) => t.group).join('», «')}»
+          </Button>
         )}
-        {!dirty && data.status === '' && empty && (
-          <Button minH="44px" variant="outline" loading={confirm.isPending} onClick={() => confirm.mutate()}>No lleva nada</Button>
-        )}
-        {(dirty || data.status !== 'estimated') && (
-          <Button minH="44px" disabled={!dirty || !valid} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button>
-        )}
+        <Text flex="1" fontSize="sm" color="orange.700">{hint}</Text>
+        <Button variant="ghost" minH="48px" onClick={requestClose}>Cancelar</Button>
+        <Button minH="48px" colorPalette="red" disabled={!confirmOnly && !valid} loading={save.isPending} onClick={() => save.mutate()}>
+          {failure && !failure.conflict ? 'Reintentar' : confirmOnly ? 'Está bien' : 'Guardar'}
+        </Button>
       </DrawerFooter>
+
+      <SearchSheet open={picker === 'ing'} title="Agregar insumo" error={pickerError}
+        options={(ingredients.data?.items ?? []).filter((i) => !(isIng && i.id === id))
+          .sort((a, b) => (b.recipeUses ?? 0) - (a.recipeUses ?? 0) || a.name.localeCompare(b.name, 'es'))
+          .map((i) => ({ value: String(i.id), label: i.name, hint: `${i.isPrep ? 'preparado · ' : ''}${unitLabel(i.baseUnitCode)}` }))}
+        onPick={(v) => { if (addIngredient(Number(v))) setPicker(null); }}
+        onClose={() => setPicker(null)}
+        renderCreate={(q) => (
+          <VStack align="stretch" gap={2} py={2}>
+            <Text>Crear el insumo <b>«{q}»</b>. ¿En qué se mide?</Text>
+            <HStack gap={2}>
+              {(['g', 'ml', 'pieza'] as const).map((code) => {
+                const u = (units.data?.items ?? []).find((x) => x.code === code);
+                return (
+                  <Button key={code} minH="44px" variant="outline" disabled={!u} loading={createIngredient.isPending}
+                    onClick={() => u && createIngredient.mutate({ name: q, baseUnitId: u.id })}>
+                    {code === 'g' ? 'Gramos (g)' : code === 'ml' ? 'Mililitros (ml)' : 'Piezas'}
+                  </Button>
+                );
+              })}
+            </HStack>
+          </VStack>
+        )} />
+      <SearchSheet open={picker === 'part' || picker === 'link'} title={picker === 'part' ? 'Agregar producto al combo' : '¿Cuál producto es?'}
+        options={(products.data?.items ?? [])
+          // Un combo no lleva combos ni a sí mismo; un extra sí puede ser un combo.
+          .filter((p) => picker === 'link' || (p.type !== 'combo' && p.id !== id && !parts.some((x) => x.productId === p.id)))
+          .map((p) => ({ value: String(p.id), label: p.name, hint: p.type === 'combo' ? 'combo' : '' }))}
+        onPick={(v) => {
+          const pid = Number(v);
+          if (picker === 'part') edit(() => setParts((ps) => [...ps, { productId: pid, quantity: 1 }]));
+          else edit(() => setLinked(pid));
+          setPicker(null);
+        }}
+        onClose={() => setPicker(null)} />
+      <SearchSheet open={picker === 'copy'} title="Copiar la receta de…" emptyText="No hay otra receta con insumos para copiar."
+        options={(sources.data ?? []).map((r) => ({ value: String(r.id), label: r.name, hint: `${r.lines} insumos` }))}
+        onPick={(v) => copyFrom(Number(v))} onClose={() => setPicker(null)} />
     </>
   );
 }
 
-function StatusLine({ data }: { data: Composition }) {
-  const { zona } = useHoraDelNegocio();
-  if (data.status === 'estimated') {
-    return <Badge colorPalette="orange" alignSelf="start">Estimado — revísalo y confírmalo</Badge>;
-  }
-  if (data.status === 'confirmed') {
-    return (
-      <Text fontSize="sm" color="fg.muted">
-        Confirmado{data.confirmedBy ? ` por ${data.confirmedBy}` : ''}
-        {data.confirmedAt ? ` el ${soloFecha(data.confirmedAt, zona)}` : ''}
-      </Text>
-    );
-  }
-  return <Badge colorPalette="gray" alignSelf="start">Sin capturar</Badge>;
-}

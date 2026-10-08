@@ -52,12 +52,49 @@ export interface Composition {
   yieldUnitCode?: string;
   editable: boolean;
   reason?: 'own_stock' | 'package_choices';
+  // Cuándo se guardó por última vez: se devuelve al guardar para saber si otra persona la cambió.
+  stamp?: string;
+  // Extras que se llaman igual en otro grupo.
+  sameName?: { id: number; group: string }[];
 }
 export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];
   linkedProductId: number | null;
   components: { productId: number; quantity: number }[];
   yield?: string | null;
+  alsoOptionIds?: number[];
+  basedOn?: string;
+}
+
+// Catálogo › Recetas.
+export type RecipeKind = 'product' | 'extra' | 'prep';
+export type RecipeStatus = 'pending' | 'review' | 'done';
+export interface RecipeRow {
+  id: number;
+  name: string;
+  group: string;
+  status: RecipeStatus;
+  mode: '' | 'items' | 'combo' | 'product' | 'own';
+  summary: string;
+  lines: number;
+  soldPerMonth: string;
+}
+export interface RecipeCounts { pending: number; review: number; done: number }
+export interface RecipePage {
+  // Opcional a propósito: obliga a la guarda si el servidor llegara a mandar null.
+  items?: RecipeRow[];
+  total: number;
+  counts: RecipeCounts;
+  totals: { product: RecipeCounts; extra: RecipeCounts; prep: RecipeCounts };
+}
+export interface RecipeQuery {
+  kind: RecipeKind;
+  status: RecipeStatus;
+  sort: 'sales' | 'az';
+  q?: string;
+  category?: number;
+  limit?: number;
+  offset?: number;
 }
 
 // Categoría (para filtro y alta de productos).
@@ -148,6 +185,14 @@ export const adminApi = {
     api.put<Composition>(`${compositionPath(kind, id)}`, b),
   confirmComposition: (kind: CompositionKind, id: number) =>
     api.post<Composition>(`${compositionPath(kind, id)}/confirm`),
+  recipes: (r: RecipeQuery) => {
+    const qs = new URLSearchParams({ kind: r.kind, status: r.status, sort: r.sort, limit: String(r.limit ?? 25), offset: String(r.offset ?? 0) });
+    if (r.q) qs.set('q', r.q);
+    if (r.category) qs.set('category', String(r.category));
+    return api.get<RecipePage>(`/admin/recipes?${qs}`);
+  },
+  confirmRecipes: (kind: RecipeKind, ids: number[]) =>
+    api.post<{ confirmed: number }>('/admin/recipes/confirm', { kind, ids }),
 
   modifierOptions: (p: ProductsQuery = {}) => api.get<OptionsPage>(`/admin/modifier-options?${pageQs(p)}`),
   setOptionFavorite: (id: number, favorite: boolean) =>

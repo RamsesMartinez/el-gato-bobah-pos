@@ -74,16 +74,16 @@ export function StockPage() {
         <Tabs.Content value="insumos" px={0}>
           <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
             <Table.Root size="sm">
-              <Table.Header><Table.Row><Table.ColumnHeader>Insumo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader>Qué lleva</Table.ColumnHeader></Table.Row></Table.Header>
+              <Table.Header><Table.Row><Table.ColumnHeader>Insumo</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Existencia</Table.ColumnHeader><Table.ColumnHeader>Receta</Table.ColumnHeader></Table.Row></Table.Header>
               <Table.Body>
                 {(ingredients.data?.items ?? []).map((i) => (
                   <Table.Row key={i.id}>
                     <Table.Cell>{i.name}</Table.Cell>
                     <Table.Cell textAlign="end">{Number(i.onHand)} {i.baseUnitCode}</Table.Cell>
                     <Table.Cell>
-                      <Button aria-label={`Qué lleva ${i.name}`} size="sm" variant="ghost" minH="44px" px={2}
+                      <Button aria-label={`Receta de ${i.name}`} size="sm" variant="ghost" minH="44px" px={2}
                         onClick={() => setComposing({ id: i.id, name: i.name })}>
-                        {i.isPrep ? 'Se prepara aquí' : 'Se compra'}
+                        {i.isPrep ? 'Es un preparado · ver receta' : 'Se compra hecho'}
                         {i.compositionStatus === 'estimated' && <Badge ml={2} colorPalette="orange">por revisar</Badge>}
                         {' ›'}
                       </Button>

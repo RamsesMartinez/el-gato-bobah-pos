@@ -1,12 +1,13 @@
 import { Flex, Box, HStack, Button } from '@chakra-ui/react';
-import { LuTag, LuStar } from 'react-icons/lu';
+import { LuTag, LuStar, LuClipboardList } from 'react-icons/lu';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 
-// Hub "Catálogo": agrupa Productos y Opciones (relacionados) bajo un solo item del menú,
+// Hub "Catálogo": agrupa Productos, Extras y Recetas (relacionados) bajo un solo item del menú,
 // con pestañas de 1 toque. Cada pestaña conserva su propia pantalla (Page fill).
 const TABS = [
   { to: '/catalogo/productos', label: 'Productos', icon: LuTag },
-  { to: '/catalogo/opciones', label: 'Grupos y opciones', icon: LuStar },
+  { to: '/catalogo/opciones', label: 'Extras', icon: LuStar },
+  { to: '/catalogo/recetas', label: 'Recetas', icon: LuClipboardList },
 ];
 
 export function CatalogPage() {
