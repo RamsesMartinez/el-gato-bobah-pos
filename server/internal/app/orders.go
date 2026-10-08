@@ -136,6 +136,10 @@ type OrderView struct {
 	Payments []PaymentView `json:"payments"`
 	// MergedIntoOrderID es el pedido con el que se juntó éste al pasarle todos sus productos.
 	MergedIntoOrderID *int64 `json:"mergedIntoOrderId"`
+	// CanSplit dice si este pedido se puede dividir por productos, por partes o pasar productos: no
+	// es de plataforma y su turno sigue abierto. La hoja no ofrece «Dividir» si no, en vez de
+	// dejar que el operador lo descubra en el rechazo.
+	CanSplit bool `json:"canSplit"`
 }
 
 // PaymentView es un pago del pedido como lo pinta la hoja de cobro.
@@ -642,6 +646,11 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 	if view.Payments, err = paymentsOf(ctx, s.store.QC(ctx), id); err != nil {
 		return nil, err
 	}
+	shift, err := s.store.QC(ctx).GetOrderForQuote(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	view.CanSplit = o.DeliveryPlatformID == nil && shift.SessionStatus == string(db.SessionStatusAbierta)
 	return view, nil
 }
 

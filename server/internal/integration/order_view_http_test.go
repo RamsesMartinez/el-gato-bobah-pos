@@ -73,6 +73,21 @@ func TestOrderViewCarriesItsPaymentsAsArrays(t *testing.T) {
 		arr(t, m, "lines")
 	})
 
+	t.Run("dice si se puede dividir", func(t *testing.T) {
+		if m := get(t, newOrder().ID); m["canSplit"] != true {
+			t.Fatalf("canSplit = %#v en un pedido de mostrador del turno abierto", m["canSplit"])
+		}
+		didi := platformID(t, st, defaultCompanyID, "Didi")
+		p, err := svc.Create(ctx, app.CreateOrderCmd{ClientUUID: uuid.New(), ServiceType: "domicilio", DeliveryPlatformID: &didi,
+			OpenedBy: cajero, Lines: []domain.OrderLineInput{{ProductID: frappe, Qty: pesos("1")}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := get(t, p.ID); m["canSplit"] != false {
+			t.Fatalf("canSplit = %#v en un pedido de plataforma", m["canSplit"])
+		}
+	})
+
 	t.Run("un pago viejo, uno devuelto y uno nuevo con productos", func(t *testing.T) {
 		ord := newOrder()
 		line := ord.Lines[0].ID
