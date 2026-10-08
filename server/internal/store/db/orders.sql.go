@@ -1673,7 +1673,7 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 
 const listLinesToSplit = `-- name: ListLinesToSplit :many
 select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
-       ol.enviado_a_cocina_at, p.needs_prep
+       ol.line_total, ol.enviado_a_cocina_at, p.needs_prep
 from order_lines ol
 join products p on p.id = ol.product_id
 where ol.order_id = $1 and ol.cancelled_at is null
@@ -1687,6 +1687,7 @@ type ListLinesToSplitRow struct {
 	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
 	UnitPrice        decimal.Decimal    `json:"unit_price"`
 	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	LineTotal        decimal.Decimal    `json:"line_total"`
 	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 	NeedsPrep        bool               `json:"needs_prep"`
 }
@@ -1712,6 +1713,7 @@ func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLi
 			&i.DeliveredQty,
 			&i.UnitPrice,
 			&i.ModifiersTotal,
+			&i.LineTotal,
 			&i.EnviadoACocinaAt,
 			&i.NeedsPrep,
 		); err != nil {
@@ -2583,13 +2585,12 @@ func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelled
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
        $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
-left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
-  and ol.cancelled_at is null
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+  and sm.order_line_id is null
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0
 `
@@ -2599,16 +2600,14 @@ type RestockCancelledOrderParams struct {
 	Oid     *int64 `json:"oid"`
 }
 
-// Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+// Repone el stock de una orden cancelada que no consta de qué renglón salió: los movimientos sin
+// renglón, anteriores a 0060. Lo NETO, venta menos lo ya repuesto.
 //
-// Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
-// volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
-// agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
-//
-// Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
-// quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
-// movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
-// salieron.
+// Los movimientos CON renglón ya no pasan por aquí (spec 031, D11): cancelar el pedido completo
+// repone renglón por renglón con la MISMA regla que quitar uno (domain.ReponeInventario), así que lo
+// que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
+// frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
+// quitaba el renglón: el mismo hecho, dos inventarios.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
 	return err

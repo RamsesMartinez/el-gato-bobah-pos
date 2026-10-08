@@ -283,6 +283,22 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		}); err != nil {
 			return err
 		}
+		// Cada renglón vivo con la MISMA regla que quitarlo: lo que se prepara y ya salió a cocina se
+		// consumió y no vuelve (spec 031, D11). Lo que no consta de qué renglón salió —anterior a
+		// 0060— se repone por pedido, como siempre.
+		renglones, err := q.ListLinesToSplit(ctx, cmd.OrderID)
+		if err != nil {
+			return err
+		}
+		for _, l := range renglones {
+			if !domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt)) {
+				continue
+			}
+			lineID := l.ID
+			if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{LineID: &lineID, ActorID: &cmd.ActorID}); err != nil {
+				return err
+			}
+		}
 		return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &cmd.OrderID, ActorID: &cmd.ActorID})
 	})
 }
@@ -701,9 +717,12 @@ func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow
 		return 0, err
 	}
 	unit := l.UnitPrice.Add(l.ModifiersTotal)
+	// Lo que se queda es el RESTO del importe, no otro redondeo: redondear las dos partes por su lado
+	// inventaba un centavo (spec 031, D17).
+	keepTotal, moveTotal := domain.SplitLineTotal(l.LineTotal, unit, parts.Move.Qty)
 	newID, err := q.SplitOffOrderLine(ctx, db.SplitOffOrderLineParams{
 		OrderID: toOrderID, LineID: l.ID, Quantity: parts.Move.Qty, DeliveredQty: parts.Move.Delivered,
-		LineTotal: domain.Round2(unit.Mul(parts.Move.Qty)),
+		LineTotal: moveTotal,
 	})
 	if err != nil {
 		return 0, err
@@ -713,7 +732,7 @@ func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow
 	}
 	if err := q.ShrinkOrderLine(ctx, db.ShrinkOrderLineParams{
 		ID: l.ID, Quantity: parts.Keep.Qty, DeliveredQty: parts.Keep.Delivered,
-		LineTotal: domain.Round2(unit.Mul(parts.Keep.Qty)),
+		LineTotal: keepTotal,
 	}); err != nil {
 		return 0, err
 	}

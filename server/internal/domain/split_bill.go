@@ -340,3 +340,14 @@ func CoveredKey(lines []CoveredLine) string {
 	}
 	return CoverageKey(sel)
 }
+
+// SplitLineTotal parte el importe de un renglón al sacarle k piezas: lo que se va vale
+// Round2(unit × k) y lo que se queda es el RESTO del importe, no otro redondeo.
+//
+// Redondear las dos partes por su lado inventaba un centavo con precios de centavo impar: $45.55 a
+// la mitad quedaba 22.78 + 22.78 = 45.56, un centavo que nadie vendió y que se cobraba (spec 031,
+// D17).
+func SplitLineTotal(total, unit, k decimal.Decimal) (keep, move decimal.Decimal) {
+	move = Round2(unit.Mul(k))
+	return Round2(total.Sub(move)), move
+}

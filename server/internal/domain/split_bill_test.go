@@ -407,3 +407,23 @@ func TestValidPieces(t *testing.T) {
 		t.Fatalf("selección con exponente absurdo = %v en %s; quiere «Elige qué productos paga» al instante", err, time.Since(start))
 	}
 }
+
+// PARTIR UN RENGLÓN NO CREA UN CENTAVO (spec 031, D17).
+//
+// Cada parte se redondeaba por su lado: $45.55 a la mitad quedaba 22.78 + 22.78 = 45.56.
+func TestSplitLineTotalKeepsTheCent(t *testing.T) {
+	casos := []struct{ total, unit, k, keep, move string }{
+		{"45.55", "45.55", "0.5", "22.77", "22.78"},
+		{"100", "50", "1", "50", "50"},
+		{"91.10", "45.55", "1.5", "22.77", "68.33"},
+	}
+	for _, c := range casos {
+		keep, move := SplitLineTotal(decimal.RequireFromString(c.total), decimal.RequireFromString(c.unit), decimal.RequireFromString(c.k))
+		if !keep.Equal(decimal.RequireFromString(c.keep)) || !move.Equal(decimal.RequireFromString(c.move)) {
+			t.Errorf("SplitLineTotal(%s, %s, %s) = %s + %s, quiere %s + %s", c.total, c.unit, c.k, keep, move, c.keep, c.move)
+		}
+		if !keep.Add(move).Equal(decimal.RequireFromString(c.total)) {
+			t.Errorf("las partes de %s suman %s", c.total, keep.Add(move))
+		}
+	}
+}

@@ -210,25 +210,22 @@ update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2,
 where id = $1;
 
 -- name: RestockCancelledOrder :exec
--- Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+-- Repone el stock de una orden cancelada que no consta de qué renglón salió: los movimientos sin
+-- renglón, anteriores a 0060. Lo NETO, venta menos lo ya repuesto.
 --
--- Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
--- volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
--- agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
---
--- Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
--- quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
--- movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
--- salieron.
+-- Los movimientos CON renglón ya no pasan por aquí (spec 031, D11): cancelar el pedido completo
+-- repone renglón por renglón con la MISMA regla que quitar uno (domain.ReponeInventario), así que lo
+-- que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
+-- frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
+-- quitaba el renglón: el mismo hecho, dos inventarios.
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
        sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
-left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
-  and ol.cancelled_at is null
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+  and sm.order_line_id is null
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0;
 
@@ -614,7 +611,7 @@ select order_id from order_line_batches where client_uuid = $1;
 -- Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
 -- (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
 select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
-       ol.enviado_a_cocina_at, p.needs_prep
+       ol.line_total, ol.enviado_a_cocina_at, p.needs_prep
 from order_lines ol
 join products p on p.id = ol.product_id
 where ol.order_id = $1 and ol.cancelled_at is null
