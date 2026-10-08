@@ -36,7 +36,7 @@ adelante) espera a T002.
 ## Phase 1: Setup
 
 - [x] T001 Confirmar el punto de partida en verde: `cd server && go build ./... && go test ./...`, integración contra `egb027-pg`, y `cd web && bun run lint && bun run vitest run` en el worktree
-- [ ] T002 Esperar a que 021 esté en `develop` y rebasar 027 encima:
+- [x] T002 Esperar a que 021 esté en `develop` y rebasar 027 encima:
   - confirmar que existen `server/internal/integration/three_cases_test.go` y `server/internal/integration/rls_all_tables_test.go`; ya no se copia nada;
   - el conflicto en `.specify/memory/constitution.md` se resuelve **reaplicando la enmienda de roles** sobre la 1.13.0 de esa rama, que queda en 1.14.0; verificar que la puerta *Roles y permisos configurables por empresa* está en la tabla y que la versión y la fecha de enmienda son las de la enmienda;
   - **bloquea solo la Fase 5 en adelante** (ver Dependencies)
@@ -163,20 +163,20 @@ enviado y no se repone; cancelar el pedido después no repone ninguno de los dos
 
 **Aislamiento de lo construido en las Fases 3–4 (D-11)**
 
-- [ ] T032 Casos `inTheThreeCases` para lo que se construyó antes del rebase:
+- [x] T032 Casos `inTheThreeCases` para lo que se construyó antes del rebase:
   - las consultas modificadas `RestockCancelledOrder` y `GetOrderLineForCancel`, en server/internal/integration/restock_unconsumed_test.go;
   - el servicio `CancelPending` y las consultas de partir un renglón que nacen en T021, en server/internal/integration/no_way_out_test.go.
   Es la única prueba que se escribe después de su código (excepción aprobada por el dueño el 2026-10-05, *Complexity Tracking* del plan): si sale verde a la primera, se rompe a propósito la política o el `AcquireTenant` para verla en rojo por la razón correcta, y se restaura
 
 **Esquema (data-model.md)**
 
-- [ ] T033 Escribir el test de la migración (en rojo) en server/internal/integration/migration_split_bill_test.go. Usa `restoredStore`, que lee `TEST_RESTORED_DATABASE_URL` y hace `t.Skip` si falta (server/internal/integration/harness_restaurado_test.go). Corre contra una **base restaurada de un respaldo real con dos empresas**, en una base **aparte** dentro de `egb027-pg` (`gatobobah_restored`; nunca la de `TEST_DATABASE_URL`, que `newTestStore` borra): `PG_CONTAINER=egb027-pg POSTGRES_DB=gatobobah_restored bash scripts/restaurar-respaldo.sh`, el script de `make db-restaurar`, con dueños y GRANT; nunca `--no-owner` ni `--no-privileges`. Exportar `TEST_RESTORED_DATABASE_URL=postgres://gatobobah:pw@localhost:5499/gatobobah_restored?sslmode=disable` además de `TEST_DATABASE_URL` (ver quickstart.md). Casos:
+- [x] T033 Escribir el test de la migración (en rojo) en server/internal/integration/migration_split_bill_test.go. Usa `restoredStore`, que lee `TEST_RESTORED_DATABASE_URL` y hace `t.Skip` si falta (server/internal/integration/harness_restaurado_test.go). Corre contra una **base restaurada de un respaldo real con dos empresas**, en una base **aparte** dentro de `egb027-pg` (`gatobobah_restored`; nunca la de `TEST_DATABASE_URL`, que `newTestStore` borra): `PG_CONTAINER=egb027-pg POSTGRES_DB=gatobobah_restored bash scripts/restaurar-respaldo.sh`, el script de `make db-restaurar`, con dueños y GRANT; nunca `--no-owner` ni `--no-privileges`. Exportar `TEST_RESTORED_DATABASE_URL=postgres://gatobobah:pw@localhost:5499/gatobobah_restored?sslmode=disable` además de `TEST_DATABASE_URL` (ver quickstart.md). Casos:
   - pagos existentes con `split_part`, `split_of` y `payment_number` nulos, y pedidos con `merged_into_order_id` nulo;
   - las cuatro tablas se pueden leer e insertar como `gatobobah_app`;
   - una fila de la empresa A no puede apuntar a un renglón, pago o pedido de la B (FK compuesta), tampoco con `merged_into_order_id`;
   - `merged_into_order_id` solo se acepta en un pedido `cancelada`;
   - **[U4]** el Down se niega si hay filas en `order_payment_voids`, en `order_payment_lines`, en `order_line_move_batches` u `order_line_moves`, algún `merged_into_order_id` no nulo, o **[L4]** algún `split_part` o `payment_number` no nulo en `order_payments`: un caso por cada una
-- [ ] T034 Escribir la migración server/migrations/NNNN_split_bill.sql, con NNNN = el siguiente número libre de `develop` **al momento de fusionar** (anotarlo como pendiente en el PR). Contenido:
+- [x] T034 Escribir la migración server/migrations/NNNN_split_bill.sql, con NNNN = el siguiente número libre de `develop` **al momento de fusionar** (anotarlo como pendiente en el PR). Contenido:
   - `set local lock_timeout = '3s'`;
   - `unique (id, company_id)` en `order_lines` y `order_payments`;
   - `order_payment_lines`, `order_payment_voids`, `order_line_move_batches`, `order_line_moves` con RLS `nullif`, grants explícitos, FKs `no action` (salvo la cascada de la cobertura) e índices;
