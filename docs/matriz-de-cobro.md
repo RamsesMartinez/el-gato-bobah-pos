@@ -345,7 +345,7 @@ función para `/quote` y `/pay`; la pantalla nunca suma una selección.
 | K14 | Pasar productos que ya se pagaron, o dejar el origen sobrepagado | Se rechaza | `TestMoveRejections` | Postgres |
 | K15 | Pasar todo a un pedido existente | El origen queda juntado; ni Ventas ni las ventas del turno lo cuentan como cancelación; lo quitado antes sí | `TestMovingEverythingMergesTheOriginAndIsNotACancellation` | Postgres |
 | K16 | Cualquier secuencia de cobrar, quitar, pasar, entregar y devolver | Ningún pedido queda sin una salida que lo cierre | `TestNoSequenceLeavesAnOrderWithoutAWayOut` (235 secuencias) | Postgres |
-| K17 | La mesa del incidente por la pantalla | Se resuelve con «Dividir → Por productos» en ≤ 20 toques | `split-bill-incident.spec.ts` | **No medido**: corre contra el ambiente de pruebas con esta rama desplegada |
+| K17 | La mesa del incidente por la pantalla | Se resuelve con «Dividir → Por productos» en ≤ 20 toques | `split-bill-incident.spec.ts` | Navegador contra el ambiente de pruebas (2026-10-08) |
 
 ## Lo que esta matriz **no** cubre, y hay que decirlo
 

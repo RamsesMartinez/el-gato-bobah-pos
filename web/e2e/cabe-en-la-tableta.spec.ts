@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API, tokenDeApi } from './ambiente';
 
 // LA HOJA DE COBRO TIENE QUE CABER EN LA TABLETA.
 //
@@ -149,6 +150,13 @@ test('T-cuenta · el papel de la cuenta sale marcado y la hoja cabe en 600 px', 
   console.log(`[e2e] hoja de cobro con boton de cuenta: ${alto}px de 600px`);
 });
 
+// pedidosAbiertos lee del servidor los pedidos por cobrar, con el token de la sesión del navegador.
+async function pedidosAbiertos(page: Page): Promise<Array<{ id: number; number: number }>> {
+  const jwt = await tokenDeApi();
+  const r = await page.request.get(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
+  return ((await r.json()).items ?? []) as Array<{ id: number; number: number }>;
+}
+
 // E7 BIS · DIVIDIR POR PRODUCTOS CABE EN LA TABLETA (spec 027, D-13).
 //
 // La hoja crece por dentro: la lista, la propina y el efectivo van en la zona con scroll, y el pie
@@ -164,17 +172,26 @@ test('E7 bis · por productos, con efectivo y propina, Cobrar sigue a la vista',
     const buscador = page.getByPlaceholder('Buscar producto…');
     if (await buscador.isVisible().catch(() => false)) await buscador.fill('');
   }
+  const antes = new Set((await pedidosAbiertos(page)).map((o) => o.id));
   const pildora = page.getByRole('button', { name: /art ·/ });
   if (await pildora.isVisible().catch(() => false)) await pildora.click();
   await page.getByRole('button', { name: 'Enviar a cocina' }).click();
+  let numero = 0;
+  await expect.poll(async () => {
+    numero = (await pedidosAbiertos(page)).find((o) => !antes.has(o.id))?.number ?? 0;
+    return numero;
+  }, { timeout: 20_000 }).toBeGreaterThan(0);
   const nuevo = page.getByRole('button', { name: 'Nuevo pedido' });
-  await nuevo.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
   if (await nuevo.isVisible().catch(() => false)) await nuevo.click();
 
-  await page.getByRole('link', { name: 'Pedidos' }).first().click();
-  await page.getByRole('button', { name: /^Cobrar \$/ }).first().click();
+  // Desde «Pedidos por cobrar»: un pedido con algo por entregar se cobra desde ahí.
+  await page.getByRole('button', { name: /^\$[\d,.]+ \(\d+\)$/ }).click();
+  const lista = page.getByRole('dialog').last();
+  await lista.locator('div').filter({ has: page.getByText(new RegExp(`^#${numero} · `)) })
+    .filter({ has: page.getByRole('button', { name: /^Cobrar/ }) }).last()
+    .getByRole('button', { name: /^Cobrar/ }).click();
   const hoja = page.getByRole('dialog').last();
-  await hoja.getByRole('button', { name: 'Dividir' }).click();
+  await hoja.getByRole('button', { name: /Dividir/ }).click();
   await hoja.getByRole('button', { name: 'Coca Cola 355ml' }).click();
   await hoja.getByRole('button', { name: 'Efectivo' }).click();
   await hoja.getByRole('button', { name: /^10%/ }).first().click().catch(() => {});
