@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { Provider } from '../../components/ui/provider';
+import { Provider } from '../components/ui/provider';
 import { CancelarRenglonDialog } from './CancelarRenglonDialog';
 
 function pintar(nodo: React.ReactElement) {

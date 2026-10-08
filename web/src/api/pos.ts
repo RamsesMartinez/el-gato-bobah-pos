@@ -2,7 +2,6 @@ import { api } from './client';
 import type {
   BoardOrder,
   CobroHecho,
-  CreateOrderBody,
   Menu,
   OrderView,
   PaymentMethod,
@@ -22,8 +21,6 @@ import type {
   SendResult,
 } from '../types/pos';
 
-// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
-export type { CreateOrderBody };
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -55,17 +52,6 @@ export const posApi = {
   changeOwnPassword: (currentPassword: string, newPassword: string) =>
     api.post<void>('/me/password', { currentPassword, newPassword }),
   setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
-
-  // Agregar renglones a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos más".
-  // Se manda el DELTA, no el pedido completo — mandar la lista entera obligaría al servidor a
-  // adivinar qué renglón es nuevo para no volver a descontar su stock.
-  //
-  // `clientUuid` identifica el LOTE que se agrega. Crear el pedido y cobrarlo ya eran idempotentes;
-  // agregar no lo era, y es el único de los tres que mueve dos cosas a la vez: lo que se le cobra al
-  // cliente y lo que se descuenta del almacén. Un doble tap sobre una tableta que no alcanzó a
-  // pintar la respuesta metía el renglón dos veces.
-  addOrderLines: (orderId: number, clientUuid: string, lines: CreateOrderBody['lines']) =>
-    api.post<OrderView>(`/orders/${orderId}/lines`, { clientUuid, lines }),
 
   // Precios por plataforma: solo las EXCEPCIONES. Quitar una devuelve el producto al calculado.
   // El servidor valida que el producto y la plataforma sean de la empresa antes de escribir, así
@@ -125,7 +111,6 @@ export const posApi = {
   // la pantalla que tiene su propio interruptor y no quedaba forma de volver a encenderlo.
   allPaymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods/all'),
 
-  createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
   activeOrders: () => api.get<{ items: BoardOrder[] }>('/orders'),
   order: (id: number) => api.get<OrderView>(`/orders/${id}`),
   // Escribir o corregir el folio de la plataforma de un pedido que ya existe, incluido uno cobrado
@@ -159,15 +144,6 @@ export const posApi = {
       reason === undefined ? undefined : { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
-  // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
-  // la caja es quien tiene que poder saldarlo.
-  // La barra de pedidos en curso. `porCobrar=true` deja fuera lo ya saldado: quien abre esa hoja
-  // viene a cobrar, y en el ambiente de pruebas abría con 30 renglones —14 ya cobrados— sobre una
-  // pantalla donde caben cinco.
-  //
-  // El filtro va en el SERVIDOR y no aquí, igual que la suma: el total pendiente sale del mismo
-  // recorrido que la lista, y recortar de este lado lo dejaría contando filas que no se muestran.
-  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open?porCobrar=true'),
   // `amount` vacío = todo lo que queda por devolver, que es el caso de todos los días. Con monto,
   // devuelve una parte: un platillo de tres.
   refundOrder: (id: number, reason: string, amount?: number, lineId?: number) =>

@@ -384,117 +384,45 @@ test('repartir entre tres cobra las partes 1, 2 y 3 y el servidor pone los monto
   expect(chargeOrderShape.mock.calls.map((c) => c[1].split.part)).toEqual([1, 2, 3]);
 });
 
-// EL PEDIDO NACE AL COBRAR, NO AL ABRIR LA HOJA.
+// UNA SOLA PUERTA PARA COBRAR (spec 030, US4).
 //
-// Antes, tocar COBRAR creaba el pedido y lo mandaba a cocina. El botón vive junto al total, en la
-// barra que se toca todo el día, así que un toque por equivocación dejaba comida preparándose y una
-// cuenta que alguien tenía que ir a cancelar.
-test('abrir la hoja sobre una cuenta sin confirmar no crea el pedido', async () => {
-  const crearPedido = vi.fn();
-  pinta(
-    <CobrarSheet
-      pantalla="pos"
-      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
-        currency: 'MXN', deliveryPlatformId: null }}
-      crearPedido={crearPedido}
-      onClose={() => {}}
-      onCobrado={() => {}}
-    />,
-  );
-  await screen.findByRole('button', { name: 'Efectivo' });
-  expect(crearPedido, 'abrir la hoja mandó el pedido a cocina').not.toHaveBeenCalled();
-  expect(chargeOrder).not.toHaveBeenCalled();
-});
-
-// Y el botón final SÍ lo crea, antes de cobrarlo. La barrera de la 005 —no se cobra un pedido que
-// cocina no ha visto— sigue en pie: el pedido existe cuando el cobro llega al servidor.
-test('el botón final crea el pedido y luego lo cobra', async () => {
-  const crearPedido = vi.fn().mockResolvedValue({
-    id: 77, number: 5, folioName: 'Tigre', total: '500', outstanding: '500',
-    currency: 'MXN', deliveryPlatformId: null,
-  });
-  chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false });
-  order.mockResolvedValue({ ...pedido({ id: 77 }), lines: [] });
-
-  pinta(
-    <CobrarSheet
-      pantalla="pos"
-      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
-        currency: 'MXN', deliveryPlatformId: null }}
-      crearPedido={crearPedido}
-      onClose={() => {}}
-      onCobrado={() => {}}
-    />,
-  );
-  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
-  await userEvent.click(await screen.findByRole('button', { name: /Cobrar/ }));
-
-  await waitFor(() => expect(crearPedido).toHaveBeenCalledTimes(1));
-  // Y cobra CONTRA EL PEDIDO QUE ACABA DE CREAR, no contra un id inventado.
-  await waitFor(() => expect(chargeOrder).toHaveBeenCalledWith(77, expect.anything()));
-});
-
-// Mientras la cuenta no se confirma no hay número que enseñar. Enseñar uno inventado es peor que no
-// enseñar ninguno: el operador se lo diría al cliente y después no coincidiría con el ticket.
-test('una cuenta sin confirmar no finge tener folio del servidor', async () => {
-  pinta(
-    <CobrarSheet
-      pantalla="pos"
-      order={{ id: null, number: null, folioName: '', total: '500', outstanding: '500',
-        currency: 'MXN', deliveryPlatformId: null }}
-      crearPedido={vi.fn()}
-      onClose={() => {}}
-      onCobrado={() => {}}
-    />,
-  );
-  expect(await screen.findByText('Sin confirmar')).toBeInTheDocument();
-});
-
-// DIVIDIR LA CUENTA CRUZANDO EL MOMENTO EN QUE EL PEDIDO NACE.
-//
-// Es el borde caro del cambio: el primer comensal crea el pedido, y el segundo tiene que pagar ESE
-// MISMO. Si la hoja no lo recordara, cada pedazo crearía un pedido nuevo y el cliente acabaría con
-// tres cuentas de un tercio cada una — y cocina con tres comandas de la misma comida.
-test('al dividir, la segunda parte cobra el pedido que creó la primera', async () => {
-  const crearPedido = vi.fn().mockResolvedValue({
-    id: 77, number: 5, folioName: 'Tigre', total: '500', outstanding: '500',
-    currency: 'MXN', deliveryPlatformId: null,
-  });
-  chargeOrderShape
-    .mockResolvedValueOnce({ outstanding: '250', paid: false, yaEstaba: false, amount: '250' })
-    .mockResolvedValueOnce({ outstanding: '0', paid: true, yaEstaba: false, amount: '250' });
+// La hoja se abre SIEMPRE sobre un pedido: si la cuenta tenía algo sin enviar, «Enviar y cobrar» lo
+// manda primero (research R-5). Así «Por productos» —que necesita los renglones del pedido— sale
+// desde el ticket igual que desde cualquier otro lado.
+test('una cuenta de mostrador ofrece los tres modos al dividir', async () => {
   order.mockResolvedValue({
-    ...pedido({ id: 77, outstanding: '250' }), lines: [],
-    payments: [{ id: 1, number: 1, voided: false, methodId: 1, methodName: 'Efectivo', amount: '250', tip: '0',
-      reference: '', paidAt: '', receivedBy: '', split: { part: 1, of: 2 }, lines: [] }],
+    ...pedido(), canSplit: true,
+    lines: [{ id: 1, productName: 'Taro', quantity: '2', unitPrice: '250', lineTotal: '500', delivered: '0', cancelled: false }],
+    payments: [],
   });
-  quoteOrder.mockResolvedValue({ amount: '250', lines: [], outstandingAfter: '0' });
-
-  pinta(
-    <CobrarSheet
-      pantalla="pos"
-      order={{ id: null, number: null, folioName: 'Tigre', total: '500', outstanding: '500',
-        currency: 'MXN', deliveryPlatformId: null }}
-      crearPedido={crearPedido}
-      onClose={() => {}}
-      onCobrado={() => {}}
-    />,
-  );
-
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
   await userEvent.click(await screen.findByRole('button', { name: 'Dividir' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
-  // Sobre una cuenta sin confirmar todavía no hay cotización: el monto lo dirá el servidor.
-  await userEvent.click(await screen.findByRole('button', { name: 'Cobrar parte 1 de 2' }));
-  await waitFor(() => expect(chargeOrderShape).toHaveBeenCalledTimes(1));
+  for (const m of ['Por productos', 'Entre personas', 'Por monto']) {
+    expect(await screen.findByRole('button', { name: m })).toBeInTheDocument();
+  }
+});
 
-  // Segunda persona.
-  await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
-  await userEvent.click(await screen.findByRole('button', { name: /^Cobrar \$250/ }));
-  await waitFor(() => expect(chargeOrderShape).toHaveBeenCalledTimes(2));
+// FR-008 / D-11: un pedido de plataforma se cobra completo con el método de SU plataforma. Ni se
+// divide entre personas ni por productos: la plataforma ya lo cobró entero.
+test('un pedido de plataforma no se divide: solo se cobra completo', async () => {
+  paymentMethods.mockResolvedValue({ items: [...metodos, { id: 9, name: 'Uber Eats', kind: 'plataforma', deliveryPlatformId: 3 }] });
+  order.mockResolvedValue({ ...pedido({ deliveryPlatformId: 3 }), lines: [], payments: [], canSplit: false });
+  pinta(<CobrarSheet pantalla="pos" order={pedido({ deliveryPlatformId: 3 })} onClose={() => {}} onCobrado={() => {}} />);
+  expect(await screen.findByRole('button', { name: 'Uber Eats' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Efectivo' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Dividir' })).toBeNull();
+});
 
-  expect(crearPedido, 'cada parte creó su propio pedido: el cliente acaba con varias cuentas')
-    .toHaveBeenCalledTimes(1);
-  expect(chargeOrderShape.mock.calls.map((c) => [c[0], c[1].split.part])).toEqual([[77, 1], [77, 2]]);
+// US4 AS2 / caso 11: cerrar la hoja sin cobrar no cancela nada. La cuenta sigue en la fila tal
+// como quedó (en cocina, si «Enviar y cobrar» la mandó).
+test('cerrar la hoja sin cobrar solo la cierra: no cobra ni cancela nada', async () => {
+  const onClose = vi.fn();
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={onClose} onCobrado={() => {}} />);
+  await screen.findByRole('button', { name: 'Efectivo' });
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(chargeOrder).not.toHaveBeenCalled();
+  expect(chargeOrderShape).not.toHaveBeenCalled();
 });
 
 // ---------------------------------------------------------------------------------------------

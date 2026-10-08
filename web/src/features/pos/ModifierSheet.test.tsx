@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../../components/ui/provider';
 import { ModifierSheet } from './ModifierSheet';
-import { useTicketStore } from '../../stores/ticket';
 import { useSessionStore } from '../../stores/session';
 import type { MenuProduct, TicketModifier } from '../../types/pos';
 
@@ -41,14 +40,13 @@ const conCortesia = {
   ],
 } as unknown as MenuProduct;
 
-function montar(onConfirm: (m: TicketModifier[], n: string, q: number) => void, p: MenuProduct = producto) {
+function montar(onConfirm: (m: TicketModifier[], n: string, q: number) => void, p: MenuProduct = producto, lista: number | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero' } as never });
-  useTicketStore.getState().descartarTodo();
   return render(
     <QueryClientProvider client={qc}>
       <Provider>
-        <ModifierSheet product={p} isOpen onClose={() => {}} onConfirm={onConfirm} />
+        <ModifierSheet product={p} lista={lista} isOpen onClose={() => {}} onConfirm={onConfirm} />
       </Provider>
     </QueryClientProvider>,
   );
@@ -254,8 +252,7 @@ describe('el total en la lista de una plataforma', () => {
 
   it('suma el precio DE LA PLATAFORMA, no el de mostrador', async () => {
     const onConfirm = vi.fn();
-    montar(onConfirm, conDidi);
-    useTicketStore.getState().setPlatform(1);
+    montar(onConfirm, conDidi, 1);
 
     // La leche deslactosada cuesta $20 en Didi (excepción), no sus $12 de mostrador.
     fireEvent.click(await screen.findByRole('button', { name: /^Leche Deslactosada/ }));
@@ -266,8 +263,7 @@ describe('el total en la lista de una plataforma', () => {
   });
 
   it('el encabezado y el botón salen del mismo precio', async () => {
-    montar(vi.fn(), conDidi);
-    useTicketStore.getState().setPlatform(1);
+    montar(vi.fn(), conDidi, 1);
 
     // Sin extras, el botón tiene que decir exactamente lo que el encabezado promete.
     expect(await screen.findByText(/\$100 en Didi/)).toBeInTheDocument();
@@ -306,8 +302,7 @@ describe('corregir el precio del producto desde la hoja', () => {
   afterEach(() => { menuMock.current = { platforms: [], platformPrices: {}, platformModPrices: {} }; });
 
   it('el precio de la plataforma es un control, no un rótulo', async () => {
-    montar(vi.fn(), conDidi2);
-    useTicketStore.getState().setPlatform(1);
+    montar(vi.fn(), conDidi2, 1);
 
     const precio = await screen.findByRole('button', { name: /Corregir el precio/ });
     expect(precio).toHaveTextContent('$100');
@@ -315,8 +310,7 @@ describe('corregir el precio del producto desde la hoja', () => {
   });
 
   it('tocarlo abre el diálogo con el desglose de dónde sale el número', async () => {
-    montar(vi.fn(), conDidi2);
-    useTicketStore.getState().setPlatform(1);
+    montar(vi.fn(), conDidi2, 1);
 
     fireEvent.click(await screen.findByRole('button', { name: /Corregir el precio/ }));
 
@@ -339,8 +333,7 @@ describe('corregir el precio del producto desde la hoja', () => {
   // La barra decía en prosa cómo corregir un extra. Es una instrucción operativa, y en una hoja
   // donde el alto escasea va detrás de un icono de ayuda, no ocupando una fila.
   it('las instrucciones viven detrás del icono de ayuda, no en la barra', async () => {
-    montar(vi.fn(), conDidi2);
-    useTicketStore.getState().setPlatform(1);
+    montar(vi.fn(), conDidi2, 1);
 
     expect(screen.queryByText(/Mantén presionado un extra/)).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /Cómo corregir precios/ }));

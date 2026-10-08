@@ -2,31 +2,34 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Box, Flex, VStack, HStack, Text, Button, Spinner, Center, IconButton, useDisclosure,
 } from '@chakra-ui/react';
-import { LuShoppingCart, LuChevronUp, LuCircleCheck, LuCircleAlert, LuPrinter, LuEye, LuEyeOff, LuPencil, LuPanelRightOpen, LuGripVertical, LuTriangleAlert, LuWallet } from 'react-icons/lu';
-import { useQuery } from '@tanstack/react-query';
+import {
+  LuShoppingCart, LuChevronUp, LuCircleCheck, LuCircleAlert, LuPrinter, LuEye, LuEyeOff, LuPencil,
+  LuPanelRightOpen, LuGripVertical, LuTriangleAlert, LuWallet, LuSearch, LuX,
+} from 'react-icons/lu';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { posApi } from '../../api/pos';
+import { mensajeDeError } from '../../api/mensajes';
 import { canAccess } from '../../app/roles';
+import { can } from '../../app/permissions';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerGrabber } from '../../components/ui/drawer';
 import { useSwipeDownToClose } from '../../hooks/useSwipeDownToClose';
 import { DialogRoot, DialogBackdrop, DialogContent, DialogBody } from '../../components/ui/dialog';
+import { ReasonSheet } from '../../components/ReasonSheet';
 import { useMenu } from '../../hooks/useMenu';
 import { useMenuEvents } from '../../hooks/useMenuEvents';
+import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { usePopular } from '../../hooks/usePopular';
 import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
-import { useTicketStore, useActiveTicket, ticketTotal, ticketCount } from '../../stores/ticket';
-import { preCuentaDeLaCuenta } from './preCuenta';
-import { useMandarPedido } from './useMandarPedido';
-import { envioDeLaCuenta } from '../../domain/envio';
-import { descuentoDeLaCuenta, totalConDescuento } from '../../domain/descuento';
-import { useAgregarAPedido } from './useAgregarAPedido';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
+import { usePosStore } from '../../stores/pos';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../../shared/ProductEditDialog';
+import { CancelarRenglonDialog } from '../../shared/CancelarRenglonDialog';
 import type {
-  BoardOrder, CobroHecho, MenuProduct, OrderView, PedidoParaCobrar, TicketLine, TicketModifier,
+  AccountItem, CobroHecho, MenuProduct, OrderView, PedidoParaCobrar, TicketModifier,
 } from '../../types/pos';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { money } from '../../utils/format';
@@ -36,18 +39,27 @@ import { buscarProductos } from './buscarProducto';
 import { CategoryRail, type Selection } from './CategoryRail';
 import { PlatformPicker } from './PlatformPicker';
 import { AvisoDePlataforma } from './AvisoDePlataforma';
+import { AvisoSinConexion } from './AvisoSinConexion';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { desglosePrecio, nombreDeLista, precioDeLista } from './precioPlataforma';
-import { TicketTabs } from './TicketTabs';
 import { SearchBar } from './SearchBar';
-import { PedidosEnCurso } from './PedidosEnCurso';
+import { FilaDeCuentas } from './FilaDeCuentas';
+import { TodasLasCuentasSheet } from './TodasLasCuentasSheet';
+import { DescartarCuentaSheet } from './DescartarCuentaSheet';
+import { hayQuePreguntar } from './estadosDeCuenta';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
 import { Ticket } from './Ticket';
-import { CobrarSheet, type CuentaParaCobrar } from '../../shared/CobrarSheet';
+import { CobrarSheet } from '../../shared/CobrarSheet';
 import { FolioPlataformaSheet } from './FolioPlataformaSheet';
 import { hayQuePedirElFolio } from '../../domain/folioPlataforma';
 import { toaster } from '../../components/ui/toaster';
+import { useCuenta } from './useCuenta';
+import { useCuentasVivas } from './useCuentasVivas';
+import { useEnviarCuenta } from './useEnviarCuenta';
+import { subirCuentasViejas } from './subirCuentasViejas';
+import { useAbrirDesdeLaUrl } from './abrirDesdeLaUrl';
+import type { RenglonNuevo, RenglonPedido } from './cuentaEnPantalla';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
 // Clamp aproximado al cargar por si el viewport cambió de tamaño entre sesiones (no dejarla fuera).
@@ -64,236 +76,207 @@ function loadPillOffset(): { x: number; y: number } {
   return { x: 0, y: 0 };
 }
 
+function aPedidoParaCobrar(o: OrderView): PedidoParaCobrar {
+  return {
+    id: o.id, number: o.number, folioName: o.folioName, total: o.total, outstanding: o.outstanding,
+    currency: o.currency, deliveryPlatformId: o.deliveryPlatformId,
+  };
+}
+
 export function POSPage() {
+  const qc = useQueryClient();
   const { data: menu, isLoading, error } = useMenu();
   const { data: popular } = usePopular();
-  // Los nombres que QUEDAN en la bolsa del negocio, no la lista completa.
-  //
-  // Se encoge con cada venta —los nombres se agotan antes de repetirse—, así que ya no se puede
-  // guardar por lo que dure la sesión: con una lista vieja la pantalla propondría uno ya cantado y
-  // el servidor lo cambiaría al confirmar, justo el nombre que el operador ya le dijo al cliente.
-  // Se refresca sola tras cada pedido (ver `luegoDeVender`).
-  const { data: folios } = useQuery({
-    queryKey: ['pos', 'folio-names'],
-    queryFn: posApi.folioNames,
-    staleTime: 60_000,
-  });
-  const bautizarCuentas = useTicketStore((s) => s.bautizarCuentas);
-  const cuentasSinNombre = useTicketStore((s) => s.tabs.some((t) => !t.folioName));
-  // Corre al llegar la lista y cada vez que se abre una cuenta. Bautizar es idempotente: no
-  // renombra lo que ya tiene animal, porque el operador pudo habérselo dicho ya al cliente.
-  useEffect(() => {
-    if (folios?.items?.length && cuentasSinNombre) bautizarCuentas(folios.items);
-  }, [folios, cuentasSinNombre, bautizarCuentas]);
   const { data: modifierDefaults } = useModifierDefaults();
+  const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
+  const envioPorDefecto = settings ? Number(settings.deliveryFee) : 20;
   const { ref, width } = useContainerWidth<HTMLDivElement>();
   const wide = width >= 900;
 
-  // Un precio que corrigieron en otra tablet tiene que llegar a esta ANTES de cobrar, no cinco
-  // minutos después: el servidor cobra por la lista, no por lo que muestra la pantalla.
+  // Un precio que corrigieron en otra tablet tiene que llegar a esta ANTES de cobrar.
   useMenuEvents();
+  // Las cuentas y los pedidos de las otras tabletas, al instante (spec 030).
+  useOrderEvents();
+  // Las cuentas que la versión anterior guardaba en esta tableta suben una sola vez (D-12).
+  useEffect(() => { void subirCuentasViejas(); }, []);
 
   const palette = useUiStore((s) => s.palette);
   const topCount = useUiStore((s) => s.topCount);
-  const role = useSessionStore((s) => s.user?.role);
+  const user = useSessionStore((s) => s.user);
+  const role = user?.role;
   const canEdit = role === 'admin' || role === 'gerente';
   const navigate = useNavigate();
-  // Estado de caja: sin turno abierto la pantalla de venta no se muestra. Poll suave por si otra
-  // tablet abre/cierra; al abrir caja desde /caja se invalida ['cash'] y refresca al instante.
   const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
   const canOpenCash = canAccess(role, '/caja');
-  const cuenta = useActiveTicket();
-  const lines = cuenta.lines;
-  // La lista de precios de ESTA cuenta. El servidor recalcula todo al cobrar; esto es para que la
-  // pantalla muestre el mismo número, o el operador entrega un ticket con un total que no es el
-  // cobrado.
-  const lista = cuenta.platformId;
-  const addLine = useTicketStore((s) => s.addLine);
-  const updateLineModifiers = useTicketStore((s) => s.updateLineModifiers);
+
+  // El pedido que se está cobrando. La hoja se abre SIEMPRE sobre un pedido que ya existe.
+  const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
+  const cuenta = useCuenta({ envioPorDefecto, cobrando: cobrando !== null });
+  const { vista } = cuenta;
+  const lista = vista.platformId;
+  const { data: vivas } = useCuentasVivas();
+  const seleccion = usePosStore((s) => s.selected);
+  const seleccionar = usePosStore((s) => s.seleccionar);
+  const cuentaNueva = usePosStore((s) => s.cuentaNueva);
+  const claveSeleccionada = seleccion ? (seleccion.kind === 'draft' ? `d:${seleccion.id}` : `o:${seleccion.id}`) : null;
+
+  // «Abrir cuenta» del tablero y del cierre de caja llegan por la URL (FR-019).
+  useAbrirDesdeLaUrl();
 
   const [selection, setSelection] = useState<Selection>({ kind: 'top' });
   const [search, setSearch] = useState('');
-  // preferencia por dispositivo: mostrar/ocultar precios en las cards (menos ruido visual).
+  const [buscando, setBuscando] = useState(false);
   const [showPrices, setShowPrices] = useState(() => localStorage.getItem('pos.showPrices') !== '0');
   const togglePrices = () =>
     setShowPrices((v) => { localStorage.setItem('pos.showPrices', v ? '0' : '1'); return !v; });
   const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
-  const [editing, setEditing] = useState<TicketLine | null>(null);
-  // El pedido recién creado, que es lo que hace salir la COMANDA. Se pone siempre que se crea uno,
-  // se cobre o no: cocina tiene que enterarse en los dos casos.
-  const [pedidoNuevo, setPedidoNuevo] = useState<OrderView | null>(null);
-  // El pedido con el que TERMINA la venta: es el que abre la confirmación y el que sale impreso en
-  // el ticket del cliente. Va aparte del anterior porque cuando se cobra, el ticket tiene que decir
-  // PAGADO — y eso solo se sabe después del cobro, no al crear el pedido.
+  const [editing, setEditing] = useState<RenglonNuevo | null>(null);
+  // La comanda: el pedido y los renglones que salen a cocina.
+  const [comanda, setComanda] = useState<{ order: OrderView; ids: number[] } | null>(null);
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
-  // El pedido que la impresión automática mira. Va aparte de `lastOrder` porque ése abre el diálogo
-  // de «Cobrado»: en una cuenta dividida, cada pago imprime su ticket sin tapar la hoja de cobro, que
-  // sigue abierta para la siguiente persona.
   const [printOrder, setPrintOrder] = useState<OrderView | null>(null);
-  // El pedido que se está cobrando. El POS ya no tiene su propia pantalla de dinero: crea el pedido
-  // y abre LA hoja de cobro, la misma del botón naranja y la del tablero. Dos pantallas de cobro
-  // eran dos aritméticas, dos validaciones y dos formas de traducir el mismo error del servidor.
-  // La cuenta que se está cobrando. Puede NO ser un pedido todavía: tocar COBRAR abre la hoja sobre
-  // la cuenta y el pedido nace al cobrar.
-  const [cobrando, setCobrando] = useState<CuentaParaCobrar | null>(null);
-  // La acción que quedó esperando a que se capture el folio. Guardar la función y no un booleano
-  // es lo que permite usar la misma puerta para "Enviar" y para "Cobrar" sin duplicar el flujo.
   const [pidiendoFolio, setPidiendoFolio] = useState<{ hacer: () => void } | null>(null);
-  // El pedido, en cuanto existe. Lo necesita el aviso de cerrar: solo hay algo en cocina si el
-  // pedido llegó a crearse.
-  const [creadoAlCobrar, setCreadoAlCobrar] = useState<PedidoParaCobrar | null>(null);
-  // Llave de la hoja de cobro: cambia al ABRIRLA y no vuelve a moverse mientras dure.
-  //
-  // No puede ser el id de la cuenta: crear el pedido cierra la pestaña, así que la cuenta activa
-  // cambia A MEDIA VENTA y la hoja se remontaría perdiendo el pedido que acaba de crear — al
-  // dividir, el segundo comensal crearía un pedido nuevo en vez de pagar el mismo.
-  //
-  // Tampoco el id del pedido: es nulo hasta el primer cobro, y aparecer cambiaría la llave igual.
   const [sesionDeCobro, setSesionDeCobro] = useState(0);
   const [ticketOpen, setTicketOpen] = useState(false);
-  // modo editar: reutiliza el grid del POS para editar productos (admin/gerente).
+  const [todasAbierta, setTodasAbierta] = useState(false);
+  const [descartando, setDescartando] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const [quitando, setQuitando] = useState<RenglonPedido | null>(null);
+  // El folio de plataforma que se está tecleando en la barra, antes de guardarse al salir del campo.
+  const [folioTecleado, setFolioTecleado] = useState<{ cuenta: string; texto: string } | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editProduct, setEditProduct] = useState<AdminProduct | null>(null);
-  // catálogo admin (con todos los campos editables); solo se carga en modo editar.
   const { data: adminProducts } = useQuery({
     queryKey: ['admin', 'products', 'all'],
-    queryFn: () => adminApi.products({ status: 'all', limit: 0 }), // 0 = todo el catálogo (para mapear el producto tocado)
+    queryFn: () => adminApi.products({ status: 'all', limit: 0 }),
     enabled: editMode && canEdit,
   });
 
   const ticketDrawer = useDisclosure();
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
-  // Mandar a cocina sin cobrar vive aquí y no en la hoja de cobro: es una decisión sobre el
-  // pedido, no sobre el dinero. Tenerlo dentro del cobro hacía que la pantalla pidiera método de
-  // pago y propina para algo que después se descartaba.
-  // Qué renglones acaban de entrar: decide si la comanda sale con el pedido completo (confirmar) o
-  // solo con lo agregado.
-  const [agregados, setAgregados] = useState<number[] | undefined>(undefined);
-  const { mandar, mandarAsync, enviando, cobrables, noDisponibles, defaultFee } = useMandarPedido((order) => {
-    ticketDrawer.onClose();
-    // Sin lista: sale la comanda del pedido COMPLETO, que es lo que confirmar significa.
-    setAgregados(undefined);
-    setPedidoNuevo(order);
+  const { enviar, enviando, motivo, limpiarMotivo } = useEnviarCuenta({
+    onComanda: (order, ids) => setComanda({ order, ids }),
   });
-  // Mandar a cocina sin cobrar: la venta termina aquí y la confirmación lo dice.
-  //
-  // UNA sola decisión sobre el envío para las tres superficies que cobran. El panel tenía la suya y
-  // la píldora y la barra angosta no tenían ninguna: con un envío mal escrito ellas cobraban el
-  // default del negocio, y el total que pintaban era el del pedido SIN envío mientras el panel
-  // pintaba otro. En 1024×600 el panel arranca oculto, así que la cifra equivocada era la de todos
-  // los días.
-  const envio = envioDeLaCuenta(cuenta, cuenta.envio, defaultFee);
-  const setFolioDeLaCuenta = useTicketStore((s) => s.setPlatformOrderRef);
 
-  // conFolio es la ÚNICA puerta por la que se manda un pedido de plataforma.
-  //
-  // Con el campo de la barra ya lleno, no se interpone nada: mandar cuesta los mismos toques que
-  // hoy. Vacío, se pide el dato con una salida explícita, que es UN toque más — exactamente lo que
-  // declara SC-003. Envuelve a los DOS caminos que crean el pedido (Enviar y Cobrar) porque un
-  // camino nuevo que se salta el control viejo es cómo la mitad de los pedidos acabarían sin folio.
+  const claveCuenta = vista.borradorId ?? '';
+  const folioActual = folioTecleado && folioTecleado.cuenta === claveCuenta ? folioTecleado.texto : vista.platformOrderRef;
+
+  // conFolio es la ÚNICA puerta por la que se manda un pedido de plataforma capturado a mano. Con
+  // el campo de la barra lleno no se interpone nada; vacío, se pide con una salida explícita.
   const conFolio = (hacer: () => void) => {
-    if (!hayQuePedirElFolio(cuenta.platformId, cuenta.platformOrderRef)) {
+    if (vista.tipo === 'pedido' || !hayQuePedirElFolio(vista.platformId, folioActual)) {
       hacer();
       return;
     }
     setPidiendoFolio({ hacer });
   };
 
-  const enviarACocina = () =>
-    conFolio(() => mandar({ luego: setLastOrder, deliveryFee: envio.paraElServidor }));
-  // COBRAR ABRE LA HOJA. NO MANDA NADA A COCINA.
-  //
-  // Antes creaba el pedido aquí mismo, así que un toque por equivocación —el botón vive junto al
-  // total, en la barra que se toca todo el día— dejaba comida preparándose y una cuenta que alguien
-  // tenía que ir a cancelar. Ahora el pedido nace cuando se toca el botón que dice cuánto se cobra,
-  // dentro de la hoja.
-  //
-  // Cocina NO se entera más tarde de lo que le corresponde: se entera al confirmarse la venta, que
-  // es lo que la feature 005 exige, y la barrera de "no se cobra un pedido que cocina no ha visto"
-  // sigue viva en el SERVIDOR — el pedido se crea antes de cobrarse, siempre.
-  //
-  // Y para mandar a cocina sin cobrar sigue estando "Enviar", que es lo que ese botón significa.
+  const enviarYa = async (): Promise<OrderView | null> => {
+    await cuenta.esperar();
+    const id = vista.borradorId;
+    if (!id) return null;
+    return enviar(id);
+  };
+  const enviarACocina = () => conFolio(() => { ticketDrawer.onClose(); void enviarYa(); });
+
+  // COBRAR, LA PUERTA ÚNICA (US4). Con algo en «Nuevo» lo manda primero —el botón lo dice: «Enviar y
+  // cobrar»— y abre la hoja sobre el pedido que regresa. Si el envío falla, la hoja no se abre y el
+  // motivo queda en el pie.
   const cobrarLaCuenta = () => conFolio(() => {
-    setSesionDeCobro((n) => n + 1);
-    setCobrando({
-    id: null, number: null,
-    folioName: cuenta.folioName,
-    total: String(totalDeLaCuenta),
-    outstanding: String(totalDeLaCuenta),
-    // La misma moneda que el resto del POS pinta en esta pantalla. La cuenta no la trae porque no
-    // hay dos monedas en un mismo local; el pedido ya creado sí la trae del servidor y desde ese
-    // momento manda la suya.
-    currency: 'MXN',
-    deliveryPlatformId: cuenta.platformId,
-    });
+    void (async () => {
+      let pedido = vista.pedido;
+      if (vista.nuevos.length > 0) {
+        pedido = await enviarYa();
+        if (!pedido) return;
+      }
+      if (!pedido) return;
+      ticketDrawer.onClose();
+      setSesionDeCobro((n) => n + 1);
+      setCobrando(aPedidoParaCobrar(pedido));
+    })();
   });
 
-  // Cerrar la hoja de cobro sin haber saldado NO cancela nada, y hay que decirlo.
-  //
-  // Tocar COBRAR ya no abre una pantalla que cobra al final: confirma el pedido —lo manda a cocina—
-  // y después abre el cobro. Así que la cuenta se vacía en ese momento, y quien cierra la hoja
-  // creyendo que canceló ve el carrito vacío y da la venta por perdida. No se perdió: el pedido está
-  // en cocina y en el botón naranja con su saldo. Sin este aviso, el operador lo vuelve a capturar y
-  // cocina prepara dos veces lo mismo.
-  const cerrarElCobro = () => {
-    const pendiente = creadoAlCobrar;
-    setCobrando(null);
-    setCreadoAlCobrar(null);
-    // Sin pedido creado no pasó nada: la cuenta sigue en pantalla y no hay nada en cocina. Avisar
-    // aquí sería mentir, y encima empujaría al operador a buscar en el botón naranja un pedido que
-    // no existe.
-    if (!pendiente) return;
-    toaster.create({
-      title: `${pendiente.folioName || `Pedido #${pendiente.number}`} ya está en cocina`,
-      description: 'Cóbralo cuando quieras desde el botón naranja de arriba.',
-      type: 'info',
-      duration: 6000,
-    });
-  };
-  // La venta termina cuando el pedido queda saldado, no cuando se creó.
-  //
-  // El pedido se RELEE del servidor antes de imprimir: el ticket estampa PAGADO o POR COBRAR, y con
-  // el pedido recién creado —que todavía no tiene pagos— saldría POR COBRAR en cada venta de
-  // mostrador. El ticket automático además se imprime una sola vez por pedido, así que no habría
-  // segunda oportunidad de corregirlo.
+  // La venta termina cuando el pedido queda saldado. Se RELEE para imprimir: el ticket estampa
+  // PAGADO o POR COBRAR y solo el servidor lo sabe.
   const terminarElCobro = async (res: CobroHecho, orderId: number) => {
     const order = await posApi.order(orderId);
+    qc.setQueryData(['orders', orderId], order);
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
     setPrintOrder(order);
     if (res.paid) setLastOrder(order);
   };
 
-  // Agregarle a un pedido que ya está en cocina, desde la hoja del botón naranja. Es el camino que
-  // la feature 005 viene a abrir: antes existía enterrado en la hoja de cobro —armar el carrito,
-  // abrir Cobrar, bajar hasta un selector, elegir el pedido— y en producción no se usó nunca.
-  const { agregar } = useAgregarAPedido((order, nuevos) => {
-    ticketDrawer.onClose();
-    setAgregados(nuevos);
-    setPedidoNuevo(order);
-    setLastOrder(order);
-    setPrintOrder(order);
-  });
-  // La lista solo ofrece "Agregar" con productos capturados, así que aquí siempre hay algo que
-  // llevar. La guarda queda porque el `return` mudo que había antes —un control de 44 px que no
-  // hacía nada ni decía por qué— es exactamente lo que no debe volver.
-  const abrirPedidoEnCurso = (pedido: BoardOrder) => {
-    if (cuenta.lines.length === 0) return;
-    agregar(pedido);
+  const descartar = async () => {
+    const id = vista.borradorId;
+    setDescartando(false);
+    if (!id) { cuentaNueva(); return; }
+    try {
+      await cuenta.esperar();
+      await posApi.discardDraft(id);
+      cuentaNueva();
+      qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+      qc.invalidateQueries({ queryKey: ['pos', 'folio-names'] });
+    } catch (e) {
+      toaster.create({ title: 'No se pudo descartar', description: mensajeDeError(e), type: 'error' });
+      qc.invalidateQueries({ queryKey: ['pos'] });
+    }
   };
+  // Una cuenta vacía se descarta sin preguntar; con productos, en una hoja de la app (D-7).
+  const pedirDescartar = () => {
+    if (hayQuePreguntar(vista.nuevos.length)) setDescartando(true);
+    else void descartar();
+  };
+
+  const cancelarPedido = async (motivoCancelar: string | null) => {
+    setCancelando(false);
+    if (motivoCancelar === null || vista.pedidoId === null) return;
+    try {
+      await posApi.cancelOrder(vista.pedidoId, motivoCancelar);
+      toaster.create({ title: `${vista.nombre || 'El pedido'} se canceló`, type: 'success' });
+      cuentaNueva();
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+    } catch (e) {
+      toaster.create({ title: 'No se pudo cancelar', description: mensajeDeError(e), type: 'error' });
+    }
+  };
+
+  const quitarDeCocina = async (motivoQuitar: string, qty: number) => {
+    const r = quitando;
+    setQuitando(null);
+    if (!r || vista.pedidoId === null) return;
+    try {
+      const res = await posApi.cancelOrderLine(vista.pedidoId, r.id, motivoQuitar, qty);
+      toaster.create({
+        title: 'Producto quitado',
+        description: res.repusoInventario
+          ? 'El ingrediente volvió al almacén.'
+          : 'Ya se estaba preparando: el ingrediente no vuelve al almacén.',
+        type: 'success',
+      });
+    } catch (e) {
+      toaster.create({ title: 'No se pudo quitar', description: mensajeDeError(e), type: 'error' });
+    }
+    qc.invalidateQueries({ queryKey: ['orders'] });
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+  };
+
+  const elegirCuenta = (c: AccountItem) => {
+    limpiarMotivo();
+    if (c.kind === 'draft' && c.draftId) seleccionar({ kind: 'draft', id: c.draftId });
+    else if (c.orderId) seleccionar({ kind: 'order', id: c.orderId });
+  };
+
   const modSheet = useDisclosure();
-  // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado
-  // y el grid ocupa todo. La píldora flotante lo reabre y mantiene el total visible. En tablets
-  // altas se ve por defecto. matchMedia puede faltar en jsdom (tests) → default false.
+  // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado.
   const [panelHidden, setPanelHidden] = useState(
     () => window.matchMedia?.('(max-height: 720px)')?.matches ?? false,
   );
 
-  // Píldora arrastrable: a veces tapa las cards de abajo-derecha; el operador la mueve a discreción.
-  // Offset relativo a la esquina inferior-derecha; se persiste. Handle dedicado → no choca con los taps.
   const pillRef = useRef<HTMLDivElement>(null);
   const pillDrag = useRef<{ px: number; py: number; ox: number; oy: number; rect: DOMRect } | null>(null);
   const [pillOffset, setPillOffset] = useState(loadPillOffset);
   const pillOffsetRef = useRef(pillOffset);
-
   const onPillDragStart = (e: PointerEvent<HTMLDivElement>) => {
     const el = pillRef.current;
     if (!el) return;
@@ -303,7 +286,7 @@ export function POSPage() {
   const onPillDragMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = pillDrag.current;
     if (!d) return;
-    const m = 8; // margen mínimo al borde de la pantalla
+    const m = 8;
     const left = Math.min(Math.max(d.rect.left + (e.clientX - d.px), m), window.innerWidth - d.rect.width - m);
     const top = Math.min(Math.max(d.rect.top + (e.clientY - d.py), m), window.innerHeight - d.rect.height - m);
     const next = { x: d.ox + (left - d.rect.left), y: d.oy + (top - d.rect.top) };
@@ -316,12 +299,8 @@ export function POSPage() {
     localStorage.setItem('pos.pillOffset', JSON.stringify(pillOffsetRef.current));
   };
 
-  // defensivo: nunca asumir que vienen arreglos (catálogo vacío o respuesta parcial).
-  // useMemo para estabilizar la referencia: sin él, `?? []` crea un arreglo nuevo cada
-  // render y rompería la memoización de los useMemo de abajo.
   const allCategories = useMemo(() => menu?.categories ?? [], [menu]);
   const allProducts = useMemo(() => menu?.products ?? [], [menu]);
-
   const childrenByRoot = useMemo(() => {
     const m: Record<number, number[]> = {};
     allCategories.forEach((c) => {
@@ -333,8 +312,6 @@ export function POSPage() {
   const products = useMemo(() => {
     if (search.trim()) return buscarProductos(allProducts, search);
     if (selection.kind === 'top') {
-      // más vendidos (orden del backend). Fallback: favoritos, luego los primeros del catálogo,
-      // para que un negocio recién estrenado no vea la pestaña vacía.
       const byId = new Map(allProducts.map((p) => [p.id, p]));
       const ranked = (popular ?? [])
         .map((id) => byId.get(id))
@@ -342,7 +319,6 @@ export function POSPage() {
       const base = ranked.length ? ranked : allProducts.filter((p) => p.favorite);
       return (base.length ? base : allProducts).slice(0, topCount);
     }
-    // scope = subcategoría, o categoría raíz + sus hijos
     const { rootId, subId, popular: showPopular } = selection;
     const scope = subId !== null
       ? allProducts.filter((p) => p.categoryId === subId)
@@ -351,7 +327,6 @@ export function POSPage() {
           return cats.has(p.categoryId);
         });
     if (!showPopular) return scope;
-    // Populares del scope: mismo ranking global de ventas, filtrado a este scope y cortado a topCount.
     const rankById = new Map((popular ?? []).map((id, i) => [id, i] as const));
     const ranked = scope.filter((p) => rankById.has(p.id)).sort((a, b) => rankById.get(a.id)! - rankById.get(b.id)!);
     const base = ranked.length ? ranked : scope.filter((p) => p.favorite);
@@ -360,23 +335,18 @@ export function POSPage() {
 
   const counts = useMemo(() => {
     const c: Record<number, number> = {};
-    lines.forEach((l) => (c[l.productId] = (c[l.productId] ?? 0) + l.qty));
+    vista.nuevos.forEach((l) => (c[l.productId] = (c[l.productId] ?? 0) + l.qty));
     return c;
-  }, [lines]);
+  }, [vista.nuevos]);
 
-  const total = ticketTotal(lines);
-  const count = ticketCount(lines);
-  // Y la MISMA decisión sobre el descuento, por lo mismo: a 1024×600 el panel arranca oculto, así
-  // que la píldora y la barra angosta son las superficies de todos los días. Si restaran el
-  // descuento por su cuenta —o no lo restaran— el operador cobraría una cifra distinta de la que
-  // vio, que es el defecto que ya ocurrió con el envío.
-  const descuento = descuentoDeLaCuenta(cuenta.descuento, cuenta.descuentoModo, total);
-  const totalDeLaCuenta = totalConDescuento(total, descuento.monto, envio.monto);
+  const count = vista.nuevos.reduce((s, l) => s + l.qty, 0);
+  const hayAlgo = count > 0 || vista.tipo === 'pedido';
+  const cobrarApagado = vista.falta <= 0 || vista.guardando || cuenta.sinConexion || vista.noDisponibles.length > 0;
+  const etiquetaCobrar = vista.nuevos.length > 0 ? 'Enviar y cobrar' : 'Cobrar';
+  const resumen = vista.tipo === 'pedido'
+    ? `${vista.nombre} · falta ${money(vista.falta)}`
+    : `${count} art · ${money(vista.falta)}`;
 
-
-  // Producto cuyo precio de plataforma se está corrigiendo. Solo con una lista activa: en
-  // mostrador el precio se edita en el catálogo, y confundir las dos listas es el error que esta
-  // pantalla no puede permitir.
   const [editandoPrecio, setEditandoPrecio] = useState<MenuProduct | null>(null);
   const desgloseEnEdicion = editandoPrecio
     ? desglosePrecio(menu, lista, editandoPrecio.id, Number(editandoPrecio.price))
@@ -388,22 +358,38 @@ export function POSPage() {
       if (ap) setEditProduct(ap);
       return;
     }
+    if (vista.cerrada) {
+      toaster.create({
+        title: 'Esta cuenta ya está pagada y entregada',
+        description: 'Lo que pidan ahora va en una cuenta nueva.',
+        type: 'info',
+        action: { label: 'Cuenta nueva', onClick: cuentaNueva },
+      });
+      return;
+    }
     if (p.groups.length > 0) {
       setEditing(null);
       setModProduct(p);
       modSheet.onOpen();
     } else {
-      addLine({
+      cuenta.agregar({
         productId: p.id, name: p.name, qty: 1, modifiers: [],
         unitPrice: precioDeLista(menu, lista, p.id, Number(p.price)),
       });
     }
   };
 
-  const editLine = (line: TicketLine) => {
-    const p = allProducts.find((x) => x.id === line.productId);
-    if (!p || p.groups.length === 0) return; // sin modificadores no hay nada que editar
-    setEditing(line);
+  // Los modificadores del renglón como los pide la hoja: con su grupo, que el servidor no guarda.
+  const modificadoresDe = (r: RenglonNuevo, p: MenuProduct): TicketModifier[] =>
+    r.modifiers.map((m) => ({
+      optionId: m.optionId, name: m.name, qty: m.qty, priceDelta: Number(m.priceDelta),
+      groupId: p.groups.find((g) => g.options.some((o) => o.id === m.optionId))?.id ?? 0,
+    }));
+
+  const editLine = (r: RenglonNuevo) => {
+    const p = allProducts.find((x) => x.id === r.productId);
+    if (!p || p.groups.length === 0) return;
+    setEditing(r);
     setModProduct(p);
     modSheet.onOpen();
   };
@@ -411,10 +397,10 @@ export function POSPage() {
   const confirmModifiers = (modifiers: TicketModifier[], notes: string, qty: number) => {
     if (!modProduct) return;
     if (editing) {
-      updateLineModifiers(editing.lineId, modifiers, notes || undefined);
+      cuenta.cambiar(editing, modifiers, notes);
     } else {
       for (let i = 0; i < qty; i++) {
-        addLine({
+        cuenta.agregar({
           productId: modProduct.id, name: modProduct.name, qty: 1, modifiers, notes: notes || undefined,
           unitPrice: precioDeLista(menu, lista, modProduct.id, Number(modProduct.price)),
         });
@@ -427,17 +413,11 @@ export function POSPage() {
   if (isLoading) return <Center h="80vh"><Spinner size="xl" /></Center>;
   if (error) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
 
-  // Sin turno abierto la pantalla de venta no se muestra. El backend rechaza el cobro
-  // (NO_OPEN_REGISTER) y antes esto era solo un aviso: se podía armar el ticket completo y toparse
-  // con el error hasta el momento de cobrar, con el cliente enfrente. `open` viene del backend y
-  // ya significa "la caja principal tiene turno"; aquí no se decide nada, solo se pinta.
+  // Sin turno abierto la pantalla de venta no se muestra.
   if (cashStatus.data && !cashStatus.data.open) {
     return (
       <>
-        {/* EL AVISO TAMBIÉN AQUÍ, y no es duplicación: un pedido de plataforma puede llegar de
-            madrugada, sin turno abierto, y aceptarlo NO exige turno — la cocina no espera a que
-            alguien abra caja. Si el aviso solo viviera en la pantalla de venta, ese pedido sería
-            invisible hasta que la plataforma lo cancelara sola. */}
+        {/* El aviso de plataforma también aquí: aceptar un pedido de plataforma no exige turno. */}
         <AvisoDePlataforma />
         <Center h="80vh" px={6}>
         <VStack gap={4} maxW="420px" textAlign="center">
@@ -457,29 +437,75 @@ export function POSPage() {
     );
   }
 
+  // Con el panel abierto la fila tiene ~612 px: el buscador se pliega a un botón y despliega el
+  // campo en el lugar de la fila mientras se busca.
+  const buscadorPlegado = wide && !panelHidden;
+  const campoDeBusqueda = buscadorPlegado && (buscando || search !== '');
+
+  const ticketProps = {
+    vista,
+    sinConexion: cuenta.sinConexion,
+    envioPorDefecto,
+    enviando,
+    motivo,
+    puedeCancelar: can('orders.cancel', user),
+    onMas: cuenta.mas,
+    onMenos: cuenta.menos,
+    onQuitar: cuenta.quitar,
+    onEditLine: editLine,
+    onCabecera: cuenta.cabecera,
+    onQuitarNoDisponibles: () => vista.noDisponibles.forEach((l) => cuenta.quitar(l)),
+    onEnviar: enviarACocina,
+    onCobrar: cobrarLaCuenta,
+    onDescartar: pedirDescartar,
+    onCancelarPedido: () => setCancelando(true),
+    onQuitarDeCocina: setQuitando,
+  };
+
   const catalog = (
     <VStack align="stretch" gap={2} h="100%" overflow="hidden">
-      {/* Una sola fila (cuentas · buscador · toggles): recupera ~56px de alto en 7" landscape.
-          Las cuentas scrollean solas; el buscador queda con ancho cómodo y fijo a la derecha. */}
       <Box px={{ base: 3, md: 4 }} pt={3}>
-        <PlatformPicker />
+        <PlatformPicker
+          platformId={vista.platformId}
+          platformOrderRef={folioActual}
+          bloqueado={vista.tipo === 'pedido'}
+          onCambiar={(id) => { setFolioTecleado(null); cuenta.cabecera({ platformId: id }); }}
+          onFolio={(texto) => {
+            if (vista.tipo === 'nueva') cuenta.cabecera({ platformOrderRef: texto });
+            else setFolioTecleado({ cuenta: claveCuenta, texto });
+          }}
+          onFolioListo={() => {
+            if (vista.tipo !== 'captura' || !folioTecleado || folioTecleado.cuenta !== claveCuenta) return;
+            if (folioTecleado.texto.trim() !== vista.platformOrderRef) {
+              cuenta.cabecera({ platformOrderRef: folioTecleado.texto.trim() || null });
+            }
+          }}
+        />
       </Box>
       <Box px={{ base: 3, md: 4 }} pt={2}>
+        {/* Fila 2: las cuentas vivas · buscar · precios · editar. Las cuentas son lo único elástico. */}
         <HStack gap={2} align="center">
-          {/* minW: las cuentas son lo único elástico de la fila, así que sin un piso se aplastan a
-              cero en cuanto entra algo más — en la tableta real la cuenta activa quedó cortada por
-              la mitad. Con el piso, lo que se recorta es el desplazamiento de las cuentas, que ya
-              scrollean solas. */}
-          <Box flex="1" minW="140px"><TicketTabs /></Box>
-          {/* Techo bajado de 280 a 240: en la tableta real el panel del ticket se lleva ~300px, así que
-              a la fila le quedan ~610 y el buscador es el que más margen sobrante tiene. */}
-          <Box w="clamp(150px, 26%, 240px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
-          {/* Lo que falta por cobrar, detrás de UN botón. Con un control por pedido, medido en
-              1024x600 con el panel abierto, la fila pedía 667.6 px de los 612.6 que hay: se
-              desbordaba estando vacía y el overflow oculto del padre se comía los botones de la
-              derecha. Un botón cabe siempre. */}
-          <PedidosEnCurso onAbrir={abrirPedidoEnCurso} onCobrado={terminarElCobro}
-            hayQueAgregar={cuenta.lines.length > 0} />
+          {campoDeBusqueda ? (
+            <HStack flex="1" minW={0} gap={1}>
+              <Box flex="1" minW={0}><SearchBar value={search} onChange={setSearch} /></Box>
+              <IconButton aria-label="Cerrar búsqueda" size="lg" minW="44px" variant="ghost" colorPalette="gray"
+                onClick={() => { setSearch(''); setBuscando(false); }}><LuX /></IconButton>
+            </HStack>
+          ) : (
+            <Box flex="1" minW={0}>
+              <FilaDeCuentas cuentas={vivas?.items ?? []} seleccionada={claveSeleccionada}
+                onElegir={elegirCuenta} onNueva={() => { limpiarMotivo(); cuentaNueva(); }}
+                onVerTodas={() => setTodasAbierta(true)} />
+            </Box>
+          )}
+          {buscadorPlegado ? (
+            !campoDeBusqueda && (
+              <IconButton aria-label="Buscar producto" size="lg" minW="44px" variant="outline" colorPalette="gray"
+                onClick={() => setBuscando(true)}><LuSearch /></IconButton>
+            )
+          ) : (
+            <Box w="clamp(120px, 20%, 200px)" flexShrink={0}><SearchBar value={search} onChange={setSearch} /></Box>
+          )}
           <IconButton
             aria-label={showPrices ? 'Ocultar precios' : 'Mostrar precios'}
             size="lg" variant={showPrices ? 'outline' : 'solid'}
@@ -524,41 +550,35 @@ export function POSPage() {
 
   return (
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
-      {/* Se pinta en su propio portal, por encima de cualquier hoja abierta: el pedido llega justo
-          cuando alguien está capturando una venta, y un aviso dentro de este árbol queda debajo del
-          ticket a pantalla completa. */}
       <AvisoDePlataforma />
       <AvisoDeTurnoViejo estado={cashStatus.data} />
+      {/* Superpuesto, sin empujar nada: se ve con el panel abierto o cerrado. */}
+      <AvisoSinConexion />
       {wide ? (
         <Flex h="100%">
           <Box flex="1" minW={0}>{catalog}</Box>
           {!panelHidden && (
             <Box w="clamp(300px, 32%, 380px)" borderLeftWidth="1px" borderColor="border">
-              <Ticket onCheckout={cobrarLaCuenta} onEnviar={enviarACocina} enviando={enviando}
-                onEditLine={editLine}
-                envioPorDefecto={defaultFee}
-                noDisponibles={noDisponibles} onHide={() => setPanelHidden(true)} />
+              <Ticket {...ticketProps} onHide={() => setPanelHidden(true)} />
             </Box>
           )}
         </Flex>
       ) : (
         <Flex direction="column" h="100%">
           <Box flex="1" minH={0}>{catalog}</Box>
-          <HStack
-            h="64px" px={3} bg="colorPalette.600" color="white" gap={2}
-            display={count > 0 ? 'flex' : 'none'}
-          >
+          {hayAlgo && (
+          <HStack h="64px" px={3} bg="colorPalette.600" color="white" gap={2}>
             <HStack as="button" onClick={ticketDrawer.onOpen} flex="1" minW={0} gap={2}>
               <LuShoppingCart />
-              <Text fontWeight="700" truncate>{count} art · {money(totalDeLaCuenta)}</Text>
+              <Text fontWeight="700" truncate>{resumen}</Text>
               <LuChevronUp />
             </HStack>
             <Button size="md" colorPalette="green" fontWeight="800" px={6}
-              disabled={envio.malEscrito || descuento.malEscrito || descuento.excede}
-              onClick={cobrarLaCuenta}>
-              Cobrar
+              disabled={cobrarApagado} onClick={cobrarLaCuenta}>
+              {etiquetaCobrar}
             </Button>
           </HStack>
+          )}
         </Flex>
       )}
 
@@ -567,8 +587,6 @@ export function POSPage() {
         <HStack ref={pillRef} position="absolute" bottom={4} right={4} zIndex={20}
           transform={`translate(${pillOffset.x}px, ${pillOffset.y}px)`}
           bg="colorPalette.600" color="white" borderRadius="full" boxShadow="lg" pl={2} pr={2} py={2} gap={2}>
-          {/* Handle de arrastre. touch-action:none → mover no scrollea la página; los toques de
-              "Ver pedido"/"Cobrar" siguen siendo taps normales (no compiten con el drag). */}
           <Box aria-label="Mover" cursor="grab"
             onPointerDown={onPillDragStart} onPointerMove={onPillDragMove}
             onPointerUp={onPillDragEnd} onPointerCancel={onPillDragEnd}
@@ -578,19 +596,17 @@ export function POSPage() {
           </Box>
           <HStack as="button" onClick={() => setPanelHidden(false)} gap={2} minH="44px" px={1}>
             <LuPanelRightOpen />
-            <Text fontWeight="700">{count > 0 ? `${count} art · ${money(totalDeLaCuenta)}` : 'Ver pedido'}</Text>
+            <Text fontWeight="700">{hayAlgo ? resumen : 'Ver pedido'}</Text>
           </HStack>
-          {count > 0 && (
+          {hayAlgo && (
             <Button size="md" colorPalette="green" borderRadius="full" fontWeight="800" px={6}
-              disabled={envio.malEscrito || descuento.malEscrito || descuento.excede}
-              onClick={cobrarLaCuenta}>
-              Cobrar
+              disabled={cobrarApagado} onClick={cobrarLaCuenta}>
+              {etiquetaCobrar}
             </Button>
           )}
         </HStack>
       )}
 
-      {/* Ticket como bottom sheet en modo angosto */}
       <DrawerRoot open={ticketDrawer.open} placement="bottom" onOpenChange={(e) => { if (!e.open) ticketDrawer.onClose(); }} size="full">
         <DrawerBackdrop />
         <DrawerContent
@@ -602,15 +618,8 @@ export function POSPage() {
         >
           <Flex direction="column" h={{ base: '100dvh', md: '92vh' }}>
             <DrawerGrabber {...ticketSwipe.handlers} />
-            {/* onHide = cerrar el sheet: a size=full el backdrop queda tapado, sin esto no hay cómo cerrarlo */}
             <Box flex="1" minH={0}>
-              <Ticket
-                onCheckout={() => { ticketDrawer.onClose(); cobrarLaCuenta(); }}
-                onEnviar={enviarACocina} enviando={enviando} onEditLine={editLine}
-                onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers}
-                envioPorDefecto={defaultFee}
-                noDisponibles={noDisponibles}
-              />
+              <Ticket {...ticketProps} onHide={ticketDrawer.onClose} swipeHandlers={ticketSwipe.handlers} />
             </Box>
           </Flex>
         </DrawerContent>
@@ -618,24 +627,40 @@ export function POSPage() {
 
       <ModifierSheet
         product={modProduct}
+        lista={lista}
         isOpen={modSheet.open}
         optionRanks={modProduct ? modifierDefaults?.[String(modProduct.id)] : undefined}
-        initialModifiers={editing?.modifiers}
-        initialNotes={editing?.notes}
+        initialModifiers={editing && modProduct ? modificadoresDe(editing, modProduct) : undefined}
+        initialNotes={editing?.notes || undefined}
         onClose={() => { modSheet.onClose(); setEditing(null); setModProduct(null); }}
         onConfirm={confirmModifiers}
       />
 
-      {/* LA hoja de cobro, la misma que abre el botón naranja y la del tablero. El POS ya no tiene
-          la suya: dos pantallas de dinero eran dos aritméticas, dos validaciones y dos formas de
-          traducir el mismo error, y ya habían divergido en cinco reglas verificables.
-          `key` por pedido: la hoja lleva estado de cobro y con otro pedido nada de eso aplica. */}
+      <TodasLasCuentasSheet isOpen={todasAbierta} seleccionada={claveSeleccionada}
+        onElegir={elegirCuenta} onClose={() => setTodasAbierta(false)} />
+
+      <DescartarCuentaSheet isOpen={descartando} nombre={vista.nombre}
+        productos={vista.nuevos.length} total={vista.totalNuevo}
+        onSeguir={() => setDescartando(false)} onDescartar={() => void descartar()} />
+
+      <ReasonSheet isOpen={cancelando} required title={`Cancelar el pedido de ${vista.nombre || 'esta cuenta'}`}
+        label="Motivo" confirmLabel="Cancelar pedido" onDone={(r) => void cancelarPedido(r)} />
+
+      {quitando && (
+        <CancelarRenglonDialog nombre={quitando.name} pendientes={Math.max(1, quitando.qty - quitando.delivered)}
+          yaSalioACocina enviando={false} onCerrar={() => setQuitando(null)}
+          onConfirmar={(m, qty) => void quitarDeCocina(m, qty)} />
+      )}
+
       <FolioPlataformaSheet
         isOpen={pidiendoFolio !== null}
-        plataforma={nombreDeLista(menu, cuenta.platformId)}
-        valorInicial={cuenta.platformOrderRef}
+        plataforma={nombreDeLista(menu, vista.platformId)}
+        valorInicial={folioActual}
         onGuardarYMandar={(folio) => {
-          setFolioDeLaCuenta(folio);
+          // El folio se guarda en la cuenta ANTES de mandar: la fila de escrituras de la cuenta
+          // garantiza que el envío sale después de este cambio.
+          cuenta.cabecera({ platformOrderRef: folio });
+          setFolioTecleado(null);
           const seguir = pidiendoFolio?.hacer;
           setPidiendoFolio(null);
           seguir?.();
@@ -652,35 +677,16 @@ export function POSPage() {
         key={sesionDeCobro}
         pantalla="pos"
         order={cobrando}
-        crearPedido={() => mandarAsync({ deliveryFee: envio.paraElServidor })}
-        onPedidoCreado={setCreadoAlCobrar}
-        // El papel de la cuenta lo arma el POS, que es quien tiene el carrito. Se pasa `cobrables`
-        // y no `lines`: la pantalla ya excluye los productos que dejaron de existir, y el papel
-        // tiene que mostrar lo que se va a cobrar, no lo que se capturó.
-        preCuenta={cobrando && cobrando.id === null
-          ? preCuentaDeLaCuenta({
-            folioName: cuenta.folioName,
-            serviceType: cuenta.serviceType,
-            customerName: cuenta.customerName,
-            lineas: cobrables,
-            envio: envio.monto,
-            descuento: descuento.monto,
-            total: totalDeLaCuenta,
-          }, new Date())
-          : null}
-        onClose={cerrarElCobro}
+        onClose={() => setCobrando(null)}
         onCobrado={terminarElCobro}
       />
 
-      {/* Modo editar: editor de producto reutilizando el grid del POS */}
       <ProductEditDialog
         product={editProduct}
         isOpen={editProduct !== null}
         onClose={() => setEditProduct(null)}
       />
 
-      {/* Corregir el precio de un producto en la lista activa. Se remonta por producto (`key`) para
-          que el campo arranque con el precio de ESE producto en cada apertura. */}
       {editandoPrecio && desgloseEnEdicion && lista !== null && (
         <PlatformPriceDialog
           key={editandoPrecio.id}
@@ -694,15 +700,11 @@ export function POSPage() {
         />
       )}
 
-      {/* Confirmación — modal compacto centrado (no full-screen; ocupa lo mínimo) */}
+      {/* Confirmación — modal compacto centrado. Cobrado o pendiente se distinguen por color y texto. */}
       <DialogRoot open={lastOrder !== null} onOpenChange={(e) => { if (!e.open) setLastOrder(null); }} placement="center" size="xs">
         <DialogBackdrop />
         <DialogContent colorPalette={palette} mx={4} borderRadius="2xl">
           <DialogBody py={6} textAlign="center">
-            {/* El color y el texto distinguen cobrado de pendiente. Antes los dos casos decían
-                "Registrado correctamente": quien mandaba a cocina sin cobrar cerraba la cuenta,
-                el pedido desaparecía de la pantalla y nada volvía a recordarle que faltaba el
-                dinero hasta el corte. */}
             <Center color={lastOrder?.paid ? 'green.500' : 'orange.500'} mb={2}>
               {lastOrder?.paid ? <LuCircleCheck size={56} /> : <LuCircleAlert size={56} />}
             </Center>
@@ -713,17 +715,13 @@ export function POSPage() {
               <Text color="fg.muted" mb={5}>Cobrado · #{lastOrder?.number}</Text>
             ) : (
               <Text color="orange.600" fontWeight="700" mb={5}>
-                {/* Lo que FALTA, no el total. Con `total`, un pedido de $600 con $200 abonados
-                    decía "Falta cobrar $600" y mandaba a cobrar de más. */}
                 Falta cobrar {money(Number(lastOrder?.outstanding ?? 0))} · #{lastOrder?.number}
               </Text>
             )}
             <VStack gap={2}>
-              <Button size="lg" w="100%" onClick={() => setLastOrder(null)}>
+              <Button size="lg" w="100%" onClick={() => { setLastOrder(null); cuentaNueva(); }}>
                 Nuevo pedido
               </Button>
-              {/* Antes esto imprimía a ciegas: el operador no sabía qué había salido hasta tener
-                  el papel en la mano, y un ticket equivocado ya costó papel y tiempo del cliente. */}
               <Button size="md" variant="outline" w="100%" onClick={() => setTicketOpen(true)}>
                 <LuPrinter /> Ver ticket
               </Button>
@@ -732,39 +730,16 @@ export function POSPage() {
         </DialogContent>
       </DialogRoot>
 
-      {/* Encima de la confirmación, no en lugar de ella: al cerrar el ticket el operador sigue
-          teniendo "Nuevo pedido" a un toque. reprint queda en false — la marca de reimpresión es
-          para los tickets que se sacan después, desde el tablero. */}
       <TicketPreview order={lastOrder} isOpen={ticketOpen} onClose={() => setTicketOpen(false)} />
-
-      {/* Sin UI: si el negocio activó la impresión automática, el ticket sale cuando la venta
-          TERMINA. El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen
-          disponibles. */}
       <AutoPrintTicket order={printOrder} />
-
-      {/* La comanda sale del pedido recién CREADO, no del que termina la venta: cocina tiene que
-          enterarse en cuanto el pedido existe, sin esperar a que alguien cobre. Son dos papeles
-          distintos para dos personas distintas, y cada uno con su propio ajuste. */}
-      <KitchenTicket order={pedidoNuevo} soloLineas={agregados} />
+      {/* La comanda sale en cuanto el servidor confirma el envío, solo con los renglones que dijo. */}
+      <KitchenTicket order={comanda?.order ?? null} soloLineas={comanda?.ids} />
     </Box>
   );
 }
 
-// Aviso de que la caja abierta ya no es de hoy.
-//
-// Existe porque nada se lo decía a quien opera: un turno se quedó abierto cinco días y en ese
-// tiempo se acumularon 158 pedidos en un solo arqueo, sin que ninguna pantalla lo mencionara.
-//
-// NO BLOQUEA EL COBRO, a propósito. Un negocio en operación prefiere una fecha corrida a una caja
-// parada, y convertir un descuido administrativo en un cobro imposible es peor que el descuido.
-//
-// `deOtroDia` lo decide el SERVIDOR: la zona del negocio vive allá, y que cada tableta compare con
-// su propio reloj es justo la familia de defectos que esta pantalla viene a cerrar. Si el campo no
-// viene —el front se despliega minutos antes que el backend— no hay aviso, que es lo correcto:
-// mejor sin aviso que con uno inventado.
-//
-// Franja delgada y descartable, no un renglón fijo en la barra: la barra del POS ya no tiene ancho
-// libre a 1024×600, y el alto que esto ocupa solo se paga mientras el problema existe.
+// Aviso de que la caja abierta ya no es de hoy. No bloquea el cobro, a propósito: un negocio en
+// operación prefiere una fecha corrida a una caja parada. `deOtroDia` lo decide el servidor.
 function AvisoDeTurnoViejo({ estado }: { estado?: { deOtroDia?: boolean; openedAt?: string } }) {
   const [oculto, setOculto] = useState(false);
   const horaNegocio = useHoraDelNegocio();

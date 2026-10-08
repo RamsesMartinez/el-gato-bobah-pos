@@ -32,7 +32,8 @@ export const Toaster = () => {
               )}
             </Stack>
             {toast.action && (
-              <Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
+              // 44 px: el «Reintentar» de un producto que no se guardó se toca con el dedo.
+              <Toast.ActionTrigger minH="44px" px={3}>{toast.action.label}</Toast.ActionTrigger>
             )}
             {toast.closable && <Toast.CloseTrigger />}
           </Toast.Root>

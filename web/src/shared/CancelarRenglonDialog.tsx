@@ -4,8 +4,8 @@ import { LuMinus, LuPlus } from 'react-icons/lu';
 
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle,
-} from '../../components/ui/dialog';
-import { avisoDeInventario } from '../../domain/devolucion';
+} from '../components/ui/dialog';
+import { avisoDeInventario } from '../domain/devolucion';
 import { RemoveReasons } from './RemoveReasons';
 
 const TAP = '44px';

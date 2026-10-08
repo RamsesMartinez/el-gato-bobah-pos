@@ -1,360 +1,335 @@
-import { vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { vi, describe, expect, test, beforeEach } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
-import type { ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 
+import { Provider } from '../../components/ui/provider';
+import type { DraftView, OrderView } from '../../types/pos';
+import { armarVista, type Pendiente, type VistaCuenta } from './cuentaEnPantalla';
 import { Ticket } from './Ticket';
-import { useTicketStore } from '../../stores/ticket';
 
-function pinta(nodo: ReactNode) {
-  return render(<ChakraProvider value={defaultSystem}>{nodo}</ChakraProvider>);
+// El ticket ya no lee un almacén: pinta la cuenta que dice el servidor (spec 030). Las cuentas de
+// prueba se arman con la MISMA función que usa la pantalla, así que lo que aquí se ve es lo que
+// verá quien opera.
+
+function draft(over: Partial<DraftView> = {}): DraftView {
+  return {
+    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1,
+    updatedAt: '', createdAt: '', openedBy: 'Ana', serviceType: 'mostrador', customerName: null,
+    platformId: null, platformOrderRef: null, deliveryFee: '0.00', discount: null,
+    lines: [
+      { id: 'l-1', version: 1, productId: 1, productName: 'Coca Cola 355ml', qty: '1', unitPrice: '29.00', modifiers: [], notes: '', lineTotal: '29.00', available: true },
+      { id: 'l-2', version: 1, productId: 2, productName: 'Chai Miel', qty: '1', unitPrice: '45.00', modifiers: [], notes: '', lineTotal: '45.00', available: true },
+    ],
+    subtotal: '74.00', discountTotal: '0.00', total: '74.00', unavailable: [], ...over,
+  };
 }
 
-const props = {
-  onCheckout: vi.fn(),
-  onEnviar: vi.fn(),
-  enviando: false,
-  onEditLine: vi.fn(),
-  onHide: vi.fn(),
-  envioPorDefecto: 20,
-  noDisponibles: [],
-};
-
-// El renglón del producto también pinta su precio: el total se busca por su etiqueta, no por la
-// cifra suelta. La etiqueta "Total" comparte grupo con el botón de descuento, y la cifra es el
-// último texto de esa fila —debajo puede ir el renglón chico que explica el descuento—.
-async function totalEnPantalla() {
-  const etiqueta = await screen.findByText('Total');
-  const fila = etiqueta.parentElement;
-  const textos = fila?.querySelectorAll('p');
-  return textos?.[textos.length - 1]?.textContent;
+function linea(id: number, nombre: string, total: string, over: Record<string, unknown> = {}) {
+  return { id, productName: nombre, quantity: '1', unitPrice: total, lineTotal: total, delivered: '0', cancelled: false, modifiers: [], ...over };
 }
 
-// Abre el campo del menú, que es donde ahora se captura. Los tests que solo necesitan el VALOR
-// siguen escribiéndolo en el store; esto es para los que prueban el camino del dedo.
-async function abrirDelMenu(opcion: RegExp) {
-  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: opcion }));
+function pedido(over: Partial<OrderView> = {}): OrderView {
+  return {
+    id: 1, number: 1, folioName: 'Khao Manee', status: 'abierta', serviceType: 'mostrador',
+    deliveryPlatformId: null, platformOrderRef: null, customerName: null, subtotal: '165.00',
+    discount: '0.00', deliveryFee: '0.00', total: '165.00', currency: 'MXN', paid: false,
+    outstanding: '165.00', openedAt: '',
+    lines: [
+      linea(10, 'Kit Kat', '85.00'),
+      linea(11, 'Chai Miel', '45.00'),
+      linea(12, 'Chocolate Licuados', '35.00', { delivered: '1' }),
+    ],
+    payments: [], ...over,
+  };
 }
+
+function vista(args: { draft?: DraftView; order?: OrderView; pendientes?: Pendiente[]; guardando?: boolean } = {}): VistaCuenta {
+  return armarVista({
+    pendientes: [], guardando: false,
+    cabeceraNueva: { serviceType: 'mostrador', platformId: null, platformOrderRef: '', customerName: '' },
+    ...args,
+  });
+}
+
+type Props = ComponentProps<typeof Ticket>;
+let handlers: Omit<Props, 'vista'>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  // Cada test arranca con una cuenta limpia y un solo producto de $95: el panel muestra el total de
-  // la cuenta activa, así que arrastrar renglones entre tests haría que la cifra dependa del orden.
-  useTicketStore.setState(useTicketStore.getInitialState(), true);
-  useTicketStore.getState().addLine({ productId: 1, name: 'Alitas', unitPrice: 95, qty: 1, modifiers: [] });
+  handlers = {
+    sinConexion: false, envioPorDefecto: 20, puedeCancelar: true,
+    onMas: vi.fn(), onMenos: vi.fn(), onQuitar: vi.fn(), onEditLine: vi.fn(), onCabecera: vi.fn(),
+    onEnviar: vi.fn(), onCobrar: vi.fn(), onDescartar: vi.fn(), onCancelarPedido: vi.fn(),
+    onQuitarDeCocina: vi.fn(), onQuitarNoDisponibles: vi.fn(), onHide: vi.fn(),
+  };
 });
 
-// EL DEFECTO QUE ESTO CIERRA: un costo de envío mal escrito se convertía en ENVÍO GRATIS.
-//
-// `parseFloat('1,000') || 0` daba 1, y cualquier cosa que no empezara con un dígito daba 0. El
-// renglón desaparecía del total, el pedido se creaba sin envío, y nadie se enteraba hasta cuadrar
-// la caja. El default es para el campo AUSENTE, nunca para el presente y malformado.
-test('un envío mal escrito no cobra envío gratis: apaga los botones y lo dice', async () => {
-  useTicketStore.getState().setServiceType('domicilio');
-  useTicketStore.getState().setEnvio('1,000');
-  const { rerender } = pinta(<Ticket {...props} />);
-
-  expect(await screen.findByText('Solo números')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: /Enviar a cocina/ })).toBeDisabled();
-
-  // Y bien escrito sí deja seguir: la regla rechaza el formato, no el número.
-  useTicketStore.getState().setEnvio('30');
-  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
-  expect(screen.queryByText('Solo números')).toBeNull();
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeEnabled();
-});
-
-// EL DEFECTO: la pantalla ofrecía cobrar un envío que el servidor no cobra.
-//
-// Se marca "Domicilio", después se asigna la plataforma, y el panel esconde los botones de tipo:
-// la cuenta queda en domicilio con plataforma y el operador ya no puede corregirlo. Sumaba $20 que
-// el servidor fuerza a 0, y el cobro rebotaba dejando el pedido creado y sin cobrar.
-test('con plataforma no se ofrece envío, aunque la cuenta diga domicilio', async () => {
-  useTicketStore.getState().setServiceType('domicilio');
-  useTicketStore.getState().setPlatform(3);
-  pinta(<Ticket {...props} />);
-
-  expect(screen.queryByLabelText('Costo de envío')).toBeNull();
-  // Y el total no lo incluye: el reparto lo cobra la plataforma.
-  expect(await totalEnPantalla()).toBe('$95');
-});
-
-// El envío del domicilio propio SÍ entra al total que ve el operador, o el ticket dice una cifra y
-// el cobro otra.
-test('un domicilio propio suma el envío al total de la pantalla', async () => {
-  useTicketStore.getState().setServiceType('domicilio');
-  useTicketStore.getState().setEnvio('30');
-  pinta(<Ticket {...props} />);
-  expect(await totalEnPantalla()).toBe('$125');
-});
-
-// Sin capturar nada, el envío es el del negocio: el campo vacío significa "el de siempre", no cero.
-test('sin capturar envío se usa el del negocio', async () => {
-  useTicketStore.getState().setServiceType('domicilio');
-  pinta(<Ticket {...props} />);
-  expect(await totalEnPantalla()).toBe('$115');
-});
-
-// EL DEFECTO: enterarse al COBRAR de que un producto ya no está en el menú.
-//
-// El aviso vivía en la hoja de cobro, así que el operador lo descubría con el cliente enfrente y el
-// dinero en la mano. Aquí se ve mientras la cuenta se arma y se quita de un toque.
-test('avisa de los productos que ya no están en el menú, mientras se puede quitar', async () => {
-  const u = userEvent.setup();
-  const fuera = { lineId: 'x', productId: 9, name: 'Tamarindo', unitPrice: 30, qty: 1, modifiers: [] };
-  pinta(<Ticket {...props} noDisponibles={[fuera]} />);
-
-  expect(await screen.findByText('Ya no están en el menú')).toBeInTheDocument();
-  // Se NOMBRA el producto: con el carrito lleno, un aviso sin nombre no dice qué renglón quitar.
-  expect(screen.getByText('Tamarindo')).toBeInTheDocument();
-  await u.click(screen.getByRole('button', { name: /Quitar del pedido/ }));
-});
-
-// EL DEFECTO QUE EL DUEÑO REPORTÓ: "elijo elementos, le doy a Cobrar, y se eliminan; aunque cancele
-// el modal ya no reaparecen".
-//
-// COBRAR dejó de ser "abre una pantalla que cobra al final": ahora CONFIRMA el pedido —lo manda a
-// cocina— y después abre el cobro. Eso es lo correcto (cobrar sin que cocina se entere era el atajo
-// que la feature 005 vino a cerrar), pero significa que el botón es irreversible desde el instante
-// en que se toca, y la pantalla no lo decía. Quien cierra la hoja creyendo que canceló ve el carrito
-// vacío, da la venta por perdida y la vuelve a capturar: cocina prepara dos veces lo mismo.
-//
-// El botón lo dice ahora. No es un aviso decorativo: es la diferencia entre un gesto reversible y
-// uno que no lo es.
-test('COBRAR avisa que también manda el pedido a cocina', async () => {
-  pinta(<Ticket {...props} />);
-  const cobrar = await screen.findByRole('button', { name: /COBRAR/ });
-  expect(cobrar).toHaveAccessibleDescription(/cocina/i);
-});
-
-// UN ENVÍO QUE YA NO APLICA NO PUEDE DEJAR EL POS MUDO.
-//
-// El cálculo del envío corría siempre, pero el campo y el mensaje "Solo números" solo se pintaban
-// en domicilio propio. Teclear "1,5" y luego cambiar a Mostrador —o asignar una plataforma— dejaba
-// los dos botones apagados sin campo que corregir ni razón visible, y como el envío era global,
-// ninguna cuenta podía vender.
-test('un envío mal escrito deja de bloquear cuando la cuenta pasa a mostrador', async () => {
-  useTicketStore.getState().setServiceType('domicilio');
-  useTicketStore.getState().setEnvio('1,5');
-  const { rerender } = pinta(<Ticket {...props} />);
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
-
-  useTicketStore.getState().setServiceType('mostrador');
-  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
-
-  expect(await screen.findByRole('button', { name: 'COBRAR' })).toBeEnabled();
-  // Y no queda un aviso huérfano de un campo que ya no se pinta.
-  expect(screen.queryByText('Solo números')).toBeNull();
-});
-
-// El piso de 44 px se mide en Playwright y no aquí: las medidas de Chakra son clases CSS y jsdom no
-// las resuelve, así que un assert de píxeles en este archivo pasaría verde con los botones de 24 px.
-// Vive en e2e/cabe-en-la-tableta.spec.ts, contra un navegador real.
-
-// La acción destructiva va SEPARADA de las frecuentes, no junto a ellas. Es requisito funcional:
-// quitar un renglón por accidente obliga a volver a buscar el producto en el menú.
-test('la papelera no está pegada a los botones de cantidad', () => {
-  useTicketStore.getState().addLine({ productId: 1, name: 'Alitas', unitPrice: 95, qty: 1, modifiers: [] });
-  pinta(<Ticket {...props} />);
-
-  const menos = screen.getByRole('button', { name: '−' });
-  const quitar = screen.getByRole('button', { name: 'Quitar' });
-  // No comparten padre inmediato: el − vive con el + y la papelera se fue al otro extremo.
-  expect(menos.parentElement, 'la papelera sigue pegada a los controles de cantidad')
-    .not.toBe(quitar.parentElement);
-});
-
-// EL DESCUENTO, EN LA PANTALLA DE 600 px.
-//
-// El acceso vive en la fila del Total y no en una fila propia: una fila nueva le cobra ~52 px de
-// alto a TODOS los pedidos —medido: baja de ~3.5 a ~2.9 los renglones de producto visibles en un
-// domicilio— para servir al puñado que lleva promoción.
-test('el descuento no ocupa alto hasta que alguien lo abre', async () => {
-  pinta(<Ticket {...props} />);
-  expect(screen.queryByLabelText('Descuento')).toBeNull();
-
-  await abrirDelMenu(/Descuento/);
-  expect(await screen.findByLabelText('Descuento')).toBeInTheDocument();
-});
-
-test('un descuento en pesos baja el total y dice de dónde sale', async () => {
-  useTicketStore.getState().setDescuento('20');
-  pinta(<Ticket {...props} />);
-
-  expect(await totalEnPantalla()).toBe('$75'); // 95 - 20
-  // El renglón chico es lo que deja explicarle al cliente por qué el total no es la suma de los
-  // renglones: sin él, la diferencia se discute en el mostrador.
-  expect(screen.getByText(/de descuento/)).toBeInTheDocument();
-});
-
-test('un porcentaje se pinta en pesos', async () => {
-  useTicketStore.getState().setDescuentoModo('pct');
-  useTicketStore.getState().setDescuento('20');
-  pinta(<Ticket {...props} />);
-
-  expect(await totalEnPantalla()).toBe('$76'); // 95 - 19
-});
-
-// Un descuento ilegible que cayera a cero es una promoción que el cliente ya escuchó y que el
-// ticket no aplica. Y uno mayor que la cuenta cobraría en negativo.
-test('un descuento mal escrito o imposible apaga los botones', async () => {
-  useTicketStore.getState().setDescuento('1,000');
-  const { rerender } = pinta(<Ticket {...props} />);
-  expect(await screen.findByText('Solo números')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
-
-  useTicketStore.getState().setDescuento('400'); // la cuenta son $95
-  rerender(<ChakraProvider value={defaultSystem}><Ticket {...props} /></ChakraProvider>);
-  expect(await screen.findByText(/Máx/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
-});
-
-// FR-011: el descuento existe en los cuatro tipos de pedido. Hoy se cumple por omisión —no hay
-// ninguna condición— y este test es lo que impide que una condición agregada después lo rompa sin
-// que nada falle.
-test.each([
-  ['mostrador', null],
-  ['domicilio', null],
-  ['mostrador', 1],
-  ['domicilio', 1],
-] as const)('el descuento se puede capturar en %s con plataforma %s', async (tipo, plataforma) => {
-  useTicketStore.getState().setServiceType(tipo);
-  useTicketStore.getState().setPlatform(plataforma);
-  pinta(<Ticket {...props} />);
-
-  await abrirDelMenu(/Descuento/);
-  expect(await screen.findByLabelText('Descuento')).toBeInTheDocument();
-});
-
-// `overflowY` sin un alto no hace scroll: la caja crece. En la tableta eso empuja el botón COBRAR
-// fuera de la pantalla cuando el teclado numérico se abre sobre el campo de descuento, y no hay
-// forma de alcanzarlo. Ningún test puede simular ese teclado; lo que sí se puede verificar es que
-// la zona tenga alto acotado.
-test('la zona de totales tiene alto acotado, no crece con lo que se le agregue', async () => {
-  pinta(<Ticket {...props} />);
-  const cobrar = await screen.findByRole('button', { name: 'COBRAR' });
-  const zona = cobrar.closest('div')?.parentElement;
-  expect(zona).not.toBeNull();
-  const estilo = getComputedStyle(zona!);
-  expect(estilo.maxHeight, 'sin maxH la caja crece y COBRAR se va abajo de la pantalla').not.toBe('none');
-  expect(estilo.overflowY).toBe('auto');
-});
-
-// ---------------------------------------------------------------------------------------------
-// EL REACOMODO (023): arriba lo que describe el pedido, abajo lo que mueve dinero.
-// ---------------------------------------------------------------------------------------------
-
-function ponerFolio(nombre: string) {
-  useTicketStore.setState((s) => ({ tabs: s.tabs.map((t) => ({ ...t, folioName: nombre })) }));
+function pinta(v: VistaCuenta, over: Partial<Props> = {}) {
+  return render(<Provider><Ticket vista={v} {...handlers} {...over} /></Provider>);
 }
 
-// La fila de tipo + cliente costaba 52 px en TODO pedido de mostrador, que es el de todos los días.
-test('la zona de totales ya no trae el tipo ni el campo de cliente', async () => {
-  pinta(<Ticket {...props} />);
-  await screen.findByRole('button', { name: 'COBRAR' });
+async function abrirMenu() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones de la cuenta' }));
+}
 
-  // El tipo sigue existiendo, pero arriba: junto al nombre del pedido, no pegado a COBRAR.
-  const tipo = screen.getByRole('button', { name: /Mostrador/ });
-  const cobrar = screen.getByRole('button', { name: 'COBRAR' });
-  expect(tipo.compareDocumentPosition(cobrar) & Node.DOCUMENT_POSITION_FOLLOWING,
-    'el tipo quedó DESPUÉS de COBRAR: sigue en la zona del dinero').toBeTruthy();
+const alto = (el: Element) => parseInt(getComputedStyle(el).minHeight || '0', 10);
 
-  // Y el campo de cliente ya no ocupa alto: vive en el menú.
-  expect(screen.queryByPlaceholderText('Cliente')).toBeNull();
+describe('las secciones del ticket (US3)', () => {
+  test('una cuenta en captura solo tiene lo nuevo, con −/+', () => {
+    pinta(vista({ draft: draft() }));
+    expect(screen.queryByRole('heading', { name: /En cocina/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Pagado/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Uno menos' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Uno más' })).toHaveLength(2);
+  });
+
+  test('un pedido con algo nuevo: «Nuevo» primero, luego «En cocina»; lo de cocina sin −/+', () => {
+    pinta(vista({ order: pedido(), draft: draft({ orderId: 1, folioName: null, lines: [draft().lines![0]] }) }));
+    const titulos = screen.getAllByRole('heading').map((h) => h.textContent);
+    expect(titulos[0]).toMatch(/Nuevo · aún no va a cocina/);
+    expect(titulos[1]).toMatch(/En cocina/);
+    const cocina = screen.getByRole('region', { name: /En cocina/ });
+    expect(within(cocina).queryByRole('button', { name: 'Uno menos' })).toBeNull();
+    expect(within(cocina).getByText('entregado')).toBeInTheDocument();
+  });
+
+  test('lo pagado lleva candado y no tiene ⋮', () => {
+    const o = pedido({
+      outstanding: '80.00',
+      payments: [{ id: 1, number: 1, voided: false, methodId: 1, methodName: 'Efectivo', amount: '85.00', tip: '0', reference: '', paidAt: '', receivedBy: '', split: null, lines: [{ lineId: 10, qty: '1', amount: '85.00' }] }],
+    });
+    pinta(vista({ order: o }));
+    const pagado = screen.getByRole('region', { name: /Pagado/ });
+    expect(within(pagado).getByText('Kit Kat')).toBeInTheDocument();
+    expect(within(pagado).getByLabelText('Pagado')).toBeInTheDocument();
+    expect(within(pagado).queryByRole('button')).toBeNull();
+  });
+
+  // Caso 8: quitar lo que ya está en cocina sale del ⋮ del renglón, no de un bote junto a la marca
+  // de entregado.
+  test('el ⋮ de un renglón en cocina pide quitarlo', async () => {
+    pinta(vista({ order: pedido() }));
+    const cocina = screen.getByRole('region', { name: /En cocina/ });
+    await userEvent.click(within(cocina).getByRole('button', { name: 'Opciones de Kit Kat' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Quitar/ }));
+    expect(handlers.onQuitarDeCocina).toHaveBeenCalledWith(expect.objectContaining({ id: 10, name: 'Kit Kat' }));
+  });
+
+  // En 600 px de alto, cinco renglones de cocina empujaban lo nuevo fuera de la vista.
+  test('«En cocina» con más de 3 renglones se pliega solo y se despliega al tocarlo', async () => {
+    const o = pedido({ lines: [1, 2, 3, 4, 5].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    pinta(vista({ order: o }));
+    const boton = screen.getByRole('button', { name: /En cocina · 5/ });
+    expect(screen.queryByText('Producto 1')).toBeNull();
+    await userEvent.click(boton);
+    expect(screen.getByText('Producto 1')).toBeInTheDocument();
+  });
+
+  test('con 3 o menos no se pliega', () => {
+    pinta(vista({ order: pedido() }));
+    expect(screen.getByText('Kit Kat')).toBeInTheDocument();
+  });
 });
 
-// Un pedido de plataforma ES a domicilio: ofrecer el cambio sería ofrecer algo que el servidor
-// rechaza por el check de la tabla.
-test('un pedido de plataforma no ofrece cambiar el tipo', async () => {
-  useTicketStore.getState().setPlatform(1);
-  pinta(<Ticket {...props} />);
-  await screen.findByRole('button', { name: 'COBRAR' });
+describe('el pie: totales y dos botones (caso 30)', () => {
+  test('una cuenta en captura: «Enviar 2 a cocina» y «Enviar y cobrar»', () => {
+    pinta(vista({ draft: draft() }));
+    expect(screen.getByRole('button', { name: 'Enviar 2 a cocina' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Enviar y cobrar \$74/ })).toBeEnabled();
+  });
 
-  expect(screen.queryByRole('button', { name: /Mostrador|Domicilio/ })).toBeNull();
+  test('un pedido sin nada nuevo: «Cobrar» lo que falta y enviar apagado', () => {
+    pinta(vista({ order: pedido() }));
+    expect(screen.getByRole('button', { name: /^Cobrar \$165/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /a cocina/ })).toBeDisabled();
+  });
+
+  test('un pedido con pago parcial dice lo pagado y lo que falta', () => {
+    const o = pedido({ outstanding: '80.00' });
+    pinta(vista({ order: o, draft: draft({ orderId: 1, folioName: null, lines: [draft().lines![0]], total: '29.00', subtotal: '29.00' }) }));
+    expect(screen.getByText(/Ya pagado/)).toBeInTheDocument();
+    expect(screen.getByText('$85 de $165')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar y cobrar \$109/ })).toBeInTheDocument();
+  });
+
+  test('el pie no tiene otros controles que los dos botones', () => {
+    pinta(vista({ draft: draft() }));
+    const pie = screen.getByRole('group', { name: 'Enviar y cobrar' });
+    expect(within(pie).getAllByRole('button')).toHaveLength(2);
+  });
+
+  test('con algo guardando los dos botones se apagan y se dice por qué', () => {
+    const p: Pendiente = { opId: 'op', cuenta: 'd-1', productId: 3, name: 'Kit Kat', qty: 1, unitPrice: 85, modifiers: [], notes: '' };
+    pinta(vista({ draft: draft(), pendientes: [p] }));
+    expect(screen.getByRole('button', { name: /a cocina/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled();
+    expect(screen.getAllByText(/Guardando/).length).toBeGreaterThan(0);
+  });
+
+  test('sin conexión los dos botones se apagan y se dice por qué', () => {
+    pinta(vista({ draft: draft() }), { sinConexion: true });
+    expect(screen.getByRole('button', { name: /a cocina/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled();
+    expect(screen.getByText(/Sin conexión/)).toBeInTheDocument();
+  });
+
+  test('el motivo de un envío que falló se queda en el pie', () => {
+    pinta(vista({ draft: draft() }), { motivo: 'No hay caja abierta' });
+    expect(screen.getByText('No hay caja abierta')).toBeInTheDocument();
+  });
+
+  test('una cuenta vacía no ofrece enviar ni cobrar', () => {
+    pinta(vista());
+    expect(screen.getByText('Toca un producto para agregarlo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /a cocina/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled();
+  });
+
+  // `overflowY` sin un alto no hace scroll: la caja crece y con el teclado abierto Cobrar se va
+  // abajo de la pantalla.
+  test('la zona de totales tiene alto acotado', () => {
+    pinta(vista({ draft: draft() }));
+    const zona = screen.getByTestId('totales');
+    expect(getComputedStyle(zona).maxHeight).not.toBe('none');
+    expect(getComputedStyle(zona).overflowY).toBe('auto');
+  });
 });
 
-test('el menú del pedido ofrece cliente, descuento y vaciar', async () => {
-  pinta(<Ticket {...props} />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+describe('los renglones nuevos', () => {
+  test('−, + y quitar llaman con el renglón; la papelera no está pegada a la cantidad', () => {
+    pinta(vista({ draft: draft() }));
+    const menos = screen.getAllByRole('button', { name: 'Uno menos' })[0];
+    const quitar = screen.getAllByRole('button', { name: 'Quitar' })[0];
+    expect(menos.parentElement).not.toBe(quitar.parentElement);
+    fireEvent.click(menos);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Uno más' })[0]);
+    fireEvent.click(quitar);
+    expect(handlers.onMenos).toHaveBeenCalledWith(expect.objectContaining({ id: 'l-1' }));
+    expect(handlers.onMas).toHaveBeenCalledWith(expect.objectContaining({ id: 'l-1' }));
+    expect(handlers.onQuitar).toHaveBeenCalledWith(expect.objectContaining({ id: 'l-1' }));
+  });
 
-  for (const nombre of [/Nombre del cliente/, /Descuento/, /Vaciar/]) {
-    expect(await screen.findByRole('menuitem', { name: nombre })).toBeInTheDocument();
-  }
+  test('un renglón guardando se ve así y no tiene −/+', () => {
+    const p: Pendiente = { opId: 'op', cuenta: 'd-1', productId: 3, name: 'Kit Kat', qty: 1, unitPrice: 85, modifiers: [], notes: '' };
+    pinta(vista({ draft: draft({ lines: [] }), pendientes: [p] }));
+    // Una vez en el renglón y otra en el pie, que explica por qué los botones están apagados.
+    expect(screen.getAllByText('Guardando…')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Uno menos' })).toBeNull();
+  });
+
+  test('avisa de lo que ya no está en el menú y lo quita de un toque', () => {
+    const l = { ...draft().lines![0], available: false };
+    pinta(vista({ draft: draft({ lines: [l], unavailable: ['Coca Cola 355ml'] }) }));
+    expect(screen.getByText('Ya no están en el menú')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar del pedido' }));
+    expect(handlers.onQuitarNoDisponibles).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /a cocina/ })).toBeDisabled();
+  });
+
+  test('controles de renglón de al menos 44 px', () => {
+    pinta(vista({ draft: draft() }));
+    for (const b of [...screen.getAllByRole('button', { name: 'Uno menos' }), ...screen.getAllByRole('button', { name: 'Quitar' })]) {
+      expect(alto(b)).toBeGreaterThanOrEqual(44);
+    }
+  });
 });
 
-// Estar dentro de un menú no vuelve inofensivo a lo destructivo.
-test('vaciar desde el menú sigue pidiendo confirmación', async () => {
-  const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  pinta(<Ticket {...props} />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: /Vaciar/ }));
+describe('envío y descuento', () => {
+  // Un envío mal escrito no puede convertirse en envío gratis: apaga los botones y lo dice.
+  test('un envío mal escrito apaga los botones y no se guarda', async () => {
+    pinta(vista({ draft: draft({ serviceType: 'domicilio', deliveryFee: '20.00' }) }));
+    const campo = screen.getByLabelText('Costo de envío');
+    await userEvent.clear(campo);
+    await userEvent.type(campo, '1,5');
+    fireEvent.blur(campo);
+    expect(screen.getByText('Solo números')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled();
+    expect(handlers.onCabecera).not.toHaveBeenCalled();
+  });
 
-  expect(confirmar).toHaveBeenCalled();
-  expect(useTicketStore.getState().tabs[0].lines, 'se vació sin confirmar').toHaveLength(1);
-  confirmar.mockRestore();
+  test('un envío bien escrito se guarda al salir del campo', async () => {
+    pinta(vista({ draft: draft({ serviceType: 'domicilio', deliveryFee: '20.00' }) }));
+    const campo = screen.getByLabelText('Costo de envío');
+    await userEvent.clear(campo);
+    await userEvent.type(campo, '35');
+    fireEvent.blur(campo);
+    expect(handlers.onCabecera).toHaveBeenCalledWith({ deliveryFee: '35.00' });
+  });
+
+  test('con plataforma no se ofrece envío ni cambiar el tipo', () => {
+    pinta(vista({ draft: draft({ serviceType: 'domicilio', platformId: 3 }) }));
+    expect(screen.queryByLabelText('Costo de envío')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Mostrador|Domicilio/ })).toBeNull();
+  });
+
+  test('pasar a domicilio pone el envío del negocio', async () => {
+    pinta(vista({ draft: draft() }));
+    await userEvent.click(screen.getByRole('button', { name: /Mostrador/ }));
+    expect(handlers.onCabecera).toHaveBeenCalledWith({ serviceType: 'domicilio', deliveryFee: '20.00' });
+  });
+
+  test('el descuento no ocupa alto hasta que alguien lo abre', () => {
+    pinta(vista({ draft: draft() }));
+    expect(screen.queryByLabelText('Descuento')).toBeNull();
+  });
+
+  test('un descuento en pesos se guarda con «Listo»', async () => {
+    pinta(vista({ draft: draft() }));
+    await abrirMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Descuento/ }));
+    await userEvent.type(screen.getByLabelText('Descuento'), '20');
+    await userEvent.click(screen.getByRole('button', { name: 'Listo' }));
+    expect(handlers.onCabecera).toHaveBeenCalledWith({ discount: { amount: '20.00' } });
+  });
+
+  test('un descuento mal escrito o mayor que la cuenta no se puede guardar y apaga los botones', async () => {
+    pinta(vista({ draft: draft() }));
+    await abrirMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Descuento/ }));
+    await userEvent.type(screen.getByLabelText('Descuento'), '500');
+    expect(screen.getByRole('button', { name: 'Listo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cobrar/i })).toBeDisabled();
+  });
+
+  test('un descuento aplicado se ve con el menú cerrado', () => {
+    pinta(vista({ draft: draft({ discount: { amount: '20.00' }, discountTotal: '20.00', total: '54.00' }) }));
+    expect(screen.getByText(/\$74 − \$20 de descuento/)).toBeInTheDocument();
+  });
 });
 
-// Sin renglones no hay nada que vaciar: igual que hoy no se pinta el botón.
-test('con el carrito vacío el menú no ofrece vaciar', async () => {
-  useTicketStore.setState((s) => ({ tabs: s.tabs.map((t) => ({ ...t, lines: [] })) }));
-  pinta(<Ticket {...props} />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
+describe('el ⋮ de la cuenta (US5)', () => {
+  test('en captura ofrece cliente, descuento y descartar; no cancelar', async () => {
+    pinta(vista({ draft: draft() }));
+    await abrirMenu();
+    expect(await screen.findByRole('menuitem', { name: /Nombre del cliente/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Descuento/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Descartar cuenta/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Cancelar pedido/ })).toBeNull();
+  });
 
-  expect(screen.queryByRole('menuitem', { name: /Vaciar/ })).toBeNull();
-});
+  test('descartar llama a onDescartar', async () => {
+    pinta(vista({ draft: draft() }));
+    await abrirMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Descartar cuenta/ }));
+    expect(handlers.onDescartar).toHaveBeenCalled();
+  });
 
-// El descuento es dinero: esconderlo detrás de un toque sería cobrar de menos sin decir por qué.
-test('un descuento aplicado se ve con el menú cerrado', async () => {
-  useTicketStore.getState().setDescuento('20');
-  pinta(<Ticket {...props} />);
+  // Una cuenta enviada no se cierra: solo se cancela el pedido, con motivo y permiso.
+  test('un pedido enviado solo ofrece cancelar el pedido', async () => {
+    pinta(vista({ order: pedido() }));
+    await abrirMenu();
+    expect(await screen.findByRole('menuitem', { name: /Cancelar pedido/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Descartar/ })).toBeNull();
+  });
 
-  expect(await screen.findByText(/de descuento/)).toBeInTheDocument();
-  expect(await totalEnPantalla()).toBe('$75');
-});
+  test('sin permiso de cancelar, un pedido enviado no tiene ⋮', () => {
+    pinta(vista({ order: pedido() }), { puedeCancelar: false });
+    expect(screen.queryByRole('button', { name: 'Más opciones de la cuenta' })).toBeNull();
+  });
 
-// El esquema de folio por omisión es `razas`, y ahí los nombres llegan a 20 caracteres
-// ("Colorpoint Shorthair"). Lo que cede es el ancho del nombre, NUNCA la altura de un control.
-test('con un nombre de folio largo ningún control del encabezado baja de 44 px', async () => {
-  ponerFolio('Colorpoint Shorthair');
-  pinta(<Ticket {...props} />);
-
-  const tipo = await screen.findByRole('button', { name: /Mostrador/ });
-  const menu = screen.getByRole('button', { name: 'Más opciones del pedido' });
-  for (const control of [tipo, menu]) {
-    const alto = getComputedStyle(control).minHeight;
-    expect(parseInt(alto, 10), `${control.getAttribute('aria-label') ?? control.textContent} quedó en ${alto}`)
-      .toBeGreaterThanOrEqual(44);
-  }
-});
-
-// El aviso de "ya no están en el menú" vivía dentro de la caja de totales y mandó COBRAR a un
-// scroll interno. El campo del menú no puede repetirlo: va ARRIBA, y lo que se encoge es la lista.
-test('el campo que abre el menú no vive en la caja de totales', async () => {
-  pinta(<Ticket {...props} />);
-  await userEvent.click(await screen.findByRole('button', { name: 'Más opciones del pedido' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: /Nombre del cliente/ }));
-
-  const campo = await screen.findByLabelText('Nombre del cliente');
-  const cobrar = screen.getByRole('button', { name: 'COBRAR' });
-  const cajaDeTotales = cobrar.closest('div')?.parentElement;
-  expect(cajaDeTotales?.contains(campo),
-    'el campo quedó dentro de la caja de alto acotado: con él abierto, COBRAR se va a un scroll interno')
-    .toBe(false);
-});
-
-// Una cuenta guardada puede traer un descuento imposible: el texto tecleado vive en el almacén y
-// sobrevive a un F5. Los botones quedan apagados —eso está bien— pero el aviso que lo explica no
-// puede quedarse escondido dentro de un menú.
-test('un descuento imposible que viene del almacén abre su campo solo', async () => {
-  useTicketStore.getState().setDescuento('1,000');
-  pinta(<Ticket {...props} />);
-
-  expect(await screen.findByText('Solo números')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Listo' }),
-    'se puede cerrar el campo dejando un descuento imposible: los botones quedan apagados sin nada que lo explique')
-    .toBeDisabled();
+  test('con un nombre largo ningún control del encabezado baja de 44 px', () => {
+    pinta(vista({ draft: draft({ folioName: 'Colorpoint Shorthair' }) }));
+    expect(alto(screen.getByRole('button', { name: /Mostrador/ }))).toBeGreaterThanOrEqual(44);
+    expect(alto(screen.getByRole('button', { name: 'Más opciones de la cuenta' }))).toBeGreaterThanOrEqual(44);
+  });
 });

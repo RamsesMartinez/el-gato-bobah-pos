@@ -20,7 +20,7 @@ import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { DevolucionSheet } from './DevolucionSheet';
-import { CancelarRenglonDialog } from './CancelarRenglonDialog';
+import { CancelarRenglonDialog } from '../../shared/CancelarRenglonDialog';
 import { CancelPendingSheet } from './CancelPendingSheet';
 import { useSessionStore } from '../../stores/session';
 import { can } from '../../app/permissions';

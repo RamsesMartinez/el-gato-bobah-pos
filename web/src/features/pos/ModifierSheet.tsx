@@ -24,10 +24,11 @@ import { combinacionGuardada, completarConLaUltima, guardarCombinacion } from '.
 import { OptionPriceFields } from './OptionPriceFields';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { useMenu } from '../../hooks/useMenu';
-import { useActiveTicket } from '../../stores/ticket';
 
 interface Props {
   product: MenuProduct | null;
+  // La lista de precios de la cuenta abierta (null = mostrador).
+  lista: number | null;
   isOpen: boolean;
   initialModifiers?: TicketModifier[];
   initialNotes?: string;
@@ -41,7 +42,7 @@ type Sel = Record<number, Record<number, number>>;
 
 const SEARCH_THRESHOLD = 12; // muestra el buscador de opciones si hay más de esto
 
-export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes, optionRanks, onClose, onConfirm }: Props) {
+export function ModifierSheet({ product, lista, isOpen, initialModifiers, initialNotes, optionRanks, onClose, onConfirm }: Props) {
   const [sel, setSel] = useState<Sel>({});
   const [notes, setNotes] = useState('');
   const [qty, setQty] = useState(1);
@@ -51,7 +52,6 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   // Los cargos de los extras siguen la lista de precios de la cuenta, igual que el producto: si
   // aquí se mostrara el delta base, el total de pantalla no cuadraría con el cobrado.
   const { data: menu } = useMenu();
-  const lista = useActiveTicket().platformId;
   const role = useSessionStore((s) => s.user?.role);
   const canManage = role === 'admin' || role === 'gerente';
   const qc = useQueryClient();

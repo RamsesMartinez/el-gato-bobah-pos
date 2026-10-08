@@ -5,7 +5,7 @@ import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger } from '.
 import { mensajeDeError } from '../../api/mensajes';
 import type { BoardOrder } from '../../types/pos';
 import { pendientes, renglonesDe } from './entrega';
-import { RemoveReasons } from './RemoveReasons';
+import { RemoveReasons } from '../../shared/RemoveReasons';
 
 // 44 px es el mínimo con el que un dedo acierta a la primera.
 const TAP = '44px';

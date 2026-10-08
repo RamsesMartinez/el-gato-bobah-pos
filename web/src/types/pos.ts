@@ -1,4 +1,3 @@
-import type { ModoDeDescuento } from '../domain/descuento';
 // Tipos del dominio POS (espejo del backend Go). camelCase. El DINERO viaja como string
 // decimal exacto ("70.50") — nunca number en el cable (ver utils/format.ts money()). Los
 // tipos internos del ticket (TicketLine/TicketModifier) sí usan number: son solo la
@@ -329,87 +328,6 @@ export interface BoardLine {
   enviadoACocina?: boolean;
   // Piezas que cubren pagos vivos. Con alguna, la tarjeta deshabilita el bote con «Pagado».
   paidQty?: string;
-}
-
-// --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---
-//
-// `domain` es puro: no importa de `api/`, de `stores/` ni de React. Estos dos tipos vivían en esos
-// dos lugares, así que una función de dominio que los necesitara tenía que alcanzar hacia arriba —
-// y eso es exactamente la puerta por la que se cuela el acoplamiento que este árbol quiere cerrar.
-
-export interface TicketTab {
-  id: string;
-  num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
-  // El animal con el que se va a cantar este pedido en cocina. Se pone al ABRIR la cuenta y no al
-  // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
-  // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
-  // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
-  //
-  // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
-  // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
-  folioName: string;
-  // El folio con el que la plataforma nombra a este pedido, tal como el operador lo tecleó.
-  //
-  // Vive en la CUENTA y no en un useState de la pantalla por lo mismo que el envío: sobrevive a un
-  // cambio de cuenta y a un F5, y no se mezcla entre dos cuentas abiertas a la vez. Vacío mientras
-  // no haya plataforma; cambiar de lista lo tira, porque un folio de Uber colgando de Rappi es
-  // basura silenciosa.
-  platformOrderRef: string;
-  lines: TicketLine[];
-  // El costo de envío TAL COMO SE TECLEÓ, y por cuenta.
-  //
-  // Vivía en un useState de la pantalla, y de ahí salían cuatro defectos: no sobrevivía a un F5
-  // mientras el resto del carrito sí (se cobraba el default sin avisar), se heredaba entre
-  // pestañas y sobrevivía al cierre de la cuenta que lo capturó, y la píldora que cobra no lo veía.
-  // El envío es parte de `orders.total`: pertenece a la cuenta.
-  //
-  // Se guarda el TEXTO y no el número: un valor mal escrito tiene que poder bloquear el cobro, y un
-  // número ya parseado no distingue "vacío" de "ilegible".
-  envio: string;
-  // El descuento TAL COMO SE TECLEÓ, y su modo ($ o %). Vive en la cuenta por lo mismo que el
-  // envío: sobrevive a un F5 y a un cambio de cuenta, y no se mezcla entre dos cuentas abiertas.
-  //
-  // Se guarda el TEXTO y no el número, por la misma razón que el envío: un valor mal escrito tiene
-  // que poder bloquear el cobro, y un número ya parseado no distingue "vacío" de "ilegible".
-  descuento: string;
-  // El modo se guarda con la cuenta y no en la pantalla: cambiar de cuenta y volver tiene que
-  // encontrar el mismo campo que se dejó, o el operador reescribe un 20 creyendo que son pesos.
-  descuentoModo: ModoDeDescuento;
-  serviceType: ServiceType;
-  customerName: string;
-  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
-  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
-  // cada una tiene que conservar su lista.
-  platformId: number | null;
-}
-
-export interface CreateOrderBody {
-  clientUuid: string;
-  serviceType: string;
-  customerName?: string;
-  notes?: string;
-  // Nombre con el que la pantalla ya bautizó la cuenta. El servidor lo sanea y resuelve los
-  // choques del día, así que proponerlo no es decidirlo.
-  folioName?: string;
-  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
-  // El descuento capturado. EXCLUYENTES: mandar los dos es un 400. El porcentaje viaja como
-  // porcentaje porque el servidor lo resuelve contra SU subtotal, no contra el de la pantalla.
-  discountAmount?: number;
-  discountPercent?: number;
-  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
-  // lo que va aquí es el id, nunca los precios.
-  deliveryPlatformId?: number;
-  // Solo viaja cuando hay plataforma Y el operador lo escribió. Ausente = se tomó la salida
-  // explícita, y el pedido queda listado como pendiente de folio.
-  platformOrderRef?: string;
-  lines: Array<{
-    productId: number;
-    qty: number;
-    notes?: string;
-    modifiers: Array<{ optionId: number; qty: number }>;
-  }>;
-  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
-  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
 }
 
 // --- Cuentas en captura y cuentas vivas (spec 030, contracts/api.md) ---

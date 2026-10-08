@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Provider } from '../../components/ui/provider';
 import { PlatformPicker } from './PlatformPicker';
-import { useTicketStore } from '../../stores/ticket';
 import type { Menu } from '../../types/pos';
 
 const menu: Menu = {
@@ -19,14 +18,27 @@ const menu: Menu = {
   platformModPrices: {},
 } as unknown as Menu;
 
-function montar() {
+// La cuenta vive en el servidor (spec 030): el selector solo pinta la lista de la cuenta abierta y
+// avisa qué se eligió. Quién guarda y quién tira el folio al cambiar de lista es la cuenta.
+let estado: { platformId: number | null; ref: string };
+const onCambiar = vi.fn((id: number | null) => { estado = { platformId: id, ref: '' }; });
+const onFolio = vi.fn((ref: string) => { estado = { ...estado, ref }; });
+const onFolioListo = vi.fn();
+
+function montar(bloqueado = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['menu'], menu);
-  return render(
+  const arbol = () => (
     <QueryClientProvider client={qc}>
-      <Provider><PlatformPicker /></Provider>
-    </QueryClientProvider>,
+      <Provider>
+        <PlatformPicker platformId={estado.platformId} platformOrderRef={estado.ref} bloqueado={bloqueado}
+          onCambiar={(id) => { onCambiar(id); r.rerender(arbol()); }}
+          onFolio={(v) => { onFolio(v); r.rerender(arbol()); }} onFolioListo={onFolioListo} />
+      </Provider>
+    </QueryClientProvider>
   );
+  const r = render(arbol());
+  return r;
 }
 
 function campoDeFolio() {
@@ -36,8 +48,8 @@ function campoDeFolio() {
 describe('PlatformPicker · el folio de la plataforma', () => {
   beforeEach(() => {
     // Cada caso arranca en mostrador, como una cuenta recién abierta.
-    useTicketStore.getState().setPlatform(null);
-    useTicketStore.getState().setPlatformOrderRef('');
+    estado = { platformId: null, ref: '' };
+    vi.clearAllMocks();
   });
 
   // El campo NO existe en el árbol, no "existe oculto". A 1024×600 el presupuesto del mosaico es de
@@ -63,11 +75,21 @@ describe('PlatformPicker · el folio de la plataforma', () => {
     expect(screen.getByLabelText(/Folio de Uber Eats/i)).toBeInTheDocument();
   });
 
-  it('lo que se teclea queda en la cuenta activa', () => {
+  it('lo que se teclea va a la cuenta abierta, y se guarda al salir del campo', () => {
     montar();
     fireEvent.click(screen.getByRole('button', { name: /Rappi/ }));
     fireEvent.change(campoDeFolio()!, { target: { value: '1234567890' } });
-    expect(useTicketStore.getState().tabs[0].platformOrderRef).toBe('1234567890');
+    expect(onFolio).toHaveBeenLastCalledWith('1234567890');
+    fireEvent.blur(campoDeFolio()!);
+    expect(onFolioListo).toHaveBeenCalled();
+  });
+
+  // Un pedido ya enviado no cambia de lista: los precios ya se cobraron con ella.
+  it('con la cuenta ya enviada la lista no se puede cambiar', () => {
+    estado = { platformId: 6, ref: 'U1' };
+    montar(true);
+    expect(screen.getByRole('button', { name: /Mostrador/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Rappi/ })).toBeDisabled();
   });
 
   // Cambiar de plataforma con un folio puesto deja basura silenciosa: un folio de Uber colgando de
@@ -77,7 +99,8 @@ describe('PlatformPicker · el folio de la plataforma', () => {
     fireEvent.click(screen.getByRole('button', { name: /Uber Eats/ }));
     fireEvent.change(campoDeFolio()!, { target: { value: 'UBER-1' } });
     fireEvent.click(screen.getByRole('button', { name: /Rappi/ }));
-    expect(useTicketStore.getState().tabs[0].platformOrderRef).toBe('');
+    expect(onCambiar).toHaveBeenLastCalledWith(7);
+    expect(campoDeFolio()).toHaveValue('');
   });
 
   it('volver a Mostrador también lo borra', () => {
@@ -85,7 +108,7 @@ describe('PlatformPicker · el folio de la plataforma', () => {
     fireEvent.click(screen.getByRole('button', { name: /Didi/ }));
     fireEvent.change(campoDeFolio()!, { target: { value: 'DIDI-1' } });
     fireEvent.click(screen.getByRole('button', { name: /Mostrador/ }));
-    expect(useTicketStore.getState().tabs[0].platformOrderRef).toBe('');
+    expect(onCambiar).toHaveBeenLastCalledWith(null);
     expect(campoDeFolio()).toBeNull();
   });
 });

@@ -23,8 +23,7 @@ import { posApi } from '../api/pos';
 import { descuentoDeLaCuenta, type ModoDeDescuento } from '../domain/descuento';
 import { ApiError } from '../api/client';
 import { VerTicket } from './tickets/ReprintTicket';
-import { TicketPreview } from './tickets/TicketPreview';
-import type { ChargeShape, CobroHecho, Currency, OrderView, PedidoParaCobrar, ReceiptOrder, SelectedPieces } from '../types/pos';
+import type { ChargeShape, CobroHecho, OrderView, PedidoParaCobrar, SelectedPieces } from '../types/pos';
 import { money } from '../utils/format';
 import { TAP_LG, TAP_XL } from '../theme/ui';
 import { useUiStore } from '../stores/ui';
@@ -33,35 +32,11 @@ import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
 import { billetesUtiles, presetsDePropina, validarCobro, round2 } from '../domain/cobro';
 import type { MotivoInvalido } from '../domain/cobro';
 
-// CuentaParaCobrar es lo que la hoja necesita para pintarse y cobrar.
-//
-// `id` y `number` son NULOS mientras el pedido no exista. Ese es el caso nuevo: tocar COBRAR ya no
-// crea el pedido —no manda nada a cocina—, así que la hoja se abre sobre la cuenta y el pedido nace
-// cuando se toca el botón final. Un `PedidoParaCobrar` satisface este tipo sin conversión.
-export interface CuentaParaCobrar {
-  id: number | null;
-  number: number | null;
-  folioName: string;
-  total: string;
-  outstanding: string;
-  currency: Currency;
-  deliveryPlatformId: number | null;
-}
-
 interface Props {
-  order: CuentaParaCobrar | null;
-  // Crea el pedido. Solo se llama si `order.id` es nulo, y SOLO al cobrar: es lo que hace que un
-  // toque accidental en COBRAR no mande comida a cocina.
-  //
-  // Obligatoria cuando el id puede ser nulo. TypeScript no puede atar las dos cosas, así que el
-  // camino de cobro lo comprueba y falla ruidoso en vez de cobrar contra un pedido inexistente.
-  crearPedido?: () => Promise<PedidoParaCobrar>;
-  // Se llama en cuanto el pedido EXISTE, antes de que el cobro entre. Quien la recibe necesita
-  // saberlo para no decirle al operador que no pasó nada si el cobro falla después.
-  onPedidoCreado?: (pedido: PedidoParaCobrar) => void;
-  // El papel que se imprime cuando el pedido TODAVÍA NO existe. Lo arma quien tiene la cuenta —el
-  // POS—, no esta hoja: la lista del botón naranja también la usa y ahí no hay carrito ninguno.
-  preCuenta?: ReceiptOrder | null;
+  // SIEMPRE un pedido que ya existe (spec 030, research R-5): «Enviar y cobrar» manda primero lo
+  // que la cuenta tenga sin enviar, y la hoja se abre sobre el pedido que regresa. Así «Por
+  // productos» —que necesita los renglones del pedido— está disponible desde cualquier puerta.
+  order: PedidoParaCobrar | null;
   onClose: () => void;
   // Se llama tras CADA cobro que entra, con lo que quedó del pedido. Quien la recibe decide qué
   // hacer: la barra solo refresca; el POS, cuando el pedido queda saldado, lo relee para imprimir
@@ -150,7 +125,7 @@ function useDebounced<T>(value: T, ms: number): T {
 // la tableta, las fichas y lo gris siguen ahí.
 //
 // Detalle de un pago y «Pasar a otro pedido» son VISTAS de la misma hoja, no hojas apiladas.
-export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onClose, onCobrado, pantalla }: Props) {
+export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
   const user = useSessionStore((s) => s.user);
@@ -220,12 +195,13 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
   const lines = useMemo(() => vivo?.lines ?? [], [vivo]);
   const rows = useMemo(() => listOrder(lines, payments), [lines, payments]);
 
-  // QUÉ FORMAS DE DIVIDIR ADMITE ESTE PEDIDO. Uno de plataforma lo cobró la plataforma entero: solo
-  // se reparte por monto. Uno de un turno cerrado tampoco se divide por productos ni partes. Por
-  // productos necesita el pedido ya creado: sobre una cuenta sin confirmar no hay renglones aún.
-  const splittable = plataforma === null && (vivo ? vivo.canSplit !== false : idPedido === null);
+  // QUÉ FORMAS DE DIVIDIR ADMITE ESTE PEDIDO. Uno de plataforma no se divide: se cobra completo con
+  // el método de su plataforma (D-11), así que ni siquiera se ofrece «Dividir». Uno de un turno
+  // cerrado solo se reparte por monto. Uno de mostrador ofrece los tres modos (US4).
+  const divisible = plataforma === null;
+  const splittable = divisible && vivo?.canSplit !== false;
   const available: Array<Exclude<SplitMode, 'none'>> = [
-    ...(splittable && idPedido !== null && rows.pending.length > 0 ? ['products' as const] : []),
+    ...(splittable && (!vivo || rows.pending.length > 0) ? ['products' as const] : []),
     ...(splittable ? ['people' as const] : []),
     'amount' as const,
   ];
@@ -281,7 +257,6 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
   // El monto que se cobra. Con una forma, el de la cotización; tecleado, lo tecleado; sin dividir,
   // todo lo que falta. Una parte de una cuenta sin confirmar no tiene cotización todavía: el monto
   // lo dice el servidor al cobrarla.
-  const firstPartUnconfirmed = mode === 'people' && idPedido === null;
   let monto: string;
   if (mode === 'amount') monto = typedAmount;
   else if (shape !== null) monto = quoteFresh ? quote.amount : '';
@@ -298,8 +273,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
   const efectivo = esEfectivo(elegido);
 
   const v = validarCobro({
-    monto: firstPartUnconfirmed ? String(falta) : monto, metodoId: metodo, propina, recibido,
-    esEfectivo: efectivo && !firstPartUnconfirmed, falta, totalDelPedido,
+    monto, metodoId: metodo, propina, recibido, esEfectivo: efectivo, falta, totalDelPedido,
   });
 
   // Rota todo lo de ESTE pedazo para el siguiente.
@@ -316,22 +290,11 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
 
   const cobrar = useMutation({
     mutationFn: async () => {
-      // EL PEDIDO NACE AQUÍ, no al abrir la hoja: un toque por equivocación en COBRAR no manda
-      // comida a cocina. La creación es idempotente por el id de la cuenta.
-      let id = pedidoCreado?.id ?? order?.id ?? null;
-      if (id === null) {
-        if (!crearPedido) {
-          throw new Error('la cuenta no está confirmada y no hay cómo confirmarla');
-        }
-        const creado = await crearPedido();
-        setPedidoCreado(creado);
-        onPedidoCreado?.(creado);
-        id = creado.id;
-      }
+      const id = pedidoCreado?.id ?? order?.id ?? null;
+      if (id === null) throw new Error('no hay pedido que cobrar');
       const tip = v.propina > 0 ? { tip: v.propina } : {};
-      const splitShape: ChargeShape | null = firstPartUnconfirmed ? { split: { part: 1, of: people } } : shape;
-      if (splitShape !== null) {
-        return posApi.chargeOrderShape(id, { methodId: metodo!, clientUuid: llave, ...tip, ...splitShape });
+      if (shape !== null) {
+        return posApi.chargeOrderShape(id, { methodId: metodo!, clientUuid: llave, ...tip, ...shape });
       }
       return posApi.chargeOrder(id, { methodId: metodo!, amount: v.monto, ...tip, clientUuid: llave });
     },
@@ -457,7 +420,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
     : waitingQuote ? 'Calculando…'
       : quoteError ? loQueLee(quoteError).titulo
         : textos[v.motivo ?? 'sin-monto'];
-  const canCharge = (v.ok || (firstPartUnconfirmed && metodo !== null)) && !waitingQuote && !quoteError;
+  const canCharge = v.ok && !waitingQuote && !quoteError;
 
   const chosenCount = allRemaining ? rows.pending.reduce((n, r) => n + r.free, 0) : selected.reduce((n, s) => n + Number(s.qty), 0);
   const chosenNames = (allRemaining ? rows.pending.map((r) => r.line) : selected.map((s) => lines.find((l) => l.id === s.lineId)))
@@ -540,7 +503,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                 {numero !== null ? `#${numero}` : 'Sin confirmar'}
               </Text>
             </Box>
-            {(idPedido !== null || preCuenta) && (
+            {idPedido !== null && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
                 onClick={() => setViendoPapel({})}>
                 <LuReceipt /> Cuenta
@@ -552,7 +515,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                 <LuTag /> Descuento
               </Button>
             )}
-            {falta > 0 && mode === 'none' && view === 'charge' && (
+            {divisible && falta > 0 && mode === 'none' && view === 'charge' && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0} onClick={startSplit}>
                 <LuSplit /> Dividir
               </Button>
@@ -701,7 +664,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
             )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}
-            {efectivo && !firstPartUnconfirmed && (
+            {efectivo && (
               <Box>
                 <Text fontSize="sm" fontWeight="600" mb={2}>¿Con cuánto paga?</Text>
                 <HStack gap={2} flexWrap="wrap">
@@ -785,20 +748,15 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
               <Button w="100%" size="lg" minH={TAP_XL} colorPalette="green"
                 disabled={!canCharge} loading={cobrar.isPending}
                 onClick={() => cobrar.mutate()}>
-                {firstPartUnconfirmed
-                  ? `Cobrar parte 1 de ${people}`
-                  : `Cobrar ${money(String(round2(v.monto + v.propina)), moneda)}`}
+                {`Cobrar ${money(String(round2(v.monto + v.propina)), moneda)}`}
               </Button>
             )}
           </DrawerFooter>
         )}
       </DrawerContent>
       {/* El papel se monta dentro del mismo Drawer para que la hoja se quede abierta detrás. */}
-      {idPedido !== null
-        ? <VerTicket orderId={viendoPapel ? idPedido : null} paymentId={viendoPapel ? viendoPapel.paymentId : undefined}
-            onClose={() => setViendoPapel(false)} />
-        : <TicketPreview order={preCuenta ?? null} preCuenta
-            isOpen={viendoPapel !== false} onClose={() => setViendoPapel(false)} />}
+      <VerTicket orderId={viendoPapel && idPedido !== null ? idPedido : null}
+        paymentId={viendoPapel ? viendoPapel.paymentId : undefined} onClose={() => setViendoPapel(false)} />
     </DrawerRoot>
   );
 }
