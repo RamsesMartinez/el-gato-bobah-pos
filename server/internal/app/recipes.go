@@ -178,8 +178,8 @@ func recipeCounts(ctx context.Context, q *db.Queries, kind domain.RecipeKind, ca
 // estimadas: una pendiente confirmada sin receta diría «no gasta insumos», y eso lo decide una
 // persona abriéndola.
 func (s *AdminService) ConfirmRecipes(ctx context.Context, kind domain.RecipeKind, ids []int64, actor int64) (int64, error) {
-	if len(ids) == 0 || len(ids) > 500 {
-		return 0, domain.ErrValidation
+	if err := domain.ValidConfirmIDs(ids); err != nil {
+		return 0, err
 	}
 	q := s.store.QC(ctx)
 	switch kind {

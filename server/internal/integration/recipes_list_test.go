@@ -120,6 +120,19 @@ func TestRecipeListUnderTheAppRole(t *testing.T) {
 			t.Fatalf("renglón: %+v", r)
 		}
 	})
+	// FUDO guarda en kilos: «0.2 kg Leche» se lee peor que «200 g Leche», y la hoja ya lo muestra así.
+	t.Run("el resumen dice gramos lo que no llega a un kilo", func(t *testing.T) {
+		if _, err := owner.Pool.Exec(ctx, `
+			update recipe_items set quantity = case when ingredient_id = $1 then 0.2 else 1.5 end,
+			       unit_id = (select id from units where code = 'kg')
+			 where recipe_id = (select recipe_id from products where id = $2)`, milk, latte); err != nil {
+			t.Fatal(err)
+		}
+		r := list(domain.RecipeFilter{Status: domain.RecipeStatusReview, Query: "recetas"}).Items[0]
+		if r.Summary != "200 g Leche recetas · 1.5 kg Tapióca recetas" && r.Summary != "1.5 kg Tapióca recetas · 200 g Leche recetas" {
+			t.Fatalf("resumen: %q", r.Summary)
+		}
+	})
 	t.Run("lo que se descuenta solo está listo", func(t *testing.T) {
 		got := names(list(domain.RecipeFilter{Status: domain.RecipeStatusDone, Query: "recetas"}))
 		if len(got) != 1 || got[0] != "Refresco recetas" {
@@ -174,6 +187,15 @@ func TestRecipeListUnderTheAppRole(t *testing.T) {
 		}
 	})
 
+	// Un extra y un preparado de esta empresa, para que la otra tenga algo que no debe ver.
+	extra := opcionConTope(t, owner, "Toppings aislamiento recetas", "Perla aislamiento", decimal.RequireFromString("10"), 3)
+	if _, err := owner.Pool.Exec(ctx, `update ingredients set is_prep = true, composition_status = 'estimated', recipe_id = $2, yield_qty = 1000 where id = $1`,
+		milk, makeRecipe(t, owner, map[int64]string{tapioca: "100"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Pool.Exec(ctx, `update modifier_options set composition_status = 'estimated' where id = $1`, extra); err != nil {
+		t.Fatal(err)
+	}
 	other := makeCompany(t, owner, "empresa-otra-recetas")
 	inTheThreeCases(t, defaultCompanyID, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		svc := app.NewAdminService(st)
@@ -187,6 +209,26 @@ func TestRecipeListUnderTheAppRole(t *testing.T) {
 		}
 		if n, _ := svc.ConfirmRecipes(ctx, domain.RecipeKindProduct, []int64{latte}, admin); n != 0 {
 			t.Fatal("se confirmó la receta de otra empresa")
+		}
+		// Extras y preparados tienen su propio SQL: cada uno se prueba, no se infiere del de productos.
+		for _, k := range []domain.RecipeKind{domain.RecipeKindExtra, domain.RecipeKindPrep} {
+			for _, status := range []domain.RecipeStatus{domain.RecipeStatusPending, domain.RecipeStatusReview, domain.RecipeStatusDone} {
+				page, err := svc.ListRecipes(ctx, domain.RecipeFilter{Kind: k, Status: status, Sort: domain.RecipeSortAZ, Limit: 100}, fixedNow)
+				if err != nil {
+					continue
+				}
+				for _, r := range page.Items {
+					if r.ID == extra || r.ID == milk {
+						t.Fatalf("%s %s: se vio %s, de otra empresa", k, status, r.Name)
+					}
+				}
+			}
+		}
+		if n, _ := svc.ConfirmRecipes(ctx, domain.RecipeKindExtra, []int64{extra}, admin); n != 0 {
+			t.Fatal("se confirmó un extra de otra empresa")
+		}
+		if n, _ := svc.ConfirmRecipes(ctx, domain.RecipeKindPrep, []int64{milk}, admin); n != 0 {
+			t.Fatal("se confirmó un preparado de otra empresa")
 		}
 	})
 

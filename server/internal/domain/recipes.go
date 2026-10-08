@@ -1,6 +1,10 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+	"strings"
+)
 
 // Lista de recetas (pantalla Catálogo › Recetas): productos, extras y preparados con su estado.
 
@@ -62,8 +66,27 @@ func (f RecipeFilter) Validate() error {
 	default:
 		return fmt.Errorf("%w: orden desconocido", ErrValidation)
 	}
-	if f.Limit < 1 || f.Limit > MaxRecipePage || f.Offset < 0 || f.Category < 0 || len(f.Query) > 200 {
+	if f.Limit < 1 || f.Limit > MaxRecipePage || f.Offset < 0 || f.Offset > math.MaxInt32 || f.Category < 0 || len(f.Query) > 200 {
 		return fmt.Errorf("%w: página inválida", ErrValidation)
+	}
+	if strings.IndexFunc(f.Query, esDeControl) >= 0 {
+		return fmt.Errorf("%w: la búsqueda trae un carácter que no se puede buscar", ErrValidation)
+	}
+	return nil
+}
+
+// MaxRecipeConfirm es el tope de «Confirmar las que se ven»: holgado sobre la página más grande.
+const MaxRecipeConfirm = 500
+
+// ValidConfirmIDs rechaza una lista vacía, más larga que el tope o con un id imposible.
+func ValidConfirmIDs(ids []int64) error {
+	if len(ids) == 0 || len(ids) > MaxRecipeConfirm {
+		return fmt.Errorf("%w: lista de recetas inválida", ErrValidation)
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("%w: receta %d inválida", ErrValidation, id)
+		}
 	}
 	return nil
 }

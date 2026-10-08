@@ -4,8 +4,10 @@
 -- separan, los números de los filtros dejan de cuadrar con la lista. La empresa la pone RLS.
 --
 -- La búsqueda ignora mayúsculas y acentos («cafe» encuentra «Café») y busca también en los insumos
--- de la receta: «tapioca» trae las recetas que la llevan. Las ventas son de los últimos 30 días por
--- día de negocio, sin renglones ni pedidos cancelados, agregadas una vez y no por renglón.
+-- directos de la receta (no los de un preparado que lleve): «tapioca» trae las recetas que la llevan.
+-- Sin índice: translate() no usa los trigram de 0030; con cientos de filas tarda milisegundos.
+-- Las ventas son de los últimos 30 días por día de negocio, sin renglones ni pedidos cancelados,
+-- agregadas una vez y no por renglón.
 
 -- name: ListProductRecipes :many
 with sales as (
@@ -32,7 +34,10 @@ with sales as (
 )
 select b.id, b.name, b.category, b.type, b.track_stock, b.status, b.sold,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
-          select ri.position as pos, ri.id, rtrim(rtrim(ri.quantity::text, '0'), '.') || ' ' || u.code || ' ' || i.name as txt
+          -- Lo que no llega a un kilo o un litro se lee en gramos o mililitros, como en la hoja.
+          select ri.position as pos, ri.id, case when u.code in ('kg', 'l') and ri.quantity < 1
+                 then trim_scale(ri.quantity * 1000)::text || ' ' || case u.code when 'kg' then 'g' else 'ml' end
+                 else trim_scale(ri.quantity)::text || ' ' || u.code end || ' ' || i.name as txt
             from recipe_items ri join units u on u.id = ri.unit_id join ingredients i on i.id = ri.ingredient_id
            where ri.recipe_id = b.recipe_id order by ri.position, ri.id limit 3) x), '')::text as summary,
        (select count(*) from recipe_items ri where ri.recipe_id = b.recipe_id)::int as lines,
@@ -89,7 +94,9 @@ with sales as (
 )
 select b.id, b.name, b.category, b.status, b.sold,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
-          select ri.position as pos, ri.id, rtrim(rtrim(ri.quantity::text, '0'), '.') || ' ' || u.code || ' ' || i.name as txt
+          select ri.position as pos, ri.id, case when u.code in ('kg', 'l') and ri.quantity < 1
+                 then trim_scale(ri.quantity * 1000)::text || ' ' || case u.code when 'kg' then 'g' else 'ml' end
+                 else trim_scale(ri.quantity)::text || ' ' || u.code end || ' ' || i.name as txt
             from recipe_items ri join units u on u.id = ri.unit_id join ingredients i on i.id = ri.ingredient_id
            where ri.recipe_id = b.recipe_id order by ri.position, ri.id limit 3) x), '')::text as summary,
        (select count(*) from recipe_items ri where ri.recipe_id = b.recipe_id)::int as lines,
@@ -130,7 +137,9 @@ with base as (
 )
 select b.id, b.name, b.status,
        coalesce((select string_agg(x.txt, ' · ' order by x.pos, x.id) from (
-          select ri.position as pos, ri.id, rtrim(rtrim(ri.quantity::text, '0'), '.') || ' ' || u.code || ' ' || c.name as txt
+          select ri.position as pos, ri.id, case when u.code in ('kg', 'l') and ri.quantity < 1
+                 then trim_scale(ri.quantity * 1000)::text || ' ' || case u.code when 'kg' then 'g' else 'ml' end
+                 else trim_scale(ri.quantity)::text || ' ' || u.code end || ' ' || c.name as txt
             from recipe_items ri join units u on u.id = ri.unit_id join ingredients c on c.id = ri.ingredient_id
            where ri.recipe_id = b.recipe_id order by ri.position, ri.id limit 3) x), '')::text as summary,
        (select count(*) from recipe_items ri where ri.recipe_id = b.recipe_id)::int as lines,
@@ -169,7 +178,7 @@ update ingredients set composition_status = 'confirmed', composition_confirmed_b
 -- name: ListSameNameOptions :many
 -- Los extras que se llaman igual en otro grupo («Tapioca» en Toppings y en Toppings de frappé): la
 -- pantalla ofrece guardarles la misma receta.
-select o.id, g.name::text as group_name
+select o.id, g.name::text as group_name, o.composition_confirmed_at
   from modifier_options o
   join modifier_groups g on g.id = o.group_id
   join modifier_options me on me.id = sqlc.arg(id)

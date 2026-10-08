@@ -55,7 +55,7 @@ export interface Composition {
   // Cuándo se guardó por última vez: se devuelve al guardar para saber si otra persona la cambió.
   stamp?: string;
   // Extras que se llaman igual en otro grupo.
-  sameName?: { id: number; group: string }[];
+  sameName?: { id: number; group: string; stamp?: string }[];
 }
 export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];
@@ -63,6 +63,8 @@ export interface CompositionBody {
   components: { productId: number; quantity: number }[];
   yield?: string | null;
   alsoOptionIds?: number[];
+  // La marca de cada extra de alsoOptionIds: copiarle la receta no pisa lo que alguien le guardó.
+  alsoBasedOn?: Record<number, string>;
   basedOn?: string;
 }
 

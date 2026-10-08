@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, Box, Button, HStack, Input, Progress, Text, VStack } from '@chakra-ui/react';
 import { LuChevronRight, LuSearch } from 'react-icons/lu';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '../../api/client';
 import { adminApi, type CompositionKind, type RecipeKind, type RecipeRow, type RecipeStatus } from '../../api/admin';
 import { Page } from '../../components/Page';
 import { Picker } from '../../components/Picker';
@@ -73,7 +74,11 @@ export function RecipesPage() {
       qc.invalidateQueries({ queryKey: ['admin'] });
       toaster.create({ title: `Confirmadas ${r.confirmed} recetas`, type: 'success' });
     },
-    onError: (e) => toaster.create({ title: 'No se confirmaron', description: String(e), type: 'error' }),
+    onError: (e) => toaster.create({
+      title: 'No se confirmaron',
+      description: e instanceof ApiError ? e.message : 'No hay conexión con el servidor. Intenta de nuevo.',
+      type: 'error',
+    }),
   });
 
   const pickKind = (k: RecipeKind) => { setKind(k); setCategory(''); setSearch(''); setQ(''); setStatus('pending'); };
@@ -140,7 +145,7 @@ export function RecipesPage() {
           <Box flex="1" />
           {status === 'review' && rows.length > 0 && (
             <Button minH="44px" variant="outline" colorPalette="orange" loading={confirmVisible.isPending} onClick={() => confirmVisible.mutate()}>
-              Confirmar las {rows.length} que se ven
+              Confirmar las {rows.length} de esta lista
             </Button>
           )}
         </HStack>

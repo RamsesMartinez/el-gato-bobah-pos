@@ -22,7 +22,7 @@ export function CatalogPage() {
             const Icon = t.icon;
             const active = pathname.startsWith(t.to);
             return (
-              <Button key={t.to} size="md" borderBottomRadius={0} onClick={() => nav(t.to)}
+              <Button key={t.to} size="md" minH="44px" borderBottomRadius={0} onClick={() => nav(t.to)}
                 variant={active ? 'solid' : 'ghost'} colorPalette={active ? undefined : 'gray'}>
                 <Icon /> {t.label}
               </Button>

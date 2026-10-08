@@ -79,7 +79,7 @@ const (
 	CompositionOfIngredient CompositionKind = "ingredient"
 )
 
-// CompositionItemView es un renglón de la composición, para la hoja «Qué lleva».
+// CompositionItemView es un renglón de la composición, para la hoja de receta.
 type CompositionItemView struct {
 	IngredientID   int64           `json:"ingredientId"`
 	IngredientName string          `json:"ingredientName"`
@@ -124,6 +124,8 @@ type CompositionView struct {
 type SameNameOption struct {
 	ID    int64  `json:"id"`
 	Group string `json:"group"`
+	// Stamp vuelve en AlsoBasedOn: copiarle la receta también pisaría lo que alguien le guardó.
+	Stamp string `json:"stamp"`
 }
 
 // CompositionInputItem es un renglón capturado.
@@ -152,6 +154,8 @@ type CompositionRequest struct {
 	// BasedOn es el Stamp de la receta que se abrió. Si ya no coincide, otra persona la guardó
 	// mientras se editaba: se rechaza en lugar de pisar su cambio. Nil = sin esa revisión.
 	BasedOn *string `json:"basedOn"`
+	// AlsoBasedOn es el Stamp de cada extra de AlsoOptionIDs, con la misma regla que BasedOn.
+	AlsoBasedOn map[int64]string `json:"alsoBasedOn"`
 }
 
 // Composition devuelve lo que lleva un producto o un extra.
@@ -204,7 +208,7 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 			return v, err
 		}
 		for _, t := range twins {
-			v.SameName = append(v.SameName, SameNameOption{ID: t.ID, Group: t.GroupName})
+			v.SameName = append(v.SameName, SameNameOption{ID: t.ID, Group: t.GroupName, Stamp: stampOf(t.CompositionConfirmedAt)})
 		}
 	case CompositionOfIngredient:
 		in, err := q.GetIngredientComposition(ctx, id)
@@ -276,6 +280,14 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		}
 		if err := validateTwins(ctx, q, kind, id, req.AlsoOptionIDs); err != nil {
 			return err
+		}
+		if req.BasedOn != nil {
+			for _, twin := range req.AlsoOptionIDs {
+				stamp := req.AlsoBasedOn[twin]
+				if err := checkNotStale(ctx, q, kind, twin, &stamp); err != nil {
+					return err
+				}
+			}
 		}
 		recipe, err := createRecipe(ctx, q, req.Items)
 		if err != nil {
@@ -411,10 +423,17 @@ func validateTwins(ctx context.Context, q *db.Queries, kind CompositionKind, id 
 	for _, s := range same {
 		ok[s.ID] = true
 	}
+	// Cada gemelo solo una vez: repetido, crea una receta por cada vez con el candado de la empresa
+	// tomado y deja las anteriores huérfanas.
+	seen := map[int64]bool{}
 	for _, t := range twins {
 		if !ok[t] {
 			return fmt.Errorf("%w: el extra %d no se llama igual", domain.ErrValidation, t)
 		}
+		if seen[t] {
+			return fmt.Errorf("%w: el extra %d viene repetido", domain.ErrValidation, t)
+		}
+		seen[t] = true
 	}
 	return nil
 }

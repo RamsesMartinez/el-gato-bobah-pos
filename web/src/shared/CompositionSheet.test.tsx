@@ -176,22 +176,22 @@ describe('la receta', () => {
     expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], components: [], linkedProductId: null }));
   });
 
-  it('lo que vino de FUDO se confirma con «Está bien» sin tocar nada', async () => {
+  it('lo que se cargó del sistema anterior se confirma con «Está bien» sin tocar nada', async () => {
     api.composition.mockResolvedValue({ ...vacia, status: 'estimated', items: [{ ingredientId: 2, ingredientName: 'Azúcar', quantity: '5', unitId: 1, unitCode: 'g' }] });
     montar();
-    expect(await screen.findByText(/vino de FUDO/)).toBeInTheDocument();
+    expect(await screen.findByText(/se cargó de tu sistema anterior/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Está bien' }));
     await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('product', 55));
     expect(api.saveComposition).not.toHaveBeenCalled();
   });
 
   it('un extra que se llama igual en otro grupo recibe la misma receta, si se deja marcado', async () => {
-    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé' }] });
+    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '2026-10-01T00:00:00Z' }] });
     montar('option');
     fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
     expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
     await guardar();
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77] })));
+    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
   });
 
   it('si otra persona la cambió, lo dice y ofrece abrirla de nuevo', async () => {

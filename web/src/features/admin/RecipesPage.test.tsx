@@ -87,11 +87,11 @@ describe('Catálogo › Recetas', () => {
     await waitFor(() => expect(api.recipes).toHaveBeenCalledWith(expect.objectContaining({ sort: 'az' })));
   });
 
-  it('por revisar: el resumen corta en tres y confirma solo las que se ven', async () => {
+  it('por revisar: el resumen corta en tres y confirma las cargadas y dice cuántas', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: 'Por revisar · 2' }));
     expect(await screen.findByText(/25 g Taro · \+3 más/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar las 2 que se ven' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar las 2 de esta lista' }));
     await waitFor(() => expect(api.confirmRecipes).toHaveBeenCalledWith('product', [11, 12]));
   });
 

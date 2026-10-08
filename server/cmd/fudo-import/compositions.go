@@ -66,5 +66,5 @@ func logReport(p fudoimport.Plan) {
 	section("insumos que se llevarían a sí mismos, directo o por otro (no se cargaron)", r.Cycles)
 	section("cantidades inválidas (la receta no se cargó)", r.InvalidQuantity)
 	section("recetas de FUDO sin producto ni extra en el POS", r.NotInCatalog)
-	section("paquetes de FUDO: se arman a mano en «Qué lleva» del producto", r.Packages)
+	section("paquetes de FUDO: se arman a mano en Catálogo › Recetas", r.Packages)
 }

@@ -134,7 +134,7 @@ func unitCode(s string) string {
 // que no existe o con una unidad de otro tipo se deja fuera entera: a medias descontaría de menos y
 // nadie lo notaría. Los paquetes de FUDO no se cargan: sus cantidades no siempre son piezas por
 // paquete (hay renglones de decenas), y un paquete mal armado descuenta de más en cada venta. Se
-// reportan para armarlos en «Qué lleva».
+// reportan para armarlos en Catálogo › Recetas.
 func PlanCompositions(src Sources, cat Catalog) Plan {
 	p := Plan{
 		ProductRecipes: map[int64][]Line{}, OptionRecipes: map[int64][]Line{},

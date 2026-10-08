@@ -16,6 +16,7 @@ import { useHoraDelNegocio } from '../hooks/useHoraDelNegocio';
 import { soloFecha } from '../utils/horaDelNegocio';
 import { normalize } from '../utils/format';
 import { SearchSheet } from './SearchSheet';
+import { friendlyQuantity } from './compositionLabel';
 
 // La receta de un producto, un extra o un preparado: lo que sale del almacén cada vez que se vende o
 // se prepara. Las palabras de esta hoja son las que decidió el dueño (spec 028, «Vocabulario»).
@@ -35,6 +36,7 @@ export function CompositionSheet({ kind, id, name, group, open, onClose, onSaved
     queryFn: () => adminApi.composition(kind, id),
     enabled: open,
   });
+  const units = useQuery({ queryKey: ['units'], queryFn: () => backofficeApi.units(), enabled: open });
   // Una hoja que nace con `open` puesto no se monta con Chakra 3.37 (AGENTS.md §3, CobrarSheet):
   // Almacén › Insumos la monta y la abre en el mismo toque. Se abre en el render siguiente.
   const [visible, setVisible] = useState(false);
@@ -60,7 +62,7 @@ export function CompositionSheet({ kind, id, name, group, open, onClose, onSaved
               {!!pendingLeft && <Text fontSize="sm" color="fg.muted" flexShrink={0}>Faltan {pendingLeft} en esta lista</Text>}
             </HStack>
           </DrawerHeader>
-          {comp.data
+          {comp.data && (units.data || units.isError)
             ? <Editor key={comp.dataUpdatedAt} kind={kind} id={id} name={name} data={comp.data}
                 onDirty={setDirty} onClose={onClose} onSaved={onSaved} requestClose={requestClose} />
             : <DrawerBody><Text color="fg.muted">{comp.isError ? 'No se pudo abrir la receta.' : 'Cargando…'}</Text></DrawerBody>}
@@ -118,6 +120,8 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const { zona } = useHoraDelNegocio();
   const isIng = kind === 'ingredient';
   const components = useMemo(() => data.components ?? [], [data.components]);
+  // La hoja la monta cuando ya están (CompositionSheet): los renglones nacen en la unidad legible.
+  const units = useQuery({ queryKey: ['units'], queryFn: () => backofficeApi.units(), enabled: data.editable });
   const [mode, setMode] = useState<Mode>(() => {
     if (isIng) return data.yield ? 'items' : 'bought';
     if (data.linkedProductId) return 'product';
@@ -125,9 +129,10 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     if (data.status === 'confirmed' && !(data.items ?? []).length) return 'nothing';
     return 'items';
   });
-  const [rows, setRows] = useState<Row[]>(() => (data.items ?? []).map((it) => ({
-    ingredientId: it.ingredientId, name: it.ingredientName, text: fmt(Number(it.quantity)), unitId: it.unitId,
-  })));
+  const toRows = (items: Composition['items']): Row[] => (items ?? []).map((it) => ({
+    ingredientId: it.ingredientId, name: it.ingredientName, ...friendlyQuantity(Number(it.quantity), it.unitId, units.data?.items ?? []),
+  }));
+  const [rows, setRows] = useState<Row[]>(() => toRows(data.items));
   const [parts, setParts] = useState<Part[]>(() => components.map((c) => ({ productId: c.productId, quantity: c.quantity })));
   const [linked, setLinked] = useState<number | null>(data.linkedProductId ?? null);
   const [yieldText, setYieldText] = useState(data.yield ? fmt(Number(data.yield)) : '');
@@ -142,7 +147,6 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const edit = (fn: () => void) => { fn(); setDirtyState(true); onDirty(true); setFailure(null); };
 
   const ingredients = useQuery({ queryKey: ['ingredients', 'all'], queryFn: () => backofficeApi.ingredients(), enabled: data.editable });
-  const units = useQuery({ queryKey: ['units'], queryFn: () => backofficeApi.units(), enabled: data.editable });
   const products = useQuery({ queryKey: ['admin', 'products', 'linkable'], queryFn: () => adminApi.products({ status: 'act', limit: 0 }), enabled: data.editable && !isIng });
   const recipeKind = recipeKindOf[kind];
   const sources = useQuery({
@@ -199,7 +203,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     const src = await adminApi.composition(kind, srcId);
     edit(() => {
       setMode('items');
-      setRows((src.items ?? []).map((it) => ({ ingredientId: it.ingredientId, name: it.ingredientName, text: fmt(Number(it.quantity)), unitId: it.unitId })));
+      setRows(toRows(src.items));
     });
     setPicker(null);
   };
@@ -220,7 +224,9 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
     linkedProductId: mode === 'product' ? linked : null,
     components: mode === 'package' ? parts : [],
     ...(isIng ? { yield: mode === 'items' ? fmt(yieldNum) : null } : {}),
-    ...(offerTwins && applyTwins ? { alsoOptionIds: twins.map((t) => t.id) } : {}),
+    ...(offerTwins && applyTwins
+      ? { alsoOptionIds: twins.map((t) => t.id), alsoBasedOn: Object.fromEntries(twins.map((t) => [t.id, t.stamp ?? ''])) }
+      : {}),
     basedOn: data.stamp ?? '',
   });
 
@@ -259,7 +265,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
           <Box p={4} borderRadius="xl" bg="blue.50" borderWidth="1px" borderColor="blue.200">
             <Text>
               {data.reason === 'package_choices'
-                ? 'Este combo deja elegir entre productos o tiene un hueco sin producto. Cada venta descuenta lo que lleva por omisión; aquí no se cambia, para no perder esas opciones.'
+                ? 'Este combo deja elegir entre productos o tiene un hueco sin producto. Cada venta descuenta lo que lleva por omisión.'
                 : `Se descuenta solo: cada venta baja 1 pieza de ${name}. No necesita receta.`}
             </Text>
           </Box>
@@ -300,7 +306,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
           </Text>
           {data.status === 'estimated' && (
             <HStack px={3} py={2} borderRadius="lg" bg="orange.50" borderWidth="1px" borderColor="orange.200" fontSize="sm">
-              <Text>Esta receta vino de FUDO. Revísala: si está bien, toca <b>Está bien</b>.</Text>
+              <Text>Esta receta se cargó de tu sistema anterior. Revísala: si está bien, toca <b>Está bien</b>.</Text>
             </HStack>
           )}
           {data.status === 'confirmed' && data.confirmedBy && (

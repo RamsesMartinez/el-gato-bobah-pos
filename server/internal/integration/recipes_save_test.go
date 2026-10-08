@@ -63,6 +63,43 @@ func TestSavingARecipeForTwinsAndAgainstAStaleCopy(t *testing.T) {
 			t.Fatalf("debe rechazarse: %v", err)
 		}
 	})
+	// Repetido, un mismo gemelo crea una receta nueva por cada vez y deja las anteriores huérfanas,
+	// todo con el candado de la empresa tomado: un PUT de un megabyte bloqueaba cualquier captura.
+	t.Run("un extra repetido se rechaza", func(t *testing.T) {
+		err := svc.SaveComposition(tctx, app.CompositionOfOption, topping,
+			app.CompositionRequest{Items: item, AlsoOptionIDs: []int64{twin, twin}}, admin)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("debe rechazarse: %v", err)
+		}
+	})
+	// El aviso de copia vieja cubre también al extra que se llama igual: si alguien guardó el de
+	// frappé mientras otra persona editaba el de Toppings, copiarle la receta lo pisaba sin avisar.
+	t.Run("el extra del mismo nombre que otra persona cambió no se pisa", func(t *testing.T) {
+		opened, err := svc.Composition(tctx, app.CompositionOfOption, topping)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(opened.SameName) != 1 || opened.SameName[0].Stamp == "" {
+			t.Fatalf("la pantalla necesita la marca del gemelo: %+v", opened.SameName)
+		}
+		if err := svc.SaveComposition(tctx, app.CompositionOfOption, twin, app.CompositionRequest{}, admin); err != nil {
+			t.Fatal(err)
+		}
+		err = svc.SaveComposition(tctx, app.CompositionOfOption, topping, app.CompositionRequest{
+			Items: item, BasedOn: &opened.Stamp, AlsoOptionIDs: []int64{twin},
+			AlsoBasedOn: map[int64]string{twin: opened.SameName[0].Stamp},
+		}, admin)
+		if !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("debe avisar que el gemelo cambió: %v", err)
+		}
+		after, err := svc.Composition(tctx, app.CompositionOfOption, twin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after.Items) != 0 {
+			t.Fatal("se pisó lo que la otra persona guardó en el gemelo")
+		}
+	})
 	t.Run("si otra persona la cambió mientras se editaba, se avisa y no se pisa", func(t *testing.T) {
 		before, err := svc.Composition(tctx, app.CompositionOfOption, topping)
 		if err != nil {
