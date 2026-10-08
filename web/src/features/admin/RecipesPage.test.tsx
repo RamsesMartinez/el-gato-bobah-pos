@@ -37,7 +37,7 @@ function montar() {
   return render(<QueryClientProvider client={qc}><Provider><RecipesPage /></Provider></QueryClientProvider>);
 }
 
-describe('Catálogo › Recetas', () => {
+describe('Menú › Recetas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.recipes.mockImplementation((q: RecipeQuery) => {

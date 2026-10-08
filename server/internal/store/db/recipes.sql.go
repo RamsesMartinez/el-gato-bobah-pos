@@ -444,7 +444,7 @@ type ListProductRecipesRow struct {
 	Total        int64           `json:"total"`
 }
 
-// Catálogo › Recetas (spec 028): productos, extras y preparados con el estado de su receta.
+// Menú › Recetas (spec 028): productos, extras y preparados con el estado de su receta.
 //
 // Cada lista tiene su gemela de conteo por estado con el MISMO `where` (AGENTS.md §1): si se
 // separan, los números de los filtros dejan de cuadrar con la lista. La empresa la pone RLS.

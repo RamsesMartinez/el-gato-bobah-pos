@@ -8,7 +8,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// Catálogo › Recetas (spec 028).
+// Menú › Recetas (spec 028).
 
 // GET /admin/recipes?kind=&status=&sort=&q=&category=&limit=&offset=
 //

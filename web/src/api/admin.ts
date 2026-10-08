@@ -68,7 +68,7 @@ export interface CompositionBody {
   basedOn?: string;
 }
 
-// Catálogo › Recetas.
+// Menú › Recetas.
 export type RecipeKind = 'product' | 'extra' | 'prep';
 export type RecipeStatus = 'pending' | 'review' | 'done';
 export interface RecipeRow {

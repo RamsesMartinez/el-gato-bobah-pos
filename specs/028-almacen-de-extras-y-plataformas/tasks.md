@@ -77,6 +77,12 @@ los aprobó el dueño el 2026-10-07.
 - [x] T031 Revisiones (base de datos, Go, seguridad, tableta) y capturas a 1024×600 contra una copia
   de producción. Lo que salió se arregló con su test: extra repetido, desde desbordado, NUL en la
   búsqueda, gemelo pisado, aislamiento de extras y preparados, «0.215 kg» en vez de «215 g»
+- [x] T032 La hoja de receta distingue lo guardado de lo que se está cambiando (Nuevo, «Antes 36 g»,
+  tachado con «Regresar», «Sin guardar: …» en el pie)
+- [x] T033 «Catálogo» pasa a llamarse **Menú** en la barra lateral, con icono de carta, junto a
+  Almacén y dentro de los 8 que se ven a 600 px sin desplazar (decisión del dueño, 2026-10-07:
+  «Catálogo» no decía que ahí están las recetas y quedaba abajo del corte). La ruta sigue siendo
+  `/catalogo`. Cada pestaña del Menú explica para qué es detrás de un icono de ayuda
 
 ## Dependencies
 

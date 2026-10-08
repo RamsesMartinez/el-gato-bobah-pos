@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Lista de recetas (pantalla Catálogo › Recetas): productos, extras y preparados con su estado.
+// Lista de recetas (pantalla Menú › Recetas): productos, extras y preparados con su estado.
 
 // RecipeKind es qué lista se pide.
 type RecipeKind string

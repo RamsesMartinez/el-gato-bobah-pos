@@ -9,7 +9,7 @@ import { Picker } from '../../components/Picker';
 import { toaster } from '../../components/ui/toaster';
 import { CompositionSheet } from '../../shared/CompositionSheet';
 
-// Catálogo › Recetas: la lista de trabajo para dejar dicho qué gasta cada producto, extra y
+// Menú › Recetas: la lista de trabajo para dejar dicho qué gasta cada producto, extra y
 // preparado. Lo más vendido primero, porque capturar esas recetas cubre casi todo lo que sale del
 // almacén; al guardar una se abre sola la siguiente.
 const PAGE = 25;

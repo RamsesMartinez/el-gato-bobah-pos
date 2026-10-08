@@ -11,7 +11,7 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store/db"
 )
 
-// RecipeRow es un renglón de Catálogo › Recetas.
+// RecipeRow es un renglón de Menú › Recetas.
 type RecipeRow struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
