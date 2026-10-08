@@ -37,6 +37,9 @@ func TestCancellingALineThenTheOrderRestocksOnce(t *testing.T) {
 	cashier := makeUser(t, st, "cajero_reponer", "cajero")
 	soda := makeProduct(t, st, "Refresco reponer", decimal.RequireFromString("30"), true)
 	water := makeProduct(t, st, "Agua reponer", decimal.RequireFromString("20"), true)
+	// Una botella no se prepara: es lo que hace que vuelva al almacén al cancelar aunque ya haya
+	// «salido a cocina». Lo que sí se prepara y ya salió no vuelve (spec 031, D11).
+	sinPreparacion(t, st, water)
 	abrirCajaPrincipal(t, st, cashier)
 	svc := app.NewOrdersService(st, clock)
 

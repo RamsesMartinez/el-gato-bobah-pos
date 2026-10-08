@@ -217,30 +217,55 @@ values ($1, $2, $3, $4, $5, $6);
 -- El nombre de la plataforma viaja para poder subtotalizar por ella sin comparar nombres de
 -- método: "Uber Eats en línea" y "Uber Eats efectivo" son la misma plataforma, y deducirlo del
 -- texto se rompe el día que alguien renombre un método.
+--
+-- Dos cifras más desde la spec 031, porque el dinero se clasifica por el turno de CADA movimiento:
+--   * `earlier`: lo que este turno cobró de pedidos abiertos en OTRO turno. Ya está en `expected`;
+--     viaja aparte para que el corte no lo llame venta suya.
+--   * `refunded`: lo que este turno le devolvió al cliente por ese medio SIN sacarlo del cajón
+--     (tarjeta, plataformas). Se resta del esperado. Lo que salió del cajón NO va aquí: ya baja por
+--     su salida de caja, y restarlo otra vez sería contarlo dos veces.
+--
+-- Pagos y devoluciones se agregan cada uno por método antes de unirse: son dos 1:N y unirlos
+-- multiplicaría las sumas.
+with pagos as (
+  -- Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
+  -- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+  -- suyos abiertos. El día que exista una segunda caja que cobre, dos turnos traslapados sumarían el
+  -- mismo dinero y los dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+  select op.payment_method_id,
+         sum(op.amount) as expected,
+         sum(op.tip_amount) as tips,
+         sum(op.amount) filter (where o.register_session_id is distinct from sqlc.arg(session_id)::bigint) as earlier
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where op.register_session_id = sqlc.arg(session_id)::bigint
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount + r.tip_amount) as refunded
+    from order_refunds r
+   where r.register_session_id = sqlc.arg(session_id)::bigint
+     and r.cash_movement_id is null
+   group by r.payment_method_id
+)
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(dp.name, '') as platform_name,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
-       coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
+       coalesce(p.expected, 0)::numeric(10,2) as expected,
+       coalesce(p.tips, 0)::numeric(10,2) as tips,
+       coalesce(p.earlier, 0)::numeric(10,2) as earlier,
+       coalesce(d.refunded, 0)::numeric(10,2) as refunded
 from payment_methods pm
 left join delivery_platforms dp on dp.id = pm.delivery_platform_id
--- Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
--- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
--- suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
--- que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
--- dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
-left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
--- `or op.id is not null`: un método que se apaga a media jornada tiene que seguir en el arqueo si ya
--- cobró en este turno. Filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya
--- entró, y el corte cuadraba contra una cifra más chica sin que nadie lo notara. Hasta la spec 015
--- nadie podía apagar un método desde la aplicación, así que este camino no existía.
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+-- Un método que se apaga a media jornada tiene que seguir en el arqueo si ya cobró —o devolvió—
+-- en este turno: filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya se movió.
 --
 -- `or pm.kind = 'efectivo'`: el renglón del efectivo del mostrador NUNCA se cae, aunque esté
 -- apagado y no haya cobrado nada. Es el único dueño del fondo de apertura y de los movimientos de
 -- caja —quien los suma es el bucle de Go que mira este `kind`—, así que sin su renglón el fondo no
 -- tiene dónde vivir: medido, apagar «Efectivo» con $500 de fondo dejaba al cajón esperando $0 con
 -- los billetes adentro, y el corte cerraba con $500 de sobrante fantasma.
-where pm.is_active or op.id is not null or pm.kind = 'efectivo'
-group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare, dp.name
+where pm.is_active or p.payment_method_id is not null or d.payment_method_id is not null or pm.kind = 'efectivo'
 order by pm.sort_key;
 
 -- name: CollectedByMethodInOpenSessions :one
@@ -379,11 +404,16 @@ order by o.daily_number;
 -- hijas 1:N (líneas y pagos) y unir cualquiera de ellas a un agregado multiplica las filas.
 --
 -- Cancelada y reembolsada quedan fuera: su venta no ocurrió, así que no hay dinero que reclamar.
+-- Los pagos que cuentan son los de ESTE turno (o sin turno, anteriores al vínculo): un cobro hecho
+-- en otro turno es dinero de ese otro corte, que lo explica como «cobro de otros turnos». Contarlo
+-- aquí movía lo «sin cobrar» de un corte ya firmado cada vez que otro turno cobraba (spec 031, D12).
 select coalesce(sum(o.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
        count(*)::int as pedidos
 from orders o
 left join lateral (
-  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+  select sum(op.amount) as pagado from order_payments op
+   where op.order_id = o.id
+     and (op.register_session_id is null or op.register_session_id = o.register_session_id)
 ) p on true
 where o.register_session_id = $1
   and o.status not in ('cancelada', 'reembolsada')
@@ -542,3 +572,55 @@ join orders o on o.id = v.order_id
 left join users u on u.id = v.voided_by
 where v.register_session_id = $1
 order by v.voided_at, v.id;
+
+-- name: LockSessionForClose :one
+-- El turno que se cierra, BLOQUEADO para todo lo que lo usa (spec 031, D8).
+--
+-- El cierre calculaba el esperado fuera de su transacción: un cobro, un pago devuelto o un
+-- movimiento que confirmaba entre esa lectura y el cierre quedaba en el turno cerrado sin entrar al
+-- esperado firmado. Con `for update` lo que ya tenía el turno con `for share` termina antes de que
+-- el cierre lea, y lo que llega después espera y lo ve cerrado.
+select id from register_sessions where id = $1 and status = 'abierta' for update;
+
+-- name: LockOpenSessionForShare :one
+-- Un turno abierto, con candado compartido, para escribir en él un movimiento de caja, un traspaso
+-- o el pago de un gasto. Cero filas = ya se cerró (o se está cerrando y terminó primero).
+select id from register_sessions where id = $1 and status = 'abierta' for share;
+
+-- name: ListSessionRefunds :many
+-- Las devoluciones de un turno, para la lista del corte (spec 031). Una devolución es dinero que se
+-- le regresó al cliente; un pago devuelto (ListSessionPaymentVoids) es un cobro que no ocurrió. Son
+-- dos hechos y el esperado los trata distinto, por eso son dos listas.
+select pm.name as method_name, r.amount, r.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       (r.cash_movement_id is not null)::boolean as from_drawer,
+       coalesce(u.name, '')::text as refunded_by, r.created_at, r.reason
+from order_refunds r
+join payment_methods pm on pm.id = r.payment_method_id
+join orders o on o.id = r.order_id
+left join users u on u.id = r.refunded_by
+where r.register_session_id = $1
+order by r.created_at, r.id;
+
+-- name: ClaimOrphanRefunds :exec
+-- Las devoluciones que se hicieron SIN turno abierto entran al turno que se abre (spec 031, D7).
+--
+-- Solo las que no tocaron el cajón (las de efectivo sin turno se rechazan), solo las de la sucursal
+-- del turno, y solo las hechas DESPUÉS del último cierre de esa caja: las anteriores son de antes de
+-- que existiera este vínculo, y su corte ya firmó sin ellas.
+--
+-- ponytail: con una sola caja que vende por sucursal, «la que abre» es la correcta. Con dos cajas
+-- que vendan, la reclama la primera que abra; para entonces la devolución tendría que guardar de
+-- qué caja es.
+update order_refunds r
+   set register_session_id = s.id
+  from register_sessions s
+  join cash_registers c on c.id = s.register_id,
+       orders o
+ where s.id = sqlc.arg(session_id)
+   and c.is_primary
+   and o.id = r.order_id
+   and o.branch_id = c.branch_id
+   and r.register_session_id is null
+   and r.cash_movement_id is null
+   and r.created_at >= coalesce((select max(p.closed_at) from register_sessions p
+                                  where p.register_id = s.register_id and p.id <> s.id), '-infinity'::timestamptz);

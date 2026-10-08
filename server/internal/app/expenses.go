@@ -432,6 +432,16 @@ func (s *BackofficeService) insertPayments(ctx context.Context, q *db.Queries, e
 		}); err != nil {
 			return err
 		}
+		// El turno se bloquea en compartido, como un cobro: un cierre que corre a la vez termina
+		// antes —y aquí se ve cerrado— o espera a que este pago confirme y lo cuenta (spec 031, D8).
+		if p.sessionID != nil {
+			if _, err := q.LockOpenSessionForShare(ctx, *p.sessionID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return domain.ErrConflict // la caja elegida se cerró
+				}
+				return err
+			}
+		}
 		// La salida del cajón va en la MISMA tx que el pago: si una falla no queda dinero
 		// fantasma en ningún lado.
 		if p.isCash && p.sessionID != nil {

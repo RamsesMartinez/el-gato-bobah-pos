@@ -1212,6 +1212,7 @@ type OrderPayment struct {
 	SplitPart         *int16          `json:"split_part"`
 	SplitOf           *int16          `json:"split_of"`
 	PaymentNumber     *int16          `json:"payment_number"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
 type OrderPaymentLine struct {
@@ -1246,16 +1247,19 @@ type OrderPaymentVoid struct {
 }
 
 type OrderRefund struct {
-	ID              int64           `json:"id"`
-	OrderID         int64           `json:"order_id"`
-	OrderLineID     *int64          `json:"order_line_id"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Amount          decimal.Decimal `json:"amount"`
-	Reason          string          `json:"reason"`
-	RefundedBy      int64           `json:"refunded_by"`
-	CashMovementID  *int64          `json:"cash_movement_id"`
-	CreatedAt       time.Time       `json:"created_at"`
-	CompanyID       int64           `json:"company_id"`
+	ID                int64           `json:"id"`
+	OrderID           int64           `json:"order_id"`
+	OrderLineID       *int64          `json:"order_line_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	Reason            string          `json:"reason"`
+	RefundedBy        int64           `json:"refunded_by"`
+	CashMovementID    *int64          `json:"cash_movement_id"`
+	CreatedAt         time.Time       `json:"created_at"`
+	CompanyID         int64           `json:"company_id"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
 }
 
 type OrdersBusinessDateFix struct {

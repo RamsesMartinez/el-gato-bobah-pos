@@ -73,9 +73,9 @@ export function validarCobro(e: Entrada): Veredicto {
   // El exceso se ve ANTES de mandar. Si no, el cobro sale, el servidor lo rechaza con ErrCobroExcede
   // y el operador se entera con el dinero del cliente en la mano.
   //
-  // El tope es EXACTO, como el de domain.ValidarCobro: el centavo de tolerancia vive en el predicado
-  // que CIERRA el pedido, no en el que acota cada cobro. El round2 es contra el ruido de los
-  // flotantes, no una holgura: 33.34 - 33.33 da 0.010000000000001563 en binario.
+  // El tope es EXACTO, como el de domain.ValidarCobro (y, desde la spec 031, también el predicado
+  // que cierra el pedido). El round2 es contra el ruido de los flotantes, no una holgura: 33.34 -
+  // 33.33 da 0.010000000000001563 en binario.
   if (round2(m.valor - e.falta) > 0) return { ...base, motivo: 'excede' };
   if (e.metodoId === null) return { ...base, motivo: 'sin-metodo' };
   if (!propinaValida(propina, e.totalDelPedido)) return { ...base, motivo: 'propina-excede' };

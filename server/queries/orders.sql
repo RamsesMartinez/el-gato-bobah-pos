@@ -210,25 +210,22 @@ update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2,
 where id = $1;
 
 -- name: RestockCancelledOrder :exec
--- Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+-- Repone el stock de una orden cancelada que no consta de qué renglón salió: los movimientos sin
+-- renglón, anteriores a 0060. Lo NETO, venta menos lo ya repuesto.
 --
--- Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
--- volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
--- agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
---
--- Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
--- quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
--- movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
--- salieron.
+-- Los movimientos CON renglón ya no pasan por aquí (spec 031, D11): cancelar el pedido completo
+-- repone renglón por renglón con la MISMA regla que quitar uno (domain.ReponeInventario), así que lo
+-- que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
+-- frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
+-- quitaba el renglón: el mismo hecho, dos inventarios.
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
        sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
-left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
-  and ol.cancelled_at is null
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+  and sm.order_line_id is null
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0;
 
@@ -472,11 +469,16 @@ select exists (
 )::boolean;
 
 -- name: SumOrderPaymentsByMethod :many
--- Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+-- Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró, y cuánto ya salió
+-- por él.
 --
 -- Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
 -- efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
 -- con un faltante inventado.
+--
+-- Lo DEVUELTO por medio viaja junto (spec 031, D1): con lo cobrado en bruto, una segunda devolución
+-- volvía a sacar del primer medio lo que ya había salido por él. Pagos y devoluciones se agregan por
+-- separado antes de unirse: son dos 1:N del pedido, y unirlos multiplicaría las sumas.
 --
 -- `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
 -- entró tiene que poder salir por donde entró, o queda atrapado.
@@ -485,13 +487,35 @@ select exists (
 -- «Didi efectivo» es de tipo plataforma y su dinero entra al cajón cuando lo reparte gente del
 -- local: son billetes en el mismo montón. Decidirlo por el tipo devolvía $135 de billetes sin
 -- registrar la salida, y el corte cerraba con un faltante de $135 que nadie podía explicar.
+with pagos as (
+  select op.payment_method_id, sum(op.amount) as cobrado, sum(op.tip_amount) as propina,
+         min(op.created_at) as primero
+    from order_payments op
+   where op.order_id = sqlc.arg(order_id)
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+   where r.order_id = sqlc.arg(order_id)
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
-from order_payments op
-join payment_methods pm on pm.id = op.payment_method_id
-where op.order_id = $1
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.is_active
-order by min(op.created_at);
+       coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
+       coalesce(d.devuelto, 0)::numeric(10,2) as refunded,
+       coalesce(p.propina, 0)::numeric(10,2) as tip,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as tip_refunded
+from pagos p
+join payment_methods pm on pm.id = p.payment_method_id
+left join devueltos d on d.payment_method_id = p.payment_method_id
+order by p.primero;
+
+-- name: GetOrderLineForRefund :one
+-- El renglón contra el que se devuelve, solo si es de ESE pedido y sigue vivo (spec 031, D4). La
+-- llave foránea de order_refunds solo exige que el renglón exista; sin el `order_id` en el where se
+-- podía devolver contra el platillo de otro pedido.
+select ol.line_total
+from order_lines ol
+where ol.id = sqlc.arg(line_id) and ol.order_id = sqlc.arg(order_id) and ol.cancelled_at is null;
 
 -- name: SumOrderRefunds :one
 -- Lo ya devuelto de un pedido, y de UNO de sus renglones.
@@ -503,8 +527,14 @@ select coalesce(sum(amount), 0)::numeric(10,2) as devuelto_total,
 from order_refunds where order_id = sqlc.arg('order_id');
 
 -- name: InsertOrderRefund :one
-insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+-- Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
+-- los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
+-- la reclama el turno que se abra después.
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
+                           cash_movement_id, register_session_id, business_date)
+values (sqlc.arg(order_id), sqlc.narg(order_line_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
+        sqlc.arg(reason), sqlc.arg(refunded_by), sqlc.narg(cash_movement_id), sqlc.narg(register_session_id),
+        sqlc.arg(business_date))
 returning id;
 
 -- name: RecalcOrderRefundAmount :exec
@@ -581,7 +611,7 @@ select order_id from order_line_batches where client_uuid = $1;
 -- Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
 -- (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
 select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
-       ol.enviado_a_cocina_at, p.needs_prep
+       ol.line_total, ol.enviado_a_cocina_at, p.needs_prep
 from order_lines ol
 join products p on p.id = ol.product_id
 where ol.order_id = $1 and ol.cancelled_at is null
@@ -661,11 +691,13 @@ select split_part::int as part from order_payments
 where order_id = $1 and split_of = $2 and split_part is not null;
 
 -- name: CreateOrderPaymentNumbered :one
+-- `business_date`: el día del COBRO por el reloj de la app, no el del pedido (spec 031). Un pedido
+-- de ayer cobrado hoy es dinero de hoy.
 insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
-                            reference, client_uuid, payment_number, split_part, split_of)
+                            reference, client_uuid, payment_number, split_part, split_of, business_date)
 values (sqlc.arg(order_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
         sqlc.narg(register_session_id), sqlc.narg(received_by), sqlc.narg(reference), sqlc.narg(client_uuid),
-        sqlc.arg(payment_number), sqlc.narg(split_part), sqlc.narg(split_of))
+        sqlc.arg(payment_number), sqlc.narg(split_part), sqlc.narg(split_of), sqlc.arg(business_date))
 returning id;
 
 -- name: CreateOrderPaymentLine :exec

@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment } from '../../api/backoffice';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund } from '../../api/backoffice';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -428,4 +428,53 @@ test('VoidedPaymentsList acota su alto en dvh para no empujar el cierre fuera de
   const estilo = getComputedStyle(lista);
   expect(estilo.maxHeight).toMatch(/dvh/);
   expect(estilo.overflowY).toBe('auto');
+});
+
+// «TOTAL DIF.» DICE LO MISMO QUE EL HISTÓRICO (spec 031, D13).
+//
+// Los métodos del cajón guardan declarado = esperado, así que su diferencia por renglón es cero y la
+// del cajón vive en el conteo. La fila Total sumaba solo los renglones: un cajón $200 corto salía
+// «Total Dif. $0» en el detalle y −$200 en el histórico del mismo corte.
+test('Total Dif. incluye la diferencia del cajón', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '500', difference: '0', autoDeclare: true, requiresEntry: false },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerDifference="-200" />);
+  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
+  expect(within(fila).getByText(/-\$200/)).toBeInTheDocument();
+});
+
+const devolucion = (o: Partial<SessionRefund>): SessionRefund => ({
+  method: 'Tarjeta débito', amount: '300', tip: '0', orderFolio: '#12', fromDrawer: false,
+  refundedBy: 'Ana', refundedAt: new Date().toISOString(), reason: 'No llegó', ...o,
+});
+
+// LAS DEVOLUCIONES DEL TURNO SE VEN, PLEGADAS (spec 031, D6/D7).
+//
+// Sin la lista, una devolución por tarjeta solo se notaba como un esperado más bajo; plegada para no
+// empujar fuera de los 600 px de la tableta la tabla donde se declara el cierre.
+test('la lista de devoluciones va plegada con su contador y se abre con un toque', async () => {
+  wrap(<RefundsList refunds={[devolucion({}), devolucion({ method: 'Efectivo', amount: '40', fromDrawer: true })]} currency="MXN" />);
+  const boton = screen.getByRole('button', { name: /Devoluciones \(2\)/ });
+  expect(screen.queryByText('Tarjeta débito')).not.toBeInTheDocument();
+  await userEvent.click(boton);
+  expect(screen.getByText('Tarjeta débito')).toBeInTheDocument();
+  expect(screen.getByText('salió del cajón')).toBeInTheDocument();
+});
+
+test('sin devoluciones la lista no se pinta', () => {
+  wrap(<RefundsList refunds={[]} currency="MXN" />);
+  expect(screen.queryByRole('button', { name: /Devoluciones/ })).not.toBeInTheDocument();
+});
+
+// UN CONCEPTO QUE RESTA SE LEE COMO RESTA: «Devoluciones» va en rojo, no en el gris de los ingresos.
+test('el concepto Devoluciones del desglose se pinta como resta', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Tarjeta débito', total: '200', items: [{ concept: 'Ventas', amount: '500' }, { concept: 'Devoluciones', amount: '-300' }] }],
+    ingresosTotal: '200', egresos: [], egresosTotal: '0', plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  const monto = screen.getByText(/-\$300/);
+  expect(monto).toHaveAttribute('data-negative', 'true');
 });

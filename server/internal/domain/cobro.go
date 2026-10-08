@@ -35,13 +35,9 @@ var (
 // se registró así), y arrastrar ese negativo a la suma del tablero lo convertiría en un descuento
 // sobre lo que deben los demás pedidos.
 func PorCobrar(total, pagado decimal.Decimal) decimal.Decimal {
-	// El MISMO predicado que cierra el pedido decide que no queda nada por cobrar.
-	//
-	// PagosCubren tolera un centavo —el residuo de dividir $100 en tres partes de $33.33— y con él
-	// se marca el pedido entregado. Restar a pelo dejaba a la barra del POS viéndole $0.01 a un
-	// pedido que el sistema ya dio por saldado: dos predicados sobre la misma cifra, que es lo que
-	// el corolario del principio III prohíbe. El operador no tenía cómo cobrar ese centavo, y al
-	// día siguiente el pedido salía de la vista con la deuda abierta.
+	// El MISMO predicado que cierra el pedido decide que no queda nada por cobrar: dos predicados
+	// sobre la misma cifra dejaban a la barra del POS viéndole $0.01 a un pedido que el sistema ya
+	// había dado por saldado, que es lo que el corolario del principio III prohíbe.
 	if PagosCubren(pagado, total) {
 		return decimal.Zero
 	}

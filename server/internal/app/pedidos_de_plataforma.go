@@ -752,6 +752,8 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 			OrderID: ord.ID, PaymentMethodID: metodo, Amount: total,
 			RegisterSessionID: sesion, ReceivedBy: &usuarioID,
 			Reference: &ent.ExternalOrderID, ClientUuid: ptrUUID(uuid.New()),
+			// El día del cobro, que es el de la aceptación: la plataforma ya cobró.
+			BusinessDate: fecha,
 		}); err != nil {
 			return err
 		}
@@ -786,6 +788,16 @@ func (s *PedidosDePlataformaService) turnoYFolio(ctx context.Context, q *db.Quer
 	if err != nil {
 		return nil, 0, nil //nolint:nilerr // sin turno abierto NO es un error: es el camino normal de madrugada
 	}
+	// Con candado compartido, como un cobro: sin él un cierre podía firmar su esperado entre esta
+	// lectura y el pago, y el pago quedaba en un turno cerrado sin entrar a ningún corte (spec 031,
+	// revisión de D8). Si el cierre ganó, el pedido entra sin turno y lo reclama la apertura
+	// siguiente, como de madrugada.
+	if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, 0, nil
+		}
+		return nil, 0, err
+	}
 	num, err := q.NextFolioNumber(ctx, sess.ID)
 	if err != nil {
 		return nil, 0, err
@@ -814,6 +826,13 @@ func ReclamarPedidosDePlataformaHuerfanos(ctx context.Context, q *db.Queries, se
 			ID: id, RegisterSessionID: &sesionID, DailyNumber: num,
 		}); err != nil {
 			return fmt.Errorf("darle turno al pedido %d: %w", id, err)
+		}
+		// Su pago va al MISMO turno: reclamar solo el pedido dejaba la venta en el corte y el dinero
+		// en ninguno (spec 031, D5).
+		if err := q.ClaimPlatformOrderPayments(ctx, db.ClaimPlatformOrderPaymentsParams{
+			OrderID: id, RegisterSessionID: &sesionID,
+		}); err != nil {
+			return fmt.Errorf("darle turno al pago del pedido %d: %w", id, err)
 		}
 	}
 	return nil
