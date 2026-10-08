@@ -904,6 +904,27 @@ func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineFor
 	return i, err
 }
 
+const getOrderLineForRefund = `-- name: GetOrderLineForRefund :one
+select ol.line_total
+from order_lines ol
+where ol.id = $1 and ol.order_id = $2 and ol.cancelled_at is null
+`
+
+type GetOrderLineForRefundParams struct {
+	LineID  int64 `json:"line_id"`
+	OrderID int64 `json:"order_id"`
+}
+
+// El renglón contra el que se devuelve, solo si es de ESE pedido y sigue vivo (spec 031, D4). La
+// llave foránea de order_refunds solo exige que el renglón exista; sin el `order_id` en el where se
+// podía devolver contra el platillo de otro pedido.
+func (q *Queries) GetOrderLineForRefund(ctx context.Context, arg GetOrderLineForRefundParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getOrderLineForRefund, arg.LineID, arg.OrderID)
+	var line_total decimal.Decimal
+	err := row.Scan(&line_total)
+	return line_total, err
+}
+
 const getOrderParaDescuento = `-- name: GetOrderParaDescuento :one
 select o.id, o.status, o.subtotal, o.discount_total, o.delivery_fee, o.total,
        coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
@@ -2757,28 +2778,50 @@ func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (SumOrder
 }
 
 const sumOrderPaymentsByMethod = `-- name: SumOrderPaymentsByMethod :many
+with pagos as (
+  select op.payment_method_id, sum(op.amount) as cobrado, sum(op.tip_amount) as propina,
+         min(op.created_at) as primero
+    from order_payments op
+   where op.order_id = $1
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+   where r.order_id = $1
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
-from order_payments op
-join payment_methods pm on pm.id = op.payment_method_id
-where op.order_id = $1
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.is_active
-order by min(op.created_at)
+       coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
+       coalesce(d.devuelto, 0)::numeric(10,2) as devuelto,
+       coalesce(p.propina, 0)::numeric(10,2) as propina,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as propina_devuelta
+from pagos p
+join payment_methods pm on pm.id = p.payment_method_id
+left join devueltos d on d.payment_method_id = p.payment_method_id
+order by p.primero
 `
 
 type SumOrderPaymentsByMethodRow struct {
-	MethodID    int16           `json:"method_id"`
-	Name        string          `json:"name"`
-	TocaElCajon bool            `json:"toca_el_cajon"`
-	IsActive    bool            `json:"is_active"`
-	Cobrado     decimal.Decimal `json:"cobrado"`
+	MethodID        int16           `json:"method_id"`
+	Name            string          `json:"name"`
+	TocaElCajon     bool            `json:"toca_el_cajon"`
+	IsActive        bool            `json:"is_active"`
+	Cobrado         decimal.Decimal `json:"cobrado"`
+	Devuelto        decimal.Decimal `json:"devuelto"`
+	Propina         decimal.Decimal `json:"propina"`
+	PropinaDevuelta decimal.Decimal `json:"propina_devuelta"`
 }
 
-// Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+// Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró, y cuánto ya salió
+// por él.
 //
 // Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
 // efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
 // con un faltante inventado.
+//
+// Lo DEVUELTO por medio viaja junto (spec 031, D1): con lo cobrado en bruto, una segunda devolución
+// volvía a sacar del primer medio lo que ya había salido por él. Pagos y devoluciones se agregan por
+// separado antes de unirse: son dos 1:N del pedido, y unirlos multiplicaría las sumas.
 //
 // `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
 // entró tiene que poder salir por donde entró, o queda atrapado.
@@ -2802,6 +2845,9 @@ func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) (
 			&i.TocaElCajon,
 			&i.IsActive,
 			&i.Cobrado,
+			&i.Devuelto,
+			&i.Propina,
+			&i.PropinaDevuelta,
 		); err != nil {
 			return nil, err
 		}
