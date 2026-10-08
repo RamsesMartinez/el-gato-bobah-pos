@@ -607,6 +607,15 @@ select sqlc.arg(new_line_id), m.modifier_option_id, m.group_title, m.option_name
 from order_line_modifiers m
 where m.order_line_id = sqlc.arg(line_id);
 
+-- name: ListLineComponents :many
+-- Lo que lleva el paquete de UN renglón, para repartirlo al partir el renglón. La cantidad es la
+-- del renglón entero, no por pieza.
+select id, product_id, quantity from order_line_components where order_line_id = $1 order by id;
+
+-- name: SetLineComponentQty :exec
+-- Lo que se queda con el renglón original después de partirlo.
+update order_line_components set quantity = sqlc.arg(quantity) where id = sqlc.arg(id);
+
 -- name: ShrinkOrderLine :exec
 -- Lo que se queda en el renglón original después de partirlo.
 update order_lines

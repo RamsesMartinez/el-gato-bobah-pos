@@ -95,7 +95,7 @@ values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
         -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
         -- el pedido de plataforma, cuya sucursal es la de su tienda.
         $20)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id
 `
 
 type CreateOrderParams struct {
@@ -193,6 +193,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
 		&i.BranchID,
+		&i.MergedIntoOrderID,
 	)
 	return i, err
 }
@@ -424,7 +425,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -465,6 +466,7 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.DiscountSetBy,
 		&i.DiscountSetAt,
 		&i.BranchID,
+		&i.MergedIntoOrderID,
 	)
 	return i, err
 }
@@ -898,6 +900,38 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 			&i.LineasVivas,
 			&i.LineasEntregadas,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLineComponents = `-- name: ListLineComponents :many
+select id, product_id, quantity from order_line_components where order_line_id = $1 order by id
+`
+
+type ListLineComponentsRow struct {
+	ID        int64           `json:"id"`
+	ProductID int64           `json:"product_id"`
+	Quantity  decimal.Decimal `json:"quantity"`
+}
+
+// Lo que lleva el paquete de UN renglón, para repartirlo al partir el renglón. La cantidad es la
+// del renglón entero, no por pieza.
+func (q *Queries) ListLineComponents(ctx context.Context, orderLineID int64) ([]ListLineComponentsRow, error) {
+	rows, err := q.db.Query(ctx, listLineComponents, orderLineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLineComponentsRow{}
+	for rows.Next() {
+		var i ListLineComponentsRow
+		if err := rows.Scan(&i.ID, &i.ProductID, &i.Quantity); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1671,6 +1705,21 @@ type RestockCancelledOrderParams struct {
 // salieron.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
+	return err
+}
+
+const setLineComponentQty = `-- name: SetLineComponentQty :exec
+update order_line_components set quantity = $1 where id = $2
+`
+
+type SetLineComponentQtyParams struct {
+	Quantity decimal.Decimal `json:"quantity"`
+	ID       int64           `json:"id"`
+}
+
+// Lo que se queda con el renglón original después de partirlo.
+func (q *Queries) SetLineComponentQty(ctx context.Context, arg SetLineComponentQtyParams) error {
+	_, err := q.db.Exec(ctx, setLineComponentQty, arg.Quantity, arg.ID)
 	return err
 }
 

@@ -482,6 +482,26 @@ func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow
 	}); err != nil {
 		return 0, err
 	}
+	// Lo que lleva el paquete se reparte con la misma regla que los movimientos: sin esto el renglón
+	// nuevo sale como un paquete vacío y el original sigue diciendo que lleva todo.
+	comps, err := q.ListLineComponents(ctx, l.ID)
+	if err != nil {
+		return 0, err
+	}
+	for _, c := range comps {
+		keep, move := domain.SplitMovement(c.Quantity, l.Quantity, k)
+		if !move.IsPositive() {
+			continue
+		}
+		if err := q.SetLineComponentQty(ctx, db.SetLineComponentQtyParams{ID: c.ID, Quantity: keep}); err != nil {
+			return 0, err
+		}
+		if err := q.InsertOrderLineComponent(ctx, db.InsertOrderLineComponentParams{
+			OrderLineID: newID, ProductID: c.ProductID, Quantity: move,
+		}); err != nil {
+			return 0, err
+		}
+	}
 	origID := l.ID
 	movs, err := q.ListLineSaleMovements(ctx, &origID)
 	if err != nil {

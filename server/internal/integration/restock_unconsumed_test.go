@@ -8,6 +8,8 @@ import (
 
 	"uuid"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
@@ -204,6 +206,19 @@ func TestSplittingALineKeepsTheOriginOfEachMovement(t *testing.T) {
 		{"lo quitado del paquete", splitOff(pkgLine), map[movimiento]string{
 			{itemType: "producto", item: soda, componentOf: pkg, branchOK: true}: "-2",
 		}},
+	}
+	// Lo que lleva el paquete se reparte igual: cada mitad dice cuántos refrescos lleva la suya. Sin
+	// copiarlo, el renglón quitado sale como un paquete vacío y el entregado como si llevara los
+	// cuatro, y «unidades vendidas dentro de paquetes» cuenta los del paquete que no se entregó.
+	for _, l := range []int64{pkgLine, splitOff(pkgLine)} {
+		var q decimal.Decimal
+		if err := st.Pool.QueryRow(ctx, `select coalesce(sum(quantity), 0) from order_line_components where order_line_id = $1 and product_id = $2`,
+			l, soda).Scan(&q); err != nil {
+			t.Fatal(err)
+		}
+		if !q.Equal(pesos("2")) {
+			t.Errorf("el renglón %d del paquete lleva %s refrescos; cada mitad lleva 2", l, q)
+		}
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
