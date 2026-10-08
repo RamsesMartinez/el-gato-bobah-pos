@@ -131,7 +131,9 @@ y lo que la pantalla ofrece ahí lo decide `closedWithPending` (enviar responde 
 | `422 PLATFORM_ORDER_NO_LINES` | Pedido de plataforma (D-11) |
 | `409 DRAFT_DISCARDED` / `409 DRAFT_SENT` | El `id` ya existe y está terminal |
 
-Publica `draft.updated`.
+Publica `draft.updated`. Si `header.discount` viene puesto, lleva el mismo tope por usuario y el mismo
+evento `draft_discount_set` que el `PATCH` (también en `import`). Más de 200 renglones → `400`. Con todos
+los nombres en cuentas vivas, el nombre sale numerado («Persa 2») en vez de rechazar la cuenta.
 
 ### `GET /pos/drafts/{id}`
 
@@ -226,7 +228,12 @@ Publica `order.created` u `order.updated` (lo de hoy) **y** `draft.updated`.
 }]}
 ```
 
-`200 {"results": [{"id": "uuid", "outcome": "created|exists|already_sent|skipped_empty", "draftId": "uuid|null", "orderId": 123|null}]}`.
+`200 {"results": [{"id": "uuid", "outcome": "created|exists|already_sent|skipped_empty|rejected", "draftId": "uuid|null", "orderId": 123|null, "reason": "…"}]}`.
+`rejected` (con `reason` para quien opera): esa pestaña no se pudo subir —una opción de modificador que
+ya no existe, una cabecera que ya no vale— y las demás sí; la tableta la descarta con aviso y borra su
+copia igual. Un producto que ya no está en el menú se queda fuera de la cuenta sin rechazarla (si no
+queda nada, `skipped_empty`). Más de `MaxDraftLines` (200) renglones en una pestaña → `400` de toda la
+petición, igual que en `POST /pos/drafts`.
 `already_sent`: existe `orders.client_uuid` o `order_line_batches.client_uuid` con ese id (la pestaña
 se envió y no se cerró). Tope: 20 cuentas por llamada → `400`.
 
