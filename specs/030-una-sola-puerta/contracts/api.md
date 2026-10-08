@@ -98,7 +98,12 @@ Incluye: cuentas `capturando` sin pedido; pedidos `abierta|lista` de cualquier f
 `entregada` que deben de los últimos 90 días (todas con `olderDebts=true`); pedidos cerrados con una «Nuevo» viva
 (`closedWithPending: true`). Excluye cancelada y reembolsada.
 
-Reemplaza `GET /orders/open` (se elimina con `PedidosEnCurso`).
+Reemplaza `GET /orders/open` (se elimina con `PedidosEnCurso`; `open` lo atrapa `GET /orders/{id}` y
+responde `400`, nunca una lista).
+
+Un pedido con `closedWithPending: true` (pagado y entregado, con una «Nuevo» viva) viaja con `state:
+"paid_in_kitchen"` y `group: "in_kitchen"`: la ficha existe para que lo capturado no se pierda de vista,
+y lo que la pantalla ofrece ahí lo decide `closedWithPending` (enviar responde `ORDER_CLOSED`).
 
 ### `POST /pos/drafts` — crear con el primer producto
 
@@ -202,7 +207,12 @@ R-3). Publica `draft.updated`.
 | `422` producto no disponible | El de hoy (`ProductUnavailable`), con los nombres |
 | `409 ORDER_CLOSED` / `422 PLATFORM_ORDER_NO_LINES` | La «Nuevo» de un pedido que se cerró / de plataforma |
 | `409 DRAFT_DISCARDED` | Se descartó en otra tableta |
-| `400 VALIDATION` | Cuenta vacía; plataforma capturada a mano sin folio (`hayQuePedirElFolio`, como hoy) |
+| `400 VALIDATION` | Cuenta vacía |
+
+Una cuenta de plataforma **sin folio sí se manda** y el pedido queda pendiente de folio, como hoy con
+`POST /orders`: la pantalla lo pide antes (`hayQuePedirElFolio` + `FolioPlataformaSheet`) y «Mandar sin
+folio» es su salida explícita; un `400` aquí la dejaría sin salida. El pedido sale siempre a domicilio
+cuando tiene plataforma (`domain.OrderServiceType`, la regla que antes aplicaba `domain/pedido.ts`).
 
 Publica `order.created` u `order.updated` (lo de hoy) **y** `draft.updated`.
 
