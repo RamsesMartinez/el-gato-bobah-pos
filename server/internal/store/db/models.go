@@ -1126,6 +1126,7 @@ type Order struct {
 	DiscountSetBy      *int64             `json:"discount_set_by"`
 	DiscountSetAt      pgtype.Timestamptz `json:"discount_set_at"`
 	BranchID           int64              `json:"branch_id"`
+	MergedIntoOrderID  *int64             `json:"merged_into_order_id"`
 }
 
 type OrderCounter struct {
@@ -1179,6 +1180,24 @@ type OrderLineModifier struct {
 	UnitCost         decimal.Decimal `json:"unit_cost"`
 }
 
+type OrderLineMove struct {
+	ID              int64           `json:"id"`
+	CompanyID       int64           `json:"company_id"`
+	ClientUuid      uuid.UUID       `json:"client_uuid"`
+	OrderLineID     int64           `json:"order_line_id"`
+	SplitFromLineID *int64          `json:"split_from_line_id"`
+	Qty             decimal.Decimal `json:"qty"`
+}
+
+type OrderLineMoveBatch struct {
+	CompanyID   int64     `json:"company_id"`
+	ClientUuid  uuid.UUID `json:"client_uuid"`
+	FromOrderID int64     `json:"from_order_id"`
+	ToOrderID   int64     `json:"to_order_id"`
+	MovedBy     int64     `json:"moved_by"`
+	MovedAt     time.Time `json:"moved_at"`
+}
+
 type OrderPayment struct {
 	ID                int64           `json:"id"`
 	OrderID           int64           `json:"order_id"`
@@ -1190,6 +1209,40 @@ type OrderPayment struct {
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
 	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	PaymentNumber     *int16          `json:"payment_number"`
+}
+
+type OrderPaymentLine struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	OrderLineID    int64           `json:"order_line_id"`
+	Qty            decimal.Decimal `json:"qty"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+type OrderPaymentVoid struct {
+	ID                int64           `json:"id"`
+	CompanyID         int64           `json:"company_id"`
+	OrderID           int64           `json:"order_id"`
+	OriginalPaymentID int64           `json:"original_payment_id"`
+	PaymentNumber     int16           `json:"payment_number"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reference         *string         `json:"reference"`
+	RegisterSessionID int64           `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	PaidAt            time.Time       `json:"paid_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	Covered           []byte          `json:"covered"`
+	VoidedBy          int64           `json:"voided_by"`
+	VoidedAt          time.Time       `json:"voided_at"`
+	Reason            string          `json:"reason"`
 }
 
 type OrderRefund struct {

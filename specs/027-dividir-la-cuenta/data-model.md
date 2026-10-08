@@ -116,7 +116,10 @@ migración no rellena nada.
 | `qty` | `numeric(8,2) not null` | `check (qty > 0)` |
 
 - Índices: lote `(company_id, from_order_id)` y `(company_id, to_order_id)`; renglones
-  `(company_id, order_line_id)` y `(company_id, split_from_line_id)`.
+  `(company_id, client_uuid)` (la FK al lote y el reintento), `(company_id, order_line_id)` y
+  `(company_id, split_from_line_id)`.
+- Toda FK a usuario, turno o método de pago en las tablas nuevas es compuesta con la empresa
+  (`payment_methods` gana `unique (company_id, id)`): los chequeos de FK saltan RLS.
 - Grants: `select, insert` en las dos.
 
 ## `order_payments` — columnas nuevas
