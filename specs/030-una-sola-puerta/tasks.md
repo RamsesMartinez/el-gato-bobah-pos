@@ -61,10 +61,10 @@ archivo ni depende de otra tarea abierta de la misma fase.
 
 ### Esquema — BE
 
-- [ ] T014 **BE** IT de la migración en server/internal/integration/migration_order_drafts_test.go, sobre `gatobobah_restored` (dos empresas): Up aplica; las FKs compuestas rechazan `product_id`, `opened_by`, `delivery_platform_id` y `order_id` de la otra empresa; dos cuentas vivas con el mismo nombre → `23505`; dos «Nuevo» vivas del mismo pedido → `23505`; una enviada y una viva con el mismo nombre conviven; checks de pareja (`status`/`sent_at`/`discarded_at`/`discard_reason`, descuento excluyente, `folio_name`/`folio_scheme`); `gatobobah_app` puede `select/insert/update` en `order_drafts` y **no** `delete`; Down se niega con una cuenta `capturando` y con una `enviada`; Down limpio sin filas. Verificar que el test corre (no `SKIP`)
-- [ ] T015 **BE** Escribir server/migrations/0082_order_drafts.sql según [data-model.md](./data-model.md): tres tablas, FKs compuestas `no action` en el orden de los unique existentes (sin crear índices en tablas existentes), índices únicos parciales, RLS con `nullif`, grants explícitos, comentario del porqué (D-1, sin FK en `order_draft_adds.line_id`, techo de crecimiento) y Down que se niega
-- [ ] T016 **BE** Correr `TestEveryCompanyTableIsIsolated` (server/internal/integration/rls_all_tables_test.go) y verlo verde con las tres tablas nuevas sin tocarlo
-- [ ] T017 **BE** Crear server/queries/drafts.sql vacío (solo el encabezado) y verificar `make sqlc`. **Cada consulta se agrega en la tarea de implementación de su historia, después de la IT que la ejerce** (T030, T032, T034, T044, T062, T074, con `ReleaseFolioName` y su guarda `taken_at <= $created_at` en T074): escribir las consultas antes que sus tests violaría el principio IV
+- [X] T014 **BE** IT de la migración en server/internal/integration/migration_order_drafts_test.go, sobre `gatobobah_restored` (dos empresas): Up aplica; las FKs compuestas rechazan `product_id`, `opened_by`, `delivery_platform_id` y `order_id` de la otra empresa; dos cuentas vivas con el mismo nombre → `23505`; dos «Nuevo» vivas del mismo pedido → `23505`; una enviada y una viva con el mismo nombre conviven; checks de pareja (`status`/`sent_at`/`discarded_at`/`discard_reason`, descuento excluyente, `folio_name`/`folio_scheme`); `gatobobah_app` puede `select/insert/update` en `order_drafts` y **no** `delete`; Down se niega con una cuenta `capturando` y con una `enviada`; Down limpio sin filas. Verificar que el test corre (no `SKIP`)
+- [X] T015 **BE** Escribir server/migrations/0082_order_drafts.sql según [data-model.md](./data-model.md): tres tablas, FKs compuestas `no action` en el orden de los unique existentes (sin crear índices en tablas existentes), índices únicos parciales, RLS con `nullif`, grants explícitos, comentario del porqué (D-1, sin FK en `order_draft_adds.line_id`, techo de crecimiento) y Down que se niega
+- [X] T016 **BE** Correr `TestEveryCompanyTableIsIsolated` (server/internal/integration/rls_all_tables_test.go) y verlo verde con las tres tablas nuevas sin tocarlo
+- [X] T017 **BE** Crear server/queries/drafts.sql vacío (solo el encabezado) y verificar `make sqlc`. **Cada consulta se agrega en la tarea de implementación de su historia, después de la IT que la ejerce** (T030, T032, T034, T044, T062, T074, con `ReleaseFolioName` y su guarda `taken_at <= $created_at` en T074): escribir las consultas antes que sus tests violaría el principio IV
 
 ### Base del front — FE
 
@@ -120,16 +120,16 @@ mismo nombre; no está en Ventas, corte, tablero ni almacén.
 
 ### Frontend
 
-- [X] T037 [P] [US2] **FE** Test en web/src/features/pos/useCuenta.test.tsx (mocks de `posApi`):
+- [ ] T037 [P] [US2] **FE** Test en web/src/features/pos/useCuenta.test.tsx (mocks de `posApi`):
   - tocar un producto sin cuenta seleccionada crea la cuenta con un `id` y un `opId` nuevos y la selecciona;
   - el renglón se ve «guardando» al instante; si falla, sale de la cuenta y hay un toast «No se guardó · Reintentar» que reintenta con el **mismo** `opId`;
   - sin conexión, agregar no se aplica en silencio y Enviar/Cobrar quedan apagados (US2 AS4, FR-016);
   - «−» con 409 recarga la cuenta; si el renglón ya quedó como se pidió no avisa, si no, avisa «La cuenta cambió en otra tableta»;
   - el id devuelto por el servidor (otra «Nuevo» ya viva) reemplaza al propio
-- [X] T038 [US2] **FE** Implementar web/src/features/pos/useCuenta.ts (TanStack Query `['pos','draft',id]` / `['orders',id]` + mutaciones optimistas)
-- [X] T039 [P] [US2] **FE** Test en web/src/features/pos/subirCuentasViejas.test.ts: `egb:ticket:v2` con dos pestañas con productos → un `importDrafts` con los ids de pestaña y `opId = uuidv5(tab.id, line.lineId)` estables; todas con resultado → borra la llave; falla la red → la conserva; una pestaña con forma vieja que no parsea se salta con aviso y no bloquea a las demás; `already_sent` no deja cuenta viva; corre una sola vez por carga. Absorbe los casos de web/src/stores/cuentaGuardadaAntes.test.ts que sigan aplicando y borra ese archivo
-- [X] T040 [US2] **FE** Implementar web/src/features/pos/subirCuentasViejas.ts y llamarlo al montar el POS
-- [X] T041 [US2] **FE** Primero reescribir los tests (en rojo contra el código viejo) y después conectar web/src/features/pos/POSPage.tsx a `useCuenta` (tocar producto, modificadores, notas, cliente, canal, envío, descuento van al servidor), borrar web/src/stores/ticket.ts y sus usos; reescribir lo que dependía de él en POSPage.test.tsx, Ticket.test.tsx, idempotencia.test.tsx, elFolioLlegaAlServidor.test.tsx y agregarRecorta.test.tsx (cada test conserva el defecto que atrapaba, ahora contra el servidor simulado)
+- [ ] T038 [US2] **FE** Implementar web/src/features/pos/useCuenta.ts (TanStack Query `['pos','draft',id]` / `['orders',id]` + mutaciones optimistas)
+- [ ] T039 [P] [US2] **FE** Test en web/src/features/pos/subirCuentasViejas.test.ts: `egb:ticket:v2` con dos pestañas con productos → un `importDrafts` con los ids de pestaña y `opId = uuidv5(tab.id, line.lineId)` estables; todas con resultado → borra la llave; falla la red → la conserva; una pestaña con forma vieja que no parsea se salta con aviso y no bloquea a las demás; `already_sent` no deja cuenta viva; corre una sola vez por carga. Absorbe los casos de web/src/stores/cuentaGuardadaAntes.test.ts que sigan aplicando y borra ese archivo
+- [ ] T040 [US2] **FE** Implementar web/src/features/pos/subirCuentasViejas.ts y llamarlo al montar el POS
+- [ ] T041 [US2] **FE** Primero reescribir los tests (en rojo contra el código viejo) y después conectar web/src/features/pos/POSPage.tsx a `useCuenta` (tocar producto, modificadores, notas, cliente, canal, envío, descuento van al servidor), borrar web/src/stores/ticket.ts y sus usos; reescribir lo que dependía de él en POSPage.test.tsx, Ticket.test.tsx, idempotencia.test.tsx, elFolioLlegaAlServidor.test.tsx y agregarRecorta.test.tsx (cada test conserva el defecto que atrapaba, ahora contra el servidor simulado)
 
 **Checkpoint**: la cuenta vive en el servidor; recargar no pierde nada; ninguna consulta de dinero la ve.
 
@@ -160,19 +160,19 @@ o en «+N» con su estado; tocar cualquiera la carga.
 
 ### Frontend
 
-- [X] T048 [P] [US1] **FE** Test en web/src/features/pos/useCuentasVivas.test.ts: consulta `['pos','accounts']` cada 30 s; un evento `draft.updated` u `order.*` la invalida; la tableta que vuelve de suspenderse refresca
-- [X] T049 [US1] **FE** Implementar web/src/features/pos/useCuentasVivas.ts y montar `useOrderEvents` (web/src/hooks/useOrderEvents.ts, extendido a `draft.updated`) en el POS
-- [X] T050 [P] [US1] **FE** Test en web/src/features/pos/FilaDeCuentas.test.tsx:
+- [ ] T048 [P] [US1] **FE** Test en web/src/features/pos/useCuentasVivas.test.ts: consulta `['pos','accounts']` cada 30 s; un evento `draft.updated` u `order.*` la invalida; la tableta que vuelve de suspenderse refresca
+- [ ] T049 [US1] **FE** Implementar web/src/features/pos/useCuentasVivas.ts y montar `useOrderEvents` (web/src/hooks/useOrderEvents.ts, extendido a `draft.updated`) en el POS
+- [ ] T050 [P] [US1] **FE** Test en web/src/features/pos/FilaDeCuentas.test.tsx:
   - con un ancho dado pinta solo fichas completas de 120 px, luego «+N» y «+»; «+N» cuenta exactamente las que no se ven;
   - orden: seleccionada, las que deben, por antigüedad;
   - cada estado con su texto corto y color; ninguna ficha tiene ✕;
   - fichas y botones ≥ 44 px; «+» deja sin selección (la cuenta nace al primer producto)
-- [X] T051 [US1] **FE** Implementar web/src/features/pos/FilaDeCuentas.tsx
-- [X] T052 [P] [US1] **FE** Test en web/src/features/pos/TodasLasCuentasSheet.test.tsx: grupos con su conteo y en orden; un grupo vacío no se pinta; buscador solo con más de 8; al abrirse pide `olderDebts=true`; renglones de 56 px con hora, antigüedad y lo que falta; tocar uno lo selecciona y cierra la hoja
-- [X] T053 [US1] **FE** Implementar web/src/features/pos/TodasLasCuentasSheet.tsx (hoja `maxH="85dvh"`, scroll de la lista con `minH={0}`)
-- [X] T054 [US1] **FE** Primero el test en POSPage.test.tsx (la fila no desborda con 10 cuentas; no queda `TicketTabs` ni el botón naranja), después la fila 2 en web/src/features/pos/POSPage.tsx: `FilaDeCuentas` en lugar de `TicketTabs` y `PedidosEnCurso`; buscador `clamp(120px,20%,200px)` que se pliega a botón de 44 px con el panel abierto. Borrar web/src/features/pos/TicketTabs.tsx, PedidosEnCurso.tsx y PedidosEnCurso.test.tsx (sus casos vivos pasan a T050/T052) y `posApi.openOrders`
-- [X] T055 [P] [US1] **FE** Test en web/src/features/pos/abrirDesdeLaUrl.test.tsx: `/pos?pedido=12` selecciona ese pedido y limpia el parámetro; `?cuenta=<uuid>` igual; un id que no existe → «Esa cuenta ya no existe» y no selecciona otra; un valor malformado se rechaza igual (no cae a otra cuenta)
-- [X] T056 [US1] **FE** Implementar la lectura del parámetro en web/src/features/pos/POSPage.tsx
+- [ ] T051 [US1] **FE** Implementar web/src/features/pos/FilaDeCuentas.tsx
+- [ ] T052 [P] [US1] **FE** Test en web/src/features/pos/TodasLasCuentasSheet.test.tsx: grupos con su conteo y en orden; un grupo vacío no se pinta; buscador solo con más de 8; al abrirse pide `olderDebts=true`; renglones de 56 px con hora, antigüedad y lo que falta; tocar uno lo selecciona y cierra la hoja
+- [ ] T053 [US1] **FE** Implementar web/src/features/pos/TodasLasCuentasSheet.tsx (hoja `maxH="85dvh"`, scroll de la lista con `minH={0}`)
+- [ ] T054 [US1] **FE** Primero el test en POSPage.test.tsx (la fila no desborda con 10 cuentas; no queda `TicketTabs` ni el botón naranja), después la fila 2 en web/src/features/pos/POSPage.tsx: `FilaDeCuentas` en lugar de `TicketTabs` y `PedidosEnCurso`; buscador `clamp(120px,20%,200px)` que se pliega a botón de 44 px con el panel abierto. Borrar web/src/features/pos/TicketTabs.tsx, PedidosEnCurso.tsx y PedidosEnCurso.test.tsx (sus casos vivos pasan a T050/T052) y `posApi.openOrders`
+- [ ] T055 [P] [US1] **FE** Test en web/src/features/pos/abrirDesdeLaUrl.test.tsx: `/pos?pedido=12` selecciona ese pedido y limpia el parámetro; `?cuenta=<uuid>` igual; un id que no existe → «Esa cuenta ya no existe» y no selecciona otra; un valor malformado se rechaza igual (no cae a otra cuenta)
+- [ ] T056 [US1] **FE** Implementar la lectura del parámetro en web/src/features/pos/POSPage.tsx
 - [ ] T057 [P] [US1] **FE** Test en web/src/features/orders/OrdersBoardPage.test.tsx: cada tarjeta tiene «Abrir cuenta» (44 px) que navega a `/pos?pedido=<id>`; reemplaza la puerta de «Cobrar» del tablero como única ruta al cobro (caso 25)
 - [ ] T058 [US1] **FE** Implementar «Abrir cuenta» en web/src/features/orders/OrdersBoardPage.tsx
 
@@ -216,14 +216,14 @@ tablero lo muestra pendiente.
 
 ### Frontend
 
-- [X] T064 [P] [US3] **FE** Test en web/src/features/pos/Ticket.test.tsx:
+- [ ] T064 [P] [US3] **FE** Test en web/src/features/pos/Ticket.test.tsx:
   - cuenta en captura: solo «Nuevo» con −/+;
   - pedido con pagos y en cocina: «Nuevo» primero con −/+, «En cocina» compacto (40 px, marca de entregado, sin −/+, quitar en el ⋮ del renglón), «Pagado» con candado y sin ⋮; «En cocina» y «Pagado» se pliegan solos con más de 3 renglones;
   - el pie solo tiene totales y dos botones (caso 30): «Enviar N a cocina» con N = renglones de «Nuevo»;
   - con algo guardando o sin conexión, los dos botones apagados y el motivo en una línea
-- [X] T065 [US3] **FE** Reescribir web/src/features/pos/Ticket.tsx con las tres secciones y el ⋮ de cabecera (cliente, canal, descuento, envío)
-- [X] T066 [P] [US3] **FE** Test en web/src/features/pos/useEnviarCuenta.test.tsx: enviar imprime la comanda con `printLineIds` (`KitchenTicket` con `soloLineas`); el reintento con `printLineIds` vacío no reimprime; `ORDER_CLOSED` ofrece «Empezar cuenta nueva con estos productos» (crea cuenta nueva con los mismos renglones y descarta la vieja); `PLATFORM_ORDER_NO_LINES` lo dice y no ofrece agregar; la cuenta enviada se queda seleccionada y en la fila (caso 5)
-- [X] T067 [US3] **FE** Implementar web/src/features/pos/useEnviarCuenta.ts (⇐ T063 para la integración real) y borrar useMandarPedido.ts y useAgregarAPedido.ts
+- [ ] T065 [US3] **FE** Reescribir web/src/features/pos/Ticket.tsx con las tres secciones y el ⋮ de cabecera (cliente, canal, descuento, envío)
+- [ ] T066 [P] [US3] **FE** Test en web/src/features/pos/useEnviarCuenta.test.tsx: enviar imprime la comanda con `printLineIds` (`KitchenTicket` con `soloLineas`); el reintento con `printLineIds` vacío no reimprime; `ORDER_CLOSED` ofrece «Empezar cuenta nueva con estos productos» (crea cuenta nueva con los mismos renglones y descarta la vieja); `PLATFORM_ORDER_NO_LINES` lo dice y no ofrece agregar; la cuenta enviada se queda seleccionada y en la fila (caso 5)
+- [ ] T067 [US3] **FE** Implementar web/src/features/pos/useEnviarCuenta.ts (⇐ T063 para la integración real) y borrar useMandarPedido.ts y useAgregarAPedido.ts
 
 **Checkpoint**: la mesa que sigue pidiendo funciona sin dos cuentas.
 
@@ -238,10 +238,10 @@ nuevo, lo envía primero.
 productos → la fila la muestra «Pago parcial · falta $X».
 
 - [ ] T068 [US4] **BE** IT en server/internal/integration/drafts_charge_test.go: enviar y cobrar 2 de 4 productos por productos → la lista la da `partly_paid` con el `outstanding` correcto; dos tabletas «Enviar y cobrar» la misma cuenta a la vez → un pedido, el segundo cobro solo cobra lo que falta (edge case del spec); 3C de la lista tras el cobro
-- [X] T069 [P] [US4] **FE** Test en web/src/shared/CobrarSheet.test.tsx y CobrarSheet.split.test.tsx: cuenta de mostrador con id de pedido → los tres modos siempre; de plataforma → solo completo con su método; cerrar la hoja sin cobrar no cancela nada y la cuenta sigue en la fila (US4 AS2)
-- [X] T070 [US4] **FE** Ajustar web/src/shared/cobro/ModePicker.tsx y web/src/shared/CobrarSheet.tsx (`splittable` ya no depende de que exista el pedido: siempre lo hay al abrir)
-- [X] T071 [P] [US4] **FE** Test en web/src/features/pos/cobrarDesdeElTicket.test.tsx: con «Nuevo» el botón dice «Enviar y cobrar $X» y envía antes de abrir la hoja; sin nada nuevo dice «Cobrar $X» y abre directo; si el envío falla la hoja no se abre y el motivo queda en el pie; sin conexión apagado
-- [X] T072 [US4] **FE** Implementar el flujo en web/src/features/pos/Ticket.tsx y POSPage.tsx (⇐ T063)
+- [ ] T069 [P] [US4] **FE** Test en web/src/shared/CobrarSheet.test.tsx y CobrarSheet.split.test.tsx: cuenta de mostrador con id de pedido → los tres modos siempre; de plataforma → solo completo con su método; cerrar la hoja sin cobrar no cancela nada y la cuenta sigue en la fila (US4 AS2)
+- [ ] T070 [US4] **FE** Ajustar web/src/shared/cobro/ModePicker.tsx y web/src/shared/CobrarSheet.tsx (`splittable` ya no depende de que exista el pedido: siempre lo hay al abrir)
+- [ ] T071 [P] [US4] **FE** Test en web/src/features/pos/cobrarDesdeElTicket.test.tsx: con «Nuevo» el botón dice «Enviar y cobrar $X» y envía antes de abrir la hoja; sin nada nuevo dice «Cobrar $X» y abre directo; si el envío falla la hoja no se abre y el motivo queda en el pie; sin conexión apagado
+- [ ] T072 [US4] **FE** Implementar el flujo en web/src/features/pos/Ticket.tsx y POSPage.tsx (⇐ T063)
 
 ---
 
@@ -254,8 +254,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 - [ ] T073 [US5] **BE** IT en server/internal/integration/drafts_discard_test.go: `TestDiscardReturnsTheName` (el nombre vuelve a `GET /pos/folio-names`); descartar dos veces → 204; descartar una enviada → `DRAFT_SENT`; `TestDiscardAfterBagRefillKeepsTheNewOwner` (bolsa vaciada y nombre retomado por un pedido → descartar no lo suelta); descartar no consume folio; `discarded_by` y `discard_reason` quedan; IT HTTP: `POST /pos/drafts/{id}/discard` → 204 y 409 en JSON crudo; 3C
 - [ ] T074 [US5] **BE** Escribir `ReleaseFolioName` en server/queries/folios.sql y la consulta de descartar; implementar `DraftsService.Discard` en server/internal/app/drafts.go, handler y ruta `POST /pos/drafts/{id}/discard`
-- [X] T075 [P] [US5] **FE** Test en web/src/features/pos/DescartarCuentaSheet.test.tsx: cuenta vacía → se descarta sin hoja; con productos → «¿Descartar la cuenta de Levkoy? Se pierden 2 productos ($74)…»; «Seguir capturando» es la principal y no cambia nada; «Descartar» rojo, separado, descarta y deja sin selección. El ⋮ de cabecera ofrece «Descartar cuenta» solo en captura y «Cancelar pedido» solo en enviada (y solo con permiso `orders.cancel`); una enviada no tiene ninguna otra forma de cerrarse
-- [X] T076 [US5] **FE** Implementar web/src/features/pos/DescartarCuentaSheet.tsx y el ⋮ de cabecera del ticket: «Descartar cuenta» solo en captura, «Cancelar pedido» (permiso `orders.cancel`, flujo existente) solo en enviada; ninguna otra forma de cerrar una enviada (US5 AS3). Quitar el `confirm('¿Vaciar pedido?')` de Ticket.tsx
+- [ ] T075 [P] [US5] **FE** Test en web/src/features/pos/DescartarCuentaSheet.test.tsx: cuenta vacía → se descarta sin hoja; con productos → «¿Descartar la cuenta de Levkoy? Se pierden 2 productos ($74)…»; «Seguir capturando» es la principal y no cambia nada; «Descartar» rojo, separado, descarta y deja sin selección. El ⋮ de cabecera ofrece «Descartar cuenta» solo en captura y «Cancelar pedido» solo en enviada (y solo con permiso `orders.cancel`); una enviada no tiene ninguna otra forma de cerrarse
+- [ ] T076 [US5] **FE** Implementar web/src/features/pos/DescartarCuentaSheet.tsx y el ⋮ de cabecera del ticket: «Descartar cuenta» solo en captura, «Cancelar pedido» (permiso `orders.cancel`, flujo existente) solo en enviada; ninguna otra forma de cerrar una enviada (US5 AS3). Quitar el `confirm('¿Vaciar pedido?')` de Ticket.tsx
 - [ ] T077 [P] [US5] **FE** Test en web/src/features/backoffice/ExpensesPage.test.tsx: cancelar un gasto pide el motivo en `ReasonSheet` (opcional) y no llama a `prompt`
 - [ ] T078 [US5] **FE** Reemplazar el `prompt()` de web/src/features/backoffice/ExpensesPage.tsx por `ReasonSheet`
 
@@ -265,17 +265,17 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 **Goal**: sin conexión se dice y se reintenta; lo que cambia en otra tableta se ve con aviso.
 
-- [X] T079 [P] [US7] **FE** Test en web/src/features/pos/cambioEnOtraTableta.test.ts (función pura): cobrada, cancelada, enviada, descartada y editada en otra tableta → aviso con el nombre («Siamés se cobró en otra tableta»); las operaciones propias en vuelo no avisan; un agregado ajeno suma sin aviso de conflicto (US7 AS2)
-- [X] T080 [US7] **FE** Implementar web/src/features/pos/cambioEnOtraTableta.ts y conectarlo a `useCuenta`
-- [X] T081 [P] [US7] **FE** Test en web/src/features/pos/AvisoSinConexion.test.tsx: aparece en la franja del encabezado, superpuesto (no cambia el alto de nada), con el panel abierto y cerrado; desaparece solo al volver
-- [X] T082 [US7] **FE** Implementar web/src/features/pos/AvisoSinConexion.tsx y montarlo en POSPage.tsx
+- [ ] T079 [P] [US7] **FE** Test en web/src/features/pos/cambioEnOtraTableta.test.ts (función pura): cobrada, cancelada, enviada, descartada y editada en otra tableta → aviso con el nombre («Siamés se cobró en otra tableta»); las operaciones propias en vuelo no avisan; un agregado ajeno suma sin aviso de conflicto (US7 AS2)
+- [ ] T080 [US7] **FE** Implementar web/src/features/pos/cambioEnOtraTableta.ts y conectarlo a `useCuenta`
+- [ ] T081 [P] [US7] **FE** Test en web/src/features/pos/AvisoSinConexion.test.tsx: aparece en la franja del encabezado, superpuesto (no cambia el alto de nada), con el panel abierto y cerrado; desaparece solo al volver
+- [ ] T082 [US7] **FE** Implementar web/src/features/pos/AvisoSinConexion.tsx y montarlo en POSPage.tsx
 
 ---
 
 ## Phase 9: User Story 6 — Quitar algo que ya está en cocina (P2)
 
-- [X] T083 [P] [US6] **FE** Test en web/src/features/pos/Ticket.test.tsx: en «En cocina», el ⋮ del renglón abre `CancelarRenglonDialog` con contador, motivos sin preselección y el texto de qué pasa; quitar 1 de 2 deja ×1 y baja el total; un renglón pagado no tiene ⋮ (candado). El servidor ya lo rechaza (dividir_la_cuenta_test.go); no hay BE nuevo
-- [X] T084 [US6] **FE** Conectar el ⋮ del renglón a la hoja existente en web/src/features/pos/Ticket.tsx
+- [ ] T083 [P] [US6] **FE** Test en web/src/features/pos/Ticket.test.tsx: en «En cocina», el ⋮ del renglón abre `CancelarRenglonDialog` con contador, motivos sin preselección y el texto de qué pasa; quitar 1 de 2 deja ×1 y baja el total; un renglón pagado no tiene ⋮ (candado). El servidor ya lo rechaza (dividir_la_cuenta_test.go); no hay BE nuevo
+- [ ] T084 [US6] **FE** Conectar el ⋮ del renglón a la hoja existente en web/src/features/pos/Ticket.tsx
 
 ---
 
