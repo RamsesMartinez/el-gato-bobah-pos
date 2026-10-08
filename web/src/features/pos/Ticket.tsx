@@ -70,16 +70,21 @@ export function Ticket(props: Props) {
   const [descuentoMal, setDescuentoMal] = useState(false);
 
   const hayNuevo = vista.nuevos.length > 0;
+  const noSeVende = vista.noDisponibles.length > 0;
   const bloqueo = sinConexion
     ? 'Sin conexión: no se puede mandar a cocina ni cobrar.'
-    : vista.guardando ? 'Guardando…' : null;
+    : vista.guardando ? 'Guardando…'
+      : noSeVende ? 'Quita lo que ya no se vende para mandar o cobrar.' : null;
   const capturaMal = (llevaEnvio && envioMal) || descuentoMal;
-  const noSeVende = vista.noDisponibles.length > 0;
   const enviarApagado = !hayNuevo || bloqueo !== null || noSeVende || capturaMal;
-  const cobrarApagado = vista.falta <= 0 || bloqueo !== null || (hayNuevo && noSeVende) || capturaMal;
+  const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
   const etiquetaCobrar = hayNuevo ? `Enviar y cobrar ${money(vista.falta)}` : `Cobrar ${money(vista.falta)}`;
 
   const conMenu = enCaptura || puedeCancelar;
+  // Cada cuenta, y cada vez que una sección cruza el umbral de plegado, decide de nuevo si se
+  // pliega: heredar el estado de la cuenta anterior dejaba cinco renglones de cocina empujando lo
+  // nuevo fuera de la vista.
+  const claveDeCuenta = vista.pedidoId ?? vista.borradorId ?? 'nueva';
 
   return (
     <Flex direction="column" h="100%" bg="bg.panel">
@@ -129,7 +134,7 @@ export function Ticket(props: Props) {
               {vista.tipo === 'captura' && <MenuSeparator />}
               {/* Lejos de lo que se toca todo el día, y pregunta en una hoja de la app. */}
               {vista.tipo === 'captura' && (
-                <MenuItem value="descartar" minH="48px" color="red.fg" onClick={onDescartar}>
+                <MenuItem value="descartar" minH="48px" mt={3} color="red.fg" onClick={onDescartar}>
                   <LuCircleX /> Descartar cuenta
                 </MenuItem>
               )}
@@ -172,12 +177,14 @@ export function Ticket(props: Props) {
             </Seccion>
           ))}
         {vista.enCocina.length > 0 && (
-          <Seccion titulo="En cocina" color="blue.fg" plegable total={vista.enCocina.length}>
+          <Seccion key={`cocina-${claveDeCuenta}-${vista.enCocina.length > PLIEGA_CON}`}
+            titulo="En cocina" color="blue.fg" plegable total={vista.enCocina.length}>
             {vista.enCocina.map((r) => <EnCocina key={r.id} r={r} onQuitar={() => props.onQuitarDeCocina(r)} />)}
           </Seccion>
         )}
         {vista.pagados.length > 0 && (
-          <Seccion titulo="Pagado" color="green.fg" plegable total={vista.pagados.length}>
+          <Seccion key={`pagado-${claveDeCuenta}-${vista.pagados.length > PLIEGA_CON}`}
+            titulo="Pagado" color="green.fg" plegable total={vista.pagados.length}>
             {vista.pagados.map((r) => <Pagado key={r.id} r={r} />)}
           </Seccion>
         )}
@@ -238,18 +245,20 @@ export function Ticket(props: Props) {
             onMal={setEnvioMal} onGuardar={(v) => onCabecera({ deliveryFee: v })} />
         )}
 
-        <HStack gap={2} role="group" aria-label="Enviar y cobrar">
-          {/* Enviar es secundario y Cobrar domina: cobrar es lo que pasa en casi toda venta. */}
-          <Button flex="1" size="lg" h="56px" variant="outline" colorPalette="blue"
-            disabled={enviarApagado} loading={enviando} onClick={onEnviar}>
-            {hayNuevo ? `Enviar ${vista.nuevos.length} a cocina` : 'Enviar a cocina'}
-          </Button>
+        {/* APILADOS, cada uno a todo lo ancho: en el panel de ~300 px «Enviar y cobrar $1,234.50» y
+            «Enviar 3 a cocina» lado a lado no caben —un botón no parte su texto— y Cobrar se iba a
+            un scroll lateral. Cobrar arriba y más alto: es lo que pasa en casi toda venta. */}
+        <VStack gap={2} align="stretch" role="group" aria-label="Enviar y cobrar">
           {/* Con algo nuevo el botón LO DICE: cobrar manda primero a cocina (research R-5). */}
-          <Button flex="1.3" size="lg" h="56px" colorPalette="green" fontWeight="800"
+          <Button w="100%" size="lg" h="56px" colorPalette="green" fontWeight="800"
             loading={enviando} disabled={cobrarApagado} onClick={onCobrar}>
             {etiquetaCobrar}
           </Button>
-        </HStack>
+          <Button w="100%" size="md" minH="44px" variant="outline" colorPalette="blue"
+            disabled={enviarApagado} loading={enviando} onClick={onEnviar}>
+            {hayNuevo ? `Enviar ${vista.nuevos.length} a cocina` : 'Enviar a cocina'}
+          </Button>
+        </VStack>
         {(bloqueo || motivo) && (
           <Text fontSize="xs" color={motivo ? 'red.fg' : 'fg.muted'} textAlign="right" mt={1} role="status">
             {motivo ?? bloqueo}
@@ -281,47 +290,44 @@ function Seccion({ titulo, color, plegable, total, children }: {
   );
 }
 
+// Un renglón de 44 px en UNA línea: papelera · nombre y precio · −/cantidad/+. En dos líneas medía
+// ~80 px y en el panel de 600 px cabían tres. La papelera va al extremo OPUESTO del «+»: quitar un
+// renglón por accidente obliga a volver a buscar el producto en el menú.
 function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
   return (
     <>
       {vista.nuevos.map((l) => (
-        <Box key={l.id} py={1.5} px={2} borderBottomWidth="1px" borderColor="border.muted"
+        <HStack key={l.id} py={1} px={1} gap={1} minH="44px" borderBottomWidth="1px" borderColor="border.muted"
           opacity={l.guardando ? 0.6 : 1}>
-          <Flex justify="space-between" gap={2}>
-            <Box flex="1" onClick={() => !l.guardando && onEditLine(l)} cursor="pointer" minW={0}>
-              <Text fontWeight="600" fontSize="sm" textDecoration={l.available ? undefined : 'line-through'}>
-                {l.name}
-              </Text>
-              {l.modifiers.length > 0 && (
-                <Text fontSize="xs" color="fg.muted" lineClamp={2}>{detalleDeModificadores(l.modifiers)}</Text>
-              )}
-              {l.notes && (
-                <HStack gap={1} color="orange.500">
-                  <LuStickyNote size={12} />
-                  <Text fontSize="xs">{l.notes}</Text>
-                </HStack>
-              )}
-            </Box>
-            <Text fontWeight="600" fontSize="sm" whiteSpace="nowrap">{money(l.lineTotal)}</Text>
-          </Flex>
           {l.guardando ? (
-            <Text fontSize="xs" color="fg.muted" mt={0.5} minH="44px" display="flex" alignItems="center">
-              Guardando…
-            </Text>
+            <Box minW="44px" />
           ) : (
-            // La papelera al EXTREMO OPUESTO de la cantidad: quitar por accidente obliga a volver a
-            // buscar el producto en el menú.
-            <HStack mt={0.5} gap={1} justify="space-between">
-              <HStack gap={1}>
-                <Button size="sm" minW="44px" minH="44px" aria-label="Uno menos" onClick={() => onMenos(l)}>−</Button>
-                <Text minW="32px" textAlign="center" fontSize="sm" fontWeight="600">{l.qty}</Text>
-                <Button size="sm" minW="44px" minH="44px" aria-label="Uno más" onClick={() => onMas(l)}>+</Button>
+            <IconButton aria-label="Quitar" size="sm" minW="44px" minH="44px" variant="ghost"
+              colorPalette="red" flexShrink={0} onClick={() => onQuitar(l)}><LuTrash2 /></IconButton>
+          )}
+          <Box flex="1" minW={0} onClick={() => !l.guardando && onEditLine(l)} cursor="pointer">
+            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available ? undefined : 'line-through'}>
+              {l.name}
+            </Text>
+            {l.modifiers.length > 0 && (
+              <Text fontSize="xs" color="fg.muted" lineClamp={2}>{detalleDeModificadores(l.modifiers)}</Text>
+            )}
+            {l.notes && (
+              <HStack gap={1} color="orange.500">
+                <LuStickyNote size={12} />
+                <Text fontSize="xs" truncate>{l.notes}</Text>
               </HStack>
-              <IconButton aria-label="Quitar" size="sm" minW="44px" minH="44px" variant="ghost"
-                colorPalette="red" onClick={() => onQuitar(l)}><LuTrash2 /></IconButton>
+            )}
+            <Text fontSize="xs" color="fg.muted">{l.guardando ? 'Guardando…' : money(l.lineTotal)}</Text>
+          </Box>
+          {!l.guardando && (
+            <HStack gap={0} flexShrink={0}>
+              <Button size="sm" minW="44px" minH="44px" aria-label="Uno menos" onClick={() => onMenos(l)}>−</Button>
+              <Text minW="28px" textAlign="center" fontSize="sm" fontWeight="600">{l.qty}</Text>
+              <Button size="sm" minW="44px" minH="44px" aria-label="Uno más" onClick={() => onMas(l)}>+</Button>
             </HStack>
           )}
-        </Box>
+        </HStack>
       ))}
     </>
   );
@@ -427,7 +433,8 @@ function CampoDescuento({ subtotal, onMal, onListo }: {
     onListo('discountPercent' in p ? { percent: String(p.discountPercent) } : { amount: p.discountAmount.toFixed(2) });
   };
   return (
-    <HStack px={3} pb={2} gap={2} flexShrink={0}>
+    <VStack px={3} pb={2} gap={1} flexShrink={0} align="stretch">
+    <HStack gap={2}>
       <HStack gap={1} flexShrink={0}>
         {/* Dos botones y no un selector: para dos opciones excluyentes, un toque. */}
         <Button size="sm" minH="44px" minW="44px" px={3} aria-label="Descuento en pesos"
@@ -440,12 +447,12 @@ function CampoDescuento({ subtotal, onMal, onListo }: {
       <Input flex="1" minW={0} minH="44px" inputMode="decimal" autoFocus aria-label="Descuento"
         placeholder={modo === 'pct' ? '0 %' : money(0)} value={texto}
         onChange={(e) => cambiar(e.target.value, modo)} />
-      {d.malEscrito && <Text fontSize="xs" color="red.fg" flexShrink={0}>Solo números</Text>}
-      {d.excede && (
-        <Text fontSize="xs" color="red.fg" flexShrink={0}>Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>
-      )}
       <Button size="sm" minH="44px" px={3} variant="ghost" colorPalette="gray" flexShrink={0}
         disabled={mal} onClick={listo}>Listo</Button>
     </HStack>
+    {/* El aviso en su propia línea: junto al campo lo dejaba en ~10 px en el panel de 300. */}
+    {d.malEscrito && <Text fontSize="xs" color="red.fg">Solo números</Text>}
+    {d.excede && <Text fontSize="xs" color="red.fg">Máx {modo === 'pct' ? '100 %' : money(subtotal)}</Text>}
+    </VStack>
   );
 }

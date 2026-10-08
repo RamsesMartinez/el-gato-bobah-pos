@@ -1,19 +1,7 @@
-import type { AccountItem, AccountState } from '../../types/pos';
+import type { AccountItem } from '../../types/pos';
 import { money } from '../../utils/format';
 
-// Cómo se dice y de qué color va cada estado de una cuenta. El estado lo decide el servidor
-// (domain.AccountState); aquí solo se nombra. Una sola copia para la fila, la hoja «+N» y el ticket.
-export const ESTADO: Record<AccountState, { texto: string; color: string }> = {
-  capturing: { texto: 'Capturando', color: 'gray' },
-  in_kitchen: { texto: 'En cocina', color: 'blue' },
-  paid_in_kitchen: { texto: 'Pagada · en cocina', color: 'green' },
-  partly_paid: { texto: 'Pago parcial', color: 'orange' },
-  delivered_owes: { texto: 'Entregada · debe', color: 'red' },
-};
-
-export function nombreDeCuenta(c: Pick<AccountItem, 'folioName' | 'customerName'>): string {
-  return c.folioName || c.customerName || 'Cuenta nueva';
-}
+export { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
 
 // Lo que se lee debajo del estado: lo que importa para cobrar.
 export function loQueFalta(c: AccountItem): string {

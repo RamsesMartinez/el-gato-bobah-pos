@@ -333,3 +333,44 @@ describe('el ⋮ de la cuenta (US5)', () => {
     expect(alto(screen.getByRole('button', { name: 'Más opciones de la cuenta' }))).toBeGreaterThanOrEqual(44);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// HALLAZGOS DE LA REVISIÓN DE TABLETA (after_implement).
+// ---------------------------------------------------------------------------------------------
+describe('lo que la revisión de tableta encontró', () => {
+  // En el panel de ~300 px, «Enviar y cobrar $1,234.50» y «Enviar 3 a cocina» lado a lado no caben:
+  // un botón no parte su texto, la fila desborda y Cobrar se va a un scroll lateral.
+  test('los dos botones del pie van apilados, cada uno a todo lo ancho', () => {
+    pinta(vista({ draft: draft() }));
+    const pie = screen.getByRole('group', { name: 'Enviar y cobrar' });
+    expect(getComputedStyle(pie).flexDirection).toBe('column');
+  });
+
+  // El plegado se decidía al montar y se heredaba entre cuentas: abrir otra con 5 renglones en
+  // cocina la dejaba abierta empujando lo nuevo fuera de la vista.
+  test('cambiar a una cuenta con más de 3 renglones en cocina la pliega', () => {
+    const r = pinta(vista({ order: pedido() }));
+    expect(screen.getByText('Kit Kat')).toBeInTheDocument();
+    const otro = pedido({ id: 2, lines: [1, 2, 3, 4, 5].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    r.rerender(<Provider><Ticket vista={vista({ order: otro })} {...handlers} /></Provider>);
+    expect(screen.getByRole('button', { name: /En cocina · 5/ })).toBeInTheDocument();
+    expect(screen.queryByText('Producto 1')).toBeNull();
+  });
+
+  // El aviso del descuento en la misma fila dejaba el campo en ~10 px: se escribía a ciegas.
+  test('el aviso del descuento va en su propia línea, no junto al campo', async () => {
+    pinta(vista({ draft: draft() }));
+    await abrirMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Descuento/ }));
+    const campo = screen.getByLabelText('Descuento');
+    await userEvent.type(campo, '500');
+    const aviso = screen.getByText(/^Máx/);
+    expect(campo.closest('div')?.contains(aviso)).toBe(false);
+  });
+
+  test('con algo que ya no se vende, el pie dice por qué está apagado', () => {
+    const l = { ...draft().lines![0], available: false };
+    pinta(vista({ draft: draft({ lines: [l] }) }));
+    expect(screen.getByRole('status')).toHaveTextContent('Quita lo que ya no se vende');
+  });
+});

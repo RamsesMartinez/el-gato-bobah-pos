@@ -63,3 +63,15 @@ describe('ReasonSheet: el motivo se pide en una hoja de la app', () => {
     }
   });
 });
+
+// La revisión de tableta: «Cancelar pedido» rojo pegado a «Volver» con 8 px se toca por error.
+test('destructiva: la acción roja va aparte de «Volver»', async () => {
+  render(
+    <Provider>
+      <ReasonSheet isOpen destructive title="¿Cancelar el pedido de Siamés?" label="Motivo"
+        confirmLabel="Cancelar pedido" onDone={vi.fn()} />
+    </Provider>,
+  );
+  const rojo = await screen.findByRole('button', { name: 'Cancelar pedido' });
+  expect(rojo.parentElement).not.toBe(screen.getByRole('button', { name: 'Volver' }).parentElement);
+});

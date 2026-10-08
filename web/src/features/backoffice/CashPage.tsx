@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { posApi } from '../../api/pos';
 import type { AccountItem } from '../../types/pos';
+import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
   Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
@@ -1297,14 +1298,7 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
   const [abierta, setAbierta] = useState(false);
   const [descartando, setDescartando] = useState<AccountItem | null>(null);
   if (pending.length === 0 && cuentas.length === 0) return null;
-  const nombre = (c: AccountItem) => c.folioName || c.customerName || 'Cuenta nueva';
-  const estado: Record<AccountItem['state'], string> = {
-    capturing: 'capturando · sin enviar',
-    in_kitchen: 'en cocina',
-    paid_in_kitchen: 'pagada · en cocina',
-    partly_paid: 'pago parcial',
-    delivered_owes: 'entregada, debe',
-  };
+  const nombre = nombreDeCuenta;
   return (
     <VStack align="stretch" gap={2}>
       {pending.length > 0 && (
@@ -1346,7 +1340,7 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
                   <Box minW={0} flex="1">
                     <Text fontWeight="600" truncate>{nombre(c)}</Text>
                     <Text fontSize="xs" color="fg.muted" truncate>
-                      {c.number !== null ? `#${c.number} · ` : ''}{estado[c.state]}
+                      {c.number !== null ? `#${c.number} · ` : ''}{ESTADO[c.state].texto}
                     </Text>
                   </Box>
                   <Text fontWeight="700" flexShrink={0}>{money(c.state === 'capturing' ? c.total : c.outstanding)}</Text>
@@ -1357,7 +1351,8 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
                     </Button>
                   </Box>
                   {c.kind === 'draft' && c.draftId && (
-                    <Box flexShrink={0} pl={2}>
+                    // ≥ 24 px de «Abrir»: es destructivo y la fila mide ~52 px.
+                    <Box flexShrink={0} pl={6}>
                       <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Descartar ${nombre(c)}`}
                         onClick={() => setDescartando(c)}>
                         Descartar

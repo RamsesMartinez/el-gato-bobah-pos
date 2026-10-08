@@ -43,3 +43,11 @@ describe('el aviso de sin conexión (US7, lienzo V2-5)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+// La revisión de tableta: el aviso va encima del encabezado del ticket; no puede robarse los
+// toques de «Ocultar pedido» ni del ⋮ que quedan debajo.
+test('no captura toques', () => {
+  render(<Provider><AvisoSinConexion /></Provider>);
+  act(() => reportarResultado(new TypeError('Failed to fetch')));
+  expect(getComputedStyle(screen.getByRole('alert')).pointerEvents).toBe('none');
+});

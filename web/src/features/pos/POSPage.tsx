@@ -643,7 +643,7 @@ export function POSPage() {
         productos={vista.nuevos.length} total={vista.totalNuevo}
         onSeguir={() => setDescartando(false)} onDescartar={() => void descartar()} />
 
-      <ReasonSheet isOpen={cancelando} required title={`Cancelar el pedido de ${vista.nombre || 'esta cuenta'}`}
+      <ReasonSheet isOpen={cancelando} required destructive title={`¿Cancelar el pedido de ${vista.nombre || 'esta cuenta'}?`}
         label="Motivo" confirmLabel="Cancelar pedido" onDone={(r) => void cancelarPedido(r)} />
 
       {quitando && (

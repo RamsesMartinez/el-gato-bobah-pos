@@ -55,9 +55,14 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
     expect(caja!.height, `"${nombre}" mide ${caja!.height}px de alto y el piso es 44`).toBeGreaterThanOrEqual(44);
     expect(caja!.width, `"${nombre}" mide ${caja!.width}px de ancho y el piso es 44`).toBeGreaterThanOrEqual(44);
   }
+  // La papelera va al extremo opuesto del renglón (a la izquierda del nombre; −/+ a la derecha).
   const cajaMas = (await mas.boundingBox())!;
   const cajaQuitar = (await quitar.boundingBox())!;
-  expect(cajaQuitar.x - (cajaMas.x + cajaMas.width), 'la papelera quedó pegada al «+»').toBeGreaterThan(40);
+  const hueco = Math.max(cajaQuitar.x - (cajaMas.x + cajaMas.width), cajaMas.x - (cajaQuitar.x + cajaQuitar.width));
+  expect(hueco, 'la papelera quedó pegada al «+»').toBeGreaterThan(40);
+  // Y el renglón mide un solo control de alto, no dos.
+  const renglon = (await quitar.locator('..').boundingBox())!;
+  expect(renglon.height, `el renglón nuevo mide ${renglon.height}px`).toBeLessThanOrEqual(64);
 });
 
 // T-cuenta · DESDE EL COBRO SE IMPRIME LA CUENTA DEL PEDIDO, Y LA HOJA SIGUE CABIENDO.

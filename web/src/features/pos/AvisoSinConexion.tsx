@@ -12,12 +12,15 @@ export function AvisoSinConexion() {
   const sin = useSinConexion();
   if (!sin) return null;
   return (
-    <Box role="alert" position="absolute" top={0} left={0} right={0} zIndex={30}
-      bg="red.solid" color="red.contrast" px={3} py={1.5} boxShadow="md">
-      <HStack gap={2} justify="center">
-        <LuWifiOff />
-        <Text fontSize="sm" fontWeight="700">Sin conexión.</Text>
-        <Text fontSize="sm">No se puede agregar, mandar a cocina ni cobrar. Lo guardado se conserva; se reintenta solo.</Text>
+    // Sin capturar toques: queda encima del encabezado del ticket («Ocultar pedido», ⋮) y no puede
+    // robárselos. Una sola línea, para no tapar también el selector de plataforma.
+    <Box role="alert" position="absolute" top={0} left={0} right={0} zIndex={30} pointerEvents="none"
+      bg="red.solid" color="red.contrast" px={3} py={1} boxShadow="md">
+      <HStack gap={2} justify="center" minW={0}>
+        <Box flexShrink={0}><LuWifiOff /></Box>
+        <Text fontSize="sm" fontWeight="700" truncate>
+          Sin conexión: no se puede agregar, mandar a cocina ni cobrar. Se reintenta solo.
+        </Text>
       </HStack>
     </Box>
   );

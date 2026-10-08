@@ -497,11 +497,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
               <Text fontWeight="800" fontSize="lg" lineClamp={1}>
                 {folio || (numero !== null ? `#${numero}` : 'Cuenta')}
               </Text>
-              {/* El folio lo asigna el SERVIDOR al confirmar: enseñar uno inventado es peor que no
-                  enseñar ninguno. */}
-              <Text fontSize="sm" color="fg.muted">
-                {numero !== null ? `#${numero}` : 'Sin confirmar'}
-              </Text>
+              {numero !== null && <Text fontSize="sm" color="fg.muted">#{numero}</Text>}
             </Box>
             {idPedido !== null && (
               <Button size="sm" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}

@@ -144,8 +144,9 @@ function GastosTab() {
                       <Button size="xs" variant="ghost" onClick={() => setDetailId(e.id)}>Ver</Button>
                       {e.status === 'pendiente' && (
                         <>
-                          <Button size="xs" colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button>
-                          <Button size="xs" variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button>
+                          {/* 44 px y separados: «Cancelar» es destructivo y vive junto a «Pagar». */}
+                          <Box><Button size="xs" minH="44px" px={3} colorPalette="green" onClick={() => setPayTarget(e)}>Pagar</Button></Box>
+                          <Box pl={4}><Button size="xs" minH="44px" px={3} variant="outline" colorPalette="red" onClick={() => setCancelando(e)}>Cancelar</Button></Box>
                         </>
                       )}
                     </HStack>

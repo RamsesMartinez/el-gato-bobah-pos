@@ -61,3 +61,14 @@ describe('cancelar un gasto', () => {
     expect(back.cancelExpense).not.toHaveBeenCalled();
   });
 });
+
+// La revisión de tableta: «Pagar» y «Cancelar» medían ~24 px, pegados, uno destructivo.
+test('«Pagar» y «Cancelar» miden 44 px', async () => {
+  montar();
+  for (const n of ['Pagar', 'Cancelar']) {
+    const b = await screen.findByRole('button', { name: n });
+    expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+  }
+  expect(screen.getByRole('button', { name: 'Pagar' }).parentElement)
+    .not.toBe(screen.getByRole('button', { name: 'Cancelar' }).parentElement);
+});
