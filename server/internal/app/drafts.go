@@ -1122,3 +1122,238 @@ func withoutProduct(lines []DraftLineCmd, productID int64) []DraftLineCmd {
 	}
 	return out
 }
+
+// SendResult es lo que vuelve de mandar una cuenta a cocina.
+type SendResult struct {
+	Order *OrderView `json:"order"`
+	// PrintLineIDs son los renglones que la comanda imprime: todos si el pedido nació, solo lo nuevo
+	// si se agregó, y ninguno en el reintento (cocina no vuelve a preparar lo que ya preparó).
+	PrintLineIDs []int64 `json:"printLineIds"`
+	// Created dice si nació el pedido o se agregó a uno que ya existía.
+	Created bool `json:"created"`
+}
+
+// draftSendRetries: cuántas veces se vuelve a preparar el envío si otra tableta cambió la cuenta entre
+// la lectura y la transacción. El reintento no vuelve a sortear el nombre: está amarrado.
+const draftSendRetries = 3
+
+// Send manda la cuenta a cocina (research R-4).
+//
+// Una cuenta nueva se convierte en pedido por `createInTx`; lo «Nuevo» de un pedido se le agrega por
+// `addLinesInTx`. Lo que se lee (precios, composición) se prepara FUERA; la escritura del pedido y la
+// marca de enviada van en UNA transacción: con dos, habría una ventana donde el pedido existe y la
+// cuenta sigue viva, y otra tableta la vería y la mandaría otra vez.
+//
+// Idempotente por la cuenta: su id es el `client_uuid` del pedido o del lote. Si ya se envió, devuelve
+// el pedido sin escribir nada y sin renglones para imprimir.
+func (s *DraftsService) Send(ctx context.Context, id uuid.UUID, actor int64) (*SendResult, error) {
+	for range draftSendRetries {
+		res, retry, err := s.trySend(ctx, id, actor)
+		if !retry {
+			return res, err
+		}
+	}
+	return nil, fmt.Errorf("%w: la cuenta está cambiando en otra tableta; vuelve a intentarlo", domain.ErrDraftChanged)
+}
+
+// trySend hace un intento; `retry` dice que la cuenta cambió entre la lectura y el candado.
+func (s *DraftsService) trySend(ctx context.Context, id uuid.UUID, actor int64) (*SendResult, bool, error) {
+	q := s.store.QC(ctx)
+	d, err := q.GetDraft(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, fmt.Errorf("%w: esa cuenta ya no existe", domain.ErrNotFound)
+		}
+		return nil, false, err
+	}
+	switch d.Status {
+	case domain.DraftSent:
+		res, err := s.alreadySent(ctx, d)
+		return res, false, err
+	case domain.DraftDiscarded:
+		return nil, false, domain.ErrDraftDiscarded
+	}
+	rows, err := q.ListDraftLines(ctx, id)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, fmt.Errorf("%w: la cuenta no tiene productos", domain.ErrValidation)
+	}
+	lines, err := orderLinesOf(ctx, q, rows)
+	if err != nil {
+		return nil, false, err
+	}
+	if d.OrderID != nil {
+		return s.sendNew(ctx, d, lines, actor)
+	}
+	return s.sendAccount(ctx, d, lines)
+}
+
+// sendAccount convierte una cuenta nueva en pedido.
+func (s *DraftsService) sendAccount(ctx context.Context, d db.GetDraftRow, lines []domain.OrderLineInput) (*SendResult, bool, error) {
+	cmd := CreateOrderCmd{
+		ClientUUID: d.ID, ServiceType: domain.OrderServiceType(string(d.ServiceType), d.DeliveryPlatformID), DeliveryPlatformID: d.DeliveryPlatformID,
+		CustomerName: d.CustomerName, PlatformOrderRef: d.PlatformOrderRef, OpenedBy: d.OpenedBy,
+		DeliveryFee: d.DeliveryFee, DiscountAmount: d.DiscountAmount, DiscountPercent: d.DiscountPercent,
+		Lines: lines, BoundFolioName: derefStr(d.FolioName),
+		DiscountSetBy: d.DiscountSetBy, PlatformRefSetBy: d.PlatformRefSetBy,
+	}
+	sess, err := s.store.QC(ctx).GetOpenPrimarySession(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, domain.ErrNoOpenRegister
+		}
+		return nil, false, err
+	}
+	plan, err := s.orders.prepareCreate(ctx, cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	var orderID int64
+	var retry, created bool
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El candado de la cuenta va ANTES de mirar si el pedido ya existe: dos tabletas que la mandan a
+		// la vez se serializan aquí, y la segunda la ve enviada.
+		locked, err := q.LockDraft(ctx, d.ID)
+		if err != nil {
+			return err
+		}
+		if err := draftStatusErr(locked.Status); err != nil {
+			if errors.Is(err, domain.ErrDraftAlreadySent) {
+				retry = true // la otra tableta ganó: el siguiente intento devuelve su pedido
+				return nil
+			}
+			return err
+		}
+		if !locked.UpdatedAt.Equal(d.UpdatedAt) {
+			retry = true
+			return nil
+		}
+		// Una cuenta importada de la versión anterior que SÍ se había enviado (R-10): se marca contra
+		// ese pedido en vez de crear otro.
+		if existing, err := q.GetOrderIDByClientUUID(ctx, d.ID); err == nil {
+			orderID = existing
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		} else {
+			if orderID, err = s.orders.createInTx(ctx, q, plan, sess.ID); err != nil {
+				return err
+			}
+			created = true
+		}
+		_, err = q.MarkDraftSent(ctx, db.MarkDraftSentParams{OrderID: &orderID, ID: d.ID})
+		return err
+	})
+	if err != nil {
+		return nil, false, s.orders.traduceFolioRepetido(ctx, err, plan.folio, cmd.DeliveryPlatformID)
+	}
+	if retry {
+		return nil, true, nil
+	}
+	o, err := s.orders.load(ctx, orderID)
+	if err != nil {
+		return nil, false, err
+	}
+	res := &SendResult{Order: o, PrintLineIDs: []int64{}, Created: true}
+	if created {
+		res.PrintLineIDs = liveLineIDs(o)
+	}
+	return res, false, nil
+}
+
+// sendNew le agrega lo «Nuevo» a su pedido (D-3). Cocina recibe solo eso.
+func (s *DraftsService) sendNew(ctx context.Context, d db.GetDraftRow, lines []domain.OrderLineInput, actor int64) (*SendResult, bool, error) {
+	plan, err := s.orders.prepareAddLines(ctx, *d.OrderID, lines)
+	if err != nil {
+		return nil, false, err
+	}
+	var agregados []int64
+	var retry bool
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Pedido y luego cuenta, en el mismo orden que crear una «Nuevo»: al revés, una tableta que
+		// manda y otra que agrega a la vez se interbloquean.
+		if _, err := q.GetOrderForUpdate(ctx, *d.OrderID); err != nil {
+			return err
+		}
+		locked, err := q.LockDraft(ctx, d.ID)
+		if err != nil {
+			return err
+		}
+		if err := draftStatusErr(locked.Status); err != nil {
+			if errors.Is(err, domain.ErrDraftAlreadySent) {
+				retry = true
+				return nil
+			}
+			return err
+		}
+		if !locked.UpdatedAt.Equal(d.UpdatedAt) {
+			retry = true
+			return nil
+		}
+		if agregados, err = addLinesInTx(ctx, q, *d.OrderID, plan, actor, d.ID); err != nil {
+			return err
+		}
+		_, err = q.MarkDraftSent(ctx, db.MarkDraftSentParams{OrderID: d.OrderID, ID: d.ID})
+		return err
+	})
+	if err != nil || retry {
+		return nil, retry, err
+	}
+	o, err := s.orders.load(ctx, *d.OrderID)
+	if err != nil {
+		return nil, false, err
+	}
+	if agregados == nil {
+		agregados = []int64{}
+	}
+	return &SendResult{Order: o, PrintLineIDs: agregados, Created: false}, false, nil
+}
+
+// alreadySent responde el reintento de una cuenta ya enviada: el mismo pedido, nada que imprimir.
+func (s *DraftsService) alreadySent(ctx context.Context, d db.GetDraftRow) (*SendResult, error) {
+	o, err := s.orders.load(ctx, *d.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	return &SendResult{Order: o, PrintLineIDs: []int64{}, Created: d.FolioName != nil}, nil
+}
+
+// orderLinesOf traduce los renglones de la cuenta a la entrada de un pedido. Una opción de
+// modificador que se borró mientras la cuenta esperaba se rechaza NOMBRANDO el producto: el
+// operador tiene la cuenta enfrente y un id no le dice qué renglón corregir.
+func orderLinesOf(ctx context.Context, q *db.Queries, rows []db.OrderDraftLine) ([]domain.OrderLineInput, error) {
+	lista, err := listaDePreciosQ(ctx, q, nil)
+	if err != nil {
+		return nil, err
+	}
+	products, options, err := pricedCatalog(ctx, q, lista, rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.OrderLineInput, 0, len(rows))
+	for _, r := range rows {
+		mods := modsOf(r.Modifiers)
+		for _, m := range mods {
+			if _, ok := options[m.OptionID]; !ok {
+				name := "un producto"
+				if p, ok := products[r.ProductID]; ok {
+					name = p.Name
+				}
+				return nil, fmt.Errorf("%w en %s: quítalo o cámbialo", domain.ErrOptionNotFound, name)
+			}
+		}
+		out = append(out, orderLineOf(r.ProductID, r.Qty, mods, derefStr(r.Notes)))
+	}
+	return out, nil
+}
+
+func liveLineIDs(o *OrderView) []int64 {
+	out := make([]int64, 0, len(o.Lines))
+	for _, l := range o.Lines {
+		if !l.Cancelled {
+			out = append(out, l.ID)
+		}
+	}
+	return out
+}

@@ -293,3 +293,46 @@ func TestDraftDiscountKeepsTheOldControls(t *testing.T) {
 		t.Fatal("200 cambios de cabecera seguidos no toparon con el limitador del descuento")
 	}
 }
+
+// POST /pos/drafts/{id}/send en JSON crudo: printLineIds siempre arreglo, y avisa el pedido Y la cuenta.
+func TestSendDraftHTTP(t *testing.T) {
+	st := newTestStore(t)
+	r, broker, token := draftsAPI(t, st)
+	cajero, tok := token("cajero_envia_http", "cajero")
+	abrirCajaPrincipal(t, st, cajero)
+	cafe := makeProduct(t, st, "Café enviado por HTTP", pesos("30"), false)
+	id := uuid.New().String()
+	if w := do(t, r, http.MethodPost, "/api/v1/pos/drafts", tok, jsonBody(t, map[string]any{
+		"id": id, "lines": []map[string]any{{"opId": uuid.New().String(), "productId": cafe, "qty": "1"}},
+	}), "application/json"); w.Code != http.StatusCreated {
+		t.Fatalf("crear = %d: %s", w.Code, w.Body)
+	}
+	events, unsubscribe := broker.Subscribe(defaultCompanyID)
+	defer unsubscribe()
+
+	w := do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+id+"/send", tok, []byte(`{}`), "application/json")
+	if w.Code != http.StatusOK {
+		t.Fatalf("send = %d: %s", w.Code, w.Body)
+	}
+	m := rawJSON(t, w.Body.Bytes())
+	if len(mustArray(t, m, "printLineIds")) != 1 || m["created"] != true {
+		t.Fatalf("cuerpo = %s", w.Body)
+	}
+	order := m["order"].(map[string]any)
+	mustArray(t, order, "lines")
+	got := map[string]bool{}
+	for range 2 {
+		got[nextEvent(t, events).Type] = true
+	}
+	if !got["order.created"] || !got["draft.updated"] {
+		t.Fatalf("eventos = %v: el tablero y las otras tabletas tienen que enterarse", got)
+	}
+
+	again := do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+id+"/send", tok, []byte(`{}`), "application/json")
+	if again.Code != http.StatusOK || len(mustArray(t, rawJSON(t, again.Body.Bytes()), "printLineIds")) != 0 {
+		t.Fatalf("reintento = %d: %s", again.Code, again.Body)
+	}
+	if w := do(t, r, http.MethodPost, "/api/v1/pos/drafts/no-es-uuid/send", tok, []byte(`{}`), "application/json"); w.Code != http.StatusBadRequest {
+		t.Fatalf("id inválido = %d", w.Code)
+	}
+}

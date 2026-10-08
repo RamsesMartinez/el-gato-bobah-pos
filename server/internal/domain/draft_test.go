@@ -126,3 +126,26 @@ func TestMaxDraftLines(t *testing.T) {
 		t.Fatalf("MaxDraftLines = %d; el contrato dice 200", MaxDraftLines)
 	}
 }
+
+// Un pedido de plataforma sale a domicilio, se haya capturado como se haya capturado: el esquema lo
+// exige (orders_servicio_de_plataforma) y antes lo hacía la tableta al mandar. Ahora el pedido nace en
+// el servidor, desde la cuenta.
+func TestOrderServiceType(t *testing.T) {
+	uber := int16(2)
+	casos := []struct {
+		servicio   string
+		plataforma *int16
+		want       string
+	}{
+		{"mostrador", nil, "mostrador"},
+		{"para_llevar", nil, "para_llevar"},
+		{"domicilio", nil, "domicilio"},
+		{"mostrador", &uber, "domicilio"},
+		{"para_llevar", &uber, "domicilio"},
+	}
+	for _, c := range casos {
+		if got := OrderServiceType(c.servicio, c.plataforma); got != c.want {
+			t.Errorf("OrderServiceType(%s, %v) = %s, quería %s", c.servicio, c.plataforma != nil, got, c.want)
+		}
+	}
+}

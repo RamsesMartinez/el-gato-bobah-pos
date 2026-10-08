@@ -112,3 +112,12 @@ from order_drafts d
 join users u on u.id = d.opened_by
 where d.status = 'capturando'
 order by d.created_at;
+
+-- name: MarkDraftSent :execrows
+-- La cuenta ya es pedido: se marca en la MISMA transacción que escribe el pedido (research R-4).
+update order_drafts set status = 'enviada', sent_at = now(), order_id = @order_id, updated_at = now()
+where id = @id and status = 'capturando';
+
+-- name: ListOrderLineIDs :many
+-- Los renglones vivos de un pedido recién nacido: la comanda del pedido completo.
+select id from order_lines where order_id = $1 and cancelled_at is null order by id;

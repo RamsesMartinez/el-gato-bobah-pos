@@ -144,3 +144,13 @@ func MergeTarget(lines []DraftLine, add DraftLineInput) (uuid.UUID, bool) {
 func DraftExpired(updatedAt, now time.Time) bool {
 	return now.Sub(updatedAt) >= DraftIdleLimit
 }
+
+// OrderServiceType es el tipo de servicio con que nace el pedido de una cuenta: con plataforma,
+// siempre a domicilio. Es la regla que la tableta aplicaba al mandar (`domain/pedido.ts`); desde que el
+// pedido nace en el servidor a partir de la cuenta, vive aquí.
+func OrderServiceType(serviceType string, platformID *int16) string {
+	if platformID != nil {
+		return "domicilio"
+	}
+	return serviceType
+}

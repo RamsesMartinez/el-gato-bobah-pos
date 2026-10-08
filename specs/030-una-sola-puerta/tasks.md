@@ -190,8 +190,8 @@ tablero lo muestra pendiente.
 
 ### Backend
 
-- [ ] T059 [US3] **BE** Extraer `createInTx` y `addLinesInTx` en server/internal/app/orders.go sin cambiar comportamiento: agregar_a_pedido_test.go, agregar_es_idempotente_test.go, comanda_del_agregado_test.go, folio_propuesto_test.go, bolsa_de_folios_test.go y cobrar_exige_confirmar_test.go siguen verdes **antes** de escribir `Send` (refactor con red)
-- [ ] T060 [US3] **BE** IT en server/internal/integration/drafts_send_test.go:
+- [X] T059 [US3] **BE** Extraer `createInTx` y `addLinesInTx` en server/internal/app/orders.go sin cambiar comportamiento: agregar_a_pedido_test.go, agregar_es_idempotente_test.go, comanda_del_agregado_test.go, folio_propuesto_test.go, bolsa_de_folios_test.go y cobrar_exige_confirmar_test.go siguen verdes **antes** de escribir `Send` (refactor con red)
+- [X] T060 [US3] **BE** IT en server/internal/integration/drafts_send_test.go:
   - enviar una cuenta sin pedido crea el pedido con folio del turno, fecha del reloj, inventario por renglón, todo marcado enviado a cocina, el **nombre amarrado**, `opened_by` de la cuenta y `discount_set_by`/`platform_ref_set_by` de quien los puso en la cuenta (no de quien tocó «Enviar»); `printLineIds` = todos;
   - `TestSendIsIdempotent`: dos envíos → un pedido, el segundo con `printLineIds` vacío;
   - dos tabletas envían la misma cuenta a la vez → un pedido;
@@ -202,7 +202,7 @@ tablero lo muestra pendiente.
   - el barrido y el envío a la vez → la cuenta queda enviada;
   - SC-006: una cuenta descartada no consume `daily_number`; los folios del turno no tienen huecos ni repetidos;
   - 3C
-- [ ] T061 [US3] **BE** IT en server/internal/integration/drafts_new_lines_test.go:
+- [X] T061 [US3] **BE** IT en server/internal/integration/drafts_new_lines_test.go:
   - crear «Nuevo» de un pedido en cocina; una segunda tableta que crea otra «Nuevo» del mismo pedido recibe la misma con su renglón sumado;
   - enviarla pasa por `AddLines`: `printLineIds` solo lo nuevo, el tablero lo muestra pendiente;
   - entregada que debe → vuelve a `abierta` (US3 AS4);
@@ -211,8 +211,8 @@ tablero lo muestra pendiente.
   - pedido que se cerró con su «Nuevo» viva → enviar `ORDER_CLOSED`, la cuenta sigue viva y listada con `closedWithPending`;
   - `TestCancelledOrderDiscardsItsNew`: cancelar el pedido → el barrido descarta su «Nuevo» (`order_closed`);
   - `TestSendWhileAddingNeverLosesALine`: enviar y agregar a la vez → el renglón quedó en el pedido o en una «Nuevo» viva, nunca se pierde
-- [ ] T062 [US3] **BE** Implementar `DraftsService.Send` en server/internal/app/drafts.go (preparar fuera, una tx: `for update` de la cuenta antes de mirar llaves, verificar `updated_at`, `createInTx`/`addLinesInTx` con `clientUuid = draft.id`, marcar enviada con `order_id`) y la regla nueva en `AddLines` y en la creación de «Nuevo»
-- [ ] T063 [US3] **BE** Handler `SendDraft` y ruta `POST /pos/drafts/{id}/send` en server/internal/httpapi/handlers_drafts.go; publica `order.created`/`order.updated` y `draft.updated`. IT HTTP en drafts_http_test.go: `printLineIds` siempre arreglo
+- [X] T062 [US3] **BE** Implementar `DraftsService.Send` en server/internal/app/drafts.go (preparar fuera, una tx: `for update` de la cuenta antes de mirar llaves, verificar `updated_at`, `createInTx`/`addLinesInTx` con `clientUuid = draft.id`, marcar enviada con `order_id`) y la regla nueva en `AddLines` y en la creación de «Nuevo»
+- [X] T063 [US3] **BE** Handler `SendDraft` y ruta `POST /pos/drafts/{id}/send` en server/internal/httpapi/handlers_drafts.go; publica `order.created`/`order.updated` y `draft.updated`. IT HTTP en drafts_http_test.go: `printLineIds` siempre arreglo
 
 ### Frontend
 

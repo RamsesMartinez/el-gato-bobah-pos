@@ -359,3 +359,39 @@ func (h *Handlers) LiveAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, res)
 }
+
+// POST /pos/drafts/{id}/send
+//
+// Avisa el pedido (nacido o ampliado) y la cuenta: el tablero de cocina escucha `order.*` y las otras
+// tabletas, además, `draft.*`.
+func (h *Handlers) SendDraft(w http.ResponseWriter, r *http.Request) {
+	id, err := draftIDParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	res, err := h.drafts.Send(r.Context(), id, u.ID)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if len(res.PrintLineIDs) > 0 {
+		if res.Created {
+			if h.suggest != nil {
+				h.suggest.Invalidate(u.CompanyID) // el pedido nuevo debe reflejarse en las recomendaciones
+			}
+			h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.created", Data: res.Order})
+		} else {
+			h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": res.Order.ID}})
+		}
+	}
+	if v, err := h.drafts.Get(r.Context(), id); err == nil {
+		h.publishDraft(r, v)
+	}
+	JSON(w, http.StatusOK, res)
+}

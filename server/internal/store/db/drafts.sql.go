@@ -514,6 +514,31 @@ func (q *Queries) ListLiveDrafts(ctx context.Context) ([]ListLiveDraftsRow, erro
 	return items, nil
 }
 
+const listOrderLineIDs = `-- name: ListOrderLineIDs :many
+select id from order_lines where order_id = $1 and cancelled_at is null order by id
+`
+
+// Los renglones vivos de un pedido recién nacido: la comanda del pedido completo.
+func (q *Queries) ListOrderLineIDs(ctx context.Context, orderID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listOrderLineIDs, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockDraft = `-- name: LockDraft :one
 select id, company_id, order_id, status, folio_name, folio_scheme, service_type, customer_name, delivery_platform_id, platform_order_ref, delivery_fee, discount_amount, discount_percent, discount_set_by, platform_ref_set_by, opened_by, header_version, created_at, updated_at, sent_at, discarded_at, discarded_by, discard_reason from order_drafts where id = $1 for update
 `
@@ -549,6 +574,25 @@ func (q *Queries) LockDraft(ctx context.Context, id uuid.UUID) (OrderDraft, erro
 		&i.DiscardReason,
 	)
 	return i, err
+}
+
+const markDraftSent = `-- name: MarkDraftSent :execrows
+update order_drafts set status = 'enviada', sent_at = now(), order_id = $1, updated_at = now()
+where id = $2 and status = 'capturando'
+`
+
+type MarkDraftSentParams struct {
+	OrderID *int64    `json:"order_id"`
+	ID      uuid.UUID `json:"id"`
+}
+
+// La cuenta ya es pedido: se marca en la MISMA transacción que escribe el pedido (research R-4).
+func (q *Queries) MarkDraftSent(ctx context.Context, arg MarkDraftSentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markDraftSent, arg.OrderID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const touchDraft = `-- name: TouchDraft :exec

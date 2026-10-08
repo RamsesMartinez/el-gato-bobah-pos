@@ -138,6 +138,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Post("/pos/drafts/{id}/lines", h.AddDraftLine)
 					r.Patch("/pos/drafts/{id}/lines/{lineId}", h.ChangeDraftLine)
 					r.Delete("/pos/drafts/{id}/lines/{lineId}", h.RemoveDraftLine)
+					r.Post("/pos/drafts/{id}/send", h.SendDraft)
 					// La cabecera lleva el tope por usuario del descuento: es un camino nuevo para poner un
 					// descuento, y no nace sin el control del viejo (PUT /orders/{id}/discount).
 					r.With(rateLimitUser(h.descuentoWrites)).Patch("/pos/drafts/{id}", h.PatchDraft)

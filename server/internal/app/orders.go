@@ -88,6 +88,11 @@ type CreateOrderCmd struct {
 	// sacó esa misma cuenta— y solo cambia de número si el turno ya lo cantó («Persa 2»), nunca de
 	// animal: el cliente ya lo oyó.
 	BoundFolioName string
+	// DiscountSetBy y PlatformRefSetBy: quién puso el descuento y quién tecleó el folio de plataforma
+	// EN LA CUENTA EN CAPTURA, cuando el pedido nace de una. Nil = quien abre el pedido, que es lo que
+	// pasa cuando se crea directo.
+	DiscountSetBy    *int64
+	PlatformRefSetBy *int64
 }
 
 type OrderView struct {
@@ -215,8 +220,7 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	// cualquiera con una petición a mano, y el front es espejo del backend, nunca la barrera.
 	// El folio se valida ANTES de tocar la base: es puro y barato, y rechazarlo aquí evita gastar
 	// consultas en un pedido que no va a entrar.
-	folio, err := folioDelPedido(cmd)
-	if err != nil {
+	if _, err := folioDelPedido(cmd); err != nil {
 		return nil, err
 	}
 	if len(cmd.Payments) > 0 {
@@ -240,6 +244,38 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 		return nil, err
 	}
 
+	plan, err := s.prepareCreate(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	var orderID int64
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		orderID, err = s.createInTx(ctx, q, plan, sess.ID)
+		return err
+	})
+	if err != nil {
+		return nil, s.traduceFolioRepetido(ctx, err, plan.folio, cmd.DeliveryPlatformID)
+	}
+	return s.load(ctx, orderID)
+}
+
+// createPlan es lo que Create lee ANTES de su transacción: precios, totales, composición y fecha.
+// Separado de la escritura para que el envío de una cuenta en captura (DraftsService.Send) escriba el
+// pedido en la MISMA transacción que marca la cuenta enviada (research R-4).
+type createPlan struct {
+	cmd     CreateOrderCmd
+	folio   *string
+	built   domain.BuiltOrder
+	graph   domain.StockGraph
+	bizDate pgtype.Date
+}
+
+// prepareCreate valúa el pedido con la lista de precios de su canal. No escribe nada.
+func (s *OrdersService) prepareCreate(ctx context.Context, cmd CreateOrderCmd) (*createPlan, error) {
+	folio, err := folioDelPedido(cmd)
+	if err != nil {
+		return nil, err
+	}
 	// La lista de precios de la venta, ANTES que los métodos de pago: si la plataforma no es de
 	// esta empresa hay que decir eso y no "el método no corresponde a la plataforma", que compara
 	// contra una plataforma que no existe y manda al operador a revisar lo que no es.
@@ -325,99 +361,104 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	// numeración corrida del turno nocturno es `NextFolioNumber`, no esta línea.
 	bizDate := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 
-	// El pedido SIEMPRE nace abierto. Nacía entregado cuando no había nada que preparar y la venta
-	// quedaba saldada, pero eso dependía de que crear y cobrar fueran una sola llamada — y esa vía
-	// se cerró para que cocina vea todo. La regla vive ahora en Charge, que es donde ocurre.
-	var orderID int64
-	err = s.store.WithTx(ctx, func(q *db.Queries) error {
-		num, err := q.NextFolioNumber(ctx, sess.ID)
-		if err != nil {
-			return err
-		}
-		folioNombre, err := resolverFolio(ctx, q, cmd, sess.ID)
-		if err != nil {
-			return err
-		}
-		ord, err := q.CreateOrder(ctx, db.CreateOrderParams{
-			ClientUuid:         cmd.ClientUUID,
-			BusinessDate:       bizDate,
-			DailyNumber:        num,
-			ServiceType:        db.ServiceType(cmd.ServiceType),
-			DeliveryPlatformID: cmd.DeliveryPlatformID,
-			CustomerName:       cmd.CustomerName,
-			Notes:              cmd.Notes,
-			RegisterSessionID:  &sess.ID,
-			OpenedBy:           cmd.OpenedBy,
-			Subtotal:           built.Subtotal,
-			Total:              built.Total,
-			DeliveryFee:        built.DeliveryFee,
-			FolioName:          strPtr(folioNombre),
-			Status:             db.OrderStatusAbierta,
-			PlatformOrderRef:   folio,
-			PlatformRefSetBy:   rastroDe(folio, cmd.OpenedBy),
-			PlatformRefSetAt:   rastroCuando(folio, s.now()),
-			DiscountTotal:      built.Discount,
-			// El autor del descuento lo estampa la consulta solo si hubo monto (el check de la
-			// tabla exige esa correspondencia); aquí se manda siempre quien capturó el pedido.
-			DiscountSetBy: cmd.OpenedBy,
-		})
-		if err != nil {
-			return err
-		}
-		orderID = ord.ID
-		for _, l := range built.Lines {
-			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
-				OrderID: ord.ID,
-				// SIEMPRE con producto por este camino: la captura del POS resuelve el renglón
-				// contra el catálogo antes de llegar aquí. La columna es opcional desde la 0073
-				// solo para el pedido que llega de una plataforma y todavía no se empareja.
-				ProductID:      &l.ProductID,
-				ProductName:    l.ProductName,
-				Quantity:       l.Qty,
-				UnitPrice:      l.UnitPrice,
-				ModifiersTotal: l.ModifiersTotal,
-				UnitCost:       l.UnitCost,
-				LineTotal:      l.LineTotal,
-				Notes:          strPtr(l.Notes),
-				NaceEntregada:  false,
-			})
-			if err != nil {
-				return err
-			}
-			for _, m := range l.Modifiers {
-				if err := q.CreateOrderLineModifier(ctx, db.CreateOrderLineModifierParams{
-					OrderLineID:      lineID,
-					ModifierOptionID: m.OptionID,
-					GroupTitle:       m.GroupTitle,
-					OptionName:       m.OptionName,
-					Quantity:         int16(m.Qty),
-					PriceDelta:       m.PriceDelta,
-					UnitCost:         m.UnitCost,
-				}); err != nil {
-					return err
-				}
-			}
-			// Descuento de almacén atribuido a ESTE renglón (el trigger mantiene stock_levels).
-			//
-			// Por renglón y no agregada por producto, que es como estaba: sin saber de qué renglón
-			// salió cada descuento, cancelar UNO obliga a recalcular su consumo con la receta de HOY,
-			// y una receta que cambió entre la venta y la cancelación repone otra cantidad.
-			if err := descontarRenglon(ctx, q, stockGraph, ord.ID, lineID, cmd.OpenedBy, saleLineOf(l)); err != nil {
-				return err
-			}
-		}
-		// El pedido nace con todos sus renglones ya en cocina: la comanda del confirmado sale con el
-		// pedido completo. Sin marcarlos, el primer agregado sacaría otra vez el pedido entero y
-		// cocina prepararía dos veces lo que ya tenía en la plancha.
-		if err := q.MarcarTodoElPedidoEnviadoACocina(ctx, ord.ID); err != nil {
-			return err
-		}
-		return nil
+	return &createPlan{cmd: cmd, folio: folio, built: built, graph: stockGraph, bizDate: bizDate}, nil
+}
+
+// createInTx escribe el pedido dentro de la transacción de quien llama: folio del turno, nombre,
+// renglones, inventario por renglón y todo marcado como enviado a cocina.
+func (s *OrdersService) createInTx(ctx context.Context, q *db.Queries, p *createPlan, sessionID int64) (int64, error) {
+	cmd, built, folio := p.cmd, p.built, p.folio
+	num, err := q.NextFolioNumber(ctx, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	folioNombre, err := resolverFolio(ctx, q, cmd, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	ord, err := q.CreateOrder(ctx, db.CreateOrderParams{
+		ClientUuid:         cmd.ClientUUID,
+		BusinessDate:       p.bizDate,
+		DailyNumber:        num,
+		ServiceType:        db.ServiceType(cmd.ServiceType),
+		DeliveryPlatformID: cmd.DeliveryPlatformID,
+		CustomerName:       cmd.CustomerName,
+		Notes:              cmd.Notes,
+		RegisterSessionID:  &sessionID,
+		OpenedBy:           cmd.OpenedBy,
+		Subtotal:           built.Subtotal,
+		Total:              built.Total,
+		DeliveryFee:        built.DeliveryFee,
+		FolioName:          strPtr(folioNombre),
+		Status:             db.OrderStatusAbierta,
+		PlatformOrderRef:   folio,
+		PlatformRefSetBy:   rastroDe(folio, authorOr(cmd.PlatformRefSetBy, cmd.OpenedBy)),
+		PlatformRefSetAt:   rastroCuando(folio, s.now()),
+		DiscountTotal:      built.Discount,
+		// El autor del descuento lo estampa la consulta solo si hubo monto (el check de la
+		// tabla exige esa correspondencia); aquí se manda siempre quien capturó el pedido.
+		DiscountSetBy: authorOr(cmd.DiscountSetBy, cmd.OpenedBy),
 	})
 	if err != nil {
-		return nil, s.traduceFolioRepetido(ctx, err, folio, cmd.DeliveryPlatformID)
+		return 0, err
 	}
-	return s.load(ctx, orderID)
+	for _, l := range built.Lines {
+		lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
+			OrderID: ord.ID,
+			// SIEMPRE con producto por este camino: la captura del POS resuelve el renglón
+			// contra el catálogo antes de llegar aquí. La columna es opcional desde la 0073
+			// solo para el pedido que llega de una plataforma y todavía no se empareja.
+			ProductID:      &l.ProductID,
+			ProductName:    l.ProductName,
+			Quantity:       l.Qty,
+			UnitPrice:      l.UnitPrice,
+			ModifiersTotal: l.ModifiersTotal,
+			UnitCost:       l.UnitCost,
+			LineTotal:      l.LineTotal,
+			Notes:          strPtr(l.Notes),
+			NaceEntregada:  false,
+		})
+		if err != nil {
+			return 0, err
+		}
+		for _, m := range l.Modifiers {
+			if err := q.CreateOrderLineModifier(ctx, db.CreateOrderLineModifierParams{
+				OrderLineID:      lineID,
+				ModifierOptionID: m.OptionID,
+				GroupTitle:       m.GroupTitle,
+				OptionName:       m.OptionName,
+				Quantity:         int16(m.Qty),
+				PriceDelta:       m.PriceDelta,
+				UnitCost:         m.UnitCost,
+			}); err != nil {
+				return 0, err
+			}
+		}
+		// Descuento de almacén atribuido a ESTE renglón (el trigger mantiene stock_levels).
+		//
+		// Por renglón y no agregada por producto, que es como estaba: sin saber de qué renglón
+		// salió cada descuento, cancelar UNO obliga a recalcular su consumo con la receta de HOY,
+		// y una receta que cambió entre la venta y la cancelación repone otra cantidad.
+		if err := descontarRenglon(ctx, q, p.graph, ord.ID, lineID, cmd.OpenedBy, saleLineOf(l)); err != nil {
+			return 0, err
+		}
+	}
+	// El pedido nace con todos sus renglones ya en cocina: la comanda del confirmado sale con el
+	// pedido completo. Sin marcarlos, el primer agregado sacaría otra vez el pedido entero y
+	// cocina prepararía dos veces lo que ya tenía en la plancha.
+	if err := q.MarcarTodoElPedidoEnviadoACocina(ctx, ord.ID); err != nil {
+		return 0, err
+	}
+	return ord.ID, nil
+}
+
+// authorOr es quien firma un dato del pedido: el que lo puso en la cuenta en captura, o quien abrió
+// el pedido si llegó directo.
+func authorOr(author *int64, fallback int64) int64 {
+	if author != nil {
+		return *author
+	}
+	return fallback
 }
 
 // SetPlatformRef escribe o corrige el folio de un pedido que YA existe.
@@ -1148,6 +1189,36 @@ func listaDePreciosQ(ctx context.Context, q *db.Queries, platformID *int16) (lis
 // reintento reenvía el mismo lote completo. Sin llave (uuid.Nil) no hay protección — se acepta para
 // no romper a un cliente viejo, pero el front SIEMPRE la manda.
 func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []domain.OrderLineInput, actor int64, clientUUID uuid.UUID) (*OrderView, error) {
+	plan, err := s.prepareAddLines(ctx, orderID, lines)
+	if err != nil {
+		return nil, err
+	}
+	var agregados []int64
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		agregados, err = addLinesInTx(ctx, q, orderID, plan, actor, clientUUID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	vista, err := s.load(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	vista.Agregados = agregados
+	return vista, nil
+}
+
+// addPlan es lo que AddLines lee ANTES de su transacción: solo lo nuevo, valuado con la lista del
+// pedido, y la composición para descontar inventario.
+type addPlan struct {
+	built domain.BuiltOrder
+	graph domain.StockGraph
+}
+
+// prepareAddLines valúa lo que se va a agregar. No escribe nada; el estado del pedido se vuelve a
+// revisar dentro de la transacción, sobre la fila bloqueada.
+func (s *OrdersService) prepareAddLines(ctx context.Context, orderID int64, lines []domain.OrderLineInput) (*addPlan, error) {
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("%w: no hay nada que agregar", domain.ErrValidation)
 	}
@@ -1211,14 +1282,19 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 	if err != nil {
 		return nil, err
 	}
+	return &addPlan{built: built, graph: stockGraph}, nil
+}
 
-	// Los renglones que entran en ESTA llamada. Es lo que la comanda del agregado imprime, y por eso
-	// se recogen aquí y no se deducen después comparando contra lo que la pantalla tenía: dos
-	// estaciones pueden estar agregando al mismo pedido, y esa diferencia incluiría lo que agregó la
-	// otra — cocina prepararía dos veces lo que el compañero ya mandó.
+// addLinesInTx agrega lo valuado en `p` dentro de la transacción de quien llama, y devuelve los
+// renglones que ACABAN de entrar.
+//
+// Esos ids son lo que la comanda del agregado imprime, y por eso se recogen aquí y no se deducen
+// después comparando contra lo que la pantalla tenía: dos estaciones pueden estar agregando al mismo
+// pedido, y esa diferencia incluiría lo que agregó la otra — cocina prepararía dos veces lo que el
+// compañero ya mandó. Vacío en un reintento del mismo lote: la comanda no se reimprime.
+func addLinesInTx(ctx context.Context, q *db.Queries, orderID int64, p *addPlan, actor int64, clientUUID uuid.UUID) ([]int64, error) {
 	var agregados []int64
-
-	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+	err := func() error {
 		// Bloquea el pedido: dos capturas simultáneas sobre la misma cuenta recalcularían el total
 		// sobre el estado viejo y uno de los dos agregados desaparecería del importe.
 		o, err := q.GetOrderForUpdate(ctx, orderID)
@@ -1273,7 +1349,7 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 		}
 
 		agregados = agregados[:0]
-		for _, l := range built.Lines {
+		for _, l := range p.built.Lines {
 			lineID, err := q.CreateOrderLine(ctx, db.CreateOrderLineParams{
 				OrderID:        orderID,
 				ProductID:      &l.ProductID,
@@ -1289,7 +1365,7 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 				return err
 			}
 			agregados = append(agregados, lineID)
-			if err := descontarRenglon(ctx, q, stockGraph, orderID, lineID, actor, saleLineOf(l)); err != nil {
+			if err := descontarRenglon(ctx, q, p.graph, orderID, lineID, actor, saleLineOf(l)); err != nil {
 				return err
 			}
 			for _, m := range l.Modifiers {
@@ -1326,17 +1402,8 @@ func (s *OrdersService) AddLines(ctx context.Context, orderID int64, lines []dom
 			}
 		}
 		return q.RecalcOrderTotals(ctx, orderID)
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	vista, err := s.load(ctx, orderID)
-	if err != nil {
-		return nil, err
-	}
-	vista.Agregados = agregados
-	return vista, nil
+	}()
+	return agregados, err
 }
 
 // lineasDeEntrega traduce los renglones del pedido a lo que el dominio necesita para razonar sobre
