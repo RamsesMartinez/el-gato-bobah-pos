@@ -155,6 +155,58 @@ export interface OrderView {
   outstanding: string;
   openedAt: string;
   lines?: OrderLine[];
+  // Los pagos del pedido, vivos y devueltos, en el orden de su número (spec 027). Opcional para que
+  // el compilador obligue a la guarda: un `null` tumbaría la hoja de cobro sin error del servidor.
+  payments?: PaymentView[];
+  // El pedido con el que se juntó éste al pasarle todos sus productos.
+  mergedIntoOrderId?: number | null;
+  // Si se puede dividir o pasar productos: no es de plataforma y su turno sigue abierto.
+  canSplit?: boolean;
+}
+
+// PaymentView es un pago del pedido como lo pinta la hoja de cobro. `number` es el de su ticket
+// impreso y no cambia: un pago devuelto conserva el suyo y sale tachado.
+export interface PaymentView {
+  id: number;
+  number: number;
+  voided: boolean;
+  voidedAt?: string;
+  voidReason?: string;
+  methodId: number;
+  methodName: string;
+  amount: string;
+  tip: string;
+  reference: string;
+  paidAt: string;
+  receivedBy: string;
+  split: { part: number; of: number } | null;
+  // Lo que cubrió: vacío en un pago por monto o por partes.
+  lines: PaymentLine[];
+}
+
+export interface PaymentLine {
+  lineId: number;
+  qty: string;
+  amount: string;
+}
+
+// SelectedPieces: cuántas piezas de un renglón paga, pasa o quita esta persona.
+export interface SelectedPieces {
+  lineId: number;
+  qty: string;
+}
+
+// ChargeShape es la forma de un cobro dividido; se excluyen entre sí y con el monto tecleado.
+export type ChargeShape =
+  | { lines: SelectedPieces[] }
+  | { allRemaining: true }
+  | { split: { part: number; of: number } };
+
+// Quote es lo que /pay cobraría con esa selección, calculado por el servidor.
+export interface Quote {
+  amount: string;
+  lines: PaymentLine[];
+  outstandingAfter: string;
 }
 
 // PedidoParaCobrar es lo MÍNIMO que la hoja de cobro necesita para hacer su trabajo.
@@ -181,6 +233,12 @@ export interface CobroHecho {
   // una llamada cuya respuesta se perdió. La pantalla lo necesita para no cantar un cobro que no
   // ocurrió y para no volver a contar su propina.
   yaEstaba: boolean;
+  // El pago, su número y lo que se cobró. Con productos o por partes el monto lo calcula el
+  // servidor, y la hoja refresca el botón y «Falta» con esta cifra. Opcionales: el front se
+  // despliega antes que el backend.
+  paymentId?: number;
+  number?: number;
+  amount?: string;
 }
 
 // OrderLine es un renglón tal como lo manda el servidor.
@@ -269,6 +327,8 @@ export interface BoardLine {
   // Si ya salió a cocina. Decide qué pasa con el insumo al cancelar el renglón: si ya salió, la
   // comida se hizo y el ingrediente no vuelve al almacén.
   enviadoACocina?: boolean;
+  // Piezas que cubren pagos vivos. Con alguna, la tarjeta deshabilita el bote con «Pagado».
+  paidQty?: string;
 }
 
 // --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---

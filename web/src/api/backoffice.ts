@@ -142,6 +142,19 @@ export interface CashSession {
   uncollectedCount: number;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
+  // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
+  // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
+  voidedPayments?: VoidedPayment[];
+}
+
+export interface VoidedPayment {
+  method: string;
+  amount: string;
+  tip: string;
+  orderFolio: string;
+  voidedBy: string;
+  voidedAt: string;
+  reason: string;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
@@ -201,6 +214,9 @@ export interface CashSessionDetail {
   salesTotal: string;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
+  // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
+  // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
+  voidedPayments?: VoidedPayment[];
 }
 
 export interface CorteSale {

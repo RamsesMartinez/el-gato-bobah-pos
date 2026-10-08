@@ -1,6 +1,15 @@
 import { api } from './client';
 import type {
-  BoardOrder, CobroHecho, CreateOrderBody, Menu, OrderView, PaymentMethod, RankedOption,
+  BoardOrder,
+  CobroHecho,
+  CreateOrderBody,
+  Menu,
+  OrderView,
+  PaymentMethod,
+  RankedOption,
+  ChargeShape,
+  Quote,
+  SelectedPieces,
 } from '../types/pos';
 
 // Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
@@ -105,8 +114,10 @@ export const posApi = {
     api.post<void>(`/orders/${id}/cancel`, { reason, devolver }),
   // Cancelar UN renglón. Responde si repuso el inventario: el que ya salió a cocina baja el total
   // pero no devuelve el insumo, y la pantalla tiene que poder decirlo.
-  cancelOrderLine: (id: number, lineId: number, reason: string) =>
-    api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`, { reason }),
+  // `qty` quita solo esas piezas pendientes (1 de 2); sin él, todas las pendientes.
+  cancelOrderLine: (id: number, lineId: number, reason: string, qty?: number) =>
+    api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`,
+      qty === undefined ? { reason } : { reason, qty: String(qty) }),
   // Quitar todo lo que falta por entregar, en una sola petición, y dejar lo entregado. Sin productos
   // vivos va SIN cuerpo: el servidor cierra el pedido con el motivo fijo «Sin productos».
   cancelPendingLines: (id: number, reason?: string) =>
@@ -143,6 +154,20 @@ export const posApi = {
   // la misma cifra.
   chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string }) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
+  // Cobrar con productos, «todo lo que falta» o una parte (spec 027): el monto lo calcula el
+  // servidor y viene en la respuesta. Las formas se excluyen entre sí y con `amount`.
+  chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string } & ChargeShape) =>
+    api.post<CobroHecho>(`/orders/${id}/pay`, body),
+  // Cuánto cobraría /pay por una selección, sin cobrarla. La hoja no calcula el monto: si lo hiciera
+  // habría dos reglas de dinero, y tarde o temprano dirían cosas distintas.
+  quoteOrder: (id: number, shape: ChargeShape) => api.post<Quote>(`/orders/${id}/quote`, shape),
+  // Devolver un pago de un turno abierto (permiso payments.void). Sus productos vuelven a quedar
+  // por cobrar.
+  voidPayment: (id: number, paymentId: number, reason: string) =>
+    api.post<{ outstanding: string; paid: boolean }>(`/orders/${id}/payments/${paymentId}/void`, { reason }),
+  // Pasar productos a otro pedido abierto, o a uno nuevo con `toOrderId` null.
+  moveLines: (id: number, body: { clientUuid: string; toOrderId: number | null; lines: SelectedPieces[] }) =>
+    api.post<{ from: OrderView; to: OrderView }>(`/orders/${id}/lines/move`, body),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.

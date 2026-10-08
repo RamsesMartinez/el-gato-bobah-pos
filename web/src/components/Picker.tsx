@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Box, Button, HStack, VStack, Text, Input } from '@chakra-ui/react';
-import { LuChevronDown, LuSearch, LuPlus, LuCheck } from 'react-icons/lu';
+import { LuChevronDown, LuSearch, LuPlus } from 'react-icons/lu';
 import { DrawerRoot, DrawerBackdrop, DrawerContent, DrawerCloseTrigger } from './ui/drawer';
 import { normalize } from '../utils/format';
+import { ListRow } from './ListRow';
 
 export interface PickerOption {
   value: string;
@@ -87,9 +88,9 @@ export function Picker({
               </Box>
             )}
             <VStack align="stretch" gap={1} overflowY="auto" px={3} pb={4} pt={1} flex="1">
-              {clearable && <PickerRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
+              {clearable && <ListRow label={clearLabel} muted selected={!value} onClick={() => pick('')} />}
               {filtered.map((o) => (
-                <PickerRow key={o.value} label={o.label} hint={o.hint} selected={o.value === value} onClick={() => pick(o.value)} />
+                <ListRow key={o.value} label={o.label} hint={o.hint} selected={o.value === value} onClick={() => pick(o.value)} />
               ))}
               {onCreate && q.trim() !== '' && !exact && (
                 <Button size="lg" minH="52px" variant="subtle" colorPalette="green" justifyContent="start"
@@ -110,20 +111,5 @@ export function Picker({
         </DrawerContent>
       </DrawerRoot>
     </>
-  );
-}
-
-function PickerRow({ label, hint, selected, muted, onClick }: {
-  label: string; hint?: string; selected?: boolean; muted?: boolean; onClick: () => void;
-}) {
-  return (
-    <Button variant={selected ? 'subtle' : 'ghost'} colorPalette="gray" size="lg" minH="52px"
-      justifyContent="space-between" fontWeight="500" onClick={onClick}>
-      <HStack gap={2} minW={0}>
-        <Text truncate color={muted ? 'fg.muted' : 'fg'}>{label}</Text>
-        {hint && <Text fontSize="xs" color="fg.subtle" flexShrink={0}>{hint}</Text>}
-      </HStack>
-      {selected && <LuCheck />}
-    </Button>
   );
 }

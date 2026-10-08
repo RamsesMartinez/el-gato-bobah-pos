@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon } from '../../api/backoffice';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment } from '../../api/backoffice';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -377,4 +377,55 @@ describe('el arqueo en el corte cerrado', () => {
     }} currency="MXN" />);
     expect(screen.queryByText('Arqueo del cajón')).not.toBeInTheDocument();
   });
+});
+
+// ---- Pagos devueltos (spec 027) ----
+
+const devuelto = (o: Partial<VoidedPayment>): VoidedPayment => ({
+  method: 'Tarjeta', amount: '120', tip: '0', orderFolio: 'Mesa 3 #14', voidedBy: 'Ana',
+  voidedAt: '2026-10-08T20:15:00Z', reason: 'Se cobró a la tarjeta equivocada', ...o,
+});
+
+test('VoidedPaymentsList lista método, monto, folio, quién y por qué', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({})]} currency="MXN" zona="America/Mexico_City" />);
+  expect(screen.getByText('Pagos devueltos')).toBeInTheDocument();
+  expect(screen.getByText('Tarjeta')).toBeInTheDocument();
+  expect(screen.getByText('$120')).toBeInTheDocument();
+  expect(screen.getByText(/Mesa 3 #14/)).toBeInTheDocument();
+  expect(screen.getByText(/Ana/)).toBeInTheDocument();
+  expect(screen.getByText(/Se cobró a la tarjeta equivocada/)).toBeInTheDocument();
+  expect(screen.getByText(/02:15/)).toBeInTheDocument();
+});
+
+// Un turno sin devoluciones es el caso normal: una sección vacía le quita alto a la tableta y
+// sugiere que algo se devolvió. Y un backend viejo que no manda el campo no debe tumbar la caja.
+test('VoidedPaymentsList no pinta nada sin devoluciones, ni con el campo ausente', () => {
+  const { rerender } = wrap(<VoidedPaymentsList payments={[]} currency="MXN" />);
+  expect(screen.queryByText('Pagos devueltos')).not.toBeInTheDocument();
+  rerender(<Provider><VoidedPaymentsList payments={undefined} currency="MXN" /></Provider>);
+  expect(screen.queryByText('Pagos devueltos')).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Pagos devueltos' })).not.toBeInTheDocument();
+});
+
+// El pago devuelto NO es una salida de caja ni dinero del turno: si la lista trajera un total,
+// invitaría a restarlo (o sumarlo) del esperado, que ya lo excluye en el servidor.
+test('VoidedPaymentsList no suma: sin renglón de total aunque haya varios', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({ amount: '100' }), devuelto({ amount: '50', method: 'Efectivo' })]} currency="MXN" />);
+  expect(screen.queryByText(/total/i)).not.toBeInTheDocument();
+  expect(screen.queryByText('$150')).not.toBeInTheDocument();
+});
+
+test('VoidedPaymentsList muestra la propina devuelta cuando la hubo', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({ tip: '15' })]} currency="MXN" />);
+  expect(screen.getByText(/propina \$15\b/)).toBeInTheDocument();
+});
+
+// En 600 px de alto, una lista que crece sin tope empuja fuera la tabla del cierre.
+test('VoidedPaymentsList acota su alto en dvh para no empujar el cierre fuera de la pantalla', () => {
+  const muchos = Array.from({ length: 30 }, (_, i) => devuelto({ orderFolio: `#${i + 1}` }));
+  wrap(<VoidedPaymentsList payments={muchos} currency="MXN" />);
+  const lista = screen.getByRole('list', { name: 'Pagos devueltos' });
+  const estilo = getComputedStyle(lista);
+  expect(estilo.maxHeight).toMatch(/dvh/);
+  expect(estilo.overflowY).toBe('auto');
 });
