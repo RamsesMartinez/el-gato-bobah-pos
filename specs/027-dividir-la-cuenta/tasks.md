@@ -182,15 +182,15 @@ enviado y no se repone; cancelar el pedido después no repone ninguno de los dos
   - `order_payment_lines`, `order_payment_voids`, `order_line_move_batches`, `order_line_moves` con RLS `nullif`, grants explícitos, FKs `no action` (salvo la cascada de la cobertura) e índices;
   - columnas `split_part`, `split_of`, `payment_number` en `order_payments` y `merged_into_order_id` en `orders`, con sus checks;
   - Down con la guarda de data-model.md (`raise exception`, patrón de 0037/0040/0041) y en su orden
-- [ ] T035 Tests `inTheThreeCases` en server/internal/integration/split_bill_isolation_test.go para cada consulta nueva de T036 (cobertura, bitácora, lotes, movimientos, piezas cubiertas por renglón, pagos del pedido con su cobertura, pagos devueltos del pedido y del turno). Se escriben primero: en rojo porque las consultas aún no existen
-- [ ] T036 Escribir esas consultas en server/queries/orders.sql y server/queries/cash.sql y correr `make sqlc` (store/db nunca se edita a mano)
+- [x] T035 Tests `inTheThreeCases` en server/internal/integration/split_bill_isolation_test.go para cada consulta nueva de T036 (cobertura, bitácora, lotes, movimientos, piezas cubiertas por renglón, pagos del pedido con su cobertura, pagos devueltos del pedido y del turno). Se escriben primero: en rojo porque las consultas aún no existen
+- [x] T036 Escribir esas consultas en server/queries/orders.sql y server/queries/cash.sql y correr `make sqlc` (store/db nunca se edita a mano)
 
 **Pagos en la vista (D-12)**
 
-- [ ] T037 Tests de la vista:
+- [x] T037 Tests de la vista:
   - IT HTTP en server/internal/integration/order_view_http_test.go, sobre JSON crudo: `GET /orders/{id}` trae `payments` y cada `lines` como arreglo aunque estén vacíos; un pago devuelto aparece con `voided: true` y su número; `mergedIntoOrderId` viene `null` en un pedido que no se juntó;
   - `inTheThreeCases` sobre `load` con `payments` en server/internal/integration/split_bill_isolation_test.go
-- [ ] T038 Agregar `payments` y `mergedIntoOrderId` a `OrderView` en server/internal/app/orders.go (`load`), con la numeración de D-12: los pagos sin número se numeran por `created_at` contando vivos y devueltos; los devueltos salen de la bitácora con el número que guardó
+- [x] T038 Agregar `payments` y `mergedIntoOrderId` a `OrderView` en server/internal/app/orders.go (`load`), con la numeración de D-12: los pagos sin número se numeran por `created_at` contando vivos y devueltos; los devueltos salen de la bitácora con el número que guardó
 - [ ] T039 [P] Tipos `PaymentView`, `payments?: PaymentView[]` y `mergedIntoOrderId?: number | null` en `OrderView` de web/src/types/pos.ts (opcional para que `tsc` obligue a la guarda) y métodos nuevos de `posApi` en web/src/api/pos.ts (incluido `quote`); agregar cada método nuevo a los `vi.mock` existentes
 
 **Checkpoint**: esquema y vista listos; `TestEveryCompanyTableIsIsolated` pasa con las cuatro tablas nuevas.

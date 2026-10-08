@@ -131,6 +131,44 @@ type OrderView struct {
 	Refund   decimal.Decimal `json:"refund"`
 	OpenedAt time.Time       `json:"openedAt"`
 	Lines    []OrderLineView `json:"lines"`
+	// Payments son los pagos del pedido, vivos y devueltos, en el orden de su número. Siempre
+	// arreglo: la hoja de cobro los pinta como fichas y un `null` la tumba sin error en el servidor.
+	Payments []PaymentView `json:"payments"`
+	// MergedIntoOrderID es el pedido con el que se juntó éste al pasarle todos sus productos.
+	MergedIntoOrderID *int64 `json:"mergedIntoOrderId"`
+}
+
+// PaymentView es un pago del pedido como lo pinta la hoja de cobro.
+type PaymentView struct {
+	ID int64 `json:"id"`
+	// Number es el que lleva su ticket impreso, y no cambia: un pago devuelto conserva el suyo.
+	Number     int             `json:"number"`
+	Voided     bool            `json:"voided"`
+	VoidedAt   *time.Time      `json:"voidedAt,omitempty"`
+	VoidReason string          `json:"voidReason,omitempty"`
+	MethodID   int16           `json:"methodId"`
+	MethodName string          `json:"methodName"`
+	Amount     decimal.Decimal `json:"amount"`
+	Tip        decimal.Decimal `json:"tip"`
+	Reference  string          `json:"reference"`
+	PaidAt     time.Time       `json:"paidAt"`
+	ReceivedBy string          `json:"receivedBy"`
+	Split      *SplitPartView  `json:"split"`
+	// Lines es lo que cubrió: vacío en un pago por monto o por partes, nunca null.
+	Lines []PaymentLineView `json:"lines"`
+}
+
+// SplitPartView es la parte de una cuenta repartida entre personas.
+type SplitPartView struct {
+	Part int `json:"part"`
+	Of   int `json:"of"`
+}
+
+// PaymentLineView es lo que un pago cubrió de un renglón.
+type PaymentLineView struct {
+	LineID int64           `json:"lineId"`
+	Qty    decimal.Decimal `json:"qty"`
+	Amount decimal.Decimal `json:"amount"`
 }
 
 type OrderLineView struct {
@@ -593,6 +631,7 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		Outstanding: domain.PorCobrar(o.Total, paid),
 		OpenedAt:    o.OpenedAt,
 	}
+	view.Lines = make([]OrderLineView, 0, len(lines))
 	for _, l := range lines {
 		view.Lines = append(view.Lines, OrderLineView{
 			ID: l.ID, ProductName: l.ProductName, Quantity: l.Quantity,
@@ -601,7 +640,79 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 			Notes: derefStr(l.Notes), Modifiers: modsByLine[l.ID],
 		})
 	}
+	view.MergedIntoOrderID = o.MergedIntoOrderID
+	if view.Payments, err = s.paymentsOf(ctx, id); err != nil {
+		return nil, err
+	}
 	return view, nil
+}
+
+// paymentsOf arma los pagos de un pedido, vivos y devueltos, en el orden de su número.
+//
+// Los pagos anteriores a la migración no tienen número: se numeran por hora contando también los
+// devueltos, que es la misma regla con la que Charge da el siguiente. Así el número que se ve es el
+// que se imprimió y uno nuevo nunca repite el de uno viejo.
+func (s *OrdersService) paymentsOf(ctx context.Context, orderID int64) ([]PaymentView, error) {
+	q := s.store.QC(ctx)
+	live, err := q.ListOrderPaymentsForView(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	cover, err := q.ListOrderPaymentCoverage(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	voids, err := q.ListOrderPaymentVoids(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	linesOf := map[int64][]PaymentLineView{}
+	for _, c := range cover {
+		linesOf[c.OrderPaymentID] = append(linesOf[c.OrderPaymentID], PaymentLineView{LineID: c.OrderLineID, Qty: c.Qty, Amount: c.Amount})
+	}
+	out := make([]PaymentView, 0, len(live)+len(voids))
+	for _, p := range live {
+		pl := linesOf[p.ID]
+		if pl == nil {
+			pl = []PaymentLineView{}
+		}
+		out = append(out, PaymentView{
+			ID: p.ID, Number: int(deref16(p.PaymentNumber)), MethodID: p.PaymentMethodID, MethodName: p.MethodName,
+			Amount: p.Amount, Tip: p.TipAmount, Reference: p.Reference, PaidAt: p.CreatedAt,
+			ReceivedBy: p.ReceivedBy, Split: splitView(p.SplitPart, p.SplitOf), Lines: pl,
+		})
+	}
+	for _, v := range voids {
+		at := v.VoidedAt
+		out = append(out, PaymentView{
+			ID: v.OriginalPaymentID, Number: int(v.PaymentNumber), Voided: true, VoidedAt: &at, VoidReason: v.Reason,
+			MethodID: v.PaymentMethodID, MethodName: v.MethodName, Amount: v.Amount, Tip: v.TipAmount,
+			Reference: v.Reference, PaidAt: v.PaidAt, ReceivedBy: v.ReceivedBy,
+			Split: splitView(v.SplitPart, v.SplitOf), Lines: []PaymentLineView{},
+		})
+	}
+	slices.SortStableFunc(out, func(a, b PaymentView) int { return a.PaidAt.Compare(b.PaidAt) })
+	for i := range out {
+		if out[i].Number == 0 {
+			out[i].Number = i + 1
+		}
+	}
+	slices.SortStableFunc(out, func(a, b PaymentView) int { return a.Number - b.Number })
+	return out, nil
+}
+
+func splitView(part, of *int16) *SplitPartView {
+	if part == nil || of == nil {
+		return nil
+	}
+	return &SplitPartView{Part: int(*part), Of: int(*of)}
+}
+
+func deref16(v *int16) int16 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 type BoardOrder struct {

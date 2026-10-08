@@ -526,3 +526,15 @@ from session_cash_count_lines l
 join cash_denominations d on d.id = l.denomination_id
 where l.count_id = $1
 order by d.sort_key;
+
+-- name: ListSessionPaymentVoids :many
+-- Los pagos devueltos en un turno, para la lista aparte del corte (spec 027). No cambian el
+-- esperado por método: el pago devuelto ya no está en order_payments.
+select pm.name as method_name, v.amount, v.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       coalesce(u.name, '')::text as voided_by, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+join orders o on o.id = v.order_id
+left join users u on u.id = v.voided_by
+where v.register_session_id = $1
+order by v.voided_at, v.id;

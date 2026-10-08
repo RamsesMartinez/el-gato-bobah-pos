@@ -1040,6 +1040,59 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 	return items, nil
 }
 
+const listSessionPaymentVoids = `-- name: ListSessionPaymentVoids :many
+select pm.name as method_name, v.amount, v.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       coalesce(u.name, '')::text as voided_by, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+join orders o on o.id = v.order_id
+left join users u on u.id = v.voided_by
+where v.register_session_id = $1
+order by v.voided_at, v.id
+`
+
+type ListSessionPaymentVoidsRow struct {
+	MethodName  string          `json:"method_name"`
+	Amount      decimal.Decimal `json:"amount"`
+	TipAmount   decimal.Decimal `json:"tip_amount"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   string          `json:"folio_name"`
+	VoidedBy    string          `json:"voided_by"`
+	VoidedAt    time.Time       `json:"voided_at"`
+	Reason      string          `json:"reason"`
+}
+
+// Los pagos devueltos en un turno, para la lista aparte del corte (spec 027). No cambian el
+// esperado por método: el pago devuelto ya no está en order_payments.
+func (q *Queries) ListSessionPaymentVoids(ctx context.Context, registerSessionID int64) ([]ListSessionPaymentVoidsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionPaymentVoids, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionPaymentVoidsRow{}
+	for rows.Next() {
+		var i ListSessionPaymentVoidsRow
+		if err := rows.Scan(
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.VoidedBy,
+			&i.VoidedAt,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionTotals = `-- name: ListSessionTotals :many
 select t.payment_method_id, pm.name, pm.kind, t.affects_cash_drawer, t.expected, t.declared, t.tips,
        coalesce(dp.name, '') as platform_name,
