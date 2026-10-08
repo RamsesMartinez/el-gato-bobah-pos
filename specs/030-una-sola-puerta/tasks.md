@@ -68,15 +68,15 @@ archivo ni depende de otra tarea abierta de la misma fase.
 
 ### Base del front — FE
 
-- [ ] T018 [P] **FE** Test en web/src/api/pos.drafts.test.ts: cada función nueva de `posApi` arma la URL, el método y el cuerpo de contracts/api.md (`createDraft`, `getDraft`, `addDraftLine`, `changeDraftLine`, `removeDraftLine` con `expectedVersion` en query, `patchDraft`, `discardDraft`, `sendDraft`, `importDrafts`, `liveAccounts(olderDebts?)`); `liveAccounts()` sin `olderDebts` no manda el parámetro
-- [ ] T019 **FE** Implementar los tipos `DraftView`, `DraftLineView`, `AccountItem`, `SendResult` en web/src/types/pos.ts (campos de arreglo **opcionales** donde el compilador deba obligar a la guarda, AGENTS.md §1) y las funciones en web/src/api/pos.ts; textos de `DRAFT_CHANGED`, `DRAFT_DISCARDED`, `DRAFT_SENT`, `ORDER_CLOSED`, `PLATFORM_ORDER_NO_LINES` en web/src/api/mensajes.ts (sin «borrador», «versión» ni códigos)
-- [ ] T020 [P] **FE** Test en web/src/components/ConfirmSheet.test.tsx y ReasonSheet.test.tsx: botones ≥ 44 px; la acción destructiva separada de la principal; cerrar con el fondo o Escape = cancelar; `ReasonSheet` devuelve el texto o `null` y su campo no es obligatorio si así se pide
-- [ ] T021 **FE** Implementar web/src/components/ConfirmSheet.tsx y ReasonSheet.tsx (hoja inferior de la app, `maxH` en dvh)
+- [X] T018 [P] **FE** Test en web/src/api/pos.drafts.test.ts: cada función nueva de `posApi` arma la URL, el método y el cuerpo de contracts/api.md (`createDraft`, `getDraft`, `addDraftLine`, `changeDraftLine`, `removeDraftLine` con `expectedVersion` en query, `patchDraft`, `discardDraft`, `sendDraft`, `importDrafts`, `liveAccounts(olderDebts?)`); `liveAccounts()` sin `olderDebts` no manda el parámetro
+- [X] T019 **FE** Implementar los tipos `DraftView`, `DraftLineView`, `AccountItem`, `SendResult` en web/src/types/pos.ts (campos de arreglo **opcionales** donde el compilador deba obligar a la guarda, AGENTS.md §1) y las funciones en web/src/api/pos.ts; textos de `DRAFT_CHANGED`, `DRAFT_DISCARDED`, `DRAFT_SENT`, `ORDER_CLOSED`, `PLATFORM_ORDER_NO_LINES` en web/src/api/mensajes.ts (sin «borrador», «versión» ni códigos)
+- [X] T020 [P] **FE** Test en web/src/components/ConfirmSheet.test.tsx y ReasonSheet.test.tsx: botones ≥ 44 px; la acción destructiva separada de la principal; cerrar con el fondo o Escape = cancelar; `ReasonSheet` devuelve el texto o `null` y su campo no es obligatorio si así se pide
+- [X] T021 **FE** Implementar web/src/components/ConfirmSheet.tsx y ReasonSheet.tsx (hoja inferior de la app, `maxH` en dvh)
 - [ ] T022 [P] **FE** Test estático web/src/sinDialogosDelSistema.test.ts: recorre `web/src` y falla nombrando archivo y línea ante `confirm(`, `prompt(` o `alert(` del navegador (excluye `shared/pwa/installPrompt.ts`, que es la API de PWA, y **los comentarios**: `PrintSettingsPage.tsx` nombra `confirm()` en uno). **Queda en rojo** hasta T088; es la vara de FR-015/SC-005
-- [ ] T023 [P] **FE** Test en web/src/stores/pos.test.ts: persiste solo `{ selected }` bajo `egb:pos:v3`; un `selected` con forma rara se descarta al cargar (no tumba la pantalla, caso 18); un `selected` que el servidor no encuentra (otra empresa en la tableta, cuenta ya descartada) se limpia sin aviso; no hay renglones ni cabeceras en el almacenamiento
-- [ ] T024 **FE** Implementar web/src/stores/pos.ts
-- [ ] T025 [P] **FE** Test en web/src/features/pos/useSinConexion.test.ts: `offline` del navegador → sin conexión; un fallo de red en una mutación → sin conexión aunque `navigator.onLine` diga lo contrario; vuelve sola al primer éxito
-- [ ] T026 **FE** Implementar web/src/features/pos/useSinConexion.ts
+- [X] T023 [P] **FE** Test en web/src/stores/pos.test.ts: persiste solo `{ selected }` bajo `egb:pos:v3`; un `selected` con forma rara se descarta al cargar (no tumba la pantalla, caso 18); un `selected` que el servidor no encuentra (otra empresa en la tableta, cuenta ya descartada) se limpia sin aviso; no hay renglones ni cabeceras en el almacenamiento
+- [X] T024 **FE** Implementar web/src/stores/pos.ts
+- [X] T025 [P] **FE** Test en web/src/features/pos/useSinConexion.test.ts: `offline` del navegador → sin conexión; un fallo de red en una mutación → sin conexión aunque `navigator.onLine` diga lo contrario; vuelve sola al primer éxito
+- [X] T026 **FE** Implementar web/src/features/pos/useSinConexion.ts
 
 **Checkpoint**: dominio, esquema, consultas y base del front listos. BE y FE avanzan en paralelo.
 

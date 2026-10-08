@@ -10,6 +10,16 @@ import type {
   ChargeShape,
   Quote,
   SelectedPieces,
+  ChangeDraftLineBody,
+  CreateDraftBody,
+  DraftIntoLineInput,
+  DraftLineInput,
+  DraftView,
+  ImportAccount,
+  ImportResult,
+  LiveAccounts,
+  PatchDraftBody,
+  SendResult,
 } from '../types/pos';
 
 // Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
@@ -77,6 +87,30 @@ export const posApi = {
   // Empresa (tenant). GET cualquiera; PATCH solo admin/gerente (backend aplica el 403).
   company: () => api.get<Company>('/company'),
   updateCompany: (name: string, slug: string) => api.patch<Company>('/company', { name, slug }),
+
+  // --- La cuenta en captura (spec 030). Vive en el servidor desde el primer producto. ---
+  //
+  // Agregar es idempotente por `opId` (uno por toque, el mismo en cada reintento) y se SUMA entre
+  // tabletas; cambiar y quitar llevan la versión que la pantalla vio, y si otra tableta ya cambió
+  // ese renglón el servidor lo rechaza sin aplicar nada.
+  createDraft: (body: CreateDraftBody) => api.post<DraftView>('/pos/drafts', body),
+  getDraft: (id: string) => api.get<DraftView>(`/pos/drafts/${id}`),
+  addDraftLine: (id: string, body: DraftLineInput | DraftIntoLineInput) =>
+    api.post<DraftView>(`/pos/drafts/${id}/lines`, body),
+  changeDraftLine: (id: string, lineId: string, body: ChangeDraftLineBody) =>
+    api.patch<DraftView>(`/pos/drafts/${id}/lines/${lineId}`, body),
+  removeDraftLine: (id: string, lineId: string, expectedVersion: number) =>
+    api.del<DraftView>(`/pos/drafts/${id}/lines/${lineId}?expectedVersion=${expectedVersion}`),
+  patchDraft: (id: string, body: PatchDraftBody) => api.patch<DraftView>(`/pos/drafts/${id}`, body),
+  discardDraft: (id: string) => api.post<void>(`/pos/drafts/${id}/discard`, {}),
+  // Manda a cocina. Idempotente por la cuenta: el reintento devuelve el mismo pedido y no reimprime.
+  sendDraft: (id: string) => api.post<SendResult>(`/pos/drafts/${id}/send`, {}),
+  importDrafts: (accounts: ImportAccount[]) =>
+    api.post<{ results?: ImportResult[] }>('/pos/drafts/import', { accounts }),
+  // Todas las cuentas vivas de la empresa. La fila la pide cada 30 s SIN `olderDebts` (el servidor
+  // mira 90 días); la hoja «+N» y el cierre lo piden con él, una vez por acción.
+  liveAccounts: (olderDebts = false) =>
+    api.get<LiveAccounts>(olderDebts ? '/pos/accounts?olderDebts=true' : '/pos/accounts'),
 
   menu: () => api.get<Menu>('/pos/menu'),
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).

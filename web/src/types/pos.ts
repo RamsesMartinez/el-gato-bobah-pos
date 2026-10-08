@@ -411,3 +411,164 @@ export interface CreateOrderBody {
   // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
   payments?: Array<{ methodId: number; amount: number; tip?: number }>;
 }
+
+// --- Cuentas en captura y cuentas vivas (spec 030, contracts/api.md) ---
+//
+// La cuenta que se está capturando vive en el SERVIDOR desde el primer producto. Los precios los
+// calcula él en cada lectura con la lista de la cuenta: aquí no se guarda ni se suma ningún precio.
+
+export type DraftStatus = 'capturando' | 'enviada' | 'descartada';
+
+export interface DraftModifierInput {
+  optionId: number;
+  qty: number;
+  // Porción de un modificador de combo; vacío en los de siempre.
+  portion?: string;
+}
+
+export interface DraftModifierView {
+  optionId: number;
+  name: string;
+  qty: number;
+  priceDelta: string;
+  portion?: string;
+}
+
+export interface DraftLineView {
+  id: string;
+  version: number;
+  productId: number;
+  productName: string;
+  qty: string;
+  unitPrice: string;
+  // Opcional para que el compilador obligue a la guarda: un `null` del servidor tumbaría el ticket.
+  modifiers?: DraftModifierView[];
+  notes: string;
+  lineTotal: string;
+  // false = ya no está en el menú: no suma al total y bloquea el envío.
+  available: boolean;
+}
+
+export type DraftDiscount = { amount: string } | { percent: string };
+
+export interface DraftHeader {
+  serviceType?: ServiceType;
+  customerName?: string | null;
+  platformId?: number | null;
+  platformOrderRef?: string | null;
+  deliveryFee?: string;
+  discount?: DraftDiscount | null;
+}
+
+export interface DraftView {
+  id: string;
+  // null = cuenta nueva; número = lo «Nuevo» de ese pedido.
+  orderId: number | null;
+  folioName: string | null;
+  status: DraftStatus;
+  headerVersion: number;
+  updatedAt: string;
+  createdAt: string;
+  openedBy: string;
+  serviceType: ServiceType;
+  customerName: string | null;
+  platformId: number | null;
+  platformOrderRef: string | null;
+  deliveryFee: string;
+  discount: DraftDiscount | null;
+  lines?: DraftLineView[];
+  subtotal: string;
+  discountTotal: string;
+  total: string;
+  unavailable?: string[];
+}
+
+export interface DraftLineInput {
+  opId: string;
+  productId: number;
+  qty: string;
+  modifiers: DraftModifierInput[];
+  notes: string;
+}
+
+// El «+» de un renglón: un agregado más (se suma entre tabletas), no un cambio de cantidad.
+export interface DraftIntoLineInput {
+  opId: string;
+  intoLineId: string;
+  qty: string;
+}
+
+export interface CreateDraftBody {
+  id: string;
+  orderId: number | null;
+  folioName?: string | null;
+  header?: DraftHeader;
+  lines: DraftLineInput[];
+}
+
+export interface ChangeDraftLineBody {
+  expectedVersion: number;
+  qty?: string;
+  modifiers?: DraftModifierInput[];
+  notes?: string;
+}
+
+export type PatchDraftBody = DraftHeader & { expectedHeaderVersion: number };
+
+export interface SendResult {
+  order: OrderView;
+  // Renglones para la comanda: todos si nació el pedido, solo lo nuevo si se agregó, vacío en el
+  // reintento (para no reimprimir).
+  printLineIds?: number[];
+  created: boolean;
+}
+
+export interface ImportAccount {
+  id: string;
+  folioName: string;
+  header: DraftHeader;
+  lines: DraftLineInput[];
+}
+
+export interface ImportResult {
+  id: string;
+  outcome: 'created' | 'exists' | 'already_sent' | 'skipped_empty';
+  draftId: string | null;
+  orderId: number | null;
+}
+
+// El estado y el grupo los decide el servidor (domain.AccountState / AccountGroup): aquí no se
+// recalcula ninguna regla.
+export type AccountState = 'capturing' | 'in_kitchen' | 'paid_in_kitchen' | 'partly_paid' | 'delivered_owes';
+export type AccountGroup = 'capturing' | 'in_kitchen' | 'delivered_owes' | 'previous_days';
+
+export interface AccountItem {
+  key: string;
+  kind: 'draft' | 'order';
+  draftId?: string | null;
+  orderId?: number | null;
+  number: number | null;
+  folioName: string | null;
+  state: AccountState;
+  group: AccountGroup;
+  kitchenReady: boolean;
+  platformId: number | null;
+  serviceType: ServiceType;
+  customerName: string | null;
+  openedAt: string;
+  updatedAt: string;
+  businessDate: string | null;
+  total: string;
+  paid: string;
+  outstanding: string;
+  lineCount: number;
+  pendingDraftId: string | null;
+  pendingCount: number;
+  closedWithPending: boolean;
+}
+
+export interface LiveAccounts {
+  items?: AccountItem[];
+  outstanding: string;
+  serverTime: string;
+}
