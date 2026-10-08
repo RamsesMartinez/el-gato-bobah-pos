@@ -40,8 +40,8 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 - [X] T013 [US3] Integración `server/internal/integration/ventas_netas_corte_test.go`: devolución en efectivo y con tarjeta en el mismo turno → las dos en «Devoluciones» de su medio, ninguna en «Salidas de efectivo», esperado igual y fondo + ingresos − egresos del desglose = esperado del efectivo (falla nombrando el concepto); cancelar $100+$10 en efectivo → tips del efectivo 0, «Devoluciones» −100; Histórico de turno abierto con totales en vivo (y ciego ocultando); medio negativo con nota; misma cifra devuelta que Ventas
 - [X] T014 [US3] `refunded_tips`, `drawer_refunded`, `drawer_refunded_tips` en `ExpectedByMethodForSession` e `is_refund` en `ListCashMovements` (`server/queries/cash.sql`); `make sqlc`
 - [X] T015 [US3] `corteBreakdown`, `sessionWithExpected`, `SessionDetail` (turno abierto en vivo) en `server/internal/app/backoffice.go`
-- [ ] T016 [P] [US3] Vitest `web/src/features/backoffice/CashPage.test.tsx`: nota del negativo visible
-- [ ] T017 [US3] Nota y tipos en `web/src/features/backoffice/CashPage.tsx` y `web/src/api/backoffice.ts`
+- [X] T016 [P] [US3] Vitest `web/src/features/backoffice/CashPage.test.tsx`: nota del negativo visible
+- [X] T017 [US3] Nota y tipos en `web/src/features/backoffice/CashPage.tsx` y `web/src/api/backoffice.ts`
 
 ## Phase 6: US4 — el detalle y la API dicen la verdad (P2)
 
@@ -55,10 +55,10 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 - [X] T022 [US5] `money` en `web/src/utils/format.ts`
 - [X] T023 [US5] Integración `ProductMargins`: renglón sin costo en `uncosted_revenue` y fuera del margen (`server/internal/integration/money_reports_test.go`)
 - [X] T024 [US5] `ProductMargins` en `server/queries/reports.sql`; `make sqlc`
-- [ ] T025 [P] [US5] Vitest `web/src/features/backoffice/ReportsPage.test.tsx`: «Por medio de pago» dice que resta devoluciones; «sin costo capturado»; fecha local en Propinas por día
-- [ ] T026 [US5] `ReportsPage.tsx`
-- [ ] T027 [P] [US5] Vitest `CashPage.test.tsx`: controles ≥44 px (Ver, Editar, pestañas, Traspaso, Monto/Concepto, desplegables), concepto sin `maxW`, Devoluciones y Pagos devueltos sin scroll propio
-- [ ] T028 [US5] `CashPage.tsx`
+- [X] T025 [P] [US5] Vitest `web/src/features/backoffice/ReportsPage.test.tsx`: «Por medio de pago» dice que resta devoluciones; «sin costo capturado»; fecha local en Propinas por día
+- [X] T026 [US5] `ReportsPage.tsx`
+- [X] T027 [P] [US5] Vitest `CashPage.test.tsx`: controles ≥44 px (Ver, Editar, pestañas, Traspaso, Monto/Concepto, desplegables), concepto sin `maxW`, Devoluciones y Pagos devueltos sin scroll propio
+- [X] T028 [US5] `CashPage.tsx`
 
 ## Phase 8: Polish
 

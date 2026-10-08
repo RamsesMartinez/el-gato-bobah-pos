@@ -9,6 +9,7 @@ import { Page } from '../../components/Page';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { validarRango } from '../../domain/rangoDeFechas';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { diaCorto } from '../../utils/horaDelNegocio';
 
 const PRESETS = [
   { id: '30d', label: '30 días' },
@@ -103,7 +104,10 @@ export function ReportsPage() {
 
       <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4}>
         <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4}>
-          <Text fontWeight="700" mb={2}>Por medio de pago</Text>
+          <Text fontWeight="700">Por medio de pago</Text>
+          {/* Cada cobro en su día y cada devolución en el suyo (spec 031): sin decirlo, el total de
+              un medio no cuadra con lo cobrado y parece un error. */}
+          <Text fontSize="xs" color="fg.muted" mb={2}>Lo cobrado, con ya restadas las devoluciones</Text>
           <Table.Root size="sm">
             <Table.Header><Table.Row><Table.ColumnHeader>Método</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Pagos</Table.ColumnHeader><Table.ColumnHeader textAlign="end">Total</Table.ColumnHeader></Table.Row></Table.Header>
             <Table.Body>
@@ -124,7 +128,16 @@ export function ReportsPage() {
                   <Table.Cell>{m.product_name}</Table.Cell>
                   <Table.Cell textAlign="end">{m.qty}</Table.Cell>
                   <Table.Cell textAlign="end">{money(m.revenue)}</Table.Cell>
-                  <Table.Cell textAlign="end" color={Number(m.margin) < 0 ? 'red.600' : 'green.600'}>{money(m.margin)}</Table.Cell>
+                  {/* Sin costo capturado no hay margen que mostrar: restarle cero presentaba la venta
+                      entera como ganancia (spec 029). */}
+                  <Table.Cell textAlign="end" color={Number(m.margin) < 0 ? 'red.600' : 'green.600'}>
+                    {Number(m.uncosted_revenue ?? 0) >= Number(m.revenue) && Number(m.revenue) > 0
+                      ? <Text as="span" color="fg.muted" fontSize="xs">sin costo capturado</Text>
+                      : money(m.margin)}
+                    {Number(m.uncosted_revenue ?? 0) > 0 && Number(m.uncosted_revenue ?? 0) < Number(m.revenue) && (
+                      <Text fontSize="2xs" color="fg.muted">{money(m.uncosted_revenue ?? 0)} sin costo</Text>
+                    )}
+                  </Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>
@@ -189,7 +202,7 @@ export function ReportsPage() {
               <Table.Body>
                 {tips.data?.byDay.map((d) => (
                   <Table.Row key={d.business_date}>
-                    <Table.Cell>{d.business_date}</Table.Cell>
+                    <Table.Cell>{diaCorto(d.business_date)}</Table.Cell>
                     <Table.Cell textAlign="end">{money(d.tips)}</Table.Cell>
                   </Table.Row>
                 ))}

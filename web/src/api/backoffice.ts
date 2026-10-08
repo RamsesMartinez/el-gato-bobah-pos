@@ -55,7 +55,8 @@ export interface CashExpenseLine {
 }
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
-export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[] }
+// note: por qué un medio salió en negativo en el turno (spec 029). Solo viene cuando lo está.
+export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[]; note?: string }
 // plataformas: lo que entró por cada plataforma, sumando sus DOS métodos (en línea y efectivo).
 // Viene del servidor y no se calcula aquí: es el número contra el que se concilia el depósito.
 export interface CortePlatformSubtotal { platform: string; total: string }
@@ -632,7 +633,8 @@ export const backofficeApi = {
   reportMargins: (q: ReportQuery = {}) =>
     api.get<{
       range: ReportRange;
-      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }>;
+      // uncosted_revenue: lo vendido sin costo capturado; NO está en margin (spec 029).
+      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string; uncosted_revenue?: string }>;
     }>(`/reports/margins?${qsReporte({ ...q, limit: 50 })}`),
   // Unidades por producto, sueltas y dentro de paquetes.
   reportProductsSold: (q: ReportQuery = {}) =>

@@ -129,7 +129,9 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
               <Table.Row key={m.id}>
                 <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt, zona)}</Table.Cell>
                 <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
-                <Table.Cell><Text truncate maxW="220px">{m.concept}</Text></Table.Cell>
+                {/* Sin ancho fijo: a 220 px «Devolución: Producto en mal estado» se cortaba con la
+                    tabla a medio llenar, y el motivo es justo lo que se vino a leer. */}
+                <Table.Cell><Text lineClamp={2}>{m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
                   color={m.kind === 'entrada' ? 'green.500' : 'red.500'}>
@@ -215,6 +217,7 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
       {ingresos.map((m) => (
         <Fragment key={m.method}>
           <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
+          {m.note && <Text fontSize="xs" color="fg.muted" px={3} pl={8} pb={1}>{m.note}</Text>}
           {m.items.map((it) => (
             // Un concepto que resta (Devoluciones) se pinta como los egresos: en gris se leería como
             // otro ingreso.
@@ -246,11 +249,12 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
 }
 
 // Bloque plegable para el drill-down (tablas de movimientos/gastos) — ahorra espacio por defecto.
-function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+// 44 px: medía 36 y en la tableta el dedo cae en el renglón de al lado.
+export function Plegable({ title, children }: { title: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <Box>
-      <Button size="sm" variant="ghost" w="100%" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
+      <Button size="sm" minH="44px" variant="ghost" w="100%" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
         <Text fontWeight="700">{title}</Text>
         {open ? <LuChevronUp /> : <LuChevronDown />}
       </Button>
@@ -298,10 +302,12 @@ export function VoidedPaymentsList({ payments, currency, zona = DEFAULT_TIMEZONE
 // RefundsList: el dinero que se le devolvió al cliente en el turno (spec 031).
 //
 // No es la lista de «Pagos devueltos»: aquélla son cobros que no ocurrieron, ésta dinero que salió
-// hacia el cliente. Tampoco suma nada: las de tarjeta ya bajaron el esperado de su medio y las de
-// efectivo salen como salida de caja, así que un total aquí invitaría a restarlas otra vez.
+// hacia el cliente. Tampoco suma nada: cada devolución ya está en «Devoluciones» de su medio en el
+// desglose (spec 029), así que un total aquí invitaría a restarlas otra vez.
 // Va PLEGADA con su contador: abierta empujaría fuera de los 600 px de la tableta la tabla donde se
-// declara el cierre. El botón mide 44 px, el mínimo para acertar con el dedo.
+// declara el cierre. Y por ir plegada, abierta NO lleva scroll propio (spec 029): un scroll de 3.5
+// renglones dentro de una página que ya hace scroll obligaba a adivinar cuál mover. «Pagos
+// devueltos» sí conserva su tope, a propósito: esa lista va abierta siempre.
 export function RefundsList({ refunds, currency, zona = DEFAULT_TIMEZONE }: {
   refunds?: SessionRefund[]; currency: string; zona?: string;
 }) {
@@ -315,7 +321,7 @@ export function RefundsList({ refunds, currency, zona = DEFAULT_TIMEZONE }: {
       </Button>
       {open && (
         <Box as="ul" aria-label="Devoluciones" listStyleType="none" m={0} mt={2} p={0}
-          bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="35dvh" overflowY="auto">
+          bg="bg.panel" borderRadius="lg" borderWidth="1px">
           {refunds.map((r, i) => (
             <Box as="li" key={i} px={3} py={2} borderTopWidth={i === 0 ? 0 : '1px'} fontSize="sm">
               <HStack justify="space-between" gap={2}>
@@ -371,13 +377,13 @@ function CorteSummary({ data }: { data: CorteData }) {
       )}
       <ArqueoDelCorte drawer={data.drawer} currency={cur} />
       <DesgloseDelConteo counts={data.counts} currency={cur} />
-      <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
+      <Plegable title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
         <MovementsTable movements={movements} currency={cur} zona={horaNegocio.zona} />
-      </Collapsible>
+      </Plegable>
       {expenses.length > 0 && (
-        <Collapsible title={`Gastos (${expenses.length})`}>
+        <Plegable title={`Gastos (${expenses.length})`}>
           <ExpensesTable expenses={expenses} currency={cur} />
-        </Collapsible>
+        </Plegable>
       )}
       <VoidedPaymentsList payments={data.voidedPayments} currency={cur} zona={horaNegocio.zona} />
       <RefundsList refunds={data.refunds} currency={cur} zona={horaNegocio.zona} />
@@ -418,9 +424,10 @@ export function CashPage() {
       <Heading size="lg" mb={4}>Caja</Heading>
       <Tabs.Root defaultValue="operar">
         <Tabs.List>
-          <Tabs.Trigger value="operar">Cajas</Tabs.Trigger>
-          <Tabs.Trigger value="historico">Histórico</Tabs.Trigger>
-          {canManage && <Tabs.Trigger value="gestion">Administrar</Tabs.Trigger>}
+          {/* 44 px: medían 40. */}
+          <Tabs.Trigger value="operar" minH="44px">Cajas</Tabs.Trigger>
+          <Tabs.Trigger value="historico" minH="44px">Histórico</Tabs.Trigger>
+          {canManage && <Tabs.Trigger value="gestion" minH="44px">Administrar</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="operar" px={0} pt={4}><RegistersTab /></Tabs.Content>
         <Tabs.Content value="historico" px={0} pt={4}><HistoryTab /></Tabs.Content>
@@ -512,7 +519,7 @@ export function DesgloseDelConteo({ counts, currency }: {
     .filter((m) => m.conteo !== null);
   if (momentos.length === 0) return null;
   return (
-    <Collapsible title="Efectivo contado">
+    <Plegable title="Efectivo contado">
       <VStack align="stretch" gap={4}>
         {momentos.map(({ titulo, conteo }) => (
           <Box key={titulo}>
@@ -545,7 +552,7 @@ export function DesgloseDelConteo({ counts, currency }: {
           </Box>
         ))}
       </VStack>
-    </Collapsible>
+    </Plegable>
   );
 }
 
@@ -799,7 +806,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         <VStack align="stretch" gap={5}>
           <HStack justify="space-between" flexWrap="wrap" gap={2}>
             <Text fontWeight="700">{register.name}{session.isPrimary ? ' · recibe ventas' : ''}</Text>
-            <Button size="sm" variant="outline" onClick={() => setTransferOpen(true)}
+            <Button size="sm" minH="44px" variant="outline" onClick={() => setTransferOpen(true)}
               disabled={openRegisters.length < 2}>
               <LuArrowLeftRight /> Traspaso
             </Button>
@@ -988,7 +995,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 }
 
 // ---- Movimientos de efectivo (entrada/salida) de la sesión abierta ----
-function MovementsPanel({ session }: { session: CashSession }) {
+export function MovementsPanel({ session }: { session: CashSession }) {
   const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const [kind, setKind] = useState<'entrada' | 'salida'>('salida');
@@ -1020,9 +1027,9 @@ function MovementsPanel({ session }: { session: CashSession }) {
             colorPalette={kind === 'salida' ? 'red' : 'gray'} onClick={() => setKind('salida')}>
             <LuArrowUpRight /> Salida
           </Button>
-          <Input size="sm" w="120px" type="number" inputMode="decimal" placeholder="Monto"
+          <Input size="sm" minH="44px" w="120px" type="number" inputMode="decimal" placeholder="Monto"
             value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <Input size="sm" flex="1" minW="140px" placeholder="Concepto (ej. pago proveedor)"
+          <Input size="sm" minH="44px" flex="1" minW="140px" placeholder="Concepto (ej. pago proveedor)"
             value={concept} onChange={(e) => setConcept(e.target.value)} />
           <Button size="sm" minH="44px" disabled={!canAdd} loading={mut.isPending} onClick={() => mut.mutate()}>
             Registrar
@@ -1133,7 +1140,7 @@ function ManageRegistersTab() {
                   <Switch checked={r.isActive} disabled={r.isPrimary}
                     onCheckedChange={(e) => update.mutate({ ...r, isActive: e.checked })} />
                 </Table.Cell>
-                <Table.Cell textAlign="end"><Button size="xs" variant="outline" onClick={() => setEdit(r)}>Editar</Button></Table.Cell>
+                <Table.Cell textAlign="end"><Button size="sm" minH="44px" variant="outline" onClick={() => setEdit(r)}>Editar</Button></Table.Cell>
               </Table.Row>
             ))}
           </Table.Body>
@@ -1201,7 +1208,7 @@ function HistoryTab() {
                 {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
               </Table.Cell>
               <Table.Cell textAlign="end">
-                <Button size="xs" variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
+                <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
               </Table.Cell>
             </Table.Row>
           ))}

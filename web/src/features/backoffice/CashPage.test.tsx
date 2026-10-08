@@ -1,8 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund } from '../../api/backoffice';
+import { Text } from '@chakra-ui/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -477,4 +479,48 @@ test('el concepto Devoluciones del desglose se pinta como resta', () => {
   wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
   const monto = screen.getByText(/-\$300/);
   expect(monto).toHaveAttribute('data-negative', 'true');
+});
+
+// ---- Spec 029: el corte en la tableta ----
+
+// Un medio en negativo sin explicación deja al cajero buscando un faltante que no existe.
+test('un medio en negativo trae la nota que lo explica', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Tarjeta débito', total: '-300', items: [{ concept: 'Devoluciones', amount: '-300' }],
+      note: 'Negativo porque se devolvió dinero de ventas cobradas en otro turno.' }],
+    ingresosTotal: '-300', egresos: [], egresosTotal: '0', plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  expect(screen.getByText(/se devolvió dinero de ventas cobradas en otro turno/)).toBeInTheDocument();
+});
+
+// El concepto se cortaba a 220 px con ancho de sobra: «Devolución: Producto en mal est…».
+test('el concepto de un movimiento no se corta a un ancho fijo', () => {
+  wrap(<MovementsTable movements={[mov({ concept: 'Devolución: Producto en mal estado' })]} currency="MXN" />);
+  expect(getComputedStyle(screen.getByText('Devolución: Producto en mal estado')).maxWidth).not.toBe('220px');
+});
+
+// La lista ya va plegada: abierta, un scroll propio de 3.5 renglones dentro de una página que ya
+// hace scroll obliga a adivinar cuál de los dos mover.
+test('la lista de devoluciones abierta no tiene scroll propio', async () => {
+  const muchas = Array.from({ length: 12 }, (_, i) => devolucion({ orderFolio: `#${i + 1}` }));
+  wrap(<RefundsList refunds={muchas} currency="MXN" />);
+  await userEvent.click(screen.getByRole('button', { name: /Devoluciones \(12\)/ }));
+  const lista = screen.getByRole('list', { name: 'Devoluciones' });
+  expect(getComputedStyle(lista).overflowY).not.toBe('auto');
+});
+
+// Todo control tocable mide al menos 44 px (constitución, restricciones del producto).
+test('los plegables del corte miden 44 px', () => {
+  wrap(<Plegable title="Efectivo contado"><Text>x</Text></Plegable>);
+  expect(getComputedStyle(screen.getByRole('button', { name: /Efectivo contado/ })).minHeight).toBe('44px');
+});
+
+test('el formulario de movimientos de efectivo mide 44 px', () => {
+  const qc = new QueryClient();
+  const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
+  render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  for (const campo of [screen.getByPlaceholderText('Monto'), screen.getByPlaceholderText(/Concepto/)]) {
+    expect(getComputedStyle(campo).minHeight).toBe('44px');
+  }
 });
