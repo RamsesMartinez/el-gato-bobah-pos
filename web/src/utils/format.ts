@@ -2,11 +2,14 @@
 // para FORMATEAR (el servidor es la fuente de verdad del cálculo). Acepta string o number.
 // currency (ISO-4217) elige el símbolo; el locale se queda en es-MX. Sin centavos se ocultan
 // los ".00" ($70, no $70.00); con centavos se muestran ($70.50) para no engañar.
+// Con centavos van los DOS decimales y sin ellos ninguno (spec 029): «$2,165.2» se lee como un
+// error de captura, y «$45.00» en el mostrador es ruido.
 export function money(v: string | number, currency: string = 'MXN'): string {
   const n = typeof v === 'string' ? Number(v) : v;
+  const conCentavos = Math.round(Math.abs(n) * 100) % 100 !== 0;
   return n.toLocaleString('es-MX', {
     style: 'currency', currency,
-    minimumFractionDigits: 0, maximumFractionDigits: 2,
+    minimumFractionDigits: conCentavos ? 2 : 0, maximumFractionDigits: 2,
   });
 }
 

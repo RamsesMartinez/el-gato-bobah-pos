@@ -24,15 +24,15 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 - [X] T003 [US1] Integración `server/internal/integration/ventas_netas_test.go`: Total sin el devuelto ni el abierto, `pending` con monto y conteo, Total = Σ `byMethod`, cobro de septiembre devuelto en octubre (dos meses), propina devuelta en `tipRefunds` y fuera del Total; `SalesPending` bajo `inTheThreeCases`
 - [X] T004 [US1] `SalesPending` + `SalesPendingSinFolio` y `tip_refunds` en `SalesTotalsByMethod`(+gemela) en `server/queries/sales.sql`; `make sqlc`
 - [X] T005 [US1] `NetCollected` en `server/internal/domain/sales.go`; resumen con Total neto, `Pending`, `TipRefunds` y Total de la búsqueda por folio en `server/internal/app/sales.go`
-- [ ] T006 [P] [US1] Vitest en `web/src/features/sales/SalesPage.test.tsx`: tile «Por cobrar» fuera del total, medio con «ya restado» y propina devuelta, Total rotulado «cobrado, neto»
-- [ ] T007 [US1] Tipos en `web/src/api/sales.ts`; tiles en `web/src/features/sales/SalesSummaryTiles.tsx` (orden Total → medios compactos → Por cobrar → separador → resto; «Ticket promedio · de los pedidos», «Ventas · sin canceladas», Por cobrar sin tooltip)
+- [X] T006 [P] [US1] Vitest en `web/src/features/sales/SalesPage.test.tsx`: tile «Por cobrar» fuera del total, medio con «ya restado» y propina devuelta, Total rotulado «cobrado, neto»
+- [X] T007 [US1] Tipos en `web/src/api/sales.ts`; tiles en `web/src/features/sales/SalesSummaryTiles.tsx` (orden Total → medios compactos → Por cobrar → separador → resto; «Ticket promedio · de los pedidos», «Ventas · sin canceladas», Por cobrar sin tooltip)
 
 ## Phase 4: US2 — devolución a primera vista en Ventas (P1)
 
 - [X] T008 [US2] Integración en `ventas_netas_test.go`: la lista trae `paid` y `lastRefundAt`, `null` en el JSON crudo de un pedido sin devoluciones (y la búsqueda por folio igual)
 - [X] T009 [US2] `paid` y `last_refund_at` en `ListSales`, `ListSalesSinFolio`, `FindSaleByPlatformRef` (`server/queries/sales.sql`); `SaleRow` en `server/internal/app/sales.go`
-- [ ] T010 [P] [US2] Vitest en `SalesPage.test.tsx`: renglón con día y hora, «Devuelto $X · fecha hora», «Por cobrar $Y», pie «N pedidos en la lista»
-- [ ] T011 [US2] Título en la fila del rango, marcas como 2ª línea de la celda Estado, pie, en `web/src/features/sales/SalesPage.tsx`; devuelto en `SaleDetailDialog.tsx`
+- [X] T010 [P] [US2] Vitest en `SalesPage.test.tsx`: renglón con día y hora, «Devuelto $X · fecha hora», «Por cobrar $Y», pie «N pedidos en la lista»
+- [X] T011 [US2] Título en la fila del rango, marcas como 2ª línea de la celda Estado, pie, en `web/src/features/sales/SalesPage.tsx`; devuelto en `SaleDetailDialog.tsx`
 
 ## Phase 5: US3 — el corte y Ventas clasifican igual (P1)
 
@@ -51,8 +51,8 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
 ## Phase 7: US5 — se lee sin ambigüedad en la tableta (P2)
 
-- [ ] T021 [P] [US5] Vitest `web/src/utils/format.test.ts`: `money` con centavos a dos decimales, entero sin decimales
-- [ ] T022 [US5] `money` en `web/src/utils/format.ts`
+- [X] T021 [P] [US5] Vitest `web/src/utils/format.test.ts`: `money` con centavos a dos decimales, entero sin decimales
+- [X] T022 [US5] `money` en `web/src/utils/format.ts`
 - [X] T023 [US5] Integración `ProductMargins`: renglón sin costo en `uncosted_revenue` y fuera del margen (`server/internal/integration/money_reports_test.go`)
 - [X] T024 [US5] `ProductMargins` en `server/queries/reports.sql`; `make sqlc`
 - [ ] T025 [P] [US5] Vitest `web/src/features/backoffice/ReportsPage.test.tsx`: «Por medio de pago» dice que resta devoluciones; «sin costo capturado»; fecha local en Propinas por día

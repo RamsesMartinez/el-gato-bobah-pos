@@ -18,13 +18,15 @@ const pagina: SalesPageData = {
     {
       id: 1, dailyNumber: 7, folioName: 'Tigre', date: '2026-08-30', openedAt: '2026-08-30T18:27:10Z', completedAt: null,
       status: 'entregada', serviceType: 'mostrador', customer: 'Sánchez', total: '275.00',
-      discount: '0', discountBy: '', deliveryFee: '0', refund: '0', tips: '0', platform: '', platformOrderRef: '', openedBy: 'Ana', methods: 'Efectivo',
+      discount: '0', discountBy: '', deliveryFee: '0', refund: '30.67', tips: '0', platform: '', platformOrderRef: '', openedBy: 'Ana', methods: 'Efectivo',
+      paid: '275.00', lastRefundAt: '2026-08-30T15:08:00Z',
     },
     {
       id: 2, dailyNumber: 8, folioName: 'Nutria', date: '2026-08-30', openedAt: '2026-08-30T19:49:05Z', completedAt: null,
       status: 'abierta', serviceType: 'domicilio', customer: '', total: '0.00',
       discount: '0', discountBy: '', deliveryFee: '0', refund: '0', tips: '0', platform: 'Uber Eats',
       platformOrderRef: '4B2E9A10-77C3-4F1E-9E62-0A5C1D3F8B44', openedBy: 'Ana', methods: '',
+      paid: '0', lastRefundAt: null,
     },
   ],
 };
@@ -35,7 +37,8 @@ const resumen: SalesSummary = {
   cancelled: { count: 1, amount: '50.00' },
   refunded: { count: 0, amount: '0' },
   cancelledLines: { count: 0, amount: '0' },
-  byMethod: [{ methodId: 1, method: 'Efectivo', payments: 1, total: '275.00', tips: '15.00' }],
+  pending: { count: 0, amount: '0' },
+  byMethod: [{ methodId: 1, method: 'Efectivo', payments: 1, total: '275.00', tips: '15.00', refunds: '0', tipRefunds: '0' }],
 };
 
 function montar() {
@@ -196,5 +199,70 @@ describe('SalesPage · el folio de la plataforma', () => {
 
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'));
+  });
+});
+
+// Spec 029: el Total es lo que se factura, y una devolución se ve sin abrir el pedido.
+describe('SalesPage · ventas netas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.list.mockResolvedValue({ ...pagina, items: [
+      pagina.items[0],
+      { ...pagina.items[1], total: '180.00', status: 'entregada' },
+    ] });
+    api.summary.mockResolvedValue({
+      ...resumen,
+      total: '2339.33',
+      pending: { count: 1, amount: '180.00' },
+      byMethod: [
+        { methodId: 1, method: 'Efectivo', payments: 9, total: '2261.33', tips: '0', refunds: '367.67', tipRefunds: '5.00' },
+        { methodId: 2, method: 'Tarjeta débito', payments: 2, total: '78.00', tips: '0', refunds: '0', tipRefunds: '0' },
+      ],
+    });
+  });
+
+  it('el Total dice que es lo cobrado menos lo devuelto', async () => {
+    montar();
+    expect(await screen.findByText('$2,339.33')).toBeInTheDocument();
+    expect(screen.getByText('cobrado − devuelto')).toBeInTheDocument();
+  });
+
+  // Lo devuelto en rojo con un «−» se leía como algo por restar, y ya estaba restado.
+  it('el medio dice que lo devuelto ya está restado, y la propina devuelta aparte', async () => {
+    montar();
+    expect(await screen.findByText('$2,261.33')).toBeInTheDocument();
+    expect(screen.getByText('ya restados $367.67 devueltos')).toBeInTheDocument();
+    expect(screen.getByText('+ $5 de propina devuelta')).toBeInTheDocument();
+    expect(screen.queryByText(/−\$367.67 devuelto/)).not.toBeInTheDocument();
+  });
+
+  it('por cobrar va aparte y dice que no entra al total', async () => {
+    montar();
+    expect(await screen.findByText('Por cobrar')).toBeInTheDocument();
+    expect(screen.getByText('no entra al total · 1 pedido')).toBeInTheDocument();
+  });
+
+  it('el conteo y el promedio dicen qué son', async () => {
+    montar();
+    expect(await screen.findByText('Ticket promedio')).toBeInTheDocument();
+    expect(screen.getByText('sin canceladas')).toBeInTheDocument();
+  });
+
+  it('el renglón dice día, hora y la devolución con su momento', async () => {
+    montar();
+    expect(await screen.findByText(/Devuelto \$30\.67 · 30 ago/)).toBeInTheDocument();
+    expect(screen.getAllByText(/30 ago/).length).toBeGreaterThan(1);
+  });
+
+  it('el renglón de un pedido con saldo dice cuánto falta', async () => {
+    montar();
+    expect(await screen.findByText('Por cobrar $180')).toBeInTheDocument();
+  });
+
+  // El pie contaba pedidos de la lista (con canceladas) y el recuadro ventas sin canceladas: «33»
+  // contra «28» sin decir por qué.
+  it('el pie dice que cuenta pedidos de la lista', async () => {
+    montar();
+    expect(await screen.findByText('2 pedidos en la lista')).toBeInTheDocument();
   });
 });

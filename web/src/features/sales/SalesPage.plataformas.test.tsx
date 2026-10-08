@@ -20,6 +20,7 @@ const resumen: SalesSummary = {
   range: { from: '2026-08-30', to: '2026-08-30' },
   count: 0, total: '0', average: '0', tips: '0', deliveryFees: '0',
   cancelled: { count: 0, amount: '0' }, refunded: { count: 0, amount: '0' }, cancelledLines: { count: 0, amount: '0' },
+  pending: { count: 0, amount: '0' },
   byMethod: [],
 };
 const cifra = { amount: '3000', orders: 4, incluye: 'x', excluye: 'y' };
