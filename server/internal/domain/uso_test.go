@@ -36,6 +36,20 @@ func TestLaListaBlancaDeUso(t *testing.T) {
 	}
 }
 
+// LAS ACCIONES DE DIVIDIR LA CUENTA SE CUENTAN (spec 027, D-15). En inglés porque se guardan como
+// dato: renombrarlas después dejaría el histórico ilegible.
+func TestSplitBillActionsAreCounted(t *testing.T) {
+	for _, c := range []struct{ screen, action string }{
+		{"pos", "split-by-products"}, {"pos", "move-lines"}, {"pos", "void-payment"},
+		{"pedidos", "split-by-products"}, {"pedidos", "move-lines"}, {"pedidos", "void-payment"},
+		{"pedidos", "close-order"}, {"pedidos", "cancel-pending"},
+	} {
+		if !EventoDeUsoValido(c.screen, c.action) {
+			t.Errorf("(%s, %s) se descartaría en silencio", c.screen, c.action)
+		}
+	}
+}
+
 // EL LOTE SE PRE-AGREGA ANTES DE ESCRIBIR, Y ESO NO ES UNA OPTIMIZACIÓN COSMÉTICA.
 //
 // Cada `update` deja en Postgres la versión vieja de la fila muerta. Medido sobre el esquema real:

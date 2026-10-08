@@ -30,7 +30,26 @@ type splitTable struct {
 	cashier int64
 	cash    int16
 	order   *app.OrderView
+	release func()
 }
+
+// appStores comparte un pool del rol de la aplicación por prueba: una prueba que arma decenas de
+// mesas agotaría las conexiones de Postgres con un pool por mesa.
+var appStores sync.Map
+
+func sharedAppRoleStore(t *testing.T) *store.Store {
+	t.Helper()
+	if v, ok := appStores.Load(t.Name()); ok {
+		return v.(*store.Store)
+	}
+	st := appRoleStore(t)
+	appStores.Store(t.Name(), st)
+	t.Cleanup(func() { appStores.Delete(t.Name()) })
+	return st
+}
+
+// done suelta la conexión de la mesa antes de que acabe la prueba.
+func (s *splitTable) done() { s.release() }
 
 func newSplitTable(t *testing.T, st *store.Store, suffix string, prices ...string) *splitTable {
 	t.Helper()
@@ -44,11 +63,13 @@ func newSplitTable(t *testing.T, st *store.Store, suffix string, prices ...strin
 	if !open {
 		abrirCajaPrincipal(t, st, cashier)
 	}
-	appSt := appRoleStore(t)
-	tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)
+	appSt := sharedAppRoleStore(t)
+	tctx, rel, err := appSt.AcquireTenant(ctx, defaultCompanyID)
 	if err != nil {
 		t.Fatalf("AcquireTenant: %v", err)
 	}
+	var once sync.Once
+	release := func() { once.Do(rel) }
 	t.Cleanup(release)
 	svc := app.NewOrdersService(appSt, clock)
 	lines := make([]domain.OrderLineInput, len(prices))
@@ -59,7 +80,7 @@ func newSplitTable(t *testing.T, st *store.Store, suffix string, prices ...strin
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	return &splitTable{st: st, svc: svc, ctx: tctx, cashier: cashier, cash: paymentMethodID(t, st, "Efectivo"), order: ord}
+	return &splitTable{st: st, svc: svc, ctx: tctx, cashier: cashier, cash: paymentMethodID(t, st, "Efectivo"), order: ord, release: release}
 }
 
 // pay cobra por productos los renglones de las posiciones dadas, una pieza de cada uno.

@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -465,4 +467,136 @@ func TestCancelPendingCannotLeaveTheOrderOverpaid(t *testing.T) {
 		Scan(&vivos); err != nil || vivos != 2 {
 		t.Fatalf("renglones vivos = %d (%v): el rechazo tiene que deshacer todo lo quitado", vivos, err)
 	}
+}
+
+// NINGUNA SECUENCIA DEJA UN PEDIDO SIN SALIDA (SC-003).
+//
+// El incidente del 2026-10-04 fue exactamente eso: un pedido abierto sin una acción que lo cerrara,
+// que bloqueó el corte de caja. Se recorren secuencias de cobrar, quitar (un producto y lo que
+// falta, con sus rechazos), pasar, entregar y devolver en varios órdenes, y al final a cada pedido
+// abierto se le APLICA su salida —entregar lo pendiente, cobrar lo que falta, o quitar lo que falta
+// si se quedó vacío— y tiene que terminar cerrado. No basta con que exista un botón: tiene que
+// funcionar.
+func TestNoSequenceLeavesAnOrderWithoutAWayOut(t *testing.T) {
+	st := newTestStore(t)
+	type action struct {
+		name string
+		run  func(s *splitTable, touched map[int64]bool)
+	}
+	lastPayment := func(s *splitTable) int64 {
+		var id int64
+		_ = st.Pool.QueryRow(context.Background(), `select coalesce(max(id), 0) from order_payments where order_id = $1`, s.order.ID).Scan(&id)
+		return id
+	}
+	actions := []action{
+		{"cobra el 1", func(s *splitTable, _ map[int64]bool) {
+			_, _ = s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: s.order.ID, MethodID: s.cash, ActorID: s.cashier, ClientUUID: uuid.New(),
+				Lines: []domain.SelectedPieces{{LineID: s.order.Lines[0].ID, Qty: pesos("1")}}})
+		}},
+		{"cobra 30 por monto", func(s *splitTable, _ map[int64]bool) {
+			_, _ = s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: s.order.ID, MethodID: s.cash, ActorID: s.cashier, Amount: pesos("30")})
+		}},
+		{"cobra lo que falta", func(s *splitTable, _ map[int64]bool) {
+			_, _ = s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: s.order.ID, MethodID: s.cash, ActorID: s.cashier, ClientUUID: uuid.New(), AllRemaining: true})
+		}},
+		{"quita el 2", func(s *splitTable, _ map[int64]bool) {
+			_, _ = s.svc.CancelarRenglon(s.ctx, s.order.ID, s.order.Lines[1].ID, s.cashier, "Ya no lo quiere")
+		}},
+		{"quita todos, uno por uno", func(s *splitTable, _ map[int64]bool) {
+			for _, l := range s.order.Lines {
+				_, _ = s.svc.CancelarRenglon(s.ctx, s.order.ID, l.ID, s.cashier, "Ya no lo quiere")
+			}
+		}},
+		{"quita lo que falta", func(s *splitTable, _ map[int64]bool) {
+			_, _ = s.svc.CancelPending(s.ctx, s.order.ID, s.cashier, "Ya no lo quiere")
+		}},
+		{"entrega el 1", func(s *splitTable, _ map[int64]bool) {
+			_ = s.svc.DeliverLine(s.ctx, s.order.ID, s.order.Lines[0].ID, pesos("1"))
+		}},
+		{"pasa el 3 a uno nuevo", func(s *splitTable, touched map[int64]bool) {
+			if r, err := s.svc.MoveLines(s.ctx, app.MoveLinesCmd{ClientUUID: uuid.New(), FromOrderID: s.order.ID, ActorID: s.cashier,
+				Lines: []domain.SelectedPieces{{LineID: s.order.Lines[2].ID, Qty: pesos("1")}}}); err == nil {
+				touched[r.To.ID] = true
+			}
+		}},
+		{"devuelve el último pago", func(s *splitTable, _ map[int64]bool) {
+			if id := lastPayment(s); id != 0 {
+				_, _ = s.svc.VoidPayment(s.ctx, s.order.ID, id, s.cashier, "Se le cobró a otra persona")
+			}
+		}},
+	}
+	// Todas las parejas y tríos en orden, con un recorrido fijo: reproducible, y suficiente para
+	// cruzar cada acción con cada otra antes y después.
+	var sequences [][]int
+	for a := range actions {
+		for b := range actions {
+			sequences = append(sequences, []int{a, b})
+			for c := range actions {
+				if (a+b+c)%3 == 0 {
+					sequences = append(sequences, []int{a, b, c})
+				}
+			}
+		}
+	}
+	for n, seq := range sequences {
+		s := newSplitTable(t, st, "salida_"+strconv.Itoa(n), "50", "60", "70")
+		touched := map[int64]bool{s.order.ID: true}
+		names := []string{}
+		for _, i := range seq {
+			actions[i].run(s, touched)
+			names = append(names, actions[i].name)
+		}
+		for id := range touched {
+			if err := closeWithItsWayOut(s, id); err != nil {
+				t.Fatalf("tras %v el pedido %d no tiene salida: %v", names, id, err)
+			}
+		}
+		s.done()
+	}
+}
+
+// closeWithItsWayOut aplica a un pedido la salida que el tablero le ofrece y exige que quede cerrado.
+func closeWithItsWayOut(s *splitTable, id int64) error {
+	ctx := context.Background()
+	var status string
+	var live, pending, payments int
+	var outstanding decimal.Decimal
+	if err := s.st.Pool.QueryRow(ctx, `
+		select o.status::text,
+		       (select count(*) from order_lines where order_id = o.id and cancelled_at is null),
+		       (select count(*) from order_lines where order_id = o.id and cancelled_at is null and delivered_qty < quantity),
+		       (select count(*) from order_payments where order_id = o.id),
+		       greatest(o.total - (select coalesce(sum(amount), 0) from order_payments where order_id = o.id), 0)
+		  from orders o where o.id = $1`, id).Scan(&status, &live, &pending, &payments, &outstanding); err != nil {
+		return err
+	}
+	if status == domain.StatusCancelada || status == domain.StatusReembolsada {
+		return nil
+	}
+	if live == 0 {
+		if payments > 0 {
+			return fmt.Errorf("sin productos y con %d pagos: solo sale devolviéndolos", payments)
+		}
+		if _, err := s.svc.CancelPending(s.ctx, id, s.cashier, ""); err != nil {
+			return fmt.Errorf("«Cerrar pedido» sin productos: %w", err)
+		}
+		return nil
+	}
+	if pending > 0 {
+		if err := s.svc.DeliverAll(s.ctx, id); err != nil {
+			return fmt.Errorf("«Entregar todo»: %w", err)
+		}
+	}
+	if outstanding.IsPositive() {
+		if _, err := s.svc.Charge(s.ctx, app.ChargeCmd{OrderID: id, MethodID: s.cash, ActorID: s.cashier, Amount: outstanding}); err != nil {
+			return fmt.Errorf("«Cobrar %s»: %w", outstanding, err)
+		}
+	}
+	if err := s.st.Pool.QueryRow(ctx, `select status::text from orders where id = $1`, id).Scan(&status); err != nil {
+		return err
+	}
+	if status != domain.StatusEntregada {
+		return fmt.Errorf("tras su salida quedó %s", status)
+	}
+	return nil
 }
