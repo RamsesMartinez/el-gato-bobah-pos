@@ -441,6 +441,10 @@ type SessionView struct {
 	// pago devuelto ya no está en order_payments, así que el esperado por método no cambia de
 	// fórmula. Siempre arreglo.
 	VoidedPayments []VoidedPaymentView `json:"voidedPayments"`
+	// LiveAccounts son las cuentas vivas que NO bloquean el cierre (spec 030, D-10): las que se están
+	// capturando y las entregadas que deben, de cualquier día. Se listan para abrirlas o descartarlas
+	// antes de cerrar; las que bloquean siguen en Pending, con su guardia sin cambio. Siempre arreglo.
+	LiveAccounts []AccountItem `json:"liveAccounts"`
 }
 
 // VoidedPaymentView es un pago devuelto en el turno, para la lista del corte.
@@ -483,8 +487,10 @@ type CashierTotal struct {
 	Payments int             `json:"payments"`
 }
 
-// PendingOrder es un pedido del turno que sigue sin entregarse.
+// PendingOrder es un pedido del turno que sigue sin entregarse. El id viaja para que el cierre
+// ofrezca «Abrir» esa cuenta en el POS en vez de mandar a buscarla por nombre.
 type PendingOrder struct {
+	ID     int64  `json:"id"`
 	Number int    `json:"number"`
 	Name   string `json:"name"`
 }
@@ -1170,6 +1176,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
 	if view.VoidedPayments, err = s.voidedPayments(ctx, sess.ID); err != nil {
+		return nil, err
+	}
+	if view.LiveAccounts, err = s.liveAccountsForClosing(ctx, reg.IsPrimary); err != nil {
 		return nil, err
 	}
 	methods := []methodExpected{}
@@ -1958,7 +1967,7 @@ func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID in
 	}
 	out := make([]PendingOrder, 0, len(filas))
 	for _, f := range filas {
-		out = append(out, PendingOrder{Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
+		out = append(out, PendingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
 	}
 	return out, nil
 }
@@ -2038,4 +2047,26 @@ func (s *BackofficeService) SessionSalesPage(ctx context.Context, id int64, limi
 		})
 	}
 	return ventas, int(resumen.Total), resumen.Ingreso, nil
+}
+
+// liveAccountsForClosing son las cuentas vivas que el cierre lista sin bloquearse por ellas. Del
+// MISMO servicio que la fila del POS con `olderDebts` (un fiado de hace meses también se ve al cerrar),
+// filtrado a los grupos que no bloquean: lo que está en cocina ya va en Pending. Solo la caja
+// principal: las secundarias no venden.
+func (s *BackofficeService) liveAccountsForClosing(ctx context.Context, isPrimary bool) ([]AccountItem, error) {
+	out := []AccountItem{}
+	if !isPrimary {
+		return out, nil
+	}
+	live, err := NewAccountsService(s.store, NewOrdersService(s.store, s.now)).Live(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range live.Items {
+		switch it.Group {
+		case domain.GroupCapturing, domain.GroupDeliveredOwes, domain.GroupPreviousDays:
+			out = append(out, it)
+		}
+	}
+	return out, nil
 }

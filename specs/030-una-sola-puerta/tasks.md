@@ -281,8 +281,8 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 ## Phase 10: User Story 8 — Cerrar caja con cuentas vivas (P2)
 
-- [ ] T085 [US8] **BE** IT `TestCloseLiveAccountsDoNotBlock` en server/internal/integration/cierre_con_cuentas_vivas_test.go: con un pedido en cocina el cierre sigue bloqueado (`OPEN_ORDERS`, `Pending` sin cambio); con solo cuentas en captura y entregadas que deben (una de hace 100 días) cierra, `liveAccounts` las lista, y al día siguiente las que deben están en `previous_days` y las capturando siguen vivas; JSON crudo `liveAccounts: []`
-- [ ] T086 [US8] **BE** Agregar `LiveAccounts` a `SessionView` en server/internal/app/backoffice.go desde `AccountsService.Live(ctx, true)` filtrado a los grupos no bloqueantes; `sinPedidosPendientes` no se toca
+- [X] T085 [US8] **BE** IT `TestCloseLiveAccountsDoNotBlock` en server/internal/integration/cierre_con_cuentas_vivas_test.go: con un pedido en cocina el cierre sigue bloqueado (`OPEN_ORDERS`, `Pending` sin cambio); con solo cuentas en captura y entregadas que deben (una de hace 100 días) cierra, `liveAccounts` las lista, y al día siguiente las que deben están en `previous_days` y las capturando siguen vivas; JSON crudo `liveAccounts: []`
+- [X] T086 [US8] **BE** Agregar `LiveAccounts` a `SessionView` en server/internal/app/backoffice.go desde `AccountsService.Live(ctx, true)` filtrado a los grupos no bloqueantes; `sinPedidosPendientes` no se toca
 - [X] T087 [P] [US8] **FE** Test en web/src/features/backoffice/CashPage.test.tsx: bloqueantes arriba con «Abrir» (navega a `/pos?pedido=`); sección plegada «Cuentas pendientes (N)» con «Abrir» y «Descartar» de 44 px y separados; «Descartar» confirma con `ConfirmSheet`; «Cerrar caja» confirma con `ConfirmSheet` y no llama a `confirm`
 - [X] T088 [US8] **FE** Implementar en web/src/features/backoffice/CashPage.tsx; con esto `sinDialogosDelSistema.test.ts` (T022) queda **verde**
 

@@ -357,7 +357,9 @@ on conflict do nothing;
 --
 -- Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
 -- "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
-select o.daily_number, o.folio_name
+--
+-- El id viaja para que el cierre ofrezca «Abrir» esa cuenta en el POS (spec 030).
+select o.id, o.daily_number, o.folio_name
 from orders o
 where o.register_session_id = $1
   and o.status in ('abierta', 'lista')

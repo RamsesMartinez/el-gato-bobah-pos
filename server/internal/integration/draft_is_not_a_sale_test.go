@@ -54,7 +54,15 @@ func TestADraftIsNeverASale(t *testing.T) {
 	}{
 		{"ventas: lista", func() (any, error) { return sales.List(ctx, f) }},
 		{"ventas: resumen", func() (any, error) { return sales.Summary(ctx, f) }},
-		{"corte del turno", func() (any, error) { return back.CurrentByRegister(ctx, registerID) }},
+		{"corte del turno", func() (any, error) {
+			v, err := back.CurrentByRegister(ctx, registerID)
+			if v != nil {
+				// liveAccounts LISTA la cuenta a propósito (para abrirla o descartarla antes de cerrar,
+				// D-10); lo que no puede es moverle una sola cifra al corte.
+				v.LiveAccounts = nil
+			}
+			return v, err
+		}},
 		{"reportes: por día", func() (any, error) { return back.SalesByDay(ctx, day, day) }},
 		{"reportes: por método", func() (any, error) { return back.SalesByMethod(ctx, day, day) }},
 		{"reportes: productos vendidos (recetas y costeo)", func() (any, error) { return back.ProductsSold(ctx, day, day, 50) }},
