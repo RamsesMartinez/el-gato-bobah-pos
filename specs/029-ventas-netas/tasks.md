@@ -53,8 +53,8 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
 - [ ] T021 [P] [US5] Vitest `web/src/utils/format.test.ts`: `money` con centavos a dos decimales, entero sin decimales
 - [ ] T022 [US5] `money` en `web/src/utils/format.ts`
-- [ ] T023 [US5] Integración `ProductMargins`: renglón sin costo en `uncosted_revenue` y fuera del margen (`server/internal/integration/money_reports_test.go`)
-- [ ] T024 [US5] `ProductMargins` en `server/queries/reports.sql`; `make sqlc`
+- [X] T023 [US5] Integración `ProductMargins`: renglón sin costo en `uncosted_revenue` y fuera del margen (`server/internal/integration/money_reports_test.go`)
+- [X] T024 [US5] `ProductMargins` en `server/queries/reports.sql`; `make sqlc`
 - [ ] T025 [P] [US5] Vitest `web/src/features/backoffice/ReportsPage.test.tsx`: «Por medio de pago» dice que resta devoluciones; «sin costo capturado»; fecha local en Propinas por día
 - [ ] T026 [US5] `ReportsPage.tsx`
 - [ ] T027 [P] [US5] Vitest `CashPage.test.tsx`: controles ≥44 px (Ver, Editar, pestañas, Traspaso, Monto/Concepto, desplegables), concepto sin `maxW`, Devoluciones y Pagos devueltos sin scroll propio

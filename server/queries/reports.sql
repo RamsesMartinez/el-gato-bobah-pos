@@ -105,12 +105,19 @@ order by o.business_date;
 -- Spec 031 (D10): sin los renglones QUITADOS —no se vendieron, y ProductsSold y el total del pedido
 -- ya los excluían— y con el descuento del pedido repartido entre sus renglones en proporción a su
 -- importe. Así el ingreso por producto suma lo vendido menos envíos, que no es de ningún producto.
+--
+-- Spec 029: lo vendido SIN COSTO CAPTURADO (`unit_cost = 0`) va en `uncosted_revenue` y no suma al
+-- margen. Restarle un costo de cero mostraba como margen la venta entera, y el producto sin costo
+-- parecía el más rentable de la carta. `unit_cost = 0` no distingue «gratis» de «sin capturar»: es
+-- un hecho ya guardado así, y lo honesto es decir que no hay costo, no inventar un margen.
+-- Misma expresión prorrateada que `revenue`, para que las dos cifras se puedan comparar.
 select ol.product_name,
        sum(ol.quantity)::numeric(12,2) as qty,
        coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)::numeric(12,2) as revenue,
        coalesce(sum(ol.unit_cost * ol.quantity), 0)::numeric(12,2) as cost,
-       (coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)
-        - coalesce(sum(ol.unit_cost * ol.quantity), 0))::numeric(12,2) as margin
+       (coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)) filter (where ol.unit_cost > 0), 0)
+        - coalesce(sum(ol.unit_cost * ol.quantity), 0))::numeric(12,2) as margin,
+       coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)) filter (where ol.unit_cost = 0), 0)::numeric(12,2) as uncosted_revenue
 from order_lines ol
 join orders o on o.id = ol.order_id
 where o.status not in ('cancelada', 'reembolsada')
