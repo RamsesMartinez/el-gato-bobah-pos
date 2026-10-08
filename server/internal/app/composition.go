@@ -112,6 +112,18 @@ type CompositionView struct {
 	// que capturar.
 	Editable bool   `json:"editable"`
 	Reason   string `json:"reason,omitempty"`
+	// Stamp es cuándo se guardó por última vez; la pantalla lo devuelve al guardar (BasedOn) para
+	// saber si otra persona la cambió mientras se editaba.
+	Stamp string `json:"stamp"`
+	// SameName son los extras que se llaman igual en otro grupo: la pantalla ofrece guardarles la
+	// misma receta.
+	SameName []SameNameOption `json:"sameName"`
+}
+
+// SameNameOption es un extra que se llama igual que otro, en otro grupo.
+type SameNameOption struct {
+	ID    int64  `json:"id"`
+	Group string `json:"group"`
 }
 
 // CompositionInputItem es un renglón capturado.
@@ -135,12 +147,17 @@ type CompositionRequest struct {
 	Components      []CompositionComponent `json:"components"`
 	// Yield: cuánto rinde, solo para un insumo preparado y en su unidad base.
 	Yield *decimal.Decimal `json:"yield"`
+	// AlsoOptionIDs: extras que se llaman igual y reciben la misma receta.
+	AlsoOptionIDs []int64 `json:"alsoOptionIds"`
+	// BasedOn es el Stamp de la receta que se abrió. Si ya no coincide, otra persona la guardó
+	// mientras se editaba: se rechaza en lugar de pisar su cambio. Nil = sin esa revisión.
+	BasedOn *string `json:"basedOn"`
 }
 
 // Composition devuelve lo que lleva un producto o un extra.
 func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id int64) (CompositionView, error) {
 	q := s.store.QC(ctx)
-	v := CompositionView{Items: []CompositionItemView{}, Components: []CompositionComponentView{}, Editable: true}
+	v := CompositionView{Items: []CompositionItemView{}, Components: []CompositionComponentView{}, SameName: []SameNameOption{}, Editable: true}
 	var recipe *int64
 	var status, by *string
 	var at pgtype.Timestamptz
@@ -182,6 +199,13 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 		if o.LinkedProductName != nil {
 			v.LinkedProductName = *o.LinkedProductName
 		}
+		twins, err := q.ListSameNameOptions(ctx, id)
+		if err != nil {
+			return v, err
+		}
+		for _, t := range twins {
+			v.SameName = append(v.SameName, SameNameOption{ID: t.ID, Group: t.GroupName})
+		}
 	case CompositionOfIngredient:
 		in, err := q.GetIngredientComposition(ctx, id)
 		if err != nil {
@@ -204,6 +228,7 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 	if at.Valid {
 		v.ConfirmedAt = &at.Time
 	}
+	v.Stamp = stampOf(at)
 	if recipe != nil {
 		items, err := q.ListCompositionItems(ctx, *recipe)
 		if err != nil {
@@ -242,25 +267,19 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		if err := q.LockCompositionEdits(ctx); err != nil {
 			return err
 		}
+		if err := checkNotStale(ctx, q, kind, id, req.BasedOn); err != nil {
+			return err
+		}
 		names, err := validateComposition(ctx, q, kind, id, req)
 		if err != nil {
 			return err
 		}
-		var recipe *int64
-		if len(req.Items) > 0 {
-			rid, err := q.CreateCompositionRecipe(ctx)
-			if err != nil {
-				return err
-			}
-			for i, it := range req.Items {
-				if err := q.InsertCompositionItem(ctx, db.InsertCompositionItemParams{
-					RecipeID: rid, IngredientID: it.IngredientID, Quantity: domain.Round4(it.Quantity),
-					UnitID: it.UnitID, Position: int32(i),
-				}); err != nil {
-					return err
-				}
-			}
-			recipe = &rid
+		if err := validateTwins(ctx, q, kind, id, req.AlsoOptionIDs); err != nil {
+			return err
+		}
+		recipe, err := createRecipe(ctx, q, req.Items)
+		if err != nil {
+			return err
 		}
 		var status *string
 		var by *int64
@@ -273,6 +292,19 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 			n, err = q.SetOptionComposition(ctx, db.SetOptionCompositionParams{
 				ID: id, RecipeID: recipe, LinkedProductID: req.LinkedProductID, Status: status, ConfirmedBy: by,
 			})
+			// Cada gemelo con su propia copia de la receta: `recipe_id` es único por extra.
+			for _, twin := range req.AlsoOptionIDs {
+				if err != nil {
+					break
+				}
+				var twinRecipe *int64
+				if twinRecipe, err = createRecipe(ctx, q, req.Items); err != nil {
+					break
+				}
+				_, err = q.SetOptionComposition(ctx, db.SetOptionCompositionParams{
+					ID: twin, RecipeID: twinRecipe, LinkedProductID: req.LinkedProductID, Status: status, ConfirmedBy: by,
+				})
+			}
 		} else {
 			if err := q.DeletePackageSlots(ctx, id); err != nil {
 				return err
@@ -301,6 +333,90 @@ func (s *AdminService) SaveComposition(ctx context.Context, kind CompositionKind
 		}
 		return err
 	})
+}
+
+// createRecipe guarda los renglones como una receta nueva; sin renglones, ninguna.
+func createRecipe(ctx context.Context, q *db.Queries, items []CompositionInputItem) (*int64, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	rid, err := q.CreateCompositionRecipe(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i, it := range items {
+		if err := q.InsertCompositionItem(ctx, db.InsertCompositionItemParams{
+			RecipeID: rid, IngredientID: it.IngredientID, Quantity: domain.Round4(it.Quantity),
+			UnitID: it.UnitID, Position: int32(i),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return &rid, nil
+}
+
+func stampOf(at pgtype.Timestamptz) string {
+	if !at.Valid {
+		return ""
+	}
+	return at.Time.UTC().Format(time.RFC3339Nano)
+}
+
+// checkNotStale rechaza guardar sobre una copia vieja: si la receta se guardó después de que la
+// pantalla la abrió, quien guarda ahora pisaría ese cambio sin verlo.
+func checkNotStale(ctx context.Context, q *db.Queries, kind CompositionKind, id int64, basedOn *string) error {
+	if basedOn == nil {
+		return nil
+	}
+	var at pgtype.Timestamptz
+	switch kind {
+	case CompositionOfProduct:
+		p, err := q.GetProductComposition(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		at = p.CompositionConfirmedAt
+	case CompositionOfOption:
+		o, err := q.GetOptionComposition(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		at = o.CompositionConfirmedAt
+	case CompositionOfIngredient:
+		in, err := q.GetIngredientComposition(ctx, id)
+		if err != nil {
+			return notFound(err)
+		}
+		at = in.CompositionConfirmedAt
+	}
+	if stampOf(at) != *basedOn {
+		return fmt.Errorf("%w: otra persona cambió esta receta mientras la editabas; ábrela de nuevo para ver su cambio", domain.ErrConflict)
+	}
+	return nil
+}
+
+// validateTwins acepta solo extras que de verdad se llaman igual que el que se guarda.
+func validateTwins(ctx context.Context, q *db.Queries, kind CompositionKind, id int64, twins []int64) error {
+	if len(twins) == 0 {
+		return nil
+	}
+	if kind != CompositionOfOption {
+		return fmt.Errorf("%w: solo un extra se guarda también en otros grupos", domain.ErrValidation)
+	}
+	same, err := q.ListSameNameOptions(ctx, id)
+	if err != nil {
+		return err
+	}
+	ok := map[int64]bool{}
+	for _, s := range same {
+		ok[s.ID] = true
+	}
+	for _, t := range twins {
+		if !ok[t] {
+			return fmt.Errorf("%w: el extra %d no se llama igual", domain.ErrValidation, t)
+		}
+	}
+	return nil
 }
 
 // validateComposition revisa la captura de un producto o un extra contra el catálogo. Corre dentro
@@ -400,6 +516,9 @@ func (s *AdminService) savePreparedIngredient(ctx context.Context, id int64, req
 		}
 		if _, err := q.GetIngredientComposition(ctx, id); err != nil {
 			return notFound(err)
+		}
+		if err := checkNotStale(ctx, q, CompositionOfIngredient, id, req.BasedOn); err != nil {
+			return err
 		}
 		in, err := compositionInput(ctx, q, req)
 		if err != nil {

@@ -337,6 +337,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 
 				// Categorías (para filtro y alta de productos): admin/gerente.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/categories", h.AdminCategories)
+				// Catálogo › Recetas: lo que gasta cada producto, extra y preparado.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/recipes", h.ListRecipes)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/recipes/confirm", h.ConfirmRecipes)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
 					r.Get("/", h.AdminListProducts)
 					r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
