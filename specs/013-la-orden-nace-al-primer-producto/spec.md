@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-05
 
-**Status**: Draft — desbloqueado el 2026-09-08, listo para `/speckit-plan`
+**Status**: Absorbida por la [030](../030-una-sola-puerta/spec.md) el 2026-10-08 (opción A del lienzo «Una sola puerta para cobrar»). Sus decisiones siguen vigentes salvo donde la 030 dice lo contrario (D-1, D-2).
 
 **Input**: Ver *Origen* al final.
 
