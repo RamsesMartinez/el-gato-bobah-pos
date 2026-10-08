@@ -395,3 +395,25 @@ func (h *Handlers) SendDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, res)
 }
+
+// POST /pos/drafts/{id}/discard → 204
+func (h *Handlers) DiscardDraft(w http.ResponseWriter, r *http.Request) {
+	id, err := draftIDParam(r, "id")
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	if err := h.drafts.Discard(r.Context(), id, u.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	if v, err := h.drafts.Get(r.Context(), id); err == nil {
+		h.publishDraft(r, v)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

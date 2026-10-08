@@ -1357,3 +1357,33 @@ func liveLineIDs(o *OrderView) []int64 {
 	}
 	return out
 }
+
+// Discard cierra una cuenta que no se mandó a cocina: queda «descartada» como rastro —no es venta
+// cancelada, no gasta folio— y su nombre vuelve a la bolsa (D-7). Descartarla dos veces no es error.
+// Una ya enviada se rechaza: ya es un pedido y se quita cancelándolo, con motivo y permiso.
+func (s *DraftsService) Discard(ctx context.Context, id uuid.UUID, actor int64) error {
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		d, err := q.LockDraft(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: esa cuenta ya no existe", domain.ErrNotFound)
+			}
+			return err
+		}
+		switch d.Status {
+		case domain.DraftDiscarded:
+			return nil
+		case domain.DraftSent:
+			return domain.ErrDraftAlreadySent
+		}
+		n, err := q.CountDraftLines(ctx, id)
+		if err != nil {
+			return err
+		}
+		reason := domain.DiscardManual
+		if n == 0 {
+			reason = domain.DiscardEmpty
+		}
+		return discardAndRelease(ctx, q, db.DiscardDraftParams{ID: id, DiscardedBy: &actor, Reason: &reason})
+	})
+}
