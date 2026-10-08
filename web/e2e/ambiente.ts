@@ -50,15 +50,46 @@ export async function tokenDeRequest(request: APIRequestContext): Promise<string
   return jwt;
 }
 
-export async function pedidosEnCurso(jwt: string) {
-  const r = await fetch(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
-  if (!r.ok) throw new Error(`/orders/open: ${r.status}`);
-  const body = await r.json();
-  return (body.items ?? []) as Array<{
-    id: number; number: number; folioName: string; outstanding: string;
-    enPreparacion: boolean; deliveryPlatformId: number | null;
-  }>;
+// Una cuenta viva como la manda GET /pos/accounts (spec 030): las que se capturan en cualquier
+// tableta y los pedidos que no se han cerrado.
+export interface CuentaViva {
+  key: string;
+  kind: 'draft' | 'order';
+  draftId: string | null;
+  orderId: number | null;
+  number: number | null;
+  folioName: string | null;
+  state: 'capturing' | 'in_kitchen' | 'paid_in_kitchen' | 'partly_paid' | 'delivered_owes';
+  platformId: number | null;
+  outstanding: string;
+  // Lo «Nuevo» que se capturó sobre un pedido y no se mandó.
+  pendingDraftId: string | null;
 }
 
-// Dónde se anotan los pedidos que ya estaban abiertos cuando empezó la suite.
+// cuentasVivas pide TODAS, incluidas las deudas de días anteriores: la limpieza tiene que ver lo
+// que la suite dejó aunque la corrida haya cruzado la medianoche.
+export async function cuentasVivas(jwt: string): Promise<CuentaViva[]> {
+  const r = await fetch(`${API}/pos/accounts?olderDebts=true`, { headers: { Authorization: `Bearer ${jwt}` } });
+  if (!r.ok) throw new Error(`/pos/accounts: ${r.status}`);
+  const body = await r.json();
+  return (body.items ?? []) as CuentaViva[];
+}
+
+// pedidosEnCurso: los pedidos de la fila (sin las cuentas que se capturan), con la forma que usan
+// los specs que cobran.
+export async function pedidosEnCurso(jwt: string) {
+  return (await cuentasVivas(jwt))
+    .filter((c) => c.kind === 'order' && c.orderId !== null)
+    .map((c) => ({
+      id: c.orderId as number,
+      number: c.number ?? 0,
+      folioName: c.folioName ?? '',
+      outstanding: c.outstanding,
+      // Lo que no está entregado sigue en cocina: entregar primero, o el corte no cierra.
+      enPreparacion: c.state !== 'delivered_owes',
+      deliveryPlatformId: c.platformId,
+    }));
+}
+
+// Dónde se anotan los pedidos y las cuentas que ya estaban abiertos cuando empezó la suite.
 export const MARCA = process.env.E2E_MARCA ?? '.playwright-abiertos.json';

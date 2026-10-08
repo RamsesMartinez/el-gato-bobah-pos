@@ -30,15 +30,18 @@ async function entrar(page: Page, jwt: string) {
 test.describe('E — el dinero, de la pantalla al servidor', () => {
   test('E0 · el ambiente responde y la sesión sirve', async ({ page, request }) => {
     const jwt = await tokenDeRequest(request);
-    const abiertos = await request.get(`${API}/orders/open`, {
+    const abiertos = await request.get(`${API}/pos/accounts`, {
       headers: { Authorization: `Bearer ${jwt}` },
     });
     expect(abiertos.ok()).toBeTruthy();
 
     // La suma de la lista y la cifra del encabezado salen del MISMO predicado. Si divergen, el
-    // operador ve dos cifras del mismo dinero y no tiene cómo saber cuál miente.
+    // operador ve dos cifras del mismo dinero y no tiene cómo saber cuál miente. Las cuentas que se
+    // capturan no son deuda todavía: no entran a la suma (spec 030, contrato de /pos/accounts).
     const { items, outstanding } = await abiertos.json();
-    const suma = items.reduce((s: number, o: { outstanding: string }) => s + Number(o.outstanding), 0);
+    const suma = (items as Array<{ kind: string; outstanding: string }>)
+      .filter((o) => o.kind === 'order')
+      .reduce((s: number, o) => s + Number(o.outstanding), 0);
     expect(Math.abs(suma - Number(outstanding)), 'el total del servidor no es la suma de su lista')
       .toBeLessThan(0.011);
 
@@ -174,8 +177,8 @@ test.describe('E — el dinero, de la pantalla al servidor', () => {
 
     // Y la barra del POS tampoco le ve deuda: cerrar con un predicado y mostrar deuda con otro es
     // de donde salió el centavo fantasma.
-    const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
-    const enLaBarra = abiertos.items.find((o: { id: number }) => o.id === pedido.id);
+    const abiertos = await (await request.get(`${API}/pos/accounts`, { headers: auth })).json();
+    const enLaBarra = (abiertos.items ?? []).find((o: { orderId: number | null }) => o.orderId === pedido.id);
     if (enLaBarra) {
       expect(Number(enLaBarra.outstanding), 'la barra le ve deuda a un pedido saldado').toBe(0);
     }

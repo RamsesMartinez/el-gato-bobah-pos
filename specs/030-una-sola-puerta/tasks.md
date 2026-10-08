@@ -292,10 +292,10 @@ cancela desde ⋮; ningún diálogo del sistema.
 
 ### e2e contra el ambiente de pruebas, 1024×600
 
-- [ ] T089 **FE** web/e2e/limpiar-lo-que-cree.ts aprende a descartar las cuentas en captura que creó la suite (las que ya estaban se anotan en el `globalSetup` y no se tocan) y sigue entregando y cobrando sus pedidos
-- [ ] T090 **FE** Reescribir las referencias a «Cuenta 1» / «Pedidos por cobrar» en web/e2e/medir-no-estorba.spec.ts, folio-de-plataforma.spec.ts, contar-el-cajon.spec.ts, split-bill-incident.spec.ts, deuda-de-especificaciones.spec.ts, cobro-en-pantalla.spec.ts y cabe-en-la-tableta.spec.ts al flujo nuevo, conservando el defecto que cada una atrapa; usan `tokenDeApi`/`tokenDeRequest` (web/e2e/ambiente.ts)
-- [ ] T091 **FE** Medición en web/e2e/cabe-en-la-tableta.spec.ts a 1024×600: fichas visibles con panel abierto ≥ 2 y cerrado ≥ 4; la fila no desborda con 10 cuentas; ticket con las tres secciones muestra ≥ 4 renglones y el pie visible; la hoja «+N», `DescartarCuentaSheet`, el aviso sin conexión y el cierre de caja caben con su botón de confirmar visible; todo control ≥ 44 px (SC-004)
-- [ ] T092 **FE** web/e2e/una-sola-puerta.spec.ts: un test por caso del lienzo y por historia, con el número del caso en el título (mapa abajo). Dos contextos de navegador = dos tabletas
+- [X] T089 **FE** web/e2e/limpiar-lo-que-cree.ts aprende a descartar las cuentas en captura que creó la suite (las que ya estaban se anotan en el `globalSetup` y no se tocan) y sigue entregando y cobrando sus pedidos
+- [X] T090 **FE** Reescribir las referencias a «Cuenta 1» / «Pedidos por cobrar» en web/e2e/medir-no-estorba.spec.ts, folio-de-plataforma.spec.ts, contar-el-cajon.spec.ts, split-bill-incident.spec.ts, deuda-de-especificaciones.spec.ts, cobro-en-pantalla.spec.ts y cabe-en-la-tableta.spec.ts al flujo nuevo, conservando el defecto que cada una atrapa; usan `tokenDeApi`/`tokenDeRequest` (web/e2e/ambiente.ts)
+- [X] T091 **FE** Medición en web/e2e/cabe-en-la-tableta.spec.ts a 1024×600: fichas visibles con panel abierto ≥ 2 y cerrado ≥ 4; la fila no desborda con 10 cuentas; ticket con las tres secciones muestra ≥ 4 renglones y el pie visible; la hoja «+N», `DescartarCuentaSheet`, el aviso sin conexión y el cierre de caja caben con su botón de confirmar visible; todo control ≥ 44 px (SC-004)
+- [X] T092 **FE** web/e2e/una-sola-puerta.spec.ts: un test por caso del lienzo y por historia, con el número del caso en el título (mapa abajo). Dos contextos de navegador = dos tabletas
 - [ ] T093 Validar como usuario nuevo: capturas reales a 1024×600 de la fila, la hoja «+N», el ticket con tres secciones, la hoja de descartar y el cierre; un agente que nunca vio el POS intenta los recorridos de las 8 historias y reporta dónde se atora. Lo que encuentre deja su test antes del arreglo
 
 ### Mapa caso del lienzo → test

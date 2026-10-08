@@ -162,12 +162,15 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
     queryFn: () => posApi.getDraft(borradorId as string),
     enabled: confirmada,
     retry: false,
+    // La red si el canal de eventos se cayó: una tableta suspendida no recibe `draft.updated`.
+    refetchInterval: 30_000,
   });
   const orderQ = useQuery({
     queryKey: ['orders', pedidoId],
     queryFn: () => posApi.order(pedidoId as number),
     enabled: pedidoId !== null,
     retry: false,
+    refetchInterval: 30_000,
   });
 
   // Lo que el servidor no encuentra se olvida sin aviso: otra empresa en esta tableta, o una cuenta

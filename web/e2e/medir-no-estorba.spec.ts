@@ -23,7 +23,7 @@ async function entrar(page: Page) {
     await page.getByPlaceholder('Contraseña').fill(PASSWORD);
     await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   }
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
@@ -55,7 +55,7 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
 
   await page.goto('/pos');
   // El POS sigue respondiendo: el catálogo carga y la cuenta se puede abrir.
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Y ni un aviso sobre la medición. El operador no tiene por qué enterarse de que existe.
   const avisos = await page.getByText(/uso|medici[óo]n|analytics/i).count();
@@ -107,7 +107,7 @@ test('M2 · con la medición muerta, capturar tocando rápido responde igual', a
 
   // La pantalla sigue viva después de la ráfaga: se cierra la hoja y el POS responde.
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.waitForTimeout(12_000);
   expect(intentos, 'el registrador no intentó mandar nada: el test no probó lo que dice').toBeGreaterThan(0);
