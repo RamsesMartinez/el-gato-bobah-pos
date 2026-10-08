@@ -1,4 +1,4 @@
-import type { ReceiptOrder } from '../types/pos';
+import type { PaymentView, ReceiptLine, ReceiptOrder } from '../types/pos';
 import { fechaYHora } from './horaDelNegocio';
 import { DEFAULT_TIMEZONE } from './zonaPorDefecto';
 import { money } from './format';
@@ -40,13 +40,46 @@ export interface TicketBusinessInfo {
   timezone: string;
 }
 
+// paymentRows arma los renglones de lo que cubrió UN pago. La cantidad y el importe salen de la
+// cobertura que asignó el servidor, nunca de recalcular el renglón: con descuento o con piezas
+// sueltas, cantidad × unitario no es lo que esa persona pagó.
+//
+// Los adicionales van sin cifra: su costo ya está dentro del importe de la cobertura, y repetirlo
+// abajo haría que el papel sumara más de lo que se cobró.
+function paymentRows(
+  payment: PaymentView,
+  lines: ReceiptLine[],
+  printFreeModifiers: boolean | undefined,
+): string {
+  return payment.lines
+    .map((c) => {
+      const l = lines.find((x) => x.id === c.lineId);
+      if (!l) return '';
+      const mods = (l.modifiers ?? [])
+        .filter((m) => printFreeModifiers !== false || Number(m.priceDelta) !== 0)
+        .map((m) => `<tr><td class="mod">+ ${esc(m.name)}${m.quantity > 1 ? ` x${m.quantity}` : ''}</td><td class="r mod"></td></tr>`)
+        .join('');
+      return `<tr><td>${esc(String(Number(c.qty)))}x ${esc(l.productName)}</td>` +
+             `<td class="r">${money(c.amount)}</td></tr>${mods}`;
+    })
+    .join('');
+}
+
 // buildReceiptHtml arma el HTML del ticket (función pura y testeable). Todo string de
 // datos pasa por esc(); los numéricos van por money() y son seguros.
+//
+// Con `payment` sale el ticket de ESE pago de una cuenta dividida. `outstanding` es lo que el
+// pedido sigue debiendo y solo se imprime en ese ticket: en el del pedido completo ya lo dice
+// PAGADO o POR COBRAR.
 export function buildReceiptHtml(
-  order: ReceiptOrder,
+  order: ReceiptOrder & { outstanding?: string },
   business: TicketBusinessInfo,
-  opts: { reprint?: boolean; sample?: boolean; preCuenta?: boolean; printFreeModifiers?: boolean } = {},
+  opts: {
+    reprint?: boolean; sample?: boolean; preCuenta?: boolean; printFreeModifiers?: boolean;
+    payment?: PaymentView;
+  } = {},
 ): string {
+  if (opts.payment) return receiptShell(order, business, opts, paymentBody(order, opts.payment, opts.printFreeModifiers));
   // El renglón del producto muestra su BASE (cantidad × unitario) y cada adicional con costo lleva
   // el suyo debajo, así los números suman a la vista. Antes el renglón traía el total con los
   // extras adentro y el cliente no tenía cómo explicarse por qué pagó de más.
@@ -87,6 +120,47 @@ export function buildReceiptHtml(
       (envioImpreso ? `<tr><td>Envío</td><td class="r">${money(order.deliveryFee)}</td></tr>` : '')
     : '';
 
+  return receiptShell(order, business, opts, `
+  <hr/>
+  <table>${rows}</table>
+  <hr/>
+  <table>${totalsHead}<tr><td class="total">TOTAL</td><td class="r total">${money(order.total)}</td></tr></table>
+  ${opts.preCuenta ? '' : `<div class="center muted" style="margin-top:8px">${order.paid ? 'PAGADO' : 'POR COBRAR'}</div>`}`);
+}
+
+// paymentBody es el cuerpo del ticket de un pago: qué pago fue, lo que cubrió, con qué se pagó y
+// cuánto le queda al pedido. Sin el total del pedido a propósito: en la mano de quien pagó un
+// platillo, esa cifra se lee como lo que él pagó.
+function paymentBody(order: ReceiptOrder & { outstanding?: string }, payment: PaymentView, printFreeModifiers?: boolean): string {
+  const rows = paymentRows(payment, order.lines ?? [], printFreeModifiers);
+  const tip = Number(payment.tip) > 0;
+  const owed = order.outstanding === undefined ? null : Number(order.outstanding);
+  const footer = owed === null
+    ? ''
+    : owed > 0
+      ? `Del pedido quedan por pagar ${money(order.outstanding as string)}`
+      : 'PEDIDO PAGADO';
+  return `
+  <div class="center reprint">Pago ${payment.number}</div>
+  ${payment.split ? `<div class="center muted">Parte ${payment.split.part} de ${payment.split.of}</div>` : ''}
+  <hr/>
+  ${rows ? `<table>${rows}</table><hr/>` : ''}
+  <table>
+    <tr><td class="total">PAGO</td><td class="r total">${money(payment.amount)}</td></tr>
+    ${tip ? `<tr><td>Propina</td><td class="r">${money(payment.tip)}</td></tr>` : ''}
+    <tr><td>${esc(payment.methodName)}</td><td class="r"></td></tr>
+  </table>
+  ${footer ? `<div class="center muted" style="margin-top:8px">${footer}</div>` : ''}`;
+}
+
+// receiptShell es lo que comparten el ticket del pedido y el de un pago: identidad del negocio,
+// datos del pedido, marcas y pie.
+function receiptShell(
+  order: ReceiptOrder,
+  business: TicketBusinessInfo,
+  opts: { reprint?: boolean; sample?: boolean; preCuenta?: boolean },
+  body: string,
+): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Ticket #${order.number}</title>
 <style>
   @page { size: 80mm auto; margin: 0; }
@@ -121,11 +195,7 @@ export function buildReceiptHtml(
   ${opts.reprint ? '<div class="center reprint">** REIMPRESIÓN **</div>' : ''}
   ${opts.sample ? '<div class="center reprint">** TICKET DE PRUEBA **</div>' : ''}
   ${opts.preCuenta ? '<div class="center reprint">** PRE-CUENTA **</div>' : ''}
-  <hr/>
-  <table>${rows}</table>
-  <hr/>
-  <table>${totalsHead}<tr><td class="total">TOTAL</td><td class="r total">${money(order.total)}</td></tr></table>
-  ${opts.preCuenta ? '' : `<div class="center muted" style="margin-top:8px">${order.paid ? 'PAGADO' : 'POR COBRAR'}</div>`}
+  ${body}
   <div class="center note" style="margin-top:10px">${business.footerNote ? esc(business.footerNote) : "¡Gracias!"}</div>
 </body></html>`;
 }

@@ -4,36 +4,59 @@ import { buildKitchenHtml } from '../../utils/printKitchen';
 import { buildReceiptHtml, printHtmlOffscreen } from '../../utils/printReceipt';
 import { toaster } from '../../components/ui/toaster';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
-import type { ReceiptOrder } from '../../types/pos';
+import type { PaymentView, ReceiptOrder } from '../../types/pos';
 
 // AutoPrintTicket no dibuja nada: saca el ticket del pedido recién cerrado cuando el negocio activó
 // la impresión automática. Vive como componente y no como llamada suelta para que el efecto se
 // cancele solo si el POS se desmonta a media venta.
-export function AutoPrintTicket({ order }: { order: ReceiptOrder | null }) {
+//
+// Con la cuenta dividida saca el ticket de CADA pago nuevo en vez del pedido completo: cada quien
+// se lleva el papel de lo que él pagó.
+export function AutoPrintTicket({ order }: { order: (ReceiptOrder & { outstanding?: string }) | null }) {
   const { data: business, autoPrintOnClose, printFreeModifiers } = useTicketBusinessInfo();
-  // Se recuerda el pedido ya impreso, no un simple "ya imprimí": React puede re-renderizar por
-  // cualquier motivo, y cada re-render que imprimiera sería un ticket duplicado en la mano del
-  // cliente.
+  // Se recuerda lo ya impreso, no un simple "ya imprimí": React puede re-renderizar por cualquier
+  // motivo, y cada re-render que imprimiera sería un ticket duplicado en la mano del cliente. En un
+  // pedido dividido la marca es el id del PAGO: con el del pedido, el segundo comensal se quedaría
+  // sin papel.
   const printedOrderID = useRef<number | null>(null);
+  const printedPaymentIDs = useRef(new Set<number>());
 
   useEffect(() => {
     if (!order || !business || !autoPrintOnClose) return;
-    if (printedOrderID.current === order.id) return;
-    printedOrderID.current = order.id;
-    // Sin await a propósito: el pedido YA está registrado, y una impresora apagada no debe trabar
-    // la pantalla ni perder la venta. Pero tampoco puede fallar en silencio — que no salga papel y
-    // nadie se entere es justo el modo de fallo que esta feature vino a quitar.
-    void printHtmlOffscreen(buildReceiptHtml(order, business, { printFreeModifiers })).then((printed) => {
+    const avisar = (printed: boolean) => {
       if (printed) return;
       toaster.create({
         title: 'No se pudo imprimir el ticket',
         description: 'Ábrelo con «Ver ticket» e imprímelo desde ahí. La venta ya quedó registrada.',
         type: 'warning',
       });
-    });
+    };
+    const live = (order.payments ?? []).filter((p) => !p.voided);
+    if (isSplit(order, live)) {
+      printedOrderID.current = order.id;
+      for (const payment of live) {
+        if (printedPaymentIDs.current.has(payment.id)) continue;
+        printedPaymentIDs.current.add(payment.id);
+        void printHtmlOffscreen(buildReceiptHtml(order, business, { printFreeModifiers, payment })).then(avisar);
+      }
+      return;
+    }
+    if (printedOrderID.current === order.id) return;
+    printedOrderID.current = order.id;
+    // Sin await a propósito: el pedido YA está registrado, y una impresora apagada no debe trabar
+    // la pantalla ni perder la venta. Pero tampoco puede fallar en silencio — que no salga papel y
+    // nadie se entere es justo el modo de fallo que esta feature vino a quitar.
+    void printHtmlOffscreen(buildReceiptHtml(order, business, { printFreeModifiers })).then(avisar);
   }, [order, business, autoPrintOnClose, printFreeModifiers]);
 
   return null;
+}
+
+// isSplit dice si el pedido se está pagando por separado. Un solo pago que saldó el pedido entero
+// no es una división: ese cliente se lleva el ticket completo, como siempre.
+function isSplit(order: ReceiptOrder, live: PaymentView[]): boolean {
+  if (live.length === 0) return false;
+  return live.length > 1 || !order.paid || live.some((p) => p.split !== null);
 }
 
 // KitchenTicket saca la COMANDA —el papel sin precios— del pedido recién mandado, si el negocio la

@@ -16,9 +16,15 @@ import { TicketPreview } from './TicketPreview';
 //
 // Derivarlo en vez de recibirlo como prop es a propósito: es una regla, y una regla que viaja como
 // parámetro se pasa mal desde la tercera pantalla que la usa.
-export function VerTicket({ orderId, onClose }: { orderId: number | null; onClose: () => void }) {
+//
+// La llave es la MISMA que usa la hoja de cobro, bajo el prefijo `['orders']` que la app invalida
+// al cobrar, devolver un pago o pasar productos: con una llave aparte, el ticket abierto seguía
+// mostrando el pedido de antes del cobro.
+//
+// Con `paymentId` sale el ticket de ese pago de una cuenta dividida, solo con lo que cubrió.
+export function VerTicket({ orderId, paymentId, onClose }: { orderId: number | null; paymentId?: number; onClose: () => void }) {
   const { data } = useQuery({
-    queryKey: ['order', orderId],
+    queryKey: ['orders', orderId],
     queryFn: () => posApi.order(orderId as number),
     enabled: orderId !== null,
   });
@@ -26,7 +32,8 @@ export function VerTicket({ orderId, onClose }: { orderId: number | null; onClos
   return (
     <TicketPreview
       order={data ?? null}
-      reprint={data?.paid ?? false}
+      reprint={paymentId !== undefined || (data?.paid ?? false)}
+      payment={paymentId === undefined ? undefined : data?.payments?.find((p) => p.id === paymentId && !p.voided)}
       isOpen={orderId !== null}
       onClose={onClose}
     />

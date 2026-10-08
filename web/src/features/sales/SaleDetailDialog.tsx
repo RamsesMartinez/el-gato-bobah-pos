@@ -58,7 +58,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
     onError: (e: Error) => setError(e.message),
   });
   const { data, isLoading } = useQuery({
-    queryKey: ['order', venta.id],
+    queryKey: ['orders', venta.id],
     queryFn: () => posApi.order(venta.id),
     enabled: isOpen,
   });

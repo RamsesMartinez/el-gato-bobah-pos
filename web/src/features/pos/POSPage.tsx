@@ -126,6 +126,10 @@ export function POSPage() {
   // el ticket del cliente. Va aparte del anterior porque cuando se cobra, el ticket tiene que decir
   // PAGADO — y eso solo se sabe después del cobro, no al crear el pedido.
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
+  // El pedido que la impresión automática mira. Va aparte de `lastOrder` porque ése abre el diálogo
+  // de «Cobrado»: en una cuenta dividida, cada pago imprime su ticket sin tapar la hoja de cobro, que
+  // sigue abierta para la siguiente persona.
+  const [printOrder, setPrintOrder] = useState<OrderView | null>(null);
   // El pedido que se está cobrando. El POS ya no tiene su propia pantalla de dinero: crea el pedido
   // y abre LA hoja de cobro, la misma del botón naranja y la del tablero. Dos pantallas de cobro
   // eran dos aritméticas, dos validaciones y dos formas de traducir el mismo error del servidor.
@@ -253,8 +257,9 @@ export function POSPage() {
   // mostrador. El ticket automático además se imprime una sola vez por pedido, así que no habría
   // segunda oportunidad de corregirlo.
   const terminarElCobro = async (res: CobroHecho, orderId: number) => {
-    if (!res.paid) return;
-    setLastOrder(await posApi.order(orderId));
+    const order = await posApi.order(orderId);
+    setPrintOrder(order);
+    if (res.paid) setLastOrder(order);
   };
 
   // Agregarle a un pedido que ya está en cocina, desde la hoja del botón naranja. Es el camino que
@@ -265,6 +270,7 @@ export function POSPage() {
     setAgregados(nuevos);
     setPedidoNuevo(order);
     setLastOrder(order);
+    setPrintOrder(order);
   });
   // La lista solo ofrece "Agregar" con productos capturados, así que aquí siempre hay algo que
   // llevar. La guarda queda porque el `return` mudo que había antes —un control de 44 px que no
@@ -734,7 +740,7 @@ export function POSPage() {
       {/* Sin UI: si el negocio activó la impresión automática, el ticket sale cuando la venta
           TERMINA. El botón de arriba se queda igual — ver el ticket y reimprimirlo siguen
           disponibles. */}
-      <AutoPrintTicket order={lastOrder} />
+      <AutoPrintTicket order={printOrder} />
 
       {/* La comanda sale del pedido recién CREADO, no del que termina la venta: cocina tiene que
           enterarse en cuanto el pedido existe, sin esperar a que alguien cobre. Son dos papeles
