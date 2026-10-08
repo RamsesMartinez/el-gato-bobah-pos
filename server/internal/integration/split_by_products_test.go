@@ -36,7 +36,14 @@ func newSplitTable(t *testing.T, st *store.Store, suffix string, prices ...strin
 	t.Helper()
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_"+suffix, "cajero")
-	abrirCajaPrincipal(t, st, cashier)
+	// Una prueba puede armar varias mesas: la caja se abre una vez.
+	var open bool
+	if err := st.Pool.QueryRow(ctx, `select exists (select 1 from register_sessions where status = 'abierta')`).Scan(&open); err != nil {
+		t.Fatal(err)
+	}
+	if !open {
+		abrirCajaPrincipal(t, st, cashier)
+	}
 	appSt := appRoleStore(t)
 	tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)
 	if err != nil {
@@ -437,5 +444,114 @@ func TestTheSamePieceCannotBePaidTwiceConcurrently(t *testing.T) {
 		if ok != 1 || paid != 1 || payments != 1 {
 			t.Fatalf("vuelta %d: %d cobros pasaron, %d rechazados, %d pagos en la base; quiere 1, 1 y 1", i, ok, paid, payments)
 		}
+	}
+}
+
+// AGREGAR DESPUÉS DE UN PAGO PARCIAL NO TOCA LO PAGADO.
+//
+// La mesa sigue pidiendo después de que uno pagó lo suyo: el pago conserva su cobertura, lo nuevo
+// queda por cobrar y la cocina recibe solo lo nuevo.
+func TestAddingLinesAfterAPartialPaymentKeepsItIntact(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "agrega_tras_pago", "50", "60")
+	first := s.pay(t, 0)
+	extra := makeProduct(t, st, "Postre que llegó después", pesos("40"), true)
+	v, err := s.svc.AddLines(s.ctx, s.order.ID, []domain.OrderLineInput{{ProductID: extra, Qty: pesos("1")}}, s.cashier, uuid.New())
+	if err != nil {
+		t.Fatalf("AddLines: %v", err)
+	}
+	if len(v.Agregados) != 1 || v.Agregados[0] == s.order.Lines[0].ID || v.Agregados[0] == s.order.Lines[1].ID {
+		t.Fatalf("la cocina recibiría %v; quiere solo el renglón nuevo", v.Agregados)
+	}
+	if qty, amount := coverageOf(t, st, first.PaymentID); !qty.Equal(pesos("1")) || !amount.Equal(pesos("50")) {
+		t.Fatalf("el pago 1 cubre ahora %s piezas por %s; quiere 1 por 50", qty, amount)
+	}
+	if !v.Outstanding.Equal(pesos("100")) || v.Status == domain.StatusEntregada {
+		t.Fatalf("falta %s (estado %s); quiere 100 y el pedido abierto", v.Outstanding, v.Status)
+	}
+}
+
+// QUITAR ALGO YA PAGADO SE RECHAZA, Y TAMBIÉN DEJAR EL TOTAL BAJO LO PAGADO.
+//
+// FR-023 partía de un defecto no verificado. Confirmado con esta prueba antes del arreglo: quitar un
+// renglón de un pedido cobrado bajaba el total por debajo de lo pagado sin devolver nada, y ese
+// dinero quedaba en el corte como ingreso de un pedido que ya no lo valía.
+func TestRemovingAPaidLineIsRejected(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "quitar_pagado", "50", "50")
+	s.pay(t, 0)
+	if _, err := s.svc.CancelarRenglon(s.ctx, s.order.ID, s.order.Lines[0].ID, s.cashier, "Ya no lo quiere"); !errors.Is(err, domain.ErrPieceAlreadyPaid) {
+		t.Fatalf("quitar el producto pagado = %v; quiere «Ese producto ya se pagó. Primero hay que devolver el pago»", err)
+	}
+
+	m := newSplitTable(t, st, "quitar_tras_monto", "50", "50")
+	if _, err := m.svc.Charge(m.ctx, app.ChargeCmd{OrderID: m.order.ID, MethodID: m.cash, Amount: pesos("80"), ActorID: m.cashier}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.svc.CancelarRenglon(m.ctx, m.order.ID, m.order.Lines[1].ID, m.cashier, "Ya no lo quiere"); !errors.Is(err, domain.ErrOrderWouldBeOverpaid) {
+		t.Fatalf("quitar dejando el total en 50 con 80 cobrados = %v; quiere «Ya se cobró más de lo que quedaría»", err)
+	}
+	var total decimal.Decimal
+	if err := st.Pool.QueryRow(context.Background(), `select total from orders where id = $1`, m.order.ID).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if !total.Equal(pesos("100")) {
+		t.Fatalf("el rechazo dejó el total en %s: tenía que deshacerse todo", total)
+	}
+}
+
+// CON PAGOS HECHOS, EL DESCUENTO YA NO SE PONE NI SE CAMBIA.
+//
+// Con pagos por productos hechos, cambiar el descuento reescribe el monto de lo pendiente y el
+// último pago absorbería una diferencia que nadie vio.
+func TestDiscountIsRejectedOncePaymentsExist(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "descuento_con_pagos", "50", "50")
+	s.pay(t, 0)
+	ten := pesos("10")
+	if _, err := s.svc.SetDiscount(s.ctx, app.SetDiscountCmd{OrderID: s.order.ID, Amount: &ten, Actor: s.cashier}); !errors.Is(err, domain.ErrDiscountWithPayments) {
+		t.Fatalf("descuento con pagos = %v; quiere «Ya hay pagos; el descuento se pone antes de cobrar»", err)
+	}
+}
+
+// CADA RENGLÓN DEL TABLERO DICE CUÁNTAS PIEZAS ESTÁN PAGADAS, SIEMPRE.
+//
+// La tarjeta deshabilita el bote con «Pagado» cuando hay piezas pagadas. Se mira el JSON CRUDO: un
+// `paidQty` ausente se lee como `undefined` y la tarjeta ofrecería quitar algo pagado.
+func TestBoardLinesCarryTheirPaidPieces(t *testing.T) {
+	st := newTestStore(t)
+	r, token := ordersAPI(t, st, nil)
+	_, tok := token("http_tablero_pagado", "cajero")
+	s := newSplitTable(t, st, "tablero_pagado", "50", "60")
+	s.pay(t, 0)
+	w := do(t, r, http.MethodGet, "/api/v1/orders", tok, nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /orders = %d %s", w.Code, w.Body.String())
+	}
+	var orders []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &orders); err != nil {
+		var wrapped map[string][]map[string]any
+		if err2 := json.Unmarshal(w.Body.Bytes(), &wrapped); err2 != nil {
+			t.Fatalf("respuesta ilegible: %v %s", err, w.Body.String())
+		}
+		orders = wrapped["items"]
+	}
+	paid := map[float64]any{}
+	for _, o := range orders {
+		if o["id"] != float64(s.order.ID) {
+			continue
+		}
+		for _, l := range o["lines"].([]any) {
+			line := l.(map[string]any)
+			v, ok := line["paidQty"]
+			if !ok {
+				t.Fatalf("el renglón %v no trae paidQty: %v", line["id"], line)
+			}
+			paid[line["id"].(float64)] = v
+		}
+	}
+	if len(paid) != 2 || !pesos(paid[float64(s.order.Lines[0].ID)].(string)).Equal(pesos("1")) ||
+		!pesos(paid[float64(s.order.Lines[1].ID)].(string)).IsZero() {
+		t.Fatalf("paidQty = %v; quiere 1 en el pagado y 0 en el otro", paid)
 	}
 }

@@ -415,8 +415,10 @@ func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
 		t.Fatalf("cancelar con entrega parcial = %v, quiere ErrCancelarConEntregas", err)
 	}
 
-	// Y lo que el mensaje manda a hacer, se puede hacer: cancelar el que falta.
-	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); err != nil {
-		t.Fatalf("cancelar el renglón que falta: %v — el error manda a una acción que no funciona", err)
+	// Lo que el mensaje manda a hacer —quitar el que falta— se rechaza en ESTE pedido porque está
+	// cobrado completo: quitarlo dejaría el total bajo lo pagado sin devolver nada (FR-023, spec
+	// 027). El rechazo dice qué hacer antes, y eso también es una acción que existe.
+	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); !errors.Is(err, domain.ErrOrderWouldBeOverpaid) {
+		t.Fatalf("quitar de un pedido cobrado completo = %v; quiere «Primero hay que devolver un pago»", err)
 	}
 }

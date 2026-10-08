@@ -510,13 +510,15 @@ func (h *Handlers) CancelOrderLine(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Reason string `json:"reason"`
+		// Qty es cuántas piezas quitar; sin él, todas las pendientes.
+		Qty *decimal.Decimal `json:"qty"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	repuso, err := h.orders.CancelarRenglon(r.Context(), id, lineID, u.ID, body.Reason)
+	repuso, err := h.orders.RemovePieces(r.Context(), id, lineID, u.ID, body.Reason, body.Qty)
 	if err != nil {
 		Error(w, err)
 		return

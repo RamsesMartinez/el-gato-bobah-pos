@@ -425,6 +425,11 @@ func TestLaMigracionDelFolioSeRevierteYSeReaplica(t *testing.T) {
 	// test que ejecuta un solo bloque a mano se salta ese orden y se rompe con cada migración nueva
 	// que toque lo mismo.
 	t.Cleanup(func() { migrarArriba(t, st.Pool) })
+	// Todo pago nace con número desde la 0079, y su Down se niega a perderlo. Estos pagos son
+	// siembra de la prueba, no lo que se prueba.
+	if _, err := st.Pool.Exec(ctx, `update order_payments set payment_number = null`); err != nil {
+		t.Fatal(err)
+	}
 	migrarAbajoHasta(t, st.Pool, 60)
 	var existe bool
 	if err := st.Pool.QueryRow(ctx,

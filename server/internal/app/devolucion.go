@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -232,7 +233,7 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 	})
 }
 
-// CancelarRenglon cancela UN renglón de un pedido vivo.
+// CancelarRenglon quita todas las piezas pendientes de UN renglón de un pedido vivo.
 //
 // Existía la columna y no la operación: ninguna consulta escribía `order_lines.cancelled_at`,
 // mientras el error de cancelar un pedido con entregas parciales mandaba al operador a "cancela los
@@ -243,9 +244,21 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 // salió a cocina baja el total pero NO devuelve el insumo, y callarlo descuadra el almacén sin que
 // nadie sepa por qué.
 func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, actor int64, motivo string) (repuso bool, err error) {
+	return s.RemovePieces(ctx, orderID, lineID, actor, motivo, nil)
+}
+
+// RemovePieces quita `qty` piezas pendientes de un renglón; nil quita todas las pendientes.
+//
+// Quitar menos de las que tiene el renglón lo PARTE: las piezas quitadas se van a un renglón nuevo
+// que se cancela, con su parte del inventario, y lo demás se queda. Antes el bote quitaba el renglón
+// entero: de dos frappés no había forma de quitar uno.
+func (s *OrdersService) RemovePieces(ctx context.Context, orderID, lineID, actor int64, motivo string, qty *decimal.Decimal) (repuso bool, err error) {
 	razon, err := domain.MotivoValido(motivo)
 	if err != nil {
 		return false, err
+	}
+	if qty != nil && !domain.ValidQty(*qty, domain.MaxOrderQty, false) {
+		return false, domain.ErrValidation
 	}
 	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		// Pedido y luego renglones, en el MISMO orden que DeliverLine. Tomando solo el renglón, una
@@ -257,10 +270,6 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
-			return err
-		}
-		lineas, err := lineasDeEntrega(ctx, q, orderID)
-		if err != nil {
 			return err
 		}
 		l, err := q.GetOrderLineForCancel(ctx, db.GetOrderLineForCancelParams{ID: lineID, OrderID: orderID})
@@ -275,11 +284,45 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 			// mismo insumo, que es inventar existencias.
 			return nil
 		}
-		if err := domain.PuedeCancelarRenglon(string(l.OrderStatus), l.Quantity, l.DeliveredQty); err != nil {
+		// Lo entregado se queda: solo se quitan piezas pendientes, y un renglón ya entregado entero
+		// no tiene ninguna.
+		pending := l.Quantity.Sub(l.DeliveredQty)
+		if !pending.IsPositive() {
+			return domain.ErrRenglonYaEntregado
+		}
+		if err := domain.PuedeCancelarRenglon(string(l.OrderStatus), pending, decimal.Zero); err != nil {
 			return err
 		}
+		k := pending
+		if qty != nil {
+			k = domain.Round2(*qty)
+		}
+		if k.GreaterThan(pending) {
+			return domain.ErrTooManyPieces
+		}
+		guard, err := loadPaymentGuard(ctx, q, orderID)
+		if err != nil {
+			return err
+		}
+		if err := guard.canRemove(lineID, l.Quantity, l.DeliveredQty, k); err != nil {
+			return err
+		}
+		removed := lineID
+		if k.LessThan(l.Quantity) {
+			rows, err := q.ListLinesToSplit(ctx, orderID)
+			if err != nil {
+				return err
+			}
+			i := slices.IndexFunc(rows, func(r db.ListLinesToSplitRow) bool { return r.ID == lineID })
+			if i < 0 {
+				return domain.ErrNotFound
+			}
+			if removed, err = splitOrderLine(ctx, q, rows[i], k, guard.covered[lineID], orderID, orderID, actor); err != nil {
+				return err
+			}
+		}
 		if err := q.CancelOrderLine(ctx, db.CancelOrderLineParams{
-			ID: lineID, CancelledBy: &actor, CancelReason: &razon,
+			ID: removed, CancelledBy: &actor, CancelReason: &razon,
 		}); err != nil {
 			return err
 		}
@@ -287,7 +330,7 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 		repuso = domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt))
 		if repuso {
 			if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{
-				LineID: &lineID, ActorID: &actor,
+				LineID: &removed, ActorID: &actor,
 			}); err != nil {
 				return err
 			}
@@ -296,17 +339,62 @@ func (s *OrdersService) CancelarRenglon(ctx context.Context, orderID, lineID, ac
 		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
 			return err
 		}
+		if err := guard.keepsPayments(ctx, q, orderID); err != nil {
+			return err
+		}
 		// Cancelar lo último que faltaba también termina el pedido, igual que entregarlo. Sin esto
 		// un pedido con todo lo vivo entregado se quedaba abierto para siempre: el tablero ya no
 		// ofrecía entregarlo, cancelarlo completo rebota porque soltó comida, y bloqueaba el corte.
-		for i := range lineas {
-			if lineas[i].ID == lineID {
-				lineas[i].Cancelada = true
-			}
+		lineas, err := lineasDeEntrega(ctx, q, orderID)
+		if err != nil {
+			return err
 		}
 		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
 	})
 	return repuso, err
+}
+
+// paymentGuard es la ÚNICA validación de pagos al quitar productos, la de quitar uno y la de quitar
+// lo que falta. Una copia en cada camino es como nace el camino nuevo que se salta el control viejo.
+type paymentGuard struct {
+	// covered son las piezas de cada renglón vivo que cubren pagos vivos.
+	covered map[int64]decimal.Decimal
+	paid    decimal.Decimal
+}
+
+func loadPaymentGuard(ctx context.Context, q *db.Queries, orderID int64) (paymentGuard, error) {
+	rows, err := q.ListLinesForSelection(ctx, orderID)
+	if err != nil {
+		return paymentGuard{}, err
+	}
+	g := paymentGuard{covered: map[int64]decimal.Decimal{}}
+	for _, r := range rows {
+		g.covered[r.ID] = r.CoveredQty
+	}
+	sums, err := q.SumOrderPayments(ctx, orderID)
+	if err != nil {
+		return paymentGuard{}, err
+	}
+	g.paid = sums.Pagado
+	return g, nil
+}
+
+// canRemove rechaza quitar k piezas de un renglón si alguna está pagada: lo pagado se queda en el
+// renglón, así que solo salen las que ningún pago cubre.
+func (g paymentGuard) canRemove(lineID int64, qty, delivered, k decimal.Decimal) error {
+	if k.GreaterThan(domain.MovablePieces(domain.LinePieces{Qty: qty, Delivered: delivered, Covered: g.covered[lineID]})) {
+		return domain.ErrPieceAlreadyPaidToRemove
+	}
+	return nil
+}
+
+// keepsPayments rechaza, ya recalculado el total, dejarlo por debajo de lo cobrado.
+func (g paymentGuard) keepsPayments(ctx context.Context, q *db.Queries, orderID int64) error {
+	o, err := q.GetOrder(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	return domain.RemovalKeepsPayments(o.Total, g.paid)
 }
 
 // nullTime traduce el timestamptz opcional de pgx a lo que el dominio entiende.
@@ -382,11 +470,11 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 		if err != nil {
 			return err
 		}
-		pagos, err := q.SumOrderPayments(ctx, orderID)
+		guard, err := loadPaymentGuard(ctx, q, orderID)
 		if err != nil {
 			return err
 		}
-		closeEmpty, err := domain.PlanCancelPending(lineas, pagos.Pagado)
+		closeEmpty, err := domain.PlanCancelPending(lineas, guard.paid)
 		if err != nil {
 			return err
 		}
@@ -414,9 +502,12 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 			if !pending.IsPositive() {
 				continue
 			}
+			if err := guard.canRemove(l.ID, l.Quantity, l.DeliveredQty, pending); err != nil {
+				return err
+			}
 			lineID := l.ID
 			if l.DeliveredQty.IsPositive() {
-				if lineID, err = splitOrderLine(ctx, q, l, pending, orderID, orderID, actor); err != nil {
+				if lineID, err = splitOrderLine(ctx, q, l, pending, guard.covered[l.ID], orderID, orderID, actor); err != nil {
 					return err
 				}
 			}
@@ -436,11 +527,7 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
 			return err
 		}
-		despues, err := q.GetOrder(ctx, orderID)
-		if err != nil {
-			return err
-		}
-		if err := domain.RemovalKeepsPayments(despues.Total, pagos.Pagado); err != nil {
+		if err := guard.keepsPayments(ctx, q, orderID); err != nil {
 			return err
 		}
 		lineas, err = lineasDeEntrega(ctx, q, orderID)
@@ -460,8 +547,8 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 // cantidades: el trigger de existencias solo corre al insertar, y cada par se anula, así que partir
 // no mueve el almacén. Cada renglón queda con los movimientos de sus piezas, que es lo que
 // RestockCancelledLine revierte.
-func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow, k decimal.Decimal, fromOrderID, toOrderID, actor int64) (int64, error) {
-	parts, err := domain.SplitLine(domain.LinePieces{Qty: l.Quantity, Delivered: l.DeliveredQty}, k)
+func splitOrderLine(ctx context.Context, q *db.Queries, l db.ListLinesToSplitRow, k, covered decimal.Decimal, fromOrderID, toOrderID, actor int64) (int64, error) {
+	parts, err := domain.SplitLine(domain.LinePieces{Qty: l.Quantity, Delivered: l.DeliveredQty, Covered: covered}, k)
 	if err != nil {
 		return 0, err
 	}

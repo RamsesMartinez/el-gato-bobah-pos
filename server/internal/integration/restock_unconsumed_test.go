@@ -4,6 +4,12 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
 	"testing"
 
 	"uuid"
@@ -12,6 +18,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
 )
 
 // Un producto sin preparación —el refresco embotellado— vuelve al almacén al quitarlo, aunque su
@@ -234,5 +241,143 @@ func TestSplittingALineKeepsTheOriginOfEachMovement(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// QUITAR PIEZAS DE UN RENGLÓN: 1 DE 2 PARTE EL RENGLÓN, Y NO SE QUITAN MÁS DE LAS QUE FALTAN.
+func TestRemovingSomePiecesSplitsTheLine(t *testing.T) {
+	st := newTestStore(t)
+	s := newSplitTable(t, st, "quitar_una_de_dos", "50")
+	ctx := context.Background()
+	// Un pedido aparte con un renglón de dos piezas.
+	two, err := s.svc.Create(s.ctx, app.CreateOrderCmd{ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: s.cashier,
+		Lines: []domain.OrderLineInput{{ProductID: productOf(t, st, s.order.Lines[0].ID), Qty: pesos("2")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.order = two
+	if _, err := s.svc.RemovePieces(s.ctx, s.order.ID, s.order.Lines[0].ID, s.cashier, "Ya no lo quiere", ptrDec(pesos("3"))); !errors.Is(err, domain.ErrTooManyPieces) {
+		t.Fatalf("quitar 3 de 2 = %v; quiere «No hay tantas piezas por quitar»", err)
+	}
+	if _, err := s.svc.RemovePieces(s.ctx, s.order.ID, s.order.Lines[0].ID, s.cashier, "Ya no lo quiere", ptrDec(pesos("1"))); err != nil {
+		t.Fatalf("quitar 1 de 2: %v", err)
+	}
+	rows, err := st.Pool.Query(ctx, `select quantity, line_total, cancelled_at is not null from order_lines where order_id = $1 order by id`, s.order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var q, total decimal.Decimal
+		var cancelled bool
+		if err := rows.Scan(&q, &total, &cancelled); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, fmt.Sprintf("%s:%s:%v", q.String(), total.StringFixed(2), cancelled))
+	}
+	if len(got) != 2 || got[0] != "1:50.00:false" || got[1] != "1:50.00:true" {
+		t.Fatalf("renglones = %v; quiere uno vivo de 1 por 50 y uno quitado de 1 por 50", got)
+	}
+	var total decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `select total from orders where id = $1`, s.order.ID).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if !total.Equal(pesos("50")) {
+		t.Fatalf("total %s, quiere 50", total)
+	}
+}
+
+func ptrDec(d decimal.Decimal) *decimal.Decimal { return &d }
+
+func productOf(t *testing.T, st *store.Store, line int64) int64 {
+	t.Helper()
+	var id int64
+	if err := st.Pool.QueryRow(context.Background(), `select product_id from order_lines where id = $1`, line).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// CADA MITAD DE UN RENGLÓN PARTIDO REPONE SOLO LA SUYA.
+//
+// Dos refrescos sin preparación: quitar uno y luego el otro devuelve exactamente dos al refri. Si la
+// primera reposición revirtiera todo el renglón, o la segunda repusiera otra vez lo de la primera,
+// el almacén inventaría existencias.
+func TestASplitLineRestocksEachHalfOnce(t *testing.T) {
+	st := newTestStore(t)
+	cashier := makeUser(t, st, "cajero_mitades", "cajero")
+	abrirCajaPrincipal(t, st, cashier)
+	soda := makeProduct(t, st, "Refresco de dos", pesos("25"), true)
+	sinPreparacion(t, st, soda)
+	appSt := appRoleStore(t)
+	ctx, release, err := appSt.AcquireTenant(context.Background(), defaultCompanyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	svc := app.NewOrdersService(appSt, clock)
+	before := existencias(t, st, soda)
+	ord, err := svc.Create(ctx, app.CreateOrderCmd{ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cashier,
+		Lines: []domain.OrderLineInput{{ProductID: soda, Qty: pesos("2")}, {ProductID: soda, Qty: pesos("1")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := ord.Lines[0].ID
+	if _, err := svc.RemovePieces(ctx, ord.ID, line, cashier, "Ya no lo quiere", ptrDec(pesos("1"))); err != nil {
+		t.Fatalf("quitar el primero: %v", err)
+	}
+	if got := existencias(t, st, soda); !got.Equal(before.Sub(pesos("2"))) {
+		t.Fatalf("tras quitar uno: existencias %s, quiere %s", got, before.Sub(pesos("2")))
+	}
+	if _, err := svc.RemovePieces(ctx, ord.ID, line, cashier, "Ya no lo quiere", nil); err != nil {
+		t.Fatalf("quitar el otro: %v", err)
+	}
+	if got := existencias(t, st, soda); !got.Equal(before.Sub(pesos("1"))) {
+		t.Fatalf("tras quitar los dos: existencias %s, quiere %s (queda solo el tercer refresco vendido)", got, before.Sub(pesos("1")))
+	}
+}
+
+// QUITAR LO QUE FALTA RESPETA LO PAGADO, CON LA MISMA REGLA QUE QUITAR UN PRODUCTO.
+func TestCancelPendingRespectsPayments(t *testing.T) {
+	st := newTestStore(t)
+	r, token := ordersAPI(t, st, nil)
+	_, tok := token("http_quitar_con_pagos", "cajero")
+	s := newSplitTable(t, st, "pendiente_pagado", "50", "50")
+	post := func(orderID int64) (int, string) {
+		w := do(t, r, http.MethodPost, "/api/v1/orders/"+strconv.FormatInt(orderID, 10)+"/lines/cancel-pending", tok,
+			[]byte(`{"reason":"Ya no lo quiere"}`), "application/json")
+		var m map[string]map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		msg, _ := m["error"]["message"].(string)
+		return w.Code, msg
+	}
+	s.pay(t, 0)
+	if code, msg := post(s.order.ID); code != http.StatusConflict || msg != "Ese producto ya se pagó. Primero hay que devolver el pago" {
+		t.Errorf("pendientes pagados = %d %q", code, msg)
+	}
+
+	m := newSplitTable(t, st, "pendiente_sobrepagado", "50", "50")
+	if _, err := m.svc.Charge(m.ctx, app.ChargeCmd{OrderID: m.order.ID, MethodID: m.cash, Amount: pesos("80"), ActorID: m.cashier}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.svc.DeliverLine(m.ctx, m.order.ID, m.order.Lines[0].ID, pesos("1")); err != nil {
+		t.Fatal(err)
+	}
+	if code, msg := post(m.order.ID); code != http.StatusConflict || msg != "Ya se cobró más de lo que quedaría. Primero hay que devolver un pago" {
+		t.Errorf("dejaría el total bajo lo pagado = %d %q", code, msg)
+	}
+}
+
+// QUITAR PIEZAS POR HTTP: qty de más es un 400 con su texto.
+func TestRemovePiecesHTTP(t *testing.T) {
+	st := newTestStore(t)
+	r, token := ordersAPI(t, st, nil)
+	_, tok := token("http_quitar_piezas", "cajero")
+	s := newSplitTable(t, st, "quitar_http", "50")
+	w := do(t, r, http.MethodPost, "/api/v1/orders/"+strconv.FormatInt(s.order.ID, 10)+"/lines/"+strconv.FormatInt(s.order.Lines[0].ID, 10)+"/cancel",
+		tok, []byte(`{"reason":"Ya no lo quiere","qty":"2"}`), "application/json")
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "No hay tantas piezas por quitar") {
+		t.Fatalf("= %d %s", w.Code, w.Body.String())
 	}
 }

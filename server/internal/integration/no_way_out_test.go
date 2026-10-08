@@ -229,6 +229,18 @@ func emptiedOrder(t *testing.T, st *store.Store, cajero int64, suffix string, pa
 			t.Fatalf("Charge: %v", err)
 		}
 	}
+	if !pesos(paid).IsZero() {
+		// Con pagos, quitar el producto ya se rechaza (spec 027, FR-023). Este estado solo existe en
+		// datos de antes de esa regla —el pedido del 2026-10-04 es uno—, así que se arma directo.
+		if _, err := st.Pool.Exec(ctx, `update order_lines set cancelled_at = now(), cancelled_by = $2, cancel_reason = 'se equivocó'
+			where order_id = $1`, ord.ID, cajero); err != nil {
+			t.Fatalf("quitar el producto: %v", err)
+		}
+		if err := st.Q.RecalcOrderTotals(ctx, ord.ID); err != nil {
+			t.Fatalf("recalcular: %v", err)
+		}
+		return ord.ID
+	}
 	if _, err := svc.CancelarRenglon(ctx, ord.ID, ord.Lines[0].ID, cajero, "se equivocó"); err != nil {
 		t.Fatalf("quitar el producto: %v", err)
 	}

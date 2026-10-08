@@ -214,6 +214,9 @@ que cambió por el análisis se marca con **[analyze]**.
 - `CancelarRenglon` gana `qty` (por omisión, todas las pendientes) y parte el renglón con D-7.
 - Rechaza piezas cubiertas y dejar el total bajo lo pagado. Antes se escribe el test que confirma
   si hoy deja dinero de más (FR-023 no verificado).
+- **Verificado el 2026-10-07** con `TestRemovingAPaidLineIsRejected` contra el código de antes del
+  arreglo: quitar el producto pagado de un pedido se aceptaba sin error, y el total bajaba por
+  debajo de lo cobrado sin devolver nada. FR-023 era un defecto real.
 - `CancelPending(pedido, motivo)`: quitar lo que falta, en una transacción. Responde
   `{ removed, restocked }`: cuántos productos quitó y cuántos repusieron inventario.
 - **[analyze] Los mismos rechazos que quitar un producto, también los de pagos**: `CancelPending` y

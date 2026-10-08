@@ -510,17 +510,15 @@ func (s *OrdersService) SetDiscount(ctx context.Context, cmd SetDiscountCmd) (Se
 		if o.Status == db.OrderStatusCancelada || o.Status == db.OrderStatusReembolsada {
 			return fmt.Errorf("%w: el pedido está %s y su dinero ya se revirtió", domain.ErrConflict, o.Status)
 		}
-		if domain.PedidoSaldado(o.Paid, o.Total) {
-			return fmt.Errorf("%w: el pedido ya está cobrado; cambiar el descuento movería el total "+
-				"contra pagos que ya se registraron", domain.ErrConflict)
+		// Con un solo pago hecho, el descuento ya no se pone ni se cambia (spec 027, D-17). Con la
+		// cuenta dividida, cambiarlo reescribe el monto de lo pendiente y el último pago absorbería
+		// una diferencia que nadie vio; antes bastaba con que el total no bajara de lo abonado.
+		if o.Paid.IsPositive() {
+			return domain.ErrDiscountWithPayments
 		}
 		descuento, err := domain.ResolverDescuento(o.Subtotal, cmd.Amount, cmd.Percent)
 		if err != nil {
 			return err
-		}
-		if nuevoTotal := domain.Round2(o.Subtotal.Sub(descuento).Add(o.DeliveryFee)); nuevoTotal.LessThan(o.Paid) {
-			return fmt.Errorf("%w: con ese descuento el total quedaría en %s y el pedido ya tiene %s abonados",
-				domain.ErrConflict, nuevoTotal.StringFixed(2), o.Paid.StringFixed(2))
 		}
 		res.Anterior, res.Actual = o.DiscountTotal, descuento
 		return q.SetOrderDiscount(ctx, db.SetOrderDiscountParams{
@@ -768,6 +766,9 @@ type BoardLine struct {
 	// se hizo y el ingrediente no vuelve. La pantalla lo ANUNCIA antes de confirmar — callarlo hace
 	// que el almacén cuadre mal y nadie sepa por qué.
 	EnviadoACocina bool `json:"enviadoACocina"`
+	// PaidQty son las piezas que cubren pagos vivos. Siempre presente, en cero sin pagos: con piezas
+	// pagadas la tarjeta deshabilita el bote, porque quitarlas se rechaza.
+	PaidQty decimal.Decimal `json:"paidQty"`
 }
 
 // Board devuelve las órdenes activas (abierta/lista) para el tablero.
@@ -1587,12 +1588,24 @@ func (s *OrdersService) lineasDelTablero(ctx context.Context) (map[int64][]Board
 		}
 		porLinea[m.OrderLineID] = append(porLinea[m.OrderLineID], nombre)
 	}
+	ids := make([]int64, 0, len(filas))
+	for _, l := range filas {
+		ids = append(ids, l.OrderID)
+	}
+	pagadas, err := q.ListPaidQtyForOrders(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	paidQty := make(map[int64]decimal.Decimal, len(pagadas))
+	for _, p := range pagadas {
+		paidQty[p.OrderLineID] = p.PaidQty
+	}
 	porPedido := map[int64][]BoardLine{}
 	for _, l := range filas {
 		porPedido[l.OrderID] = append(porPedido[l.OrderID], BoardLine{
 			ID: l.ID, Name: l.ProductName, Qty: l.Quantity, Delivered: l.DeliveredQty,
 			Notes: derefStr(l.Notes), Modifiers: porLinea[l.ID],
-			EnviadoACocina: l.EnviadoACocina,
+			EnviadoACocina: l.EnviadoACocina, PaidQty: paidQty[l.ID],
 		})
 	}
 	return porPedido, nil

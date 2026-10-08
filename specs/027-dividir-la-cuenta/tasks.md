@@ -265,8 +265,8 @@ ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
 
 **Independent Test**: dos cobros simultáneos de la misma pieza producen un solo pago.
 
-- [ ] T052 [US2] IT `TestTheSamePieceCannotBePaidTwiceConcurrently` en server/internal/integration/split_by_products_test.go, con dos goroutines y varias vueltas, como `TestConcurrentDeliverAndCancelStillCloseTheOrder`; y el caso de CobrarSheet.test.tsx: ante «Ese producto ya se pagó» la pantalla refresca el pedido
-- [ ] T053 [US2] Validar en `Charge` las piezas ya cubiertas bajo el candado del pedido y devolver `ErrPieceAlreadyPaid` («Ese producto ya se pagó»). La pantalla en web/src/shared/cobro/ refresca el pedido ante ese rechazo
+- [x] T052 [US2] IT `TestTheSamePieceCannotBePaidTwiceConcurrently` en server/internal/integration/split_by_products_test.go, con dos goroutines y varias vueltas, como `TestConcurrentDeliverAndCancelStillCloseTheOrder`; y el caso de CobrarSheet.test.tsx: ante «Ese producto ya se pagó» la pantalla refresca el pedido
+- [x] T053 [US2] Validar en `Charge` las piezas ya cubiertas bajo el candado del pedido y devolver `ErrPieceAlreadyPaid` («Ese producto ya se pagó»). La pantalla en web/src/shared/cobro/ refresca el pedido ante ese rechazo
 
 ---
 
@@ -277,9 +277,9 @@ ese monto, el Soju aparece pagado tras recargar y el ticket trae solo el Soju.
 **Independent Test**: tras un pago por productos se agregan dos productos; la hoja los muestra sin
 pagar y el pago anterior sigue intacto.
 
-- [ ] T054 [P] [US3] IT `TestAddingLinesAfterAPartialPaymentKeepsItIntact` en server/internal/integration/split_by_products_test.go (la cocina recibe solo los nuevos)
-- [ ] T055 [US3] IT `TestRemovingAPaidLineIsRejected` en el mismo archivo. **Primero confirmar con el test** si hoy quitar un renglón de un pedido cobrado deja dinero de más (FR-023, no verificado), y anotarlo en research.md
-- [ ] T056 [P] [US3] Tests de `qty` al quitar, en server/internal/integration/restock_unconsumed_test.go:
+- [x] T054 [P] [US3] IT `TestAddingLinesAfterAPartialPaymentKeepsItIntact` en server/internal/integration/split_by_products_test.go (la cocina recibe solo los nuevos)
+- [x] T055 [US3] IT `TestRemovingAPaidLineIsRejected` en el mismo archivo. **Primero confirmar con el test** si hoy quitar un renglón de un pedido cobrado deja dinero de más (FR-023, no verificado), y anotarlo en research.md
+- [x] T056 [P] [US3] Tests de `qty` al quitar, en server/internal/integration/restock_unconsumed_test.go:
   - quitar 1 de 2 parte el renglón y deja las dos mitades con sus totales;
   - `qty` mayor que lo pendiente → 400 «No hay tantas piezas por quitar»;
   - `TestASplitLineRestocksEachHalfOnce`: con un producto sin preparación, quitar 1 de 2 y luego la otra; cada mitad repone solo la suya;
@@ -287,13 +287,13 @@ pagar y el pago anterior sigue intacto.
   - **[H1]** `cancel-pending` que dejaría el total bajo lo pagado → 409 «Ya se cobró más de lo que quedaría. Primero hay que devolver un pago».
   - **[D1]** `inTheThreeCases` sobre el servicio `CancelarRenglon`, que empieza a leer `order_payment_lines`.
   Las consultas de partir son las de T021, ya aisladas en T032
-- [ ] T057 [US3] En server/internal/app/devolucion.go, **una sola función** de validación de pagos —rechazar piezas cubiertas y dejar el total bajo lo pagado— que llaman `CancelarRenglon` y `CancelPending` (no una copia en cada una). `CancelarRenglon` gana `qty` usando `SplitLine` y las consultas de partir de T021. El handler acepta `qty` opcional. **`CancelPending` y `splitOrderLine` hoy llaman `SplitLine` con `Covered` en cero**: con esta tarea pasan las piezas cubiertas por pagos vivos en `LinePieces.Covered` y, si lo que se quita está pagado, devuelven `domain.ErrPieceAlreadyPaidToRemove` («Ese producto ya se pagó. Primero hay que devolver el pago»), ya definido en server/internal/domain/errors.go
-- [ ] T058 [US3] IT `TestDiscountIsRejectedOncePaymentsExist` en server/internal/integration/split_by_products_test.go, y el caso de CobrarSheet.test.tsx: «Descuento» oculto con pagos
-- [ ] T059 [US3] Rechazar en `SetDiscount` (server/internal/app/orders.go) un pedido con pagos (D-17). Ocultar «Descuento» con pagos en la hoja
+- [x] T057 [US3] En server/internal/app/devolucion.go, **una sola función** de validación de pagos —rechazar piezas cubiertas y dejar el total bajo lo pagado— que llaman `CancelarRenglon` y `CancelPending` (no una copia en cada una). `CancelarRenglon` gana `qty` usando `SplitLine` y las consultas de partir de T021. El handler acepta `qty` opcional. **`CancelPending` y `splitOrderLine` hoy llaman `SplitLine` con `Covered` en cero**: con esta tarea pasan las piezas cubiertas por pagos vivos en `LinePieces.Covered` y, si lo que se quita está pagado, devuelven `domain.ErrPieceAlreadyPaidToRemove` («Ese producto ya se pagó. Primero hay que devolver el pago»), ya definido en server/internal/domain/errors.go
+- [x] T058 [US3] IT `TestDiscountIsRejectedOncePaymentsExist` en server/internal/integration/split_by_products_test.go, y el caso de CobrarSheet.test.tsx: «Descuento» oculto con pagos
+- [x] T059 [US3] Rechazar en `SetDiscount` (server/internal/app/orders.go) un pedido con pagos (D-17). Ocultar «Descuento» con pagos en la hoja
 - [ ] T060 [P] [US7] Test del contador «1 de 2» en web/src/features/orders/CancelarRenglonDialog.test.tsx (arranca en 1, − y + de 44 px, manda `qty`). Va aquí porque depende de T057
 - [ ] T061 [US7] Implementar el contador en web/src/features/orders/CancelarRenglonDialog.tsx
-- [ ] T062 [US3] **[C1]** Tests de los renglones del tablero en server/internal/integration/split_by_products_test.go: IT HTTP sobre JSON crudo de la respuesta del tablero (`OrdersService.Board`), donde cada `BoardLine` trae sus piezas cubiertas por pagos (`paidQty`, 0 si no hay pagos, nunca ausente); e `inTheThreeCases` sobre la consulta que las suma (junto a `ListLinesOfActiveOrders`)
-- [ ] T063 [US3] Agregar las piezas cubiertas a `BoardLine` (server/internal/app/orders.go, `lineasDelTablero`) con su consulta en server/queries/orders.sql y `make sqlc`
+- [x] T062 [US3] **[C1]** Tests de los renglones del tablero en server/internal/integration/split_by_products_test.go: IT HTTP sobre JSON crudo de la respuesta del tablero (`OrdersService.Board`), donde cada `BoardLine` trae sus piezas cubiertas por pagos (`paidQty`, 0 si no hay pagos, nunca ausente); e `inTheThreeCases` sobre la consulta que las suma (junto a `ListLinesOfActiveOrders`)
+- [x] T063 [US3] Agregar las piezas cubiertas a `BoardLine` (server/internal/app/orders.go, `lineasDelTablero`) con su consulta en server/queries/orders.sql y `make sqlc`
 - [ ] T064 [P] [US3] Tests vitest: «Pedidos por cobrar» dice cuánto se pagó y cuánto falta, sin «1 de 3» (web/src/features/pos/PedidosEnCurso.test.tsx); el caso del bote deshabilitado con «Pagado» en productos pagados vive en web/src/features/orders/OrdersBoardPage.test.tsx y usa `paidQty` de `BoardLine`
 - [ ] T065 [US3] Implementar los dos en web/src/features/pos/PedidosEnCurso.tsx y web/src/features/orders/OrdersBoardPage.tsx
 
