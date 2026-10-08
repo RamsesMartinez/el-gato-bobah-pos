@@ -243,7 +243,7 @@ servidor, y el pedido se sigue creando ANTES de cobrarse.
 | Z3 | Lo pagado tras recargar | Sigue en gris con su pago y en las fichas, desde el servidor | idem | Navegador (vitest) |
 | Z4 | Otra tableta cobró la pieza | La hoja relee el pedido y suelta la selección | idem | Navegador (vitest) |
 | Z5 | Pedido de plataforma o de turno cerrado | Solo «Por monto» | idem | Navegador (vitest) |
-| Z6 | Devolver un pago sin permiso | El botón se apaga con «Tu usuario no puede devolver pagos» | idem | Navegador (vitest) |
+| Z6 | Devolver un pago sin permiso | El botón se apaga y dice a quién pedírselo, sin nombrar un rol | idem | Navegador (vitest) |
 | Z7 | Pasar con descuento, o todo a un pedido nuevo | Se apaga con su motivo antes de confirmar | idem | Navegador (vitest) |
 | Z8 | Un producto con piezas pagadas en el tablero | Bote apagado con «Pagado» | `OrdersBoardPage.test.tsx` | Navegador (vitest) |
 | Z9 | La hoja por productos con efectivo, propina y el teclado del sistema | Cabe en 600 px y «Cobrar» sigue a la vista | `cabe-en-la-tableta.spec.ts` (E7 bis) | **No medido**: necesita esta rama en el ambiente de pruebas |

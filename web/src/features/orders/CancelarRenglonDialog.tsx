@@ -39,7 +39,7 @@ export function CancelarRenglonDialog({ nombre, pendientes, yaSalioACocina, envi
   return (
     <DialogRoot open placement="center" onOpenChange={(e) => { if (!e.open) onCerrar(); }}>
       <DialogBackdrop />
-      <DialogContent>
+      <DialogContent maxH="100dvh" overflowY="auto">
         <DialogHeader><DialogTitle>Quitar {nombre}</DialogTitle></DialogHeader>
         <DialogBody>
           <VStack align="stretch" gap={3}>
@@ -60,6 +60,11 @@ export function CancelarRenglonDialog({ nombre, pendientes, yaSalioACocina, envi
                   disabled={cantidad >= pendientes} onClick={() => setCantidad((c) => Math.min(pendientes, c + 1))}>
                   <LuPlus />
                 </IconButton>
+                {/* Quitar el renglón entero no puede costar un toque por pieza. */}
+                <Button minH={TAP} variant="outline" colorPalette="gray" disabled={cantidad === pendientes}
+                  onClick={() => setCantidad(pendientes)}>
+                  Todas
+                </Button>
               </HStack>
             )}
             <RemoveReasons value={motivo} onChange={setMotivo} />

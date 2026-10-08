@@ -23,10 +23,10 @@ export function ByAmount({ value, outstanding, currency, disabled, onChange }: P
   return (
     <VStack align="stretch" gap={2}>
       <HStack justify="space-between" align="end">
-        <VStack align="start" gap={0}>
+        <HStack align="baseline" gap={3}>
           <Text fontSize="sm" fontWeight="600">¿Cuánto paga esta persona?</Text>
-          <Text fontSize="3xl" fontWeight="800" aria-label="Monto">{value ? money(value, currency) : '$0'}</Text>
-        </VStack>
+          <Text fontSize="2xl" fontWeight="800" aria-label="Monto">{value ? money(value, currency) : '$0'}</Text>
+        </HStack>
         <VStack align="end" gap={0}>
           <Text fontSize="xs" color="fg.muted">Después de este pago faltan</Text>
           <Text fontWeight="700">{money(String(left), currency)}</Text>
@@ -42,9 +42,10 @@ export function ByAmount({ value, outstanding, currency, disabled, onChange }: P
           Lo que falta · {money(String(outstanding), currency)}
         </Button>
       </HStack>
-      <SimpleGrid columns={3} gap={2} maxW="22rem">
+      {/* Seis columnas de 48 px, dos filas: cuatro filas de 52 se comían el alto del pie con el botón. */}
+      <SimpleGrid columns={6} gap={2} maxW="30rem">
         {KEYS.map((k) => (
-          <Button key={k} minH="52px" variant="outline" colorPalette="gray" fontSize="xl" disabled={disabled}
+          <Button key={k} minH="48px" variant="outline" colorPalette="gray" fontSize="xl" disabled={disabled}
             aria-label={k === 'back' ? 'Borrar' : k === '.' ? 'Punto' : k}
             onClick={() => onChange(typeKey(value, k))}>
             {k === 'back' ? <LuDelete /> : k}

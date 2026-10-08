@@ -443,7 +443,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
         )}
         {sinProductos && tienePagos && (
           <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
-            {acciones.puedeDevolverPagos ? 'Tiene pagos por devolver' : 'Tiene pagos por devolver: avisa al gerente'}
+            {acciones.puedeDevolverPagos ? 'Tiene pagos por devolver' : 'Tiene pagos por devolver: avisa a quien encargue la caja'}
           </Text>
         )}
         {/* El camino para devolverlos: la hoja de cobro con las fichas de sus pagos. Solo con el

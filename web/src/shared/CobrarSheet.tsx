@@ -490,6 +490,35 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
     setRebote(null);
   };
 
+  // La fila de método. Sin dividir va arriba, en el cuerpo, donde siempre ha estado; dividiendo sube
+  // al pie fijo (D-13): debajo de la lista de productos o del teclado del monto quedaba fuera de la
+  // vista, y «Cobrar» se apagaba sin que se viera por qué.
+  const methodButton = (m: (typeof elegibles)[number]) => (
+    <Button key={m.id} minH={TAP_LG} flexShrink={0} variant={metodo === m.id ? 'solid' : 'outline'}
+      colorPalette={metodo === m.id ? undefined : 'gray'} disabled={sending}
+      onClick={() => { setMetodo(m.id); setRecibido(''); }}>
+      {m.name}
+    </Button>
+  );
+  // Botones y no un desplegable. NINGUNO viene preseleccionado, a propósito: un dedo que va directo
+  // a Cobrar registraría con tarjeta dinero que entró en efectivo.
+  const methodsBlock = elegibles.length === 0 ? (
+    <Text fontSize="sm" color="fg.muted">
+      Este pedido no tiene métodos de pago configurados. Agrégalos en Ajustes para poder cobrarlo.
+    </Text>
+  ) : mode === 'none' ? (
+    <Box>
+      <Text fontSize="sm" fontWeight="600" mb={2}>¿Con qué paga?</Text>
+      <SimpleGrid columns={{ base: 2, sm: 4 }} gap={2}>{elegibles.map(methodButton)}</SimpleGrid>
+    </Box>
+  ) : (
+    // En el pie, una sola fila con scroll horizontal: con diez métodos, una cuadrícula empujaría
+    // «Cobrar» fuera del pie.
+    <Box overflowX="auto" mx={-1} px={1} aria-label="¿Con qué paga?" role="group">
+      <HStack gap={2} w="max-content">{elegibles.map(methodButton)}</HStack>
+    </Box>
+  );
+
   return (
     <DrawerRoot open={visible} placement="bottom" onOpenChange={(e) => { if (!e.open) onClose(); }} size="md">
       <DrawerBackdrop />
@@ -640,27 +669,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
               <ByAmount value={typedAmount} outstanding={falta} currency={moneda} disabled={sending} onChange={setTypedAmount} />
             )}
 
-            <Box>
-              <Text fontSize="sm" fontWeight="600" mb={2}>¿Con qué paga?</Text>
-              {/* Botones y no un desplegable. NINGUNO viene preseleccionado, a propósito: un dedo que
-                  va directo a Cobrar registraría con tarjeta dinero que entró en efectivo. */}
-              {elegibles.length === 0 ? (
-                <Text fontSize="sm" color="fg.muted">
-                  Este pedido no tiene métodos de pago configurados. Agrégalos en Ajustes para poder
-                  cobrarlo.
-                </Text>
-              ) : (
-                <SimpleGrid columns={{ base: 2, sm: 4 }} gap={2}>
-                  {elegibles.map((m) => (
-                    <Button key={m.id} minH={TAP_LG} variant={metodo === m.id ? 'solid' : 'outline'}
-                      colorPalette={metodo === m.id ? undefined : 'gray'} disabled={sending}
-                      onClick={() => { setMetodo(m.id); setRecibido(''); }}>
-                      {m.name}
-                    </Button>
-                  ))}
-                </SimpleGrid>
-              )}
-            </Box>
+            {mode === 'none' && methodsBlock}
 
             {/* Propina. El porcentaje es de lo que se cobra AHORA, no del total del pedido. */}
             {metodo !== null && v.monto > 0 && (
@@ -678,7 +687,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
                         variant={on ? 'solid' : 'outline'} colorPalette={on ? undefined : 'gray'}
                         onClick={() => setPropina(String(p.monto))}>
                         <VStack gap={0}>
-                          <Text fontSize="2xs" opacity={0.8}>{p.etiqueta}</Text>
+                          <Text fontSize="xs" opacity={0.8}>{p.etiqueta}</Text>
                           <Text fontWeight="700">{money(String(p.monto), moneda)}</Text>
                         </VStack>
                       </Button>
@@ -731,7 +740,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
         </DrawerBody>
 
         {view === 'charge' && (
-          <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" maxH="45dvh">
+          <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" maxH="55dvh" overflowY="auto">
             {rebote && (
               <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
                 <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
@@ -763,6 +772,7 @@ export function CobrarSheet({ order, crearPedido, onPedidoCreado, preCuenta, onC
             {mode === 'products' && toMove.length > 0 && moveBlocked && (
               <Text fontSize="xs" color="fg.muted" textAlign="right">{moveBlocked}</Text>
             )}
+            {mode !== 'none' && methodsBlock}
             {!canCharge && aviso && (
               <Text fontSize="sm" color="fg.muted" textAlign="center">{aviso}</Text>
             )}

@@ -150,3 +150,13 @@ describe('quitar solo algunas piezas', () => {
     expect(screen.queryByText(/^\d+ de \d+$/)).toBeNull();
   });
 });
+
+// Quitar el renglón entero no puede costar un toque por pieza: «Todas» lo pone de un toque.
+test('«Todas» pone todas las piezas pendientes', async () => {
+  const u = userEvent.setup();
+  pintar(<CancelarRenglonDialog nombre="Alitas" pendientes={5} yaSalioACocina={false} enviando={false}
+    onCerrar={() => {}} onConfirmar={() => {}} />);
+  await u.click(screen.getByRole('button', { name: 'Todas' }));
+  expect(screen.getByText('5 de 5')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Todas' })).toBeDisabled();
+});

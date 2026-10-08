@@ -197,14 +197,14 @@ test('en un pedido de plataforma o de un turno cerrado solo queda Por monto', as
 });
 
 // POR MONTO, CON TECLADO PROPIO: el del sistema se come media pantalla.
-test('por monto teclea con su propio teclado y cobra lo tecleado', async () => {
+test('por monto teclea con su propio teclado de dos filas y cobra lo tecleado', async () => {
   const u = userEvent.setup();
   chargeOrder.mockResolvedValue({ outstanding: '61', paid: false, yaEstaba: false, amount: '250' });
   pinta(<CobrarSheet pantalla="pos" order={board()} onClose={() => {}} onCobrado={() => {}} />);
   await u.click(await screen.findByRole('button', { name: /Dividir/ }));
   await u.click(screen.getByRole('button', { name: 'Por monto' }));
   for (const k of ['2', '5', '0']) await u.click(screen.getByRole('button', { name: k }));
-  expect(parseInt(getComputedStyle(screen.getByRole('button', { name: '5' })).minHeight, 10)).toBeGreaterThanOrEqual(52);
+  expect(parseInt(getComputedStyle(screen.getByRole('button', { name: '5' })).minHeight, 10)).toBeGreaterThanOrEqual(48);
   expect(screen.getByRole('button', { name: /Lo que falta · \$311/ })).toBeInTheDocument();
   await u.click(screen.getByRole('button', { name: 'Efectivo' }));
   await u.click(screen.getByRole('button', { name: /^Cobrar \$250/ }));
@@ -233,7 +233,7 @@ test('la ficha abre el detalle y devolver pide permiso y motivo', async () => {
   await u.click(await screen.findByRole('button', { name: 'Pago 1' }));
   expect(screen.getByText('Cubrió 1 producto')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Devolver este pago/ })).toBeDisabled();
-  expect(screen.getByText('Tu usuario no puede devolver pagos')).toBeInTheDocument();
+  expect(screen.getByText('Pídele a quien encargue la caja que lo devuelva')).toBeInTheDocument();
   unmount();
 
   signIn(['payments.void']);

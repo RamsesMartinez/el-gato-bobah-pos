@@ -320,9 +320,9 @@ describe('«Cerrar pedido» no se manda dos veces', () => {
 // y sin saber a quién pedírsela.
 describe('a quién toca devolver los pagos de un pedido vacío', () => {
   const vacioCobrado = { lines: [], total: '30', outstanding: '0', paid: true };
-  test('sin permiso de devolver, dice que avise al gerente', async () => {
+  test('sin permiso de devolver, dice a quién avisar sin nombrar un rol', async () => {
     pintar(pedido(vacioCobrado));
-    expect(within(await tarjeta()).getByText('Tiene pagos por devolver: avisa al gerente')).toBeInTheDocument();
+    expect(within(await tarjeta()).getByText('Tiene pagos por devolver: avisa a quien encargue la caja')).toBeInTheDocument();
   });
   test('con permiso de devolver, basta con decir que tiene pagos', async () => {
     entrar(['payments.void', 'orders.cancel_pending']);

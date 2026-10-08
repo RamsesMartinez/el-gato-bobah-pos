@@ -68,19 +68,18 @@ export function PaymentDetail({ payment, lines, currency, zona, canVoid, voiding
       ) : (
         <Text fontSize="sm" color="fg.muted">Este pago no eligió productos.</Text>
       )}
-      <HStack gap={2}>
-        <Button flex="1" minH="44px" variant="outline" colorPalette="gray" onClick={onReprint}>
-          <LuPrinter /> Reimprimir su ticket
+      <Button minH="44px" variant="outline" colorPalette="gray" onClick={onReprint}>
+        <LuPrinter /> Reimprimir su ticket
+      </Button>
+      {/* Devolver va en su propia fila, lejos de la acción frecuente: un dedo que erra no lo toca. */}
+      {!payment.voided && !confirming && (
+        <Button mt={4} minH="44px" variant="outline" colorPalette="red" disabled={!canVoid}
+          onClick={() => setConfirming(true)}>
+          <LuUndo2 /> Devolver este pago
         </Button>
-        {!payment.voided && !confirming && (
-          <Button flex="1" minH="44px" variant="outline" colorPalette="red" disabled={!canVoid}
-            onClick={() => setConfirming(true)}>
-            <LuUndo2 /> Devolver este pago
-          </Button>
-        )}
-      </HStack>
+      )}
       {!payment.voided && !canVoid && (
-        <Text fontSize="sm" color="fg.muted">Tu usuario no puede devolver pagos</Text>
+        <Text fontSize="sm" color="fg.muted">Pídele a quien encargue la caja que lo devuelva</Text>
       )}
       {confirming && (
         <VStack align="stretch" gap={2}>
@@ -97,11 +96,14 @@ export function PaymentDetail({ payment, lines, currency, zona, canVoid, voiding
               ? 'Sus productos vuelven a quedar por cobrar. El reembolso en la terminal se hace aparte.'
               : 'Sus productos vuelven a quedar por cobrar y el dinero sale del cajón.'}
           </Text>
-          <HStack gap={2}>
-            <Button flex="1" minH="44px" variant="ghost" colorPalette="gray" onClick={() => { setConfirming(false); setReason(null); }}>
+          {/* Pegado al fondo de la vista: con varios productos cubiertos, la confirmación quedaba
+              debajo del pliegue. */}
+          <HStack gap={2} position="sticky" bottom={0} bg="bg" py={2}>
+            <Button minH="44px" variant="ghost" colorPalette="gray" onClick={() => { setConfirming(false); setReason(null); }}>
               Cancelar
             </Button>
-            <Button flex="1" minH="44px" colorPalette="red" disabled={reason === null} loading={voiding}
+            <Box flex="1" />
+            <Button minH="44px" colorPalette="red" disabled={reason === null} loading={voiding}
               onClick={() => reason && onVoid(reason)}>
               Devolver {money(payment.amount, currency)}
             </Button>

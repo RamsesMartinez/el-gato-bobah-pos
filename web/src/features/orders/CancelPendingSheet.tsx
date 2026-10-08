@@ -61,7 +61,7 @@ export function CancelPendingSheet({ order, onClose, onConfirm }: Props) {
     <DrawerRoot open={visible} placement="bottom" size="md"
       onOpenChange={(e) => { if (!e.open && !sending) onClose(); }}>
       <DrawerBackdrop />
-      <DrawerContent borderTopRadius="2xl">
+      <DrawerContent borderTopRadius="2xl" maxH="100dvh" overflowY="auto">
         <DrawerCloseTrigger />
         <VStack align="stretch" gap={3} p={4} pb={5}>
           <Box>
