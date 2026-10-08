@@ -60,6 +60,7 @@ import { useEnviarCuenta } from './useEnviarCuenta';
 import { subirCuentasViejas } from './subirCuentasViejas';
 import { useAbrirDesdeLaUrl } from './abrirDesdeLaUrl';
 import type { RenglonNuevo, RenglonPedido } from './cuentaEnPantalla';
+import { cuentaImpresa } from './cuentaImpresa';
 
 // Posición de la píldora flotante (carrito/cobrar) como offset desde su esquina inferior-derecha.
 // Clamp aproximado al cargar por si el viewport cambió de tamaño entre sesiones (no dejarla fuera).
@@ -138,6 +139,8 @@ export function POSPage() {
   const [pidiendoFolio, setPidiendoFolio] = useState<{ hacer: () => void } | null>(null);
   const [sesionDeCobro, setSesionDeCobro] = useState(0);
   const [ticketOpen, setTicketOpen] = useState(false);
+  // El papel de la cuenta abierta (spec 012), armado al tocar «Imprimir cuenta».
+  const [papel, setPapel] = useState<ReturnType<typeof cuentaImpresa>>(null);
   const [todasAbierta, setTodasAbierta] = useState(false);
   const [descartando, setDescartando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
@@ -460,6 +463,7 @@ export function POSPage() {
     onDescartar: pedirDescartar,
     onCancelarPedido: () => setCancelando(true),
     onQuitarDeCocina: setQuitando,
+    onImprimir: () => setPapel(cuentaImpresa(vista, new Date())),
   };
 
   const catalog = (
@@ -731,6 +735,8 @@ export function POSPage() {
       </DialogRoot>
 
       <TicketPreview order={lastOrder} isOpen={ticketOpen} onClose={() => setTicketOpen(false)} />
+      <TicketPreview order={papel?.order ?? null} preCuenta={papel?.preCuenta ?? false}
+        isOpen={papel !== null} onClose={() => setPapel(null)} />
       <AutoPrintTicket order={printOrder} />
       {/* La comanda sale en cuanto el servidor confirma el envío, solo con los renglones que dijo. */}
       <KitchenTicket order={comanda?.order ?? null} soloLineas={comanda?.ids} />

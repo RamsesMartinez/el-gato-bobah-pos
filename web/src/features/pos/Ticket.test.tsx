@@ -60,7 +60,7 @@ beforeEach(() => {
     sinConexion: false, envioPorDefecto: 20, puedeCancelar: true,
     onMas: vi.fn(), onMenos: vi.fn(), onQuitar: vi.fn(), onEditLine: vi.fn(), onCabecera: vi.fn(),
     onEnviar: vi.fn(), onCobrar: vi.fn(), onDescartar: vi.fn(), onCancelarPedido: vi.fn(),
-    onQuitarDeCocina: vi.fn(), onQuitarNoDisponibles: vi.fn(), onHide: vi.fn(),
+    onQuitarDeCocina: vi.fn(), onQuitarNoDisponibles: vi.fn(), onHide: vi.fn(), onImprimir: vi.fn(),
   };
 });
 
@@ -322,9 +322,29 @@ describe('el ⋮ de la cuenta (US5)', () => {
     expect(screen.queryByRole('menuitem', { name: /Descartar/ })).toBeNull();
   });
 
-  test('sin permiso de cancelar, un pedido enviado no tiene ⋮', () => {
+  test('sin permiso de cancelar, un pedido enviado no ofrece cancelarlo', async () => {
     pinta(vista({ order: pedido() }), { puedeCancelar: false });
-    expect(screen.queryByRole('button', { name: 'Más opciones de la cuenta' })).toBeNull();
+    await abrirMenu();
+    expect(await screen.findByRole('menuitem', { name: /Imprimir cuenta/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Cancelar pedido/ })).toBeNull();
+  });
+
+  // Spec 012: la cuenta impresa sale del ⋮, también de una cuenta que no se ha mandado a cocina.
+  test.each([
+    ['una cuenta en captura', () => vista({ draft: draft() })],
+    ['un pedido enviado', () => vista({ order: pedido() })],
+  ])('%s ofrece «Imprimir cuenta»', async (_n, v) => {
+    pinta(v());
+    await abrirMenu();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Imprimir cuenta/ }));
+    expect(handlers.onImprimir).toHaveBeenCalled();
+  });
+
+  test('una cuenta vacía no ofrece imprimir', async () => {
+    pinta(vista());
+    await abrirMenu();
+    await screen.findByRole('menuitem', { name: /Nombre del cliente/ });
+    expect(screen.queryByRole('menuitem', { name: /Imprimir cuenta/ })).toBeNull();
   });
 
   test('con un nombre largo ningún control del encabezado baja de 44 px', () => {

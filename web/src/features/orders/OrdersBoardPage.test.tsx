@@ -36,6 +36,14 @@ vi.mock('react-router', async () => ({
   useNavigate: () => navegar,
 }));
 
+// Quién puede entrar a Vender. Hoy todos los roles pueden; el caso «sin Vender» se fuerza aquí para
+// probar que el ajuste del tablero sigue mandando cuando ese rol exista.
+const sinVender = vi.hoisted(() => ({ activo: false }));
+vi.mock('../../app/roles', async (orig) => {
+  const real = await orig<typeof import('../../app/roles')>();
+  return { ...real, canAccess: (role: string | undefined, path: string) => (path === '/pos' && sinVender.activo ? false : real.canAccess(role, path)) };
+});
+
 import { OrdersBoardPage } from './OrdersBoardPage';
 
 const linea = (id: number, qty: number, delivered = 0): BoardLine => ({
@@ -493,5 +501,43 @@ describe('«Abrir cuenta» lleva a la cuenta en Vender', () => {
     const c = await tarjeta();
     await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+  });
+});
+
+// EL AJUSTE «EL TABLERO PUEDE COBRAR» NO QUEDA SIN EFECTO (spec 030, revisión del coordinador).
+//
+// Quien puede entrar a Vender cobra en la cuenta («Abrir cuenta»). Quien NO puede —una cocina con su
+// propio usuario— no tendría dónde cobrar: con el ajuste encendido, el tablero conserva su «Cobrar».
+describe('quien no puede entrar a Vender', () => {
+  afterEach(() => { sinVender.activo = false; });
+
+  test('con el ajuste encendido cobra en el tablero, con la hoja de siempre', async () => {
+    sinVender.activo = true;
+    api.order.mockResolvedValue({ ...pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), lines: [], payments: [] });
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
+    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    const c = await tarjeta();
+    const cobrar = await within(c).findByRole('button', { name: /^Cobrar \$65/ });
+    expect(within(c).queryByRole('button', { name: 'Abrir cuenta' })).toBeNull();
+    await userEvent.click(cobrar);
+    expect(await screen.findByText(/Falta \$/)).toBeInTheDocument();
+  });
+
+  test('con el ajuste apagado solo dice cuánto falta', async () => {
+    sinVender.activo = true;
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: false });
+    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    const c = await tarjeta();
+    await waitFor(() => expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument());
+    expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+    expect(within(c).queryByRole('button', { name: 'Abrir cuenta' })).toBeNull();
+  });
+
+  test('quien sí puede entrar a Vender abre la cuenta aunque el ajuste esté encendido', async () => {
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
+    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    const c = await tarjeta();
+    await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
+    expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
   });
 });

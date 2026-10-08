@@ -4,7 +4,7 @@ import {
 import { useId, useState, type ReactNode } from 'react';
 import {
   LuTrash2, LuStickyNote, LuPanelRightClose, LuStore, LuBike, LuTag, LuEllipsisVertical, LuUser,
-  LuLock, LuCheck, LuChevronRight, LuChevronDown, LuCircleX, LuBan,
+  LuLock, LuCheck, LuChevronRight, LuChevronDown, LuCircleX, LuBan, LuPrinter,
 } from 'react-icons/lu';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from '../../components/ui/menu';
 import { cobraEnvio } from '../../domain/pedido';
@@ -50,6 +50,8 @@ interface Props {
   onDescartar: () => void;
   onCancelarPedido: () => void;
   onQuitarDeCocina: (r: RenglonPedido) => void;
+  // El papel de la cuenta (spec 012): pre-cuenta si no se ha mandado, o lo enviado más lo nuevo.
+  onImprimir: () => void;
   onHide?: () => void;
   swipeHandlers?: SwipeHandlers;
 }
@@ -80,7 +82,8 @@ export function Ticket(props: Props) {
   const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
   const etiquetaCobrar = hayNuevo ? `Enviar y cobrar ${money(vista.falta)}` : `Cobrar ${money(vista.falta)}`;
 
-  const conMenu = enCaptura || puedeCancelar;
+  const conMenu = enCaptura || puedeCancelar || vista.tipo === 'pedido';
+  const hayQueImprimir = hayNuevo || vista.enCocina.length + vista.pagados.length > 0;
   // Cada cuenta, y cada vez que una sección cruza el umbral de plegado, decide de nuevo si se
   // pliega: heredar el estado de la cuenta anterior dejaba cinco renglones de cocina empujando lo
   // nuevo fuera de la vista.
@@ -131,6 +134,11 @@ export function Ticket(props: Props) {
                   <LuTag /> Descuento
                 </MenuItem>
               )}
+              {hayQueImprimir && (
+                <MenuItem value="imprimir" minH="48px" onClick={props.onImprimir}>
+                  <LuPrinter /> Imprimir cuenta
+                </MenuItem>
+              )}
               {vista.tipo === 'captura' && <MenuSeparator />}
               {/* Lejos de lo que se toca todo el día, y pregunta en una hoja de la app. */}
               {vista.tipo === 'captura' && (
@@ -138,8 +146,9 @@ export function Ticket(props: Props) {
                   <LuCircleX /> Descartar cuenta
                 </MenuItem>
               )}
+              {!enCaptura && puedeCancelar && <MenuSeparator />}
               {!enCaptura && puedeCancelar && (
-                <MenuItem value="cancelar" minH="48px" color="red.fg" onClick={onCancelarPedido}>
+                <MenuItem value="cancelar" minH="48px" mt={3} color="red.fg" onClick={onCancelarPedido}>
                   <LuBan /> Cancelar pedido
                 </MenuItem>
               )}
