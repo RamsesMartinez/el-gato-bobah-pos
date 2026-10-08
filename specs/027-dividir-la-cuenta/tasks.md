@@ -409,8 +409,8 @@ nueva, existencias iguales, y origen y destino tienen sus totales correctos.
 - [ ] T090 Reescribir web/e2e/dividir-cuenta-incidente.spec.ts como regresión y renombrarlo a web/e2e/split-bill-incident.spec.ts: la misma mesa con «Dividir → Por productos», ≤ 20 toques contados y ningún pedido abierto al final; usa `tokenDeRequest` y deja todo cobrado y entregado
 - [x] T091 [P] Actualizar docs/matriz-de-cobro.md y docs/matriz-de-pantallas.md con los casos nuevos y lo que **no** queda cubierto
 - [x] T092 [P] Documentar en AGENTS.md la mecánica nueva (cobertura, cotización, bitácora de pagos devueltos, pedidos juntados, permisos)
-- [ ] T093 Gates completos en el worktree: `go build ./... && go test ./...`, integración contra `egb027-pg` con `TEST_DATABASE_URL` **y** `TEST_RESTORED_DATABASE_URL`, incluido `TestEveryCompanyTableIsIsolated`; verificar que el test de la migración corrió de verdad: `go test -tags=integration -v -run MigrationSplitBill ./internal/integration/... | grep -c SKIP` da 0; golangci-lint, `bun run lint`, `bun run vitest run`, `bun run build`, `bun audit --audit-level=high`
-- [ ] T094 Correr `/revision-de-codigo` sobre el diff (hook `after_implement`)
+- [x] T093 Gates completos en el worktree: `go build ./... && go test ./...`, integración contra `egb027-pg` con `TEST_DATABASE_URL` **y** `TEST_RESTORED_DATABASE_URL`, incluido `TestEveryCompanyTableIsIsolated`; verificar que el test de la migración corrió de verdad: `go test -tags=integration -v -run MigrationSplitBill ./internal/integration/... | grep -c SKIP` da 0; golangci-lint, `bun run lint`, `bun run vitest run`, `bun run build`, `bun audit --audit-level=high`
+- [x] T094 Correr `/revision-de-codigo` sobre el diff (hook `after_implement`)
 
 ---
 
