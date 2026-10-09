@@ -967,7 +967,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
           {Number(session.writtenOff ?? 0) > 0 && (
             <Text fontSize="sm" color="fg.muted">
-              Perdido (se canceló lo que faltaba): {money(session.writtenOff ?? '0')}. No está en el arqueo.
+              Perdido: {money(session.writtenOff ?? '0')} (se canceló lo que faltaba)
             </Text>
           )}
 
@@ -1393,6 +1393,11 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
         {' '}· importe vendido, incluye lo que falta por cobrar
         {recortadas && ` · se muestran las ${ventas.length} más recientes`}
       </Text>
+      {Number(session.writtenOff ?? 0) > 0 && (
+        <Text fontSize="sm" color="fg.muted" mb={2}>
+          Perdido: {money(session.writtenOff ?? '0', session.currency)} (se canceló lo que faltaba)
+        </Text>
+      )}
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="240px" overflowY="auto">
         <Table.Root size="sm" stickyHeader>
           <Table.Header><Table.Row>

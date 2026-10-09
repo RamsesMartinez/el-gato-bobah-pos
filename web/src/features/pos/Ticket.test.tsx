@@ -317,6 +317,24 @@ describe('el ⋮ de la cuenta (US5)', () => {
     expect(screen.queryByRole('menuitem', { name: /Descartar/ })).toBeNull();
   });
 
+  // «Cancelar lo que falta» (dueño, 2026-10-09): entregado y pagado a medias, con permiso.
+  test('un entregado pagado a medias ofrece «Cancelar lo que falta» y lo llama', async () => {
+    const onCancelarResto = vi.fn();
+    pinta(vista({ order: pedido({ status: 'entregada', outstanding: '100.00' }) }), { onCancelarResto });
+    await abrirMenu();
+    const item = await screen.findByRole('menuitem', { name: /Cancelar lo que falta/ });
+    expect(alto(item)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(item);
+    expect(onCancelarResto).toHaveBeenCalled();
+  });
+
+  test('sin pagos no se ofrece «Cancelar lo que falta»', async () => {
+    pinta(vista({ order: pedido({ status: 'entregada' }) }), { onCancelarResto: vi.fn() });
+    await abrirMenu();
+    await screen.findByRole('menuitem', { name: /Cancelar pedido/ });
+    expect(screen.queryByRole('menuitem', { name: /Cancelar lo que falta/ })).toBeNull();
+  });
+
   test('sin permiso de cancelar, un pedido enviado no ofrece cancelarlo', async () => {
     pinta(vista({ order: pedido() }), { puedeCancelar: false });
     await abrirMenu();

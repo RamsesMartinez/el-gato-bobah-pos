@@ -330,6 +330,8 @@ where f.total - coalesce(p.pagado, 0) > 0;
 select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
 from orders o
 where o.written_off_business_date between @desde and @hasta
+  and o.merged_into_order_id is null
+  and o.status not in ('cancelada', 'reembolsada')
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
 -- name: SalesCancelledLines :one

@@ -147,6 +147,17 @@ test('el total de las ventas del corte declara qué deja fuera', () => {
   expect(screen.getByText('Pedidos del corte')).toBeInTheDocument();
 });
 
+// El corte ya cerrado nombra lo dado por perdido («cancelar lo que falta», 2026-10-09): es la cifra
+// que cierra la resta vendido = cobrado + sin cobrar + perdido semanas después, cuando se audita.
+test('el detalle de un corte cerrado nombra lo perdido', () => {
+  render(
+    <Provider>
+      <VentasDelCorte session={{ ...corteCon({ salesCount: 1, salesShown: 1, salesTotal: '100.00' }), writtenOff: '60.00' }} />
+    </Provider>,
+  );
+  expect(screen.getByText(/Perdido: \$60 \(se canceló lo que faltaba\)/)).toBeInTheDocument();
+});
+
 // Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un
 // error de carga, y manda a quien revisa a recargar en vez de a seguir.
 test('un corte sin ventas lo dice en vez de pintar una tabla vacía', () => {

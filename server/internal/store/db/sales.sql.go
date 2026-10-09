@@ -957,6 +957,8 @@ const salesWrittenOff = `-- name: SalesWrittenOff :one
 select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
 from orders o
 where o.written_off_business_date between $1 and $2
+  and o.merged_into_order_id is null
+  and o.status not in ('cancelada', 'reembolsada')
   and ($3::service_type is null or o.service_type = $3)
 `
 

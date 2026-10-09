@@ -254,6 +254,8 @@ export interface CashSessionDetail {
   salesShown: number;
   // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
   salesTotal: string;
+  // Lo dado por perdido de los pedidos del corte («cancelar lo que falta», 2026-10-09).
+  writtenOff?: string;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
   // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los

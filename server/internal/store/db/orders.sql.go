@@ -3011,7 +3011,7 @@ update orders
    set written_off_amount = $1, written_off_reason = $2,
        written_off_by = $3, written_off_at = now(),
        written_off_business_date = $4
- where id = $5 and written_off_at is null
+ where id = $5 and written_off_at is null and status = 'entregada'
 `
 
 type WriteOffOrderParams struct {
