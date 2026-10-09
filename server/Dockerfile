@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Imágenes base clavadas por digest (A08): el tag es mutable, el digest no. Dependabot
 # (docker) las mantiene al día.
-FROM golang:1.27-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS build
+FROM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS build
 WORKDIR /src
 # Descarga de módulos cacheada: solo se rehace si cambian go.mod/go.sum.
 COPY go.mod go.sum ./

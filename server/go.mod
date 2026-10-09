@@ -1,6 +1,6 @@
 module github.com/ramthedev/el-gato-bobah-pos/server
 
-go 1.27.0
+go 1.27.2
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.68.0
