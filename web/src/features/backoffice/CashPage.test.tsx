@@ -549,6 +549,20 @@ describe('las cuentas vivas en el cierre', () => {
       expect(onCancelar).toHaveBeenCalledWith(5, 'se fue sin pagar');
     });
 
+    // Opción A del dueño (2026-10-09): el pagado a medias cuyo cliente se fue da por perdido el resto.
+    test('«Cancelar lo que falta» en el pagado a medias, con motivo', async () => {
+      const onCancelarResto = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()}
+        onCancelar={vi.fn()} onCancelarResto={onCancelarResto} />);
+      expect(screen.queryByRole('button', { name: 'Cancelar lo que falta de Persa' })).toBeNull();
+      const resto = screen.getByRole('button', { name: 'Cancelar lo que falta de #6' });
+      expect(parseInt(getComputedStyle(resto).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      await userEvent.click(resto);
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar lo que falta' }));
+      expect(onCancelarResto).toHaveBeenCalledWith(6, 'se fue sin pagar');
+    });
+
     test('un entregado que debe no se lista dos veces', async () => {
       wrap(<CuentasDelCierre pending={[]} owing={[{ id: 2, number: 2, name: 'Bosque de Noruega', total: '195.00', paid: '0.00' }]}
         cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);

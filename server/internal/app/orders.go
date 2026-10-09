@@ -135,6 +135,8 @@ type OrderView struct {
 	// implementaciones de la misma cifra ya dejaron a la barra del POS diciendo $2,141 mientras su
 	// propia lista decía $1,928.
 	Outstanding decimal.Decimal `json:"outstanding"`
+	// WrittenOff: lo dado por perdido («cancelar lo que falta», 2026-10-09). Ya no está en Outstanding.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
 	// Refund: lo ya devuelto de este pedido. Es el otro extremo del tope de una devolución —se
 	// devuelve lo cobrado MENOS esto—, y sin el dato la pantalla ofrecería devolver dos veces lo
 	// mismo y el servidor la rebotaría con el cliente enfrente.
@@ -684,7 +686,8 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		Subtotal: o.Subtotal, Discount: o.DiscountTotal, DeliveryFee: o.DeliveryFee,
 		Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:        domain.PedidoSaldado(paid, o.Total),
-		Outstanding: domain.PorCobrar(o.Total, paid),
+		Outstanding: domain.Owed(o.Total, paid, o.WrittenOffAmount),
+		WrittenOff:  o.WrittenOffAmount,
 		// Refund se llena aquí también: solo el tablero y las entregadas lo traían, y el detalle
 		// respondía 0 de un pedido devuelto completo (spec 029).
 		Refund:   o.RefundAmount,
@@ -796,6 +799,8 @@ type BoardOrder struct {
 	// ABONADO —el cliente dejó algo al pedir y termina al recoger—, y en ese caso derivar el
 	// pendiente del total, como hacía la pantalla, cobra de más y descuadra el aviso del tablero.
 	Outstanding decimal.Decimal `json:"outstanding"`
+	// WrittenOff: lo dado por perdido («cancelar lo que falta», 2026-10-09). Ya no está en Outstanding.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
 	// Refund: lo ya devuelto de este pedido. Es el otro extremo del tope de una devolución —se
 	// devuelve lo cobrado MENOS esto—, y sin el dato la pantalla ofrecería devolver dos veces lo
 	// mismo y el servidor la rebotaría con el cliente enfrente.
@@ -855,7 +860,7 @@ func (s *OrdersService) Board(ctx context.Context) ([]BoardOrder, error) {
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
 			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
-			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			Outstanding: domain.Owed(r.Total, r.Paid, r.WrittenOffAmount),
 			Refund:      r.RefundAmount,
 			OpenedAt:    r.OpenedAt,
 			Lines:       porPedido[r.ID],
@@ -941,7 +946,7 @@ func (s *OrdersService) DeliveredToday(ctx context.Context) ([]BoardOrder, error
 			CustomerName: r.CustomerName,
 			Total:        r.Total, Currency: domain.Currency(r.Currency),
 			Paid:        domain.PedidoSaldado(r.Paid, r.Total),
-			Outstanding: domain.PorCobrar(r.Total, r.Paid),
+			Outstanding: domain.Owed(r.Total, r.Paid, r.WrittenOffAmount),
 			Refund:      r.RefundAmount,
 			OpenedAt:    r.OpenedAt,
 		})
@@ -1862,6 +1867,10 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 				return domain.ErrNotFound
 			}
 			return err
+		}
+		// Lo que faltaba ya se dio por perdido: cobrarlo ahora lo contaría como cobrado Y como perdido.
+		if row.WrittenOffAmount.IsPositive() {
+			return domain.ErrWrittenOffNoCharge
 		}
 		o := chargeOrderFrom(row.ID, string(row.Status), row.DeliveryPlatformID, row.Subtotal, row.DiscountTotal,
 			row.DeliveryFee, row.Total, row.SessionStatus)

@@ -195,6 +195,8 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// que mueve dinero sin la barrera que su gemelo sí exige. Por permiso y no por
 					// rol: la tarjeta del tablero pregunta lo mismo para ofrecer «Cancelar pedido».
 					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/cancel", h.CancelOrder)
+					// «Cancelar lo que falta» (2026-10-09): mismo permiso que cancelar el pedido.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/write-off", h.WriteOffOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)

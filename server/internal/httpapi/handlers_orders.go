@@ -163,6 +163,29 @@ func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// POST /orders/:id/write-off — «cancelar lo que falta» de un entregado pagado a medias, con motivo.
+func (h *Handlers) WriteOffOrder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.orders.WriteOff(r.Context(), app.WriteOffCmd{OrderID: id, Motivo: body.Reason, ActorID: u.ID}); err != nil {
+		Error(w, err)
+		return
+	}
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GET /orders/delivered — entregadas del día (superficie de reembolso, admin/gerente).
 func (h *Handlers) DeliveredOrders(w http.ResponseWriter, r *http.Request) {
 	items, err := h.orders.DeliveredToday(r.Context())

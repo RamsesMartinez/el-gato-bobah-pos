@@ -273,7 +273,9 @@ func TestSplitBillSentinelsMapToStatusCodeAndText(t *testing.T) {
 		// No hay fiados (2026-10-09): el cierre se niega con su propio código y sin «conflicto».
 		{domain.NoOwingOrders([]domain.OwingOrder{{Number: 7, Name: "Persa", Total: decimal.RequireFromString("65")}}),
 			409, "UNPAID_ORDERS", "hay pedidos entregados sin cobrar: Persa (#7) debe $65.00. Cóbralos o cancélalos antes de cerrar"},
-		{domain.ErrCancelDeliveredWithPayments, 409, "CONFLICT", "Este pedido ya tiene pagos; cobra lo que falta"},
+		{domain.ErrCancelDeliveredWithPayments, 409, "CONFLICT", "Este pedido ya tiene pagos; cancela lo que falta"},
+		{domain.ErrWriteOffWithoutPayments, 409, "CONFLICT", "Este pedido no tiene pagos; cancélalo completo"},
+		{domain.ErrWrittenOffNoCharge, 409, "CONFLICT", "Lo que faltaba de este pedido ya se dio por perdido"},
 	}
 	for _, c := range cases {
 		t.Run(c.text, func(t *testing.T) {

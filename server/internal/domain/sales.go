@@ -265,6 +265,10 @@ type SalesSummary struct {
 	Cancelled    ConceptCount    `json:"cancelled"`
 	Refunded     ConceptCount    `json:"refunded"`
 	Pending      ConceptCount    `json:"pending"`
+	// WrittenOff: lo dado por perdido en el periodo («cancelar lo que falta», 2026-10-09), por el día
+	// en que se dio por perdido. NO está en Total (no se cobró), ni en Refunded (no salió dinero), ni
+	// en Pending (ya no se debe).
+	WrittenOff ConceptCount `json:"writtenOff"`
 }
 
 // MethodNet es lo que el resumen toma de cada renglón del desglose por medio: lo cobrado neto y

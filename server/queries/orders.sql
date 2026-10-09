@@ -134,7 +134,7 @@ from order_payments where client_uuid = $1;
 
 -- name: ListActiveOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -183,7 +183,7 @@ where id = $1;
 -- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
 -- fecha de negocio para no arrastrar todo el histórico.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -297,7 +297,7 @@ where o.id = $1;
 -- El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
 -- la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
 -- agregados desaparecería del importe.
-select id, status, service_type, delivery_platform_id, total
+select id, status, service_type, delivery_platform_id, total, written_off_amount
 from orders where id = $1
 for update;
 
@@ -404,7 +404,7 @@ from order_payments where order_id = $1;
 -- que hoy. Partirla en UNION ALL de las dos ramas se midió y fue más lenta (~22 ms): la rama de
 -- cocina no puede acotar por fecha y Postgres la lee por el índice de empresa de todos modos.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
        pagos.paid::numeric(10,2) as paid,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
@@ -422,7 +422,8 @@ where o.status not in ('cancelada', 'reembolsada')
     -- cierre. Un pedido que nadie ve es un pedido que nadie cierra.
     o.status in ('abierta', 'lista')
     -- El centavo de tolerancia es el MISMO de `domain.PedidoSaldado`, y tiene que moverse con él.
-    or (o.total - pagos.paid > 0.01 and o.business_date >= @since::date)
+    -- Lo dado por perdido («cancelar lo que falta», 2026-10-09) deja de deberse.
+    or (o.total - o.written_off_amount - pagos.paid > 0.01 and o.business_date >= @since::date)
   )
 order by o.opened_at;
 
@@ -430,7 +431,7 @@ order by o.opened_at;
 -- Los pedidos que la fila tiene que mostrar aunque ya no estén vivos: los cerrados que conservan una
 -- «Nuevo» viva (research R-9). Sin esto lo capturado quedaría en una cuenta que nadie ve.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
        coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
@@ -830,7 +831,7 @@ from order_line_moves where client_uuid = $1;
 -- turno. El candado es el mismo de siempre: entre leer lo cobrado y escribir el pago cabe otro
 -- cajero, y sin él los dos cubrirían la misma pieza.
 select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
-       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status, o.written_off_amount
 from orders o
 left join register_sessions rs on rs.id = o.register_session_id
 where o.id = $1
@@ -875,3 +876,12 @@ where order_id = $1 and order_line_id is null and movement_type = 'venta';
 -- termina antes, y devolver ve que ya cerró. Sin él, devolver leía «abierto», el corte confirmaba
 -- con ese pago en su esperado y luego la devolución lo borraba.
 select status::text from register_sessions where id = $1 for share;
+
+-- name: WriteOffOrder :execrows
+-- «Cancelar lo que falta» (dueño, 2026-10-09): el resto de un entregado pagado a medias se da por
+-- perdido con su motivo. `written_off_at is null` hace que dos toques no lo escriban dos veces.
+update orders
+   set written_off_amount = sqlc.arg(amount), written_off_reason = sqlc.arg(reason),
+       written_off_by = sqlc.arg(actor), written_off_at = now(),
+       written_off_business_date = sqlc.arg(business_date)
+ where id = sqlc.arg(id) and written_off_at is null;

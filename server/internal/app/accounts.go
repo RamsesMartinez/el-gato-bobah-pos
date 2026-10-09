@@ -104,7 +104,9 @@ func (s *AccountsService) Live(ctx context.Context, olderDebts bool) (*LiveAccou
 	out := &LiveAccounts{Items: make([]AccountItem, 0, len(orders)+len(fresh)), Outstanding: decimal.Zero, ServerTime: now}
 	seen := map[int64]bool{}
 	addOrder := func(r db.ListLiveOrdersRow, closedWithPending bool) {
-		state, listed := domain.OrderAccountState(string(r.Status), r.Paid, r.Total, closedWithPending)
+		// Lo dado por perdido deja de deberse («cancelar lo que falta», 2026-10-09).
+		total := r.Total.Sub(r.WrittenOffAmount)
+		state, listed := domain.OrderAccountState(string(r.Status), r.Paid, total, closedWithPending)
 		if !listed {
 			return
 		}
@@ -116,7 +118,7 @@ func (s *AccountsService) Live(ctx context.Context, olderDebts bool) (*LiveAccou
 			KitchenReady: string(r.Status) == domain.StatusLista, PlatformID: r.DeliveryPlatformID,
 			ServiceType: string(r.ServiceType), CustomerName: r.CustomerName, OpenedAt: r.OpenedAt,
 			UpdatedAt: r.UpdatedAt, BusinessDate: &date, Total: r.Total, Paid: r.Paid,
-			Outstanding: domain.PorCobrar(r.Total, r.Paid), LineCount: int(r.Renglones),
+			Outstanding: domain.Owed(r.Total, r.Paid, r.WrittenOffAmount), LineCount: int(r.Renglones),
 			ClosedWithPending: closedWithPending,
 		}
 		if d, ok := pending[r.ID]; ok {

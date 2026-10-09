@@ -248,6 +248,15 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 	}
 	resumen := domain.SummarizeSales(totales, netos)
 	resumen.Pending = pendiente
+	// Lo perdido solo existe en pedidos de mostrador; la vista de pendientes de folio es de
+	// plataforma, así que ahí vale cero sin consulta gemela.
+	if !f.SoloSinFolio() {
+		w, err := s.store.QC(ctx).SalesWrittenOff(ctx, db.SalesWrittenOffParams{Desde: desde, Hasta: hasta, ServiceType: tipo})
+		if err != nil {
+			return nil, err
+		}
+		resumen.WrittenOff = domain.ConceptCount{Count: int(w.Pedidos), Amount: domain.Round2(w.Monto)}
+	}
 	return &SalesSummaryView{
 		Range:          rango(f.Range),
 		SalesSummary:   resumen,

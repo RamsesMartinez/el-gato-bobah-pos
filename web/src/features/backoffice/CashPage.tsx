@@ -763,9 +763,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   };
   // Cancelar un entregado que debe y no pagó nada («se fue sin pagar»): la otra salida del cierre
   // sin fiados, además de cobrarlo en su cuenta.
-  const cancelarDelCierre = async (orderId: number, motivo: string) => {
+  const cancelarDelCierre = async (orderId: number, motivo: string, resto = false) => {
     try {
-      await posApi.cancelOrder(orderId, motivo);
+      await (resto ? posApi.writeOffOrder(orderId, motivo) : posApi.cancelOrder(orderId, motivo));
     } catch (e) {
       toaster.create({ title: 'No se pudo cancelar', description: mensajeDeError(e), type: 'error' });
     }
@@ -942,7 +942,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
               de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
           <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
-            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre} />
+            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre}
+            onCancelarResto={(id, motivo) => cancelarDelCierre(id, motivo, true)} />
 
           {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
               decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
@@ -961,6 +962,13 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
                 sin él.
               </Text>
             </Box>
+          )}
+
+          {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
+          {Number(session.writtenOff ?? 0) > 0 && (
+            <Text fontSize="sm" color="fg.muted">
+              Perdido (se canceló lo que faltaba): {money(session.writtenOff ?? '0')}. No está en el arqueo.
+            </Text>
           )}
 
           <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
@@ -1436,7 +1444,7 @@ function colorDeEstadoDeVenta(estado: string) {
 // «Cancelar», y los pedidos en cocina o listos con «Abrir». Debajo, plegado, lo que NO bloquea —las
 // que se capturan y lo de plataforma—. Plegado porque en 600 px de alto la lista empujaba el botón de
 // cerrar fuera de la pantalla.
-export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir, onDescartar, onCancelar }: {
+export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir, onDescartar, onCancelar, onCancelarResto }: {
   pending: PendingOrder[];
   // Los entregados que deben: bloquean (no hay fiados, 2026-10-09). Se cobran en su cuenta o se
   // cancelan con motivo; cancelar solo si no tienen pagos, como exige el servidor.
@@ -1445,10 +1453,13 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
   onAbrir: (ruta: string) => void;
   onDescartar: (draftId: string, version: number) => void;
   onCancelar?: (orderId: number, motivo: string) => void;
+  // «Cancelar lo que falta» del pagado a medias: lo pagado se queda y el resto se da por perdido.
+  onCancelarResto?: (orderId: number, motivo: string) => void;
 }) {
   const [abierta, setAbierta] = useState(false);
   const [descartando, setDescartando] = useState<AccountItem | null>(null);
   const [cancelando, setCancelando] = useState<OwingOrder | null>(null);
+  const [perdiendo, setPerdiendo] = useState<OwingOrder | null>(null);
   // Lo que ya va arriba como bloqueo no se repite en la sección plegada.
   const deben = new Set(owing.map((o) => o.id));
   const cuentas = todas.filter((c) => c.orderId == null || !deben.has(c.orderId));
@@ -1470,7 +1481,7 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
             {owing.map((o) => (
               <HStack key={o.id} justify="space-between" gap={2} flexWrap="wrap">
                 <Text fontWeight="600" truncate flex="1" minW="8rem">{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
-                <Text fontWeight="700" flexShrink={0}>{money(round2(Number(o.total) - Number(o.paid)))}</Text>
+                <Text fontWeight="700" flexShrink={0}>{money(round2(Number(o.total) - Number(o.paid) - Number(o.writtenOff ?? 0)))}</Text>
                 <Box flexShrink={0}>
                   <Button size="sm" minH="44px" colorPalette="orange" aria-label={`Cobrar ${nombreDePedido(o)}`}
                     onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Cobrar</Button>
@@ -1480,6 +1491,12 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
                   <Box flexShrink={0} pl={6}>
                     <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Cancelar ${nombreDePedido(o)}`}
                       onClick={() => setCancelando(o)}>Cancelar</Button>
+                  </Box>
+                )}
+                {onCancelarResto && Number(o.paid) > 0 && (
+                  <Box flexShrink={0} pl={6}>
+                    <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Cancelar lo que falta de ${nombreDePedido(o)}`}
+                      onClick={() => setPerdiendo(o)}>Cancelar lo que falta</Button>
                   </Box>
                 )}
               </HStack>
@@ -1559,6 +1576,14 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
           const o = cancelando;
           setCancelando(null);
           if (o && motivo) onCancelar?.(o.id, motivo);
+        }} />
+      <ReasonSheet isOpen={perdiendo !== null} destructive required
+        title={`¿Cancelar lo que falta de ${perdiendo ? nombreDePedido(perdiendo) : ''}?`}
+        label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
+        onDone={(motivo) => {
+          const o = perdiendo;
+          setPerdiendo(null);
+          if (o && motivo) onCancelarResto?.(o.id, motivo);
         }} />
       <ConfirmSheet isOpen={descartando !== null} destructive
         title={`¿Descartar la cuenta de ${descartando ? nombre(descartando) : ''}?`}

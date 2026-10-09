@@ -146,6 +146,7 @@ export function POSPage() {
   const [todasAbierta, setTodasAbierta] = useState(false);
   const [descartando, setDescartando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
+  const [perdiendo, setPerdiendo] = useState(false);
   const [quitando, setQuitando] = useState<RenglonPedido | null>(null);
   // El folio de plataforma que se está tecleando en la barra, antes de guardarse al salir del campo.
   const [folioTecleado, setFolioTecleado] = useState<{ cuenta: string; texto: string } | null>(null);
@@ -237,6 +238,22 @@ export function POSPage() {
   const pedirDescartar = () => {
     if (hayQuePreguntar(vista.nuevos.length)) setDescartando(true);
     else void descartar();
+  };
+
+  // «Cancelar lo que falta» (dueño, 2026-10-09): lo pagado se queda como venta, el resto se pierde.
+  const cancelarResto = async (motivoResto: string | null) => {
+    setPerdiendo(false);
+    if (motivoResto === null || vista.pedidoId === null) return;
+    try {
+      const id = vista.pedidoId;
+      await accionPropia(() => posApi.writeOffOrder(id, motivoResto));
+      toaster.create({ title: `Se canceló lo que faltaba de ${vista.nombre || 'el pedido'}`, type: 'success' });
+      cuentaNueva();
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+    } catch (e) {
+      toaster.create({ title: 'No se pudo cancelar lo que falta', description: mensajeDeError(e), type: 'error' });
+    }
   };
 
   const cancelarPedido = async (motivoCancelar: string | null) => {
@@ -481,6 +498,7 @@ export function POSPage() {
     onCobrar: cobrarLaCuenta,
     onDescartar: pedirDescartar,
     onCancelarPedido: () => setCancelando(true),
+    onCancelarResto: () => setPerdiendo(true),
     onQuitarDeCocina: setQuitando,
     onImprimir: () => setPapel(cuentaImpresa(vista, new Date())),
   };
@@ -672,6 +690,10 @@ export function POSPage() {
 
       <ReasonSheet isOpen={cancelando} required destructive title={`¿Cancelar el pedido de ${vista.nombre || 'esta cuenta'}?`}
         label="Motivo" confirmLabel="Cancelar pedido" onDone={(r) => void cancelarPedido(r)} />
+
+      <ReasonSheet isOpen={perdiendo} required destructive title={`¿Cancelar lo que falta de ${vista.nombre || 'esta cuenta'}?`}
+        label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
+        onDone={(r) => void cancelarResto(r)} />
 
       {quitando && (
         <CancelarRenglonDialog nombre={quitando.name} pendientes={Math.max(1, quitando.qty - quitando.delivered)}

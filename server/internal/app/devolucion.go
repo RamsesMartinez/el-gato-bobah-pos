@@ -330,6 +330,58 @@ func (s *OrdersService) cancelDeliveredOwing(ctx context.Context, q *db.Queries,
 	return q.CancelOrder(ctx, db.CancelOrderParams{ID: cmd.OrderID, CancelledBy: &cmd.ActorID, CancelReason: &motivo})
 }
 
+// WriteOffCmd: dar por perdido lo que falta de un entregado pagado a medias.
+type WriteOffCmd struct {
+	OrderID int64
+	Motivo  string
+	ActorID int64
+}
+
+// WriteOff es «cancelar lo que falta» (dueño, 2026-10-09, opción A): lo pagado se queda como venta y
+// lo que falta se da por perdido con su motivo. No repone inventario (la comida ya salió) ni mueve
+// dinero. Solo pedidos de mostrador: los de plataforma los paga la plataforma.
+func (s *OrdersService) WriteOff(ctx context.Context, cmd WriteOffCmd) error {
+	motivo, err := domain.MotivoValido(cmd.Motivo)
+	if err != nil {
+		return err
+	}
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		if o.DeliveryPlatformID != nil {
+			return domain.ErrWriteOffPlatform
+		}
+		entradas, err := s.cobradoPorMetodo(ctx, q, cmd.OrderID)
+		if err != nil {
+			return err
+		}
+		pagado := decimal.Zero
+		for _, e := range entradas {
+			pagado = pagado.Add(e.Monto)
+		}
+		monto, err := domain.WriteOffRemainder(string(o.Status), o.Total.Sub(o.WrittenOffAmount), pagado)
+		if err != nil {
+			return err
+		}
+		n, err := q.WriteOffOrder(ctx, db.WriteOffOrderParams{
+			ID: cmd.OrderID, Amount: monto, Reason: &motivo, Actor: &cmd.ActorID,
+			BusinessDate: pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true},
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return domain.ErrCancelDeliveredPaid
+		}
+		return nil
+	})
+}
+
 // CancelarRenglon quita todas las piezas pendientes de UN renglón de un pedido vivo.
 //
 // Existía la columna y no la operación: ninguna consulta escribía `order_lines.cancelled_at`,

@@ -283,7 +283,7 @@ order by total desc;
 --
 -- Los pagos se pre-agregan por pedido antes de unirse: order_payments es 1:N con orders.
 with filtrado as (
-  select o.id, o.total
+  select o.id, o.total - o.written_off_amount as total
   from orders o
   where o.business_date between @desde and @hasta
     and o.merged_into_order_id is null
@@ -305,7 +305,7 @@ where f.total - coalesce(p.pagado, 0) > 0;
 -- Gemela de SalesPending con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
 -- línea es lo único que las distingue, y se editan juntas.
 with filtrado as (
-  select o.id, o.total
+  select o.id, o.total - o.written_off_amount as total
   from orders o
   where o.delivery_platform_id is not null and o.platform_order_ref is null
     and o.business_date between @desde and @hasta
@@ -323,6 +323,14 @@ select count(*)::int as pedidos,
 from filtrado f
 left join pagos p on p.order_id = f.id
 where f.total - coalesce(p.pagado, 0) > 0;
+
+-- name: SalesWrittenOff :one
+-- Lo dado por perdido en el periodo («cancelar lo que falta», dueño 2026-10-09), por el día en que se
+-- dio por perdido. No es venta cobrada, ni devolución, ni pendiente: concepto propio.
+select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
+from orders o
+where o.written_off_business_date between @desde and @hasta
+  and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
 -- name: SalesCancelledLines :one
 -- Los renglones QUITADOS: la merma que se pierde de vista, porque el renglón no se cobró.
