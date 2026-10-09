@@ -24,6 +24,7 @@ Convenciones:
   "folioName": "Levkoy",         // null en una «Nuevo» (el nombre es el del pedido)
   "status": "capturando",        // capturando | enviada | descartada
   "headerVersion": 3,
+  "version": 7,                  // la de la cuenta entera: avanza con cualquier cambio (renglones o cabecera)
   "updatedAt": "2026-10-08T18:02:11Z",
   "createdAt": "2026-10-08T17:55:00Z",
   "openedBy": "Ana",             // nombre de quien la abrió
@@ -57,6 +58,7 @@ lectura**: no se guardan (research R-16). Al enviar, `Create`/`AddLines` vuelven
   "key": "d:uuid" | "o:123",     // estable para la fila y la selección
   "kind": "draft" | "order",
   "draftId": "uuid",             // en kind=draft
+  "draftVersion": 7,             // en kind=draft: la `version` de la cuenta (para descartar desde la fila); null en order
   "orderId": 123,                // en kind=order
   "number": 17,                  // folio del turno; null en draft
   "folioName": "Levkoy",
@@ -186,9 +188,15 @@ pedido al enviar.
 
 ### `POST /pos/drafts/{id}/discard`
 
-`{}` → `204`. Idempotente (ya descartada → `204`). `409 DRAFT_SENT` si ya es pedido (el mensaje lo
-dice: «Ya se mandó a cocina; para quitarla hay que cancelar el pedido»). Suelta el nombre (research
-R-3). Publica `draft.updated`.
+`{"expectedVersion": 7}` → `204`. La versión es la `version` de la cuenta que vio la tableta (o el
+`draftVersion` de la fila); sin ella → `400`. Se compara con la cuenta bloqueada: si otra tableta
+agregó, cambió o quitó algo, o tocó la cabecera → `409 DRAFT_CHANGED` y **no se descarta nada**; la
+tableta recarga la cuenta y avisa «la cuenta cambió en otra tableta». Sin esto, descartar se llevaba
+lo que otra tableta acababa de agregar y ella no se enteraba (vale igual para una cuenta nueva y para
+lo «Nuevo» de un pedido). Idempotente (ya descartada → `204`, con cualquier versión). `409 DRAFT_SENT`
+si ya es pedido (el mensaje lo dice: «Ya se mandó a cocina; para quitarla hay que cancelar el
+pedido»). Suelta el nombre (research R-3). Publica `draft.updated`. El barrido de 12 h no pasa por
+aquí y no cambia: sigue con su guarda de `updated_at`.
 
 ### `POST /pos/drafts/{id}/send` — enviar a cocina
 
