@@ -1711,11 +1711,27 @@ func (s *BackofficeService) openSessionOrConflict(ctx context.Context, registerI
 	return sess, nil
 }
 
-// SessionHistory lista los últimos cortes (abiertos y cerrados) para el histórico.
-func (s *BackofficeService) SessionHistory(ctx context.Context, limit int32) ([]SessionHistoryRow, error) {
-	rows, err := s.store.QC(ctx).ListSessions(ctx, limit)
+// SessionHistory devuelve una página del histórico de cortes (abiertos y cerrados), el más reciente
+// primero, y cuántos hay con el mismo filtro.
+func (s *BackofficeService) SessionHistory(ctx context.Context, f domain.SessionHistoryFilter) ([]SessionHistoryRow, int64, error) {
+	if err := f.Validate(); err != nil {
+		return nil, 0, err
+	}
+	day := func(t *time.Time) pgtype.Date {
+		if t == nil {
+			return pgtype.Date{}
+		}
+		return pgtype.Date{Time: *t, Valid: true}
+	}
+	q := s.store.QC(ctx)
+	desde, hasta := day(f.From), day(f.To)
+	total, err := q.CountSessions(ctx, db.CountSessionsParams{Desde: desde, Hasta: hasta})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	rows, err := q.ListSessions(ctx, db.ListSessionsParams{Desde: desde, Hasta: hasta, Lim: f.Limit, Off: f.Offset})
+	if err != nil {
+		return nil, 0, err
 	}
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
@@ -1726,7 +1742,7 @@ func (s *BackofficeService) SessionHistory(ctx context.Context, limit int32) ([]
 			TotalDifference: r.TotalDifference, Notes: r.Notes,
 		}
 	}
-	return out, nil
+	return out, total, nil
 }
 
 // SessionDetail devuelve una sesión con sus totales GUARDADOS (snapshot al cerrar) y movimientos.

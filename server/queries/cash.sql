@@ -131,7 +131,20 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
-order by s.opened_at desc limit $1;
+-- El mismo `where` que CountSessions, y se editan juntos: si divergen, «Página 3 de 2».
+where (sqlc.narg('desde')::date is null or s.business_date >= sqlc.narg('desde')::date)
+  and (sqlc.narg('hasta')::date is null or s.business_date <= sqlc.narg('hasta')::date)
+-- `id` desempata: con dos turnos abiertos en el mismo instante, una página podría repetir uno y
+-- saltarse otro.
+order by s.opened_at desc, s.id desc
+limit sqlc.arg('lim') offset sqlc.arg('off');
+
+-- name: CountSessions :one
+-- Gemela de ListSessions con su mismo `where`. Sin índice propio a propósito: son uno a tres
+-- turnos por día y empresa, y `register_sessions_company` ya deja fuera a las demás empresas.
+select count(*) from register_sessions s
+where (sqlc.narg('desde')::date is null or s.business_date >= sqlc.narg('desde')::date)
+  and (sqlc.narg('hasta')::date is null or s.business_date <= sqlc.narg('hasta')::date);
 
 -- name: GetSession :one
 select s.*, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name

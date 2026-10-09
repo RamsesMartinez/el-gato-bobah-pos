@@ -162,6 +162,26 @@ func (q *Queries) CountSessionSales(ctx context.Context, registerSessionID *int6
 	return i, err
 }
 
+const countSessions = `-- name: CountSessions :one
+select count(*) from register_sessions s
+where ($1::date is null or s.business_date >= $1::date)
+  and ($2::date is null or s.business_date <= $2::date)
+`
+
+type CountSessionsParams struct {
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
+}
+
+// Gemela de ListSessions con su mismo `where`. Sin índice propio a propósito: son uno a tres
+// turnos por día y empresa, y `register_sessions_company` ya deja fuera a las demás empresas.
+func (q *Queries) CountSessions(ctx context.Context, arg CountSessionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessions, arg.Desde, arg.Hasta)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCashRegister = `-- name: CreateCashRegister :one
 insert into cash_registers (name) values ($1)
 returning id, name, is_primary, is_active
@@ -1314,8 +1334,18 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
-order by s.opened_at desc limit $1
+where ($1::date is null or s.business_date >= $1::date)
+  and ($2::date is null or s.business_date <= $2::date)
+order by s.opened_at desc, s.id desc
+limit $4 offset $3
 `
+
+type ListSessionsParams struct {
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
+	Off   int32       `json:"off"`
+	Lim   int32       `json:"lim"`
+}
 
 type ListSessionsRow struct {
 	ID              int64              `json:"id"`
@@ -1332,8 +1362,16 @@ type ListSessionsRow struct {
 	TotalDifference decimal.Decimal    `json:"total_difference"`
 }
 
-func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessionsRow, error) {
-	rows, err := q.db.Query(ctx, listSessions, limit)
+// El mismo `where` que CountSessions, y se editan juntos: si divergen, «Página 3 de 2».
+// `id` desempata: con dos turnos abiertos en el mismo instante, una página podría repetir uno y
+// saltarse otro.
+func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]ListSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listSessions,
+		arg.Desde,
+		arg.Hasta,
+		arg.Off,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

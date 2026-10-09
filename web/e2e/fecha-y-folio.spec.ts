@@ -46,7 +46,7 @@ test.describe('T — la fecha la da el reloj', () => {
   test('T2 · dentro de un mismo corte no hay dos folios iguales', async ({ request }) => {
     const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
+    const h = await request.get(`${API}/cash-sessions?pageSize=10`, { headers: auth });
     expect(h.ok(), `/cash-sessions respondió ${h.status()}`).toBeTruthy();
     const cortes = (await h.json()).items as Array<{ id: number }>;
     expect(cortes.length, 'el ambiente no tiene cortes que revisar').toBeGreaterThan(0);
@@ -73,7 +73,7 @@ test.describe('U — las ventas de un corte', () => {
     // la cierra para medir la hoja del contador, y cada corrida empuja los cortes con ventas fuera
     // de la ventana. `revisados > 0` abajo es lo que impide que esto pase en vacío, así que la
     // ventana tiene que ser lo bastante ancha para alcanzar un corte de la caja que sí vende.
-    const h = await request.get(`${API}/cash-sessions?limit=20`, { headers: auth });
+    const h = await request.get(`${API}/cash-sessions?pageSize=20`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number }>;
 
     let revisados = 0;
@@ -106,7 +106,7 @@ test.describe('U — las ventas de un corte', () => {
   test('U3 · el conteo del corte nunca es menor que lo que muestra', async ({ request }) => {
     const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
+    const h = await request.get(`${API}/cash-sessions?pageSize=10`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number }>;
 
     for (const c of cortes.slice(0, 5)) {
@@ -131,7 +131,7 @@ test.describe('U — las ventas de un corte', () => {
   test('U2 · las ventas de un corte cuadran con lo que su arqueo espera', async ({ request }) => {
     const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const h = await request.get(`${API}/cash-sessions?limit=10`, { headers: auth });
+    const h = await request.get(`${API}/cash-sessions?pageSize=10`, { headers: auth });
     const cortes = (await h.json()).items as Array<{ id: number; status: string }>;
 
     let revisados = 0;

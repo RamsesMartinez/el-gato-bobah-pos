@@ -6,9 +6,9 @@ import type { AccountItem } from '../../types/pos';
 import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue, IconButton,
 } from '@chakra-ui/react';
-import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { medirAccion } from '../../api/uso';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
@@ -1170,18 +1170,35 @@ function ManageRegistersTab() {
 }
 
 // ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
+const CORTES_POR_PAGINA = 20;
+
 function HistoryTab() {
   const horaNegocio = useHoraDelNegocio();
-  const { data, isLoading } = useQuery({ queryKey: ['cash', 'history'], queryFn: backofficeApi.cashHistory });
+  const [page, setPage] = useState(0);
+  const [rango, setRango] = useState({ desde: '', hasta: '' });
+  const { data, isLoading } = useQuery({
+    queryKey: ['cash', 'history', page, rango.desde, rango.hasta],
+    queryFn: () => backofficeApi.cashHistory({ page, pageSize: CORTES_POR_PAGINA, from: rango.desde, to: rango.hasta }),
+    placeholderData: (prev) => prev,
+  });
   const [detailId, setDetailId] = useState<number | null>(null);
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
   const wide = useBreakpointValue({ base: false, xl: true }, { ssr: false });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   const rows = data?.items ?? [];
-  if (rows.length === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
+  const filtrando = rango.desde !== '' || rango.hasta !== '';
+  if (rows.length === 0 && !filtrando && page === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
 
-  const list = (
+  const controles = (
+    <ControlesDelHistorico page={page} total={data?.total ?? 0} pageSize={CORTES_POR_PAGINA}
+      desde={rango.desde} hasta={rango.hasta} hoy={horaNegocio.diaDelNegocio(new Date())}
+      onPage={setPage} onRango={(desde, hasta) => { setRango({ desde, hasta }); setPage(0); }} />
+  );
+
+  const list = rows.length === 0 ? (
+    <Text color="fg.muted" py={4}>No hay cortes en esas fechas.</Text>
+  ) : (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm" interactive>
         <Table.Header><Table.Row>
@@ -1220,7 +1237,7 @@ function HistoryTab() {
   if (wide) {
     return (
       <HStack align="start" gap={4}>
-        <Box flex="1.1" minW={0}>{list}</Box>
+        <VStack flex="1.1" minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
         <Box flex="1" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 220px)" overflowY="auto">
           {detailId
             ? <CorteDetail id={detailId} />
@@ -1230,10 +1247,51 @@ function HistoryTab() {
     );
   }
   return (
-    <>
+    <VStack align="stretch" gap={2}>
+      {controles}
       {list}
       <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
-    </>
+    </VStack>
+  );
+}
+
+// Los controles del histórico: un rango opcional de días y la página. Van ARRIBA de la lista y en un
+// solo renglón: a 1024×600 abajo quedaban fuera de la pantalla, y cada renglón extra se le quita a
+// la lista que se vino a leer. Las fechas son `input type="date"` como en Ventas (el calendario del
+// sistema a pantalla completa, no el desplegable de renglones de 20 px que prohíbe la constitución).
+export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy, onPage, onRango }: {
+  page: number; total: number; pageSize: number; desde: string; hasta: string; hoy: string;
+  onPage: (page: number) => void; onRango: (desde: string, hasta: string) => void;
+}) {
+  // Lo tecleado vive aquí hasta que es un rango válido: un rango al revés no se pide al servidor.
+  const [borrador, setBorrador] = useState({ desde, hasta });
+  const alReves = borrador.desde !== '' && borrador.hasta !== '' && borrador.desde > borrador.hasta;
+  const cambiar = (d: string, h: string) => {
+    setBorrador({ desde: d, hasta: h });
+    if (!(d !== '' && h !== '' && d > h)) onRango(d, h);
+  };
+  const paginas = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <HStack gap={2} flexWrap="wrap" justify="space-between">
+      <HStack gap={2} flexWrap="wrap">
+        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Desde"
+          value={borrador.desde} onChange={(e) => cambiar(e.target.value, borrador.hasta)} />
+        <Text fontSize="sm" color="fg.muted">al</Text>
+        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Hasta"
+          value={borrador.hasta} onChange={(e) => cambiar(borrador.desde, e.target.value)} />
+        {(desde !== '' || hasta !== '') && (
+          <Button size="sm" minH="44px" variant="ghost" onClick={() => cambiar('', '')}>Quitar fechas</Button>
+        )}
+        {alReves && <Text fontSize="sm" color="fg.error" role="status">La fecha de inicio va después de la final.</Text>}
+      </HStack>
+      <HStack gap={1}>
+        <IconButton size="sm" minH="44px" minW="44px" variant="outline" aria-label="Página anterior"
+          disabled={page === 0} onClick={() => onPage(page - 1)}><LuChevronLeft /></IconButton>
+        <Text fontSize="sm" minW="110px" textAlign="center">Página {page + 1} de {paginas}</Text>
+        <IconButton size="sm" minH="44px" minW="44px" variant="outline" aria-label="Página siguiente"
+          disabled={page + 1 >= paginas} onClick={() => onPage(page + 1)}><LuChevronRight /></IconButton>
+      </HStack>
+    </HStack>
   );
 }
 

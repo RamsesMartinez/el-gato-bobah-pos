@@ -516,7 +516,13 @@ export const backofficeApi = {
     manualReason?: string;
     notes?: string;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
-  cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
+  // Paginado y con rango opcional por día del turno: sin páginas solo existían los 50 más recientes.
+  cashHistory: (p: { page: number; pageSize: number; from?: string; to?: string }) => {
+    const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });
+    if (p.from) q.set('from', p.from);
+    if (p.to) q.set('to', p.to);
+    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number }>(`/cash-sessions?${q}`);
+  },
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
   // para poder llegar al resto — un arqueo cuyas ventas no se pueden recorrer no se puede auditar.
