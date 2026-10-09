@@ -390,3 +390,33 @@ func contiene(xs []string, x string) bool {
 	}
 	return false
 }
+
+// El nombre que amarró una cuenta puede llevar número de vuelta («Persa 2»): pasado el largo de la
+// lista en un turno, la cuenta nace ya numerada para que el pedido no cambie de nombre al mandarse.
+// La bolsa, en cambio, guarda animales: soltar o marcar «Persa 2» no tocaría a «Persa».
+func TestBoundFolioName(t *testing.T) {
+	casos := []struct {
+		entra, amarrado, animal string
+	}{
+		{"Persa", "Persa", "Persa"},
+		{"Persa 2", "Persa 2", "Persa"},
+		{"Maine Coon 12", "Maine Coon 12", "Maine Coon"},
+		{"  Persa 3 ", "Persa 3", "Persa"},
+		{"Persa 1", "", ""},   // la vuelta empieza en 2: «Persa 1» no lo produce nadie
+		{"Persa 100", "", ""}, // fuera del tope de SiguienteFolioLibre
+		{"Persa 02", "", ""},  // un cero a la izquierda no es un número de vuelta
+		{"Persa 2 2", "", ""}, // un número sobre otro no es un nombre
+		{"2", "", ""},         // sin animal
+		{"Pe 2", "", ""},      // el animal también pasa por SanitizarFolio
+		{"<b>Persa</b>", "", ""},
+		{"", "", ""},
+	}
+	for _, c := range casos {
+		if got := BoundFolio(c.entra); got != c.amarrado {
+			t.Errorf("BoundFolio(%q) = %q, quería %q", c.entra, got, c.amarrado)
+		}
+		if got := FolioAnimal(c.entra); got != c.animal {
+			t.Errorf("FolioAnimal(%q) = %q, quería %q", c.entra, got, c.animal)
+		}
+	}
+}

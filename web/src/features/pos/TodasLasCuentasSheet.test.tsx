@@ -112,3 +112,9 @@ describe('antigüedad', () => {
     expect(antiguedad(desde, ahora)).toBe(esperado);
   });
 });
+
+// «1 productos» (validación como usuario nuevo).
+test('una cuenta con un solo producto dice «1 producto»', async () => {
+  montar([cuenta({ key: 'd:b', kind: 'draft', draftId: 'b', orderId: null, number: null, folioName: 'Persa', state: 'capturing', group: 'capturing', lineCount: 1 })]);
+  expect(await screen.findByText(/· 1 producto$/)).toBeInTheDocument();
+});

@@ -330,3 +330,44 @@ describe('pasar a otro pedido', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 });
+
+// A 600 PX NADA SE ESCONDE DETRÁS DEL PIE (validación como usuario nuevo). Por productos y con
+// efectivo, el cuerpo y el pie tenían cada uno su scroll: los billetes y los métodos quedaban
+// cortados sin que se viera que había más. El pie es UNA fila —métodos y «Cobrar», como en el
+// lienzo— y lo de elegir productos sube al cuerpo.
+describe('la hoja de cobro cabe en la tableta', () => {
+  test('métodos y Cobrar van en una sola fila; el pie no tiene scroll propio', async () => {
+    const u = userEvent.setup();
+    pinta(<CobrarSheet pantalla="pos" order={board()} onClose={() => {}} onCobrado={() => {}} />);
+    await openByProducts(u);
+    await u.click(screen.getByRole('button', { name: 'Soju Original' }));
+    await u.click(screen.getByRole('button', { name: 'Efectivo' }));
+    const pie = screen.getByTestId('pie-de-cobro');
+    expect(getComputedStyle(pie).overflowY).not.toBe('auto');
+    const metodos = within(pie).getByRole('group', { name: '¿Con qué paga?' });
+    const cobrar = within(pie).getByRole('button', { name: /^Cobrar \$/ });
+    expect(metodos.parentElement).toBe(cobrar.parentElement);
+    expect(within(pie).queryByRole('button', { name: 'Todo lo que falta' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Todo lo que falta' })).toBeInTheDocument();
+  });
+
+  // Con el ✕ de cerrar la hoja arriba, un segundo ✕ junto a los modos se confundía con él.
+  test('dejar de dividir se dice con palabras, no con otra ✕', async () => {
+    const u = userEvent.setup();
+    pinta(<CobrarSheet pantalla="pos" order={board()} onClose={() => {}} onCobrado={() => {}} />);
+    await openByProducts(u);
+    expect(screen.getByRole('button', { name: 'Dejar de dividir' })).toHaveTextContent('Dejar de dividir');
+  });
+
+  // Sin botón para cerrar, quien no sabe que se cierra tocando afuera se queda atrapado.
+  test('tiene un botón visible para cerrar, de 44 px', async () => {
+    const u = userEvent.setup();
+    const onClose = vi.fn();
+    pinta(<CobrarSheet pantalla="pos" order={board()} onClose={onClose} onCobrado={() => {}} />);
+    const cerrar = await screen.findByRole('button', { name: 'Cerrar cobro' });
+    expect(parseInt(getComputedStyle(cerrar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(parseInt(getComputedStyle(cerrar).minWidth, 10)).toBeGreaterThanOrEqual(44);
+    await u.click(cerrar);
+    expect(onClose).toHaveBeenCalled();
+  });
+});

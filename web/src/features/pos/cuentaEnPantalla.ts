@@ -50,6 +50,8 @@ export interface VistaCuenta {
   pedidoId: number | null;
   nombre: string;
   numero: number | null;
+  // Cuándo se abrió: la del pedido, o la de la cuenta en captura.
+  abiertaEn: string | null;
   customerName: string;
   serviceType: ServiceType;
   platformId: number | null;
@@ -157,6 +159,7 @@ export function armarVista(args: {
     pedidoId: order?.id ?? null,
     nombre: order?.folioName || draft?.folioName || '',
     numero: order?.number ?? null,
+    abiertaEn: order?.openedAt || draft?.createdAt || null,
     ...head,
     deliveryFee: draft?.deliveryFee ?? order?.deliveryFee ?? '0.00',
     discount: draft?.discount ?? null,

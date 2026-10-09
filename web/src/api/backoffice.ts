@@ -195,6 +195,8 @@ export interface PendingOrder {
   // El pedido, para «Abrir» su cuenta desde el cierre. Opcional: un servidor que todavía no lo
   // manda deja el renglón sin el botón, no roto.
   id?: number;
+  // De cuánto es, para no tener que abrirlo. Opcional por la misma razón.
+  total?: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { posApi } from '../../api/pos';
 import { toaster } from '../../components/ui/toaster';
@@ -31,13 +31,20 @@ export function leerCuentaDeLaUrl(p: URLSearchParams): CuentaPedida | null {
   return null;
 }
 
-export function useAbrirDesdeLaUrl(): void {
+// `alAbrir` deja el ticket a la vista: quien toca «Abrir cuenta» quiere verla, no buscar después el
+// botón que muestra el panel.
+export function useAbrirDesdeLaUrl(alAbrir?: () => void): void {
   const [params, setParams] = useSearchParams();
+  const abrir = useRef(alAbrir);
+  useEffect(() => { abrir.current = alAbrir; });
   useEffect(() => {
     const pedida = leerCuentaDeLaUrl(params);
     if (pedida === null) return;
     setParams({}, { replace: true });
-    const seleccionar = usePosStore.getState().seleccionar;
+    const seleccionar = (sel: Seleccion) => {
+      usePosStore.getState().seleccionar(sel);
+      abrir.current?.();
+    };
     void (async () => {
       try {
         if (pedida.kind === 'order') {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { accionPropia } from '../../stores/accionesPropias';
 import { ApiError } from '../../api/client';
 import { mensajeDeError } from '../../api/mensajes';
 import { posApi } from '../../api/pos';
@@ -44,7 +45,7 @@ export function useEnviarCuenta({ onComanda }: Opciones) {
   };
 
   const m = useMutation({
-    mutationFn: (draftId: string) => posApi.sendDraft(draftId),
+    mutationFn: (draftId: string) => accionPropia(() => posApi.sendDraft(draftId)),
     onSuccess: (r, draftId) => {
       reportarResultado(null);
       setMotivo(null);

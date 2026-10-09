@@ -220,6 +220,51 @@ func SanitizarFolio(propuesto string) string {
 	return limpio
 }
 
+// BoundFolio valida el nombre que amarró una cuenta en captura, o devuelve "" si no sirve.
+//
+// Es SanitizarFolio más el número de vuelta («Persa 2», de 2 a 99, como lo escribe
+// SiguienteFolioLibre): pasado el largo de la lista en un turno, la cuenta nace ya numerada para que
+// el pedido no cambie de nombre al mandarse (D-2), y SanitizarFolio solo acepta letras.
+func BoundFolio(nombre string) string {
+	limpio := strings.TrimSpace(nombre)
+	animal, vuelta, numerado := partirVuelta(limpio)
+	if SanitizarFolio(animal) != animal || animal == "" {
+		return ""
+	}
+	if numerado && vuelta == "" {
+		return ""
+	}
+	return limpio
+}
+
+// FolioAnimal devuelve el animal de un nombre amarrado, sin su número de vuelta. La bolsa guarda
+// animales: marcar o soltar «Persa 2» tiene que tocar a «Persa».
+func FolioAnimal(nombre string) string {
+	limpio := BoundFolio(nombre)
+	if limpio == "" {
+		return ""
+	}
+	animal, _, _ := partirVuelta(limpio)
+	return animal
+}
+
+// partirVuelta separa «Persa 2» en «Persa» y «2». `numerado` dice si el último pedazo es de
+// dígitos; `vuelta` queda vacía si esos dígitos no son una vuelta válida (2..99, sin cero inicial).
+func partirVuelta(nombre string) (animal, vuelta string, numerado bool) {
+	i := strings.LastIndexByte(nombre, ' ')
+	if i < 0 {
+		return nombre, "", false
+	}
+	cola := nombre[i+1:]
+	if cola == "" || strings.Trim(cola, "0123456789") != "" {
+		return nombre, "", false
+	}
+	if cola[0] == '0' || len(cola) > 2 || cola == "1" {
+		return nombre[:i], "", true
+	}
+	return nombre[:i], cola, true
+}
+
 // SiguienteFolioLibre devuelve el nombre propuesto, o con su número de vuelta si ya se usó hoy.
 //
 // Es la misma regla que cuando el servidor reparte los nombres: al repetirse, el nombre lleva

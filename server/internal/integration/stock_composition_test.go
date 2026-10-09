@@ -174,9 +174,9 @@ func TestCounterSaleDepletesExtrasAndPackages(t *testing.T) {
 		makeRecipe(t, st, map[int64]string{milk: "200"}), frappe); err != nil {
 		t.Fatal(err)
 	}
-	pearlExtra := opcionConTope(t, st, "Extras almacén", "Perla extra", decimal.RequireFromString("10"), 3)
-	sodaExtra := opcionConTope(t, st, "Extras almacén", "Refresco del combo", decimal.RequireFromString("20"), 1)
-	noIce := opcionConTope(t, st, "Extras almacén", "Sin hielo", decimal.Zero, 1)
+	pearlExtra := opcionConTope(t, st, "Extras almacén", "Perla extra", decimal.RequireFromString("10"), 3, frappe)
+	sodaExtra := opcionConTope(t, st, "Extras almacén", "Refresco del combo", decimal.RequireFromString("20"), 1, frappe)
+	noIce := opcionConTope(t, st, "Extras almacén", "Sin hielo", decimal.Zero, 1, frappe)
 	if _, err := st.Pool.Exec(ctx, `update modifier_options set recipe_id = $1 where id = $2`,
 		makeRecipe(t, st, map[int64]string{pearl: "50"}), pearlExtra); err != nil {
 		t.Fatal(err)

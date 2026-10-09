@@ -5,8 +5,26 @@ const LLAVE = 'egb:pos:v3';
 
 beforeEach(() => {
   localStorage.clear();
-  usePosStore.setState({ selected: null });
+  usePosStore.setState({ selected: null, recientes: [] });
   usePosStore.getState().reiniciarNueva();
+});
+
+// La fila pone la cuenta anterior junto a la activa: para eso la tableta recuerda en qué orden las
+// abrió. En memoria: tras un F5 la fila vuelve al orden por deuda y antigüedad, y no pasa nada.
+describe('las cuentas que esta tableta usó', () => {
+  test('van de la más reciente a la más vieja, sin repetirse', () => {
+    const st = usePosStore.getState();
+    st.seleccionar({ kind: 'draft', id: 'a' });
+    st.seleccionar({ kind: 'order', id: 7 });
+    st.seleccionar({ kind: 'draft', id: 'a' });
+    expect(usePosStore.getState().recientes).toEqual(['d:a', 'o:7']);
+  });
+
+  test('«+» deja la anterior como la más reciente', () => {
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'a' });
+    usePosStore.getState().cuentaNueva();
+    expect(usePosStore.getState().recientes[0]).toBe('d:a');
+  });
 });
 
 describe('lo que la tableta guarda: solo cuál cuenta está abierta', () => {

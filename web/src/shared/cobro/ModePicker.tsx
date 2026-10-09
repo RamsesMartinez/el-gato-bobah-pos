@@ -1,5 +1,4 @@
 import { Button, HStack } from '@chakra-ui/react';
-import { LuX } from 'react-icons/lu';
 
 // SplitMode es cómo se divide lo que falta. 'none' es cobrarle todo a una persona, que es el caso de
 // casi todos los pedidos y por eso no gasta un solo píxel en el selector.
@@ -33,9 +32,10 @@ export function ModePicker({ mode, available, onChange, onStop, disabled }: Prop
           {LABELS[m]}
         </Button>
       ))}
-      <Button aria-label="Dejar de dividir" minH="44px" minW="44px" variant="ghost" colorPalette="gray"
+      {/* Con palabras: la hoja ya tiene su ✕ de cerrar, y otra ✕ aquí se confundía con ella. */}
+      <Button minH="44px" size="sm" variant="ghost" colorPalette="gray" flexShrink={0}
         disabled={disabled} onClick={onStop}>
-        <LuX />
+        Dejar de dividir
       </Button>
     </HStack>
   );

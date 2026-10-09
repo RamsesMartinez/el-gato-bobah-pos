@@ -8,10 +8,15 @@ from products where id = any($1::bigint[]);
 -- max_per_line viaja porque el servidor lo valida: es el tope de veces que una opción puede ir en
 -- la misma línea, y desde que la pantalla deja pedir dos salsas del mismo sabor deja de ser un
 -- valor que nadie ejercía.
-select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
+select mo.id, mo.group_id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mo.id = any($1::bigint[]);
+
+-- name: GetProductModifierGroups :many
+-- Los grupos de extras que admite cada producto: una opción de otro grupo no es extra suyo, aunque
+-- exista en el menú (domain.BuildOrder la rechaza).
+select product_id, group_id from product_modifier_groups where product_id = any($1::bigint[]);
 
 -- Creación
 

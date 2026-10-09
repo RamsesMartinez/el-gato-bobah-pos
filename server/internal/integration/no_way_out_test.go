@@ -71,7 +71,7 @@ func TestCancelPendingClosesWithWhatWasDelivered(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 	frappe := makeProduct(t, st, "Frappé partido", pesos("50"), true)
 	refresco := makeProduct(t, st, "Refresco pendiente", pesos("30"), false)
-	extra := optionID(t, st, defaultCompanyID)
+	extra := optionID(t, st, defaultCompanyID, frappe)
 
 	appSt := appRoleStore(t)
 	tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)

@@ -54,10 +54,15 @@ interface Props {
   onImprimir: () => void;
   onHide?: () => void;
   swipeHandlers?: SwipeHandlers;
+  // La hora a la que se abrió, ya en la zona del negocio.
+  hora?: string;
+  // El canal con su nombre («Uber Eats»). Sin él se dice el tipo: Mostrador o Domicilio.
+  canal?: string;
 }
 
-// Más de tres renglones en una sección de lo ya enviado se pliegan: en el panel de 600 px, cinco
-// renglones de cocina empujaban lo nuevo fuera de la vista.
+// Lo ya enviado se pliega SOLO cuando hay algo nuevo y más de tres renglones: en el panel de 600 px,
+// cinco renglones de cocina empujaban lo nuevo fuera de la vista. Sin nada nuevo se ve completo —es
+// lo único que hay que leer—: plegarlo dejaba el ticket en blanco justo después de enviar.
 const PLIEGA_CON = 3;
 
 export function Ticket(props: Props) {
@@ -81,12 +86,18 @@ export function Ticket(props: Props) {
   const enviarApagado = !hayNuevo || bloqueo !== null || noSeVende || capturaMal;
   const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
   const etiquetaCobrar = hayNuevo ? `Enviar y cobrar ${money(vista.falta)}` : `Cobrar ${money(vista.falta)}`;
+  // Piezas, no renglones: cocina recibe dos Cocas aunque vayan en un renglón.
+  const piezasNuevas = vista.nuevos.reduce((n, l) => n + l.qty, 0);
+  const cambiaTipo = enCaptura && vista.platformId === null;
+  const tipo = props.canal ?? (vista.serviceType === 'domicilio' ? 'Domicilio' : 'Mostrador');
+  const subtitulo = [
+    vista.numero !== null ? `#${vista.numero}` : null, tipo, props.hora || null, vista.customerName || null,
+  ].filter(Boolean).join(' · ');
 
   const conMenu = enCaptura || puedeCancelar || vista.tipo === 'pedido';
   const hayQueImprimir = hayNuevo || vista.enCocina.length + vista.pagados.length > 0;
-  // Cada cuenta, y cada vez que una sección cruza el umbral de plegado, decide de nuevo si se
-  // pliega: heredar el estado de la cuenta anterior dejaba cinco renglones de cocina empujando lo
-  // nuevo fuera de la vista.
+  // Cada cuenta, y cada vez que aparece o se va lo nuevo, decide de nuevo si se pliega: heredar el
+  // estado de la cuenta anterior dejaba cinco renglones de cocina empujando lo nuevo fuera de la vista.
   const claveDeCuenta = vista.pedidoId ?? vista.borradorId ?? 'nueva';
 
   return (
@@ -99,21 +110,24 @@ export function Ticket(props: Props) {
             <LuPanelRightClose />
           </IconButton>
         )}
-        {/* El nombre cede ancho y trunca; un control nunca cede alto. */}
-        <Text fontWeight="700" fontSize="lg" truncate flex="1" minW={0}>
-          {vista.nombre || (enCaptura ? 'Cuenta nueva' : '')}
-          {vista.numero !== null && <Text as="span" color="fg.muted" fontWeight="500"> #{vista.numero}</Text>}
-          {vista.customerName && <Text as="span" color="fg.muted" fontWeight="500"> · {vista.customerName}</Text>}
-        </Text>
-        {/* Un pedido de plataforma ES a domicilio, y uno ya enviado no cambia de tipo. */}
-        {enCaptura && vista.platformId === null && (
-          <Button size="sm" minH="44px" px={2.5} flexShrink={0} variant="outline" colorPalette="gray"
+        {/* El nombre COMPLETO, en hasta dos renglones: «Col…» no dice de quién es la cuenta. El tipo
+            (Mostrador o Domicilio) se lee abajo; el botón de texto le quitaba al nombre el ancho. */}
+        <Box flex="1" minW={0}>
+          <Heading as="h2" fontSize="lg" fontWeight="700" lineHeight="1.2" lineClamp={2} wordBreak="break-word">
+            {vista.nombre || (enCaptura ? 'Cuenta nueva' : '')}
+          </Heading>
+          <Text fontSize="xs" color="fg.muted" truncate>{subtitulo}</Text>
+        </Box>
+        {/* Un toque y compacto: el nombre necesita el ancho, y el tipo se lee en el subtítulo. Un
+            pedido de plataforma ES a domicilio, y uno ya enviado no cambia de tipo. */}
+        {cambiaTipo && (
+          <IconButton size="sm" minW="44px" minH="44px" variant="outline" colorPalette="gray" flexShrink={0}
+            aria-label={vista.serviceType === 'mostrador' ? 'Cambiar a domicilio' : 'Cambiar a mostrador'}
             onClick={() => onCabecera(vista.serviceType === 'mostrador'
               ? { serviceType: 'domicilio', deliveryFee: envioPorDefecto.toFixed(2) }
               : { serviceType: 'mostrador', deliveryFee: '0.00' })}>
-            {vista.serviceType === 'mostrador' ? <LuStore /> : <LuBike />}
-            {vista.serviceType === 'mostrador' ? 'Mostrador' : 'Domicilio'}
-          </Button>
+            {vista.serviceType === 'mostrador' ? <LuBike /> : <LuStore />}
+          </IconButton>
         )}
         {conMenu && (
           <MenuRoot>
@@ -129,6 +143,7 @@ export function Ticket(props: Props) {
                   <LuUser /> Nombre del cliente
                 </MenuItem>
               )}
+
               {vista.tipo === 'captura' && (
                 <MenuItem value="descuento" minH="48px" onClick={() => setCapturando('descuento')}>
                   <LuTag /> Descuento
@@ -186,14 +201,14 @@ export function Ticket(props: Props) {
             </Seccion>
           ))}
         {vista.enCocina.length > 0 && (
-          <Seccion key={`cocina-${claveDeCuenta}-${vista.enCocina.length > PLIEGA_CON}`}
-            titulo="En cocina" color="blue.fg" plegable total={vista.enCocina.length}>
+          <Seccion key={`cocina-${claveDeCuenta}-${hayNuevo}`}
+            titulo="En cocina" color="blue.fg" plegable={hayNuevo} total={vista.enCocina.length}>
             {vista.enCocina.map((r) => <EnCocina key={r.id} r={r} onQuitar={() => props.onQuitarDeCocina(r)} />)}
           </Seccion>
         )}
         {vista.pagados.length > 0 && (
-          <Seccion key={`pagado-${claveDeCuenta}-${vista.pagados.length > PLIEGA_CON}`}
-            titulo="Pagado" color="green.fg" plegable total={vista.pagados.length}>
+          <Seccion key={`pagado-${claveDeCuenta}-${hayNuevo}`}
+            titulo="Pagado" color="green.fg" plegable={hayNuevo} total={vista.pagados.length}>
             {vista.pagados.map((r) => <Pagado key={r.id} r={r} />)}
           </Seccion>
         )}
@@ -265,7 +280,7 @@ export function Ticket(props: Props) {
           </Button>
           <Button w="100%" size="md" minH="44px" variant="outline" colorPalette="blue"
             disabled={enviarApagado} loading={enviando} onClick={onEnviar}>
-            {hayNuevo ? `Enviar ${vista.nuevos.length} a cocina` : 'Enviar a cocina'}
+            {hayNuevo ? `Enviar ${piezasNuevas} a cocina` : 'Enviar a cocina'}
           </Button>
         </VStack>
         {(bloqueo || motivo) && (

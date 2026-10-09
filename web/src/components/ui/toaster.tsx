@@ -9,8 +9,10 @@ import {
   createToaster,
 } from "@chakra-ui/react"
 
+// Arriba al centro: abajo a la derecha es el pie del ticket y la píldora de cobrar, y un aviso de
+// varios segundos tapaba «Cobrar» y «Enviar» justo cuando el operador iba a tocarlos.
 export const toaster = createToaster({
-  placement: "bottom-end",
+  placement: "top",
   pauseOnPageIdle: true,
 })
 
@@ -19,7 +21,10 @@ export const Toaster = () => {
     <Portal>
       <ChakraToaster toaster={toaster} insetInline={{ mdDown: "4" }}>
         {(toast) => (
-          <Toast.Root width={{ md: "sm" }}>
+          // Sin capturar toques: arriba queda encima de la fila de cuentas y de los canales, y un
+          // aviso de varios segundos no puede quedarse con el toque que iba a cambiar de cuenta.
+          // Solo sus botones reciben el dedo. Con !important porque zag pone `auto` en línea.
+          <Toast.Root width={{ md: "sm" }} css={{ pointerEvents: "none !important" }}>
             {toast.type === "loading" ? (
               <Spinner size="sm" color="blue.solid" />
             ) : (
@@ -33,9 +38,9 @@ export const Toaster = () => {
             </Stack>
             {toast.action && (
               // 44 px: el «Reintentar» de un producto que no se guardó se toca con el dedo.
-              <Toast.ActionTrigger minH="44px" px={3}>{toast.action.label}</Toast.ActionTrigger>
+              <Toast.ActionTrigger minH="44px" px={3} pointerEvents="auto">{toast.action.label}</Toast.ActionTrigger>
             )}
-            {toast.closable && <Toast.CloseTrigger />}
+            {toast.closable && <Toast.CloseTrigger pointerEvents="auto" />}
           </Toast.Root>
         )}
       </ChakraToaster>

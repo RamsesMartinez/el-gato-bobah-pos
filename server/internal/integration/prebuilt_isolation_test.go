@@ -44,7 +44,7 @@ func TestPrebuiltRemovalAndSplitStayIsolated(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_aislado_quitar", "cajero")
 	abrirCajaPrincipal(t, st, cajero)
 	frappe := makeProduct(t, st, "Frappé aislado", pesos("50"), true)
-	extra := optionID(t, st, defaultCompanyID)
+	extra := optionID(t, st, defaultCompanyID, frappe)
 
 	appSt := appRoleStore(t)
 	tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)

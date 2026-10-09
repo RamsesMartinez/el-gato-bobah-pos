@@ -64,6 +64,9 @@ export interface CuentaViva {
   outstanding: string;
   // Lo «Nuevo» que se capturó sobre un pedido y no se mandó.
   pendingDraftId: string | null;
+  // La suite nunca le pone nombre de cliente a una cuenta: una que lo trae es de otra persona o de
+  // otra suite que corre a la vez, y la limpieza no la toca.
+  customerName: string | null;
 }
 
 // cuentasVivas pide TODAS, incluidas las deudas de días anteriores: la limpieza tiene que ver lo
@@ -88,6 +91,7 @@ export async function pedidosEnCurso(jwt: string) {
       // Lo que no está entregado sigue en cocina: entregar primero, o el corte no cierra.
       enPreparacion: c.state !== 'delivered_owes',
       deliveryPlatformId: c.platformId,
+      customerName: c.customerName,
     }));
 }
 

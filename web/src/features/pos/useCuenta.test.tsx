@@ -7,6 +7,7 @@ import type { DraftView } from '../../types/pos';
 import { usePosStore } from '../../stores/pos';
 import { reportarResultado } from './useSinConexion';
 import { reiniciarCaptura, useCuenta } from './useCuenta';
+import { accionPropia } from '../../stores/accionesPropias';
 
 const api = vi.hoisted(() => ({
   createDraft: vi.fn(),
@@ -59,7 +60,7 @@ beforeEach(() => {
   api.liveAccounts.mockResolvedValue({ items: [], outstanding: '0.00', serverTime: '' });
   api.folioNames.mockResolvedValue({ items: ['Levkoy', 'Persa'] });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('la cuenta nace con el primer producto (US2)', () => {
   test('tocar un producto sin cuenta la crea en el servidor con ids nuevos y la selecciona', async () => {
@@ -239,6 +240,69 @@ describe('lo que pasa en otra tableta (US7)', () => {
     await act(async () => { await qc.invalidateQueries({ queryKey: ['orders', 30] }); });
     await waitFor(() => expect(api.order).toHaveBeenCalledTimes(2));
     expect(toasts.create).not.toHaveBeenCalled();
+  });
+});
+
+// LO PROPIO NO SE ANUNCIA COMO AJENO (validación como usuario nuevo, 3 de 3).
+//
+// El aviso «X se cobró en otra tableta» salía en la tableta que cobró: el eco del servidor llegaba
+// cuando la hoja de cobro ya se había cerrado, y la ventana de tiempo que separaba lo propio de lo
+// ajeno ya había pasado. Lo propio se reconoce por lo que dejó la acción, no por el reloj.
+describe('lo que hizo esta tableta no se avisa como de otra', () => {
+  const pedido = (over: Record<string, unknown> = {}) => ({
+    id: 30, number: 4, folioName: 'Siamés', status: 'abierta', payments: [], total: '110',
+    outstanding: '110', paid: false, deliveryPlatformId: null,
+    lines: [
+      { id: 1, productName: 'Taro', quantity: '1', delivered: '0', lineTotal: '55', cancelled: false, modifiers: [] },
+      { id: 2, productName: 'Coca', quantity: '1', delivered: '0', lineTotal: '55', cancelled: false, modifiers: [] },
+    ],
+    ...over,
+  });
+  const segundosDespues = (s: number) => {
+    const ahora = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(ahora + s * 1000);
+  };
+
+  async function conPedido() {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 30 });
+    api.order.mockResolvedValueOnce(pedido());
+    const hook = renderHook(() => useCuenta(), { wrapper });
+    await waitFor(() => expect(hook.result.current.vista.nombre).toBe('Siamés'));
+    return hook;
+  }
+
+  test('el eco de un cobro propio que llega con la hoja ya cerrada no avisa', async () => {
+    await conPedido();
+    api.order.mockResolvedValue(pedido({ outstanding: '0', paid: true }));
+    await act(async () => { await accionPropia(async () => undefined); });
+    segundosDespues(10);
+    await act(async () => { await qc.invalidateQueries({ queryKey: ['orders', 30] }); });
+    await waitFor(() => expect(api.order.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(toasts.create).not.toHaveBeenCalled();
+  });
+
+  test('quitar un producto propio no avisa aunque el eco llegue tarde', async () => {
+    await conPedido();
+    const sinCoca = pedido({ outstanding: '55', total: '55', lines: [pedido().lines[0]] });
+    // El eco del canal de eventos llega ANTES de que termine la acción, y otra vez después.
+    let soltar: () => void = () => {};
+    const quitar = accionPropia(() => new Promise<void>((r) => { soltar = r; }));
+    api.order.mockResolvedValue(sinCoca);
+    await act(async () => { await qc.invalidateQueries({ queryKey: ['orders', 30] }); });
+    await act(async () => { soltar(); await quitar; });
+    segundosDespues(10);
+    await act(async () => { await qc.invalidateQueries({ queryKey: ['orders', 30] }); });
+    expect(toasts.create).not.toHaveBeenCalled();
+  });
+
+  test('lo de otra tableta DESPUÉS de lo propio sí se avisa', async () => {
+    await conPedido();
+    api.order.mockResolvedValue(pedido({ outstanding: '55' }));
+    await act(async () => { await accionPropia(async () => undefined); });
+    api.order.mockResolvedValue(pedido({ outstanding: '0', paid: true }));
+    await act(async () => { await qc.invalidateQueries({ queryKey: ['orders', 30] }); });
+    await waitFor(() => expect(toasts.create).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Siamés se cobró en otra tableta' })));
   });
 });
 

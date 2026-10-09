@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { pedidosEnCurso, tokenDeRequest } from './ambiente';
-import { botonCobrar, buscar } from './pos';
+import { botonCobrar, buscar, cerrarBusqueda } from './pos';
 
 // LA MATRIZ DE DINERO, PASANDO POR LA PANTALLA. Ver docs/matriz-de-cobro.md, sección E.
 //
@@ -57,7 +57,15 @@ async function agregarUnProducto(page: Page): Promise<void> {
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
   await expect(page.getByText('Guardando…')).toHaveCount(0, { timeout: 15_000 });
+  await cerrarBusqueda(page);
   await verElPedido(page);
+}
+
+// aDomicilio: el tipo de servicio es UN botón de icono en la cabecera del ticket que alterna el tipo;
+// su nombre dice a qué cambia.
+async function aDomicilio(page: Page) {
+  await page.getByRole('button', { name: 'Cambiar a domicilio' }).click();
+  await expect(page.getByRole('button', { name: 'Cambiar a mostrador' })).toBeVisible();
 }
 
 test.describe('E — el cobro, en la pantalla', () => {
@@ -120,7 +128,7 @@ test.describe('E — el cobro, en la pantalla', () => {
       // botones de tipo en cuanto hay plataforma, así que ya no se puede corregir a mano.
       // Se afirma que el campo APARECE antes de asignar la plataforma. Sin esta comprobación el
       // test pasaría por vacío el día que el campo deje de existir por otra razón.
-      await page.getByRole('button', { name: 'Domicilio' }).click();
+      await aDomicilio(page);
       await expect(page.getByLabel('Costo de envío')).toBeVisible();
 
       // El panel se cierra para llegar al selector de plataforma, que vive en la barra de arriba.
@@ -137,7 +145,7 @@ test.describe('E — el cobro, en la pantalla', () => {
     await entrar(page);
     await agregarUnProducto(page);
 
-    await page.getByRole('button', { name: 'Domicilio' }).click();
+    await aDomicilio(page);
 
     // La coma de millar que el operador teclea por costumbre. `parseFloat` la leía como 1 y el
     // resto la volvía cero: envío gratis que nadie decidió.

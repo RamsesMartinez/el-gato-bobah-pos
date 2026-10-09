@@ -91,6 +91,9 @@ web-lint: ## Lint frontend (eslint + tsc)
 	cd web && bun run lint && bun run typecheck
 web-audit: ## Auditoría de deps del frontend
 	cd web && bun audit || true
+ci-local: ## Lo mismo que CI (backend, integración, frontend) en paralelo y en local, antes de empujar
+	bash scripts/ci-local.sh
+
 sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
 	@echo "\n✅ Chequeos de seguridad completados"
 

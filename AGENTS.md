@@ -177,6 +177,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
+- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Se corre antes de empujar**: CI tarda ~10 min en avisar. No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
   una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
