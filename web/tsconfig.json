@@ -17,7 +17,7 @@
     "forceConsistentCasingInFileNames": true,
     // "node": el guardia de formateo lee el árbol de `src` para comprobar que nadie
     // formatea fechas por su cuenta; es un test que necesita el sistema de archivos.
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom/vitest", "node"]
   },
   "include": ["src"],
   // La consola de plataforma tiene su propio proyecto (tsconfig.consola.json). Excluirla de aquí
