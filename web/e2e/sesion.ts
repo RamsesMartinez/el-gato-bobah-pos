@@ -16,7 +16,11 @@ export async function iniciarSesion(page: Page) {
   for (let intento = 1; intento <= 3; intento++) {
     if (!(await usuario.isVisible().catch(() => false))) return;
     let limitado = false;
-    const escucha = (r: Response) => { if (r.status() === 429 && r.url().includes('/auth/')) limitado = true; };
+    // También un 502/503: el ambiente de pruebas se redespliega mientras la suite corre, y la API
+    // tarda unos segundos en volver.
+    const escucha = (r: Response) => {
+      if ((r.status() === 429 || r.status() >= 502) && r.url().includes('/auth/')) limitado = true;
+    };
     page.on('response', escucha);
     await usuario.fill(`${USUARIO}@${EMPRESA}`);
     await page.getByPlaceholder('Contraseña').fill(PASSWORD);
@@ -25,7 +29,7 @@ export async function iniciarSesion(page: Page) {
       .toBe(true);
     page.off('response', escucha);
     if (!limitado) return;
-    console.log(`[e2e] /auth respondió 429 (intento ${intento}); se espera a que el limitador se vacíe`);
+    console.log(`[e2e] /auth no atendió (429 o la API reiniciándose; intento ${intento}): se espera y se reintenta`);
     test.info().setTimeout(test.info().timeout + 70_000);
     await page.waitForTimeout(60_000);
     await page.reload();
