@@ -48,12 +48,12 @@ func TestCanRefund(t *testing.T) {
 
 func TestBuildOrder(t *testing.T) {
 	products := map[int64]PricedProduct{
-		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true},
+		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true, ModifierGroups: []int64{100}},
 		2: {ID: 2, Name: "Inactivo", Price: d("10"), Active: false},
 	}
 	options := map[int64]PricedOption{
-		10: {ID: 10, Name: "Perlas", PriceDelta: d("20"), Cost: d("5"), GroupTitle: "Toppings"},
-		11: {ID: 11, Name: "Litchi", PriceDelta: d("20"), Cost: d("6"), GroupTitle: "Toppings"},
+		10: {ID: 10, GroupID: 100, Name: "Perlas", PriceDelta: d("20"), Cost: d("5"), GroupTitle: "Toppings"},
+		11: {ID: 11, GroupID: 100, Name: "Litchi", PriceDelta: d("20"), Cost: d("6"), GroupTitle: "Toppings"},
 	}
 
 	// 2 Frappé con Perlas x1 y Litchi x1: unit = 45 + 20 + 20 = 85 ; línea = 170
@@ -216,11 +216,11 @@ func TestMetodoCorrespondeALaPlataforma(t *testing.T) {
 // ticket que el negocio nunca aceptó, y lo hace sin que nada avise.
 func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	products := map[int64]PricedProduct{
-		1: {ID: 1, Name: "Boneless", Price: d("200"), Cost: d("80"), Active: true},
+		1: {ID: 1, Name: "Boneless", Price: d("200"), Cost: d("80"), Active: true, ModifierGroups: []int64{300}},
 	}
 	options := map[int64]PricedOption{
-		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 2},
-		12: {ID: 12, Name: "Sin salsa", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 1},
+		10: {ID: 10, GroupID: 300, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 2},
+		12: {ID: 12, GroupID: 300, Name: "Sin salsa", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 1},
 	}
 	linea := func(optID int64, q int) []OrderLineInput {
 		return []OrderLineInput{{ProductID: 1, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: optID, Qty: q}}}}
@@ -248,7 +248,7 @@ func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	// max_per_line en 0 significa "sin configurar", no "ninguna": el default de la columna es 1 y
 	// un 0 solo puede venir de datos viejos. Tratarlo como tope haría irrepetible TODO.
 	sinConfigurar := map[int64]PricedOption{
-		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 0},
+		10: {ID: 10, GroupID: 300, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 0},
 	}
 	if _, err := BuildOrder(linea(10, 1), products, sinConfigurar); err != nil {
 		t.Fatalf("una opción sin tope configurado debe aceptar la primera: %v", err)
@@ -360,5 +360,37 @@ func TestUnPedidoDePlataformaNoEsDeMostrador(t *testing.T) {
 		if !c.ok && !errors.Is(err, ErrValidation) {
 			t.Errorf("%s con plataforma debía rechazarse como validación, fue %v", c.servicio, err)
 		}
+	}
+}
+
+// Un extra que no pertenece a ningún grupo del producto se aceptaba y se cobraba: bastaba mandar el
+// id de una opción de OTRO producto (o a un producto sin grupos). El precio sale del catálogo, pero
+// la combinación nunca la ofreció el negocio, y cocina recibe un ticket imposible.
+func TestBuildOrderRejectsAnOptionThatIsNotAnExtraOfTheProduct(t *testing.T) {
+	products := map[int64]PricedProduct{
+		1: {ID: 1, Name: "Frappé", Price: d("45"), Active: true, ModifierGroups: []int64{100}},
+		2: {ID: 2, Name: "Café solo", Price: d("30"), Active: true},
+	}
+	options := map[int64]PricedOption{
+		10: {ID: 10, GroupID: 100, Name: "Perlas", PriceDelta: d("20"), GroupTitle: "Toppings"},
+		20: {ID: 20, GroupID: 200, Name: "Salsa BBQ", PriceDelta: d("15"), GroupTitle: "Salsas"},
+	}
+	line := func(product, option int64) []OrderLineInput {
+		return []OrderLineInput{{ProductID: product, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: option, Qty: 1}}}}
+	}
+	if _, err := BuildOrder(line(1, 10), products, options); err != nil {
+		t.Fatalf("un extra del producto debe pasar: %v", err)
+	}
+	cases := map[string][]OrderLineInput{
+		"opción de un grupo que el producto no tiene": line(1, 20),
+		"producto sin grupos con opción de otro":      line(2, 10),
+	}
+	for name, lines := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := BuildOrder(lines, products, options)
+			if !errors.Is(err, ErrOptionNotFound) {
+				t.Fatalf("= %v, quería que se rechace como opción que no es de ese producto", err)
+			}
+		})
 	}
 }

@@ -1057,9 +1057,13 @@ func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, row
 	if err != nil {
 		return nil, nil, err
 	}
+	groups, err := modifierGroupsOf(ctx, q, prodIDs)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
 		}
 	}
@@ -1070,7 +1074,7 @@ func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, row
 		}
 		for _, o := range optRows {
 			options[o.ID] = domain.PricedOption{
-				ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle, MaxPerLine: int(o.MaxPerLine),
+				ID: o.ID, GroupID: o.GroupID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle, MaxPerLine: int(o.MaxPerLine),
 				PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
 			}
 		}

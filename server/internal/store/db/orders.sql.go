@@ -1189,7 +1189,7 @@ func (q *Queries) GetPaymentVoidByOriginalID(ctx context.Context, originalPaymen
 }
 
 const getPricedOptions = `-- name: GetPricedOptions :many
-select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
+select mo.id, mo.group_id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mo.id = any($1::bigint[])
@@ -1197,6 +1197,7 @@ where mo.id = any($1::bigint[])
 
 type GetPricedOptionsRow struct {
 	ID          int64           `json:"id"`
+	GroupID     int64           `json:"group_id"`
 	Name        string          `json:"name"`
 	PriceDelta  decimal.Decimal `json:"price_delta"`
 	CurrentCost decimal.Decimal `json:"current_cost"`
@@ -1218,6 +1219,7 @@ func (q *Queries) GetPricedOptions(ctx context.Context, dollar_1 []int64) ([]Get
 		var i GetPricedOptionsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.GroupID,
 			&i.Name,
 			&i.PriceDelta,
 			&i.CurrentCost,
@@ -1267,6 +1269,37 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 			&i.IsActive,
 			&i.NeedsPrep,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProductModifierGroups = `-- name: GetProductModifierGroups :many
+select product_id, group_id from product_modifier_groups where product_id = any($1::bigint[])
+`
+
+type GetProductModifierGroupsRow struct {
+	ProductID int64 `json:"product_id"`
+	GroupID   int64 `json:"group_id"`
+}
+
+// Los grupos de extras que admite cada producto: una opción de otro grupo no es extra suyo, aunque
+// exista en el menú (domain.BuildOrder la rechaza).
+func (q *Queries) GetProductModifierGroups(ctx context.Context, dollar_1 []int64) ([]GetProductModifierGroupsRow, error) {
+	rows, err := q.db.Query(ctx, getProductModifierGroups, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetProductModifierGroupsRow{}
+	for rows.Next() {
+		var i GetProductModifierGroupsRow
+		if err := rows.Scan(&i.ProductID, &i.GroupID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

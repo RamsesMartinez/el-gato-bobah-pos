@@ -171,7 +171,7 @@ func TestSendRejectsWhatNoLongerSells(t *testing.T) {
 
 	t.Run("opción de modificador borrada: 422 que nombra el producto, nunca 500", func(t *testing.T) {
 		crepa := makeProduct(t, k.st, "Crepa con extra", pesos("80"), false)
-		opt := optionID(t, k.st, defaultCompanyID)
+		opt := optionID(t, k.st, defaultCompanyID, crepa)
 		v := k.newDraft(t, app.DraftLineCmd{OpID: uuid.New(), ProductID: crepa, Qty: pesos("1"),
 			Modifiers: []domain.DraftModifier{{OptionID: opt, Qty: 1}}})
 		if _, err := k.st.Pool.Exec(ctx, `delete from modifier_options where id = $1`, opt); err != nil {

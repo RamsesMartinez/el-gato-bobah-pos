@@ -374,7 +374,10 @@ func platformID(t *testing.T, st *store.Store, companyID int64, name string) int
 
 // optionID devuelve una opción de modificador cualquiera de la empresa, creando el grupo si hace
 // falta. Sirve para probar los precios de plataforma de los extras sin montar un menú completo.
-func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
+//
+// Los `products` reciben el grupo: una opción solo se vende como extra de un producto que tiene su
+// grupo (domain.BuildOrder), así que la prueba que la pide en un pedido tiene que ligarla.
+func optionID(t *testing.T, st *store.Store, companyID int64, products ...int64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	var groupID int64
@@ -382,6 +385,12 @@ func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
 		`insert into modifier_groups (company_id, name) values ($1, 'Extras de prueba') returning id`,
 		companyID).Scan(&groupID); err != nil {
 		t.Fatalf("grupo de modificadores: %v", err)
+	}
+	for _, p := range products {
+		if _, err := st.Pool.Exec(ctx, `insert into product_modifier_groups (company_id, product_id, group_id, min_select, max_select)
+			values ($1, $2, $3, 0, 1)`, companyID, p, groupID); err != nil {
+			t.Fatalf("ligar el grupo al producto %d: %v", p, err)
+		}
 	}
 	var id int64
 	if err := st.Pool.QueryRow(ctx,
