@@ -17,6 +17,7 @@ import (
 // pida es un defecto, no una mejora — y con dos empresas en la misma base, comprobarlo con una sola
 // no probaría nada.
 func TestLaEmpresaNuevaNaceImprimiendoLaComanda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

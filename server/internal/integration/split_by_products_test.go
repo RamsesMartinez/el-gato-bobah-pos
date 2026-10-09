@@ -125,6 +125,7 @@ func coverageOf(t *testing.T, st *store.Store, paymentID int64) (decimal.Decimal
 // se resolvió quitando renglones con un motivo falso y recapturándolos: 18 cancelaciones que no
 // ocurrieron, el inventario descontado dos veces y un pedido que no se podía cerrar.
 func TestTheIncidentTableSplitsWithoutCancellingAnything(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "incidente", "110", "65", "65", "85", "95", "40", "40", "75", "120", "55", "57")
 	products := make([]int64, len(s.order.Lines))
@@ -183,6 +184,7 @@ func TestTheIncidentTableSplitsWithoutCancellingAnything(t *testing.T) {
 // En operación aparece al devolver un pago por monto: todas las piezas están cubiertas y aún se
 // debe dinero. Rechazarlo como «selección vacía» dejaría el pedido sin forma de saldarse.
 func TestAllRemainingWithNothingUncoveredChargesTheBalance(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "saldo_sin_piezas", "50", "50")
 	ctx := context.Background()
@@ -217,6 +219,7 @@ func TestAllRemainingWithNothingUncoveredChargesTheBalance(t *testing.T) {
 // redondeo. Si no, la suma de los pagos pasaría del total por el descuento o quedaría un centavo
 // que nadie paga.
 func TestDiscountedSplitAddsUpToTheTotal(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "descuento_partido", "300", "307", "300")
 	fifty := pesos("50")
@@ -250,6 +253,7 @@ func TestDiscountedSplitAddsUpToTheTotal(t *testing.T) {
 // renglón dijera su bruto, lo cubierto por producto sumaría más que el pago y el reporte por
 // producto no cuadraría con el corte.
 func TestAllRemainingAfterAnAmountPaymentProratesCoverage(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	m := newSplitTable(t, st, "monto_y_resto", "100", "100", "100")
 	if _, err := m.svc.Charge(m.ctx, app.ChargeCmd{OrderID: m.order.ID, MethodID: m.cash, Amount: pesos("50"), ActorID: m.cashier}); err != nil {
@@ -267,6 +271,7 @@ func TestAllRemainingAfterAnAmountPaymentProratesCoverage(t *testing.T) {
 
 // EL CONTRATO DE /pay CON PRODUCTOS.
 func TestPayByProductsContract(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)
@@ -397,6 +402,7 @@ func TestPayByProductsContract(t *testing.T) {
 // CHARGE CON PRODUCTOS, AISLADO EN LOS TRES CASOS. Empieza a leer order_payment_lines: desde otra
 // empresa no cobra el pedido de la dueña ni ve su cobertura.
 func TestChargeByProductsStaysIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "ajena-cobro")
 	s := newSplitTable(t, st, "cobro_aislado", "50", "50")
@@ -424,6 +430,7 @@ func TestChargeByProductsStaysIsolated(t *testing.T) {
 // veces el mismo frappé. Varias vueltas, porque una carrera que se gana por suerte en una vuelta
 // no prueba nada.
 func TestTheSamePieceCannotBePaidTwiceConcurrently(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cashier := makeUser(t, st, "cajero_carrera_pieza", "cajero")
 	abrirCajaPrincipal(t, st, cashier)
@@ -474,6 +481,7 @@ func TestTheSamePieceCannotBePaidTwiceConcurrently(t *testing.T) {
 // La mesa sigue pidiendo después de que uno pagó lo suyo: el pago conserva su cobertura, lo nuevo
 // queda por cobrar y la cocina recibe solo lo nuevo.
 func TestAddingLinesAfterAPartialPaymentKeepsItIntact(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "agrega_tras_pago", "50", "60")
 	first := s.pay(t, 0)
@@ -499,6 +507,7 @@ func TestAddingLinesAfterAPartialPaymentKeepsItIntact(t *testing.T) {
 // renglón de un pedido cobrado bajaba el total por debajo de lo pagado sin devolver nada, y ese
 // dinero quedaba en el corte como ingreso de un pedido que ya no lo valía.
 func TestRemovingAPaidLineIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "quitar_pagado", "50", "50")
 	s.pay(t, 0)
@@ -527,6 +536,7 @@ func TestRemovingAPaidLineIsRejected(t *testing.T) {
 // Con pagos por productos hechos, cambiar el descuento reescribe el monto de lo pendiente y el
 // último pago absorbería una diferencia que nadie vio.
 func TestDiscountIsRejectedOncePaymentsExist(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "descuento_con_pagos", "50", "50")
 	s.pay(t, 0)
@@ -541,6 +551,7 @@ func TestDiscountIsRejectedOncePaymentsExist(t *testing.T) {
 // La tarjeta deshabilita el bote con «Pagado» cuando hay piezas pagadas. Se mira el JSON CRUDO: un
 // `paidQty` ausente se lee como `undefined` y la tarjeta ofrecería quitar algo pagado.
 func TestBoardLinesCarryTheirPaidPieces(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, token := ordersAPI(t, st, nil)
 	_, tok := token("http_tablero_pagado", "cajero")
@@ -583,6 +594,7 @@ func TestBoardLinesCarryTheirPaidPieces(t *testing.T) {
 // «1e-20000000» quemaba 22 s de CPU por petición en /quote y /pay —unas cuantas en paralelo tiran
 // la API de la VM de 1 GB— y 0.004 piezas terminaba en un 500 por el check de la columna.
 func TestAbsurdPieceCountsAreRejectedFast(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, token := ordersAPI(t, st, nil)
 	_, tok := token("http_piezas_absurdas", "cajero")

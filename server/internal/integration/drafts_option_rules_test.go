@@ -46,6 +46,7 @@ func withExtra(product, option int64, qty int) app.DraftLineCmd {
 // vende» (available=false, $0) y el rechazo llegaba hasta enviar. El tope es del producto y se
 // conoce desde el primer toque: se rechaza ahí, con el mismo 422 que daría enviar.
 func TestOptionOverItsMaxIsRejectedWhenAdded(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	taro := makeProduct(t, k.st, "Taro con salsa", pesos("50"), false)
 	salsa := extraOf(t, k.st, taro, "Salsa con tope", pesos("5"), 2)

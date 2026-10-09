@@ -17,6 +17,7 @@ import (
 // consola nunca la muestra—.
 
 func TestLosToquesNoTienenDondeGuardarNiPersonaNiHora(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -62,6 +63,7 @@ func TestLosToquesNoTienenDondeGuardarNiPersonaNiHora(t *testing.T) {
 
 // Los cuatro `check`, cada uno con lo que rechaza.
 func TestLosCheckDeLosToques(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -92,6 +94,7 @@ func TestLosCheckDeLosToques(t *testing.T) {
 
 // La llave suma en vez de crear filas, también con el rol nulo (que es el caso de la supresión).
 func TestLosToquesSumanEnLaMismaFila(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -121,6 +124,7 @@ func TestLosToquesSumanEnLaMismaFila(t *testing.T) {
 
 // LA CONSOLA VE LOS TOQUES DE TODAS LAS EMPRESAS; EL NEGOCIO, SOLO LOS SUYOS.
 func TestLaConsolaVeLosToquesDeTodasLasEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)

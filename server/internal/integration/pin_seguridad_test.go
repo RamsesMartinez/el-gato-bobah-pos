@@ -29,6 +29,7 @@ func svcConPin(t *testing.T, st *store.Store) *app.AuthService {
 // La igualación de latencia ya existe con auth.CheckDummySecret. Este test es lo que impide que un
 // refactor la quite sin que nadie note que el endpoint cambió de naturaleza.
 func TestElDesbloqueoNoDistingueIdInexistenteDePinMalo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := svcConPin(t, st)
@@ -76,6 +77,7 @@ func TestElDesbloqueoNoDistingueIdInexistenteDePinMalo(t *testing.T) {
 // Sin el cambio de operador, las dos ventas quedarían a nombre de quien dejó la tableta abierta y
 // la tabla "Cobrado por" del arqueo —que ya existe— reportaría una sola persona.
 func TestDosPersonasEnLaMismaEstacionSeSeparanEnElArqueo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := svcConPin(t, st)

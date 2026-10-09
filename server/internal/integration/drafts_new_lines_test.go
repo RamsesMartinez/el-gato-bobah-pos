@@ -23,6 +23,7 @@ func (k *liveKit) newOf(t *testing.T, ctx context.Context, orderID int64, lines 
 
 // AGREGAR DESPUÉS DE COCINA MANDA SOLO LO NUEVO (US3, D-3, casos 6 y 7).
 func TestNewLinesOfASentOrder(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ord := k.order(t, "3", "0", false)
@@ -92,6 +93,7 @@ func TestNewLinesOfASentOrder(t *testing.T) {
 
 // La entregada que debe recibe y vuelve a cocina (US3 AS4, caso 7).
 func TestNewLinesReopenADeliveredOrderThatOwes(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ord := k.order(t, "1", "0", true)
@@ -109,6 +111,7 @@ func TestNewLinesReopenADeliveredOrderThatOwes(t *testing.T) {
 }
 
 func TestClosedOrderReceivesNothing(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ord := k.order(t, "1", "100", true)
@@ -121,6 +124,7 @@ func TestClosedOrderReceivesNothing(t *testing.T) {
 }
 
 func TestPlatformOrderReceivesNothing(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	uber := platformID(t, k.st, defaultCompanyID, "Uber Eats")
@@ -140,6 +144,7 @@ func TestPlatformOrderReceivesNothing(t *testing.T) {
 // El pedido se cerró (pagado y entregado) con su «Nuevo» viva: enviar se rechaza, la cuenta sigue viva
 // y la fila la sigue mostrando (R-9).
 func TestNewOfAnOrderThatClosedMeanwhile(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ord := k.order(t, "1", "0", false)
@@ -166,6 +171,7 @@ func TestNewOfAnOrderThatClosedMeanwhile(t *testing.T) {
 }
 
 func TestCancelledOrderDiscardsItsNew(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ord := k.order(t, "1", "0", false)
@@ -193,6 +199,7 @@ func TestCancelledOrderDiscardsItsNew(t *testing.T) {
 // Enviar y agregar a la vez: el renglón quedó en el pedido o el agregado se rechazó (y la tableta
 // lo sabe); nunca se pierde en silencio.
 func TestSendWhileAddingNeverLosesALine(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	leche := makeProduct(t, k.st, "Leche de la carrera", pesos("10"), false)

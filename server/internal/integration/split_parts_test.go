@@ -23,6 +23,7 @@ import (
 // en el servidor, no en la memoria de la hoja: tras recargar, la parte que falta sigue siendo la que
 // falta y la última absorbe el centavo.
 func TestTheSameSplitPartCannotBeChargedTwiceAndSurvivesAReload(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "partes", "100")
 	charge := func(part int) (*app.ChargeResult, error) {
@@ -56,6 +57,7 @@ func TestTheSameSplitPartCannotBeChargedTwiceAndSurvivesAReload(t *testing.T) {
 
 // EL CONTRATO DE /pay Y /quote CON PARTES.
 func TestPayBySplitContract(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)

@@ -28,6 +28,7 @@ import (
 // De integración y no unitario a propósito: el defecto vive en el where de la consulta y no hay
 // función a la que llamar para verlo.
 func TestElReporteDeVentasNoMezclaDosPeriodos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -70,6 +71,7 @@ func TestElReporteDeVentasNoMezclaDosPeriodos(t *testing.T) {
 // devuelta seguía sumando abajo mientras el total de arriba no lo contaba: el mismo peso clasificado
 // de dos maneras en la misma pantalla, que es cómo se reporta dinero que el negocio no tuvo.
 func TestUnaVentaReembolsadaNoSumaEnLosMetodosDePago(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -112,6 +114,7 @@ func TestUnaVentaReembolsadaNoSumaEnLosMetodosDePago(t *testing.T) {
 // encima habría seguido contestando "de esa fecha a hoy"— y sobre un instante en UTC en vez del día
 // de negocio con el que el local cuadra su caja.
 func TestLaUtilidadPorProductoRespetaElRango(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)

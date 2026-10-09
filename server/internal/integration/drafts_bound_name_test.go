@@ -18,6 +18,7 @@ import (
 // turno, no contra las cuentas vivas: salía «Cymric 2» con la cuenta «Cymric 2» todavía en captura,
 // y al mandarla, la cuenta cambiaba a «Cymric 3» — el nombre que el cliente oyó ya no era el suyo.
 func TestADirectOrderNeverTakesTheNumberedNameOfALiveDraft(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	sess := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café del turno largo", pesos("30"), false)

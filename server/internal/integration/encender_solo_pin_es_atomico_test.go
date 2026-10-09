@@ -22,6 +22,7 @@ import (
 // Se prueba por el lado que se puede provocar: si el borrado no se puede hacer, el ajuste NO puede
 // quedar encendido. Aquí lo impide un disparador que hace fallar el update de PINs.
 func TestSiElBorradoDePinsFallaElModoNoQuedaEncendido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")

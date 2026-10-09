@@ -143,6 +143,7 @@ func esperarLectura(t *testing.T, svc *app.MenusDePlataformaService, ctx context
 // --- Aislamiento: el defecto que este archivo existe para que no vuelva ---
 
 func TestLoQueVeElServicioEsSoloDeSuEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	otra := makeCompany(t, st, "vecina-servicio")
 	lector := &lectorFalso{items: menuFalso()}
@@ -171,6 +172,7 @@ func TestLoQueVeElServicioEsSoloDeSuEmpresa(t *testing.T) {
 // Y el catálogo del otro lado de la comparación tampoco cruza: `ListActiveProductsForCompare` es un
 // `select ... from products` sin filtro, así que quien lo aísla es RLS y nada más.
 func TestLaComparacionNoTraeProductosDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	otra := makeCompany(t, st, "vecina-catalogo")
 	sembrarProductoEn(t, st, otra, "Producto secreto de la vecina")
@@ -196,6 +198,7 @@ func TestLaComparacionNoTraeProductosDeOtraEmpresa(t *testing.T) {
 // Dos disparos a la vez dejan UNA sola lectura. El chequeo previo y el insert son dos statements,
 // así que quien lo impide de verdad es el índice único parcial del esquema.
 func TestDosDisparosSimultaneosDejanUnaSolaLectura(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso(), espera: 300 * time.Millisecond}
 	svc, ctx, appSt := servicioDePrueba(t, defaultCompanyID, lector)
@@ -247,6 +250,7 @@ func TestDosDisparosSimultaneosDejanUnaSolaLectura(t *testing.T) {
 // Una lectura que se quedó `en_curso` porque el proceso murió NO bloquea la tienda para siempre.
 // Sin esto, todo disparo futuro responde «ya hay una en curso» y solo se arregla tocando la base.
 func TestUnaLecturaColgadaNoBloqueaLaTiendaParaSiempre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso()}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -283,6 +287,7 @@ func TestUnaLecturaColgadaNoBloqueaLaTiendaParaSiempre(t *testing.T) {
 // Una lectura que vuelve vacía se guarda como FALLIDA, no como un menú sin productos: compararla
 // diría que sobra todo el catálogo.
 func TestUnaLecturaVaciaQuedaComoFallida(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{err: errors.New("vacío")}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -314,6 +319,7 @@ func TestUnaLecturaVaciaQuedaComoFallida(t *testing.T) {
 // Una plataforma sin credenciales NO es un error del operador ni una comparación vacía: es «esta
 // tienda no está conectada», y son cosas distintas en pantalla.
 func TestSinCredencialesNoSeLeeYSeDice(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, nil) // sin lectores
 
@@ -338,6 +344,7 @@ func TestSinCredencialesNoSeLeeYSeDice(t *testing.T) {
 // --- Emparejamiento ---
 
 func TestElEmparejamientoDeExtremoAExtremo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso()}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -410,6 +417,7 @@ func TestElEmparejamientoDeExtremoAExtremo(t *testing.T) {
 // «deshacer el último»: la lista llega ordenada por NOMBRE, así que sin ella hay que adivinar — y
 // adivinar aquí deshace la pareja equivocada sin que nadie lo note.
 func TestLaParejaDiceCuandoSeConfirmo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso()}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -447,6 +455,7 @@ func TestLaParejaDiceCuandoSeConfirmo(t *testing.T) {
 // Conserva SIEMPRE la última de cada conexión. Sin esa excepción, una tienda abandonada se queda
 // sin ninguna fila y la pantalla la muestra igual que una que nunca se leyó.
 func TestLaPodaDelServicioConservaLaUltima(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso()}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -477,6 +486,7 @@ func TestLaPodaDelServicioConservaLaUltima(t *testing.T) {
 // lista una que ya se registró, para que el alta falle con «ya existe», hace creer al operador que
 // se equivocó de tienda.
 func TestLasTiendasDisponiblesMarcanLasYaRegistradas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	lector := &lectorFalso{items: menuFalso()}
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, lector)
@@ -512,6 +522,7 @@ func TestLasTiendasDisponiblesMarcanLasYaRegistradas(t *testing.T) {
 
 // Sin credenciales para esa plataforma no hay lista que dar, y se dice — no es una lista vacía.
 func TestSinCredencialesNoHayTiendasQueListar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc, ctx, _ := servicioDePrueba(t, defaultCompanyID, nil)
 	if _, err := svc.TiendasDisponibles(ctx, plataformaUber(t, st, defaultCompanyID)); !errors.Is(err, domain.ErrPlataformaSinCredenciales) {
@@ -522,6 +533,7 @@ func TestSinCredencialesNoHayTiendasQueListar(t *testing.T) {
 // Una plataforma de OTRA empresa se rechaza: los chequeos de integridad saltan RLS, así que sin
 // esta validación listaríamos tiendas contra la plataforma equivocada.
 func TestUnaPlataformaAjenaNoListaTiendas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	otra := makeCompany(t, st, "vecina-tiendas")
 	lector := &lectorFalso{items: menuFalso()}

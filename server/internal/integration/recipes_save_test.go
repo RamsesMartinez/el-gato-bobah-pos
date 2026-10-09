@@ -15,6 +15,7 @@ import (
 
 // GUARDAR UNA RECETA: a los extras que se llaman igual, y sin pisar lo que otra persona guardó.
 func TestSavingARecipeForTwinsAndAgainstAStaleCopy(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	admin := makeUser(t, owner, "admin_gemelos", "admin")

@@ -33,6 +33,7 @@ func paymentRows(t *testing.T, st *store.Store) string {
 // La pantalla muestra el monto antes de cobrar sin calcularlo ella: si lo calculara, habría dos
 // reglas de dinero y tarde o temprano dirían cosas distintas con el cliente enfrente.
 func TestQuoteMatchesWhatPayChargesAndWritesNothing(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)
@@ -146,6 +147,7 @@ func TestQuoteMatchesWhatPayChargesAndWritesNothing(t *testing.T) {
 
 // QUOTE, AISLADO EN LOS TRES CASOS.
 func TestQuoteStaysIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "ajena-cotiza")
 	s := newSplitTable(t, st, "cotiza_aislado", "50", "50")

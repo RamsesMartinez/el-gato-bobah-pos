@@ -16,6 +16,7 @@ import (
 // Se prueba bajo el ROL, no como dueño: para el dueño ni los grants ni RLS existen y todo esto
 // pasaría en verde con la tabla abierta de par en par.
 func TestLaConsolaNoAlcanzaLaOperacionDeNingunaEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	prepararRolDePlataforma(t, st)
 	plataforma := platformRoleStore(t)
@@ -55,6 +56,7 @@ func TestLaConsolaNoAlcanzaLaOperacionDeNingunaEmpresa(t *testing.T) {
 // que hace que las acciones de soporte (spec 018) tengan que ser una decisión y no un accidente:
 // quien agregue un `grant insert` para salir del paso, lo ve en rojo.
 func TestLaConsolaNoPuedeEscribirNadaDeUnCliente(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	prepararRolDePlataforma(t, st)
 	plataforma := platformRoleStore(t)

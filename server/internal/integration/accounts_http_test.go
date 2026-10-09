@@ -16,6 +16,7 @@ import (
 
 // GET /pos/accounts EN JSON CRUDO (contracts/api.md).
 func TestLiveAccountsHTTP(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)

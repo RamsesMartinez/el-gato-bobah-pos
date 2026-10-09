@@ -18,6 +18,7 @@ import (
 
 // DESCARTAR DEJA RASTRO Y DEVUELVE EL NOMBRE A LA BOLSA (D-7, FR-012, US5).
 func TestDiscardReturnsTheName(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ctx := context.Background()
@@ -91,6 +92,7 @@ func TestDiscardReturnsTheName(t *testing.T) {
 // La bolsa se vació y otro se llevó el nombre DESPUÉS de que nació la cuenta: descartarla no se lo
 // quita (la guarda de `taken_at`).
 func TestDiscardAfterBagRefillKeepsTheNewOwner(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	ctx := context.Background()
 	cafe := makeProduct(t, k.st, "Café de la vuelta", pesos("30"), false)
@@ -111,6 +113,7 @@ func TestDiscardAfterBagRefillKeepsTheNewOwner(t *testing.T) {
 }
 
 func TestDiscardHTTP(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, broker, token := draftsAPI(t, st)
 	cajero, tok := token("cajero_descarta_http", "cajero")
@@ -149,6 +152,7 @@ func TestDiscardHTTP(t *testing.T) {
 }
 
 func TestDiscardInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-descarte")
 	otherUser := makeUserIn(t, k.st, other, "cajero_otra_descarte", "cajero")

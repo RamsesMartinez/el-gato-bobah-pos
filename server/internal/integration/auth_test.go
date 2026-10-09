@@ -16,6 +16,7 @@ import (
 // cableado (GetRefreshToken → ClassifyRefresh → RevokeUserRefreshTokens) que no se puede
 // probar sin BD, así que va aquí.
 func TestRefreshReuseRevokesFamily(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
@@ -53,6 +54,7 @@ func TestRefreshReuseRevokesFamily(t *testing.T) {
 // Rotación normal: un refresh válido entrega una sesión nueva y el token viejo deja de
 // servir (no es reuso, es rotación) — verifica que el camino feliz no dispara la detección.
 func TestRefreshRotationHappyPath(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)

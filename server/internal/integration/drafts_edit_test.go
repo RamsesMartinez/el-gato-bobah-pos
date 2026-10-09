@@ -18,6 +18,7 @@ import (
 )
 
 func TestAddingIsIdempotentByOp(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café idempotente", pesos("30"), false)
 	v := k.newDraft(t, addOf(cafe, "1"))
@@ -39,6 +40,7 @@ func TestAddingIsIdempotentByOp(t *testing.T) {
 
 // Dos tabletas tocan el mismo producto a la vez: un renglón con 2, no dos de 1 (D-5, caso 17).
 func TestConcurrentAddsMergeIntoOneLine(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café concurrente", pesos("30"), false)
 	leche := makeProduct(t, k.st, "Leche concurrente", pesos("10"), false)
@@ -88,6 +90,7 @@ func TestConcurrentAddsMergeIntoOneLine(t *testing.T) {
 }
 
 func TestPlusOnALine(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café del más", pesos("30"), false)
 	v := k.newDraft(t, app.DraftLineCmd{OpID: uuid.New(), ProductID: cafe, Qty: pesos("1"), Notes: "tibio"})
@@ -113,6 +116,7 @@ func TestPlusOnALine(t *testing.T) {
 }
 
 func TestStaleChangeIsRejected(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café viejo", pesos("30"), false)
 	v := k.newDraft(t, addOf(cafe, "3"))
@@ -162,6 +166,7 @@ func TestStaleChangeIsRejected(t *testing.T) {
 }
 
 func TestRemovingTheLastLineKeepsTheAccount(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café último", pesos("30"), false)
 	v := k.newDraft(t, addOf(cafe, "1"))
@@ -179,6 +184,7 @@ func TestRemovingTheLastLineKeepsTheAccount(t *testing.T) {
 }
 
 func TestDraftHeader(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	jefa := makeUser(t, k.st, "gerente_descuento", "gerente")
 	crepa := makeProduct(t, k.st, "Crepa de cabecera", pesos("100"), false)
@@ -290,6 +296,7 @@ func TestDraftHeader(t *testing.T) {
 }
 
 func TestDraftLimits(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	p0 := makeProduct(t, k.st, "P0", pesos("1"), false)
 	v := k.newDraft(t, addOf(p0, "1"))
@@ -311,6 +318,7 @@ func TestDraftLimits(t *testing.T) {
 }
 
 func TestDeactivatedProductInALiveDraft(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	taro := makeProduct(t, k.st, "Taro que se agota", pesos("55"), false)
 	cafe := makeProduct(t, k.st, "Café que sigue", pesos("30"), false)
@@ -333,6 +341,7 @@ func TestDeactivatedProductInALiveDraft(t *testing.T) {
 }
 
 func TestTerminalDraftsReceiveNothing(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café terminal", pesos("30"), false)
 	for status, want := range map[string]error{"enviada": domain.ErrDraftAlreadySent, "descartada": domain.ErrDraftDiscarded} {
@@ -378,6 +387,7 @@ func TestTerminalDraftsReceiveNothing(t *testing.T) {
 
 // LOS TRES CASOS SOBRE CADA ESCRITURA: ninguna alcanza la cuenta de otra empresa.
 func TestDraftWritesInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-escritura")
 	cafe := makeProduct(t, k.st, "Café ajeno a la escritura", pesos("30"), false)

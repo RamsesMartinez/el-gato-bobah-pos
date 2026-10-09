@@ -24,6 +24,7 @@ import (
 // mueve. Un arqueo firmado tiene que poder reconstruirse tal como se firmó, así que el esperado es
 // un hecho del momento —como `order_lines.unit_price`— y no una consulta que se rehace.
 func TestElConteoGuardaContraQueSeComparo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -60,6 +61,7 @@ func TestElConteoGuardaContraQueSeComparo(t *testing.T) {
 // Sin este check, un `CloseSession` que algún día olvide setear el esperado deja un nulo que se lee
 // IGUAL que un corte anterior a esta feature: el bug se disfraza de historia. Con él, falla ruidoso.
 func TestElEsperadoDelConteoEstaAtadoAlMomento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -99,6 +101,7 @@ func TestElEsperadoDelConteoEstaAtadoAlMomento(t *testing.T) {
 // cierre sin esperado, y una migración que los rechace no corre. `not valid` perdona el pasado y
 // obliga al futuro.
 func TestLosConteosDeLa0066SobrevivenAlCheck(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -141,6 +144,7 @@ func TestLosConteosDeLa0066SobrevivenAlCheck(t *testing.T) {
 // Didi llega al cajón», todo corte cerrado antes se reagruparía con el flag de hoy. Las cifras no
 // cambian, pero la forma del reporte sí — y eso es reescribir el pasado.
 func TestElRenglonDelCorteGuardaSiTocabaElCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -175,6 +179,7 @@ func TestElRenglonDelCorteGuardaSiTocabaElCajon(t *testing.T) {
 // declarado propio para un método de cajón, vuelve el faltante repartido que cancela sobrantes con
 // faltantes — el defecto que esta feature entera viene a cerrar.
 func TestUnMetodoDeCajonNoPuedeDeclararUnaCifraPropia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -203,6 +208,7 @@ func TestUnMetodoDeCajonNoPuedeDeclararUnaCifraPropia(t *testing.T) {
 // (FR-005 de la 003). Una migración que lo cambie de golpe le mueve la pantalla a quien opera sin
 // que nadie lo haya pedido.
 func TestElArqueoCiegoNaceApagado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

@@ -19,6 +19,7 @@ import (
 // viajar por el tablero —abierta, lista, entregada— son dos taps por una venta que ya terminó, y
 // desde que la caja no cierra con pendientes, son dos taps que además bloquean el cierre.
 func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -66,6 +67,7 @@ func TestUnPedidoEntregadoEnElActoNaceEntregado(t *testing.T) {
 // Sin la marca, el pedido sigue naciendo abierto y pasa por el tablero. Es el caso de todos los
 // días y no puede cambiar por agregar la opción.
 func TestSinLaMarcaElPedidoSigueNaciendoAbierto(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)

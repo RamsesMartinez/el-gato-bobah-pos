@@ -30,6 +30,7 @@ import (
 // agregue mañana. Una lista se queda corta en silencio: es el mismo defecto que ya se pagó con la
 // enumeración incompleta del anonimizador.
 func TestElRolDeAppNoVeNadaSinEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -93,6 +94,7 @@ func TestElRolDeAppNoVeNadaSinEmpresa(t *testing.T) {
 // una conexión nueva o una reusada. En el webhook eso se traduce en un 401 unas veces y un 502
 // otras, y la plataforma reintenta distinto ante cada uno.
 func TestUnaConexionRecicladaSigueCerrada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()

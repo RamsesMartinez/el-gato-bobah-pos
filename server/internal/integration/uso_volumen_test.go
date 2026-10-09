@@ -26,6 +26,7 @@ import (
 // Se modela como es: los días pasados ya están fríos —su churn ocurrió cuando eran "hoy" y
 // autovacuum hace rato que pasó— y solo el día en curso recibe incrementos de a poco.
 func TestElUsoDeUnAnoCabeEnElTecho(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("siembra un año de uso; se omite en -short")
 	}
@@ -91,6 +92,7 @@ func TestElUsoDeUnAnoCabeEnElTecho(t *testing.T) {
 
 // EL RECORTE BORRA LO VIEJO Y NO TOCA LO DE ADENTRO.
 func TestElRecorteDeUsoDejaLoQueEstaDentroDeLaRetencion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -129,6 +131,7 @@ func TestElRecorteDeUsoDejaLoQueEstaDentroDeLaRetencion(t *testing.T) {
 // El test se queda porque lo que fijaba sigue siendo cierto y ahora es un hecho verificable en vez
 // de un ensayo: medir dónde cae el dedo **no exigió migrar una sola fila** de lo ya escrito.
 func TestLaPuertaDeLasCoordenadasSeCruzoSinMigrarLoEscrito(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -171,6 +174,7 @@ func TestLaPuertaDeLasCoordenadasSeCruzoSinMigrarLoEscrito(t *testing.T) {
 // No es celo: es una goroutine que sostiene una conexión de DUEÑO. Sin condición de término
 // sobrevive al apagado, y el principio II no lo permite.
 func TestElCicloDelRecorteTerminaAlApagar(t *testing.T) {
+	t.Parallel()
 	// Migra el esquema y deja el harness listo; el recorte abre su propia conexión.
 	newTestStore(t)
 

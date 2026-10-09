@@ -22,6 +22,7 @@ import (
 // El número de cada pago es el que lleva su ticket impreso: un pago devuelto conserva el suyo y sale
 // tachado, y los pagos anteriores a la migración se numeran por hora contando los devueltos.
 func TestOrderViewCarriesItsPaymentsAsArrays(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)

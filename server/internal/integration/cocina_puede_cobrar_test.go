@@ -17,6 +17,7 @@ import (
 // cobrar le da acceso al dinero a quien solo tiene que preparar comida. Se enciende a propósito en
 // el local donde cocina y mostrador son la misma persona.
 func TestCobrarDesdePedidosNaceApagado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
 
@@ -32,6 +33,7 @@ func TestCobrarDesdePedidosNaceApagado(t *testing.T) {
 // Se enciende sin pisar los demás ajustes del ticket, que viven en la misma fila y se escriben con
 // el mismo UPDATE. Un interruptor que apaga otro es el fallo clásico de este patrón.
 func TestElAjusteDeCobroNoPisaLosDelTicket(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -79,6 +81,7 @@ func TestElAjusteDeCobroNoPisaLosDelTicket(t *testing.T) {
 // Existe aparte de la lista de entregadas porque esa es de admin/gerente, y el pendiente más caro
 // —entregado y sin cobrar, el cliente ya se fue— tiene que poder saldarlo quien está en la caja.
 func TestElAvisoDelPOSListaLoQueFaltaPorCobrar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

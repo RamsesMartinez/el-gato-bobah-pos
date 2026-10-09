@@ -40,6 +40,7 @@ func piezasDe(t *testing.T, st *store.Store, pares ...any) []app.PiezaCapturada 
 
 // El caso del spec: 6 monedas de $10 y 3 billetes de $50 son $210, y nadie escribió "210".
 func TestAbrirLaCajaContandoElCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -65,6 +66,7 @@ func TestAbrirLaCajaContandoElCajon(t *testing.T) {
 // pantalla con un bug —o alguien con curl— fija el fondo en lo que quiera y el arqueo del turno
 // entero queda comparándose contra una cifra inventada.
 func TestElFondoSaleDeLasPiezasYNoDeLoQueMandeElCliente(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -86,6 +88,7 @@ func TestElFondoSaleDeLasPiezasYNoDeLoQueMandeElCliente(t *testing.T) {
 
 // El camino manual existe, y exige decir por qué.
 func TestAbrirCapturandoElTotalExigeMotivo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -111,6 +114,7 @@ func TestAbrirCapturandoElTotalExigeMotivo(t *testing.T) {
 
 // Un cajón vacío no es un error: una caja puede arrancar sin dinero.
 func TestAbrirConElCajonVacioNoEsError(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -132,6 +136,7 @@ func TestAbrirConElCajonVacioNoEsError(t *testing.T) {
 // otra moneda suma un fondo sin significado, y el arqueo del turno entero se compara después contra
 // esa cifra.
 func TestUnaDenominacionDeOtraMonedaSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -168,6 +173,7 @@ func TestUnaDenominacionDeOtraMonedaSeRechaza(t *testing.T) {
 // escriben, y el segundo `insert` de la línea choca con `unique (count_id, denomination_id)`.
 // Es además un fallo realista: una pantalla con un bug que manda el renglón repetido.
 func TestUnaAperturaQueFallaNoDejaLaCajaBloqueada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -216,6 +222,7 @@ func aperturaAMano(total decimal.Decimal) app.AperturaCmd {
 // ve ids, así que no puede detectarlo—, de modo que lo único que impedía un fondo inflado era la
 // unique del esquema. Rechazarlo antes de escribir cierra las dos cosas.
 func TestUnRenglonRepetidoSeRechazaComoCapturaInvalida(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -253,6 +260,7 @@ func TestUnRenglonRepetidoSeRechazaComoCapturaInvalida(t *testing.T) {
 // El camino secuencial ya devuelve ErrConflict, y la pantalla ya sabe pintarlo: lo que falta es que
 // la carrera termine igual que la fila.
 func TestDosAperturasSimultaneasDejanUnConflictoYNoUn500(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_carrera", "cajero")

@@ -26,6 +26,7 @@ func unitID(t *testing.T, st *store.Store, code string) int16 {
 }
 
 func TestCapturingACompositionUnderTheAppRole(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	admin := makeUser(t, owner, "admin_composicion", "admin")

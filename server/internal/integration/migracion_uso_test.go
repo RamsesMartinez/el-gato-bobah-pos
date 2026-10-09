@@ -19,6 +19,7 @@ import (
 // No es que la aplicación no lo escriba: es que no hay columna. Lo que no existe no se llena por
 // descuido, no se llena en un data-fix y no aparece en un `select *` dentro de seis meses.
 func TestElUsoNoTieneDondeGuardarAQuienLoHizo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -90,6 +91,7 @@ func TestElUsoNoTieneDondeGuardarAQuienLoHizo(t *testing.T) {
 // crearía una fila nueva: el agregado dejaría de agregar en silencio y la tabla crecería como la de
 // eventos. `nulls not distinct` (Postgres 15+) es lo que lo evita.
 func TestElAgregadoDeUsoSumaConNulos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -126,6 +128,7 @@ func TestElAgregadoDeUsoSumaConNulos(t *testing.T) {
 // por evento e inflar justo el volumen que la feature promete acotar. Un control que solo vive en
 // Go se rodea por otra ruta; uno en la columna, no.
 func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -152,6 +155,7 @@ func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
 // nada fallara, que es la peor forma de fallar. Y sin el grant ausente sobre `usage_events`, la
 // consola estaría leyendo hechos en vez de conteos.
 func TestLaConsolaVeElAgregadoDeTodasLasEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)

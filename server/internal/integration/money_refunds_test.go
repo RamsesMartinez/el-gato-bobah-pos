@@ -25,6 +25,7 @@ import (
 // billetes (con su salida de caja) y solo $20 de tarjeta: el corte esperaba $40 menos de lo que
 // había en el cajón y la tarjeta quedaba devuelta de menos.
 func TestASecondRefundDoesNotRepeatTheFirstMethod(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -55,6 +56,7 @@ func TestASecondRefundDoesNotRepeatTheFirstMethod(t *testing.T) {
 // Devolver no bloqueaba el pedido: dos «devolver todo» simultáneos (dos tabletas, un doble toque con
 // la red lenta) leían lo mismo y se registraban los dos, con dos salidas de caja.
 func TestTwoSimultaneousRefundsDoNotBothPass(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -87,6 +89,7 @@ func TestTwoSimultaneousRefundsDoNotBothPass(t *testing.T) {
 
 // D3: UNA DEVOLUCIÓN Y UNA CANCELACIÓN CON DEVOLUCIÓN A LA VEZ TAMPOCO DEVUELVEN DE MÁS.
 func TestARefundAndACancellationTogetherDoNotOverRefund(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -113,6 +116,7 @@ func TestARefundAndACancellationTogetherDoNotOverRefund(t *testing.T) {
 
 // D4: CONTRA UN RENGLÓN SE DEVUELVE LO QUE VALE ESE RENGLÓN.
 func TestARefundAgainstALineIsCappedByTheLine(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -167,6 +171,7 @@ func TestARefundAgainstALineIsCappedByTheLine(t *testing.T) {
 // `Refund` marcaba el pedido sin escribir el libro de devoluciones, así que para el libro ese pedido
 // no tenía nada devuelto y se podía devolver completo otra vez, con otra salida de caja.
 func TestARefundedOrderFromTheOldFlowIsNotRefundedAgain(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -194,6 +199,7 @@ func TestARefundedOrderFromTheOldFlowIsNotRefundedAgain(t *testing.T) {
 // $100 en efectivo, «Devolver» $40 y luego «Devolver pago» de los $100: salían $140 por un pedido
 // de $100 y el pedido volvía a deber $100.
 func TestVoidingAPaymentWithRefundsIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -342,6 +348,7 @@ func concurrently(n int, f func(i int) error) []error {
 // contaba, porque el pedido estaba cancelado. Si el cajero le regresaba al cliente lo que dio, el
 // corte cerraba con ese faltante.
 func TestCancellingWithRefundReturnsTheTipToo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)

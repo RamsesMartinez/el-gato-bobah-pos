@@ -16,6 +16,7 @@ import (
 // pedido tomara «el» turno de la empresa, entraría al corte de la matriz y el de NORTE quedaría con
 // un faltante por un dinero que nunca pasó por su caja.
 func TestAPlatformOrderStaysInTheBranchOfItsStore(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

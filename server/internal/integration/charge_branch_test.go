@@ -21,6 +21,7 @@ import (
 // en el corte de NORTE: un sobrante allá y un faltante aquí, por el mismo monto, sin un solo error.
 // Sin selector de sucursal, lo correcto es rechazar.
 func TestChargingWithTwoOpenBranchesIsRejectedNotGuessed(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_dos_cajas", "cajero")

@@ -131,16 +131,15 @@ jobs:
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
-        # -timeout 10m contra ~45 s medidos: el margen es para un cuelgue, no para crecer dentro.
-        # Bajado de 30m el 2026-09-16 al dejar de correr las migraciones por prueba.
+        # -timeout 10m contra ~40 s medidos: el margen es para un cuelgue, no para crecer dentro.
         #
-        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo mueva sepa qué está comprando: la
-        # suite llama `newTestStore` ~364 veces y cada llamada CLONA una plantilla ya migrada
-        # (~30 ms), en vez de correr las 71 migraciones (~770 ms) como hasta el 2026-09-16. Medido
-        # sobre la suite completa: 447.8 s → 44.5 s, con el `fsync=off` de arriba. Si esto vuelve a
-        # crecer, lo que creció es el CUERPO de las pruebas, no su preparación: ahí sí aplica que
-        # una prueba que solo mira una restricción comparta esquema con subpruebas, como hace
-        # `TestLasRestriccionesDelEsquemaDeMenus`.
+        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo mueva sepa qué está comprando: cada
+        # prueba CLONA una plantilla ya migrada (~30 ms) en vez de correr las migraciones (~770 ms),
+        # y como cada una tiene su propia base, corren EN PARALELO. En serie la suite llegó a 183 s
+        # en CI (2026-10-09) sin que ninguna prueba fuera lenta: eran ~600 de ~0.25 s una tras otra.
+        # Medido en local a 4 CPU contra un Postgres igual a éste: 115 s en serie, 36-42 s en
+        # paralelo. `TestEveryIntegrationTestDeclaresHowItRuns` impide que una prueba nueva vuelva a
+        # la serie sin decir por qué.
         run: go test -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable

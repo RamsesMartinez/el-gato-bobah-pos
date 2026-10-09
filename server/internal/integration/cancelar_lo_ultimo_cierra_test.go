@@ -71,6 +71,7 @@ func estadoYCierre(t *testing.T, st *store.Store, orderID int64) (string, bool) 
 // Corre bajo el rol de la aplicación: el cierre escribe `orders` desde un camino que antes no lo
 // hacía, y un grant que faltara aparecería en producción como 42501 en el último toque.
 func TestCancellingTheLastPendingLineClosesTheOrder(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ownerSvc := app.NewOrdersService(st, clock)
@@ -167,6 +168,7 @@ func TestCancellingTheLastPendingLineClosesTheOrder(t *testing.T) {
 // cerrarlo así convertiría una cancelación renglón a renglón en una venta en el corte (la regla
 // vive en domain.TodoEntregado). Tampoco queda atorado: como no soltó comida, se cancela completo.
 func TestCancellingEveryLineLeavesTheOrderOpenToBeCancelled(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -192,6 +194,7 @@ func TestCancellingEveryLineLeavesTheOrderOpenToBeCancelled(t *testing.T) {
 // Una entrega PARCIAL en otro renglón sigue siendo comida pendiente: cancelar el resto no cierra el
 // pedido, y entregar lo que falta sí.
 func TestCancellingWithAPartialDeliveryElsewhereKeepsTheOrderOpen(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -228,6 +231,7 @@ func TestCancellingWithAPartialDeliveryElsewhereKeepsTheOrderOpen(t *testing.T) 
 // El pedido en `lista` también se cierra: es el otro estado vivo desde el que se cancela un
 // renglón.
 func TestCancellingTheLastPendingLineClosesAReadyOrder(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -253,6 +257,7 @@ func TestCancellingTheLastPendingLineClosesAReadyOrder(t *testing.T) {
 // interbloqueo: entregar toma el pedido y luego los renglones, y cancelar tiene que tomarlos en
 // el mismo orden.
 func TestConcurrentDeliverAndCancelStillCloseTheOrder(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

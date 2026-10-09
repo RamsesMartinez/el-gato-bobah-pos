@@ -28,6 +28,7 @@ const detalleConExtraDoble = `{
 // veía más lleno cuanto más se vendía en la plataforma. Lo emparejado descuenta como en mostrador —el
 // platillo y su opción—; el producto genérico no, porque no se sabe qué lleva.
 func TestAcceptingAPlatformOrderDepletesStock(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

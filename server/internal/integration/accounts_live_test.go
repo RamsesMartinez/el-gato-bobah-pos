@@ -80,6 +80,7 @@ func draftKey(id uuid.UUID) string { return "d:" + id.String() }
 
 // LA FILA TIENE TODA CUENTA VIVA, CON SU ESTADO (US1, FR-009, casos 1–4 del lienzo).
 func TestLiveAccountsStates(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 
@@ -177,6 +178,7 @@ func TestLiveAccountsStates(t *testing.T) {
 }
 
 func TestLiveAccountsPendingNew(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	inKitchen := k.order(t, "1", "0", false)
@@ -210,6 +212,7 @@ func TestLiveAccountsPendingNew(t *testing.T) {
 }
 
 func TestLiveAccountsSweepsBeforeListing(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	old := k.newDraft(t, addOf(k.product, "1"))
 	if _, err := k.st.Pool.Exec(context.Background(), `update order_drafts set updated_at = now() - interval '13 hours' where id = $1`, old.ID); err != nil {
@@ -225,6 +228,7 @@ func TestLiveAccountsSweepsBeforeListing(t *testing.T) {
 }
 
 func TestLiveAccountsInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	other := makeCompany(t, k.st, "otra-fila")
@@ -256,6 +260,7 @@ func TestLiveAccountsInTheThreeCases(t *testing.T) {
 // 18:00 locales. La barra filtraba por la fecha del servidor y se vaciaba TODAS las noches en plena
 // hora pico. Lo que sigue en cocina se ve sin filtro de fecha.
 func TestLiveAccountsSurviveMidnight(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ayer := app.NewOrdersService(st, clock)

@@ -46,6 +46,7 @@ func registerID(t *testing.T, st *store.Store, name string) int64 {
 // punta (DB → servicio → persistencia) el control central de domain.ResolveDeclared, que
 // evita que un front comprometido/con bug subdeclare un método que nunca requirió conteo.
 func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -116,6 +117,7 @@ func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 // Efectivo es justo el método que exige conteo físico: no debe poder marcarse auto_declare,
 // o el corte de caja perdería la única forma de detectar un faltante de efectivo.
 func TestSetPaymentMethodAutoDeclareRejectsCashDrawer(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -138,6 +140,7 @@ func TestSetPaymentMethodAutoDeclareRejectsCashDrawer(t *testing.T) {
 // entrada en la destino, ambas ligadas al mismo cash_transfer: cada caja "detecta" el movimiento
 // automáticamente y el neto es simétrico (−monto en origen, +monto en destino).
 func TestTransferBetweenRegistersDetectedInBoth(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -189,6 +192,7 @@ func TestTransferBetweenRegistersDetectedInBoth(t *testing.T) {
 // Un traspaso exige que AMBAS cajas estén abiertas: con la destino cerrada, ErrConflict y sin
 // escribir ningún movimiento (nada que "detectar" a medias).
 func TestTransferRequiresBothRegistersOpen(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -216,6 +220,7 @@ func TestTransferRequiresBothRegistersOpen(t *testing.T) {
 // Una venta con propina entra al corte: el esperado del método incluye la propina y el resumen
 // jerárquico la muestra como línea "Propinas" separada de "Ventas".
 func TestTipFlowsIntoCorte(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -280,6 +285,7 @@ func TestTipFlowsIntoCorte(t *testing.T) {
 // El resumen del corte incluye los gastos atribuidos (sección "Gastos") y la salida de efectivo
 // del gasto trae expenseId (el front la excluye de la tabla de movimientos para no duplicar).
 func TestSessionSummaryIncludesExpenses(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -329,6 +335,7 @@ func TestSessionSummaryIncludesExpenses(t *testing.T) {
 // petty cash). Con la caja abierta y pago en efectivo, el gasto se liga a esa sesión y genera la
 // salida del cajón.
 func TestExpensePaidRequiresOpenRegister(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

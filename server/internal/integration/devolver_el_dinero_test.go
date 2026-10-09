@@ -21,6 +21,7 @@ import (
 // `Refund` anotaba como pérdida `orders.total` sin mirar un solo cobro. Un pedido de $500 cobrado a
 // medias registraba $500 de pérdida cuando solo habían entrado $300.
 func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -63,6 +64,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 // registraba $220 de pérdida por un ingreso que nunca ocurrió, y la cuenta por cobrar desaparecía
 // del contador sin haberse cobrado.
 func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -93,6 +95,7 @@ func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
 // Ese dinero nunca estuvo en la caja: descontarlo del cajón inventaría un faltante que el cajero
 // buscaría contando tres veces.
 func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -131,6 +134,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 // base y el arqueo SEGUÍA esperando ese dinero en el cajón. Devolverlo al cliente dejaba el corte
 // con un faltante que ningún renglón explicaba.
 func TestCancelarUnPedidoCobradoExigeLaDevolucion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -217,6 +221,7 @@ func crearPedidoSimple(t *testing.T, ctx context.Context, svc *app.OrdersService
 // no se prepara. Antes esta prueba desmarcaba la cocina a mano para llegar aquí: un estado que
 // ningún pedido real alcanza.
 func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -254,6 +259,7 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 // El que YA salió a cocina baja el total igual, pero NO repone: ese insumo se consumió, y reponerlo
 // inventaría existencias que no están.
 func TestUnRenglonQueYaSalioACocinaNoRepone(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -279,6 +285,7 @@ func TestUnRenglonQueYaSalioACocinaNoRepone(t *testing.T) {
 
 // Un doble tap no puede reponer dos veces el mismo insumo: eso es inventar existencias.
 func TestCancelarDosVecesElMismoRenglonNoReponeDosVeces(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -336,6 +343,7 @@ func existencias(t *testing.T, st *store.Store, productID int64) decimal.Decimal
 // No se exige igualdad con TODO lo devuelto: solo el efectivo sale del cajón. Lo que tiene que
 // cuadrar es la parte en efectivo.
 func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -396,6 +404,7 @@ func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
 // era marcar como entregado lo que seguía en la plancha. Ahora la frase es cierta, y esto lo prueba
 // haciendo lo que el mensaje dice.
 func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

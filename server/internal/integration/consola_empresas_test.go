@@ -16,6 +16,7 @@ import (
 // una respuesta se llena sola el día que alguien agrega un campo «de paso», y la primera vez que
 // se note será mirando la pantalla de un cliente en la computadora de quien vende el sistema.
 func TestLaConsolaListaLasEmpresasSinMirarSuOperacion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, _, pjm := routerConConsola(t, st)
 
@@ -77,6 +78,7 @@ func TestLaConsolaListaLasEmpresasSinMirarSuOperacion(t *testing.T) {
 // La diferencia importa donde se ve: `null` no se recorre en el front y la pantalla truena en vez
 // de decir que todavía no hay clientes.
 func TestLaConsolaConCeroEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, _, pjm := routerConConsola(t, st)
 	crearOperador(t, st, "soporte_vacio", "Contrasena-De-Plataforma-1!", true)

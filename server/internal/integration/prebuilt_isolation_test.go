@@ -37,6 +37,7 @@ func orderFingerprint(t *testing.T, st *store.Store, orderID int64) string {
 // `inTheThreeCases`. Cada una, llamada desde otra empresa, con una conexión reciclada o sin empresa,
 // no alcanza ni cambia nada del pedido de la dueña.
 func TestPrebuiltRemovalAndSplitStayIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	other := makeCompany(t, st, "ajena-quitar")

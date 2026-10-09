@@ -20,6 +20,7 @@ import (
 // debe se LISTA en la vista del turno —para abrirlo o descartarlo— pero no detiene el cierre: una
 // cuenta fiada tiene que poder pasar al día siguiente.
 func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	ctx := k.ctx
 	back := app.NewBackofficeService(k.appSt, clock)
@@ -103,6 +104,7 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 
 // liveAccounts y pending viajan como arreglo, nunca null, en el JSON crudo de la vista del turno.
 func TestSessionViewArraysAreNeverNull(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	back := app.NewBackofficeService(k.appSt, clock)
 	principal := registerID(t, k.st, "Caja principal")

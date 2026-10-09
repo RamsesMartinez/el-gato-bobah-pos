@@ -25,6 +25,7 @@ import (
 // Se prueba a una hora que en UTC YA ES del día siguiente: a cualquier otra, los dos caminos dan la
 // misma fecha y el test pasaría con el defecto puesto.
 func TestSinZonaLaFechaDeNegocioUsaElDefaultDelProductoYNoUTC(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

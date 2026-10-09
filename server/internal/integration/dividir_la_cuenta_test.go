@@ -59,6 +59,7 @@ func pedidoDeProducto(t *testing.T, st *store.Store, svc *app.OrdersService, suf
 // Medido antes del arreglo: pedido de $500, dos llamadas idénticas de $250 + $50 de propina →
 // pagado $500, propina $100, dos filas, pedido cerrado.
 func TestUnDobleTapNoCobraDosVecesLaMismaMitad(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -103,6 +104,7 @@ func TestUnDobleTapNoCobraDosVecesLaMismaMitad(t *testing.T) {
 // propina mayor que la cuenta entera es un error de captura mucho más seguido que un regalo, y
 // cuando de verdad es un regalo se parte en dos cobros.
 func TestLaPropinaNoPuedeSuperarLaCuenta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -128,6 +130,7 @@ func TestLaPropinaNoPuedeSuperarLaCuenta(t *testing.T) {
 // sigue en la barra con $0.01 y ese centavo se puede cobrar. Las divisiones del sistema («Dividir
 // entre») le cargan el residuo al último pago y no llegan aquí.
 func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -204,6 +207,7 @@ func abiertosDelTablero(t *testing.T, st *store.Store, svc *app.OrdersService) [
 // operador ya cobró. Se rechaza en vez de aceptarse en silencio: quien manda la llave repetida está
 // equivocado, y el error se lo dice.
 func TestLaMismaLlaveEnOtroPedidoNoSeTomaComoReintento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -245,6 +249,7 @@ func TestLaMismaLlaveEnOtroPedidoNoSeTomaComoReintento(t *testing.T) {
 // implementaciones de la misma cifra son las que dejaron a la barra del POS diciendo $2,141
 // mientras su propia lista decía $1,928.
 func TestElDetalleDelPedidoDiceCuantoFalta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -305,6 +310,7 @@ func TestElDetalleDelPedidoDiceCuantoFalta(t *testing.T) {
 // uno le deja $40 al repartidor son $80 de propina sobre $60 de cuenta. El segundo cobro fallaría
 // con el dinero del cliente ya en la mano — justo lo que un tope de cordura no debe provocar.
 func TestDosPropinasPlausiblesNoSeBloqueanEntreEllas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -333,6 +339,7 @@ func TestDosPropinasPlausiblesNoSeBloqueanEntreEllas(t *testing.T) {
 // cierra esperando la tarjeta que nunca llegó sin esperar el efectivo que sí está. Descuadre por el
 // mismo monto en los dos métodos a la vez, y firmado en register_session_totals.
 func TestLaMismaLlaveConOtroMetodoNoPasaPorReintento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -383,6 +390,7 @@ func TestLaMismaLlaveConOtroMetodoNoPasaPorReintento(t *testing.T) {
 // hay caja abierta". El operador concluye que no entró, borra el renglón y lo rehace con llave
 // nueva — que es el cobro doble que la llave existe para impedir.
 func TestUnCobroYaRegistradoSeReconoceConLaCajaCerrada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -419,6 +427,7 @@ func TestUnCobroYaRegistradoSeReconoceConLaCajaCerrada(t *testing.T) {
 
 // Y con la caja cerrada un cobro NUEVO sí se rechaza: la excepción es solo para lo ya registrado.
 func TestSinCajaAbiertaNoSeCobraNadaNuevo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -444,6 +453,7 @@ func TestSinCajaAbiertaNoSeCobraNadaNuevo(t *testing.T) {
 // justamente para dejar de recibir por ahí; que el servidor lo siga aceptando manda ese dinero a un
 // renglón del corte que nadie está contando.
 func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -470,6 +480,7 @@ func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
 // venga. Sin él, la pantalla tendría que acordarse — y "acordarse" entre dos pantallas es la forma
 // en que ya divergieron otras tres cifras de este sistema.
 func TestElDetalleDiceConQueListaSeArmoElPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

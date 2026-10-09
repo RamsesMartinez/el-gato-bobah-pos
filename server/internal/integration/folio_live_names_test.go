@@ -20,6 +20,7 @@ import (
 // único nombre fresco es «Persa» y se lo llevaría el pedido: dos «Persa» en la barra, uno de ellos
 // ya dicho a un cliente.
 func TestNoPathTakesALiveDraftName(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	ctx := k.ctx
 	session := abrirCajaPrincipal(t, k.st, k.user)
@@ -108,6 +109,7 @@ func TestNoPathTakesALiveDraftName(t *testing.T) {
 // EL NOMBRE AMARRADO VIAJA AL PEDIDO (D-2): ni otro animal ni otro número salvo que el turno ya lo
 // haya cantado, y entonces «Persa 2» (research R-3).
 func TestBoundFolioNameReachesTheOrder(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café amarrado", pesos("30"), false)
@@ -141,6 +143,7 @@ func TestBoundFolioNameReachesTheOrder(t *testing.T) {
 // cliente se le dijo un nombre y la comanda canta otro. En un local con más pedidos por turno que
 // nombres en la lista, pasa todos los días.
 func TestADraftBornAfterTheListRanOutKeepsItsNameInTheOrder(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	session := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café de la vuelta", pesos("30"), false)
@@ -180,6 +183,7 @@ func TestADraftBornAfterTheListRanOutKeepsItsNameInTheOrder(t *testing.T) {
 //
 // La bolsa guarda animales, no «Persa 2». Soltar el nombre con número no soltaría nada.
 func TestDiscardingANumberedDraftReleasesItsAnimal(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	session := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café que se descarta", pesos("30"), false)

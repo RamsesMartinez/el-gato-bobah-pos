@@ -18,6 +18,7 @@ import (
 // que al usarse fija la contraseña, invalida el token y REVOCA todas las sesiones del usuario.
 // Se prueba el Confirm directamente (sin SMTP) creando el token en BD bajo el tenant.
 func TestPasswordResetConfirm(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	uid := makeUser(t, owner, "reset_me", "cajero")

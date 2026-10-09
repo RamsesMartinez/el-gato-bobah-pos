@@ -25,6 +25,7 @@ import (
 // defecto la renovada vencía a las 12 h y a las 13 h ya estaba muerta igual. Pasaba verde en los
 // dos mundos.
 func TestRefrescarCadaHoraNoAlargaElTurno(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ahora := fixedNow

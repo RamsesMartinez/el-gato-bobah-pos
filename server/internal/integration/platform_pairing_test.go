@@ -71,6 +71,7 @@ func groupOfItem(t *testing.T, v *app.PairingView, ext string) domain.PairingGro
 }
 
 func TestBoardGroupsAndCountsComeFromTheSameRows(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	v, err := f.svc.Pairing(f.ctx, f.conn)
 	if err != nil {
@@ -100,6 +101,7 @@ func TestBoardGroupsAndCountsComeFromTheSameRows(t *testing.T) {
 }
 
 func TestBatchConfirmsOnlyCurrentProposals(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	res, err := f.svc.ConfirmBatch(f.ctx, f.conn, f.user, []string{"Chamoyada_de_Mango", "Con_hielo", "Dedos_de_queso"})
 	if err != nil {
@@ -123,6 +125,7 @@ func TestBatchConfirmsOnlyCurrentProposals(t *testing.T) {
 // El lote no puede reportar como confirmado lo que no escribió: un id repetido, o uno que otra
 // persona confirmó primero, quedaría «confirmado» en la pantalla apuntando a otra cosa.
 func TestBatchDoesNotReportWhatItDidNotWrite(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	res, err := f.svc.ConfirmBatch(f.ctx, f.conn, f.user, []string{"Chamoyada_de_Mango", "Chamoyada_de_Mango"})
 	if err != nil {
@@ -136,6 +139,7 @@ func TestBatchDoesNotReportWhatItDidNotWrite(t *testing.T) {
 // Lo vio el ensayo con producción: «Ranch Cremoso» existe en dos grupos y el buscador mostraba dos
 // renglones idénticos. Cada candidato dice su grupo (opción) o su categoría (producto).
 func TestCandidatesCarryTheirGroupToTellTwinsApart(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	c, err := f.svc.Candidates(f.ctx, f.conn, "Con_hielo", "")
 	if err != nil {
@@ -147,6 +151,7 @@ func TestCandidatesCarryTheirGroupToTellTwinsApart(t *testing.T) {
 }
 
 func TestUnexcludeLocalRejectsAnUnknownKind(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	if err := f.svc.UnexcludeLocal(f.ctx, f.conn, domain.ClaseLocal("productoo"), f.mango); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("un tipo mal escrito se rechaza, no se lee como producto: %v", err)
@@ -156,6 +161,7 @@ func TestUnexcludeLocalRejectsAnUnknownKind(t *testing.T) {
 // El producto genérico se crea bajo el rol de la aplicación, con RLS: es el camino real de un
 // pedido aceptado en una empresa que no lo tenía.
 func TestTheGenericProductIsCreatedUnderTheAppRole(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	otra := makeCompany(t, st, "sin-generico")
 	if _, err := st.Pool.Exec(context.Background(),
@@ -179,6 +185,7 @@ func TestTheGenericProductIsCreatedUnderTheAppRole(t *testing.T) {
 }
 
 func TestSeveralPlatformItemsToOneProductRequireTheCapturePrice(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	if err := f.link(t, "Chamoyada_de_Mango", domain.ItemPlatillo, domain.LocalProducto, f.mango, nil); err != nil {
 		t.Fatal(err)
@@ -215,6 +222,7 @@ func TestSeveralPlatformItemsToOneProductRequireTheCapturePrice(t *testing.T) {
 }
 
 func TestLinkKindsCannotCross(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	if err := f.link(t, "Con_hielo", domain.ItemOpcion, domain.LocalProducto, f.mango, nil); !errors.Is(err, domain.ErrLinkKindMismatch) {
 		t.Fatalf("una opción de la plataforma ligada a un producto se rechaza: %v", err)
@@ -227,6 +235,7 @@ func TestLinkKindsCannotCross(t *testing.T) {
 }
 
 func TestExclusionsPersistAndPairingClearsThem(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	if err := f.svc.ExcludeItem(f.ctx, f.conn, f.user, "Dedos_de_queso"); err != nil {
 		t.Fatal(err)
@@ -252,6 +261,7 @@ func TestExclusionsPersistAndPairingClearsThem(t *testing.T) {
 }
 
 func TestAGoodReadCopiesThePlatformPriceAndLocksIt(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	yes := true
 	if err := f.link(t, "Chamoyada_de_Mango", domain.ItemPlatillo, domain.LocalProducto, f.mango, &yes); err != nil {
@@ -306,6 +316,7 @@ func TestAGoodReadCopiesThePlatformPriceAndLocksIt(t *testing.T) {
 }
 
 func TestTwoStoresOfTheSamePlatformDoNotCopyPrices(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	yes := true
 	if err := f.link(t, "Chamoyada_de_Mango", domain.ItemPlatillo, domain.LocalProducto, f.mango, &yes); err != nil {
@@ -344,6 +355,7 @@ func esperarPrecio(t *testing.T, st *store.Store, product int64, plat int16, wan
 }
 
 func TestPairingIsIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	f := newPairingFixture(t)
 	if err := f.svc.ExcludeItem(f.ctx, f.conn, f.user, "Dedos_de_queso"); err != nil {
 		t.Fatal(err)

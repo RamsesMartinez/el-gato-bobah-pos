@@ -109,6 +109,7 @@ func cierreDelCajonAMano(t *testing.T, st *store.Store, declarado map[int]decima
 // Es el requisito entero de US2 en una línea. El fondo de caja ya enseñó lo que cuesta equivocarse
 // de método: sumarlo a los cuatro que tocan cajón inventó $4,500 de faltante.
 func TestElConteoDeCierreAlimentaSoloElDeclaradoDelEfectivo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -164,6 +165,7 @@ func TestElConteoDeCierreAlimentaSoloElDeclaradoDelEfectivo(t *testing.T) {
 // Son dos cifras del mismo dinero: quedarse con cualquiera es inventar cuál era la buena. Y el
 // rechazo tiene que ser ANTES de escribir: un cierre a medias deja el turno sin poder cerrarse.
 func TestMandarConteoYDeclaradoDelEfectivoSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -211,6 +213,7 @@ func TestMandarConteoYDeclaradoDelEfectivoSeRechaza(t *testing.T) {
 // La cobertura se movió con la regla; que el faltante siga siendo visible lo exige además
 // `TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico`.
 func TestElFaltanteDelCierreSaleDeLaColumnaGenerada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -252,6 +255,7 @@ func TestElFaltanteDelCierreSaleDeLaColumnaGenerada(t *testing.T) {
 // con sus totales sin escribir. Sin transacción, los totales quedarían guardados contra un cierre
 // que no ocurrió.
 func TestUnConteoDeCierreQueYaExisteNoSePisaYElCierreNoQuedaAMedias(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -297,6 +301,7 @@ func TestUnConteoDeCierreQueYaExisteNoSePisaYElCierreNoQuedaAMedias(t *testing.T
 // que nadie puede reconstruir ni justificar es el problema que esta feature viene a cerrar, y da
 // igual si la cifra entró al abrir o al cerrar.
 func TestDeclararElEfectivoDelCierreAManoExigeMotivo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -331,6 +336,7 @@ func TestDeclararElEfectivoDelCierreAManoExigeMotivo(t *testing.T) {
 // afirmación distinta —y falsa— de "nadie contó". FR-008 ya obliga a que la pantalla sepa mostrar un
 // corte sin desglose: éste es el caso nuevo que sigue produciéndolos.
 func TestCerrarSinDeclararEfectivoNoInventaUnConteo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -360,6 +366,7 @@ func TestCerrarSinDeclararEfectivoNoInventaUnConteo(t *testing.T) {
 // Un corte con faltante y sin desglose es un número sin historia: no hay forma de distinguir "faltan
 // dos billetes de $500" de "falta dinero". Eso ya costó un turno con $1,662 sin explicación.
 func TestElDetalleDelCorteTraeElDesgloseDeLoContado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -410,6 +417,7 @@ func TestElDetalleDelCorteTraeElDesgloseDeLoContado(t *testing.T) {
 // como siempre, y sus cifras no pueden cambiar: un desglose vacío que se pinte como "se contó y no
 // había nada" es una afirmación que nadie hizo.
 func TestUnCorteViejoSinConteoSigueLeyendoseIgual(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -441,6 +449,7 @@ func TestUnCorteViejoSinConteoSigueLeyendoseIgual(t *testing.T) {
 
 // EL MOTIVO SE LEE DESPUÉS, igual que el desglose: es lo que hace auditable un arqueo sin piezas.
 func TestElDetalleDelCorteTraeElMotivoCuandoNoSeContó(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -474,6 +483,7 @@ func TestElDetalleDelCorteTraeElMotivoCuandoNoSeContó(t *testing.T) {
 // por caminos distintos, tendríamos dos pantallas que no coinciden y ninguna forma de saber cuál
 // miente.
 func TestElTurnoAbiertoTraeElConteoDeSuApertura(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

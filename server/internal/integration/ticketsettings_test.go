@@ -87,6 +87,7 @@ func validPNG(t *testing.T) []byte {
 // Principio V: la autorización se verifica en el backend, pase lo que pase en la interfaz. El
 // cajero no ve la opción, pero puede llamar al endpoint con curl.
 func TestTicketSettingsAuthorization(t *testing.T) {
+	t.Parallel()
 	r, token := newTicketAPI(t)
 	cajero := token("cajero_ticket", "cajero")
 	png := validPNG(t)
@@ -121,6 +122,7 @@ func TestTicketSettingsAuthorization(t *testing.T) {
 }
 
 func TestTicketSettingsAdminFlow(t *testing.T) {
+	t.Parallel()
 	r, token := newTicketAPI(t)
 	admin := token("admin_ticket", "admin")
 	ctx := context.Background()
@@ -188,6 +190,7 @@ func TestTicketSettingsAdminFlow(t *testing.T) {
 // lo que el cliente pidió sin costo es una regresión silenciosa: cocina lo usa para preparar y el
 // cliente para reclamar.
 func TestAdicionalesSinCostoSeImprimenPorDefault(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -208,6 +211,7 @@ func TestAdicionalesSinCostoSeImprimenPorDefault(t *testing.T) {
 // que tiene la cocina en otro cuarto, y por eso es un ajuste y no una constante — el mismo binario
 // sirve a los dos.
 func TestLaComandaDeCocinaNaceApagadaYSeEnciendePorEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")

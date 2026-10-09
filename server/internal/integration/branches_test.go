@@ -56,6 +56,7 @@ func pgCode(err error) string {
 }
 
 func TestANewCompanyIsBornWithItsHeadquarters(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	company := makeCompany(t, st, "nueva-sucursal")
 
@@ -72,6 +73,7 @@ func TestANewCompanyIsBornWithItsHeadquarters(t *testing.T) {
 }
 
 func TestBranchRulesHoldForTheAppRole(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	hq := headquartersOf(t, owner, defaultCompanyID)
 	appConn := conexionDeEmpresa(t, appRoleStore(t), defaultCompanyID)
@@ -90,6 +92,7 @@ func TestBranchRulesHoldForTheAppRole(t *testing.T) {
 // current_branch_id() en los tres casos. Nunca debe devolver la sucursal de la dueña desde otra
 // sesión, y sin empresa debe dar el error de negocio (EGB01), no un 22P02 por el cast de ”.
 func TestCurrentBranchInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	other := makeCompany(t, owner, "otra-sucursal")
 	ownerHQ := headquartersOf(t, owner, defaultCompanyID)
@@ -116,6 +119,7 @@ func TestCurrentBranchInTheThreeCases(t *testing.T) {
 }
 
 func TestTwoBranchesWithoutSelectorAreRejectedNotGuessed(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	addBranch(t, owner, defaultCompanyID, "NORTE")
 
@@ -129,6 +133,7 @@ func TestTwoBranchesWithoutSelectorAreRejectedNotGuessed(t *testing.T) {
 // Las FK compuestas: un branch_id de OTRA empresa se rechaza en las seis tablas aunque lo escriba
 // el owner, que salta RLS igual que los chequeos de integridad de Postgres.
 func TestABranchOfAnotherCompanyIsRejected(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	other := makeCompany(t, owner, "ajena-sucursal")
@@ -175,6 +180,7 @@ func TestABranchOfAnotherCompanyIsRejected(t *testing.T) {
 // Una escritura como owner para OTRA empresa (pruebas, scripts de datos) sin branch_id cae en la
 // sucursal de ESA empresa, no en la del ajuste de sesión: si no, la llave compuesta la rechazaría.
 func TestAnOwnerInsertForAnotherCompanyFallsInItsOwnBranch(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	other := makeCompany(t, owner, "otra-owner")
 	var branch int64
@@ -188,6 +194,7 @@ func TestAnOwnerInsertForAnotherCompanyFallsInItsOwnBranch(t *testing.T) {
 }
 
 func TestEachBranchOpensItsOwnPrimaryRegister(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, owner, "cajero_sucursales", "cajero")
@@ -214,6 +221,7 @@ func TestEachBranchOpensItsOwnPrimaryRegister(t *testing.T) {
 // El pedido queda en la sucursal de la caja de su turno, y el inventario que descuenta es el de
 // esa sucursal.
 func TestAnOrderAndItsStockStayInTheBranchOfItsRegister(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, owner, "cajero_norte", "cajero")
@@ -258,6 +266,7 @@ func TestAnOrderAndItsStockStayInTheBranchOfItsRegister(t *testing.T) {
 // Las consultas que cambiaron de forma con la 0076, bajo el rol de la app y en los tres casos:
 // ninguna alcanza lo de la empresa dueña desde otra sesión.
 func TestBranchScopedQueriesInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	other := makeCompany(t, owner, "otra-inventario")
 	cashier := makeUser(t, owner, "cajero_inv", "cajero")

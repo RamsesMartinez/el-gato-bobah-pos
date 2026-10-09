@@ -17,6 +17,7 @@ import (
 // Corre como owner, que salta RLS: si una consulta olvida la empresa, el catálogo de la otra —que
 // aquí tiene los mismos nombres a propósito— recibe las recetas. Y lo capturado a mano no se pisa.
 func TestFudoCompositionsFillOnlyWhatIsMissingInTheirCompany(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	other := makeCompany(t, st, "empresa-otra-fudo")

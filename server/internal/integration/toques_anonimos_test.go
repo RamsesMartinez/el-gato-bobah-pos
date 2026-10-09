@@ -17,6 +17,7 @@ import (
 
 // Tras registrar toques, nada en la fila apunta a quién tocó ni a cuándo.
 func TestLosToquesNoGuardanAQuienToco(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -54,6 +55,7 @@ func TestLosToquesNoGuardanAQuienToco(t *testing.T) {
 // dejar el rol en blanco: si ES EL ÚNICO rol suprimido, el balde `sin corte` también es él. Por eso
 // en ese caso no se escribe nada.
 func TestElRolDeUnaSolaPersonaNoSeGuardaEnLosToques(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -103,6 +105,7 @@ func TestElRolDeUnaSolaPersonaNoSeGuardaEnLosToques(t *testing.T) {
 // es que alguien cambie el `upsert` por un `insert`: seguiría midiendo bien y la tabla crecería con
 // los dedos. Un turno real son miles de toques por tableta.
 func TestUnaRafagaDeToquesNoCreaFilasNuevas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -139,6 +142,7 @@ func TestUnaRafagaDeToquesNoCreaFilasNuevas(t *testing.T) {
 // La celda 37 es un lugar distinto en cada forma de pantalla. Si compartieran fila, la rejilla
 // pintaría un mapa que nadie tocó nunca — y no habría forma de separarlas después.
 func TestLaMismaCeldaEnDosOrientacionesSonDosFilas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -167,6 +171,7 @@ func TestLaMismaCeldaEnDosOrientacionesSonDosFilas(t *testing.T) {
 // Ese número es el único testigo de que una versión del front quedó midiendo una pantalla que el
 // servidor ya no acepta: sin él, la rejilla solo muestra menos.
 func TestElToqueFueraDeLaListaSeDescartaYSeCuenta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)

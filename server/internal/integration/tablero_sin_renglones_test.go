@@ -44,6 +44,7 @@ func routerDePedidos(t *testing.T, st *store.Store) (http.Handler, *auth.Manager
 // Este test fija el contrato en la frontera HTTP y no en el servicio: lo que importa no es el valor
 // de Go, es el JSON que sale.
 func TestElTableroNuncaMandaRenglonesNulos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, jm := routerDePedidos(t, st)
@@ -85,6 +86,7 @@ func TestElTableroNuncaMandaRenglonesNulos(t *testing.T) {
 // que TODAS salían con `lines: null`. Hoy no tumba nada solo porque la pantalla de entregadas no
 // los toca — la misma bomba, armada en otro lado.
 func TestLasEntregadasTampocoMandanRenglonesNulos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, jm := routerDePedidos(t, st)

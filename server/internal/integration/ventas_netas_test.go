@@ -30,6 +30,7 @@ import (
 // y las entregadas. Medido con un pedido devuelto completo por $100. Es el otro extremo del tope de
 // una devolución, así que una pantalla que lo leyera ofrecería devolver dos veces lo mismo.
 func TestOrderDetailCarriesTheRefundedAmount(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -54,6 +55,7 @@ func TestOrderDetailCarriesTheRefundedAmount(t *testing.T) {
 // Sin monto se pide «lo que queda», que es $0, y el rechazo decía «el monto a devolver no es una
 // cantidad de dinero». Igual tras devolver la cuenta entera.
 func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -102,6 +104,7 @@ func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
 //
 // La base lo rechaza con `orders_servicio_de_plataforma` (23514) y ese error subía crudo: 500.
 func TestAPlatformOrderAtTheCounterIsAValidationError(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -123,6 +126,7 @@ func TestAPlatformOrderAtTheCounterIsAValidationError(t *testing.T) {
 //
 // $0.005 se redondeaba a $0.01 y entraba como pago.
 func TestChargingLessThanACentIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -159,6 +163,7 @@ func diaDe(t time.Time) time.Time {
 // Medido en el ambiente de pruebas: el Total sumaba completo un pedido ya devuelto y $360 de dos
 // pedidos sin cobrar. El número con el que se factura estaba inflado por los dos lados.
 func TestSalesTotalIsCollectedNetOfRefunds(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -213,6 +218,7 @@ func TestSalesTotalIsCollectedNetOfRefunds(t *testing.T) {
 
 // UNA DEVOLUCIÓN PEGA EN EL MES EN QUE SE DEVOLVIÓ (decisión del dueño). El mes cerrado no cambia.
 func TestARefundInOctoberDoesNotChangeSeptember(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	junio := time.Date(2026, 6, 30, 18, 0, 0, 0, time.UTC)
@@ -248,6 +254,7 @@ func TestARefundInOctoberDoesNotChangeSeptember(t *testing.T) {
 
 // POR COBRAR NO ALCANZA PEDIDOS DE OTRA EMPRESA.
 func TestSalesPendingIsIsolated(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(owner, clock)
@@ -273,6 +280,7 @@ func TestSalesPendingIsIsolated(t *testing.T) {
 // La lista trae lo cobrado y cuándo fue la última devolución. Un pedido sin devoluciones manda
 // `null`, no una fecha cero: el JSON crudo es lo que lee la pantalla.
 func TestTheSalesListCarriesPaidAndLastRefund(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)

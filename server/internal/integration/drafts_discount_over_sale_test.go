@@ -18,6 +18,7 @@ import (
 // pantalla decía era regalar la cuenta. Ahora el cambio que deja el descuento por encima de la venta
 // se rechaza, con el máximo, y la cuenta queda como estaba.
 func TestLineChangeCannotLeaveTheDiscountOverTheSale(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	taro := makeProduct(t, k.st, "Taro del descuento", pesos("45"), false)

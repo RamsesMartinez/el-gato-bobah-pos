@@ -19,6 +19,7 @@ import (
 // La tableta manda la cuenta y cobra sobre el pedido que regresa (research R-5): «Por productos»
 // necesita ids de renglón de pedido, que antes de enviar no existen.
 func TestSendThenChargeByProducts(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	taro := makeProduct(t, k.st, "Taro por productos", pesos("50"), false)
@@ -52,6 +53,7 @@ func TestSendThenChargeByProducts(t *testing.T) {
 // Dos tabletas «Enviar y cobrar» la misma cuenta a la vez: un pedido, y el segundo cobro solo cobra lo
 // que falta (edge case del spec).
 func TestTwoTabletsSendAndChargeTheSameAccount(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	v := k.newDraft(t, addOf(k.product, "2")) // $200
@@ -84,6 +86,7 @@ func TestTwoTabletsSendAndChargeTheSameAccount(t *testing.T) {
 }
 
 func TestChargedAccountInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	other := makeCompany(t, k.st, "otra-cobro")

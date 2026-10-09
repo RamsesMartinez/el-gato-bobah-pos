@@ -63,6 +63,7 @@ func tresPedidosDePlataforma(t *testing.T, ctx context.Context, svc *app.OrdersS
 }
 
 func TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -101,6 +102,7 @@ func TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido(t *testing.T) {
 }
 
 func TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -140,6 +142,7 @@ func TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno(t *testing.T) {
 }
 
 func TestUnFolioQueNadieCapturoDevuelveVacioYNoUnError(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	sales := app.NewSalesService(st, clock)
@@ -157,6 +160,7 @@ func TestUnFolioQueNadieCapturoDevuelveVacioYNoUnError(t *testing.T) {
 }
 
 func TestLaListaYElResumenDescribenElMismoConjunto(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -309,6 +313,7 @@ func patchFolio(t *testing.T, r http.Handler, tok string, id int64, folio string
 // En producción la API usa APP_DATABASE_URL (rol `gatobobah_app`) y RequireAuth fija el tenant con
 // AcquireTenant — que es exactamente lo que se reproduce aquí.
 func TestElFolioDeOtraEmpresaNoSeAlcanza(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	owner := newTestStore(t)
 	otra := makeCompany(t, owner, "otra-folio-014")
@@ -353,6 +358,7 @@ func TestElFolioDeOtraEmpresaNoSeAlcanza(t *testing.T) {
 }
 
 func TestElFolioSeCorrigePorElRouterConSuGateYSuTope(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	r, st, token := nuevaAPIDeFolio(t)
 
@@ -404,6 +410,7 @@ func TestElFolioSeCorrigePorElRouterConSuGateYSuTope(t *testing.T) {
 // una captura legítima. Sin este test, alguien convierte la consulta a `:one` creyendo que restaura
 // una garantía, y la búsqueda empieza a tronar el día que dos folios coinciden.
 func TestDosPlataformasPuedenCompartirFolioYLaBusquedaDevuelveLasDos(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)

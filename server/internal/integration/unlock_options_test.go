@@ -23,6 +23,7 @@ func conPIN(t *testing.T, st *store.Store, userID int64, pin string) {
 // La rejilla de la pantalla de bloqueo. Se pinta en un mostrador a la vista del público, así que
 // solo puede llevar lo mínimo para tocar un nombre.
 func TestLaRejillaDeDesbloqueoSoloTraeLoMinimo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
@@ -52,6 +53,7 @@ func TestLaRejillaDeDesbloqueoSoloTraeLoMinimo(t *testing.T) {
 // Con solo-PIN la lista viaja VACÍA. Si listara nombres, el modo perdería su única ventaja —el tap
 // que ahorra— y expondría la plantilla del negocio sin necesidad.
 func TestConSoloPinLaRejillaVaVacia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
@@ -85,6 +87,7 @@ func TestConSoloPinLaRejillaVaVacia(t *testing.T) {
 // FR-012. Hoy 2 de 8 usuarios activos no tienen PIN y no pueden quedar encerrados fuera por una
 // funcionalidad que no eligieron. No basta con que no salgan en la rejilla: tienen que poder entrar.
 func TestQuienNoTienePinSiguePudiendoEntrar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)

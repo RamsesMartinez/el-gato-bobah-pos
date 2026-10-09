@@ -29,6 +29,7 @@ func ptrBool(v bool) *bool { return &v }
 // quería desactivar un método le habría sacado el dinero del arqueo — plata movida por el tipo de
 // dato y no por el negocio.
 func TestUnPatchDeUnInterruptorNoPisaLosOtros(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -67,6 +68,7 @@ func TestUnPatchDeUnInterruptorNoPisaLosOtros(t *testing.T) {
 // movimientos de caja fuera del esperado, y el arqueo se compararía contra una cifra que no incluye
 // el dinero con el que abrió el turno.
 func TestElEfectivoDelMostradorNoPuedeSalirDelCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -82,6 +84,7 @@ func TestElEfectivoDelMostradorNoPuedeSalirDelCajon(t *testing.T) {
 
 // UN MÉTODO DESACTIVADO DEJA DE OFRECERSE PARA COBRAR.
 func TestUnMetodoDesactivadoDejaDeOfrecerse(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -110,6 +113,7 @@ func TestUnMetodoDesactivadoDejaDeOfrecerse(t *testing.T) {
 // esperado baja en lo que ese método ya recibió y el arqueo se compara contra una cifra más chica.
 // Hasta esta feature nadie podía apagar un método desde la aplicación, así que el camino no existía.
 func TestDesactivarUnMetodoNoDesapareceElDineroQueYaCobro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -134,6 +138,7 @@ func TestDesactivarUnMetodoNoDesapareceElDineroQueYaCobro(t *testing.T) {
 
 // UN CORTE YA CERRADO NO CAMBIA AL MOVER LOS INTERRUPTORES.
 func TestUnCorteCerradoNoCambiaAlMoverLosInterruptores(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -180,6 +185,7 @@ func TestUnCorteCerradoNoCambiaAlMoverLosInterruptores(t *testing.T) {
 
 // UN MÉTODO QUE NO EXISTE NO SE CONFIGURA.
 func TestConfigurarUnMetodoQueNoExisteEs404(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	backoffice := app.NewBackofficeService(st, clock)
 	_, err := backoffice.UpdatePaymentMethod(context.Background(), 9999, app.MetodoDePagoCmd{
@@ -195,6 +201,7 @@ func TestConfigurarUnMetodoQueNoExisteEs404(t *testing.T) {
 // Es la regla que ya existía y que esta feature no puede aflojar: auto-declarar el efectivo dejaría
 // el corte sin forma de detectar un faltante, porque el servidor declararía lo que él mismo espera.
 func TestElAutoDeclararSigueProhibidoEnUnMetodoDeCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -226,6 +233,7 @@ func TestElAutoDeclararSigueProhibidoEnUnMetodoDeCajon(t *testing.T) {
 // el turno, el fondo desaparece con él: el cajón pasa a esperar $0 con los billetes de la apertura
 // adentro, y el corte cierra con un sobrante del tamaño del fondo.
 func TestDesactivarElEfectivoNoBorraElFondoDelArqueo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -270,6 +278,7 @@ func TestDesactivarElEfectivoNoBorraElFondoDelArqueo(t *testing.T) {
 // Por eso el marcador ahora es propio (`is_cash`) y no el mismo interruptor que dice dónde cae el
 // dinero: un método de efectivo no se auto-declara, lo reparta quien lo reparta.
 func TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -303,6 +312,7 @@ func TestSacarDelCajonYAutoDeclararEnElMismoRequestSeRechaza(t *testing.T) {
 // Marcar «Tarjeta débito» como que va al cajón sumaría al esperado dinero que nunca son billetes,
 // y el arqueo pediría contar algo que está en la terminal.
 func TestUnMetodoQueNoEsEfectivoNoEntraAlCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -323,6 +333,7 @@ func TestUnMetodoQueNoEsEfectivoNoEntraAlCajon(t *testing.T) {
 // dedo que falla por milímetros que el código ya nombra— dejaba al mostrador sin cobrar en
 // efectivo y sin camino en la aplicación para volver a encenderlo.
 func TestUnMetodoApagadoSigueEnLaListaDeAjustes(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -375,6 +386,7 @@ func TestUnMetodoApagadoSigueEnLaListaDeAjustes(t *testing.T) {
 // El test afirma las dos cosas: que la empresa se crea y que sus métodos nacen con la forma que el
 // arqueo espera, en vez de solo comprobar que no truene.
 func TestUnaEmpresaNuevaNaceConSusMetodosCoherentes(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	otra := makeCompany(t, st, "nueva-para-cobrar")

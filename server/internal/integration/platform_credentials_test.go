@@ -72,6 +72,7 @@ const (
 // FK compuesta no deje apuntar a la plataforma de otra empresa (la integridad referencial salta
 // RLS). Y que la llave de firma ya no tenga dónde guardarse en claro.
 func TestTheCredentialsMigrationIsolatesAndStoresNoPlaintext(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	a := makeCompany(t, st, "cred-a")
@@ -129,6 +130,7 @@ func TestTheCredentialsMigrationIsolatesAndStoresNoPlaintext(t *testing.T) {
 
 // SOLO SE GUARDA LO QUE LA PLATAFORMA ACEPTA, Y NADA DE LO GUARDADO VUELVE A LA PANTALLA.
 func TestCredentialsAreSavedOnlyIfThePlatformAcceptsThem(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	company := makeCompany(t, st, "cred-guardar")
@@ -184,6 +186,7 @@ func TestCredentialsAreSavedOnlyIfThePlatformAcceptsThem(t *testing.T) {
 // respuesta correcta es pedir recaptura — no un 500, y no «sin configurar», que haría creer que
 // nunca se capturaron.
 func TestABackupFromAnotherEnvironmentNeedsRecapture(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	company := makeCompany(t, st, "cred-otro-ambiente")
@@ -228,6 +231,7 @@ func TestABackupFromAnotherEnvironmentNeedsRecapture(t *testing.T) {
 // Tres caminos para que pasara, y los tres se cierran aquí: RLS (B no lee la fila de A), la memoria
 // de clientes (armada por A, pedida por B) y el cifrado copiado a mano a la fila de B (AAD).
 func TestCompanyBDoesNotUseCompanyAsApp(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	a := makeCompany(t, st, "cred-app-a")
@@ -270,6 +274,7 @@ func TestCompanyBDoesNotUseCompanyAsApp(t *testing.T) {
 // Recapturar cambia el cliente con el que se habla; el cliente viejo, con su token, no se queda
 // atendiendo. Y mientras nada cambie, se reusa: armar uno por aviso gastaría un token por aviso.
 func TestTheClientIsReusedUntilCredentialsChange(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	company := makeCompany(t, st, "cred-reuso")
@@ -306,6 +311,7 @@ func TestTheClientIsReusedUntilCredentialsChange(t *testing.T) {
 
 // LA LLAVE DE FIRMA TAMPOCO QUEDA EN CLARO, y cifrada sigue validando.
 func TestTheSigningKeyIsStoredEncrypted(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	company := makeCompany(t, st, "llave-cifrada")
@@ -341,6 +347,7 @@ func TestTheSigningKeyIsStoredEncrypted(t *testing.T) {
 // Por el ROUTER real: el gate vive en el cableado de rutas, y moverlo no rompe ningún test de
 // servicio.
 func TestOnlyTheAdminChangesKeysAndCredentials(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	company := makeCompany(t, st, "gate-llaves")
 	_, plat := tiendaSinLlave(t, st, company, "tienda-gate")
@@ -396,6 +403,7 @@ func TestOnlyTheAdminChangesKeysAndCredentials(t *testing.T) {
 
 // LAS CREDENCIALES DE A NO LAS ALCANZA NADIE MÁS, en los tres contextos donde RLS ya falló.
 func TestCredentialsAreUnreachableInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	a := makeCompany(t, st, "tres-casos-a")
@@ -429,6 +437,7 @@ func TestCredentialsAreUnreachableInTheThreeCases(t *testing.T) {
 // la empresa de la SESIÓN, no descifra. Es la segunda barrera que la documentación promete, y sin
 // este test la promesa no tiene quién la vigile.
 func TestWithBrokenRLSCompanyBCannotDecryptCompanyAsCredential(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	a := makeCompany(t, st, "rls-roto-a")
@@ -470,6 +479,7 @@ func (downCipher) Decrypt(context.Context, []byte, string) ([]byte, error) {
 // credenciales, pero sin cifrarlas no hay cómo guardarlas: se responde que el servicio de llaves no
 // respondió —para que la pantalla diga «intenta de nuevo»— y no un error interno sin nombre.
 func TestKeyServiceDownOnSaveStoresNothingAndSaysSo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	company := makeCompany(t, st, "kms-caido")

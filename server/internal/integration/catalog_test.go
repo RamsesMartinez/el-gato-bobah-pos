@@ -17,6 +17,7 @@ import (
 // AdminListProducts: cubre de punta a punta el order-by con CASE (fácil de romper con un cast) y
 // que el filtro por categoría incluye subcategorías.
 func TestAdminCreateListSortAndCategoryFilter(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	admin := app.NewAdminService(st)
@@ -74,6 +75,7 @@ func TestAdminCreateListSortAndCategoryFilter(t *testing.T) {
 // Duplicar un producto copia también sus relaciones (grupos de modificadores y canales) al nuevo
 // producto, sin tocar el original.
 func TestDuplicateProductClonesRelations(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	admin := app.NewAdminService(st)
@@ -139,6 +141,7 @@ func TestDuplicateProductClonesRelations(t *testing.T) {
 // Crear o duplicar con un nombre ya existente (case-insensitive, por el citext) → ErrDuplicateName
 // (que es un ErrConflict → 409), nunca un 500.
 func TestProductDuplicateNameRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	admin := app.NewAdminService(st)

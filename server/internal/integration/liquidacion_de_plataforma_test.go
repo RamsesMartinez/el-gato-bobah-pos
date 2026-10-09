@@ -64,6 +64,7 @@ func otroPedidoDePlataforma(t *testing.T, ctx context.Context, st *store.Store, 
 }
 
 func TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -96,6 +97,7 @@ func TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica(t *testing.T) {
 // "Todavía no llega el documento" y "el documento dice cero" NO son lo mismo. Es la mitad de la
 // feature: sin la distinción, un periodo sin capturar se lee como un periodo sin comisiones.
 func TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -120,6 +122,7 @@ func TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros(t *testing.T) {
 }
 
 func TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -139,6 +142,7 @@ func TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso(t *testing.T) {
 }
 
 func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -172,6 +176,7 @@ func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
 // Es el modo de falla más caro de la feature: la comisión es dinero que el negocio vendió y no
 // recibió, pero restarla de una venta reescribiría lo que el POS cobró.
 func TestRegistrarUnaLiquidacionNoMueveNingunaVenta(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	sales := app.NewSalesService(st, clock)
@@ -218,6 +223,7 @@ func TestRegistrarUnaLiquidacionNoMueveNingunaVenta(t *testing.T) {
 }
 
 func TestElResumenDePlataformasDelPeriodo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -256,6 +262,7 @@ func TestElResumenDePlataformasDelPeriodo(t *testing.T) {
 
 // El cajero NO captura liquidaciones: es dinero que no pasó por la caja.
 func TestLaLiquidacionExigeRolDeAdministracion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)

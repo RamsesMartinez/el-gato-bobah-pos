@@ -21,6 +21,7 @@ import (
 // existentes, pero eso solo se ve si hay más de una. Con una sola, cualquier backfill "por cada
 // empresa" es un no-op y la migración pasa verde para dejar a la segunda sin ajuste.
 func TestLaMigracionDejaTodoNegocioNombrandoConRazas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	otra := makeCompany(t, st, "bolsa-otra")
@@ -55,6 +56,7 @@ func TestLaMigracionDejaTodoNegocioNombrandoConRazas(t *testing.T) {
 // Se piden MÁS pedidos que nombres tiene la lista, para cruzar el punto en que la bolsa se vacía:
 // es donde el defecto vive.
 func TestLosNombresNoSeRepitenHastaAgotarLaBolsa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -110,6 +112,7 @@ func TestLosNombresNoSeRepitenHastaAgotarLaBolsa(t *testing.T) {
 // puntual y no hay default privileges, así que sin el suyo el primer pedido en producción devuelve
 // 42501— y que RLS aísle. Un negocio que gasta la bolsa no puede dejar al de al lado sin nombres.
 func TestLaBolsaDeUnaEmpresaNoTocaLaDeLaOtra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	otra := makeCompany(t, st, "bolsa-vecina")
@@ -170,6 +173,7 @@ func TestLaBolsaDeUnaEmpresaNoTocaLaDeLaOtra(t *testing.T) {
 // Las dos bolsas son independientes a propósito: un negocio que prueba animales una semana y vuelve
 // a razas retoma donde iba. Con una sola bolsa compartida, volver le repetiría nombres que ya cantó.
 func TestLasDosBolsasSonIndependientes(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	sembrarConsumidos(t, st, db.FolioSchemeRazas, "Persa", "Bombay")

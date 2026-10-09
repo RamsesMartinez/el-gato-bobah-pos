@@ -21,6 +21,7 @@ import (
 // nunca. La barrera vive en el SERVIDOR y no en la pantalla: esconder el botón no es una barrera, y
 // el principio V es explícito en que el front es espejo.
 func TestCrearUnPedidoYaCobradoSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -59,6 +60,7 @@ func TestCrearUnPedidoYaCobradoSeRechaza(t *testing.T) {
 // blanco. Ya se rechazaba; el test lo fija ahora que confirmar es obligatorio y el camino se usa en
 // cada venta.
 func TestConfirmarUnaCuentaVaciaSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -78,6 +80,7 @@ func TestConfirmarUnaCuentaVaciaSeRechaza(t *testing.T) {
 // Nacieron sin pasar por "confirmar" —el concepto no existía— y en producción hay varios. Mover la
 // barrera no puede dejarlos sin poder cobrarse ni entregarse: el negocio está en operación.
 func TestUnPedidoAnteriorSigueSiendoCobrableYEntregable(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

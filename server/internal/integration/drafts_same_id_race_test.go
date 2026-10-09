@@ -19,6 +19,7 @@ import (
 // `on conflict do nothing` —la vecina ya había hecho commit— y lo tomaba por «id de otra empresa»:
 // 409 «esa cuenta no se puede crear» sobre una cuenta que sí se creó.
 func TestParallelCreateWithTheSameIDIsARetryNotAConflict(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café del reintento", pesos("30"), false)
 	const tablets = 3
@@ -81,6 +82,7 @@ func TestParallelCreateWithTheSameIDIsARetryNotAConflict(t *testing.T) {
 // Lo mismo por la subida de pestañas: dos subidas idénticas a la vez (la tableta reintentó) daban
 // 200 y 409 de la petición entera, y la tableta que recibió el 409 no borraba su copia.
 func TestParallelImportOfTheSameTabIsARetryNotAConflict(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la subida doble", pesos("30"), false)
 	ctxs := []context.Context{k.tenant(t, k.company), k.tenant(t, k.company)}
@@ -113,6 +115,7 @@ func TestParallelImportOfTheSameTabIsARetryNotAConflict(t *testing.T) {
 // El arreglo de arriba no puede abrir un oráculo: un id que ya es de OTRA empresa sigue sin revelarse.
 // Responder «ya existe» (o devolver la cuenta) le diría a una tableta qué ids usa otro negocio.
 func TestCreateWithAnotherCompanysDraftIDRevealsNothing(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-mismo-id")
 	otherUser := makeUserIn(t, k.st, other, "cajero_otra_mismo_id", "cajero")

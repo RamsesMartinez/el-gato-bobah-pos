@@ -32,6 +32,7 @@ func onHand(t *testing.T, st *store.Store, product int64) decimal.Decimal {
 // repuesto al cancelar un renglón volvía a entrar, y lo que ya se había preparado también. Con los
 // extras y los componentes descontando, el sobrante falso crece con cada cancelación.
 func TestCancellingALineThenTheOrderRestocksOnce(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_reponer", "cajero")
@@ -158,6 +159,7 @@ func movimientosDelRenglon(t *testing.T, st *store.Store, line int64) map[movimi
 // Antes solo bajaba el producto principal: la perla extra, el refresco del combo y lo que lleva un
 // paquete salían del local sin tocar el almacén, y el inventario se veía más lleno cada día.
 func TestCounterSaleDepletesExtrasAndPackages(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_extras", "cajero")
@@ -276,6 +278,7 @@ func TestCounterSaleDepletesExtrasAndPackages(t *testing.T) {
 // el segundo local no podía vender nada. La prueba de la 0076 insertaba el movimiento con la
 // sucursal ya puesta, y por eso no lo vio.
 func TestASaleMovementTakesTheBranchOfItsOrder(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, owner, "cajero_sur", "cajero")

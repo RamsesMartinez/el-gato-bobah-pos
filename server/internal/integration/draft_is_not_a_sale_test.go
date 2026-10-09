@@ -19,6 +19,7 @@ import (
 // no sea trivialmente vacía—, se abre una cuenta de tres productos de los MISMOS productos, y cada
 // foto tiene que salir idéntica. Falla nombrando la consulta que la contó.
 func TestADraftIsNeverASale(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	ctx := k.ctx
 	sessionID := abrirCajaPrincipal(t, k.st, k.user)

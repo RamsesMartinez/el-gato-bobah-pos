@@ -31,6 +31,7 @@ import (
 // como una venta de $0 que el corte y Ventas contaban como venta. Ese pedido se cierra con
 // «Cerrar pedido», que es una cancelación.
 func TestDeliverAllRejectsAnOrderWithoutProducts(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ord, cajero, _ := pedidoDeVarios(t, st, app.NewOrdersService(st, clock), "sin_productos", 2)
@@ -63,6 +64,7 @@ func TestDeliverAllRejectsAnOrderWithoutProducts(t *testing.T) {
 // quita, y la entregada se queda. Partirlo inserta pares de movimientos «renglón partido» que se
 // anulan: si moviera existencias, dividir una cuenta descuadraría el almacén.
 func TestCancelPendingClosesWithWhatWasDelivered(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_quitar_lo_que_falta", "cajero")
@@ -253,6 +255,7 @@ func emptiedOrder(t *testing.T, st *store.Store, cajero int64, suffix string, pa
 // pregunta nada. Si solo admin y gerente pudieran, el pedido vacío se quedaría en el tablero de un
 // cajero sin salida, que es el incidente. Es una cancelación de verdad y cuenta en los reportes.
 func TestAnOrderWithoutProductsCanBeClosedByAnyRole(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)
@@ -328,6 +331,7 @@ func TestAnOrderWithoutProductsCanBeClosedByAnyRole(t *testing.T) {
 // el 403 se ve con un resolutor que no da ninguno; sin esta prueba, una ruta que perdiera su gate
 // pasaría todo lo demás.
 func TestCancelRoutesAskForTheirPermission(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	abridor := makeUser(t, st, "cajero_permisos_rutas", "cajero")
 	abrirCajaPrincipal(t, st, abridor)
@@ -368,6 +372,7 @@ func TestCancelRoutesAskForTheirPermission(t *testing.T) {
 // después de entregarlo). Sin pagos, el plan es «cerrarlo vacío», pero una entregada no pasa a
 // cancelada.
 func TestCancelPendingRejectionsSpeakToTheOperator(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, token := ordersAPI(t, st, nil)
@@ -440,6 +445,7 @@ func assertForbidden(t *testing.T, code int, body []byte, text string) {
 // completo, con la mitad entregada, quedaría en $50 con $100 en caja y ninguna venta que explique
 // los otros $50. Es el mismo rechazo que quitar un producto.
 func TestCancelPendingCannotLeaveTheOrderOverpaid(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ord, cajero, efectivo := pedidoDeVarios(t, st, app.NewOrdersService(st, clock), "sobrepagado", 2)
@@ -478,6 +484,7 @@ func TestCancelPendingCannotLeaveTheOrderOverpaid(t *testing.T) {
 // si se quedó vacío— y tiene que terminar cerrado. No basta con que exista un botón: tiene que
 // funcionar.
 func TestNoSequenceLeavesAnOrderWithoutAWayOut(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	type action struct {
 		name string

@@ -18,6 +18,7 @@ import (
 // esa persona todo lo que se cobrara durante un mes. El bloqueo por inactividad protege los
 // minutos; esto protege los días.
 func TestLaSesionCaducaAlTerminarElTurno(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -67,6 +68,7 @@ func TestLaSesionCaducaAlTerminarElTurno(t *testing.T) {
 // El plazo sale del AJUSTE del negocio, no de una constante: un local con turnos de 12 horas lo
 // sube, y uno que quiera más control lo baja. Sin esto, el ajuste sería decorativo.
 func TestElPlazoDeLaSesionSaleDelAjusteDelNegocio(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")

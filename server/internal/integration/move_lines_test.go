@@ -44,6 +44,7 @@ func orderRow(t *testing.T, st *store.Store, id int64) (status string, merged *i
 // mueven: el consumo viaja con el renglón. Recapturarlo, como se hizo el 2026-10-04, descontaba el
 // inventario dos veces.
 func TestMovedLinesKeepKitchenStateAndStock(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "pasa_cocina", "50", "60", "70")
 	product := productOf(t, st, s.order.Lines[1].ID)
@@ -86,6 +87,7 @@ func TestMovedLinesKeepKitchenStateAndStock(t *testing.T) {
 // No pide «la caja abierta»: eso cerraría la puerta de más de una caja. Turno, día, servicio y quien
 // abrió salen del origen; quien los pasó queda en el lote.
 func TestTheNewOrderInheritsTheOriginShift(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "hereda_turno", "50", "60")
 	mover := makeUser(t, st, "mesero_que_pasa", "mesero")
@@ -111,6 +113,7 @@ func TestTheNewOrderInheritsTheOriginShift(t *testing.T) {
 
 // [C2] TRAS PASAR PARTE, ORIGEN Y DESTINO SE CIERRAN SOLOS SI YA NO LES FALTA NADA.
 func TestAPartialMoveClosesBothOrdersWhenNothingIsLeft(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	o := newSplitTable(t, st, "cierra_los_dos", "50", "60")
 	if err := o.svc.DeliverLine(o.ctx, o.order.ID, o.order.Lines[0].ID, pesos("1")); err != nil {
@@ -137,6 +140,7 @@ func TestAPartialMoveClosesBothOrdersWhenNothingIsLeft(t *testing.T) {
 
 // LOS RECHAZOS DE «PASAR», CADA UNO CON SU TEXTO.
 func TestMoveRejections(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cases := []struct {
@@ -234,6 +238,7 @@ func TestMoveRejections(t *testing.T) {
 
 // LA MISMA LLAVE ES EL MISMO LOTE: EL REENVÍO NO PASA DOS VECES, Y OTRO DESTINO SE RECHAZA.
 func TestMoveIsIdempotentByBatch(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "pasa_idempotente", "50", "60", "70")
 	key := uuid.New()
@@ -268,6 +273,7 @@ func TestMoveIsIdempotentByBatch(t *testing.T) {
 // cuentan como cancelación, y lo que se le quitó antes de juntarlo sí cuenta como producto
 // cancelado.
 func TestMovingEverythingMergesTheOriginAndIsNotACancellation(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	s := newSplitTable(t, st, "junta_todo", "50", "60", "70")
@@ -347,6 +353,7 @@ func TestMovingEverythingMergesTheOriginAndIsNotACancellation(t *testing.T) {
 
 // PASAR: AISLADO EN LOS TRES CASOS, Y SU PERMISO.
 func TestMoveLinesPermissionAndIsolation(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "ajena-pasar")
 	s := newSplitTable(t, st, "pasar_aislado", "50", "60")
@@ -386,6 +393,7 @@ func businessDateOf(t *testing.T, st *store.Store, orderID int64) string {
 // El tablero solo lista abiertos y listos: un destino que se quedara «entregado» con una pieza por
 // entregar esconde esa comida, y nadie la entrega.
 func TestMovingPendingLinesReopensADeliveredTarget(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "pasa_a_entregado", "50", "60")
 	d := newSplitTable(t, st, "pasa_a_entregado_b", "40")
@@ -407,6 +415,7 @@ func TestMovingPendingLinesReopensADeliveredTarget(t *testing.T) {
 //
 // Responder éxito sin pasar nada deja a quien opera creyendo que pasó lo nuevo.
 func TestTheSameMoveKeyWithAnotherSelectionIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "pasa_otra_seleccion", "50", "60", "70")
 	key := uuid.New()
@@ -425,6 +434,7 @@ func TestTheSameMoveKeyWithAnotherSelectionIsRejected(t *testing.T) {
 
 // UN DESTINO DE OTRA EMPRESA NO RECIBE NADA.
 func TestAMoveTargetFromAnotherCompanyIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	other := makeCompany(t, st, "ajena-destino")
 	s := newSplitTable(t, st, "pasa_a_ajeno", "50", "60")

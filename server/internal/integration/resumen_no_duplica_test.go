@@ -25,6 +25,7 @@ import (
 // copia de sales.sql se quedó como estaba. El test que debía atraparlo cancelaba una venta SIN
 // pagos, así que la aserción pasaba sin tocar el caso.
 func TestElDesgloseDeMetodosNoCuentaLoReembolsado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -88,6 +89,7 @@ func TestElDesgloseDeMetodosNoCuentaLoReembolsado(t *testing.T) {
 // solo renglón con la suma de los dos, y no hay forma de repartir un renglón así: quien lo lee no
 // sabe cuánto le toca a cada una. Es el único reporte que existe para entregar dinero.
 func TestLasPropinasNoSeFusionanPorHomonimia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)

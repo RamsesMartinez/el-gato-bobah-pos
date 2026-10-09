@@ -16,6 +16,7 @@ import (
 // (que barren borradores en su propia transacción) soltaba el candado del turno y un pedido de
 // plataforma aceptado en ese instante quedaba fuera del corte firmado.
 func TestANestedWithTxOnTheTenantConnectionIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	c, soltar, err := st.AcquireTenant(ctx, 1)

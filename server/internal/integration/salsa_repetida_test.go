@@ -24,6 +24,7 @@ import (
 // El tope por opción (`max_per_line`) ya estaba en 2 para las 64 salsas de producción; lo que
 // faltaba era ejercerlo. Este test cubre que la cantidad llegue a la base y que el tope se respete.
 func TestDosSalsasDelMismoSaborEnUnaLinea(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

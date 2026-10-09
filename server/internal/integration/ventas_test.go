@@ -31,6 +31,7 @@ func filtroDePrueba() domain.SalesFilter {
 // Este test es invisible en dev —la API local sirve como owner— y en producción es la diferencia
 // entre una pantalla que abre y un 42501 en el primer request.
 func TestLaPantallaDeVentasEsUsablePorElRolDeApp(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -65,6 +66,7 @@ func TestLaPantallaDeVentasEsUsablePorElRolDeApp(t *testing.T) {
 // Un agregado es la forma más silenciosa de fugar entre tenants: no devuelve filas ajenas que se
 // vean, devuelve un número más grande. Nadie lo nota hasta que el dueño compara con su caja.
 func TestElResumenDeVentasNoMezclaEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -105,6 +107,7 @@ func TestElResumenDeVentasNoMezclaEmpresas(t *testing.T) {
 // excluya es la diferencia entre reportar la venta del día y reportar un número inventado. El test
 // falla nombrando qué concepto se coló, no "esperaba X obtuve Y".
 func TestElResumenDeVentasClasificaCadaPesoUnaVez(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -166,6 +169,7 @@ func TestElResumenDeVentasClasificaCadaPesoUnaVez(t *testing.T) {
 // La tabla y el resumen se derivan del mismo rango: si divergieran, uno de los dos miente y el
 // operador no tiene forma de saber cuál.
 func TestLaTablaYElResumenCuadran(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -226,6 +230,7 @@ func venderPara(t *testing.T, st *store.Store, cajero, prod int64, metodo int16,
 // número inflado junto a otros correctos es peor que uno mal parejo, porque invita a confiar en el
 // resto. Lo mismo pasaba con las líneas canceladas, que ni recibían el filtro.
 func TestElFiltroDeTipoDeVentaAplicaATodoElResumen(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
