@@ -1,9 +1,9 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { API, cuentasVivas, pedidosEnCurso, tokenDeApi } from './ambiente';
+import { API, cuentasVivas, pedidosEnCurso, tokenDeApi, type CuentaViva } from './ambiente';
 import {
   abrirTicket, botonCobrar, botonEnviar, crearCuentaPorApi, entrar, entregarPorApi, fichas,
-  pagarPorApi, pedido, pedidoPorApi, ponerUnProducto, productoPorNombre,
+  nombreDeLaCuentaActiva, pagarPorApi, pedido, pedidoPorApi, ponerUnProducto, productoPorNombre,
 } from './pos';
 
 // UNA SOLA PUERTA PARA COBRAR, CASO POR CASO (spec 030; lienzo V2-9).
@@ -25,6 +25,15 @@ async function otraTableta(browser: Browser): Promise<Page> {
 const ficha = (page: Page, nombre: string, estado?: string) =>
   page.getByRole('button', { name: new RegExp(`^${nombre} · ${estado ?? ''}`) });
 
+// miCuenta: la cuenta en captura de ESTA tableta en el servidor, por el nombre que dice su ficha.
+// El nombre es único entre las cuentas vivas (spec 030, US2), así que no hay dos que coincidan.
+async function miCuenta(page: Page, jwt: string): Promise<CuentaViva> {
+  const nombre = await nombreDeLaCuentaActiva(page);
+  const c = (await cuentasVivas(jwt)).find((x) => x.kind === 'draft' && x.folioName === nombre);
+  if (!c) throw new Error(`la cuenta «${nombre}» no está en el servidor`);
+  return c;
+}
+
 async function abrirPedido(page: Page, id: number) {
   await page.goto(`/pos?pedido=${id}`);
   await abrirTicket(page);
@@ -34,7 +43,7 @@ test.describe('la fila de cuentas (US1)', () => {
   test('caso 1 · historia 1 · una cuenta capturándose en otra tableta aparece en la fila', async ({ page, browser }) => {
     await entrar(page);
     await ponerUnProducto(page);
-    const nombre = (await cuentasVivas(await tokenDeApi())).find((c) => c.kind === 'draft')?.folioName ?? '';
+    const nombre = (await miCuenta(page, await tokenDeApi())).folioName ?? '';
     expect(nombre).not.toBe('');
     const b = await otraTableta(browser);
     await expect(ficha(b, nombre, 'Capturando').or(b.getByRole('button', { name: /Ver todas las cuentas/ })))
@@ -106,8 +115,7 @@ test.describe('la cuenta existe desde el primer producto (US2)', () => {
     await ponerUnProducto(page);
     await ponerUnProducto(page, 'Coca Cola 355ml');
     const jwt = await tokenDeApi();
-    const cuenta = (await cuentasVivas(jwt)).find((c) => c.kind === 'draft');
-    expect(cuenta, 'la cuenta no está en el servidor').toBeTruthy();
+    const cuenta = await miCuenta(page, jwt);
 
     await page.reload();
     await abrirTicket(page);
@@ -116,7 +124,7 @@ test.describe('la cuenta existe desde el primer producto (US2)', () => {
     // La tableta se apaga: se cierra su contexto. La otra la ve con sus dos productos.
     await page.context().close();
     const b = await otraTableta(browser);
-    await b.goto(`/pos?cuenta=${cuenta!.draftId}`);
+    await b.goto(`/pos?cuenta=${cuenta.draftId}`);
     await abrirTicket(b);
     await expect(b.getByText('Dedos de Queso Pza').first()).toBeVisible({ timeout: 30_000 });
     await expect(b.getByText('Coca Cola 355ml').first()).toBeVisible();
@@ -146,7 +154,7 @@ test.describe('la cuenta existe desde el primer producto (US2)', () => {
     await ponerUnProducto(page);
     const jwt = await tokenDeApi();
     const antes = new Set((await pedidosEnCurso(jwt)).map((o) => o.id));
-    const nombre = (await cuentasVivas(jwt)).find((c) => c.kind === 'draft')!.folioName;
+    const nombre = (await miCuenta(page, jwt)).folioName;
     await abrirTicket(page);
     await botonEnviar(page).click();
     await expect.poll(async () => (await pedidosEnCurso(jwt)).find((o) => !antes.has(o.id))?.folioName ?? '',
@@ -201,8 +209,9 @@ test.describe('agregar después de cocina (US3)', () => {
     await page.getByRole('menuitem', { name: /Quitar/ }).click();
     const dialogo = page.getByRole('dialog').last();
     await expect(dialogo.getByText(/1 de 2/)).toBeVisible();
-    await dialogo.getByRole('button').filter({ hasText: /no lo quiere|de más|equivoc/i }).first().click();
-    await dialogo.getByRole('button', { name: /^Quitar/ }).last().click();
+    // Los motivos son un grupo de opciones, sin ninguna preseleccionada (historia 6).
+    await dialogo.getByRole('radio', { name: 'Ya no lo quiere' }).click();
+    await dialogo.getByRole('button', { name: 'Quitar del pedido' }).click();
     await expect.poll(async () => Number((await pedido(jwt, o.id)).total), { timeout: 20_000 }).toBeLessThan(total);
   });
 
@@ -275,7 +284,7 @@ test.describe('nada se cierra ni se pierde por accidente (US5)', () => {
     await entrar(page);
     await ponerUnProducto(page);
     const jwt = await tokenDeApi();
-    const nombre = (await cuentasVivas(jwt)).find((c) => c.kind === 'draft')!.folioName!;
+    const nombre = (await miCuenta(page, jwt)).folioName!;
     await abrirTicket(page);
     await page.getByRole('button', { name: 'Más opciones de la cuenta' }).click();
     await page.getByRole('menuitem', { name: /Descartar cuenta/ }).click();
@@ -316,14 +325,15 @@ test.describe('red, recarga y otra tableta (US7)', () => {
     await entrar(page);
     await ponerUnProducto(page);
     const jwt = await tokenDeApi();
-    const cuenta = (await cuentasVivas(jwt)).find((c) => c.kind === 'draft')!;
+    const cuenta = await miCuenta(page, jwt);
     const productId = await productoPorNombre(jwt, 'Dedos de Queso Pza');
     // La otra tableta agrega el mismo producto.
-    await fetch(`${API}/pos/drafts/${cuenta.draftId}/lines`, {
+    const r = await fetch(`${API}/pos/drafts/${cuenta.draftId}/lines`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ opId: randomUUID(), productId, qty: '1', modifiers: [], notes: '' }),
     });
+    expect(r.ok, `la otra tableta no pudo agregar: ${r.status}`).toBe(true);
     await page.reload();
     await abrirTicket(page);
     await expect(page.getByText('2', { exact: true }).first()).toBeVisible({ timeout: 30_000 });

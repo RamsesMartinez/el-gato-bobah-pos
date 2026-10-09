@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/shopspring/decimal"
 )
@@ -93,10 +94,14 @@ type PricedProduct struct {
 	Price  decimal.Decimal
 	Cost   decimal.Decimal
 	Active bool
+	// ModifierGroups son los grupos de extras que el producto admite (product_modifier_groups). Una
+	// opción de un grupo que no está aquí no es extra de este producto, aunque exista en el menú.
+	ModifierGroups []int64
 }
 
 type PricedOption struct {
 	ID         int64
+	GroupID    int64
 	Name       string
 	PriceDelta decimal.Decimal
 	Cost       decimal.Decimal
@@ -175,6 +180,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			o, ok := options[m.OptionID]
 			if !ok {
 				return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrOptionNotFound, m.OptionID)
+			}
+			// Fail-closed: un producto sin grupos no admite ningún extra. El precio de la opción sale del
+			// catálogo, pero la combinación la decide el negocio al ligar grupos al producto.
+			if !slices.Contains(p.ModifierGroups, o.GroupID) {
+				return BuiltOrder{}, fmt.Errorf("%w: %s no es un extra de %s", ErrOptionNotFound, o.Name, p.Name)
 			}
 			q := m.Qty
 			if q <= 0 {

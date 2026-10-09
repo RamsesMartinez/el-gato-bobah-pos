@@ -143,7 +143,7 @@ func TestSplittingALineKeepsTheOriginOfEachMovement(t *testing.T) {
 		makeRecipe(t, st, map[int64]string{milk: "200"}), frappe); err != nil {
 		t.Fatal(err)
 	}
-	pearlExtra := opcionConTope(t, st, "Extras partidos", "Perla extra partida", pesos("10"), 3)
+	pearlExtra := opcionConTope(t, st, "Extras partidos", "Perla extra partida", pesos("10"), 3, frappe)
 	if _, err := st.Pool.Exec(ctx, `update modifier_options set recipe_id = $1 where id = $2`,
 		makeRecipe(t, st, map[int64]string{pearl: "50"}), pearlExtra); err != nil {
 		t.Fatal(err)

@@ -244,7 +244,7 @@ func TestRecipeListOfExtras(t *testing.T) {
 	cashier := makeUser(t, owner, "cajero_extras_rec", "cajero")
 	abrirCajaPrincipal(t, owner, cashier)
 	tea := makeProduct(t, owner, "Té extras recetas", decimal.RequireFromString("40"), false)
-	topping := opcionConTope(t, owner, "Toppings recetas", "Perla recetas", decimal.RequireFromString("10"), 3)
+	topping := opcionConTope(t, owner, "Toppings recetas", "Perla recetas", decimal.RequireFromString("10"), 3, tea)
 	twin := opcionConTope(t, owner, "Toppings frappé recetas", "Perla recetas", decimal.RequireFromString("10"), 3)
 	if _, err := app.NewOrdersService(owner, clock).Create(ctx, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cashier,
