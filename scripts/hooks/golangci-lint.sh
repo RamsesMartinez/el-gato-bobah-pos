@@ -7,12 +7,12 @@
 # Cuando pasa, el linter corre en contenedor. Lo que NO se hace es saltarse el gate: los hooks
 # quedan verdes antes de commitear y `--no-verify` no se usa (constitución, Quality gates).
 #
-# La versión del contenedor se fija a la MISMA que usa CI (.github/workflows/ci.yml): golangci-lint
-# rechaza analizar un módulo cuyo Go sea de un minor mayor al que lo compiló, así que las dos tienen
-# que moverse juntas al subir el toolchain (AGENTS.md §3).
+# La versión se fija a la MISMA que usa CI (.github/workflows/ci.yml) y, como allá, se COMPILA con el
+# Go del módulo: un binario hecho con go1.27.0 no lee la biblioteca estándar de go1.27.2 («export
+# data version 5…»), así que la imagen oficial de golangci-lint no sirve en cuanto sube el parche.
 set -euo pipefail
 
-VERSION="v2.13.1"
+VERSION="v2.14.0"
 
 if golangci-lint --version >/dev/null 2>&1; then
   exec golangci-lint run ./...
@@ -33,4 +33,5 @@ MSYS_NO_PATHCONV=1 exec docker run --rm \
   -v gatobobah_gocache:/root/.cache/go-build \
   -v gatobobah_gomod:/go/pkg/mod \
   -v gatobobah_lintcache:/root/.cache/golangci-lint \
-  "golangci/golangci-lint:${VERSION}" golangci-lint run ./...
+  -v gatobobah_gobin:/go/bin \
+  golang:1.27 sh -c "command -v golangci-lint >/dev/null && golangci-lint --version | grep -q '${VERSION#v}' || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${VERSION}; golangci-lint run ./..."
