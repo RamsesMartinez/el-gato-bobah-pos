@@ -62,11 +62,43 @@ func TestAccountGroup(t *testing.T) {
 		{"abierta de ayer sigue en cocina", AccountInKitchen, ayer, GroupInKitchen},
 		{"pagada en cocina", AccountPaidInKitchen, hoy, GroupInKitchen},
 		{"pago parcial en cocina de ayer", AccountPartlyPaid, ayer, GroupInKitchen},
+		// Lo vivo de una cerrada con «Nuevo» es la captura, no la cocina.
+		{"cerrada con algo nuevo capturándose", AccountClosedWithNew, ayer, GroupCapturing},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
 			if got := AccountGroup(c.state, c.fecha, hoy); got != c.group {
 				t.Fatalf("AccountGroup = %q, quería %q", got, c.group)
+			}
+		})
+	}
+}
+
+// Pedidos 614 y 623 del ambiente de pruebas: entregados y pagados, con una «Nuevo» viva, salían
+// como «Pagada · en cocina» cuando ya se habían entregado.
+func TestOrderAccountStateClosedWithNew(t *testing.T) {
+	d := decimal.RequireFromString
+	casos := []struct {
+		nombre   string
+		status   string
+		paid     string
+		total    string
+		conNuevo bool
+		state    string
+		listada  bool
+	}{
+		{"entregada y pagada con Nuevo: cerrada, no en cocina", StatusEntregada, "100", "100", true, AccountClosedWithNew, true},
+		{"cancelada con Nuevo: cerrada, no pagada", StatusCancelada, "0", "100", true, AccountClosedWithNew, true},
+		{"entregada y pagada sin Nuevo no se lista", StatusEntregada, "100", "100", false, "", false},
+		// Viva con Nuevo (p. ej. deuda vieja fuera de la ventana): manda su propio estado.
+		{"entregada que debe con Nuevo sigue debiendo", StatusEntregada, "40", "100", true, AccountDeliveredOwes, true},
+		{"abierta con Nuevo sigue en cocina", StatusAbierta, "0", "100", true, AccountInKitchen, true},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			state, listada := OrderAccountState(c.status, d(c.paid), d(c.total), c.conNuevo)
+			if listada != c.listada || state != c.state {
+				t.Fatalf("OrderAccountState = (%q, %v), quería (%q, %v)", state, listada, c.state, c.listada)
 			}
 		})
 	}

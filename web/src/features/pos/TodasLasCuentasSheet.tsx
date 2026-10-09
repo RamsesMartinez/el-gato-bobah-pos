@@ -28,6 +28,7 @@ const CON_BUSCADOR = 8;
 
 function aLaDerecha(c: AccountItem): string {
   if (c.state === 'paid_in_kitchen') return 'pagada';
+  if (c.state === 'closed_with_new') return '';
   if (c.state === 'partly_paid' || c.state === 'delivered_owes') return money(Number(c.outstanding));
   return money(Number(c.total));
 }

@@ -15,6 +15,9 @@ const (
 	AccountPaidInKitchen = "paid_in_kitchen"
 	AccountPartlyPaid    = "partly_paid"
 	AccountDeliveredOwes = "delivered_owes"
+	// AccountClosedWithNew es un pedido ya cerrado (entregado y saldado, o cancelado) que conserva
+	// una «Nuevo» capturándose. No es «en cocina»: lo vivo es la captura.
+	AccountClosedWithNew = "closed_with_new"
 )
 
 // Los grupos de la hoja «+N».
@@ -54,12 +57,24 @@ func AccountState(isDraft bool, status string, paid, total decimal.Decimal) (str
 	return "", false
 }
 
+// OrderAccountState da el estado de la ficha de un pedido. Uno que ya no se listaría solo sigue en
+// la fila si tiene una «Nuevo» viva, para que lo capturado no se pierda de vista.
+func OrderAccountState(status string, paid, total decimal.Decimal, hasNew bool) (string, bool) {
+	if state, listed := AccountState(false, status, paid, total); listed {
+		return state, true
+	}
+	if hasNew {
+		return AccountClosedWithNew, true
+	}
+	return "", false
+}
+
 // AccountGroup da el grupo de la hoja «+N». Solo la entregada que debe se separa por día: lo que
 // sigue en cocina es trabajo de hoy aunque se haya pedido ayer, y la deuda de otro día es la que se
 // perdía de vista (caso 3 del lienzo). Compara días de calendario, no instantes.
 func AccountGroup(state string, businessDate, today time.Time) string {
 	switch state {
-	case AccountCapturing:
+	case AccountCapturing, AccountClosedWithNew:
 		return GroupCapturing
 	case AccountDeliveredOwes:
 		if dayOf(businessDate).Before(dayOf(today)) {

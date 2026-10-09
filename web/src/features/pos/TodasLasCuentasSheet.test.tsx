@@ -118,3 +118,14 @@ test('una cuenta con un solo producto dice «1 producto»', async () => {
   montar([cuenta({ key: 'd:b', kind: 'draft', draftId: 'b', orderId: null, number: null, folioName: 'Persa', state: 'capturing', group: 'capturing', lineCount: 1 })]);
   expect(await screen.findByText(/· 1 producto$/)).toBeInTheDocument();
 });
+
+// Pedidos 614 y 623: entregados y pagados con una «Nuevo» viva. No están en cocina ni deben nada:
+// mostrar su total a la derecha se lee como dinero por cobrar.
+test('una cerrada con algo nuevo no dice «en cocina» ni muestra su total como por cobrar', async () => {
+  montar([cuenta({ key: 'o:614', orderId: 614, number: 614, folioName: 'Ragdoll', state: 'closed_with_new', group: 'capturing',
+    closedWithPending: true, outstanding: '0.00', paid: '93.00', total: '93.00' })]);
+  const fila = await screen.findByText('Ragdoll');
+  const renglon = fila.closest('button') ?? fila.parentElement!.parentElement!;
+  expect(within(renglon as HTMLElement).queryByText(/en cocina/)).toBeNull();
+  expect(within(renglon as HTMLElement).queryByText('$93')).toBeNull();
+});

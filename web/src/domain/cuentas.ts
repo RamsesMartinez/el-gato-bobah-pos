@@ -9,6 +9,8 @@ export const ESTADO: Record<AccountState, { texto: string; color: string }> = {
   paid_in_kitchen: { texto: 'Pagada · en cocina', color: 'green' },
   partly_paid: { texto: 'Pago parcial', color: 'orange' },
   delivered_owes: { texto: 'Entregada · debe', color: 'red' },
+  // Ya entregada y saldada (o cancelada); lo vivo es lo «Nuevo» que se está capturando.
+  closed_with_new: { texto: 'Cerrada · nuevo', color: 'gray' },
 };
 
 export function nombreDeCuenta(c: Pick<AccountItem, 'folioName' | 'customerName'>): string {

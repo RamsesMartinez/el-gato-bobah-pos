@@ -208,6 +208,9 @@ func TestLiveAccountsPendingNew(t *testing.T) {
 		if !ok || !it.ClosedWithPending || it.PendingDraftID == nil {
 			t.Fatalf("presente=%v %+v: lo capturado quedaría en una cuenta que nadie ve", ok, it)
 		}
+		if it.State != domain.AccountClosedWithNew || it.Group != domain.GroupCapturing {
+			t.Fatalf("estado=%q grupo=%q: entregada y pagada no es «Pagada · en cocina»", it.State, it.Group)
+		}
 	})
 }
 

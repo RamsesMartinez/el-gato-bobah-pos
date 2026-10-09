@@ -459,7 +459,7 @@ export interface ImportResult {
 
 // El estado y el grupo los decide el servidor (domain.AccountState / AccountGroup): aquí no se
 // recalcula ninguna regla.
-export type AccountState = 'capturing' | 'in_kitchen' | 'paid_in_kitchen' | 'partly_paid' | 'delivered_owes';
+export type AccountState = 'capturing' | 'in_kitchen' | 'paid_in_kitchen' | 'partly_paid' | 'delivered_owes' | 'closed_with_new';
 export type AccountGroup = 'capturing' | 'in_kitchen' | 'delivered_owes' | 'previous_days';
 
 export interface AccountItem {

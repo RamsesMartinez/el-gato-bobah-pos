@@ -104,14 +104,9 @@ func (s *AccountsService) Live(ctx context.Context, olderDebts bool) (*LiveAccou
 	out := &LiveAccounts{Items: make([]AccountItem, 0, len(orders)+len(fresh)), Outstanding: decimal.Zero, ServerTime: now}
 	seen := map[int64]bool{}
 	addOrder := func(r db.ListLiveOrdersRow, closedWithPending bool) {
-		state, listed := domain.AccountState(false, string(r.Status), r.Paid, r.Total)
-		if !listed && !closedWithPending {
-			return
-		}
+		state, listed := domain.OrderAccountState(string(r.Status), r.Paid, r.Total, closedWithPending)
 		if !listed {
-			// Cerrada con lo «Nuevo» todavía capturándose: la ficha existe para que eso no se pierda de
-			// vista; lo que la pantalla ofrece ahí lo decide `closedWithPending`.
-			state = domain.AccountPaidInKitchen
+			return
 		}
 		id, number := r.ID, int(r.DailyNumber)
 		date := r.BusinessDate.Time.Format("2006-01-02")
