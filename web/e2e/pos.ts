@@ -76,10 +76,13 @@ export async function nombreDeLaCuentaActiva(page: Page): Promise<string> {
 export async function abrirTicket(page: Page) {
   const ocultar = page.getByRole('button', { name: 'Ocultar pedido' });
   const resumen = page.getByRole('button', { name: /art ·|falta \$|^Ver pedido$/ });
-  await expect(ocultar.or(resumen).first()).toBeVisible({ timeout: 30_000 });
-  if (await ocultar.isVisible().catch(() => false)) return;
-  await resumen.first().click();
-  await expect(ocultar).toBeVisible();
+  // En bucle y con toques cortos: al llegar por `?pedido=` la pantalla abre el panel sola, y una
+  // píldora que se vio hace un instante puede ya no estar cuando llega el toque.
+  await expect(async () => {
+    if (await ocultar.isVisible().catch(() => false)) return;
+    await resumen.first().click({ timeout: 2_000 }).catch(() => {});
+    await expect(ocultar).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 // El botón de cobrar: «Enviar y cobrar $X» con algo nuevo, «Cobrar $X» sin nada nuevo. En la píldora

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { iniciarSesion } from './sesion';
+import { API, tokenDeApi } from './ambiente';
 
 // CONTAR EL CAJÓN, MEDIDO EN LA TABLETA (spec 003).
 //
@@ -226,18 +227,27 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   await page.waitForLoadState('networkidle');
   await page.getByRole('tab', { name: 'Histórico' }).click();
 
-  // El corte MÁS VIEJO del histórico: cerró antes de que existiera el conteo. Es el caso de todos
-  // los que ya viven en producción, y son la mayoría.
+  // Un corte que cerró ANTES de que existiera el conteo: es el caso de todos los que ya viven en
+  // producción, y son la mayoría. Se busca por la API, en el mismo orden que pinta el histórico.
   //
-  // Esto SUPONE un ambiente con historia, que es el que esta suite tiene por contrato
-  // (`playwright.config.ts`). Contra una base recién sembrada —donde todos los cortes los creó
-  // quien está probando, y por lo tanto todos traen conteo— este caso falla sin que haya nada roto.
-  // Se deja fallando en vez de saltarse solo: un skip automático aquí lo volvería una tautología,
-  // porque la condición que lo saltaría es exactamente la que viene a comprobar.
+  // Antes se tomaba «el último renglón», suponiendo que el más viejo era anterior al conteo. El
+  // histórico trae los 50 más recientes, y cada corrida de esta suite abre y cierra cortes: en el
+  // ambiente de pruebas el último renglón ya es un corte con conteo, y el test fallaba sin que nada
+  // estuviera roto. Si ninguno de los visibles es anterior al conteo se salta y lo dice; no hay
+  // forma de llegar a uno más viejo desde la pantalla.
+  const jwt = await tokenDeApi();
+  const auth = { Authorization: `Bearer ${jwt}` };
+  const lista = (await (await fetch(`${API}/cash-sessions`, { headers: auth })).json()).items as Array<{ id: number; status: string }>;
+  let indice = -1;
+  for (let i = lista.length - 1; i >= 0 && indice < 0; i--) {
+    if (lista[i].status !== 'cerrada') continue;
+    const d = await (await fetch(`${API}/cash-sessions/${lista[i].id}`, { headers: auth })).json();
+    if (!d.counts?.apertura && !d.counts?.cierre) indice = i;
+  }
+  test.skip(indice < 0, 'los cortes del histórico son todos posteriores al conteo');
   const filas = page.getByRole('row');
-  const cuantas = await filas.count();
-  test.skip(cuantas < 3, 'el histórico no tiene cortes anteriores a la feature');
-  await filas.nth(cuantas - 1).click();
+  await expect(filas.nth(indice + 1)).toBeVisible({ timeout: 30_000 });
+  await filas.nth(indice + 1).click();
 
   // TODO se afirma DENTRO del diálogo: a 1024×600 el corte se abre así, y el panel lateral existe
   // en el árbol pero oculto. Sin acotar, el localizador cae en la copia invisible y el assert espera
