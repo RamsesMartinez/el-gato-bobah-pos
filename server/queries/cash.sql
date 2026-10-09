@@ -418,6 +418,24 @@ where o.register_session_id = $1
   and o.status in ('abierta', 'lista')
 order by o.daily_number;
 
+-- name: OwingDeliveredOrders :many
+-- Pedidos de mostrador ENTREGADOS que todavía deben, de cualquier día y cualquier turno. Bloquean el
+-- cierre de la caja principal (no hay fiados: decisión del dueño, 2026-10-09). La pantalla del cierre
+-- los lista desde esta MISMA consulta, para que lo que se ve y lo que bloquea no puedan divergir.
+--
+-- Los de plataforma no entran: los paga la plataforma, no el cliente en la caja. Lo cobrado se
+-- pre-agrega en un lateral (orders tiene dos hijas 1:N); el dominio decide con PorCobrar si debe.
+select o.id, o.daily_number, o.folio_name, o.total, coalesce(p.pagado, 0)::numeric(12,2) as paid
+from orders o
+left join lateral (
+  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+) p on true
+where o.status = 'entregada'
+  and o.delivery_platform_id is null
+  and o.merged_into_order_id is null
+  and o.total > coalesce(p.pagado, 0)
+order by o.business_date, o.daily_number;
+
 -- name: UncollectedInSession :one
 -- La venta del turno que NINGÚN pago cubre, y en cuántos pedidos está.
 --

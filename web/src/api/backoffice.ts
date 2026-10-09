@@ -151,6 +151,10 @@ export interface CashSession {
   // Las cuentas vivas que NO bloquean el cierre (spec 030, D-10): las que se capturan y las
   // entregadas que deben, de cualquier día. Opcional para que el compilador obligue a la guarda.
   liveAccounts?: AccountItem[];
+  // Los entregados de mostrador que deben, de cualquier día. BLOQUEAN el cierre (no hay fiados,
+  // 2026-10-09) y salen del mismo predicado que la guardia del servidor. Opcional: un servidor que
+  // todavía no lo manda deja la sección sin pintar, no rota.
+  owing?: OwingOrder[];
   // Dinero devuelto al cliente en el turno (spec 031). Opcional por la misma razón que el anterior.
   refunds?: SessionRefund[];
 }
@@ -197,6 +201,14 @@ export interface PendingOrder {
   id?: number;
   // De cuánto es, para no tener que abrirlo. Opcional por la misma razón.
   total?: string;
+}
+// Un pedido entregado que todavía debe.
+export interface OwingOrder {
+  id: number;
+  number: number;
+  name: string;
+  total: string;
+  paid: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {

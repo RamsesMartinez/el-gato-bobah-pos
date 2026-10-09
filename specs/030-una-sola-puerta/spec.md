@@ -43,9 +43,11 @@ siempre los tres modos.
 | D-7 | **Descartar** una cuenta en captura la deja como «descartada» (conserva el rastro, no es venta cancelada) y **devuelve su nombre a la bolsa**. Una cuenta vacía se descarta sin preguntar; con productos, pregunta en una hoja de la app. | 013 US3 y FR-008, sin folio que conservar (D-2). |
 | D-8 | **Una cuenta en captura sin tocar en 12 horas se descarta sola.** El cierre de caja la lista con «Descartar» pero **no bloquea** el cierre. | 013 FR-015 y decisión 2. |
 | D-9 | **Cerrada = pagada completa Y entregada.** Una cerrada ya no recibe productos (lo que pidan después es otra cuenta). Una «entregada que debe» sí recibe y vuelve a cocina. | Lienzo V2-8 / X1. Hoy un pedido entregado y pagado se reabre al agregarle: cambia. |
-| D-10 | **El cierre de caja sigue bloqueando solo con pedidos en cocina o listos** (regla de hoy). Las cuentas que deben y las que se están capturando se listan con «Abrir» / «Descartar», sin bloquear. | Una cuenta que se fue debiendo («fiado») tiene que poder pasar al día siguiente: es el grupo «De días anteriores». |
+| D-10 | ~~**El cierre de caja sigue bloqueando solo con pedidos en cocina o listos**. Las cuentas que deben se listan sin bloquear.~~ **Reemplazada por D-13 (dueño, 2026-10-09).** Las que se están capturando siguen listándose con «Abrir» / «Descartar», sin bloquear. | Se deja tachada: el «fiado que pasa al día siguiente» era la razón y el dueño la descartó. |
 | D-11 | **Un pedido de plataforma** se ve en la fila, se cobra completo con su método y **no recibe productos** ni se divide. | Lienzo V2-6. |
 | D-12 | **Las cuentas guardadas en la tableta con la versión anterior se suben al servidor** la primera vez que abre la versión nueva, y el almacenamiento local de cuentas desaparece. | Un deploy no puede tirar lo que alguien estaba capturando; y la pantalla en blanco por cuenta guardada con forma vieja deja de ser posible. |
+| D-13 | **No hay fiados** (decisión del dueño, 2026-10-09). La caja principal **no cierra** mientras haya un pedido de mostrador entregado que deba, de cualquier día. El cierre los lista con lo que debe cada uno y ofrece **«Cobrar»** (lleva a su cuenta) o **«Cancelar»** con motivo («se fue sin pagar»). La barrera es el servidor (409 `UNPAID_ORDERS`, que nombra cada pedido y lo que debe); la pantalla lo refleja. | Lo que se entrega se cobra o se cancela con su rastro; el corte deja de firmarse con venta sin cobrar de mostrador. **Consecuencias que no se ven**: (a) un fiado de meses atrás también bloquea; (b) «Cancelar» solo existe si el pedido **no tiene pagos** —cancelar uno pagado a medias sacaría de Ventas dinero que sí está en el cajón—, así que uno pagado a medias solo sale cobrándolo; (c) cancelar un entregado **no repone inventario** (la comida ya salió); (d) los de plataforma no bloquean: los paga la plataforma, y siguen en «Cuentas pendientes». |
+| D-14 | **Se quita el ajuste «el tablero puede cobrar»** (decisión del dueño, 2026-10-09). Migración 0084. | No tenía efecto en la operación de hoy y era una cuarta puerta de cobro. Quien no puede entrar a Vender ve en el tablero cuánto falta, sin botón de cobro. El valor que cada empresa tenía se pierde (el Down devuelve la columna apagada). |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -190,7 +192,8 @@ la app.
 **Acceptance Scenarios**:
 
 1. **Given** un pedido en cocina, **When** se intenta cerrar, **Then** el cierre está bloqueado y «Abrir» lleva a esa cuenta.
-2. **Given** solo cuentas capturándose y entregadas que deben, **When** se cierra, **Then** cierra; las que deben siguen al día siguiente en «De días anteriores» y las capturándose siguen en la fila.
+2. **Given** solo cuentas capturándose, **When** se cierra, **Then** cierra y siguen en la fila.
+3. **Given** un pedido de mostrador entregado que debe (de cualquier día), **When** se intenta cerrar, **Then** el cierre está bloqueado y lo lista con lo que debe, «Cobrar» y —si no tiene pagos— «Cancelar» con motivo (D-13, 2026-10-09).
 
 ---
 

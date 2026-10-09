@@ -1,6 +1,8 @@
 import { useState, Fragment, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { ReasonSheet } from '../../components/ReasonSheet';
+import { posApi } from '../../api/pos';
 import { descartarCuenta } from '../pos/descartarCuenta';
 import type { AccountItem } from '../../types/pos';
 import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
@@ -14,7 +16,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -759,6 +761,17 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
     invalidate();
     qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
   };
+  // Cancelar un entregado que debe y no pagó nada («se fue sin pagar»): la otra salida del cierre
+  // sin fiados, además de cobrarlo en su cuenta.
+  const cancelarDelCierre = async (orderId: number, motivo: string) => {
+    try {
+      await posApi.cancelOrder(orderId, motivo);
+    } catch (e) {
+      toaster.create({ title: 'No se pudo cancelar', description: mensajeDeError(e), type: 'error' });
+    }
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+  };
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
     // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
@@ -795,7 +808,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
     // pendiente, y el operador tiene que saber que la puede resolver y volver.
     onError: (e) => toaster.create({
-      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar' : 'No se pudo cerrar la caja',
+      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar'
+        : e instanceof ApiError && e.code === 'UNPAID_ORDERS' ? 'Faltan pedidos por cobrar' : 'No se pudo cerrar la caja',
       description: e instanceof ApiError ? e.message : String(e),
       type: 'error',
       duration: 8000,
@@ -927,8 +941,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
           {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
               de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
-          <CuentasDelCierre pending={session.pending} cuentas={session.liveAccounts ?? []}
-            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} />
+          <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
+            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre} />
 
           {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
               decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
@@ -953,7 +967,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             currency={session.currency} />
 
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0}
+            disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
@@ -1418,22 +1432,61 @@ function colorDeEstadoDeVenta(estado: string) {
 
 // LAS CUENTAS VIVAS EN EL CIERRE (spec 030, US8; D-10; lienzo V2-7).
 //
-// Arriba lo que BLOQUEA: pedidos en cocina o listos, con «Abrir» para ir a su cuenta. Debajo, plegado,
-// lo que NO bloquea —las que se capturan y las entregadas que deben, de cualquier día—: una cuenta
-// fiada tiene que poder pasar al día siguiente. Plegado porque en 600 px de alto la lista empujaba el
-// botón de cerrar fuera de la pantalla.
-export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
+// Arriba lo que BLOQUEA: los entregados que deben (no hay fiados, 2026-10-09) con «Cobrar» y
+// «Cancelar», y los pedidos en cocina o listos con «Abrir». Debajo, plegado, lo que NO bloquea —las
+// que se capturan y lo de plataforma—. Plegado porque en 600 px de alto la lista empujaba el botón de
+// cerrar fuera de la pantalla.
+export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir, onDescartar, onCancelar }: {
   pending: PendingOrder[];
+  // Los entregados que deben: bloquean (no hay fiados, 2026-10-09). Se cobran en su cuenta o se
+  // cancelan con motivo; cancelar solo si no tienen pagos, como exige el servidor.
+  owing?: OwingOrder[];
   cuentas: AccountItem[];
   onAbrir: (ruta: string) => void;
   onDescartar: (draftId: string, version: number) => void;
+  onCancelar?: (orderId: number, motivo: string) => void;
 }) {
   const [abierta, setAbierta] = useState(false);
   const [descartando, setDescartando] = useState<AccountItem | null>(null);
-  if (pending.length === 0 && cuentas.length === 0) return null;
+  const [cancelando, setCancelando] = useState<OwingOrder | null>(null);
+  // Lo que ya va arriba como bloqueo no se repite en la sección plegada.
+  const deben = new Set(owing.map((o) => o.id));
+  const cuentas = todas.filter((c) => c.orderId == null || !deben.has(c.orderId));
+  if (pending.length === 0 && owing.length === 0 && cuentas.length === 0) return null;
   const nombre = nombreDeCuenta;
+  const nombreDePedido = (o: { name: string; number: number }) => o.name || `#${o.number}`;
   return (
     <VStack align="stretch" gap={2}>
+      {owing.length > 0 && (
+        <Box borderWidth="1px" borderColor="red.300" bg="red.50"
+          _dark={{ bg: 'red.950' }} borderRadius="lg" p={3}>
+          <Text fontWeight="700" color="red.700" _dark={{ color: 'red.200' }} mb={1}>
+            Falta cobrar {owing.length === 1 ? '1 pedido' : `${owing.length} pedidos`}
+          </Text>
+          <Text fontSize="sm" color="fg.muted" mb={2}>
+            Ya se entregaron. La caja no cierra hasta que se cobren o se cancelen.
+          </Text>
+          <VStack align="stretch" gap={1} maxH="40dvh" overflowY="auto">
+            {owing.map((o) => (
+              <HStack key={o.id} justify="space-between" gap={2} flexWrap="wrap">
+                <Text fontWeight="600" truncate flex="1" minW="8rem">{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                <Text fontWeight="700" flexShrink={0}>{money(round2(Number(o.total) - Number(o.paid)))}</Text>
+                <Box flexShrink={0}>
+                  <Button size="sm" minH="44px" colorPalette="orange" aria-label={`Cobrar ${nombreDePedido(o)}`}
+                    onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Cobrar</Button>
+                </Box>
+                {onCancelar && Number(o.paid) === 0 && (
+                  // Separado de «Cobrar»: es destructivo.
+                  <Box flexShrink={0} pl={6}>
+                    <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Cancelar ${nombreDePedido(o)}`}
+                      onClick={() => setCancelando(o)}>Cancelar</Button>
+                  </Box>
+                )}
+              </HStack>
+            ))}
+          </VStack>
+        </Box>
+      )}
       {pending.length > 0 && (
         <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
           _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
@@ -1499,6 +1552,14 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
           )}
         </Box>
       )}
+      <ReasonSheet isOpen={cancelando !== null} destructive required
+        title={`¿Cancelar ${cancelando ? nombreDePedido(cancelando) : ''}?`}
+        label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar pedido"
+        onDone={(motivo) => {
+          const o = cancelando;
+          setCancelando(null);
+          if (o && motivo) onCancelar?.(o.id, motivo);
+        }} />
       <ConfirmSheet isOpen={descartando !== null} destructive
         title={`¿Descartar la cuenta de ${descartando ? nombre(descartando) : ''}?`}
         description="No se ha mandado a cocina; su nombre vuelve a quedar libre."

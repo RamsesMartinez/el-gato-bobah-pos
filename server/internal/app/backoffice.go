@@ -441,6 +441,10 @@ type SessionView struct {
 	// Se listan aunque ya estén cobrados: cobrado y entregado son cosas distintas, y lo que impide
 	// cerrar es la comida que no ha salido, no el dinero.
 	Pending []PendingOrder `json:"pending"`
+	// Owing son los pedidos de mostrador entregados que todavía deben, de cualquier día. Bloquean el
+	// cierre de la caja principal (no hay fiados: decisión del dueño, 2026-10-09) y salen del MISMO
+	// predicado que la guardia. Vacío en una caja secundaria, que no vende. Siempre arreglo.
+	Owing []domain.OwingOrder `json:"owing"`
 	// Cashiers: cuánto cobró cada persona en el turno. Dos estaciones cobran contra el MISMO
 	// cajón —partirlo en dos daría dos arqueos contando el mismo dinero—, así que la
 	// responsabilidad se rastrea por quien cobró y no por el mueble.
@@ -1258,6 +1262,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		return nil, err
 	}
 	view.LiveAccounts = []AccountItem{}
+	if view.Owing, err = s.owingOrders(ctx, reg.IsPrimary); err != nil {
+		return nil, err
+	}
 	if withLiveAccounts {
 		if view.LiveAccounts, err = s.liveAccountsForClosing(ctx, reg.IsPrimary); err != nil {
 			return nil, err
@@ -1422,6 +1429,15 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		// operador SÍ puede resolverlos: está frente a la caja y el local está vacío.
 		if err := s.sinPedidosPendientes(ctx, sess.ID); err != nil {
 			return err
+		}
+		// Ni un entregado que debe (no hay fiados, decisión del dueño 2026-10-09): se cobra o se
+		// cancela con su motivo antes de cerrar.
+		debe, errDebe := s.owingOrders(ctx, reg.IsPrimary)
+		if errDebe != nil {
+			return errDebe
+		}
+		if errDebe := domain.NoOwingOrders(debe); errDebe != nil {
+			return errDebe
 		}
 		var err error
 		// Sin las cuentas vivas: su barrido abre su propia transacción, y con la conexión del turno
@@ -2179,6 +2195,26 @@ func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID in
 	out := make([]PendingOrder, 0, len(filas))
 	for _, f := range filas {
 		out = append(out, PendingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName), Total: f.Total})
+	}
+	return out, nil
+}
+
+// owingOrders lista los pedidos entregados que deben. Es la fuente ÚNICA de esa lista: la usa la
+// vista del cierre y la usa la guardia que impide cerrar, igual que pedidosSinEntregar.
+func (s *BackofficeService) owingOrders(ctx context.Context, isPrimary bool) ([]domain.OwingOrder, error) {
+	out := []domain.OwingOrder{}
+	if !isPrimary {
+		return out, nil
+	}
+	filas, err := s.store.QC(ctx).OwingDeliveredOrders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range filas {
+		o := domain.OwingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName), Total: f.Total, Paid: f.Paid}
+		if o.Outstanding().IsPositive() {
+			out = append(out, o)
+		}
 	}
 	return out, nil
 }

@@ -81,6 +81,10 @@ func Error(w http.ResponseWriter, err error) {
 		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
 		// corregir en vez de un "datos inválidos" que no dice nada.
 		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
+	case errors.Is(err, domain.ErrUnpaidOrders):
+		// 409 con código propio, como OPEN_ORDERS: el cierre lista esos pedidos con «Cobrar» y
+		// «Cancelar», y el mensaje nombra cada uno con lo que debe (no hay fiados, 2026-10-09).
+		status, code = http.StatusConflict, "UNPAID_ORDERS"
 	case errors.Is(err, domain.ErrOpenOrders):
 		// 409 y código propio, igual que ErrNoOpenRegister: no es un error de lo que mandó el
 		// cliente sino del estado del negocio. El front lo necesita distinguible para llevar al
