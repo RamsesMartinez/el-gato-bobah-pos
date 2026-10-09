@@ -153,8 +153,9 @@ func TestSummarizeSalesClasificaCadaPesoUnaVez(t *testing.T) {
 		{Status: StatusReembolsada, Count: 1, Total: d("80")},
 		{Status: StatusAbierta, Count: 1, Total: d("30")},
 	}
-	// Lo cobrado neto por medio en el periodo: 250 en efectivo, 92 con tarjeta menos 92 devueltos.
-	porMedio := []decimal.Decimal{d("250"), d("0")}
+	// Lo cobrado neto por medio en el periodo: 250 en efectivo, 92 con tarjeta menos 92 devueltos
+	// en una devolución.
+	porMedio := []MethodNet{{Net: d("250")}, {Net: d("0"), Refunds: d("92"), RefundCount: 1}}
 
 	s := SummarizeSales(filas, porMedio)
 
@@ -169,8 +170,11 @@ func TestSummarizeSalesClasificaCadaPesoUnaVez(t *testing.T) {
 	if s.Cancelled.Count != 1 || !s.Cancelled.Amount.Equal(d("50")) {
 		t.Fatalf("canceladas = %+v, quiere 1 por 50", s.Cancelled)
 	}
-	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("80")) {
-		t.Fatalf("reembolsadas = %+v, quiere 1 por 80", s.Refunded)
+	// Lo devuelto sale de las MISMAS devoluciones que ya restó el desglose por medio, no del estado
+	// de los pedidos del periodo: el pedido reembolsado de 80 es de este día, pero su devolución
+	// no cayó en él.
+	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("92")) {
+		t.Fatalf("reembolsadas = %+v, quiere 1 por 92 (las devoluciones del periodo)", s.Refunded)
 	}
 	if !s.DeliveryFees.Equal(d("20")) {
 		t.Fatalf("envíos = %s, quiere 20", s.DeliveryFees)
@@ -199,6 +203,21 @@ func TestNetCollectedIsTheSumOfMethods(t *testing.T) {
 
 // Un rango sin ventas no puede reventar: dividir entre cero es la forma más tonta de tumbar una
 // pantalla de reportes, y pasa el primer día que alguien abre "ayer" en un día que no se abrió.
+// Una devolución hecha HOY de un pedido que NO es de hoy, o parcial sobre un pedido que sigue
+// entregado, ya se resta en el desglose por medio. El tile de devoluciones decía {0, 0} porque solo
+// miraba pedidos del periodo en estado «reembolsada»: la lista y el resumen dejaban de describir el
+// mismo dinero (constitución III).
+func TestRefundedComesFromTheRefundsTheMethodsAlreadySubtracted(t *testing.T) {
+	filas := []StatusTotals{{Status: StatusEntregada, Count: 1, Total: d("100")}}
+	porMedio := []MethodNet{{Net: d("70"), Refunds: d("30"), RefundCount: 1}}
+
+	s := SummarizeSales(filas, porMedio)
+
+	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("30")) {
+		t.Fatalf("reembolsadas = %+v, quiere 1 por 30: el desglose ya restó esa devolución", s.Refunded)
+	}
+}
+
 func TestSummarizeSalesSinVentas(t *testing.T) {
 	s := SummarizeSales(nil, nil)
 	if s.Count != 0 || !s.Total.IsZero() || !s.Average.IsZero() {

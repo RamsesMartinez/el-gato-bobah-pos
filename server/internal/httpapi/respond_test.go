@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
@@ -268,6 +270,10 @@ func TestSplitBillSentinelsMapToStatusCodeAndText(t *testing.T) {
 		{domain.ErrPieceAlreadyPaidToMove, 409, "CONFLICT", "Ese producto ya se pagó; no se puede pasar"},
 		{domain.ErrPieceAlreadyPaidToRemove, 409, "CONFLICT", "Ese producto ya se pagó. Primero hay que devolver el pago"},
 		{domain.ErrOrderFromClosedShiftToMove, 409, "CONFLICT", "Ese pedido es de un turno cerrado; no se puede pasar"},
+		// No hay fiados (2026-10-09): el cierre se niega con su propio código y sin «conflicto».
+		{domain.NoOwingOrders([]domain.OwingOrder{{Number: 7, Name: "Persa", Total: decimal.RequireFromString("65")}}),
+			409, "UNPAID_ORDERS", "hay pedidos entregados sin cobrar: Persa (#7) debe $65.00. Cóbralos o cancélalos antes de cerrar"},
+		{domain.ErrCancelDeliveredWithPayments, 409, "CONFLICT", "Este pedido ya tiene pagos; cobra lo que falta"},
 	}
 	for _, c := range cases {
 		t.Run(c.text, func(t *testing.T) {

@@ -315,6 +315,13 @@ func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
 	if err := ordersSvc.DeliverAll(ctx, fiado.ID); err != nil {
 		t.Fatalf("DeliverAll fiado: %v", err)
 	}
+	// De plataforma: desde el 2026-10-09 un entregado de mostrador que debe impide cerrar (no hay
+	// fiados), y el de plataforma —que paga la plataforma— es el que hoy puede llegar al cierre sin
+	// un pago registrado. El arqueo lo tiene que nombrar igual.
+	if _, err := st.Pool.Exec(ctx, `update orders set service_type = 'domicilio',
+		delivery_platform_id = (select min(id) from delivery_platforms) where id = $1`, fiado.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	vista, err := backoffice.CurrentByRegister(ctx, principal)
 	if err != nil {

@@ -97,6 +97,9 @@ type MethodTotals struct {
 	// TipRefunds: propina devuelta por este medio en el periodo. NO está en Refunds ni en Total
 	// (la propina nunca entra al Total); viaja para que la pantalla la nombre igual que el corte.
 	TipRefunds decimal.Decimal `json:"tipRefunds"`
+	// RefundCount: cuántas devoluciones de este medio cayeron en el periodo; alimenta el tile de
+	// devoluciones del resumen.
+	RefundCount int `json:"refundCount"`
 }
 
 // SalesSummaryView es el resumen de arriba. Agrega al de dominio el desglose por método y las
@@ -239,9 +242,9 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 		return nil, err
 	}
 
-	netos := make([]decimal.Decimal, 0, len(metodos))
+	netos := make([]domain.MethodNet, 0, len(metodos))
 	for _, m := range metodos {
-		netos = append(netos, m.Total)
+		netos = append(netos, domain.MethodNet{Net: m.Total, Refunds: m.Refunds, RefundCount: m.RefundCount})
 	}
 	resumen := domain.SummarizeSales(totales, netos)
 	resumen.Pending = pendiente
@@ -312,7 +315,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 		for _, r := range rows {
 			out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
 				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds),
-				TipRefunds: domain.Round2(r.TipRefunds)})
+				TipRefunds: domain.Round2(r.TipRefunds), RefundCount: int(r.RefundCount)})
 		}
 		return out, nil
 	}
@@ -325,7 +328,7 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 	for _, r := range rows {
 		out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
 			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds),
-			TipRefunds: domain.Round2(r.TipRefunds)})
+			TipRefunds: domain.Round2(r.TipRefunds), RefundCount: int(r.RefundCount)})
 	}
 	return out, nil
 }
@@ -363,13 +366,17 @@ func (s *SalesService) resumenDeLaBusqueda(ctx context.Context, f domain.SalesFi
 	// El Total de la búsqueda es lo cobrado de ESE pedido menos lo devuelto: la misma regla que el
 	// periodo, sobre las mismas filas que pinta la lista. Sin el día de cada movimiento —buscar un
 	// folio es mirar un pedido, no un periodo—.
-	netos := make([]decimal.Decimal, 0, len(pagina.Items))
+	netos := make([]domain.MethodNet, 0, len(pagina.Items))
 	var pendiente domain.ConceptCount
 	for _, r := range pagina.Items {
 		totales = append(totales, domain.StatusTotals{
 			Status: r.Status, Count: 1, Total: r.Total, Tips: r.Tips, DeliveryFee: r.DeliveryFee,
 		})
-		netos = append(netos, r.Paid.Sub(r.Refund))
+		neto := domain.MethodNet{Net: r.Paid.Sub(r.Refund), Refunds: r.Refund}
+		if r.Refund.IsPositive() {
+			neto.RefundCount = 1
+		}
+		netos = append(netos, neto)
 		vivo := r.Status != domain.StatusCancelada && r.Status != domain.StatusReembolsada
 		if falta := domain.PorCobrar(r.Total, r.Paid); vivo && falta.IsPositive() {
 			pendiente.Count++

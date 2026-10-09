@@ -823,7 +823,6 @@ type BusinessSetting struct {
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
-	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
 	SessionHours       int32              `json:"session_hours"`

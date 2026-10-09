@@ -234,6 +234,9 @@ Utilidad por producto, Ventas y los renglones cancelados cuadran con lo vendido.
 
 ## Decisiones por defecto, revisables por el dueño
 
+**Aprobadas tal cual por el dueño el 2026-10-09** (DD-1 a DD-10): dejan de ser revisables y son
+decisiones tomadas.
+
 | # | Decisión | Consecuencia |
 |---|---|---|
 | DD-1 | Un pago de plataforma aceptado sin turno entra al turno que reclama su pedido al abrirse (el de su sucursal y su día). | La venta y su dinero quedan en el mismo corte. Si el repartidor entregó el efectivo antes de abrir y se contó en el fondo, aparecería como sobrante; hoy no hay evidencia de que pase. |
@@ -246,6 +249,13 @@ Utilidad por producto, Ventas y los renglones cancelados cuadran con lo vendido.
 | DD-8 | Se quita la tolerancia de un centavo para dar un pedido por saldado. | Un pedido viejo cobrado $0.01 abajo vuelve a mostrarse con $0.01 por cobrar si sigue en la ventana visible. |
 | DD-9 | El día de un pago o una devolución es su fecha en la zona del negocio. | Un turno que cruza la medianoche reparte sus cobros en dos días en Ventas, igual que ya reparte sus ventas. |
 | DD-10 | La comisión de una venta que la plataforma canceló sigue fuera del resumen de plataformas (D15 b). | Es una exclusión documentada; no hay un caso medido de comisión cobrada sobre un pedido cancelado. |
+
+## Decisiones del dueño del 2026-10-09
+
+| # | Decisión | Por qué / consecuencia |
+|---|---|---|
+| DO-1 | **Un producto cuenta como vendido el día en que su pedido quedó saldado**: el día del cobro que cubrió el total al centavo. El dinero sigue contando el día de cada cobro, y un producto devuelto resta el día de la devolución. | Antes «Productos vendidos» contaba el día en que se abrió el pedido e incluía pedidos sin cobrar (un fiado salía como vendido). Se corrigió `ProductsSold`. Una devolución **parcial de dinero no resta piezas**: resta el renglón cuyas devoluciones cubren su importe, o todos los del pedido cuando las devoluciones cubren el total. `ProductMargins` (utilidad por producto) **sigue** por día de negocio del pedido: no se movió. |
+| DO-2 | **El resumen de Ventas cuenta como devoluciones las HECHAS en el periodo**, las mismas que el desglose por medio ya restó (constitución III). | `refunded` salía en cero con una devolución parcial de hoy porque solo miraba pedidos del periodo en estado «reembolsada». Un reembolso del flujo viejo (sin renglón en el libro de devoluciones) ya no aparece en ese tile: tampoco aparece su cobro en el desglose. |
 
 ## Success Criteria *(mandatory)*
 

@@ -14,11 +14,11 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// CERRAR CAJA CON CUENTAS VIVAS (US8, D-10, FR-014, caso 21).
+// CERRAR CAJA CON CUENTAS VIVAS (US8, D-10, FR-014, caso 21) Y SIN FIADOS (dueño, 2026-10-09).
 //
-// Bloquea solo lo que está en cocina o listo, como hoy. Lo que se está capturando y lo entregado que
-// debe se LISTA en la vista del turno —para abrirlo o descartarlo— pero no detiene el cierre: una
-// cuenta fiada tiene que poder pasar al día siguiente.
+// Bloquea lo que está en cocina o listo, y desde el 2026-10-09 también lo entregado que debe, de
+// cualquier día: no hay fiados. Lo que se está capturando se LISTA —para abrirlo o descartarlo—
+// pero no detiene el cierre. Un entregado que debe se resuelve cobrándolo o cancelándolo con motivo.
 func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 	t.Parallel()
 	k := newLiveKit(t)
@@ -65,6 +65,12 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 	owes := k.order(t, "1", "0", true)
 	old := k.order(t, "1", "0", true)
 	k.ageOrder(t, old.ID, 100)
+	// De plataforma y debiendo: lo paga la plataforma, no bloquea la caja.
+	platform := k.order(t, "1", "0", true)
+	if _, err := k.st.Pool.Exec(ctx,
+		`update orders set service_type = 'domicilio', delivery_platform_id = (select min(id) from delivery_platforms) where id = $1`, platform.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	view, err := back.CurrentByRegister(ctx, principal)
 	if err != nil {
@@ -74,16 +80,40 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 	for _, it := range view.LiveAccounts {
 		listed[it.Key] = it
 	}
-	for _, key := range []string{draftKey(capturing.ID), orderKey(owes.ID), orderKey(old.ID)} {
-		if _, ok := listed[key]; !ok {
-			t.Errorf("liveAccounts no trae %s (la de hace 100 días también: el cierre pide olderDebts)", key)
-		}
+	if _, ok := listed[draftKey(capturing.ID)]; !ok {
+		t.Error("liveAccounts no trae la cuenta que se captura")
 	}
-	if err := closeShift(); err != nil {
-		t.Fatalf("con solo cuentas capturándose y entregadas que deben, el cierre se negó: %v", err)
+	// La lista del cierre sale del MISMO predicado que la guardia.
+	owing := map[int64]bool{}
+	for _, o := range view.Owing {
+		owing[o.ID] = true
+	}
+	if !owing[owes.ID] || !owing[old.ID] || owing[platform.ID] || len(view.Owing) != 2 {
+		t.Fatalf("owing = %+v: quiere el de hoy y el de hace 100 días, sin el de plataforma", view.Owing)
 	}
 
-	t.Run("al día siguiente la deuda está en «De días anteriores» y la cuenta sigue viva", func(t *testing.T) {
+	err = closeShift()
+	if !errors.Is(err, domain.ErrUnpaidOrders) {
+		t.Fatalf("cerrar con entregados que deben = %v, quiere ErrUnpaidOrders: no hay fiados", err)
+	}
+
+	// Uno se cobra y el otro se cancela con su motivo; entonces sí cierra.
+	if _, err := k.orders.Charge(ctx, app.ChargeCmd{OrderID: owes.ID, MethodID: k.efectivo, Amount: owes.Total, ActorID: k.user}); err != nil {
+		t.Fatalf("cobrar el que debía: %v", err)
+	}
+	if err := closeShift(); !errors.Is(err, domain.ErrUnpaidOrders) {
+		t.Fatalf("con uno todavía debiendo, cerrar = %v, quiere ErrUnpaidOrders", err)
+	}
+	if err := k.orders.CancelarConDevolucion(ctx, app.CancelacionCmd{
+		OrderID: old.ID, Motivo: "se fue sin pagar", ActorID: k.user,
+	}); err != nil {
+		t.Fatalf("cancelar el entregado que debía: %v", err)
+	}
+	if err := closeShift(); err != nil {
+		t.Fatalf("con lo entregado cobrado o cancelado, el cierre se negó: %v", err)
+	}
+
+	t.Run("la cuenta que se capturaba sigue viva al día siguiente", func(t *testing.T) {
 		tomorrow := app.NewOrdersService(k.appSt, func() time.Time { return fixedNow.Add(24 * time.Hour) })
 		res, err := app.NewAccountsService(k.appSt, tomorrow).Live(ctx, false)
 		if err != nil {
@@ -93,13 +123,27 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 		for _, it := range res.Items {
 			byKey[it.Key] = it
 		}
-		if it, ok := byKey[orderKey(owes.ID)]; !ok || it.Group != domain.GroupPreviousDays {
-			t.Fatalf("la deuda de ayer = %+v", it)
-		}
 		if _, ok := byKey[draftKey(capturing.ID)]; !ok {
 			t.Fatal("la cuenta capturándose desapareció al cerrar el turno: no cuelga de ninguno (D-6)")
 		}
 	})
+}
+
+// Cancelar un entregado que ya tiene un cobro adentro se niega: sacaría de Ventas un dinero que sí
+// está en el cajón. Lo que falta se cobra.
+func TestCancelDeliveredWithPaymentsIsRejected(t *testing.T) {
+	t.Parallel()
+	k := newLiveKit(t)
+	abrirCajaPrincipal(t, k.st, k.user)
+	half := k.order(t, "1", "0", true)
+	if _, err := k.orders.Charge(k.ctx, app.ChargeCmd{OrderID: half.ID, MethodID: k.efectivo,
+		Amount: half.Total.Div(decimal.NewFromInt(2)).Round(2), ActorID: k.user}); err != nil {
+		t.Fatal(err)
+	}
+	err := k.orders.CancelarConDevolucion(k.ctx, app.CancelacionCmd{OrderID: half.ID, Motivo: "se fue sin pagar", ActorID: k.user})
+	if !errors.Is(err, domain.ErrCancelDeliveredWithPayments) {
+		t.Fatalf("cancelar un entregado con pagos = %v, quiere ErrCancelDeliveredWithPayments", err)
+	}
 }
 
 // liveAccounts y pending viajan como arreglo, nunca null, en el JSON crudo de la vista del turno.
@@ -117,4 +161,5 @@ func TestSessionViewArraysAreNeverNull(t *testing.T) {
 	m := rawJSON(t, b)
 	mustArray(t, m, "liveAccounts")
 	mustArray(t, m, "pending")
+	mustArray(t, m, "owing")
 }

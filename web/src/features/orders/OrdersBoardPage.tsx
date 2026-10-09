@@ -68,13 +68,12 @@ export function OrdersBoardPage() {
   // de cobro y con ella eran tres; ahora cada tarjeta lleva a la cuenta en Vender —«Abrir cuenta»—,
   // donde se agrega o se cobra con los tres modos.
   //
-  // Quien NO puede entrar a Vender —una cocina con su propio rol— no tendría dónde cobrar. Para ese
-  // caso existe el ajuste «el tablero puede cobrar»: encendido, la tarjeta conserva su «Cobrar $X» con
-  // la hoja de cobro de siempre (los tres modos); apagado, solo dice cuánto falta.
+  // Quien NO puede entrar a Vender —una cocina con su propio rol— solo ve cuánto falta. El ajuste
+  // «el tablero puede cobrar» se quitó el 2026-10-09 (decisión del dueño): no tenía efecto en la
+  // operación de hoy y era una cuarta puerta de cobro.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
   const navigate = useNavigate();
   const puedeAbrirCuenta = canAccess(role, '/pos');
-  const cobraAqui = !puedeAbrirCuenta && settings?.kitchenCanCharge === true;
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
@@ -204,7 +203,6 @@ export function OrdersBoardPage() {
 
   const acciones: Acciones = {
     puedeAbrirCuenta,
-    cobraAqui,
     abrirCuenta: (o) => navigate(`/pos?pedido=${o.id}`),
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
@@ -254,8 +252,7 @@ export function OrdersBoardPage() {
 
       {canRefund && (
         <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona} onRefund={refund} onTicket={acciones.ticket}
-          onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined}
-          onCobrar={cobraAqui ? setCobrando : undefined} />
+          onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined} />
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -311,8 +308,6 @@ export function OrdersBoardPage() {
 interface Acciones {
   // Lleva a la cuenta en Vender. Sin acceso a Vender, la tarjeta solo dice cuánto falta.
   puedeAbrirCuenta: boolean;
-  // Sin acceso a Vender y con el ajuste encendido, el tablero cobra.
-  cobraAqui: boolean;
   abrirCuenta: (o: BoardOrder) => void;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   quitarRenglon: (id: number, linea: BoardLine) => void;
@@ -453,15 +448,10 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Cerrar pedido
           </Button>
         )}
-        {listo && !sinProductos && debe && !acciones.cobraAqui && (
+        {listo && !sinProductos && debe && (
           <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
             Falta cobrar {money(o.outstanding, o.currency)}
           </Text>
-        )}
-        {!sinProductos && debe && acciones.cobraAqui && (
-          <Button flex="1" minH={TAP} colorPalette="orange" onClick={() => acciones.cobrar(o)}>
-            Cobrar {money(o.outstanding, o.currency)}
-          </Button>
         )}
         {!sinProductos && acciones.puedeAbrirCuenta && (
           <Button flex="1" minH={TAP} colorPalette="orange" variant={debe ? 'solid' : 'outline'}
@@ -591,7 +581,7 @@ function Renglon({ l, onEntregar, onQuitar }: {
 
 // Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
-function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta, onCobrar }: {
+function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta }: {
   orders: BoardOrder[];
   zona: string;
   // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
@@ -600,8 +590,6 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
   onTicket: (o: BoardOrder) => void;
   // Una entregada que debe se cobra en su cuenta, en Vender (caso 25).
   onAbrirCuenta?: (o: BoardOrder) => void;
-  // Sin acceso a Vender y con el ajuste encendido, se cobra aquí.
-  onCobrar?: (o: BoardOrder) => void;
 }) {
   return (
     <Box mt={4}>
@@ -635,11 +623,6 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
                   <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                   {/* Aquí es donde el pendiente deja de tener remedio: el cliente ya se fue con la
                       comida. Por eso el camino a su cuenta vive junto al aviso. */}
-                  {debe && !onAbrirCuenta && onCobrar && (
-                    <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onCobrar(o)}>
-                      Cobrar {money(o.outstanding, o.currency)}
-                    </Button>
-                  )}
                   {debe && onAbrirCuenta && (
                     <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onAbrirCuenta(o)}>
                       Abrir cuenta · debe {money(o.outstanding, o.currency)}

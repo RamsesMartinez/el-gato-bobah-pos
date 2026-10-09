@@ -1609,6 +1609,59 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 	return i, err
 }
 
+const owingDeliveredOrders = `-- name: OwingDeliveredOrders :many
+select o.id, o.daily_number, o.folio_name, o.total, coalesce(p.pagado, 0)::numeric(12,2) as paid
+from orders o
+left join lateral (
+  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+) p on true
+where o.status = 'entregada'
+  and o.delivery_platform_id is null
+  and o.merged_into_order_id is null
+  and o.total > coalesce(p.pagado, 0)
+order by o.business_date, o.daily_number
+`
+
+type OwingDeliveredOrdersRow struct {
+	ID          int64           `json:"id"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   *string         `json:"folio_name"`
+	Total       decimal.Decimal `json:"total"`
+	Paid        decimal.Decimal `json:"paid"`
+}
+
+// Pedidos de mostrador ENTREGADOS que todavía deben, de cualquier día y cualquier turno. Bloquean el
+// cierre de la caja principal (no hay fiados: decisión del dueño, 2026-10-09). La pantalla del cierre
+// los lista desde esta MISMA consulta, para que lo que se ve y lo que bloquea no puedan divergir.
+//
+// Los de plataforma no entran: los paga la plataforma, no el cliente en la caja. Lo cobrado se
+// pre-agrega en un lateral (orders tiene dos hijas 1:N); el dominio decide con PorCobrar si debe.
+func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrdersRow, error) {
+	rows, err := q.db.Query(ctx, owingDeliveredOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OwingDeliveredOrdersRow{}
+	for rows.Next() {
+		var i OwingDeliveredOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Total,
+			&i.Paid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveCashCount = `-- name: SaveCashCount :one
 insert into session_cash_counts (session_id, moment, total, expected, manual_reason, created_by)
 values ($1, $2, $3, $4, $5, $6)

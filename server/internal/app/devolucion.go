@@ -252,6 +252,11 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 			}
 			return err
 		}
+		// Un entregado que debe se cancela con su motivo («se fue sin pagar»): es la salida que exige
+		// el cierre sin fiados (2026-10-09). La comida ya salió, así que no se repone inventario.
+		if o.Status == db.OrderStatusEntregada {
+			return s.cancelDeliveredOwing(ctx, q, o.Total, cmd, motivo)
+		}
 		if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
 			return domain.ErrConflict
 		}
@@ -306,6 +311,23 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		}
 		return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &cmd.OrderID, ActorID: &cmd.ActorID})
 	})
+}
+
+// cancelDeliveredOwing cancela un entregado que no pagó nada. Con un cobro adentro se niega:
+// cancelarlo sacaría de Ventas un dinero que sí está en el cajón.
+func (s *OrdersService) cancelDeliveredOwing(ctx context.Context, q *db.Queries, total decimal.Decimal, cmd CancelacionCmd, motivo string) error {
+	entradas, err := s.cobradoPorMetodo(ctx, q, cmd.OrderID)
+	if err != nil {
+		return err
+	}
+	pagado := decimal.Zero
+	for _, e := range entradas {
+		pagado = pagado.Add(e.Monto)
+	}
+	if err := domain.CanCancelDelivered(total, pagado); err != nil {
+		return err
+	}
+	return q.CancelOrder(ctx, db.CancelOrderParams{ID: cmd.OrderID, CancelledBy: &cmd.ActorID, CancelReason: &motivo})
 }
 
 // CancelarRenglon quita todas las piezas pendientes de UN renglón de un pedido vivo.

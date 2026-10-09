@@ -4,6 +4,9 @@ package integration
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -13,68 +16,72 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 )
 
-// El ajuste nace APAGADO: cobrar es del punto de venta, y una pantalla de cocina con botón de
-// cobrar le da acceso al dinero a quien solo tiene que preparar comida. Se enciende a propósito en
-// el local donde cocina y mostrador son la misma persona.
-func TestCobrarDesdePedidosNaceApagado(t *testing.T) {
-	t.Parallel()
-	st := newTestStore(t)
-	settings := app.NewSettingsService(st, "pepper-de-prueba")
-
-	ajustes, err := settings.Get(context.Background())
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if ajustes.KitchenCanCharge {
-		t.Fatal("el ajuste nació encendido: el tablero podría cobrar sin que nadie lo decidiera")
-	}
-}
-
-// Se enciende sin pisar los demás ajustes del ticket, que viven en la misma fila y se escriben con
-// el mismo UPDATE. Un interruptor que apaga otro es el fallo clásico de este patrón.
-func TestElAjusteDeCobroNoPisaLosDelTicket(t *testing.T) {
+// EL AJUSTE «EL TABLERO PUEDE COBRAR» SE QUITÓ (decisión del dueño, 2026-10-09; migración 0084).
+//
+// La columna ya no existe, los ajustes se siguen leyendo y guardando como el rol de la app —una
+// consulta que todavía la nombrara respondería 500 en el primer request— y el Down la devuelve con
+// su default de siempre, apagado.
+func TestKitchenCanChargeIsGone(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
-	settings := app.NewSettingsService(st, "pepper-de-prueba")
-	admin := makeUser(t, st, "admin_kcc", "admin")
 
+	columna := func() int {
+		t.Helper()
+		var n int
+		if err := st.Pool.QueryRow(ctx, `select count(*) from information_schema.columns
+			where table_name = 'business_settings' and column_name = 'kitchen_can_charge'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := columna(); n != 0 {
+		t.Fatal("la columna kitchen_can_charge sigue en business_settings")
+	}
+
+	appSt := appRoleStore(t)
+	settings := app.NewSettingsService(appSt, "pepper-de-prueba")
+	admin := makeUser(t, st, "admin_kcc", "admin")
 	antes, err := settings.Get(ctx)
 	if err != nil {
-		t.Fatalf("Get: %v", err)
+		t.Fatalf("Get como gatobobah_app: %v", err)
 	}
-	// Se deja la comanda ENCENDIDA para que el test note si guardar el cobro la apaga.
 	print := domain.PrintSettings{
-		AutoPrintOnClose:   antes.AutoPrintOnClose,
-		PrintFreeModifiers: antes.PrintFreeModifiers,
+		AutoPrintOnClose: antes.AutoPrintOnClose, PrintFreeModifiers: antes.PrintFreeModifiers,
 		PrintKitchenTicket: true,
-		KitchenCanCharge:   true,
 	}
 	info := domain.BusinessInfo{
-		Name: antes.BusinessName, Address: antes.Address, Phone: antes.Phone,
+		Name: "Negocio de prueba", Address: antes.Address, Phone: antes.Phone,
 		HeaderNote: antes.HeaderNote, FooterNote: antes.FooterNote,
 	}
-	// Los ajustes de identificación se pasan como están: este test es de los del ticket y no debe
-	// moverlos de paso.
 	ident := domain.IdentitySettings{
-		PinOnlyUnlock:    antes.PinOnlyUnlock,
-		LockAfterSeconds: antes.LockAfterSeconds,
-		SessionHours:     antes.SessionHours,
+		PinOnlyUnlock: antes.PinOnlyUnlock, LockAfterSeconds: antes.LockAfterSeconds, SessionHours: antes.SessionHours,
 	}
 	if _, err := settings.SetBusinessInfo(ctx, info, print, ident, antes.Timezone, admin); err != nil {
-		t.Fatalf("SetBusinessInfo: %v", err)
+		t.Fatalf("SetBusinessInfo como gatobobah_app: %v", err)
 	}
 
-	tras, err := settings.Get(ctx)
+	_, down, _ := strings.Cut(sqlCompletoDeLaMigracion(t, "0084_drop_kitchen_can_charge.sql"), "-- +goose Down")
+	if _, err := st.Pool.Exec(ctx, down); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	var encendidos int
+	if err := st.Pool.QueryRow(ctx,
+		`select count(*) from business_settings where kitchen_can_charge`).Scan(&encendidos); err != nil {
+		t.Fatalf("el Down no devolvió la columna: %v", err)
+	}
+	if encendidos != 0 {
+		t.Fatalf("el Down dejó %d empresas con el tablero cobrando: el default es apagado", encendidos)
+	}
+}
+
+func sqlCompletoDeLaMigracion(t *testing.T, nombre string) string {
+	t.Helper()
+	crudo, err := os.ReadFile(filepath.Join("..", "..", "migrations", nombre))
 	if err != nil {
-		t.Fatalf("Get tras update: %v", err)
+		t.Fatalf("leer la migración: %v", err)
 	}
-	if !tras.KitchenCanCharge {
-		t.Error("el ajuste no se guardó")
-	}
-	if !tras.PrintKitchenTicket {
-		t.Error("encender el cobro apagó la comanda de cocina")
-	}
+	return string(crudo)
 }
 
 // El aviso del POS lista lo que falta por cobrar, en cualquier estado que siga siendo cobrable.

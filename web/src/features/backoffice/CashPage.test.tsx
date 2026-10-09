@@ -510,6 +510,52 @@ describe('las cuentas vivas en el cierre', () => {
     expect(confirmar).not.toHaveBeenCalled();
   });
 
+  // NO HAY FIADOS (decisión del dueño, 2026-10-09): un entregado que debe bloquea el cierre. La
+  // lista sale de `owing`, el mismo predicado que la guardia del servidor.
+  describe('los entregados que deben', () => {
+    const DEBEN = [
+      { id: 5, number: 5, name: 'Persa', total: '120.00', paid: '0.00' },
+      { id: 6, number: 6, name: '', total: '80.00', paid: '30.00' },
+    ];
+
+    test('bloquean arriba, con lo que debe cada uno', () => {
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      expect(screen.getByText(/Falta cobrar 2 pedidos/)).toBeInTheDocument();
+      expect(screen.getByText(/no cierra hasta que se cobren o se cancelen/)).toBeInTheDocument();
+      expect(screen.getByText('$120')).toBeInTheDocument();
+      expect(screen.getByText('$50')).toBeInTheDocument();
+    });
+
+    test('«Cobrar» lleva a su cuenta y mide 44 px', async () => {
+      const onAbrir = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={onAbrir} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      const cobrar = screen.getByRole('button', { name: 'Cobrar Persa' });
+      expect(parseInt(getComputedStyle(cobrar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      await userEvent.click(cobrar);
+      expect(onAbrir).toHaveBeenCalledWith('/pos?pedido=5');
+    });
+
+    test('«Cancelar» pide el motivo en una hoja y solo existe si no hay pagos', async () => {
+      const onCancelar = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={onCancelar} />);
+      expect(screen.queryByRole('button', { name: 'Cancelar #6' })).toBeNull();
+      const cancelar = screen.getByRole('button', { name: 'Cancelar Persa' });
+      expect(parseInt(getComputedStyle(cancelar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      expect(cancelar.parentElement).not.toBe(screen.getByRole('button', { name: 'Cobrar Persa' }).parentElement);
+      await userEvent.click(cancelar);
+      expect(onCancelar).not.toHaveBeenCalled();
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar pedido' }));
+      expect(onCancelar).toHaveBeenCalledWith(5, 'se fue sin pagar');
+    });
+
+    test('un entregado que debe no se lista dos veces', async () => {
+      wrap(<CuentasDelCierre pending={[]} owing={[{ id: 2, number: 2, name: 'Bosque de Noruega', total: '195.00', paid: '0.00' }]}
+        cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      expect(screen.getByRole('button', { name: /Cuentas pendientes \(1\)/ })).toBeInTheDocument();
+    });
+  });
+
   test('sin nada vivo no pinta nada', () => {
     wrap(<CuentasDelCierre pending={[]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
     expect(screen.queryByText(/Falta entregar|Cuentas pendientes/)).toBeNull();

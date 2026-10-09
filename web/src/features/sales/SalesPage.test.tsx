@@ -95,7 +95,7 @@ describe('pantalla de Ventas', () => {
   it('no muestra conceptos que valen cero', async () => {
     montar();
     await screen.findByText('Canceladas');
-    expect(screen.queryByText('Reembolsadas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Devoluciones')).not.toBeInTheDocument();
     expect(screen.queryByText('Renglones cancelados')).not.toBeInTheDocument();
   });
 

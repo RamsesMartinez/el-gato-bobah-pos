@@ -12,7 +12,7 @@ const settings: BusinessSettings = {
   autoPrintOnClose: false,
   timezone: 'America/Mexico_City', corteDeVista: 'medianoche', blindCashCount: false, folioScheme: 'razas',
   printFreeModifiers: true,
-  printKitchenTicket: false, kitchenCanCharge: false,
+  printKitchenTicket: false,
   pinOnlyUnlock: false, lockAfterSeconds: 180, sessionHours: 8,
   hasLogo: false,
   logoUpdatedAt: null,

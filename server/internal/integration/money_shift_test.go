@@ -282,11 +282,18 @@ func TestAnOrderChargedInALaterShiftIsExplainedInBoth(t *testing.T) {
 	}
 	prod := makeProduct(t, st, "Fiado d12", dec("554"), false)
 	ord := crearPedidoSimple(t, ctx, orders, prod, cajero)
-	if _, err := st.Pool.Exec(ctx, `update orders set status = 'entregada', completed_at = now() where id = $1`, ord); err != nil {
+	if _, err := st.Pool.Exec(ctx, `update orders set status = 'entregada', completed_at = now(), service_type = 'domicilio',
+		delivery_platform_id = (select min(id) from delivery_platforms) where id = $1`, ord); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, nil)); err != nil {
 		t.Fatalf("cerrar A: %v", err)
+	}
+	// Un fiado de ANTES de la regla (2026-10-09): un entregado de mostrador que debe ya no deja
+	// cerrar, así que el turno A se cierra con el pedido disfrazado de plataforma y se le regresa
+	// su forma después. Es el dato viejo que este test cuida.
+	if _, err := st.Pool.Exec(ctx, `update orders set service_type = 'mostrador', delivery_platform_id = null where id = $1`, ord); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := back.OpenSession(ctx, principal, aperturaAMano(decimal.Zero), cajero); err != nil {
 		t.Fatal(err)

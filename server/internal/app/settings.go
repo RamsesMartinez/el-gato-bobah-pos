@@ -55,8 +55,6 @@ type BusinessSettings struct {
 	// CorteDeVista: hasta cuándo se ve un entregado en pantalla. `medianoche` (default), `turno` o
 	// `cierre_de_caja`. No mueve el día de ninguna venta.
 	CorteDeVista string `json:"corteDeVista"`
-	// KitchenCanCharge: si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara.
-	KitchenCanCharge bool `json:"kitchenCanCharge"`
 	// BlindCashCount: si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia
 	// aparece DESPUÉS de confirmar el cierre — un control contra que alguien acomode lo que declara
 	// para que cuadre. Apagado por default: encenderlo enmienda FR-005 de la spec 003, y esa es una
@@ -109,7 +107,6 @@ func (s *SettingsService) Get(ctx context.Context) (BusinessSettings, error) {
 		PrintFreeModifiers: row.PrintFreeModifiers,
 		PrintKitchenTicket: row.PrintKitchenTicket,
 		CorteDeVista:       row.CorteDeVista,
-		KitchenCanCharge:   row.KitchenCanCharge,
 		BlindCashCount:     row.BlindCashCount,
 		PinOnlyUnlock:      row.PinOnlyUnlock,
 		LockAfterSeconds:   int(row.LockAfterSeconds),
@@ -234,7 +231,6 @@ func (s *SettingsService) SetBusinessInfo(ctx context.Context, info domain.Busin
 			PrintKitchenTicket: print.PrintKitchenTicket,
 			CorteDeVista:       corte,
 			FolioScheme:        db.FolioScheme(esquema),
-			KitchenCanCharge:   print.KitchenCanCharge,
 			BlindCashCount:     print.BlindCashCount,
 			PinOnlyUnlock:      ident.PinOnlyUnlock,
 			LockAfterSeconds:   int32(ident.LockAfterSeconds),

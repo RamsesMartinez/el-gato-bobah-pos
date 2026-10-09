@@ -82,6 +82,7 @@ export interface SalesSummary {
   tips: string;
   deliveryFees: string;
   cancelled: ConceptCount;
+  // Devoluciones HECHAS en el periodo, las mismas que `byMethod` ya restó (no el estado de los pedidos).
   refunded: ConceptCount;
   byMethod: MethodTotals[];
   cancelledLines: ConceptCount;

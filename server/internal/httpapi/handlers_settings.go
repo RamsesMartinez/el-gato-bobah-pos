@@ -40,7 +40,6 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		PrintKitchenTicket *bool            `json:"printKitchenTicket"`
 		CorteDeVista       *string          `json:"corteDeVista"`
 		FolioScheme        *string          `json:"folioScheme"`
-		KitchenCanCharge   *bool            `json:"kitchenCanCharge"`
 		BlindCashCount     *bool            `json:"blindCashCount"`
 		PinOnlyUnlock      *bool            `json:"pinOnlyUnlock"`
 		LockAfterSeconds   *int             `json:"lockAfterSeconds"`
@@ -68,7 +67,7 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 		body.HeaderNote != nil || body.FooterNote != nil || body.AutoPrintOnClose != nil ||
 		body.Timezone != nil || body.PrintFreeModifiers != nil || body.PrintKitchenTicket != nil ||
 		body.CorteDeVista != nil || body.FolioScheme != nil ||
-		body.KitchenCanCharge != nil || body.BlindCashCount != nil || body.PinOnlyUnlock != nil ||
+		body.BlindCashCount != nil || body.PinOnlyUnlock != nil ||
 		body.LockAfterSeconds != nil || body.SessionHours != nil {
 		cur, err := h.settings.Get(ctx)
 		if err != nil {
@@ -90,10 +89,9 @@ func (h *Handlers) UpdateBusinessSettings(w http.ResponseWriter, r *http.Request
 			PrintKitchenTicket: orBool(body.PrintKitchenTicket, cur.PrintKitchenTicket),
 			// El default es para el campo AUSENTE. Un valor presente y desconocido lo rechaza el
 			// servicio: caer al default ahí dejaría al dueño creyendo que configuró algo que no.
-			CorteDeVista:     orStr(body.CorteDeVista, cur.CorteDeVista),
-			FolioScheme:      orStr(body.FolioScheme, cur.FolioScheme),
-			KitchenCanCharge: orBool(body.KitchenCanCharge, cur.KitchenCanCharge),
-			BlindCashCount:   orBool(body.BlindCashCount, cur.BlindCashCount),
+			CorteDeVista:   orStr(body.CorteDeVista, cur.CorteDeVista),
+			FolioScheme:    orStr(body.FolioScheme, cur.FolioScheme),
+			BlindCashCount: orBool(body.BlindCashCount, cur.BlindCashCount),
 		}
 		ident := domain.IdentitySettings{
 			PinOnlyUnlock:    orBool(body.PinOnlyUnlock, cur.PinOnlyUnlock),
