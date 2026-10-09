@@ -1197,7 +1197,7 @@ function HistoryTab() {
   );
 
   const list = rows.length === 0 ? (
-    <Text color="fg.muted" py={4}>No hay cortes en esas fechas.</Text>
+    <Text color="fg.muted" py={4}>{filtrando ? 'No hay cortes en esas fechas.' : 'No hay más cortes.'}</Text>
   ) : (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm" interactive>
@@ -1279,7 +1279,7 @@ export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy
         <Text fontSize="sm" color="fg.muted">al</Text>
         <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Hasta"
           value={borrador.hasta} onChange={(e) => cambiar(borrador.desde, e.target.value)} />
-        {(desde !== '' || hasta !== '') && (
+        {(borrador.desde !== '' || borrador.hasta !== '' || desde !== '' || hasta !== '') && (
           <Button size="sm" minH="44px" variant="ghost" onClick={() => cambiar('', '')}>Quitar fechas</Button>
         )}
         {alReves && <Text fontSize="sm" color="fg.error" role="status">La fecha de inicio va después de la final.</Text>}
