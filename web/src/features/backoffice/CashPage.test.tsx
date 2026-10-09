@@ -138,6 +138,10 @@ test('el total de las ventas del corte declara qué deja fuera', () => {
     </Provider>,
   );
   expect(screen.getByText(/sin canceladas, reembolsadas ni propinas/i)).toBeInTheDocument();
+  // Spec 029: es lo VENDIDO, con lo que falta por cobrar adentro. Sin decirlo, $1,166 vendido
+  // contradecía a $480 de ingresos dos renglones arriba.
+  expect(screen.getByText(/importe vendido, incluye lo que falta por cobrar/i)).toBeInTheDocument();
+  expect(screen.getByText('Pedidos del corte')).toBeInTheDocument();
 });
 
 // Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un

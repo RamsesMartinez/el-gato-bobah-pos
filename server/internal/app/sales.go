@@ -192,13 +192,13 @@ func filaDeVenta(r db.ListSalesRow) SaleRow {
 		Tips: domain.Round2(r.Tips), Platform: texto(r.Platform), OpenedBy: texto(r.OpenedByName),
 		Methods: string(r.Methods), PlatformOrderRef: texto(r.PlatformOrderRef),
 		Paid:         domain.Round2(r.Paid),
-		LastRefundAt: instanteSuelto(r.LastRefundAt),
+		LastRefundAt: optionalTime(r.LastRefundAt),
 	}
 }
 
-// instanteSuelto convierte el `max()` sin tipo de la consulta: pgx lo entrega como time.Time, o nil
+// optionalTime convierte el `max()` sin tipo de la consulta: pgx lo entrega como time.Time, o nil
 // cuando el pedido no tiene devoluciones.
-func instanteSuelto(v any) *time.Time {
+func optionalTime(v any) *time.Time {
 	if t, ok := v.(time.Time); ok {
 		return &t
 	}
@@ -234,7 +234,7 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 	if err != nil {
 		return nil, err
 	}
-	pendiente, err := s.porCobrar(ctx, f, desde, hasta, tipo)
+	pendiente, err := s.pending(ctx, f, desde, hasta, tipo)
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +253,8 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 	}, nil
 }
 
-// porCobrar: lo que falta por cobrar de los pedidos del periodo, con su gemela de pendientes.
-func (s *SalesService) porCobrar(ctx context.Context, f domain.SalesFilter, desde, hasta pgtype.Date, tipo *db.ServiceType) (domain.ConceptCount, error) {
+// pending: lo que falta por cobrar de los pedidos del periodo, con su gemela de pendientes.
+func (s *SalesService) pending(ctx context.Context, f domain.SalesFilter, desde, hasta pgtype.Date, tipo *db.ServiceType) (domain.ConceptCount, error) {
 	if f.SoloSinFolio() {
 		r, err := s.store.QC(ctx).SalesPendingSinFolio(ctx, db.SalesPendingSinFolioParams{Desde: desde, Hasta: hasta, ServiceType: tipo})
 		if err != nil {

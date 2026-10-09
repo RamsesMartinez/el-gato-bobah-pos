@@ -1801,8 +1801,8 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	// Un turno ABIERTO no tiene totales guardados: se calculan en vivo con la misma función que
 	// Cajas (spec 029). Leía el snapshot vacío y el Histórico decía «Sin ingresos» mientras Cajas
 	// decía $630.
-	if string(sess.Status) == "abierta" {
-		if err := s.detalleEnVivo(ctx, sess, view); err != nil {
+	if sess.Status == db.SessionStatusAbierta {
+		if err := s.liveDetail(ctx, sess, view); err != nil {
 			return nil, err
 		}
 	}
@@ -1821,10 +1821,10 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	return view, nil
 }
 
-// detalleEnVivo pone en el detalle de un turno abierto lo que Cajas calcula en vivo: totales por
+// liveDetail pone en el detalle de un turno abierto lo que Cajas calcula en vivo: totales por
 // medio, desglose y arqueo. Lo demás del detalle (ventas, movimientos, devoluciones) ya se lee en
 // vivo. El ocultamiento del arqueo ciego lo aplica SessionDetail después, sobre esto mismo.
-func (s *BackofficeService) detalleEnVivo(ctx context.Context, sess db.GetSessionRow, view *SessionDetailView) error {
+func (s *BackofficeService) liveDetail(ctx context.Context, sess db.GetSessionRow, view *SessionDetailView) error {
 	reg, err := s.store.QC(ctx).GetCashRegister(ctx, sess.RegisterID)
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { backofficeApi, type ReportPreset } from '../../api/backoffice';
 import { money } from '../../utils/format';
+import { round2 } from '../../domain/cobro';
 import { Page } from '../../components/Page';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { validarRango } from '../../domain/rangoDeFechas';
@@ -66,6 +67,7 @@ export function ReportsPage() {
   const rango = sales.data?.range;
 
   const totalRevenue = sales.data?.byDay.reduce((s, d) => s + Number(d.revenue), 0) ?? 0;
+  const totalCobrado = round2(sales.data?.byMethod.reduce((s, m) => s + Number(m.total), 0) ?? 0);
   const totalOrders = sales.data?.byDay.reduce((s, d) => s + d.orders, 0) ?? 0;
   const totalTips = tips.data?.byEmployee.reduce((s, e) => s + Number(e.tips), 0) ?? 0;
 
@@ -97,7 +99,11 @@ export function ReportsPage() {
       {sales.isLoading && <Center py={10}><Spinner size="xl" /></Center>}
 
       <HStack mb={4} flexWrap="wrap">
-        <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Ventas</Stat.Label><Stat.ValueText>{money(totalRevenue)}</Stat.ValueText></Stat.Root>
+        {/* Dos cifras distintas y rotuladas (spec 029): lo cobrado neto es lo que se factura y sale de
+            los medios del servidor; lo vendido es el importe de los pedidos, con lo por cobrar. Una
+            sola tarjeta «Ventas» con lo vendido contradecía a los medios de abajo sin explicarlo. */}
+        <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Cobrado neto</Stat.Label><Stat.ValueText>{money(totalCobrado)}</Stat.ValueText><Stat.HelpText>cobrado − devuelto</Stat.HelpText></Stat.Root>
+        <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Vendido</Stat.Label><Stat.ValueText>{money(totalRevenue)}</Stat.ValueText><Stat.HelpText>incluye lo que falta por cobrar</Stat.HelpText></Stat.Root>
         <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Pedidos</Stat.Label><Stat.ValueText>{totalOrders}</Stat.ValueText></Stat.Root>
         <Stat.Root bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px"><Stat.Label>Propinas</Stat.Label><Stat.ValueText>{money(totalTips)}</Stat.ValueText></Stat.Root>
       </HStack>

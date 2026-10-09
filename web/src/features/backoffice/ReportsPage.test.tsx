@@ -142,5 +142,18 @@ describe('pantalla de Reportes', () => {
     expect(await screen.findByText('8 oct')).toBeInTheDocument();
     expect(screen.queryByText('2026-10-08')).toBeNull();
   });
+
+  // «Ventas $1,166» arriba de medios que sumaban $480: el vendido y el cobrado se rotulan, y el
+  // cobrado sale de los medios del servidor.
+  it('arriba se distingue lo vendido de lo cobrado neto', async () => {
+    api.reportSales.mockResolvedValue({ range: rango,
+      byDay: [{ business_date: '2026-10-08', orders: 7, revenue: '1166' }],
+      byMethod: [{ method: 'Efectivo', payments: 4, total: '345.83' }, { method: 'Tarjeta débito', payments: 2, total: '135' }] });
+    montar();
+    expect(await screen.findByText('Cobrado neto')).toBeInTheDocument();
+    expect(await screen.findByText('$480.83')).toBeInTheDocument();
+    expect(screen.getByText('Vendido')).toBeInTheDocument();
+    expect(screen.getByText(/incluye lo que falta por cobrar/)).toBeInTheDocument();
+  });
 });
 

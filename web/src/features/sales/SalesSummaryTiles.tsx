@@ -28,20 +28,20 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
 
   const pendiente = resumen.pending ?? { count: 0, amount: '0' };
   return (
-    // UNA sola fila con scroll horizontal, en este orden: Total → medios → Por cobrar → separador →
+    // UNA sola fila con scroll horizontal, en este orden: Total → Por cobrar → medios → separador →
     // lo demás. Medido a 1024×600: dos filas (tiles y medios) dejaban la tabla en DOS renglones. Y
     // el orden no es estético: los medios son lo que prueba que el Total cuadra, así que van pegados
     // a él y no pasado el borde derecho. El degradado del borde avisa que la fila sigue.
     <Box position="relative">
       <HStack gap={2} overflowX="auto" pb={1} pr={8} css={{ scrollbarWidth: 'none' }} align="stretch">
         <Tile label="Total" valor={money(resumen.total)} nota="cobrado − devuelto" destacado />
-        {resumen.byMethod.map((m) => (
-          <Medio key={m.methodId} m={m} />
-        ))}
         {pendiente.count > 0 && (
           <Tile label="Por cobrar" valor={money(pendiente.amount)} tono="orange"
             nota={`no entra al total · ${pendiente.count} ${pendiente.count === 1 ? 'pedido' : 'pedidos'}`} />
         )}
+        {resumen.byMethod.map((m) => (
+          <Medio key={m.methodId} m={m} />
+        ))}
 
         <Box alignSelf="stretch" borderLeftWidth="1px" mx={1} flexShrink={0} />
         <Tile label="Ventas" valor={String(resumen.count)} nota="sin canceladas" />

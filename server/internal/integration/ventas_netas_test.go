@@ -68,9 +68,11 @@ func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
 	for _, caso := range []struct {
 		nombre string
 		antes  func()
+		quiere error
 	}{
-		{"renglón ya devuelto", func() {}},
-		{"tras devolver la cuenta entera", func() { refund(t, ctx, orders, ord, nil, "40", cajero) }},
+		{"renglón ya devuelto", func() {}, domain.ErrNothingLeftOnLine},
+		// Con el pedido entero devuelto lo cierto es eso, no algo del producto.
+		{"tras devolver la cuenta entera", func() { refund(t, ctx, orders, ord, nil, "40", cajero) }, domain.ErrNothingLeftToRefund},
 	} {
 		caso.antes()
 		monto, err := orders.PorDevolver(ctx, ord, &lines[0])
@@ -78,9 +80,21 @@ func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
 			t.Fatalf("%s: PorDevolver: %v", caso.nombre, err)
 		}
 		err = orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, LineID: &lines[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
-		if !errors.Is(err, domain.ErrNothingLeftOnLine) {
-			t.Fatalf("%s: err = %v, quiere «de ese producto ya no queda nada por devolver»", caso.nombre, err)
+		if !errors.Is(err, caso.quiere) || err.Error() != caso.quiere.Error() {
+			t.Fatalf("%s: err = %v, quiere %v", caso.nombre, err, caso.quiere)
 		}
+	}
+
+	// Un producto de un pedido SIN cobros: nada se devolvió nunca, así que «ya no queda nada por
+	// devolver de ese producto» sería falso. Dice que no se ha cobrado, como antes.
+	sinCobrar, lineas := twoLineOrder(t, ctx, st, orders, "029s", "60", "40", cajero)
+	monto, err := orders.PorDevolver(ctx, sinCobrar, &lineas[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = orders.Devolver(ctx, app.DevolucionCmd{OrderID: sinCobrar, LineID: &lineas[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
+	if !errors.Is(err, domain.ErrSinCobrosQueDevolver) {
+		t.Fatalf("producto de un pedido sin cobros: err = %v, quiere ErrSinCobrosQueDevolver", err)
 	}
 }
 

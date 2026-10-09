@@ -1300,7 +1300,7 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
 
   if (total === 0) {
     return (
-      <Section title="Ventas del corte">
+      <Section title="Pedidos del corte">
         <Text fontSize="sm" color="fg.muted">Este corte no cobró ninguna venta.</Text>
       </Section>
     );
@@ -1308,10 +1308,12 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
 
   const recortadas = total > ventas.length;
   return (
-    <Section title="Ventas del corte">
+    <Section title="Pedidos del corte">
       <Text fontSize="sm" color="fg.muted" mb={2}>
         {total === 1 ? '1 venta' : `${total} ventas`} · {money(session.salesTotal ?? '0', session.currency)}
         {' '}sin canceladas, reembolsadas ni propinas
+        {/* Es lo VENDIDO, no lo cobrado: los ingresos de arriba son lo que entró (spec 029). */}
+        {' '}· importe vendido, incluye lo que falta por cobrar
         {recortadas && ` · se muestran las ${ventas.length} más recientes`}
       </Text>
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="240px" overflowY="auto">

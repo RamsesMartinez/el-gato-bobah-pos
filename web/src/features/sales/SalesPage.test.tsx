@@ -261,6 +261,14 @@ describe('SalesPage · ventas netas', () => {
 
   // El pie contaba pedidos de la lista (con canceladas) y el recuadro ventas sin canceladas: «33»
   // contra «28» sin decir por qué.
+  // Con tres medios o más, «Por cobrar» quedaba pasado el borde derecho.
+  it('por cobrar va pegado al Total, antes de los medios', async () => {
+    montar();
+    const porCobrar = await screen.findByText('Por cobrar');
+    const efectivo = screen.getAllByText('Efectivo').find((e) => e.closest('table') === null)!;
+    expect(porCobrar.compareDocumentPosition(efectivo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('el pie dice que cuenta pedidos de la lista', async () => {
     montar();
     expect(await screen.findByText('2 pedidos en la lista')).toBeInTheDocument();
