@@ -74,6 +74,7 @@ func (q *Queries) CountSalesSinFolio(ctx context.Context, arg CountSalesSinFolio
 const findSaleByPlatformRef = `-- name: FindSaleByPlatformRef :many
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -119,6 +120,7 @@ type FindSaleByPlatformRefRow struct {
 	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	WrittenOffAmount decimal.Decimal    `json:"written_off_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
@@ -169,6 +171,7 @@ func (q *Queries) FindSaleByPlatformRef(ctx context.Context, arg FindSaleByPlatf
 			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
+			&i.WrittenOffAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
@@ -192,6 +195,7 @@ const listSales = `-- name: ListSales :many
 
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -256,6 +260,7 @@ type ListSalesRow struct {
 	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	WrittenOffAmount decimal.Decimal    `json:"written_off_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
@@ -332,6 +337,7 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
+			&i.WrittenOffAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
@@ -354,6 +360,7 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 const listSalesSinFolio = `-- name: ListSalesSinFolio :many
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -419,6 +426,7 @@ type ListSalesSinFolioRow struct {
 	DiscountTotal    decimal.Decimal    `json:"discount_total"`
 	DeliveryFee      decimal.Decimal    `json:"delivery_fee"`
 	RefundAmount     decimal.Decimal    `json:"refund_amount"`
+	WrittenOffAmount decimal.Decimal    `json:"written_off_amount"`
 	PlatformOrderRef *string            `json:"platform_order_ref"`
 	Platform         *string            `json:"platform"`
 	OpenedByName     *string            `json:"opened_by_name"`
@@ -463,6 +471,7 @@ func (q *Queries) ListSalesSinFolio(ctx context.Context, arg ListSalesSinFolioPa
 			&i.DiscountTotal,
 			&i.DeliveryFee,
 			&i.RefundAmount,
+			&i.WrittenOffAmount,
 			&i.PlatformOrderRef,
 			&i.Platform,
 			&i.OpenedByName,
