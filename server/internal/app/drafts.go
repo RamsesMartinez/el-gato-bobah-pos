@@ -198,6 +198,9 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 			}
 			return err
 		})
+		if isDraftIDCollision(err) {
+			err = errDraftIDTaken
+		}
 		if !isDraftRace(err) {
 			break
 		}
@@ -226,6 +229,15 @@ func isDraftRace(err error) bool {
 // errDraftIDTaken: el `on conflict (id)` no insertó. Se devuelve como error para que la transacción
 // se deshaga —ya había gastado un nombre de la bolsa— y Create decide afuera qué fue.
 var errDraftIDTaken = errors.New("draft id already taken")
+
+// isDraftIDCollision: el mismo id entró a la vez por dos transacciones y el choque no llegó por el
+// `on conflict (id)` sino por el otro único que incluye el id (el de las FKs compuestas), que
+// Postgres revisa sin el árbitro. Es el mismo caso que errDraftIDTaken.
+func isDraftIDCollision(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		(pgErr.ConstraintName == "order_drafts_pkey" || pgErr.ConstraintName == "order_drafts_id_company_key")
+}
 
 // sameIDOutcome resuelve un id que ya existía, mirando DESPUÉS de deshacer: el `on conflict` esperó a
 // la transacción vecina, así que si la cuenta es de esta empresa ya se ve.
