@@ -456,7 +456,7 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 			return err
 		}
 		if cmd.Modifiers != nil {
-			if err := checkOptions(ctx, q, in.Modifiers); err != nil {
+			if err := checkLineSells(ctx, q, in); err != nil {
 				return err
 			}
 		}
@@ -650,10 +650,7 @@ func addDraftLineInTx(ctx context.Context, q *db.Queries, draftID uuid.UUID, c D
 		}
 		lineID = *c.IntoLineID
 	default:
-		if err := checkProduct(ctx, q, c.ProductID); err != nil {
-			return err
-		}
-		if err := checkOptions(ctx, q, c.Modifiers); err != nil {
+		if err := checkLineSells(ctx, q, domain.DraftLineInput{ProductID: c.ProductID, Qty: c.Qty, Modifiers: c.Modifiers, Notes: c.Notes}); err != nil {
 			return err
 		}
 		rows, err := q.ListDraftLines(ctx, draftID)
@@ -713,45 +710,24 @@ func checkSum(cur, add decimal.Decimal) error {
 	return nil
 }
 
-// checkProduct rechaza el producto que no está en el menú de ESTA empresa (bajo RLS: el de otra
-// no se ve) o que ya no se vende. Sin esto el renglón entraría y la cuenta se descubriría
-// imposible de enviar hasta el final.
-func checkProduct(ctx context.Context, q *db.Queries, productID int64) error {
-	rows, err := q.GetPricedProducts(ctx, []int64{productID})
+// checkLineSells arma el renglón con la MISMA regla que el pedido (domain.BuildOrder) antes de
+// guardarlo: producto de esta empresa (bajo RLS: el de otra no se ve) y a la venta, opciones que
+// existen, que son extras de ese producto y que no pasan de su tope. Sin esto el renglón entraba y la
+// cuenta lo mostraba «ya no se vende» hasta que enviar lo rechazaba.
+//
+// Se valúa con la lista de mostrador: lo que se revisa son reglas del catálogo, no precios.
+func checkLineSells(ctx context.Context, q *db.Queries, in domain.DraftLineInput) error {
+	lista, err := listaDePreciosQ(ctx, q, nil)
 	if err != nil {
 		return err
 	}
-	if len(rows) == 0 {
-		return domain.ProductUnavailable{ProductID: productID}
-	}
-	if !rows[0].IsActive {
-		return domain.ProductUnavailable{ProductID: productID, Name: rows[0].Name}
-	}
-	return nil
-}
-
-func checkOptions(ctx context.Context, q *db.Queries, mods []domain.DraftModifier) error {
-	if len(mods) == 0 {
-		return nil
-	}
-	ids := make([]int64, 0, len(mods))
-	for _, m := range mods {
-		ids = append(ids, m.OptionID)
-	}
-	rows, err := q.GetPricedOptions(ctx, ids)
+	row := db.OrderDraftLine{ProductID: in.ProductID, Qty: in.Qty, Modifiers: modsJSON(in.Modifiers)}
+	products, options, err := pricedCatalog(ctx, q, lista, []db.OrderDraftLine{row})
 	if err != nil {
 		return err
 	}
-	found := make(map[int64]bool, len(rows))
-	for _, r := range rows {
-		found[r.ID] = true
-	}
-	for _, id := range ids {
-		if !found[id] {
-			return fmt.Errorf("%w (id %d)", domain.ErrOptionNotFound, id)
-		}
-	}
-	return nil
+	_, err = domain.BuildOrder([]domain.OrderLineInput{orderLineOf(in.ProductID, in.Qty, in.Modifiers, in.Notes)}, products, options)
+	return err
 }
 
 // keepDiscountWithinSale rechaza el cambio de renglones que deja un descuento en pesos por encima de
