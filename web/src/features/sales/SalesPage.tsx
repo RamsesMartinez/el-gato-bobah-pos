@@ -272,6 +272,7 @@ export function SalesPage() {
 // se resolvió al cancelarlo.
 function porCobrarDe(v: SaleRow): number {
   if (v.status === 'cancelada' || v.status === 'reembolsada') return 0;
-  const falta = round2(Number(v.total) - Number(v.paid ?? 0));
+  // Lo dado por perdido («cancelar lo que falta») ya no se debe.
+  const falta = round2(Number(v.total) - Number(v.paid ?? 0) - Number(v.writtenOff ?? 0));
   return falta > 0 ? falta : 0;
 }

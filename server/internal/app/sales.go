@@ -56,6 +56,8 @@ type SaleRow struct {
 	Refund      decimal.Decimal `json:"refund"`
 	// Paid: lo cobrado. Con Total dice cuánto falta sin abrir el pedido (spec 029).
 	Paid decimal.Decimal `json:"paid"`
+	// WrittenOff: lo dado por perdido («cancelar lo que falta», 2026-10-09); ya no se debe.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
 	// LastRefundAt: cuándo fue la última devolución, null si no hubo. Es lo que deja reconocer en
 	// la lista una devolución de otro mes sin abrir el pedido (spec 029).
 	LastRefundAt *time.Time      `json:"lastRefundAt"`
@@ -195,6 +197,7 @@ func filaDeVenta(r db.ListSalesRow) SaleRow {
 		Tips: domain.Round2(r.Tips), Platform: texto(r.Platform), OpenedBy: texto(r.OpenedByName),
 		Methods: string(r.Methods), PlatformOrderRef: texto(r.PlatformOrderRef),
 		Paid:         domain.Round2(r.Paid),
+		WrittenOff:   domain.Round2(r.WrittenOffAmount),
 		LastRefundAt: optionalTime(r.LastRefundAt),
 	}
 }
@@ -387,7 +390,7 @@ func (s *SalesService) resumenDeLaBusqueda(ctx context.Context, f domain.SalesFi
 		}
 		netos = append(netos, neto)
 		vivo := r.Status != domain.StatusCancelada && r.Status != domain.StatusReembolsada
-		if falta := domain.PorCobrar(r.Total, r.Paid); vivo && falta.IsPositive() {
+		if falta := domain.Owed(r.Total, r.Paid, r.WrittenOff); vivo && falta.IsPositive() {
 			pendiente.Count++
 			pendiente.Amount = pendiente.Amount.Add(falta)
 		}

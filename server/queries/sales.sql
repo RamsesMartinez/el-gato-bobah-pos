@@ -36,6 +36,7 @@
 -- páginas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -79,6 +80,7 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- línea es lo único que las distingue, y se editan juntas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -330,6 +332,8 @@ where f.total - coalesce(p.pagado, 0) > 0;
 select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
 from orders o
 where o.written_off_business_date between @desde and @hasta
+  and o.merged_into_order_id is null
+  and o.status not in ('cancelada', 'reembolsada')
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
 -- name: SalesCancelledLines :one
@@ -384,6 +388,7 @@ where o.delivery_platform_id is not null and o.platform_order_ref is null
 -- Sin filtro de empresa: RLS lo agrega.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,

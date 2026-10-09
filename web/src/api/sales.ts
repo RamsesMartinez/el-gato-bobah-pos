@@ -41,6 +41,8 @@ export interface SaleRow {
   // Cuándo fue la última devolución; null si no hubo. Es lo que deja reconocer una devolución de
   // otro mes en la lista.
   lastRefundAt: string | null;
+  // Lo dado por perdido («cancelar lo que falta», 2026-10-09); ya no está en lo que falta.
+  writtenOff?: string;
 }
 
 export interface SalesRange { from: string; to: string }

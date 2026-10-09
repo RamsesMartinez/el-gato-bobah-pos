@@ -149,7 +149,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
                 <Dato k="Cobrado" v={money(venta.paid ?? '0')} />
               )}
               {Number(venta.paid ?? 0) < Number(venta.total) && venta.status !== 'cancelada' && venta.status !== 'reembolsada' && (
-                <Dato k="Por cobrar" v={money(round2(Number(venta.total) - Number(venta.paid ?? 0)))} />
+                <Dato k="Por cobrar" v={money(round2(Number(venta.total) - Number(venta.paid ?? 0) - Number(venta.writtenOff ?? 0)))} />
               )}
             </VStack>
 

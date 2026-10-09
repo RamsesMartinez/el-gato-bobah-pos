@@ -263,6 +263,16 @@ describe('SalesPage · ventas netas', () => {
     expect(screen.getAllByText(/30 ago/).length).toBeGreaterThan(1);
   });
 
+  // Visto en la captura del ambiente de pruebas (2026-10-09): un pedido con su resto dado por
+  // perdido seguía diciendo «Por cobrar $6» en la lista mientras el recuadro ya no lo contaba.
+  it('un pedido con lo que faltaba dado por perdido no dice «Por cobrar»', async () => {
+    api.list.mockResolvedValue({ ...pagina, items: [{ ...pagina.items[0], refund: '0', lastRefundAt: null,
+      total: '100.00', paid: '40.00', writtenOff: '60.00' }] });
+    montar();
+    expect(await screen.findByText('Tigre')).toBeInTheDocument();
+    expect(screen.queryByText(/^Por cobrar \$/)).toBeNull();
+  });
+
   it('el renglón de un pedido con saldo dice cuánto falta', async () => {
     montar();
     expect(await screen.findByText('Por cobrar $180')).toBeInTheDocument();

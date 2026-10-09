@@ -884,4 +884,4 @@ update orders
    set written_off_amount = sqlc.arg(amount), written_off_reason = sqlc.arg(reason),
        written_off_by = sqlc.arg(actor), written_off_at = now(),
        written_off_business_date = sqlc.arg(business_date)
- where id = sqlc.arg(id) and written_off_at is null;
+ where id = sqlc.arg(id) and written_off_at is null and status = 'entregada';

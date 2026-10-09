@@ -169,6 +169,7 @@ export function Ticket(props: Props) {
                   <LuBan /> Cancelar pedido
                 </MenuItem>
               )}
+              {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && <MenuSeparator />}
               {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && (
                 <MenuItem value="cancelar-resto" minH="48px" color="red.fg" onClick={onCancelarResto}>
                   <LuBan /> Cancelar lo que falta
