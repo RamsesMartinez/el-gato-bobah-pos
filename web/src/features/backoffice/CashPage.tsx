@@ -1,7 +1,7 @@
 import { useState, Fragment, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
-import { posApi } from '../../api/pos';
+import { descartarCuenta } from '../pos/descartarCuenta';
 import type { AccountItem } from '../../types/pos';
 import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
 import {
@@ -750,9 +750,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const navigate = useNavigate();
   // Descartar una cuenta que se capturaba y nadie mandó. No bloquea el cierre, pero quien cierra
   // puede limpiarla desde aquí (D-8).
-  const descartarCuenta = async (draftId: string) => {
+  const descartarDelCierre = async (draftId: string, version: number) => {
     try {
-      await posApi.discardDraft(draftId);
+      await descartarCuenta(qc, draftId, version);
     } catch (e) {
       toaster.create({ title: 'No se pudo descartar', description: mensajeDeError(e), type: 'error' });
     }
@@ -928,7 +928,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
               de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
           <CuentasDelCierre pending={session.pending} cuentas={session.liveAccounts ?? []}
-            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarCuenta} />
+            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} />
 
           {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
               decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
@@ -1368,7 +1368,7 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
   pending: PendingOrder[];
   cuentas: AccountItem[];
   onAbrir: (ruta: string) => void;
-  onDescartar: (draftId: string) => void;
+  onDescartar: (draftId: string, version: number) => void;
 }) {
   const [abierta, setAbierta] = useState(false);
   const [descartando, setDescartando] = useState<AccountItem | null>(null);
@@ -1426,7 +1426,7 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
                       Abrir
                     </Button>
                   </Box>
-                  {c.kind === 'draft' && c.draftId && (
+                  {c.kind === 'draft' && c.draftId && c.draftVersion != null && (
                     // ≥ 24 px de «Abrir»: es destructivo y la fila mide ~52 px.
                     <Box flexShrink={0} pl={6}>
                       <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Descartar ${nombre(c)}`}
@@ -1449,7 +1449,7 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
         onConfirm={() => {
           const c = descartando;
           setDescartando(null);
-          if (c?.draftId) onDescartar(c.draftId);
+          if (c?.draftId && c.draftVersion != null) onDescartar(c.draftId, c.draftVersion);
         }} />
     </VStack>
   );

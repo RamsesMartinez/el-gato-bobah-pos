@@ -454,7 +454,7 @@ const viva = (over: Partial<AccountItem> & { key: string }): AccountItem => ({
 describe('las cuentas vivas en el cierre', () => {
   const VIVAS = [
     viva({ key: 'o:2' }),
-    viva({ key: 'd:a', kind: 'draft', draftId: 'a', orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
+    viva({ key: 'd:a', kind: 'draft', draftId: 'a', draftVersion: 3, orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
   ];
 
   test('lo que bloquea va arriba y «Abrir» lleva a su cuenta', async () => {
@@ -506,7 +506,7 @@ describe('las cuentas vivas en el cierre', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Descartar Levkoy' }));
     expect(onDescartar).not.toHaveBeenCalled();
     await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
-    expect(onDescartar).toHaveBeenCalledWith('a');
+    expect(onDescartar).toHaveBeenCalledWith('a', 3);
     expect(confirmar).not.toHaveBeenCalled();
   });
 

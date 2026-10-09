@@ -64,7 +64,9 @@ insert into order_draft_adds (op_id, draft_id, line_id) values (@op_id, @draft_i
 on conflict do nothing;
 
 -- name: TouchDraft :exec
-update order_drafts set updated_at = now() where id = $1;
+-- Todo cambio de renglones pasa por aquí: avanza la versión de la cuenta, que es la que descartar
+-- exige.
+update order_drafts set updated_at = now(), version = version + 1 where id = $1;
 
 -- name: UpdateDraftHeader :execrows
 -- La cabecera completa, con la versión esperada (D-5). Quien llama arma los valores finales: aquí no
@@ -75,7 +77,7 @@ set service_type = @service_type, customer_name = sqlc.narg('customer_name'),
     delivery_fee = @delivery_fee, discount_amount = sqlc.narg('discount_amount'),
     discount_percent = sqlc.narg('discount_percent'), discount_set_by = sqlc.narg('discount_set_by'),
     platform_ref_set_by = sqlc.narg('platform_ref_set_by'),
-    header_version = header_version + 1, updated_at = now()
+    header_version = header_version + 1, version = version + 1, updated_at = now()
 where id = @id and header_version = @expected_version and status = 'capturando';
 
 -- name: ListLiveDraftNames :many

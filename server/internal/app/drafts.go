@@ -86,11 +86,13 @@ type ChangeDraftLineCmd struct {
 
 // DraftView es la cuenta como la pinta la tableta, con precios calculados en cada lectura.
 type DraftView struct {
-	ID               uuid.UUID       `json:"id"`
-	OrderID          *int64          `json:"orderId"`
-	FolioName        *string         `json:"folioName"`
-	Status           string          `json:"status"`
-	HeaderVersion    int32           `json:"headerVersion"`
+	ID            uuid.UUID `json:"id"`
+	OrderID       *int64    `json:"orderId"`
+	FolioName     *string   `json:"folioName"`
+	Status        string    `json:"status"`
+	HeaderVersion int32     `json:"headerVersion"`
+	// Version avanza con cualquier cambio de la cuenta (renglones o cabecera). Descartar la exige.
+	Version          int32           `json:"version"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	OpenedBy         string          `json:"openedBy"`
@@ -978,7 +980,7 @@ func buildDraftView(ctx context.Context, q *db.Queries, d db.GetDraftRow) (*Draf
 	}
 	v := &DraftView{
 		ID: d.ID, OrderID: d.OrderID, FolioName: d.FolioName, Status: d.Status, HeaderVersion: d.HeaderVersion,
-		UpdatedAt: d.UpdatedAt, CreatedAt: d.CreatedAt, OpenedBy: d.OpenedByName, ServiceType: string(d.ServiceType),
+		Version: d.Version, UpdatedAt: d.UpdatedAt, CreatedAt: d.CreatedAt, OpenedBy: d.OpenedByName, ServiceType: string(d.ServiceType),
 		CustomerName: d.CustomerName, PlatformID: d.DeliveryPlatformID, PlatformOrderRef: d.PlatformOrderRef,
 		DeliveryFee: d.DeliveryFee, Lines: make([]DraftLineView, 0, len(rows)), Unavailable: []string{},
 	}
@@ -1539,7 +1541,11 @@ func liveLineIDs(o *OrderView) []int64 {
 // Discard cierra una cuenta que no se mandó a cocina: queda «descartada» como rastro —no es venta
 // cancelada, no gasta folio— y su nombre vuelve a la bolsa (D-7). Descartarla dos veces no es error.
 // Una ya enviada se rechaza: ya es un pedido y se quita cancelándolo, con motivo y permiso.
-func (s *DraftsService) Discard(ctx context.Context, id uuid.UUID, actor int64) error {
+//
+// Exige la versión que vio la tableta, comparada con la cuenta YA bloqueada: descartar se lleva todo
+// lo de adentro, y sin la comparación una tableta tiraba lo que otra acababa de agregar sin que
+// ninguna se enterara. El barrido de 12 horas no pasa por aquí: tiene su propia guarda (`seen`).
+func (s *DraftsService) Discard(ctx context.Context, id uuid.UUID, expectedVersion int32, actor int64) error {
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		d, err := q.LockDraft(ctx, id)
 		if err != nil {
@@ -1553,6 +1559,9 @@ func (s *DraftsService) Discard(ctx context.Context, id uuid.UUID, actor int64) 
 			return nil
 		case domain.DraftSent:
 			return domain.ErrDraftAlreadySent
+		}
+		if d.Version != expectedVersion {
+			return domain.ErrDraftChanged
 		}
 		n, err := q.CountDraftLines(ctx, id)
 		if err != nil {

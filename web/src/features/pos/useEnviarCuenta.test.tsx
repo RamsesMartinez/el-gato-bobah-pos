@@ -14,7 +14,7 @@ vi.mock('../../components/ui/toaster', () => ({ toaster: toasts }));
 
 const PEDIDO = { id: 12, number: 3, folioName: 'Levkoy', total: '74.00', outstanding: '74.00' } as OrderView;
 const CUENTA: DraftView = {
-  id: 'd-1', orderId: 12, folioName: null, status: 'capturando', headerVersion: 1, updatedAt: '', createdAt: '',
+  id: 'd-1', orderId: 12, folioName: null, status: 'capturando', headerVersion: 1, version: 4, updatedAt: '', createdAt: '',
   openedBy: 'Ana', serviceType: 'mostrador', customerName: null, platformId: null, platformOrderRef: null,
   deliveryFee: '0.00', discount: null, subtotal: '29.00', discountTotal: '0.00', total: '29.00', unavailable: [],
   lines: [{ id: 'l-1', version: 1, productId: 41, productName: 'Coca', qty: '2', unitPrice: '14.50',
@@ -94,7 +94,7 @@ describe('a lo «Nuevo» de un pedido que ya se cerró (research R-9)', () => {
     expect(body.orderId).toBeNull();
     expect(body.id).not.toBe('d-1');
     expect(body.lines).toEqual([{ opId: expect.any(String), productId: 41, qty: '2', modifiers: [{ optionId: 7, qty: 1 }], notes: 'fría' }]);
-    await waitFor(() => expect(api.discardDraft).toHaveBeenCalledWith('d-1'));
+    await waitFor(() => expect(api.discardDraft).toHaveBeenCalledWith('d-1', 4));
     expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: body.id });
   });
 

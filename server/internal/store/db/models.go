@@ -1158,6 +1158,7 @@ type OrderDraft struct {
 	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
 	DiscardedBy        *int64             `json:"discarded_by"`
 	DiscardReason      *string            `json:"discard_reason"`
+	Version            int32              `json:"version"`
 }
 
 type OrderDraftAdd struct {

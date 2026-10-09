@@ -8,6 +8,7 @@ import { toaster } from '../../components/ui/toaster';
 import { usePosStore } from '../../stores/pos';
 import type { DraftView, OrderView } from '../../types/pos';
 import { uuid } from '../../utils/uuid';
+import { descartarCuenta } from './descartarCuenta';
 import { reportarResultado } from './useSinConexion';
 
 // MANDAR A COCINA (spec 030, US3; research R-4).
@@ -40,7 +41,8 @@ export function useEnviarCuenta({ onComanda }: Opciones) {
     });
     qc.setQueryData(['pos', 'draft', nueva.id], nueva);
     usePosStore.getState().seleccionar({ kind: 'draft', id: nueva.id });
-    await posApi.discardDraft(vieja.id).catch(() => undefined);
+    // Si otra tableta le agregó algo entretanto no se descarta: eso se queda a la vista en la vieja.
+    await descartarCuenta(qc, vieja.id, vieja.version).catch(() => undefined);
     qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
   };
 

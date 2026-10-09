@@ -26,11 +26,12 @@ import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
 import { claveDeSeleccion, usePosStore } from '../../stores/pos';
 import { accionPropia } from '../../stores/accionesPropias';
+import { descartarCuenta } from './descartarCuenta';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../../shared/ProductEditDialog';
 import { CancelarRenglonDialog } from '../../shared/CancelarRenglonDialog';
 import type {
-  AccountItem, CobroHecho, MenuProduct, OrderView, PedidoParaCobrar, TicketModifier,
+  AccountItem, CobroHecho, DraftView, MenuProduct, OrderView, PedidoParaCobrar, TicketModifier,
 } from '../../types/pos';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { money } from '../../utils/format';
@@ -216,7 +217,14 @@ export function POSPage() {
     if (!id) { cuentaNueva(); return; }
     try {
       await cuenta.esperar();
-      await accionPropia(() => posApi.discardDraft(id));
+      // La versión de la cuenta como la tiene esta pantalla —con lo propio ya guardado—: si otra
+      // tableta le agregó algo que aquí todavía no se ve, el servidor no la descarta.
+      const enPantalla = qc.getQueryData<DraftView>(['pos', 'draft', id]);
+      if (!enPantalla) {
+        qc.invalidateQueries({ queryKey: ['pos'] });
+        return;
+      }
+      if (!(await descartarCuenta(qc, id, enPantalla.version))) return;
       cuentaNueva();
       qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
       qc.invalidateQueries({ queryKey: ['pos', 'folio-names'] });

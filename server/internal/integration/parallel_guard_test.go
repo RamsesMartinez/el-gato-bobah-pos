@@ -18,11 +18,6 @@ var serialByDesign = map[string]string{
 	// Mide una consulta contra un techo de 30 ms; con otras pruebas peleando por el mismo Postgres
 	// el techo se rompe por ruido y no por la consulta.
 	"TestLiveAccountsStaysFast": "mide tiempo contra un techo",
-	// Prueba de carrera que en paralelo falla ~1 de cada 15 corridas: Discard bloquea solo la
-	// cuenta y no el pedido, así que puede descartar justo después de que createNewOfOrder le
-	// agregó un producto. Es un defecto del código de cuentas, no de la prueba; sale de aquí cuando
-	// se arregle.
-	"TestNewOfOrderNeverLandsInADiscardedDraft": "expone una carrera abierta en DraftsService.Discard",
 }
 
 // TestEveryIntegrationTestDeclaresHowItRuns vigila que la suite siga corriendo en paralelo.

@@ -64,7 +64,7 @@ vi.mock('../../hooks/useModifierDefaults', () => ({ useModifierDefaults: () => (
 
 function draft(over: Partial<DraftView> = {}): DraftView {
   return {
-    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1,
+    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1, version: 1,
     updatedAt: '', createdAt: '', openedBy: 'Ana', serviceType: 'mostrador', customerName: null,
     platformId: null, platformOrderRef: null, deliveryFee: '0.00', discount: { amount: '20.00' },
     lines: [{ id: 'l-1', version: 1, productId: 1, productName: 'Crepa', qty: '1', unitPrice: '95.00', modifiers: [], notes: '', lineTotal: '95.00', available: true }],

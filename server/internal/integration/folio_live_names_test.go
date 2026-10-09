@@ -199,7 +199,7 @@ func TestDiscardingANumberedDraftReleasesItsAnimal(t *testing.T) {
 	if *d.FolioName != "Persa 2" {
 		t.Fatalf("la cuenta nació %q, quería «Persa 2»", *d.FolioName)
 	}
-	if err := k.drafts.Discard(k.ctx, d.ID, k.user); err != nil {
+	if err := k.drafts.Discard(k.ctx, d.ID, d.Version, k.user); err != nil {
 		t.Fatal(err)
 	}
 	var queda int
