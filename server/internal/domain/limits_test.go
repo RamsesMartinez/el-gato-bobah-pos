@@ -1,13 +1,29 @@
 package domain
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
 )
 
-// d es un helper de test para construir decimales exactos desde string.
-func d(s string) decimal.Decimal { return decimal.RequireFromString(s) }
+// d parsea un decimal de prueba. Un exponente fuera de decimal.MaxDecodeExponent se arma con el
+// coeficiente y el exponente por separado: desde decimal 1.5 el parser lo rechaza, pero un valor
+// así todavía puede llegar al dominio sin pasar por él (aritmética, otra fuente), y las guardas
+// tienen que seguir probándose contra él.
+func d(s string) decimal.Decimal {
+	mant, exp, ok := strings.Cut(s, "e")
+	if !ok {
+		return decimal.RequireFromString(s)
+	}
+	m := decimal.RequireFromString(mant)
+	e, err := strconv.ParseInt(exp, 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	return decimal.NewFromBigInt(m.Coefficient(), m.Exponent()+int32(e))
+}
 
 func TestValidMoney(t *testing.T) {
 	cases := []struct {
@@ -69,7 +85,7 @@ func TestValidQty(t *testing.T) {
 func TestValidMoneyRechazaExponentesAbsurdosSinGastarCPU(t *testing.T) {
 	absurdos := []string{"1e1000", "1e1000000", "1e100000000", "1e-1000000", "-1e100000000"}
 	for _, s := range absurdos {
-		v := decimal.RequireFromString(s)
+		v := d(s)
 		if ValidMoney(v, true) {
 			t.Fatalf("%s debe rechazarse", s)
 		}
@@ -83,7 +99,7 @@ func TestValidMoneyRechazaExponentesAbsurdosSinGastarCPU(t *testing.T) {
 func TestValidMoneySigueAceptandoLoNormal(t *testing.T) {
 	buenos := []string{"0", "0.01", "1", "434.98", "9999999.99", "-0.01"}
 	for _, s := range buenos {
-		v := decimal.RequireFromString(s)
+		v := d(s)
 		if !ValidMoney(v, true) && !v.IsNegative() {
 			t.Fatalf("%s debe aceptarse", s)
 		}
@@ -99,7 +115,7 @@ func TestValidMoneySigueAceptandoLoNormal(t *testing.T) {
 // que una guarda que solo viviera en ValidMoney llegaría tarde.
 func TestRound2NoSeCuelgaConExponentesAbsurdos(t *testing.T) {
 	for _, s := range []string{"1e100000000", "1e-100000000", "-1e100000000"} {
-		v := decimal.RequireFromString(s)
+		v := d(s)
 		got := Round2(v)
 		// Se devuelve sin redondear, y por lo tanto sigue siendo inválido.
 		if ValidMoney(got, true) {
@@ -124,13 +140,13 @@ func TestRound2NoSeCuelgaConExponentesAbsurdos(t *testing.T) {
 func TestValidSignedMoneyAceptaElNegativoPeroNoElAbsurdo(t *testing.T) {
 	buenos := []string{"0", "-0.01", "-31.20", "51.77", "10000000", "-10000000"}
 	for _, s := range buenos {
-		if !ValidSignedMoney(decimal.RequireFromString(s)) {
+		if !ValidSignedMoney(d(s)) {
 			t.Fatalf("%s debe aceptarse: es un neto posible de una liquidación", s)
 		}
 	}
 	malos := []string{"10000000.01", "-10000000.01", "1e100000000", "-1e100000000", "1e-100000000"}
 	for _, s := range malos {
-		if ValidSignedMoney(decimal.RequireFromString(s)) {
+		if ValidSignedMoney(d(s)) {
 			t.Fatalf("%s debe rechazarse: o desborda el numeric o quema CPU al redondearlo", s)
 		}
 	}

@@ -19,14 +19,14 @@ const FRONTEND_PORT = Number(process.env.CONSOLA_PORT) || 3100;
 const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 8080;
 
 export default defineConfig({
-  root: path.resolve(__dirname, 'consola'),
-  publicDir: path.resolve(__dirname, 'public-consola'),
+  root: path.resolve(import.meta.dirname, 'consola'),
+  publicDir: path.resolve(import.meta.dirname, 'public-consola'),
   plugins: [react()],
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
   build: {
-    outDir: path.resolve(__dirname, 'dist-consola'),
+    outDir: path.resolve(import.meta.dirname, 'dist-consola'),
     emptyOutDir: true,
   },
   server: {
