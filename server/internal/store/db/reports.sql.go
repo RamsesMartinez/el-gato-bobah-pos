@@ -90,20 +90,65 @@ func (q *Queries) ProductMargins(ctx context.Context, arg ProductMarginsParams) 
 }
 
 const productsSold = `-- name: ProductsSold :many
-with alone as (
-  select ol.product_id, sum(ol.quantity) as qty
-    from order_lines ol join orders o on o.id = ol.order_id
-   where o.status not in ('cancelada', 'reembolsada') and ol.cancelled_at is null
-     and o.business_date between $2 and $3
-     and ol.product_id is not null
-   group by ol.product_id
+with vivos as (
+  select o.id, o.total, o.business_date
+    from orders o
+   where o.merged_into_order_id is null
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+), acumulado as (
+  select op.order_id, coalesce(op.business_date, v.business_date) as dia, v.total,
+         sum(op.amount) over (partition by op.order_id order by op.created_at, op.id) as cobrado
+    from order_payments op
+    join vivos v on v.id = op.order_id
+), saldado as (
+  select v.id as order_id,
+         case when v.total <= 0 then v.business_date
+              else (select min(a.dia) from acumulado a where a.order_id = v.id and a.cobrado >= a.total)
+         end as dia
+    from vivos v
+), devuelto_acumulado as (
+  select r.order_id, coalesce(r.business_date, o.business_date) as dia, o.total,
+         sum(r.amount) over (partition by r.order_id order by r.created_at, r.id) as devuelto
+    from order_refunds r join orders o on o.id = r.order_id
+), devuelto_pedido as (
+  select da.order_id, min(da.dia) as dia from devuelto_acumulado da where da.devuelto >= da.total group by da.order_id
+), renglon_acumulado as (
+  select r.order_line_id, coalesce(r.business_date, o.business_date) as dia, ol.line_total,
+         sum(r.amount) over (partition by r.order_line_id order by r.created_at, r.id) as devuelto
+    from order_refunds r
+    join order_lines ol on ol.id = r.order_line_id
+    join orders o on o.id = r.order_id
+), devuelto_renglon as (
+  select ra.order_line_id, min(ra.dia) as dia from renglon_acumulado ra where ra.devuelto >= ra.line_total group by ra.order_line_id
+), renglones as (
+  -- Un renglón por fila con sus dos días: el de la venta y, si se devolvió, el de la devolución.
+  -- Dos columnas y no un ` + "`" + `union all` + "`" + ` de movimientos: sqlc no resuelve las columnas de esa forma, y
+  -- los parámetros llevan ` + "`" + `::date` + "`" + ` porque no infiere su tipo de una columna de CTE.
+  select ol.id as line_id, ol.product_id, ol.quantity, s.dia as vendido,
+         coalesce(case when dr.dia < dp.dia then dr.dia else dp.dia end, dr.dia, dp.dia) as regresado
+    from order_lines ol
+    join saldado s on s.order_id = ol.order_id
+    left join devuelto_renglon dr on dr.order_line_id = ol.id
+    left join devuelto_pedido dp on dp.order_id = ol.order_id
+   where ol.cancelled_at is null and s.dia is not null
+), alone as (
+  select rg.product_id,
+         sum(case when rg.vendido between $2::date and $3::date then rg.quantity else 0 end)
+         - sum(case when rg.regresado between $2::date and $3::date then rg.quantity else 0 end) as qty
+    from renglones rg
+   where rg.product_id is not null
+     and (rg.vendido between $2::date and $3::date
+          or rg.regresado between $2::date and $3::date)
+   group by rg.product_id
 ), packed as (
-  select c.product_id, sum(c.quantity) as qty
-    from order_line_components c
-    join order_lines ol on ol.id = c.order_line_id
-    join orders o on o.id = ol.order_id
-   where o.status not in ('cancelada', 'reembolsada') and ol.cancelled_at is null
-     and o.business_date between $2 and $3
+  select c.product_id,
+         sum(case when rg.vendido between $2::date and $3::date then c.quantity else 0 end)
+         - sum(case when rg.regresado between $2::date and $3::date then c.quantity else 0 end) as qty
+    from renglones rg
+    join order_line_components c on c.order_line_id = rg.line_id
+   where rg.vendido between $2::date and $3::date
+      or rg.regresado between $2::date and $3::date
    group by c.product_id
 )
 select p.name as product_name,
@@ -129,9 +174,19 @@ type ProductsSoldRow struct {
 	InPackages  decimal.Decimal `json:"in_packages"`
 }
 
-// Unidades vendidas por producto, sueltas y dentro de paquetes (spec 028). Mismo predicado que la
-// venta: pedido no cancelado ni reembolsado, renglón no cancelado, día de negocio en el rango. Los
-// componentes salen de la copia hecha al vender (order_line_components), no del paquete de hoy.
+// Unidades vendidas por producto, sueltas y dentro de paquetes (spec 028). Los componentes salen de
+// la copia hecha al vender (order_line_components), no del paquete de hoy.
+//
+// EL DÍA DE UNA VENTA ES EL DÍA EN QUE SU PEDIDO QUEDÓ SALDADO (decisión del dueño, 2026-10-09):
+// el del cobro que hizo que lo cobrado cubriera el total al centavo. Un pedido sin saldar —abierto o
+// fiado— no ha vendido nada. Un renglón DEVUELTO resta sus piezas el día en que se devolvió: el día
+// en que sus devoluciones cubren su importe, o el día en que las del pedido cubren el total (lo que
+// pase primero; el que no es nulo si solo hay uno). Una devolución parcial de dinero no resta piezas: el
+// producto se entregó y lo que se regresó fue una compensación. El dinero sigue contando por el
+// día de cada cobro y cada devolución (SalesByMethod); esto es solo el conteo de piezas.
+//
+// Cancelado sin devoluciones (flujo viejo) queda fuera, igual que en SalesByMethod. Un pedido de
+// total cero se da por saldado el día de su negocio: no hay cobro que lo marque.
 //
 // Cada rama se agrega por producto antes de unir: unir renglones y componentes en la misma consulta
 // multiplicaría las filas (AGENTS.md §1).

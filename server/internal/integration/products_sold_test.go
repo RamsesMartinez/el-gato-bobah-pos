@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/shopspring/decimal"
@@ -71,6 +72,17 @@ func TestProductsSoldCountsWhatWentInsidePackages(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Saldado: lo vendido cuenta el día en que el pedido quedó cobrado (decisión del 2026-10-09).
+	var total decimal.Decimal
+	if err := st.Pool.QueryRow(ctx, `select total from orders where id = $1`, order.ID).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orders.Charge(ctx, app.ChargeCmd{
+		OrderID: order.ID, MethodID: paymentMethodID(t, st, "Efectivo"), Amount: total, ActorID: cashier,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	day := fixedNow
 	rows, err := back.ProductsSold(ctx, day, day, 50)
 	if err != nil {
@@ -102,6 +114,80 @@ func TestProductsSoldCountsWhatWentInsidePackages(t *testing.T) {
 			}
 		}
 	})
+}
+
+// UN PRODUCTO SE VENDE EL DÍA EN QUE SU PEDIDO QUEDÓ SALDADO (decisión del dueño, 2026-10-09).
+//
+// El reporte contaba el día en que se ABRIÓ el pedido y contaba pedidos sin cobrar: una cuenta
+// abierta o fiada salía como vendida, y un pedido cobrado al día siguiente se quedaba en el día en
+// que se capturó. La devolución completa resta el producto el día en que se devolvió.
+func TestProductsSoldCountOnTheDayTheOrderWasFullyPaid(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	cashier := makeUser(t, st, "cajero_saldado", "cajero")
+	cash := paymentMethodID(t, st, "Efectivo")
+	abrirCajaPrincipal(t, st, cashier)
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+
+	prod := makeProduct(t, st, "Taro saldado", decimal.RequireFromString("100"), false)
+	if _, err := st.Pool.Exec(ctx, "update products set needs_prep = false where id = $1", prod); err != nil {
+		t.Fatal(err)
+	}
+	charge := func(order int64, amount string) {
+		t.Helper()
+		if _, err := orders.Charge(ctx, app.ChargeCmd{
+			OrderID: order, MethodID: cash, Amount: decimal.RequireFromString(amount), ActorID: cashier,
+		}); err != nil {
+			t.Fatalf("Charge: %v", err)
+		}
+	}
+	toYesterday := func(order int64) {
+		t.Helper()
+		if _, err := st.Pool.Exec(ctx,
+			"update order_payments set business_date = business_date - 1 where order_id = $1", order); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Saldado ayer y devuelto entero hoy: +1 ayer, -1 hoy.
+	paidYesterday := crearPedidoSimple(t, ctx, orders, prod, cashier)
+	charge(paidYesterday, "100")
+	toYesterday(paidYesterday)
+	if err := orders.Devolver(ctx, app.DevolucionCmd{
+		OrderID: paidYesterday, Monto: decimal.RequireFromString("100"), Motivo: "no le gustó", ActorID: cashier,
+	}); err != nil {
+		t.Fatalf("Devolver: %v", err)
+	}
+	// Mitad ayer y mitad hoy: se vendió HOY, el día en que quedó saldado.
+	splitDays := crearPedidoSimple(t, ctx, orders, prod, cashier)
+	charge(splitDays, "50")
+	toYesterday(splitDays)
+	charge(splitDays, "50")
+	// Cobrado a medias y sin cobrar: no se ha vendido.
+	charge(crearPedidoSimple(t, ctx, orders, prod, cashier), "50")
+	crearPedidoSimple(t, ctx, orders, prod, cashier)
+
+	sold := func(day time.Time) string {
+		t.Helper()
+		rows, err := back.ProductsSold(ctx, day, day, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			if r.ProductName == "Taro saldado" {
+				return r.Alone.String()
+			}
+		}
+		return "0"
+	}
+	if got := sold(fixedNow.AddDate(0, 0, -1)); got != "1" {
+		t.Fatalf("ayer: quiere 1 (el pedido saldado ayer), salió %s", got)
+	}
+	if got := sold(fixedNow); got != "0" {
+		t.Fatalf("hoy: quiere 0 (+1 saldado hoy, -1 devuelto hoy; el fiado y el abierto no cuentan), salió %s", got)
+	}
 }
 
 // UN INSUMO PREPARADO DESCUENTA LO QUE LO COMPONE (spec 028, historia 5).
