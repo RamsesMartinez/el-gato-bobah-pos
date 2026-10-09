@@ -1636,7 +1636,9 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, sessi
 	}
 	// El sufijo numerado es la ÚLTIMA red, y solo entra cuando el día ya pasó del largo de la lista:
 	// ahí todo lo disponible ya se cantó hoy y "Persa 2" es mejor que "#187".
-	libre := domain.SiguienteFolioLibre(nombre, usados)
+	// Contra los vivos también: una cuenta nacida con el turno ya pasado de la lista lleva su número
+	// («Persa 2»), y numerar sin verla le daría ese mismo nombre a este pedido.
+	libre := domain.SiguienteFolioLibre(nombre, append(append([]string(nil), usados...), vivos...))
 	if libre == "" {
 		return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
 	}
