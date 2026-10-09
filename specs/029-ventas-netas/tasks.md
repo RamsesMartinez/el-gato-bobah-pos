@@ -62,9 +62,9 @@ el cobrado; «Por cobrar» aparte; Total = Σ medios.
 
 ## Phase 8: Polish
 
-- [ ] T029 Gates: server `go build ./... && go test ./...`, `bash ../scripts/hooks/golangci-lint.sh`, integración; web `bun run lint && bun run vitest run && bun run build`
-- [ ] T030 Capturas a 1024×600 contra API local (Ventas hoy/mes, Caja con devoluciones, Histórico → Ver abierto, Reportes); ≥4 renglones en Ventas (SC-004)
-- [ ] T031 `docs/matriz-de-pantallas.md` y `docs/criterios-de-ventas.md`: el Total de Ventas ya es el cobrado neto
+- [X] T029 Gates: server `go build ./... && go test ./...`, `bash ../scripts/hooks/golangci-lint.sh`, integración; web `bun run lint && bun run vitest run && bun run build`
+- [X] T030 Capturas a 1024×600 contra API local (Ventas hoy/mes, Caja con devoluciones, Histórico → Ver abierto, Reportes); ≥4 renglones en Ventas (SC-004)
+- [X] T031 `docs/matriz-de-pantallas.md` y `docs/criterios-de-ventas.md`: el Total de Ventas ya es el cobrado neto
 
 ## Dependencies
 

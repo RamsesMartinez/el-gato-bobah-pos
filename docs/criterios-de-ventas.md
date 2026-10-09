@@ -10,6 +10,11 @@ pantallas y consultas que hoy no las cumplen se corrigen en `specs/029-ventas-ne
 | ¿En qué mes pega una devolución de dinero? | **En el mes en que se devolvió**, no en el de la venta. Es como sale de la caja y como se factura: lo del mes cerrado no se reescribe. |
 | ¿Qué es el «Total» de Ventas? | **Solo lo cobrado, neto de devoluciones.** Un pedido abierto o con saldo pendiente no suma hasta que se cobra. |
 
+**Aplicado en la spec 029** ([specs/029-ventas-netas](../specs/029-ventas-netas/spec.md)): el Total
+de Ventas es la suma de los medios de pago —cada cobro en su día y cada devolución en el suyo—, lo
+que falta por cobrar va en su propio recuadro, y el corte presenta la devolución de venta y la
+propina devuelta igual que Ventas.
+
 ## Por qué
 
 - Medido el 2026-10-08 en el ambiente de pruebas: dos devoluciones (parcial $30.67 y total $92)
