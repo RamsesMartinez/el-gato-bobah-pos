@@ -10,6 +10,8 @@ import { cuenta } from './__fixtures__/cuentas';
 import { reiniciarCaptura } from './useCuenta';
 import { reportarResultado } from './useSinConexion';
 import { act } from '@testing-library/react';
+import { ApiError } from '../../api/client';
+import { toaster } from '../../components/ui/toaster';
 import { POSPage } from './POSPage';
 
 const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
@@ -26,6 +28,7 @@ const api = vi.hoisted(() => ({
   getDraft: vi.fn(),
   order: vi.fn(),
   sendDraft: vi.fn(),
+  discardDraft: vi.fn(),
   paymentMethods: vi.fn(),
 }));
 vi.mock('../../api/pos', () => ({
@@ -64,7 +67,7 @@ vi.mock('../../hooks/useModifierDefaults', () => ({ useModifierDefaults: () => (
 
 function draft(over: Partial<DraftView> = {}): DraftView {
   return {
-    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1,
+    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1, version: 1,
     updatedAt: '', createdAt: '', openedBy: 'Ana', serviceType: 'mostrador', customerName: null,
     platformId: null, platformOrderRef: null, deliveryFee: '0.00', discount: { amount: '20.00' },
     lines: [{ id: 'l-1', version: 1, productId: 1, productName: 'Crepa', qty: '1', unitPrice: '95.00', modifiers: [], notes: '', lineTotal: '95.00', available: true }],
@@ -243,5 +246,43 @@ describe('lo que encontró la validación como usuario nuevo', () => {
     const aviso = await screen.findByRole('alert');
     expect(screen.getByTestId('zona-de-productos').contains(aviso)).toBe(true);
     act(() => reportarResultado(null));
+  });
+});
+
+// DESCARTAR CON LA VERSIÓN QUE VIO ESTA TABLETA. Si otra tableta agregó algo justo antes, el servidor
+// responde DRAFT_CHANGED sin descartar: la cuenta se queda abierta y se recarga, no se da por perdida.
+describe('descartar la cuenta', () => {
+  const descartarDesdeElMenu = async () => {
+    await screen.findByText('Crepa');
+    await userEvent.click(await screen.findByRole('button', { name: 'Más opciones de la cuenta' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Descartar cuenta/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
+  };
+
+  beforeEach(() => {
+    anchoDelPos.width = 1024;
+    usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
+    api.getDraft.mockResolvedValue(draft({ version: 6 }));
+  });
+
+  test('manda la versión de la cuenta que está en pantalla', async () => {
+    api.discardDraft.mockResolvedValue(undefined);
+    montar();
+    await descartarDesdeElMenu();
+    await waitFor(() => expect(api.discardDraft).toHaveBeenCalledWith('d-1', 6));
+    await waitFor(() => expect(usePosStore.getState().selected).toBeNull());
+  });
+
+  test('con 409 la cuenta sigue abierta y se vuelve a pedir al servidor', async () => {
+    api.discardDraft.mockRejectedValue(new ApiError(409, 'DRAFT_CHANGED', 'x', 'r'));
+    const avisos = vi.spyOn(toaster, 'create');
+    montar();
+    await screen.findByText('Crepa');
+    const lecturas = api.getDraft.mock.calls.length;
+    await descartarDesdeElMenu();
+    await waitFor(() => expect(api.discardDraft).toHaveBeenCalled());
+    await waitFor(() => expect(api.getDraft.mock.calls.length).toBeGreaterThan(lecturas));
+    expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: 'd-1' });
+    expect(avisos).toHaveBeenCalledWith(expect.objectContaining({ title: 'La cuenta cambió en otra tableta' }));
   });
 });

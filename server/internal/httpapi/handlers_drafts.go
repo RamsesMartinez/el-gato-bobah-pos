@@ -419,12 +419,23 @@ func (h *Handlers) DiscardDraft(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	var body struct {
+		ExpectedVersion *int32 `json:"expectedVersion"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.ExpectedVersion == nil {
+		Error(w, fmt.Errorf("%w: falta la versión de la cuenta", domain.ErrValidation))
+		return
+	}
 	u, ok := userFrom(r.Context())
 	if !ok {
 		Error(w, domain.ErrUnauthorized)
 		return
 	}
-	if err := h.drafts.Discard(r.Context(), id, u.ID); err != nil {
+	if err := h.drafts.Discard(r.Context(), id, *body.ExpectedVersion, u.ID); err != nil {
 		Error(w, err)
 		return
 	}

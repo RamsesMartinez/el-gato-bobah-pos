@@ -163,9 +163,29 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
         expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
       },
     },
+    {
+      // Lo cobrado ya se devolvió todo: no queda pago que devolver y la salida es cerrarlo. Antes
+      // se medía con total − por cobrar, que no resta lo devuelto, y la tarjeta se quedaba sin salida.
+      nombre: 'sin productos · con los pagos ya devueltos',
+      o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '30' },
+      cobra: true,
+      espera: (c) => {
+        expect(within(c).queryByText(/^Tiene pagos por devolver/)).toBeNull();
+        expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
+      },
+    },
+    {
+      nombre: 'sin productos · con una parte devuelta',
+      o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '10' },
+      cobra: true,
+      espera: (c) => {
+        expect(within(c).getByText(/^Tiene pagos por devolver/)).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
+      },
+    },
   ];
 
-  test('son diez combinaciones', () => expect(casos).toHaveLength(10));
+  test('son doce combinaciones', () => expect(casos).toHaveLength(12));
 
   test.each(casos)('$nombre', async ({ o, cobra, espera }) => {
     pintar(pedido(o), { cobra });

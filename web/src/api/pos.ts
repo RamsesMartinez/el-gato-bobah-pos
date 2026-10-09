@@ -88,7 +88,10 @@ export const posApi = {
   removeDraftLine: (id: string, lineId: string, expectedVersion: number) =>
     api.del<DraftView>(`/pos/drafts/${id}/lines/${lineId}?expectedVersion=${expectedVersion}`),
   patchDraft: (id: string, body: PatchDraftBody) => api.patch<DraftView>(`/pos/drafts/${id}`, body),
-  discardDraft: (id: string) => api.post<void>(`/pos/drafts/${id}/discard`, {}),
+  // Lleva la versión de la cuenta que la pantalla vio: si otra tableta la cambió, el servidor no
+  // descarta nada (DRAFT_CHANGED).
+  discardDraft: (id: string, expectedVersion: number) =>
+    api.post<void>(`/pos/drafts/${id}/discard`, { expectedVersion }),
   // Manda a cocina. Idempotente por la cuenta: el reintento devuelve el mismo pedido y no reimprime.
   sendDraft: (id: string) => api.post<SendResult>(`/pos/drafts/${id}/send`, {}),
   importDrafts: (accounts: ImportAccount[]) =>

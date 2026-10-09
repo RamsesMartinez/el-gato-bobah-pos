@@ -165,7 +165,7 @@ func TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico(t *testing.T) {
 	// EL HISTÓRICO LO REPORTA. Es el caso que sin la subconsulta del conteo daría CERO: los métodos
 	// de cajón guardan declared = expected, así que la suma por método no ve el faltante y la
 	// pantalla donde alguien audita mostraría cuadrado un corte que no cuadra.
-	historico, err := backoffice.SessionHistory(ctx, 20)
+	historico, _, err := backoffice.SessionHistory(ctx, domain.SessionHistoryFilter{Limit: 20})
 	if err != nil {
 		t.Fatalf("SessionHistory: %v", err)
 	}

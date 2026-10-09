@@ -385,6 +385,8 @@ export interface DraftView {
   folioName: string | null;
   status: DraftStatus;
   headerVersion: number;
+  // La de la cuenta entera: avanza con cualquier cambio. Descartar la exige.
+  version: number;
   updatedAt: string;
   createdAt: string;
   openedBy: string;
@@ -464,6 +466,8 @@ export interface AccountItem {
   key: string;
   kind: 'draft' | 'order';
   draftId?: string | null;
+  // La versión de la cuenta en captura (kind=draft), para descartarla desde la fila.
+  draftVersion?: number | null;
   orderId?: number | null;
   number: number | null;
   folioName: string | null;

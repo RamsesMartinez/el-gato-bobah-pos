@@ -19,7 +19,7 @@ const cab = { serviceType: 'mostrador' as const, platformId: null, platformOrder
 
 function draft(over: Partial<DraftView> = {}): DraftView {
   return {
-    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1, updatedAt: '', createdAt: '',
+    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1, version: 1, updatedAt: '', createdAt: '',
     openedBy: 'Ana', serviceType: 'mostrador', customerName: null, platformId: null, platformOrderRef: null,
     deliveryFee: '0.00', discount: null, subtotal: '74.00', discountTotal: '0.00', total: '74.00', unavailable: [],
     lines: [

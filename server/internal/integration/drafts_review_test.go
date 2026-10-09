@@ -190,8 +190,10 @@ func TestSendOfAnAlreadyExistingOrderIsNotCreated(t *testing.T) {
 }
 
 // Una «Nuevo» que otra tableta descarta mientras ésta le agrega: lo agregado no puede caer en una
-// cuenta muerta y responder 200.
+// cuenta muerta y responder 200. Fallaba ~1 de cada 15 corridas en paralelo porque descartar no
+// comparaba versión; el caso determinista de esa carrera vive en drafts_discard_race_test.go.
 func TestNewOfOrderNeverLandsInADiscardedDraft(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	a, b := k.tenant(t, k.company), k.tenant(t, k.company)
@@ -205,7 +207,7 @@ func TestNewOfOrderNeverLandsInADiscardedDraft(t *testing.T) {
 		var addErr error
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); _ = k.drafts.Discard(a, first.ID, k.user) }()
+		go func() { defer wg.Done(); _ = k.drafts.Discard(a, first.ID, first.Version, k.user) }()
 		go func() { defer wg.Done(); landed, addErr = k.newOf(t, b, ord.ID, addOf(k.product, "1")) }()
 		wg.Wait()
 		if addErr != nil {

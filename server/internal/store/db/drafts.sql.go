@@ -144,7 +144,7 @@ func (q *Queries) DiscardDraft(ctx context.Context, arg DiscardDraftParams) (Dis
 }
 
 const getDraft = `-- name: GetDraft :one
-select d.id, d.company_id, d.order_id, d.status, d.folio_name, d.folio_scheme, d.service_type, d.customer_name, d.delivery_platform_id, d.platform_order_ref, d.delivery_fee, d.discount_amount, d.discount_percent, d.discount_set_by, d.platform_ref_set_by, d.opened_by, d.header_version, d.created_at, d.updated_at, d.sent_at, d.discarded_at, d.discarded_by, d.discard_reason, u.name as opened_by_name
+select d.id, d.company_id, d.order_id, d.status, d.folio_name, d.folio_scheme, d.service_type, d.customer_name, d.delivery_platform_id, d.platform_order_ref, d.delivery_fee, d.discount_amount, d.discount_percent, d.discount_set_by, d.platform_ref_set_by, d.opened_by, d.header_version, d.created_at, d.updated_at, d.sent_at, d.discarded_at, d.discarded_by, d.discard_reason, d.version, u.name as opened_by_name
 from order_drafts d
 join users u on u.id = d.opened_by
 where d.id = $1
@@ -174,6 +174,7 @@ type GetDraftRow struct {
 	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
 	DiscardedBy        *int64             `json:"discarded_by"`
 	DiscardReason      *string            `json:"discard_reason"`
+	Version            int32              `json:"version"`
 	OpenedByName       string             `json:"opened_by_name"`
 }
 
@@ -204,6 +205,7 @@ func (q *Queries) GetDraft(ctx context.Context, id uuid.UUID) (GetDraftRow, erro
 		&i.DiscardedAt,
 		&i.DiscardedBy,
 		&i.DiscardReason,
+		&i.Version,
 		&i.OpenedByName,
 	)
 	return i, err
@@ -448,7 +450,7 @@ func (q *Queries) ListLiveDraftNames(ctx context.Context) ([]string, error) {
 }
 
 const listLiveDrafts = `-- name: ListLiveDrafts :many
-select d.id, d.company_id, d.order_id, d.status, d.folio_name, d.folio_scheme, d.service_type, d.customer_name, d.delivery_platform_id, d.platform_order_ref, d.delivery_fee, d.discount_amount, d.discount_percent, d.discount_set_by, d.platform_ref_set_by, d.opened_by, d.header_version, d.created_at, d.updated_at, d.sent_at, d.discarded_at, d.discarded_by, d.discard_reason, u.name as opened_by_name,
+select d.id, d.company_id, d.order_id, d.status, d.folio_name, d.folio_scheme, d.service_type, d.customer_name, d.delivery_platform_id, d.platform_order_ref, d.delivery_fee, d.discount_amount, d.discount_percent, d.discount_set_by, d.platform_ref_set_by, d.opened_by, d.header_version, d.created_at, d.updated_at, d.sent_at, d.discarded_at, d.discarded_by, d.discard_reason, d.version, u.name as opened_by_name,
        (select count(*) from order_draft_lines l where l.draft_id = d.id)::int as line_count
 from order_drafts d
 join users u on u.id = d.opened_by
@@ -480,6 +482,7 @@ type ListLiveDraftsRow struct {
 	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
 	DiscardedBy        *int64             `json:"discarded_by"`
 	DiscardReason      *string            `json:"discard_reason"`
+	Version            int32              `json:"version"`
 	OpenedByName       string             `json:"opened_by_name"`
 	LineCount          int32              `json:"line_count"`
 }
@@ -519,6 +522,7 @@ func (q *Queries) ListLiveDrafts(ctx context.Context) ([]ListLiveDraftsRow, erro
 			&i.DiscardedAt,
 			&i.DiscardedBy,
 			&i.DiscardReason,
+			&i.Version,
 			&i.OpenedByName,
 			&i.LineCount,
 		); err != nil {
@@ -558,7 +562,7 @@ func (q *Queries) ListOrderLineIDs(ctx context.Context, orderID int64) ([]int64,
 }
 
 const lockDraft = `-- name: LockDraft :one
-select id, company_id, order_id, status, folio_name, folio_scheme, service_type, customer_name, delivery_platform_id, platform_order_ref, delivery_fee, discount_amount, discount_percent, discount_set_by, platform_ref_set_by, opened_by, header_version, created_at, updated_at, sent_at, discarded_at, discarded_by, discard_reason from order_drafts where id = $1 for update
+select id, company_id, order_id, status, folio_name, folio_scheme, service_type, customer_name, delivery_platform_id, platform_order_ref, delivery_fee, discount_amount, discount_percent, discount_set_by, platform_ref_set_by, opened_by, header_version, created_at, updated_at, sent_at, discarded_at, discarded_by, discard_reason, version from order_drafts where id = $1 for update
 `
 
 // Toda escritura de renglones toma esto PRIMERO: serializa por cuenta, así la fusión («no había un
@@ -590,6 +594,7 @@ func (q *Queries) LockDraft(ctx context.Context, id uuid.UUID) (OrderDraft, erro
 		&i.DiscardedAt,
 		&i.DiscardedBy,
 		&i.DiscardReason,
+		&i.Version,
 	)
 	return i, err
 }
@@ -614,9 +619,11 @@ func (q *Queries) MarkDraftSent(ctx context.Context, arg MarkDraftSentParams) (i
 }
 
 const touchDraft = `-- name: TouchDraft :exec
-update order_drafts set updated_at = now() where id = $1
+update order_drafts set updated_at = now(), version = version + 1 where id = $1
 `
 
+// Todo cambio de renglones pasa por aquí: avanza la versión de la cuenta, que es la que descartar
+// exige.
 func (q *Queries) TouchDraft(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, touchDraft, id)
 	return err
@@ -629,7 +636,7 @@ set service_type = $1, customer_name = $2,
     delivery_fee = $5, discount_amount = $6,
     discount_percent = $7, discount_set_by = $8,
     platform_ref_set_by = $9,
-    header_version = header_version + 1, updated_at = now()
+    header_version = header_version + 1, version = version + 1, updated_at = now()
 where id = $10 and header_version = $11 and status = 'capturando'
 `
 

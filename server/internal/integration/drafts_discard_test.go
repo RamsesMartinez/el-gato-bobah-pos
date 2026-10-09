@@ -29,7 +29,7 @@ func TestDiscardReturnsTheName(t *testing.T) {
 		t.Fatal("«Persa» se ofrece mientras la cuenta vive")
 	}
 
-	if err := k.drafts.Discard(k.ctx, v.ID, k.user); err != nil {
+	if err := k.drafts.Discard(k.ctx, v.ID, v.Version, k.user); err != nil {
 		t.Fatalf("Discard: %v", err)
 	}
 	names, _ = k.orders.NombresDisponibles(k.ctx)
@@ -50,17 +50,18 @@ func TestDiscardReturnsTheName(t *testing.T) {
 	}
 
 	t.Run("dos veces no es error", func(t *testing.T) {
-		if err := k.drafts.Discard(k.ctx, v.ID, k.user); err != nil {
+		if err := k.drafts.Discard(k.ctx, v.ID, v.Version, k.user); err != nil {
 			t.Fatalf("= %v", err)
 		}
 	})
 
 	t.Run("una cuenta vacía se descarta como vacía", func(t *testing.T) {
 		e := k.newDraft(t, addOf(cafe, "1"))
-		if _, err := k.drafts.RemoveLine(k.ctx, e.ID, e.Lines[0].ID, e.Lines[0].Version); err != nil {
+		vacia, err := k.drafts.RemoveLine(k.ctx, e.ID, e.Lines[0].ID, e.Lines[0].Version)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := k.drafts.Discard(k.ctx, e.ID, k.user); err != nil {
+		if err := k.drafts.Discard(k.ctx, e.ID, vacia.Version, k.user); err != nil {
 			t.Fatal(err)
 		}
 		var reason string
@@ -74,7 +75,7 @@ func TestDiscardReturnsTheName(t *testing.T) {
 		if _, err := k.drafts.Send(k.ctx, s.ID, k.user); err != nil {
 			t.Fatal(err)
 		}
-		if err := k.drafts.Discard(k.ctx, s.ID, k.user); !errors.Is(err, domain.ErrDraftAlreadySent) {
+		if err := k.drafts.Discard(k.ctx, s.ID, s.Version, k.user); !errors.Is(err, domain.ErrDraftAlreadySent) {
 			t.Fatalf("= %v, quería DRAFT_SENT", err)
 		}
 		if got := draftStatus(t, k.st, s.ID); got != domain.DraftSent {
@@ -83,7 +84,7 @@ func TestDiscardReturnsTheName(t *testing.T) {
 	})
 
 	t.Run("una que no existe", func(t *testing.T) {
-		if err := k.drafts.Discard(k.ctx, uuid.New(), k.user); !errors.Is(err, domain.ErrNotFound) {
+		if err := k.drafts.Discard(k.ctx, uuid.New(), 1, k.user); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("= %v", err)
 		}
 	})
@@ -103,7 +104,7 @@ func TestDiscardAfterBagRefillKeepsTheNewOwner(t *testing.T) {
 	if _, err := k.st.Pool.Exec(ctx, `insert into folio_consumido (scheme, name, taken_at) values ('razas', 'Persa', now() + interval '1 minute')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.drafts.Discard(k.ctx, v.ID, k.user); err != nil {
+	if err := k.drafts.Discard(k.ctx, v.ID, v.Version, k.user); err != nil {
 		t.Fatal(err)
 	}
 	var n int
@@ -119,20 +120,29 @@ func TestDiscardHTTP(t *testing.T) {
 	cajero, tok := token("cajero_descarta_http", "cajero")
 	abrirCajaPrincipal(t, st, cajero)
 	cafe := makeProduct(t, st, "Café descartado por HTTP", pesos("30"), false)
+	// version es la de la cuenta tal como la devolvió el servidor: la que la tableta vio.
+	var version int
 	create := func() string {
 		id := uuid.New().String()
-		if w := do(t, r, http.MethodPost, "/api/v1/pos/drafts", tok, jsonBody(t, map[string]any{
+		w := do(t, r, http.MethodPost, "/api/v1/pos/drafts", tok, jsonBody(t, map[string]any{
 			"id": id, "lines": []map[string]any{{"opId": uuid.New().String(), "productId": cafe, "qty": "1"}},
-		}), "application/json"); w.Code != http.StatusCreated {
+		}), "application/json")
+		if w.Code != http.StatusCreated {
 			t.Fatalf("crear = %d: %s", w.Code, w.Body)
 		}
+		version = int(rawJSON(t, w.Body.Bytes())["version"].(float64))
 		return id
 	}
+	conVersion := func() []byte { return jsonBody(t, map[string]any{"expectedVersion": version}) }
 	events, unsubscribe := broker.Subscribe(defaultCompanyID)
 	defer unsubscribe()
 	id := create()
 	nextEvent(t, events)
 	w := do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+id+"/discard", tok, []byte(`{}`), "application/json")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("discard sin la versión que vio la tableta = %d: %s", w.Code, w.Body)
+	}
+	w = do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+id+"/discard", tok, conVersion(), "application/json")
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("discard = %d: %s", w.Code, w.Body)
 	}
@@ -143,7 +153,7 @@ func TestDiscardHTTP(t *testing.T) {
 	if w := do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+sent+"/send", tok, []byte(`{}`), "application/json"); w.Code != http.StatusOK {
 		t.Fatalf("send = %d", w.Code)
 	}
-	w = do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+sent+"/discard", tok, []byte(`{}`), "application/json")
+	w = do(t, r, http.MethodPost, "/api/v1/pos/drafts/"+sent+"/discard", tok, conVersion(), "application/json")
 	m := rawJSON(t, w.Body.Bytes())
 	body := m["error"].(map[string]any)
 	if w.Code != http.StatusConflict || body["code"] != "DRAFT_SENT" || !strings.Contains(body["message"].(string), "cancelar el pedido") {
@@ -160,7 +170,7 @@ func TestDiscardInTheThreeCases(t *testing.T) {
 	v := k.newDraft(t, addOf(cafe, "1"))
 	inTheThreeCases(t, k.company, other, func(t *testing.T, st *store.Store, ctx context.Context) {
 		svc := app.NewDraftsService(st, app.NewOrdersService(st, clock))
-		_ = svc.Discard(ctx, v.ID, otherUser)
+		_ = svc.Discard(ctx, v.ID, v.Version, otherUser)
 	})
 	if got := draftStatus(t, k.st, v.ID); got != domain.DraftCapturing {
 		t.Fatalf("otra empresa descartó la cuenta de la dueña: %s", got)

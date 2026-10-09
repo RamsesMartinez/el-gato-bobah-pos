@@ -27,9 +27,11 @@ func NewAccountsService(s *store.Store, orders *OrdersService) *AccountsService 
 
 // AccountItem es una ficha de la fila: una cuenta en captura o un pedido no cerrado.
 type AccountItem struct {
-	Key               string          `json:"key"`
-	Kind              string          `json:"kind"`
-	DraftID           *uuid.UUID      `json:"draftId"`
+	Key     string     `json:"key"`
+	Kind    string     `json:"kind"`
+	DraftID *uuid.UUID `json:"draftId"`
+	// DraftVersion es la versión de la cuenta en captura (kind=draft): la que exige descartarla.
+	DraftVersion      *int32          `json:"draftVersion"`
 	OrderID           *int64          `json:"orderId"`
 	Number            *int            `json:"number"`
 	FolioName         *string         `json:"folioName"`
@@ -153,9 +155,9 @@ func (s *AccountsService) Live(ctx context.Context, olderDebts bool) (*LiveAccou
 		if err != nil {
 			return nil, err
 		}
-		did := d.ID
+		did, version := d.ID, d.Version
 		out.Items = append(out.Items, AccountItem{
-			Key: "d:" + d.ID.String(), Kind: "draft", DraftID: &did, FolioName: d.FolioName,
+			Key: "d:" + d.ID.String(), Kind: "draft", DraftID: &did, DraftVersion: &version, FolioName: d.FolioName,
 			State: domain.AccountCapturing, Group: domain.GroupCapturing, PlatformID: d.DeliveryPlatformID,
 			ServiceType: string(d.ServiceType), CustomerName: d.CustomerName, OpenedAt: d.CreatedAt,
 			UpdatedAt: d.UpdatedAt, Total: v.Total, Paid: decimal.Zero, Outstanding: v.Total,
@@ -178,7 +180,7 @@ func draftRowOf(d db.ListLiveDraftsRow) db.GetDraftRow {
 		DeliveryPlatformID: d.DeliveryPlatformID, PlatformOrderRef: d.PlatformOrderRef, DeliveryFee: d.DeliveryFee,
 		DiscountAmount: d.DiscountAmount, DiscountPercent: d.DiscountPercent, DiscountSetBy: d.DiscountSetBy,
 		PlatformRefSetBy: d.PlatformRefSetBy, OpenedBy: d.OpenedBy, HeaderVersion: d.HeaderVersion,
-		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, SentAt: d.SentAt, DiscardedAt: d.DiscardedAt,
+		Version: d.Version, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, SentAt: d.SentAt, DiscardedAt: d.DiscardedAt,
 		DiscardedBy: d.DiscardedBy, DiscardReason: d.DiscardReason, OpenedByName: d.OpenedByName,
 	}
 }

@@ -643,7 +643,13 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 		if err != nil {
 			return err
 		}
-		closeEmpty, err := domain.PlanCancelPending(lineas, guard.paid)
+		// Lo que queda por devolver, no lo cobrado en bruto: un pedido vacío con su pago ya devuelto
+		// no tiene nada que devolver, y con el bruto se quedaba sin salida.
+		tope, err := s.refundable(ctx, q, orderID, nil)
+		if err != nil {
+			return err
+		}
+		closeEmpty, err := domain.PlanCancelPending(lineas, domain.MontoDevolvible(tope.paid, tope.refundedTotal))
 		if err != nil {
 			return err
 		}

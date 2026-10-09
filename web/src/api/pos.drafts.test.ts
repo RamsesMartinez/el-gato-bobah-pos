@@ -76,12 +76,14 @@ describe('cuentas en captura', () => {
     expect(c.body).toEqual({ expectedHeaderVersion: 3, customerName: 'Mesa 4', discount: null });
   });
 
-  test('descartar y enviar son POST con cuerpo vacío', async () => {
-    await posApi.discardDraft('d-1');
+  // Descartar se lleva todo lo de adentro: sin la versión que vio la tableta, tiraba lo que otra
+  // acababa de agregar.
+  test('descartar manda la versión que vio la tableta; enviar va con cuerpo vacío', async () => {
+    await posApi.discardDraft('d-1', 7);
     await posApi.sendDraft('d-1');
     expect(llamada(0).url).toMatch(/\/pos\/drafts\/d-1\/discard$/);
     expect(llamada(0).method).toBe('POST');
-    expect(llamada(0).body).toEqual({});
+    expect(llamada(0).body).toEqual({ expectedVersion: 7 });
     expect(llamada(1).url).toMatch(/\/pos\/drafts\/d-1\/send$/);
     expect(llamada(1).body).toEqual({});
   });

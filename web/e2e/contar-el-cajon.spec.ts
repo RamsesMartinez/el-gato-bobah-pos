@@ -228,23 +228,33 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   await page.getByRole('tab', { name: 'Histórico' }).click();
 
   // Un corte que cerró ANTES de que existiera el conteo: es el caso de todos los que ya viven en
-  // producción, y son la mayoría. Se busca por la API, en el mismo orden que pinta el histórico.
+  // producción, y son la mayoría. Se busca por la API, en el mismo orden y con las mismas páginas
+  // que pinta el histórico, empezando por la última (la de los más viejos).
   //
-  // Antes se tomaba «el último renglón», suponiendo que el más viejo era anterior al conteo. El
-  // histórico trae los 50 más recientes, y cada corrida de esta suite abre y cierra cortes: en el
-  // ambiente de pruebas el último renglón ya es un corte con conteo, y el test fallaba sin que nada
-  // estuviera roto. Si ninguno de los visibles es anterior al conteo se salta y lo dice; no hay
-  // forma de llegar a uno más viejo desde la pantalla.
+  // Antes el histórico traía solo los 50 más recientes y este test se saltaba cuando todos ya tenían
+  // conteo. Con páginas se llega a cualquier corte, que es lo que encontró la auditoría.
+  const POR_PAGINA = 20; // el mismo CORTES_POR_PAGINA de la pantalla
   const jwt = await tokenDeApi();
   const auth = { Authorization: `Bearer ${jwt}` };
-  const lista = (await (await fetch(`${API}/cash-sessions`, { headers: auth })).json()).items as Array<{ id: number; status: string }>;
+  const pagina = async (p: number) => (await (await fetch(`${API}/cash-sessions?page=${p}&pageSize=${POR_PAGINA}`,
+    { headers: auth })).json()) as { items: Array<{ id: number; status: string }>; total: number };
+  const paginas = Math.max(1, Math.ceil((await pagina(0)).total / POR_PAGINA));
   let indice = -1;
-  for (let i = lista.length - 1; i >= 0 && indice < 0; i--) {
-    if (lista[i].status !== 'cerrada') continue;
-    const d = await (await fetch(`${API}/cash-sessions/${lista[i].id}`, { headers: auth })).json();
-    if (!d.counts?.apertura && !d.counts?.cierre) indice = i;
+  let enPagina = 0;
+  for (let p = paginas - 1; p >= 0 && indice < 0; p--) {
+    const lista = (await pagina(p)).items;
+    for (let i = lista.length - 1; i >= 0 && indice < 0; i--) {
+      if (lista[i].status !== 'cerrada') continue;
+      const d = await (await fetch(`${API}/cash-sessions/${lista[i].id}`, { headers: auth })).json();
+      if (!d.counts?.apertura && !d.counts?.cierre) { indice = i; enPagina = p; }
+    }
   }
-  test.skip(indice < 0, 'los cortes del histórico son todos posteriores al conteo');
+  test.skip(indice < 0, 'todos los cortes del histórico son posteriores al conteo');
+  for (let p = 0; p < enPagina; p++) {
+    await page.getByRole('button', { name: 'Página siguiente' }).click();
+    await expect(page.getByText(`Página ${p + 2} de ${paginas}`)).toBeVisible({ timeout: 30_000 });
+  }
+  await page.waitForLoadState('networkidle');
   const filas = page.getByRole('row');
   await expect(filas.nth(indice + 1)).toBeVisible({ timeout: 30_000 });
   await filas.nth(indice + 1).click();

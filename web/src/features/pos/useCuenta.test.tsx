@@ -27,7 +27,7 @@ vi.mock('../../components/ui/toaster', () => ({ toaster: toasts }));
 
 function draft(over: Partial<DraftView> = {}): DraftView {
   return {
-    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1,
+    id: 'd-1', orderId: null, folioName: 'Levkoy', status: 'capturando', headerVersion: 1, version: 1,
     updatedAt: '2026-10-08T18:00:00Z', createdAt: '2026-10-08T18:00:00Z', openedBy: 'Ana',
     serviceType: 'mostrador', customerName: null, platformId: null, platformOrderRef: null,
     deliveryFee: '0.00', discount: null, lines: [], subtotal: '0.00', discountTotal: '0.00',

@@ -28,6 +28,7 @@ dinero**. Patrón de RLS, llaves compuestas y grants copiado de
 | `platform_ref_set_by` | `bigint null` | Quién tecleó el folio de plataforma; al enviar pasa a `orders.platform_ref_set_by`. Mismo check de pareja con `platform_order_ref` y misma FK |
 | `opened_by` | `bigint not null` | FK `(company_id, opened_by) → users (company_id, id) on delete no action` (`users_tenant_key`, 0073): un usuario con cuentas capturadas no se borra; el rastro sobrevive. FR-020 |
 | `header_version` | `int not null default 1` | Versión esperada para editar la cabecera (R-2) |
+| `version` | `int not null default 1` | (0083) Versión de la cuenta entera: avanza con todo cambio de renglones o cabecera. Descartar la exige, porque descartar se lleva todo lo de adentro |
 | `created_at` | `timestamptz not null default now()` | Guarda de `taken_at` al soltar el nombre (R-3) |
 | `updated_at` | `timestamptz not null default now()` | Cualquier cambio. Base de las 12 h (D-8) y del aviso entre tabletas |
 | `sent_at` | `timestamptz null` | `check ((status = 'enviada') = (sent_at is not null))` |

@@ -336,19 +336,36 @@ func (h *Handlers) CashSessionSales(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /cash-sessions — histórico de cortes (últimos N).
+// GET /cash-sessions?page=&pageSize=&from=&to= — histórico de cortes, paginado y opcionalmente
+// acotado por el día del turno. Sin páginas solo existían los 50 más recientes: un corte más viejo
+// no se podía abrir desde la pantalla donde se audita.
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
-	limit, err := limiteDeQuery(r.URL.Query(), 50)
+	q := r.URL.Query()
+	limit, offset, err := paginaDeQuery(q)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.SessionHistory(r.Context(), limit)
+	f := domain.SessionHistoryFilter{Limit: limit, Offset: offset}
+	for _, p := range []struct {
+		name string
+		dst  **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		if v := q.Get(p.name); v != "" {
+			d, err := parseDate(v, time.Time{})
+			if err != nil {
+				Error(w, err)
+				return
+			}
+			*p.dst = &d
+		}
+	}
+	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": rows})
+	JSON(w, http.StatusOK, map[string]any{"items": rows, "total": total, "page": offset / limit, "pageSize": limit})
 }
 
 // GET /cash-sessions/{id} — detalle de un corte (totales guardados + movimientos).

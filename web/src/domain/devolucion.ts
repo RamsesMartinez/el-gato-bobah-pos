@@ -16,6 +16,15 @@ export function montoDevolvible(cobrado: number, yaDevuelto: number): number {
   return Math.max(0, round2(cobrado - yaDevuelto));
 }
 
+// quedaPorDevolver: cuánto de lo cobrado de un pedido no se ha devuelto, con lo que trae el tablero.
+//
+// Lo cobrado sale de lo que el pedido ya no debe (total − por cobrar), y eso NO resta lo devuelto:
+// devuelto todo, seguía diciendo que había pagos por devolver. Es la regla única de «hay algo que
+// devolver» en la pantalla; calcularla a mano en cada lugar es como uno se quedó sin restar.
+export function quedaPorDevolver(o: { total: string; outstanding: string; refund?: string }): number {
+  return montoDevolvible(round2(Number(o.total) - Number(o.outstanding)), round2(Number(o.refund ?? 0)));
+}
+
 // sePuedeDevolver dice por qué NO se puede devolver, o null si sí.
 //
 // El tope es lo COBRADO menos lo ya devuelto, nunca el total del pedido: el tablero llegó a ofrecer

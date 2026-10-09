@@ -6,7 +6,7 @@ import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { CuentasDelCierre, BotonCerrarCaja } from './CashPage';
+import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico } from './CashPage';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
@@ -454,7 +454,7 @@ const viva = (over: Partial<AccountItem> & { key: string }): AccountItem => ({
 describe('las cuentas vivas en el cierre', () => {
   const VIVAS = [
     viva({ key: 'o:2' }),
-    viva({ key: 'd:a', kind: 'draft', draftId: 'a', orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
+    viva({ key: 'd:a', kind: 'draft', draftId: 'a', draftVersion: 3, orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
   ];
 
   test('lo que bloquea va arriba y «Abrir» lleva a su cuenta', async () => {
@@ -506,7 +506,7 @@ describe('las cuentas vivas en el cierre', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Descartar Levkoy' }));
     expect(onDescartar).not.toHaveBeenCalled();
     await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
-    expect(onDescartar).toHaveBeenCalledWith('a');
+    expect(onDescartar).toHaveBeenCalledWith('a', 3);
     expect(confirmar).not.toHaveBeenCalled();
   });
 
@@ -646,4 +646,55 @@ test('el detalle de un turno abierto no pinta la conciliación', () => {
     totals, movements: [], expenses: [] };
   render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} abierto /></Provider></QueryClientProvider>);
   expect(screen.queryByText(/Conciliación/)).not.toBeInTheDocument();
+});
+
+// EL HISTÓRICO DE CAJA SE PAGINA (auditoría): solo traía los 50 cortes más recientes y uno más viejo
+// no se podía abrir desde la pantalla. Los controles caben a 1024×600 y miden 44 px.
+describe('los controles del histórico de cortes', () => {
+  const base = { page: 0, total: 55, pageSize: 20, desde: '', hasta: '', hoy: '2026-10-08', onPage: vi.fn(), onRango: vi.fn() };
+
+  test('dicen en qué página va y llegan a la última, donde está el corte más viejo', async () => {
+    const onPage = vi.fn();
+    wrap(<ControlesDelHistorico {...base} page={1} onPage={onPage} />);
+    expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(onPage).toHaveBeenCalledWith(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Página anterior' }));
+    expect(onPage).toHaveBeenCalledWith(0);
+  });
+
+  test('en la primera no retrocede y en la última no avanza', () => {
+    const { unmount } = wrap(<ControlesDelHistorico {...base} page={0} />);
+    expect(screen.getByRole('button', { name: 'Página anterior' })).toBeDisabled();
+    unmount();
+    wrap(<ControlesDelHistorico {...base} page={2} />);
+    expect(screen.getByRole('button', { name: 'Página siguiente' })).toBeDisabled();
+  });
+
+  test('los botones miden 44 px y no hay select nativo', () => {
+    const { container } = wrap(<ControlesDelHistorico {...base} />);
+    for (const b of screen.getAllByRole('button')) {
+      expect(parseInt(getComputedStyle(b).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    }
+    for (const i of [screen.getByLabelText('Desde'), screen.getByLabelText('Hasta')]) {
+      expect(parseInt(getComputedStyle(i).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    }
+    expect(container.querySelector('select')).toBeNull();
+  });
+
+  test('un rango al revés no se aplica y lo dice', async () => {
+    const onRango = vi.fn();
+    wrap(<ControlesDelHistorico {...base} onRango={onRango} />);
+    await userEvent.type(screen.getByLabelText('Desde'), '2026-09-10');
+    await userEvent.type(screen.getByLabelText('Hasta'), '2026-09-01');
+    expect(screen.getByRole('status')).toHaveTextContent(/inicio va después/);
+    expect(onRango).not.toHaveBeenLastCalledWith('2026-09-10', '2026-09-01');
+  });
+
+  test('con fechas puestas, «Quitar fechas» vuelve a todos los cortes', async () => {
+    const onRango = vi.fn();
+    wrap(<ControlesDelHistorico {...base} desde="2026-09-01" hasta="2026-09-03" onRango={onRango} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar fechas' }));
+    expect(onRango).toHaveBeenCalledWith('', '');
+  });
 });
