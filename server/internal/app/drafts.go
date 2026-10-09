@@ -423,7 +423,8 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		return nil, fmt.Errorf("%w: no hay nada que cambiar", domain.ErrValidation)
 	}
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := lockLiveDraft(ctx, q, cmd.DraftID); err != nil {
+		d, err := lockLiveDraft(ctx, q, cmd.DraftID)
+		if err != nil {
 			return err
 		}
 		lines, err := q.ListDraftLines(ctx, cmd.DraftID)
@@ -469,6 +470,9 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		if n == 0 {
 			return domain.ErrDraftChanged
 		}
+		if err := keepDiscountWithinSale(ctx, q, d); err != nil {
+			return err
+		}
 		return q.TouchDraft(ctx, cmd.DraftID)
 	})
 	if err != nil {
@@ -481,7 +485,8 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 // vacía y viva, con su nombre: cerrarla es otra decisión (D-7).
 func (s *DraftsService) RemoveLine(ctx context.Context, draftID, lineID uuid.UUID, expectedVersion int32) (*DraftView, error) {
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := lockLiveDraft(ctx, q, draftID); err != nil {
+		d, err := lockLiveDraft(ctx, q, draftID)
+		if err != nil {
 			return err
 		}
 		n, err := q.DeleteDraftLine(ctx, db.DeleteDraftLineParams{ID: lineID, DraftID: draftID, ExpectedVersion: expectedVersion})
@@ -490,6 +495,9 @@ func (s *DraftsService) RemoveLine(ctx context.Context, draftID, lineID uuid.UUI
 		}
 		if n == 0 {
 			return domain.ErrDraftChanged
+		}
+		if err := keepDiscountWithinSale(ctx, q, d); err != nil {
+			return err
 		}
 		return q.TouchDraft(ctx, draftID)
 	})
@@ -538,10 +546,14 @@ func (s *DraftsService) PatchHeader(ctx context.Context, id uuid.UUID, p DraftHe
 		if !sameStr(before.platformRef, h.platformRef) {
 			res.RefChanged, res.RefBefore = true, derefStr(before.platformRef)
 		}
-		if p.Discount.Set {
+		// También sin tocar el descuento: cambiar de plataforma reprecia, y la venta puede quedar debajo
+		// de un descuento en pesos que antes cabía.
+		if h.discountAmount != nil || h.discountPercent != nil {
 			if err := checkDraftDiscount(ctx, q, id); err != nil {
 				return err
 			}
+		}
+		if p.Discount.Set {
 			res.DiscountBefore, res.DiscountAfter = before.discountText(), h.discountText()
 			res.DiscountChanged = res.DiscountBefore != res.DiscountAfter
 		}
@@ -740,6 +752,17 @@ func checkOptions(ctx context.Context, q *db.Queries, mods []domain.DraftModifie
 		}
 	}
 	return nil
+}
+
+// keepDiscountWithinSale rechaza el cambio de renglones que deja un descuento en pesos por encima de
+// la venta (research R-17). Recortarlo en silencio regalaría lo que queda de la cuenta; dejarlo pasar
+// hacía que la cuenta se mostrara gratis y que el envío la rechazara. El porcentaje no necesita
+// revisión: nunca pasa del 100% de lo que haya.
+func keepDiscountWithinSale(ctx context.Context, q *db.Queries, d db.OrderDraft) error {
+	if d.DiscountAmount == nil {
+		return nil
+	}
+	return checkDraftDiscount(ctx, q, d.ID)
 }
 
 // checkDraftDiscount valida el descuento de la cuenta contra el subtotal que calcula el servidor,
@@ -982,8 +1005,8 @@ func buildDraftView(ctx context.Context, q *db.Queries, d db.GetDraftRow) (*Draf
 	v.Subtotal = domain.Round2(subtotal)
 	descuento, err := domain.ResolverDescuento(v.Subtotal, d.DiscountAmount, d.DiscountPercent)
 	if errors.Is(err, domain.ErrDescuentoMayorQueLaVenta) {
-		// Se quitaron productos después de poner el descuento: la vista no se cae; enviar lo rechaza
-		// con el máximo, que es donde el operador lo puede corregir.
+		// Quitar o cambiar renglones ya no llega aquí (keepDiscountWithinSale); sí un precio del
+		// catálogo que bajó con la cuenta abierta. La vista no se cae; enviar lo rechaza con el máximo.
 		descuento = v.Subtotal
 	} else if err != nil {
 		return nil, err
