@@ -553,11 +553,13 @@ type CashierTotal struct {
 }
 
 // PendingOrder es un pedido del turno que sigue sin entregarse. El id viaja para que el cierre
-// ofrezca «Abrir» esa cuenta en el POS en vez de mandar a buscarla por nombre.
+// ofrezca «Abrir» esa cuenta en el POS en vez de mandar a buscarla por nombre, y el total para que
+// diga de cuánto es sin abrirla.
 type PendingOrder struct {
-	ID     int64  `json:"id"`
-	Number int    `json:"number"`
-	Name   string `json:"name"`
+	ID     int64           `json:"id"`
+	Number int             `json:"number"`
+	Name   string          `json:"name"`
+	Total  decimal.Decimal `json:"total"`
 }
 
 // CashRegisterView es una caja del catálogo. OpenSessionID no-nil = tiene una sesión abierta.
@@ -2160,7 +2162,7 @@ func (s *BackofficeService) pedidosSinEntregar(ctx context.Context, sessionID in
 	}
 	out := make([]PendingOrder, 0, len(filas))
 	for _, f := range filas {
-		out = append(out, PendingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName)})
+		out = append(out, PendingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName), Total: f.Total})
 	}
 	return out, nil
 }

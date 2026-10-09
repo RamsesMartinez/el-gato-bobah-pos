@@ -465,6 +465,12 @@ describe('las cuentas vivas en el cierre', () => {
     expect(onAbrir).toHaveBeenCalledWith('/pos?pedido=11');
   });
 
+  // «Falta entregar 3 pedidos» sin montos obligaba a abrir cada uno (validación como usuario nuevo).
+  test('cada pedido que falta entregar dice de cuánto es', () => {
+    wrap(<CuentasDelCierre pending={[{ number: 1, name: 'Khao Manee', id: 11, total: '165.00' }]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    expect(screen.getByText('$165')).toBeInTheDocument();
+  });
+
   // Las que deben y las que se capturan NO bloquean (D-10): van plegadas, para no empujar el botón
   // de cerrar fuera de la pantalla de 600 px.
   test('las que no bloquean van en una sección plegada con su conteo', async () => {

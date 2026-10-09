@@ -1388,7 +1388,8 @@ export function CuentasDelCierre({ pending, cuentas, onAbrir, onDescartar }: {
           <VStack align="stretch" gap={1}>
             {pending.map((o) => (
               <HStack key={o.number} justify="space-between" gap={2}>
-                <Text fontWeight="600" truncate>{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                <Text fontWeight="600" truncate flex="1" minW={0}>{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                {o.total !== undefined && <Text fontWeight="700" flexShrink={0}>{money(o.total)}</Text>}
                 {o.id !== undefined && (
                   <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${o.name || `#${o.number}`}`}
                     onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Abrir</Button>

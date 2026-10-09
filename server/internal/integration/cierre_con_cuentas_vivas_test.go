@@ -42,6 +42,11 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 		if len(view.Pending) != 1 || view.Pending[0].ID != inKitchen.ID {
 			t.Fatalf("pending = %+v: «Abrir» del cierre necesita el id del pedido", view.Pending)
 		}
+		// «Falta entregar 3 pedidos» sin montos obligaba a abrir cada uno para saber de cuánto era.
+		if !view.Pending[0].Total.Equal(inKitchen.Total) {
+			t.Fatalf("pending total = %s, quería %s: el cierre dice de cuánto es cada pedido sin abrirlo",
+				view.Pending[0].Total, inKitchen.Total)
+		}
 		for _, it := range view.LiveAccounts {
 			if it.OrderID != nil && *it.OrderID == inKitchen.ID {
 				t.Fatal("el pedido en cocina salió también en liveAccounts: se listaría dos veces")
