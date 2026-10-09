@@ -325,6 +325,38 @@ func TestAnOrderWithoutProductsCanBeClosedByAnyRole(t *testing.T) {
 			t.Fatal("se canceló un pedido con pagos sin devolverlos: ese dinero saldría del corte sin rastro")
 		}
 	})
+
+	// Lo que ya se devolvió no es un pago por devolver. Se medía con lo cobrado en bruto, así que un
+	// pedido vacío con su pago ya devuelto se quedaba en el tablero sin salida: «Cerrar pedido» lo
+	// rechazaba con «hay que devolverlos primero» y no quedaba nada que devolver.
+	t.Run("con los pagos ya devueltos se cierra; con una parte, no", func(t *testing.T) {
+		appSt := appRoleStore(t)
+		tctx, release, err := appSt.AcquireTenant(ctx, defaultCompanyID)
+		if err != nil {
+			t.Fatalf("AcquireTenant: %v", err)
+		}
+		defer release()
+		svc := app.NewOrdersService(appSt, clock)
+
+		parcial := emptiedOrder(t, st, abridor, "vacio_devuelto_parcial", "20")
+		if err := svc.Devolver(tctx, app.DevolucionCmd{OrderID: parcial, Monto: pesos("5"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
+			t.Fatalf("Devolver una parte: %v", err)
+		}
+		if _, err := svc.CancelPending(tctx, parcial, abridor, ""); !errors.Is(err, domain.ErrOrderHasPayments) {
+			t.Fatalf("con $15 todavía por devolver = %v, quiere ErrOrderHasPayments", err)
+		}
+
+		devuelto := emptiedOrder(t, st, abridor, "vacio_devuelto", "20")
+		if err := svc.Devolver(tctx, app.DevolucionCmd{OrderID: devuelto, Monto: pesos("20"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
+			t.Fatalf("Devolver todo: %v", err)
+		}
+		if _, err := svc.CancelPending(tctx, devuelto, abridor, ""); err != nil {
+			t.Fatalf("pedido vacío con todo devuelto = %v: ya no hay nada que devolver y no se puede cerrar", err)
+		}
+		if estado, _ := estadoYCierre(t, st, devuelto); estado != domain.StatusCancelada {
+			t.Fatalf("quedó %q, quiere cancelada", estado)
+		}
+	})
 }
 
 // [U3] Las rutas preguntan por permiso. Hoy todos los roles tienen `orders.cancel_pending`, así que

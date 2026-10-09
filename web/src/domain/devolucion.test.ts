@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  avisoDeInventario, montoDevolvible, porQueNoSeDevuelve, sePuedeDevolver,
+  avisoDeInventario, montoDevolvible, quedaPorDevolver, porQueNoSeDevuelve, sePuedeDevolver,
 } from './devolucion';
 
 describe('montoDevolvible', () => {
@@ -83,4 +83,16 @@ describe('avisoDeInventario', () => {
   test('los dos avisos son distintos: si dijeran lo mismo, el aviso no informaría nada', () => {
     expect(avisoDeInventario(true)).not.toBe(avisoDeInventario(false));
   });
+});
+
+// quedaPorDevolver es la ÚNICA regla de «hay algo que devolver» en la pantalla. Lo cobrado sale de
+// total − por cobrar, que NO resta lo devuelto: dos lugares lo calculaban a mano y uno lo olvidó.
+describe('quedaPorDevolver', () => {
+  test.each([
+    { caso: 'sin cobrar', o: { total: '30', outstanding: '30', refund: '0' }, queda: 0 },
+    { caso: 'cobrado, nada devuelto', o: { total: '30', outstanding: '0' }, queda: 30 },
+    { caso: 'cobrado y devuelto todo', o: { total: '30', outstanding: '0', refund: '30' }, queda: 0 },
+    { caso: 'abonado y devuelta una parte', o: { total: '110', outstanding: '60', refund: '20' }, queda: 30 },
+    { caso: 'devuelto de más no es deuda del cliente', o: { total: '30', outstanding: '0', refund: '40' }, queda: 0 },
+  ])('$caso', ({ o, queda }) => expect(quedaPorDevolver(o)).toBe(queda));
 });

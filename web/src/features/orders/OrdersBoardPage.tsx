@@ -27,7 +27,7 @@ import { CancelPendingSheet } from './CancelPendingSheet';
 import { useSessionStore } from '../../stores/session';
 import { can } from '../../app/permissions';
 import { round2 } from '../../domain/numeros';
-import { montoDevolvible } from '../../domain/devolucion';
+import { quedaPorDevolver } from '../../domain/devolucion';
 import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
@@ -374,10 +374,10 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
   const sinProductos = renglonesDe(o).length === 0;
   const listo = faltan.length === 0;
   const debe = Number(o.outstanding) > 0;
-  // El tablero no trae los pagos; lo cobrado sale de lo que el pedido ya no debe. Basta para un
-  // pedido sin productos, cuyo total es a lo más el envío: si algo se cobró, hay que devolverlo
-  // antes de cerrarlo, y si la cifra se equivoca el servidor lo rechaza con su texto.
-  const tienePagos = round2(Number(o.total) - Number(o.outstanding)) > 0;
+  // El tablero no trae los pagos; lo cobrado sale de lo que el pedido ya no debe, menos lo devuelto.
+  // Basta para un pedido sin productos, cuyo total es a lo más el envío: si algo queda cobrado, hay
+  // que devolverlo antes de cerrarlo, y si la cifra se equivoca el servidor lo rechaza con su texto.
+  const tienePagos = quedaPorDevolver(o) > 0;
   const algoEntregado = renglonesDe(o).some((l) => Number(l.delivered) > 0);
   // Con todo entregado, cancelar el pedido lo rechaza el servidor y la salida es «Cerrar pedido».
   const ofreceCancelar = acciones.puedeCancelar && !(listo && algoEntregado);
@@ -652,7 +652,7 @@ function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCue
                       cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
                       ofrecerla: el operador la toca con el cliente enfrente. Y lo cobrado se resta
                       de lo ya devuelto: devuelto todo, el botón solo podía rebotar. */}
-                  {montoDevolvible(Number(o.total) - Number(o.outstanding), devueltoDe(o)) > 0 && (
+                  {quedaPorDevolver(o) > 0 && (
                     <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
                       onClick={() => onRefund(o)}>Devolver</Button>
                   )}
