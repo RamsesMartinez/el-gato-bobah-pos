@@ -309,7 +309,9 @@ function Seccion({ titulo, color, plegable, total, children }: {
           </Button>
         ) : titulo}
       </Heading>
-      {abierta && children}
+      {/* `!pliega` va primero: si la sección deja de ser plegable estando cerrada (se cobró uno por
+          productos y quedaron tres), ya no hay botón con qué abrirla y sus renglones desaparecían. */}
+      {(!pliega || abierta) && children}
     </Box>
   );
 }
