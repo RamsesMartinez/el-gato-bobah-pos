@@ -405,6 +405,25 @@ describe('lo que la revisión de tableta encontró', () => {
     expect(screen.getByText('Producto 6')).toBeInTheDocument();
   });
 
+  // Lo encontró el e2e (F3): cuatro en cocina con algo nuevo → plegado; se cobra uno por productos y
+  // pasa a «Pagado», quedan tres. La sección dejaba de ser plegable —ya no hay botón para abrirla—
+  // pero seguía cerrada: el encabezado «En cocina» sin un solo renglón debajo, y tres productos que
+  // se cobran sin verse.
+  test('si «En cocina» deja de ser plegable estando plegado, sus renglones se ven', () => {
+    const cuatro = pedido({ id: 2, lines: [1, 2, 3, 4].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    const nuevo = draft({ orderId: 2 });
+    const r = pinta(vista({ order: cuatro, draft: nuevo }));
+    expect(screen.queryByText('Producto 1')).toBeNull();
+    const unoPagado = pedido({
+      id: 2, outstanding: '30.00', lines: cuatro.lines,
+      payments: [{ id: 1, number: 1, voided: false, methodId: 1, methodName: 'Efectivo', amount: '10.00', tip: '0', reference: '', paidAt: '', receivedBy: '', split: null, lines: [{ lineId: 4, qty: '1', amount: '10.00' }] }],
+    });
+    r.rerender(<Provider><Ticket vista={vista({ order: unoPagado, draft: nuevo })} {...handlers} /></Provider>);
+    const cocina = screen.getByRole('region', { name: /En cocina/ });
+    expect(within(cocina).getByText('Producto 1')).toBeInTheDocument();
+    expect(within(cocina).getByText('Producto 3')).toBeInTheDocument();
+  });
+
   // «Enviar 1 a cocina» con un renglón de 2 piezas: cocina recibe dos, el botón decía uno.
   test('«Enviar N a cocina» cuenta piezas, no renglones', () => {
     const l = { ...draft().lines![0], qty: '2', lineTotal: '58.00' };

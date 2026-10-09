@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { API, USUARIO, EMPRESA, PASSWORD, cuentasVivas, tokenDeApi, tokenDeRequest } from './ambiente';
 import { abrirTicket, botonCobrar, ponerUnProducto, productoPorNombre } from './pos';
+import { iniciarSesion } from './sesion';
 
 // EL FOLIO DE LA PLATAFORMA, A 1024×600 Y CONTRA EL SERVIDOR DE VERDAD (spec 014).
 //
@@ -20,13 +21,7 @@ import { abrirTicket, botonCobrar, ponerUnProducto, productoPorNombre } from './
 async function entrar(page: Page, ruta = '/') {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-    await page.waitForURL(/\/(pos)?$/);
-  }
+  await iniciarSesion(page);
   if (ruta !== '/') await page.goto(ruta);
   await page.waitForLoadState('networkidle');
 }

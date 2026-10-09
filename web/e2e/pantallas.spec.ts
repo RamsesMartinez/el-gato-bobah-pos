@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
+import { API, tokenDeRequest } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // LA MATRIZ DE PANTALLAS, EXTREMO A EXTREMO. Ver docs/matriz-de-pantallas.md.
 //
@@ -20,9 +21,8 @@ import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
 // porque solo visitan `/`, y su aserción de URL acepta `/pos`.
 async function entrar(page: Page, ruta: string) {
   await page.goto('/');
-  await page.getByPlaceholder('usuario@empresa').fill(`${USUARIO}@${EMPRESA}`);
-  await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForLoadState('networkidle');
+  await iniciarSesion(page);
   await page.waitForURL(/\/(pos)?$/);
   await page.goto(ruta);
 }

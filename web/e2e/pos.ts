@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
+import { API } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // Lo que comparten los specs que capturan en Vender (spec 030): entrar, poner un producto, abrir el
 // ticket y cobrar. Antes cada spec traía su copia y se rompían todos a la vez cuando cambiaba un
@@ -11,12 +12,7 @@ import { API, EMPRESA, PASSWORD, USUARIO } from './ambiente';
 export async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   await expect(cuentaNueva(page)).toBeVisible({ timeout: 30_000 });
 }
 

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { USUARIO, EMPRESA, PASSWORD } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // CUÁNTO ALTO Y CUÁNTOS TOQUES CUESTAN LAS DOS PANTALLAS QUE TOCA LA SPEC 015, medido en un
 // navegador real a 1024×600.
@@ -44,12 +44,7 @@ const MINIMO_ENTRE_CONTROLES = 22;
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   await expect(page.getByRole('button', { name: 'Salir' })).toBeVisible({ timeout: 30_000 });
 }
 
