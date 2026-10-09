@@ -51,7 +51,7 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
           <Tile label="Canceladas" valor={money(resumen.cancelled.amount)} nota={`${resumen.cancelled.count}`} />
         )}
         {resumen.refunded.count > 0 && (
-          <Tile label="Reembolsadas" valor={money(resumen.refunded.amount)} nota={`${resumen.refunded.count}`} />
+          <Tile label="Devoluciones" valor={money(resumen.refunded.amount)} nota={`${resumen.refunded.count}`} />
         )}
         {resumen.cancelledLines.count > 0 && (
           <Tile label="Renglones cancelados" valor={money(resumen.cancelledLines.amount)} nota={`${resumen.cancelledLines.count}`} />

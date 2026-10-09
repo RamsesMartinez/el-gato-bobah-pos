@@ -249,6 +249,9 @@ type ConceptCount struct {
 //   - Tips: pass-through del personal. NO está dentro de Total.
 //   - DeliveryFees: ya está DENTRO del importe de los pedidos; viaja aparte solo como referencia.
 //   - Pending: lo que falta por cobrar de los pedidos del periodo. NO está dentro de Total.
+//   - Refunded: las devoluciones HECHAS en el periodo (sin propina), las mismas que el desglose por
+//     medio ya restó de Total. No sale del estado de los pedidos del periodo: así lo decía antes y
+//     el tile marcaba cero con el desglose ya restando una devolución de hoy.
 //
 // La separación no es estética. Un resumen que pone propina, envío y total como renglones hermanos
 // invita a sumarlos y a reportar un ingreso que el negocio no tuvo — la misma forma del fondo de
@@ -264,6 +267,14 @@ type SalesSummary struct {
 	Pending      ConceptCount    `json:"pending"`
 }
 
+// MethodNet es lo que el resumen toma de cada renglón del desglose por medio: lo cobrado neto y
+// las devoluciones del periodo que ya se le restaron.
+type MethodNet struct {
+	Net         decimal.Decimal
+	Refunds     decimal.Decimal
+	RefundCount int
+}
+
 // NetCollected es el Total de Ventas: la suma, al centavo, de lo cobrado neto por cada medio. Sale
 // de las MISMAS filas que la pantalla pinta debajo, así que no puede dejar de cuadrar con ellas: una
 // segunda consulta para la misma cifra es de donde salen dos números que no coinciden.
@@ -277,7 +288,7 @@ func NetCollected(netByMethod []decimal.Decimal) decimal.Decimal {
 
 // SummarizeSales clasifica cada venta en un solo concepto, saca el ticket promedio de los pedidos y
 // toma el Total del cobro neto por medio.
-func SummarizeSales(filas []StatusTotals, netByMethod []decimal.Decimal) SalesSummary {
+func SummarizeSales(filas []StatusTotals, porMedio []MethodNet) SalesSummary {
 	var s SalesSummary
 	vendido := decimal.Zero
 	for _, f := range filas {
@@ -286,8 +297,8 @@ func SummarizeSales(filas []StatusTotals, netByMethod []decimal.Decimal) SalesSu
 			s.Cancelled.Count += f.Count
 			s.Cancelled.Amount = s.Cancelled.Amount.Add(f.Total)
 		case StatusReembolsada:
-			s.Refunded.Count += f.Count
-			s.Refunded.Amount = s.Refunded.Amount.Add(f.Total)
+			// Ni venta ni devolución: lo devuelto sale de las devoluciones del periodo, abajo. El
+			// estado del pedido no dice CUÁNDO se devolvió, y una devolución parcial no lo cambia.
 		default:
 			s.Count += f.Count
 			vendido = vendido.Add(f.Total)
@@ -298,7 +309,13 @@ func SummarizeSales(filas []StatusTotals, netByMethod []decimal.Decimal) SalesSu
 	if s.Count > 0 {
 		s.Average = Round2(vendido.Div(decimal.NewFromInt(int64(s.Count))))
 	}
-	s.Total = NetCollected(netByMethod)
+	netos := make([]decimal.Decimal, 0, len(porMedio))
+	for _, m := range porMedio {
+		netos = append(netos, m.Net)
+		s.Refunded.Count += m.RefundCount
+		s.Refunded.Amount = s.Refunded.Amount.Add(m.Refunds)
+	}
+	s.Total = NetCollected(netos)
 	s.Tips = Round2(s.Tips)
 	s.DeliveryFees = Round2(s.DeliveryFees)
 	s.Cancelled.Amount = Round2(s.Cancelled.Amount)

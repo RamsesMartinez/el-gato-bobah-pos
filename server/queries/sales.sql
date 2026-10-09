@@ -218,7 +218,7 @@ with pagos as (
      and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
     from order_refunds r
     join orders o on o.id = r.order_id
    where coalesce(r.business_date, o.business_date) between @desde and @hasta
@@ -230,6 +230,7 @@ select pm.id as method_id, pm.name as method,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
        coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
        -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
        coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm
@@ -253,7 +254,7 @@ with pagos as (
      and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
     from order_refunds r
     join orders o on o.id = r.order_id
    where o.delivery_platform_id is not null and o.platform_order_ref is null
@@ -266,6 +267,7 @@ select pm.id as method_id, pm.name as method,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
        coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
        -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
        coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm

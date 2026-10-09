@@ -69,8 +69,11 @@ func TestElDesgloseDeMetodosNoCuentaLoReembolsado(t *testing.T) {
 		t.Fatalf("resumen: %v", err)
 	}
 
-	if !sum.Refunded.Amount.Equal(decimal.RequireFromString("500")) {
-		t.Fatalf("reembolsadas = %s, quiere 500", sum.Refunded.Amount)
+	// El flujo viejo de `Refund` no deja filas en order_refunds: sus cobros no entran al desglose,
+	// así que tampoco hay devolución que el tile pueda describir. Desde el 2026-10-09 el tile sale de
+	// las devoluciones que el desglose restó, no del estado del pedido.
+	if !sum.Refunded.Amount.IsZero() {
+		t.Fatalf("devoluciones = %s, quiere 0: el desglose no restó nada de este pedido", sum.Refunded.Amount)
 	}
 	cobrado := decimal.Zero
 	for _, m := range sum.ByMethod {
@@ -80,6 +83,46 @@ func TestElDesgloseDeMetodosNoCuentaLoReembolsado(t *testing.T) {
 		t.Fatalf("los métodos suman %s y el total de la pantalla es %s: los %s de diferencia son la "+
 			"venta reembolsada, que el tile de reembolsos ya cuenta — el mismo peso en dos renglones",
 			cobrado, sum.Total, cobrado.Sub(sum.Total))
+	}
+}
+
+// UNA DEVOLUCIÓN PARCIAL DE HOY SALE EN EL TILE DE DEVOLUCIONES, NO SOLO EN EL DESGLOSE.
+//
+// `GET /sales/summary?preset=hoy` devolvía `refunded` {0, 0} mientras `byMethod` ya restaba la
+// devolución: el tile solo contaba pedidos del periodo en estado «reembolsada», y una devolución
+// parcial deja el pedido entregado. La lista y el resumen dejaban de describir el mismo dinero.
+func TestAPartialRefundTodayShowsInTheRefundedTile(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	ordenes := app.NewOrdersService(st, clock)
+
+	cajero := makeUser(t, st, "cajero_tile_dev", "cajero")
+	efectivo := paymentMethodID(t, st, "Efectivo")
+	abrirCajaPrincipal(t, st, cajero)
+
+	ord := pedidoCobradoParcial(t, ctx, st, ordenes, "tile_dev", "200", "200", cajero, efectivo, false)
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+		OrderID: ord, Monto: decimal.RequireFromString("30"),
+		Motivo: "faltó un topping", ActorID: cajero,
+	}); err != nil {
+		t.Fatalf("devolver 30: %v", err)
+	}
+
+	sum, err := app.NewSalesService(st, clock).Summary(ctx, filtroDePrueba())
+	if err != nil {
+		t.Fatalf("resumen: %v", err)
+	}
+	restado := decimal.Zero
+	for _, m := range sum.ByMethod {
+		restado = restado.Add(m.Refunds)
+	}
+	if !restado.Equal(decimal.RequireFromString("30")) {
+		t.Fatalf("el desglose restó %s, quiere 30", restado)
+	}
+	if sum.Refunded.Count != 1 || !sum.Refunded.Amount.Equal(restado) {
+		t.Fatalf("tile de devoluciones = %+v y el desglose restó %s: el resumen no describe el mismo dinero",
+			sum.Refunded, restado)
 	}
 }
 

@@ -649,7 +649,7 @@ with pagos as (
      and ($3::service_type is null or o.service_type = $3)
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
     from order_refunds r
     join orders o on o.id = r.order_id
    where coalesce(r.business_date, o.business_date) between $1 and $2
@@ -661,6 +661,7 @@ select pm.id as method_id, pm.name as method,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
        coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
        -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
        coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm
@@ -677,13 +678,14 @@ type SalesTotalsByMethodParams struct {
 }
 
 type SalesTotalsByMethodRow struct {
-	MethodID   int16           `json:"method_id"`
-	Method     string          `json:"method"`
-	Pagos      int32           `json:"pagos"`
-	Total      decimal.Decimal `json:"total"`
-	Propinas   decimal.Decimal `json:"propinas"`
-	Refunds    decimal.Decimal `json:"refunds"`
-	TipRefunds decimal.Decimal `json:"tip_refunds"`
+	MethodID    int16           `json:"method_id"`
+	Method      string          `json:"method"`
+	Pagos       int32           `json:"pagos"`
+	Total       decimal.Decimal `json:"total"`
+	Propinas    decimal.Decimal `json:"propinas"`
+	Refunds     decimal.Decimal `json:"refunds"`
+	RefundCount int32           `json:"refund_count"`
+	TipRefunds  decimal.Decimal `json:"tip_refunds"`
 }
 
 // Desglose por medio de pago: lo COBRADO, que no es lo mismo que lo vendido (una venta mandada a
@@ -713,6 +715,7 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 			&i.Total,
 			&i.Propinas,
 			&i.Refunds,
+			&i.RefundCount,
 			&i.TipRefunds,
 		); err != nil {
 			return nil, err
@@ -738,7 +741,7 @@ with pagos as (
      and ($3::service_type is null or o.service_type = $3)
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
     from order_refunds r
     join orders o on o.id = r.order_id
    where o.delivery_platform_id is not null and o.platform_order_ref is null
@@ -751,6 +754,7 @@ select pm.id as method_id, pm.name as method,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
        coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
        -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
        coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm
@@ -767,13 +771,14 @@ type SalesTotalsByMethodSinFolioParams struct {
 }
 
 type SalesTotalsByMethodSinFolioRow struct {
-	MethodID   int16           `json:"method_id"`
-	Method     string          `json:"method"`
-	Pagos      int32           `json:"pagos"`
-	Total      decimal.Decimal `json:"total"`
-	Propinas   decimal.Decimal `json:"propinas"`
-	Refunds    decimal.Decimal `json:"refunds"`
-	TipRefunds decimal.Decimal `json:"tip_refunds"`
+	MethodID    int16           `json:"method_id"`
+	Method      string          `json:"method"`
+	Pagos       int32           `json:"pagos"`
+	Total       decimal.Decimal `json:"total"`
+	Propinas    decimal.Decimal `json:"propinas"`
+	Refunds     decimal.Decimal `json:"refunds"`
+	RefundCount int32           `json:"refund_count"`
+	TipRefunds  decimal.Decimal `json:"tip_refunds"`
 }
 
 // Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL, en las dos ramas. Ver la
@@ -794,6 +799,7 @@ func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTota
 			&i.Total,
 			&i.Propinas,
 			&i.Refunds,
+			&i.RefundCount,
 			&i.TipRefunds,
 		); err != nil {
 			return nil, err
