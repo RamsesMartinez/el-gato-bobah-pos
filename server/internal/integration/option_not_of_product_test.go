@@ -17,6 +17,7 @@ import (
 // caminos: el pedido directo (`POST /orders`) y la cuenta en captura. Bastaba el id de una opción
 // de otro producto, o mandarla a un producto sin grupos.
 func TestAnExtraOfAnotherProductIsNotSold(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café sin extras", pesos("30"), false)

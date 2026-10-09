@@ -143,6 +143,7 @@ func TestBoundFolioNameReachesTheOrder(t *testing.T) {
 // cliente se le dijo un nombre y la comanda canta otro. En un local con más pedidos por turno que
 // nombres en la lista, pasa todos los días.
 func TestADraftBornAfterTheListRanOutKeepsItsNameInTheOrder(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	session := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café de la vuelta", pesos("30"), false)
@@ -182,6 +183,7 @@ func TestADraftBornAfterTheListRanOutKeepsItsNameInTheOrder(t *testing.T) {
 //
 // La bolsa guarda animales, no «Persa 2». Soltar el nombre con número no soltaría nada.
 func TestDiscardingANumberedDraftReleasesItsAnimal(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	session := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café que se descarta", pesos("30"), false)
