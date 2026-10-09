@@ -241,20 +241,25 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   const paginas = Math.max(1, Math.ceil((await pagina(0)).total / POR_PAGINA));
   let indice = -1;
   let enPagina = 0;
+  let corteId = 0;
   for (let p = paginas - 1; p >= 0 && indice < 0; p--) {
     const lista = (await pagina(p)).items;
     for (let i = lista.length - 1; i >= 0 && indice < 0; i--) {
       if (lista[i].status !== 'cerrada') continue;
       const d = await (await fetch(`${API}/cash-sessions/${lista[i].id}`, { headers: auth })).json();
-      if (!d.counts?.apertura && !d.counts?.cierre) { indice = i; enPagina = p; }
+      if (!d.counts?.apertura && !d.counts?.cierre) { indice = i; enPagina = p; corteId = lista[i].id; }
     }
   }
   test.skip(indice < 0, 'todos los cortes del histórico son posteriores al conteo');
+  // Se espera la RESPUESTA de cada página, no el letrero «Página N de M»: el letrero cambia al
+  // instante y la tabla sigue pintando la página anterior (placeholderData) hasta que llega la
+  // nueva. Esperar el letrero hacía tocar una fila de la página 1 — un corte de hoy, con conteo.
   for (let p = 0; p < enPagina; p++) {
+    const llego = page.waitForResponse((r) => r.url().includes(`/cash-sessions?page=${p + 1}&`) && r.ok());
     await page.getByRole('button', { name: 'Página siguiente' }).click();
+    await llego;
     await expect(page.getByText(`Página ${p + 2} de ${paginas}`)).toBeVisible({ timeout: 30_000 });
   }
-  await page.waitForLoadState('networkidle');
   const filas = page.getByRole('row');
   await expect(filas.nth(indice + 1)).toBeVisible({ timeout: 30_000 });
   await filas.nth(indice + 1).click();
@@ -263,6 +268,8 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   // en el árbol pero oculto. Sin acotar, el localizador cae en la copia invisible y el assert espera
   // 30 segundos a algo que nunca se va a ver.
   const dialogo = page.locator('[role="dialog"]').first();
+  // Por su identificador: si la posición no corresponde, falla aquí nombrando el corte equivocado.
+  await expect(dialogo.getByRole('heading', { name: `Corte #${corteId}` })).toBeVisible({ timeout: 30_000 });
   await expect(dialogo.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
   // Ni desglose ni un aviso de que no lo tiene: "este corte no tiene desglose" es una historia del
   // sistema que quien audita no puede accionar.
