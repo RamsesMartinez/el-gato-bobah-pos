@@ -29,8 +29,8 @@ func TestAccountState(t *testing.T) {
 		{"entregada saldada: cerrada", false, StatusEntregada, "100", "100", "", false},
 		// Todo regalado: no hay nada que cobrar, así que está cerrada, no «debe $0».
 		{"entregada de $0", false, StatusEntregada, "0", "0", "", false},
-		// El centavo del redondeo de tres partes de $33.33 es la tolerancia de PedidoSaldado.
-		{"entregada con $0.01 de diferencia", false, StatusEntregada, "99.99", "100", "", false},
+		// Desde la 031 un centavo de diferencia es deuda: no hay tolerancia en PedidoSaldado.
+		{"entregada con $0.01 de diferencia: debe (031 quitó la tolerancia)", false, StatusEntregada, "99.99", "100", AccountDeliveredOwes, true},
 		{"entregada con $0.02 de diferencia: debe", false, StatusEntregada, "99.98", "100", AccountDeliveredOwes, true},
 		{"cancelada", false, StatusCancelada, "0", "100", "", false},
 		{"reembolsada", false, StatusReembolsada, "100", "100", "", false},

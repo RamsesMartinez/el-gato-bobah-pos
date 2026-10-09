@@ -278,8 +278,8 @@ func TestCanReceiveLines(t *testing.T) {
 		{"lista", OrderForAdd{Status: StatusLista, Paid: d("0"), Total: d("100")}, nil, false},
 		{"entregada que debe $5", OrderForAdd{Status: StatusEntregada, Paid: d("95"), Total: d("100")}, nil, true},
 		{"entregada y saldada: cerrada", OrderForAdd{Status: StatusEntregada, Paid: d("100"), Total: d("100")}, ErrOrderClosed, false},
-		// Un centavo de diferencia es la tolerancia de PedidoSaldado: está cerrada, no «debe $0.01».
-		{"entregada con $0.01 de diferencia", OrderForAdd{Status: StatusEntregada, Paid: d("99.99"), Total: d("100")}, ErrOrderClosed, false},
+		// Desde la 031 no hay tolerancia: un centavo de diferencia es deuda y la cuenta sigue viva.
+		{"entregada con $0.01 de diferencia: debe y recibe (031 quitó la tolerancia)", OrderForAdd{Status: StatusEntregada, Paid: d("99.99"), Total: d("100")}, nil, true},
 		{"entregada de $0", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("0")}, ErrOrderClosed, false},
 		{"de plataforma abierta", OrderForAdd{Status: StatusAbierta, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
 		{"de plataforma entregada", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},

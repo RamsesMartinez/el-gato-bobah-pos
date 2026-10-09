@@ -395,10 +395,10 @@ func (q *Queries) CreateOrderPaymentLine(ctx context.Context, arg CreateOrderPay
 
 const createOrderPaymentNumbered = `-- name: CreateOrderPaymentNumbered :one
 insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
-                            reference, client_uuid, payment_number, split_part, split_of)
+                            reference, client_uuid, payment_number, split_part, split_of, business_date)
 values ($1, $2, $3, $4,
         $5, $6, $7, $8,
-        $9, $10, $11)
+        $9, $10, $11, $12)
 returning id
 `
 
@@ -414,8 +414,11 @@ type CreateOrderPaymentNumberedParams struct {
 	PaymentNumber     *int16          `json:"payment_number"`
 	SplitPart         *int16          `json:"split_part"`
 	SplitOf           *int16          `json:"split_of"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
+// `business_date`: el día del COBRO por el reloj de la app, no el del pedido (spec 031). Un pedido
+// de ayer cobrado hoy es dinero de hoy.
 func (q *Queries) CreateOrderPaymentNumbered(ctx context.Context, arg CreateOrderPaymentNumberedParams) (int64, error) {
 	row := q.db.QueryRow(ctx, createOrderPaymentNumbered,
 		arg.OrderID,
@@ -429,6 +432,7 @@ func (q *Queries) CreateOrderPaymentNumbered(ctx context.Context, arg CreateOrde
 		arg.PaymentNumber,
 		arg.SplitPart,
 		arg.SplitOf,
+		arg.BusinessDate,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -904,6 +908,27 @@ func (q *Queries) GetOrderLineForCancel(ctx context.Context, arg GetOrderLineFor
 	return i, err
 }
 
+const getOrderLineForRefund = `-- name: GetOrderLineForRefund :one
+select ol.line_total
+from order_lines ol
+where ol.id = $1 and ol.order_id = $2 and ol.cancelled_at is null
+`
+
+type GetOrderLineForRefundParams struct {
+	LineID  int64 `json:"line_id"`
+	OrderID int64 `json:"order_id"`
+}
+
+// El renglón contra el que se devuelve, solo si es de ESE pedido y sigue vivo (spec 031, D4). La
+// llave foránea de order_refunds solo exige que el renglón exista; sin el `order_id` en el where se
+// podía devolver contra el platillo de otro pedido.
+func (q *Queries) GetOrderLineForRefund(ctx context.Context, arg GetOrderLineForRefundParams) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, getOrderLineForRefund, arg.LineID, arg.OrderID)
+	var line_total decimal.Decimal
+	err := row.Scan(&line_total)
+	return line_total, err
+}
+
 const getOrderParaDescuento = `-- name: GetOrderParaDescuento :one
 select o.id, o.status, o.subtotal, o.discount_total, o.delivery_fee, o.total,
        coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid
@@ -1253,30 +1278,42 @@ func (q *Queries) GetPricedProducts(ctx context.Context, dollar_1 []int64) ([]Ge
 }
 
 const insertOrderRefund = `-- name: InsertOrderRefund :one
-insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
+                           cash_movement_id, register_session_id, business_date)
+values ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10)
 returning id
 `
 
 type InsertOrderRefundParams struct {
-	OrderID         int64           `json:"order_id"`
-	OrderLineID     *int64          `json:"order_line_id"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Amount          decimal.Decimal `json:"amount"`
-	Reason          string          `json:"reason"`
-	RefundedBy      int64           `json:"refunded_by"`
-	CashMovementID  *int64          `json:"cash_movement_id"`
+	OrderID           int64           `json:"order_id"`
+	OrderLineID       *int64          `json:"order_line_id"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reason            string          `json:"reason"`
+	RefundedBy        int64           `json:"refunded_by"`
+	CashMovementID    *int64          `json:"cash_movement_id"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
 }
 
+// Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
+// los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
+// la reclama el turno que se abra después.
 func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundParams) (int64, error) {
 	row := q.db.QueryRow(ctx, insertOrderRefund,
 		arg.OrderID,
 		arg.OrderLineID,
 		arg.PaymentMethodID,
 		arg.Amount,
+		arg.TipAmount,
 		arg.Reason,
 		arg.RefundedBy,
 		arg.CashMovementID,
+		arg.RegisterSessionID,
+		arg.BusinessDate,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -1698,7 +1735,7 @@ func (q *Queries) ListLinesOfActiveOrders(ctx context.Context) ([]ListLinesOfAct
 
 const listLinesToSplit = `-- name: ListLinesToSplit :many
 select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
-       ol.enviado_a_cocina_at, p.needs_prep
+       ol.line_total, ol.enviado_a_cocina_at, p.needs_prep
 from order_lines ol
 join products p on p.id = ol.product_id
 where ol.order_id = $1 and ol.cancelled_at is null
@@ -1712,6 +1749,7 @@ type ListLinesToSplitRow struct {
 	DeliveredQty     decimal.Decimal    `json:"delivered_qty"`
 	UnitPrice        decimal.Decimal    `json:"unit_price"`
 	ModifiersTotal   decimal.Decimal    `json:"modifiers_total"`
+	LineTotal        decimal.Decimal    `json:"line_total"`
 	EnviadoACocinaAt pgtype.Timestamptz `json:"enviado_a_cocina_at"`
 	NeedsPrep        bool               `json:"needs_prep"`
 }
@@ -1737,6 +1775,7 @@ func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLi
 			&i.DeliveredQty,
 			&i.UnitPrice,
 			&i.ModifiersTotal,
+			&i.LineTotal,
 			&i.EnviadoACocinaAt,
 			&i.NeedsPrep,
 		); err != nil {
@@ -2595,13 +2634,12 @@ func (q *Queries) RestockCancelledLine(ctx context.Context, arg RestockCancelled
 const restockCancelledOrder = `-- name: RestockCancelledOrder :exec
 insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
                              modifier_option_id, component_of_product_id)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, sm.order_line_id,
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
        $1, 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
-left join order_lines ol on ol.id = sm.order_line_id
 where sm.order_id = $2 and sm.movement_type in ('venta', 'cancelacion')
-  and ol.cancelled_at is null
-group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id, sm.order_line_id,
+  and sm.order_line_id is null
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
          sm.modifier_option_id, sm.component_of_product_id
 having sum(sm.quantity) <> 0
 `
@@ -2611,16 +2649,14 @@ type RestockCancelledOrderParams struct {
 	Oid     *int64 `json:"oid"`
 }
 
-// Repone el stock de una orden cancelada: lo NETO de cada renglón, venta menos lo ya repuesto.
+// Repone el stock de una orden cancelada que no consta de qué renglón salió: los movimientos sin
+// renglón, anteriores a 0060. Lo NETO, venta menos lo ya repuesto.
 //
-// Antes invertía todas las ventas del pedido, y lo que ya se había repuesto al cancelar un renglón
-// volvía a entrar: un sobrante falso en el almacén por cada renglón cancelado antes del pedido. Se
-// agrupa también por renglón para que la reposición quede ligada a él, igual que la de un renglón.
-//
-// Se salta además los renglones YA QUITADOS: quitar el renglón ya decidió su inventario, y el que se
-// quitó ya consumido (enviado a cocina) no tiene nada que volver aunque su neto no sea cero. Los
-// movimientos sin renglón (anteriores a 0060) siguen entrando: de ellos no consta de qué renglón
-// salieron.
+// Los movimientos CON renglón ya no pasan por aquí (spec 031, D11): cancelar el pedido completo
+// repone renglón por renglón con la MISMA regla que quitar uno (domain.ReponeInventario), así que lo
+// que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
+// frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
+// quitaba el renglón: el mismo hecho, dos inventarios.
 func (q *Queries) RestockCancelledOrder(ctx context.Context, arg RestockCancelledOrderParams) error {
 	_, err := q.db.Exec(ctx, restockCancelledOrder, arg.ActorID, arg.Oid)
 	return err
@@ -2806,13 +2842,27 @@ func (q *Queries) SumOrderPayments(ctx context.Context, orderID int64) (SumOrder
 }
 
 const sumOrderPaymentsByMethod = `-- name: SumOrderPaymentsByMethod :many
+with pagos as (
+  select op.payment_method_id, sum(op.amount) as cobrado, sum(op.tip_amount) as propina,
+         min(op.created_at) as primero
+    from order_payments op
+   where op.order_id = $1
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+   where r.order_id = $1
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
-from order_payments op
-join payment_methods pm on pm.id = op.payment_method_id
-where op.order_id = $1
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.is_active
-order by min(op.created_at)
+       coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
+       coalesce(d.devuelto, 0)::numeric(10,2) as refunded,
+       coalesce(p.propina, 0)::numeric(10,2) as tip,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as tip_refunded
+from pagos p
+join payment_methods pm on pm.id = p.payment_method_id
+left join devueltos d on d.payment_method_id = p.payment_method_id
+order by p.primero
 `
 
 type SumOrderPaymentsByMethodRow struct {
@@ -2821,13 +2871,21 @@ type SumOrderPaymentsByMethodRow struct {
 	TocaElCajon bool            `json:"toca_el_cajon"`
 	IsActive    bool            `json:"is_active"`
 	Cobrado     decimal.Decimal `json:"cobrado"`
+	Refunded    decimal.Decimal `json:"refunded"`
+	Tip         decimal.Decimal `json:"tip"`
+	TipRefunded decimal.Decimal `json:"tip_refunded"`
 }
 
-// Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+// Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró, y cuánto ya salió
+// por él.
 //
 // Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
 // efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
 // con un faltante inventado.
+//
+// Lo DEVUELTO por medio viaja junto (spec 031, D1): con lo cobrado en bruto, una segunda devolución
+// volvía a sacar del primer medio lo que ya había salido por él. Pagos y devoluciones se agregan por
+// separado antes de unirse: son dos 1:N del pedido, y unirlos multiplicaría las sumas.
 //
 // `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
 // entró tiene que poder salir por donde entró, o queda atrapado.
@@ -2851,6 +2909,9 @@ func (q *Queries) SumOrderPaymentsByMethod(ctx context.Context, orderID int64) (
 			&i.TocaElCajon,
 			&i.IsActive,
 			&i.Cobrado,
+			&i.Refunded,
+			&i.Tip,
+			&i.TipRefunded,
 		); err != nil {
 			return nil, err
 		}

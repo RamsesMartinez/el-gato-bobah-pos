@@ -119,23 +119,18 @@ func TestLaPropinaNoPuedeSuperarLaCuenta(t *testing.T) {
 	}
 }
 
-// EL DEFECTO: dos predicados distintos sobre la misma cifra.
+// UN SOLO PREDICADO SOBRE LA MISMA CIFRA: lo que dice si el pedido está saldado y lo que la barra
+// muestra por cobrar.
 //
-// Dividir $100 en tres partes de $33.33 suma $99.99. `PagosCubren` tolera el centavo y CIERRA el
-// pedido, pero `PorCobrar` es exacto y lo sigue reportando con $0.01 de deuda: el tablero suma ese
-// centavo, y al día siguiente el pedido desaparece de la vista con la deuda abierta. Es el
-// corolario del principio III — la lista y el resumen de la misma pantalla salen del mismo
-// predicado — con el redondeo de por medio.
-//
-// Quien cierra el pedido es quien debe saldarlo: si el cobro alcanza para cerrarlo, no queda nada
-// por cobrar.
+// Dividir $100 tecleando tres cobros de $33.33 suma $99.99. Antes `PagosCubren` toleraba ese
+// centavo y cerraba el pedido mientras la barra lo seguía viendo con $0.01; luego se igualaron
+// tolerando los dos. Desde la spec 031 (D16) ninguno tolera: un centavo de menos es deuda, el pedido
+// sigue en la barra con $0.01 y ese centavo se puede cobrar. Las divisiones del sistema («Dividir
+// entre») le cargan el residuo al último pago y no llegan aquí.
 func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
-	// Tres refrescos del mostrador: no pasan por cocina, así que el pedido se cierra solo al quedar
-	// saldado. Es el caso donde el centavo se nota, porque el pedido ya no tiene por qué seguir en la
-	// barra y ahí sigue.
 	ord, cajero, efectivo := pedidoDeProducto(t, st, svc, "centavo", "100", false)
 
 	tercio := decimal.RequireFromString("33.33")
@@ -152,15 +147,28 @@ func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detail: %v", err)
 	}
-	if !tras.Paid {
-		t.Fatal("tres tercios de $33.33 no saldaron un pedido de $100")
+	if tras.Paid {
+		t.Fatal("tres cobros de $33.33 saldaron un pedido de $100: la venta y el corte diferirían un centavo")
 	}
-	// La fila de cuentas lee `outstanding` de ListLiveOrders, no `Paid`: es la cifra que ve el operador.
+	enLaBarra := false
 	for _, o := range abiertosDelTablero(t, st, svc) {
 		if o.OrderID != nil && *o.OrderID == ord.ID {
-			t.Fatalf("el pedido quedó saldado y cerrado pero la barra del POS lo sigue listando "+
-				"(outstanding=%s): cierra con un predicado tolerante y decide qué mostrar con uno exacto",
-				o.Outstanding)
+			enLaBarra = true
+			if !o.Outstanding.Equal(decimal.RequireFromString("0.01")) {
+				t.Fatalf("la barra dice que falta %s, quiere 0.01", o.Outstanding)
+			}
+		}
+	}
+	if !enLaBarra {
+		t.Fatal("el pedido debe un centavo y la barra no lo lista: el mismo dinero con dos predicados")
+	}
+	if _, err := svc.Charge(ctx, app.ChargeCmd{OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("0.01"),
+		ActorID: cajero, ClientUUID: uuid.New()}); err != nil {
+		t.Fatalf("cobrar el centavo: %v", err)
+	}
+	for _, o := range abiertosDelTablero(t, st, svc) {
+		if o.OrderID != nil && *o.OrderID == ord.ID {
+			t.Fatalf("saldado al centavo y la barra lo sigue listando (outstanding=%s)", o.Outstanding)
 		}
 	}
 }

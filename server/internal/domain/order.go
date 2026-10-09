@@ -272,11 +272,15 @@ func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
 	return *delMetodo == *delPedido
 }
 
-// PagosCubren dice si lo pagado salda el total. Tolera un centavo de diferencia por el mismo motivo
-// que la pantalla de cobro: el redondeo a dos decimales de varias líneas de pago puede dejar un
-// centavo de sobra o de falta, y rechazar una venta saldada por eso deja al cliente esperando.
+// PagosCubren dice si lo pagado salda el total, al centavo.
+//
+// Toleraba un centavo de falta por el residuo de dividir una cuenta ($100 en tres de $33.33). Desde
+// la 027 cada división le carga ese residuo al último pago, y la tolerancia solo servía para dar por
+// saldado un cobro tecleado de menos: un pedido de $100 cobrado en $99.99 cerraba, el centavo
+// restante rebotaba con «ya está cobrado», y la venta y el corte diferían para siempre (spec 031,
+// D16). UncollectedInSession ya era exacta: así las dos cifras salen del mismo predicado.
 func PagosCubren(pagado, total decimal.Decimal) bool {
-	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
+	return pagado.GreaterThanOrEqual(total)
 }
 
 // PedidoSaldado dice si un pedido ya no debe nada. Es EL predicado: quien cierra el pedido, quien

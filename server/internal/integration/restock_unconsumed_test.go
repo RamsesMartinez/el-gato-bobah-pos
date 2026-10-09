@@ -62,7 +62,9 @@ func TestRemovingAProductWithoutPrepRestocksIt(t *testing.T) {
 // Cancelar el pedido después de quitarle un renglón repone cada pieza UNA vez, en las dos formas:
 //   - el renglón ya repuesto al quitarlo (sin preparación) no vuelve a reponerse;
 //   - el renglón quitado ya consumido (salió a cocina) no se repone al cancelar el pedido: esa
-//     comida se hizo, y reponerla inventaría existencias.
+//     comida se hizo, y reponerla inventaría existencias;
+//   - el renglón que sigue vivo y ya salió a cocina tampoco: cancelar el pedido sigue la MISMA regla
+//     que quitarlo (spec 031, D11). Antes este caso esperaba reponerlo, que era el defecto.
 func TestCancellingAfterRemovingALineRestocksOnce(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -112,7 +114,7 @@ func TestCancellingAfterRemovingALineRestocksOnce(t *testing.T) {
 	}{
 		{"el repuesto al quitarlo no se repone otra vez", refresco, antes[refresco]},
 		{"el consumido no se repone al cancelar", frappe, pesos(antes[frappe]).Sub(pesos("1")).String()},
-		{"el que seguía vivo se repone al cancelar", queda, antes[queda]},
+		{"el que seguía vivo y ya salió a cocina no se repone al cancelar", queda, pesos(antes[queda]).Sub(pesos("1")).String()},
 	}
 	for _, c := range cases {
 		if e := existencias(t, st, c.id); e.String() != c.want {

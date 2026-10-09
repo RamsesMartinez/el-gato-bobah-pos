@@ -1942,6 +1942,9 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 			PaymentNumber:     &number,
 			SplitPart:         part,
 			SplitOf:           of,
+			// El día del COBRO, no el del pedido (spec 031): un pedido de ayer cobrado hoy es dinero
+			// de hoy en Ventas por método, igual que en el corte de hoy.
+			BusinessDate: pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true},
 		})
 		if err != nil {
 			return err

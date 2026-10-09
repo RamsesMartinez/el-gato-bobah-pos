@@ -50,8 +50,11 @@ export interface MethodTotals {
   methodId: number;
   method: string;
   payments: number;
+  // Cobrado en el periodo menos lo devuelto en el periodo: cada cobro cuenta el día en que se cobró
+  // y cada devolución el día en que se devolvió (spec 031). Puede ser negativo.
   total: string;
   tips: string;
+  refunds?: string;
 }
 
 export interface ConceptCount { count: number; amount: string }

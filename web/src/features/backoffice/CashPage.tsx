@@ -14,7 +14,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -63,10 +63,16 @@ function movementType(m: CashMovement): { label: string; palette: string } {
 
 // Totales por método: esperado (sistema) vs declarado (usuario) vs diferencia (solo lectura).
 // withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
-export function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
+//
+// `drawerDifference` es la diferencia del CAJÓN, que vive en el conteo y no en los renglones: los
+// métodos del cajón guardan declarado = esperado. Sin sumarla, la fila Total decía $0 en un corte con
+// el cajón corto, mientras el histórico —que sí la suma— decía la cifra real (spec 031, D13).
+export function TotalsTable({ totals, currency, withTotalRow, drawerDifference }: {
+  totals: MethodTotal[]; currency: string; withTotalRow?: boolean; drawerDifference?: string | null;
+}) {
   if (!totals?.length) return null;
   const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
-  const diffTotal = sum((t) => t.difference);
+  const diffTotal = round2(sum((t) => t.difference) + (Number(drawerDifference) || 0));
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
@@ -186,14 +192,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // Fila de la tarjeta jerárquica Ingresos/Egresos (label a la izquierda, monto a la derecha).
-function SummaryLine({ label, amount, indent = 0, weight = '400', color, top }: {
-  label: string; amount?: string; indent?: number; weight?: string; color?: string; top?: boolean;
+function SummaryLine({ label, amount, indent = 0, weight = '400', color, top, negative }: {
+  label: string; amount?: string; indent?: number; weight?: string; color?: string; top?: boolean; negative?: boolean;
 }) {
   return (
     <HStack justify="space-between" px={3} py="6px" pl={3 + indent * 4}
       borderTopWidth={top ? '1px' : undefined} borderColor="border.muted">
       <Text fontSize="sm" fontWeight={weight} color={color}>{label}</Text>
-      {amount !== undefined && <Text fontSize="sm" fontWeight={weight} color={color} whiteSpace="nowrap">{amount}</Text>}
+      {amount !== undefined && (
+        <Text fontSize="sm" fontWeight={weight} color={negative ? 'red.600' : color} whiteSpace="nowrap"
+          data-negative={negative ? 'true' : undefined}>{amount}</Text>
+      )}
     </HStack>
   );
 }
@@ -212,7 +221,10 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
         <Fragment key={m.method}>
           <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
           {m.items.map((it) => (
-            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted" />
+            // Un concepto que resta (Devoluciones) se pinta como los egresos: en gris se leería como
+            // otro ingreso.
+            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted"
+              negative={Number(it.amount) < 0} />
           ))}
         </Fragment>
       ))}
@@ -288,6 +300,51 @@ export function VoidedPaymentsList({ payments, currency, zona = DEFAULT_TIMEZONE
   );
 }
 
+// RefundsList: el dinero que se le devolvió al cliente en el turno (spec 031).
+//
+// No es la lista de «Pagos devueltos»: aquélla son cobros que no ocurrieron, ésta dinero que salió
+// hacia el cliente. Tampoco suma nada: las de tarjeta ya bajaron el esperado de su medio y las de
+// efectivo salen como salida de caja, así que un total aquí invitaría a restarlas otra vez.
+// Va PLEGADA con su contador: abierta empujaría fuera de los 600 px de la tableta la tabla donde se
+// declara el cierre. El botón mide 44 px, el mínimo para acertar con el dedo.
+export function RefundsList({ refunds, currency, zona = DEFAULT_TIMEZONE }: {
+  refunds?: SessionRefund[]; currency: string; zona?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!refunds?.length) return null;
+  return (
+    <Box>
+      <Button variant="ghost" w="100%" minH="44px" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
+        <Text fontWeight="700">Devoluciones ({refunds.length})</Text>
+        {open ? <LuChevronUp /> : <LuChevronDown />}
+      </Button>
+      {open && (
+        <Box as="ul" aria-label="Devoluciones" listStyleType="none" m={0} mt={2} p={0}
+          bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="35dvh" overflowY="auto">
+          {refunds.map((r, i) => (
+            <Box as="li" key={i} px={3} py={2} borderTopWidth={i === 0 ? 0 : '1px'} fontSize="sm">
+              <HStack justify="space-between" gap={2}>
+                <HStack gap={2} minW={0}>
+                  <Text fontWeight="600">{r.method}</Text>
+                  <Text color="fg.muted" truncate>Pedido {r.orderFolio}</Text>
+                </HStack>
+                <HStack gap={2} flexShrink={0}>
+                  {Number(r.tip) > 0 && <Text color="fg.muted">+ propina {money(r.tip, currency)}</Text>}
+                  <Text fontWeight="600">{money(r.amount, currency)}</Text>
+                </HStack>
+              </HStack>
+              <Text color="fg.muted">
+                {hhmm(r.refundedAt, zona)} · {r.refundedBy}: {r.reason}
+                {r.fromDrawer && <> · <Text as="span">salió del cajón</Text></>}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 // Datos mínimos del resumen (los cumplen CashSession y CashSessionDetail por estructura).
 interface CorteData {
   openingCash: string;
@@ -299,6 +356,7 @@ interface CorteData {
   counts?: ConteosDelTurno | null;
   drawer?: ArqueoDelCajon | null;
   voidedPayments?: VoidedPayment[];
+  refunds?: SessionRefund[];
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -313,7 +371,7 @@ function CorteSummary({ data }: { data: CorteData }) {
       <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
       {totals.length > 0 && (
         <Section title="Conciliación (sistema vs declarado)">
-          <TotalsTable totals={totals} currency={cur} withTotalRow />
+          <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
         </Section>
       )}
       <ArqueoDelCorte drawer={data.drawer} currency={cur} />
@@ -327,6 +385,7 @@ function CorteSummary({ data }: { data: CorteData }) {
         </Collapsible>
       )}
       <VoidedPaymentsList payments={data.voidedPayments} currency={cur} zona={horaNegocio.zona} />
+      <RefundsList refunds={data.refunds} currency={cur} zona={horaNegocio.zona} />
     </VStack>
   );
 }
@@ -806,6 +865,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             declared={declared} onDeclared={setDeclared}
             cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
             diferencias={diferencias} />
+
+          {/* Después de la tabla del cierre y no antes: es lo que se viene a llenar, y la lista
+              abierta la empujaría fuera de los 600 px de la tableta. */}
+          <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
 
           <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
             value={notes} onChange={(e) => setNotes(e.target.value)} />

@@ -77,7 +77,11 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
           {resumen.byMethod.map((m) => (
             <Box key={m.methodId} borderWidth="1px" borderRadius="lg" px={3} py={2} minW="150px" bg="bg.subtle">
               <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{m.method}</Text>
-              <Text fontWeight="700" whiteSpace="nowrap">{money(m.total)}</Text>
+              <Text fontWeight="700" whiteSpace="nowrap" color={Number(m.total) < 0 ? 'red.600' : undefined}>{money(m.total)}</Text>
+              {/* Lo devuelto ya está restado: sin decirlo, un medio en negativo no se explica. */}
+              {Number(m.refunds) > 0 && (
+                <Text fontSize="xs" color="red.600" whiteSpace="nowrap">−{money(m.refunds ?? '0')} devuelto</Text>
+              )}
             </Box>
           ))}
         </HStack>
