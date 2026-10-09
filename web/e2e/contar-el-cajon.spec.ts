@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { iniciarSesion } from './sesion';
 
 // CONTAR EL CAJÓN, MEDIDO EN LA TABLETA (spec 003).
 //
@@ -10,19 +11,10 @@ import { test, expect, type Page } from '@playwright/test';
 // Y lo que ningún test de pantalla puede ver: que el total que la hoja muestra sea el mismo que el
 // servidor guarda. Ese desacuerdo es la razón de ser de esta suite.
 
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
-
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 

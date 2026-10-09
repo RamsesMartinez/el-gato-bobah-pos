@@ -294,7 +294,10 @@ test.describe('nada se cierra ni se pierde por accidente (US5)', () => {
     await expect.poll(async () => (await cuentasVivas(jwt)).some((c) => c.folioName === nombre && c.kind === 'draft'),
       { timeout: 20_000 }).toBe(false);
     const nombres = await (await fetch(`${API}/pos/folio-names`, { headers: { Authorization: `Bearer ${jwt}` } })).json();
-    expect(nombres.items, 'el nombre de la cuenta descartada no volvió a la bolsa').toContain(nombre);
+    // La bolsa guarda animales: una cuenta que nació «Tonkinés 2» —el turno ya había cantado la lista
+    // entera— devuelve «Tonkinés».
+    const animal = nombre.replace(/ \d+$/, '');
+    expect(nombres.items, 'el nombre de la cuenta descartada no volvió a la bolsa').toContain(animal);
   });
 
   test('caso 10 · ningún diálogo del sistema al cerrar o cancelar', async ({ page }) => {

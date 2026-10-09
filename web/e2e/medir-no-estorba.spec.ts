@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { buscar } from './pos';
+import { iniciarSesion } from './sesion';
 
 // LA MEDICIÓN NO SE METE EN EL CAMINO DEL OPERADOR (spec 017, US3 · SC-003).
 //
@@ -11,19 +12,10 @@ import { buscar } from './pos';
 // Lo que se simula NO es la red caída: es la red del restaurante, que responde pero tarde. El
 // endpoint de medición se bloquea a propósito mientras el resto de la aplicación sigue viva.
 
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
-
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 

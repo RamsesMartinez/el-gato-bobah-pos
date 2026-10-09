@@ -1,16 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 import { pedidosEnCurso, tokenDeRequest } from './ambiente';
 import { botonCobrar, buscar, cerrarBusqueda } from './pos';
+import { iniciarSesion } from './sesion';
 
 // LA MATRIZ DE DINERO, PASANDO POR LA PANTALLA. Ver docs/matriz-de-cobro.md, sección E.
 //
 // Aquí no se prueba el contrato —eso está en dinero.spec.ts— sino el flujo que el operador recorre
 // con el cliente enfrente. Es el único lugar donde se ve que el pedido sale de la barra, que el
 // botón se apaga cuando debe, y que la pantalla y el servidor dicen la misma cifra.
-
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
 
 // El token para preguntarle al SERVIDOR qué pasó. La pantalla puede no pintar un pedido que sí se
 // creó, y esa diferencia es justo la que hay que medir.
@@ -20,12 +17,7 @@ async function entrar(page: Page) {
   // Se espera a que la app hidrate ANTES de teclear: sin esto, el formulario se re-renderiza al
   // resolverse el intento de sesión y se lleva lo escrito.
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   // El «+» de la fila de cuentas es lo que confirma que el POS cargó. El botón de cobrar NO sirve de
   // señal: en 1024x600 el panel del pedido arranca colapsado y Cobrar no está hasta que se abre.
   await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });

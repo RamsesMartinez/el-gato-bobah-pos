@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, USUARIO, EMPRESA, PASSWORD, tokenDeApi } from './ambiente';
+import { API, tokenDeApi } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // ARQUEO CIEGO EN LA TABLETA (spec 015, US3).
 //
@@ -17,12 +18,7 @@ import { API, USUARIO, EMPRESA, PASSWORD, tokenDeApi } from './ambiente';
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
+  await iniciarSesion(page);
   await expect(page.getByRole('button', { name: 'Salir' })).toBeVisible({ timeout: 30_000 });
 }
 
