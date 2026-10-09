@@ -308,18 +308,49 @@ func PedidoSaldado(pagado, total decimal.Decimal) bool {
 	return total.IsPositive() && PagosCubren(pagado, total)
 }
 
-// PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
+// OrderForAdd es lo que hace falta saber de un pedido para decidir si recibe productos.
+type OrderForAdd struct {
+	Status     string
+	Paid       decimal.Decimal
+	Total      decimal.Decimal
+	PlatformID *int16
+}
+
+// CanReceiveLines dice si a un pedido todavía se le puede agregar (spec 030, R-11).
 //
-// Incluye el ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa pide una más, y
-// mandarla como pedido aparte deja dos cuentas para la misma mesa: una de las dos se pierde de
-// vista y termina cobrándose a medias o no cobrándose. Su dinero además no está cerrado — el pago
-// se registra cuando se cobra, no cuando se entrega.
+//   - De plataforma, nunca (D-11): lo cobró la plataforma entero y con su precio; un renglón más
+//     sería dinero que ningún depósito trae.
+//   - Cancelada o reembolsada, nunca: su dinero ya se decidió, y subirle el total a un reembolso es
+//     mover algo que un arqueo firmado ya contó.
+//   - Entregada Y saldada está CERRADA (D-9): lo que pidan después es otra cuenta. Antes se reabría
+//     al agregarle, y la cuenta que el cliente ya pagó y se llevó volvía a deber.
+//   - La entregada que debe sí recibe —el cliente sigue en la mesa— y vuelve a cocina
+//     (ReabreAlAgregar). La pagada que sigue en cocina también: era el caso 2 del lienzo.
 //
-// Cancelada y reembolsada quedan fuera: ahí el dinero YA se decidió, y subirle el total a un
-// reembolso es mover algo que un arqueo firmado ya contó.
+// El saldo se mide con PedidoSaldado, el mismo predicado que cierra el pedido: con `paid >= total`
+// a secas, el centavo de redondeo de tres partes de $33.33 dejaría abierta una cuenta cerrada.
+func CanReceiveLines(o OrderForAdd) error {
+	if o.PlatformID != nil {
+		return ErrPlatformOrderNoLines
+	}
+	switch o.Status {
+	case StatusAbierta, StatusLista:
+		return nil
+	case StatusEntregada:
+		if PedidoSaldado(o.Paid, o.Total) {
+			return ErrOrderClosed
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: Ese pedido ya está %s y no admite más productos", ErrConflict, o.Status)
+}
+
+// OrderNotVoided dice si el dinero de un pedido sigue sin decidirse: abierta, lista o entregada.
 //
-// Un entregado que recibe renglones deja de estar entregado; eso lo dice ReabreAlAgregar.
-func PuedeRecibirLineas(estado string) bool {
+// Es lo que queda de PuedeRecibirLineas para los caminos que NO agregan —entregar o cancelar un
+// renglón, devolver un pago, pasar productos DESDE un pedido—, donde la pregunta sigue siendo solo
+// el estado. Agregar pasó a CanReceiveLines, que además mira el saldo y la plataforma.
+func OrderNotVoided(estado string) bool {
 	return estado == StatusAbierta || estado == StatusLista || estado == StatusEntregada
 }
 

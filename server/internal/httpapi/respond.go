@@ -105,6 +105,20 @@ func Error(w http.ResponseWriter, err error) {
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
 		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
 		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
+	// Una sola puerta para cobrar (spec 030). Todos ANTES de ErrConflict, que los envuelve: la
+	// pantalla decide por el código qué ofrecer — recargar la cuenta, empezar una nueva, o nada.
+	case errors.Is(err, domain.ErrDraftChanged):
+		status, code = http.StatusConflict, "DRAFT_CHANGED"
+	case errors.Is(err, domain.ErrDraftDiscarded):
+		status, code = http.StatusConflict, "DRAFT_DISCARDED"
+	case errors.Is(err, domain.ErrDraftAlreadySent):
+		status, code = http.StatusConflict, "DRAFT_SENT"
+	case errors.Is(err, domain.ErrOrderClosed):
+		status, code = http.StatusConflict, "ORDER_CLOSED"
+	case errors.Is(err, domain.ErrPlatformOrderNoLines):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_ORDER_NO_LINES"
+	case errors.Is(err, domain.ErrDraftHasOrderHeader):
+		status, code = http.StatusUnprocessableEntity, "DRAFT_HAS_ORDER_HEADER"
 	case errors.Is(err, domain.ErrPlatformRefTaken):
 		// 409 con código propio, y va ANTES de ErrConflict, que lo envuelve. El front lo necesita
 		// distinguible para llevar el foco al campo del folio con el pedido dueño a la vista, en

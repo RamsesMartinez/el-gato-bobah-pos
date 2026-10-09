@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -107,8 +108,17 @@ func (s *Store) QC(ctx context.Context) *db.Queries {
 
 // WithTx runs fn inside a transaction with a tx-bound Queries. Si el request trae conexión de
 // tenant, la tx se abre sobre ELLA (hereda app.company_id → RLS aplica); si no, sobre el pool.
+// errNestedTx: WithTx llamado con la conexión de la empresa ya dentro de una transacción.
+var errNestedTx = errors.New("store: WithTx anidado sobre la misma conexión")
+
 func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error {
 	if tc := tenantFrom(ctx); tc != nil {
+		// Un BEGIN sobre una conexión que ya está en transacción no anida: Postgres lo ignora con un
+		// aviso y el COMMIT de aquí confirma la transacción de afuera a medias y suelta sus candados.
+		// Pasó con el cierre de caja (030 dentro de la 031, D8): se rechaza en vez de confirmar.
+		if tc.conn.Conn().PgConn().TxStatus() != 'I' {
+			return errNestedTx
+		}
 		tx, err := tc.conn.Begin(ctx)
 		if err != nil {
 			return err

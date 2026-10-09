@@ -88,7 +88,11 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 			return err
 		}
 		if to != nil {
-			if err := canReceiveLines(from, *to); err != nil {
+			toPaid, err := q.SumOrderPayments(ctx, to.ID)
+			if err != nil {
+				return err
+			}
+			if err := canReceiveLines(from, *to, toPaid.Pagado); err != nil {
 				return err
 			}
 		}
@@ -216,7 +220,7 @@ func canGiveLines(o db.GetOrderForMoveRow) error {
 		return domain.ErrPlatformOrderNotSplittable
 	case o.SessionStatus != string(db.SessionStatusAbierta):
 		return domain.ErrOrderFromClosedShiftToMove
-	case !domain.PuedeRecibirLineas(string(o.Status)):
+	case !domain.OrderNotVoided(string(o.Status)):
 		return fmt.Errorf("%w: Ese pedido ya se cerró", domain.ErrConflict)
 	case o.DiscountTotal.IsPositive():
 		return domain.ErrMoveWithDiscount
@@ -224,13 +228,14 @@ func canGiveLines(o db.GetOrderForMoveRow) error {
 	return nil
 }
 
-// canReceiveLines decide si un pedido existente puede recibir los productos del origen: abierto o
-// listo, del mismo turno y del mismo día, sin plataforma y sin descuento.
-func canReceiveLines(from, to db.GetOrderForMoveRow) error {
+// canReceiveLines decide si un pedido existente puede recibir los productos del origen: el mismo
+// predicado que agregar (domain.CanReceiveLines: ni cerrado ni cancelado), del mismo turno y del
+// mismo día, sin plataforma y sin descuento.
+func canReceiveLines(from, to db.GetOrderForMoveRow, toPaid decimal.Decimal) error {
 	switch {
 	case to.DeliveryPlatformID != nil:
 		return domain.ErrPlatformOrderNotSplittable
-	case !domain.PuedeRecibirLineas(string(to.Status)):
+	case domain.CanReceiveLines(domain.OrderForAdd{Status: string(to.Status), Paid: toPaid, Total: to.Total}) != nil:
 		return domain.ErrMoveTargetClosed
 	case to.RegisterSessionID == nil || from.RegisterSessionID == nil || *to.RegisterSessionID != *from.RegisterSessionID ||
 		!to.BusinessDate.Time.Equal(from.BusinessDate.Time):

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
+import { canAccess } from '../../app/roles';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, SimpleGrid, Text, Badge, HStack, VStack, Center, Spinner, Flex, Button, IconButton,
@@ -20,7 +22,7 @@ import { useOrderEvents } from '../../hooks/useOrderEvents';
 import { ReprintTicket } from '../../shared/tickets/ReprintTicket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { DevolucionSheet } from './DevolucionSheet';
-import { CancelarRenglonDialog } from './CancelarRenglonDialog';
+import { CancelarRenglonDialog } from '../../shared/CancelarRenglonDialog';
 import { CancelPendingSheet } from './CancelPendingSheet';
 import { useSessionStore } from '../../stores/session';
 import { can } from '../../app/permissions';
@@ -60,11 +62,17 @@ export function OrdersBoardPage() {
   const role = user?.role;
   const canRefund = role === 'admin' || role === 'gerente';
 
-  // Cobrar es del punto de venta. Este tablero prepara y entrega, y solo recupera el botón donde
-  // el negocio lo enciende a propósito: en un local donde cocina y mostrador son la misma persona
-  // en la misma máquina, mandarla a otra pantalla por un pedido que tiene enfrente no compra nada.
+  // COBRAR ES DE LA CUENTA, NO DEL TABLERO (spec 030, caso 25). El tablero tenía su propia puerta
+  // de cobro y con ella eran tres; ahora cada tarjeta lleva a la cuenta en Vender —«Abrir cuenta»—,
+  // donde se agrega o se cobra con los tres modos.
+  //
+  // Quien NO puede entrar a Vender —una cocina con su propio rol— no tendría dónde cobrar. Para ese
+  // caso existe el ajuste «el tablero puede cobrar»: encendido, la tarjeta conserva su «Cobrar $X» con
+  // la hoja de cobro de siempre (los tres modos); apagado, solo dice cuánto falta.
   const { data: settings } = useQuery({ queryKey: ['business-settings'], queryFn: posApi.businessSettings });
-  const puedeCobrar = settings?.kitchenCanCharge === true;
+  const navigate = useNavigate();
+  const puedeAbrirCuenta = canAccess(role, '/pos');
+  const cobraAqui = !puedeAbrirCuenta && settings?.kitchenCanCharge === true;
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', 'active'],
@@ -193,7 +201,9 @@ export function OrdersBoardPage() {
   };
 
   const acciones: Acciones = {
-    puedeCobrar,
+    puedeAbrirCuenta,
+    cobraAqui,
+    abrirCuenta: (o) => navigate(`/pos?pedido=${o.id}`),
     entregarLinea: (id, lineId, qty) => entregarLinea.mutate({ id, lineId, qty }),
     quitarRenglon: (id, linea) => setQuitando({ orderId: id, linea }),
     entregarTodo: (o) => entregarTodo.mutate(o.id),
@@ -241,7 +251,8 @@ export function OrdersBoardPage() {
 
       {canRefund && (
         <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} onRefund={refund} onTicket={acciones.ticket}
-          onCobrar={setCobrando} puedeCobrar={puedeCobrar} />
+          onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined}
+          onCobrar={cobraAqui ? setCobrando : undefined} />
       )}
 
       <ReprintTicket orderId={ticketOrderID} onClose={() => setTicketOrderID(null)} />
@@ -295,8 +306,11 @@ export function OrdersBoardPage() {
 }
 
 interface Acciones {
-  // puedeCobrar viene del ajuste del negocio: apagado, este tablero no toca dinero.
-  puedeCobrar: boolean;
+  // Lleva a la cuenta en Vender. Sin acceso a Vender, la tarjeta solo dice cuánto falta.
+  puedeAbrirCuenta: boolean;
+  // Sin acceso a Vender y con el ajuste encendido, el tablero cobra.
+  cobraAqui: boolean;
+  abrirCuenta: (o: BoardOrder) => void;
   entregarLinea: (id: number, lineId: number, qty: number) => void;
   quitarRenglon: (id: number, linea: BoardLine) => void;
   entregarTodo: (o: BoardOrder) => void;
@@ -412,12 +426,6 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Entregar todo
           </Button>
         )}
-        {!listo && debe && acciones.puedeCobrar && (
-          <Button flex="1" minH={TAP} colorPalette="orange" variant="outline"
-            onClick={() => acciones.cobrar(o)}>
-            Cobrar
-          </Button>
-        )}
         {/* Lo vivo entregado y sin deuda: entregar el pedido lo cierra. */}
         {listo && !sinProductos && !debe && (
           <Button flex="1" minH={TAP} colorPalette="green" loading={acciones.cerrando(o)}
@@ -425,15 +433,21 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
             Cerrar pedido
           </Button>
         )}
-        {listo && !sinProductos && debe && acciones.puedeCobrar && (
+        {listo && !sinProductos && debe && !acciones.cobraAqui && (
+          <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
+            Falta cobrar {money(o.outstanding, o.currency)}
+          </Text>
+        )}
+        {!sinProductos && debe && acciones.cobraAqui && (
           <Button flex="1" minH={TAP} colorPalette="orange" onClick={() => acciones.cobrar(o)}>
             Cobrar {money(o.outstanding, o.currency)}
           </Button>
         )}
-        {listo && !sinProductos && debe && !acciones.puedeCobrar && (
-          <Text flex="1" fontSize="sm" fontWeight="700" color="orange.600">
-            Falta cobrar {money(o.outstanding, o.currency)} en caja
-          </Text>
+        {!sinProductos && acciones.puedeAbrirCuenta && (
+          <Button flex="1" minH={TAP} colorPalette="orange" variant={debe ? 'solid' : 'outline'}
+            onClick={() => acciones.abrirCuenta(o)}>
+            Abrir cuenta
+          </Button>
         )}
         {sinProductos && !tienePagos && (
           <Button flex="1" minH={TAP} colorPalette="gray" loading={acciones.cerrando(o)}
@@ -557,14 +571,16 @@ function Renglon({ l, onEntregar, onQuitar }: {
 
 // Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
-function Entregadas({ orders, corteDeVista, onRefund, onTicket, onCobrar, puedeCobrar }: {
+function Entregadas({ orders, corteDeVista, onRefund, onTicket, onAbrirCuenta, onCobrar }: {
   orders: BoardOrder[];
   // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
   corteDeVista?: string;
   onRefund: (o: BoardOrder) => void;
   onTicket: (o: BoardOrder) => void;
-  onCobrar: (o: BoardOrder) => void;
-  puedeCobrar: boolean;
+  // Una entregada que debe se cobra en su cuenta, en Vender (caso 25).
+  onAbrirCuenta?: (o: BoardOrder) => void;
+  // Sin acceso a Vender y con el ajuste encendido, se cobra aquí.
+  onCobrar?: (o: BoardOrder) => void;
 }) {
   return (
     <Box mt={4}>
@@ -595,10 +611,15 @@ function Entregadas({ orders, corteDeVista, onRefund, onTicket, onCobrar, puedeC
                 <HStack gap={2} flexShrink={0}>
                   <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                   {/* Aquí es donde el pendiente deja de tener remedio: el cliente ya se fue con la
-                      comida. Por eso el botón de cobrar vive junto al aviso y no en otra pantalla. */}
-                  {debe && puedeCobrar && (
+                      comida. Por eso el camino a su cuenta vive junto al aviso. */}
+                  {debe && !onAbrirCuenta && onCobrar && (
                     <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onCobrar(o)}>
                       Cobrar {money(o.outstanding, o.currency)}
+                    </Button>
+                  )}
+                  {debe && onAbrirCuenta && (
+                    <Button size="sm" minH={TAP} colorPalette="orange" onClick={() => onAbrirCuenta(o)}>
+                      Abrir cuenta · debe {money(o.outstanding, o.currency)}
                     </Button>
                   )}
                   <Button size="sm" minH={TAP} variant="outline" onClick={() => onTicket(o)}>Ticket</Button>

@@ -23,7 +23,7 @@ async function entrar(page: Page) {
     await page.getByPlaceholder('Contraseña').fill(PASSWORD);
     await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   }
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 // abrirLaHojaDeConteo deja la hoja del contador abierta sobre una caja CERRADA.
@@ -147,8 +147,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
   await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('El arqueo cuadra')).toBeVisible();
 
-  page.once('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
 });
 
@@ -183,8 +182,7 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   // la noche por $50 que no aparecen.
   const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
   await expect(cerrar).toBeEnabled();
-  page.once('dialog', (d) => d.accept());
-  await cerrar.click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {});
 
@@ -226,8 +224,7 @@ test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de bor
   await expect(page.getByLabel('Piezas de $200', { exact: true })).toBeVisible({ timeout: 30_000 });
   await page.getByLabel('Piezas de $200', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Usar este conteo' }).click();
-  page.once('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
 });
 
@@ -259,3 +256,10 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   // sistema que quien audita no puede accionar.
   await expect(dialogo.getByText('Efectivo contado')).toHaveCount(0);
 });
+
+// «Cerrar caja» pregunta en una hoja de la app (spec 030): ya no hay `confirm()` del navegador que
+// aceptar. Se toca el botón y después el de la hoja.
+async function cerrarLaCaja(page: Page) {
+  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
+}

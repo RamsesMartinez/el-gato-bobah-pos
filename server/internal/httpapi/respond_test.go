@@ -287,3 +287,48 @@ func TestSplitBillSentinelsMapToStatusCodeAndText(t *testing.T) {
 		}
 	}
 }
+
+// Los códigos de la 030 (contracts/api.md): la pantalla decide qué ofrecer por el código, no por el
+// texto. ORDER_CLOSED ofrece «empezar cuenta nueva»; PLATFORM_ORDER_NO_LINES no ofrece nada;
+// DRAFT_CHANGED recarga la cuenta. Un CONFLICT genérico no le diría cuál de las tres hacer.
+func TestDraftErrorsHaveTheirOwnCode(t *testing.T) {
+	casos := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{domain.ErrDraftChanged, 409, "DRAFT_CHANGED"},
+		{domain.ErrDraftDiscarded, 409, "DRAFT_DISCARDED"},
+		{domain.ErrDraftAlreadySent, 409, "DRAFT_SENT"},
+		{domain.ErrDraftHasOrderHeader, 422, "DRAFT_HAS_ORDER_HEADER"},
+		{domain.ErrOrderClosed, 409, "ORDER_CLOSED"},
+		{domain.ErrPlatformOrderNoLines, 422, "PLATFORM_ORDER_NO_LINES"},
+		// Envuelto con %w por quien agrega contexto, sigue siendo el mismo código.
+		{fmt.Errorf("%w (renglón 3)", domain.ErrDraftChanged), 409, "DRAFT_CHANGED"},
+		{fmt.Errorf("%w (pedido 12)", domain.ErrDraftAlreadySent), 409, "DRAFT_SENT"},
+	}
+	for _, c := range casos {
+		t.Run(c.code, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != c.status || got.Error.Code != c.code {
+				t.Fatalf("%v → %d %s, quería %d %s", c.err, w.Code, got.Error.Code, c.status, c.code)
+			}
+			// El texto es para quien opera: sin el nombre del sentinel base ni palabras internas.
+			for _, interna := range []string{"conflicto", "datos inválidos", "borrador", "draft", "versión"} {
+				if strings.Contains(strings.ToLower(got.Error.Message), interna) {
+					t.Fatalf("el mensaje %q nombra %q", got.Error.Message, interna)
+				}
+			}
+		})
+	}
+}

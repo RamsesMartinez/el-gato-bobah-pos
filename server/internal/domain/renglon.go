@@ -39,7 +39,7 @@ func ReponeInventario(needsPrep bool, enviadoACocina *time.Time) bool {
 // Dos barreras: el pedido tiene que seguir vivo —uno cancelado, reembolsado o entregado ya
 // clasificó su dinero— y el renglón no puede tener nada entregado, ni siquiera a medias.
 func PuedeCancelarRenglon(estadoPedido string, cantidad, entregado decimal.Decimal) error {
-	if !PuedeRecibirLineas(estadoPedido) || estadoPedido == StatusEntregada {
+	if !OrderNotVoided(estadoPedido) || estadoPedido == StatusEntregada {
 		return fmt.Errorf("%w: un pedido %s ya no admite cambios en sus renglones", ErrConflict, estadoPedido)
 	}
 	if entregado.GreaterThan(decimal.Zero) {

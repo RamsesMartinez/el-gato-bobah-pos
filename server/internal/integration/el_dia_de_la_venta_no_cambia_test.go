@@ -64,8 +64,8 @@ func TestNingunaVentaCambiaDeDia(t *testing.T) {
 	antes := fechasDeNegocio(t, st, ids)
 
 	// Todo lo que la feature toca, corrido de punta a punta.
-	if _, _, err := svc.Open(ctx, false); err != nil {
-		t.Fatalf("Open: %v", err)
+	if _, err := app.NewAccountsService(st, svc).Live(ctx, true); err != nil {
+		t.Fatalf("Live: %v", err)
 	}
 	if _, err := svc.DeliveredToday(ctx); err != nil {
 		t.Fatalf("DeliveredToday: %v", err)

@@ -137,3 +137,27 @@ func (e reworded) Unwrap() error { return e.base }
 func Reword(base error, text string) error {
 	return reworded{base: base, text: text}
 }
+
+// Una sola puerta para cobrar (spec 030). El texto es el que lee quien opera: sin «borrador»,
+// «versión» ni códigos (constitución, Restricciones del producto).
+var (
+	// ErrDraftChanged: se quiso cambiar o quitar un renglón, o la cabecera, con una versión que ya no
+	// es la de la base — otra tableta lo cambió antes (D-5). Nada se aplicó; la pantalla recarga.
+	ErrDraftChanged = fmt.Errorf("%w: La cuenta cambió en otra tableta", ErrConflict)
+	// ErrDraftDiscarded: la cuenta ya se descartó (a mano en otra tableta o por las 12 horas).
+	ErrDraftDiscarded = fmt.Errorf("%w: Esa cuenta ya se descartó", ErrConflict)
+	// ErrDraftAlreadySent: la cuenta ya es un pedido. Quien lo envuelve agrega el pedido.
+	ErrDraftAlreadySent = fmt.Errorf("%w: Ya se mandó a cocina; para quitarla hay que cancelar el pedido", ErrConflict)
+	// ErrOrderClosed: el pedido está pagado y entregado (D-9). La pantalla ofrece cuenta nueva.
+	ErrOrderClosed = fmt.Errorf("%w: Esa cuenta ya se pagó y se entregó; lo que pidan va en una cuenta nueva", ErrConflict)
+)
+
+// Sin envolver ErrConflict ni ErrValidation a propósito: son 422 con código propio y no deben caer en
+// el 409 o el 400 genérico si alguien los mueve de lugar en httpapi.Error.
+var (
+	// ErrPlatformOrderNoLines: a un pedido de plataforma no se le agregan productos (D-11).
+	ErrPlatformOrderNoLines = errors.New("a los pedidos de plataforma no se les agregan productos")
+	// ErrDraftHasOrderHeader: lo nuevo de un pedido ya enviado no tiene cliente, canal ni descuento
+	// propios: son los del pedido, y se cambian ahí.
+	ErrDraftHasOrderHeader = errors.New("esos datos son del pedido; se cambian en el pedido")
+)

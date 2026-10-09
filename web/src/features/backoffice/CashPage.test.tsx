@@ -1,8 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund } from '../../api/backoffice';
+import { CuentasDelCierre, BotonCerrarCaja } from './CashPage';
+import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -428,6 +431,96 @@ test('VoidedPaymentsList acota su alto en dvh para no empujar el cierre fuera de
   const estilo = getComputedStyle(lista);
   expect(estilo.maxHeight).toMatch(/dvh/);
   expect(estilo.overflowY).toBe('auto');
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERRAR CAJA CON CUENTAS VIVAS (spec 030, US8; lienzo V2-7).
+// ---------------------------------------------------------------------------------------------
+
+const viva = (over: Partial<AccountItem> & { key: string }): AccountItem => ({
+  kind: 'order', draftId: null, orderId: 2, number: 2, folioName: 'Bosque de Noruega', state: 'delivered_owes',
+  group: 'delivered_owes', kitchenReady: false, platformId: null, serviceType: 'mostrador', customerName: null,
+  openedAt: '2026-10-08T15:01:00Z', updatedAt: '2026-10-08T15:01:00Z', businessDate: '2026-10-08',
+  total: '195.00', paid: '0.00', outstanding: '195.00', lineCount: 3, pendingDraftId: null, pendingCount: 0,
+  closedWithPending: false, ...over,
+});
+
+describe('las cuentas vivas en el cierre', () => {
+  const VIVAS = [
+    viva({ key: 'o:2' }),
+    viva({ key: 'd:a', kind: 'draft', draftId: 'a', orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
+  ];
+
+  test('lo que bloquea va arriba y «Abrir» lleva a su cuenta', async () => {
+    const onAbrir = vi.fn();
+    wrap(<CuentasDelCierre pending={[{ number: 1, name: 'Khao Manee', id: 11 }]} cuentas={[]} onAbrir={onAbrir} onDescartar={vi.fn()} />);
+    expect(screen.getByText(/Falta entregar 1 pedido/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir Khao Manee' }));
+    expect(onAbrir).toHaveBeenCalledWith('/pos?pedido=11');
+  });
+
+  // Las que deben y las que se capturan NO bloquean (D-10): van plegadas, para no empujar el botón
+  // de cerrar fuera de la pantalla de 600 px.
+  test('las que no bloquean van en una sección plegada con su conteo', async () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    const plegada = screen.getByRole('button', { name: /Cuentas pendientes \(2\)/ });
+    expect(screen.queryByText('Levkoy')).toBeNull();
+    await userEvent.click(plegada);
+    expect(screen.getByText('Levkoy')).toBeInTheDocument();
+    expect(screen.getByText('Bosque de Noruega')).toBeInTheDocument();
+  });
+
+  test('«Abrir» y «Descartar» miden 44 px, van separados, y solo se descarta lo que se captura', async () => {
+    const onAbrir = vi.fn();
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={onAbrir} onDescartar={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    const abrir = screen.getByRole('button', { name: 'Abrir Levkoy' });
+    const descartar = screen.getByRole('button', { name: 'Descartar Levkoy' });
+    expect(parseInt(getComputedStyle(abrir).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(parseInt(getComputedStyle(descartar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(abrir.parentElement).not.toBe(descartar.parentElement);
+    expect(screen.queryByRole('button', { name: 'Descartar Bosque de Noruega' })).toBeNull();
+    await userEvent.click(abrir);
+    expect(onAbrir).toHaveBeenCalledWith('/pos?cuenta=a');
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir Bosque de Noruega' }));
+    expect(onAbrir).toHaveBeenLastCalledWith('/pos?pedido=2');
+  });
+
+  test('«Descartar» pregunta en una hoja de la app antes de descartar', async () => {
+    const onDescartar = vi.fn();
+    const confirmar = vi.spyOn(window, 'confirm');
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={onDescartar} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Descartar Levkoy' }));
+    expect(onDescartar).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
+    expect(onDescartar).toHaveBeenCalledWith('a');
+    expect(confirmar).not.toHaveBeenCalled();
+  });
+
+  test('sin nada vivo no pinta nada', () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    expect(screen.queryByText(/Falta entregar|Cuentas pendientes/)).toBeNull();
+  });
+});
+
+describe('«Cerrar caja» confirma en una hoja de la app', () => {
+  test('pregunta y solo cierra al confirmar, sin confirm() del navegador', async () => {
+    const onCerrar = vi.fn();
+    const confirmar = vi.spyOn(window, 'confirm');
+    wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={onCerrar} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    expect(onCerrar).not.toHaveBeenCalled();
+    expect(await screen.findByText('¿Cerrar «Caja principal»?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Volver' }));
+    expect(onCerrar).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    const hoja = await screen.findByRole('dialog');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Cerrar caja' }));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+    expect(confirmar).not.toHaveBeenCalled();
+  });
 });
 
 // «TOTAL DIF.» DICE LO MISMO QUE EL HISTÓRICO (spec 031, D13).

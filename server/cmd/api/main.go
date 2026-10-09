@@ -201,6 +201,8 @@ func main() {
 	// empresa, y ese cliente guarda su token. Dos copias pedirían dos tokens por empresa.
 	cipher := credentialsCipher(cfg)
 	credentials := app.NewPlatformCredentialsService(st, cipher, platformClientFactories(cfg), cfg.UberEatsEnv)
+	// La cuenta en captura se convierte en pedido por el MISMO servicio de pedidos que atiende la API.
+	orders := app.NewOrdersService(st, nil)
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:        cfg,
 		Version:    version,
@@ -212,7 +214,9 @@ func main() {
 		MenuCache:  cache.NewMenuCache(cfg.RedisURL),
 		Suggest:    app.NewSuggestService(st, nil),
 		Costing:    app.NewCostingService(st),
-		Orders:     app.NewOrdersService(st, nil),
+		Orders:     orders,
+		Drafts:     app.NewDraftsService(st, orders),
+		Accounts:   app.NewAccountsService(st, orders),
 		Backoffice: app.NewBackofficeService(st, nil),
 		Admin:      app.NewAdminService(st),
 		Settings:   app.NewSettingsService(st, cfg.PinPepper),

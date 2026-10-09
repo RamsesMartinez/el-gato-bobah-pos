@@ -128,6 +128,27 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// despliegue, así que la pantalla lo pide una vez por carga; vive aquí y no en
 				// una copia del front para que la lista tenga un solo dueño.
 				r.Get("/pos/folio-names", h.FolioNames)
+				// LA CUENTA EN CAPTURA (spec 030). Sin RequireRole: es el mismo gate que crear un
+				// pedido —quien levanta el pedido puede capturarlo— (contracts/api.md). Montadas solo
+				// con el servicio: sin él, mejor 404 que un 500 por puntero nulo.
+				if h.drafts != nil {
+					r.Post("/pos/drafts", h.CreateDraft)
+					r.Post("/pos/drafts/import", h.ImportDrafts)
+					r.Get("/pos/drafts/{id}", h.GetDraft)
+					r.Post("/pos/drafts/{id}/lines", h.AddDraftLine)
+					r.Patch("/pos/drafts/{id}/lines/{lineId}", h.ChangeDraftLine)
+					r.Delete("/pos/drafts/{id}/lines/{lineId}", h.RemoveDraftLine)
+					r.Post("/pos/drafts/{id}/send", h.SendDraft)
+					r.Post("/pos/drafts/{id}/discard", h.DiscardDraft)
+					// La cabecera lleva el tope por usuario del descuento: es un camino nuevo para poner un
+					// descuento, y no nace sin el control del viejo (PUT /orders/{id}/discount).
+					r.With(rateLimitUser(h.descuentoWrites)).Patch("/pos/drafts/{id}", h.PatchDraft)
+				}
+				// La fila de cuentas vivas: reemplaza a GET /orders/open (la barra de «Pedidos por
+				// cobrar»). Sin gate de rol: quien está en la caja es quien tiene que poder saldarlas.
+				if h.accounts != nil {
+					r.Get("/pos/accounts", h.LiveAccounts)
+				}
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 
@@ -169,11 +190,6 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Get("/platform/pending", h.PlatformPendingOrders)
 						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
 					}
-					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
-					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
-					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
-					// reembolsar, que es salida de dinero.
-					r.Get("/open", h.OpenOrders)
 					// Mismo alcance que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
 					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
 					// que mueve dinero sin la barrera que su gemelo sí exige. Por permiso y no por

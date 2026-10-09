@@ -381,29 +381,26 @@ select coalesce(sum(amount), 0)::numeric(10,2) as pagado,
        coalesce(sum(tip_amount), 0)::numeric(10,2) as propina
 from order_payments where order_id = $1;
 
--- name: ListOpenOrders :many
--- Los pedidos que el punto de venta tiene que seguir viendo: la barra de pedidos en curso.
+-- name: ListLiveOrders :many
+-- Los pedidos de la fila de cuentas del POS (spec 030): los que siguen en cocina, de cualquier fecha,
+-- y los entregados que todavía deben dinero desde `since`.
 --
--- Es la UNIÓN de dos conjuntos que no son el mismo, y confundirlos ya costó una vez:
+-- Es la UNIÓN de dos conjuntos, y confundirlos ya costó una vez: el pedido ya cobrado que sigue en
+-- cocina es al que el cliente le pide algo más, y el ENTREGADO sin cobrar es el pendiente caro — el
+-- cliente ya se fue. Cancelada y reembolsada quedan fuera: su dinero ya se decidió.
 --
---   * en preparación — `abierta` o `lista`: se les puede AGREGAR y cobrar. Es al que el cliente le
---     pide algo más, y el que antes desaparecía de la pantalla al mandarlo a cocina.
---   * con saldo — debe dinero y no está cancelada ni reembolsada. Incluye el pedido ENTREGADO y sin
---     cobrar, que es el caro: el cliente ya se fue. Esa es la razón de ser de la píldora que esta
---     lista reemplaza, y quedarse solo con "en preparación" lo habría borrado del encabezado.
+-- Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where.
 --
--- `en_preparacion` viaja como dato y no se deduce del estado en el front: la pantalla tiene que
--- poder decir cuál se puede ampliar sin volver a implementar la regla.
---
--- Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
--- operador a perseguir cobros que nadie debe.
--- Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where. Escrito
--- como dos subconsultas iguales, Postgres no las deduplica: en el plan real salían dos SubPlan y el
--- mismo agregado se recorría dos veces por cada pedido entregado sin cobrar.
+-- ponytail: `since` es la ventana de la deuda. La fila, que cada tableta pide cada 30 s, la acota a
+-- 90 días (techo medido en accounts_live_perf_test: ~6 ms con 30 mil pedidos); la hoja «+N» y el
+-- cierre de caja la piden desde el principio de los tiempos, y ese modo crece lineal con el
+-- histórico (~21 ms con 30 mil). Camino de subida: `orders.owes` mantenida por trigger sobre
+-- order_payments y orders.total, con índice parcial; se rellena desde order_payments al mismo costo
+-- que hoy. Partirla en UNION ALL de las dos ramas se midió y fue más lenta (~22 ms): la rama de
+-- cocina no puede acotar por fecha y Postgres la lee por el índice de empresa de todos modos.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.opened_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
        pagos.paid::numeric(10,2) as paid,
-       (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
 left join lateral (
@@ -411,25 +408,28 @@ left join lateral (
 ) pagos on true
 where o.status not in ('cancelada', 'reembolsada')
   -- Redundante a propósito, y no se puede quitar. El OR de abajo referencia `pagos.paid`, que sale
-  -- del lateral, así que Postgres no lo puede empujar al scan de `orders`: calculaba los pagos de
-  -- CADA pedido histórico no cancelado antes de descartarlo. Medido con 30 mil pedidos: 175 ms y
-  -- 90 mil buffers, en una consulta que cada tableta pide cada 30 segundos. Este predicado dice lo
-  -- mismo pero sin tocar el lateral, y baja a 20 ms y 155 buffers usando los índices que ya hay.
-  and (o.status in ('abierta', 'lista') or o.business_date = $1)
+  -- del lateral, así que Postgres no lo puede empujar al scan de `orders`: sin este predicado
+  -- calculaba los pagos de CADA pedido histórico antes de descartarlo (medido: 175 ms y 90 mil
+  -- buffers con 30 mil pedidos). Los dos `since` se mueven juntos.
+  and (o.status in ('abierta', 'lista') or o.business_date >= @since::date)
   and (
-    -- SIN filtro de fecha en los que siguen en curso, a propósito: un pedido abierto se ve hasta que
-    -- alguien lo cierre, sin importar de qué día sea. Es el mecanismo con el que se limpia el
-    -- rezago — un pedido que nadie ve es un pedido que nadie cierra, y así había once desde julio.
+    -- SIN filtro de fecha en los que siguen en curso: un pedido abierto se ve hasta que alguien lo
+    -- cierre. Un pedido que nadie ve es un pedido que nadie cierra.
     o.status in ('abierta', 'lista')
-    -- Los que deben dinero sí se acotan al día en curso: el pendiente de hace tres meses ya no es
-    -- algo que el cajero de hoy pueda cobrar, y traerlos convertiría la barra en un histórico.
-    --
     -- El centavo de tolerancia es el MISMO de `domain.PedidoSaldado`, y tiene que moverse con él.
-    -- Escrito como `pagos.paid < o.total` a secas, dividir $100 en tres partes de $33.33 cerraba el
-    -- pedido —con el predicado tolerante— y esta consulta lo seguía listando con $0.01 de deuda que
-    -- nadie podía cobrar. Lo cubre TestUnPedidoCerradoNoDejaCentavosDeDeuda, que pasa por los dos.
-    or (o.total - pagos.paid > 0.01 and o.business_date = $1)
+    or (o.total - pagos.paid > 0.01 and o.business_date >= @since::date)
   )
+order by o.opened_at;
+
+-- name: GetOrdersForAccounts :many
+-- Los pedidos que la fila tiene que mostrar aunque ya no estén vivos: los cerrados que conservan una
+-- «Nuevo» viva (research R-9). Sin esto lo capturado quedaría en una cuenta que nadie ve.
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
+from orders o
+where o.id = any(@ids::bigint[])
 order by o.opened_at;
 
 -- name: MarcarTodoElPedidoEnviadoACocina :exec

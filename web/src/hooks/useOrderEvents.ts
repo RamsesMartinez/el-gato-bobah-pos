@@ -21,10 +21,21 @@ export function useOrderEvents(): boolean {
     // de refresco. El operador veía dos pendientes distintos del mismo pedido en dos pantallas y no
     // tenía cómo saber cuál era el bueno; con cobro parcial la diferencia deja de ser un retraso y
     // pasa a ser una cifra equivocada.
-    const invalidate = () => qc.invalidateQueries({ queryKey: ['orders'] });
+    //
+    // Y la fila de cuentas del POS (spec 030): un pedido que cambia en otra tableta cambia su ficha,
+    // y una cuenta que se captura en otra tableta solo existe para ésta por `draft.updated`.
+    const cuentas = () => {
+      qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+      qc.invalidateQueries({ queryKey: ['pos', 'draft'] });
+    };
+    const invalidate = () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      cuentas();
+    };
 
     es.addEventListener('order.created', invalidate);
     es.addEventListener('order.updated', invalidate);
+    es.addEventListener('draft.updated', cuentas);
     es.onopen = () => setLive(true);
     es.onerror = () => setLive(false);
 

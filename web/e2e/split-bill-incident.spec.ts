@@ -1,5 +1,6 @@
-import { test, expect, type Page, type APIRequestContext, type Locator } from '@playwright/test';
-import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
+import { test, expect, type Locator } from '@playwright/test';
+import { API, pedidosEnCurso, tokenDeRequest } from './ambiente';
+import { abrirTicket, botonCobrar, entrar, ponerUnProducto } from './pos';
 
 // REGRESIÓN DEL INCIDENTE DEL 2026-10-04: una mesa de tres que quiso pagar cada quien lo suyo.
 //
@@ -21,63 +22,31 @@ async function tap(target: Locator) {
   await target.click();
 }
 
-async function entrar(page: Page) {
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
-}
-
-async function agregarProducto(page: Page, nombre: string) {
-  const buscar = page.getByPlaceholder('Buscar producto…');
-  await buscar.fill(nombre);
-  await page.getByText(nombre, { exact: true }).first().click();
-  const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
-  if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
-  await buscar.fill('');
-}
-
-type Abierto = { id: number; number: number; outstanding: string; total: string };
-
-async function abiertos(request: APIRequestContext, jwt: string): Promise<Abierto[]> {
-  const r = await request.get(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
-  return ((await r.json()).items ?? []) as Abierto[];
-}
+type Abierto = { id: number; number: number };
 
 test('la mesa del incidente se divide por productos sin cancelar nada', async ({ page, request }) => {
   const jwt = await tokenDeRequest(request);
   await entrar(page);
 
   // La mesa pide todo en una sola cuenta, como ese día.
-  for (const p of [...A, ...B, ...C]) await agregarProducto(page, p);
-  const antes = new Set((await abiertos(request, jwt)).map((o) => o.id));
-  const pildora = page.getByRole('button', { name: /art ·|Ver pedido/ }).first();
-  if (await pildora.isVisible().catch(() => false)) await pildora.click();
-  await page.getByRole('button', { name: 'Enviar a cocina' }).click();
+  for (const p of [...A, ...B, ...C]) await ponerUnProducto(page, p);
+  const antes = new Set((await pedidosEnCurso(jwt)).map((o) => o.id));
+
+  // UNA SOLA PUERTA (spec 030): «Enviar y cobrar» desde el ticket manda a cocina y abre la hoja con
+  // los tres modos. Ese día «Por productos» no salía desde aquí.
+  await abrirTicket(page);
+  taps = 0;
+  await tap(botonCobrar(page));
   let pedido: Abierto | undefined;
   await expect.poll(async () => {
-    pedido = (await abiertos(request, jwt)).find((o) => !antes.has(o.id));
+    pedido = (await pedidosEnCurso(jwt)).find((o) => !antes.has(o.id));
     return pedido?.id ?? 0;
   }, { timeout: 20_000 }).toBeGreaterThan(0);
-  const nuevo = page.getByRole('button', { name: 'Nuevo pedido' });
-  if (await nuevo.isVisible().catch(() => false)) await nuevo.click();
-
-  // Desde «Pedidos por cobrar» del POS: en el tablero, un pedido con algo por entregar ofrece
-  // entregar, no cobrar (se cobra cuando está listo).
-  taps = 0;
-  await tap(page.getByRole('button', { name: /^\$[\d,.]+ \(\d+\)$/ }));
-  const lista = page.getByRole('dialog').last();
-  const renglon = lista.locator('div').filter({ has: page.getByText(new RegExp(`^#${pedido!.number} · `)) })
-    .filter({ has: page.getByRole('button', { name: /^Cobrar/ }) }).last();
-  await tap(renglon.getByRole('button', { name: /^Cobrar/ }));
   const hoja = page.getByRole('dialog').last();
   await tap(hoja.getByRole('button', { name: /Dividir/ }));
-  await expect(hoja.getByRole('button', { name: 'Por productos', pressed: true })).toBeVisible();
+  // El primer modo es «Por productos»; si la hoja abrió antes de traer los renglones se elige.
+  const porProductos = hoja.getByRole('button', { name: 'Por productos' });
+  if (await porProductos.getAttribute('aria-pressed') !== 'true') await tap(porProductos);
 
   const cobrarA = async (productos: string[]) => {
     for (const p of productos) await tap(hoja.getByRole('button', { name: new RegExp(`^${p}`) }));
@@ -97,7 +66,7 @@ test('la mesa del incidente se divide por productos sin cancelar nada', async ({
   await expect(resto).toBeEnabled({ timeout: 10_000 });
   await tap(resto);
   await expect(page.getByText('Cobrado').first()).toBeVisible();
-  expect(taps, 'la mesa de tres no puede costar más de 20 toques desde la tarjeta').toBeLessThanOrEqual(20);
+  expect(taps, 'la mesa de tres no puede costar más de 20 toques desde el ticket').toBeLessThanOrEqual(20);
 
   // Lo que dice el servidor: tres pagos que suman el total, y nada cancelado.
   const r = await request.get(`${API}/orders/${pedido!.id}`, { headers: { Authorization: `Bearer ${jwt}` } });

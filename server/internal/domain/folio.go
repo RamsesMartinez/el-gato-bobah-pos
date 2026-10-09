@@ -243,3 +243,41 @@ func SiguienteFolioLibre(base string, usadosHoy []string) string {
 	}
 	return ""
 }
+
+// AvailableNames da los nombres que se pueden repartir: los de DisponiblesDeLaBolsa SIN los de las
+// cuentas en captura vivas (spec 030, R-3).
+//
+// Es UN predicado para los tres que reparten nombre —la pantalla, la cuenta que nace y el pedido que
+// se crea por otro camino (move_lines, API)—; con dos, uno de ellos le daría a otra mesa el nombre que
+// ya se le dijo a un cliente al empezar su cuenta.
+//
+// Los vivos se excluyen DURO, no como lo usado hoy: lo usado hoy vuelve cuando el día pasa del largo
+// de la lista (para numerarlo, «Persa 2»), pero un nombre vivo nunca, porque «Persa 2» al lado de la
+// cuenta «Persa» que sigue capturándose es justo la confusión que esto evita. Si todos están vivos
+// devuelve vacío y quien llama lo dice.
+func AvailableNames(lista, consumidos, usadosTurno, vivos []string) ([]string, bool) {
+	usados := append(append([]string(nil), usadosTurno...), vivos...)
+	opciones, vaciar := DisponiblesDeLaBolsa(lista, consumidos, usados)
+	if len(vivos) == 0 {
+		return opciones, vaciar
+	}
+	out := sinVivos(opciones, vivos)
+	if len(out) == 0 && !vaciar {
+		// Lo que queda sin salir en la bolsa son todos nombres vivos: se empieza otra vuelta antes que
+		// quedarse sin nombre teniendo libres los de la vuelta anterior.
+		opciones, vaciar = DisponiblesDeLaBolsa(lista, lista, usados)
+		out = sinVivos(opciones, vivos)
+	}
+	return out, vaciar
+}
+
+func sinVivos(opciones, vivos []string) []string {
+	vivo := aConjunto(vivos)
+	out := make([]string, 0, len(opciones))
+	for _, n := range opciones {
+		if !vivo[n] {
+			out = append(out, n)
+		}
+	}
+	return out
+}
