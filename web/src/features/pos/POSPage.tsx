@@ -693,6 +693,8 @@ export function POSPage() {
 
       <ReasonSheet isOpen={perdiendo} required destructive title={`¿Cancelar lo que falta de ${vista.nombre || 'esta cuenta'}?`}
         label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
+        atajos={['Se fue sin pagar']}
+        description={`Se dan por perdidos ${money(vista.falta)}. Lo cobrado (${money(vista.pagado)}) se queda como venta.`}
         onDone={(r) => void cancelarResto(r)} />
 
       {quitando && (

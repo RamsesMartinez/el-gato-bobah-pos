@@ -259,6 +259,8 @@ decisiones tomadas.
 | DO-3 | **Lo dado por perdido es un concepto propio** («cancelar lo que falta», opción A, 2026-10-09; spec 030 D-15). Lo pagado del pedido sigue siendo venta y dinero del cajón; el resto perdido no es cobro, ni devolución, ni pendiente. | Ventas lo reporta en su tile «Perdido» el día en que se dio por perdido; el corte lo nombra en su propia línea fuera de «Sin cobrar» y del esperado. Cada peso en un solo lugar (principio III), con `TestWriteOffIsCountedOnce` fallando por el concepto duplicado. |
 | DO-4 | **Una devolución parcial de dinero no resta piezas** de Productos vendidos (aprobado por el dueño, 2026-10-09): solo resta el renglón devuelto completo, o todo el pedido cuando se devuelve entero. | El producto se entregó; lo que se regresó fue una compensación. Confirma la regla que ya aplica `ProductsSold` (DO-1). |
 | DO-5 | **Un pedido con algo dado por perdido ya no se puede cobrar** (aprobado por el dueño, 2026-10-09). | Cobrarlo después contaría el mismo peso como cobrado y como perdido. El servidor lo rechaza con 409 «Lo que faltaba de este pedido ya se dio por perdido». |
+| DO-6 | **Barreras de lo perdido en la base** (aprobado por el dueño, 2026-10-09; migración 0086): lo perdido nunca supera el total del pedido (check), quien lo dio por perdido no se borra (`on delete restrict`) e índice parcial por empresa y día de lo perdido. | Un «debe» negativo restaría de lo que sí se debe en el pendiente y en el cierre. |
+| DO-7 | **El tile «Perdido» va junto a «Por cobrar»**, antes de los medios (aprobado por el dueño, 2026-10-09). | Al final de la fila no se veía sin deslizar a 1024×600 con Devoluciones y Renglones cancelados encendidos. Los dos son lo que NO está en el total. |
 
 ## Success Criteria *(mandatory)*
 

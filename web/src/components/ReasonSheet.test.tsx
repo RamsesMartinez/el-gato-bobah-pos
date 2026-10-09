@@ -75,3 +75,23 @@ test('destructiva: la acción roja va aparte de «Volver»', async () => {
   const rojo = await screen.findByRole('button', { name: 'Cancelar pedido' });
   expect(rojo.parentElement).not.toBe(screen.getByRole('button', { name: 'Volver' }).parentElement);
 });
+
+// Un motivo frecuente se elige sin teclear (dueño, 2026-10-09: «Se fue sin pagar»), y la hoja puede
+// decir qué va a pasar antes de confirmar.
+describe('ReasonSheet: atajos y descripción', () => {
+  test('el atajo llena el motivo sin teclear, mide 44 px y se puede confirmar', async () => {
+    const onDone = vi.fn();
+    render(
+      <Provider>
+        <ReasonSheet isOpen required title="t" label="Motivo" confirmLabel="Confirmar"
+          atajos={['Se fue sin pagar']} description="Se dan por perdidos $6" onDone={onDone} />
+      </Provider>,
+    );
+    expect(await screen.findByText('Se dan por perdidos $6')).toBeInTheDocument();
+    const atajo = screen.getByRole('button', { name: 'Se fue sin pagar' });
+    expect(parseInt(getComputedStyle(atajo).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(atajo);
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    expect(onDone).toHaveBeenCalledWith('Se fue sin pagar');
+  });
+});
