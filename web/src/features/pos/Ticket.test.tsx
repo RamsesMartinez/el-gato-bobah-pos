@@ -85,7 +85,7 @@ describe('las secciones del ticket (US3)', () => {
 
   test('un pedido con algo nuevo: «Nuevo» primero, luego «En cocina»; lo de cocina sin −/+', () => {
     pinta(vista({ order: pedido(), draft: draft({ orderId: 1, folioName: null, lines: [draft().lines![0]] }) }));
-    const titulos = screen.getAllByRole('heading').map((h) => h.textContent);
+    const titulos = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(titulos[0]).toMatch(/Nuevo · aún no va a cocina/);
     expect(titulos[1]).toMatch(/En cocina/);
     const cocina = screen.getByRole('region', { name: /En cocina/ });
@@ -116,9 +116,9 @@ describe('las secciones del ticket (US3)', () => {
   });
 
   // En 600 px de alto, cinco renglones de cocina empujaban lo nuevo fuera de la vista.
-  test('«En cocina» con más de 3 renglones se pliega solo y se despliega al tocarlo', async () => {
+  test('«En cocina» con más de 3 renglones y algo nuevo se pliega solo y se despliega al tocarlo', async () => {
     const o = pedido({ lines: [1, 2, 3, 4, 5].map((i) => linea(i, `Producto ${i}`, '10.00')) });
-    pinta(vista({ order: o }));
+    pinta(vista({ order: o, draft: draft({ orderId: 1 }) }));
     const boton = screen.getByRole('button', { name: /En cocina · 5/ });
     expect(screen.queryByText('Producto 1')).toBeNull();
     await userEvent.click(boton);
@@ -256,17 +256,12 @@ describe('envío y descuento', () => {
     expect(handlers.onCabecera).toHaveBeenCalledWith({ deliveryFee: '35.00' });
   });
 
-  test('con plataforma no se ofrece envío ni cambiar el tipo', () => {
+  test('con plataforma no se ofrece envío ni cambiar el tipo', async () => {
     pinta(vista({ draft: draft({ serviceType: 'domicilio', platformId: 3 }) }));
     expect(screen.queryByLabelText('Costo de envío')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Mostrador|Domicilio/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Cambiar a/ })).toBeNull();
   });
 
-  test('pasar a domicilio pone el envío del negocio', async () => {
-    pinta(vista({ draft: draft() }));
-    await userEvent.click(screen.getByRole('button', { name: /Mostrador/ }));
-    expect(handlers.onCabecera).toHaveBeenCalledWith({ serviceType: 'domicilio', deliveryFee: '20.00' });
-  });
 
   test('el descuento no ocupa alto hasta que alguien lo abre', () => {
     pinta(vista({ draft: draft() }));
@@ -349,8 +344,26 @@ describe('el ⋮ de la cuenta (US5)', () => {
 
   test('con un nombre largo ningún control del encabezado baja de 44 px', () => {
     pinta(vista({ draft: draft({ folioName: 'Colorpoint Shorthair' }) }));
-    expect(alto(screen.getByRole('button', { name: /Mostrador/ }))).toBeGreaterThanOrEqual(44);
     expect(alto(screen.getByRole('button', { name: 'Más opciones de la cuenta' }))).toBeGreaterThanOrEqual(44);
+  });
+
+  // EL NOMBRE COMPLETO (validación como usuario nuevo): «Col…» no dice de quién es la cuenta. Va
+  // en su renglón, y debajo «#N · Mostrador · hora» como en el lienzo; el tipo se cambia desde ⋮.
+  test('el nombre se lee completo y debajo va «#N · tipo · hora»', () => {
+    pinta(vista({ order: pedido({ folioName: 'Colorpoint Shorthair', number: 33 }) }), { hora: '18:30' });
+    const nombre = screen.getByRole('heading', { name: 'Colorpoint Shorthair' });
+    expect(getComputedStyle(nombre).whiteSpace).not.toBe('nowrap');
+    expect(screen.getByText('#33 · Mostrador · 18:30')).toBeInTheDocument();
+  });
+
+  // Un toque, como antes (revisión de tableta): pasar a domicilio es frecuente en el mostrador. El
+  // botón es compacto —el nombre necesita el ancho— y dice en su nombre lo que hace.
+  test('el tipo se cambia de un toque y pasar a domicilio pone el envío del negocio', async () => {
+    pinta(vista({ draft: draft() }));
+    const boton = screen.getByRole('button', { name: 'Cambiar a domicilio' });
+    expect(alto(boton)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(boton);
+    expect(handlers.onCabecera).toHaveBeenCalledWith({ serviceType: 'domicilio', deliveryFee: '20.00' });
   });
 });
 
@@ -366,15 +379,37 @@ describe('lo que la revisión de tableta encontró', () => {
     expect(getComputedStyle(pie).flexDirection).toBe('column');
   });
 
-  // El plegado se decidía al montar y se heredaba entre cuentas: abrir otra con 5 renglones en
-  // cocina la dejaba abierta empujando lo nuevo fuera de la vista.
-  test('cambiar a una cuenta con más de 3 renglones en cocina la pliega', () => {
-    const r = pinta(vista({ order: pedido() }));
-    expect(screen.getByText('Kit Kat')).toBeInTheDocument();
+  // UNA REGLA PARA PLEGAR (validación como usuario nuevo): «En cocina» se veía a veces plegado y a
+  // veces abierto, y tras enviar lo nuevo quedaba plegado con el ticket en blanco. Se pliega SOLO
+  // cuando hay algo nuevo que capturar y más de 3 renglones enviados; sin nada nuevo, lo enviado se
+  // ve completo.
+  test('sin nada nuevo, «En cocina» se ve completo aunque tenga más de 3 renglones', () => {
     const otro = pedido({ id: 2, lines: [1, 2, 3, 4, 5].map((i) => linea(i, `Producto ${i}`, '10.00')) });
-    r.rerender(<Provider><Ticket vista={vista({ order: otro })} {...handlers} /></Provider>);
+    pinta(vista({ order: otro }));
+    expect(screen.getByText('Producto 1')).toBeInTheDocument();
+  });
+
+  test('con algo nuevo y más de 3 enviados, «En cocina» se pliega para dejar lugar a lo nuevo', () => {
+    const otro = pedido({ id: 2, lines: [1, 2, 3, 4, 5].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    pinta(vista({ order: otro, draft: draft({ orderId: 2 }) }));
     expect(screen.getByRole('button', { name: /En cocina · 5/ })).toBeInTheDocument();
     expect(screen.queryByText('Producto 1')).toBeNull();
+  });
+
+  test('tras enviar lo nuevo, lo enviado se ve: el ticket no queda en blanco', () => {
+    const antes = pedido({ id: 2, lines: [1, 2, 3, 4].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    const r = pinta(vista({ order: antes, draft: draft({ orderId: 2 }) }));
+    expect(screen.queryByText('Producto 1')).toBeNull();
+    const despues = pedido({ id: 2, lines: [1, 2, 3, 4, 5, 6].map((i) => linea(i, `Producto ${i}`, '10.00')) });
+    r.rerender(<Provider><Ticket vista={vista({ order: despues })} {...handlers} /></Provider>);
+    expect(screen.getByText('Producto 6')).toBeInTheDocument();
+  });
+
+  // «Enviar 1 a cocina» con un renglón de 2 piezas: cocina recibe dos, el botón decía uno.
+  test('«Enviar N a cocina» cuenta piezas, no renglones', () => {
+    const l = { ...draft().lines![0], qty: '2', lineTotal: '58.00' };
+    pinta(vista({ draft: draft({ lines: [l] }) }));
+    expect(screen.getByRole('button', { name: 'Enviar 2 a cocina' })).toBeInTheDocument();
   });
 
   // El aviso del descuento en la misma fila dejaba el campo en ~10 px: se escribía a ciegas.

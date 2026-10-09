@@ -120,7 +120,7 @@ test.describe('E — el cobro, en la pantalla', () => {
       // botones de tipo en cuanto hay plataforma, así que ya no se puede corregir a mano.
       // Se afirma que el campo APARECE antes de asignar la plataforma. Sin esta comprobación el
       // test pasaría por vacío el día que el campo deje de existir por otra razón.
-      await page.getByRole('button', { name: 'Domicilio' }).click();
+      await page.getByRole('button', { name: 'Cambiar a domicilio' }).click();
       await expect(page.getByLabel('Costo de envío')).toBeVisible();
 
       // El panel se cierra para llegar al selector de plataforma, que vive en la barra de arriba.
@@ -137,7 +137,7 @@ test.describe('E — el cobro, en la pantalla', () => {
     await entrar(page);
     await agregarUnProducto(page);
 
-    await page.getByRole('button', { name: 'Domicilio' }).click();
+    await page.getByRole('button', { name: 'Cambiar a domicilio' }).click();
 
     // La coma de millar que el operador teclea por costumbre. `parseFloat` la leía como 1 y el
     // resto la volvía cero: envío gratis que nadie decidió.

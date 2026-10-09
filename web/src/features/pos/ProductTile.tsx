@@ -52,7 +52,8 @@ export function ProductTile({ product, count, onTap, showPrice, price, esManual,
         </Badge>
       )}
       <Box>
-        <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25">
+        {/* Con el contador, el nombre deja su hueco: «1×» tapaba la última letra. */}
+        <Text fontWeight="600" fontSize="md" lineClamp={3} lineHeight="1.25" pr={count > 0 ? '32px' : undefined}>
           {product.name}
         </Text>
         {product.description && (

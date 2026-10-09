@@ -23,8 +23,18 @@ export interface CabeceraNueva {
 
 const MOSTRADOR: CabeceraNueva = { platformId: null, platformOrderRef: '', serviceType: 'mostrador', customerName: '' };
 
+// claveDeSeleccion es la llave con la que la fila nombra a cada cuenta (`AccountItem.key`).
+export function claveDeSeleccion(s: Seleccion): string {
+  return s.kind === 'draft' ? `d:${s.id}` : `o:${s.id}`;
+}
+
+const MAX_RECIENTES = 20;
+
 interface PosState {
   selected: Seleccion | null;
+  // Las cuentas que esta tableta abrió, de la más reciente a la más vieja. En memoria a propósito:
+  // solo ordena la fila, y tras un F5 la fila sigue mostrándolas todas.
+  recientes: string[];
   nueva: CabeceraNueva;
   seleccionar: (s: Seleccion) => void;
   // Olvida la selección SOLO si sigue siendo ésa: la respuesta tardía de una cuenta vieja no puede
@@ -54,8 +64,12 @@ export const usePosStore = create<PosState>()(
   persist(
     (set) => ({
       selected: null,
+      recientes: [],
       nueva: MOSTRADOR,
-      seleccionar: (selected) => set({ selected }),
+      seleccionar: (selected) => set((st) => {
+        const k = claveDeSeleccion(selected);
+        return { selected, recientes: [k, ...st.recientes.filter((r) => r !== k)].slice(0, MAX_RECIENTES) };
+      }),
       olvidar: (s) => set((st) => (mismaSeleccion(st.selected, s) ? { selected: null } : st)),
       cuentaNueva: () => set({ selected: null, nueva: MOSTRADOR }),
       cambiarNueva: (c) => set((st) => {
