@@ -100,6 +100,20 @@ describe('pantalla de Ventas', () => {
     expect(screen.getByText('no entra al total · 1 pedido')).toBeInTheDocument();
   });
 
+  // A 1024×600 la fila de recuadros desplaza a lo ancho: lo perdido iba al final, detrás de medios,
+  // ventas, devoluciones y renglones cancelados, y no se veía sin deslizar (dueño, 2026-10-09).
+  // Va junto a «Por cobrar», antes de los medios: es la otra cifra que NO está en el total.
+  it('lo perdido va junto a «Por cobrar», antes de los medios y de las ventas', async () => {
+    api.summary.mockResolvedValue({ ...resumen, writtenOff: { count: 1, amount: '60' },
+      refunded: { count: 1, amount: '30' }, cancelledLines: { count: 1, amount: '10' } });
+    montar();
+    const perdido = await screen.findByText('Perdido');
+    const ventas = screen.getByText('sin canceladas');
+    const efectivo = screen.getAllByText('Efectivo')[0];
+    expect(perdido.compareDocumentPosition(ventas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(perdido.compareDocumentPosition(efectivo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   // Un tile en cero por cada concepto llena la pantalla de ruido justo donde se busca un descuadre.
   it('no muestra conceptos que valen cero', async () => {
     montar();

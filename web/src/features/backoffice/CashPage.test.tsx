@@ -569,6 +569,8 @@ describe('las cuentas vivas en el cierre', () => {
       const resto = screen.getByRole('button', { name: 'Cancelar lo que falta de #6' });
       expect(parseInt(getComputedStyle(resto).minHeight, 10)).toBeGreaterThanOrEqual(44);
       await userEvent.click(resto);
+      // Dice cuánto se pierde y que lo cobrado se queda, antes de confirmar (dueño, 2026-10-09).
+      expect(await screen.findByText(/Se dan por perdidos \$50\. Lo cobrado \(\$30\) se queda como venta/)).toBeInTheDocument();
       await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
       await userEvent.click(screen.getByRole('button', { name: 'Cancelar lo que falta' }));
       expect(onCancelarResto).toHaveBeenCalledWith(6, 'se fue sin pagar');

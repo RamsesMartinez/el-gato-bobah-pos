@@ -1585,6 +1585,8 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
       <ReasonSheet isOpen={perdiendo !== null} destructive required
         title={`¿Cancelar lo que falta de ${perdiendo ? nombreDePedido(perdiendo) : ''}?`}
         label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
+        atajos={['Se fue sin pagar']}
+        description={perdiendo ? `Se dan por perdidos ${money(round2(Number(perdiendo.total) - Number(perdiendo.paid) - Number(perdiendo.writtenOff ?? 0)))}. Lo cobrado (${money(perdiendo.paid)}) se queda como venta.` : undefined}
         onDone={(motivo) => {
           const o = perdiendo;
           setPerdiendo(null);

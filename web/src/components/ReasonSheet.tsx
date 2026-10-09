@@ -18,11 +18,15 @@ interface Props {
   // El motivo recortado ('' si es opcional y quedó vacío) o `null` si se arrepintió. Son dos
   // respuestas distintas: «sin motivo» confirma, «volver» no hace nada.
   onDone: (reason: string | null) => void;
+  // Lo que pasa al confirmar, dicho antes («Se dan por perdidos $6…»).
+  description?: string;
+  // Motivos frecuentes que se eligen sin teclear; el texto libre sigue disponible.
+  atajos?: string[];
 }
 
 // ReasonSheet reemplaza al `prompt()` del navegador para pedir un motivo.
 export function ReasonSheet({
-  isOpen, title, label, placeholder, confirmLabel, required, destructive, loading, onDone,
+  isOpen, title, label, placeholder, confirmLabel, required, destructive, loading, onDone, description, atajos,
 }: Props) {
   const [texto, setTexto] = useState('');
   const limpio = texto.trim();
@@ -35,12 +39,21 @@ export function ReasonSheet({
       <DrawerContent borderTopRadius="l3" maxH="85dvh" display="flex" flexDirection="column">
         <DrawerHeader pb={1}>
           <Text fontSize="lg" fontWeight="700">{title}</Text>
+          {description && <Text fontSize="sm" color="fg.muted">{description}</Text>}
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>
           <Input autoFocus size="lg" minH="52px" aria-label={label}
             placeholder={placeholder ?? (required ? label : `${label} (opcional)`)}
             value={texto} onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (!required || limpio)) salir(limpio); }} />
+          {atajos && atajos.length > 0 && (
+            <HStack gap={2} mt={2} flexWrap="wrap">
+              {atajos.map((a) => (
+                <Button key={a} minH="44px" variant={texto === a ? 'solid' : 'outline'} colorPalette="gray"
+                  borderRadius="full" onClick={() => setTexto(a)}>{a}</Button>
+              ))}
+            </HStack>
+          )}
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px" pt={3}>
           <HStack w="100%" gap={destructive ? 6 : 2} justify="space-between">
