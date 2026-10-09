@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   order: vi.fn(),
   sendDraft: vi.fn(),
   paymentMethods: vi.fn(),
+  chargeOrder: vi.fn(),
 }));
 vi.mock('../../api/pos', () => ({
   posApi: {
@@ -33,7 +34,7 @@ vi.mock('../../api/pos', () => ({
     menu: () => Promise.resolve({ categories: [], products: [] }),
     popular: () => Promise.resolve({ items: [] }),
     modifierDefaults: () => Promise.resolve({}),
-    businessSettings: () => Promise.resolve({ deliveryFee: '20', timezone: 'America/Mexico_City' }),
+    businessSettings: () => Promise.resolve({ deliveryFee: '20', timezone: 'America/Mexico_City', businessName: 'El Gato' }),
     folioNames: () => Promise.resolve({ items: ['Levkoy'] }),
     liveAccounts: () => Promise.resolve({ items: vivas.current, outstanding: '0.00', serverTime: '2026-10-08T16:00:00Z' }),
     quoteOrder: vi.fn(),
@@ -125,6 +126,21 @@ describe('cobrar desde el ticket', () => {
     await act(async () => soltar());
     expect(await screen.findByRole('button', { name: 'Efectivo' })).toBeInTheDocument();
     expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 30 });
+  });
+
+  // «Nuevo pedido» tras cobrar, cuando todo lo demás dice «cuenta» (validación como usuario nuevo).
+  test('al terminar de cobrar ofrece «Nueva cuenta»', async () => {
+    usePosStore.getState().seleccionar({ kind: 'order', id: 30 });
+    api.order.mockResolvedValue(PEDIDO);
+    api.chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false, amount: '75' });
+    montar();
+    await userEvent.click(await screen.findByRole('button', { name: /^Cobrar \$75/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Efectivo' }));
+    api.order.mockResolvedValue({ ...PEDIDO, paid: true, outstanding: '0.00' });
+    const cobrar = screen.getAllByRole('button', { name: /^Cobrar \$75/ }).at(-1)!;
+    await userEvent.click(cobrar);
+    expect(await screen.findByRole('button', { name: 'Nueva cuenta' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nuevo pedido' })).toBeNull();
   });
 
   test('sin nada nuevo dice «Cobrar» y abre la hoja sin mandar nada', async () => {

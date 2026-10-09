@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Box, Button, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { LuCheck, LuChevronDown, LuChevronRight, LuMinus, LuPlus } from 'react-icons/lu';
 import type { Currency, PaymentView } from '../../types/pos';
@@ -12,6 +12,9 @@ interface Props {
   payments: PaymentView[];
   currency: Currency;
   disabled?: boolean;
+  // «Todo lo que falta» y «Pasar a otro pedido», en el renglón del título: abajo, en el pie,
+  // empujaban los billetes fuera de la vista a 600 px.
+  acciones?: ReactNode;
   onToggle: (row: ListRowState) => void;
   onQty: (lineId: number, qty: number) => void;
 }
@@ -20,12 +23,15 @@ interface Props {
 // grandes en dos columnas; lo pagado al final, en gris y con su pago, y agrupado si son muchos.
 //
 // No calcula ningún monto: el de la selección lo da el servidor (quote). Aquí solo se elige qué.
-export function ByProducts({ rows, selection, payments, currency, disabled, onToggle, onQty }: Props) {
+export function ByProducts({ rows, selection, payments, currency, disabled, acciones, onToggle, onQty }: Props) {
   const [showPaid, setShowPaid] = useState(false);
   const methodOf = new Map(payments.filter((p) => !p.voided).map((p) => [p.number, p.methodName]));
   return (
     <VStack align="stretch" gap={2}>
-      <Text fontSize="sm" fontWeight="600">Toca lo que paga esta persona</Text>
+      <HStack justify="space-between" gap={2} flexWrap="wrap">
+        <Text fontSize="sm" fontWeight="600">Toca lo que paga esta persona</Text>
+        {acciones}
+      </HStack>
       <SimpleGrid columns={2} gap={2}>
         {rows.pending.map((r) => {
           const picked = selection[r.line.id] ?? 0;

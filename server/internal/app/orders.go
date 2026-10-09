@@ -306,11 +306,16 @@ func (s *OrdersService) prepareCreate(ctx context.Context, cmd CreateOrderCmd) (
 		return nil, err
 	}
 
+	groups, err := modifierGroupsOf(ctx, s.store.QC(ctx), prodIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Si algo del pedido necesita prepararse. Lo dice el CATÁLOGO, no la pantalla: preguntárselo al
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
 			// El costo NO lleva margen: el margen es de precio de VENTA. Vender por Uber consume
 			// exactamente el mismo inventario, y el margen extra es lo que se va en comisión.
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
@@ -319,7 +324,7 @@ func (s *OrdersService) prepareCreate(ctx context.Context, cmd CreateOrderCmd) (
 	options := map[int64]domain.PricedOption{}
 	for _, o := range optRows {
 		options[o.ID] = domain.PricedOption{
-			ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
+			ID: o.ID, GroupID: o.GroupID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
 			MaxPerLine: int(o.MaxPerLine),
 			PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
 		}
@@ -1081,6 +1086,19 @@ func insertDepletion(ctx context.Context, q *db.Queries, p db.InsertStockMovemen
 	return q.InsertStockMovement(ctx, p)
 }
 
+// modifierGroupsOf trae los grupos de extras que admite cada producto, para domain.BuildOrder.
+func modifierGroupsOf(ctx context.Context, q *db.Queries, productIDs []int64) (map[int64][]int64, error) {
+	rows, err := q.GetProductModifierGroups(ctx, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64][]int64, len(productIDs))
+	for _, r := range rows {
+		out[r.ProductID] = append(out[r.ProductID], r.GroupID)
+	}
+	return out, nil
+}
+
 func collectIDs(lines []domain.OrderLineInput) ([]int64, []int64) {
 	pset := map[int64]bool{}
 	oset := map[int64]bool{}
@@ -1262,17 +1280,21 @@ func (s *OrdersService) prepareAddLines(ctx context.Context, orderID int64, line
 	if err != nil {
 		return nil, err
 	}
+	groups, err := modifierGroupsOf(ctx, s.store.QC(ctx), prodIDs)
+	if err != nil {
+		return nil, err
+	}
 	products := map[int64]domain.PricedProduct{}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
 		}
 	}
 	options := map[int64]domain.PricedOption{}
 	for _, o := range optRows {
 		options[o.ID] = domain.PricedOption{
-			ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
+			ID: o.ID, GroupID: o.GroupID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle,
 			MaxPerLine: int(o.MaxPerLine),
 			PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
 		}
@@ -1614,7 +1636,9 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, sessi
 	}
 	// El sufijo numerado es la ÚLTIMA red, y solo entra cuando el día ya pasó del largo de la lista:
 	// ahí todo lo disponible ya se cantó hoy y "Persa 2" es mejor que "#187".
-	libre := domain.SiguienteFolioLibre(nombre, usados)
+	// Contra los vivos también: una cuenta nacida con el turno ya pasado de la lista lleva su número
+	// («Persa 2»), y numerar sin verla le daría ese mismo nombre a este pedido.
+	libre := domain.SiguienteFolioLibre(nombre, append(append([]string(nil), usados...), vivos...))
 	if libre == "" {
 		return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
 	}

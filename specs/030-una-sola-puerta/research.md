@@ -259,3 +259,28 @@ D-5: «lo que agrega cada una se suma; cambiar o quitar algo que la otra ya camb
 | Nombre único por empresa entre cuentas vivas (no por sucursal) | **Sí**: el índice se rehace sin datos que mover. Con dos sucursales, un nombre vivo en una bloquea el mismo nombre en la otra (más estricto, no ambiguo) | Por empresa |
 | Ventana de 90 días en la consulta frecuente | **Sí** (consulta, no esquema) | Ver R-7 |
 | `modifiers` sin FK a opciones | **Sí** | Una opción borrada o desactivada con la cuenta viva se descubre al enviar: `422` que nombra el producto, nunca `500` (test) |
+
+## R-17. Un descuento en pesos que queda por encima de la venta (encontrado tarde, 2026-10-08)
+
+Lo encontró la prueba adversarial contra el ambiente de pruebas, no el diseño: cuenta de $80 con $60
+de descuento, se quita un renglón de $45 y la venta queda en $35. La vista recortaba el descuento a
+$35 y mostraba **total $0**; el envío respondía `422 DISCOUNT_OVER_SUBTOTAL` «máximo 35.00». La
+pantalla decía «gratis» y la cocina decía «no».
+
+| Opción | Qué pasa | Veredicto |
+|---|---|---|
+| Recortar el descuento guardado al máximo | Quitar el renglón deja la cuenta en $0: se regala lo que queda sin que nadie lo decida | No: pierde dinero en silencio |
+| Recortar solo en el envío (como la vista) | Igual que la anterior, pero ya con el pedido creado | No |
+| **Rechazar el cambio de renglones** que deja el descuento por encima de la venta | `422 DISCOUNT_OVER_SUBTOTAL` con el máximo; la cuenta queda como estaba | **Sí** |
+
+Se eligió rechazar: el descuento lo decidió una persona con nombre (`discount_set_by`) y bajarlo es
+otra decisión con su propio rastro (el evento del `PATCH`), no un efecto secundario de quitar un
+café. Cuesta un toque más en el caso raro —bajar el descuento y luego quitar— y no pierde dinero.
+
+- Aplica a quitar y a cambiar un renglón (cantidad o modificadores), y al `PATCH` que cambia de
+  plataforma (reprecia). Agregar nunca baja la venta. El porcentaje no se revisa: nunca pasa del
+  100% de lo que haya.
+- **Lo que no cubre**: un precio del catálogo que baja con la cuenta abierta. Ahí no hay escritura que
+  rechazar; la vista sigue recortando para no caerse y el envío rechaza con el máximo. Es raro (un
+  descuento en pesos casi igual a la venta y un cambio de precio a media captura) y se acepta.
+- Test: `TestLineChangeCannotLeaveTheDiscountOverTheSale`.

@@ -15,6 +15,11 @@
 // del POS, junto con las bandas de abajo.
 // 2026-10-08: la 030 cambió la fila 2 (fila de cuentas en lugar de pestañas y botón naranja) y el
 // ticket (tres secciones y un pie de solo dos botones). Las bandas no se movieron de lugar.
+// 2026-10-08, tras validar como usuario nuevo: Mostrador/Domicilio pasó a un botón de icono junto
+// al ⋮ del ticket (el encabezado ahora es nombre completo y «#N · tipo · hora»), la fila de cuentas lleva fichas más
+// angostas con la cuenta nueva y la anterior junto a la activa, el riel de categorías tiene flechas
+// en las orillas, el aviso de sin conexión va sobre los productos y los avisos salen arriba al
+// centro, encima de la fila de canales (sin capturar toques). Las bandas siguen en su lugar.
 export const FECHA_DEL_LAYOUT = '2026-10-08';
 
 export interface ZonaDelPos {

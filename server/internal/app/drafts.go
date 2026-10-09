@@ -198,9 +198,15 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 			}
 			return err
 		})
+		if isDraftIDCollision(err) {
+			err = errDraftIDTaken
+		}
 		if !isDraftRace(err) {
 			break
 		}
+	}
+	if errors.Is(err, errDraftIDTaken) {
+		id, created, err = cmd.ID, false, sameIDOutcome(ctx, s.store.QC(ctx), cmd.ID)
 	}
 	if isDraftRace(err) {
 		return nil, false, fmt.Errorf("%w: otra tableta abrió una cuenta al mismo tiempo; vuelve a intentarlo", domain.ErrConflict)
@@ -218,6 +224,36 @@ func isDraftRace(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
 		(pgErr.ConstraintName == "order_drafts_live_name" || pgErr.ConstraintName == "order_drafts_live_per_order")
+}
+
+// errDraftIDTaken: el `on conflict (id)` no insertó. Se devuelve como error para que la transacción
+// se deshaga —ya había gastado un nombre de la bolsa— y Create decide afuera qué fue.
+var errDraftIDTaken = errors.New("draft id already taken")
+
+// isDraftIDCollision: el mismo id entró a la vez por dos transacciones y el choque no llegó por el
+// `on conflict (id)` sino por el otro único que incluye el id (el de las FKs compuestas), que
+// Postgres revisa sin el árbitro. Es el mismo caso que errDraftIDTaken.
+func isDraftIDCollision(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		(pgErr.ConstraintName == "order_drafts_pkey" || pgErr.ConstraintName == "order_drafts_id_company_key")
+}
+
+// sameIDOutcome resuelve un id que ya existía, mirando DESPUÉS de deshacer: el `on conflict` esperó a
+// la transacción vecina, así que si la cuenta es de esta empresa ya se ve.
+//
+// Si se ve, es el reintento en paralelo de la misma tableta (la red tardó, se tocó otra vez) y la
+// respuesta es la misma cuenta, como en el reintento en serie. Si no se ve, es de otra empresa (RLS)
+// y se responde el mismo 409 de siempre: devolver otra cosa diría qué ids usa otro negocio.
+func sameIDOutcome(ctx context.Context, q *db.Queries, id uuid.UUID) error {
+	d, err := q.GetDraft(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+	}
+	if err != nil {
+		return err
+	}
+	return draftStatusErr(d.Status)
 }
 
 func tooManyLines() error {
@@ -245,8 +281,7 @@ func (s *DraftsService) createAccount(ctx context.Context, q *db.Queries, cmd Cr
 		return uuid.UUID{}, false, err
 	}
 	if n == 0 {
-		// El id ya existe y no se ve: es de otra empresa (RLS). No es un reintento nuestro.
-		return uuid.UUID{}, false, fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+		return uuid.UUID{}, false, errDraftIDTaken
 	}
 	for _, l := range cmd.Lines {
 		if err := addDraftLineInTx(ctx, q, cmd.ID, l); err != nil {
@@ -304,7 +339,7 @@ func (s *DraftsService) createNewOfOrder(ctx context.Context, q *db.Queries, cmd
 		return uuid.UUID{}, false, err
 	}
 	if n == 0 {
-		return uuid.UUID{}, false, fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+		return uuid.UUID{}, false, errDraftIDTaken
 	}
 	for _, l := range cmd.Lines {
 		if err := addDraftLineInTx(ctx, q, cmd.ID, l); err != nil {
@@ -407,7 +442,8 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		return nil, fmt.Errorf("%w: no hay nada que cambiar", domain.ErrValidation)
 	}
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := lockLiveDraft(ctx, q, cmd.DraftID); err != nil {
+		d, err := lockLiveDraft(ctx, q, cmd.DraftID)
+		if err != nil {
 			return err
 		}
 		lines, err := q.ListDraftLines(ctx, cmd.DraftID)
@@ -439,7 +475,7 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 			return err
 		}
 		if cmd.Modifiers != nil {
-			if err := checkOptions(ctx, q, in.Modifiers); err != nil {
+			if err := checkLineSells(ctx, q, in); err != nil {
 				return err
 			}
 		}
@@ -453,6 +489,9 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 		if n == 0 {
 			return domain.ErrDraftChanged
 		}
+		if err := keepDiscountWithinSale(ctx, q, d); err != nil {
+			return err
+		}
 		return q.TouchDraft(ctx, cmd.DraftID)
 	})
 	if err != nil {
@@ -465,7 +504,8 @@ func (s *DraftsService) ChangeLine(ctx context.Context, cmd ChangeDraftLineCmd) 
 // vacía y viva, con su nombre: cerrarla es otra decisión (D-7).
 func (s *DraftsService) RemoveLine(ctx context.Context, draftID, lineID uuid.UUID, expectedVersion int32) (*DraftView, error) {
 	err := s.store.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := lockLiveDraft(ctx, q, draftID); err != nil {
+		d, err := lockLiveDraft(ctx, q, draftID)
+		if err != nil {
 			return err
 		}
 		n, err := q.DeleteDraftLine(ctx, db.DeleteDraftLineParams{ID: lineID, DraftID: draftID, ExpectedVersion: expectedVersion})
@@ -474,6 +514,9 @@ func (s *DraftsService) RemoveLine(ctx context.Context, draftID, lineID uuid.UUI
 		}
 		if n == 0 {
 			return domain.ErrDraftChanged
+		}
+		if err := keepDiscountWithinSale(ctx, q, d); err != nil {
+			return err
 		}
 		return q.TouchDraft(ctx, draftID)
 	})
@@ -522,10 +565,14 @@ func (s *DraftsService) PatchHeader(ctx context.Context, id uuid.UUID, p DraftHe
 		if !sameStr(before.platformRef, h.platformRef) {
 			res.RefChanged, res.RefBefore = true, derefStr(before.platformRef)
 		}
-		if p.Discount.Set {
+		// También sin tocar el descuento: cambiar de plataforma reprecia, y la venta puede quedar debajo
+		// de un descuento en pesos que antes cabía.
+		if h.discountAmount != nil || h.discountPercent != nil {
 			if err := checkDraftDiscount(ctx, q, id); err != nil {
 				return err
 			}
+		}
+		if p.Discount.Set {
 			res.DiscountBefore, res.DiscountAfter = before.discountText(), h.discountText()
 			res.DiscountChanged = res.DiscountBefore != res.DiscountAfter
 		}
@@ -622,10 +669,7 @@ func addDraftLineInTx(ctx context.Context, q *db.Queries, draftID uuid.UUID, c D
 		}
 		lineID = *c.IntoLineID
 	default:
-		if err := checkProduct(ctx, q, c.ProductID); err != nil {
-			return err
-		}
-		if err := checkOptions(ctx, q, c.Modifiers); err != nil {
+		if err := checkLineSells(ctx, q, domain.DraftLineInput{ProductID: c.ProductID, Qty: c.Qty, Modifiers: c.Modifiers, Notes: c.Notes}); err != nil {
 			return err
 		}
 		rows, err := q.ListDraftLines(ctx, draftID)
@@ -685,45 +729,35 @@ func checkSum(cur, add decimal.Decimal) error {
 	return nil
 }
 
-// checkProduct rechaza el producto que no está en el menú de ESTA empresa (bajo RLS: el de otra
-// no se ve) o que ya no se vende. Sin esto el renglón entraría y la cuenta se descubriría
-// imposible de enviar hasta el final.
-func checkProduct(ctx context.Context, q *db.Queries, productID int64) error {
-	rows, err := q.GetPricedProducts(ctx, []int64{productID})
+// checkLineSells arma el renglón con la MISMA regla que el pedido (domain.BuildOrder) antes de
+// guardarlo: producto de esta empresa (bajo RLS: el de otra no se ve) y a la venta, opciones que
+// existen, que son extras de ese producto y que no pasan de su tope. Sin esto el renglón entraba y la
+// cuenta lo mostraba «ya no se vende» hasta que enviar lo rechazaba.
+//
+// Se valúa con la lista de mostrador: lo que se revisa son reglas del catálogo, no precios.
+func checkLineSells(ctx context.Context, q *db.Queries, in domain.DraftLineInput) error {
+	lista, err := listaDePreciosQ(ctx, q, nil)
 	if err != nil {
 		return err
 	}
-	if len(rows) == 0 {
-		return domain.ProductUnavailable{ProductID: productID}
+	row := db.OrderDraftLine{ProductID: in.ProductID, Qty: in.Qty, Modifiers: modsJSON(in.Modifiers)}
+	products, options, err := pricedCatalog(ctx, q, lista, []db.OrderDraftLine{row})
+	if err != nil {
+		return err
 	}
-	if !rows[0].IsActive {
-		return domain.ProductUnavailable{ProductID: productID, Name: rows[0].Name}
-	}
-	return nil
+	_, err = domain.BuildOrder([]domain.OrderLineInput{orderLineOf(in.ProductID, in.Qty, in.Modifiers, in.Notes)}, products, options)
+	return err
 }
 
-func checkOptions(ctx context.Context, q *db.Queries, mods []domain.DraftModifier) error {
-	if len(mods) == 0 {
+// keepDiscountWithinSale rechaza el cambio de renglones que deja un descuento en pesos por encima de
+// la venta (research R-17). Recortarlo en silencio regalaría lo que queda de la cuenta; dejarlo pasar
+// hacía que la cuenta se mostrara gratis y que el envío la rechazara. El porcentaje no necesita
+// revisión: nunca pasa del 100% de lo que haya.
+func keepDiscountWithinSale(ctx context.Context, q *db.Queries, d db.OrderDraft) error {
+	if d.DiscountAmount == nil {
 		return nil
 	}
-	ids := make([]int64, 0, len(mods))
-	for _, m := range mods {
-		ids = append(ids, m.OptionID)
-	}
-	rows, err := q.GetPricedOptions(ctx, ids)
-	if err != nil {
-		return err
-	}
-	found := make(map[int64]bool, len(rows))
-	for _, r := range rows {
-		found[r.ID] = true
-	}
-	for _, id := range ids {
-		if !found[id] {
-			return fmt.Errorf("%w (id %d)", domain.ErrOptionNotFound, id)
-		}
-	}
-	return nil
+	return checkDraftDiscount(ctx, q, d.ID)
 }
 
 // checkDraftDiscount valida el descuento de la cuenta contra el subtotal que calcula el servidor,
@@ -966,8 +1000,8 @@ func buildDraftView(ctx context.Context, q *db.Queries, d db.GetDraftRow) (*Draf
 	v.Subtotal = domain.Round2(subtotal)
 	descuento, err := domain.ResolverDescuento(v.Subtotal, d.DiscountAmount, d.DiscountPercent)
 	if errors.Is(err, domain.ErrDescuentoMayorQueLaVenta) {
-		// Se quitaron productos después de poner el descuento: la vista no se cae; enviar lo rechaza
-		// con el máximo, que es donde el operador lo puede corregir.
+		// Quitar o cambiar renglones ya no llega aquí (keepDiscountWithinSale); sí un precio del
+		// catálogo que bajó con la cuenta abierta. La vista no se cae; enviar lo rechaza con el máximo.
 		descuento = v.Subtotal
 	} else if err != nil {
 		return nil, err
@@ -1030,9 +1064,13 @@ func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, row
 	if err != nil {
 		return nil, nil, err
 	}
+	groups, err := modifierGroupsOf(ctx, q, prodIDs)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, p := range prodRows {
 		products[p.ID] = domain.PricedProduct{
-			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive,
+			ID: p.ID, Name: p.Name, Cost: p.CurrentCost, Active: p.IsActive, ModifierGroups: groups[p.ID],
 			Price: domain.PlatformPrice(p.Price, lista.margen, lista.producto[p.ID]),
 		}
 	}
@@ -1043,7 +1081,7 @@ func pricedCatalog(ctx context.Context, q *db.Queries, lista listaDePrecios, row
 		}
 		for _, o := range optRows {
 			options[o.ID] = domain.PricedOption{
-				ID: o.ID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle, MaxPerLine: int(o.MaxPerLine),
+				ID: o.ID, GroupID: o.GroupID, Name: o.Name, Cost: o.CurrentCost, GroupTitle: o.GroupTitle, MaxPerLine: int(o.MaxPerLine),
 				PriceDelta: domain.PlatformPrice(o.PriceDelta, lista.margen, lista.opcion[o.ID]),
 			}
 		}

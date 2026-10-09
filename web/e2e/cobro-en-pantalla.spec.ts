@@ -53,12 +53,11 @@ async function agregarUnProducto(page: Page): Promise<void> {
   await verElPedido(page);
 }
 
-// aDomicilio: el tipo de servicio es UN botón en la cabecera del ticket que dice el tipo ACTUAL
-// («Mostrador») y lo alterna. Hay otro «Mostrador» —el selector de plataforma, arriba del menú—, y el
-// del ticket es el último en la página.
+// aDomicilio: el tipo de servicio es UN botón de icono en la cabecera del ticket que alterna el tipo;
+// su nombre dice a qué cambia.
 async function aDomicilio(page: Page) {
-  await page.getByRole('button', { name: 'Mostrador', exact: true }).last().click();
-  await expect(page.getByRole('button', { name: 'Domicilio', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cambiar a domicilio' }).click();
+  await expect(page.getByRole('button', { name: 'Cambiar a mostrador' })).toBeVisible();
 }
 
 test.describe('E — el cobro, en la pantalla', () => {

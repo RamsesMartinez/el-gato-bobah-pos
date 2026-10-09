@@ -15,13 +15,15 @@ const CINCO: AccountItem[] = [
   cuenta({ key: 'o:2', orderId: 2, folioName: 'Bosque de Noruega', state: 'delivered_owes', group: 'delivered_owes', total: '195.00', outstanding: '195.00', openedAt: '2026-10-08T15:01:00Z' }),
 ];
 
-function montar(ancho: number, cuentas = CINCO, seleccion: string | null = null) {
+function montar(ancho: number, cuentas = CINCO, seleccion: string | null = null,
+  extra: { recientes?: string[]; nueva?: boolean } = {}) {
   const onElegir = vi.fn();
   const onNueva = vi.fn();
   const onVerTodas = vi.fn();
   render(
     <Provider>
       <FilaDeCuentas cuentas={cuentas} seleccionada={seleccion} ancho={ancho}
+        recientes={extra.recientes} nueva={extra.nueva}
         onElegir={onElegir} onNueva={onNueva} onVerTodas={onVerTodas} />
     </Provider>,
   );
@@ -29,10 +31,12 @@ function montar(ancho: number, cuentas = CINCO, seleccion: string | null = null)
 }
 
 describe('cuántas caben', () => {
-  // Fichas de 120 px, gaps de 6 y los dos botones de 44: lo que no cabe completo no se pinta a
-  // medias. 612 px es la fila medida a 1024×600 con el panel abierto (antes de «Buscar»).
+  // Fichas de 112 px, gaps de 6 y los dos botones de 44: lo que no cabe completo no se pinta a
+  // medias. ~457 px es la fila a 1024×600 con el panel abierto (después de buscar, precios y
+  // editar): ahí caben TRES —la activa, la anterior y una más—. Con 120 px cabían dos, y la cuenta
+  // anterior se iba a «+N» en cuanto se abría otra.
   test.each([
-    [346, 2], [345, 1], [612, 4], [180, 0], [220, 1],
+    [457, 3], [447, 2], [330, 2], [329, 1], [612, 4], [180, 0], [212, 1],
   ])('a %i px caben %i fichas completas además de «+N» y «+»', (ancho, n) => {
     expect(fichasQueCaben(ancho)).toBe(n);
   });
@@ -49,9 +53,41 @@ describe('el orden de la fila', () => {
   });
 });
 
+describe('la activa y la anterior siguen a la vista (validación como usuario nuevo)', () => {
+  // Con el ticket abierto caben tres. Ordenar por «debe dinero» mandaba la cuenta que se capturaba
+  // a «+N» en cuanto se abría otra, y para volver había que buscarla en la lista.
+  test('la recién usada va junto a la activa, antes que las que deben', () => {
+    const orden = ordenDeLaFila(CINCO, 'o:6', ['o:6', 'd:a']).map((c) => c.key);
+    expect(orden.slice(0, 2)).toEqual(['o:6', 'd:a']);
+  });
+
+  test('las usadas van por uso reciente; las demás como antes', () => {
+    const orden = ordenDeLaFila(CINCO, 'o:6', ['o:6', 'o:5', 'd:a']).map((c) => c.key);
+    expect(orden).toEqual(['o:6', 'o:5', 'd:a', 'o:1', 'o:2']);
+  });
+
+  // «+» con una cuenta en captura: ésta no sale de la fila y la nueva se ve como ficha vacía, sin
+  // existir todavía en el servidor.
+  test('con una cuenta nueva sin productos, su ficha va primero y la anterior junto a ella', () => {
+    montar(457, CINCO, null, { nueva: true, recientes: ['d:a'] });
+    const fichas = screen.getAllByRole('button').filter((b) => b.dataset.ficha === 'true');
+    expect(fichas).toHaveLength(3);
+    expect(fichas[0]).toHaveAccessibleName('Cuenta nueva, sin productos');
+    expect(fichas[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(fichas[1]).toHaveAccessibleName(/^Levkoy ·/);
+  });
+
+  // Lo que falta es lo que se cobra: con la ficha angosta, la etiqueta larga cede, la cifra no.
+  test('la cifra no cede ancho; la etiqueta sí', () => {
+    montar(2000);
+    const ficha = screen.getByRole('button', { name: /^Mesa afuera ·/ });
+    expect(getComputedStyle(within(ficha).getByText('falta $130')).flexShrink).toBe('0');
+  });
+});
+
 describe('FilaDeCuentas', () => {
   test('pinta solo las fichas que caben y «+N» cuenta exactamente las demás', () => {
-    montar(346);
+    montar(330);
     expect(screen.getAllByRole('button', { name: /·/ }).filter((b) => b.dataset.ficha === 'true')).toHaveLength(2);
     expect(screen.getByRole('button', { name: /Ver todas las cuentas \(3 más\)/ })).toHaveTextContent('+3');
     expect(screen.getByRole('button', { name: 'Cuenta nueva' })).toBeInTheDocument();
@@ -83,7 +119,7 @@ describe('FilaDeCuentas', () => {
   });
 
   test('fichas y botones miden al menos 44 px', () => {
-    montar(346);
+    montar(457, CINCO, null, { nueva: true });
     for (const b of screen.getAllByRole('button')) {
       expect(parseInt(getComputedStyle(b).minHeight || '0', 10), b.getAttribute('aria-label') ?? '').toBeGreaterThanOrEqual(44);
     }
@@ -96,7 +132,7 @@ describe('FilaDeCuentas', () => {
   });
 
   test('tocar una la elige; «+» pide cuenta nueva; «+N» abre la lista', () => {
-    const { onElegir, onNueva, onVerTodas } = montar(346);
+    const { onElegir, onNueva, onVerTodas } = montar(330);
     fireEvent.click(screen.getByRole('button', { name: /^Khao Manee ·/ }));
     expect(onElegir).toHaveBeenCalledWith(expect.objectContaining({ key: 'o:1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cuenta nueva' }));

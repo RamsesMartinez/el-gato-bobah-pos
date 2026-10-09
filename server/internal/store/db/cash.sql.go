@@ -1486,7 +1486,7 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 }
 
 const openOrdersInSession = `-- name: OpenOrdersInSession :many
-select o.id, o.daily_number, o.folio_name
+select o.id, o.daily_number, o.folio_name, o.total
 from orders o
 where o.register_session_id = $1
   and o.status in ('abierta', 'lista')
@@ -1494,9 +1494,10 @@ order by o.daily_number
 `
 
 type OpenOrdersInSessionRow struct {
-	ID          int64   `json:"id"`
-	DailyNumber int32   `json:"daily_number"`
-	FolioName   *string `json:"folio_name"`
+	ID          int64           `json:"id"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   *string         `json:"folio_name"`
+	Total       decimal.Decimal `json:"total"`
 }
 
 // Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
@@ -1506,7 +1507,8 @@ type OpenOrdersInSessionRow struct {
 // Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
 // "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
 //
-// El id viaja para que el cierre ofrezca «Abrir» esa cuenta en el POS (spec 030).
+// El id viaja para que el cierre ofrezca «Abrir» esa cuenta en el POS (spec 030), y el total para
+// que diga de cuánto es cada uno sin tener que abrirlo.
 func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]OpenOrdersInSessionRow, error) {
 	rows, err := q.db.Query(ctx, openOrdersInSession, registerSessionID)
 	if err != nil {
@@ -1516,7 +1518,12 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 	items := []OpenOrdersInSessionRow{}
 	for rows.Next() {
 		var i OpenOrdersInSessionRow
-		if err := rows.Scan(&i.ID, &i.DailyNumber, &i.FolioName); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Total,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

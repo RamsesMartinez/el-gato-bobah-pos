@@ -103,7 +103,7 @@ export function TodasLasCuentasSheet({ isOpen, seleccionada, onElegir, onClose }
                         ? hora.soloFecha(c.openedAt)
                         : `${hora.soloHora(c.openedAt)} · ${antiguedad(c.openedAt, ahora)}`;
                       const sub = [c.number !== null ? `#${c.number}` : null, cuando,
-                        c.kind === 'draft' ? `${c.lineCount} productos` : null].filter(Boolean).join(' · ');
+                        c.kind === 'draft' ? `${c.lineCount} ${c.lineCount === 1 ? 'producto' : 'productos'}` : null].filter(Boolean).join(' · ');
                       return (
                         <Button key={c.key} aria-label={`${nombre} · ${e.texto}`} minH="56px" h="auto" py={2} px={3}
                           variant={c.key === seleccionada ? 'subtle' : 'outline'} colorPalette="gray"

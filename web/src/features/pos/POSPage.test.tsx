@@ -8,6 +8,8 @@ import { usePosStore } from '../../stores/pos';
 import type { AccountItem, DraftView } from '../../types/pos';
 import { cuenta } from './__fixtures__/cuentas';
 import { reiniciarCaptura } from './useCuenta';
+import { reportarResultado } from './useSinConexion';
+import { act } from '@testing-library/react';
 import { POSPage } from './POSPage';
 
 const pendientes = vi.hoisted(() => ({ current: [] as unknown[] }));
@@ -70,12 +72,12 @@ function draft(over: Partial<DraftView> = {}): DraftView {
   };
 }
 
-function montarArbol() {
+function montarArbol(ruta = '/pos') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={qc}>
       <Provider>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[ruta]}>
           <POSPage />
         </MemoryRouter>
       </Provider>
@@ -160,7 +162,9 @@ describe('una sola fila de cuentas (US1)', () => {
     montar();
     const fila = await screen.findByLabelText('Cuentas');
     await waitFor(() => expect(within(fila).getAllByRole('button').filter((b) => b.dataset.ficha === 'true').length).toBeGreaterThan(0));
-    const fichas = within(fila).getAllByRole('button').filter((b) => b.dataset.ficha === 'true').length;
+    // La ficha de la cuenta nueva (sin productos, todavía no existe en el servidor) no es de las diez.
+    const fichas = within(fila).getAllByRole('button')
+      .filter((b) => b.dataset.ficha === 'true' && b.getAttribute('aria-label') !== 'Cuenta nueva, sin productos').length;
     expect(within(fila).getByRole('button', { name: new RegExp(`\\(${10 - fichas} más\\)`) })).toBeInTheDocument();
   });
 
@@ -213,4 +217,31 @@ test('el menú de la cuenta no queda flotando cuando el panel se va', async () =
   anchoDelPos.width = 500;
   rerender(montarArbol());
   expect(screen.queryByRole('menuitem', { name: /Descuento/ })).toBeNull();
+});
+
+// VALIDACIÓN COMO USUARIO NUEVO.
+describe('lo que encontró la validación como usuario nuevo', () => {
+  // «Abrir cuenta» del tablero dejaba la cuenta elegida con el ticket cerrado: un toque más.
+  test('«Abrir cuenta» desde otra pantalla abre también el ticket', async () => {
+    tabletaBaja(true);
+    anchoDelPos.width = 1024;
+    api.order.mockResolvedValue({ id: 30, number: 7, folioName: 'Devon Rex', status: 'abierta', serviceType: 'mostrador',
+      deliveryPlatformId: null, platformOrderRef: null, customerName: null, subtotal: '58', discount: '0', deliveryFee: '0',
+      total: '58', currency: 'MXN', paid: false, outstanding: '58', openedAt: '', lines: [], payments: [] });
+    render(montarArbol('/pos?pedido=30'));
+    expect(await screen.findByRole('button', { name: 'Ocultar pedido' })).toBeInTheDocument();
+    expect(usePosStore.getState().selected).toEqual({ kind: 'order', id: 30 });
+  });
+
+  // El aviso de sin conexión tapaba la fila de canales. Va sobre los productos, que sin red no se
+  // pueden agregar de todos modos.
+  test('sin conexión el aviso va sobre los productos, no sobre los canales', async () => {
+    anchoDelPos.width = 1024;
+    montar();
+    await screen.findByLabelText('Cuentas');
+    act(() => reportarResultado(new TypeError('Failed to fetch')));
+    const aviso = await screen.findByRole('alert');
+    expect(screen.getByTestId('zona-de-productos').contains(aviso)).toBe(true);
+    act(() => reportarResultado(null));
+  });
 });

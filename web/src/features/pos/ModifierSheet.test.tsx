@@ -340,3 +340,24 @@ describe('corregir el precio del producto desde la hoja', () => {
     expect(await screen.findByText(/Mantén presionado/)).toBeInTheDocument();
   });
 });
+
+// «100%» y «TODAS» no le dicen nada a quien opera (validación como usuario nuevo): el porcentaje es
+// un dato del sistema de recomendación y «TODAS» parecía un filtro.
+describe('las recomendadas se nombran para quien opera', () => {
+  it('sin porcentajes; arriba «Más pedidas» y después «Las demás»', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    useSessionStore.setState({ user: { id: 1, name: 'Ana', role: 'cajero' } as never });
+    render(
+      <QueryClientProvider client={qc}>
+        <Provider>
+          <ModifierSheet product={conCortesia} lista={null} isOpen onClose={() => {}} onConfirm={vi.fn()}
+            optionRanks={{ '20': [{ id: 30, pct: 100 }] }} />
+        </Provider>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText(/\d+%/)).toBeNull();
+    expect(screen.queryByText(/^Todas$/i)).toBeNull();
+    expect(screen.getByText('Más pedidas')).toBeInTheDocument();
+    expect(screen.getByText('Las demás')).toBeInTheDocument();
+  });
+});

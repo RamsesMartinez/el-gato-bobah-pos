@@ -24,7 +24,8 @@ import { useModifierDefaults } from '../../hooks/useModifierDefaults';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useUiStore } from '../../stores/ui';
 import { useSessionStore } from '../../stores/session';
-import { usePosStore } from '../../stores/pos';
+import { claveDeSeleccion, usePosStore } from '../../stores/pos';
+import { accionPropia } from '../../stores/accionesPropias';
 import { adminApi, type AdminProduct } from '../../api/admin';
 import { ProductEditDialog } from '../../shared/ProductEditDialog';
 import { CancelarRenglonDialog } from '../../shared/CancelarRenglonDialog';
@@ -107,6 +108,7 @@ export function POSPage() {
   const role = user?.role;
   const canEdit = role === 'admin' || role === 'gerente';
   const navigate = useNavigate();
+  const horaNegocio = useHoraDelNegocio();
   const cashStatus = useQuery({ queryKey: ['cash', 'status'], queryFn: posApi.cashStatus, refetchInterval: 30000 });
   const canOpenCash = canAccess(role, '/caja');
 
@@ -119,10 +121,9 @@ export function POSPage() {
   const seleccion = usePosStore((s) => s.selected);
   const seleccionar = usePosStore((s) => s.seleccionar);
   const cuentaNueva = usePosStore((s) => s.cuentaNueva);
-  const claveSeleccionada = seleccion ? (seleccion.kind === 'draft' ? `d:${seleccion.id}` : `o:${seleccion.id}`) : null;
+  const claveSeleccionada = seleccion ? claveDeSeleccion(seleccion) : null;
+  const recientes = usePosStore((s) => s.recientes);
 
-  // «Abrir cuenta» del tablero y del cierre de caja llegan por la URL (FR-019).
-  useAbrirDesdeLaUrl();
 
   const [selection, setSelection] = useState<Selection>({ kind: 'top' });
   const [search, setSearch] = useState('');
@@ -215,7 +216,7 @@ export function POSPage() {
     if (!id) { cuentaNueva(); return; }
     try {
       await cuenta.esperar();
-      await posApi.discardDraft(id);
+      await accionPropia(() => posApi.discardDraft(id));
       cuentaNueva();
       qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
       qc.invalidateQueries({ queryKey: ['pos', 'folio-names'] });
@@ -234,7 +235,8 @@ export function POSPage() {
     setCancelando(false);
     if (motivoCancelar === null || vista.pedidoId === null) return;
     try {
-      await posApi.cancelOrder(vista.pedidoId, motivoCancelar);
+      const id = vista.pedidoId;
+      await accionPropia(() => posApi.cancelOrder(id, motivoCancelar));
       toaster.create({ title: `${vista.nombre || 'El pedido'} se canceló`, type: 'success' });
       cuentaNueva();
       qc.invalidateQueries({ queryKey: ['orders'] });
@@ -249,7 +251,8 @@ export function POSPage() {
     setQuitando(null);
     if (!r || vista.pedidoId === null) return;
     try {
-      const res = await posApi.cancelOrderLine(vista.pedidoId, r.id, motivoQuitar, qty);
+      const id = vista.pedidoId;
+      const res = await accionPropia(() => posApi.cancelOrderLine(id, r.id, motivoQuitar, qty));
       toaster.create({
         title: 'Producto quitado',
         description: res.repusoInventario
@@ -275,6 +278,12 @@ export function POSPage() {
   const [panelHidden, setPanelHidden] = useState(
     () => window.matchMedia?.('(max-height: 720px)')?.matches ?? false,
   );
+
+  // «Abrir cuenta» del tablero y del cierre de caja llegan por la URL (FR-019), y abren el ticket.
+  useAbrirDesdeLaUrl(() => {
+    if (wide) setPanelHidden(false);
+    else ticketDrawer.onOpen();
+  });
 
   const pillRef = useRef<HTMLDivElement>(null);
   const pillDrag = useRef<{ px: number; py: number; ox: number; oy: number; rect: DOMRect } | null>(null);
@@ -447,6 +456,8 @@ export function POSPage() {
 
   const ticketProps = {
     vista,
+    hora: vista.abiertaEn ? horaNegocio.soloHora(vista.abiertaEn) : undefined,
+    canal: vista.platformId !== null ? nombreDeLista(menu, vista.platformId) : undefined,
     sinConexion: cuenta.sinConexion,
     envioPorDefecto,
     enviando,
@@ -498,6 +509,7 @@ export function POSPage() {
           ) : (
             <Box flex="1" minW={0}>
               <FilaDeCuentas cuentas={vivas?.items ?? []} seleccionada={claveSeleccionada}
+                recientes={recientes} nueva={seleccion === null}
                 onElegir={elegirCuenta} onNueva={() => { limpiarMotivo(); cuentaNueva(); }}
                 onVerTodas={() => setTodasAbierta(true)} />
             </Box>
@@ -538,7 +550,11 @@ export function POSPage() {
       <Box px={{ base: 3, md: 4 }}>
         {!search && <CategoryRail categories={allCategories} selection={selection} onSelect={setSelection} />}
       </Box>
-      <Box flex="1" overflowY="auto" px={{ base: 3, md: 4 }} css={{ overscrollBehavior: 'contain' }}>
+      <Box flex="1" minH={0} position="relative" data-testid="zona-de-productos">
+      {/* Sobre los productos y no sobre el encabezado: arriba tapaba la fila de canales, y sin red
+          los productos no se pueden agregar de todos modos. */}
+      <AvisoSinConexion />
+      <Box h="100%" overflowY="auto" px={{ base: 3, md: 4 }} css={{ overscrollBehavior: 'contain' }}>
         <ProductGrid
           products={products}
           counts={counts}
@@ -549,6 +565,7 @@ export function POSPage() {
           onEditPrice={lista !== null && !editMode ? setEditandoPrecio : undefined}
         />
       </Box>
+      </Box>
     </VStack>
   );
 
@@ -556,8 +573,6 @@ export function POSPage() {
     <Box ref={ref} h="100%" bg="bg.subtle" position="relative">
       <AvisoDePlataforma />
       <AvisoDeTurnoViejo estado={cashStatus.data} />
-      {/* Superpuesto, sin empujar nada: se ve con el panel abierto o cerrado. */}
-      <AvisoSinConexion />
       {wide ? (
         <Flex h="100%">
           <Box flex="1" minW={0}>{catalog}</Box>
@@ -724,7 +739,7 @@ export function POSPage() {
             )}
             <VStack gap={2}>
               <Button size="lg" w="100%" onClick={() => { setLastOrder(null); cuentaNueva(); }}>
-                Nuevo pedido
+                Nueva cuenta
               </Button>
               <Button size="md" variant="outline" w="100%" onClick={() => setTicketOpen(true)}>
                 <LuPrinter /> Ver ticket

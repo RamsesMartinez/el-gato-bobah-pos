@@ -7,14 +7,9 @@
 // de la otra (D-5: lo que agrega cada una se suma). Avisar cada toque ajeno sería ruido, y quien
 // opera aprendería a ignorar justo el aviso que sí importa.
 
-export interface FotoDeCuenta {
-  nombre: string;
-  // De la cuenta en captura (capturando · enviada · descartada) o del pedido.
-  estado: string;
-  falta: number;
-  // Cantidad por renglón.
-  renglones: Record<string, number>;
-}
+import type { FotoDeCuenta } from '../../stores/accionesPropias';
+
+export type { FotoDeCuenta };
 
 export function cambioEnOtraTableta(
   antes: FotoDeCuenta | undefined,

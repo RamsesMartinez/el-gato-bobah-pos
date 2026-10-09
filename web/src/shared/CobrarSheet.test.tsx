@@ -137,7 +137,7 @@ test('al dividir entre personas, el número sube y baja y el monto lo cotiza el 
   expect(await screen.findByRole('button', { name: /^Cobrar \$250/ })).toBeInTheDocument();
 
   // Y se puede volver a cobrar todo junto de un toque, sin cerrar la hoja.
-  await u.click(screen.getByLabelText('Dejar de dividir'));
+  await u.click(screen.getByRole('button', { name: 'Dejar de dividir' }));
   expect(screen.getByRole('button', { name: /^Cobrar \$500/ })).toBeInTheDocument();
   expect(screen.queryByLabelText('Una persona más')).toBeNull();
 });
