@@ -82,6 +82,10 @@ test.describe('U — las ventas de un corte', () => {
       const det = await d.json();
       const ventas = (det.sales ?? []) as Array<{ status: string; total: string }>;
       if (ventas.length === 0) continue;
+      // La lista del corte se topa (200 hoy) y el total no: un turno con más ventas que el tope no se
+      // puede verificar sumando lo que se ve. Pasa en el ambiente de pruebas, donde cada corrida de
+      // la suite le agrega decenas de pedidos al turno abierto.
+      if (det.salesShown !== undefined && Number(det.salesShown) < Number(det.salesCount)) continue;
       revisados++;
 
       const ingreso = ventas

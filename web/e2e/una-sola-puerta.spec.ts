@@ -324,6 +324,40 @@ test.describe('red, recarga y otra tableta (US7)', () => {
     await expect(page.getByText(`${o.folioName} se cobró en otra tableta`)).toBeVisible({ timeout: 40_000 });
   });
 
+  // FR-017: el aviso es para la tableta que NO cobró. La que cobra ve su propio «Cobrado» y nada
+  // más; si se avisara a sí misma, quien cobra creería que otra persona le ganó la cuenta.
+  test('caso 16 bis · la tableta que cobra no se avisa a sí misma; la otra sí', async ({ page, browser }) => {
+    const jwt = await tokenDeApi();
+    const o = await pedidoPorApi(jwt);
+    const aviso = `${o.folioName} se cobró en otra tableta`;
+    await entrar(page);
+    await abrirPedido(page, o.id);
+    await expect(page.getByText(`#${o.number}`).first()).toBeVisible({ timeout: 30_000 });
+    const b = await otraTableta(browser);
+    await abrirPedido(b, o.id);
+    await expect(b.getByText(`#${o.number}`).first()).toBeVisible({ timeout: 30_000 });
+
+    // El aviso puede ser un toast que dura segundos: se anota si llegó a aparecer, no si sigue ahí.
+    await page.evaluate((texto) => {
+      const w = window as unknown as { __avisoPropio?: boolean };
+      new MutationObserver(() => { if (document.body.innerText.includes(texto)) w.__avisoPropio = true; })
+        .observe(document.body, { childList: true, subtree: true, characterData: true });
+    }, aviso);
+
+    await botonCobrar(page).click();
+    const hoja = page.getByRole('dialog').last();
+    await hoja.getByRole('button', { name: 'Efectivo', exact: true }).click();
+    await hoja.getByRole('button', { name: /^Cobrar \$/ }).click();
+    await expect(page.getByText(/^Cobrado ·/)).toBeVisible({ timeout: 30_000 });
+
+    await expect(b.getByText(aviso)).toBeVisible({ timeout: 40_000 });
+    // Margen para que el eco del cobro le llegue también a la que cobró.
+    await page.waitForTimeout(5_000);
+    const seAviso = await page.evaluate(() => (window as unknown as { __avisoPropio?: boolean }).__avisoPropio === true);
+    expect(seAviso, 'la tableta que cobró se avisó a sí misma que «se cobró en otra tableta»').toBe(false);
+    await b.context().close();
+  });
+
   test('caso 17 · dos tabletas agregan a la misma cuenta y se suman', async ({ page }) => {
     await entrar(page);
     await ponerUnProducto(page);
@@ -363,6 +397,22 @@ test.describe('cerrar caja con cuentas vivas (US8)', () => {
     await expect(page).toHaveURL(/\/pos/);
     await abrirTicket(page);
     await expect(botonCobrar(page)).toBeVisible({ timeout: 30_000 });
+  });
+
+  // Lo que bloquea el cierre se lee con su monto: «Persa · #12  $12». Sin la cifra, quien cierra no
+  // sabe si lo que falta entregar es un refresco o la mesa grande.
+  test('el cierre dice el monto de cada pedido en «Falta entregar»', async ({ page }) => {
+    const jwt = await tokenDeApi();
+    const o = await pedidoPorApi(jwt);
+    await entrar(page);
+    await page.goto('/caja');
+    const caja = page.getByText(/^Falta entregar \d+ pedidos?$/);
+    const hay = await caja.waitFor({ timeout: 30_000 }).then(() => true).catch(() => false);
+    test.skip(!hay, 'no hay una caja abierta en el ambiente');
+    const renglon = page.getByRole('button', { name: `Abrir ${o.folioName}`, exact: true }).locator('..');
+    await expect(renglon).toContainText(`${o.folioName} · #${o.number}`);
+    const entero = Math.trunc(Number(o.total)).toLocaleString('en-US');
+    await expect(renglon).toContainText(new RegExp(`\\$${entero}(\\.\\d{2})?`));
   });
 
   test('caso 13 · cancelar con algo entregado ofrece quitar lo que falta', async ({ page }) => {
