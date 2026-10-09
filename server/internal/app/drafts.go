@@ -202,6 +202,9 @@ func (s *DraftsService) Create(ctx context.Context, cmd CreateDraftCmd) (*DraftV
 			break
 		}
 	}
+	if errors.Is(err, errDraftIDTaken) {
+		id, created, err = cmd.ID, false, sameIDOutcome(ctx, s.store.QC(ctx), cmd.ID)
+	}
 	if isDraftRace(err) {
 		return nil, false, fmt.Errorf("%w: otra tableta abrió una cuenta al mismo tiempo; vuelve a intentarlo", domain.ErrConflict)
 	}
@@ -218,6 +221,27 @@ func isDraftRace(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
 		(pgErr.ConstraintName == "order_drafts_live_name" || pgErr.ConstraintName == "order_drafts_live_per_order")
+}
+
+// errDraftIDTaken: el `on conflict (id)` no insertó. Se devuelve como error para que la transacción
+// se deshaga —ya había gastado un nombre de la bolsa— y Create decide afuera qué fue.
+var errDraftIDTaken = errors.New("draft id already taken")
+
+// sameIDOutcome resuelve un id que ya existía, mirando DESPUÉS de deshacer: el `on conflict` esperó a
+// la transacción vecina, así que si la cuenta es de esta empresa ya se ve.
+//
+// Si se ve, es el reintento en paralelo de la misma tableta (la red tardó, se tocó otra vez) y la
+// respuesta es la misma cuenta, como en el reintento en serie. Si no se ve, es de otra empresa (RLS)
+// y se responde el mismo 409 de siempre: devolver otra cosa diría qué ids usa otro negocio.
+func sameIDOutcome(ctx context.Context, q *db.Queries, id uuid.UUID) error {
+	d, err := q.GetDraft(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+	}
+	if err != nil {
+		return err
+	}
+	return draftStatusErr(d.Status)
 }
 
 func tooManyLines() error {
@@ -245,8 +269,7 @@ func (s *DraftsService) createAccount(ctx context.Context, q *db.Queries, cmd Cr
 		return uuid.UUID{}, false, err
 	}
 	if n == 0 {
-		// El id ya existe y no se ve: es de otra empresa (RLS). No es un reintento nuestro.
-		return uuid.UUID{}, false, fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+		return uuid.UUID{}, false, errDraftIDTaken
 	}
 	for _, l := range cmd.Lines {
 		if err := addDraftLineInTx(ctx, q, cmd.ID, l); err != nil {
@@ -304,7 +327,7 @@ func (s *DraftsService) createNewOfOrder(ctx context.Context, q *db.Queries, cmd
 		return uuid.UUID{}, false, err
 	}
 	if n == 0 {
-		return uuid.UUID{}, false, fmt.Errorf("%w: esa cuenta no se puede crear", domain.ErrConflict)
+		return uuid.UUID{}, false, errDraftIDTaken
 	}
 	for _, l := range cmd.Lines {
 		if err := addDraftLineInTx(ctx, q, cmd.ID, l); err != nil {
