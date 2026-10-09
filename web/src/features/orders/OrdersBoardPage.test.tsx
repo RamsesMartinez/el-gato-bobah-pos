@@ -541,3 +541,69 @@ describe('quien no puede entrar a Vender', () => {
     expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
   });
 });
+
+// PENDIENTES DEL TABLERO QUE DEJÓ LA 029 (spec 029, «Pendiente para el tablero»).
+//
+// Las entregadas son la lista desde la que se devuelve. Sin la fecha, dos «Persa» del mismo día no
+// se distinguen; sin la marca, quien devuelve no sabe que ya se devolvió y lo intenta otra vez. Y el
+// botón «Devolver» se ofrecía con `total − por cobrar > 0`, que sigue siendo cierto después de
+// devolverlo todo: el operador lo tocaba con el cliente enfrente y el servidor lo rechazaba.
+describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
+  const ABIERTO = '2026-10-08T02:25:00Z'; // 7 oct, 20:25 en la Ciudad de México
+  function pintarEntregada(o: Partial<BoardOrder>) {
+    useSessionStore.setState({
+      token: 't', status: 'authed',
+      user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: [] },
+    });
+    api.businessSettings.mockResolvedValue({ kitchenCanCharge: false, timezone: 'America/Mexico_City', corteDeVista: '' });
+    api.activeOrders.mockResolvedValue({ items: [] });
+    api.deliveredOrders.mockResolvedValue({ items: [pedido({ id: 9, folioName: 'Siamés', status: 'entregada', lines: [], openedAt: ABIERTO, ...o })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<Provider><QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider></Provider>);
+  }
+  const renglon = async () => (await screen.findByText('Siamés')).closest('[data-delivered-row]') as HTMLElement;
+
+  test('el renglón trae fecha y hora del pedido en la zona del negocio', async () => {
+    pintarEntregada({ outstanding: '0', paid: true });
+    expect(within(await renglon()).getByText(/7 oct, 08:25 p\.?\s?m\.?/i)).toBeInTheDocument();
+  });
+
+  test('con una devolución, el renglón lo marca con lo devuelto', async () => {
+    pintarEntregada({ outstanding: '0', paid: true, refund: '40' });
+    expect(within(await renglon()).getByText('Devuelto $40')).toBeInTheDocument();
+  });
+
+  test('sin devolución, no hay marca', async () => {
+    pintarEntregada({ outstanding: '0', paid: true, refund: '0' });
+    expect(within(await renglon()).queryByText(/^Devuelto/)).toBeNull();
+  });
+
+  test('devuelto todo lo cobrado, ya no ofrece «Devolver»', async () => {
+    pintarEntregada({ total: '110', outstanding: '0', paid: true, refund: '110' });
+    const r = await renglon();
+    expect(within(r).getByText('Devuelto $110')).toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+
+  test('devuelto una parte, sigue ofreciendo «Devolver»', async () => {
+    pintarEntregada({ total: '110', outstanding: '0', paid: true, refund: '40' });
+    expect(within(await renglon()).getByRole('button', { name: 'Devolver' })).toBeInTheDocument();
+  });
+
+  test('abonado y devuelto el abono, no ofrece «Devolver» aunque deba', async () => {
+    pintarEntregada({ total: '110', outstanding: '60', paid: false, refund: '50' });
+    expect(within(await renglon()).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+});
+
+describe('la tarjeta del tablero dice cuándo y si se devolvió', () => {
+  test('trae fecha y hora del pedido', async () => {
+    pintar(pedido({ openedAt: '2026-10-08T02:25:00Z' }));
+    expect(within(await tarjeta()).getByText(/7 oct, 08:25 p\.?\s?m\.?/i)).toBeInTheDocument();
+  });
+
+  test('con una devolución, la marca con lo devuelto', async () => {
+    pintar(pedido({ outstanding: '0', paid: true, refund: '30' }));
+    expect(within(await tarjeta()).getByText('Devuelto $30')).toBeInTheDocument();
+  });
+});
