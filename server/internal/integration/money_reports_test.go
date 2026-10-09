@@ -258,3 +258,54 @@ func TestTheChangedReportQueriesAreIsolated(t *testing.T) {
 		}
 	})
 }
+
+// UN PRODUCTO SIN COSTO CAPTURADO NO TIENE MARGEN = VENTA (spec 029).
+//
+// Utilidad por producto restaba un costo de $0 y mostraba como margen la venta entera: el producto
+// sin costo capturado parecía el más rentable de la carta. Su venta va aparte y no suma al margen.
+func TestProductMarginsDoNotCountUncostedSalesAsMargin(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_029_costo", "gerente")
+	abrirCajaPrincipal(t, st, cajero)
+
+	sinCosto := makeProduct(t, st, "Sin costo 029", dec("80"), false)
+	conCosto := makeProduct(t, st, "Con costo 029", dec("50"), false)
+	if _, err := st.Pool.Exec(ctx, `update products set current_cost = 20 where id = $1`, conCosto); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []int64{sinCosto, conCosto} {
+		if _, err := orders.Create(ctx, app.CreateOrderCmd{
+			ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
+			Lines: []domain.OrderLineInput{{ProductID: p, Qty: dec("1")}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	hoy := domain.BusinessDate(fixedNow, domain.LoadBusinessLocation(domain.DefaultTimezone))
+	rows, err := back.ProductMargins(ctx, hoy, hoy, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vistos := 0
+	for _, r := range rows {
+		switch r.ProductName {
+		case "Sin costo 029":
+			vistos++
+			if !r.Margin.IsZero() || !r.UncostedRevenue.Equal(dec("80")) {
+				t.Fatalf("sin costo: margen %s y venta sin costo %s; quiere 0 y 80", r.Margin, r.UncostedRevenue)
+			}
+		case "Con costo 029":
+			vistos++
+			if !r.Margin.Equal(dec("30")) || !r.UncostedRevenue.IsZero() {
+				t.Fatalf("con costo: margen %s y venta sin costo %s; quiere 30 y 0", r.Margin, r.UncostedRevenue)
+			}
+		}
+	}
+	if vistos != 2 {
+		t.Fatalf("Utilidad trajo %d de los 2 productos", vistos)
+	}
+}

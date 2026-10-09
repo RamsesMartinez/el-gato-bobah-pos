@@ -17,8 +17,9 @@ select ol.product_name,
        sum(ol.quantity)::numeric(12,2) as qty,
        coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)::numeric(12,2) as revenue,
        coalesce(sum(ol.unit_cost * ol.quantity), 0)::numeric(12,2) as cost,
-       (coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)), 0)
-        - coalesce(sum(ol.unit_cost * ol.quantity), 0))::numeric(12,2) as margin
+       (coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)) filter (where ol.unit_cost > 0), 0)
+        - coalesce(sum(ol.unit_cost * ol.quantity), 0))::numeric(12,2) as margin,
+       coalesce(sum(ol.line_total * (o.total - o.delivery_fee) / nullif(o.subtotal, 0)) filter (where ol.unit_cost = 0), 0)::numeric(12,2) as uncosted_revenue
 from order_lines ol
 join orders o on o.id = ol.order_id
 where o.status not in ('cancelada', 'reembolsada')
@@ -36,11 +37,12 @@ type ProductMarginsParams struct {
 }
 
 type ProductMarginsRow struct {
-	ProductName string          `json:"product_name"`
-	Qty         decimal.Decimal `json:"qty"`
-	Revenue     decimal.Decimal `json:"revenue"`
-	Cost        decimal.Decimal `json:"cost"`
-	Margin      decimal.Decimal `json:"margin"`
+	ProductName     string          `json:"product_name"`
+	Qty             decimal.Decimal `json:"qty"`
+	Revenue         decimal.Decimal `json:"revenue"`
+	Cost            decimal.Decimal `json:"cost"`
+	Margin          decimal.Decimal `json:"margin"`
+	UncostedRevenue decimal.Decimal `json:"uncosted_revenue"`
 }
 
 // Utilidad por producto usando snapshots de las líneas (no depende del costo actual).
@@ -54,6 +56,12 @@ type ProductMarginsRow struct {
 // Spec 031 (D10): sin los renglones QUITADOS —no se vendieron, y ProductsSold y el total del pedido
 // ya los excluían— y con el descuento del pedido repartido entre sus renglones en proporción a su
 // importe. Así el ingreso por producto suma lo vendido menos envíos, que no es de ningún producto.
+//
+// Spec 029: lo vendido SIN COSTO CAPTURADO (`unit_cost = 0`) va en `uncosted_revenue` y no suma al
+// margen. Restarle un costo de cero mostraba como margen la venta entera, y el producto sin costo
+// parecía el más rentable de la carta. `unit_cost = 0` no distingue «gratis» de «sin capturar»: es
+// un hecho ya guardado así, y lo honesto es decir que no hay costo, no inventar un margen.
+// Misma expresión prorrateada que `revenue`, para que las dos cifras se puedan comparar.
 func (q *Queries) ProductMargins(ctx context.Context, arg ProductMarginsParams) ([]ProductMarginsRow, error) {
 	rows, err := q.db.Query(ctx, productMargins, arg.BusinessDate, arg.BusinessDate_2, arg.Limit)
 	if err != nil {
@@ -69,6 +77,7 @@ func (q *Queries) ProductMargins(ctx context.Context, arg ProductMarginsParams) 
 			&i.Revenue,
 			&i.Cost,
 			&i.Margin,
+			&i.UncostedRevenue,
 		); err != nil {
 			return nil, err
 		}

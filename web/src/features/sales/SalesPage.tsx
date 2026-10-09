@@ -10,10 +10,11 @@ import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { validarRango } from '../../domain/rangoDeFechas';
 import { SortHead } from '../../components/SortHead';
 import { money } from '../../utils/format';
+import { round2 } from '../../domain/cobro';
 import { SaleDetailDialog } from './SaleDetailDialog';
 import { SalesSummaryTiles } from './SalesSummaryTiles';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
-import { soloHora } from '../../utils/horaDelNegocio';
+import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 const PRESETS = [
@@ -118,17 +119,11 @@ export function SalesPage() {
 
   return (
     <Page fill maxW="1280px">
-      <HStack justify="space-between" align="baseline" mb={1} flexWrap="wrap">
+      {/* Título, periodo y rango en UNA fila: a 600 px de alto cada fila es un renglón de la tabla
+          menos, y la tabla es lo que el operador vino a leer. */}
+      <HStack mb={2} gap={3} align="center" flexWrap="wrap">
         <Text fontSize="2xl" fontWeight="800">Ventas</Text>
-        {/* El rango va a la vista: es lo que evita leer una cifra sin saber de qué periodo es. */}
-        {rango && (
-          <Text fontSize="sm" color="fg.muted">
-            {rango.from === rango.to ? rango.from : `${rango.from} al ${rango.to}`}
-          </Text>
-        )}
-      </HStack>
-
-      <Box mb={3}>
+        <Box flex="1" minW={0}>
         <RangoDeFechas
           presets={PRESETS}
           preset={preset}
@@ -138,7 +133,14 @@ export function SalesPage() {
           onRango={(d, h) => { setDesde(d); setHasta(h); setPage(0); }}
           hoy={hoyDelNegocio}
         />
-      </Box>
+        </Box>
+        {/* El rango va a la vista: es lo que evita leer una cifra sin saber de qué periodo es. */}
+        {rango && (
+          <Text fontSize="sm" color="fg.muted">
+            {rango.from === rango.to ? rango.from : `${rango.from} al ${rango.to}`}
+          </Text>
+        )}
+      </HStack>
 
       <SalesSummaryTiles resumen={resumen.data}
         plataformas={tablaAcotada ? undefined : plataformas.data}
@@ -146,7 +148,7 @@ export function SalesPage() {
 
       {/* Pickers táctiles, no <select> nativos: en una tablet de 7" el desplegable del sistema
           tapa la pantalla con renglones de 20px. Ver la constitución. */}
-      <HStack gap={2} my={3} flexWrap="wrap">
+      <HStack gap={2} my={2} flexWrap="wrap">
         <Box flex="1 1 170px" minW="150px" maxW="240px">
           <Picker size="sm" value={status} onChange={cambiar(setStatus)}
             options={OPCIONES_ESTADO} placeholder="Todos los estados"
@@ -182,7 +184,7 @@ export function SalesPage() {
           <Table.Header>
             <Table.Row>
               <SortHead label="Folio" col={'folio' as SalesSort} sort={sort} dir={dir} onSort={ordenar} />
-              <SortHead label="Hora" col={'fecha' as SalesSort} sort={sort} dir={dir} onSort={ordenar} />
+              <SortHead label="Fecha" col={'fecha' as SalesSort} sort={sort} dir={dir} onSort={ordenar} />
               <SortHead label="Estado" col={'estado' as SalesSort} sort={sort} dir={dir} onSort={ordenar} />
               <SortHead label="Tipo" col={'tipo' as SalesSort} sort={sort} dir={dir} onSort={ordenar} />
               <Table.ColumnHeader>Cliente</Table.ColumnHeader>
@@ -197,8 +199,21 @@ export function SalesPage() {
                   <Text fontWeight="700" lineHeight="1.2">{v.folioName || `#${v.dailyNumber}`}</Text>
                   {v.folioName && <Text fontSize="xs" color="fg.muted">#{v.dailyNumber}</Text>}
                 </Table.Cell>
-                <Table.Cell whiteSpace="nowrap">{hora(v.openedAt, horaNegocio.zona)}</Table.Cell>
-                <Table.Cell>{etiquetaEstado(v.status)}</Table.Cell>
+                <Table.Cell whiteSpace="nowrap">{diaCortoYHora(v.openedAt, horaNegocio.zona)}</Table.Cell>
+                {/* Las marcas van como SEGUNDA línea de una celda que ya tiene una, para que el
+                    renglón no crezca: devolución con cuándo, y lo que falta por cobrar. El Total
+                    del renglón no cambia — es lo que se vendió; la marca dice qué pasó después. */}
+                <Table.Cell>
+                  <Text lineHeight="1.2">{etiquetaEstado(v.status)}</Text>
+                  {Number(v.refund) > 0 && (
+                    <Text fontSize="xs" color="red.600" whiteSpace="nowrap">
+                      Devuelto {money(v.refund)}{v.lastRefundAt ? ` · ${diaCortoYHora(v.lastRefundAt, horaNegocio.zona)}` : ''}
+                    </Text>
+                  )}
+                  {porCobrarDe(v) > 0 && (
+                    <Text fontSize="xs" color="orange.600" whiteSpace="nowrap">Por cobrar {money(porCobrarDe(v))}</Text>
+                  )}
+                </Table.Cell>
                 <Table.Cell maxW="150px">
                   <Text lineHeight="1.2">{v.platform || etiquetaTipo(v.serviceType)}</Text>
                   {/* Truncado y en una sola línea: el folio llega hasta 64 caracteres y esta celda
@@ -231,7 +246,9 @@ export function SalesPage() {
       </Box>
 
       <HStack justify="space-between" mt={3}>
-        <Text fontSize="sm" color="fg.muted">{total} {total === 1 ? 'venta' : 'ventas'}</Text>
+        {/* «pedidos en la lista» y no «ventas»: la lista trae también las canceladas, y el recuadro
+            «Ventas» no. Con el mismo nombre, 33 contra 28 parecía un descuadre. */}
+        <Text fontSize="sm" color="fg.muted">{total} {total === 1 ? 'pedido' : 'pedidos'} en la lista</Text>
         <HStack gap={2}>
           {/* Se apagan mientras el rango está a medias: `paginas` sale del periodo ANTERIOR, así
               que avanzar movía el contador sobre filas que no son del filtro que se está capturando.
@@ -251,9 +268,10 @@ export function SalesPage() {
   );
 }
 
-// Solo la hora: la fecha ya la dice el rango de arriba, y repetirla en cada renglón gasta el ancho
-// que en una tablet de 7 pulgadas hace falta para el medio de pago.
-// La zona llega como parámetro: esta es una función de módulo.
-function hora(iso: string, zona: string): string {
-  return soloHora(iso, zona);
+// porCobrarDe: lo que falta por cobrar de un pedido vivo. Uno cancelado no debe nada: su dinero ya
+// se resolvió al cancelarlo.
+function porCobrarDe(v: SaleRow): number {
+  if (v.status === 'cancelada' || v.status === 'reembolsada') return 0;
+  const falta = round2(Number(v.total) - Number(v.paid ?? 0));
+  return falta > 0 ? falta : 0;
 }

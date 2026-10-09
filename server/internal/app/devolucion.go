@@ -80,11 +80,16 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	if err != nil {
 		return err
 	}
+	// El renglón se mira solo si el PEDIDO todavía tiene algo devolvible: sin cobros, o con todo
+	// devuelto, lo cierto es eso y lo dice ValidarDevolucion; decir «de ese producto ya no queda
+	// nada» sería falso de un producto que nunca se devolvió.
+	if cmd.LineID != nil && domain.MontoDevolvible(tope.paid, tope.refundedTotal).IsPositive() {
+		if err := domain.ValidateLineRefund(cmd.Monto, tope.remaining); err != nil {
+			return err
+		}
+	}
 	if err := domain.ValidarDevolucion(cmd.Monto, tope.paid, tope.refundedTotal); err != nil {
 		return err
-	}
-	if cmd.LineID != nil && domain.Round2(cmd.Monto).GreaterThan(tope.remaining) {
-		return fmt.Errorf("%w: de ese producto solo quedan %s por devolver", domain.ErrDevolucionExcede, tope.remaining)
 	}
 	entradas := tope.entries
 

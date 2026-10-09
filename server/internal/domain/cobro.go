@@ -67,6 +67,21 @@ func ValidarCobro(estado string, total, pagado, monto decimal.Decimal) error {
 	return nil
 }
 
+// minCharge: el centavo. Lo que está por debajo no es dinero que alguien pueda entregar.
+var minCharge = decimal.New(1, -2)
+
+// ValidChargeAmount rechaza un cobro por monto de menos de un centavo ANTES de redondear: $0.005
+// se redondeaba a $0.01 y saldaba un pedido con dinero que nadie entregó (spec 029). Fracciones de
+// centavo por encima de eso se siguen redondeando, como siempre.
+//
+// La escala se mira primero: comparar contra un exponente absurdo reescala a 10^|exp| y tira la API.
+func ValidChargeAmount(monto decimal.Decimal) error {
+	if !escalaSana(monto) || monto.LessThan(minCharge) {
+		return fmt.Errorf("%w: el monto a cobrar tiene que ser de al menos un centavo", ErrValidation)
+	}
+	return nil
+}
+
 // ValidarPropina topa la propina contra el total del pedido.
 //
 // Sin tope, la propina solo pasaba por ValidMoney —hasta diez millones— porque ValidarCobro acota

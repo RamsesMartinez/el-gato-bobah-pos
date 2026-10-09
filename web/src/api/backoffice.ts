@@ -40,6 +40,8 @@ export interface CashMovement {
   userName: string;
   transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
+  // La salida de caja de una devolución (spec 029): se nombra Devolución, como en el desglose.
+  isRefund?: boolean;
 }
 // PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
 // uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.
@@ -55,7 +57,8 @@ export interface CashExpenseLine {
 }
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
-export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[] }
+// note: por qué un medio salió en negativo en el turno (spec 029). Solo viene cuando lo está.
+export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[]; note?: string }
 // plataformas: lo que entró por cada plataforma, sumando sus DOS métodos (en línea y efectivo).
 // Viene del servidor y no se calcula aquí: es el número contra el que se concilia el depósito.
 export interface CortePlatformSubtotal { platform: string; total: string }
@@ -638,7 +641,8 @@ export const backofficeApi = {
   reportMargins: (q: ReportQuery = {}) =>
     api.get<{
       range: ReportRange;
-      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }>;
+      // uncosted_revenue: lo vendido sin costo capturado; NO está en margin (spec 029).
+      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string; uncosted_revenue?: string }>;
     }>(`/reports/margins?${qsReporte({ ...q, limit: 50 })}`),
   // Unidades por producto, sueltas y dentro de paquetes.
   reportProductsSold: (q: ReportQuery = {}) =>

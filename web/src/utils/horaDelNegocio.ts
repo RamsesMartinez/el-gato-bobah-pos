@@ -62,6 +62,25 @@ export function soloFecha(iso: string | Date | null | undefined, zona: string): 
   return d.toLocaleDateString('es-MX', { timeZone: zonaSegura(zona), dateStyle: 'medium' });
 }
 
+// diaCortoYHora: "1 sep, 8:25 p.m." en la zona del negocio. Sin año: el renglón de una lista ya
+// está dentro de un periodo que lo dice, y el año gasta el ancho de una tableta de 7".
+export function diaCortoYHora(iso: string | Date | null | undefined, zona: string): string {
+  const d = aFecha(iso);
+  if (!d) return '';
+  return d.toLocaleString('es-MX', {
+    timeZone: zonaSegura(zona), day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  }).replace('.,', ',');
+}
+
+// diaCorto: una FECHA DE NEGOCIO ("2026-10-08", sin hora) como "8 oct". Sin hora no hay zona que
+// aplicar: se formatea en UTC a propósito, porque leerla como medianoche UTC y pintarla en México
+// la corría al día anterior.
+export function diaCorto(fecha: string): string {
+  const d = aFecha(fecha ? `${fecha}T12:00:00Z` : '');
+  if (!d) return '';
+  return d.toLocaleDateString('es-MX', { timeZone: 'UTC', day: 'numeric', month: 'short' }).replace('.', '');
+}
+
 // diaDelNegocio: el día en formato AAAA-MM-DD, en la zona del NEGOCIO.
 //
 // Es el formato con el que se habla con el servidor y con el que un `input type="date"` acota lo

@@ -336,3 +336,29 @@ func TestDesEntregarSigueSinSerUnaTransicionPedible(t *testing.T) {
 		}
 	}
 }
+
+// UN PEDIDO DE PLATAFORMA NO ES DE MOSTRADOR (spec 029). La base lo rechaza con un check, y ese
+// rechazo llegaba como 500: «el servidor se rompió» por una combinación que quien opera puede
+// corregir.
+func TestUnPedidoDePlataformaNoEsDeMostrador(t *testing.T) {
+	uber := int16(1)
+	casos := []struct {
+		servicio   string
+		plataforma *int16
+		ok         bool
+	}{
+		{"mostrador", &uber, false},
+		{"domicilio", &uber, true},
+		{"para_llevar", &uber, true},
+		{"mostrador", nil, true},
+	}
+	for _, c := range casos {
+		err := ValidPlatformServiceType(c.servicio, c.plataforma)
+		if c.ok && err != nil {
+			t.Errorf("%s con plataforma=%v debía aceptarse: %v", c.servicio, c.plataforma != nil, err)
+		}
+		if !c.ok && !errors.Is(err, ErrValidation) {
+			t.Errorf("%s con plataforma debía rechazarse como validación, fue %v", c.servicio, err)
+		}
+	}
+}

@@ -131,7 +131,8 @@ func TestCorteBreakdownNamesEarlierChargesAndRefunds(t *testing.T) {
 	// Tarjeta: cobró 300 (100 de un pedido de otro turno) y devolvió 80 sin tocar el cajón.
 	// Esperado = 300 − 80 = 220.
 	methods := []methodExpected{
-		{name: "Tarjeta", expected: mustDec("220"), earlier: mustDec("100"), refunded: mustDec("80")},
+		{name: "Tarjeta", expected: mustDec("220"), earlier: mustDec("100"), refunded: mustDec("80"),
+			refunds: domain.MethodRefunds{OffDrawer: mustDec("80")}},
 	}
 	b := corteBreakdown(decimal.Zero, methods, nil)
 	if len(b.Ingresos) != 1 {

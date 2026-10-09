@@ -242,10 +242,16 @@ with pagos as (
    where op.register_session_id = $1::bigint
    group by op.payment_method_id
 ), devueltos as (
-  select r.payment_method_id, sum(r.amount + r.tip_amount) as refunded
+  -- Partidas por si salieron del cajón (spec 029). Solo ` + "`" + `refunded` + "`" + ` se resta del esperado; las del
+  -- cajón ya bajan por su salida de caja. Las otras tres viajan para PRESENTAR: el corte pone toda
+  -- devolución en «Devoluciones» de su medio, venta y propina por separado, igual que Ventas.
+  select r.payment_method_id,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is null) as refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is null) as refunded_tips,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded_tips
     from order_refunds r
    where r.register_session_id = $1::bigint
-     and r.cash_movement_id is null
    group by r.payment_method_id
 )
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
@@ -253,7 +259,10 @@ select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.
        coalesce(p.expected, 0)::numeric(10,2) as expected,
        coalesce(p.tips, 0)::numeric(10,2) as tips,
        coalesce(p.earlier, 0)::numeric(10,2) as earlier,
-       coalesce(d.refunded, 0)::numeric(10,2) as refunded
+       coalesce(d.refunded, 0)::numeric(10,2) as refunded,
+       coalesce(d.refunded_tips, 0)::numeric(10,2) as refunded_tips,
+       coalesce(d.drawer_refunded, 0)::numeric(10,2) as drawer_refunded,
+       coalesce(d.drawer_refunded_tips, 0)::numeric(10,2) as drawer_refunded_tips
 from payment_methods pm
 left join delivery_platforms dp on dp.id = pm.delivery_platform_id
 left join pagos p on p.payment_method_id = pm.id
@@ -263,16 +272,19 @@ order by pm.sort_key
 `
 
 type ExpectedByMethodForSessionRow struct {
-	PaymentMethodID   int16           `json:"payment_method_id"`
-	Name              string          `json:"name"`
-	Kind              PaymentKind     `json:"kind"`
-	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
-	AutoDeclare       bool            `json:"auto_declare"`
-	PlatformName      string          `json:"platform_name"`
-	Expected          decimal.Decimal `json:"expected"`
-	Tips              decimal.Decimal `json:"tips"`
-	Earlier           decimal.Decimal `json:"earlier"`
-	Refunded          decimal.Decimal `json:"refunded"`
+	PaymentMethodID    int16           `json:"payment_method_id"`
+	Name               string          `json:"name"`
+	Kind               PaymentKind     `json:"kind"`
+	AffectsCashDrawer  bool            `json:"affects_cash_drawer"`
+	AutoDeclare        bool            `json:"auto_declare"`
+	PlatformName       string          `json:"platform_name"`
+	Expected           decimal.Decimal `json:"expected"`
+	Tips               decimal.Decimal `json:"tips"`
+	Earlier            decimal.Decimal `json:"earlier"`
+	Refunded           decimal.Decimal `json:"refunded"`
+	RefundedTips       decimal.Decimal `json:"refunded_tips"`
+	DrawerRefunded     decimal.Decimal `json:"drawer_refunded"`
+	DrawerRefundedTips decimal.Decimal `json:"drawer_refunded_tips"`
 }
 
 // Totales esperados por método, del TURNO indicado.
@@ -323,6 +335,9 @@ func (q *Queries) ExpectedByMethodForSession(ctx context.Context, sessionID int6
 			&i.Tips,
 			&i.Earlier,
 			&i.Refunded,
+			&i.RefundedTips,
+			&i.DrawerRefunded,
+			&i.DrawerRefundedTips,
 		); err != nil {
 			return nil, err
 		}
@@ -813,7 +828,8 @@ func (q *Queries) ListCashCountLines(ctx context.Context, countID int64) ([]List
 }
 
 const listCashMovements = `-- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id,
+       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -829,10 +845,15 @@ type ListCashMovementsRow struct {
 	UserName   string          `json:"user_name"`
 	TransferID *int64          `json:"transfer_id"`
 	ExpenseID  *int64          `json:"expense_id"`
+	IsRefund   bool            `json:"is_refund"`
 }
 
 // expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
 // de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
+//
+// is_refund: la salida de caja de una devolución (spec 029). El corte la presenta en
+// «Devoluciones» de su medio y no en «Salidas de efectivo»; el esperado no cambia, porque el neto
+// de movimientos la sigue restando.
 func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]ListCashMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listCashMovements, sessionID)
 	if err != nil {
@@ -851,6 +872,7 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.UserName,
 			&i.TransferID,
 			&i.ExpenseID,
+			&i.IsRefund,
 		); err != nil {
 			return nil, err
 		}

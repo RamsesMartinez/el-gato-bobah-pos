@@ -35,3 +35,35 @@ func ResolveDeclared(autoDeclare bool, expected, clientDeclared decimal.Decimal)
 	}
 	return clientDeclared
 }
+
+// MethodRefunds: lo que un turno devolvió por un medio, partido en lo que salió del cajón y lo que
+// no, cada uno con su propina. Viene así del libro de devoluciones; las reglas de abajo deciden cómo
+// se presenta.
+type MethodRefunds struct {
+	OffDrawer, OffDrawerTips decimal.Decimal
+	Drawer, DrawerTips       decimal.Decimal
+}
+
+// Sale es la venta devuelta, sin propina, salga o no del cajón (spec 029). Es lo que el corte llama
+// «Devoluciones» y la misma cifra que Ventas resta de cada medio: una devolución en efectivo y una
+// con tarjeta son el mismo hecho, y presentarlas en dos lugares distintos del corte —una como
+// salida de caja, la otra dentro de ingresos— hacía que dos pantallas dijeran cifras distintas.
+func (r MethodRefunds) Sale() decimal.Decimal {
+	return Round2(r.OffDrawer.Sub(r.OffDrawerTips).Add(r.Drawer.Sub(r.DrawerTips)))
+}
+
+// Tips es la propina devuelta. Se resta de la propina del turno y no de la venta: la propina nunca
+// fue ingreso del negocio, y el reporte de propinas tampoco la cuenta.
+func (r MethodRefunds) Tips() decimal.Decimal {
+	return Round2(r.OffDrawerTips.Add(r.DrawerTips))
+}
+
+// NegativeMethodNote explica un medio que en el turno salió en negativo. Solo pasa cuando el turno
+// devolvió dinero de ventas que se cobraron en otro turno; sin decirlo, el cajero busca un faltante
+// que no existe.
+func NegativeMethodNote(total decimal.Decimal) string {
+	if !total.IsNegative() {
+		return ""
+	}
+	return "Negativo porque se devolvió dinero de ventas cobradas en otro turno."
+}

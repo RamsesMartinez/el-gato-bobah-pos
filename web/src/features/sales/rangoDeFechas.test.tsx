@@ -29,6 +29,7 @@ const resumen: SalesSummary = {
   cancelled: { count: 0, amount: '0' },
   refunded: { count: 0, amount: '0' },
   cancelledLines: { count: 0, amount: '0' },
+  pending: { count: 0, amount: '0' },
   byMethod: [],
 };
 

@@ -83,7 +83,14 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con ` + "`" + `::timestamptz` + "`" + ` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
@@ -118,6 +125,8 @@ type FindSaleByPlatformRefRow struct {
 	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
+	Paid             decimal.Decimal    `json:"paid"`
+	LastRefundAt     interface{}        `json:"last_refund_at"`
 }
 
 // Buscar un pedido pegando el folio que trae el documento de pago. IGUALDAD exacta, no parcial: el
@@ -166,6 +175,8 @@ func (q *Queries) FindSaleByPlatformRef(ctx context.Context, arg FindSaleByPlatf
 			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
+			&i.Paid,
+			&i.LastRefundAt,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +201,14 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con ` + "`" + `::timestamptz` + "`" + ` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
@@ -244,6 +262,8 @@ type ListSalesRow struct {
 	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
+	Paid             decimal.Decimal    `json:"paid"`
+	LastRefundAt     interface{}        `json:"last_refund_at"`
 }
 
 // Pantalla de Ventas (análisis). Distinta del tablero de pedidos: aquí se mira lo que YA pasó.
@@ -318,6 +338,8 @@ func (q *Queries) ListSales(ctx context.Context, arg ListSalesParams) ([]ListSal
 			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
+			&i.Paid,
+			&i.LastRefundAt,
 		); err != nil {
 			return nil, err
 		}
@@ -341,7 +363,14 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con ` + "`" + `::timestamptz` + "`" + ` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
@@ -396,6 +425,8 @@ type ListSalesSinFolioRow struct {
 	DiscountByName   string             `json:"discount_by_name"`
 	Tips             decimal.Decimal    `json:"tips"`
 	Methods          []byte             `json:"methods"`
+	Paid             decimal.Decimal    `json:"paid"`
+	LastRefundAt     interface{}        `json:"last_refund_at"`
 }
 
 // Gemela de ListSales con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
@@ -438,6 +469,8 @@ func (q *Queries) ListSalesSinFolio(ctx context.Context, arg ListSalesSinFolioPa
 			&i.DiscountByName,
 			&i.Tips,
 			&i.Methods,
+			&i.Paid,
+			&i.LastRefundAt,
 		); err != nil {
 			return nil, err
 		}
@@ -518,6 +551,92 @@ func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCanc
 	return i, err
 }
 
+const salesPending = `-- name: SalesPending :one
+with filtrado as (
+  select o.id, o.total
+  from orders o
+  where o.business_date between $1 and $2
+    and o.merged_into_order_id is null
+    and o.status not in ('cancelada', 'reembolsada')
+    and ($3::service_type is null or o.service_type = $3)
+), pagos as (
+  select op.order_id, sum(op.amount) as pagado
+  from order_payments op
+  join filtrado f on f.id = op.order_id
+  group by op.order_id
+)
+select count(*)::int as pedidos,
+       coalesce(sum(f.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto
+from filtrado f
+left join pagos p on p.order_id = f.id
+where f.total - coalesce(p.pagado, 0) > 0
+`
+
+type SalesPendingParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesPendingRow struct {
+	Pedidos int32           `json:"pedidos"`
+	Monto   decimal.Decimal `json:"monto"`
+}
+
+// Lo que falta por cobrar de los pedidos del periodo (spec 029). NO entra al Total de Ventas —que es
+// solo lo cobrado, decisión del dueño— y por eso viaja aparte: un pedido abierto o con saldo no tiene
+// día de pago, así que su día es el del pedido, el mismo predicado de fecha que la lista.
+//
+// Los pagos se pre-agregan por pedido antes de unirse: order_payments es 1:N con orders.
+func (q *Queries) SalesPending(ctx context.Context, arg SalesPendingParams) (SalesPendingRow, error) {
+	row := q.db.QueryRow(ctx, salesPending, arg.Desde, arg.Hasta, arg.ServiceType)
+	var i SalesPendingRow
+	err := row.Scan(&i.Pedidos, &i.Monto)
+	return i, err
+}
+
+const salesPendingSinFolio = `-- name: SalesPendingSinFolio :one
+with filtrado as (
+  select o.id, o.total
+  from orders o
+  where o.delivery_platform_id is not null and o.platform_order_ref is null
+    and o.business_date between $1 and $2
+    and o.merged_into_order_id is null
+    and o.status not in ('cancelada', 'reembolsada')
+    and ($3::service_type is null or o.service_type = $3)
+), pagos as (
+  select op.order_id, sum(op.amount) as pagado
+  from order_payments op
+  join filtrado f on f.id = op.order_id
+  group by op.order_id
+)
+select count(*)::int as pedidos,
+       coalesce(sum(f.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto
+from filtrado f
+left join pagos p on p.order_id = f.id
+where f.total - coalesce(p.pagado, 0) > 0
+`
+
+type SalesPendingSinFolioParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesPendingSinFolioRow struct {
+	Pedidos int32           `json:"pedidos"`
+	Monto   decimal.Decimal `json:"monto"`
+}
+
+// Gemela de SalesPending con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+// línea es lo único que las distingue, y se editan juntas.
+func (q *Queries) SalesPendingSinFolio(ctx context.Context, arg SalesPendingSinFolioParams) (SalesPendingSinFolioRow, error) {
+	row := q.db.QueryRow(ctx, salesPendingSinFolio, arg.Desde, arg.Hasta, arg.ServiceType)
+	var i SalesPendingSinFolioRow
+	err := row.Scan(&i.Pedidos, &i.Monto)
+	return i, err
+}
+
 const salesTotalsByMethod = `-- name: SalesTotalsByMethod :many
 with pagos as (
   select op.payment_method_id, count(*) as pagos, sum(op.amount) as cobrado, sum(op.tip_amount) as propinas
@@ -541,7 +660,9 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
+       coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id
@@ -556,12 +677,13 @@ type SalesTotalsByMethodParams struct {
 }
 
 type SalesTotalsByMethodRow struct {
-	MethodID int16           `json:"method_id"`
-	Method   string          `json:"method"`
-	Pagos    int32           `json:"pagos"`
-	Total    decimal.Decimal `json:"total"`
-	Propinas decimal.Decimal `json:"propinas"`
-	Refunds  decimal.Decimal `json:"refunds"`
+	MethodID   int16           `json:"method_id"`
+	Method     string          `json:"method"`
+	Pagos      int32           `json:"pagos"`
+	Total      decimal.Decimal `json:"total"`
+	Propinas   decimal.Decimal `json:"propinas"`
+	Refunds    decimal.Decimal `json:"refunds"`
+	TipRefunds decimal.Decimal `json:"tip_refunds"`
 }
 
 // Desglose por medio de pago: lo COBRADO, que no es lo mismo que lo vendido (una venta mandada a
@@ -591,6 +713,7 @@ func (q *Queries) SalesTotalsByMethod(ctx context.Context, arg SalesTotalsByMeth
 			&i.Total,
 			&i.Propinas,
 			&i.Refunds,
+			&i.TipRefunds,
 		); err != nil {
 			return nil, err
 		}
@@ -627,7 +750,9 @@ select pm.id as method_id, pm.name as method,
        coalesce(p.pagos, 0)::int as pagos,
        (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
        (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
-       coalesce(d.devuelto, 0)::numeric(12,2) as refunds
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
+       coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
 from payment_methods pm
 left join pagos p on p.payment_method_id = pm.id
 left join devueltos d on d.payment_method_id = pm.id
@@ -642,12 +767,13 @@ type SalesTotalsByMethodSinFolioParams struct {
 }
 
 type SalesTotalsByMethodSinFolioRow struct {
-	MethodID int16           `json:"method_id"`
-	Method   string          `json:"method"`
-	Pagos    int32           `json:"pagos"`
-	Total    decimal.Decimal `json:"total"`
-	Propinas decimal.Decimal `json:"propinas"`
-	Refunds  decimal.Decimal `json:"refunds"`
+	MethodID   int16           `json:"method_id"`
+	Method     string          `json:"method"`
+	Pagos      int32           `json:"pagos"`
+	Total      decimal.Decimal `json:"total"`
+	Propinas   decimal.Decimal `json:"propinas"`
+	Refunds    decimal.Decimal `json:"refunds"`
+	TipRefunds decimal.Decimal `json:"tip_refunds"`
 }
 
 // Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL, en las dos ramas. Ver la
@@ -668,6 +794,7 @@ func (q *Queries) SalesTotalsByMethodSinFolio(ctx context.Context, arg SalesTota
 			&i.Total,
 			&i.Propinas,
 			&i.Refunds,
+			&i.TipRefunds,
 		); err != nil {
 			return nil, err
 		}

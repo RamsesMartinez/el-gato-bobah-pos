@@ -212,6 +212,9 @@ func (s *OrdersService) Create(ctx context.Context, cmd CreateOrderCmd) (*OrderV
 	if !validServiceType(cmd.ServiceType) {
 		return nil, domain.ErrValidation
 	}
+	if err := domain.ValidPlatformServiceType(cmd.ServiceType, cmd.DeliveryPlatformID); err != nil {
+		return nil, err
+	}
 	// Crear un pedido YA COBRADO se rechaza: era el camino corto que se saltaba la cocina por
 	// completo, y por ser el corto era el que se usaba. Confirmar y cobrar son dos momentos, y el
 	// segundo entra por Charge.
@@ -677,7 +680,10 @@ func (s *OrdersService) load(ctx context.Context, id int64) (*OrderView, error) 
 		Total: o.Total, Currency: domain.Currency(o.Currency),
 		Paid:        domain.PedidoSaldado(paid, o.Total),
 		Outstanding: domain.PorCobrar(o.Total, paid),
-		OpenedAt:    o.OpenedAt,
+		// Refund se llena aquí también: solo el tablero y las entregadas lo traían, y el detalle
+		// respondía 0 de un pedido devuelto completo (spec 029).
+		Refund:   o.RefundAmount,
+		OpenedAt: o.OpenedAt,
 	}
 	view.Lines = make([]OrderLineView, 0, len(lines))
 	for _, l := range lines {
@@ -1800,6 +1806,12 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 	// cantidad con exponente absurdo calcula 10^|exp| y tira la API.
 	if err := validSelection(cmd.Lines); err != nil {
 		return nil, err
+	}
+	if shape == domain.ShapeAmount {
+		// Antes de redondear: $0.005 se redondeaba a $0.01 y entraba como pago (spec 029).
+		if err := domain.ValidChargeAmount(cmd.Amount); err != nil {
+			return nil, err
+		}
 	}
 	if shape == domain.ShapeAmount && !domain.ValidMoney(domain.Round2(cmd.Amount), false) {
 		return nil, domain.ErrValidation

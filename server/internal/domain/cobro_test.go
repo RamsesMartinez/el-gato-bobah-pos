@@ -133,3 +133,24 @@ func TestPedidoSaldado(t *testing.T) {
 		})
 	}
 }
+
+// UN COBRO DE MENOS DE UN CENTAVO NO EXISTE (spec 029). $0.005 se redondeaba a $0.01 y saldaba un
+// pedido de un centavo con dinero que nadie entregó; con un pedido de $100 entraba como un pago
+// fantasma que el corte esperaba.
+func TestUnCobroDeMenosDeUnCentavoSeRechaza(t *testing.T) {
+	for _, c := range []struct {
+		monto string
+		ok    bool
+	}{{"0.005", false}, {"0.009", false}, {"0.004", false}, {"0", false}, {"-1", false}, {"0.01", true}, {"10.5", true}} {
+		err := ValidChargeAmount(decimal.RequireFromString(c.monto))
+		if c.ok && err != nil {
+			t.Errorf("%s debía aceptarse: %v", c.monto, err)
+		}
+		if !c.ok && !errors.Is(err, ErrValidation) {
+			t.Errorf("%s debía rechazarse como validación, fue %v", c.monto, err)
+		}
+	}
+	if err := ValidChargeAmount(decimal.New(1, -100000)); !errors.Is(err, ErrValidation) {
+		t.Errorf("exponente absurdo debía rechazarse sin reescalar: %v", err)
+	}
+}

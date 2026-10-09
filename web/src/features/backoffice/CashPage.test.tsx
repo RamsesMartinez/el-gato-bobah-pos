@@ -2,8 +2,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund } from '../../api/backoffice';
+import { Text } from '@chakra-ui/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
 import { CuentasDelCierre, BotonCerrarCaja } from './CashPage';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
@@ -139,6 +141,10 @@ test('el total de las ventas del corte declara qué deja fuera', () => {
     </Provider>,
   );
   expect(screen.getByText(/sin canceladas, reembolsadas ni propinas/i)).toBeInTheDocument();
+  // Spec 029: es lo VENDIDO, con lo que falta por cobrar adentro. Sin decirlo, $1,166 vendido
+  // contradecía a $480 de ingresos dos renglones arriba.
+  expect(screen.getByText(/importe vendido, incluye lo que falta por cobrar/i)).toBeInTheDocument();
+  expect(screen.getByText('Pedidos del corte')).toBeInTheDocument();
 });
 
 // Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un
@@ -570,4 +576,68 @@ test('el concepto Devoluciones del desglose se pinta como resta', () => {
   wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
   const monto = screen.getByText(/-\$300/);
   expect(monto).toHaveAttribute('data-negative', 'true');
+});
+
+// ---- Spec 029: el corte en la tableta ----
+
+// Un medio en negativo sin explicación deja al cajero buscando un faltante que no existe.
+test('un medio en negativo trae la nota que lo explica', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Tarjeta débito', total: '-300', items: [{ concept: 'Devoluciones', amount: '-300' }],
+      note: 'Negativo porque se devolvió dinero de ventas cobradas en otro turno.' }],
+    ingresosTotal: '-300', egresos: [], egresosTotal: '0', plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  expect(screen.getByText(/se devolvió dinero de ventas cobradas en otro turno/)).toBeInTheDocument();
+});
+
+// El concepto se cortaba a 220 px con ancho de sobra: «Devolución: Producto en mal est…».
+test('el concepto de un movimiento no se corta a un ancho fijo', () => {
+  wrap(<MovementsTable movements={[mov({ concept: 'Devolución: Producto en mal estado' })]} currency="MXN" />);
+  expect(getComputedStyle(screen.getByText('Devolución: Producto en mal estado')).maxWidth).not.toBe('220px');
+});
+
+// La lista ya va plegada: abierta, un scroll propio de 3.5 renglones dentro de una página que ya
+// hace scroll obliga a adivinar cuál de los dos mover.
+test('la lista de devoluciones abierta no tiene scroll propio', async () => {
+  const muchas = Array.from({ length: 12 }, (_, i) => devolucion({ orderFolio: `#${i + 1}` }));
+  wrap(<RefundsList refunds={muchas} currency="MXN" />);
+  await userEvent.click(screen.getByRole('button', { name: /Devoluciones \(12\)/ }));
+  const lista = screen.getByRole('list', { name: 'Devoluciones' });
+  expect(getComputedStyle(lista).overflowY).not.toBe('auto');
+});
+
+// Todo control tocable mide al menos 44 px (constitución, restricciones del producto).
+test('los plegables del corte miden 44 px', () => {
+  wrap(<Plegable title="Efectivo contado"><Text>x</Text></Plegable>);
+  expect(getComputedStyle(screen.getByRole('button', { name: /Efectivo contado/ })).minHeight).toBe('44px');
+});
+
+test('el formulario de movimientos de efectivo mide 44 px', () => {
+  const qc = new QueryClient();
+  const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
+  render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  for (const campo of [screen.getByPlaceholderText('Monto'), screen.getByPlaceholderText(/Concepto/)]) {
+    expect(getComputedStyle(campo).minHeight).toBe('44px');
+  }
+});
+
+// La salida de caja de una devolución se llama Devolución, igual que en el desglose: decía «Salida»
+// mientras el desglose ya no la contaba en «Salidas de efectivo».
+test('la salida de caja de una devolución se etiqueta Devolución', () => {
+  wrap(<MovementsTable movements={[mov({ kind: 'salida', amount: '73', concept: 'Devolución: Cliente se fue', isRefund: true })]} currency="MXN" />);
+  expect(screen.getByText('Devolución')).toBeInTheDocument();
+  expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});
+
+// Un turno abierto no tiene nada declarado: una conciliación con «Declarado $0 · Dif. $0» se lee
+// como un corte cuadrado.
+test('el detalle de un turno abierto no pinta la conciliación', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '800', declared: '0', difference: '0', autoDeclare: false, requiresEntry: false },
+  ];
+  const data = { openingCash: '500', currency: 'MXN', breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+    totals, movements: [], expenses: [] };
+  render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} abierto /></Provider></QueryClientProvider>);
+  expect(screen.queryByText(/Conciliación/)).not.toBeInTheDocument();
 });

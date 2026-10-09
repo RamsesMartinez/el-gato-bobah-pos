@@ -191,11 +191,15 @@ type MethodTotal struct {
 	// Expected viaja en NULL con el arqueo ciego encendido y el turno abierto: lo que la pantalla no
 	// debe mostrar no se le manda. Ocultarlo en el cliente lo dejaría legible en la respuesta, y el
 	// control dejaría de serlo.
-	Expected    *decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
-	Declared    decimal.Decimal  `json:"declared"`
-	Difference  decimal.Decimal  `json:"difference"`
-	Tips        decimal.Decimal  `json:"tips"` // propinas del método (parte del esperado; línea aparte en el resumen)
-	AutoDeclare bool             `json:"autoDeclare"`
+	Expected   *decimal.Decimal `json:"expected"` // incluye ventas + propinas (+ fondo/neto en efectivo)
+	Declared   decimal.Decimal  `json:"declared"`
+	Difference decimal.Decimal  `json:"difference"`
+	// Tips: propinas del método NETAS de la propina devuelta en el turno (spec 029), con la misma
+	// regla que el reporte de propinas. El esperado sigue llevando la bruta —el dinero entró— y la
+	// devuelta baja por su devolución; por eso el cierre guarda `grossTips`, no esta.
+	Tips        decimal.Decimal `json:"tips"`
+	grossTips   decimal.Decimal
+	AutoDeclare bool `json:"autoDeclare"`
 	// RequiresEntry: si el cierre exige una cifra capturada para este método.
 	//
 	// Lo decide el SERVIDOR y no la pantalla, y esa es toda su razón de existir. La pantalla lo
@@ -236,6 +240,9 @@ type CashMovementView struct {
 	UserName   string          `json:"userName"`
 	TransferID *int64          `json:"transferId"` // no-nil si el movimiento es una pierna de un traspaso
 	ExpenseID  *int64          `json:"expenseId"`  // no-nil si es la salida de un gasto (va en la sección Gastos)
+	// IsRefund: la salida de caja de una devolución (spec 029). El desglose la cuenta en
+	// «Devoluciones» y la tabla la nombra igual, no como una salida más.
+	IsRefund bool `json:"isRefund"`
 }
 
 // CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
@@ -266,6 +273,9 @@ type CorteMethodBreakdown struct {
 	Method string          `json:"method"`
 	Total  decimal.Decimal `json:"total"`
 	Items  []CorteBucket   `json:"items"` // Ventas, Entradas, Traspasos recibidos, (Propinas)
+	// Note explica un medio en negativo (spec 029): sin ella el cajero busca un faltante que no
+	// existe. Vacía en cualquier otro caso.
+	Note string `json:"note,omitempty"`
 }
 type CorteBreakdown struct {
 	Ingresos      []CorteMethodBreakdown `json:"ingresos"` // por método
@@ -304,6 +314,9 @@ type methodExpected struct {
 	earlier decimal.Decimal
 	// refunded: devuelto en el turno sin sacarlo del cajón; ya se RESTÓ de `expected` (D6).
 	refunded decimal.Decimal
+	// refunds: todo lo devuelto en el turno por este medio, del cajón o no, con su propina. Es lo que
+	// se PRESENTA en «Devoluciones» (spec 029); no mueve el esperado.
+	refunds domain.MethodRefunds
 }
 
 // corteBreakdown descompone un corte en ingresos (por método → concepto) y egresos de efectivo.
@@ -318,6 +331,9 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 			net = net.Sub(m.Amount)
 		}
 		switch {
+		case m.IsRefund:
+			// La salida de caja de una devolución se presenta en «Devoluciones» de su medio, como la
+			// de tarjeta (spec 029). Sigue en el neto: el esperado no cambia.
 		case m.ExpenseID != nil: // gasto en efectivo (siempre salida)
 			gastos = gastos.Add(m.Amount)
 		case m.TransferID != nil:
@@ -357,14 +373,17 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		}
 		add("Ventas", ventas)
 		add("Cobros de otros turnos", domain.Round2(me.earlier))
-		add("Propinas", domain.Round2(me.tips))
-		add("Devoluciones", domain.Round2(me.refunded).Neg())
+		// Propina neta y venta devuelta por separado, salga o no del cajón: la misma clasificación
+		// que Ventas y que el reporte de propinas (spec 029).
+		add("Propinas", domain.Round2(me.tips.Sub(me.refunds.Tips())))
+		add("Devoluciones", me.refunds.Sale().Neg())
 		if me.duenoDelFondo {
 			add("Entradas", domain.Round2(entradas))
 			add("Traspasos recibidos", domain.Round2(traspasosIn))
 		}
 		if len(items) > 0 {
-			out.Ingresos = append(out.Ingresos, CorteMethodBreakdown{Method: me.name, Total: domain.Round2(total), Items: items})
+			out.Ingresos = append(out.Ingresos, CorteMethodBreakdown{Method: me.name, Total: domain.Round2(total), Items: items,
+				Note: domain.NegativeMethodNote(domain.Round2(total))})
 			out.IngresosTotal = out.IngresosTotal.Add(total)
 		}
 		if me.plataforma != "" && !total.IsZero() {
@@ -1273,8 +1292,13 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 			expected = expected.Add(sess.OpeningCash).Add(net) // + fondo + neto de movimientos
 		}
 		expected, tips = domain.Round2(expected), domain.Round2(tips)
+		devuelto := domain.MethodRefunds{}
+		if reg.IsPrimary {
+			devuelto = refundsOf(r.Refunded, r.RefundedTips, r.DrawerRefunded, r.DrawerRefundedTips)
+		}
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name,
-			Kind: string(r.Kind), Expected: &expected, Tips: tips, AutoDeclare: r.AutoDeclare,
+			Kind: string(r.Kind), Expected: &expected, Tips: domain.Round2(tips.Sub(devuelto.Tips())), grossTips: tips,
+			AutoDeclare: r.AutoDeclare,
 			// Un método cuyo dinero está en el cajón NO pide cifra: su dinero se declara una vez,
 			// contándolo. Los demás piden la suya si esperaban algo.
 			RequiresEntry: !r.AutoDeclare && !r.AffectsCashDrawer && !expected.IsZero()})
@@ -1285,7 +1309,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 			name: r.Name, expected: expected, tips: tips,
 			duenoDelFondo: r.Kind == db.PaymentKindEfectivo,
 			plataforma:    r.PlatformName,
-			earlier:       earlier, refunded: refunded,
+			earlier:       earlier, refunded: refunded, refunds: devuelto,
 		})
 	}
 	conteos, err := s.conteosDelTurno(ctx, sess.ID)
@@ -1304,6 +1328,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
+			IsRefund: m.IsRefund,
 		})
 	}
 	return view, nil
@@ -1459,7 +1484,9 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 			t.Difference = domain.Round2(t.Declared.Sub(esperado))
 			if err := q.SaveSessionTotal(ctx, db.SaveSessionTotalParams{
 				SessionID: sess.ID, PaymentMethodID: int16(t.MethodID),
-				Expected: esperado, Declared: t.Declared, Tips: t.Tips,
+				// La propina BRUTA: el snapshot alimenta el desglose del corte cerrado, que resta la
+				// devuelta al leerlo. Guardar la neta la restaría dos veces.
+				Expected: esperado, Declared: t.Declared, Tips: t.grossTips,
 				// El snapshot: con qué configuración se cerró este renglón. Leerlo del catálogo al
 				// consultar el corte lo reagruparía según el interruptor de hoy.
 				AffectsCashDrawer: delCajon[t.MethodID],
@@ -1755,9 +1782,12 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	// forma con la que se firmó, aunque el interruptor del método cambie después.
 	delCorte := make([]domain.MetodoDelCorte, 0, len(totals))
 	for _, t := range totals {
+		v := porMetodo[t.PaymentMethodID]
+		devuelto := refundsOf(v.Refunded, v.RefundedTips, v.DrawerRefunded, v.DrawerRefundedTips)
 		view.Totals = append(view.Totals, MethodTotal{
 			MethodID: int(t.PaymentMethodID), Name: t.Name, Kind: string(t.Kind),
-			Expected: &t.Expected, Declared: t.Declared, Difference: t.Difference, Tips: t.Tips,
+			Expected: &t.Expected, Declared: t.Declared, Difference: t.Difference,
+			Tips: domain.Round2(t.Tips.Sub(devuelto.Tips())), grossTips: t.Tips,
 		})
 		delCorte = append(delCorte, domain.MetodoDelCorte{
 			ID: int(t.PaymentMethodID), Esperado: t.Expected, TocaElCajon: t.AffectsCashDrawer,
@@ -1766,7 +1796,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			name: t.Name, expected: t.Expected, tips: t.Tips,
 			duenoDelFondo: t.Kind == db.PaymentKindEfectivo,
 			plataforma:    t.PlatformName,
-			earlier:       porMetodo[t.PaymentMethodID].Earlier, refunded: porMetodo[t.PaymentMethodID].Refunded,
+			earlier:       v.Earlier, refunded: v.Refunded, refunds: devuelto,
 		})
 	}
 	conteos, err := s.conteosDelTurno(ctx, sess.ID)
@@ -1782,9 +1812,18 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		return nil, err
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
+	// Un turno ABIERTO no tiene totales guardados: se calculan en vivo con la misma función que
+	// Cajas (spec 029). Leía el snapshot vacío y el Histórico decía «Sin ingresos» mientras Cajas
+	// decía $630.
+	if sess.Status == db.SessionStatusAbierta {
+		if err := s.liveDetail(ctx, sess, view); err != nil {
+			return nil, err
+		}
+	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
+			IsRefund: m.IsRefund,
 		})
 	}
 	// El mismo ocultamiento que en el turno abierto, y aquí no es redundante: este endpoint
@@ -1794,6 +1833,31 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		ocultarLoEsperado(view.Totals, view.Drawer, &view.Breakdown, nil)
 	}
 	return view, nil
+}
+
+// liveDetail pone en el detalle de un turno abierto lo que Cajas calcula en vivo: totales por
+// medio, desglose y arqueo. Lo demás del detalle (ventas, movimientos, devoluciones) ya se lee en
+// vivo. El ocultamiento del arqueo ciego lo aplica SessionDetail después, sobre esto mismo.
+func (s *BackofficeService) liveDetail(ctx context.Context, sess db.GetSessionRow, view *SessionDetailView) error {
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, sess.RegisterID)
+	if err != nil {
+		return err
+	}
+	vivo, err := s.sessionWithExpected(ctx, db.RegisterSession{
+		ID: sess.ID, BusinessDate: sess.BusinessDate, Status: sess.Status, OpeningCash: sess.OpeningCash,
+		OpenedBy: sess.OpenedBy, OpenedAt: sess.OpenedAt, ClosedBy: sess.ClosedBy, ClosedAt: sess.ClosedAt,
+		Notes: sess.Notes, Currency: sess.Currency, RegisterID: sess.RegisterID,
+	}, reg, false)
+	if err != nil {
+		return err
+	}
+	view.Totals, view.Breakdown, view.Drawer = vivo.Totals, vivo.Breakdown, vivo.Drawer
+	return nil
+}
+
+// refundsOf arma lo devuelto por un medio desde las cuatro columnas del esperado del turno.
+func refundsOf(offDrawer, offDrawerTips, drawer, drawerTips decimal.Decimal) domain.MethodRefunds {
+	return domain.MethodRefunds{OffDrawer: offDrawer, OffDrawerTips: offDrawerTips, Drawer: drawer, DrawerTips: drawerTips}
 }
 
 // SellingRegisterOpen: ¿se puede cobrar ahora mismo? Contesta EXACTAMENTE la misma pregunta que

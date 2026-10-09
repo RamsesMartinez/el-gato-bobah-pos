@@ -119,4 +119,41 @@ describe('pantalla de Reportes', () => {
     expect(q).not.toHaveProperty('from');
     expect(q).not.toHaveProperty('to');
   });
+
+  // Spec 029: cada cifra dice qué incluye.
+  it('«Por medio de pago» dice que ya resta las devoluciones', async () => {
+    api.reportSales.mockResolvedValue({ range: rango, byDay: [], byMethod: [{ method: 'Efectivo', payments: 3, total: '250', refunds: '50' }] });
+    montar();
+    expect(await screen.findByText(/ya restadas las devoluciones/i)).toBeInTheDocument();
+  });
+
+  it('un producto sin costo capturado lo dice y no presume margen', async () => {
+    api.reportMargins.mockResolvedValue({ range: rango, items: [
+      { product_name: 'Sodas explosivas', qty: '2', revenue: '160', cost: '0', margin: '0', uncosted_revenue: '160' },
+    ] });
+    montar();
+    const fila = (await screen.findByText('Sodas explosivas')).closest('tr')!;
+    expect(fila).toHaveTextContent('sin costo capturado');
+  });
+
+  it('Propinas por día dice el día como se lee, no como lo guarda el servidor', async () => {
+    api.reportTips.mockResolvedValue({ range: rango, byEmployee: [], byDay: [{ business_date: '2026-10-08', tips: '15' }] });
+    montar();
+    expect(await screen.findByText('8 oct')).toBeInTheDocument();
+    expect(screen.queryByText('2026-10-08')).toBeNull();
+  });
+
+  // «Ventas $1,166» arriba de medios que sumaban $480: el vendido y el cobrado se rotulan, y el
+  // cobrado sale de los medios del servidor.
+  it('arriba se distingue lo vendido de lo cobrado neto', async () => {
+    api.reportSales.mockResolvedValue({ range: rango,
+      byDay: [{ business_date: '2026-10-08', orders: 7, revenue: '1166' }],
+      byMethod: [{ method: 'Efectivo', payments: 4, total: '345.83' }, { method: 'Tarjeta débito', payments: 2, total: '135' }] });
+    montar();
+    expect(await screen.findByText('Cobrado neto')).toBeInTheDocument();
+    expect(await screen.findByText('$480.83')).toBeInTheDocument();
+    expect(screen.getByText('Vendido')).toBeInTheDocument();
+    expect(screen.getByText(/incluye lo que falta por cobrar/)).toBeInTheDocument();
+  });
 });
+
