@@ -61,7 +61,6 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 		AutoPrintOnClose:   true,
 		PrintFreeModifiers: antes.PrintFreeModifiers,
 		PrintKitchenTicket: true,
-		KitchenCanCharge:   true,
 	}
 	info := domain.BusinessInfo{
 		Name: antes.BusinessName, Address: antes.Address, Phone: antes.Phone,
@@ -79,7 +78,7 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 	if tras.LockAfterSeconds != 60 || tras.SessionHours != 12 {
 		t.Errorf("los tiempos no se guardaron: bloqueo=%d sesión=%d", tras.LockAfterSeconds, tras.SessionHours)
 	}
-	if !tras.PrintKitchenTicket || !tras.KitchenCanCharge || !tras.AutoPrintOnClose {
+	if !tras.PrintKitchenTicket || !tras.AutoPrintOnClose {
 		t.Error("guardar la identificación apagó ajustes del ticket que vivían en la misma fila")
 	}
 }

@@ -34,7 +34,7 @@ import { BusinessSettingsPage } from './BusinessSettingsPage';
 const ajustes = {
   deliveryFee: '20', businessName: 'Gato', address: '', phone: '', headerNote: '', footerNote: '',
   autoPrintOnClose: false, timezone: 'America/Mexico_City', printFreeModifiers: true,
-  printKitchenTicket: true, kitchenCanCharge: false, pinOnlyUnlock: false, lockAfterSeconds: 180,
+  printKitchenTicket: true, pinOnlyUnlock: false, lockAfterSeconds: 180,
   sessionHours: 8, hasLogo: false, logoUpdatedAt: null, corteDeVista: 'medianoche', blindCashCount: false,
 };
 

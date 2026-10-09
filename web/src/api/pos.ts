@@ -252,9 +252,6 @@ export interface BusinessSettings {
   // Si al mandar el pedido sale una comanda SIN precios para cocina. Apagado por default: donde la
   // cocina está pegada al mostrador sería papel que duplica lo que el cocinero ya ve.
   printKitchenTicket: boolean;
-  // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
-  // vive donde le toca, en el punto de venta.
-  kitchenCanCharge: boolean;
   // Si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia aparece al
   // confirmar el cierre.
   blindCashCount: boolean;
@@ -288,7 +285,6 @@ export interface TicketSettingsInput {
   autoPrintOnClose?: boolean;
   printFreeModifiers?: boolean;
   printKitchenTicket?: boolean;
-  kitchenCanCharge?: boolean;
   pinOnlyUnlock?: boolean;
   lockAfterSeconds?: number;
   sessionHours?: number;

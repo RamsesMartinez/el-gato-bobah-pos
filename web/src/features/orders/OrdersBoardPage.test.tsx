@@ -64,8 +64,8 @@ function entrar(permissions: string[]) {
   });
 }
 
-function pintar(o: BoardOrder, { cobra = false } = {}) {
-  api.businessSettings.mockResolvedValue({ kitchenCanCharge: cobra, timezone: 'America/Mexico_City', corteDeVista: '' });
+function pintar(o: BoardOrder, ajustes: Record<string, unknown> = {}) {
+  api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '', ...ajustes } as never);
   api.activeOrders.mockResolvedValue({ items: [o] });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const nodo: ReactNode = <QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider>;
@@ -91,19 +91,17 @@ afterEach(() => {
 //
 // El incidente: un pedido con todo lo vivo entregado y sin deuda se quedó en el tablero sin un solo
 // botón que lo cerrara, y la única salida era cancelarlo —que el servidor rechaza porque ya salió
-// comida—. Cada combinación de «falta entregar» × «debe» × «el tablero cobra», más las dos de un
-// pedido sin productos, tiene que ofrecer algo que lo cierre o decir dónde se cierra.
+// comida—. Cada combinación de «falta entregar» × «debe», más las de un pedido sin productos, tiene que ofrecer algo que lo cierre o decir dónde se cierra.
 describe('la tarjeta ofrece una salida en cada combinación', () => {
   const todoEntregado = { lines: [linea(1, 2, 2)] };
   const conPendiente = { lines: [linea(1, 2, 1)] };
   const sinDeuda = { outstanding: '0', paid: true };
 
-  type Caso = { nombre: string; o: Partial<BoardOrder>; cobra: boolean; espera: (c: HTMLElement) => void };
+  type Caso = { nombre: string; o: Partial<BoardOrder>; espera: (c: HTMLElement) => void };
   const casos: Caso[] = [
-    ...[false, true].flatMap((debe) => [false, true].map((cobra): Caso => ({
-      nombre: `falta entregar · ${debe ? 'debe' : 'no debe'} · ${cobra ? 'cobra' : 'no cobra'}`,
+    ...[false, true].map((debe): Caso => ({
+      nombre: `falta entregar · ${debe ? 'debe' : 'no debe'}`,
       o: { ...conPendiente, ...(debe ? {} : sinDeuda) },
-      cobra,
       espera: (c) => {
         expect(within(c).getByRole('button', { name: 'Entregar todo' })).toBeInTheDocument();
         // Caso 25: el tablero ya no cobra; lleva a la cuenta, que es la única puerta.
@@ -111,31 +109,18 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
         expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
       },
-    }))),
-    ...[false, true].map((cobra): Caso => ({
-      nombre: `todo entregado · no debe · ${cobra ? 'cobra' : 'no cobra'}`,
+    })),
+    {
+      nombre: 'todo entregado · no debe',
       o: { ...todoEntregado, ...sinDeuda },
-      cobra,
       espera: (c) => {
         expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
       },
-    })),
-    {
-      nombre: 'todo entregado · debe · cobra',
-      o: { ...todoEntregado, outstanding: '65' },
-      cobra: true,
-      espera: (c) => {
-        expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument();
-        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
-        expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
-        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
-      },
     },
     {
-      nombre: 'todo entregado · debe · no cobra',
+      nombre: 'todo entregado · debe',
       o: { ...todoEntregado, outstanding: '65' },
-      cobra: false,
       espera: (c) => {
         expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument();
         expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
@@ -146,7 +131,6 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
     {
       nombre: 'sin productos · sin pagos',
       o: { lines: [], total: '0', outstanding: '0', paid: true },
-      cobra: false,
       espera: (c) => {
         expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
@@ -156,7 +140,6 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
       // Lo único que queda es el envío, y ya se cobró: hay dinero que devolver antes de cerrarlo.
       nombre: 'sin productos · con pagos',
       o: { lines: [], total: '30', outstanding: '0', paid: true },
-      cobra: true,
       espera: (c) => {
         expect(within(c).getByText(/^Tiene pagos por devolver/)).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
@@ -168,7 +151,6 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
       // se medía con total − por cobrar, que no resta lo devuelto, y la tarjeta se quedaba sin salida.
       nombre: 'sin productos · con los pagos ya devueltos',
       o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '30' },
-      cobra: true,
       espera: (c) => {
         expect(within(c).queryByText(/^Tiene pagos por devolver/)).toBeNull();
         expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
@@ -177,7 +159,6 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
     {
       nombre: 'sin productos · con una parte devuelta',
       o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '10' },
-      cobra: true,
       espera: (c) => {
         expect(within(c).getByText(/^Tiene pagos por devolver/)).toBeInTheDocument();
         expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
@@ -185,13 +166,10 @@ describe('la tarjeta ofrece una salida en cada combinación', () => {
     },
   ];
 
-  test('son doce combinaciones', () => expect(casos).toHaveLength(12));
+  test('son ocho combinaciones', () => expect(casos).toHaveLength(8));
 
-  test.each(casos)('$nombre', async ({ o, cobra, espera }) => {
-    pintar(pedido(o), { cobra });
-    // El ajuste de cobrar llega en su propia petición; sin esperarla, el caso «cobra» se evaluaría
-    // con el tablero creyendo que no cobra.
-    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+  test.each(casos)('$nombre', async ({ o, espera }) => {
+    pintar(pedido(o));
     const c = await tarjeta();
     await waitFor(() => espera(c));
   });
@@ -516,49 +494,29 @@ describe('«Abrir cuenta» lleva a la cuenta en Vender', () => {
   });
 
   test('el tablero ya no abre su propia hoja de cobro', async () => {
-    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
-    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }));
     const c = await tarjeta();
     await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /^Cobrar/ })).toBeNull();
   });
 });
 
-// EL AJUSTE «EL TABLERO PUEDE COBRAR» NO QUEDA SIN EFECTO (spec 030, revisión del coordinador).
+// EL AJUSTE «EL TABLERO PUEDE COBRAR» SE QUITÓ (decisión del dueño, 2026-10-09).
 //
 // Quien puede entrar a Vender cobra en la cuenta («Abrir cuenta»). Quien NO puede —una cocina con su
-// propio usuario— no tendría dónde cobrar: con el ajuste encendido, el tablero conserva su «Cobrar».
+// propio usuario— solo ve cuánto falta. Un servidor viejo que todavía mande el ajuste encendido no
+// vuelve a abrir la cuarta puerta de cobro.
 describe('quien no puede entrar a Vender', () => {
   afterEach(() => { sinVender.activo = false; });
 
-  test('con el ajuste encendido cobra en el tablero, con la hoja de siempre', async () => {
+  test('solo dice cuánto falta, aunque llegue el ajuste viejo encendido', async () => {
     sinVender.activo = true;
-    api.order.mockResolvedValue({ ...pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), lines: [], payments: [] });
-    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
-    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
-    const c = await tarjeta();
-    const cobrar = await within(c).findByRole('button', { name: /^Cobrar \$65/ });
-    expect(within(c).queryByRole('button', { name: 'Abrir cuenta' })).toBeNull();
-    await userEvent.click(cobrar);
-    expect(await screen.findByText(/Falta \$/)).toBeInTheDocument();
-  });
-
-  test('con el ajuste apagado solo dice cuánto falta', async () => {
-    sinVender.activo = true;
-    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: false });
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { kitchenCanCharge: true });
     await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
     const c = await tarjeta();
     await waitFor(() => expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument());
     expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
     expect(within(c).queryByRole('button', { name: 'Abrir cuenta' })).toBeNull();
-  });
-
-  test('quien sí puede entrar a Vender abre la cuenta aunque el ajuste esté encendido', async () => {
-    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { cobra: true });
-    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
-    const c = await tarjeta();
-    await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
-    expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
   });
 });
 
@@ -575,7 +533,7 @@ describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
       token: 't', status: 'authed',
       user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: [] },
     });
-    api.businessSettings.mockResolvedValue({ kitchenCanCharge: false, timezone: 'America/Mexico_City', corteDeVista: '' });
+    api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '' });
     api.activeOrders.mockResolvedValue({ items: [] });
     api.deliveredOrders.mockResolvedValue({ items: [pedido({ id: 9, folioName: 'Siamés', status: 'entregada', lines: [], openedAt: ABIERTO, ...o })] });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

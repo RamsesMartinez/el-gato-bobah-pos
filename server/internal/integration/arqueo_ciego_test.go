@@ -34,7 +34,7 @@ func prenderCiego(t *testing.T, ctx context.Context, settings *app.SettingsServi
 	print := domain.PrintSettings{
 		AutoPrintOnClose: cur.AutoPrintOnClose, PrintFreeModifiers: cur.PrintFreeModifiers,
 		PrintKitchenTicket: cur.PrintKitchenTicket, CorteDeVista: cur.CorteDeVista,
-		FolioScheme: cur.FolioScheme, KitchenCanCharge: cur.KitchenCanCharge,
+		FolioScheme:    cur.FolioScheme,
 		BlindCashCount: true,
 	}
 	ident := domain.IdentitySettings{PinOnlyUnlock: cur.PinOnlyUnlock,

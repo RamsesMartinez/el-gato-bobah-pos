@@ -24,7 +24,7 @@ import { PrintSettingsPage } from './PrintSettingsPage';
 const ajustes = (over: Record<string, unknown> = {}) => ({
   deliveryFee: '20', businessName: 'Gato', address: '', phone: '', headerNote: '', footerNote: '',
   autoPrintOnClose: false, timezone: 'America/Mexico_City', printFreeModifiers: true,
-  printKitchenTicket: true, kitchenCanCharge: false, pinOnlyUnlock: false,
+  printKitchenTicket: true, pinOnlyUnlock: false,
   lockAfterSeconds: 0, sessionHours: 8, hasLogo: false, logoUpdatedAt: null,
   corteDeVista: 'medianoche', folioScheme: 'razas', ...over,
 });
