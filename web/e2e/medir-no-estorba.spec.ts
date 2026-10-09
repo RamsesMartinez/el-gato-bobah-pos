@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { buscar } from './pos';
 
 // LA MEDICIÓN NO SE METE EN EL CAMINO DEL OPERADOR (spec 017, US3 · SC-003).
 //
@@ -58,7 +59,9 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Y ni un aviso sobre la medición. El operador no tiene por qué enterarse de que existe.
-  const avisos = await page.getByText(/uso|medici[óo]n|analytics/i).count();
+  // Palabras completas: la fila de cuentas trae nombres como «Azul Ruso», y «uso» suelto lo
+  // contaba como un aviso de medición.
+  const avisos = await page.getByText(/\b(uso|medici[óo]n|analytics)\b/i).count();
   expect(avisos, 'la medición no se le menciona a quien opera').toBe(0);
 
   // Que el registrador HAYA intentado mandar algo es lo que hace válido el resto del test: sin un
@@ -83,7 +86,10 @@ test('M2 · con la medición muerta, capturar tocando rápido responde igual', a
   // Tocar un producto. En este catálogo casi todos abren la hoja de modificadores, así que el
   // primer toque se comprueba por su EFECTO: si el escuchador cancelara o detuviera el evento, la
   // hoja no abriría y el mostrador se quedaría sin poder capturar.
-  const producto = page.getByRole('button').filter({ hasText: /\$/ }).first();
+  // Un mosaico del menú, no cualquier botón con «$»: las fichas de la fila de cuentas también
+  // llevan cifra, y tocar una abre la cuenta de otro en vez de capturar.
+  await buscar(page, 'Capuccino');
+  const producto = page.getByRole('button', { name: /^Capuccino/ }).first();
   await producto.click({ timeout: 15_000 });
   const hoja = page.getByRole('dialog').first();
   await expect(hoja, 'el toque no llegó al producto: la medición se metió en el camino del dedo').toBeVisible({
