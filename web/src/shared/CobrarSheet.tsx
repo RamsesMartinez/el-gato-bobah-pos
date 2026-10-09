@@ -12,11 +12,12 @@ import { PaymentDetail } from './cobro/PaymentDetail';
 import { MoveToOrder, NEW_ORDER, type MoveTarget } from './cobro/MoveToOrder';
 import { listOrder, type ListRowState } from './cobro/listOrder';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { accionPropia } from '../stores/accionesPropias';
 import {
   DrawerRoot, DrawerBackdrop, DrawerContent, DrawerBody, DrawerHeader, DrawerFooter,
 } from '../components/ui/drawer';
-import { Box, Button, HStack, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
-import { LuArrowRightLeft, LuReceipt, LuSplit, LuTag } from 'react-icons/lu';
+import { Box, Button, HStack, IconButton, VStack, Text, Input, SimpleGrid, Flex } from '@chakra-ui/react';
+import { LuArrowRightLeft, LuReceipt, LuSplit, LuTag, LuX } from 'react-icons/lu';
 import { toaster } from '../components/ui/toaster';
 import { medirAccion } from '../api/uso';
 import { posApi } from '../api/pos';
@@ -219,7 +220,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   const descuentoNoSePuedeGuardar = descuentoTeclado.malEscrito || descuentoTeclado.excede;
   const puedeDescontar = idPedido !== null && livePayments.length === 0;
   const guardarDescuento = useMutation({
-    mutationFn: () => posApi.setOrderDiscount(idPedido as number, descuentoTeclado.paraElServidor ?? {}),
+    mutationFn: () => accionPropia(() => posApi.setOrderDiscount(idPedido as number, descuentoTeclado.paraElServidor ?? {})),
     onSuccess: (pedido) => {
       // Se repinta con lo que DEVOLVIÓ el servidor, nunca con una resta hecha aquí.
       qc.setQueryData(['orders', idPedido], pedido);
@@ -289,7 +290,8 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   };
 
   const cobrar = useMutation({
-    mutationFn: async () => {
+    // accionPropia: el eco del cobro llega cuando la hoja ya se cerró, y no es «de otra tableta».
+    mutationFn: () => accionPropia(async () => {
       const id = pedidoCreado?.id ?? order?.id ?? null;
       if (id === null) throw new Error('no hay pedido que cobrar');
       const tip = v.propina > 0 ? { tip: v.propina } : {};
@@ -297,7 +299,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
         return posApi.chargeOrderShape(id, { methodId: metodo!, clientUuid: llave, ...tip, ...shape });
       }
       return posApi.chargeOrder(id, { methodId: metodo!, amount: v.monto, ...tip, clientUuid: llave });
-    },
+    }),
     onSuccess: (res) => {
       // Se mide DESPUÉS de que el servidor cobró, nunca antes: medir primero convertiría un cobro en
       // algo que espera a la medición (spec 017).
@@ -339,7 +341,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
 
   const devolver = useMutation({
     mutationFn: ({ paymentId, reason }: { paymentId: number; reason: string }) =>
-      posApi.voidPayment(idPedido as number, paymentId, reason),
+      accionPropia(() => posApi.voidPayment(idPedido as number, paymentId, reason)),
     onSuccess: () => {
       medirAccion(pantalla, 'void-payment');
       toaster.create({ title: 'Pago devuelto', type: 'success' });
@@ -363,9 +365,9 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   const movingEverything = rows.paid.length === 0 && rows.pending.length > 0
     && rows.pending.every((r) => toMove.some((m) => m.lineId === r.line.id && Number(m.qty) >= Number(r.line.quantity)));
   const pasar = useMutation({
-    mutationFn: ({ target }: { target: MoveTarget; label: string }) => posApi.moveLines(idPedido as number, {
+    mutationFn: ({ target }: { target: MoveTarget; label: string }) => accionPropia(() => posApi.moveLines(idPedido as number, {
       clientUuid: llave, toOrderId: target === NEW_ORDER ? null : target, lines: toMove,
-    }),
+    })),
     onSuccess: (res, { target, label }) => {
       medirAccion(pantalla, 'move-lines');
       qc.invalidateQueries({ queryKey: ['orders'] });
@@ -477,7 +479,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   ) : (
     // En el pie, una sola fila con scroll horizontal: con diez métodos, una cuadrícula empujaría
     // «Cobrar» fuera del pie.
-    <Box overflowX="auto" mx={-1} px={1} aria-label="¿Con qué paga?" role="group">
+    <Box overflowX="auto" mx={-1} px={1} flex="1" minW={0} aria-label="¿Con qué paga?" role="group">
       <HStack gap={2} w="max-content">{elegibles.map(methodButton)}</HStack>
     </Box>
   );
@@ -518,12 +520,17 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
             )}
             {/* Las DOS cifras: pintando solo el faltante, un pedido de $500 con $300 abonados se
                 veía idéntico a uno de $200. */}
-            <Box textAlign="right" flexShrink={0}>
+            <Box textAlign="right" flexShrink={0} ml="auto">
               <Text fontSize="xs" color="fg.muted">Total {money(String(totalDelPedido), moneda)}</Text>
               <Text fontWeight="800" fontSize="2xl" lineHeight="1.1">
                 Falta {money(String(falta), moneda)}
               </Text>
             </Box>
+            {/* Visible: quien no sabe que la hoja se cierra tocando afuera se quedaba atrapado. */}
+            <IconButton aria-label="Cerrar cobro" variant="ghost" colorPalette="gray" minW="44px" minH="44px"
+              flexShrink={0} onClick={onClose}>
+              <LuX />
+            </IconButton>
           </HStack>
         </DrawerHeader>
 
@@ -617,6 +624,22 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
               <ByProducts rows={rows} selection={allRemaining
                 ? Object.fromEntries(rows.pending.map((r) => [r.line.id, r.free])) : selection}
                 payments={payments} currency={moneda} disabled={sending}
+                acciones={(
+                  <HStack gap={2} flexShrink={0}>
+                    <Button minH="44px" size="sm" variant={allRemaining ? 'solid' : 'outline'} colorPalette="gray"
+                      disabled={sending || rows.pending.length === 0} aria-pressed={allRemaining}
+                      onClick={() => { setAllRemaining((a) => !a); setSelection({}); }}>
+                      Todo lo que falta
+                    </Button>
+                    {can('orders.move_lines', user) && (
+                      <Button minH="44px" size="sm" variant="outline" colorPalette="gray"
+                        disabled={sending || !canMove || moveBlocked !== null}
+                        onClick={() => setView('move')}>
+                        <LuArrowRightLeft /> Pasar a otro pedido
+                      </Button>
+                    )}
+                  </HStack>
+                )}
                 onToggle={toggle}
                 onQty={(lineId, qty) => { setAllRemaining(false); setSelection((s) => ({ ...s, [lineId]: qty })); }} />
             )}
@@ -632,9 +655,10 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
 
             {/* Propina. El porcentaje es de lo que se cobra AHORA, no del total del pedido. */}
             {metodo !== null && v.monto > 0 && (
-              <Box>
-                <Text fontSize="sm" fontWeight="600" mb={2}>Propina</Text>
-                <HStack gap={2} flexWrap="wrap">
+              // La etiqueta a la izquierda y no encima: a 600 px cada renglón de alto cuenta.
+              <HStack align="center" gap={3}>
+                <Text fontSize="sm" fontWeight="600" w="84px" flexShrink={0}>Propina</Text>
+                <HStack gap={2} flexWrap="wrap" flex="1" minW={0}>
                   <Button minH={TAP_LG} variant={propina === '' ? 'solid' : 'outline'}
                     colorPalette={propina === '' ? undefined : 'gray'} onClick={() => setPropina('')}>
                     Sin
@@ -656,14 +680,15 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
                     aria-label="Otra propina"
                     value={propina} onChange={(e) => setPropina(e.target.value)} />
                 </HStack>
-              </Box>
+              </HStack>
             )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}
             {efectivo && (
               <Box>
-                <Text fontSize="sm" fontWeight="600" mb={2}>¿Con cuánto paga?</Text>
-                <HStack gap={2} flexWrap="wrap">
+                <HStack align="center" gap={3}>
+                <Text fontSize="sm" fontWeight="600" w="84px" flexShrink={0}>Paga con</Text>
+                <HStack gap={2} flexWrap="wrap" flex="1" minW={0}>
                   <Button minH={TAP_LG} variant={recibido === '' ? 'solid' : 'outline'}
                     colorPalette={recibido === '' ? undefined : 'gray'}
                     onClick={() => setRecibido('')}>
@@ -679,6 +704,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
                   <Input w="7rem" minH={TAP_LG} inputMode="decimal" placeholder="Otro"
                     aria-label="Con cuánto paga"
                     value={recibido} onChange={(e) => setRecibido(e.target.value)} />
+                </HStack>
                 </HStack>
                 {v.cambio > 0 && (
                   <Flex mt={2} align="center" justify="space-between" gap={2}>
@@ -699,54 +725,38 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
         </DrawerBody>
 
         {view === 'charge' && (
-          <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" maxH="55dvh" overflowY="auto">
+          // UNA fila: métodos y «Cobrar», como en el lienzo. Con el pie de tres pisos (resumen,
+          // métodos, botón) y su propio scroll, a 600 px los billetes y los métodos quedaban
+          // cortados detrás de él sin que se viera que había más.
+          <DrawerFooter borderTopWidth="1px" flexDirection="column" gap={2} alignItems="stretch" data-testid="pie-de-cobro">
             {rebote && (
               <Box borderWidth="1px" borderColor="red.emphasized" bg="red.subtle" borderRadius="md" px={3} py={2}>
                 <Text fontWeight="700" color="red.fg">{rebote.titulo}</Text>
                 {rebote.detalle && <Text fontSize="sm" color="fg.muted">{rebote.detalle}</Text>}
               </Box>
             )}
-            {mode === 'products' && (
-              <HStack justify="space-between" gap={2} flexWrap="wrap">
-                <Text fontSize="sm" fontWeight="600" lineClamp={1} flex="1" minW={0}>
-                  Esta persona: {chosenCount} producto{chosenCount === 1 ? '' : 's'}
-                  {chosenNames.length > 0 ? ` · ${chosenNames.join(' · ')}` : ''}
-                </Text>
-                <HStack gap={2} flexShrink={0}>
-                  <Button minH="44px" size="sm" variant={allRemaining ? 'solid' : 'outline'} colorPalette="gray"
-                    disabled={sending || rows.pending.length === 0} aria-pressed={allRemaining}
-                    onClick={() => { setAllRemaining((a) => !a); setSelection({}); }}>
-                    Todo lo que falta
-                  </Button>
-                  {can('orders.move_lines', user) && (
-                    <Button minH="44px" size="sm" variant="outline" colorPalette="gray"
-                      disabled={sending || !canMove || moveBlocked !== null}
-                      onClick={() => setView('move')}>
-                      <LuArrowRightLeft /> Pasar a otro pedido
-                    </Button>
-                  )}
-                </HStack>
-              </HStack>
-            )}
             {mode === 'products' && toMove.length > 0 && moveBlocked && (
               <Text fontSize="xs" color="fg.muted" textAlign="right">{moveBlocked}</Text>
             )}
-            {mode !== 'none' && methodsBlock}
             {!canCharge && aviso && (
               <Text fontSize="sm" color="fg.muted" textAlign="center">{aviso}</Text>
             )}
-            {/* Se cobra el MONTO, no lo que entregó el cliente: el excedente es cambio, no ingreso. */}
-            {saldado ? (
-              <Button w="100%" size="lg" minH={TAP_XL} variant="outline" colorPalette="gray" onClick={onClose}>
-                Cerrar
-              </Button>
-            ) : (
-              <Button w="100%" size="lg" minH={TAP_XL} colorPalette="green"
-                disabled={!canCharge} loading={cobrar.isPending}
-                onClick={() => cobrar.mutate()}>
-                {`Cobrar ${money(String(round2(v.monto + v.propina)), moneda)}`}
-              </Button>
-            )}
+            <HStack gap={2} align="stretch">
+              {mode !== 'none' && methodsBlock}
+              {/* Se cobra el MONTO, no lo que entregó el cliente: el excedente es cambio, no ingreso. */}
+              {saldado ? (
+                <Button flex={mode === 'none' ? '1' : undefined} minW="220px" size="lg" minH={TAP_XL}
+                  variant="outline" colorPalette="gray" onClick={onClose}>
+                  Cerrar
+                </Button>
+              ) : (
+                <Button flex={mode === 'none' ? '1' : undefined} minW="220px" flexShrink={0} size="lg" minH={TAP_XL}
+                  colorPalette="green" disabled={!canCharge} loading={cobrar.isPending}
+                  onClick={() => cobrar.mutate()}>
+                  {`Cobrar ${money(String(round2(v.monto + v.propina)), moneda)}`}
+                </Button>
+              )}
+            </HStack>
           </DrawerFooter>
         )}
       </DrawerContent>

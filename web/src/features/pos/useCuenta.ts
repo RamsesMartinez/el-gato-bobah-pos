@@ -12,6 +12,7 @@ import type {
 import { uuid } from '../../utils/uuid';
 import { armarVista, type Pendiente, type RenglonNuevo, type VistaCuenta } from './cuentaEnPantalla';
 import { cambioEnOtraTableta, type FotoDeCuenta } from './cambioEnOtraTableta';
+import { alReleer, anotarEco, esPropia, reiniciarPropias } from '../../stores/accionesPropias';
 import { nombreLibre } from './folio';
 import { useCuentasVivas } from './useCuentasVivas';
 import { esFalloDeRed, reportarResultado, useSinConexion } from './useSinConexion';
@@ -62,17 +63,10 @@ export function reiniciarCaptura(): void {
   bases.clear();
   colas.clear();
   adoptados.clear();
-  ultimaPropia = 0;
+  reiniciarPropias();
 }
 
 const real = (id: string) => adoptados.get(id) ?? id;
-
-// Cuándo escribió esta tableta por última vez: lo que el servidor devuelva en los siguientes
-// segundos es eco de lo propio, no un cambio de otra tableta.
-let ultimaPropia = 0;
-const VENTANA_PROPIA_MS = 3000;
-const marcarPropia = () => { ultimaPropia = Date.now(); };
-const recienEscribio = () => Date.now() - ultimaPropia < VENTANA_PROPIA_MS;
 
 function fotoDeBorrador(d: DraftView): FotoDeCuenta {
   return {
@@ -102,7 +96,10 @@ function cuantoEnVuelo(delta: number) {
 
 const claveDraft = (id: string) => ['pos', 'draft', id] as const;
 
+// guardarVista pinta lo que respondió una escritura de esta tableta y lo anota como suyo: cuando el
+// servidor lo repita por el canal de eventos no es un cambio de otra.
 function guardarVista(qc: QueryClient, v: DraftView) {
+  anotarEco(fotoDeBorrador(v));
   qc.setQueryData(claveDraft(v.id), v);
   qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
 }
@@ -182,18 +179,18 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
   }, [seleccion, draftQ.error, orderQ.error, olvidar]);
 
   // LO QUE CAMBIÓ EN OTRA TABLETA (FR-017). Se compara la foto anterior de ESTA cuenta con la que
-  // acaba de llegar; lo propio —escrituras de los últimos segundos, un cobro en curso— no avisa.
+  // acaba de llegar; lo propio —una escritura en vuelo, la foto que dejó una acción de esta tableta
+  // (`accionesPropias`), un cobro en curso— no avisa.
   const foto = seleccion?.kind === 'draft'
     ? (draftQ.data ? fotoDeBorrador(draftQ.data) : undefined)
     : (orderQ.data ? fotoDePedido(orderQ.data) : undefined);
   const claveSel = seleccion ? `${seleccion.kind}:${seleccion.id}` : '';
   const anterior = useRef<{ clave: string; foto?: FotoDeCuenta }>({ clave: '' });
-  const enVueloAhora = captura.enVuelo;
   useEffect(() => {
     const prev = anterior.current;
     anterior.current = { clave: claveSel, foto };
     if (prev.clave !== claveSel || !foto) return;
-    const propia = enVueloAhora > 0 || cobrando || recienEscribio();
+    const propia = useCaptura.getState().enVuelo > 0 || cobrando || esPropia(foto);
     const aviso = cambioEnOtraTableta(prev.foto, foto, propia);
     if (aviso) toaster.create({ title: aviso, description: 'La cuenta se actualizó.', type: 'info' });
     const d = draftQ.data;
@@ -204,6 +201,21 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
     // Solo cuando llega una foto nueva de la cuenta abierta.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foto?.estado, foto?.falta, JSON.stringify(foto?.renglones), claveSel]);
+
+  // Cómo releer la cuenta abierta al terminar una acción propia (cobrar, quitar, cancelar): esa
+  // foto es el eco que no se avisa.
+  useEffect(() => alReleer(async () => {
+    const s = usePosStore.getState().selected;
+    if (!s) return undefined;
+    if (s.kind === 'order') {
+      const o = await qc.fetchQuery({ queryKey: ['orders', s.id], queryFn: () => posApi.order(s.id), staleTime: 0 });
+      return fotoDePedido(o);
+    }
+    if (s.id in useCaptura.getState().naciendo) return undefined;
+    const id = real(s.id);
+    const d = await qc.fetchQuery({ queryKey: claveDraft(id), queryFn: () => posApi.getDraft(id), staleTime: 0 });
+    return fotoDeBorrador(d);
+  }), [qc]);
 
   // Una cuenta que ya se mandó o se descartó en otra tableta deja de ser «la que se captura».
   const draftVivo = draftQ.data && draftQ.data.status === 'capturando' ? draftQ.data : undefined;
@@ -223,6 +235,8 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
   const recargar = async (id: string): Promise<DraftView | undefined> => {
     try {
       const v = await qc.fetchQuery({ queryKey: claveDraft(id), queryFn: () => posApi.getDraft(id), staleTime: 0 });
+      // La recarga la pide esta tableta: lo que trae ya se avisó (o no hacía falta) aquí mismo.
+      anotarEco(fotoDeBorrador(v));
       qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
       return v;
     } catch {
@@ -234,8 +248,6 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
   // entró merece aviso: si la cuenta recargada ya está como se pidió, no lo merece.
   const alRechazo = async (e: unknown, id: string, yaQuedo: (d: DraftView) => boolean) => {
     reportarResultado(e);
-    // La recarga la pide esta tableta: su eco no es un cambio de otra.
-    marcarPropia();
     if (esFalloDeRed(e)) {
       toaster.create({ title: 'No se guardó el cambio', description: mensajeDeError(e), type: 'error' });
       return;
@@ -251,7 +263,7 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
   const escribir = (cuenta: string, op: (id: string) => Promise<DraftView>, yaQuedo: (d: DraftView) => boolean) => {
     cuantoEnVuelo(1);
     encolar(cuenta, () => op(real(cuenta)))
-      .then((v) => { marcarPropia(); reportarResultado(null); guardarVista(qc, v); })
+      .then((v) => { reportarResultado(null); guardarVista(qc, v); })
       .catch((e) => alRechazo(e, real(cuenta), yaQuedo))
       .finally(() => cuantoEnVuelo(-1));
   };
@@ -295,7 +307,7 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
       enVuelo: Math.max(0, s.enVuelo - 1),
     }));
     encolar(cuenta, () => ejecutarAgregado(cuenta, linea))
-      .then((v) => { marcarPropia(); reportarResultado(null); guardarVista(qc, v); fuera(); })
+      .then((v) => { reportarResultado(null); guardarVista(qc, v); fuera(); })
       .catch((e: unknown) => {
         fuera();
         reportarResultado(e);
