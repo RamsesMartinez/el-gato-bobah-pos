@@ -403,7 +403,14 @@ func bindDraftName(ctx context.Context, q *db.Queries, propuesto string) (string
 	if err := q.MarcarFolioConsumido(ctx, db.MarcarFolioConsumidoParams{Scheme: db.FolioScheme(esquema), Name: nombre}); err != nil {
 		return "", "", err
 	}
-	return nombre, db.FolioScheme(esquema), nil
+	// Pasado el largo de la lista en el turno, la bolsa ofrece animales ya cantados hoy. La cuenta
+	// nace ya con su número de vuelta («Persa 2») y no al mandarla: el nombre de la ficha y del
+	// ticket es el que se le dice al cliente, y el pedido tiene que llevar ese mismo (D-2).
+	numerado := domain.SiguienteFolioLibre(nombre, append(append([]string(nil), usados...), vivos...))
+	if numerado == "" {
+		return "", "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)
+	}
+	return numerado, db.FolioScheme(esquema), nil
 }
 
 // Get devuelve la cuenta, también si ya se envió o se descartó: la pantalla necesita saber que otra
@@ -1138,7 +1145,8 @@ func discardAndRelease(ctx context.Context, q *db.Queries, p db.DiscardDraftPara
 		return nil // lo «Nuevo» de un pedido no tiene nombre propio
 	}
 	return q.ReleaseFolioName(ctx, db.ReleaseFolioNameParams{
-		Scheme: *res.FolioScheme, Name: *res.FolioName, TakenBefore: res.CreatedAt,
+		// La bolsa guarda animales: «Persa 2» suelta a «Persa».
+		Scheme: *res.FolioScheme, Name: domain.FolioAnimal(*res.FolioName), TakenBefore: res.CreatedAt,
 	})
 }
 

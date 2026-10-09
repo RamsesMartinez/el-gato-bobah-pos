@@ -43,14 +43,47 @@ export async function ponerUnProducto(page: Page, nombre = 'Dedos de Queso Pza')
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
   await expect(page.getByText('Guardando…')).toHaveCount(0, { timeout: 15_000 });
+  await cerrarBusqueda(page);
+}
+
+// cerrarBusqueda deja de buscar, como el operador después de tocar el producto. Con el panel del
+// ticket abierto el campo de búsqueda ocupa el lugar de la fila de cuentas: mientras tenga texto, la
+// fila no está en pantalla y cualquier afirmación sobre ella falla por algo que no es la fila.
+//
+// Con el panel cerrado el campo no tapa la fila, pero conserva el texto, y al abrir el panel la tapa:
+// por eso también se vacía.
+export async function cerrarBusqueda(page: Page) {
+  const cerrar = page.getByRole('button', { name: 'Cerrar búsqueda' });
+  if (await cerrar.isVisible().catch(() => false)) { await cerrar.click(); return; }
+  const limpiar = page.getByRole('button', { name: 'Limpiar', exact: true });
+  if (await limpiar.isVisible().catch(() => false)) await limpiar.click();
+}
+
+// nombreDeLaCuentaActiva: el nombre de la cuenta que ESTA tableta tiene abierta, leído de su ficha.
+//
+// No se toma «la primera cuenta en captura» del servidor: el ambiente es compartido, otras suites
+// capturan a la vez, y la primera de la lista es la de otro.
+export async function nombreDeLaCuentaActiva(page: Page): Promise<string> {
+  await cerrarBusqueda(page);
+  const activa = fichas(page).and(page.locator('[aria-pressed="true"]'));
+  await expect(activa).toBeVisible({ timeout: 15_000 });
+  const etiqueta = (await activa.getAttribute('aria-label')) ?? '';
+  return etiqueta.split(' · ')[0];
 }
 
 // abrirTicket: a 1024×600 el ticket puede ser un panel, una píldora o una barra abajo según el ancho
 // que quede. Se abre por el que esté.
+//
+// Se ESPERA a que aparezca uno de los dos: justo después de un `goto` la cuenta todavía se está
+// cargando, y mirar una sola vez dejaba el panel cerrado y al test buscando el número del pedido
+// en una pantalla que no lo enseña.
 export async function abrirTicket(page: Page) {
-  if (await page.getByRole('button', { name: 'Ocultar pedido' }).isVisible().catch(() => false)) return;
-  const resumen = page.getByRole('button', { name: /art ·|falta \$/ }).first();
-  if (await resumen.isVisible().catch(() => false)) await resumen.click();
+  const ocultar = page.getByRole('button', { name: 'Ocultar pedido' });
+  const resumen = page.getByRole('button', { name: /art ·|falta \$|^Ver pedido$/ });
+  await expect(ocultar.or(resumen).first()).toBeVisible({ timeout: 30_000 });
+  if (await ocultar.isVisible().catch(() => false)) return;
+  await resumen.first().click();
+  await expect(ocultar).toBeVisible();
 }
 
 // El botón de cobrar: «Enviar y cobrar $X» con algo nuevo, «Cobrar $X» sin nada nuevo. En la píldora

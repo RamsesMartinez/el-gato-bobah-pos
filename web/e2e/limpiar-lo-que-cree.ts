@@ -13,6 +13,11 @@ import { randomUUID } from 'node:crypto';
 //
 // Desde la 030 también hay CUENTAS EN CAPTURA (lo que se toca antes de mandar a cocina vive en el
 // servidor): las que creó la suite se descartan, y su nombre vuelve a la bolsa.
+// deOtraPersona: lo que se abrió DURANTE la corrida tampoco es todo de la suite. El ambiente es
+// compartido y otras suites capturan a la vez; las suyas llevan nombre de cliente, que esta suite
+// nunca pone. Sin esta guarda, la limpieza les cobraba y les descartaba las cuentas a media prueba.
+const deOtraPersona = (c: { customerName: string | null }) => (c.customerName ?? '').trim() !== '';
+
 export default async function limpiarLoQueCree() {
   if (!existsSync(MARCA)) {
     console.warn('[e2e] sin marca de inicio: no se limpia nada para no tocar pedidos ajenos.');
@@ -61,6 +66,7 @@ export default async function limpiarLoQueCree() {
   let descartadas = 0;
   if (!cuentasQueYaEstaban.has('*')) {
     for (const c of await cuentasVivas(jwt)) {
+      if (deOtraPersona(c)) continue;
       // Las cuentas nuevas de la suite, y lo «Nuevo» que la suite dejó sobre sus propios pedidos.
       const id = c.kind === 'draft' ? c.draftId
         : (c.orderId !== null && !yaEstaban.has(c.orderId) ? c.pendingDraftId : null);
@@ -72,7 +78,7 @@ export default async function limpiarLoQueCree() {
   }
 
   for (const o of await pedidosEnCurso(jwt)) {
-    if (yaEstaban.has(o.id)) continue;
+    if (yaEstaban.has(o.id) || deOtraPersona(o)) continue;
     // Entregar primero: un pedido cobrado pero sin entregar sigue en curso y bloquea el corte.
     if (o.enPreparacion) {
       await fetch(`${API}/orders/${o.id}/deliver`, { method: 'POST', headers: cab, body: '{}' });

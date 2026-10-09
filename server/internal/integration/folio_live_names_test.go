@@ -131,3 +131,79 @@ func TestBoundFolioNameReachesTheOrder(t *testing.T) {
 		t.Fatalf("con «Persa» ya cantado en el turno salió %q, quería «Persa 2» (nunca otro animal)", got)
 	}
 }
+
+// EL NOMBRE QUE SE CANTA AL NACER ES EL QUE LLEVA EL PEDIDO, TAMBIÉN CUANDO EL DÍA YA DIO LA VUELTA
+// A LA LISTA (D-2).
+//
+// Lo encontró el e2e del ambiente de pruebas (caso 23): pasado el largo de la lista en un turno,
+// la bolsa vuelve a ofrecer nombres ya cantados hoy. La cuenta nacía «Pixie-bob» —eso decían su
+// ficha, su ticket y la cuenta impresa— y al mandarla a cocina el pedido salía «Pixie-bob 2». Al
+// cliente se le dijo un nombre y la comanda canta otro. En un local con más pedidos por turno que
+// nombres en la lista, pasa todos los días.
+func TestADraftBornAfterTheListRanOutKeepsItsNameInTheOrder(t *testing.T) {
+	k := newDraftsKit(t)
+	session := abrirCajaPrincipal(t, k.st, k.user)
+	cafe := makeProduct(t, k.st, "Café de la vuelta", pesos("30"), false)
+	lista := domain.NombresDelEsquema(domain.EsquemaRazas)
+	// Todos los nombres de la lista ya se cantaron en el turno, y la bolsa está vacía.
+	if _, err := k.st.Pool.Exec(context.Background(), `
+		insert into folio_consumido (scheme, name) select 'razas', n from unnest($1::text[]) n on conflict do nothing`,
+		lista); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.st.Pool.Exec(context.Background(), `
+		insert into orders (client_uuid, business_date, daily_number, service_type, opened_by, subtotal, total, status,
+		                    register_session_id, folio_name)
+		select gen_random_uuid(), $3, 1000 + ord, 'mostrador', $2, 0, 0, 'entregada', $1, n
+		from unnest($4::text[]) with ordinality as t(n, ord)`, session, k.user, fixedNow, lista); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, propuesto := range []string{"", "Persa"} {
+		d := k.newDraftNamed(t, propuesto, addOf(cafe, "1"))
+		nacio := *d.FolioName
+		if contieneNombre(lista, nacio) {
+			t.Fatalf("la cuenta nació %q, un nombre ya cantado hoy: al mandarla cambiaría de nombre", nacio)
+		}
+		res, err := k.drafts.Send(k.ctx, d.ID, k.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Order.FolioName != nacio {
+			t.Fatalf("la cuenta nació %q y el pedido salió %q: la comanda canta un nombre que el cliente no oyó",
+				nacio, res.Order.FolioName)
+		}
+	}
+}
+
+// DESCARTAR UNA CUENTA CON NÚMERO DE VUELTA DEVUELVE SU ANIMAL A LA BOLSA (D-7).
+//
+// La bolsa guarda animales, no «Persa 2». Soltar el nombre con número no soltaría nada.
+func TestDiscardingANumberedDraftReleasesItsAnimal(t *testing.T) {
+	k := newDraftsKit(t)
+	session := abrirCajaPrincipal(t, k.st, k.user)
+	cafe := makeProduct(t, k.st, "Café que se descarta", pesos("30"), false)
+	lista := domain.NombresDelEsquema(domain.EsquemaRazas)
+	if _, err := k.st.Pool.Exec(context.Background(), `
+		insert into orders (client_uuid, business_date, daily_number, service_type, opened_by, subtotal, total, status,
+		                    register_session_id, folio_name)
+		select gen_random_uuid(), $3, 1000 + ord, 'mostrador', $2, 0, 0, 'entregada', $1, n
+		from unnest($4::text[]) with ordinality as t(n, ord)`, session, k.user, fixedNow, lista); err != nil {
+		t.Fatal(err)
+	}
+	d := k.newDraftNamed(t, "Persa", addOf(cafe, "1"))
+	if *d.FolioName != "Persa 2" {
+		t.Fatalf("la cuenta nació %q, quería «Persa 2»", *d.FolioName)
+	}
+	if err := k.drafts.Discard(k.ctx, d.ID, k.user); err != nil {
+		t.Fatal(err)
+	}
+	var queda int
+	if err := k.st.Pool.QueryRow(context.Background(),
+		`select count(*) from folio_consumido where scheme = 'razas' and name = 'Persa'`).Scan(&queda); err != nil {
+		t.Fatal(err)
+	}
+	if queda != 0 {
+		t.Fatal("descartar «Persa 2» dejó a «Persa» fuera de la bolsa")
+	}
+}

@@ -27,6 +27,8 @@ import { CancelPendingSheet } from './CancelPendingSheet';
 import { useSessionStore } from '../../stores/session';
 import { can } from '../../app/permissions';
 import { round2 } from '../../domain/numeros';
+import { montoDevolvible } from '../../domain/devolucion';
+import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { tituloDeEntregadas, vacioDeEntregadas } from './ventanaDeEntregadas';
 
@@ -225,6 +227,7 @@ export function OrdersBoardPage() {
     puedeDevolverPagos: can('payments.void', user),
     puedeCancelar: can('orders.cancel', user),
     puedeQuitarFaltante: can('orders.cancel_pending', user),
+    zona: horaNegocio.zona,
   };
 
   return (
@@ -250,7 +253,7 @@ export function OrdersBoardPage() {
       </SimpleGrid>
 
       {canRefund && (
-        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} onRefund={refund} onTicket={acciones.ticket}
+        <Entregadas orders={entregadas} corteDeVista={settings?.corteDeVista} zona={horaNegocio.zona} onRefund={refund} onTicket={acciones.ticket}
           onAbrirCuenta={puedeAbrirCuenta ? acciones.abrirCuenta : undefined}
           onCobrar={cobraAqui ? setCobrando : undefined} />
       )}
@@ -326,6 +329,21 @@ interface Acciones {
   puedeCancelar: boolean;
   puedeDevolverPagos: boolean;
   puedeQuitarFaltante: boolean;
+  // La zona del negocio: la hora del pedido se lee en la del local, no en la de la tableta.
+  zona: string;
+}
+
+// Lo ya devuelto de un pedido, si hubo algo.
+const devueltoDe = (o: BoardOrder) => round2(Number(o.refund ?? 0));
+
+// MarcaDeDevolucion: que se vea que ya se devolvió, y cuánto, antes de que alguien lo intente
+// otra vez con el cliente enfrente.
+function MarcaDeDevolucion({ o }: { o: BoardOrder }) {
+  const devuelto = devueltoDe(o);
+  if (devuelto <= 0) return null;
+  return (
+    <Badge colorPalette="red" variant="subtle" flexShrink={0}>Devuelto {money(devuelto, o.currency)}</Badge>
+  );
 }
 
 // Con más pendientes que esto, la lista de la tarjeta se recorta y hace scroll propio.
@@ -380,6 +398,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
               #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}
               {o.customerName ? ` · ${o.customerName}` : ''}
               {renglonesDe(o).length > 1 ? ` · ${entregados(o)}/${renglonesDe(o).length}` : ''}
+              {` · ${diaCortoYHora(o.openedAt, acciones.zona)}`}
             </Text>
           </HStack>
         </Box>
@@ -390,6 +409,7 @@ function Tarjeta({ o, acciones }: { o: BoardOrder; acciones: Acciones }) {
               debe {money(o.outstanding, o.currency)}
             </Text>
           )}
+          <MarcaDeDevolucion o={o} />
         </VStack>
       </Flex>
 
@@ -571,8 +591,9 @@ function Renglon({ l, onEntregar, onQuitar }: {
 
 // Entregadas del día: solo admin/gerente, para reembolsar y para cobrar lo que quedó pendiente.
 // TOPADA para no competir con el flujo operativo de arriba: en una jornada llena son decenas.
-function Entregadas({ orders, corteDeVista, onRefund, onTicket, onAbrirCuenta, onCobrar }: {
+function Entregadas({ orders, corteDeVista, zona, onRefund, onTicket, onAbrirCuenta, onCobrar }: {
   orders: BoardOrder[];
+  zona: string;
   // El negocio elige cuándo se vacía esta lista; el rótulo tiene que decir esa misma ventana.
   corteDeVista?: string;
   onRefund: (o: BoardOrder) => void;
@@ -598,7 +619,7 @@ function Entregadas({ orders, corteDeVista, onRefund, onTicket, onAbrirCuenta, o
           {orders.slice(0, ENTREGADAS_VISIBLES).map((o) => {
             const debe = Number(o.outstanding) > 0;
             return (
-              <Flex key={o.id} bg="bg.panel" borderWidth="1px"
+              <Flex key={o.id} data-delivered-row bg="bg.panel" borderWidth="1px"
                 borderColor={debe ? 'orange.300' : 'border'} borderRadius="lg"
                 px={3} py={1.5} justify="space-between" align="center" gap={2}>
                 <Box minW={0}>
@@ -606,9 +627,11 @@ function Entregadas({ orders, corteDeVista, onRefund, onTicket, onAbrirCuenta, o
                   <Text fontSize="xs" color="fg.muted" lineClamp={1}>
                     #{o.number} · {SERVICE_META[o.serviceType]?.label ?? o.serviceType}
                     {o.customerName ? ` · ${o.customerName}` : ''}
+                    {` · ${diaCortoYHora(o.openedAt, zona)}`}
                   </Text>
                 </Box>
                 <HStack gap={2} flexShrink={0}>
+                  <MarcaDeDevolucion o={o} />
                   <Text fontWeight="700">{money(o.total, o.currency)}</Text>
                   {/* Aquí es donde el pendiente deja de tener remedio: el cliente ya se fue con la
                       comida. Por eso el camino a su cuenta vive junto al aviso. */}
@@ -627,8 +650,9 @@ function Entregadas({ orders, corteDeVista, onRefund, onTicket, onAbrirCuenta, o
                       misma tarjeta, y tocarlo anotaba $220 de pérdida por un ingreso que nunca
                       ocurrió — mientras la cuenta por cobrar desaparecía del contador sin haberse
                       cobrado. Ofrecer una acción que el servidor va a rechazar es peor que no
-                      ofrecerla: el operador la toca con el cliente enfrente. */}
-                  {Number(o.total) - Number(o.outstanding) > 0 && (
+                      ofrecerla: el operador la toca con el cliente enfrente. Y lo cobrado se resta
+                      de lo ya devuelto: devuelto todo, el botón solo podía rebotar. */}
+                  {montoDevolvible(Number(o.total) - Number(o.outstanding), devueltoDe(o)) > 0 && (
                     <Button size="sm" minH={TAP} variant="outline" colorPalette="red"
                       onClick={() => onRefund(o)}>Devolver</Button>
                   )}

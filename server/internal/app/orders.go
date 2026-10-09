@@ -1584,11 +1584,19 @@ func resolverFolio(ctx context.Context, q *db.Queries, cmd CreateOrderCmd, sessi
 	// aunque esté fuera de la bolsa —lo sacó esa misma cuenta— y se vuelve a marcar por si la bolsa
 	// se vació entretanto. Si el turno ya lo cantó (la cuenta cruzó un cierre de turno), cambia de
 	// número y no de animal.
-	if bound := domain.SanitizarFolio(cmd.BoundFolioName); bound != "" {
-		if err := marcar(bound); err != nil {
+	//
+	// Puede venir ya numerado («Persa 2»): la cuenta nació después de que el turno pasó del largo de
+	// la lista. Se marca su animal, y si el turno ya cantó ese mismo nombre se numera el animal, no el
+	// nombre («Persa 3», nunca «Persa 2 2»).
+	if bound := domain.BoundFolio(cmd.BoundFolioName); bound != "" {
+		animal := domain.FolioAnimal(bound)
+		if err := marcar(animal); err != nil {
 			return "", err
 		}
-		if libre := domain.SiguienteFolioLibre(bound, usados); libre != "" {
+		if !contiene(usados, bound) {
+			return bound, nil
+		}
+		if libre := domain.SiguienteFolioLibre(animal, usados); libre != "" {
 			return libre, nil
 		}
 		return "", fmt.Errorf("%w: se acabaron los nombres del día", domain.ErrConflict)

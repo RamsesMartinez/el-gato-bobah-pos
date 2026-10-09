@@ -60,9 +60,16 @@ test('X7 · los controles del renglón del ticket miden 44 px y la papelera va a
   const cajaQuitar = (await quitar.boundingBox())!;
   const hueco = Math.max(cajaQuitar.x - (cajaMas.x + cajaMas.width), cajaMas.x - (cajaQuitar.x + cajaQuitar.width));
   expect(hueco, 'la papelera quedó pegada al «+»').toBeGreaterThan(40);
-  // Y el renglón mide un solo control de alto, no dos.
+  // Y los tres controles van en UN renglón, no apilados bajo el nombre. Se mide por el centro de
+  // cada control y no por el alto del renglón: un nombre largo («Dedos de Queso Pza») se parte en
+  // dos líneas en el ancho del panel y el renglón crece sin que ningún control se haya movido.
+  const cajaMenos = (await menos.boundingBox())!;
+  const centro = (c: { y: number; height: number }) => c.y + c.height / 2;
+  for (const [nombre, c] of [['−', cajaMenos], ['Quitar', cajaQuitar]] as const) {
+    expect(Math.abs(centro(c) - centro(cajaMas)), `"${nombre}" quedó en otra línea que el «+»`).toBeLessThanOrEqual(8);
+  }
   const renglon = (await quitar.locator('..').boundingBox())!;
-  expect(renglon.height, `el renglón nuevo mide ${renglon.height}px`).toBeLessThanOrEqual(64);
+  expect(renglon.height, `el renglón nuevo mide ${renglon.height}px: ¿se apilaron los controles?`).toBeLessThan(88);
 });
 
 // T-cuenta · DESDE EL COBRO SE IMPRIME LA CUENTA DEL PEDIDO, Y LA HOJA SIGUE CABIENDO.
