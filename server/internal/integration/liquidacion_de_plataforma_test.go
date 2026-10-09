@@ -153,7 +153,10 @@ func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
 		"tasa fuera de rango":                func(s *domain.Settlement) { p := decimal.RequireFromString("180"); s.CommissionPct = &p },
 		"descuento de plataforma > el total": func(s *domain.Settlement) { s.DiscountPlatform = decimal.RequireFromString("500") },
 		"importe por encima del tope":        func(s *domain.Settlement) { s.ReportedGross = domain.MaxMoney.Add(decimal.NewFromInt(1)) },
-		"exponente absurdo":                  func(s *domain.Settlement) { s.NetAmount = decimal.RequireFromString("1e100000000") },
+		// Con decimal.New y no con RequireFromString: desde decimal 1.5 el parser ya rechaza un
+		// exponente así, pero un valor armado en código no pasa por él y el servicio tiene que
+		// rechazarlo igual.
+		"exponente absurdo": func(s *domain.Settlement) { s.NetAmount = decimal.New(1, 100000000) },
 	}
 	for nombre, toca := range casos {
 		t.Run(nombre, func(t *testing.T) {

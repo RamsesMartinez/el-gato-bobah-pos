@@ -7,7 +7,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
+func dec(s string) decimal.Decimal { return d(s) }
 
 func decPtr(s string) *decimal.Decimal {
 	v := dec(s)

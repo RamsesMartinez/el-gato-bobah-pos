@@ -13,7 +13,6 @@ import (
 // la cuenta se guarda desde el primer toque y un valor absurdo guardado ahí revienta después, al
 // mandarla a cocina, con la mesa esperando.
 func TestValidateDraftLine(t *testing.T) {
-	d := decimal.RequireFromString
 	nota := func(n int) string { return strings.Repeat("a", n) }
 	casos := []struct {
 		nombre string
