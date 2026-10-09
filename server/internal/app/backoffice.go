@@ -240,6 +240,9 @@ type CashMovementView struct {
 	UserName   string          `json:"userName"`
 	TransferID *int64          `json:"transferId"` // no-nil si el movimiento es una pierna de un traspaso
 	ExpenseID  *int64          `json:"expenseId"`  // no-nil si es la salida de un gasto (va en la sección Gastos)
+	// IsRefund: la salida de caja de una devolución (spec 029). El desglose la cuenta en
+	// «Devoluciones» y la tabla la nombra igual, no como una salida más.
+	IsRefund bool `json:"isRefund"`
 }
 
 // CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
@@ -1313,6 +1316,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
+			IsRefund: m.IsRefund,
 		})
 	}
 	return view, nil
@@ -1805,6 +1809,7 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
+			IsRefund: m.IsRefund,
 		})
 	}
 	// El mismo ocultamiento que en el turno abierto, y aquí no es redundante: este endpoint

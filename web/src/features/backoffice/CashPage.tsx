@@ -51,6 +51,7 @@ function hhmm(iso: string, zona: string) {
 // Tipo del movimiento para la columna "Tipo": traspaso (azul) o entrada/salida (verde/rojo).
 function movementType(m: CashMovement): { label: string; palette: string } {
   if (m.transferId !== null) return { label: 'Traspaso', palette: 'blue' };
+  if (m.isRefund) return { label: 'Devolución', palette: 'orange' };
   return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
 }
 
@@ -361,7 +362,9 @@ interface CorteData {
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
-function CorteSummary({ data }: { data: CorteData }) {
+// `abierto`: el turno no se ha cerrado, así que no hay nada declarado y la conciliación no se pinta —
+// «Declarado $0 · Dif. $0» se leería como un corte cuadrado (spec 029).
+export function CorteSummary({ data, abierto = false }: { data: CorteData; abierto?: boolean }) {
   const horaNegocio = useHoraDelNegocio();
   const cur = data.currency;
   const totals = data.totals ?? [];
@@ -370,7 +373,7 @@ function CorteSummary({ data }: { data: CorteData }) {
   return (
     <VStack align="stretch" gap={4}>
       <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
-      {totals.length > 0 && (
+      {totals.length > 0 && !abierto && (
         <Section title="Conciliación (sistema vs declarado)">
           <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
         </Section>
@@ -407,7 +410,7 @@ function CorteDetail({ id }: { id: number }) {
           <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
         </>)}
       </SimpleGrid>
-      <CorteSummary data={data} />
+      <CorteSummary data={data} abierto={!data.closedAt} />
       <VentasDelCorte session={data} zona={horaNegocio.zona} />
       {data.notes && (
         <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>

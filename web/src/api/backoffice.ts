@@ -40,6 +40,8 @@ export interface CashMovement {
   userName: string;
   transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
+  // La salida de caja de una devolución (spec 029): se nombra Devolución, como en el desglose.
+  isRefund?: boolean;
 }
 // PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
 // uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.

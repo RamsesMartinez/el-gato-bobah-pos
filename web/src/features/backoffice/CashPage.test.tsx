@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
 import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
@@ -523,4 +523,24 @@ test('el formulario de movimientos de efectivo mide 44 px', () => {
   for (const campo of [screen.getByPlaceholderText('Monto'), screen.getByPlaceholderText(/Concepto/)]) {
     expect(getComputedStyle(campo).minHeight).toBe('44px');
   }
+});
+
+// La salida de caja de una devolución se llama Devolución, igual que en el desglose: decía «Salida»
+// mientras el desglose ya no la contaba en «Salidas de efectivo».
+test('la salida de caja de una devolución se etiqueta Devolución', () => {
+  wrap(<MovementsTable movements={[mov({ kind: 'salida', amount: '73', concept: 'Devolución: Cliente se fue', isRefund: true })]} currency="MXN" />);
+  expect(screen.getByText('Devolución')).toBeInTheDocument();
+  expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});
+
+// Un turno abierto no tiene nada declarado: una conciliación con «Declarado $0 · Dif. $0» se lee
+// como un corte cuadrado.
+test('el detalle de un turno abierto no pinta la conciliación', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '800', declared: '0', difference: '0', autoDeclare: false, requiresEntry: false },
+  ];
+  const data = { openingCash: '500', currency: 'MXN', breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+    totals, movements: [], expenses: [] };
+  render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} abierto /></Provider></QueryClientProvider>);
+  expect(screen.queryByText(/Conciliación/)).not.toBeInTheDocument();
 });
