@@ -71,7 +71,12 @@ export default async function limpiarLoQueCree() {
       const id = c.kind === 'draft' ? c.draftId
         : (c.orderId !== null && !yaEstaban.has(c.orderId) ? c.pendingDraftId : null);
       if (!id || cuentasQueYaEstaban.has(id)) continue;
-      const r = await fetch(`${API}/pos/drafts/${id}/discard`, { method: 'POST', headers: cab, body: '{}' });
+      // Descartar exige la versión de la cuenta: se lee justo antes, la de la fila puede ser vieja.
+      const vista = await fetch(`${API}/pos/drafts/${id}`, { headers: cab });
+      const version = vista.ok ? ((await vista.json()) as { version: number }).version : null;
+      const r = await fetch(`${API}/pos/drafts/${id}/discard`, {
+        method: 'POST', headers: cab, body: JSON.stringify({ expectedVersion: version }),
+      });
       if (r.ok) descartadas++;
       else quedaron.push(`la cuenta ${c.folioName ?? c.draftId} (${r.status})`);
     }

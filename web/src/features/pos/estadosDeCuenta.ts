@@ -16,6 +16,8 @@ export function loQueFalta(c: AccountItem): string {
       return `falta ${money(falta)}`;
     case 'delivered_owes':
       return `debe ${money(falta)}`;
+    case 'closed_with_new':
+      return '';
   }
 }
 
