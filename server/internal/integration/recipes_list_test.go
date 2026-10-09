@@ -17,6 +17,7 @@ import (
 
 // LA LISTA DE RECETAS: lo que falta, lo que vino de FUDO y lo listo, con lo más vendido primero.
 func TestRecipeListUnderTheAppRole(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, owner, "cajero_recetas", "cajero")
@@ -239,6 +240,7 @@ func TestRecipeListUnderTheAppRole(t *testing.T) {
 
 // LOS EXTRAS: su grupo, sus ventas como extra y los que se llaman igual en otro grupo.
 func TestRecipeListOfExtras(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, owner, "cajero_extras_rec", "cajero")

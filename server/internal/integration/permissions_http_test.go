@@ -22,6 +22,7 @@ import (
 // JSON CRUDO: deserializar a un []string borra la diferencia entre `null` y `[]`, y un `null`
 // tumba la pantalla al primer `.includes()` sin un solo error en el servidor.
 func TestEverySessionPathCarriesPermissionsAsAnArray(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)

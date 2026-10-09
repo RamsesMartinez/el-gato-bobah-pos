@@ -18,6 +18,7 @@ import (
 // Un negocio nace con la zona de México, sin que nadie configure nada: el producto se vende aquí y
 // el local que lo estrena no debería tener que tocar ajustes para que su primer corte cuadre.
 func TestNegocioNaceConZonaDeMexico(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -38,6 +39,7 @@ func TestNegocioNaceConZonaDeMexico(t *testing.T) {
 // siguiente, tiene que quedar en el día de HOY. Con la fecha calculada en UTC el folio se
 // reiniciaba a media cena y salían dos tickets #1 la misma noche.
 func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -97,6 +99,7 @@ func TestVentaDeLaNocheCuentaEnElDiaDelLocal(t *testing.T) {
 // Ahora ninguno de los dos lee al otro, y este test prueba las dos mitades a la vez a propósito:
 // si alguien vuelve a acoplarlas, una de las dos aserciones se cae.
 func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -162,6 +165,7 @@ func TestElFolioSigueAlTurnoAunqueCruceLaMedianoche(t *testing.T) {
 // se usa cae a UTC para no tumbar un cobro, así que si nunca se rechazara al guardar, ese fallback
 // correría las fechas de los cortes en silencio durante meses.
 func TestLaZonaSeCambiaYSeValidaAlGuardar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")

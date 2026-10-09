@@ -38,6 +38,7 @@ func encenderSoloPin(t *testing.T, st *store.Store, admin int64) error {
 // guardado no se puede leer el largo de un PIN ni saber si dos personas comparten uno. Recapturar
 // es el único momento en que el PIN está en claro y se puede validar las dos cosas.
 func TestEncenderSoloPinObligaARecapturarLosPins(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -74,6 +75,7 @@ func TestEncenderSoloPinObligaARecapturarLosPins(t *testing.T) {
 // Sin el secreto del servidor no hay forma de comparar dos PINs por igualdad, así que el modo NO se
 // enciende. Fail-closed: nunca se activa un modo cuya única protección no se puede aplicar.
 func TestSinSecretoElModoNoSeEnciende(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "") // sin pepper
@@ -93,6 +95,7 @@ func TestSinSecretoElModoNoSeEnciende(t *testing.T) {
 // Con los PINs en regla sí se enciende. Y apagarlo nunca tiene compuerta: volver al modo seguro
 // siempre se puede.
 func TestConPinsEnReglaSeEnciendeYSePuedeApagar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -127,6 +130,7 @@ func TestConPinsEnReglaSeEnciendeYSePuedeApagar(t *testing.T) {
 // mensaje NO dice de quién: si lo dijera, el formulario sería un oráculo para averiguar el PIN de
 // un compañero probando números.
 func TestConSoloPinNoSePuedeRepetirElPinDeOtro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -159,6 +163,7 @@ func TestConSoloPinNoSePuedeRepetirElPinDeOtro(t *testing.T) {
 // a un default en silencio. Aquí el default silencioso sería aceptar cualquier PIN sin saber de
 // quién es, y con él la atribución del arqueo dejaría de significar nada.
 func TestSinIndicarQuienYSinSoloPinSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
 	h := httpapi.NewHandlers(httpapi.Deps{
@@ -187,6 +192,7 @@ func TestSinIndicarQuienYSinSoloPinSeRechaza(t *testing.T) {
 // Es exactamente lo que la feature dice impedir: cada venta suya quedaba a nombre de la otra y el
 // desglose por cajero del arqueo mentía en silencio.
 func TestNoSePuedeDarDeAltaConElPinDeOtro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -213,6 +219,7 @@ func TestNoSePuedeDarDeAltaConElPinDeOtro(t *testing.T) {
 // SetPIN sin tocar Create: volvía a aceptarse 1234, que es uno de los tres bloqueadores originales
 // del lanzamiento según docs/security-owasp.md.
 func TestNoSePuedeDarDeAltaConUnPinTrivial(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")

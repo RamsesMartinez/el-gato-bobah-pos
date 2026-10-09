@@ -76,6 +76,7 @@ func loginDeConsola(t *testing.T, r http.Handler, usuario, password string) *htt
 }
 
 func TestLaConsolaYElNegocioSeRechazanEntreSi(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, jm, pjm := routerConConsola(t, st)
@@ -169,6 +170,7 @@ func tokenDeOperador(t *testing.T, st *store.Store, pjm *auth.ManagerDePlataform
 // microsegundos mientras el de "no existe" tarda decenas de milisegundos, y esa diferencia es una
 // lista de qué operadores existen — legible desde fuera, sin credenciales.
 func TestElOperadorApagadoSeRechazaComoUnoInexistente(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, _, _ := routerConConsola(t, st)
 
@@ -214,6 +216,7 @@ func TestElOperadorApagadoSeRechazaComoUnoInexistente(t *testing.T) {
 // también en el tiempo. Es la fuga que `auth.CheckDummySecret` ya cierra para el resto del login;
 // lo que se prueba aquí es que este camino nuevo no la reabrió.
 func TestLaCredencialDePlataformaEnElPOSSeVeComoInexistente(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, _, _ := routerConConsola(t, st)
 
@@ -255,6 +258,7 @@ func TestLaCredencialDePlataformaEnElPOSSeVeComoInexistente(t *testing.T) {
 // "Retirar el acceso" no puede significar "en quince minutos". Con una sesión viva en la pantalla
 // de alguien, apagar al operador tiene que bastar — sin reiniciar la API y sin esperar.
 func TestDesactivarAlOperadorLeCortaElAccesoDeInmediato(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, _, pjm := routerConConsola(t, st)

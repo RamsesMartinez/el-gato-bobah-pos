@@ -19,6 +19,7 @@ import (
 // Hasta ahora solo la carga de FUDO los creaba, y no había dónde verlos ni corregirlos: uno mal
 // cargado descontaba mal para siempre.
 func TestCapturingAPreparedIngredient(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	admin := makeUser(t, owner, "admin_jarabe", "admin")

@@ -20,6 +20,7 @@ import (
 // que reacomodar el menú —mantenimiento normal con 1004 productos importados de FUDO, cuya
 // estructura de categorías es la que ellos tenían— exigía entrar a la base a mano.
 func TestCambiarLaCategoriaDeUnProducto(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	admin := app.NewAdminService(st)
@@ -50,6 +51,7 @@ func TestCambiarLaCategoriaDeUnProducto(t *testing.T) {
 // categoría de otra empresa desaparece de su propio menú —el join corre bajo RLS y no encuentra la
 // categoría— sin que nada avise y sin forma de arreglarlo desde la pantalla.
 func TestNoSePuedeMoverUnProductoALaCategoriaDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -86,6 +88,7 @@ func TestNoSePuedeMoverUnProductoALaCategoriaDeOtraEmpresa(t *testing.T) {
 // la pantalla —renombrar, cambiar precio, activar— siga funcionando sin mandarla, y que un cliente
 // viejo no mueva productos a la categoría 0 por omisión.
 func TestSinCategoriaEnLaPeticionElProductoNoSeMueve(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	admin := app.NewAdminService(st)

@@ -73,6 +73,7 @@ func turnoConEfectivoDeMostradorYDeApp(t *testing.T, ctx context.Context, st *st
 
 // EL CAJÓN SE ARQUEA UNA SOLA VEZ, contra una sola cifra.
 func TestElCajonSeArqueaUnaSolaVez(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -143,6 +144,7 @@ func TestElCajonSeArqueaUnaSolaVez(t *testing.T) {
 
 // UN FALTANTE DEL CAJÓN ES UNO SOLO, y llega al histórico.
 func TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -188,6 +190,7 @@ func TestUnFaltanteDelCajonEsUnoSoloYLlegaAlHistorico(t *testing.T) {
 // una PWA con service worker— mandando el cuerpo de antes. Ignorar esa cifra dejaría al operador
 // creyendo que declaró algo que no se guardó.
 func TestUnMetodoDeCajonEnDeclaradoSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -218,6 +221,7 @@ func TestUnMetodoDeCajonEnDeclaradoSeRechaza(t *testing.T) {
 // Es la respuesta a que el reparto lo hace a veces gente del local —y el dinero regresa— y a veces
 // el repartidor de la plataforma, que se lo lleva y lo descuenta del depósito.
 func TestElEfectivoDeUnaAppQueNoLlegaAlCajonSeDeclaraAparte(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -259,6 +263,7 @@ func TestElEfectivoDeUnaAppQueNoLlegaAlCajonSeDeclaraAparte(t *testing.T) {
 // corte cerrado antes se lea con la configuración de hoy: las cifras no cambian, pero la forma del
 // reporte sí, y un arqueo que se lee distinto según cuándo lo abras no se puede auditar.
 func TestUnCorteCerradoNoSeReagrupaAlCambiarElInterruptor(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -310,6 +315,7 @@ func TestUnCorteCerradoNoSeReagrupaAlCambiarElInterruptor(t *testing.T) {
 // El camino no es hipotético: `counts: []` sin `countedCash` es lo que manda una tableta con el
 // front viejo en caché, o cualquier cliente al que le falle el envío del conteo.
 func TestCerrarSinContarElCajonSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

@@ -39,6 +39,7 @@ func splitBillFingerprint(t *testing.T, st *store.Store, orderID int64) string {
 // del pedido y del turno: ninguna, desde otra empresa, con una conexión reciclada o sin empresa,
 // lee ni cambia nada de la dueña.
 func TestSplitBillQueriesStayIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	other := makeCompany(t, st, "ajena-dividir")

@@ -24,6 +24,7 @@ const detalleConExtra = `{
 // Sin esto el renglón entra sin producto: no sigue el camino de los demás en reportes y comanda, y
 // lo que el cliente eligió solo queda en el nombre. Aceptar sigue siendo un toque: nadie decide nada.
 func TestAnUnpairedPlatformLineGoesToTheGenericProduct(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

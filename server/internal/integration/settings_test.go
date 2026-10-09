@@ -21,6 +21,7 @@ import (
 // corre sobre el esquema ya migrado (0023 siembra una fila para la empresa 1) y falla si la query
 // vuelve a referenciar una columna inexistente.
 func TestBusinessSettingsGetAndUpdate(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -49,6 +50,7 @@ func TestBusinessSettingsGetAndUpdate(t *testing.T) {
 // cuando el nombre estaba hardcodeado en el front. Este test fija ese contrato y, sobre todo, que
 // Get NO devuelva los bytes del logo: esta query corre en cada cobro y no debe mover la imagen.
 func TestBusinessSettingsIncludesTicketHeader(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -82,6 +84,7 @@ func TestBusinessSettingsIncludesTicketHeader(t *testing.T) {
 // necesita para no reinterpretar el binario ni volver a bajarlo: el mime guardado (no el que dijo
 // quien subió), nosniff, y un ETag que permita el 304.
 func TestTicketLogoEndpoint(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	h := httpapi.NewHandlers(httpapi.Deps{Settings: app.NewSettingsService(st, "pepper-de-prueba")})

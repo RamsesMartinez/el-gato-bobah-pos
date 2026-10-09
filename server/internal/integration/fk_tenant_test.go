@@ -30,6 +30,7 @@ func esViolacionDeLlave(err error) bool {
 // data-fix, un backfill de migración) cruzaba las empresas sin una sola protesta, y el síntoma
 // aparecía en el corte de caja y no en el insert.
 func TestElEsquemaRechazaRenglonesDeVentaQueCruzanEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -57,6 +58,7 @@ func TestElEsquemaRechazaRenglonesDeVentaQueCruzanEmpresas(t *testing.T) {
 // La otra mitad del total de un ticket: los extras. Un delta cobrado con la opción de otra empresa
 // suma dinero que ningún reporte de esa empresa puede explicar.
 func TestElEsquemaRechazaExtrasQueCruzanEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -91,6 +93,7 @@ func TestElEsquemaRechazaExtrasQueCruzanEmpresas(t *testing.T) {
 // Y la plataforma del pedido: es la columna con la que el corte separa el dinero de Uber del de
 // mostrador. Un pedido apuntando a la plataforma de otra empresa lo manda al subtotal equivocado.
 func TestElEsquemaRechazaUnPedidoConPlataformaAjena(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -114,6 +117,7 @@ func TestElEsquemaRechazaUnPedidoConPlataformaAjena(t *testing.T) {
 // una columna nula no se valida. Si esto se rompiera, dejaría de poderse vender en mostrador — el
 // caso más común de todos.
 func TestUnPedidoDeMostradorSigueEntrandoSinPlataforma(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -130,6 +134,7 @@ func TestUnPedidoDeMostradorSigueEntrandoSinPlataforma(t *testing.T) {
 
 // El movimiento de inventario es la otra cara del mismo dinero: alimenta el costo de venta.
 func TestElEsquemaRechazaMovimientosDeStockQueCruzanEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 

@@ -27,6 +27,7 @@ import (
 // Estaba solo como paso manual del recorrido de verificación. Un paso manual se salta, y este se
 // salta justo cuando hay prisa por desplegar.
 func TestNingunaVentaCambiaDeDia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

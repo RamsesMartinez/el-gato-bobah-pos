@@ -24,6 +24,7 @@ import (
 // Nada más lo atrapa: dos renglones idénticos en el mismo pedido son legítimos —el cliente pidió
 // otro café— así que ninguna validación puede distinguir el reintento de la segunda orden.
 func TestAgregarElMismoLoteDosVecesNoDuplicaNiCobraDeMas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -92,6 +93,7 @@ func TestAgregarElMismoLoteDosVecesNoDuplicaNiCobraDeMas(t *testing.T) {
 // llave valiera solo dentro de un pedido, el mismo lote entraría también en el otro y la comida se
 // le cargaría a una cuenta ajena — que en una mesa compartida es una discusión con el cliente.
 func TestUnLoteDeRenglonesNoSeAplicaAOtroPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -142,6 +144,7 @@ func TestUnLoteDeRenglonesNoSeAplicaAOtroPedido(t *testing.T) {
 // Es un techo consciente — sin llave no hay protección — y por eso el front SIEMPRE la manda. Se
 // prueba para que quede claro que la ausencia es un camino soportado y no un descuido.
 func TestAgregarSinLlaveSigueFuncionando(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

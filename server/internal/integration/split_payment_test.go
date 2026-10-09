@@ -16,6 +16,7 @@ import (
 // Pago dividido: una orden puede cobrarse con más de un método. Se registran N filas en
 // order_payments y la orden queda "pagada" cuando la suma de amounts cubre el total.
 func TestSplitPayment(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

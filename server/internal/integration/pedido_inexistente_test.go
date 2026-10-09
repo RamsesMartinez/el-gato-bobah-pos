@@ -20,6 +20,7 @@ import (
 // Se volvió visible al quitar la ruta `/orders/unpaid`: cualquier cliente que siguiera llamándola
 // caía en `/orders/{id}` y recibía un 500 en vez de un error que se entiende.
 func TestConsultarUnPedidoQueNoExisteEsNoEncontrado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

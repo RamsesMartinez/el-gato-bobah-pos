@@ -18,6 +18,7 @@ import (
 
 // MANDAR A COCINA CONVIERTE LA CUENTA EN PEDIDO POR EL CAMINO DE HOY (FR-005, D-2, D-6, research R-4).
 func TestSendCreatesTheOrder(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	ctx := context.Background()
 	abrirCajaPrincipal(t, k.st, k.user)
@@ -83,6 +84,7 @@ func TestSendCreatesTheOrder(t *testing.T) {
 
 // LA RED SE CAE AL CONFIRMAR: UN SOLO PEDIDO, UNA SOLA COMANDA (caso 15).
 func TestSendIsIdempotent(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café idempotente al enviar", pesos("30"), false)
@@ -107,6 +109,7 @@ func TestSendIsIdempotent(t *testing.T) {
 
 // Dos tabletas mandan la misma cuenta a la vez: un pedido.
 func TestTwoTabletsSendTheSameAccount(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café de dos envíos", pesos("30"), false)
@@ -139,6 +142,7 @@ func TestTwoTabletsSendTheSameAccount(t *testing.T) {
 }
 
 func TestSendWithoutOpenRegister(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café sin caja", pesos("30"), false)
 	v := k.newDraft(t, addOf(cafe, "1"))
@@ -152,6 +156,7 @@ func TestSendWithoutOpenRegister(t *testing.T) {
 }
 
 func TestSendRejectsWhatNoLongerSells(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	ctx := context.Background()
@@ -211,6 +216,7 @@ func TestSendRejectsWhatNoLongerSells(t *testing.T) {
 // pantalla pide el folio antes, pero «Mandar sin folio» es su salida explícita
 // (FolioPlataformaSheet): rechazarlo aquí la dejaría sin salida con el repartidor enfrente.
 func TestSendPlatformWithoutFolioStaysPending(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café de plataforma", pesos("30"), false)
@@ -231,6 +237,7 @@ func TestSendPlatformWithoutFolioStaysPending(t *testing.T) {
 
 // LA CUENTA QUE CRUZA UN CIERRE DE TURNO CONSERVA SU ANIMAL (caso 23).
 func TestDraftAcrossShiftsKeepsItsAnimal(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	ctx := context.Background()
 	first := abrirCajaPrincipal(t, k.st, k.user)
@@ -260,6 +267,7 @@ func TestDraftAcrossShiftsKeepsItsAnimal(t *testing.T) {
 
 // El barrido y el envío a la vez: la cuenta queda enviada, nunca descartada con su pedido creado.
 func TestSweepAndSendAtOnce(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café del barrido", pesos("30"), false)
@@ -292,6 +300,7 @@ func TestSweepAndSendAtOnce(t *testing.T) {
 
 // UNA CUENTA DESCARTADA NO GASTA FOLIO: el consecutivo no tiene huecos ni repetidos (SC-006).
 func TestDiscardedDraftsSpendNoFolio(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	session := abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café del folio", pesos("30"), false)
@@ -330,6 +339,7 @@ func TestDiscardedDraftsSpendNoFolio(t *testing.T) {
 }
 
 func TestSendInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	other := makeCompany(t, k.st, "otra-envio")

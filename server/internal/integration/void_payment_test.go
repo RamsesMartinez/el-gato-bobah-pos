@@ -54,6 +54,7 @@ func openSession(t *testing.T, st *store.Store) int64 {
 // método, las propinas y lo pendiente quedan como si nunca hubiera entrado. Si reapareciera en
 // cualquiera de los tres, el corte cerraría con un faltante o un sobrante por el monto exacto.
 func TestAVoidedPaymentCountsZeroTimesInTheDrawer(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "devuelto_en_cajon", "50", "50")
 	session := openSession(t, st)
@@ -96,6 +97,7 @@ func TestAVoidedPaymentCountsZeroTimesInTheDrawer(t *testing.T) {
 // devolverlo, o mientras se devuelve, el pago no puede volver a entrar: sería cobrar justo lo que se
 // acaba de devolver.
 func TestAVoidedPaymentCannotBeRevivedByItsKey(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "llave_devuelta", "50", "50")
 	charge := func(key uuid.UUID) (*app.ChargeResult, error) {
@@ -153,6 +155,7 @@ func TestAVoidedPaymentCannotBeRevivedByItsKey(t *testing.T) {
 
 // UN PAGO SE DEVUELVE UNA SOLA VEZ, Y SOLO EN SU TURNO ABIERTO.
 func TestAPaymentIsVoidedOnceAndOnlyInItsOpenShift(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "devolver_una_vez", "50", "50")
 	res := s.pay(t, 0)
@@ -190,6 +193,7 @@ func TestAPaymentIsVoidedOnceAndOnlyInItsOpenShift(t *testing.T) {
 // Con un pago viejo sin número: la bitácora guarda el número que la vista le daba, y el pago
 // siguiente no lo repite. El «Pago 2» impreso sigue siendo el 2 en pantalla.
 func TestPaymentNumbersSurviveAVoid(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "numeros_devueltos", "50", "50", "50")
 	first := s.pay(t, 0)
@@ -228,6 +232,7 @@ func TestPaymentNumbersSurviveAVoid(t *testing.T) {
 
 // DEVOLVER UN PAGO: PERMISO, AISLAMIENTO Y LA LISTA DEL CORTE.
 func TestVoidPaymentPermissionIsolationAndDrawerList(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, token := ordersAPI(t, st, nil)
 	_, cashierTok := token("http_cajero_devuelve", "cajero")
@@ -310,6 +315,7 @@ func mustJSON(t *testing.T, f func() (any, error)) []byte {
 // borra, el corte cerrado espera un dinero que ya no figura en los pagos. El cierre bloquea el turno
 // mientras corre; devolver tiene que esperarlo y ver que ya cerró.
 func TestVoidingWaitsForAShiftThatIsClosing(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "devolver_mientras_cierra", "50", "50")
 	paid := s.pay(t, 0)
@@ -347,6 +353,7 @@ func TestVoidingWaitsForAShiftThatIsClosing(t *testing.T) {
 
 // EL PAGO DE OTRO PEDIDO DE LA MISMA EMPRESA NO SE DEVUELVE DESDE ÉSTE.
 func TestVoidingAPaymentOfAnotherOrderIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	a := newSplitTable(t, st, "devolver_ajeno_a", "50")
 	b := newSplitTable(t, st, "devolver_ajeno_b", "50")

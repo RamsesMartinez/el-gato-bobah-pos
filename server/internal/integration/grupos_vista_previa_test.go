@@ -18,6 +18,7 @@ import (
 // Se topa a 4 porque en una tarjeta de 7" el quinto nombre ya no cabe en el renglón, y el resto se
 // resume con "y N más" — de ahí que el conteo y la vista previa tengan que contar LO MISMO.
 func TestLaTarjetaDelGrupoMuestraSusPrimerasOpciones(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewAdminService(st)
@@ -66,6 +67,7 @@ func TestLaTarjetaDelGrupoMuestraSusPrimerasOpciones(t *testing.T) {
 // Una opción archivada sale del POS, así que tampoco puede salir en la vista previa: el operador
 // leería la tarjeta y creería que ese grupo todavía ofrece algo que ya quitó.
 func TestLaVistaPreviaNoMuestraArchivadas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewAdminService(st)
@@ -119,6 +121,7 @@ func TestLaVistaPreviaNoMuestraArchivadas(t *testing.T) {
 // El caso es ordinario, no exótico: crear el grupo y todavía no agregarle opciones es el primer
 // paso de darlo de alta.
 func TestUnGrupoSinOpcionesActivasNoTumbaLaLista(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewAdminService(st)

@@ -26,6 +26,7 @@ import (
 // cocina, y como todo renglón nace enviado, en la práctica nunca reponía: cada refresco quitado
 // era una merma inventada. Sin desmarcar la cocina a mano: así está en producción.
 func TestRemovingAProductWithoutPrepRestocksIt(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_refresco_quitado", "cajero")
@@ -66,6 +67,7 @@ func TestRemovingAProductWithoutPrepRestocksIt(t *testing.T) {
 //   - el renglón que sigue vivo y ya salió a cocina tampoco: cancelar el pedido sigue la MISMA regla
 //     que quitarlo (spec 031, D11). Antes este caso esperaba reponerlo, que era el defecto.
 func TestCancellingAfterRemovingALineRestocksOnce(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_repone_una_vez", "cajero")
@@ -130,6 +132,7 @@ func TestCancellingAfterRemovingALineRestocksOnce(t *testing.T) {
 // como si fueran el producto mismo: el reporte de unidades por extra y por paquete deja de cuadrar, y
 // reponer después ese renglón revertiría otro origen.
 func TestSplittingALineKeepsTheOriginOfEachMovement(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_parte_con_origen", "cajero")
@@ -248,6 +251,7 @@ func TestSplittingALineKeepsTheOriginOfEachMovement(t *testing.T) {
 
 // QUITAR PIEZAS DE UN RENGLÓN: 1 DE 2 PARTE EL RENGLÓN, Y NO SE QUITAN MÁS DE LAS QUE FALTAN.
 func TestRemovingSomePiecesSplitsTheLine(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	s := newSplitTable(t, st, "quitar_una_de_dos", "50")
 	ctx := context.Background()
@@ -307,6 +311,7 @@ func productOf(t *testing.T, st *store.Store, line int64) int64 {
 // primera reposición revirtiera todo el renglón, o la segunda repusiera otra vez lo de la primera,
 // el almacén inventaría existencias.
 func TestASplitLineRestocksEachHalfOnce(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	cashier := makeUser(t, st, "cajero_mitades", "cajero")
 	abrirCajaPrincipal(t, st, cashier)
@@ -342,6 +347,7 @@ func TestASplitLineRestocksEachHalfOnce(t *testing.T) {
 
 // QUITAR LO QUE FALTA RESPETA LO PAGADO, CON LA MISMA REGLA QUE QUITAR UN PRODUCTO.
 func TestCancelPendingRespectsPayments(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, token := ordersAPI(t, st, nil)
 	_, tok := token("http_quitar_con_pagos", "cajero")
@@ -373,6 +379,7 @@ func TestCancelPendingRespectsPayments(t *testing.T) {
 
 // QUITAR PIEZAS POR HTTP: qty de más es un 400 con su texto.
 func TestRemovePiecesHTTP(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, token := ordersAPI(t, st, nil)
 	_, tok := token("http_quitar_piezas", "cajero")

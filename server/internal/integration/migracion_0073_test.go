@@ -23,6 +23,7 @@ import (
 //     el camino de prueba más barato que tenemos: no lleva repartidor.
 
 func TestLosIndicesDeTenantExistenParaLasFKCompuestas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -46,6 +47,7 @@ func TestLosIndicesDeTenantExistenParaLasFKCompuestas(t *testing.T) {
 }
 
 func TestLasTablasDeLa0073TienenRLSYSusGrants(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -100,6 +102,7 @@ func TestLasTablasDeLa0073TienenRLSYSusGrants(t *testing.T) {
 // captura era manual nadie lo notaba, porque quien capturaba elegía «domicilio». Con los pedidos
 // entrando solos el tipo lo dice Uber, y el primer pedido para recoger revienta la inserción.
 func TestUnPedidoDePlataformaPuedeSerParaRecoger(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -139,6 +142,7 @@ func TestUnPedidoDePlataformaPuedeSerParaRecoger(t *testing.T) {
 // y motivo— sin que nada falle al migrar. El defecto saldría meses después, en una cancelación sin
 // rastro de quién la hizo.
 func TestLaGuardaDeCancelacionSobreviveALaRelajacionDelCheck(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

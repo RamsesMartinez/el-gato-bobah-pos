@@ -16,6 +16,7 @@ import (
 
 // LAS BARRERAS DE «QUÉ LLEVA» QUE NO TENÍAN PRUEBA (auditoría de seguridad de la spec 028).
 func TestCompositionGuards(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	admin := makeUser(t, owner, "admin_barreras", "admin")

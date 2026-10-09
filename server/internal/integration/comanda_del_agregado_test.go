@@ -25,6 +25,7 @@ import (
 // La marca en la base va aparte de la respuesta: es el registro de CUÁNDO salió cada renglón, que
 // es lo que se consulta cuando cocina reclama que no le llegó algo.
 func TestSoloLosRenglonesAgregadosSalenEnLaComandaDelAgregado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

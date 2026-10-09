@@ -21,6 +21,7 @@ import (
 // pasaban las dos —cada una veía a la otra todavía sin componentes— y quedaba un paquete dentro de
 // otro, que la venta no descuenta. Lo encontró la auditoría de seguridad de la spec 028.
 func TestConcurrentCapturesCannotNestPackagesOrCloseCycles(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	admin := makeUser(t, owner, "admin_carrera", "admin")

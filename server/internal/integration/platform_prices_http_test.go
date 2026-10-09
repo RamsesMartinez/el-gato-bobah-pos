@@ -50,6 +50,7 @@ func newPreciosAPI(t *testing.T) (http.Handler, *store.Store, func(username, rol
 }
 
 func TestRutasDePrecioPorElRouter(t *testing.T) {
+	t.Parallel()
 	r, st, token := newPreciosAPI(t)
 	prod := makeProduct(t, st, "Boneless http", decimal.RequireFromString("100"), false)
 	uber := platformID(t, st, defaultCompanyID, "Uber Eats")
@@ -137,6 +138,7 @@ func TestRutasDePrecioPorElRouter(t *testing.T) {
 // El tope por usuario, por la ruta real. Es lo único que impide que un bucle de escrituras haga
 // refetch del menú en todas las tablets del local: cada una publica `menu.updated`.
 func TestElTopeDeEscriturasDePrecioAplicaEnLaRuta(t *testing.T) {
+	t.Parallel()
 	r, st, token := newPreciosAPI(t)
 	prod := makeProduct(t, st, "Alitas tope", decimal.RequireFromString("100"), false)
 	uber := platformID(t, st, defaultCompanyID, "Uber Eats")

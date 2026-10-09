@@ -20,6 +20,7 @@ import (
 // interruptor en el cobro, y equivocarse era caro: un ticket con un refresco y unas alitas marcado
 // a mano escondía las alitas del tablero y nadie las preparaba. Ahora lo sabe el catálogo.
 func TestUnPedidoSinNadaQuePrepararNaceEntregado(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -53,6 +54,7 @@ func TestUnPedidoSinNadaQuePrepararNaceEntregado(t *testing.T) {
 // EL CASO QUE ROMPÍA EL INTERRUPTOR: un ticket mezclado. Basta un producto que sí necesita cocina
 // para que el pedido entero vaya al tablero — si no, ese producto desaparece y nadie lo prepara.
 func TestUnPedidoMEZCLADOVaAlTablero(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -83,6 +85,7 @@ func TestUnPedidoMEZCLADOVaAlTablero(t *testing.T) {
 // El default es "sí pasa por cocina", así que el catálogo migrado se comporta exactamente igual que
 // antes hasta que alguien apague un producto a propósito.
 func TestElDefaultEsQueSiPasaPorCocina(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -108,6 +111,7 @@ func TestElDefaultEsQueSiPasaPorCocina(t *testing.T) {
 // Un pedido sin preparación que NO se cobró completo no puede nacer entregado: sería regalar comida
 // sin dejar rastro, porque el pedido nace terminado y no vuelve a aparecer en ninguna pantalla.
 func TestSinPreparacionPeroSinCobrarVaAlTablero(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)

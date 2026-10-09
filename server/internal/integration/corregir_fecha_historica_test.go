@@ -28,6 +28,7 @@ import (
 // Con DOS empresas a propósito: con una sola, un defecto de alcance —una migración que solo toca la
 // empresa "actual"— es un no-op y pasa verde para romper en producción.
 func TestLaMigracionCorrigeElDiaSinMoverDineroDeArqueo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

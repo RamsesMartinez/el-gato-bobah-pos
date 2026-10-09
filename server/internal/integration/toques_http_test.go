@@ -19,6 +19,7 @@ import (
 // ve desde el router: que la ruta sigue dentro del grupo con tenant —sin eso RLS no tiene empresa y
 // el insert falla— y, sobre todo, **que un punto con precisión de píxel no tiene a dónde llegar**.
 func TestElToquePorElRouterNoGuardaCoordenadas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

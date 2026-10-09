@@ -20,6 +20,7 @@ import (
 // cocina —la red se cayó después de que el servidor confirmó— no puede volver como cuenta: mandarla
 // otra vez sacaría la comida dos veces.
 func TestImportOldTabs(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café de la pestaña", pesos("30"), false)
@@ -70,6 +71,7 @@ func TestImportOldTabs(t *testing.T) {
 }
 
 func TestImportOfATabDiscardedElsewhere(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café descartado en otra", pesos("30"), false)
 	tab := app.ImportAccount{ID: uuid.New(), Lines: []app.DraftLineCmd{addOf(cafe, "1")}}
@@ -91,6 +93,7 @@ func TestImportOfATabDiscardedElsewhere(t *testing.T) {
 }
 
 func TestImportDoesNotResendASentTab(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café ya enviado", pesos("30"), false)
@@ -132,6 +135,7 @@ func TestImportDoesNotResendASentTab(t *testing.T) {
 }
 
 func TestImportLimits(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café del tope de pestañas", pesos("30"), false)
 	many := make([]app.ImportAccount, 21)
@@ -151,6 +155,7 @@ func TestImportLimits(t *testing.T) {
 }
 
 func TestImportInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	other := makeCompany(t, k.st, "otra-import")

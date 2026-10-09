@@ -20,6 +20,7 @@ import (
 // Quitar el renglón de un frappé ya preparado no reponía nada —se consumió— pero cancelar el pedido
 // entero sí reponía todo: el mismo hecho físico dejaba dos inventarios distintos según el botón.
 func TestCancellingTheWholeOrderFollowsTheSameRestockRuleAsRemovingALine(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -49,6 +50,7 @@ func TestCancellingTheWholeOrderFollowsTheSameRestockRuleAsRemovingALine(t *test
 // La tolerancia de un centavo daba por saldado un pedido de $100 cobrado en $99.99: el centavo
 // restante rebotaba con «ya está cobrado» y la venta y el corte diferían para siempre.
 func TestChargingOneCentLessDoesNotSettleTheOrder(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -76,6 +78,7 @@ func TestChargingOneCentLessDoesNotSettleTheOrder(t *testing.T) {
 //
 // $45.55 partido a la mitad quedaba en 22.78 + 22.78 = 45.56: cada mitad se redondeaba hacia arriba.
 func TestSplittingALineKeepsItsTotalToTheCent(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)

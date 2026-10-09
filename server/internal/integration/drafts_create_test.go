@@ -17,6 +17,7 @@ import (
 
 // LA CUENTA NACE CON EL PRIMER PRODUCTO, CON SU NOMBRE (US2, FR-001, D-2, D-6, FR-020).
 func TestDraftIsBornWithItsFirstProduct(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	taro := makeProduct(t, k.st, "Taro de la cuenta", pesos("55"), true)
 	ctx := k.ctx
@@ -73,6 +74,7 @@ func TestDraftIsBornWithItsFirstProduct(t *testing.T) {
 }
 
 func TestDraftNameProposal(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café del nombre", pesos("30"), false)
 
@@ -97,6 +99,7 @@ func TestDraftNameProposal(t *testing.T) {
 
 // Dos tabletas abren cuenta a la vez y proponen el mismo nombre (US2 AS2).
 func TestTwoDraftsNeverShareAName(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la carrera", pesos("30"), false)
 
@@ -139,6 +142,7 @@ func TestTwoDraftsNeverShareAName(t *testing.T) {
 }
 
 func TestDraftRejectsAnotherCompanysProduct(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-cuenta")
 	var ajeno int64
@@ -156,6 +160,7 @@ func TestDraftRejectsAnotherCompanysProduct(t *testing.T) {
 
 // Validación en la frontera: nada absurdo llega a la tabla.
 func TestDraftCreateRejectsBadInput(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la frontera", pesos("30"), false)
 	cases := map[string]app.CreateDraftCmd{
@@ -176,6 +181,7 @@ func TestDraftCreateRejectsBadInput(t *testing.T) {
 
 // LOS TRES CASOS DONDE RLS YA FALLÓ, sobre crear, leer y los nombres vivos.
 func TestDraftsInTheThreeCases(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-tres")
 	otherUser := makeUserIn(t, k.st, other, "cajero_otra_tres", "cajero")
@@ -229,6 +235,7 @@ func TestDraftsInTheThreeCases(t *testing.T) {
 // El barrido es perezoso: corre cuando alguien crea una cuenta o mira la fila. Lo que se prueba es
 // que el reloj sea el del ÚLTIMO cambio y no el de creación, y que el nombre se suelte.
 func TestIdleDraftExpires(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café dormido", pesos("30"), false)
 	old := k.newDraft(t, addOf(cafe, "1"))

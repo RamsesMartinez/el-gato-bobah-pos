@@ -62,6 +62,7 @@ func closeBySQL(t *testing.T, st *store.Store, session int64) {
 // Con «declarar automático», el corte firmaba como recibidos $300 que la terminal ya le había
 // regresado al cliente; sin él, marcaba un faltante de $300 que nadie podía explicar.
 func TestACardRefundLowersTheShiftExpected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -94,6 +95,7 @@ func TestACardRefundLowersTheShiftExpected(t *testing.T) {
 
 // D6 + decisión del dueño: LA DEVOLUCIÓN VA AL TURNO EN QUE OCURRE, NO AL DEL COBRO.
 func TestARefundInALaterShiftBelongsToThatShift(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -137,6 +139,7 @@ func TestARefundInALaterShiftBelongsToThatShift(t *testing.T) {
 
 // D7: SIN TURNO NO SE DEVUELVE EFECTIVO, PORQUE NO QUEDARÍA EN NINGÚN ARQUEO.
 func TestACashRefundWithoutAnOpenShiftIsRejected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -159,6 +162,7 @@ func TestACashRefundWithoutAnOpenShiftIsRejected(t *testing.T) {
 // D7: LA DE TARJETA SIN TURNO SE REGISTRA Y ENTRA AL SIGUIENTE TURNO; LA DE ANTES DEL ÚLTIMO
 // CIERRE, NO.
 func TestACardRefundWithoutAShiftJoinsTheNextOne(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -201,6 +205,7 @@ func TestACardRefundWithoutAShiftJoinsTheNextOne(t *testing.T) {
 // Al abrir turno se reclamaba el pedido y no su pago: la venta salía en el corte y su dinero en
 // ninguno, y «Uber efectivo» aparecía como sobrante del cajón.
 func TestAnOrphanPlatformPaymentJoinsTheShiftThatClaimsIt(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -262,6 +267,7 @@ func TestAnOrphanPlatformPaymentJoinsTheShiftThatClaimsIt(t *testing.T) {
 // recalculaba en $0 —A quedaba con una venta que ningún método explicaba— y B esperaba $554 en
 // efectivo sin una venta suya que los justificara.
 func TestAnOrderChargedInALaterShiftIsExplainedInBoth(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -312,6 +318,7 @@ func TestAnOrderChargedInALaterShiftIsExplainedInBoth(t *testing.T) {
 // y el cierre quedaba en el turno cerrado sin entrar a su esperado: sobrante firmado, y el pago ya
 // no se podía devolver porque «es de un turno cerrado».
 func TestWhatCommitsDuringTheCloseIsInsideTheSignedExpected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -381,6 +388,7 @@ func TestWhatCommitsDuringTheCloseIsInsideTheSignedExpected(t *testing.T) {
 // LAS CONSULTAS NUEVAS DEL CORTE NO ALCANZAN LAS DEVOLUCIONES NI LOS PAGOS DE OTRA EMPRESA, en los
 // tres casos donde RLS ya falló: otra empresa, conexión reciclada y sin empresa.
 func TestTheShiftRefundQueriesAreIsolated(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(owner, clock)
@@ -424,6 +432,7 @@ func TestTheShiftRefundQueriesAreIsolated(t *testing.T) {
 // La secundaria no vende y su esperado ignora las devoluciones: si la reclamaba, la devolución no
 // restaba de ningún corte y la principal cerraba con sobrante.
 func TestASecondaryRegisterDoesNotClaimAnOrphanRefund(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -459,6 +468,7 @@ func TestASecondaryRegisterDoesNotClaimAnOrphanRefund(t *testing.T) {
 // dejaba el pago en un turno cerrado y fuera de su esperado. Ahora o entra al esperado firmado, o
 // queda sin turno y lo reclama la apertura siguiente.
 func TestAcceptingAPlatformOrderDuringTheCloseStaysInsideTheSignedExpected(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

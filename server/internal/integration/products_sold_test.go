@@ -20,6 +20,7 @@ import (
 // reporta como un renglón con su propio nombre, y la crepa que llevaba no aparece en ningún lado.
 // Lo de un renglón cancelado no cuenta, igual que en la venta suelta.
 func TestProductsSoldCountsWhatWentInsidePackages(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_vendidos", "cajero")
@@ -105,6 +106,7 @@ func TestProductsSoldCountsWhatWentInsidePackages(t *testing.T) {
 
 // UN INSUMO PREPARADO DESCUENTA LO QUE LO COMPONE (spec 028, historia 5).
 func TestAPrepIngredientDepletesItsComponents(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cashier := makeUser(t, st, "cajero_jarabe", "cajero")

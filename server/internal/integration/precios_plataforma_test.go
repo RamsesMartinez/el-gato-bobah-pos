@@ -18,6 +18,7 @@ import (
 // Una venta por plataforma se valúa con la lista de ESA plataforma, y el servidor la recalcula: el
 // precio que mande el cliente se ignora, igual que en mostrador.
 func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -53,6 +54,7 @@ func TestVentaPorPlataformaUsaSuLista(t *testing.T) {
 // El precio capturado a mano gana sobre el calculado, y PERSISTE: la siguiente venta en esa
 // plataforma ya entra con él. Es lo que convierte corregir un precio en trabajo de una sola vez.
 func TestPrecioManualGanaYPersiste(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -105,6 +107,7 @@ func TestPrecioManualGanaYPersiste(t *testing.T) {
 // cobraría precio de mostrador en Uber, con el ticket bien impreso, y el descuadre aparecería
 // semanas después al conciliar el depósito.
 func TestPlataformaAjenaSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	appSt := appRoleStore(t)
@@ -139,6 +142,7 @@ func TestPlataformaAjenaSeRechaza(t *testing.T) {
 // El reparto lo cobra la plataforma: el costo de envío del negocio se fuerza a 0 aunque el cliente
 // mande otra cosa. Sin esto, cada pedido de Uber saldría con $20 de más.
 func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -173,6 +177,7 @@ func TestPedidoDePlataformaNoCobraEnvio(t *testing.T) {
 // cambiar de plataforma tiene que ser instantáneo. Y "Propio" NO se ofrece — es reparto del propio
 // negocio, sin comisión que absorber ni método de pago propio.
 func TestElMenuTraeLasListasDePrecios(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	menu := app.NewMenuService(st, clock)
@@ -218,6 +223,7 @@ func TestElMenuTraeLasListasDePrecios(t *testing.T) {
 // —$14.90 donde iban $149.00— pasa todas las validaciones y se cobra así para siempre, porque el
 // check `price > 0` cierra el idioma "pon 0 para limpiar".
 func TestCapturarYQuitarUnPrecioDePlataforma(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewPlatformPricesService(st)
@@ -270,6 +276,7 @@ func TestCapturarYQuitarUnPrecioDePlataforma(t *testing.T) {
 // Un precio absurdo se rechaza en la frontera, como 4xx y no como un check violado de Postgres
 // convertido en 500.
 func TestPrecioDePlataformaInvalidoSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewPlatformPricesService(st)
@@ -303,6 +310,7 @@ func TestPrecioDePlataformaInvalidoSeRechaza(t *testing.T) {
 // intrusa, porque su DELETE bajo RLS no la ve. Irreparable desde el producto, y con los ids
 // seriales se podía recorrer el catálogo ajeno completo.
 func TestNoSePuedeEscribirElPrecioDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	appSt := appRoleStore(t)
@@ -357,6 +365,7 @@ func TestNoSePuedeEscribirElPrecioDeOtraEmpresa(t *testing.T) {
 // Un id que no existe y uno que es de otra empresa deben responder IGUAL. Si "no existe" diera 500
 // y "es ajeno" diera 200, recorrer los ids devolvería el censo de catálogo de todos los negocios.
 func TestUnIdInexistenteYUnoAjenoRespondenIgual(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	appSt := appRoleStore(t)

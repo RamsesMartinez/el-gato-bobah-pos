@@ -59,6 +59,7 @@ func routerConMapa(t *testing.T, st *store.Store) (http.Handler, *auth.Manager, 
 }
 
 func TestElMapaDeUsoPorElRouter(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, jm, pjm := routerConMapa(t, st)

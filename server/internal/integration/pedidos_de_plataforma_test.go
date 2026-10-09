@@ -149,6 +149,7 @@ func servicioDePedidos(st *store.Store) *app.PedidosDePlataformaService {
 // no un dato que cualquiera escribe adentro. Este test es lo único que lo comprueba, y NO se puede
 // hacer con un unitario: exige dos empresas y Postgres real.
 func TestUnAvisoNoCaeEnLaEmpresaEquivocada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -194,6 +195,7 @@ func TestUnAvisoNoCaeEnLaEmpresaEquivocada(t *testing.T) {
 // UNA FIRMA QUE NO CUADRA NO ESCRIBE NADA, y el error es el MISMO que cuando la tienda no existe:
 // distinguirlos le diría a quien prueba a ciegas cuándo va acertando el id de una tienda real.
 func TestUnAvisoSinFirmaValidaNoEscribeNada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -244,6 +246,7 @@ func TestUnAvisoSinFirmaValidaNoEscribeNada(t *testing.T) {
 // entregar dos veces lo mismo. Un duplicado hace que la cocina prepare dos veces, y no truena por
 // ningún lado: se descubre cuando el cliente reclama.
 func TestElMismoAvisoCincoVecesEsUnPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -280,6 +283,7 @@ func TestElMismoAvisoCincoVecesEsUnPedido(t *testing.T) {
 // UN AVISO DE OTRO AMBIENTE NO SE PROCESA. Mezclar un pedido real con datos de prueba es el tipo de
 // error que nadie detecta hasta que alguien cobra algo que no existió.
 func TestUnAvisoDeProduccionNoEntraAlAmbienteDePruebas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	empresa := makeCompany(t, st, "empresa-ambiente")
 	tiendaConLlave(t, st, empresa, "tienda-amb", "llave-del-ambiente-de-pruebas")
@@ -298,6 +302,7 @@ func TestUnAvisoDeProduccionNoEntraAlAmbienteDePruebas(t *testing.T) {
 // UN DETALLE QUE NO SE PUDO TRAER NO SE CONFIRMA, y eso es lo que hace que la plataforma reintente.
 // Confirmar lo que falló pierde el pedido en silencio: el cliente espera comida que nadie hace.
 func TestUnDetalleQueNoSeTraeNoSeConfirma(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -345,6 +350,7 @@ func TestUnDetalleQueNoSeTraeNoSeConfirma(t *testing.T) {
 // que funcione: es que no se le pueda sacar información por tanteo y que un fallo haga reintentar
 // a la plataforma en vez de perder el pedido.
 func TestLaPuertaPublicaDelWebhook(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	const llave = "la-llave-de-la-puerta-publica"
 	empresa := makeCompany(t, st, "empresa-puerta")
@@ -454,6 +460,7 @@ func TestLaPuertaPublicaDelWebhook(t *testing.T) {
 // El test va sobre los BYTES y no sobre una estructura de Go: deserializar borra justo la
 // diferencia entre `null` y `[]`, que es lo único que este caso vigila.
 func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -528,6 +535,7 @@ func TestLosPedidosPendientesNuncaTraenNullEnSusArreglos(t *testing.T) {
 // que cuadrar al centavo con lo que cobró la plataforma, y el pedido NO puede aparecer como dinero
 // por cobrar — la plataforma ya cobró, y pedirlo otra vez en el corte es un faltante inventado.
 func TestAceptarDejaElPedidoEnElPOSYaPagado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -615,6 +623,7 @@ func TestAceptarDejaElPedidoEnElPOSYaPagado(t *testing.T) {
 // distintos. Al asignarle el turno, ese 0 entra a competir con los folios reales — y DOS huérfanos
 // chocan entre ellos. Un update en bloque habría reventado.
 func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -710,6 +719,7 @@ func TestAlAbrirTurnoLosPedidosHuerfanosSeRenumeran(t *testing.T) {
 // El síntoma no es un error: es un 401 a cada aviso. La plataforma reintenta siete veces, se rinde,
 // cancela el pedido, y en el log solo queda «firma no autenticada». Nadie sospecha de RLS.
 func TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -749,6 +759,7 @@ func TestElWebhookResuelveLaTiendaBajoElRolDeLaAplicacion(t *testing.T) {
 // peor modo de fallo del sistema: el cliente espera comida que nadie está preparando y el log está
 // limpio.
 func TestUnAvisoRepetidoDeOtraEmpresaNoSeTraga(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -810,6 +821,7 @@ func TestUnAvisoRepetidoDeOtraEmpresaNoSeTraga(t *testing.T) {
 // Rechazar es lo correcto: una ambigüedad no se arregla reintentando, y elegir a ciegas es peor
 // que no elegir.
 func TestDosCandidatasConLaMismaLlaveSeRechazan(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -849,6 +861,7 @@ func TestDosCandidatasConLaMismaLlaveSeRechazan(t *testing.T) {
 //
 // Corre bajo gatobobah_app: el grant de update que la rotación necesita solo falla con RLS puesto.
 func TestLaLlaveDeFirmaSeCapturaYSeCambiaSinPerderAvisos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	empresa := makeCompany(t, st, "empresa-llave")
@@ -968,6 +981,7 @@ func TestLaLlaveDeFirmaSeCapturaYSeCambiaSinPerderAvisos(t *testing.T) {
 // evento publicado con la empresa equivocada le suena la alarma a otro negocio con un pedido que no
 // puede ver.
 func TestUnPedidoRecibidoAvisaASuEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	const llave = "llave-para-el-evento-en-vivo"
 	empresa := makeCompany(t, st, "empresa-evento")

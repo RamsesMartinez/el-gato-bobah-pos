@@ -25,6 +25,7 @@ func clockAt(t time.Time) func() time.Time { return func() time.Time { return t 
 // Dos frappés de $60, se quita uno y se descuentan $20: la venta es $40 y Utilidad decía 2 piezas
 // y $120.
 func TestProductMarginsSkipRemovedLinesAndSubtractTheDiscount(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -78,6 +79,7 @@ func TestProductMarginsSkipRemovedLinesAndSubtractTheDiscount(t *testing.T) {
 // Tres frappés quitados y el pedido cerrado sin productos: «Canceladas» decía $0 y «Renglones
 // cancelados» 0 — los $180 desaparecían de un día pasado.
 func TestRemovedLinesOfALaterCancelledOrderStillCount(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -127,6 +129,7 @@ func TestRemovedLinesOfALaterCancelledOrderStillCount(t *testing.T) {
 // pero Ventas lo ponía en el día viejo; y un cobro devuelto el mes siguiente desaparecía del mes en
 // que entró.
 func TestEachPaymentAndRefundCountsOnItsOwnDay(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	loc := domain.LoadBusinessLocation(domain.DefaultTimezone)
@@ -206,6 +209,7 @@ func TestEachPaymentAndRefundCountsOnItsOwnDay(t *testing.T) {
 // Antes de 0060 cancelar no miraba los cobros. Esos pedidos tienen pagos y ninguna devolución en el
 // libro (medido: cinco en la empresa real); contarlos ahora inflaría meses ya cerrados.
 func TestALegacyCancelledOrderWithoutLedgerStaysOut(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
@@ -230,6 +234,7 @@ func TestALegacyCancelledOrderWithoutLedgerStaysOut(t *testing.T) {
 
 // LAS CONSULTAS DE REPORTE CAMBIADAS NO ALCANZAN DINERO DE OTRA EMPRESA.
 func TestTheChangedReportQueriesAreIsolated(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(owner, clock)
@@ -264,6 +269,7 @@ func TestTheChangedReportQueriesAreIsolated(t *testing.T) {
 // Utilidad por producto restaba un costo de $0 y mostraba como margen la venta entera: el producto
 // sin costo capturado parecía el más rentable de la carta. Su venta va aparte y no suma al margen.
 func TestProductMarginsDoNotCountUncostedSalesAsMargin(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)

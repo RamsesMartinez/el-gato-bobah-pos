@@ -42,6 +42,7 @@ func pedidoSinCobrar(t *testing.T, st *store.Store, svc *app.OrdersService, sufi
 // deuda y su única salida era levantar un pedido nuevo con los mismos productos, que descuenta el
 // inventario dos veces y reporta una venta que no ocurrió.
 func TestUnPedidoMandadoACocinaSePuedeCobrarDespues(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -64,6 +65,7 @@ func TestUnPedidoMandadoACocinaSePuedeCobrarDespues(t *testing.T) {
 // Un doble tap sobre "Cobrar $250" registraría $500 de ingreso por comida que se vendió una vez, y
 // el corte cuadraría contra una cifra inventada.
 func TestNoSePuedeCobrarDosVecesElMismoPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -80,6 +82,7 @@ func TestNoSePuedeCobrarDosVecesElMismoPedido(t *testing.T) {
 
 // Se puede abonar: el cliente deja algo y termina de pagar al recoger.
 func TestSePuedeAbonarYLuegoCompletar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -116,6 +119,7 @@ func TestSePuedeAbonarYLuegoCompletar(t *testing.T) {
 // Un pedido cancelado ya repuso su stock: cobrarlo reportaría ingreso por comida que volvió al
 // almacén.
 func TestNoSeCobraUnPedidoCancelado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -135,6 +139,7 @@ func TestNoSeCobraUnPedidoCancelado(t *testing.T) {
 // El pago entra en el turno abierto AHORA. Es lo que hace que el corte del día cuadre contra el
 // efectivo que de verdad está en el cajón.
 func TestElCobroEntraEnElTurnoDeHoy(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

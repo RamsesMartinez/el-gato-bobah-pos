@@ -50,6 +50,7 @@ func prenderCiego(t *testing.T, ctx context.Context, settings *app.SettingsServi
 // navegador: el control dejaría de serlo. Y aplica a TODOS los métodos, no solo al efectivo — ver
 // el esperado de la tarjeta permite el mismo acomodo.
 func TestConArqueoCiegoElEsperadoNoViaja(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -118,6 +119,7 @@ func TestConArqueoCiegoElEsperadoNoViaja(t *testing.T) {
 // quedaría habilitado con la pantalla en blanco. El faltante inventado de $1,662 por la puerta de
 // atrás.
 func TestConArqueoCiegoElServidorSigueDiciendoQueFalta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -156,6 +158,7 @@ func TestConArqueoCiegoElServidorSigueDiciendoQueFalta(t *testing.T) {
 
 // CERRADO EL TURNO, LAS CIFRAS VUELVEN: es cuando la diferencia se muestra.
 func TestConArqueoCiegoLasCifrasVuelvenAlCerrar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -196,6 +199,7 @@ func TestConArqueoCiegoLasCifrasVuelvenAlCerrar(t *testing.T) {
 // Este test no busca claves llamadas `expected` —la fuga viaja en `amount` y en `total`—: reconstruye
 // la cifra como lo haría quien la quiere, y falla si le sale.
 func TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -245,6 +249,7 @@ func TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado(t *testing.T) {
 // una entrada de un centavo devolvía el esperado completo. El ocultamiento vivía en cada llamador y
 // éste se lo saltó — que es exactamente por qué ahora vive en un solo lugar.
 func TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

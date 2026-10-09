@@ -24,6 +24,7 @@ import (
 // Antes la lista se ataba a la fecha del turno abierto —el arreglo parcial de la feature 005— y
 // antes de eso al día del servidor, que la vaciaba a las 18:00 locales.
 func TestUnPedidoAbiertoDeOtroDiaSigueEnLaLista(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

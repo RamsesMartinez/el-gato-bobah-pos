@@ -34,6 +34,7 @@ func ventaConFolio(t *testing.T, svc *app.OrdersService, cajero, prod int64, met
 // de fuera vendría de una tableta con la lista de otro esquema, y honrarlo dejaría el ticket con un
 // nombre que la bolsa no conoce y que volvería a salir en la misma vuelta.
 func TestElNombreQueProponeLaPantallaEsElQueSeGuarda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	cajero := makeUser(t, st, "cajero_prop", "cajero")
@@ -64,6 +65,7 @@ func TestElNombreQueProponeLaPantallaEsElQueSeGuarda(t *testing.T) {
 // El numerado sigue existiendo, pero como ÚLTIMA red: solo cuando el día ya pasó del largo de la
 // lista y no queda nada fresco. Eso lo cubre el unitario del dominio.
 func TestDosCuentasConElMismoNombreSeVanACaminosDistintos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	cajero := makeUser(t, st, "cajero_choque", "cajero")
@@ -98,6 +100,7 @@ func TestDosCuentasConElMismoNombreSeVanACaminosDistintos(t *testing.T) {
 // El nombre se imprime en el ticket del cliente y en la comanda. Sin el filtro, un cliente de la
 // API podría meter cualquier texto en un papel que lleva el nombre del negocio.
 func TestUnFolioConBasuraNoLlegaAlPapel(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	cajero := makeUser(t, st, "cajero_basura", "cajero")
@@ -119,6 +122,7 @@ func TestUnFolioConBasuraNoLlegaAlPapel(t *testing.T) {
 
 // Sin propuesta —clientes de API, tests— el servidor reparte el suyo, como antes.
 func TestSinPropuestaElServidorRepiteSuNombre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	cajero := makeUser(t, st, "cajero_sinprop", "cajero")

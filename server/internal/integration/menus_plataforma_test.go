@@ -27,6 +27,7 @@ var tablasDeMenusDePlataforma = []string{
 // nueva necesita el suyo. Sin él, el primer request en producción responde 42501 y en desarrollo
 // nunca falla, porque la API de dev se conecta como owner.
 func TestLasTablasDeMenusDePlataformaTienenSusGrants(t *testing.T) {
+	t.Parallel()
 	newTestStore(t) // migra
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -49,6 +50,7 @@ func TestLasTablasDeMenusDePlataformaTienenSusGrants(t *testing.T) {
 // RLS: las políticas NO existen para el owner, así que esto solo se puede probar bajo el rol de
 // app. Una fuga entre empresas no se ve hasta que hay un segundo cliente.
 func TestUnaConexionDeOtraEmpresaNoSeVe(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -91,6 +93,7 @@ func TestUnaConexionDeOtraEmpresaNoSeVe(t *testing.T) {
 // LOS CHEQUEOS DE INTEGRIDAD DE POSTGRES SALTAN RLS, por diseño. Así que una FK no impide sola que
 // una empresa apunte a un producto de otra: hay que probarlo con datos de las dos.
 func TestUnEmparejamientoNoCruzaEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -312,6 +315,7 @@ func emparejar(t *testing.T, st *store.Store, conexion int64, externalID string,
 // menú difiere, sin un solo error en el log.
 
 func TestElEmparejamientoSobreviveALaPoda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-poda")
@@ -341,6 +345,7 @@ func TestElEmparejamientoSobreviveALaPoda(t *testing.T) {
 }
 
 func TestLaPodaConservaLaUltimaLectura(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-abandonada")
@@ -374,6 +379,7 @@ func TestLaPodaConservaLaUltimaLectura(t *testing.T) {
 // `delete from products`. Con `on delete cascade`, un reorg se llevaría las parejas confirmadas sin
 // avisar — el precedente correcto es order_lines.product_id, que referencia sin `on delete`.
 func TestBorrarUnProductoEmparejadoFalla(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-restrict")
@@ -388,6 +394,7 @@ func TestBorrarUnProductoEmparejadoFalla(t *testing.T) {
 // Un platillo se empareja con un producto y una opción con una opción. Guardar el id de una opción
 // en la columna de producto pasa los tipos y produce un mapeo que NUNCA empata con nada.
 func TestLaParejaDeUnaOpcionNoApuntaAUnProducto(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	con := sembrarConexion(t, st, defaultCompanyID, "tienda-opciones")
@@ -433,6 +440,7 @@ func cuantasParejas(t *testing.T, st *store.Store, con int64) int {
 // En desarrollo no falla —la API se conecta como owner y la base trae el GUC por `alter database`—
 // así que el síntoma aparece solo en producción: la pantalla sale vacía, sin un error.
 func TestElServicioRespetaElTenantBajoElRolDeApp(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -505,6 +513,7 @@ func TestElServicioRespetaElTenantBajoElRolDeApp(t *testing.T) {
 // tiempo: `newTestStore` hace `drop schema` y corre las 71 migraciones, y la suite completa ya hace
 // eso 368 veces. Medido: en CI eso fue lo que la empujó contra el tope de 20 minutos.
 func TestLasRestriccionesDelEsquemaDeMenus(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	casos := map[string]func(*testing.T, *store.Store){
 		"una lectura ok sin items se rechaza":       subUnaLecturaOkSinItemsSeRechaza,

@@ -46,6 +46,7 @@ func egresoDe(b app.CorteBreakdown, concepto string) decimal.Decimal {
 // tarjeta en «Devoluciones» dentro de Ingresos; la propina devuelta se contaba dentro de lo devuelto
 // en Caja y fuera en Ventas, y la propina del efectivo seguía diciendo $10 con $10 devueltos.
 func TestTheCutShowsEveryRefundTheSameWay(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -160,6 +161,7 @@ func TestTheCutShowsEveryRefundTheSameWay(t *testing.T) {
 // Medido: «Ingresos $0 · Sin ingresos» desde Histórico mientras Cajas decía $630. El detalle leía
 // los totales guardados al cerrar, y un turno abierto no los tiene.
 func TestTheHistoryOfAnOpenShiftIsLive(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -194,6 +196,7 @@ func TestTheHistoryOfAnOpenShiftIsLive(t *testing.T) {
 // Un turno que solo devolvió con tarjeta una venta cobrada en otro turno sale en −$300 en tarjeta, y
 // sin nota el cajero busca un faltante que no existe.
 func TestANegativeMethodInTheCutExplainsItself(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

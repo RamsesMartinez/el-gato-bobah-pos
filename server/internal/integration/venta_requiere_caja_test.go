@@ -18,6 +18,7 @@ import (
 // NULL y el corte la recogía después por ventana de tiempo, así que el dinero entraba a un arqueo
 // que nadie abrió — o se perdía si nunca se abría uno.
 func TestVentaSinCajaAbiertaSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -49,6 +50,7 @@ func TestVentaSinCajaAbiertaSeRechaza(t *testing.T) {
 // Con la caja principal abierta la venta pasa Y queda ATADA a esa sesión, tanto la orden como cada
 // pago. Ese vínculo es lo que deja que el corte sume por sesión en vez de por hora.
 func TestVentaConCajaPrincipalQuedaAtadaALaSesion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -96,6 +98,7 @@ func TestVentaConCajaPrincipalQuedaAtadaALaSesion(t *testing.T) {
 // traspasos y gastos; si una de ellas abierta bastara para cobrar, el efectivo de la venta caería
 // en un arqueo que no es el del mostrador.
 func TestCajaSecundariaAbiertaNoHabilitaVender(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -130,6 +133,7 @@ func TestCajaSecundariaAbiertaNoHabilitaVender(t *testing.T) {
 // contestar la MISMA pregunta que el cobro, o la pantalla deja armar un ticket entero para tronar
 // al final: una caja secundaria abierta no es "hay caja".
 func TestEstadoDeCajaSigueLaMismaReglaQueElCobro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -178,6 +182,7 @@ func TestEstadoDeCajaSigueLaMismaReglaQueElCobro(t *testing.T) {
 // Los gastos ya validaban su método (expenses.go); las ventas, que son el 100% del dinero de venta,
 // no.
 func TestPagoConMetodoDeOtraEmpresaSeRechaza(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	// El servicio va sobre el rol de APP y con contexto de tenant, que es el camino de producción.
@@ -225,6 +230,7 @@ func TestPagoConMetodoDeOtraEmpresaSeRechaza(t *testing.T) {
 
 // Y el camino feliz sigue funcionando: el método propio pasa.
 func TestPagoConMetodoPropioPasa(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	ordersSvc := app.NewOrdersService(st, clock)

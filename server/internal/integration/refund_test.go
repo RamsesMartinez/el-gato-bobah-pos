@@ -20,6 +20,7 @@ import (
 // NO repone stock, es idempotente, y los reportes lo excluyen del ingreso y lo cuentan como
 // devolución. Es el flujo nuevo y toca BD de punta a punta, así que va en integración.
 func TestRefundFlow(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -97,6 +98,7 @@ func TestRefundFlow(t *testing.T) {
 
 // Solo se puede reembolsar desde 'entregada': una orden abierta se cancela, no se reembolsa.
 func TestRefundRejectsNonDelivered(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

@@ -17,6 +17,7 @@ import (
 
 // Tras ingerir eventos, NADA en la base apunta a quien los hizo.
 func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -61,6 +62,7 @@ func TestElUsoNoGuardaAQuienLoUso(t *testing.T) {
 // el balde «sin corte» también lo identifica. Lo prueba en tabla
 // `TestElBaldeSinCorteNoPuedeSerUnaSolaPersona`, en el dominio.
 func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -99,6 +101,7 @@ func TestElRolDeUnaSolaPersonaSeGuardaSinCorte(t *testing.T) {
 // El lote pre-agregado NO pierde eventos: tres toques son tres, aunque se escriban en un solo
 // `update`.
 func TestElLotePreAgregadoNoPierdeEventos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)
@@ -125,6 +128,7 @@ func TestElLotePreAgregadoNoPierdeEventos(t *testing.T) {
 
 // Lo que no está en la lista blanca no llega a la base, y el servicio dice cuántos descartó.
 func TestLoDesconocidoSeDescartaYSeCuenta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewUsageService(st)

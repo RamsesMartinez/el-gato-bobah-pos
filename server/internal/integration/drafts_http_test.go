@@ -87,6 +87,7 @@ func nextEvent(t *testing.T, ch <-chan realtime.Event) realtime.Event {
 }
 
 func TestDraftsHTTP(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, broker, token := draftsAPI(t, st)
 	_, tok := token("cajero_http_cuentas", "cajero")
@@ -296,6 +297,7 @@ func TestDraftDiscountKeepsTheOldControls(t *testing.T) {
 
 // POST /pos/drafts/{id}/send en JSON crudo: printLineIds siempre arreglo, y avisa el pedido Y la cuenta.
 func TestSendDraftHTTP(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	r, broker, token := draftsAPI(t, st)
 	cajero, tok := token("cajero_envia_http", "cajero")

@@ -51,6 +51,7 @@ func pedidoEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, sufijo
 //     pedido sin perder una venta — la concurrencia real se ensaya a mano, porque un test de
 //     goroutines aquí pasaría por el número de núcleos y no por el código.
 func TestAgregarAUnPedidoEnCurso(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -103,6 +104,7 @@ func contieneEstado(msg string) bool {
 // donde el operador lo lee. Es la regla que el dueño puso cuando encontró un pedido cobrado que
 // seguía apareciendo como deuda.
 func TestAgregarAUnPedidoYaCobradoDejaSaldoVisible(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -152,6 +154,7 @@ func buscarEnCurso(t *testing.T, st *store.Store, svc *app.OrdersService, id int
 // es peor que rechazarlo. El tablero solo lista abierta y lista, así que el renglón entraría, se
 // cobraría, y nadie prepararía la comida.
 func TestElEntregadoQueRecibeMasVuelveACocina(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

@@ -32,6 +32,7 @@ import (
 // La corrección es que el re-login masivo CADUQUE en vez de REVOCAR: caducar es "tu turno terminó"
 // y da un 401 limpio; revocar es "alguien te robó la credencial" y dispara la respuesta de robo.
 func TestDosEstacionesConLaMismaCuentaNoSeRevocanEntreEllas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewAuthService(st, nil, nil)
@@ -66,6 +67,7 @@ func TestDosEstacionesConLaMismaCuentaNoSeRevocanEntreEllas(t *testing.T) {
 // Y el reuso de verdad SÍ tiene que seguir castigándose: la corrección no puede aflojar la
 // detección de robo, que es un control de seguridad del principio V.
 func TestUnReusoDeVerdadSigueRevocando(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewAuthService(st, nil, nil)

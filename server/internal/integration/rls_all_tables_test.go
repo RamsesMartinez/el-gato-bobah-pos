@@ -24,6 +24,7 @@ import (
 //   - conexión reciclada: tras soltar una sesión, la misma conexión sin empresa no ve nada y NO
 //     revienta (la 0074).
 func TestEveryCompanyTableIsIsolated(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	a := makeCompany(t, st, "catalogo-a")

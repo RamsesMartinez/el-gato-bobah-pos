@@ -17,6 +17,7 @@ import (
 // indistinguible de un update que sí filtrara, y la migración pasaría verde para dejar a la segunda
 // bloqueándose cada tres minutos.
 func TestLaMigracionApagaElBloqueoEnTodasLasEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	otra := makeCompany(t, st, "bloqueo-otra")
@@ -45,6 +46,7 @@ func TestLaMigracionApagaElBloqueoEnTodasLasEmpresas(t *testing.T) {
 // cae al de Go. Con los dos en desacuerdo, dos negocios idénticos se comportarían distinto según
 // tengan fila o no.
 func TestLaEmpresaNuevaNaceSinBloqueoYAsiLoDiceElServicio(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	nueva := makeCompany(t, st, "bloqueo-nueva")

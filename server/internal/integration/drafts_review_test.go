@@ -26,6 +26,7 @@ import (
 // El «+» y la fusión suman sin tope: 100 toques de 10 000 desbordan numeric(8,2) y la cuenta responde
 // 500; antes de eso guarda una cantidad que el pedido rechazaría al enviar.
 func TestAccumulatedQtyHasACeiling(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café del tope acumulado", pesos("1"), false)
 	v := k.newDraft(t, addOf(cafe, "10000"))
@@ -48,6 +49,7 @@ func TestAccumulatedQtyHasACeiling(t *testing.T) {
 // Una petición con miles de renglones hace miles de consultas antes de chocar con el tope de la
 // cuenta (y el import reintentaba Create por cada producto que no existe).
 func TestTooManyLinesInOneRequest(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la ráfaga", pesos("1"), false)
 	many := make([]app.DraftLineCmd, domain.MaxDraftLines+1)
@@ -65,6 +67,7 @@ func TestTooManyLinesInOneRequest(t *testing.T) {
 // Una pestaña con una opción borrada tumbaba la subida de TODAS: la tableta no borraba su copia y
 // reintentaba para siempre.
 func TestImportRejectsOnlyTheBadTab(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la pestaña buena", pesos("30"), false)
 	opt := optionID(t, k.st, defaultCompanyID)
@@ -94,6 +97,7 @@ func TestImportRejectsOnlyTheBadTab(t *testing.T) {
 // Con la bolsa agotada por cuentas vivas, la siguiente respondía 409 y ninguna tableta podía vender
 // hasta que alguien descartara (o hasta 12 horas). Un nombre numerado es mejor que no vender.
 func TestExhaustedBagStillOpensAccounts(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	cafe := makeProduct(t, k.st, "Café de la bolsa vacía", pesos("1"), false)
 	names := domain.NombresDelEsquema(domain.EsquemaPorDefecto)
@@ -112,6 +116,7 @@ func TestExhaustedBagStillOpensAccounts(t *testing.T) {
 // Una tableta que reusa como opId el id de un renglón de OTRA empresa chocaba con la llave global:
 // 23505 → 500 en agregar, y un oráculo de existencia entre empresas.
 func TestLineIDsAreScopedByCompany(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	other := makeCompany(t, k.st, "otra-renglon")
 	otherUser := makeUserIn(t, k.st, other, "cajero_otra_renglon", "cajero")
@@ -142,6 +147,7 @@ func TestLineIDsAreScopedByCompany(t *testing.T) {
 // Al mandar la cuenta, sus renglones ya viven en el pedido; quedarse con ellos bloqueaba para
 // siempre el borrado de cualquier producto que alguna vez se capturó (FK no action).
 func TestSendDeletesTheDraftLines(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café borrable", pesos("30"), false)
@@ -165,6 +171,7 @@ func TestSendDeletesTheDraftLines(t *testing.T) {
 // Una cuenta cuyo pedido ya existía (pestaña importada que sí se había enviado) respondía
 // `created: true`: la tableta diría que nació un pedido que ya estaba.
 func TestSendOfAnAlreadyExistingOrderIsNotCreated(t *testing.T) {
+	t.Parallel()
 	k := newDraftsKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	cafe := makeProduct(t, k.st, "Café ya pedido", pesos("30"), false)
@@ -213,6 +220,7 @@ func TestNewOfOrderNeverLandsInADiscardedDraft(t *testing.T) {
 // Barrido contra enviar y contra abrir «Nuevo» a la vez: los candados en orden distinto
 // interbloqueaban (40P01 → 500).
 func TestSweepNeverDeadlocks(t *testing.T) {
+	t.Parallel()
 	k := newLiveKit(t)
 	abrirCajaPrincipal(t, k.st, k.user)
 	a, b, c := k.tenant(t, k.company), k.tenant(t, k.company), k.tenant(t, k.company)
