@@ -91,6 +91,15 @@ describe('pantalla de Ventas', () => {
     expect(screen.getByText('no entra al total')).toBeInTheDocument();
   });
 
+  // Lo dado por perdido («cancelar lo que falta», 2026-10-09) tiene su propio tile y dice que no
+  // entra al total: sumarlo con el total reportaría un cobro que nunca ocurrió.
+  it('lo perdido sale aparte y fuera del total', async () => {
+    api.summary.mockResolvedValue({ ...resumen, writtenOff: { count: 1, amount: '60' } });
+    montar();
+    expect(await screen.findByText('Perdido')).toBeInTheDocument();
+    expect(screen.getByText('no entra al total · 1 pedido')).toBeInTheDocument();
+  });
+
   // Un tile en cero por cada concepto llena la pantalla de ruido justo donde se busca un descuadre.
   it('no muestra conceptos que valen cero', async () => {
     montar();

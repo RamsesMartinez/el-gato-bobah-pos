@@ -143,6 +143,8 @@ export interface CashSession {
   // no ha salido, ésta qué dinero no entró. No bloquea el cierre.
   uncollected: string;
   uncollectedCount: number;
+  // Lo dado por perdido («cancelar lo que falta», 2026-10-09): ni cobrado ni sin cobrar.
+  writtenOff?: string;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
   // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
@@ -209,6 +211,8 @@ export interface OwingOrder {
   name: string;
   total: string;
   paid: string;
+  // Lo ya dado por perdido; con todo el resto perdido el pedido ya no aparece aquí.
+  writtenOff?: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {

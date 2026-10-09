@@ -53,6 +53,10 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
         {resumen.refunded.count > 0 && (
           <Tile label="Devoluciones" valor={money(resumen.refunded.amount)} nota={`${resumen.refunded.count}`} />
         )}
+        {(resumen.writtenOff?.count ?? 0) > 0 && resumen.writtenOff && (
+          <Tile label="Perdido" valor={money(resumen.writtenOff.amount)}
+            nota={`no entra al total · ${resumen.writtenOff.count} ${resumen.writtenOff.count === 1 ? 'pedido' : 'pedidos'}`} />
+        )}
         {resumen.cancelledLines.count > 0 && (
           <Tile label="Renglones cancelados" valor={money(resumen.cancelledLines.amount)} nota={`${resumen.cancelledLines.count}`} />
         )}

@@ -179,3 +179,9 @@ export function armarVista(args: {
     pedido: order ?? null,
   };
 }
+
+// «Cancelar lo que falta» (dueño, 2026-10-09, opción A): se ofrece en un pedido de mostrador
+// entregado, con pagos y con algo por cobrar. El servidor aplica la misma regla y es la barrera.
+export function puedeCancelarLoQueFalta(v: VistaCuenta): boolean {
+  return v.tipo === 'pedido' && v.pedido?.status === 'entregada' && !v.esPlataforma && v.pagado > 0 && v.falta > 0;
+}

@@ -14,7 +14,7 @@ import type { DraftHeader } from '../../types/pos';
 import type { SwipeHandlers } from '../../hooks/useSwipeDownToClose';
 import { money } from '../../utils/format';
 import type { RenglonNuevo, RenglonPedido, VistaCuenta } from './cuentaEnPantalla';
-import { detalleDeModificadores } from './cuentaEnPantalla';
+import { detalleDeModificadores, puedeCancelarLoQueFalta } from './cuentaEnPantalla';
 
 // EL TICKET DE LA CUENTA ABIERTA (spec 030, US3–US6; lienzo V2-1, V2-3, X1).
 //
@@ -49,6 +49,8 @@ interface Props {
   onCobrar: () => void;
   onDescartar: () => void;
   onCancelarPedido: () => void;
+  // «Cancelar lo que falta» (2026-10-09): entregado pagado a medias cuyo cliente se fue.
+  onCancelarResto?: () => void;
   onQuitarDeCocina: (r: RenglonPedido) => void;
   // El papel de la cuenta (spec 012): pre-cuenta si no se ha mandado, o lo enviado más lo nuevo.
   onImprimir: () => void;
@@ -68,7 +70,7 @@ const PLIEGA_CON = 3;
 export function Ticket(props: Props) {
   const {
     vista, sinConexion, envioPorDefecto, enviando, motivo, puedeCancelar, onCabecera, onEnviar,
-    onCobrar, onDescartar, onCancelarPedido, onHide, swipeHandlers,
+    onCobrar, onDescartar, onCancelarPedido, onCancelarResto, onHide, swipeHandlers,
   } = props;
   const enCaptura = vista.tipo !== 'pedido';
   const llevaEnvio = enCaptura && cobraEnvio(vista);
@@ -165,6 +167,11 @@ export function Ticket(props: Props) {
               {!enCaptura && puedeCancelar && (
                 <MenuItem value="cancelar" minH="48px" mt={3} color="red.fg" onClick={onCancelarPedido}>
                   <LuBan /> Cancelar pedido
+                </MenuItem>
+              )}
+              {puedeCancelar && onCancelarResto && puedeCancelarLoQueFalta(vista) && (
+                <MenuItem value="cancelar-resto" minH="48px" color="red.fg" onClick={onCancelarResto}>
+                  <LuBan /> Cancelar lo que falta
                 </MenuItem>
               )}
             </MenuContent>

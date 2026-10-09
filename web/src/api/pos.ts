@@ -134,6 +134,8 @@ export const posApi = {
   // en el cajón.
   cancelOrder: (id: number, reason: string, devolver = false) =>
     api.post<void>(`/orders/${id}/cancel`, { reason, devolver }),
+  // «Cancelar lo que falta» (2026-10-09): lo pagado se queda como venta y el resto se da por perdido.
+  writeOffOrder: (id: number, reason: string) => api.post<void>(`/orders/${id}/write-off`, { reason }),
   // Cancelar UN renglón. Responde si repuso el inventario: el que ya salió a cocina baja el total
   // pero no devuelve el insumo, y la pantalla tiene que poder decirlo.
   // `qty` quita solo esas piezas pendientes (1 de 2); sin él, todas las pendientes.

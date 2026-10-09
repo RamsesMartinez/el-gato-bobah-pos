@@ -87,6 +87,8 @@ export interface SalesSummary {
   byMethod: MethodTotals[];
   cancelledLines: ConceptCount;
   pending: ConceptCount;
+  // Lo dado por perdido en el periodo («cancelar lo que falta», 2026-10-09). No está en total.
+  writtenOff?: ConceptCount;
 }
 
 export type SalesPreset = 'hoy' | 'ayer' | 'semana' | 'mes' | 'rango';

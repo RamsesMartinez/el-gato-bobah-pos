@@ -171,7 +171,7 @@ values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
         -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
         -- el pedido de plataforma, cuya sucursal es la de su tienda.
         $20)
-returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id
+returning id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id, written_off_amount, written_off_reason, written_off_by, written_off_at, written_off_business_date
 `
 
 type CreateOrderParams struct {
@@ -270,6 +270,11 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.DiscountSetAt,
 		&i.BranchID,
 		&i.MergedIntoOrderID,
+		&i.WrittenOffAmount,
+		&i.WrittenOffReason,
+		&i.WrittenOffBy,
+		&i.WrittenOffAt,
+		&i.WrittenOffBusinessDate,
 	)
 	return i, err
 }
@@ -646,7 +651,7 @@ func (q *Queries) GetLoteDeRenglones(ctx context.Context, clientUuid uuid.UUID) 
 }
 
 const getOrder = `-- name: GetOrder :one
-select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id from orders where id = $1
+select id, client_uuid, business_date, daily_number, status, service_type, delivery_platform_id, customer_name, notes, register_session_id, opened_by, subtotal, discount_total, total, opened_at, ready_at, completed_at, cancelled_at, cancelled_by, cancel_reason, updated_at, currency, refunded_at, refunded_by, refund_reason, refund_amount, delivery_fee, folio_name, platform_order_ref, platform_ref_set_by, platform_ref_set_at, discount_set_by, discount_set_at, branch_id, merged_into_order_id, written_off_amount, written_off_reason, written_off_by, written_off_at, written_off_business_date from orders where id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
@@ -688,13 +693,18 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
 		&i.DiscountSetAt,
 		&i.BranchID,
 		&i.MergedIntoOrderID,
+		&i.WrittenOffAmount,
+		&i.WrittenOffReason,
+		&i.WrittenOffBy,
+		&i.WrittenOffAt,
+		&i.WrittenOffBusinessDate,
 	)
 	return i, err
 }
 
 const getOrderForCharge = `-- name: GetOrderForCharge :one
 select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
-       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status, o.written_off_amount
 from orders o
 left join register_sessions rs on rs.id = o.register_session_id
 where o.id = $1
@@ -711,6 +721,7 @@ type GetOrderForChargeRow struct {
 	Total              decimal.Decimal `json:"total"`
 	RegisterSessionID  *int64          `json:"register_session_id"`
 	SessionStatus      string          `json:"session_status"`
+	WrittenOffAmount   decimal.Decimal `json:"written_off_amount"`
 }
 
 // El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
@@ -729,6 +740,7 @@ func (q *Queries) GetOrderForCharge(ctx context.Context, id int64) (GetOrderForC
 		&i.Total,
 		&i.RegisterSessionID,
 		&i.SessionStatus,
+		&i.WrittenOffAmount,
 	)
 	return i, err
 }
@@ -819,7 +831,7 @@ func (q *Queries) GetOrderForQuote(ctx context.Context, id int64) (GetOrderForQu
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-select id, status, service_type, delivery_platform_id, total
+select id, status, service_type, delivery_platform_id, total, written_off_amount
 from orders where id = $1
 for update
 `
@@ -830,6 +842,7 @@ type GetOrderForUpdateRow struct {
 	ServiceType        ServiceType     `json:"service_type"`
 	DeliveryPlatformID *int16          `json:"delivery_platform_id"`
 	Total              decimal.Decimal `json:"total"`
+	WrittenOffAmount   decimal.Decimal `json:"written_off_amount"`
 }
 
 // El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
@@ -844,6 +857,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (GetOrderForU
 		&i.ServiceType,
 		&i.DeliveryPlatformID,
 		&i.Total,
+		&i.WrittenOffAmount,
 	)
 	return i, err
 }
@@ -1103,7 +1117,7 @@ func (q *Queries) GetOrderPaymentShapeByClientUUID(ctx context.Context, clientUu
 
 const getOrdersForAccounts = `-- name: GetOrdersForAccounts :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
        coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
@@ -1123,6 +1137,7 @@ type GetOrdersForAccountsRow struct {
 	OpenedAt           time.Time       `json:"opened_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
 	BusinessDate       pgtype.Date     `json:"business_date"`
+	WrittenOffAmount   decimal.Decimal `json:"written_off_amount"`
 	Paid               decimal.Decimal `json:"paid"`
 	Renglones          int32           `json:"renglones"`
 }
@@ -1150,6 +1165,7 @@ func (q *Queries) GetOrdersForAccounts(ctx context.Context, ids []int64) ([]GetO
 			&i.OpenedAt,
 			&i.UpdatedAt,
 			&i.BusinessDate,
+			&i.WrittenOffAmount,
 			&i.Paid,
 			&i.Renglones,
 		); err != nil {
@@ -1356,7 +1372,7 @@ func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundPa
 const listActiveOrders = `-- name: ListActiveOrders :many
 
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -1379,6 +1395,7 @@ type ListActiveOrdersRow struct {
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
+	WrittenOffAmount   decimal.Decimal    `json:"written_off_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -1407,6 +1424,7 @@ func (q *Queries) ListActiveOrders(ctx context.Context) ([]ListActiveOrdersRow, 
 			&i.Total,
 			&i.Currency,
 			&i.RefundAmount,
+			&i.WrittenOffAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -1456,7 +1474,7 @@ func (q *Queries) ListChargedSplitParts(ctx context.Context, arg ListChargedSpli
 
 const listDeliveredToday = `-- name: ListDeliveredToday :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -1479,6 +1497,7 @@ type ListDeliveredTodayRow struct {
 	Total              decimal.Decimal    `json:"total"`
 	Currency           string             `json:"currency"`
 	RefundAmount       decimal.Decimal    `json:"refund_amount"`
+	WrittenOffAmount   decimal.Decimal    `json:"written_off_amount"`
 	OpenedAt           time.Time          `json:"opened_at"`
 	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
 	Paid               decimal.Decimal    `json:"paid"`
@@ -1518,6 +1537,7 @@ func (q *Queries) ListDeliveredToday(ctx context.Context, completedAt pgtype.Tim
 			&i.Total,
 			&i.Currency,
 			&i.RefundAmount,
+			&i.WrittenOffAmount,
 			&i.OpenedAt,
 			&i.ReadyAt,
 			&i.Paid,
@@ -1824,7 +1844,7 @@ func (q *Queries) ListLinesToSplit(ctx context.Context, orderID int64) ([]ListLi
 
 const listLiveOrders = `-- name: ListLiveOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
        pagos.paid::numeric(10,2) as paid,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
@@ -1842,7 +1862,8 @@ where o.status not in ('cancelada', 'reembolsada')
     -- cierre. Un pedido que nadie ve es un pedido que nadie cierra.
     o.status in ('abierta', 'lista')
     -- El centavo de tolerancia es el MISMO de ` + "`" + `domain.PedidoSaldado` + "`" + `, y tiene que moverse con él.
-    or (o.total - pagos.paid > 0.01 and o.business_date >= $1::date)
+    -- Lo dado por perdido («cancelar lo que falta», 2026-10-09) deja de deberse.
+    or (o.total - o.written_off_amount - pagos.paid > 0.01 and o.business_date >= $1::date)
   )
 order by o.opened_at
 `
@@ -1859,6 +1880,7 @@ type ListLiveOrdersRow struct {
 	OpenedAt           time.Time       `json:"opened_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
 	BusinessDate       pgtype.Date     `json:"business_date"`
+	WrittenOffAmount   decimal.Decimal `json:"written_off_amount"`
 	Paid               decimal.Decimal `json:"paid"`
 	Renglones          int32           `json:"renglones"`
 }
@@ -1900,6 +1922,7 @@ func (q *Queries) ListLiveOrders(ctx context.Context, since pgtype.Date) ([]List
 			&i.OpenedAt,
 			&i.UpdatedAt,
 			&i.BusinessDate,
+			&i.WrittenOffAmount,
 			&i.Paid,
 			&i.Renglones,
 		); err != nil {
@@ -2981,4 +3004,36 @@ func (q *Queries) SumOrderRefunds(ctx context.Context, arg SumOrderRefundsParams
 	var i SumOrderRefundsRow
 	err := row.Scan(&i.DevueltoTotal, &i.DevueltoDelRenglon)
 	return i, err
+}
+
+const writeOffOrder = `-- name: WriteOffOrder :execrows
+update orders
+   set written_off_amount = $1, written_off_reason = $2,
+       written_off_by = $3, written_off_at = now(),
+       written_off_business_date = $4
+ where id = $5 and written_off_at is null
+`
+
+type WriteOffOrderParams struct {
+	Amount       decimal.Decimal `json:"amount"`
+	Reason       *string         `json:"reason"`
+	Actor        *int64          `json:"actor"`
+	BusinessDate pgtype.Date     `json:"business_date"`
+	ID           int64           `json:"id"`
+}
+
+// «Cancelar lo que falta» (dueño, 2026-10-09): el resto de un entregado pagado a medias se da por
+// perdido con su motivo. `written_off_at is null` hace que dos toques no lo escriban dos veces.
+func (q *Queries) WriteOffOrder(ctx context.Context, arg WriteOffOrderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, writeOffOrder,
+		arg.Amount,
+		arg.Reason,
+		arg.Actor,
+		arg.BusinessDate,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

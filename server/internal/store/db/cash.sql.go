@@ -1610,7 +1610,8 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 }
 
 const owingDeliveredOrders = `-- name: OwingDeliveredOrders :many
-select o.id, o.daily_number, o.folio_name, o.total, coalesce(p.pagado, 0)::numeric(12,2) as paid
+select o.id, o.daily_number, o.folio_name, o.total, coalesce(p.pagado, 0)::numeric(12,2) as paid,
+       o.written_off_amount
 from orders o
 left join lateral (
   select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
@@ -1618,16 +1619,17 @@ left join lateral (
 where o.status = 'entregada'
   and o.delivery_platform_id is null
   and o.merged_into_order_id is null
-  and o.total > coalesce(p.pagado, 0)
+  and o.total - o.written_off_amount > coalesce(p.pagado, 0)
 order by o.business_date, o.daily_number
 `
 
 type OwingDeliveredOrdersRow struct {
-	ID          int64           `json:"id"`
-	DailyNumber int32           `json:"daily_number"`
-	FolioName   *string         `json:"folio_name"`
-	Total       decimal.Decimal `json:"total"`
-	Paid        decimal.Decimal `json:"paid"`
+	ID               int64           `json:"id"`
+	DailyNumber      int32           `json:"daily_number"`
+	FolioName        *string         `json:"folio_name"`
+	Total            decimal.Decimal `json:"total"`
+	Paid             decimal.Decimal `json:"paid"`
+	WrittenOffAmount decimal.Decimal `json:"written_off_amount"`
 }
 
 // Pedidos de mostrador ENTREGADOS que todavía deben, de cualquier día y cualquier turno. Bloquean el
@@ -1651,6 +1653,7 @@ func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrd
 			&i.FolioName,
 			&i.Total,
 			&i.Paid,
+			&i.WrittenOffAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -1941,8 +1944,24 @@ func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]S
 	return items, nil
 }
 
+const sessionWrittenOff = `-- name: SessionWrittenOff :one
+select coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
+from orders o
+where o.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+`
+
+// Lo dado por perdido de los pedidos del turno («cancelar lo que falta», 2026-10-09). Ni cobro ni
+// sin cobrar: con esto el corte cierra la resta vendido = cobrado + sin cobrar + perdido.
+func (q *Queries) SessionWrittenOff(ctx context.Context, registerSessionID *int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, sessionWrittenOff, registerSessionID)
+	var monto decimal.Decimal
+	err := row.Scan(&monto)
+	return monto, err
+}
+
 const uncollectedInSession = `-- name: UncollectedInSession :one
-select coalesce(sum(o.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
+select coalesce(sum(o.total - o.written_off_amount - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
        count(*)::int as pedidos
 from orders o
 left join lateral (
@@ -1952,7 +1971,7 @@ left join lateral (
 ) p on true
 where o.register_session_id = $1
   and o.status not in ('cancelada', 'reembolsada')
-  and o.total > coalesce(p.pagado, 0)
+  and o.total - o.written_off_amount > coalesce(p.pagado, 0)
 `
 
 type UncollectedInSessionRow struct {
@@ -1978,6 +1997,8 @@ type UncollectedInSessionRow struct {
 // Los pagos que cuentan son los de ESTE turno (o sin turno, anteriores al vínculo): un cobro hecho
 // en otro turno es dinero de ese otro corte, que lo explica como «cobro de otros turnos». Contarlo
 // aquí movía lo «sin cobrar» de un corte ya firmado cada vez que otro turno cobraba (spec 031, D12).
+// Lo dado por perdido («cancelar lo que falta», 2026-10-09) NO es «sin cobrar»: tiene su propia
+// cifra en el corte (SessionWrittenOff). Cada peso en un solo renglón.
 func (q *Queries) UncollectedInSession(ctx context.Context, registerSessionID *int64) (UncollectedInSessionRow, error) {
 	row := q.db.QueryRow(ctx, uncollectedInSession, registerSessionID)
 	var i UncollectedInSessionRow

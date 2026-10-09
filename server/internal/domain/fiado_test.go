@@ -36,6 +36,52 @@ func TestNoOwingOrders(t *testing.T) {
 	}
 }
 
+// «CANCELAR LO QUE FALTA» (dueño, 2026-10-09, opción A). Un entregado pagado a medias cuyo cliente se
+// fue: lo pagado se queda como venta y lo que falta se da por perdido con su motivo. Solo con pagos
+// (sin pagos se cancela el pedido entero) y solo si debe algo.
+func TestWriteOffRemainder(t *testing.T) {
+	casos := []struct {
+		nombre      string
+		status      string
+		total, paid string
+		want        string
+		err         error
+	}{
+		{"pagó una parte", StatusEntregada, "100", "40", "60", nil},
+		{"sin pagos se cancela entero", StatusEntregada, "100", "0", "", ErrWriteOffWithoutPayments},
+		{"pagado no debe nada", StatusEntregada, "100", "100", "", ErrCancelDeliveredPaid},
+		{"en cocina todavía no", StatusLista, "100", "40", "", ErrWriteOffNotDelivered},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			got, err := WriteOffRemainder(c.status, d(c.total), d(c.paid))
+			if c.err != nil {
+				if !errors.Is(err, c.err) {
+					t.Fatalf("err = %v, quiere %v", err, c.err)
+				}
+				return
+			}
+			if err != nil || !got.Equal(d(c.want)) {
+				t.Fatalf("= %s, %v; quiere %s", got, err, c.want)
+			}
+		})
+	}
+}
+
+// Lo perdido deja de deberse: un pedido con su resto dado por perdido no bloquea el cierre. Pero NO
+// es un cobro: Owed lo resta de lo que falta y nada más.
+func TestOwedSubtractsTheWriteOff(t *testing.T) {
+	if got := Owed(d("100"), d("40"), d("60")); !got.IsZero() {
+		t.Fatalf("Owed = %s, quiere 0", got)
+	}
+	if got := Owed(d("100"), d("40"), d("0")); !got.Equal(d("60")) {
+		t.Fatalf("Owed = %s, quiere 60", got)
+	}
+	if err := NoOwingOrders([]OwingOrder{{Number: 1, Total: d("100"), Paid: d("40"), WrittenOff: d("60")}}); err != nil {
+		t.Fatalf("un pedido con su resto perdido bloqueó el cierre: %v", err)
+	}
+}
+
 // Cancelar un entregado que debe es la salida de «se fue sin pagar». Solo sin pagos: con un cobro
 // adentro, cancelarlo sacaría de Ventas un dinero que sí está en el cajón.
 func TestCanCancelDelivered(t *testing.T) {

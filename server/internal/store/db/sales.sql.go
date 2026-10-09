@@ -553,7 +553,7 @@ func (q *Queries) SalesCancelledLinesSinFolio(ctx context.Context, arg SalesCanc
 
 const salesPending = `-- name: SalesPending :one
 with filtrado as (
-  select o.id, o.total
+  select o.id, o.total - o.written_off_amount as total
   from orders o
   where o.business_date between $1 and $2
     and o.merged_into_order_id is null
@@ -597,7 +597,7 @@ func (q *Queries) SalesPending(ctx context.Context, arg SalesPendingParams) (Sal
 
 const salesPendingSinFolio = `-- name: SalesPendingSinFolio :one
 with filtrado as (
-  select o.id, o.total
+  select o.id, o.total - o.written_off_amount as total
   from orders o
   where o.delivery_platform_id is not null and o.platform_order_ref is null
     and o.business_date between $1 and $2
@@ -951,4 +951,31 @@ func (q *Queries) SalesTotalsByStatusSinFolio(ctx context.Context, arg SalesTota
 		return nil, err
 	}
 	return items, nil
+}
+
+const salesWrittenOff = `-- name: SalesWrittenOff :one
+select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
+from orders o
+where o.written_off_business_date between $1 and $2
+  and ($3::service_type is null or o.service_type = $3)
+`
+
+type SalesWrittenOffParams struct {
+	Desde       pgtype.Date  `json:"desde"`
+	Hasta       pgtype.Date  `json:"hasta"`
+	ServiceType *ServiceType `json:"service_type"`
+}
+
+type SalesWrittenOffRow struct {
+	Pedidos int32           `json:"pedidos"`
+	Monto   decimal.Decimal `json:"monto"`
+}
+
+// Lo dado por perdido en el periodo («cancelar lo que falta», dueño 2026-10-09), por el día en que se
+// dio por perdido. No es venta cobrada, ni devolución, ni pendiente: concepto propio.
+func (q *Queries) SalesWrittenOff(ctx context.Context, arg SalesWrittenOffParams) (SalesWrittenOffRow, error) {
+	row := q.db.QueryRow(ctx, salesWrittenOff, arg.Desde, arg.Hasta, arg.ServiceType)
+	var i SalesWrittenOffRow
+	err := row.Scan(&i.Pedidos, &i.Monto)
+	return i, err
 }

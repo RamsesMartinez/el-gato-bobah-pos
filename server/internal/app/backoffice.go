@@ -462,6 +462,9 @@ type SessionView struct {
 	// cobró por fuera). Lo que no puede pasar es que el arqueo no la nombre.
 	Uncollected      decimal.Decimal `json:"uncollected"`
 	UncollectedCount int             `json:"uncollectedCount"`
+	// WrittenOff: lo dado por perdido de los pedidos del turno («cancelar lo que falta», 2026-10-09).
+	// No está en Uncollected ni en el esperado: vendido = cobrado + sin cobrar + perdido.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
 	// Counts: lo que se contó al abrir. Va en la MISMA forma que en el detalle del corte y sale del
 	// mismo lugar: dos derivaciones del mismo desglose son dos pantallas que pueden no coincidir.
 	Counts *ConteosDelTurno `json:"counts"`
@@ -614,6 +617,9 @@ type SessionDetailView struct {
 	// porque ESTA es la pantalla que alguien audita cuando ya nadie se acuerda del turno.
 	Uncollected      decimal.Decimal `json:"uncollected"`
 	UncollectedCount int             `json:"uncollectedCount"`
+	// WrittenOff: lo dado por perdido de los pedidos del turno («cancelar lo que falta», 2026-10-09).
+	// No está en Uncollected ni en el esperado: vendido = cobrado + sin cobrar + perdido.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
 	// Counts: el desglose de los dos arqueos del turno. Es lo que convierte un faltante en algo
 	// investigable — "faltan dos billetes de $500" en vez de "faltan $1,000".
 	Counts *ConteosDelTurno `json:"counts"`
@@ -1258,6 +1264,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
+	if view.WrittenOff, err = s.store.QC(ctx).SessionWrittenOff(ctx, &sess.ID); err != nil {
+		return nil, err
+	}
 	if view.VoidedPayments, err = s.voidedPayments(ctx, sess.ID); err != nil {
 		return nil, err
 	}
@@ -1800,6 +1809,9 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		Sales: ventas, SalesCount: cuenta, SalesShown: len(ventas), SalesTotal: ingreso,
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
 	}
+	if view.WrittenOff, err = s.store.QC(ctx).SessionWrittenOff(ctx, &sess.ID); err != nil {
+		return nil, err
+	}
 	// Lo que no es venta del turno se lee en vivo y no del snapshot: los cobros y devoluciones de un
 	// turno cerrado ya no cambian (cobrar y devolver exigen el turno abierto), y así el corte cerrado
 	// los nombra igual que el abierto. El esperado sí sale del snapshot, que es lo que se firmó.
@@ -2211,7 +2223,7 @@ func (s *BackofficeService) owingOrders(ctx context.Context, isPrimary bool) ([]
 		return nil, err
 	}
 	for _, f := range filas {
-		o := domain.OwingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName), Total: f.Total, Paid: f.Paid}
+		o := domain.OwingOrder{ID: f.ID, Number: int(f.DailyNumber), Name: derefStr(f.FolioName), Total: f.Total, Paid: f.Paid, WrittenOff: f.WrittenOffAmount}
 		if o.Outstanding().IsPositive() {
 			out = append(out, o)
 		}
