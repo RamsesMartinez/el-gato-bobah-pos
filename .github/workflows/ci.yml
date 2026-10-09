@@ -40,11 +40,10 @@ jobs:
           version: v2.14.0
           install-mode: goinstall
           working-directory: server
+      # Con el Go de este job y no con govulncheck-action: la acción instala su propio Go y el día
+      # que salió go1.27.2 seguía bajando go1.27.1, que el go.mod ya rechaza (GOTOOLCHAIN=local).
       - name: Vulnerabilities (govulncheck)
-        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
-        with:
-          work-dir: server
-          go-version-file: server/go.mod
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   integration:
     name: Backend integration (Postgres)
