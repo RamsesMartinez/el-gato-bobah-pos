@@ -391,7 +391,10 @@ test.describe('cerrar caja con cuentas vivas (US8)', () => {
     await entrar(page);
     await page.goto('/caja');
     const plegada = page.getByRole('button', { name: /Cuentas pendientes \(\d+\)/ });
-    test.skip(!(await plegada.isVisible({ timeout: 30_000 }).catch(() => false)), 'no hay una caja abierta en el ambiente');
+    // `isVisible` no espera aunque reciba un timeout: miraba antes de que cargara /caja y saltaba el
+    // test con la caja abierta.
+    const hay = await plegada.waitFor({ timeout: 30_000 }).then(() => true).catch(() => false);
+    test.skip(!hay, 'no hay una caja abierta en el ambiente');
     await plegada.click();
     await page.getByRole('button', { name: /^Abrir / }).first().click();
     await expect(page).toHaveURL(/\/pos/);
