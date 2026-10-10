@@ -186,7 +186,8 @@ returning *;
 -- is_refund: la salida de caja de una devolución (spec 029). El corte la presenta en
 -- «Devoluciones» de su medio y no en «Salidas de efectivo»; el esperado no cambia, porque el neto
 -- de movimientos la sigue restando.
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id,
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
+       exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
        exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
 join users u on u.id = m.user_id
@@ -211,7 +212,8 @@ order by ep.id;
 
 -- Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
 -- name: NetCashMovements :one
-select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
+-- Un reverso solo corrige salidas (domain.CanReverse): devuelve al cajón lo que la salida restó.
+select coalesce(sum(case when kind in ('entrada', 'reverso') then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1;
 
 -- Traspasos entre cajas: la fila de traspaso + cada pierna como movimiento ligado.
@@ -683,3 +685,26 @@ update order_refunds r
    and r.cash_movement_id is null
    and r.created_at >= coalesce((select max(p.closed_at) from register_sessions p
                                   where p.register_id = s.register_id and p.id <> s.id), '-infinity'::timestamptz);
+
+-- name: LastClosingCountOfRegister :one
+-- El fondo que dejó el último cierre de esta caja (spec 032, punto 6; decisión del 2026-10-10): lo
+-- que se dejó, o en cierres de antes de esa decisión, todo lo contado. Solo lo lee el servidor para
+-- decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser a ciegas.
+select coalesce(s.float_left, c.total)::numeric(10,2) as total
+  from register_sessions s
+  join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
+ where s.register_id = $1 and s.status = 'cerrada'
+ order by s.closed_at desc, s.id desc
+ limit 1;
+
+-- name: SetFloatLeft :exec
+update register_sessions set float_left = $2 where id = $1;
+
+-- name: SetOpeningExtras :exec
+-- El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
+-- de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
+-- quien cuenta.
+update register_sessions s set opening_reason = sqlc.narg('reason'), opening_reason_note = sqlc.narg('note'),
+       card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
+                                    where r.id = s.register_id), 'auto')
+ where s.id = sqlc.arg(id);

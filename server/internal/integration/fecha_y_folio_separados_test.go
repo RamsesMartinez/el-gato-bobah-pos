@@ -291,7 +291,7 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar el turno ya sin pendientes: %v", err)
 	}
-	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero); err != nil {
 		t.Fatalf("reabrir el mismo día: %v", err)
 	}
 

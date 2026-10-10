@@ -115,7 +115,7 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar: %v", err)
 	}
-	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
+	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero)
 	if err != nil {
 		t.Fatalf("reabrir: %v", err)
 	}

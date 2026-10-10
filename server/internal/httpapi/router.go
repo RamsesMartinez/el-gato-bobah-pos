@@ -200,6 +200,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/{id}/refund-info", h.RefundInfo) // mismo gate que /refund
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
@@ -277,10 +278,30 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)
 					r.Post("/movements", h.CreateCashMovement)
-					r.Post("/transfer", h.CashTransfer) // traspaso entre dos cajas abiertas
+					r.Get("/tips", h.PendingTips)         // propina por entregar del turno (spec 032)
+					r.Post("/tips/payouts", h.PayoutTips) // repartirla entre una o varias personas
+					r.Post("/transfer", h.CashTransfer)   // traspaso entre dos cajas abiertas
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// Conceptos de salida (spec 032): quien captura la salida los lee y agrega uno nuevo
+				// ahí mismo; editarlos, archivarlos y juntarlos es configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-concepts", h.ListCashConcepts)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Post("/cash-concepts", h.CreateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/cash-concepts/{id}", h.UpdateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-concepts/{id}/merge", h.MergeCashConcept)
+				// Terminales (spec 032): quien cobra las lee; agregarlas, renombrarlas, archivarlas y el
+				// modo de arqueo por sucursal son configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/card-terminals", h.ListCardTerminals)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/card-terminals", h.CreateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/card-terminals/{id}", h.UpdateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/branches/card-count-modes", h.CardCountModes)
+				// Correos del resumen diario del cierre (spec 032): configuración del negocio.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/settings/daily-summary-emails", h.SummaryEmails)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/settings/daily-summary-emails", h.SetSummaryEmails)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/branches/{id}/card-count-mode", h.SetCardCountMode)
+				// Corregir una salida: reverso + salida nueva. Gerente o admin.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)
 				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que
 				// abre o cierra la caja.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash/denominations", h.CashDenominations)
@@ -304,6 +325,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/sales", h.ListSales)
 					r.Get("/sales/summary", h.SalesSummary)
+					r.Get("/cash-alerts", h.CashAlerts) // avisos de Ventas del día (spec 032)
 					// La liquidación de un pedido de plataforma. MISMO gate que la pantalla de
 					// Ventas y no el de crear pedidos: es dinero que NO pasó por la caja —lo que la
 					// plataforma se quedó— y se captura con el estado de cuenta en la mano, días

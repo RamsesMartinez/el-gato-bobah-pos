@@ -55,6 +55,12 @@ export function OrdersBoardPage() {
   const [ticketOrderID, setTicketOrderID] = useState<number | null>(null);
   const [cobrando, setCobrando] = useState<BoardOrder | null>(null);
   const [devolviendo, setDevolviendo] = useState<{ pedido: BoardOrder; cancelando: boolean } | null>(null);
+  // En qué terminal se devuelve lo cobrado con tarjeta, y si pedirá su folio (spec 032).
+  const { data: infoDevolucion } = useQuery({
+    queryKey: ['refund-info', devolviendo?.pedido.id],
+    queryFn: () => posApi.refundInfo(devolviendo!.pedido.id),
+    enabled: devolviendo !== null,
+  });
   const [quitando, setQuitando] = useState<{ orderId: number; linea: BoardLine } | null>(null);
   const [quitandoFaltante, setQuitandoFaltante] = useState<BoardOrder | null>(null);
   const qc = useQueryClient();
@@ -109,8 +115,8 @@ export function OrdersBoardPage() {
     onError: conError('No se pudo entregar'),
   });
   const cancelMut = useMutation({
-    mutationFn: ({ id, reason, devolver }: { id: number; reason: string; devolver: boolean }) =>
-      posApi.cancelOrder(id, reason, devolver),
+    mutationFn: ({ id, reason, devolver, cardFolio }: { id: number; reason: string; devolver: boolean; cardFolio?: string }) =>
+      posApi.cancelOrder(id, reason, devolver, cardFolio),
     onSuccess: invalidateAll,
     // Un pedido del que ya salió comida no se cancela: reponer el stock de lo que el cliente se
     // llevó le inventaría existencias al almacén. El servidor lo rechaza y aquí se dice por qué.
@@ -153,8 +159,8 @@ export function OrdersBoardPage() {
   });
 
   const refundMut = useMutation({
-    mutationFn: ({ id, reason, amount }: { id: number; reason: string; amount?: number }) =>
-      posApi.refundOrder(id, reason, amount),
+    mutationFn: ({ id, reason, amount, cardFolio }: { id: number; reason: string; amount?: number; cardFolio?: string }) =>
+      posApi.refundOrder(id, reason, amount, undefined, cardFolio),
     onSuccess: () => { invalidateAll(); toaster.create({ title: 'Devolución registrada', type: 'success' }); },
     onError: conError('No se pudo devolver'),
   });
@@ -287,12 +293,14 @@ export function OrdersBoardPage() {
           cancelando={devolviendo.cancelando}
           enviando={cancelMut.isPending || refundMut.isPending}
           onCerrar={() => setDevolviendo(null)}
-          onConfirmar={(monto, motivo) => {
+          tarjeta={infoDevolucion ? { terminales: infoDevolucion.cardTerminals, pideFolio: infoDevolucion.needsFolio } : undefined}
+          onConfirmar={(monto, motivo, folio) => {
             const { pedido, cancelando } = devolviendo;
+            const cardFolio = folio || undefined;
             if (cancelando) {
-              cancelMut.mutate({ id: pedido.id, reason: motivo, devolver: monto > 0 });
+              cancelMut.mutate({ id: pedido.id, reason: motivo, devolver: monto > 0, cardFolio });
             } else {
-              refundMut.mutate({ id: pedido.id, reason: motivo, amount: monto });
+              refundMut.mutate({ id: pedido.id, reason: motivo, amount: monto, cardFolio });
             }
             setDevolviendo(null);
           }}

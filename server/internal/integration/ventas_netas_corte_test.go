@@ -48,6 +48,8 @@ func egresoDe(b app.CorteBreakdown, concepto string) decimal.Decimal {
 func TestTheCutShowsEveryRefundTheSameWay(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
+	// Este caso no es del arqueo por terminal (spec 032): la sucursal arquea la tarjeta en automático.
+	sinArqueoPorTerminal(t, st)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
 	orders := app.NewOrdersService(st, clock)
@@ -69,7 +71,7 @@ func TestTheCutShowsEveryRefundTheSameWay(t *testing.T) {
 		return ord
 	}
 	cancelarDevolviendo := func(ord int64) {
-		if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
+		if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
 			t.Fatalf("CancelarConDevolucion: %v", err)
 		}
 	}

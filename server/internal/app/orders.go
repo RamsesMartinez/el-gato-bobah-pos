@@ -1798,6 +1798,9 @@ type ChargeCmd struct {
 	Lines        []domain.SelectedPieces
 	AllRemaining bool
 	Split        *ChargeSplit
+	// TerminalID: la terminal de un cobro con tarjeta (spec 032). Nil = la del usuario o la única de
+	// la sucursal; con varias y sin ninguna, el cobro se rechaza.
+	TerminalID *int64
 }
 
 // ChargeSplit es la parte de una cuenta repartida entre personas.
@@ -1971,6 +1974,15 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		if !domain.MetodoCorrespondeALaPlataforma(m.DeliveryPlatformID, o.PlatformID) {
 			return domain.ErrPaymentMethodPlatform
 		}
+		// La terminal se resuelve antes de escribir: un cobro con tarjeta sin terminal no entra.
+		var terminal *db.ActiveTerminalsOfRegisterBranchRow
+		if m.Kind == db.PaymentKindTarjeta {
+			t, err := resolveTerminal(ctx, q, sess.RegisterID, cmd.ActorID, cmd.TerminalID)
+			if err != nil {
+				return err
+			}
+			terminal = &t
+		}
 		// El número cuenta los pagos vivos y los devueltos, viejos sin número incluidos: el que se
 		// imprime en el ticket no se repite aunque un pago se devuelva.
 		n, err := q.CountOrderPaymentsForNumber(ctx, cmd.OrderID)
@@ -2001,6 +2013,11 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		})
 		if err != nil {
 			return err
+		}
+		if terminal != nil {
+			if err := q.SetPaymentTerminal(ctx, db.SetPaymentTerminalParams{ID: paymentID, CardTerminalID: &terminal.ID, CardTerminalName: &terminal.Name}); err != nil {
+				return err
+			}
 		}
 		for _, c := range covered {
 			if err := q.CreateOrderPaymentLine(ctx, db.CreateOrderPaymentLineParams{

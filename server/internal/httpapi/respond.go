@@ -64,6 +64,18 @@ func Error(w http.ResponseWriter, err error) {
 		// y se lo llevaría a 400. El código propio deja que la pantalla diga qué hacer en vez de un
 		// "datos inválidos" que no nombra el camino correcto.
 		status, code = http.StatusUnprocessableEntity, "CONFIRMAR_PRIMERO"
+	// Spec 032: rechazos a los que la pantalla de caja responde con su propia hoja. Antes que
+	// ErrValidation, que los envuelve.
+	case errors.Is(err, domain.ErrOpeningReasonRequired):
+		status, code = http.StatusUnprocessableEntity, "OPENING_REASON_REQUIRED"
+	case errors.Is(err, domain.ErrTipsDecisionNeeded):
+		status, code = http.StatusUnprocessableEntity, "TIPS_DECISION_REQUIRED"
+	case errors.Is(err, domain.ErrRefundFolioRequired):
+		status, code = http.StatusUnprocessableEntity, "REFUND_FOLIO_REQUIRED"
+	case errors.Is(err, domain.ErrCardTerminalRequired):
+		status, code = http.StatusUnprocessableEntity, "CARD_TERMINAL_REQUIRED"
+	case errors.Is(err, domain.ErrTerminalCountRequired):
+		status, code = http.StatusUnprocessableEntity, "TERMINAL_COUNT_REQUIRED"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):

@@ -102,7 +102,7 @@ func TestAPartialRefundTodayShowsInTheRefundedTile(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 
 	ord := pedidoCobradoParcial(t, ctx, st, ordenes, "tile_dev", "200", "200", cajero, efectivo, false)
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("30"),
 		Motivo: "faltó un topping", ActorID: cajero,
 	}); err != nil {

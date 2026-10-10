@@ -152,3 +152,17 @@ func TestCorteBreakdownNamesEarlierChargesAndRefunds(t *testing.T) {
 		t.Fatalf("total de tarjeta = %s, quiere 220: el desglose tiene que sumar el esperado", b.Ingresos[0].Total)
 	}
 }
+
+// Una propina entregada sale del cajón pero no es gasto ni salida del negocio: va en su propio
+// renglón de egresos y nunca en «Gastos» ni en «Salidas de efectivo» (spec 032, EB-02).
+func TestCorteBreakdownTipPayoutIsItsOwnBucket(t *testing.T) {
+	moves := []db.ListCashMovementsRow{{Kind: domain.CashPropina, Amount: mustDec("78")}}
+	methods := []methodExpected{{name: "Efectivo", expected: mustDec("52"), duenoDelFondo: true}}
+	b := corteBreakdown(decimal.Zero, methods, moves)
+	if len(b.Egresos) != 1 || b.Egresos[0].Concept != "Propinas entregadas" || !b.Egresos[0].Amount.Equal(mustDec("78")) {
+		t.Fatalf("egresos = %+v; la propina entregada debe ir sola en «Propinas entregadas»", b.Egresos)
+	}
+	if !b.Ingresos[0].Items[0].Amount.Equal(mustDec("130")) {
+		t.Fatalf("ventas = %s; quería 130 (52 esperado + 78 entregados)", b.Ingresos[0].Items[0].Amount)
+	}
+}

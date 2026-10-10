@@ -1,3 +1,4 @@
+import { DiaDelGasto } from './DiaDelGasto';
 import { useRef, useState, type ReactNode } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Input, Badge, IconButton, Separator,
@@ -92,6 +93,9 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
 
   // ---- Encabezado ----
   const [expenseDate, setExpenseDate] = useState(today());
+  const [expenseDay, setExpenseDay] = useState(today());
+  const { data: caja } = useQuery({ queryKey: ['cash-status'], queryFn: posApi.cashStatus });
+  const turno = caja?.open ? caja.businessDate ?? null : null;
   const [categoryId, setCategoryId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [amount, setAmount] = useState('');
@@ -200,6 +204,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
   const create = useMutation({
     mutationFn: () => backofficeApi.createExpense({
       expenseDate,
+      expenseDay: turno ? undefined : expenseDay,
       receivedAt: markReceived ? receivedAt : undefined,
       categoryId: Number(categoryId),
       supplierId: supplierId ? Number(supplierId) : undefined,
@@ -265,6 +270,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
               </>
             }>
               <HStack flexWrap="wrap" gap={3} align="start">
+                <DiaDelGasto turno={turno} value={expenseDay} onChange={setExpenseDay} />
                 <Field label="Fecha del documento" w="170px">
                   <Input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
                 </Field>

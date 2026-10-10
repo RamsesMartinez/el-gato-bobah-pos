@@ -13,6 +13,7 @@ import { money } from '../../utils/format';
 import { round2 } from '../../domain/cobro';
 import { SaleDetailDialog } from './SaleDetailDialog';
 import { SalesSummaryTiles } from './SalesSummaryTiles';
+import { AvisosDeCaja } from '../backoffice/AvisosDeCaja';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
 import { diaCortoYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -117,8 +118,14 @@ export function SalesPage() {
   const paginas = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rango = lista.data?.range ?? resumen.data?.range;
 
+  // Avisos de caja solo en «hoy»: hablan de los turnos abiertos, no del periodo elegido.
+  const { data: avisos } = useQuery({ queryKey: ['cash-alerts'], queryFn: () => salesApi.cashAlerts(), enabled: preset === 'hoy' });
+
   return (
     <Page fill maxW="1280px">
+      {preset === 'hoy' && avisos && (
+        <Box mb={2}><AvisosDeCaja tipsPending={avisos.tipsPending} cashOutsWithoutConcept={avisos.cashOutsWithoutConcept} /></Box>
+      )}
       {/* Título, periodo y rango en UNA fila: a 600 px de alto cada fila es un renglón de la tabla
           menos, y la tabla es lo que el operador vino a leer. */}
       <HStack mb={2} gap={3} align="center" flexWrap="wrap">

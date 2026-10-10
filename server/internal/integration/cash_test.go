@@ -48,6 +48,8 @@ func registerID(t *testing.T, st *store.Store, name string) int64 {
 func TestCloseSessionAutoDeclareIgnoresClientValue(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
+	// Este caso no es del arqueo por terminal (spec 032): la sucursal arquea la tarjeta en automático.
+	sinArqueoPorTerminal(t, st)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
 	backoffice := app.NewBackofficeService(st, clock)

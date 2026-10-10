@@ -32,6 +32,8 @@ type DevolucionCmd struct {
 	Monto   decimal.Decimal
 	Motivo  string
 	ActorID int64
+	// CardFolio: el folio que imprime la terminal al devolver con tarjeta (spec 032, punto 10).
+	CardFolio string
 }
 
 // CancelacionCmd: cancelar un pedido, resolviendo su dinero si lo tiene.
@@ -42,6 +44,8 @@ type CancelacionCmd struct {
 	// Devolver: el cajero confirma que el dinero se le regresa al cliente. Sin esto, un pedido con
 	// cobros NO se cancela — es el agujero que esta feature cierra.
 	Devolver bool
+	// CardFolio: como en DevolucionCmd, si se devuelve algo cobrado con tarjeta.
+	CardFolio string
 }
 
 // Devolver registra una devolución y, si el dinero salió del cajón, su movimiento de caja.
@@ -97,7 +101,7 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 	// efectivo lo que entró por tarjeta saca de la caja dinero que nunca estuvo ahí, y el arqueo
 	// cierra con un faltante inventado; no registrar la salida del efectivo de una app hace lo
 	// mismo con el signo contrario.
-	if err := s.recordRefundParts(ctx, q, cmd.OrderID, cmd.LineID, domain.RepartirDevolucion(entradas, cmd.Monto), motivo, cmd.ActorID); err != nil {
+	if err := s.recordRefundParts(ctx, q, cmd.OrderID, cmd.LineID, domain.RepartirDevolucion(entradas, cmd.Monto), motivo, cmd.ActorID, cmd.CardFolio); err != nil {
 		return err
 	}
 
@@ -114,7 +118,7 @@ func (s *OrdersService) devolverEnTx(ctx context.Context, q *db.Queries, cmd Dev
 // en el turno y el día en que se hizo. Se lee con candado compartido también cuando nada sale del
 // cajón, para que un cierre simultáneo la espere o ella lo vea cerrado.
 func (s *OrdersService) recordRefundParts(ctx context.Context, q *db.Queries, orderID int64, lineID *int64,
-	partes []domain.ParteDeDevolucion, motivo string, actor int64,
+	partes []domain.ParteDeDevolucion, motivo string, actor int64, cardFolio string,
 ) error {
 	var turno *int64
 	sess, err := q.LockOpenPrimarySession(ctx)
@@ -126,6 +130,21 @@ func (s *OrdersService) recordRefundParts(ctx context.Context, q *db.Queries, or
 	}
 	dia := pgtype.Date{Time: domain.BusinessDate(s.now(), s.location(ctx)), Valid: true}
 	for _, parte := range partes {
+		// Lo cobrado con tarjeta se devuelve EN LA TERMINAL, y sin su folio no hay forma de saber
+		// que el dinero sí regresó (spec 032, punto 10).
+		var folio *string
+		var capturo *int64
+		m, err := q.GetPaymentMethod(ctx, parte.MetodoID)
+		if err != nil {
+			return err
+		}
+		if m.Kind == db.PaymentKindTarjeta {
+			f, err := domain.NormalizeRefundFolio(cardFolio)
+			if err != nil {
+				return err
+			}
+			folio, capturo = &f, &actor
+		}
 		var movimiento *int64
 		if parte.SaleDelCajon {
 			// Sin turno NO se devuelve efectivo: la salida no quedaría en ningún arqueo, y la
@@ -147,16 +166,18 @@ func (s *OrdersService) recordRefundParts(ctx context.Context, q *db.Queries, or
 			movimiento = &mov.ID
 		}
 		if _, err := q.InsertOrderRefund(ctx, db.InsertOrderRefundParams{
-			OrderID:           orderID,
-			OrderLineID:       lineID,
-			PaymentMethodID:   parte.MetodoID,
-			Amount:            domain.Round2(parte.Monto),
-			TipAmount:         domain.Round2(parte.Tip),
-			Reason:            motivo,
-			RefundedBy:        actor,
-			CashMovementID:    movimiento,
-			RegisterSessionID: turno,
-			BusinessDate:      dia,
+			OrderID:              orderID,
+			OrderLineID:          lineID,
+			PaymentMethodID:      parte.MetodoID,
+			Amount:               domain.Round2(parte.Monto),
+			TipAmount:            domain.Round2(parte.Tip),
+			Reason:               motivo,
+			RefundedBy:           actor,
+			CashMovementID:       movimiento,
+			RegisterSessionID:    turno,
+			BusinessDate:         dia,
+			CardRefundFolio:      folio,
+			CardRefundCapturedBy: capturo,
 		}); err != nil {
 			return err
 		}
@@ -280,7 +301,7 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 			return domain.ErrCancelarSinDevolver
 		}
 		if len(partes) > 0 {
-			if err := s.recordRefundParts(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID); err != nil {
+			if err := s.recordRefundParts(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID, cmd.CardFolio); err != nil {
 				return err
 			}
 			if err := q.RecalcOrderRefundAmount(ctx, cmd.OrderID); err != nil {
@@ -667,6 +688,31 @@ func nullTime(t pgtype.Timestamptz) *time.Time {
 // Se calcula aquí y no en la pantalla porque el tope es lo COBRADO menos lo ya devuelto, y la
 // pantalla no tiene esas dos cifras sin pedirlas — y si las pidiera, quedarían viejas entre la
 // consulta y el toque.
+// RefundInfoView: lo que la pantalla de devolución necesita saber antes de devolver.
+type RefundInfoView struct {
+	// CardTerminals: en qué terminales se cobró con tarjeta (ahí se devuelve). NeedsFolio: hay algo
+	// cobrado con tarjeta, así que la devolución pedirá el folio de la terminal.
+	CardTerminals []string `json:"cardTerminals"`
+	NeedsFolio    bool     `json:"needsFolio"`
+}
+
+// RefundInfo dice en qué terminal devolver y si hará falta el folio.
+func (s *OrdersService) RefundInfo(ctx context.Context, orderID int64) (RefundInfoView, error) {
+	rows, err := s.store.QC(ctx).CardPaymentsOfOrder(ctx, orderID)
+	if err != nil {
+		return RefundInfoView{}, err
+	}
+	v := RefundInfoView{CardTerminals: []string{}, NeedsFolio: len(rows) > 0}
+	seen := map[string]bool{}
+	for _, name := range rows {
+		if name != nil && !seen[*name] {
+			seen[*name] = true
+			v.CardTerminals = append(v.CardTerminals, *name)
+		}
+	}
+	return v, nil
+}
+
 func (s *OrdersService) PorDevolver(ctx context.Context, orderID int64, lineID *int64) (decimal.Decimal, error) {
 	t, err := s.refundable(ctx, s.store.QC(ctx), orderID, lineID)
 	if err != nil {

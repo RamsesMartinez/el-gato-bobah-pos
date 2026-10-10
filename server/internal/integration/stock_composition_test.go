@@ -71,7 +71,7 @@ func TestCancellingALineThenTheOrderRestocksOnce(t *testing.T) {
 	if got := onHand(t, st, soda); !got.IsZero() {
 		t.Fatalf("cancelar el renglón antes de cocina repone el refresco: quería 0, hay %s", got)
 	}
-	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: order.ID, Motivo: "se fue el cliente", ActorID: cashier}); err != nil {
+	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: order.ID, Motivo: "se fue el cliente", ActorID: cashier}); err != nil {
 		t.Fatalf("cancelar el pedido: %v", err)
 	}
 	if got := onHand(t, st, soda); !got.IsZero() {

@@ -33,7 +33,7 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida';
+  kind: 'entrada' | 'salida' | 'propina' | 'reverso';
   amount: string;
   concept: string;
   createdAt: string;
@@ -42,7 +42,31 @@ export interface CashMovement {
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
   // La salida de caja de una devolución (spec 029): se nombra Devolución, como en el desglose.
   isRefund?: boolean;
+  // Corrección por reverso (spec 032): `reversesId` en el reverso, `reversed` en la salida corregida.
+  reversesId?: number | null;
+  reversed?: boolean;
 }
+
+export interface CashConcept {
+  id: number;
+  name: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  supplierId: number | null;
+  supplierName: string | null;
+}
+
+export interface CardTerminal {
+  id: number;
+  branchId: number;
+  branchName: string;
+  name: string;
+  archived: boolean;
+}
+
+export type CashMovementInput =
+  | { kind: 'entrada'; amount: number; concept: string }
+  | { kind: 'salida'; amount: number; conceptId: number };
 // PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
 // uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.
 export interface CashExpenseLine {
@@ -89,9 +113,10 @@ export interface Denomination {
 //
 // El servidor los rechaza si llegan juntos, pero llegar hasta el rechazo con el cajón contado es un
 // conteo perdido: la unión discriminada lo vuelve imposible de escribir desde aquí.
-export type AperturaInput =
+export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
-  | { openingCash: number; manualReason: string };
+  | { openingCash: number; manualReason: string }
+) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
@@ -159,6 +184,31 @@ export interface CashSession {
   owing?: OwingOrder[];
   // Dinero devuelto al cliente en el turno (spec 031). Opcional por la misma razón que el anterior.
   refunds?: SessionRefund[];
+  // Propinas (spec 032). Opcionales: un servidor viejo no las manda y la sección no se pinta.
+  tipsPending?: TipsPending | null;
+  // Arqueo de tarjeta por terminal (spec 032): lo que se pide al cerrar y, cerrado, la diferencia.
+  cardCountMode?: 'auto' | 'per_terminal';
+  cashOutsWithoutConcept?: number;
+  terminalsToCount?: { terminalId: number; name: string }[];
+  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  tipsPaidOut?: string;
+  cardTipsPaidInCash?: string;
+}
+
+// Propina por entregar del turno abierto y a quién se le puede entregar.
+export interface TipsPending {
+  total: string;
+  cash: string;
+  nonCash: string;
+  inherited: string;
+  people?: { id: number; name: string }[];
+}
+
+export type TipsDecision = 'quedan_en_caja';
+
+export interface TipPayoutInput {
+  mode: 'parejo' | 'ajustado';
+  recipients: { userId: number; amount?: number }[];
 }
 
 // Una devolución del turno. `fromDrawer`: salió del cajón (con su salida de caja); si no, ya bajó
@@ -294,7 +344,8 @@ export interface Supplier {
 }
 export interface Expense {
   id: number;
-  expenseDate: string;       // YYYY-MM-DD, fecha del DOCUMENTO
+  expenseDate: string;       // YYYY-MM-DD, DÍA DEL GASTO (spec 032)
+  documentDate?: string | null; // YYYY-MM-DD, fecha del documento
   receivedAt: string | null; // null = mercancía sin recibir (no ha tocado el almacén)
   status: ExpenseStatus;
   category: string;
@@ -533,7 +584,14 @@ export const backofficeApi = {
     countedCash?: number;
     manualReason?: string;
     notes?: string;
+    tipsDecision?: TipsDecision;
+    terminalCounts?: Record<string, number>;
+    floatLeft?: number;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
+  cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
+  cashTipPayout: (registerId: number, input: TipPayoutInput) =>
+    api.post<{ items: { movementId: number; recipientName: string; amount: string }[] }>(
+      '/cash-sessions/tips/payouts', { registerId, ...input }),
   // Paginado y con rango opcional por día del turno: sin páginas solo existían los 50 más recientes.
   cashHistory: (p: { page: number; pageSize: number; from?: string; to?: string }) => {
     const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });
@@ -547,8 +605,25 @@ export const backofficeApi = {
   cashSessionSales: (id: number, page: number, pageSize: number) =>
     api.get<{ items: CorteSale[]; total: number; salesTotal: string }>(
       `/cash-sessions/${id}/sales?page=${page}&pageSize=${pageSize}`),
-  cashMovement: (registerId: number, kind: 'entrada' | 'salida', amount: number, concept: string) =>
-    api.post<CashSession>('/cash-sessions/movements', { registerId, kind, amount, concept }),
+  cashMovement: (registerId: number, input: CashMovementInput) =>
+    api.post<CashSession>('/cash-sessions/movements', { registerId, ...input }),
+  // Conceptos de salida (spec 032): la lista, y el alta en línea desde la captura.
+  cashConcepts: () => api.get<{ items: CashConcept[] }>('/cash-concepts'),
+  createCashConcept: (name: string) => api.post<CashConcept>('/cash-concepts', { name }),
+  updateCashConcept: (id: number, body: { name: string; categoryId: number | null; supplierId: number | null } | { archived: true }) =>
+    api.patch<CashConcept | null>(`/cash-concepts/${id}`, body),
+  mergeCashConcept: (id: number, intoId: number) => api.post<null>(`/cash-concepts/${id}/merge`, { intoId }),
+  summaryEmails: () => api.get<{ emails: string[] }>('/settings/daily-summary-emails'),
+  setSummaryEmails: (emails: string[]) => api.put<{ emails: string[] }>('/settings/daily-summary-emails', { emails }),
+  cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
+  createCardTerminal: (branchId: number, name: string) => api.post<CardTerminal>('/card-terminals', { branchId, name }),
+  updateCardTerminal: (id: number, body: { name: string } | { archived: true }) =>
+    api.patch<CardTerminal | null>(`/card-terminals/${id}`, body),
+  cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
+  setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
+    api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
+  correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
+    api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
   cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
     api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),
@@ -586,7 +661,8 @@ export const backofficeApi = {
     return api.get<{ items: Expense[]; total: number; page: number; pageSize: number }>(`/expenses${qs ? `?${qs}` : ''}`);
   },
   createExpense: (b: {
-    expenseDate?: string;
+    expenseDate?: string; // fecha del documento
+    expenseDay?: string;  // día del gasto, solo sin caja abierta (spec 032)
     receivedAt?: string;
     categoryId: number;
     supplierId?: number;

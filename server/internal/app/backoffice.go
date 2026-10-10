@@ -243,6 +243,9 @@ type CashMovementView struct {
 	// IsRefund: la salida de caja de una devolución (spec 029). El desglose la cuenta en
 	// «Devoluciones» y la tabla la nombra igual, no como una salida más.
 	IsRefund bool `json:"isRefund"`
+	// ReversesID: es el reverso de esa salida; Reversed: esta salida ya se corrigió (spec 032).
+	ReversesID *int64 `json:"reversesId"`
+	Reversed   bool   `json:"reversed"`
 }
 
 // CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
@@ -323,14 +326,20 @@ type methodExpected struct {
 // ventas se derivan del esperado restando propinas y (en efectivo) fondo + neto de movimientos, así
 // una caja secundaria (esperado = fondo + neto) da 0 ventas sola. Propinas se listan aparte.
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
-	var entradas, traspasosIn, salidas, traspasosOut, gastos, net decimal.Decimal
+	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, net decimal.Decimal
 	for _, m := range moves {
-		if m.Kind == domain.CashEntrada {
+		if m.Kind == domain.CashEntrada || m.Kind == domain.CashReverso {
 			net = net.Add(m.Amount)
 		} else {
 			net = net.Sub(m.Amount)
 		}
 		switch {
+		case m.Kind == domain.CashReverso:
+			// Corrige una salida a mano (domain.CanReverse): la descuenta de las salidas.
+			salidas = salidas.Sub(m.Amount)
+		case m.Kind == domain.CashPropina:
+			// Dinero del personal que sale del cajón: ni gasto ni salida del negocio (spec 032).
+			propinas = propinas.Add(m.Amount)
 		case m.IsRefund:
 			// La salida de caja de una devolución se presenta en «Devoluciones» de su medio, como la
 			// de tarjeta (spec 029). Sigue en el neto: el esperado no cambia.
@@ -402,6 +411,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		{Concept: "Gastos", Amount: domain.Round2(gastos)},
 		{Concept: "Salidas de efectivo", Amount: domain.Round2(salidas)},
 		{Concept: "Traspasos enviados", Amount: domain.Round2(traspasosOut)},
+		{Concept: "Propinas entregadas", Amount: domain.Round2(propinas)},
 	} {
 		if b.Amount.IsPositive() {
 			out.Egresos = append(out.Egresos, b)
@@ -414,19 +424,31 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 }
 
 type SessionView struct {
-	ID           int64              `json:"id"`
-	RegisterID   int64              `json:"registerId"`
-	RegisterName string             `json:"registerName"`
-	IsPrimary    bool               `json:"isPrimary"` // la caja primaria recibe las ventas del POS
-	Status       string             `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"openingCash"`
-	Currency     domain.Currency    `json:"currency"`
-	OpenedAt     time.Time          `json:"openedAt"`
-	NetMovements decimal.Decimal    `json:"netMovements"` // entradas − salidas de efectivo
-	Totals       []MethodTotal      `json:"totals"`
-	Movements    []CashMovementView `json:"movements"`
-	Expenses     []CashExpenseView  `json:"expenses"`
-	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Arqueo de tarjeta (spec 032): el modo del turno, las terminales que hay que declarar al cerrar
+	// y, cerrado, lo declarado contra lo cobrado por terminal.
+	CardCountMode string `json:"cardCountMode"`
+	// Salidas a mano sin concepto del turno (las de antes de los conceptos): aviso del cierre.
+	CashOutsWithoutConcept int                 `json:"cashOutsWithoutConcept"`
+	TerminalsToCount       []TerminalToCount   `json:"terminalsToCount"`
+	TerminalCounts         []TerminalCountView `json:"terminalCounts"`
+	// Propinas (spec 032): por entregar, entregadas en el turno y cuánto de lo entregado era
+	// propina de tarjeta u otro medio pagada con efectivo del cajón.
+	TipsPending        *TipsPendingView   `json:"tipsPending"`
+	TipsPaidOut        decimal.Decimal    `json:"tipsPaidOut"`
+	CardTipsPaidInCash decimal.Decimal    `json:"cardTipsPaidInCash"`
+	ID                 int64              `json:"id"`
+	RegisterID         int64              `json:"registerId"`
+	RegisterName       string             `json:"registerName"`
+	IsPrimary          bool               `json:"isPrimary"` // la caja primaria recibe las ventas del POS
+	Status             string             `json:"status"`
+	OpeningCash        decimal.Decimal    `json:"openingCash"`
+	Currency           domain.Currency    `json:"currency"`
+	OpenedAt           time.Time          `json:"openedAt"`
+	NetMovements       decimal.Decimal    `json:"netMovements"` // entradas − salidas de efectivo
+	Totals             []MethodTotal      `json:"totals"`
+	Movements          []CashMovementView `json:"movements"`
+	Expenses           []CashExpenseView  `json:"expenses"`
+	Breakdown          CorteBreakdown     `json:"breakdown"`
 	// Blind: este turno se está contando a ciegas, así que la vista viene SIN el desglose de la
 	// venta ni lo cobrado por cada cajero.
 	//
@@ -987,6 +1009,9 @@ type AperturaCmd struct {
 	Piezas []PiezaCapturada
 	Total  *decimal.Decimal
 	Motivo string
+	// Reason y ReasonNote: por qué lo contado no coincide con el cierre anterior (spec 032).
+	Reason     string
+	ReasonNote string
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
@@ -1013,6 +1038,24 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	if err != nil {
 		return nil, err
 	}
+	// A CIEGAS (punto 6): el cierre anterior se compara aquí y no se devuelve. Una diferencia exige
+	// motivo de la lista; sin cierre anterior contado no hay contra qué comparar.
+	var prev *decimal.Decimal
+	if p, err := s.store.QC(ctx).LastClosingCountOfRegister(ctx, registerID); err == nil {
+		prev = &p
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	var reason, note *string
+	if domain.OpeningNeedsReason(prev, total) {
+		if err := domain.ValidOpeningReason(cmd.Reason, cmd.ReasonNote); err != nil {
+			return nil, err
+		}
+		reason = &cmd.Reason
+		if n := strings.TrimSpace(cmd.ReasonNote); n != "" {
+			note = &n
+		}
+	}
 
 	var sess db.RegisterSession
 	// UNA SOLA TRANSACCIÓN. Son tres escrituras —la sesión, el conteo y sus renglones— y si la
@@ -1030,6 +1073,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 			return err
 		}
 		sess = abierta
+		if err := q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
+			return err
+		}
 		// Solo la caja PRINCIPAL reclama lo huérfano: es la única que vende, y el esperado de una
 		// secundaria ignora ventas y devoluciones. Si la barra abría primero se quedaba con ellas y
 		// no restaban ni sumaban en ningún corte (spec 031, revisión de D7).
@@ -1314,12 +1360,15 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		if reg.IsPrimary {
 			devuelto = refundsOf(r.Refunded, r.RefundedTips, r.DrawerRefunded, r.DrawerRefundedTips)
 		}
+		// Con arqueo por terminal la tarjeta se declara una vez, por terminal (spec 032): el método
+		// toma lo esperado y la diferencia sale en el conteo de cada terminal.
+		autoDeclara := r.AutoDeclare || (r.Kind == db.PaymentKindTarjeta && domain.CardCountMode(sess.CardCountMode) == domain.CardCountPerTerminal)
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name,
 			Kind: string(r.Kind), Expected: &expected, Tips: domain.Round2(tips.Sub(devuelto.Tips())), grossTips: tips,
-			AutoDeclare: r.AutoDeclare,
+			AutoDeclare: autoDeclara,
 			// Un método cuyo dinero está en el cajón NO pide cifra: su dinero se declara una vez,
 			// contándolo. Los demás piden la suya si esperaban algo.
-			RequiresEntry: !r.AutoDeclare && !r.AffectsCashDrawer && !expected.IsZero()})
+			RequiresEntry: !autoDeclara && !r.AffectsCashDrawer && !expected.IsZero()})
 		delCorte = append(delCorte, domain.MetodoDelCorte{
 			ID: int(r.PaymentMethodID), Esperado: expected, TocaElCajon: r.AffectsCashDrawer,
 		})
@@ -1343,10 +1392,49 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	view.Drawer = arqueo
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
+	fuentes, err := tipSources(ctx, s.store.QC(ctx), sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	pend := pendingView(fuentes)
+	if pend.People, err = tipPeople(ctx, s.store.QC(ctx)); err != nil {
+		return nil, err
+	}
+	view.TipsPending = &pend
+	entregado, err := s.store.QC(ctx).TipPayoutTotalsForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.TipsPaidOut, view.CardTipsPaidInCash = entregado.PaidOut, entregado.NonCashPaidInCash
+	view.CardCountMode = sess.CardCountMode
+	sinConcepto, err := s.store.QC(ctx).CashOutsWithoutConceptInSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.CashOutsWithoutConcept = int(sinConcepto)
+	view.TerminalsToCount = []TerminalToCount{}
+	cobrado, err := s.store.QC(ctx).TerminalCollectedForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	por := map[int64]decimal.Decimal{}
+	for _, c := range cobrado {
+		por[c.TerminalID] = c.Collected
+	}
+	for _, id := range domain.TerminalsToDeclare(domain.CardCountMode(sess.CardCountMode), por) {
+		for _, c := range cobrado {
+			if c.TerminalID == id {
+				view.TerminalsToCount = append(view.TerminalsToCount, TerminalToCount{TerminalID: id, Name: c.Name})
+			}
+		}
+	}
+	if view.TerminalCounts, err = s.terminalCounts(ctx, sess.ID); err != nil {
+		return nil, err
+	}
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
-			IsRefund: m.IsRefund,
+			IsRefund: m.IsRefund, ReversesID: m.ReversesID, Reversed: m.Reversed,
 		})
 	}
 	return view, nil
@@ -1386,6 +1474,14 @@ type CierreCmd struct {
 	Total  *decimal.Decimal
 	Motivo string
 	Notas  string
+	// Propinas: qué se hace con la propina pendiente (spec 032). Obligatoria si queda al menos un
+	// peso; «quedan_en_caja» la hereda el siguiente turno de esta caja.
+	Propinas string
+	// FloatLeft: cuánto se deja de fondo para el siguiente turno; el resto se retira (decisión del
+	// 2026-10-10). Ausente = se deja todo lo contado. No puede pasar de lo contado.
+	FloatLeft *decimal.Decimal
+	// TerminalCounts: terminal → total de su corte, con arqueo por terminal (spec 032, punto 9).
+	TerminalCounts map[int64]decimal.Decimal
 }
 
 func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
@@ -1400,6 +1496,10 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		if !domain.ValidMoney(domain.Round2(d), true) {
 			return nil, domain.ErrValidation
 		}
+	}
+	decision, err := domain.ParseTipsDecision(cmd.Propinas)
+	if err != nil {
+		return nil, err
 	}
 	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
 	if err != nil {
@@ -1447,6 +1547,26 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		}
 		if errDebe := domain.NoOwingOrders(debe); errDebe != nil {
 			return errDebe
+		}
+		// LA PROPINA PENDIENTE NO SE QUEDA SIN DUEÑO (spec 032). Con un peso o más hay que decidir;
+		// lo que quede —incluido un sobrante de centavos, que no se puede entregar— lo hereda el
+		// siguiente turno de esta misma caja.
+		fuentes, errTips := tipSources(ctx, q, sess.ID)
+		if errTips != nil {
+			return errTips
+		}
+		pendiente := domain.PendingTips(fuentes)
+		if domain.TipsDecisionRequired(pendiente) && decision != domain.TipsDecisionKeepInBox {
+			return domain.ErrTipsDecisionNeeded
+		}
+		if errTips := q.SetTipsCarriedOver(ctx, db.SetTipsCarriedOverParams{ID: sess.ID, TipsCarriedOver: pendiente}); errTips != nil {
+			return errTips
+		}
+		if errTips := carryOver(ctx, q, sess.ID, fuentes); errTips != nil {
+			return errTips
+		}
+		if err := s.saveTerminalCounts(ctx, q, sess, userID, cmd.TerminalCounts); err != nil {
+			return err
 		}
 		var err error
 		// Sin las cuentas vivas: su barrido abre su propia transacción, y con la conexión del turno
@@ -1536,12 +1656,27 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		if cmd.Notas != "" {
 			n = &cmd.Notas
 		}
+		if conteo != nil {
+			deja := conteo.total
+			if cmd.FloatLeft != nil {
+				deja = domain.Round2(*cmd.FloatLeft)
+				if !domain.ValidMoney(deja, true) || deja.GreaterThan(conteo.total) {
+					return fmt.Errorf("%w: el fondo que se deja no puede ser mayor a lo contado", domain.ErrValidation)
+				}
+			}
+			if err := q.SetFloatLeft(ctx, db.SetFloatLeftParams{ID: sess.ID, FloatLeft: &deja}); err != nil {
+				return err
+			}
+		}
 		return q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n})
 	})
 	if err != nil {
 		return nil, traduceConflictoDeCaja(err, db.CashCountMomentCierre)
 	}
 	view.Status = "cerrada"
+	if view.TerminalCounts, err = s.terminalCounts(ctx, sess.ID); err != nil {
+		return nil, err
+	}
 	if conteo != nil {
 		// Se vuelve a leer el conteo ya guardado para que la diferencia que devuelve el cierre sea la
 		// de la columna GENERADA y no una resta que este método haga aparte: dos restas del mismo
@@ -1558,6 +1693,68 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		}
 	}
 	return view, nil
+}
+
+// TerminalCountView es el arqueo de una terminal al cierre (spec 032, punto 9).
+type TerminalCountView struct {
+	TerminalID int64           `json:"terminalId"`
+	Name       string          `json:"name"`
+	Expected   decimal.Decimal `json:"expected"`
+	Declared   decimal.Decimal `json:"declared"`
+	Difference decimal.Decimal `json:"difference"`
+}
+
+// TerminalToCount es una terminal cuyo total se pide al cerrar.
+type TerminalToCount struct {
+	TerminalID int64  `json:"terminalId"`
+	Name       string `json:"name"`
+}
+
+// saveTerminalCounts: con arqueo por terminal, cada terminal que cobró en el turno tiene que
+// traer el total de su corte; con automático no se pide nada. El modo es el del turno (copiado al
+// abrir), no el actual de la sucursal.
+func (s *BackofficeService) saveTerminalCounts(ctx context.Context, q *db.Queries, sess db.RegisterSession, userID int64, declared map[int64]decimal.Decimal) error {
+	cobrado, err := q.TerminalCollectedForSession(ctx, sess.ID)
+	if err != nil {
+		return err
+	}
+	por := map[int64]decimal.Decimal{}
+	for _, c := range cobrado {
+		por[c.TerminalID] = c.Collected
+	}
+	for _, id := range domain.TerminalsToDeclare(domain.CardCountMode(sess.CardCountMode), por) {
+		d, ok := declared[id]
+		if !ok {
+			return domain.ErrTerminalCountRequired
+		}
+		d = domain.Round2(d)
+		if !domain.ValidMoney(d, true) {
+			return domain.ErrValidation
+		}
+		var name string
+		for _, c := range cobrado {
+			if c.TerminalID == id {
+				name = c.Name
+			}
+		}
+		if err := q.InsertSessionTerminalCount(ctx, db.InsertSessionTerminalCountParams{SessionID: sess.ID, CardTerminalID: id,
+			TerminalName: name, Expected: por[id], Declared: d, CreatedBy: userID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *BackofficeService) terminalCounts(ctx context.Context, sessionID int64) ([]TerminalCountView, error) {
+	rows, err := s.store.QC(ctx).SessionTerminalCounts(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TerminalCountView, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, TerminalCountView{TerminalID: r.CardTerminalID, Name: r.TerminalName, Expected: r.Expected, Declared: r.Declared, Difference: r.Difference})
+	}
+	return out, nil
 }
 
 // conteoDelEfectivo resuelve los dos caminos de FR-014 para el método del CAJÓN, o devuelve nil si
@@ -1605,12 +1802,44 @@ type conteoResuelto struct {
 
 // RecordCashMovement registra una entrada/salida de efectivo del cajón en la sesión abierta de una
 // caja. El neto (entradas − salidas) entra al efectivo esperado al cerrar (ver sessionWithExpected).
-func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID int64, kind string, amount decimal.Decimal, concept string, userID int64) (*SessionView, error) {
-	if !domain.ValidCashKind(kind) {
+// CashMovementCmd es una entrada o salida de efectivo capturada a mano. Una salida lleva concepto
+// del catálogo (spec 032, punto 3); una entrada, texto libre.
+type CashMovementCmd struct {
+	Kind      string          `json:"kind"`
+	Amount    decimal.Decimal `json:"amount"`
+	Concept   string          `json:"concept"`
+	ConceptID *int64          `json:"conceptId"`
+	UserID    int64           `json:"-"`
+}
+
+// cashMovementConcept resuelve el texto del movimiento: el nombre del concepto (copiado, para que
+// renombrarlo no reescriba el corte) en una salida, el texto libre en una entrada.
+func cashMovementConcept(ctx context.Context, q *db.Queries, cmd CashMovementCmd) (string, error) {
+	if cmd.Kind != domain.CashSalida {
+		if cmd.Concept == "" {
+			return "", domain.ErrValidation
+		}
+		return cmd.Concept, nil
+	}
+	if cmd.ConceptID == nil {
+		return "", domain.ErrConceptRequired
+	}
+	c, err := q.GetCashConcept(ctx, *cmd.ConceptID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && c.ArchivedAt.Valid) {
+		return "", domain.ErrConceptRequired
+	}
+	if err != nil {
+		return "", err
+	}
+	return c.Name, nil
+}
+
+func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID int64, cmd CashMovementCmd) (*SessionView, error) {
+	if !domain.ValidCashKind(cmd.Kind) {
 		return nil, domain.ErrValidation
 	}
-	amt := domain.Round2(amount)
-	if !domain.ValidMoney(amt, false) || concept == "" { // monto > 0 y con concepto
+	amt := domain.Round2(cmd.Amount)
+	if !domain.ValidMoney(amt, false) {
 		return nil, domain.ErrValidation
 	}
 	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
@@ -1630,17 +1859,86 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID i
 	// Con el turno bloqueado en compartido, como un cobro: un cierre que corre a la vez termina antes
 	// —y aquí se ve cerrado— o espera a que este movimiento confirme y lo cuenta (spec 031, D8).
 	if err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		concept, err := cashMovementConcept(ctx, q, cmd)
+		if err != nil {
+			return err
+		}
 		if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
 			return err
 		}
-		_, err := q.InsertCashMovement(ctx, db.InsertCashMovementParams{
-			SessionID: sess.ID, Kind: kind, Amount: amt, Concept: concept, UserID: userID,
+		if cmd.Kind == domain.CashSalida {
+			_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
+			return err
+		}
+		_, err = q.InsertCashMovement(ctx, db.InsertCashMovementParams{
+			SessionID: sess.ID, Kind: cmd.Kind, Amount: amt, Concept: concept, UserID: cmd.UserID,
 		})
 		return err
 	}); err != nil {
+		return nil, err
+	}
+	return s.vistaDelTurnoAbierto(ctx, sess, reg)
+}
+
+// CorrectCashOut corrige una salida sin editarla (spec 032, punto 4): crea su reverso y una salida
+// nueva bien capturada, los dos en el turno ABIERTO de la caja de la original —un corte ya cerrado
+// no se reescribe—. Todo o nada.
+func (s *BackofficeService) CorrectCashOut(ctx context.Context, movementID int64, cmd CashMovementCmd) (*SessionView, error) {
+	amt := domain.Round2(cmd.Amount)
+	if !domain.ValidMoney(amt, false) {
+		return nil, domain.ErrValidation
+	}
+	cmd.Kind = domain.CashSalida
+	var sess db.RegisterSession
+	var registerID int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		m, err := q.GetMovementForCorrection(ctx, movementID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if err := domain.CanReverse(domain.ReversibleMovement{Kind: m.Kind, IsExpense: m.IsExpense, IsTransfer: m.IsTransfer,
+			IsRefund: m.IsRefund, AlreadyReversed: m.AlreadyReversed}); err != nil {
+			return err
+		}
+		registerID = m.RegisterID
+		concept, err := cashMovementConcept(ctx, q, cmd)
+		if err != nil {
+			return err
+		}
+		sess, err = q.GetOpenSessionByRegister(ctx, m.RegisterID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: abre la caja para corregir", domain.ErrConflict)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrConflict
+			}
+			return err
+		}
+		if _, err := q.InsertCashReversal(ctx, db.InsertCashReversalParams{SessionID: sess.ID, Amount: m.Amount,
+			Concept: "Corrección: " + m.Concept, UserID: cmd.UserID, ReversesID: &m.ID}); err != nil {
+			if isUniqueViolation(err) {
+				return domain.ErrAlreadyReversed
+			}
+			return err
+		}
+		_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
+	if err != nil {
 		return nil, err
 	}
 	return s.vistaDelTurnoAbierto(ctx, sess, reg)

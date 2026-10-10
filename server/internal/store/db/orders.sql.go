@@ -48,6 +48,36 @@ func (q *Queries) CancelOrderLine(ctx context.Context, arg CancelOrderLineParams
 	return err
 }
 
+const cardPaymentsOfOrder = `-- name: CardPaymentsOfOrder :many
+select op.card_terminal_name
+  from order_payments op
+  join payment_methods pm on pm.id = op.payment_method_id
+ where op.order_id = $1 and pm.kind = 'tarjeta'
+ order by op.id
+`
+
+// Los cobros con tarjeta de un pedido y su terminal (spec 032, punto 10): la devolución dice en
+// cuál hacerla. Nombre nulo = cobro anterior a que se registrara la terminal.
+func (q *Queries) CardPaymentsOfOrder(ctx context.Context, orderID int64) ([]*string, error) {
+	rows, err := q.db.Query(ctx, cardPaymentsOfOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*string{}
+	for rows.Next() {
+		var card_terminal_name *string
+		if err := rows.Scan(&card_terminal_name); err != nil {
+			return nil, err
+		}
+		items = append(items, card_terminal_name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const copyOrderLineModifiers = `-- name: CopyOrderLineModifiers :exec
 insert into order_line_modifiers (order_line_id, modifier_option_id, group_title, option_name,
                                   quantity, price_delta, unit_cost)
@@ -1328,24 +1358,26 @@ func (q *Queries) GetProductModifierGroups(ctx context.Context, dollar_1 []int64
 
 const insertOrderRefund = `-- name: InsertOrderRefund :one
 insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
-                           cash_movement_id, register_session_id, business_date)
+                           cash_movement_id, register_session_id, business_date, card_refund_folio, card_refund_captured_by)
 values ($1, $2, $3, $4, $5,
         $6, $7, $8, $9,
-        $10)
+        $10, $11, $12)
 returning id
 `
 
 type InsertOrderRefundParams struct {
-	OrderID           int64           `json:"order_id"`
-	OrderLineID       *int64          `json:"order_line_id"`
-	PaymentMethodID   int16           `json:"payment_method_id"`
-	Amount            decimal.Decimal `json:"amount"`
-	TipAmount         decimal.Decimal `json:"tip_amount"`
-	Reason            string          `json:"reason"`
-	RefundedBy        int64           `json:"refunded_by"`
-	CashMovementID    *int64          `json:"cash_movement_id"`
-	RegisterSessionID *int64          `json:"register_session_id"`
-	BusinessDate      pgtype.Date     `json:"business_date"`
+	OrderID              int64           `json:"order_id"`
+	OrderLineID          *int64          `json:"order_line_id"`
+	PaymentMethodID      int16           `json:"payment_method_id"`
+	Amount               decimal.Decimal `json:"amount"`
+	TipAmount            decimal.Decimal `json:"tip_amount"`
+	Reason               string          `json:"reason"`
+	RefundedBy           int64           `json:"refunded_by"`
+	CashMovementID       *int64          `json:"cash_movement_id"`
+	RegisterSessionID    *int64          `json:"register_session_id"`
+	BusinessDate         pgtype.Date     `json:"business_date"`
+	CardRefundFolio      *string         `json:"card_refund_folio"`
+	CardRefundCapturedBy *int64          `json:"card_refund_captured_by"`
 }
 
 // Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
@@ -1363,6 +1395,8 @@ func (q *Queries) InsertOrderRefund(ctx context.Context, arg InsertOrderRefundPa
 		arg.CashMovementID,
 		arg.RegisterSessionID,
 		arg.BusinessDate,
+		arg.CardRefundFolio,
+		arg.CardRefundCapturedBy,
 	)
 	var id int64
 	err := row.Scan(&id)

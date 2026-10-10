@@ -514,7 +514,7 @@ func (q *Queries) GetOpenPrimarySessionOfBranch(ctx context.Context, branchID in
 
 const getOpenSessionByRegister = `-- name: GetOpenSessionByRegister :one
 
-select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id from register_sessions where register_id = $1 and status = 'abierta' limit 1
+select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left from register_sessions where register_id = $1 and status = 'abierta' limit 1
 `
 
 // Cortes de caja (sesiones de una caja)
@@ -533,6 +533,11 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 	)
 	return i, err
 }
@@ -573,7 +578,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 }
 
 const getSession = `-- name: GetSession :one
-select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
+select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, s.tips_carried_over, s.opening_reason, s.opening_reason_note, s.card_count_mode, s.float_left, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -582,20 +587,25 @@ where s.id = $1
 `
 
 type GetSessionRow struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
-	RegisterName string             `json:"register_name"`
-	OpenedByName string             `json:"opened_by_name"`
-	ClosedByName *string            `json:"closed_by_name"`
+	ID                int64              `json:"id"`
+	BusinessDate      pgtype.Date        `json:"business_date"`
+	Status            SessionStatus      `json:"status"`
+	OpeningCash       decimal.Decimal    `json:"opening_cash"`
+	OpenedBy          int64              `json:"opened_by"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	ClosedBy          *int64             `json:"closed_by"`
+	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	Notes             *string            `json:"notes"`
+	Currency          string             `json:"currency"`
+	RegisterID        int64              `json:"register_id"`
+	TipsCarriedOver   decimal.Decimal    `json:"tips_carried_over"`
+	OpeningReason     *string            `json:"opening_reason"`
+	OpeningReasonNote *string            `json:"opening_reason_note"`
+	CardCountMode     string             `json:"card_count_mode"`
+	FloatLeft         *decimal.Decimal   `json:"float_left"`
+	RegisterName      string             `json:"register_name"`
+	OpenedByName      string             `json:"opened_by_name"`
+	ClosedByName      *string            `json:"closed_by_name"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, error) {
@@ -613,6 +623,11 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 		&i.RegisterName,
 		&i.OpenedByName,
 		&i.ClosedByName,
@@ -623,7 +638,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id
 `
 
 type InsertCashMovementParams struct {
@@ -654,6 +669,10 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.UserID,
 		&i.CreatedAt,
 		&i.TransferID,
+		&i.RecipientUserID,
+		&i.RecipientName,
+		&i.ConceptID,
+		&i.ReversesID,
 	)
 	return i, err
 }
@@ -707,6 +726,25 @@ func (q *Queries) InsertTransferMovement(ctx context.Context, arg InsertTransfer
 		arg.TransferID,
 	)
 	return err
+}
+
+const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
+select coalesce(s.float_left, c.total)::numeric(10,2) as total
+  from register_sessions s
+  join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
+ where s.register_id = $1 and s.status = 'cerrada'
+ order by s.closed_at desc, s.id desc
+ limit 1
+`
+
+// El fondo que dejó el último cierre de esta caja (spec 032, punto 6; decisión del 2026-10-10): lo
+// que se dejó, o en cierres de antes de esa decisión, todo lo contado. Solo lo lee el servidor para
+// decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser a ciegas.
+func (q *Queries) LastClosingCountOfRegister(ctx context.Context, registerID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, lastClosingCountOfRegister, registerID)
+	var total decimal.Decimal
+	err := row.Scan(&total)
+	return total, err
 }
 
 const listAllCashRegisters = `-- name: ListAllCashRegisters :many
@@ -848,7 +886,8 @@ func (q *Queries) ListCashCountLines(ctx context.Context, countID int64) ([]List
 }
 
 const listCashMovements = `-- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id,
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
+       exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
        exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
 join users u on u.id = m.user_id
@@ -865,6 +904,8 @@ type ListCashMovementsRow struct {
 	UserName   string          `json:"user_name"`
 	TransferID *int64          `json:"transfer_id"`
 	ExpenseID  *int64          `json:"expense_id"`
+	ReversesID *int64          `json:"reverses_id"`
+	Reversed   bool            `json:"reversed"`
 	IsRefund   bool            `json:"is_refund"`
 }
 
@@ -892,6 +933,8 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.UserName,
 			&i.TransferID,
 			&i.ExpenseID,
+			&i.ReversesID,
+			&i.Reversed,
 			&i.IsRefund,
 		); err != nil {
 			return nil, err
@@ -1511,11 +1554,12 @@ func (q *Queries) LockSessionForClose(ctx context.Context, id int64) (int64, err
 }
 
 const netCashMovements = `-- name: NetCashMovements :one
-select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
+select coalesce(sum(case when kind in ('entrada', 'reverso') then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1
 `
 
 // Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
+// Un reverso solo corrige salidas (domain.CanReverse): devuelve al cajón lo que la salida restó.
 func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, netCashMovements, sessionID)
 	var net decimal.Decimal
@@ -1575,7 +1619,7 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 const openSession = `-- name: OpenSession :one
 insert into register_sessions (business_date, opening_cash, opened_by, register_id)
 values ($1, $2, $3, $4)
-returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id
+returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left
 `
 
 type OpenSessionParams struct {
@@ -1605,6 +1649,11 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 	)
 	return i, err
 }
@@ -1958,6 +2007,41 @@ func (q *Queries) SessionWrittenOff(ctx context.Context, registerSessionID *int6
 	var monto decimal.Decimal
 	err := row.Scan(&monto)
 	return monto, err
+}
+
+const setFloatLeft = `-- name: SetFloatLeft :exec
+update register_sessions set float_left = $2 where id = $1
+`
+
+type SetFloatLeftParams struct {
+	ID        int64            `json:"id"`
+	FloatLeft *decimal.Decimal `json:"float_left"`
+}
+
+func (q *Queries) SetFloatLeft(ctx context.Context, arg SetFloatLeftParams) error {
+	_, err := q.db.Exec(ctx, setFloatLeft, arg.ID, arg.FloatLeft)
+	return err
+}
+
+const setOpeningExtras = `-- name: SetOpeningExtras :exec
+update register_sessions s set opening_reason = $1, opening_reason_note = $2,
+       card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
+                                    where r.id = s.register_id), 'auto')
+ where s.id = $3
+`
+
+type SetOpeningExtrasParams struct {
+	Reason *string `json:"reason"`
+	Note   *string `json:"note"`
+	ID     int64   `json:"id"`
+}
+
+// El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
+// de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
+// quien cuenta.
+func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasParams) error {
+	_, err := q.db.Exec(ctx, setOpeningExtras, arg.Reason, arg.Note, arg.ID)
+	return err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

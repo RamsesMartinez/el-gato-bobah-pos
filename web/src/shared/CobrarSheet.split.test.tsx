@@ -21,7 +21,10 @@ const medirAccion = vi.hoisted(() => vi.fn());
 vi.mock('../api/pos', () => ({
   posApi: {
     order, paymentMethods, chargeOrder, chargeOrderShape, quoteOrder, voidPayment, moveLines, activeOrders,
-    setOrderDiscount, businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
+    setOrderDiscount,
+    cardTerminals: () => Promise.resolve({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] }),
+    defaultTerminal: () => Promise.resolve(null), setDefaultTerminal: () => Promise.resolve(),
+    businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
   },
 }));
 vi.mock('../api/uso', () => ({ medirAccion }));

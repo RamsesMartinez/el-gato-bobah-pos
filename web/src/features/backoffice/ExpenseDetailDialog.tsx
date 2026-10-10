@@ -75,7 +75,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                   : data.items.length > 0 && <Badge colorPalette="orange">sin recibir</Badge>}
               </HStack>
               <Text fontSize="sm" color="fg.muted">
-                {data.category} · {data.supplier ?? 'sin proveedor'} · documento {data.expenseDate}
+                {data.category} · {data.supplier ?? 'sin proveedor'} · día {data.expenseDate}{data.documentDate ? ` · documento ${data.documentDate}` : ''}
                 {data.description ? ` · ${data.description}` : ''}
               </Text>
               <HStack gap={4} flexWrap="wrap">

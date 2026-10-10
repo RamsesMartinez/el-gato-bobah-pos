@@ -805,6 +805,7 @@ type Branch struct {
 	PostalCode     *string   `json:"postal_code"`
 	Timezone       *string   `json:"timezone"`
 	CreatedAt      time.Time `json:"created_at"`
+	CardCountMode  string    `json:"card_count_mode"`
 }
 
 type BusinessSetting struct {
@@ -829,6 +830,7 @@ type BusinessSetting struct {
 	CorteDeVista       string             `json:"corte_de_vista"`
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
 	BlindCashCount     bool               `json:"blind_cash_count"`
+	DailySummaryEmails []string           `json:"daily_summary_emails"`
 }
 
 type CandidatasDelAviso struct {
@@ -837,6 +839,26 @@ type CandidatasDelAviso struct {
 	ExternalStoreID string `json:"external_store_id"`
 	IsActive        bool   `json:"is_active"`
 	PlatformName    string `json:"platform_name"`
+}
+
+type CardTerminal struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	BranchID   int64              `json:"branch_id"`
+	Name       string             `json:"name"`
+	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type CashConcept struct {
+	ID                int64              `json:"id"`
+	CompanyID         int64              `json:"company_id"`
+	Name              string             `json:"name"`
+	ExpenseCategoryID *int64             `json:"expense_category_id"`
+	SupplierID        *int64             `json:"supplier_id"`
+	ArchivedAt        pgtype.Timestamptz `json:"archived_at"`
+	MergedIntoID      *int64             `json:"merged_into_id"`
+	CreatedAt         time.Time          `json:"created_at"`
 }
 
 type CashDenomination struct {
@@ -915,6 +937,17 @@ type Company struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type DailySummarySend struct {
+	ID           int64              `json:"id"`
+	CompanyID    int64              `json:"company_id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	Status       string             `json:"status"`
+	Attempts     int32              `json:"attempts"`
+	LastError    *string            `json:"last_error"`
+	SentAt       pgtype.Timestamptz `json:"sent_at"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
 type DeliveryPlatform struct {
 	ID             int16           `json:"id"`
 	Name           string          `json:"name"`
@@ -943,6 +976,7 @@ type Expense struct {
 	DocFolio     *string            `json:"doc_folio"`
 	DocRaw       []byte             `json:"doc_raw"`
 	BranchID     *int64             `json:"branch_id"`
+	DocumentDate pgtype.Date        `json:"document_date"`
 }
 
 type ExpenseCategory struct {
@@ -1266,6 +1300,8 @@ type OrderPayment struct {
 	SplitOf           *int16          `json:"split_of"`
 	PaymentNumber     *int16          `json:"payment_number"`
 	BusinessDate      pgtype.Date     `json:"business_date"`
+	CardTerminalID    *int64          `json:"card_terminal_id"`
+	CardTerminalName  *string         `json:"card_terminal_name"`
 }
 
 type OrderPaymentLine struct {
@@ -1300,19 +1336,21 @@ type OrderPaymentVoid struct {
 }
 
 type OrderRefund struct {
-	ID                int64           `json:"id"`
-	OrderID           int64           `json:"order_id"`
-	OrderLineID       *int64          `json:"order_line_id"`
-	PaymentMethodID   int16           `json:"payment_method_id"`
-	Amount            decimal.Decimal `json:"amount"`
-	Reason            string          `json:"reason"`
-	RefundedBy        int64           `json:"refunded_by"`
-	CashMovementID    *int64          `json:"cash_movement_id"`
-	CreatedAt         time.Time       `json:"created_at"`
-	CompanyID         int64           `json:"company_id"`
-	RegisterSessionID *int64          `json:"register_session_id"`
-	BusinessDate      pgtype.Date     `json:"business_date"`
-	TipAmount         decimal.Decimal `json:"tip_amount"`
+	ID                   int64           `json:"id"`
+	OrderID              int64           `json:"order_id"`
+	OrderLineID          *int64          `json:"order_line_id"`
+	PaymentMethodID      int16           `json:"payment_method_id"`
+	Amount               decimal.Decimal `json:"amount"`
+	Reason               string          `json:"reason"`
+	RefundedBy           int64           `json:"refunded_by"`
+	CashMovementID       *int64          `json:"cash_movement_id"`
+	CreatedAt            time.Time       `json:"created_at"`
+	CompanyID            int64           `json:"company_id"`
+	RegisterSessionID    *int64          `json:"register_session_id"`
+	BusinessDate         pgtype.Date     `json:"business_date"`
+	TipAmount            decimal.Decimal `json:"tip_amount"`
+	CardRefundFolio      *string         `json:"card_refund_folio"`
+	CardRefundCapturedBy *int64          `json:"card_refund_captured_by"`
 }
 
 type OrdersBusinessDateFix struct {
@@ -1588,29 +1626,38 @@ type RefreshToken struct {
 }
 
 type RegisterCashMovement struct {
-	ID         int64           `json:"id"`
-	SessionID  int64           `json:"session_id"`
-	Kind       string          `json:"kind"`
-	Amount     decimal.Decimal `json:"amount"`
-	Concept    string          `json:"concept"`
-	ExpenseID  *int64          `json:"expense_id"`
-	UserID     int64           `json:"user_id"`
-	CreatedAt  time.Time       `json:"created_at"`
-	TransferID *int64          `json:"transfer_id"`
+	ID              int64           `json:"id"`
+	SessionID       int64           `json:"session_id"`
+	Kind            string          `json:"kind"`
+	Amount          decimal.Decimal `json:"amount"`
+	Concept         string          `json:"concept"`
+	ExpenseID       *int64          `json:"expense_id"`
+	UserID          int64           `json:"user_id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	TransferID      *int64          `json:"transfer_id"`
+	RecipientUserID *int64          `json:"recipient_user_id"`
+	RecipientName   *string         `json:"recipient_name"`
+	ConceptID       *int64          `json:"concept_id"`
+	ReversesID      *int64          `json:"reverses_id"`
 }
 
 type RegisterSession struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
+	ID                int64              `json:"id"`
+	BusinessDate      pgtype.Date        `json:"business_date"`
+	Status            SessionStatus      `json:"status"`
+	OpeningCash       decimal.Decimal    `json:"opening_cash"`
+	OpenedBy          int64              `json:"opened_by"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	ClosedBy          *int64             `json:"closed_by"`
+	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	Notes             *string            `json:"notes"`
+	Currency          string             `json:"currency"`
+	RegisterID        int64              `json:"register_id"`
+	TipsCarriedOver   decimal.Decimal    `json:"tips_carried_over"`
+	OpeningReason     *string            `json:"opening_reason"`
+	OpeningReasonNote *string            `json:"opening_reason_note"`
+	CardCountMode     string             `json:"card_count_mode"`
+	FloatLeft         *decimal.Decimal   `json:"float_left"`
 }
 
 type RegisterSessionTotal struct {
@@ -1642,6 +1689,17 @@ type SessionCashCountLine struct {
 	DenominationID int64 `json:"denomination_id"`
 	Pieces         int32 `json:"pieces"`
 	CompanyID      int64 `json:"company_id"`
+}
+
+type SessionTerminalCount struct {
+	CompanyID      int64           `json:"company_id"`
+	SessionID      int64           `json:"session_id"`
+	CardTerminalID int64           `json:"card_terminal_id"`
+	TerminalName   string          `json:"terminal_name"`
+	Expected       decimal.Decimal `json:"expected"`
+	Declared       decimal.Decimal `json:"declared"`
+	CreatedBy      int64           `json:"created_by"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 type StockLevel struct {
@@ -1698,6 +1756,22 @@ type SupplierItem struct {
 	LastSeenAt    time.Time        `json:"last_seen_at"`
 	CreatedAt     time.Time        `json:"created_at"`
 	CompanyID     int64            `json:"company_id"`
+}
+
+type TipCarryover struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	SessionID      int64           `json:"session_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+type TipPayoutSource struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	MovementID     int64           `json:"movement_id"`
+	OrderPaymentID *int64          `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
 }
 
 type Unit struct {

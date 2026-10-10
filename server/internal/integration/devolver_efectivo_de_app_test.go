@@ -61,7 +61,7 @@ func TestDevolverElEfectivoDeUnaAppSaleDelCajon(t *testing.T) {
 	}
 	antesSalidas := salidasDeCaja(t, st)
 
-	if err := orders.Devolver(ctx, app.DevolucionCmd{
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: pedido.ID, Monto: cobrado, Motivo: "el cliente rechazó el pedido", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver el pedido de la app: %v", err)

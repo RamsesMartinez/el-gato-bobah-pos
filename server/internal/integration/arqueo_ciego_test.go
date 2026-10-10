@@ -258,8 +258,8 @@ func TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado(t *testing.T) {
 	principal, _, _, _ := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
 	prenderCiego(t, ctx, settings)
 
-	vista, err := backoffice.RecordCashMovement(ctx, principal, "entrada",
-		decimal.RequireFromString("0.01"), "cambio para el turno", cajero)
+	vista, err := backoffice.RecordCashMovement(ctx, principal, app.CashMovementCmd{Kind: "entrada",
+		Amount: decimal.RequireFromString("0.01"), Concept: "cambio para el turno", UserID: cajero})
 	if err != nil {
 		t.Fatalf("registrar el movimiento: %v", err)
 	}

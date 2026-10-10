@@ -339,7 +339,7 @@ func TestAnOrderWithoutProductsCanBeClosedByAnyRole(t *testing.T) {
 		svc := app.NewOrdersService(appSt, clock)
 
 		parcial := emptiedOrder(t, st, abridor, "vacio_devuelto_parcial", "20")
-		if err := svc.Devolver(tctx, app.DevolucionCmd{OrderID: parcial, Monto: pesos("5"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
+		if err := svc.Devolver(tctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: parcial, Monto: pesos("5"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
 			t.Fatalf("Devolver una parte: %v", err)
 		}
 		if _, err := svc.CancelPending(tctx, parcial, abridor, ""); !errors.Is(err, domain.ErrOrderHasPayments) {
@@ -347,7 +347,7 @@ func TestAnOrderWithoutProductsCanBeClosedByAnyRole(t *testing.T) {
 		}
 
 		devuelto := emptiedOrder(t, st, abridor, "vacio_devuelto", "20")
-		if err := svc.Devolver(tctx, app.DevolucionCmd{OrderID: devuelto, Monto: pesos("20"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
+		if err := svc.Devolver(tctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: devuelto, Monto: pesos("20"), Motivo: "se equivocó", ActorID: abridor}); err != nil {
 			t.Fatalf("Devolver todo: %v", err)
 		}
 		if _, err := svc.CancelPending(tctx, devuelto, abridor, ""); err != nil {

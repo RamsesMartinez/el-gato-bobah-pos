@@ -340,3 +340,21 @@ func TestDraftErrorsHaveTheirOwnCode(t *testing.T) {
 		})
 	}
 }
+
+// La pantalla de caja reacciona a estos rechazos con su propia hoja (motivo de apertura, decisión de
+// propinas, folio, terminal): necesita un código estable, no «datos inválidos» (spec 032).
+func TestCaja032ErrorsHaveTheirOwnCode(t *testing.T) {
+	for err, want := range map[error]string{
+		domain.ErrOpeningReasonRequired: "OPENING_REASON_REQUIRED",
+		domain.ErrTipsDecisionNeeded:    "TIPS_DECISION_REQUIRED",
+		domain.ErrRefundFolioRequired:   "REFUND_FOLIO_REQUIRED",
+		domain.ErrCardTerminalRequired:  "CARD_TERMINAL_REQUIRED",
+		domain.ErrTerminalCountRequired: "TERMINAL_COUNT_REQUIRED",
+	} {
+		w := httptest.NewRecorder()
+		Error(w, err)
+		if w.Code != 422 || !strings.Contains(w.Body.String(), `"code":"`+want+`"`) {
+			t.Errorf("%v → %d %s; quería 422 %s", err, w.Code, w.Body.String(), want)
+		}
+	}
+}
