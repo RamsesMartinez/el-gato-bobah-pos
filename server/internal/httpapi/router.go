@@ -283,6 +283,14 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// Conceptos de salida (spec 032): quien captura la salida los lee y agrega uno nuevo
+				// ahí mismo; editarlos, archivarlos y juntarlos es configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-concepts", h.ListCashConcepts)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Post("/cash-concepts", h.CreateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/cash-concepts/{id}", h.UpdateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-concepts/{id}/merge", h.MergeCashConcept)
+				// Corregir una salida: reverso + salida nueva. Gerente o admin.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)
 				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que
 				// abre o cierra la caja.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash/denominations", h.CashDenominations)

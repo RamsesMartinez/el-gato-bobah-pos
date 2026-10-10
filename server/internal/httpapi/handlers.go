@@ -95,14 +95,15 @@ type Deps struct {
 	// Drafts es la cuenta en captura (spec 030).
 	Drafts *app.DraftsService
 	// Accounts es la fila de cuentas vivas del POS (spec 030).
-	Accounts   *app.AccountsService
-	Backoffice *app.BackofficeService
-	Tips       *app.TipsService
-	Admin      *app.AdminService
-	Settings   *app.SettingsService
-	Company    *app.CompanyService
-	Reset      *app.ResetService
-	Broker     *realtime.Broker
+	Accounts     *app.AccountsService
+	Backoffice   *app.BackofficeService
+	Tips         *app.TipsService
+	CashConcepts *app.CashConceptsService
+	Admin        *app.AdminService
+	Settings     *app.SettingsService
+	Company      *app.CompanyService
+	Reset        *app.ResetService
+	Broker       *realtime.Broker
 	// PurchaseDoc puede ser nil: la extracción de tickets es opcional (sin ANTHROPIC_API_KEY el
 	// POS opera capturando las líneas a mano).
 	PurchaseDoc    *app.PurchaseDocService
@@ -149,6 +150,7 @@ type Handlers struct {
 	accounts          *app.AccountsService
 	backoffice        *app.BackofficeService
 	tips              *app.TipsService
+	cashConcepts      *app.CashConceptsService
 	admin             *app.AdminService
 	settings          *app.SettingsService
 	company           *app.CompanyService
@@ -212,7 +214,7 @@ func newHandlers(d Deps) *Handlers {
 		permissions: permissions,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
-		backoffice: d.Backoffice, tips: d.Tips, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
+		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
 		purchaseDoc:       d.PurchaseDoc,
 		platformPrices:    d.PlatformPrices,
 		menusPlataforma:   d.MenusPlataforma,

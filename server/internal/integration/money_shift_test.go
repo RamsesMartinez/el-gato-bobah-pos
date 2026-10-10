@@ -357,7 +357,7 @@ func TestWhatCommitsDuringTheCloseIsInsideTheSignedExpected(t *testing.T) {
 				_, err := orders.Charge(ctx, app.ChargeCmd{OrderID: ord, MethodID: efectivo, Amount: dec("100"), ActorID: cajero})
 				return err
 			default:
-				_, err := back.RecordCashMovement(ctx, principal, domain.CashEntrada, dec("7"), "cambio", cajero)
+				_, err := back.RecordCashMovement(ctx, principal, app.CashMovementCmd{Kind: domain.CashEntrada, Amount: dec("7"), Concept: "cambio", UserID: cajero})
 				return err
 			}
 		})

@@ -63,7 +63,13 @@ function movementType(m: CashMovement): { label: string; palette: string } {
   if (m.transferId !== null) return { label: 'Traspaso', palette: 'blue' };
   if (m.isRefund) return { label: 'Devolución', palette: 'orange' };
   if (m.kind === 'propina') return { label: 'Propina', palette: 'purple' };
+  if (m.kind === 'reverso') return { label: 'Corrección', palette: 'gray' };
   return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
+}
+
+// Solo una salida capturada a mano y sin corregir; el servidor aplica la misma regla.
+function esCorregible(m: CashMovement): boolean {
+  return m.kind === 'salida' && !m.reversed && m.transferId === null && m.expenseId === null && !m.isRefund;
 }
 
 // ---- Tablas del resumen (compartidas entre caja en vivo, histórico y resumen post-cierre) ----
@@ -117,10 +123,12 @@ export function TotalsTable({ totals, currency, withTotalRow, drawerDifference }
 // La zona llega como PROP y no del hook: esto es una tabla de presentación, y que pidiera los
 // ajustes por su cuenta la vuelve imposible de pintar sin montar media aplicación alrededor. Quien
 // la usa ya tiene la zona a la mano.
-export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }: {
+export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, onCorregir }: {
   movements: CashMovement[];
   currency: string;
   zona?: string;
+  // Solo en el turno abierto: la salida a mano sin corregir ofrece «Corregir» (spec 032, punto 4).
+  onCorregir?: (m: CashMovement) => void;
 }) {
   const rows = (movements ?? []).filter((m) => m.expenseId === null);
   if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
@@ -133,6 +141,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
           <Table.ColumnHeader>Concepto</Table.ColumnHeader>
           <Table.ColumnHeader>Usuario</Table.ColumnHeader>
           <Table.ColumnHeader textAlign="end">Monto</Table.ColumnHeader>
+          {onCorregir && <Table.ColumnHeader />}
         </Table.Row></Table.Header>
         <Table.Body>
           {rows.map((m) => {
@@ -146,9 +155,17 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
                 <Table.Cell><Text lineClamp={2}>{m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
-                  color={m.kind === 'entrada' ? 'green.500' : 'red.500'}>
-                  {m.kind === 'entrada' ? '+' : '−'}{money(m.amount, currency)}
+                  color={m.kind === 'entrada' || m.kind === 'reverso' ? 'green.500' : 'red.500'}
+                  textDecoration={m.reversed ? 'line-through' : undefined}>
+                  {m.kind === 'entrada' || m.kind === 'reverso' ? '+' : '−'}{money(m.amount, currency)}
                 </Table.Cell>
+                {onCorregir && (
+                  <Table.Cell textAlign="end">
+                    {esCorregible(m) && (
+                      <Button size="sm" minH="44px" variant="outline" onClick={() => onCorregir(m)}>Corregir</Button>
+                    )}
+                  </Table.Cell>
+                )}
               </Table.Row>
             );
           })}
@@ -1065,16 +1082,36 @@ export function MovementsPanel({ session }: { session: CashSession }) {
   const [kind, setKind] = useState<'entrada' | 'salida'>('salida');
   const [amount, setAmount] = useState('');
   const [concept, setConcept] = useState('');
+  const [conceptId, setConceptId] = useState('');
+  const [corrigiendo, setCorrigiendo] = useState<CashMovement | null>(null);
+  const { data: conceptos } = useQuery({ queryKey: ['cash', 'concepts'], queryFn: () => backofficeApi.cashConcepts() });
+  const opciones = (conceptos?.items ?? []).map((c) => ({ value: String(c.id), label: c.name }));
+  const crearConcepto = async (name: string) => {
+    const c = await backofficeApi.createCashConcept(name);
+    qc.invalidateQueries({ queryKey: ['cash', 'concepts'] });
+    return { value: String(c.id), label: c.name };
+  };
 
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, montoTecleado(amount) ?? 0, concept.trim()),
+    mutationFn: () => {
+      const monto = montoTecleado(amount) ?? 0;
+      return backofficeApi.cashMovement(session.registerId, kind === 'salida'
+        ? { kind: 'salida', amount: monto, conceptId: Number(conceptId) }
+        : { kind: 'entrada', amount: monto, concept: concept.trim() });
+    },
     onSuccess: () => {
       medirAccion('caja', 'traspaso');
-      setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] });
+      setAmount(''); setConcept(''); setConceptId(''); qc.invalidateQueries({ queryKey: ['cash'] });
     },
-    onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
+    onError: (e) => toaster.create({ title: 'No se pudo registrar', description: mensajeDeError(e), type: 'error' }),
   });
-  const canAdd = (montoTecleado(amount) ?? 0) > 0 && concept.trim().length > 0;
+  const correctMut = useMutation({
+    mutationFn: (p: { id: number; amount: number; conceptId: number }) =>
+      backofficeApi.correctCashOut(p.id, { amount: p.amount, conceptId: p.conceptId }),
+    onSuccess: () => { setCorrigiendo(null); qc.invalidateQueries({ queryKey: ['cash'] }); },
+    onError: (e) => toaster.create({ title: 'No se pudo corregir', description: mensajeDeError(e), type: 'error' }),
+  });
+  const canAdd = (montoTecleado(amount) ?? 0) > 0 && (kind === 'salida' ? conceptId !== '' : concept.trim().length > 0);
   // Go serializa un slice vacío como null; sin esta guarda, `.length`/`.map` revienta el render.
   const movements = session.movements ?? [];
 
@@ -1093,15 +1130,67 @@ export function MovementsPanel({ session }: { session: CashSession }) {
           </Button>
           <Input size="sm" minH="44px" w="120px" type="number" inputMode="decimal" placeholder="Monto"
             value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <Input size="sm" minH="44px" flex="1" minW="140px" placeholder="Concepto (ej. pago proveedor)"
-            value={concept} onChange={(e) => setConcept(e.target.value)} />
+          {kind === 'salida' ? (
+            <Box flex="1" minW="180px">
+              {/* De la lista, y si no está se agrega ahí mismo (punto 3). */}
+              <Picker value={conceptId} onChange={setConceptId} options={opciones} onCreate={crearConcepto}
+                placeholder="Concepto de la salida" title="Concepto de la salida" />
+            </Box>
+          ) : (
+            <Input size="sm" minH="44px" flex="1" minW="140px" placeholder="Concepto (ej. cambio)"
+              value={concept} onChange={(e) => setConcept(e.target.value)} />
+          )}
           <Button size="sm" minH="44px" disabled={!canAdd} loading={mut.isPending} onClick={() => mut.mutate()}>
             Registrar
           </Button>
         </HStack>
       </Box>
-      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona} />
+      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona}
+        onCorregir={setCorrigiendo} />
+      <CorregirSalida movimiento={corrigiendo} opciones={opciones} onCrear={crearConcepto} guardando={correctMut.isPending}
+        onCancelar={() => setCorrigiendo(null)}
+        onCorregir={(monto, cid) => { if (corrigiendo) correctMut.mutate({ id: corrigiendo.id, amount: monto, conceptId: cid }); }} />
     </Box>
+  );
+}
+
+// CorregirSalida: la salida bien capturada que reemplaza a la original. La original no cambia:
+// se le crea su reverso y queda a la vista, tachada (punto 4).
+function CorregirSalida({ movimiento, opciones, onCrear, guardando, onCancelar, onCorregir }: {
+  movimiento: CashMovement | null;
+  opciones: { value: string; label: string }[];
+  onCrear: (name: string) => Promise<{ value: string; label: string }>;
+  guardando: boolean;
+  onCancelar: () => void;
+  onCorregir: (monto: number, conceptId: number) => void;
+}) {
+  const [monto, setMonto] = useState('');
+  const [cid, setCid] = useState('');
+  const salir = () => { setMonto(''); setCid(''); onCancelar(); };
+  const valido = (montoTecleado(monto) ?? 0) > 0 && cid !== '';
+  return (
+    <DialogRoot open={movimiento !== null} onOpenChange={(e) => { if (!e.open && !guardando) salir(); }} placement="center" size="md">
+      <DialogBackdrop />
+      <DialogContent>
+        <DialogHeader><DialogTitle>Corregir salida</DialogTitle></DialogHeader>
+        <DialogBody>
+          <VStack align="stretch" gap={3}>
+            <Text fontSize="sm" color="fg.muted">
+              {movimiento ? `${movimiento.concept} · ${money(movimiento.amount)}` : ''} queda anulada y se registra esta en su lugar.
+            </Text>
+            <Input minH="48px" type="number" inputMode="decimal" placeholder="Monto correcto"
+              value={monto} onChange={(e) => setMonto(e.target.value)} />
+            <Picker value={cid} onChange={setCid} options={opciones} onCreate={onCrear}
+              placeholder="Concepto correcto" title="Concepto de la salida" />
+            <HStack gap={6} pt={2}>
+              <Button flex="1" minH="52px" variant="outline" disabled={guardando} onClick={salir}>Volver</Button>
+              <Button flex="1" minH="52px" colorPalette="orange" disabled={!valido} loading={guardando}
+                onClick={() => onCorregir(montoTecleado(monto) ?? 0, Number(cid))}>Corregir</Button>
+            </HStack>
+          </VStack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
   );
 }
 

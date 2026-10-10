@@ -27,6 +27,15 @@ with company as (
 ), headquarters as (
   insert into branches (company_id, branch_number, code, name, is_headquarters)
   select id, 1, headquarters_code(slug), left(name, 60), true from company
+  returning company_id, id
+), terminal as (
+  -- Un negocio nace con una terminal por omisión (spec 032, punto 8).
+  insert into card_terminals (company_id, branch_id, name)
+  select company_id, id, 'Terminal' from headquarters
+), concepts as (
+  -- Y con los conceptos de salida frecuentes (punto 3).
+  insert into cash_concepts (company_id, name)
+  select c.id, n.name from company c cross join (values ('Basura'), ('Hielo'), ('Vigilancia'), ('Insumos')) as n(name)
 )
 select id, slug, name, is_active, created_at, updated_at from company
 `

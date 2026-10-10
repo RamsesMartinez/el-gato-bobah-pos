@@ -33,7 +33,7 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida' | 'propina';
+  kind: 'entrada' | 'salida' | 'propina' | 'reverso';
   amount: string;
   concept: string;
   createdAt: string;
@@ -42,7 +42,23 @@ export interface CashMovement {
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
   // La salida de caja de una devolución (spec 029): se nombra Devolución, como en el desglose.
   isRefund?: boolean;
+  // Corrección por reverso (spec 032): `reversesId` en el reverso, `reversed` en la salida corregida.
+  reversesId?: number | null;
+  reversed?: boolean;
 }
+
+export interface CashConcept {
+  id: number;
+  name: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  supplierId: number | null;
+  supplierName: string | null;
+}
+
+export type CashMovementInput =
+  | { kind: 'entrada'; amount: number; concept: string }
+  | { kind: 'salida'; amount: number; conceptId: number };
 // PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
 // uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.
 export interface CashExpenseLine {
@@ -572,8 +588,16 @@ export const backofficeApi = {
   cashSessionSales: (id: number, page: number, pageSize: number) =>
     api.get<{ items: CorteSale[]; total: number; salesTotal: string }>(
       `/cash-sessions/${id}/sales?page=${page}&pageSize=${pageSize}`),
-  cashMovement: (registerId: number, kind: 'entrada' | 'salida', amount: number, concept: string) =>
-    api.post<CashSession>('/cash-sessions/movements', { registerId, kind, amount, concept }),
+  cashMovement: (registerId: number, input: CashMovementInput) =>
+    api.post<CashSession>('/cash-sessions/movements', { registerId, ...input }),
+  // Conceptos de salida (spec 032): la lista, y el alta en línea desde la captura.
+  cashConcepts: () => api.get<{ items: CashConcept[] }>('/cash-concepts'),
+  createCashConcept: (name: string) => api.post<CashConcept>('/cash-concepts', { name }),
+  updateCashConcept: (id: number, body: { name: string; categoryId: number | null; supplierId: number | null } | { archived: true }) =>
+    api.patch<CashConcept | null>(`/cash-concepts/${id}`, body),
+  mergeCashConcept: (id: number, intoId: number) => api.post<null>(`/cash-concepts/${id}/merge`, { intoId }),
+  correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
+    api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
   cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
     api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),

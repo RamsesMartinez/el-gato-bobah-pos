@@ -242,7 +242,7 @@ func (q *Queries) DeleteExpenseItems(ctx context.Context, expenseID int64) error
 }
 
 const getExpense = `-- name: GetExpense :one
-select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id from expenses where id = $1
+select id, expense_date, category_id, supplier_id, amount, description, created_by, created_at, currency, status, paid_at, paid_by, cancelled_at, cancelled_by, cancel_reason, received_at, doc_kind, doc_folio, doc_raw, branch_id, document_date from expenses where id = $1
 `
 
 func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
@@ -269,6 +269,7 @@ func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
 		&i.DocFolio,
 		&i.DocRaw,
 		&i.BranchID,
+		&i.DocumentDate,
 	)
 	return i, err
 }

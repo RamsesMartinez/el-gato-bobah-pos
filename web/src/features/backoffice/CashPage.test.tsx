@@ -692,13 +692,45 @@ test('los plegables del corte miden 44 px', () => {
   expect(getComputedStyle(screen.getByRole('button', { name: /Efectivo contado/ })).minHeight).toBe('44px');
 });
 
-test('el formulario de movimientos de efectivo mide 44 px', () => {
+test('el formulario de movimientos de efectivo mide 44 px', async () => {
   const qc = new QueryClient();
   const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
   render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  await userEvent.click(screen.getByRole('button', { name: /Entrada/ }));
   for (const campo of [screen.getByPlaceholderText('Monto'), screen.getByPlaceholderText(/Concepto/)]) {
     expect(getComputedStyle(campo).minHeight).toBe('44px');
   }
+});
+
+// UNA SALIDA SIN CONCEPTO NO SE GUARDA (spec 032, punto 3): el concepto se elige de la lista, no se
+// teclea suelto, y la salida viaja con su id.
+test('la salida pide el concepto de la lista y lo manda por id', async () => {
+  const { backofficeApi } = await import('../../api/backoffice');
+  vi.spyOn(backofficeApi, 'cashConcepts').mockResolvedValue({ items: [{ id: 7, name: 'Hielo', categoryId: null, categoryName: null, supplierId: null, supplierName: null }] });
+  const registrar = vi.spyOn(backofficeApi, 'cashMovement').mockResolvedValue({} as CashSession);
+  const qc = new QueryClient();
+  const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
+  render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  await userEvent.type(screen.getByPlaceholderText('Monto'), '45');
+  expect(screen.getByRole('button', { name: 'Registrar' })).toBeDisabled();
+  expect(screen.queryByPlaceholderText(/Concepto/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Concepto de la salida/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Hielo/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Registrar' }));
+  expect(registrar).toHaveBeenCalledWith(1, { kind: 'salida', amount: 45, conceptId: 7 });
+});
+
+// «Corregir» aparece solo en una salida capturada a mano que no se ha corregido (EB-16).
+test('MovementsTable ofrece Corregir solo en salidas a mano sin corregir', () => {
+  const onCorregir = vi.fn();
+  wrap(<MovementsTable onCorregir={onCorregir} currency="MXN" movements={[
+    mov({ id: 1, kind: 'salida', amount: '10', concept: 'Hielo' }),
+    mov({ id: 2, kind: 'salida', amount: '20', concept: 'Basura', reversed: true }),
+    mov({ id: 3, kind: 'salida', amount: '30', concept: 'Traspaso', transferId: 4 }),
+    mov({ id: 4, kind: 'reverso', amount: '20', concept: 'Corrección: Basura', reversesId: 2 }),
+  ]} />);
+  expect(screen.getAllByRole('button', { name: 'Corregir' })).toHaveLength(1);
+  expect(screen.getByText('Corrección')).toBeInTheDocument();
 });
 
 // La salida de caja de una devolución se llama Devolución, igual que en el desglose: decía «Salida»

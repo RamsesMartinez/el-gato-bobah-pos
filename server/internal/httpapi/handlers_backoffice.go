@@ -387,17 +387,16 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 // POST /cash-sessions/movements — registra entrada/salida de efectivo en la sesión abierta de una caja.
 func (h *Handlers) CreateCashMovement(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RegisterID int64           `json:"registerId"`
-		Kind       string          `json:"kind"`
-		Amount     decimal.Decimal `json:"amount"`
-		Concept    string          `json:"concept"`
+		RegisterID int64 `json:"registerId"`
+		app.CashMovementCmd
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.RegisterID, body.Kind, body.Amount, body.Concept, u.ID)
+	body.UserID = u.ID
+	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.RegisterID, body.CashMovementCmd)
 	if err != nil {
 		Error(w, err)
 		return
@@ -438,6 +437,105 @@ func (h *Handlers) PayoutTips(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, map[string]any{"items": items})
+}
+
+// CorrectCashOut: reverso de una salida + la salida bien capturada (spec 032, punto 4).
+func (h *Handlers) CorrectCashOut(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body app.CashMovementCmd
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	body.UserID = u.ID
+	sess, err := h.backoffice.CorrectCashOut(r.Context(), id, body)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, sess)
+}
+
+// ---- Conceptos de salida (spec 032, punto 3) ----
+
+func (h *Handlers) ListCashConcepts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.cashConcepts.List(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateCashConcept(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	c, err := h.cashConcepts.Create(r.Context(), body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, c)
+}
+
+func (h *Handlers) UpdateCashConcept(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		app.ConceptUpdate
+		Archived bool `json:"archived"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Archived {
+		if err := h.cashConcepts.Archive(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	c, err := h.cashConcepts.Update(r.Context(), id, body.ConceptUpdate)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, c)
+}
+
+func (h *Handlers) MergeCashConcept(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		IntoID int64 `json:"intoId"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.cashConcepts.Merge(r.Context(), id, body.IntoID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- Categorías de gasto ----

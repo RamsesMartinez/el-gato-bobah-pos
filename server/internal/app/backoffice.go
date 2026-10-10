@@ -243,6 +243,9 @@ type CashMovementView struct {
 	// IsRefund: la salida de caja de una devolución (spec 029). El desglose la cuenta en
 	// «Devoluciones» y la tabla la nombra igual, no como una salida más.
 	IsRefund bool `json:"isRefund"`
+	// ReversesID: es el reverso de esa salida; Reversed: esta salida ya se corrigió (spec 032).
+	ReversesID *int64 `json:"reversesId"`
+	Reversed   bool   `json:"reversed"`
 }
 
 // CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
@@ -325,12 +328,15 @@ type methodExpected struct {
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
 	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, net decimal.Decimal
 	for _, m := range moves {
-		if m.Kind == domain.CashEntrada {
+		if m.Kind == domain.CashEntrada || m.Kind == domain.CashReverso {
 			net = net.Add(m.Amount)
 		} else {
 			net = net.Sub(m.Amount)
 		}
 		switch {
+		case m.Kind == domain.CashReverso:
+			// Corrige una salida a mano (domain.CanReverse): la descuenta de las salidas.
+			salidas = salidas.Sub(m.Amount)
 		case m.Kind == domain.CashPropina:
 			// Dinero del personal que sale del cajón: ni gasto ni salida del negocio (spec 032).
 			propinas = propinas.Add(m.Amount)
@@ -1366,7 +1372,7 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
-			IsRefund: m.IsRefund,
+			IsRefund: m.IsRefund, ReversesID: m.ReversesID, Reversed: m.Reversed,
 		})
 	}
 	return view, nil
@@ -1649,12 +1655,44 @@ type conteoResuelto struct {
 
 // RecordCashMovement registra una entrada/salida de efectivo del cajón en la sesión abierta de una
 // caja. El neto (entradas − salidas) entra al efectivo esperado al cerrar (ver sessionWithExpected).
-func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID int64, kind string, amount decimal.Decimal, concept string, userID int64) (*SessionView, error) {
-	if !domain.ValidCashKind(kind) {
+// CashMovementCmd es una entrada o salida de efectivo capturada a mano. Una salida lleva concepto
+// del catálogo (spec 032, punto 3); una entrada, texto libre.
+type CashMovementCmd struct {
+	Kind      string          `json:"kind"`
+	Amount    decimal.Decimal `json:"amount"`
+	Concept   string          `json:"concept"`
+	ConceptID *int64          `json:"conceptId"`
+	UserID    int64           `json:"-"`
+}
+
+// cashMovementConcept resuelve el texto del movimiento: el nombre del concepto (copiado, para que
+// renombrarlo no reescriba el corte) en una salida, el texto libre en una entrada.
+func cashMovementConcept(ctx context.Context, q *db.Queries, cmd CashMovementCmd) (string, error) {
+	if cmd.Kind != domain.CashSalida {
+		if cmd.Concept == "" {
+			return "", domain.ErrValidation
+		}
+		return cmd.Concept, nil
+	}
+	if cmd.ConceptID == nil {
+		return "", domain.ErrConceptRequired
+	}
+	c, err := q.GetCashConcept(ctx, *cmd.ConceptID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && c.ArchivedAt.Valid) {
+		return "", domain.ErrConceptRequired
+	}
+	if err != nil {
+		return "", err
+	}
+	return c.Name, nil
+}
+
+func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID int64, cmd CashMovementCmd) (*SessionView, error) {
+	if !domain.ValidCashKind(cmd.Kind) {
 		return nil, domain.ErrValidation
 	}
-	amt := domain.Round2(amount)
-	if !domain.ValidMoney(amt, false) || concept == "" { // monto > 0 y con concepto
+	amt := domain.Round2(cmd.Amount)
+	if !domain.ValidMoney(amt, false) {
 		return nil, domain.ErrValidation
 	}
 	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
@@ -1674,17 +1712,86 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID i
 	// Con el turno bloqueado en compartido, como un cobro: un cierre que corre a la vez termina antes
 	// —y aquí se ve cerrado— o espera a que este movimiento confirme y lo cuenta (spec 031, D8).
 	if err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		concept, err := cashMovementConcept(ctx, q, cmd)
+		if err != nil {
+			return err
+		}
 		if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return domain.ErrNotFound
 			}
 			return err
 		}
-		_, err := q.InsertCashMovement(ctx, db.InsertCashMovementParams{
-			SessionID: sess.ID, Kind: kind, Amount: amt, Concept: concept, UserID: userID,
+		if cmd.Kind == domain.CashSalida {
+			_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
+			return err
+		}
+		_, err = q.InsertCashMovement(ctx, db.InsertCashMovementParams{
+			SessionID: sess.ID, Kind: cmd.Kind, Amount: amt, Concept: concept, UserID: cmd.UserID,
 		})
 		return err
 	}); err != nil {
+		return nil, err
+	}
+	return s.vistaDelTurnoAbierto(ctx, sess, reg)
+}
+
+// CorrectCashOut corrige una salida sin editarla (spec 032, punto 4): crea su reverso y una salida
+// nueva bien capturada, los dos en el turno ABIERTO de la caja de la original —un corte ya cerrado
+// no se reescribe—. Todo o nada.
+func (s *BackofficeService) CorrectCashOut(ctx context.Context, movementID int64, cmd CashMovementCmd) (*SessionView, error) {
+	amt := domain.Round2(cmd.Amount)
+	if !domain.ValidMoney(amt, false) {
+		return nil, domain.ErrValidation
+	}
+	cmd.Kind = domain.CashSalida
+	var sess db.RegisterSession
+	var registerID int64
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		m, err := q.GetMovementForCorrection(ctx, movementID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if err := domain.CanReverse(domain.ReversibleMovement{Kind: m.Kind, IsExpense: m.IsExpense, IsTransfer: m.IsTransfer,
+			IsRefund: m.IsRefund, AlreadyReversed: m.AlreadyReversed}); err != nil {
+			return err
+		}
+		registerID = m.RegisterID
+		concept, err := cashMovementConcept(ctx, q, cmd)
+		if err != nil {
+			return err
+		}
+		sess, err = q.GetOpenSessionByRegister(ctx, m.RegisterID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: abre la caja para corregir", domain.ErrConflict)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.LockOpenSessionForShare(ctx, sess.ID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrConflict
+			}
+			return err
+		}
+		if _, err := q.InsertCashReversal(ctx, db.InsertCashReversalParams{SessionID: sess.ID, Amount: m.Amount,
+			Concept: "Corrección: " + m.Concept, UserID: cmd.UserID, ReversesID: &m.ID}); err != nil {
+			if isUniqueViolation(err) {
+				return domain.ErrAlreadyReversed
+			}
+			return err
+		}
+		_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
+	if err != nil {
 		return nil, err
 	}
 	return s.vistaDelTurnoAbierto(ctx, sess, reg)
