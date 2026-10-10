@@ -303,6 +303,12 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   preguntar. Un pedido de plataforma se acepta y sale a cocina, y ya. Si una regla no se puede
   aplicar sola, el defecto está en la configuración que la permitió, no en el operador.
 - **Producción con datos reales de un negocio en operación.** Ante la duda, gana la opción que no pierde datos ni tumba el servicio, aunque sea la más lenta de construir.
+- **Se sube a producción con el negocio operando** (decidido el 2026-10-10). Con clientes reales
+  no existe una hora sin servicio, así que no se planea esperar una. Toda migración y todo
+  despliegue deben convivir con cajas abiertas y pedidos vivos: cambios aditivos primero y quitar
+  lo viejo en una subida posterior, sin bloqueos largos sobre tablas de venta, y la API vieja y la
+  nueva aceptan el mismo esquema durante el cambio. Lo que de verdad exija la caja cerrada (un
+  ajuste masivo de datos de inventario) se declara como excepción en su plan, con el porqué.
 - **El local tiene conexión, y el sistema puede contar con ella** (decidido el 2026-09-08). No se
   construye captura sin red: el servidor es la única fuente de verdad y una pantalla puede exigirlo.
   Offline no está descartado — está **aplazado**, porque hoy no devuelve nada y cuesta resolver
@@ -348,4 +354,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.16.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-07
+**Version**: 1.17.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-10
