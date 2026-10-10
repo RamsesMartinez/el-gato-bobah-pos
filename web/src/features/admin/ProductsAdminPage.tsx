@@ -264,8 +264,10 @@ export function ProductsAdminPage() {
 function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(`Copia de ${source.name}`);
+  const [cost, setCost] = useState('');
+  const costo = costoOpcional(cost);
   const dup = useMutation({
-    mutationFn: () => adminApi.duplicateProduct(source.id, name.trim()),
+    mutationFn: () => adminApi.duplicateProduct(source.id, name.trim(), costo ?? undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
       qc.invalidateQueries({ queryKey: ['menu'] });
@@ -274,7 +276,7 @@ function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onC
     },
     onError: (e) => toaster.create({ title: 'No se pudo duplicar', description: String(e), type: 'error' }),
   });
-  const canDup = name.trim().length > 0 && name.trim().toLowerCase() !== source.name.toLowerCase();
+  const canDup = name.trim().length > 0 && name.trim().toLowerCase() !== source.name.toLowerCase() && costo !== null;
 
   return (
     <DialogRoot open onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -291,6 +293,13 @@ function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onC
             <Field label="Nombre del nuevo producto">
               <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </Field>
+            {source.type !== 'combo' && (
+              <Field label="Costo (opcional)" invalid={costo === null} errorText="Revisa el costo"
+                helperText={source.hasRecipe ? 'Si lo llenas, este costo reemplaza al de la receta.' : undefined}>
+                <Input type="number" inputMode="decimal" minH="44px" value={cost} onChange={(e) => setCost(e.target.value)}
+                  placeholder={`Igual que el original (${money(source.current_cost)})`} />
+              </Field>
+            )}
           </VStack>
         </DialogBody>
         <DialogFooter>
@@ -311,11 +320,13 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [favorite, setFavorite] = useState(false);
+  const [cost, setCost] = useState('');
+  const costo = costoOpcional(cost);
 
-  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); };
+  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); setCost(''); };
   const create = useMutation({
     mutationFn: () => adminApi.createProduct({
-      name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite,
+      name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite, cost: costo ?? undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
@@ -325,7 +336,7 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
     },
     onError: (e) => toaster.create({ title: 'No se pudo crear', description: String(e), type: 'error' }),
   });
-  const canCreate = name.trim().length > 0 && !!categoryId && montoTecleado(price) !== undefined && price !== '';
+  const canCreate = name.trim().length > 0 && !!categoryId && montoTecleado(price) !== undefined && price !== '' && costo !== null;
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }}>
@@ -345,12 +356,15 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
             <Field label="Precio">
               <Input type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
             </Field>
+            <Field label="Costo (opcional)" invalid={costo === null} errorText="Revisa el costo">
+              <Input type="number" inputMode="decimal" minH="44px" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Sin costo" />
+            </Field>
             <HStack justify="space-between">
               <Text>Favorito</Text>
               <Switch checked={favorite} onCheckedChange={(e) => setFavorite(e.checked)} />
             </HStack>
             <Text fontSize="xs" color="fg.muted">
-              El costo, la receta y los grupos modificadores se configuran después, al editar el producto.
+              La receta y los grupos modificadores se configuran después, al editar el producto.
             </Text>
           </VStack>
         </DialogBody>
@@ -361,4 +375,12 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// costoOpcional: vacío = no mandar costo (undefined); escrito y malformado o negativo = null, que
+// apaga el botón en vez de mandarse como cero.
+function costoOpcional(texto: string): number | undefined | null {
+  if (texto.trim() === '') return undefined;
+  const n = montoTecleado(texto);
+  return n === undefined || n < 0 ? null : n;
 }

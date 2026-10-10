@@ -35,7 +35,7 @@ func TestAdminCreateListSortAndCategoryFilter(t *testing.T) {
 	}
 
 	mk := func(name string, cat int64, price string) {
-		if _, err := admin.CreateProduct(ctx, name, cat, decimal.RequireFromString(price), false, false); err != nil {
+		if _, err := admin.CreateProduct(ctx, name, cat, decimal.RequireFromString(price), false, false, nil); err != nil {
 			t.Fatalf("CreateProduct(%s): %v", name, err)
 		}
 	}
@@ -84,7 +84,7 @@ func TestDuplicateProductClonesRelations(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `insert into categories (name) values ('Bebidas') returning id`).Scan(&catID); err != nil {
 		t.Fatalf("categoria: %v", err)
 	}
-	srcID, err := admin.CreateProduct(ctx, "Latte", catID, decimal.RequireFromString("50"), true, false)
+	srcID, err := admin.CreateProduct(ctx, "Latte", catID, decimal.RequireFromString("50"), true, false, nil)
 	if err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestDuplicateProductClonesRelations(t *testing.T) {
 		t.Fatalf("product_channel: %v", err)
 	}
 
-	newID, err := admin.DuplicateProduct(ctx, srcID, "Latte grande")
+	newID, err := admin.DuplicateProduct(ctx, srcID, "Latte grande", nil)
 	if err != nil {
 		t.Fatalf("DuplicateProduct: %v", err)
 	}
@@ -150,22 +150,22 @@ func TestProductDuplicateNameRejected(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `insert into categories (name) values ('Cafés') returning id`).Scan(&catID); err != nil {
 		t.Fatalf("categoria: %v", err)
 	}
-	if _, err := admin.CreateProduct(ctx, "Café", catID, decimal.RequireFromString("30"), false, false); err != nil {
+	if _, err := admin.CreateProduct(ctx, "Café", catID, decimal.RequireFromString("30"), false, false, nil); err != nil {
 		t.Fatalf("CreateProduct: %v", err)
 	}
 
 	// Alta con el mismo nombre (distinto case) → duplicado.
-	_, err := admin.CreateProduct(ctx, "café", catID, decimal.RequireFromString("40"), false, false)
+	_, err := admin.CreateProduct(ctx, "café", catID, decimal.RequireFromString("40"), false, false, nil)
 	if !errors.Is(err, domain.ErrDuplicateName) || !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("CreateProduct nombre duplicado = %v, want ErrDuplicateName/ErrConflict", err)
 	}
 
 	// Duplicar hacia un nombre ya usado → mismo rechazo.
-	src, err := admin.CreateProduct(ctx, "Chai", catID, decimal.RequireFromString("45"), false, false)
+	src, err := admin.CreateProduct(ctx, "Chai", catID, decimal.RequireFromString("45"), false, false, nil)
 	if err != nil {
 		t.Fatalf("CreateProduct Chai: %v", err)
 	}
-	if _, err := admin.DuplicateProduct(ctx, src, "Café"); !errors.Is(err, domain.ErrDuplicateName) {
+	if _, err := admin.DuplicateProduct(ctx, src, "Café", nil); !errors.Is(err, domain.ErrDuplicateName) {
 		t.Fatalf("DuplicateProduct a nombre existente = %v, want ErrDuplicateName", err)
 	}
 }

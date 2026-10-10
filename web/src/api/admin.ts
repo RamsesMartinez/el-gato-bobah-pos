@@ -26,7 +26,16 @@ export interface AdminProduct {
   groupCount: number;    // grupos de modificadores activos ligados al producto
   overrideCount: number; // grupos con min/max personalizado en este producto
   compositionStatus?: CompositionStatus;
+  // De dónde sale current_cost. Opcionales para que el compilador obligue a la guarda en quien
+  // los lea: una respuesta vieja sin ellos no debe tumbar el diálogo.
+  costSource?: CostSource;
+  manualCost?: string | null;
+  hasRecipe?: boolean;
 }
+
+export type CostSource = 'manual' | 'compra' | 'receta';
+// Cambio de costo en el PATCH: ausente = no tocarlo.
+export type CostChange = { source: 'manual'; amount: number } | { source: 'receta' };
 
 // Qué lleva un producto o un extra: lo que descuenta del almacén al venderse.
 export type CompositionStatus = '' | 'estimated' | 'confirmed';
@@ -138,6 +147,7 @@ export interface UpdateProductBody {
   categoryId?: number;
   availableFrom?: string | null;
   availableUntil?: string | null;
+  cost?: CostChange;
 }
 
 // query-string común de paginación admin (products / modifier-options).
@@ -173,11 +183,13 @@ export const adminApi = {
 
   categories: () => api.get<{ items: Category[] }>('/admin/categories'),
   products: (p: ProductsQuery = {}) => api.get<ProductsPage>(`/admin/products?${pageQs(p)}`),
-  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean }) =>
+  // cost ausente = sin costo capturado.
+  createProduct: (b: { name: string; categoryId: number; price: number; favorite?: boolean; trackStock?: boolean; cost?: number }) =>
     api.post<{ id: number }>('/admin/products', b),
   // Duplica un producto con todas sus relaciones (grupos, canales, receta, slots de combo).
-  duplicateProduct: (id: number, name: string) =>
-    api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name }),
+  // cost ausente = la copia hereda el costo del original.
+  duplicateProduct: (id: number, name: string, cost?: number) =>
+    api.post<{ id: number }>(`/admin/products/${id}/duplicate`, { name, cost }),
   updateProduct: (id: number, b: UpdateProductBody) =>
     api.patch<void>(`/admin/products/${id}`, b),
 

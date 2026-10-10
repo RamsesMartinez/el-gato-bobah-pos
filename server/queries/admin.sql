@@ -8,7 +8,7 @@ select q.*, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
-         p.composition_status,
+         p.composition_status, p.cost_source, p.manual_cost, (p.recipe_id is not null)::bool as has_recipe,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -118,6 +118,22 @@ set name = $2, price = $3, is_favorite = $4, is_active = $5,
     available_from = $6, available_until = $7, needs_prep = sqlc.arg(needs_prep),
     updated_at = now()
 where id = $1;
+
+-- name: AdminSetProductManualCost :one
+-- Costo capturado a mano. current_cost se escribe en la misma sentencia para que el margen de la
+-- lista cambie aunque el recálculo posterior falle. Un combo no se toca: su costo es la suma de
+-- sus componentes y el motor de costeo sobrescribiría cualquier captura.
+update products
+set cost_source = 'manual', manual_cost = sqlc.arg(cost), current_cost = sqlc.arg(cost), updated_at = now()
+where id = sqlc.arg(id) and type <> 'combo'
+returning id;
+
+-- name: AdminSetProductRecipeCost :one
+-- Vuelve a costear por receta; solo si el producto tiene una. El monto lo pone el motor de costeo.
+update products
+set cost_source = 'receta', updated_at = now()
+where id = $1 and recipe_id is not null and type <> 'combo'
+returning id;
 
 -- name: AdminListModifierOptions :many
 -- Página de opciones (de grupos activos) filtrada por estado (''=todas | 'act' | 'inact') y
