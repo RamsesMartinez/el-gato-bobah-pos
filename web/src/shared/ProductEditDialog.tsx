@@ -81,12 +81,15 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
             <DialogBody>
               <VStack align="stretch" gap={4}>
                 <Field label="Nombre">
-                  <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+                  <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
                 </Field>
-                <Field label="Precio">
-                  <Input type="number" value={edit.price}
+                {/* Precio y costo en una fila: cada renglón le quita alto a 600 px de pantalla. */}
+                <HStack align="start" gap={3}>
+                <Field flex="1" label="Precio">
+                  <Input type="number" inputMode="decimal" minH="44px" value={edit.price}
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
+                <Box flex="1">
                 {edit.type === 'combo' ? (
                   <CostoFijo monto={edit.current_cost} nota="Se suma de lo que incluye" />
                 ) : costMode === 'receta' ? (
@@ -94,19 +97,21 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
                   // un número falso. El servidor lo calcula al guardar.
                   <CostoFijo monto={edit.costSource === 'receta' ? edit.current_cost : undefined}
                     nota={edit.costSource === 'receta' ? 'Sale de su receta' : 'Se calculará de su receta al guardar'}>
-                    <Button variant="outline" minH="44px" onClick={() => setCostMode('manual')}>Poner costo a mano</Button>
+                    <Button variant="outline" size="sm" minH="44px" onClick={() => setCostMode('manual')}>Poner costo a mano</Button>
                   </CostoFijo>
                 ) : (
-                  <HStack align="end">
-                    <Field flex="1" label="Costo" invalid={cost === 'invalido'} errorText="Escribe el costo">
+                  <VStack align="stretch" gap={2}>
+                    <Field label="Costo" invalid={cost === 'invalido'} errorText="Escribe el costo">
                       <Input type="number" inputMode="decimal" minH="44px" value={costText}
                         onChange={(e) => setCostText(e.target.value)} />
                     </Field>
                     {edit.hasRecipe && (
-                      <Button variant="outline" minH="44px" flexShrink={0} onClick={() => setCostMode('receta')}>Usar el de su receta</Button>
+                      <Button variant="outline" size="sm" minH="44px" onClick={() => setCostMode('receta')}>Usar el de su receta</Button>
                     )}
-                  </HStack>
+                  </VStack>
                 )}
+                </Box>
+                </HStack>
                 <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
                   <Text>Receta</Text>
                   <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
@@ -165,8 +170,8 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
               </VStack>
             </DialogBody>
             <DialogFooter>
-              <Button variant="ghost" mr={3} onClick={onClose}>Cancelar</Button>
-              <Button loading={save.isPending} disabled={cost === 'invalido'} onClick={() => save.mutate(edit)}>Guardar</Button>
+              <Button variant="ghost" minH="44px" mr={3} onClick={onClose}>Cancelar</Button>
+              <Button minH="44px" loading={save.isPending} disabled={cost === 'invalido'} onClick={() => save.mutate(edit)}>Guardar</Button>
             </DialogFooter>
           </>
         )}
@@ -207,17 +212,16 @@ function cambioDeCosto(p: AdminProduct, modo: 'manual' | 'receta', texto: string
   return { source: 'manual', amount: monto };
 }
 
-function CostoFijo({ monto, nota, children }: { monto?: string; nota: string; children?: ReactNode }) {
+// CostoFijo muestra un costo que no se captura aquí (receta o combo) con la razón al lado.
+export function CostoFijo({ monto, nota, children }: { monto?: string; nota: string; children?: ReactNode }) {
   return (
-    <HStack justify="space-between" minH="44px">
-      <Box>
-        <Text fontSize="sm" fontWeight="500">Costo</Text>
-        <HStack gap={2}>
-          {monto !== undefined && <Text fontWeight="600">{moneyExact(monto)}</Text>}
-          <Text fontSize="xs" color="fg.muted">{nota}</Text>
-        </HStack>
-      </Box>
+    <VStack align="stretch" gap={1}>
+      <Text fontSize="sm" fontWeight="500">Costo</Text>
+      <HStack gap={2} minH="44px">
+        {monto !== undefined && <Text fontWeight="600">{moneyExact(monto)}</Text>}
+        <Text fontSize="xs" color="fg.muted">{nota}</Text>
+      </HStack>
       {children}
-    </HStack>
+    </VStack>
   );
 }
