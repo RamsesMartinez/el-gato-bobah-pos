@@ -21,6 +21,7 @@ import (
 // `Refund` anotaba como pérdida `orders.total` sin mirar un solo cobro. Un pedido de $500 cobrado a
 // medias registraba $500 de pérdida cuando solo habían entrado $300.
 func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -32,7 +33,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 	// Un pedido de $500 del que solo entraron $300.
 	ord := pedidoCobradoParcial(t, ctx, st, ordenes, "dev_cobrado", "500", "300", cajero, efectivo, false)
 
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("500"),
 		Motivo: "se equivocó el platillo", ActorID: cajero,
 	}); !errors.Is(err, domain.ErrDevolucionExcede) {
@@ -40,7 +41,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 	}
 
 	// Lo que sí entró, se puede devolver.
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("300"),
 		Motivo: "se equivocó el platillo", ActorID: cajero,
 	}); err != nil {
@@ -63,6 +64,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 // registraba $220 de pérdida por un ingreso que nunca ocurrió, y la cuenta por cobrar desaparecía
 // del contador sin haberse cobrado.
 func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -72,7 +74,7 @@ func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
 	prod := makeProduct(t, st, "Sin cobrar dev", decimal.RequireFromString("220"), false)
 	ord := crearPedidoSimple(t, ctx, ordenes, prod, cajero)
 
-	err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("220"), Motivo: "prueba", ActorID: cajero,
 	})
 	if !errors.Is(err, domain.ErrSinCobrosQueDevolver) {
@@ -93,6 +95,7 @@ func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
 // Ese dinero nunca estuvo en la caja: descontarlo del cajón inventaría un faltante que el cajero
 // buscaría contando tres veces.
 func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -106,7 +109,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 	conTarjeta := pedidoCobradoParcial(t, ctx, st, ordenes, "dev_cajon_tar", "100", "100", cajero, tarjeta, false)
 
 	antes := salidasDeCaja(t, st)
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: conTarjeta, Monto: decimal.RequireFromString("100"), Motivo: "devuelta", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver con tarjeta: %v", err)
@@ -115,7 +118,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 		t.Fatalf("la devolución con tarjeta sacó %s del cajón: ese dinero nunca estuvo ahí", s.Sub(antes))
 	}
 
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: enEfectivo, Monto: decimal.RequireFromString("100"), Motivo: "devuelta", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver en efectivo: %v", err)
@@ -131,6 +134,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 // base y el arqueo SEGUÍA esperando ese dinero en el cajón. Devolverlo al cliente dejaba el corte
 // con un faltante que ningún renglón explicaba.
 func TestCancelarUnPedidoCobradoExigeLaDevolucion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -148,7 +152,7 @@ func TestCancelarUnPedidoCobradoExigeLaDevolucion(t *testing.T) {
 
 	// Con devolución: pasa, y el cajón queda cuadrado.
 	antes := salidasDeCaja(t, st)
-	if err := ordenes.CancelarConDevolucion(ctx, app.CancelacionCmd{
+	if err := ordenes.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1",
 		OrderID: ord, Motivo: "el cliente se arrepintió", ActorID: cajero, Devolver: true,
 	}); err != nil {
 		t.Fatalf("cancelar con devolución: %v", err)
@@ -207,12 +211,17 @@ func crearPedidoSimple(t *testing.T, ctx context.Context, svc *app.OrdersService
 	return ord.ID
 }
 
-// EL INSUMO VUELVE SOLO SI LA COMIDA NO SE HIZO.
+// EL INSUMO VUELVE SOLO SI NO SE CONSUMIÓ.
 //
 // Cancelar un renglón no existía: la columna estaba y ninguna consulta la escribía, mientras el
 // error de cancelar un pedido con entregas parciales mandaba al operador a "cancela los que falten".
 // La única salida practicable era marcar como entregado lo que seguía en la plancha.
+//
+// Todo renglón nace «enviado a cocina», así que el caso que repone en producción es el producto que
+// no se prepara. Antes esta prueba desmarcaba la cocina a mano para llegar aquí: un estado que
+// ningún pedido real alcanza.
 func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -220,17 +229,10 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_renglon", "cajero")
 	abrirCajaPrincipal(t, st, cajero)
 	prod := makeProduct(t, st, "Renglon cancelable", decimal.RequireFromString("80"), true)
+	sinPreparacion(t, st, prod)
 	ord := crearPedidoSimple(t, ctx, ordenes, prod, cajero)
 
-	linea, enviado := primerRenglon(t, st, ord)
-	if enviado {
-		// El pedido nace con sus renglones ya en cocina: se desmarca para probar el camino de "no
-		// salió", que es el que repone.
-		if _, err := st.Pool.Exec(ctx,
-			`update order_lines set enviado_a_cocina_at = null where id = $1`, linea); err != nil {
-			t.Fatalf("desmarcar: %v", err)
-		}
-	}
+	linea, _ := primerRenglon(t, st, ord)
 
 	antes := existencias(t, st, prod)
 	repuso, err := ordenes.CancelarRenglon(ctx, ord, linea, cajero, "el cliente lo quitó")
@@ -238,7 +240,7 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 		t.Fatalf("cancelar renglón: %v", err)
 	}
 	if !repuso {
-		t.Fatal("un renglón que no salió a cocina debe reponer: la comida no se hizo")
+		t.Fatal("un renglón que no se prepara debe reponer: no se consumió nada")
 	}
 	if e := existencias(t, st, prod); !e.GreaterThan(antes) {
 		t.Fatalf("las existencias pasaron de %s a %s: el insumo no volvió", antes, e)
@@ -257,6 +259,7 @@ func TestCancelarUnRenglonReponeSoloSiNoSalioACocina(t *testing.T) {
 // El que YA salió a cocina baja el total igual, pero NO repone: ese insumo se consumió, y reponerlo
 // inventaría existencias que no están.
 func TestUnRenglonQueYaSalioACocinaNoRepone(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -282,6 +285,7 @@ func TestUnRenglonQueYaSalioACocinaNoRepone(t *testing.T) {
 
 // Un doble tap no puede reponer dos veces el mismo insumo: eso es inventar existencias.
 func TestCancelarDosVecesElMismoRenglonNoReponeDosVeces(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -339,6 +343,7 @@ func existencias(t *testing.T, st *store.Store, productID int64) decimal.Decimal
 // No se exige igualdad con TODO lo devuelto: solo el efectivo sale del cajón. Lo que tiene que
 // cuadrar es la parte en efectivo.
 func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -357,7 +362,7 @@ func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PorDevolver: %v", err)
 		}
-		if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+		if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 			OrderID: o, Monto: monto, Motivo: "cuadre", ActorID: cajero,
 		}); err != nil {
 			t.Fatalf("devolver: %v", err)
@@ -394,29 +399,22 @@ func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
 
 // EL MENSAJE DE ERROR YA NO MANDA A UNA ACCIÓN QUE NO EXISTE (FR-008).
 //
-// `ErrCancelarConEntregas` dice "cancela los que falten o haz un reembolso". Cancelar un renglón NO
+// `ErrCancelarConEntregas` dice "quita lo que falta o ciérralo". Cancelar un renglón NO
 // existía: ninguna consulta escribía `order_lines.cancelled_at`, así que la única salida practicable
 // era marcar como entregado lo que seguía en la plancha. Ahora la frase es cierta, y esto lo prueba
 // haciendo lo que el mensaje dice.
 func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
-	ord, alitas, _ := pedidoDeAlitas(t, st, svc, "mensaje_cierto")
+	// pedidoDeAlitas devuelve los ids de los RENGLONES, no de los productos. Esta prueba los usaba
+	// como producto y pasaba porque los dos números coincidían; el producto genérico de la 0077
+	// recorrió la numeración de productos y la coincidencia se acabó.
+	ord, lineaAlitas, lineaPapas := pedidoDeAlitas(t, st, svc, "mensaje_cierto")
 	cajero := makeUser(t, st, "cajero_mensaje", "cajero")
 
 	// Se entrega UN renglón: el pedido entra en entrega parcial.
-	var lineaAlitas, lineaPapas int64
-	if err := st.Pool.QueryRow(ctx,
-		`select id from order_lines where order_id = $1 and product_id = $2`,
-		ord.ID, alitas).Scan(&lineaAlitas); err != nil {
-		t.Fatalf("leer renglón de alitas: %v", err)
-	}
-	if err := st.Pool.QueryRow(ctx,
-		`select id from order_lines where order_id = $1 and id <> $2 limit 1`,
-		ord.ID, lineaAlitas).Scan(&lineaPapas); err != nil {
-		t.Fatalf("leer el otro renglón: %v", err)
-	}
 	if err := svc.DeliverLine(ctx, ord.ID, lineaAlitas, decimal.RequireFromString("5")); err != nil {
 		t.Fatalf("entregar alitas: %v", err)
 	}
@@ -426,8 +424,10 @@ func TestLoQueElErrorDeEntregaParcialDiceSePuedeHacer(t *testing.T) {
 		t.Fatalf("cancelar con entrega parcial = %v, quiere ErrCancelarConEntregas", err)
 	}
 
-	// Y lo que el mensaje manda a hacer, se puede hacer: cancelar el que falta.
-	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); err != nil {
-		t.Fatalf("cancelar el renglón que falta: %v — el error manda a una acción que no funciona", err)
+	// Lo que el mensaje manda a hacer —quitar el que falta— se rechaza en ESTE pedido porque está
+	// cobrado completo: quitarlo dejaría el total bajo lo pagado sin devolver nada (FR-023, spec
+	// 027). El rechazo dice qué hacer antes, y eso también es una acción que existe.
+	if _, err := svc.CancelarRenglon(ctx, ord.ID, lineaPapas, cajero, "ya no lo quiere"); !errors.Is(err, domain.ErrOrderWouldBeOverpaid) {
+		t.Fatalf("quitar de un pedido cobrado completo = %v; quiere «Primero hay que devolver un pago»", err)
 	}
 }

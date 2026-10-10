@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func mx(t *testing.T) *time.Location {
@@ -151,44 +153,73 @@ func TestSummarizeSalesClasificaCadaPesoUnaVez(t *testing.T) {
 		{Status: StatusReembolsada, Count: 1, Total: d("80")},
 		{Status: StatusAbierta, Count: 1, Total: d("30")},
 	}
+	// Lo cobrado neto por medio en el periodo: 250 en efectivo, 92 con tarjeta menos 92 devueltos
+	// en una devolución.
+	porMedio := []MethodNet{{Net: d("250")}, {Net: d("0"), Refunds: d("92"), RefundCount: 1}}
 
-	s := SummarizeSales(filas)
+	s := SummarizeSales(filas, porMedio)
 
-	// 100 + 200 + 30: lo entregado y lo abierto. Lo cancelado y lo reembolsado NO son ingreso.
-	if !s.Total.Equal(d("330")) {
-		t.Fatalf("total = %s, quiere 330: se coló una cancelada o una reembolsada", s.Total)
+	// EL TOTAL ES LO COBRADO NETO, NO LO VENDIDO (spec 029, decisión del dueño). Sumaba el importe
+	// de los pedidos: 330 con el abierto sin cobrar adentro y el devuelto completo sin restar.
+	if !s.Total.Equal(d("250")) {
+		t.Fatalf("total = %s, quiere 250 (Σ medios): se sumó lo vendido, con lo abierto y lo devuelto", s.Total)
 	}
 	if !s.Tips.Equal(d("15")) {
 		t.Fatalf("propinas = %s, quiere 15", s.Tips)
 	}
-	// La propina NO está dentro del total: si lo estuviera, el negocio se estaría contando como
-	// ingreso el dinero del personal.
-	if s.Total.Add(s.Tips).Equal(s.Total) {
-		t.Fatal("propinas y total no pueden ser el mismo número")
-	}
 	if s.Cancelled.Count != 1 || !s.Cancelled.Amount.Equal(d("50")) {
 		t.Fatalf("canceladas = %+v, quiere 1 por 50", s.Cancelled)
 	}
-	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("80")) {
-		t.Fatalf("reembolsadas = %+v, quiere 1 por 80", s.Refunded)
+	// Lo devuelto sale de las MISMAS devoluciones que ya restó el desglose por medio, no del estado
+	// de los pedidos del periodo: el pedido reembolsado de 80 es de este día, pero su devolución
+	// no cayó en él.
+	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("92")) {
+		t.Fatalf("reembolsadas = %+v, quiere 1 por 92 (las devoluciones del periodo)", s.Refunded)
 	}
-	// El envío ya viene DENTRO de total: viaja aparte solo como referencia, nunca para sumarse.
 	if !s.DeliveryFees.Equal(d("20")) {
 		t.Fatalf("envíos = %s, quiere 20", s.DeliveryFees)
 	}
-	// El conteo cuenta las ventas que suman, no todas las filas.
 	if s.Count != 3 {
 		t.Fatalf("conteo = %d, quiere 3 (entregadas + abierta)", s.Count)
 	}
+	// El ticket promedio es de los PEDIDOS (330/3), no del cobro: dividir el cobro neto entre
+	// pedidos mezclaría cobros de otros días con pedidos de éste.
 	if !s.Average.Equal(d("110")) {
 		t.Fatalf("promedio = %s, quiere 110 (330/3)", s.Average)
 	}
 }
 
+// EL TOTAL ES LA SUMA DE LOS MEDIOS, AL CENTAVO (SC-001). Un medio que en el periodo solo devolvió
+// sale negativo y resta: así la pantalla cuadra con lo que se ve debajo.
+func TestNetCollectedIsTheSumOfMethods(t *testing.T) {
+	got := NetCollected([]decimal.Decimal{d("2261.33"), d("78"), d("-30.67"), d("16.2")})
+	if !got.Equal(d("2324.86")) {
+		t.Fatalf("NetCollected = %s, quiere 2324.86", got)
+	}
+	if !NetCollected(nil).IsZero() {
+		t.Fatal("sin medios el total es cero")
+	}
+}
+
 // Un rango sin ventas no puede reventar: dividir entre cero es la forma más tonta de tumbar una
 // pantalla de reportes, y pasa el primer día que alguien abre "ayer" en un día que no se abrió.
+// Una devolución hecha HOY de un pedido que NO es de hoy, o parcial sobre un pedido que sigue
+// entregado, ya se resta en el desglose por medio. El tile de devoluciones decía {0, 0} porque solo
+// miraba pedidos del periodo en estado «reembolsada»: la lista y el resumen dejaban de describir el
+// mismo dinero (constitución III).
+func TestRefundedComesFromTheRefundsTheMethodsAlreadySubtracted(t *testing.T) {
+	filas := []StatusTotals{{Status: StatusEntregada, Count: 1, Total: d("100")}}
+	porMedio := []MethodNet{{Net: d("70"), Refunds: d("30"), RefundCount: 1}}
+
+	s := SummarizeSales(filas, porMedio)
+
+	if s.Refunded.Count != 1 || !s.Refunded.Amount.Equal(d("30")) {
+		t.Fatalf("reembolsadas = %+v, quiere 1 por 30: el desglose ya restó esa devolución", s.Refunded)
+	}
+}
+
 func TestSummarizeSalesSinVentas(t *testing.T) {
-	s := SummarizeSales(nil)
+	s := SummarizeSales(nil, nil)
 	if s.Count != 0 || !s.Total.IsZero() || !s.Average.IsZero() {
 		t.Fatalf("resumen vacío = %+v, quiere todo en cero", s)
 	}
@@ -197,7 +228,7 @@ func TestSummarizeSalesSinVentas(t *testing.T) {
 // El promedio se redondea a dos decimales como cualquier otro peso de la frontera: 100/3 son
 // 33.3333… y una columna numeric(10,2) los rechazaría.
 func TestElPromedioSeRedondea(t *testing.T) {
-	s := SummarizeSales([]StatusTotals{{Status: StatusEntregada, Count: 3, Total: d("100.02")}})
+	s := SummarizeSales([]StatusTotals{{Status: StatusEntregada, Count: 3, Total: d("100.02")}}, nil)
 	if !s.Average.Equal(d("33.34")) {
 		t.Fatalf("promedio = %s, quiere 33.34", s.Average)
 	}

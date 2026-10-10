@@ -16,6 +16,15 @@ import (
 // vez de reinventarlas.
 
 var (
+	// ErrNothingLeftToRefund: lo cobrado ya se devolvió completo. Va antes de validar el monto
+	// porque «devolver lo que queda» llega en $0 cuando no queda nada, y el rechazo decía que el
+	// monto «no es una cantidad de dinero»: el operador revisaba un campo que nunca tecleó (spec 029).
+	//
+	// Es también un ErrDevolucionExcede —pedir algo cuando no queda nada es pedir de más—, así que
+	// quien ya distinguía ese caso lo sigue viendo; solo cambia lo que se le dice a quien opera.
+	ErrNothingLeftToRefund error = nothingLeft("ya se devolvió todo lo que se cobró de ese pedido")
+	// ErrNothingLeftOnLine: lo mismo para un producto del pedido.
+	ErrNothingLeftOnLine error = nothingLeft("de ese producto ya no queda nada por devolver")
 	// ErrDevolucionExcede: se pide devolver más de lo que entró, o más de lo que queda por devolver.
 	// Es validación y no conflicto: el monto que llegó está mal, no el estado del pedido.
 	ErrDevolucionExcede = fmt.Errorf("%w: no puedes devolver más de lo que se cobró de ese pedido", ErrValidation)
@@ -30,6 +39,14 @@ var (
 	// esperando ese dinero en el cajón: devolverlo dejaba el corte con un faltante que ningún renglón
 	// explicaba, y no devolverlo dejaba al negocio con dinero que no aparecía en ninguna venta.
 	ErrCancelarSinDevolver = fmt.Errorf("%w: este pedido ya tiene cobros; para cancelarlo hay que devolver ese dinero", ErrConflict)
+	// ErrRefundOnRefundedOrder: el pedido ya se reembolsó por el flujo anterior al libro de
+	// devoluciones. Ese flujo no escribía el libro, así que para él el pedido no tenía nada
+	// devuelto y se podía devolver completo otra vez (spec 031, D18).
+	ErrRefundOnRefundedOrder = fmt.Errorf("%w: ese pedido ya devolvió su dinero", ErrConflict)
+	// ErrCashRefundNeedsOpenRegister: devolver dinero del cajón sin turno principal abierto. La
+	// salida no quedaría en ningún arqueo: la apertura siguiente cuenta su fondo ya sin esos
+	// billetes y nadie sabría por qué (spec 031, D7).
+	ErrCashRefundNeedsOpenRegister = fmt.Errorf("%w: abre la caja para devolver efectivo", ErrConflict)
 )
 
 // CobradoPorMetodo: cuánto entró por cada medio de pago en un pedido.
@@ -47,13 +64,23 @@ type CobradoPorMetodo struct {
 	TocaElCajon bool
 	Activo      bool
 	Monto       decimal.Decimal
+	// Refunded: lo que ya salió por este medio. El reparto trabaja sobre lo que QUEDA de cada medio;
+	// con lo cobrado en bruto, una segunda devolución volvía a sacar del primer medio lo que ya
+	// había salido por él (D1).
+	Refunded decimal.Decimal
+	// Tip y TipRefunded: lo mismo para la propina, que solo regresa al cancelar.
+	Tip         decimal.Decimal
+	TipRefunded decimal.Decimal
 }
 
 // ParteDeDevolucion: cuánto se devuelve por un medio, y si eso sale del cajón.
 type ParteDeDevolucion struct {
-	MetodoID     int16
-	Nombre       string
-	Monto        decimal.Decimal
+	MetodoID int16
+	Nombre   string
+	Monto    decimal.Decimal
+	// Tip: propina que regresa por este medio. Va aparte del monto porque no es ingreso del
+	// negocio: no entra a lo devuelto de la venta.
+	Tip          decimal.Decimal
 	SaleDelCajon bool
 }
 
@@ -77,13 +104,16 @@ func ValidarDevolucion(monto, cobrado, yaDevuelto decimal.Decimal) error {
 	if cobrado.LessThanOrEqual(decimal.Zero) {
 		return fmt.Errorf("%w: este pedido no tiene cobros que devolver", ErrSinCobrosQueDevolver)
 	}
+	queda := MontoDevolvible(cobrado, yaDevuelto)
+	if queda.IsZero() {
+		return ErrNothingLeftToRefund
+	}
 	if !ValidMoney(Round2(monto), false) {
 		return fmt.Errorf("%w: el monto a devolver no es una cantidad de dinero", ErrValidation)
 	}
 	if Round2(monto).LessThanOrEqual(decimal.Zero) {
 		return fmt.Errorf("%w: devolver cero no es devolver", ErrValidation)
 	}
-	queda := MontoDevolvible(cobrado, yaDevuelto)
 	if Round2(monto).GreaterThan(queda) {
 		return fmt.Errorf("%w: se pide devolver %s y solo quedan %s de lo cobrado",
 			ErrDevolucionExcede, Round2(monto), queda)
@@ -113,7 +143,7 @@ func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []Pa
 		if restante.LessThanOrEqual(decimal.Zero) {
 			break
 		}
-		disponible := Round2(e.Monto)
+		disponible := Round2(e.Monto.Sub(e.Refunded))
 		if disponible.LessThanOrEqual(decimal.Zero) {
 			continue
 		}
@@ -125,6 +155,81 @@ func RepartirDevolucion(entradas []CobradoPorMetodo, monto decimal.Decimal) []Pa
 			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: toma, SaleDelCajon: e.TocaElCajon,
 		})
 		restante = Round2(restante.Sub(toma))
+	}
+	return partes
+}
+
+// LineRefundable: cuánto se puede devolver contra UN renglón.
+//
+// El menor de dos topes: lo que queda del pedido y lo que vale el renglón menos lo ya devuelto
+// contra él. Con solo el del pedido, un platillo de $60 en un pedido de $500 devolvía $500, y otra
+// vez por cada platillo (D4). El importe es el del renglón sin prorratear el descuento: el tope del
+// pedido sigue mandando.
+func LineRefundable(cobrado, devueltoTotal, importe, devueltoRenglon decimal.Decimal) decimal.Decimal {
+	delPedido := MontoDevolvible(cobrado, devueltoTotal)
+	delRenglon := MontoDevolvible(importe, devueltoRenglon)
+	if delRenglon.LessThan(delPedido) {
+		return delRenglon
+	}
+	return delPedido
+}
+
+// nothingLeft es un ErrDevolucionExcede con su propio mensaje: envolverlo con %w encadenaría el
+// texto genérico («no puedes devolver más…: ya se devolvió todo…») en lo que ve quien opera.
+type nothingLeft string
+
+func (e nothingLeft) Error() string { return ErrValidation.Error() + ": " + string(e) }
+
+func (e nothingLeft) Is(target error) bool {
+	return target == ErrValidation || target == ErrDevolucionExcede
+}
+
+// ValidateLineRefund topa una devolución contra un producto con lo que queda de él (`remaining`, de
+// LineRefundable). Cuando no queda nada lo dice así, antes de mirar el monto: pedir «lo que queda»
+// de un producto ya devuelto manda $0, y el rechazo genérico del monto no explica nada.
+func ValidateLineRefund(monto, remaining decimal.Decimal) error {
+	if Round2(remaining).LessThanOrEqual(decimal.Zero) {
+		return ErrNothingLeftOnLine
+	}
+	if Round2(monto).GreaterThan(Round2(remaining)) {
+		return fmt.Errorf("%w: de ese producto solo quedan %s por devolver", ErrDevolucionExcede, Round2(remaining))
+	}
+	return nil
+}
+
+// ErrPaymentHasRefunds: devolver ese pago dejaría una devolución sin un cobro detrás.
+var ErrPaymentHasRefunds = fmt.Errorf("%w: ese pago ya tiene una devolución; no se puede devolver otra vez", ErrConflict)
+
+// VoidKeepsRefunds decide si se puede devolver un pago sin regresar dos veces el mismo dinero.
+//
+// `quedaDelMedio` es lo cobrado por ese medio SIN el pago que se devuelve; `devueltoDelMedio`, lo
+// que ya salió por él. Si lo segundo supera a lo primero, el cliente recibiría el pago completo
+// además de lo ya devuelto, y el pedido volvería a deber (D2). Por medio y no "cualquier
+// devolución": una devolución por tarjeta no impide devolver el pago en efectivo.
+func VoidKeepsRefunds(quedaDelMedio, devueltoDelMedio decimal.Decimal) error {
+	if Round2(devueltoDelMedio).GreaterThan(Round2(quedaDelMedio)) {
+		return ErrPaymentHasRefunds
+	}
+	return nil
+}
+
+// SplitCancellationRefund: lo que regresa cada medio al cancelar con devolución, cuenta y propina.
+//
+// Cancelar dice que la venta no ocurrió, así que el cliente recibe lo que dio, propina incluida.
+// Devolver solo la cuenta dejaba la propina en el esperado del cajón y fuera de todo reparto,
+// porque el pedido cancelado ya no cuenta para propinas (D9). Un medio cuya cuenta ya se devolvió
+// puede regresar solo su propina.
+func SplitCancellationRefund(entradas []CobradoPorMetodo) []ParteDeDevolucion {
+	var partes []ParteDeDevolucion
+	for _, e := range entradas {
+		monto := MontoDevolvible(e.Monto, e.Refunded)
+		propina := MontoDevolvible(e.Tip, e.TipRefunded)
+		if monto.IsZero() && propina.IsZero() {
+			continue
+		}
+		partes = append(partes, ParteDeDevolucion{
+			MetodoID: e.MetodoID, Nombre: e.Nombre, Monto: monto, Tip: propina, SaleDelCajon: e.TocaElCajon,
+		})
 	}
 	return partes
 }

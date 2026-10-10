@@ -17,6 +17,7 @@ import (
 // (no-superusuario); el owner lo saltaría. Crea dos empresas con un usuario cada una y verifica
 // que, bajo el rol de app, cada tenant ve exclusivamente lo suyo.
 func TestTenantIsolationViaAppRole(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t) // owner: siembra fixtures (salta RLS)
 	acme := makeCompany(t, owner, "acme")
 	makeUserIn(t, owner, defaultCompanyID, "solo_gato", "cajero")
@@ -73,6 +74,7 @@ func TestTenantIsolationViaAppRole(t *testing.T) {
 // Login está scopeado por empresa: dos empresas pueden tener el mismo username y cada login
 // resuelve al usuario de SU slug, con su propia contraseña.
 func TestLoginIsScopedByCompany(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	acme := makeCompany(t, owner, "acme")
 	appSt := appRoleStore(t)
@@ -135,6 +137,7 @@ func strptr(s string) *string { return &s }
 // empresas, así que la segunda empresa que quisiera su propia "Bebidas" chocaba contra la primera —
 // un tenant nuevo era imposible de poblar aunque la RLS lo aislara perfecto.
 func TestCategoriaRaizPuedeRepetirNombreEntreEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	otra := makeCompany(t, owner, "otra-empresa")
 	ctx := context.Background()

@@ -8,6 +8,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
@@ -25,6 +26,11 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 		groups = ""
 	}
 	categoryID := max(int64(atoiOr(q.Get("categoryId"), 0)), 0) // 0 = todas las categorías
+	composition, err := compositionFilter(q.Get("composition"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	// Orden por columna: solo valores conocidos (lo demás → nombre asc, el default del query).
 	sort := q.Get("sort")
 	switch sort {
@@ -36,7 +42,7 @@ func (h *Handlers) AdminListProducts(w http.ResponseWriter, r *http.Request) {
 	if dir != "desc" {
 		dir = "asc"
 	}
-	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, sort, dir, int32(limit), int32(offset))
+	page, err := h.admin.ListProducts(r.Context(), status, q.Get("search"), categoryID, groups, composition, sort, dir, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return
@@ -62,12 +68,14 @@ func (h *Handlers) AdminCreateProduct(w http.ResponseWriter, r *http.Request) {
 		Price      decimal.Decimal `json:"price"`
 		Favorite   bool            `json:"favorite"`
 		TrackStock bool            `json:"trackStock"`
+		// cost ausente = sin costo capturado; presente se valida como dinero (negativo → 400).
+		Cost *decimal.Decimal `json:"cost"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	id, err := h.admin.CreateProduct(r.Context(), body.Name, body.CategoryID, body.Price, body.Favorite, body.TrackStock)
+	id, err := h.admin.CreateProduct(r.Context(), body.Name, body.CategoryID, body.Price, body.Favorite, body.TrackStock, body.Cost)
 	if err != nil {
 		Error(w, err)
 		return
@@ -85,12 +93,14 @@ func (h *Handlers) AdminDuplicateProduct(w http.ResponseWriter, r *http.Request)
 	}
 	var body struct {
 		Name string `json:"name"`
+		// cost ausente = el clon hereda el costo del original.
+		Cost *decimal.Decimal `json:"cost"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
-	newID, err := h.admin.DuplicateProduct(r.Context(), id, body.Name)
+	newID, err := h.admin.DuplicateProduct(r.Context(), id, body.Name, body.Cost)
 	if err != nil {
 		Error(w, err)
 		return
@@ -125,7 +135,12 @@ func (h *Handlers) AdminListModifierOptions(w http.ResponseWriter, r *http.Reque
 	}
 	limit := clampInt(atoiOr(q.Get("limit"), 25), 0, 100) // 0 = sin límite (el POS pide todas)
 	offset := max(atoiOr(q.Get("offset"), 0), 0)
-	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), int32(limit), int32(offset))
+	composition, err := compositionFilter(q.Get("composition"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	page, err := h.admin.ListModifierOptions(r.Context(), status, q.Get("search"), composition, int32(limit), int32(offset))
 	if err != nil {
 		Error(w, err)
 		return
@@ -198,16 +213,31 @@ func (h *Handlers) AdminUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		AvailableFrom  *string `json:"availableFrom"`
 		AvailableUntil *string `json:"availableUntil"`
 		NeedsPrep      bool    `json:"needsPrep"`
+		// cost ausente = no tocar el costo. {source:"manual", amount} o {source:"receta"}.
+		Cost *struct {
+			Source string           `json:"source"`
+			Amount *decimal.Decimal `json:"amount"`
+		} `json:"cost"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
+	}
+	var cost *domain.ProductCostChange
+	if body.Cost != nil {
+		c, err := domain.NewProductCostChange(body.Cost.Source, body.Cost.Amount)
+		if err != nil {
+			Error(w, err)
+			return
+		}
+		cost = &c
 	}
 	if err := h.admin.UpdateProduct(r.Context(), app.UpdateProductInput{
 		ID: id, Name: body.Name, Price: body.Price, Favorite: body.Favorite, Active: body.Active,
 		CategoryID:    body.CategoryID,
 		AvailableFrom: body.AvailableFrom, AvailableUntil: body.AvailableUntil,
 		NeedsPrep: body.NeedsPrep,
+		Cost:      cost,
 	}); err != nil {
 		Error(w, err)
 		return

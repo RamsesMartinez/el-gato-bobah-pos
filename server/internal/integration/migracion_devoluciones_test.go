@@ -19,6 +19,7 @@ import (
 // Por eso este test corre bajo `appRoleStore` y no bajo el owner: con el owner pasaría igual de
 // verde con el grant borrado.
 func TestElLibroDeDevolucionesEsUsablePorElRolDeApp(t *testing.T) {
+	t.Parallel()
 	newTestStore(t) // migra
 	st := appRoleStore(t)
 	ctx := context.Background()
@@ -49,6 +50,7 @@ func TestElLibroDeDevolucionesEsUsablePorElRolDeApp(t *testing.T) {
 // para romper en producción, que tiene dos. Y sobre una base vacía no se ejercita ningún dato
 // previo, que es donde viven los defectos de una migración.
 func TestLaMigracionDeDevolucionesNoTocaLoQueYaEstaba(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -89,6 +91,7 @@ func TestLaMigracionDeDevolucionesNoTocaLoQueYaEstaba(t *testing.T) {
 // salto no puede moverles un peso. La migración solo agrega, pero "solo agrega" es lo que se dice
 // antes de medirlo.
 func TestUnArqueoCerradoNoCambiaConLaMigracion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

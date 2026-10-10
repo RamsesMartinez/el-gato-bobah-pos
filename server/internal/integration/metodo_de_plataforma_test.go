@@ -25,6 +25,7 @@ import (
 // El caso contrario importa igual: un pedido de mostrador cobrado con "Uber Eats en línea" saca del
 // cajón dinero que sí estaba ahí, y el turno cierra con sobrante.
 func TestUnPedidoDePlataformaExigeElMetodoDeSuPlataforma(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)

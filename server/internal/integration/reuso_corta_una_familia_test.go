@@ -30,6 +30,7 @@ import (
 // El test sigue la cadena COMPLETA —entrar, rotar, reusar— porque el defecto solo aparece cuando la
 // familia se hereda de verdad: si la rotación estrenara cadena, el reuso no tendría nada que cortar.
 func TestElReusoRevocaSoloLaFamiliaComprometida(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)
@@ -69,6 +70,7 @@ func TestElReusoRevocaSoloLaFamiliaComprometida(t *testing.T) {
 // Una credencial SIN familia —emitida antes de 0064— cae al castigo viejo en vez de quedarse sin
 // ninguno. Sin linaje no se puede saber qué cortar, y no cortar nada dejaría al ladrón dentro.
 func TestUnaCredencialSinFamiliaSigueRevocandoPorUsuario(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)

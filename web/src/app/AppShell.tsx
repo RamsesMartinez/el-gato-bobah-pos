@@ -1,10 +1,6 @@
 import {
   Box, Flex, VStack, Text, Button, Image } from '@chakra-ui/react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
-import {
-  LuShoppingCart, LuClipboardList, LuWallet, LuHandCoins, LuReceiptText,
-  LuPackage, LuChartColumn, LuTag, LuUsers, LuPalette, LuStore, LuUserCog, LuPrinter, LuBike,
-} from 'react-icons/lu';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
 import { useSessionStore } from '../stores/session';
@@ -12,23 +8,7 @@ import { useUiStore } from '../stores/ui';
 import { canAccess } from './roles';
 import { RADIUS } from '../theme/ui';
 import { SystemInfo } from './SystemInfo';
-
-const NAV = [
-  { to: '/pos', icon: LuShoppingCart, label: 'Vender' },
-  { to: '/pedidos', icon: LuClipboardList, label: 'Pedidos' },
-  { to: '/ventas', icon: LuReceiptText, label: 'Ventas' },
-  { to: '/caja', icon: LuWallet, label: 'Caja' },
-  { to: '/gastos', icon: LuHandCoins, label: 'Gastos' },
-  { to: '/almacen', icon: LuPackage, label: 'Almacén' },
-  { to: '/reportes', icon: LuChartColumn, label: 'Reportes' },
-  { to: '/catalogo', icon: LuTag, label: 'Catálogo' },
-  { to: '/plataformas', icon: LuBike, label: 'Plataformas' },
-  { to: '/empleados', icon: LuUsers, label: 'Empleados' },
-  { to: '/negocio', icon: LuStore, label: 'Negocio' },
-  { to: '/impresion', icon: LuPrinter, label: 'Impresión' },
-  { to: '/apariencia', icon: LuPalette, label: 'Interfaz' },
-  { to: '/cuenta', icon: LuUserCog, label: 'Mi cuenta' },
-];
+import { NAV } from './nav';
 
 export function AppShell() {
   const user = useSessionStore((s) => s.user);
@@ -64,7 +44,7 @@ export function AppShell() {
         <Image src={logo} alt="El Gato Bobah" boxSize="44px" borderRadius="lg" mb={2} alignSelf="center" flexShrink={0} />
         {/* lista scrollable: en pantallas de poco alto (7") no se recortan los ítems */}
         <VStack
-          flex="1" minH={0} overflowY="auto" gap={2} w="100%"
+          flex="1" minH={0} overflowY="auto" gap={1} w="100%"
           css={{ scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}
         >
           {nav.map((n) => {
@@ -73,7 +53,7 @@ export function AppShell() {
               <NavLink key={n.to} to={n.to} style={{ width: '100%' }}>
                 {({ isActive }) => (
                   <VStack
-                    gap={1} py={2} borderRadius={RADIUS} mx={1}
+                    gap={1} py={1.5} minH="44px" borderRadius={RADIUS} mx={1}
                     bg={isActive ? 'colorPalette.600' : 'transparent'}
                     _hover={{ bg: isActive ? 'colorPalette.600' : 'whiteAlpha.200' }}
                   >
@@ -85,9 +65,10 @@ export function AppShell() {
             );
           })}
         </VStack>
-        <VStack gap={0} flexShrink={0} pt={2}>
+        <VStack gap={0} flexShrink={0}>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
-          <Button size="xs" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>
+          {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
+          <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>
           <SystemInfo />
         </VStack>
       </Flex>

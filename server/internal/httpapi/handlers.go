@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -71,27 +72,40 @@ const (
 	// la bitácora de eventos y pelearía por el lock de la fila.
 	descuentoMax    = 120
 	descuentoWindow = 5 * time.Minute
+	// splitWritesMax/Window: devolver pagos y pasar productos, por usuario (spec 027). Son
+	// escrituras de dinero y de pedidos que en un turno se cuentan por decenas; el tope corta el
+	// bucle, no el uso.
+	splitWritesMax    = 120
+	splitWritesWindow = 5 * time.Minute
 )
 
 // Deps agrupa las dependencias de los handlers (crece por fase).
 type Deps struct {
-	Cfg        config.Config
-	Version    string // SHA del build (ldflags); "dev" en local
-	BuiltAt    string // timestamp del build (ldflags); "" en local
-	JWT        *auth.Manager
-	Auth       *app.AuthService
-	Users      *app.UsersService
-	Menu       *app.MenuService
-	MenuCache  *cache.MenuCache
-	Suggest    *app.SuggestService
-	Costing    *app.CostingService
-	Orders     *app.OrdersService
-	Backoffice *app.BackofficeService
-	Admin      *app.AdminService
-	Settings   *app.SettingsService
-	Company    *app.CompanyService
-	Reset      *app.ResetService
-	Broker     *realtime.Broker
+	Cfg       config.Config
+	Version   string // SHA del build (ldflags); "dev" en local
+	BuiltAt   string // timestamp del build (ldflags); "" en local
+	JWT       *auth.Manager
+	Auth      *app.AuthService
+	Users     *app.UsersService
+	Menu      *app.MenuService
+	MenuCache *cache.MenuCache
+	Suggest   *app.SuggestService
+	Costing   *app.CostingService
+	Orders    *app.OrdersService
+	// Drafts es la cuenta en captura (spec 030).
+	Drafts *app.DraftsService
+	// Accounts es la fila de cuentas vivas del POS (spec 030).
+	Accounts     *app.AccountsService
+	Backoffice   *app.BackofficeService
+	Tips         *app.TipsService
+	CashConcepts *app.CashConceptsService
+	Terminals    *app.TerminalsService
+	DailySummary *app.DailySummaryService
+	Admin        *app.AdminService
+	Settings     *app.SettingsService
+	Company      *app.CompanyService
+	Reset        *app.ResetService
+	Broker       *realtime.Broker
 	// PurchaseDoc puede ser nil: la extracción de tickets es opcional (sin ANTHROPIC_API_KEY el
 	// POS opera capturando las líneas a mano).
 	PurchaseDoc    *app.PurchaseDocService
@@ -99,9 +113,12 @@ type Deps struct {
 	// MenusPlataforma siempre se construye (ver main.go): el servicio existe aunque no haya ninguna
 	// plataforma configurada, y en ese caso `DispararLectura` responde 412 «no está conectada»
 	// porque su mapa de lectores viene vacío. No es lo mismo que un servicio nil, que reventaría.
-	MenusPlataforma *app.MenusDePlataformaService
-	Sales           *app.SalesService
-	Settlements     *app.SettlementsService
+	MenusPlataforma   *app.MenusDePlataformaService
+	PedidosPlataforma *app.PedidosDePlataformaService
+	// Credenciales de la app de cada plataforma, capturadas en pantalla (0075).
+	Credentials *app.PlatformCredentialsService
+	Sales       *app.SalesService
+	Settlements *app.SettlementsService
 	// PlatformJWT y Platform son la consola de plataforma (spec 016). Van juntas o no van: el
 	// router no monta el grupo /platform sin las dos, y montarlo a medias respondería 500 donde
 	// debe no existir nada.
@@ -114,35 +131,46 @@ type Deps struct {
 	// el agregado. Son dos campos y no uno porque son dos permisos distintos, y confundirlos es
 	// exactamente lo que las tres barreras de la spec 016 existen para impedir.
 	UsageConsola *app.UsageService
+	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
+	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
+	Permissions PermissionResolver
 }
 
 type Handlers struct {
-	cfg             config.Config
-	version         string
-	builtAt         string
-	jwt             *auth.Manager
-	auth            *app.AuthService
-	users           *app.UsersService
-	menu            *app.MenuService
-	menuCache       *cache.MenuCache
-	suggest         *app.SuggestService
-	costing         *app.CostingService
-	orders          *app.OrdersService
-	backoffice      *app.BackofficeService
-	admin           *app.AdminService
-	settings        *app.SettingsService
-	company         *app.CompanyService
-	reset           *app.ResetService
-	broker          *realtime.Broker
-	purchaseDoc     *app.PurchaseDocService
-	platformPrices  *app.PlatformPricesService
-	menusPlataforma *app.MenusDePlataformaService
-	sales           *app.SalesService
-	settlements     *app.SettlementsService
-	platformJWT     *auth.ManagerDePlataforma
-	platform        *app.PlatformService
-	usage           *app.UsageService
-	usageConsola    *app.UsageService
+	cfg               config.Config
+	version           string
+	builtAt           string
+	jwt               *auth.Manager
+	auth              *app.AuthService
+	users             *app.UsersService
+	menu              *app.MenuService
+	menuCache         *cache.MenuCache
+	suggest           *app.SuggestService
+	costing           *app.CostingService
+	orders            *app.OrdersService
+	drafts            *app.DraftsService
+	accounts          *app.AccountsService
+	backoffice        *app.BackofficeService
+	tips              *app.TipsService
+	cashConcepts      *app.CashConceptsService
+	terminals         *app.TerminalsService
+	dailySummary      *app.DailySummaryService
+	admin             *app.AdminService
+	settings          *app.SettingsService
+	company           *app.CompanyService
+	reset             *app.ResetService
+	broker            *realtime.Broker
+	purchaseDoc       *app.PurchaseDocService
+	platformPrices    *app.PlatformPricesService
+	menusPlataforma   *app.MenusDePlataformaService
+	pedidosPlataforma *app.PedidosDePlataformaService
+	credentials       *app.PlatformCredentialsService
+	sales             *app.SalesService
+	settlements       *app.SettlementsService
+	platformJWT       *auth.ManagerDePlataforma
+	platform          *app.PlatformService
+	usage             *app.UsageService
+	usageConsola      *app.UsageService
 	// usoIngesta limita cuánto puede mandar una tableta. No protege la base —de eso se encargan la
 	// lista blanca y los checks— sino el camino: un bucle en el front no puede costar una escritura
 	// por vuelta.
@@ -154,30 +182,56 @@ type Handlers struct {
 	platformPriceWrites *rateLimiter
 	// platformMenuReads limita cuántas lecturas de menú puede disparar un usuario.
 	platformMenuReads *rateLimiter
+	// webhookIPs limita la puerta pública de las plataformas. Es la única ruta del negocio sin
+	// sesión, así que es la única que cualquiera puede alcanzar sin credenciales.
+	webhookIPs *rateLimiter
 	// platformRefWrites limita las correcciones de folio por usuario (ver platformRefMax).
 	platformRefWrites *rateLimiter
 	// descuentoWrites limita los cambios de descuento por usuario (ver descuentoMax).
 	descuentoWrites *rateLimiter
-	authFails       *rateLimiter // account-targeted brute-force lockout (per username / user id)
-	authIPs         *rateLimiter // per-IP request throttle for the /auth group
+	// splitWrites limita devolver pagos y pasar productos por usuario (ver splitWritesMax).
+	splitWrites *rateLimiter
+	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
+	authIPs     *rateLimiter // per-IP request throttle for the /auth group
+	permissions PermissionResolver
 }
 
 func NewHandlers(d Deps) *Handlers {
+	h := newHandlers(d)
+	// La lectura del menú copia precios en una goroutine que no pasa por un handler (0077). Sin este
+	// aviso el menú cacheado dura 24 horas y las tabletas cobrarían con el precio viejo.
+	if h.menusPlataforma != nil && h.menuCache != nil && h.broker != nil {
+		h.menusPlataforma.OnPricesSynced(func(ctx context.Context, companyID int64) {
+			h.menuCache.Invalidate(ctx, companyID)
+			h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
+		})
+	}
+	return h
+}
+
+func newHandlers(d Deps) *Handlers {
+	permissions := d.Permissions
+	if permissions == nil {
+		permissions = domain.PermissionsFor
+	}
 	return &Handlers{
-		cfg: d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
-		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders,
-		backoffice: d.Backoffice, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
-		purchaseDoc:     d.PurchaseDoc,
-		platformPrices:  d.PlatformPrices,
-		menusPlataforma: d.MenusPlataforma,
-		sales:           d.Sales,
-		settlements:     d.Settlements,
-		platformJWT:     d.PlatformJWT,
-		platform:        d.Platform,
-		usage:           d.Usage,
-		usageConsola:    d.UsageConsola,
-		usoIngesta:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
-		docExtract:      newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
+		permissions: permissions,
+		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
+		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
+		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,
+		purchaseDoc:       d.PurchaseDoc,
+		platformPrices:    d.PlatformPrices,
+		menusPlataforma:   d.MenusPlataforma,
+		pedidosPlataforma: d.PedidosPlataforma,
+		credentials:       d.Credentials,
+		sales:             d.Sales,
+		settlements:       d.Settlements,
+		platformJWT:       d.PlatformJWT,
+		platform:          d.Platform,
+		usage:             d.Usage,
+		usageConsola:      d.UsageConsola,
+		usoIngesta:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:uso:", usoMax, time.Minute),
+		docExtract:        newRateLimiter(d.Cfg.RedisURL, "ratelimit:doc-extract:", docExtractMax, time.Hour),
 		// Redis-backed cuando REDIS_URL está definido (contadores compartidos entre réplicas y
 		// que sobreviven un restart); si no, caen a in-memory (dev). Prefijos separados: los dos
 		// limiters comparten la misma instancia de Redis sin pisarse las claves.
@@ -191,16 +245,30 @@ func NewHandlers(d Deps) *Handlers {
 		// cada lectura baja 211 KB de un tercero y escribe 222 filas.
 		platformMenuReads: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-menu-read:",
 			platformMenuReadMax, platformMenuReadWindow),
+		// EL LÍMITE DEL WEBHOOK ES POR IP y muy por encima del volumen real: lo que acota es una
+		// ráfaga contra una puerta pública, no los pedidos. Dimensionarlo apretado sería peor que
+		// no tenerlo — un rechazo a la plataforma es un pedido que no entra. Y como el limitador
+		// de este repo es fail-open cuando Redis no contesta, un hiccup del caché nunca bloquea
+		// un pedido.
+		webhookIPs: newRateLimiter(d.Cfg.RedisURL, "ratelimit:webhook:", webhookMax, time.Minute),
 		platformRefWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:platform-ref:",
 			platformRefMax, platformRefWindow),
 		descuentoWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:descuento:",
 			descuentoMax, descuentoWindow),
+		splitWrites: newRateLimiter(d.Cfg.RedisURL, "ratelimit:split:", splitWritesMax, splitWritesWindow),
 	}
 }
 
 type sessionResponse struct {
 	AccessToken string      `json:"accessToken"`
-	User        domain.User `json:"user"`
+	User        sessionUser `json:"user"`
+}
+
+// sessionUser es el usuario de la sesión con sus permisos. La pantalla pregunta por permiso
+// (`can()`), nunca por nombre de rol; por eso viajan con cada sesión y no se deducen del rol allá.
+type sessionUser struct {
+	domain.User
+	Permissions []domain.Permission `json:"permissions"`
 }
 
 // La cookie de refresh codifica el tenant como "cid.token": el /refresh necesita fijar la
@@ -243,7 +311,16 @@ func (h *Handlers) clearRefreshCookie(w http.ResponseWriter) {
 
 func (h *Handlers) writeSession(w http.ResponseWriter, s *app.Session, status int) {
 	h.setRefreshCookie(w, s.CompanyID, s.RefreshToken, s.RefreshExpiresAt)
-	JSON(w, status, sessionResponse{AccessToken: s.AccessToken, User: s.User})
+	JSON(w, status, sessionResponse{AccessToken: s.AccessToken,
+		User: sessionUser{User: s.User, Permissions: h.permissionsOf(s.User.Role)}})
+}
+
+// permissionsOf nunca devuelve nil: un nil saldría como `null` y la pantalla truena al preguntar.
+func (h *Handlers) permissionsOf(role domain.Role) []domain.Permission {
+	if p := h.permissions(role); p != nil {
+		return p
+	}
+	return []domain.Permission{}
 }
 
 // POST /auth/login  {username, slug, password}. El identificador es username@slug; también se
@@ -490,6 +567,7 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	JSON(w, http.StatusOK, map[string]any{
 		"id": u.ID, "companyId": u.CompanyID, "name": u.Name, "role": u.Role,
+		"permissions": h.permissionsOf(u.Role),
 	})
 }
 

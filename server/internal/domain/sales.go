@@ -241,9 +241,17 @@ type ConceptCount struct {
 
 // SalesSummary es el resumen de arriba de la pantalla. Cada campo declara qué incluye:
 //
-//   - Total: ingreso REAL. No incluye canceladas ni reembolsadas, que son ingreso que no ocurrió.
+//   - Total: lo COBRADO en el periodo, neto de lo devuelto en el periodo (decisión del dueño,
+//     docs/criterios-de-ventas.md). Cada cobro cuenta el día en que se cobró y cada devolución el día
+//     en que se devolvió. Sin propinas y sin pedidos sin cobrar. Es la suma de los medios de pago.
+//   - Count y Average: cifras de VENTA, no de dinero: pedidos del periodo no cancelados y su ticket
+//     promedio. Por eso Total/Count no es el promedio, y la pantalla lo rotula.
 //   - Tips: pass-through del personal. NO está dentro de Total.
-//   - DeliveryFees: ya está DENTRO de Total; viaja aparte solo como referencia.
+//   - DeliveryFees: ya está DENTRO del importe de los pedidos; viaja aparte solo como referencia.
+//   - Pending: lo que falta por cobrar de los pedidos del periodo. NO está dentro de Total.
+//   - Refunded: las devoluciones HECHAS en el periodo (sin propina), las mismas que el desglose por
+//     medio ya restó de Total. No sale del estado de los pedidos del periodo: así lo decía antes y
+//     el tile marcaba cero con el desglose ya restando una devolución de hoy.
 //
 // La separación no es estética. Un resumen que pone propina, envío y total como renglones hermanos
 // invita a sumarlos y a reportar un ingreso que el negocio no tuvo — la misma forma del fondo de
@@ -256,30 +264,62 @@ type SalesSummary struct {
 	DeliveryFees decimal.Decimal `json:"deliveryFees"`
 	Cancelled    ConceptCount    `json:"cancelled"`
 	Refunded     ConceptCount    `json:"refunded"`
+	Pending      ConceptCount    `json:"pending"`
+	// WrittenOff: lo dado por perdido en el periodo («cancelar lo que falta», 2026-10-09), por el día
+	// en que se dio por perdido. NO está en Total (no se cobró), ni en Refunded (no salió dinero), ni
+	// en Pending (ya no se debe).
+	WrittenOff ConceptCount `json:"writtenOff"`
 }
 
-// SummarizeSales clasifica cada venta en un solo concepto y saca el promedio.
-func SummarizeSales(filas []StatusTotals) SalesSummary {
+// MethodNet es lo que el resumen toma de cada renglón del desglose por medio: lo cobrado neto y
+// las devoluciones del periodo que ya se le restaron.
+type MethodNet struct {
+	Net         decimal.Decimal
+	Refunds     decimal.Decimal
+	RefundCount int
+}
+
+// NetCollected es el Total de Ventas: la suma, al centavo, de lo cobrado neto por cada medio. Sale
+// de las MISMAS filas que la pantalla pinta debajo, así que no puede dejar de cuadrar con ellas: una
+// segunda consulta para la misma cifra es de donde salen dos números que no coinciden.
+func NetCollected(netByMethod []decimal.Decimal) decimal.Decimal {
+	total := decimal.Zero
+	for _, m := range netByMethod {
+		total = total.Add(m)
+	}
+	return Round2(total)
+}
+
+// SummarizeSales clasifica cada venta en un solo concepto, saca el ticket promedio de los pedidos y
+// toma el Total del cobro neto por medio.
+func SummarizeSales(filas []StatusTotals, porMedio []MethodNet) SalesSummary {
 	var s SalesSummary
+	vendido := decimal.Zero
 	for _, f := range filas {
 		switch f.Status {
 		case StatusCancelada:
 			s.Cancelled.Count += f.Count
 			s.Cancelled.Amount = s.Cancelled.Amount.Add(f.Total)
 		case StatusReembolsada:
-			s.Refunded.Count += f.Count
-			s.Refunded.Amount = s.Refunded.Amount.Add(f.Total)
+			// Ni venta ni devolución: lo devuelto sale de las devoluciones del periodo, abajo. El
+			// estado del pedido no dice CUÁNDO se devolvió, y una devolución parcial no lo cambia.
 		default:
 			s.Count += f.Count
-			s.Total = s.Total.Add(f.Total)
+			vendido = vendido.Add(f.Total)
 			s.Tips = s.Tips.Add(f.Tips)
 			s.DeliveryFees = s.DeliveryFees.Add(f.DeliveryFee)
 		}
 	}
 	if s.Count > 0 {
-		s.Average = Round2(s.Total.Div(decimal.NewFromInt(int64(s.Count))))
+		s.Average = Round2(vendido.Div(decimal.NewFromInt(int64(s.Count))))
 	}
-	s.Total = Round2(s.Total)
+	netos := make([]decimal.Decimal, 0, len(porMedio))
+	for _, m := range porMedio {
+		netos = append(netos, m.Net)
+		s.Refunded.Count += m.RefundCount
+		s.Refunded.Amount = s.Refunded.Amount.Add(m.Refunds)
+	}
+	s.Total = NetCollected(netos)
 	s.Tips = Round2(s.Tips)
 	s.DeliveryFees = Round2(s.DeliveryFees)
 	s.Cancelled.Amount = Round2(s.Cancelled.Amount)

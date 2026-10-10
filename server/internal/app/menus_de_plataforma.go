@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -42,16 +41,33 @@ type LectorDeMenu interface {
 // `TestElServicioRespetaElTenantBajoElRolDeApp`, que pide el tenant de OTRA empresa justamente para
 // que el default de la base no lo enmascare.
 type MenusDePlataformaService struct {
-	store    *store.Store
-	lectores map[string]LectorDeMenu // por nombre de plataforma: "Uber Eats", …
-	ahora    func() time.Time
+	store *store.Store
+	// clients entrega el lector de la empresa del contexto, armado con SUS credenciales. Nil = el
+	// despliegue no habla con ninguna plataforma.
+	clients        PlatformClients
+	ahora          func() time.Time
+	onPricesSynced func(ctx context.Context, companyID int64)
 }
 
-func NewMenusDePlataformaService(s *store.Store, lectores map[string]LectorDeMenu, now func() time.Time) *MenusDePlataformaService {
+func NewMenusDePlataformaService(s *store.Store, clients PlatformClients, now func() time.Time) *MenusDePlataformaService {
 	if now == nil {
 		now = time.Now
 	}
-	return &MenusDePlataformaService{store: s, lectores: lectores, ahora: now}
+	return &MenusDePlataformaService{store: s, clients: clients, ahora: now}
+}
+
+// OnPricesSynced registra qué hacer cuando una lectura copia precios: invalidar el menú cacheado y
+// avisar a las tabletas. Lo pone httpapi, que es quien tiene el caché y el canal de avisos.
+func (s *MenusDePlataformaService) OnPricesSynced(fn func(ctx context.Context, companyID int64)) {
+	s.onPricesSynced = fn
+}
+
+// menuReaderFor devuelve el lector de la plataforma para la empresa del contexto, o por qué no hay.
+func (s *MenusDePlataformaService) menuReaderFor(ctx context.Context, plataforma string) (LectorDeMenu, error) {
+	if s.clients == nil {
+		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plataforma)
+	}
+	return s.clients.MenuReaderFor(ctx, plataforma)
 }
 
 // --- Conexiones ---
@@ -92,7 +108,9 @@ func (s *MenusDePlataformaService) ListarConexiones(ctx context.Context) ([]Cone
 		c := Conexion{
 			ID: f.ID, PlatformID: f.DeliveryPlatformID, PlatformName: f.PlatformName,
 			ExternalStoreID: f.ExternalStoreID, Label: f.Label, Activa: f.IsActive,
-			Configurada: s.lectores[f.PlatformName] != nil,
+		}
+		if _, err := s.menuReaderFor(ctx, f.PlatformName); err == nil {
+			c.Configurada = true
 		}
 		if r, err := s.store.QC(ctx).GetLastMenuRead(ctx, f.ID); err == nil {
 			c.UltimaLectura = s.resumen(r)
@@ -137,9 +155,9 @@ func (s *MenusDePlataformaService) TiendasDisponibles(ctx context.Context, plata
 		}
 		return nil, fmt.Errorf("plataforma %d: %w", plataformaID, err)
 	}
-	lector := s.lectores[plat.Name]
-	if lector == nil {
-		return nil, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, plat.Name)
+	lector, err := s.menuReaderFor(ctx, plat.Name)
+	if err != nil {
+		return nil, err
 	}
 
 	tiendas, err := lector.ListarTiendas(ctx)
@@ -194,6 +212,30 @@ func (s *MenusDePlataformaService) CrearConexion(ctx context.Context, in AltaDeC
 		}
 		return 0, fmt.Errorf("crear conexión de plataforma: %w", err)
 	}
+
+	// LOS MÉTODOS DE COBRO DE ESA PLATAFORMA SE CREAN AQUÍ, y este es el lugar correcto por lo que
+	// dice el propio comentario de `SeedBasePaymentMethods`: los deja fuera porque «vender por Uber
+	// exige que ese negocio haya hecho su propia vinculación con la plataforma». Conectar la tienda
+	// ES esa vinculación.
+	//
+	// Sin esto, aceptar el primer pedido falla con «falta el método de pago» y el operador no tiene
+	// desde dónde arreglarlo: los métodos de plataforma no se crean desde ninguna pantalla. Se
+	// descubrió al escribir la prueba de aceptar con una empresa nueva — la empresa del negocio ya
+	// los tenía de antes y eso lo tapaba.
+	//
+	// No tumba el alta si falla: la conexión ya existe y sirve para leer el menú, que es la feature
+	// anterior. Lo que no se puede es aceptar pedidos, y eso se ve al intentarlo.
+	nombre, err := s.store.QC(ctx).GetPlatformByID(ctx, in.PlatformID)
+	if err == nil {
+		if e := s.store.QC(ctx).SeedPlatformPaymentMethods(ctx, db.SeedPlatformPaymentMethodsParams{
+			DeliveryPlatformID: &in.PlatformID,
+			NombreEnLinea:      nombre.Name + " en línea",
+			NombreEfectivo:     nombre.Name + " efectivo",
+		}); e != nil {
+			logging.SecurityEvent(ctx, "metodos_de_plataforma_no_sembrados",
+				"connection_id", id, "platform_id", in.PlatformID)
+		}
+	}
 	return id, nil
 }
 
@@ -204,7 +246,13 @@ func (s *MenusDePlataformaService) ParejasQueSePierden(ctx context.Context, cone
 	if err != nil {
 		return 0, fmt.Errorf("contar parejas de la conexión %d: %w", conexionID, err)
 	}
-	return n, nil
+	// Las decisiones «solo existe en la plataforma» y «no se vende ahí» también se van con la tienda
+	// (0077): el aviso que se muestra antes de borrar las cuenta igual que a las parejas.
+	e, err := s.store.QC(ctx).CountExclusionsOfConnection(ctx, conexionID)
+	if err != nil {
+		return 0, fmt.Errorf("contar decisiones de la conexión %d: %w", conexionID, err)
+	}
+	return n + int64(e), nil
 }
 
 func (s *MenusDePlataformaService) BorrarConexion(ctx context.Context, id int64) error {
@@ -227,6 +275,13 @@ func (s *MenusDePlataformaService) BorrarConexion(ctx context.Context, id int64)
 // dentro del request dejaría una conexión ocupada un segundo largo — SC-006 exige que esto no toque
 // el tiempo de respuesta de la captura de un pedido en el mostrador.
 func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyID, conexionID int64) (int64, time.Time, error) {
+	return s.DispararLecturaPor(ctx, companyID, conexionID, 0)
+}
+
+// DispararLecturaPor es DispararLectura sabiendo quién la pidió. Con usuario, la lectura buena copia
+// los precios de lo emparejado (0077) y los firma con él; sin usuario no los copia, porque el precio
+// por plataforma exige quién lo escribió.
+func (s *MenusDePlataformaService) DispararLecturaPor(ctx context.Context, companyID, conexionID, usuarioID int64) (int64, time.Time, error) {
 	con, err := s.store.QC(ctx).GetPlatformConnection(ctx, conexionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -234,9 +289,9 @@ func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyI
 		}
 		return 0, time.Time{}, fmt.Errorf("conexión %d: %w", conexionID, err)
 	}
-	lector := s.lectores[con.PlatformName]
-	if lector == nil {
-		return 0, time.Time{}, fmt.Errorf("%w (%s)", domain.ErrPlataformaSinCredenciales, con.PlatformName)
+	lector, err := s.menuReaderFor(ctx, con.PlatformName)
+	if err != nil {
+		return 0, time.Time{}, err
 	}
 	corriendo, err := s.store.QC(ctx).HasRunningMenuRead(ctx, conexionID)
 	if err != nil {
@@ -262,14 +317,14 @@ func (s *MenusDePlataformaService) DispararLectura(ctx context.Context, companyI
 	// El contexto del request muere al responder, y con él moriría la lectura a media descarga; la
 	// goroutine arma el suyo con timeout propio. Es lo que SC-006 pide: leer 211 KB de un tercero
 	// dentro del request dejaría una conexión ocupada un segundo largo.
-	go s.correrLectura(companyID, conexionID, lectura.ID, con.ExternalStoreID, lector) //nolint:gosec // G118: ver arriba
+	go s.correrLectura(companyID, conexionID, lectura.ID, usuarioID, con.ExternalStoreID, lector) //nolint:gosec // G118: ver arriba
 	return lectura.ID, lectura.StartedAt, nil
 }
 
 // correrLectura hace el trabajo fuera del request. Tiene condición de término siempre: el contexto
 // lleva timeout propio, así que ninguna goroutine se queda colgada esperando a una plataforma que
 // no responde (principio II).
-func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaID int64, storeID string, lector LectorDeMenu) {
+func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaID, usuarioID int64, storeID string, lector LectorDeMenu) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -303,6 +358,10 @@ func (s *MenusDePlataformaService) correrLectura(companyID, conexionID, lecturaI
 	})
 	if err != nil {
 		s.cerrarConFallo(ctx, companyID, lecturaID, domain.FalloRespuestaInvalida)
+		return
+	}
+	if usuarioID != 0 {
+		s.syncPrices(ctx, companyID, conexionID, lecturaID, usuarioID, items)
 	}
 }
 
@@ -452,6 +511,9 @@ type AltaDePareja struct {
 	LocalID    int64
 	ClaseLocal domain.ClaseLocal
 	UsuarioID  int64
+	// PrecioDeCaptura: si esta pareja da el precio de la captura a mano. Obligatorio decirlo cuando el
+	// producto u opción ya tiene otra pareja en la tienda (nil = no se dijo).
+	PrecioDeCaptura *bool
 	// Reemplazar una pareja YA CONFIRMADA hay que pedirlo aparte. Sin esto, un `PUT` pisa en
 	// silencio una decisión que alguien tomó a mano, y el emparejamiento es una sesión completa de
 	// trabajo que no se reconstruye. La pantalla lo pregunta antes de mandarlo.
@@ -470,7 +532,7 @@ func (s *MenusDePlataformaService) GuardarPareja(ctx context.Context, in AltaDeP
 	// Un platillo se empareja con un producto y una opción con una opción. Cruzarlos produce una
 	// fila que pasa los tipos y **nunca empata con nada**, sin que nadie vea un error.
 	if in.ClaseLocal != esperada {
-		return fmt.Errorf("%w: un %q se empareja con %q, no con %q", domain.ErrValidation, in.Clase, esperada, in.ClaseLocal)
+		return fmt.Errorf("%w (un %q se empareja con %q, no con %q)", domain.ErrLinkKindMismatch, in.Clase, esperada, in.ClaseLocal)
 	}
 
 	lectura, err := s.ultimaLecturaValida(ctx, in.ConexionID)
@@ -492,60 +554,48 @@ func (s *MenusDePlataformaService) GuardarPareja(ctx context.Context, in AltaDeP
 		return domain.ErrItemInexistente
 	}
 
-	// Una pareja CONFIRMADA no se pisa sin decirlo. El upsert de abajo sobrescribe sin chistar, y
-	// el contrato promete un 409 en este caso: sin este chequeo la promesa era solo del documento.
-	if !in.Reemplazar {
-		previa, err := s.store.QC(ctx).GetItemLink(ctx, db.GetItemLinkParams{
-			ConnectionID: in.ConexionID, ExternalID: in.ExternalID,
-		})
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("pareja previa en la conexión %d: %w", in.ConexionID, err)
-		}
-		if err == nil && previa.ConfirmedAt.Valid && previa.ProductID != in.LocalID {
-			return domain.ErrParejaOcupada
-		}
-	}
-
-	// Sin usuario se guarda NULL, no cero: `confirmed_by` referencia `users(id)` y un cero viola la
-	// FK. El `check` de la tabla ya permite confirmar sin saber quién —el día que un proceso
-	// automático empareje, no habrá persona— y lo que no puede es reventar con un error que además
-	// dice otra cosa.
-	var confirmadaPor *int64
-	if in.UsuarioID != 0 {
-		confirmadaPor = &in.UsuarioID
-	}
-	err = s.store.QC(ctx).UpsertItemLink(ctx, db.UpsertItemLinkParams{
-		ConnectionID: in.ConexionID, ExternalID: in.ExternalID,
-		Kind: db.PlatformItemKind(in.Clase), ProductID: in.LocalID,
-		LocalKind: string(in.ClaseLocal), ConfirmedBy: confirmadaPor,
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		return guardarPareja(ctx, q, in)
 	})
-	if err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23503" {
-			// Se nombra la constraint en vez de adivinar: las dos FK de esta tabla dan 23503, y
-			// mandar siempre el mensaje del producto hacía que un usuario inexistente se reportara
-			// como «ese producto no es de esta empresa» — una pista falsa que cuesta una hora.
-			if strings.Contains(pg.ConstraintName, "producto_de_la_empresa") {
-				// La FK compuesta con company_id. Los chequeos de integridad saltan RLS, así que
-				// esta es la barrera real contra emparejar el catálogo de otra empresa.
-				return fmt.Errorf("%w: ese producto no es de esta empresa", domain.ErrValidation)
-			}
-			return fmt.Errorf("%w: el emparejamiento apunta a algo que ya no existe", domain.ErrValidation)
-		}
-		return fmt.Errorf("guardar una pareja en la conexión %d: %w", in.ConexionID, err)
-	}
-	return nil
 }
 
+// BorrarPareja quita una pareja. Si daba el precio de captura, pasa a la más reciente de las que
+// quedan en el mismo producto u opción, sin preguntar: la captura a mano no se queda sin precio.
 func (s *MenusDePlataformaService) BorrarPareja(ctx context.Context, conexionID int64, externalID string) error {
-	n, err := s.store.QC(ctx).DeleteItemLink(ctx, db.DeleteItemLinkParams{ConnectionID: conexionID, ExternalID: externalID})
-	if err != nil {
-		return fmt.Errorf("deshacer una pareja de la conexión %d: %w", conexionID, err)
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		previa, err := q.GetItemLink(ctx, db.GetItemLinkParams{ConnectionID: conexionID, ExternalID: externalID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("pareja %q de la conexión %d: %w", externalID, conexionID, err)
+		}
+		if _, err := q.DeleteItemLink(ctx, db.DeleteItemLinkParams{ConnectionID: conexionID, ExternalID: externalID}); err != nil {
+			return fmt.Errorf("deshacer una pareja de la conexión %d: %w", conexionID, err)
+		}
+		if !previa.IsCapturePrice {
+			return nil
+		}
+		resto, err := q.ListLinksOfTarget(ctx, db.ListLinksOfTargetParams{
+			ConnectionID: conexionID, ProductID: previa.ProductID, ModifierOptionID: previa.ModifierOptionID,
+		})
+		if err != nil {
+			return fmt.Errorf("parejas restantes: %w", err)
+		}
+		siguiente, ok := domain.CapturePriceAfterUnlink(linksOf(resto))
+		if !ok {
+			return nil
+		}
+		return q.SetCapturePrice(ctx, db.SetCapturePriceParams{ConnectionID: conexionID, ExternalID: siguiente})
+	})
+}
+
+func linksOf(rows []db.ListLinksOfTargetRow) []domain.PairingLink {
+	out := make([]domain.PairingLink, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.PairingLink{ExternalID: r.ExternalID, CapturePrice: r.IsCapturePrice, CreatedAt: r.CreatedAt})
 	}
-	if n == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	return out
 }
 
 // --- Comparación ---
@@ -665,7 +715,7 @@ func (s *MenusDePlataformaService) catalogoLocal(ctx context.Context, conexionID
 				m = &v
 			}
 			out = append(out, domain.ProductoLocal{
-				ID: f.ID, Nombre: f.Name, Activo: true,
+				ID: f.ID, Nombre: f.Name, Activo: true, Contexto: f.GroupName,
 				PrecioDePlataforma: domain.PlatformPrice(f.PriceDelta, plat.PriceMarkupPct, m),
 			})
 		}
@@ -691,7 +741,7 @@ func (s *MenusDePlataformaService) catalogoLocal(ctx context.Context, conexionID
 			m = &v
 		}
 		out = append(out, domain.ProductoLocal{
-			ID: f.ID, Nombre: f.Name, Activo: true,
+			ID: f.ID, Nombre: f.Name, Activo: true, Contexto: f.CategoryName,
 			PrecioDePlataforma: domain.PlatformPrice(f.Price, plat.PriceMarkupPct, m),
 		})
 	}
@@ -707,7 +757,7 @@ func (s *MenusDePlataformaService) parejasDe(ctx context.Context, conexionID int
 	for _, f := range filas {
 		p := domain.Pareja{
 			ExternalID: f.ExternalID, Clase: domain.ClaseDeItem(f.Kind),
-			LocalID: f.ProductID, ClaseLocal: domain.ClaseLocal(f.LocalKind),
+			LocalID: linkTarget(f.ProductID, f.ModifierOptionID), ClaseLocal: domain.ClaseLocal(f.LocalKind),
 			Confirmada: f.ConfirmedAt.Valid,
 		}
 		if f.ConfirmedAt.Valid {
@@ -717,4 +767,15 @@ func (s *MenusDePlataformaService) parejasDe(ctx context.Context, conexionID int
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// linkTarget es el id del lado del POS de una pareja: producto u opción, según cuál tenga (0077).
+func linkTarget(product, option *int64) int64 {
+	if product != nil {
+		return *product
+	}
+	if option != nil {
+		return *option
+	}
+	return 0
 }

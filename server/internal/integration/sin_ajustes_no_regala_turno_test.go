@@ -19,6 +19,7 @@ import (
 // dijera: la pantalla de ajustes mostraba ceros y el turno duraba un mes. El respaldo tiene que ser
 // el MISMO default que trae la columna, que es lo que el negocio vería si abriera la pantalla.
 func TestSinFilaDeAjustesLaSesionDuraElDefaultDelNegocio(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)

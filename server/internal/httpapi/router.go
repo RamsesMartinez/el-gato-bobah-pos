@@ -40,6 +40,21 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// LA PUERTA PÚBLICA DE LAS PLATAFORMAS (spec 021), y está aquí arriba a propósito: FUERA
+		// del grupo de RequireAuth y FUERA de WithTenant.
+		//
+		// No es un descuido ni una excepción cómoda. Quien llama es la plataforma, no una persona:
+		// no hay sesión que exigir, y no puede haber empresa en el contexto porque LA EMPRESA ES EL
+		// RESULTADO de autenticar el cuerpo con la firma. Montarla dentro del grupo de tenant haría
+		// que todo aviso fuera rechazado antes de poder verificarlo.
+		//
+		// Lo único que la protege es la firma, y por eso lleva su propio límite por IP: es la única
+		// ruta del negocio que cualquiera puede alcanzar.
+		if h.pedidosPlataforma != nil {
+			r.With(rateLimit(h.webhookIPs, cfg.Env == "production")).
+				Post("/webhooks/{plataforma}", h.WebhookDePlataforma)
+		}
+
 		// LA CONSOLA DE PLATAFORMA (spec 016), y ni una de sus rutas dentro del grupo del negocio.
 		//
 		// No se monta si falta el manager o el servicio: una consola a medias respondería 500 en un
@@ -113,6 +128,27 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// despliegue, así que la pantalla lo pide una vez por carga; vive aquí y no en
 				// una copia del front para que la lista tenga un solo dueño.
 				r.Get("/pos/folio-names", h.FolioNames)
+				// LA CUENTA EN CAPTURA (spec 030). Sin RequireRole: es el mismo gate que crear un
+				// pedido —quien levanta el pedido puede capturarlo— (contracts/api.md). Montadas solo
+				// con el servicio: sin él, mejor 404 que un 500 por puntero nulo.
+				if h.drafts != nil {
+					r.Post("/pos/drafts", h.CreateDraft)
+					r.Post("/pos/drafts/import", h.ImportDrafts)
+					r.Get("/pos/drafts/{id}", h.GetDraft)
+					r.Post("/pos/drafts/{id}/lines", h.AddDraftLine)
+					r.Patch("/pos/drafts/{id}/lines/{lineId}", h.ChangeDraftLine)
+					r.Delete("/pos/drafts/{id}/lines/{lineId}", h.RemoveDraftLine)
+					r.Post("/pos/drafts/{id}/send", h.SendDraft)
+					r.Post("/pos/drafts/{id}/discard", h.DiscardDraft)
+					// La cabecera lleva el tope por usuario del descuento: es un camino nuevo para poner un
+					// descuento, y no nace sin el control del viejo (PUT /orders/{id}/discount).
+					r.With(rateLimitUser(h.descuentoWrites)).Patch("/pos/drafts/{id}", h.PatchDraft)
+				}
+				// La fila de cuentas vivas: reemplaza a GET /orders/open (la barra de «Pedidos por
+				// cobrar»). Sin gate de rol: quien está en la caja es quien tiene que poder saldarlas.
+				if h.accounts != nil {
+					r.Get("/pos/accounts", h.LiveAccounts)
+				}
 				// costo/margen es información de gestión, no operativa del POS
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/products/{id}/costing", h.ProductCosting)
 
@@ -144,21 +180,35 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cobrar un pedido que se mandó a cocina sin cobrar. Mismo gate que cobrar
 					// uno nuevo: es la misma operación, movida en el tiempo.
 					r.Post("/{id}/pay", h.ChargeOrder)
-					// La barra de pedidos en curso del POS: los que siguen en cocina y los que deben
-					// dinero. Sin gate de rol, porque quien está en la caja es quien tiene que poder
-					// saldarlo. La lista de entregadas sí es de admin/gerente, pero esa existe para
-					// reembolsar, que es salida de dinero.
-					r.Get("/open", h.OpenOrders)
-					// Mismo rol que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
+					// Cuánto cobraría /pay por una selección, sin cobrarla. Mismo gate: quien puede
+					// cobrar puede preguntar cuánto.
+					r.Post("/{id}/quote", h.QuoteOrder)
+					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
+					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
+					// la plataforma no espera a que llegue un gerente.
+					if h.pedidosPlataforma != nil {
+						r.Get("/platform/pending", h.PlatformPendingOrders)
+						r.Post("/platform/{id}/accept", h.AcceptPlatformOrder)
+					}
+					// Mismo alcance que el reembolso: desde que cancelar un pedido cobrado DEVUELVE
 					// dinero, es una salida de caja como la otra. Sin esto quedaba el único camino
-					// que mueve dinero sin la barrera que su gemelo sí exige.
-					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/cancel", h.CancelOrder)
+					// que mueve dinero sin la barrera que su gemelo sí exige. Por permiso y no por
+					// rol: la tarjeta del tablero pregunta lo mismo para ofrecer «Cancelar pedido».
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/cancel", h.CancelOrder)
+					// «Cancelar lo que falta» (2026-10-09): mismo permiso que cancelar el pedido.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancel)).Post("/{id}/write-off", h.WriteOffOrder)
 					// Entregadas del día + reembolso = salida de dinero → solo admin/gerente.
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/delivered", h.DeliveredOrders)
 					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/{id}/refund", h.RefundOrder)
+					r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/{id}/refund-info", h.RefundInfo) // mismo gate que /refund
 					// Cancelar UN renglón no mueve dinero por sí solo —baja el total de un pedido que
 					// todavía no se cobró—, así que no pide el rol que exige la salida de caja.
 					r.Post("/{id}/lines/{lineId}/cancel", h.CancelOrderLine)
+					// Quitar lo que falta por entregar, de un jalón. Hoy lo tienen todos los roles:
+					// es también la única salida de un pedido que se quedó sin productos, y negárselo
+					// a quien atiende el mostrador lo deja en el tablero sin nada que lo cierre.
+					r.With(RequirePermission(h.permissions, domain.PermOrdersCancelPending)).
+						Post("/{id}/lines/cancel-pending", h.CancelPendingLines)
 					// Escribir o corregir el folio de la plataforma. Alcanza al cajero porque es el
 					// mismo dato que captura al levantar el pedido, movido en el tiempo, y mandarlo
 					// a buscar un gerente para teclear un identificador cuesta más de lo que
@@ -187,6 +237,14 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// fila y bitácora. El tope cuenta al usuario, que aquí es siempre alguien
 					// autenticado.
 					r.With(rateLimitUser(h.descuentoWrites)).Put("/{id}/discount", h.SetOrderDiscount)
+					// Devolver un pago (spec 027). Por permiso y no por rol: los roles serán de cada
+					// empresa. Tope por usuario porque es una escritura de dinero.
+					r.With(RequirePermission(h.permissions, domain.PermPaymentsVoid), rateLimitUser(h.splitWrites)).
+						Post("/{id}/payments/{paymentId}/void", h.VoidOrderPayment)
+					// Pasar productos a otro pedido. Hoy todos los roles: es corregir dónde se
+					// capturó, no mover dinero (rechaza lo pagado).
+					r.With(RequirePermission(h.permissions, domain.PermOrdersMoveLines), rateLimitUser(h.splitWrites)).
+						Post("/{id}/lines/move", h.MoveOrderLines)
 				})
 
 				// Backoffice. Role gates reflejan segregación de funciones; ajusta los
@@ -220,10 +278,30 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)
 					r.Post("/movements", h.CreateCashMovement)
-					r.Post("/transfer", h.CashTransfer) // traspaso entre dos cajas abiertas
+					r.Get("/tips", h.PendingTips)         // propina por entregar del turno (spec 032)
+					r.Post("/tips/payouts", h.PayoutTips) // repartirla entre una o varias personas
+					r.Post("/transfer", h.CashTransfer)   // traspaso entre dos cajas abiertas
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
+				// Conceptos de salida (spec 032): quien captura la salida los lee y agrega uno nuevo
+				// ahí mismo; editarlos, archivarlos y juntarlos es configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-concepts", h.ListCashConcepts)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Post("/cash-concepts", h.CreateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/cash-concepts/{id}", h.UpdateCashConcept)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-concepts/{id}/merge", h.MergeCashConcept)
+				// Terminales (spec 032): quien cobra las lee; agregarlas, renombrarlas, archivarlas y el
+				// modo de arqueo por sucursal son configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/card-terminals", h.ListCardTerminals)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/card-terminals", h.CreateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/card-terminals/{id}", h.UpdateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/branches/card-count-modes", h.CardCountModes)
+				// Correos del resumen diario del cierre (spec 032): configuración del negocio.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/settings/daily-summary-emails", h.SummaryEmails)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/settings/daily-summary-emails", h.SetSummaryEmails)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/branches/{id}/card-count-mode", h.SetCardCountMode)
+				// Corregir una salida: reverso + salida nueva. Gerente o admin.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)
 				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que
 				// abre o cierra la caja.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash/denominations", h.CashDenominations)
@@ -247,6 +325,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/sales", h.ListSales)
 					r.Get("/sales/summary", h.SalesSummary)
+					r.Get("/cash-alerts", h.CashAlerts) // avisos de Ventas del día (spec 032)
 					// La liquidación de un pedido de plataforma. MISMO gate que la pantalla de
 					// Ventas y no el de crear pedidos: es dinero que NO pasó por la caja —lo que la
 					// plataforma se quedó— y se captura con el estado de cuenta en la mano, días
@@ -301,21 +380,32 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/levels", h.StockLevels)
 					r.Get("/movements", h.StockMovements)
 					r.Post("/movements", h.CreateStockMovement)
+					// Insumos que se preparan en el local: qué llevan y cuánto rinden.
+					r.Get("/ingredients/{id}/composition", h.GetIngredientComposition)
+					r.Put("/ingredients/{id}/composition", h.PutIngredientComposition)
+					r.Post("/ingredients/{id}/composition/confirm", h.ConfirmIngredientComposition)
 				})
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/reports", func(r chi.Router) {
 					r.Get("/sales", h.ReportSales)
 					r.Get("/margins", h.ReportMargins)
+					r.Get("/products-sold", h.ReportProductsSold)
 					r.Get("/tips", h.ReportTips)
 				})
 
 				// Categorías (para filtro y alta de productos): admin/gerente.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/categories", h.AdminCategories)
+				// Menú › Recetas: lo que gasta cada producto, extra y preparado.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/recipes", h.ListRecipes)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/recipes/confirm", h.ConfirmRecipes)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
 					r.Get("/", h.AdminListProducts)
 					r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
 					r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
 					r.Patch("/{id}", h.AdminUpdateProduct)
 					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+					r.Get("/{id}/composition", h.GetProductComposition)
+					r.Put("/{id}/composition", h.PutProductComposition)
+					r.Post("/{id}/composition/confirm", h.ConfirmProductComposition)
 					r.Get("/{id}/groups", h.AdminProductGroups)
 					r.Post("/{id}/groups", h.AdminAttachProductGroup)
 					r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
@@ -324,6 +414,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
 					r.Get("/", h.AdminListModifierOptions)
 					r.Patch("/{id}", h.AdminUpdateOption)
+					r.Get("/{id}/composition", h.GetOptionComposition)
+					r.Put("/{id}/composition", h.PutOptionComposition)
+					r.Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
 				})
 
 				// catálogo global de grupos + sus opciones
@@ -363,7 +456,37 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 						r.Get("/differences", h.PlatformMenuDifferences)
 						r.Put("/links/{externalId}", h.SetPlatformItemLink)
 						r.Delete("/links/{externalId}", h.DeletePlatformItemLink)
+						// El rediseño (spec 026): la pantalla agrupada, candidatos, lote y decisiones.
+						r.Get("/board", h.PlatformPairingBoard)
+						r.Get("/candidates", h.PlatformPairingCandidates)
+						r.Post("/links/batch", h.ConfirmPlatformLinksBatch)
+						r.Put("/exclusions/{externalId}", h.SetPlatformItemExclusion)
+						r.Delete("/exclusions/{externalId}", h.DeletePlatformItemExclusion)
+						r.Put("/local-exclusions", h.SetLocalItemExclusion)
+						r.Delete("/local-exclusions", h.DeleteLocalItemExclusion)
 					})
+					// La llave con la que se verifica la firma de los pedidos que llegan (spec 021).
+					// Va por plataforma y no por conexión: es de la aplicación registrada en la
+					// plataforma, y todas las tiendas de la empresa la comparten.
+					// Las credenciales de la app (0075). Escribirlas es SOLO del administrador: con
+					// ellas se aceptan pedidos a nombre del negocio. Y cada escritura habla con la
+					// plataforma, así que va limitada con el mismo contador que las lecturas.
+					if h.credentials != nil {
+						r.Route("/credentials/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetPlatformCredentials)
+							r.With(RequireRole(domain.RoleAdmin), rateLimitUser(h.platformMenuReads)).Put("/", h.PutPlatformCredentials)
+						})
+					}
+					if h.pedidosPlataforma != nil {
+						// Cambiarla y retirar la anterior es SOLO del administrador, igual que las
+						// credenciales: con esta llave se decide qué entra a la cocina, y dos PUT
+						// seguidos dejaban fuera la llave real. El gerente ve el estado.
+						r.Route("/webhook-keys/{platformId}", func(r chi.Router) {
+							r.Get("/", h.GetWebhookKeyState)
+							r.With(RequireRole(domain.RoleAdmin)).Put("/", h.PutWebhookKey)
+							r.With(RequireRole(domain.RoleAdmin)).Delete("/previous", h.DeletePreviousWebhookKey)
+						})
+					}
 				})
 
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).

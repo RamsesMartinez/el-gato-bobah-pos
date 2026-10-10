@@ -65,6 +65,36 @@ func (q *Queries) CerroLaCajaPrincipal(ctx context.Context) (pgtype.Timestamptz,
 	return closed_at, err
 }
 
+const claimOrphanRefunds = `-- name: ClaimOrphanRefunds :exec
+update order_refunds r
+   set register_session_id = s.id
+  from register_sessions s
+  join cash_registers c on c.id = s.register_id,
+       orders o
+ where s.id = $1
+   and c.is_primary
+   and o.id = r.order_id
+   and o.branch_id = c.branch_id
+   and r.register_session_id is null
+   and r.cash_movement_id is null
+   and r.created_at >= coalesce((select max(p.closed_at) from register_sessions p
+                                  where p.register_id = s.register_id and p.id <> s.id), '-infinity'::timestamptz)
+`
+
+// Las devoluciones que se hicieron SIN turno abierto entran al turno que se abre (spec 031, D7).
+//
+// Solo las que no tocaron el cajón (las de efectivo sin turno se rechazan), solo las de la sucursal
+// del turno, y solo las hechas DESPUÉS del último cierre de esa caja: las anteriores son de antes de
+// que existiera este vínculo, y su corte ya firmó sin ellas.
+//
+// ponytail: con una sola caja que vende por sucursal, «la que abre» es la correcta. Con dos cajas
+// que vendan, la reclama la primera que abra; para entonces la devolución tendría que guardar de
+// qué caja es.
+func (q *Queries) ClaimOrphanRefunds(ctx context.Context, sessionID int64) error {
+	_, err := q.db.Exec(ctx, claimOrphanRefunds, sessionID)
+	return err
+}
+
 const closeSession = `-- name: CloseSession :exec
 update register_sessions set status = 'cerrada', closed_by = $2, closed_at = now(), notes = $3
 where id = $1
@@ -108,6 +138,7 @@ select count(*)::int as total,
        coalesce(sum(o.total) filter (where o.status not in ('cancelada', 'reembolsada')), 0)::numeric(12,2) as ingreso
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 `
 
 type CountSessionSalesRow struct {
@@ -129,6 +160,26 @@ func (q *Queries) CountSessionSales(ctx context.Context, registerSessionID *int6
 	var i CountSessionSalesRow
 	err := row.Scan(&i.Total, &i.Ingreso)
 	return i, err
+}
+
+const countSessions = `-- name: CountSessions :one
+select count(*) from register_sessions s
+where ($1::date is null or s.business_date >= $1::date)
+  and ($2::date is null or s.business_date <= $2::date)
+`
+
+type CountSessionsParams struct {
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
+}
+
+// Gemela de ListSessions con su mismo `where`. Sin índice propio a propósito: son uno a tres
+// turnos por día y empresa, y `register_sessions_company` ya deja fuera a las demás empresas.
+func (q *Queries) CountSessions(ctx context.Context, arg CountSessionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessions, arg.Desde, arg.Hasta)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createCashRegister = `-- name: CreateCashRegister :one
@@ -184,28 +235,76 @@ func (q *Queries) CreateCashTransfer(ctx context.Context, arg CreateCashTransfer
 	return id, err
 }
 
+const currentBranch = `-- name: CurrentBranch :one
+select current_branch_id()::bigint
+`
+
+// La sucursal de la sesión (0076). Error EGB01 si la empresa tiene cero o más de una activa.
+func (q *Queries) CurrentBranch(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, currentBranch)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const expectedByMethodForSession = `-- name: ExpectedByMethodForSession :many
+with pagos as (
+  -- Por register_session_id y no por ` + "`" + `created_at >= apertura` + "`" + `. La ventana de tiempo daba el
+  -- resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
+  -- suyos abiertos. El día que exista una segunda caja que cobre, dos turnos traslapados sumarían el
+  -- mismo dinero y los dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
+  select op.payment_method_id,
+         sum(op.amount) as expected,
+         sum(op.tip_amount) as tips,
+         sum(op.amount) filter (where o.register_session_id is distinct from $1::bigint) as earlier
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where op.register_session_id = $1::bigint
+   group by op.payment_method_id
+), devueltos as (
+  -- Partidas por si salieron del cajón (spec 029). Solo ` + "`" + `refunded` + "`" + ` se resta del esperado; las del
+  -- cajón ya bajan por su salida de caja. Las otras tres viajan para PRESENTAR: el corte pone toda
+  -- devolución en «Devoluciones» de su medio, venta y propina por separado, igual que Ventas.
+  select r.payment_method_id,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is null) as refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is null) as refunded_tips,
+         sum(r.amount + r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded,
+         sum(r.tip_amount) filter (where r.cash_movement_id is not null) as drawer_refunded_tips
+    from order_refunds r
+   where r.register_session_id = $1::bigint
+   group by r.payment_method_id
+)
 select pm.id as payment_method_id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare,
        coalesce(dp.name, '') as platform_name,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as expected,
-       coalesce(sum(op.tip_amount), 0)::numeric(10,2) as tips
+       coalesce(p.expected, 0)::numeric(10,2) as expected,
+       coalesce(p.tips, 0)::numeric(10,2) as tips,
+       coalesce(p.earlier, 0)::numeric(10,2) as earlier,
+       coalesce(d.refunded, 0)::numeric(10,2) as refunded,
+       coalesce(d.refunded_tips, 0)::numeric(10,2) as refunded_tips,
+       coalesce(d.drawer_refunded, 0)::numeric(10,2) as drawer_refunded,
+       coalesce(d.drawer_refunded_tips, 0)::numeric(10,2) as drawer_refunded_tips
 from payment_methods pm
 left join delivery_platforms dp on dp.id = pm.delivery_platform_id
-left join order_payments op on op.payment_method_id = pm.id and op.register_session_id = $1
-where pm.is_active or op.id is not null or pm.kind = 'efectivo'
-group by pm.id, pm.name, pm.kind, pm.affects_cash_drawer, pm.auto_declare, dp.name
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where pm.is_active or p.payment_method_id is not null or d.payment_method_id is not null or pm.kind = 'efectivo'
 order by pm.sort_key
 `
 
 type ExpectedByMethodForSessionRow struct {
-	PaymentMethodID   int16           `json:"payment_method_id"`
-	Name              string          `json:"name"`
-	Kind              PaymentKind     `json:"kind"`
-	AffectsCashDrawer bool            `json:"affects_cash_drawer"`
-	AutoDeclare       bool            `json:"auto_declare"`
-	PlatformName      string          `json:"platform_name"`
-	Expected          decimal.Decimal `json:"expected"`
-	Tips              decimal.Decimal `json:"tips"`
+	PaymentMethodID    int16           `json:"payment_method_id"`
+	Name               string          `json:"name"`
+	Kind               PaymentKind     `json:"kind"`
+	AffectsCashDrawer  bool            `json:"affects_cash_drawer"`
+	AutoDeclare        bool            `json:"auto_declare"`
+	PlatformName       string          `json:"platform_name"`
+	Expected           decimal.Decimal `json:"expected"`
+	Tips               decimal.Decimal `json:"tips"`
+	Earlier            decimal.Decimal `json:"earlier"`
+	Refunded           decimal.Decimal `json:"refunded"`
+	RefundedTips       decimal.Decimal `json:"refunded_tips"`
+	DrawerRefunded     decimal.Decimal `json:"drawer_refunded"`
+	DrawerRefundedTips decimal.Decimal `json:"drawer_refunded_tips"`
 }
 
 // Totales esperados por método, del TURNO indicado.
@@ -218,23 +317,26 @@ type ExpectedByMethodForSessionRow struct {
 // El nombre de la plataforma viaja para poder subtotalizar por ella sin comparar nombres de
 // método: "Uber Eats en línea" y "Uber Eats efectivo" son la misma plataforma, y deducirlo del
 // texto se rompe el día que alguien renombre un método.
-// Por register_session_id y no por `created_at >= apertura`. La ventana de tiempo daba el
-// resultado correcto por COINCIDENCIA: solo la caja principal vende y no puede haber dos turnos
-// suyos abiertos, así que la ventana y el turno coincidían. El día que exista una segunda caja
-// que cobre —una barra, otro mostrador—, dos turnos traslapados sumarían el mismo dinero y los
-// dos parecerían cuadrar. El vínculo explícito lo hace correcto por construcción.
-// `or op.id is not null`: un método que se apaga a media jornada tiene que seguir en el arqueo si ya
-// cobró en este turno. Filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya
-// entró, y el corte cuadraba contra una cifra más chica sin que nadie lo notara. Hasta la spec 015
-// nadie podía apagar un método desde la aplicación, así que este camino no existía.
+//
+// Dos cifras más desde la spec 031, porque el dinero se clasifica por el turno de CADA movimiento:
+//   - `earlier`: lo que este turno cobró de pedidos abiertos en OTRO turno. Ya está en `expected`;
+//     viaja aparte para que el corte no lo llame venta suya.
+//   - `refunded`: lo que este turno le devolvió al cliente por ese medio SIN sacarlo del cajón
+//     (tarjeta, plataformas). Se resta del esperado. Lo que salió del cajón NO va aquí: ya baja por
+//     su salida de caja, y restarlo otra vez sería contarlo dos veces.
+//
+// Pagos y devoluciones se agregan cada uno por método antes de unirse: son dos 1:N y unirlos
+// multiplicaría las sumas.
+// Un método que se apaga a media jornada tiene que seguir en el arqueo si ya cobró —o devolvió—
+// en este turno: filtrar solo por activo hacía DESAPARECER del esperado el dinero que ya se movió.
 //
 // `or pm.kind = 'efectivo'`: el renglón del efectivo del mostrador NUNCA se cae, aunque esté
 // apagado y no haya cobrado nada. Es el único dueño del fondo de apertura y de los movimientos de
 // caja —quien los suma es el bucle de Go que mira este `kind`—, así que sin su renglón el fondo no
 // tiene dónde vivir: medido, apagar «Efectivo» con $500 de fondo dejaba al cajón esperando $0 con
 // los billetes adentro, y el corte cerraba con $500 de sobrante fantasma.
-func (q *Queries) ExpectedByMethodForSession(ctx context.Context, registerSessionID *int64) ([]ExpectedByMethodForSessionRow, error) {
-	rows, err := q.db.Query(ctx, expectedByMethodForSession, registerSessionID)
+func (q *Queries) ExpectedByMethodForSession(ctx context.Context, sessionID int64) ([]ExpectedByMethodForSessionRow, error) {
+	rows, err := q.db.Query(ctx, expectedByMethodForSession, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +353,11 @@ func (q *Queries) ExpectedByMethodForSession(ctx context.Context, registerSessio
 			&i.PlatformName,
 			&i.Expected,
 			&i.Tips,
+			&i.Earlier,
+			&i.Refunded,
+			&i.RefundedTips,
+			&i.DrawerRefunded,
+			&i.DrawerRefundedTips,
 		); err != nil {
 			return nil, err
 		}
@@ -345,6 +452,9 @@ select s.id, s.register_id, s.business_date, s.opened_at
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- La caja principal es una por sucursal (0076). Sin selector, ` + "`" + `current_branch_id()` + "`" + ` es la única
+  -- activa y truena si hay dos: nunca cobra en el turno de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 `
 
@@ -373,9 +483,38 @@ func (q *Queries) GetOpenPrimarySession(ctx context.Context) (GetOpenPrimarySess
 	return i, err
 }
 
+const getOpenPrimarySessionOfBranch = `-- name: GetOpenPrimarySessionOfBranch :one
+select s.id, s.register_id, s.business_date, s.opened_at
+from register_sessions s
+join cash_registers r on r.id = s.register_id
+where s.status = 'abierta' and r.is_primary and r.is_active and r.branch_id = $1
+limit 1
+`
+
+type GetOpenPrimarySessionOfBranchRow struct {
+	ID           int64       `json:"id"`
+	RegisterID   int64       `json:"register_id"`
+	BusinessDate pgtype.Date `json:"business_date"`
+	OpenedAt     time.Time   `json:"opened_at"`
+}
+
+// La de una sucursal dada. La usa un pedido de plataforma: su sucursal es la de su tienda, no la
+// de la sesión de quien lo acepta.
+func (q *Queries) GetOpenPrimarySessionOfBranch(ctx context.Context, branchID int64) (GetOpenPrimarySessionOfBranchRow, error) {
+	row := q.db.QueryRow(ctx, getOpenPrimarySessionOfBranch, branchID)
+	var i GetOpenPrimarySessionOfBranchRow
+	err := row.Scan(
+		&i.ID,
+		&i.RegisterID,
+		&i.BusinessDate,
+		&i.OpenedAt,
+	)
+	return i, err
+}
+
 const getOpenSessionByRegister = `-- name: GetOpenSessionByRegister :one
 
-select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id from register_sessions where register_id = $1 and status = 'abierta' limit 1
+select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left from register_sessions where register_id = $1 and status = 'abierta' limit 1
 `
 
 // Cortes de caja (sesiones de una caja)
@@ -394,6 +533,11 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 	)
 	return i, err
 }
@@ -434,7 +578,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 }
 
 const getSession = `-- name: GetSession :one
-select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
+select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, s.tips_carried_over, s.opening_reason, s.opening_reason_note, s.card_count_mode, s.float_left, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -443,20 +587,25 @@ where s.id = $1
 `
 
 type GetSessionRow struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
-	RegisterName string             `json:"register_name"`
-	OpenedByName string             `json:"opened_by_name"`
-	ClosedByName *string            `json:"closed_by_name"`
+	ID                int64              `json:"id"`
+	BusinessDate      pgtype.Date        `json:"business_date"`
+	Status            SessionStatus      `json:"status"`
+	OpeningCash       decimal.Decimal    `json:"opening_cash"`
+	OpenedBy          int64              `json:"opened_by"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	ClosedBy          *int64             `json:"closed_by"`
+	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	Notes             *string            `json:"notes"`
+	Currency          string             `json:"currency"`
+	RegisterID        int64              `json:"register_id"`
+	TipsCarriedOver   decimal.Decimal    `json:"tips_carried_over"`
+	OpeningReason     *string            `json:"opening_reason"`
+	OpeningReasonNote *string            `json:"opening_reason_note"`
+	CardCountMode     string             `json:"card_count_mode"`
+	FloatLeft         *decimal.Decimal   `json:"float_left"`
+	RegisterName      string             `json:"register_name"`
+	OpenedByName      string             `json:"opened_by_name"`
+	ClosedByName      *string            `json:"closed_by_name"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, error) {
@@ -474,6 +623,11 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 		&i.RegisterName,
 		&i.OpenedByName,
 		&i.ClosedByName,
@@ -484,7 +638,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name, concept_id, reverses_id
 `
 
 type InsertCashMovementParams struct {
@@ -515,6 +669,10 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.UserID,
 		&i.CreatedAt,
 		&i.TransferID,
+		&i.RecipientUserID,
+		&i.RecipientName,
+		&i.ConceptID,
+		&i.ReversesID,
 	)
 	return i, err
 }
@@ -568,6 +726,25 @@ func (q *Queries) InsertTransferMovement(ctx context.Context, arg InsertTransfer
 		arg.TransferID,
 	)
 	return err
+}
+
+const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
+select coalesce(s.float_left, c.total)::numeric(10,2) as total
+  from register_sessions s
+  join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
+ where s.register_id = $1 and s.status = 'cerrada'
+ order by s.closed_at desc, s.id desc
+ limit 1
+`
+
+// El fondo que dejó el último cierre de esta caja (spec 032, punto 6; decisión del 2026-10-10): lo
+// que se dejó, o en cierres de antes de esa decisión, todo lo contado. Solo lo lee el servidor para
+// decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser a ciegas.
+func (q *Queries) LastClosingCountOfRegister(ctx context.Context, registerID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, lastClosingCountOfRegister, registerID)
+	var total decimal.Decimal
+	err := row.Scan(&total)
+	return total, err
 }
 
 const listAllCashRegisters = `-- name: ListAllCashRegisters :many
@@ -709,7 +886,9 @@ func (q *Queries) ListCashCountLines(ctx context.Context, countID int64) ([]List
 }
 
 const listCashMovements = `-- name: ListCashMovements :many
-select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id
+select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
+       exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
+       exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
 join users u on u.id = m.user_id
 where m.session_id = $1
@@ -725,10 +904,17 @@ type ListCashMovementsRow struct {
 	UserName   string          `json:"user_name"`
 	TransferID *int64          `json:"transfer_id"`
 	ExpenseID  *int64          `json:"expense_id"`
+	ReversesID *int64          `json:"reverses_id"`
+	Reversed   bool            `json:"reversed"`
+	IsRefund   bool            `json:"is_refund"`
 }
 
 // expense_id: no-null si el movimiento es la salida de un gasto → el front lo excluye de la tabla
 // de efectivo (los gastos van en su propia sección) para no contarlos dos veces.
+//
+// is_refund: la salida de caja de una devolución (spec 029). El corte la presenta en
+// «Devoluciones» de su medio y no en «Salidas de efectivo»; el esperado no cambia, porque el neto
+// de movimientos la sigue restando.
 func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]ListCashMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listCashMovements, sessionID)
 	if err != nil {
@@ -747,6 +933,9 @@ func (q *Queries) ListCashMovements(ctx context.Context, sessionID int64) ([]Lis
 			&i.UserName,
 			&i.TransferID,
 			&i.ExpenseID,
+			&i.ReversesID,
+			&i.Reversed,
+			&i.IsRefund,
 		); err != nil {
 			return nil, err
 		}
@@ -996,6 +1185,116 @@ func (q *Queries) ListPaymentMethods(ctx context.Context) ([]ListPaymentMethodsR
 	return items, nil
 }
 
+const listSessionPaymentVoids = `-- name: ListSessionPaymentVoids :many
+select pm.name as method_name, v.amount, v.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       coalesce(u.name, '')::text as voided_by, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+join orders o on o.id = v.order_id
+left join users u on u.id = v.voided_by
+where v.register_session_id = $1
+order by v.voided_at, v.id
+`
+
+type ListSessionPaymentVoidsRow struct {
+	MethodName  string          `json:"method_name"`
+	Amount      decimal.Decimal `json:"amount"`
+	TipAmount   decimal.Decimal `json:"tip_amount"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   string          `json:"folio_name"`
+	VoidedBy    string          `json:"voided_by"`
+	VoidedAt    time.Time       `json:"voided_at"`
+	Reason      string          `json:"reason"`
+}
+
+// Los pagos devueltos en un turno, para la lista aparte del corte (spec 027). No cambian el
+// esperado por método: el pago devuelto ya no está en order_payments.
+func (q *Queries) ListSessionPaymentVoids(ctx context.Context, registerSessionID int64) ([]ListSessionPaymentVoidsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionPaymentVoids, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionPaymentVoidsRow{}
+	for rows.Next() {
+		var i ListSessionPaymentVoidsRow
+		if err := rows.Scan(
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.VoidedBy,
+			&i.VoidedAt,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionRefunds = `-- name: ListSessionRefunds :many
+select pm.name as method_name, r.amount, r.tip_amount, o.daily_number, coalesce(o.folio_name, '')::text as folio_name,
+       (r.cash_movement_id is not null)::boolean as from_drawer,
+       coalesce(u.name, '')::text as refunded_by, r.created_at, r.reason
+from order_refunds r
+join payment_methods pm on pm.id = r.payment_method_id
+join orders o on o.id = r.order_id
+left join users u on u.id = r.refunded_by
+where r.register_session_id = $1
+order by r.created_at, r.id
+`
+
+type ListSessionRefundsRow struct {
+	MethodName  string          `json:"method_name"`
+	Amount      decimal.Decimal `json:"amount"`
+	TipAmount   decimal.Decimal `json:"tip_amount"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   string          `json:"folio_name"`
+	FromDrawer  bool            `json:"from_drawer"`
+	RefundedBy  string          `json:"refunded_by"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Reason      string          `json:"reason"`
+}
+
+// Las devoluciones de un turno, para la lista del corte (spec 031). Una devolución es dinero que se
+// le regresó al cliente; un pago devuelto (ListSessionPaymentVoids) es un cobro que no ocurrió. Son
+// dos hechos y el esperado los trata distinto, por eso son dos listas.
+func (q *Queries) ListSessionRefunds(ctx context.Context, registerSessionID *int64) ([]ListSessionRefundsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionRefunds, registerSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionRefundsRow{}
+	for rows.Next() {
+		var i ListSessionRefundsRow
+		if err := rows.Scan(
+			&i.MethodName,
+			&i.Amount,
+			&i.TipAmount,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.FromDrawer,
+			&i.RefundedBy,
+			&i.CreatedAt,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionTotals = `-- name: ListSessionTotals :many
 select t.payment_method_id, pm.name, pm.kind, t.affects_cash_drawer, t.expected, t.declared, t.tips,
        coalesce(dp.name, '') as platform_name,
@@ -1078,8 +1377,18 @@ from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
 left join users cb on cb.id = s.closed_by
-order by s.opened_at desc limit $1
+where ($1::date is null or s.business_date >= $1::date)
+  and ($2::date is null or s.business_date <= $2::date)
+order by s.opened_at desc, s.id desc
+limit $4 offset $3
 `
+
+type ListSessionsParams struct {
+	Desde pgtype.Date `json:"desde"`
+	Hasta pgtype.Date `json:"hasta"`
+	Off   int32       `json:"off"`
+	Lim   int32       `json:"lim"`
+}
 
 type ListSessionsRow struct {
 	ID              int64              `json:"id"`
@@ -1096,8 +1405,16 @@ type ListSessionsRow struct {
 	TotalDifference decimal.Decimal    `json:"total_difference"`
 }
 
-func (q *Queries) ListSessions(ctx context.Context, limit int32) ([]ListSessionsRow, error) {
-	rows, err := q.db.Query(ctx, listSessions, limit)
+// El mismo `where` que CountSessions, y se editan juntos: si divergen, «Página 3 de 2».
+// `id` desempata: con dos turnos abiertos en el mismo instante, una página podría repetir uno y
+// saltarse otro.
+func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]ListSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listSessions,
+		arg.Desde,
+		arg.Hasta,
+		arg.Off,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1134,6 +1451,9 @@ select s.id, s.register_id, s.business_date
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 where s.status = 'abierta' and r.is_primary and r.is_active
+  -- El MISMO predicado que GetOpenPrimarySession (0076): si divergen, una consulta decide que se
+  -- puede cobrar en un turno y la otra graba el pago en el de otra sucursal.
+  and r.branch_id = current_branch_id()
 limit 1
 for share of s
 `
@@ -1162,6 +1482,19 @@ func (q *Queries) LockOpenPrimarySession(ctx context.Context) (LockOpenPrimarySe
 	var i LockOpenPrimarySessionRow
 	err := row.Scan(&i.ID, &i.RegisterID, &i.BusinessDate)
 	return i, err
+}
+
+const lockOpenSessionForShare = `-- name: LockOpenSessionForShare :one
+select id from register_sessions where id = $1 and status = 'abierta' for share
+`
+
+// Un turno abierto, con candado compartido, para escribir en él un movimiento de caja, un traspaso
+// o el pago de un gasto. Cero filas = ya se cerró (o se está cerrando y terminó primero).
+func (q *Queries) LockOpenSessionForShare(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockOpenSessionForShare, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const lockPaymentMethod = `-- name: LockPaymentMethod :one
@@ -1203,12 +1536,30 @@ func (q *Queries) LockPaymentMethod(ctx context.Context, id int16) (LockPaymentM
 	return i, err
 }
 
+const lockSessionForClose = `-- name: LockSessionForClose :one
+select id from register_sessions where id = $1 and status = 'abierta' for update
+`
+
+// El turno que se cierra, BLOQUEADO para todo lo que lo usa (spec 031, D8).
+//
+// El cierre calculaba el esperado fuera de su transacción: un cobro, un pago devuelto o un
+// movimiento que confirmaba entre esa lectura y el cierre quedaba en el turno cerrado sin entrar al
+// esperado firmado. Con `for update` lo que ya tenía el turno con `for share` termina antes de que
+// el cierre lea, y lo que llega después espera y lo ve cerrado.
+func (q *Queries) LockSessionForClose(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockSessionForClose, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const netCashMovements = `-- name: NetCashMovements :one
-select coalesce(sum(case when kind = 'entrada' then amount else -amount end), 0)::numeric(10,2) as net
+select coalesce(sum(case when kind in ('entrada', 'reverso') then amount else -amount end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1
 `
 
 // Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
+// Un reverso solo corrige salidas (domain.CanReverse): devuelve al cajón lo que la salida restó.
 func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decimal.Decimal, error) {
 	row := q.db.QueryRow(ctx, netCashMovements, sessionID)
 	var net decimal.Decimal
@@ -1217,7 +1568,7 @@ func (q *Queries) NetCashMovements(ctx context.Context, sessionID int64) (decima
 }
 
 const openOrdersInSession = `-- name: OpenOrdersInSession :many
-select o.daily_number, o.folio_name
+select o.id, o.daily_number, o.folio_name, o.total
 from orders o
 where o.register_session_id = $1
   and o.status in ('abierta', 'lista')
@@ -1225,8 +1576,10 @@ order by o.daily_number
 `
 
 type OpenOrdersInSessionRow struct {
-	DailyNumber int32   `json:"daily_number"`
-	FolioName   *string `json:"folio_name"`
+	ID          int64           `json:"id"`
+	DailyNumber int32           `json:"daily_number"`
+	FolioName   *string         `json:"folio_name"`
+	Total       decimal.Decimal `json:"total"`
 }
 
 // Pedidos del turno que todavía no terminaron. Bloquean el cierre: un pedido abierto o listo es
@@ -1235,6 +1588,9 @@ type OpenOrdersInSessionRow struct {
 //
 // Solo abierta y lista: cancelada y reembolsada son terminales y no hay nada que entregar; exigir
 // "terminarlas" dejaría al operador sin salida más que dejar la caja abierta.
+//
+// El id viaja para que el cierre ofrezca «Abrir» esa cuenta en el POS (spec 030), y el total para
+// que diga de cuánto es cada uno sin tener que abrirlo.
 func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *int64) ([]OpenOrdersInSessionRow, error) {
 	rows, err := q.db.Query(ctx, openOrdersInSession, registerSessionID)
 	if err != nil {
@@ -1244,7 +1600,12 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 	items := []OpenOrdersInSessionRow{}
 	for rows.Next() {
 		var i OpenOrdersInSessionRow
-		if err := rows.Scan(&i.DailyNumber, &i.FolioName); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Total,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1258,7 +1619,7 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 const openSession = `-- name: OpenSession :one
 insert into register_sessions (business_date, opening_cash, opened_by, register_id)
 values ($1, $2, $3, $4)
-returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id
+returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over, opening_reason, opening_reason_note, card_count_mode, float_left
 `
 
 type OpenSessionParams struct {
@@ -1288,8 +1649,69 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
+		&i.OpeningReason,
+		&i.OpeningReasonNote,
+		&i.CardCountMode,
+		&i.FloatLeft,
 	)
 	return i, err
+}
+
+const owingDeliveredOrders = `-- name: OwingDeliveredOrders :many
+select o.id, o.daily_number, o.folio_name, o.total, coalesce(p.pagado, 0)::numeric(12,2) as paid,
+       o.written_off_amount
+from orders o
+left join lateral (
+  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+) p on true
+where o.status = 'entregada'
+  and o.delivery_platform_id is null
+  and o.merged_into_order_id is null
+  and o.total - o.written_off_amount > coalesce(p.pagado, 0)
+order by o.business_date, o.daily_number
+`
+
+type OwingDeliveredOrdersRow struct {
+	ID               int64           `json:"id"`
+	DailyNumber      int32           `json:"daily_number"`
+	FolioName        *string         `json:"folio_name"`
+	Total            decimal.Decimal `json:"total"`
+	Paid             decimal.Decimal `json:"paid"`
+	WrittenOffAmount decimal.Decimal `json:"written_off_amount"`
+}
+
+// Pedidos de mostrador ENTREGADOS que todavía deben, de cualquier día y cualquier turno. Bloquean el
+// cierre de la caja principal (no hay fiados: decisión del dueño, 2026-10-09). La pantalla del cierre
+// los lista desde esta MISMA consulta, para que lo que se ve y lo que bloquea no puedan divergir.
+//
+// Los de plataforma no entran: los paga la plataforma, no el cliente en la caja. Lo cobrado se
+// pre-agrega en un lateral (orders tiene dos hijas 1:N); el dominio decide con PorCobrar si debe.
+func (q *Queries) OwingDeliveredOrders(ctx context.Context) ([]OwingDeliveredOrdersRow, error) {
+	rows, err := q.db.Query(ctx, owingDeliveredOrders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OwingDeliveredOrdersRow{}
+	for rows.Next() {
+		var i OwingDeliveredOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DailyNumber,
+			&i.FolioName,
+			&i.Total,
+			&i.Paid,
+			&i.WrittenOffAmount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const saveCashCount = `-- name: SaveCashCount :one
@@ -1507,6 +1929,7 @@ select o.id, o.daily_number, o.folio_name, o.opened_at, o.status, o.service_type
        o.total, o.refund_amount
 from orders o
 where o.register_session_id = $1
+  and o.merged_into_order_id is null
 order by o.opened_at desc, o.id desc
 limit $3 offset $2
 `
@@ -1539,6 +1962,8 @@ type SessionSalesRow struct {
 //
 // Trae las canceladas y reembolsadas, con su estado: son parte de lo que pasó en el turno. Lo que NO
 // las incluye es el total, y de eso se encarga la gemela de abajo.
+// El pedido juntado con otro (spec 027) no es venta ni cancelación del turno: sus productos están
+// en el pedido con el que se juntó. La gemela lleva la misma línea.
 func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]SessionSalesRow, error) {
 	rows, err := q.db.Query(ctx, sessionSales, arg.RegisterSessionID, arg.Off, arg.Lim)
 	if err != nil {
@@ -1568,16 +1993,72 @@ func (q *Queries) SessionSales(ctx context.Context, arg SessionSalesParams) ([]S
 	return items, nil
 }
 
+const sessionWrittenOff = `-- name: SessionWrittenOff :one
+select coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
+from orders o
+where o.register_session_id = $1
+  and o.status not in ('cancelada', 'reembolsada')
+`
+
+// Lo dado por perdido de los pedidos del turno («cancelar lo que falta», 2026-10-09). Ni cobro ni
+// sin cobrar: con esto el corte cierra la resta vendido = cobrado + sin cobrar + perdido.
+func (q *Queries) SessionWrittenOff(ctx context.Context, registerSessionID *int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, sessionWrittenOff, registerSessionID)
+	var monto decimal.Decimal
+	err := row.Scan(&monto)
+	return monto, err
+}
+
+const setFloatLeft = `-- name: SetFloatLeft :exec
+update register_sessions set float_left = $2 where id = $1
+`
+
+type SetFloatLeftParams struct {
+	ID        int64            `json:"id"`
+	FloatLeft *decimal.Decimal `json:"float_left"`
+}
+
+func (q *Queries) SetFloatLeft(ctx context.Context, arg SetFloatLeftParams) error {
+	_, err := q.db.Exec(ctx, setFloatLeft, arg.ID, arg.FloatLeft)
+	return err
+}
+
+const setOpeningExtras = `-- name: SetOpeningExtras :one
+update register_sessions s set opening_reason = $1, opening_reason_note = $2,
+       card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
+                                    where r.id = s.register_id), 'auto')
+ where s.id = $3
+returning s.card_count_mode
+`
+
+type SetOpeningExtrasParams struct {
+	Reason *string `json:"reason"`
+	Note   *string `json:"note"`
+	ID     int64   `json:"id"`
+}
+
+// El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
+// de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
+// quien cuenta.
+func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasParams) (string, error) {
+	row := q.db.QueryRow(ctx, setOpeningExtras, arg.Reason, arg.Note, arg.ID)
+	var card_count_mode string
+	err := row.Scan(&card_count_mode)
+	return card_count_mode, err
+}
+
 const uncollectedInSession = `-- name: UncollectedInSession :one
-select coalesce(sum(o.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
+select coalesce(sum(o.total - o.written_off_amount - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto,
        count(*)::int as pedidos
 from orders o
 left join lateral (
-  select sum(op.amount) as pagado from order_payments op where op.order_id = o.id
+  select sum(op.amount) as pagado from order_payments op
+   where op.order_id = o.id
+     and (op.register_session_id is null or op.register_session_id = o.register_session_id)
 ) p on true
 where o.register_session_id = $1
   and o.status not in ('cancelada', 'reembolsada')
-  and o.total > coalesce(p.pagado, 0)
+  and o.total - o.written_off_amount > coalesce(p.pagado, 0)
 `
 
 type UncollectedInSessionRow struct {
@@ -1600,6 +2081,11 @@ type UncollectedInSessionRow struct {
 // hijas 1:N (líneas y pagos) y unir cualquiera de ellas a un agregado multiplica las filas.
 //
 // Cancelada y reembolsada quedan fuera: su venta no ocurrió, así que no hay dinero que reclamar.
+// Los pagos que cuentan son los de ESTE turno (o sin turno, anteriores al vínculo): un cobro hecho
+// en otro turno es dinero de ese otro corte, que lo explica como «cobro de otros turnos». Contarlo
+// aquí movía lo «sin cobrar» de un corte ya firmado cada vez que otro turno cobraba (spec 031, D12).
+// Lo dado por perdido («cancelar lo que falta», 2026-10-09) NO es «sin cobrar»: tiene su propia
+// cifra en el corte (SessionWrittenOff). Cada peso en un solo renglón.
 func (q *Queries) UncollectedInSession(ctx context.Context, registerSessionID *int64) (UncollectedInSessionRow, error) {
 	row := q.db.QueryRow(ctx, uncollectedInSession, registerSessionID)
 	var i UncollectedInSessionRow

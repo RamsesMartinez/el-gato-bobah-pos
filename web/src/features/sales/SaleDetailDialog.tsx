@@ -12,8 +12,9 @@ import { useUiStore } from '../../stores/ui';
 import { LiquidacionSheet } from './LiquidacionSheet';
 import { settlementsApi } from '../../api/settlements';
 import { money } from '../../utils/format';
+import { round2 } from '../../domain/cobro';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
-import { fechaYHora } from '../../utils/horaDelNegocio';
+import { diaCortoYHora, fechaYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 
 // El detalle de una venta: sus renglones con modificadores y de dónde salió el dinero.
@@ -58,7 +59,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
     onError: (e: Error) => setError(e.message),
   });
   const { data, isLoading } = useQuery({
-    queryKey: ['order', venta.id],
+    queryKey: ['orders', venta.id],
     queryFn: () => posApi.order(venta.id),
     enabled: isOpen,
   });
@@ -139,7 +140,17 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
               )}
               {Number(venta.tips) > 0 && <Dato k="Propina" v={money(venta.tips)} />}
               {Number(venta.deliveryFee) > 0 && <Dato k="Envío" v={money(venta.deliveryFee)} />}
-              {Number(venta.refund) > 0 && <Dato k="Reembolsado" v={money(venta.refund)} />}
+              {Number(venta.refund) > 0 && (
+                <Dato k="Devuelto" v={venta.lastRefundAt
+                  ? `${money(venta.refund)} · ${diaCortoYHora(venta.lastRefundAt, horaNegocio.zona)}`
+                  : money(venta.refund)} />
+              )}
+              {Number(venta.paid ?? 0) < Number(venta.total) && venta.status !== 'cancelada' && venta.status !== 'reembolsada' && (
+                <Dato k="Cobrado" v={money(venta.paid ?? '0')} />
+              )}
+              {Number(venta.paid ?? 0) < Number(venta.total) && venta.status !== 'cancelada' && venta.status !== 'reembolsada' && (
+                <Dato k="Por cobrar" v={money(round2(Number(venta.total) - Number(venta.paid ?? 0) - Number(venta.writtenOff ?? 0)))} />
+              )}
             </VStack>
 
             <Box borderTopWidth="1px" pt={3}>

@@ -21,6 +21,7 @@ import (
 // También explica algo que ya estaba pasando en producción: nada revocaba al emitir, y por eso un
 // usuario llegó a tener 4 refresh tokens vivos, el más viejo de tres días antes.
 func TestCambiarDeOperadorConservaElRelojDeLaSesion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	// Reloj PROPIO y avanzable. Con el `clock` fijo del harness, un vencimiento recalculado da
@@ -102,6 +103,7 @@ func venceDe(t *testing.T, st *store.Store, refresh string) time.Time {
 // desbloquear la estación 1 a las 15:30, esa estación saltaba de 16:00 a 23:00 — siete horas de
 // sesión regaladas con un PIN, y repetible.
 func TestElRelojEsDeLaEstacionYNoDeLaPersona(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ahora := fixedNow
@@ -153,6 +155,7 @@ func TestElRelojEsDeLaEstacionYNoDeLaPersona(t *testing.T) {
 // compañero de la estación 2 con "Terminó el turno" a media venta. El modo de fallo del resto de
 // la feature es "deja trabajar"; este era el contrario.
 func TestEntregarUnaEstacionNoTumbaLasDemas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ahora := fixedNow

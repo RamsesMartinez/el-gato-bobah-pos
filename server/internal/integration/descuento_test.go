@@ -57,6 +57,7 @@ func pedidoConDescuento(t *testing.T, st *store.Store, svc *app.OrdersService, s
 // ordinario, el de todos los días, siga naciendo sin descuento y SIN autor. Si el default cambiara
 // o el insert estampara un autor por costumbre, cada venta normal quedaría marcada como descontada.
 func TestLosPedidosNacenSinDescuentoYSinRastro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -87,6 +88,7 @@ func TestLosPedidosNacenSinDescuentoYSinRastro(t *testing.T) {
 // aplicación: cualquier ruta nueva que escriba el monto sin el actor falla aquí, ruidosamente, en
 // vez de dejar dinero descontado sin nadie detrás.
 func TestNoSePuedeDescontarSinDecirQuienFue(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -105,6 +107,7 @@ func TestNoSePuedeDescontarSinDecirQuienFue(t *testing.T) {
 // owner y salta RLS. Un grant que falte no se ve en dev —la API de desarrollo también entra como
 // owner— y aparece en producción como 42501 en el primer descuento del día.
 func TestElDescuentoSeEscribeBajoElRolDeLaAplicacion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -133,6 +136,7 @@ func TestElDescuentoSeEscribeBajoElRolDeLaAplicacion(t *testing.T) {
 // el cliente, un 20 % podría descontar cualquier cantidad: sería creerle al cliente una cifra de
 // dinero, que es justo lo que BuildOrder no hace con los precios.
 func TestElServidorResuelveElPorcentajeContraSuPropioSubtotal(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 
@@ -163,6 +167,7 @@ func TestElServidorResuelveElPorcentajeContraSuPropioSubtotal(t *testing.T) {
 // Falla nombrando el concepto duplicado, no "esperaba X obtuve Y": si el corte dijera $285 sería
 // que el descuento se restó dos veces, y si dijera $385, que no se restó ninguna.
 func TestElCorteCuentaElTotalRebajadoUnaSolaVez(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -218,6 +223,7 @@ func TestElCorteCuentaElTotalRebajadoUnaSolaVez(t *testing.T) {
 // decidió. Lo que se recorta es el total, con piso en cero — un total negativo devolvería dinero
 // que nadie autorizó, y ningún reporte lo diría.
 func TestCancelarUnRenglonNoDejaElTotalNegativo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -267,6 +273,7 @@ func TestCancelarUnRenglonNoDejaElTotalNegativo(t *testing.T) {
 // si se recalculara, agregarle un café a la cuenta cambiaría el descuento sin que nadie lo pidiera
 // y el ticket que el cliente ya tiene en la mano dejaría de cuadrar.
 func TestAgregarRenglonesNoRecalculaElDescuento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -305,6 +312,7 @@ func TestAgregarRenglonesNoRecalculaElDescuento(t *testing.T) {
 // Un pedido ya cobrado no admite cambio de descuento: movería el total contra pagos que ya se
 // registraron, y contra un arqueo que quizá ya se firmó.
 func TestUnPedidoCobradoNoAdmiteCambioDeDescuento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -335,6 +343,7 @@ func TestUnPedidoCobradoNoAdmiteCambioDeDescuento(t *testing.T) {
 // de devolver la diferencia. El pago parcial no es raro: el cliente deja algo al pedir y termina al
 // recoger.
 func TestElDescuentoNoPuedeDejarElTotalBajoLoYaAbonado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -369,6 +378,7 @@ func TestElDescuentoNoPuedeDejarElTotalBajoLoYaAbonado(t *testing.T) {
 // de plataforma con promoción llega a cualquier hora y esperar a alguien con rol detendría la
 // captura). El test existe para que la decisión no se revierta sola en una refactorización.
 func TestUnMeseroPuedeDescontar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -442,6 +452,7 @@ func pedidoParaLaRuta(t *testing.T, st *store.Store, sufijo string) int64 {
 }
 
 func TestElEndpointDelDescuentoExigeAutenticacion(t *testing.T) {
+	t.Parallel()
 	r, st, _ := nuevaAPIDeDescuento(t)
 	id := pedidoParaLaRuta(t, st, "sin_token")
 
@@ -454,6 +465,7 @@ func TestElEndpointDelDescuentoExigeAutenticacion(t *testing.T) {
 // `RequireRole` agregado después dejaría al mostrador sin poder aplicar la promoción de una
 // plataforma a media tarde.
 func TestUnMeseroDescuentaPorLaRuta(t *testing.T) {
+	t.Parallel()
 	r, st, token := nuevaAPIDeDescuento(t)
 	id := pedidoParaLaRuta(t, st, "mesero")
 	tok := token("mesero_ruta_desc", "mesero", defaultCompanyID)
@@ -464,6 +476,7 @@ func TestUnMeseroDescuentaPorLaRuta(t *testing.T) {
 }
 
 func TestElDescuentoTieneTopePorUsuario(t *testing.T) {
+	t.Parallel()
 	r, st, token := nuevaAPIDeDescuento(t)
 	id := pedidoParaLaRuta(t, st, "rafaga")
 	tok := token("cajero_rafaga_desc", "cajero", defaultCompanyID)
@@ -520,6 +533,7 @@ func TestQuitarUnDescuentoDejaElEventoConElMontoAnterior(t *testing.T) {
 // Un check sin test es una línea de DDL que nadie nota si desaparece en el siguiente `alter table`:
 // el esquema deja de proteger y ninguna prueba cambia de color.
 func TestLosChecksDelDescuentoRechazanLoImposible(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

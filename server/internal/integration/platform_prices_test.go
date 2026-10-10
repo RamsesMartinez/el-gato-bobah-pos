@@ -18,6 +18,7 @@ import (
 // tabla creada después nace sin permisos para gatobobah_app. Ese fallo es invisible en dev —la API
 // local sirve como owner— y en producción devuelve 42501 en el primer request.
 func TestPreciosDePlataformaSonUsablesPorElRolDeApp(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -65,6 +66,7 @@ func TestPreciosDePlataformaSonUsablesPorElRolDeApp(t *testing.T) {
 // Un precio de plataforma de una empresa no debe verse ni escribirse desde la otra. Es lo que
 // impide que el POS cobre con la lista de precios ajena.
 func TestPreciosDePlataformaNoCruzanEntreEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -107,6 +109,7 @@ func TestPreciosDePlataformaNoCruzanEntreEmpresas(t *testing.T) {
 // plataforma de su misma empresa. Es lo que permite saber qué métodos son de Uber sin compararlos
 // por nombre, y lo que impide que el corte agrupe dinero de la empresa equivocada.
 func TestMetodosDePagoSonPorEmpresaYApuntanASuPlataforma(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 	otra := makeCompany(t, owner, "otra-metodos")
@@ -163,6 +166,7 @@ func TestMetodosDePagoSonPorEmpresaYApuntanASuPlataforma(t *testing.T) {
 // payment_methods bajo RLS, ese pago DESAPARECE del corte y de los reportes, dejando un faltante
 // por el monto exacto que nadie sabe explicar.
 func TestNingunPagoApuntaAlMetodoDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -194,6 +198,7 @@ func TestNingunPagoApuntaAlMetodoDeOtraEmpresa(t *testing.T) {
 // del servicio, esta fila entraría; con la llave foránea compuesta (product_id, company_id) no hay
 // forma de que entre, venga de donde venga.
 func TestElEsquemaRechazaUnPrecioSobreProductoAjeno(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -222,6 +227,7 @@ func TestElEsquemaRechazaUnPrecioSobreProductoAjeno(t *testing.T) {
 
 // Lo mismo para las opciones de modificador: son la otra mitad del precio de un pedido.
 func TestElEsquemaRechazaUnDeltaSobreOpcionAjena(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -241,6 +247,7 @@ func TestElEsquemaRechazaUnDeltaSobreOpcionAjena(t *testing.T) {
 // publica `menu.updated`, que hace refetch a todas las tablets. Sin distinguir el caso, cualquiera
 // con permiso de vender puede provocar esa tormenta en bucle con peticiones que no cambian nada.
 func TestBorrarUnPrecioInexistenteNoReportaBorrado(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 

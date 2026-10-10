@@ -23,58 +23,9 @@ export type { Numero as Monto };
 // Billetes MXN que el operador toca en vez de teclear.
 const BILLETES = [50, 100, 200, 500, 1000];
 
-// dividirEnPartes reparte un monto en N, con el RESIDUO en la última.
-//
-// `total/n` redondeado no suma el total: $100 en tres da tres partes de $33.33 = $99.99. El servidor
-// tolera ese centavo y CIERRA el pedido, así que quedaba un centavo que nadie podía cobrar y que la
-// barra del POS seguía sumando — el pedido salía de la vista al día siguiente con la deuda abierta.
-//
-// Devuelve null cuando alguna parte quedaría en cero: cobrar $0 no es cobrar.
-export function dividirEnPartes(total: number, n: number): number[] | null {
-  if (n < 1 || !Number.isInteger(n)) return null;
-  const parte = Math.floor(round2(total) * 100 / n) / 100;
-  if (parte <= 0) return null;
-  const partes = Array.from({ length: n }, () => parte);
-  partes[n - 1] = round2(round2(total) - parte * (n - 1));
-  return partes;
-}
-
-// montoDeLaParte: cuánto se cobra AHORA si lo que falta se reparte entre `partes` personas.
-//
-// Se recalcula sobre el faltante VIVO en cada pedazo y NO una sola vez al empezar. Dos razones:
-// entre un pedazo y otro el faltante puede cambiar —otra caja cobró algo, o entró un renglón— y
-// unas partes calculadas al principio dejarían de sumar el total; y así la última parte se lleva
-// sola el residuo, que es lo que evita el centavo que nadie puede cobrar.
-//
-// `partes <= 1` es cobrar todo lo que falta, que es el caso de casi todos los pedidos.
-export function montoDeLaParte(falta: number, partes: number): number | null {
-  if (partes <= 1) return round2(falta);
-  const repartido = dividirEnPartes(falta, partes);
-  return repartido ? repartido[0] : null;
-}
-
-// MAX_PARTES: tope del repartidor. No es defensivo — es cuántas personas caben en una mesa antes de
-// que repartir a mano deje de tener sentido; más allá, el operador teclea el monto.
-export const MAX_PARTES = 12;
-
-// partesPosibles: en cuántas partes se puede repartir el faltante sin que alguna quede en $0.
-//
-// Existe porque el repartidor no puede ofrecer lo que el cobro va a rechazar: con $0.05 pendientes,
-// pedir doce partes da partes de $0.00 y "cobrar cero no es cobrar". El operador tocaría el `+` y el
-// botón se apagaría sin decir por qué, que es la peor forma de rechazar algo.
-export function partesPosibles(falta: number): number {
-  const centavos = Math.floor(round2(falta) * 100);
-  return Math.min(MAX_PARTES, Math.max(1, centavos));
-}
-
-// partesQueQuedan: al entrar un pedazo queda una persona menos por cobrar.
-//
-// Se baja de a uno en vez de recalcular desde cero porque el reparto es una intención del operador
-// ("somos cuatro"), no una propiedad del pedido: si se dedujera del faltante, cobrar una parte de
-// más o de menos cambiaría en cuántas se está repartiendo sin que nadie lo pidiera.
-export function partesQueQuedan(partes: number): number {
-  return Math.max(1, partes - 1);
-}
+// El reparto en partes ya no vive aquí: lo calcula el servidor (domain.SplitParts y
+// domain.SplitPartAmount, spec 027) y la hoja lo pide con una cotización. Dos implementaciones de la
+// misma regla de dinero terminan diciendo cosas distintas.
 
 export type MotivoInvalido =
   | 'sin-monto' | 'monto-invalido' | 'sin-metodo' | 'excede' | 'propina-excede' | 'falta-efectivo';
@@ -122,9 +73,9 @@ export function validarCobro(e: Entrada): Veredicto {
   // El exceso se ve ANTES de mandar. Si no, el cobro sale, el servidor lo rechaza con ErrCobroExcede
   // y el operador se entera con el dinero del cliente en la mano.
   //
-  // El tope es EXACTO, como el de domain.ValidarCobro: el centavo de tolerancia vive en el predicado
-  // que CIERRA el pedido, no en el que acota cada cobro. El round2 es contra el ruido de los
-  // flotantes, no una holgura: 33.34 - 33.33 da 0.010000000000001563 en binario.
+  // El tope es EXACTO, como el de domain.ValidarCobro (y, desde la spec 031, también el predicado
+  // que cierra el pedido). El round2 es contra el ruido de los flotantes, no una holgura: 33.34 -
+  // 33.33 da 0.010000000000001563 en binario.
   if (round2(m.valor - e.falta) > 0) return { ...base, motivo: 'excede' };
   if (e.metodoId === null) return { ...base, motivo: 'sin-metodo' };
   if (!propinaValida(propina, e.totalDelPedido)) return { ...base, motivo: 'propina-excede' };

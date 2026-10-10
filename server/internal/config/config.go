@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -77,24 +79,27 @@ type Config struct {
 	// modelo del catálogo sea válido aquí (Haiku rechaza esos parámetros).
 	AnthropicModel string `env:"ANTHROPIC_MODEL" envDefault:"claude-opus-5"`
 
-	// --- Lectura del menú de Uber Eats (spec 020) ---
-	// Vacío = la integración está apagada y el POS arranca igual: un negocio que no vende por
-	// plataformas no tiene por qué configurar esto para poder cobrar.
+	// --- Plataformas de reparto (spec 020 y 021) ---
+	// Las credenciales de la app de cada plataforma NO van aquí: se capturan en pantalla, por
+	// empresa, y se guardan cifradas (0075). Una pareja en el entorno era una sola aplicación para
+	// todas las empresas.
 	//
-	// AQUÍ NO VA EL ID DE LA TIENDA, a propósito. Una empresa va a tener varias sucursales y cada
-	// una es una tienda distinta arriba; vive en `platform_connections`, una fila por tienda.
-	UberEatsClientID     string `env:"UBER_EATS_CLIENT_ID" envDefault:""`
-	UberEatsClientSecret string `env:"UBER_EATS_CLIENT_SECRET" envDefault:""`
-	// UberEatsEnv elige contra qué ambiente de Uber se habla: "sandbox" o "production". No tiene
-	// default porque adivinarlo es elegir por el operador entre la tienda de pruebas y la que
-	// factura.
+	// UberEatsEnv elige contra qué ambiente de Uber se habla: "sandbox" o "production". Vacío = la
+	// integración está apagada y el POS arranca igual. No tiene default porque adivinarlo es elegir
+	// por el operador entre la tienda de pruebas y la que factura.
 	UberEatsEnv string `env:"UBER_EATS_ENV" envDefault:""`
+
+	// --- Cifrado de secretos de terceros (0075) ---
+	// Exactamente una. CredentialsKMSKey es el nombre de la llave de Cloud KMS
+	// (projects/…/cryptoKeys/…), obligatoria en producción. CredentialsLocalKey es AES-256 en
+	// base64, solo para desarrollo: vive en el mismo .env que todo lo demás, así que en producción
+	// no protegería el respaldo, que es lo único que el cifrado viene a proteger.
+	CredentialsKMSKey   string `env:"CREDENTIALS_KMS_KEY" envDefault:""`
+	CredentialsLocalKey string `env:"CREDENTIALS_LOCAL_KEY" envDefault:""`
 }
 
-// UberEatsEnabled reports whether the Uber Eats menu reader is configured.
-func (c Config) UberEatsEnabled() bool {
-	return c.UberEatsClientID != "" && c.UberEatsClientSecret != ""
-}
+// UberEatsEnabled reports whether this deployment talks to Uber Eats at all.
+func (c Config) UberEatsEnabled() bool { return c.UberEatsEnv != "" }
 
 // DocExtractEnabled reports whether purchase-document extraction is configured.
 func (c Config) DocExtractEnabled() bool { return c.AnthropicAPIKey != "" }
@@ -203,17 +208,12 @@ func Validate(c Config) error {
 			return errors.New("ANTHROPIC_MODEL vacío: define el modelo (p. ej. claude-opus-5) o quita ANTHROPIC_API_KEY")
 		}
 	}
-	// Uber Eats: o las tres variables, o ninguna. Una credencial a medias no falla al arrancar —
-	// falla en la primera lectura de menú, horas después, con un 401 opaco que nadie relaciona con
-	// la configuración. Y un ambiente mal escrito es peor que un error: habla con la tienda
-	// equivocada sin decirlo.
-	if c.UberEatsClientID != "" || c.UberEatsClientSecret != "" {
-		if IsPlaceholder(c.UberEatsClientID) || IsPlaceholder(c.UberEatsClientSecret) {
-			return errors.New("UBER_EATS_CLIENT_ID y UBER_EATS_CLIENT_SECRET van juntas y con valor propio (o deja las dos vacías para apagar la lectura de menús de plataforma)")
-		}
-		if c.UberEatsEnv != "sandbox" && c.UberEatsEnv != "production" {
-			return errors.New(`UBER_EATS_ENV debe ser "sandbox" o "production": sin un valor conocido no se puede elegir entre la tienda de pruebas y la que factura`)
-		}
+	// Un ambiente mal escrito es peor que un error: habla con la tienda equivocada sin decirlo.
+	if c.UberEatsEnv != "" && c.UberEatsEnv != "sandbox" && c.UberEatsEnv != "production" {
+		return errors.New(`UBER_EATS_ENV debe ser "sandbox" o "production" (o vacío para apagar la integración)`)
+	}
+	if err := validateCredentialsCipher(c); err != nil {
+		return err
 	}
 	return nil
 }
@@ -226,4 +226,38 @@ func IsPlaceholder(s string) bool {
 	}
 	l := strings.ToLower(s)
 	return strings.HasPrefix(l, "cambia-esto") || strings.HasPrefix(l, "your_")
+}
+
+// kmsKeyNamePattern es la forma del nombre de una llave de Cloud KMS. Un nombre mal escrito falla en la
+// primera captura con un 404 de Google que nadie relaciona con la configuración.
+var kmsKeyNamePattern = regexp.MustCompile(`^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$`)
+
+// validateCredentialsCipher exige exactamente una forma de cifrar, y solo KMS en producción.
+func validateCredentialsCipher(c Config) error {
+	switch {
+	case c.CredentialsKMSKey != "" && c.CredentialsLocalKey != "":
+		return errors.New("CREDENTIALS_KMS_KEY y CREDENTIALS_LOCAL_KEY a la vez: define solo una (KMS en producción y en pruebas, la local en tu máquina)")
+	case c.Env == "production" && c.CredentialsLocalKey != "":
+		return errors.New("CREDENTIALS_LOCAL_KEY no se permite en producción: la llave viviría junto a la base que protege. Usa CREDENTIALS_KMS_KEY")
+	case c.CredentialsKMSKey == "" && c.CredentialsLocalKey == "":
+		if c.Env == "production" {
+			return errors.New("CREDENTIALS_KMS_KEY requerida en producción: sin ella no hay dónde guardar las credenciales de las plataformas")
+		}
+		return errors.New("CREDENTIALS_LOCAL_KEY requerida en desarrollo (make check-env la genera): sin ella no hay dónde guardar las credenciales de las plataformas")
+	case c.CredentialsKMSKey != "":
+		if !kmsKeyNamePattern.MatchString(c.CredentialsKMSKey) {
+			return errors.New("CREDENTIALS_KMS_KEY mal escrita: debe ser projects/…/locations/…/keyRings/…/cryptoKeys/…")
+		}
+	default:
+		if b, err := base64.StdEncoding.DecodeString(c.CredentialsLocalKey); err != nil || len(b) != 32 {
+			return errors.New("CREDENTIALS_LOCAL_KEY debe ser 32 bytes en base64 (openssl rand -base64 32)")
+		}
+	}
+	return nil
+}
+
+// LocalKey devuelve los 32 bytes de CREDENTIALS_LOCAL_KEY. Validate ya comprobó la forma.
+func (c Config) LocalKey() []byte {
+	b, _ := base64.StdEncoding.DecodeString(c.CredentialsLocalKey)
+	return b
 }

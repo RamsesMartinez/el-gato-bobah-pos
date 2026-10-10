@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { iniciarSesion } from './sesion';
+import { API, tokenDeApi } from './ambiente';
 
 // CONTAR EL CAJÓN, MEDIDO EN LA TABLETA (spec 003).
 //
@@ -10,20 +12,11 @@ import { test, expect, type Page } from '@playwright/test';
 // Y lo que ningún test de pantalla puede ver: que el total que la hoja muestra sea el mismo que el
 // servidor guarda. Ese desacuerdo es la razón de ser de esta suite.
 
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
-
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await iniciarSesion(page);
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 // abrirLaHojaDeConteo deja la hoja del contador abierta sobre una caja CERRADA.
@@ -147,8 +140,7 @@ test('C4 · contar 40 monedas se teclea, y el total es el que suma el servidor',
   await expect(page.getByLabel('Diferencia del arqueo')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('El arqueo cuadra')).toBeVisible();
 
-  page.once('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
 });
 
@@ -183,8 +175,7 @@ test('C5 · un faltante se ve antes de cerrar, no bloquea, y después queda su d
   // la noche por $50 que no aparecen.
   const cerrar = page.getByRole('button', { name: 'Cerrar caja' });
   await expect(cerrar).toBeEnabled();
-  page.once('dialog', (d) => d.accept());
-  await cerrar.click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {});
 
@@ -226,8 +217,7 @@ test('C6 · el total a mano exige motivo, y cambiar de camino avisa antes de bor
   await expect(page.getByLabel('Piezas de $200', { exact: true })).toBeVisible({ timeout: 30_000 });
   await page.getByLabel('Piezas de $200', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Usar este conteo' }).click();
-  page.once('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await cerrarLaCaja(page);
   await expect(page.getByText('Caja cerrada')).toBeVisible({ timeout: 30_000 });
 });
 
@@ -237,25 +227,58 @@ test('C7 · un corte anterior a la funcionalidad no muestra desglose ni lo inven
   await page.waitForLoadState('networkidle');
   await page.getByRole('tab', { name: 'Histórico' }).click();
 
-  // El corte MÁS VIEJO del histórico: cerró antes de que existiera el conteo. Es el caso de todos
-  // los que ya viven en producción, y son la mayoría.
+  // Un corte que cerró ANTES de que existiera el conteo: es el caso de todos los que ya viven en
+  // producción, y son la mayoría. Se busca por la API, en el mismo orden y con las mismas páginas
+  // que pinta el histórico, empezando por la última (la de los más viejos).
   //
-  // Esto SUPONE un ambiente con historia, que es el que esta suite tiene por contrato
-  // (`playwright.config.ts`). Contra una base recién sembrada —donde todos los cortes los creó
-  // quien está probando, y por lo tanto todos traen conteo— este caso falla sin que haya nada roto.
-  // Se deja fallando en vez de saltarse solo: un skip automático aquí lo volvería una tautología,
-  // porque la condición que lo saltaría es exactamente la que viene a comprobar.
+  // Antes el histórico traía solo los 50 más recientes y este test se saltaba cuando todos ya tenían
+  // conteo. Con páginas se llega a cualquier corte, que es lo que encontró la auditoría.
+  const POR_PAGINA = 20; // el mismo CORTES_POR_PAGINA de la pantalla
+  const jwt = await tokenDeApi();
+  const auth = { Authorization: `Bearer ${jwt}` };
+  const pagina = async (p: number) => (await (await fetch(`${API}/cash-sessions?page=${p}&pageSize=${POR_PAGINA}`,
+    { headers: auth })).json()) as { items: Array<{ id: number; status: string }>; total: number };
+  const paginas = Math.max(1, Math.ceil((await pagina(0)).total / POR_PAGINA));
+  let indice = -1;
+  let enPagina = 0;
+  let corteId = 0;
+  for (let p = paginas - 1; p >= 0 && indice < 0; p--) {
+    const lista = (await pagina(p)).items;
+    for (let i = lista.length - 1; i >= 0 && indice < 0; i--) {
+      if (lista[i].status !== 'cerrada') continue;
+      const d = await (await fetch(`${API}/cash-sessions/${lista[i].id}`, { headers: auth })).json();
+      if (!d.counts?.apertura && !d.counts?.cierre) { indice = i; enPagina = p; corteId = lista[i].id; }
+    }
+  }
+  test.skip(indice < 0, 'todos los cortes del histórico son posteriores al conteo');
+  // Se espera la RESPUESTA de cada página, no el letrero «Página N de M»: el letrero cambia al
+  // instante y la tabla sigue pintando la página anterior (placeholderData) hasta que llega la
+  // nueva. Esperar el letrero hacía tocar una fila de la página 1 — un corte de hoy, con conteo.
+  for (let p = 0; p < enPagina; p++) {
+    const llego = page.waitForResponse((r) => r.url().includes(`/cash-sessions?page=${p + 1}&`) && r.ok());
+    await page.getByRole('button', { name: 'Página siguiente' }).click();
+    await llego;
+    await expect(page.getByText(`Página ${p + 2} de ${paginas}`)).toBeVisible({ timeout: 30_000 });
+  }
   const filas = page.getByRole('row');
-  const cuantas = await filas.count();
-  test.skip(cuantas < 3, 'el histórico no tiene cortes anteriores a la feature');
-  await filas.nth(cuantas - 1).click();
+  await expect(filas.nth(indice + 1)).toBeVisible({ timeout: 30_000 });
+  await filas.nth(indice + 1).click();
 
   // TODO se afirma DENTRO del diálogo: a 1024×600 el corte se abre así, y el panel lateral existe
   // en el árbol pero oculto. Sin acotar, el localizador cae en la copia invisible y el assert espera
   // 30 segundos a algo que nunca se va a ver.
   const dialogo = page.locator('[role="dialog"]').first();
+  // Por su identificador: si la posición no corresponde, falla aquí nombrando el corte equivocado.
+  await expect(dialogo.getByRole('heading', { name: `Corte #${corteId}` })).toBeVisible({ timeout: 30_000 });
   await expect(dialogo.getByText('Monto inicial')).toBeVisible({ timeout: 30_000 });
   // Ni desglose ni un aviso de que no lo tiene: "este corte no tiene desglose" es una historia del
   // sistema que quien audita no puede accionar.
   await expect(dialogo.getByText('Efectivo contado')).toHaveCount(0);
 });
+
+// «Cerrar caja» pregunta en una hoja de la app (spec 030): ya no hay `confirm()` del navegador que
+// aceptar. Se toca el botón y después el de la hoja.
+async function cerrarLaCaja(page: Page) {
+  await page.getByRole('button', { name: 'Cerrar caja' }).click();
+  await page.getByRole('dialog').last().getByRole('button', { name: 'Cerrar caja' }).click();
+}

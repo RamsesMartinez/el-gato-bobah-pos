@@ -19,7 +19,7 @@ import { ConfirmPopover } from '../../components/ui/confirm-popover';
 import {
   MenuRoot, MenuTrigger, MenuContent, MenuItemGroup, MenuRadioItemGroup, MenuRadioItem, MenuSeparator,
 } from '../../components/ui/menu';
-import { ProductEditDialog } from '../../shared/ProductEditDialog';
+import { ProductEditDialog, CostoFijo } from '../../shared/ProductEditDialog';
 import { ProductGroupsDialog } from './ProductGroupsDialog';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
@@ -261,11 +261,13 @@ export function ProductsAdminPage() {
 // Duplicar producto: copia el producto de origen con TODAS sus relaciones (categoría, precio,
 // grupos de modificadores, canales y receta). Solo pide un nombre distinto (no se permiten
 // nombres idénticos; el backend además lo valida como 409).
-function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onClose: () => void }) {
+export function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(`Copia de ${source.name}`);
+  const [cost, setCost] = useState('');
+  const costo = costoOpcional(cost);
   const dup = useMutation({
-    mutationFn: () => adminApi.duplicateProduct(source.id, name.trim()),
+    mutationFn: () => adminApi.duplicateProduct(source.id, name.trim(), costo ?? undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
       qc.invalidateQueries({ queryKey: ['menu'] });
@@ -274,7 +276,7 @@ function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onC
     },
     onError: (e) => toaster.create({ title: 'No se pudo duplicar', description: String(e), type: 'error' }),
   });
-  const canDup = name.trim().length > 0 && name.trim().toLowerCase() !== source.name.toLowerCase();
+  const canDup = name.trim().length > 0 && name.trim().toLowerCase() !== source.name.toLowerCase() && costo !== null;
 
   return (
     <DialogRoot open onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -289,13 +291,22 @@ function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onC
               modificadores, canales y receta). Dale un nombre distinto para empezar.
             </Text>
             <Field label="Nombre del nuevo producto">
-              <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              <Input minH="44px" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </Field>
+            {source.type === 'combo' ? (
+              <CostoFijo monto={source.current_cost} nota="Se suma de lo que incluye" />
+            ) : (
+              <Field label="Costo (opcional)" invalid={costo === null} errorText="Revisa el costo"
+                helperText={source.hasRecipe ? 'Si lo llenas, este costo reemplaza al de la receta.' : undefined}>
+                <Input type="number" inputMode="decimal" minH="44px" value={cost} onChange={(e) => setCost(e.target.value)}
+                  placeholder={`Igual que el original (${money(source.current_cost)})`} />
+              </Field>
+            )}
           </VStack>
         </DialogBody>
         <DialogFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>Cancelar</Button>
-          <Button colorPalette="green" disabled={!canDup} loading={dup.isPending} onClick={() => dup.mutate()}>Duplicar</Button>
+          <Button variant="ghost" minH="44px" mr={3} onClick={onClose}>Cancelar</Button>
+          <Button colorPalette="green" minH="44px" disabled={!canDup} loading={dup.isPending} onClick={() => dup.mutate()}>Duplicar</Button>
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
@@ -303,7 +314,7 @@ function DuplicateProductDialog({ source, onClose }: { source: AdminProduct; onC
 }
 
 // Alta de producto (nombre, categoría, precio, favorito). Invalida catálogo + menú al crear.
-function NewProductDialog({ isOpen, onClose, categoryOptions }: {
+export function NewProductDialog({ isOpen, onClose, categoryOptions }: {
   isOpen: boolean; onClose: () => void; categoryOptions: PickerOption[];
 }) {
   const qc = useQueryClient();
@@ -311,11 +322,13 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [favorite, setFavorite] = useState(false);
+  const [cost, setCost] = useState('');
+  const costo = costoOpcional(cost);
 
-  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); };
+  const reset = () => { setName(''); setCategoryId(''); setPrice(''); setFavorite(false); setCost(''); };
   const create = useMutation({
     mutationFn: () => adminApi.createProduct({
-      name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite,
+      name: name.trim(), categoryId: Number(categoryId), price: montoTecleado(price) ?? 0, favorite, cost: costo ?? undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'products'] });
@@ -325,7 +338,7 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
     },
     onError: (e) => toaster.create({ title: 'No se pudo crear', description: String(e), type: 'error' }),
   });
-  const canCreate = name.trim().length > 0 && !!categoryId && montoTecleado(price) !== undefined && price !== '';
+  const canCreate = name.trim().length > 0 && !!categoryId && montoTecleado(price) !== undefined && price !== '' && costo !== null;
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) { onClose(); reset(); } }}>
@@ -336,29 +349,42 @@ function NewProductDialog({ isOpen, onClose, categoryOptions }: {
         <DialogBody>
           <VStack align="stretch" gap={4}>
             <Field label="Nombre">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Latte" />
+              <Input minH="44px" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Latte" />
             </Field>
             <Field label="Categoría">
               <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
                 options={categoryOptions} />
             </Field>
-            <Field label="Precio">
-              <Input type="number" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
-            </Field>
+            <HStack align="start" gap={3}>
+              <Field flex="1" label="Precio">
+                <Input type="number" inputMode="decimal" minH="44px" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+              </Field>
+              <Field flex="1" label="Costo (opcional)" invalid={costo === null} errorText="Revisa el costo">
+                <Input type="number" inputMode="decimal" minH="44px" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Sin costo" />
+              </Field>
+            </HStack>
             <HStack justify="space-between">
               <Text>Favorito</Text>
               <Switch checked={favorite} onCheckedChange={(e) => setFavorite(e.checked)} />
             </HStack>
             <Text fontSize="xs" color="fg.muted">
-              El costo, la receta y los grupos modificadores se configuran después, al editar el producto.
+              La receta y los grupos modificadores se configuran después, al editar el producto.
             </Text>
           </VStack>
         </DialogBody>
         <DialogFooter>
-          <Button variant="ghost" mr={3} onClick={() => { onClose(); reset(); }}>Cancelar</Button>
-          <Button colorPalette="green" disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>Crear</Button>
+          <Button variant="ghost" minH="44px" mr={3} onClick={() => { onClose(); reset(); }}>Cancelar</Button>
+          <Button colorPalette="green" minH="44px" disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>Crear</Button>
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
   );
+}
+
+// costoOpcional: vacío = no mandar costo (undefined); escrito y malformado o negativo = null, que
+// apaga el botón en vez de mandarse como cero.
+function costoOpcional(texto: string): number | undefined | null {
+  if (texto.trim() === '') return undefined;
+  const n = montoTecleado(texto);
+  return n === undefined || n < 0 ? null : n;
 }

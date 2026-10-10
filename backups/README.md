@@ -24,16 +24,25 @@ sha256sum backups/prod/pre-$S.dump
 ssh -i ~/.ssh/google_compute_engine ramys@34.68.178.107 "sha256sum /tmp/pre-$S.dump"
 ```
 
-## Cómo restaurar en local para ensayar
-
-Nunca se ensaya contra producción. Se restaura en una base de trabajo aparte:
+## Cómo restaurar en local
 
 ```bash
-MSYS_NO_PATHCONV=1 docker cp backups/prod/pre-$S.dump deploy-postgres-1:/tmp/prod.dump
-docker exec deploy-postgres-1 psql -U gatobobah -d postgres -c "create database gatobobah_ensayo"
-docker exec deploy-postgres-1 pg_restore -U gatobobah -d gatobobah_ensayo --no-owner --no-privileges /tmp/prod.dump
+make db-restaurar                                   # el .dump más reciente de backups/prod/
+make db-restaurar dump=backups/prod/pre-XXXX.dump   # uno en particular
 ```
 
-Ojo con lo que **no** se ve en un ensayo local: la base local tiene una sola empresa y la API sirve
-como owner (sin RLS ni grants). Todo lo que dependa de un segundo tenant o del rol `gatobobah_app`
-hay que probarlo con un test de integración, no a ojo.
+Reemplaza la base de desarrollo entera (detén la API antes) y restaura **con los dueños y los
+GRANT de producción**. Es a propósito: la API local sirve como `gatobobah_app`, sujeta a RLS igual
+que allá, y un restore sin permisos fabrica un ambiente que no se parece al real.
+
+**No uses `--no-owner` ni `--no-privileges`**, aunque "hagan que el restore no se queje":
+
+- `--no-privileges` deja a `gatobobah_app` sin un solo GRANT y la API no arranca.
+- `--no-owner` le quita la vista `candidatas_del_aviso` a `gatobobah_webhook` y el webhook resuelve
+  con un bypass que en producción no existe.
+
+Una sesión de `psql -U gatobobah` es owner y ve todas las empresas. Para ver lo que ve la API:
+`set role gatobobah_app; set app.company_id = '2';` antes de la consulta.
+
+El porqué completo está en la constitución (IV, *La base local niega lo mismo que producción*) y la
+mecánica en `AGENTS.md` §2.

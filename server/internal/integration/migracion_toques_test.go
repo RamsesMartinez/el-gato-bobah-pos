@@ -17,6 +17,7 @@ import (
 // consola nunca la muestra—.
 
 func TestLosToquesNoTienenDondeGuardarNiPersonaNiHora(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -62,6 +63,7 @@ func TestLosToquesNoTienenDondeGuardarNiPersonaNiHora(t *testing.T) {
 
 // Los cuatro `check`, cada uno con lo que rechaza.
 func TestLosCheckDeLosToques(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -92,6 +94,7 @@ func TestLosCheckDeLosToques(t *testing.T) {
 
 // La llave suma en vez de crear filas, también con el rol nulo (que es el caso de la supresión).
 func TestLosToquesSumanEnLaMismaFila(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -121,6 +124,7 @@ func TestLosToquesSumanEnLaMismaFila(t *testing.T) {
 
 // LA CONSOLA VE LOS TOQUES DE TODAS LAS EMPRESAS; EL NEGOCIO, SOLO LOS SUYOS.
 func TestLaConsolaVeLosToquesDeTodasLasEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)
@@ -143,13 +147,25 @@ func TestLaConsolaVeLosToquesDeTodasLasEmpresas(t *testing.T) {
 		t.Fatalf("la consola ve %d filas de 2: sin la política la rejilla sale vacía y nada falla", vistas)
 	}
 
+	// EL TENANT VA EXPLÍCITO, y de paso se comprueba que sin él no se ve nada. Antes el arnés
+	// dejaba el default de empresa a nivel BASE y el rol de app lo heredaba: este caso pasaba por
+	// el ambiente, no por lo que afirma.
 	app := appRoleStore(t)
+	var sinTenant int
+	if err := app.Pool.QueryRow(ctx, `select count(*) from usage_touches_daily`).Scan(&sinTenant); err != nil {
+		t.Fatalf("leer usage_touches_daily sin tenant: %v", err)
+	}
+	if sinTenant != 0 {
+		t.Fatalf("sin empresa fijada el rol de app ve %d filas de usage_touches_daily: RLS debe fallar CERRADO", sinTenant)
+	}
+
+	conn := conexionDeEmpresa(t, app, defaultCompanyID)
 	var suyas int
-	if err := app.Pool.QueryRow(ctx, `select count(*) from usage_touches_daily`).Scan(&suyas); err != nil {
+	if err := conn.QueryRow(ctx, `select count(*) from usage_touches_daily`).Scan(&suyas); err != nil {
 		t.Fatalf("el negocio no pudo leer lo suyo: %v", err)
 	}
 	if suyas != 1 {
-		t.Fatalf("el negocio ve %d filas y debe ver 1", suyas)
+		t.Fatalf("con su empresa fijada el negocio ve %d filas y debe ver 1", suyas)
 	}
 }
 

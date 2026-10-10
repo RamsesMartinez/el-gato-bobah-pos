@@ -204,14 +204,18 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		// ahora es el camino MANUAL: exige `manualReason` y es excluyente con `counts`.
 		OpeningCash  *decimal.Decimal `json:"openingCash"`
 		ManualReason string           `json:"manualReason"`
+		// Motivo de una apertura distinta del cierre anterior (spec 032, punto 6).
+		OpeningReason     string `json:"openingReason"`
+		OpeningReasonNote string `json:"openingReasonNote"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID,
-		aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason), u.ID)
+	apertura := aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason)
+	apertura.Reason, apertura.ReasonNote = body.OpeningReason, body.OpeningReasonNote
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, apertura, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -247,6 +251,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		CountedCash  *decimal.Decimal `json:"countedCash"`
 		ManualReason string           `json:"manualReason"`
 		Notes        string           `json:"notes"`
+		TipsDecision string           `json:"tipsDecision"`
+		// terminalId(string) → total del corte de la terminal (spec 032, arqueo por terminal).
+		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
+		// FloatLeft: el fondo que se queda para el siguiente turno (2026-10-10).
+		FloatLeft *decimal.Decimal `json:"floatLeft"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -264,10 +273,20 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		}
 		declared[id] = v
 	}
+	terminales := map[int64]decimal.Decimal{}
+	for k, v := range body.TerminalCounts {
+		id, err := strconv.ParseInt(k, 10, 64)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: %q no es una terminal", domain.ErrValidation, k))
+			return
+		}
+		terminales[id] = v
+	}
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
+		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
-		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes,
+		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
 	if err != nil {
 		Error(w, err)
@@ -336,19 +355,36 @@ func (h *Handlers) CashSessionSales(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /cash-sessions — histórico de cortes (últimos N).
+// GET /cash-sessions?page=&pageSize=&from=&to= — histórico de cortes, paginado y opcionalmente
+// acotado por el día del turno. Sin páginas solo existían los 50 más recientes: un corte más viejo
+// no se podía abrir desde la pantalla donde se audita.
 func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
-	limit, err := limiteDeQuery(r.URL.Query(), 50)
+	q := r.URL.Query()
+	limit, offset, err := paginaDeQuery(q)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	rows, err := h.backoffice.SessionHistory(r.Context(), limit)
+	f := domain.SessionHistoryFilter{Limit: limit, Offset: offset}
+	for _, p := range []struct {
+		name string
+		dst  **time.Time
+	}{{"from", &f.From}, {"to", &f.To}} {
+		if v := q.Get(p.name); v != "" {
+			d, err := parseDate(v, time.Time{})
+			if err != nil {
+				Error(w, err)
+				return
+			}
+			*p.dst = &d
+		}
+	}
+	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	JSON(w, http.StatusOK, map[string]any{"items": rows})
+	JSON(w, http.StatusOK, map[string]any{"items": rows, "total": total, "page": offset / limit, "pageSize": limit})
 }
 
 // GET /cash-sessions/{id} — detalle de un corte (totales guardados + movimientos).
@@ -369,22 +405,278 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 // POST /cash-sessions/movements — registra entrada/salida de efectivo en la sesión abierta de una caja.
 func (h *Handlers) CreateCashMovement(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		RegisterID int64           `json:"registerId"`
-		Kind       string          `json:"kind"`
-		Amount     decimal.Decimal `json:"amount"`
-		Concept    string          `json:"concept"`
+		RegisterID int64 `json:"registerId"`
+		app.CashMovementCmd
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.RegisterID, body.Kind, body.Amount, body.Concept, u.ID)
+	body.UserID = u.ID
+	sess, err := h.backoffice.RecordCashMovement(r.Context(), body.RegisterID, body.CashMovementCmd)
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, sess)
+}
+
+// PendingTips: la propina por entregar del turno abierto de una caja.
+func (h *Handlers) PendingTips(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, fmt.Errorf("%w: caja inválida", domain.ErrValidation))
+		return
+	}
+	v, err := h.tips.Pending(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// PayoutTips: reparte la propina pendiente entre una o varias personas.
+func (h *Handlers) PayoutTips(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RegisterID int64 `json:"registerId"`
+		app.TipPayoutCmd
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	body.ActorID = u.ID
+	items, err := h.tips.Payout(r.Context(), body.RegisterID, body.TipPayoutCmd)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, map[string]any{"items": items})
+}
+
+// CorrectCashOut: reverso de una salida + la salida bien capturada (spec 032, punto 4).
+func (h *Handlers) CorrectCashOut(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body app.CashMovementCmd
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	body.UserID = u.ID
+	sess, err := h.backoffice.CorrectCashOut(r.Context(), id, body)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, sess)
+}
+
+// CashAlerts: propina sin entregar y salidas sin concepto de las cajas abiertas (spec 032).
+func (h *Handlers) CashAlerts(w http.ResponseWriter, r *http.Request) {
+	v, err := h.backoffice.CashAlerts(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// ---- Correos del resumen diario (spec 032, punto 7) ----
+
+func (h *Handlers) SummaryEmails(w http.ResponseWriter, r *http.Request) {
+	e, err := h.dailySummary.Emails(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"emails": e})
+}
+
+func (h *Handlers) SetSummaryEmails(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Emails []string `json:"emails"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.dailySummary.SetEmails(r.Context(), body.Emails); err != nil {
+		Error(w, err)
+		return
+	}
+	h.SummaryEmails(w, r)
+}
+
+// ---- Terminales de tarjeta (spec 032, puntos 8 y 9) ----
+
+func (h *Handlers) ListCardTerminals(w http.ResponseWriter, r *http.Request) {
+	items, err := h.terminals.List(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateCardTerminal(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		BranchID int64  `json:"branchId"`
+		Name     string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	t, err := h.terminals.Create(r.Context(), body.BranchID, body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, t)
+}
+
+func (h *Handlers) UpdateCardTerminal(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		Archived bool   `json:"archived"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Archived {
+		if err := h.terminals.Archive(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	t, err := h.terminals.Rename(r.Context(), id, body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, t)
+}
+
+func (h *Handlers) CardCountModes(w http.ResponseWriter, r *http.Request) {
+	items, err := h.terminals.CardCountModes(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) SetCardCountMode(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.terminals.SetCardCountMode(r.Context(), id, body.Mode); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- Conceptos de salida (spec 032, punto 3) ----
+
+func (h *Handlers) ListCashConcepts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.cashConcepts.List(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateCashConcept(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	c, err := h.cashConcepts.Create(r.Context(), body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, c)
+}
+
+func (h *Handlers) UpdateCashConcept(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		app.ConceptUpdate
+		Archived bool `json:"archived"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Archived {
+		if err := h.cashConcepts.Archive(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	c, err := h.cashConcepts.Update(r.Context(), id, body.ConceptUpdate)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, c)
+}
+
+func (h *Handlers) MergeCashConcept(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		IntoID int64 `json:"intoId"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.cashConcepts.Merge(r.Context(), id, body.IntoID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- Categorías de gasto ----
@@ -591,6 +883,7 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ExpenseDate string               `json:"expenseDate"`
+		ExpenseDay  string               `json:"expenseDay"`
 		ReceivedAt  string               `json:"receivedAt"`
 		CategoryID  int64                `json:"categoryId"`
 		SupplierID  *int64               `json:"supplierId"`
@@ -609,7 +902,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	id, err := h.backoffice.CreateExpense(r.Context(), app.ExpenseInput{
-		ExpenseDate: body.ExpenseDate, ReceivedAt: body.ReceivedAt,
+		ExpenseDate: body.ExpenseDate, ExpenseDay: body.ExpenseDay, ReceivedAt: body.ReceivedAt,
 		CategoryID: body.CategoryID, SupplierID: body.SupplierID, Amount: body.Amount,
 		Description: body.Description, Status: body.Status,
 		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
@@ -812,6 +1105,27 @@ func (h *Handlers) ReportMargins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.backoffice.ProductMargins(r.Context(), rango.From, rango.To, limite)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"range": rangoJSON(rango), "items": rows})
+}
+
+// GET /reports/products-sold?preset=&from=&to=&limit= — unidades por producto, sueltas y dentro de
+// paquetes (spec 028).
+func (h *Handlers) ReportProductsSold(w http.ResponseWriter, r *http.Request) {
+	rango, err := h.rangoDeReporte(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	limite, err := limiteDeQuery(r.URL.Query(), 50)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	rows, err := h.backoffice.ProductsSold(r.Context(), rango.From, rango.To, limite)
 	if err != nil {
 		Error(w, err)
 		return

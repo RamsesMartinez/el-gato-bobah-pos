@@ -57,3 +57,16 @@ test('el disparador mide al menos 44 px aunque el tamaño sea sm', () => {
   const boton = screen.getByRole('button', { name: /Elegir/ });
   expect(boton).toHaveStyle({ minHeight: '44px' });
 });
+
+// El servidor junta los nombres sin importar mayúsculas ni espacios de más; la hoja ofrecía
+// «Crear « Walmart »» y el alta devolvía el que ya existía, como si se hubiera creado otro.
+test('no ofrece crear un nombre que ya existe con espacios de más', async () => {
+  const u = userEvent.setup();
+  wrap(<Picker value="" options={sups} onChange={vi.fn()} onCreate={vi.fn()} title="Proveedor" />);
+  await u.click(screen.getByRole('button', { name: /seleccionar/i }));
+  await u.type(screen.getByPlaceholderText('Buscar…'), '  WALMART ');
+  expect(screen.queryByRole('button', { name: /Crear/ })).not.toBeInTheDocument();
+  await u.clear(screen.getByPlaceholderText('Buscar…'));
+  await u.type(screen.getByPlaceholderText('Buscar…'), 'sams   coacalco');
+  expect(screen.queryByRole('button', { name: /Crear/ })).not.toBeInTheDocument();
+});

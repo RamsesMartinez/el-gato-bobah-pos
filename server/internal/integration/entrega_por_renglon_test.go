@@ -46,6 +46,7 @@ func pedidoDeAlitas(t *testing.T, st *store.Store, svc *app.OrdersService, sufij
 // EL CASO QUE MOTIVA LA FEATURE: de 5 alitas salen 3 y las otras 2 siguen en la freidora. El
 // pedido no puede cerrarse todavía, y lo entregado no se puede perder.
 func TestSalenTresDeCincoAlitasYElPedidoSigueAbierto(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -71,6 +72,7 @@ func TestSalenTresDeCincoAlitasYElPedidoSigueAbierto(t *testing.T) {
 // marcar el renglón y además el pedido es pedirle dos veces lo mismo, y la segunda se olvida: el
 // pedido se quedaría abierto toda la tarde y el cierre de caja lo reclamaría al final del turno.
 func TestAlEntregarLoUltimoElPedidoSeCierraSolo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -98,6 +100,7 @@ func TestAlEntregarLoUltimoElPedidoSeCierraSolo(t *testing.T) {
 
 // El caso común y el de un solo tap: se entrega todo junto.
 func TestEntregarTodoCierraElPedidoYSusRenglones(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -122,6 +125,7 @@ func TestEntregarTodoCierraElPedidoYSusRenglones(t *testing.T) {
 // Un doble tap sobre "entregué 3" dejaría el renglón en 6 de 5 y cerraría el pedido con comida
 // todavía en la freidora.
 func TestNoSePuedeEntregarMasDeLoQueFalta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -144,6 +148,7 @@ func TestNoSePuedeEntregarMasDeLoQueFalta(t *testing.T) {
 // Cancelar repone el stock de TODAS las líneas. Si algo ya salió a la calle, reponerlo le inventa
 // al almacén comida que ya se comieron, y ese error no se ve hasta que falta producto.
 func TestNoSeCancelaUnPedidoConProductosEntregados(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -171,6 +176,7 @@ func TestNoSeCancelaUnPedidoConProductosEntregados(t *testing.T) {
 // reportes, los $1,120 cobrados se quedaban en `order_payments` y el arqueo los seguía esperando en
 // el cajón. Cancelar sin resolver el dinero era el agujero, no el flujo de siempre.
 func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -182,7 +188,7 @@ func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
 		t.Fatalf("cancelar un pedido cobrado sin devolver = %v, quiere ErrCancelarSinDevolver", err)
 	}
 
-	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{
+	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1",
 		OrderID: ord.ID, Motivo: "se equivocó de pedido", ActorID: cajero, Devolver: true,
 	}); err != nil {
 		t.Fatalf("cancelar con devolución: %v", err)
@@ -204,6 +210,7 @@ func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
 // El tablero necesita el avance para pintar "3 de 5 entregados" sin traerse los renglones de cada
 // tarjeta. Si contara los cancelados, una tarjeta diría que falta comida que nadie va a hacer.
 func TestElTableroTraeElAvanceDeEntrega(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -250,6 +257,7 @@ func TestElTableroTraeElAvanceDeEntrega(t *testing.T) {
 // Cada pedido nace con su nombre para cantarlo en cocina, y ese nombre se GUARDA: es lo que va en
 // el ticket y lo que el cliente usa para pedir su factura.
 func TestCadaPedidoNaceConSuNombre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
 	ord, _, _ := pedidoDeAlitas(t, st, svc, "folio")
@@ -272,6 +280,7 @@ func TestCadaPedidoNaceConSuNombre(t *testing.T) {
 // La migración 0045 los dejó en cero —afirmando lo contrario de lo que pasó— y 0048 lo corrige en
 // lo histórico; esto fija el comportamiento hacia adelante para que no vuelva a abrirse el hueco.
 func TestUnPedidoReembolsadoTieneSusRenglonesEntregados(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

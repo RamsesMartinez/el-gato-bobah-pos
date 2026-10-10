@@ -22,6 +22,7 @@ import (
 // del dinero: una venta cancelada SÍ es parte de lo que pasó en el turno y se lista, pero su dinero
 // NO entró y no puede sumar al total.
 func TestElDetalleDelCorteListaSusVentasYSoloSumaElIngreso(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -82,6 +83,7 @@ func TestElDetalleDelCorteListaSusVentasYSoloSumaElIngreso(t *testing.T) {
 // El filtro es por turno y no por ventana de tiempo: dos turnos del mismo día comparten horas, y
 // acotar por hora metería en un arqueo el dinero del otro.
 func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -113,7 +115,7 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar: %v", err)
 	}
-	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero)
+	segundoTurno, err := back.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero)
 	if err != nil {
 		t.Fatalf("reabrir: %v", err)
 	}
@@ -145,6 +147,7 @@ func TestElDetalleDeUnCorteNoTraeVentasDeOtro(t *testing.T) {
 // cinco sin que nadie lo notara. Un umbral de horas dejaría pasar el turno que abrió ayer a las
 // 23:00 —el caso que importa— y molestaría al que abrió hoy temprano.
 func TestElEstadoDeCajaAvisaCuandoElTurnoEsDeOtroDia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	cajero := makeUser(t, st, "cajero_aviso", "cajero")

@@ -64,6 +64,7 @@ func turnoDe(t *testing.T, st *store.Store, empresa int64) int64 {
 
 // El catálogo: lo que se puede contar, y que nadie pueda sembrar una pieza que no vale dinero.
 func TestElCatalogoDeDenominacionesEsUsableYNoAceptaBasura(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -124,6 +125,7 @@ func TestElCatalogoDeDenominacionesEsUsableYNoAceptaBasura(t *testing.T) {
 // apague el billete de $1000 para un negocio que no lo acepta lo apagaría para TODAS las empresas
 // de la base. Mientras siga global, se cambia como operación deliberada de owner.
 func TestElRolDeLaAppNoPuedeTocarElCatalogo(t *testing.T) {
+	t.Parallel()
 	// Siembra su propio esquema. Antes no lo hacía y pasaba igual, porque toda la suite compartía
 	// una base y le quedaba el catálogo del test anterior: dependía del ORDEN de ejecución, que es
 	// justo lo que un test no debe hacer. Corriendo solo (`-run`) siempre habría fallado.
@@ -157,6 +159,7 @@ func TestElRolDeLaAppNoPuedeTocarElCatalogo(t *testing.T) {
 
 // El aislamiento entre empresas, que es lo único que de verdad necesita dos.
 func TestUnConteoDeEfectivoNoSeVeDesdeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -205,6 +208,7 @@ func TestUnConteoDeEfectivoNoSeVeDesdeOtraEmpresa(t *testing.T) {
 // deja pasar un conteo con el company_id de A colgado del session_id de B: queda invisible para las
 // dos y el turno ajeno aparece con piezas que nadie contó ahí. Es la razón textual de 0041 y 0061.
 func TestUnConteoNoSeCuelgaDelTurnoDeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -229,6 +233,7 @@ func TestUnConteoNoSeCuelgaDelTurnoDeOtraEmpresa(t *testing.T) {
 // cuenta eso no es hipotético. Aquí se prueba que la BASE lo rechaza; que el servicio lo traduzca a
 // un mensaje y no a un 500 es T024b.
 func TestUnTurnoNoPuedeTenerDosConteosDelMismoMomento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -255,6 +260,7 @@ func TestUnTurnoNoPuedeTenerDosConteosDelMismoMomento(t *testing.T) {
 // renglón de arriba se llevaría en silencio piezas de un arqueo que ya se cerró. Dinero contado y
 // declarado no desaparece por una limpieza de catálogo.
 func TestBorrarUnaDenominacionUsadaNoSeLlevaElArqueo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -284,6 +290,7 @@ func TestBorrarUnaDenominacionUsadaNoSeLlevaElArqueo(t *testing.T) {
 // FR-009 acepta el cero de entrada; lo que no existe es la fila. "No hay" y "no se capturó" son lo
 // mismo en un arqueo, y guardar once ceros por conteo es ruido que hay que filtrar al leer.
 func TestUnRenglonDeConteoConCeroPiezasNoSeGuarda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)
@@ -311,6 +318,7 @@ func TestUnRenglonDeConteoConCeroPiezasNoSeGuarda(t *testing.T) {
 
 // El rol de la app escribe conteos pero no los edita ni los borra: un arqueo firmado no se toca.
 func TestElRolDeLaAppNoEditaNiBorraUnConteo(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	turno := turnoDe(t, owner, defaultCompanyID)
 	ctx := context.Background()
@@ -399,6 +407,7 @@ func TestElDownDeLaMigracionDelConteoNoDejaBasura(t *testing.T) {
 // Por eso el test cuenta DOS momentos del mismo turno: el segundo conteo tiene `id != company_id`,
 // que es la única condición que hace visible el defecto.
 func TestElSegundoConteoDeUnTurnoTambienGuardaSusRenglones(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	turno := turnoDe(t, st, defaultCompanyID)

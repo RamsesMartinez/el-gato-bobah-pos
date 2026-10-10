@@ -82,6 +82,27 @@ const (
 	FalloMenuTruncado      ClaseDeFallo = "menu_truncado"
 )
 
+// Dos clases más, propias de RECIBIR un pedido (spec 021). Viven aquí y no en un tipo aparte
+// porque son el mismo vocabulario: «por qué no sirvió lo que vino de la plataforma». Lo que cambia
+// es la lista de cada `check`, y por eso hay dos funciones espejo y no una.
+const (
+	// FalloDetalleIlegible: el detalle llegó pero no se pudo interpretar. Distinto de una respuesta
+	// inválida: aquí el HTTP salió bien y lo que no cuadra es la forma del pedido.
+	FalloDetalleIlegible ClaseDeFallo = "detalle_ilegible"
+	// FalloMapeoImposible: se entendió el pedido y no se pudo registrar.
+	FalloMapeoImposible ClaseDeFallo = "mapeo_imposible"
+)
+
+// ClasesDeFalloDePedido son las del `check` de platform_webhook_events (0073). No incluye las de
+// menú —un pedido no puede venir «vacío» ni «truncado» en el sentido de un menú— y sí las dos de
+// arriba.
+func ClasesDeFalloDePedido() []ClaseDeFallo {
+	return []ClaseDeFallo{
+		FalloSinCredenciales, FalloAuthRechazada, FalloTiempoAgotado,
+		FalloRespuestaInvalida, FalloDetalleIlegible, FalloMapeoImposible,
+	}
+}
+
 // ClasesDeFallo son todas, en el orden del `check`. Se exporta para que el test de espejo la
 // compare contra el archivo de migración.
 func ClasesDeFallo() []ClaseDeFallo {
@@ -129,6 +150,9 @@ type ProductoLocal struct {
 	Nombre             string          `json:"name"`
 	PrecioDePlataforma decimal.Decimal `json:"platformPrice"`
 	Activo             bool            `json:"active"`
+	// Contexto: la categoría de un producto o el grupo de una opción. Distingue dos con el mismo
+	// nombre al emparejar (el catálogo real tiene opciones repetidas en grupos distintos).
+	Contexto string `json:"context,omitempty"`
 }
 
 // Pareja es un emparejamiento guardado. Sin `ConfirmadaEn` es una PROPUESTA, no un hecho.

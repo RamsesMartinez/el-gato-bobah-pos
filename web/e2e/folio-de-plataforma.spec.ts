@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { API, USUARIO, EMPRESA, PASSWORD, tokenDeRequest } from './ambiente';
+import { randomUUID } from 'node:crypto';
+import { API, USUARIO, EMPRESA, PASSWORD, cuentasVivas, tokenDeApi, tokenDeRequest } from './ambiente';
+import { abrirTicket, botonCobrar, ponerUnProducto, productoPorNombre } from './pos';
+import { iniciarSesion } from './sesion';
 
 // EL FOLIO DE LA PLATAFORMA, A 1024×600 Y CONTRA EL SERVIDOR DE VERDAD (spec 014).
 //
@@ -18,13 +21,7 @@ import { API, USUARIO, EMPRESA, PASSWORD, tokenDeRequest } from './ambiente';
 async function entrar(page: Page, ruta = '/') {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-    await page.waitForURL(/\/(pos)?$/);
-  }
+  await iniciarSesion(page);
   if (ruta !== '/') await page.goto(ruta);
   await page.waitForLoadState('networkidle');
 }
@@ -60,7 +57,7 @@ async function renglonesDelMosaico(page: Page): Promise<{ renglones: number; sob
 test.describe('Y · el folio de la plataforma en el POS', () => {
   test('Y6+Y9 · el campo no existe en Mostrador, y con plataforma activa el mosaico conserva sus renglones', async ({ page }) => {
     await entrar(page);
-    await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
     // El aviso de turno viejo desplaza el shell 53 px sin restárselos de su alto: se quita para
     // medir el estado que el documento de presupuesto llama "sin el aviso", que es el más apretado.
@@ -103,7 +100,7 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
 
   test('Y7+Y8 · mandar sin folio pide el dato, y la salida sigue visible con el teclado abierto', async ({ page }) => {
     await entrar(page);
-    await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
     const ahoraNo = page.getByRole('button', { name: /Ahora no/i });
     if (await ahoraNo.isVisible().catch(() => false)) await ahoraNo.click();
 
@@ -111,14 +108,11 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
     test.skip(!(await uber.isVisible().catch(() => false)), 'este negocio no tiene plataformas configuradas');
     await uber.click();
 
-    await ponerUnProductoEnLaCuenta(page);
-    const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
-    if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+    await ponerUnProducto(page);
 
-    // Con el campo VACÍO, mandar se interpone.
-    const pildora = page.getByRole('button', { name: /art ·/ });
-    if (await pildora.isVisible().catch(() => false)) await pildora.click();
-    await page.getByRole('button', { name: 'COBRAR' }).click();
+    // Con el campo VACÍO, mandar se interpone: «Enviar y cobrar» manda a cocina primero.
+    await abrirTicket(page);
+    await botonCobrar(page).click();
 
     const hoja = page.getByText(/¿Con qué folio llegó de Uber Eats\?/);
     await expect(hoja, 'mandar con el campo vacío no pidió el folio').toBeVisible({ timeout: 15_000 });
@@ -145,72 +139,52 @@ test.describe('Y · el folio de la plataforma en el POS', () => {
   });
 });
 
-// UNA CUENTA GUARDADA POR LA VERSIÓN ANTERIOR NO PUEDE DEJAR EL POS EN BLANCO.
+// UNA CUENTA GUARDADA POR LA VERSIÓN ANTERIOR NO PUEDE DEJAR EL POS EN BLANCO (caso 18).
 //
-// Es el defecto que de verdad se vio en dev, sobre Chrome: `platformOrderRef` nació con esta
-// feature, las cuentas ya guardadas en la tableta no lo traían, y `FolioPlataformaSheet` —que vive
-// SIEMPRE montada— hace `useState(valorInicial).trim()` en su primer render. El POS entero se caía
-// antes de pintar: pantalla en blanco al entrar.
-//
-// SEMBRAR EL CARRITO VIEJO NO BASTA, y por eso este caso pasaba en verde contra el build roto:
-// Playwright arranca con un perfil limpio, sin la marca `sesion.ultimaEmpresa`, y `hayQueLimpiar`
-// trata un dispositivo sin marca como cambio de empresa — el login llama a `descartarTodo()` y el
-// carrito sembrado se va a la basura antes de que el POS renderice. La tableta de un operador SÍ
-// tiene la marca, así que ahí la cuenta vieja sobrevive al login y es la que truena. Hay que
-// sembrar las dos cosas para reproducir la tableta de verdad.
-
-// ponerUnProductoEnLaCuenta llega al producto por el BUSCADOR, no por el mosaico.
-//
-// Tocarlo directo funcionaba mientras el ambiente de pruebas tenía un catálogo sembrado y chico:
-// el producto estaba a la vista al entrar. Con el catálogo real del negocio —cientos de productos
-// repartidos en categorías— deja de estarlo, y siete casos se caían esperando 60 segundos a un
-// texto que sí existe pero no está en pantalla. El buscador lo alcanza sin importar cuántos haya.
-//
-// Se busca SIEMPRE el mismo producto a propósito: varios de estos casos afirman importes, y tomar
-// "el primero que aparezca" los volvería dependientes de qué catálogo tenga el ambiente.
-async function ponerUnProductoEnLaCuenta(page: Page, nombre = 'Dedos de Queso Pza') {
-  const buscador = page.getByPlaceholder('Buscar producto…');
-  if (await buscador.isVisible().catch(() => false)) {
-    await buscador.fill(nombre);
-  }
-  await page.getByText(nombre).first().click({ timeout: 30_000 });
-}
-
-test('Y20 · una cuenta guardada antes de esta feature no deja el POS en blanco', async ({ page, request }) => {
+// Era el defecto que de verdad se vio en dev: una cuenta guardada en la tableta sin
+// `platformOrderRef` tumbaba el POS al entrar. Desde la 030 las cuentas no viven en la tableta: la
+// primera carga de la versión nueva SUBE las de `egb:ticket:v2` al servidor y borra la llave (D-12).
+// Se siembra también la marca de empresa: sin ella el login limpia el almacén y el caso no reproduce
+// la tableta de un operador.
+test('Y20 · una cuenta guardada antes de esta feature sube al servidor y no deja el POS en blanco', async ({ page, request }) => {
   const r = await request.post(`${API}/auth/login`, {
     data: { username: USUARIO, slug: EMPRESA, password: PASSWORD },
   });
   expect(r.ok(), 'el login del ambiente de pruebas falló').toBeTruthy();
   const companyId: number = (await r.json()).user.companyId;
+  const jwt = await tokenDeApi();
+  const producto = await productoPorNombre(jwt, 'Dedos de Queso Pza');
+  const pestaña = randomUUID();
 
   const errores: string[] = [];
   page.on('pageerror', (e) => errores.push(e.message.slice(0, 200)));
 
-  await page.addInitScript((empresa: number) => {
-    // La marca de empresa: sin ella el login limpia el carrito y el defecto no se reproduce.
+  await page.addInitScript(({ empresa, id, productId }) => {
     localStorage.setItem('sesion.ultimaEmpresa', String(empresa));
     localStorage.setItem('egb:ticket:v2', JSON.stringify({
       state: {
         tabs: [{
-          id: 'vieja-1', num: 1, folioName: 'Tigre', lines: [], envio: '',
+          id, num: 1, folioName: 'Tigre', envio: '',
+          lines: [{ lineId: 'l-1', productId, name: 'Dedos de Queso Pza', unitPrice: 12, qty: 2, modifiers: [] }],
           serviceType: 'mostrador', customerName: '', platformId: null,
           // sin platformOrderRef, tal como se guardaba antes
         }],
-        activeId: 'vieja-1', seq: 2,
+        activeId: id, seq: 2,
       },
       version: 0,
     }));
-  }, companyId);
+  }, { empresa: companyId, id: pestaña, productId: producto });
 
   await entrar(page);
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
-  // La cuenta VIEJA es la que tiene que seguir ahí: si el POS renderizó porque el login la tiró,
-  // este caso volvería a pasar en verde con el defecto puesto.
-  await expect(page.getByRole('button', { name: /Tigre/ }),
-    'el carrito sembrado no sobrevivió al login: el caso no está reproduciendo la tableta de un operador')
-    .toBeVisible({ timeout: 30_000 });
+  // La cuenta vieja está en el servidor con su id y sus productos, y ya no en la tableta.
+  await expect.poll(async () => (await cuentasVivas(jwt)).some((c) => c.draftId === pestaña),
+    { timeout: 20_000 }).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem('egb:ticket:v2')),
+    'la llave vieja se quedó: la siguiente carga la volvería a subir').toBeNull();
 
-  // Y elegir plataforma —lo primero que toca el campo nuevo— tampoco truena.
+  // Y elegir plataforma —lo primero que toca el campo de folio— tampoco truena.
   const uber = page.getByRole('button', { name: /Uber Eats/ });
   if (await uber.isVisible().catch(() => false)) {
     await uber.click();

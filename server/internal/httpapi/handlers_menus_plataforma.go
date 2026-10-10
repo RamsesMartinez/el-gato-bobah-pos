@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
+	"github.com/ramthedev/el-gato-bobah-pos/server/internal/logging"
 )
 
 // Menús de plataforma (spec 020): leer lo publicado y decir en qué difiere del catálogo.
@@ -158,7 +160,7 @@ func (h *Handlers) ReadPlatformMenu(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrValidation)
 		return
 	}
-	lecturaID, inicio, err := h.menusPlataforma.DispararLectura(r.Context(), u.CompanyID, id)
+	lecturaID, inicio, err := h.menusPlataforma.DispararLecturaPor(r.Context(), u.CompanyID, id, u.ID)
 	if err != nil {
 		Error(w, err)
 		return
@@ -232,6 +234,9 @@ type parejaBody struct {
 	// Reemplazar una pareja ya confirmada se pide explícito: el `PUT` a secas responde 409 para que
 	// la pantalla pregunte antes de pisar una decisión que alguien tomó a mano.
 	Replace bool `json:"replace"`
+	// CapturePrice: si esta pareja da el precio de la captura a mano. Obligatorio cuando el producto
+	// ya tiene otra pareja en la tienda; ausente en los demás casos (0077).
+	CapturePrice *bool `json:"capturePrice"`
 }
 
 // PUT /admin/platform-menus/connections/{id}/links/{externalId}
@@ -265,11 +270,12 @@ func (h *Handlers) SetPlatformItemLink(w http.ResponseWriter, r *http.Request) {
 	}
 	err = h.menusPlataforma.GuardarPareja(r.Context(), app.AltaDePareja{
 		ConexionID: id, ExternalID: externalID,
-		Clase:      domain.ClaseDeItem(body.Kind),
-		LocalID:    body.LocalID,
-		ClaseLocal: domain.ClaseLocal(body.LocalKind),
-		UsuarioID:  u.ID,
-		Reemplazar: body.Replace,
+		Clase:           domain.ClaseDeItem(body.Kind),
+		LocalID:         body.LocalID,
+		ClaseLocal:      domain.ClaseLocal(body.LocalKind),
+		UsuarioID:       u.ID,
+		Reemplazar:      body.Replace,
+		PrecioDeCaptura: body.CapturePrice,
 	})
 	if err != nil {
 		Error(w, err)
@@ -343,4 +349,318 @@ func (h *Handlers) PlatformMenuDifferences(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	JSON(w, http.StatusOK, cmp)
+}
+
+// idDePlataformaDeRuta lee el id de la plataforma de la ruta. Un id malformado se rechaza, no se
+// convierte en otra plataforma.
+func idDePlataformaDeRuta(r *http.Request) (int16, error) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "platformId"), 10, 16)
+	if err != nil || id <= 0 {
+		return 0, domain.ErrValidation
+	}
+	return int16(id), nil
+}
+
+// GET /admin/platform-menus/webhook-keys/{platformId}
+//
+// Dice si hay llave, nunca cuál: el tipo que devuelve no tiene dónde llevarla.
+func (h *Handlers) GetWebhookKeyState(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	estado, err := h.pedidosPlataforma.EstadoDeLlave(r.Context(), plataforma)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, estado)
+}
+
+type llaveDeFirmaBody struct {
+	Key string `json:"key"`
+}
+
+// PUT /admin/platform-menus/webhook-keys/{platformId}
+//
+// Captura la llave o la cambia. Deja evento de seguridad: con esta llave se firma lo que entra a la
+// cocina, y quien la cambia puede meter pedidos a nombre de la plataforma. El evento lleva quién y
+// cuál plataforma, nunca la llave.
+func (h *Handlers) PutWebhookKey(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body llaveDeFirmaBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.pedidosPlataforma.GuardarLlave(r.Context(), u.CompanyID, plataforma, body.Key); err != nil {
+		Error(w, err)
+		return
+	}
+	logging.SecurityEvent(r.Context(), "webhook_llave_cambiada", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/webhook-keys/{platformId}/previous
+//
+// Retira la llave anterior de un cambio: desde aquí solo valida la vigente.
+func (h *Handlers) DeletePreviousWebhookKey(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.pedidosPlataforma.RetirarLlaveAnterior(r.Context(), plataforma); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	logging.SecurityEvent(r.Context(), "webhook_llave_anterior_retirada", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /admin/platform-menus/credentials/{platformId}
+//
+// Qué app está capturada (el client id no es secreto) y si este ambiente puede leerla. Nunca el
+// secreto: el tipo que devuelve no tiene dónde llevarlo.
+func (h *Handlers) GetPlatformCredentials(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	state, err := h.credentials.State(r.Context(), plataforma)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, state)
+}
+
+type credentialsBody struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// PUT /admin/platform-menus/credentials/{platformId}
+//
+// Captura o reemplaza las credenciales de la app, y solo las guarda si la plataforma las acepta.
+// Deja evento de seguridad en los dos desenlaces: con estas credenciales se aceptan pedidos a nombre
+// del negocio, y una racha de rechazos es alguien probando parejas. El evento lleva quién, cuál
+// plataforma y la clase del rechazo, nunca el secreto.
+func (h *Handlers) PutPlatformCredentials(w http.ResponseWriter, r *http.Request) {
+	plataforma, err := idDePlataformaDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	var body credentialsBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	if err := h.credentials.Save(r.Context(), u.CompanyID, u.ID, plataforma, body.ClientID, body.ClientSecret); err != nil {
+		logging.SecurityEvent(r.Context(), "platform_credentials_rejected",
+			"user_id", u.ID, "platform_id", plataforma, "reason", rejectionReason(err))
+		Error(w, err)
+		return
+	}
+	logging.SecurityEvent(r.Context(), "platform_credentials_saved", "user_id", u.ID, "platform_id", plataforma)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// rejectionReason es la clase estable del rechazo para el log: el texto del error puede traer
+// palabras de un tercero y no es una clave por la que se pueda buscar.
+func rejectionReason(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrCredentialsRejected):
+		return "rejected"
+	case errors.Is(err, domain.ErrCredentialsMissingScopes):
+		return "missing_scopes"
+	case errors.Is(err, domain.ErrPlatformUnavailable):
+		return "platform_unavailable"
+	case errors.Is(err, domain.ErrKeyServiceUnavailable):
+		return "key_service_unavailable"
+	case errors.Is(err, domain.ErrValidation):
+		return "invalid_input"
+	default:
+		return "internal_error"
+	}
+}
+
+// GET /admin/platform-menus/connections/{id}/board — la pantalla de emparejar (spec 026): platillos
+// y opciones en sus grupos, con los conteos de esos mismos grupos.
+func (h *Handlers) PlatformPairingBoard(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	v, err := h.menusPlataforma.Pairing(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// GET /admin/platform-menus/connections/{id}/candidates?externalId=…&q=…
+func (h *Handlers) PlatformPairingCandidates(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext := r.URL.Query().Get("externalId")
+	q := r.URL.Query().Get("q")
+	if ext == "" || len(ext) > 200 || len(q) > 100 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	c, err := h.menusPlataforma.Candidates(r.Context(), id, ext, q)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"candidates": c})
+}
+
+// maxBatch acota el lote: el menú real tiene 90 renglones, y un cuerpo con miles sería un abuso.
+const maxBatch = 500
+
+// POST /admin/platform-menus/connections/{id}/links/batch
+func (h *Handlers) ConfirmPlatformLinksBatch(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Confirm []string `json:"confirm"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if len(body.Confirm) == 0 || len(body.Confirm) > maxBatch {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	res, err := h.menusPlataforma.ConfirmBatch(r.Context(), id, u.ID, body.Confirm)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, res)
+}
+
+// PUT /admin/platform-menus/connections/{id}/exclusions/{externalId} — «solo existe en la plataforma».
+func (h *Handlers) SetPlatformItemExclusion(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext, err := externalIDDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.menusPlataforma.ExcludeItem(r.Context(), id, u.ID, ext); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/connections/{id}/exclusions/{externalId}
+func (h *Handlers) DeletePlatformItemExclusion(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	ext, err := externalIDDeRuta(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.menusPlataforma.UnexcludeItem(r.Context(), id, ext); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type localExclusionBody struct {
+	LocalKind string `json:"localKind"`
+	LocalID   int64  `json:"localId"`
+}
+
+// PUT /admin/platform-menus/connections/{id}/local-exclusions — «no se vende en la plataforma».
+func (h *Handlers) SetLocalItemExclusion(w http.ResponseWriter, r *http.Request) {
+	u, ok := userFrom(r.Context())
+	if !ok {
+		Error(w, domain.ErrUnauthorized)
+		return
+	}
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body localExclusionBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.LocalID <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.menusPlataforma.ExcludeLocal(r.Context(), id, u.ID, domain.ClaseLocal(body.LocalKind), body.LocalID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /admin/platform-menus/connections/{id}/local-exclusions
+func (h *Handlers) DeleteLocalItemExclusion(w http.ResponseWriter, r *http.Request) {
+	id, err := conexionDeRuta(r)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body localExclusionBody
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.LocalID <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	if err := h.menusPlataforma.UnexcludeLocal(r.Context(), id, domain.ClaseLocal(body.LocalKind), body.LocalID); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

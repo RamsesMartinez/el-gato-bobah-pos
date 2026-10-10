@@ -1,8 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
-import { IngresosEgresosCard, TotalsTable, MovementsTable, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte } from './CashPage';
-import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon } from '../../api/backoffice';
+import { Text } from '@chakra-ui/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
+import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
+import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte } from './CashPage';
+import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
 
@@ -136,6 +141,21 @@ test('el total de las ventas del corte declara qué deja fuera', () => {
     </Provider>,
   );
   expect(screen.getByText(/sin canceladas, reembolsadas ni propinas/i)).toBeInTheDocument();
+  // Spec 029: es lo VENDIDO, con lo que falta por cobrar adentro. Sin decirlo, $1,166 vendido
+  // contradecía a $480 de ingresos dos renglones arriba.
+  expect(screen.getByText(/importe vendido, incluye lo que falta por cobrar/i)).toBeInTheDocument();
+  expect(screen.getByText('Pedidos del corte')).toBeInTheDocument();
+});
+
+// El corte ya cerrado nombra lo dado por perdido («cancelar lo que falta», 2026-10-09): es la cifra
+// que cierra la resta vendido = cobrado + sin cobrar + perdido semanas después, cuando se audita.
+test('el detalle de un corte cerrado nombra lo perdido', () => {
+  render(
+    <Provider>
+      <VentasDelCorte session={{ ...corteCon({ salesCount: 1, salesShown: 1, salesTotal: '100.00' }), writtenOff: '60.00' }} />
+    </Provider>,
+  );
+  expect(screen.getByText(/Perdido: \$60 \(se canceló lo que faltaba\)/)).toBeInTheDocument();
 });
 
 // Un corte sin ventas lo dice con una frase. Una tabla con encabezados y cero renglones parece un
@@ -377,4 +397,439 @@ describe('el arqueo en el corte cerrado', () => {
     }} currency="MXN" />);
     expect(screen.queryByText('Arqueo del cajón')).not.toBeInTheDocument();
   });
+});
+
+// ---- Pagos devueltos (spec 027) ----
+
+const devuelto = (o: Partial<VoidedPayment>): VoidedPayment => ({
+  method: 'Tarjeta', amount: '120', tip: '0', orderFolio: 'Mesa 3 #14', voidedBy: 'Ana',
+  voidedAt: '2026-10-08T20:15:00Z', reason: 'Se cobró a la tarjeta equivocada', ...o,
+});
+
+test('VoidedPaymentsList lista método, monto, folio, quién y por qué', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({})]} currency="MXN" zona="America/Mexico_City" />);
+  expect(screen.getByText('Pagos devueltos')).toBeInTheDocument();
+  expect(screen.getByText('Tarjeta')).toBeInTheDocument();
+  expect(screen.getByText('$120')).toBeInTheDocument();
+  expect(screen.getByText(/Mesa 3 #14/)).toBeInTheDocument();
+  expect(screen.getByText(/Ana/)).toBeInTheDocument();
+  expect(screen.getByText(/Se cobró a la tarjeta equivocada/)).toBeInTheDocument();
+  expect(screen.getByText(/02:15/)).toBeInTheDocument();
+});
+
+// Un turno sin devoluciones es el caso normal: una sección vacía le quita alto a la tableta y
+// sugiere que algo se devolvió. Y un backend viejo que no manda el campo no debe tumbar la caja.
+test('VoidedPaymentsList no pinta nada sin devoluciones, ni con el campo ausente', () => {
+  const { rerender } = wrap(<VoidedPaymentsList payments={[]} currency="MXN" />);
+  expect(screen.queryByText('Pagos devueltos')).not.toBeInTheDocument();
+  rerender(<Provider><VoidedPaymentsList payments={undefined} currency="MXN" /></Provider>);
+  expect(screen.queryByText('Pagos devueltos')).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Pagos devueltos' })).not.toBeInTheDocument();
+});
+
+// El pago devuelto NO es una salida de caja ni dinero del turno: si la lista trajera un total,
+// invitaría a restarlo (o sumarlo) del esperado, que ya lo excluye en el servidor.
+test('VoidedPaymentsList no suma: sin renglón de total aunque haya varios', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({ amount: '100' }), devuelto({ amount: '50', method: 'Efectivo' })]} currency="MXN" />);
+  expect(screen.queryByText(/total/i)).not.toBeInTheDocument();
+  expect(screen.queryByText('$150')).not.toBeInTheDocument();
+});
+
+test('VoidedPaymentsList muestra la propina devuelta cuando la hubo', () => {
+  wrap(<VoidedPaymentsList payments={[devuelto({ tip: '15' })]} currency="MXN" />);
+  expect(screen.getByText(/propina \$15\b/)).toBeInTheDocument();
+});
+
+// En 600 px de alto, una lista que crece sin tope empuja fuera la tabla del cierre.
+test('VoidedPaymentsList acota su alto en dvh para no empujar el cierre fuera de la pantalla', () => {
+  const muchos = Array.from({ length: 30 }, (_, i) => devuelto({ orderFolio: `#${i + 1}` }));
+  wrap(<VoidedPaymentsList payments={muchos} currency="MXN" />);
+  const lista = screen.getByRole('list', { name: 'Pagos devueltos' });
+  const estilo = getComputedStyle(lista);
+  expect(estilo.maxHeight).toMatch(/dvh/);
+  expect(estilo.overflowY).toBe('auto');
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERRAR CAJA CON CUENTAS VIVAS (spec 030, US8; lienzo V2-7).
+// ---------------------------------------------------------------------------------------------
+
+const viva = (over: Partial<AccountItem> & { key: string }): AccountItem => ({
+  kind: 'order', draftId: null, orderId: 2, number: 2, folioName: 'Bosque de Noruega', state: 'delivered_owes',
+  group: 'delivered_owes', kitchenReady: false, platformId: null, serviceType: 'mostrador', customerName: null,
+  openedAt: '2026-10-08T15:01:00Z', updatedAt: '2026-10-08T15:01:00Z', businessDate: '2026-10-08',
+  total: '195.00', paid: '0.00', outstanding: '195.00', lineCount: 3, pendingDraftId: null, pendingCount: 0,
+  closedWithPending: false, ...over,
+});
+
+describe('las cuentas vivas en el cierre', () => {
+  const VIVAS = [
+    viva({ key: 'o:2' }),
+    viva({ key: 'd:a', kind: 'draft', draftId: 'a', draftVersion: 3, orderId: null, number: null, folioName: 'Levkoy', state: 'capturing', group: 'capturing', total: '74.00', outstanding: '74.00' }),
+  ];
+
+  test('lo que bloquea va arriba y «Abrir» lleva a su cuenta', async () => {
+    const onAbrir = vi.fn();
+    wrap(<CuentasDelCierre pending={[{ number: 1, name: 'Khao Manee', id: 11 }]} cuentas={[]} onAbrir={onAbrir} onDescartar={vi.fn()} />);
+    expect(screen.getByText(/Falta entregar 1 pedido/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir Khao Manee' }));
+    expect(onAbrir).toHaveBeenCalledWith('/pos?pedido=11');
+  });
+
+  // «Falta entregar 3 pedidos» sin montos obligaba a abrir cada uno (validación como usuario nuevo).
+  test('cada pedido que falta entregar dice de cuánto es', () => {
+    wrap(<CuentasDelCierre pending={[{ number: 1, name: 'Khao Manee', id: 11, total: '165.00' }]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    expect(screen.getByText('$165')).toBeInTheDocument();
+  });
+
+  // Las que deben y las que se capturan NO bloquean (D-10): van plegadas, para no empujar el botón
+  // de cerrar fuera de la pantalla de 600 px.
+  test('las que no bloquean van en una sección plegada con su conteo', async () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    const plegada = screen.getByRole('button', { name: /Cuentas pendientes \(2\)/ });
+    expect(screen.queryByText('Levkoy')).toBeNull();
+    await userEvent.click(plegada);
+    expect(screen.getByText('Levkoy')).toBeInTheDocument();
+    expect(screen.getByText('Bosque de Noruega')).toBeInTheDocument();
+  });
+
+  test('«Abrir» y «Descartar» miden 44 px, van separados, y solo se descarta lo que se captura', async () => {
+    const onAbrir = vi.fn();
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={onAbrir} onDescartar={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    const abrir = screen.getByRole('button', { name: 'Abrir Levkoy' });
+    const descartar = screen.getByRole('button', { name: 'Descartar Levkoy' });
+    expect(parseInt(getComputedStyle(abrir).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(parseInt(getComputedStyle(descartar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(abrir.parentElement).not.toBe(descartar.parentElement);
+    expect(screen.queryByRole('button', { name: 'Descartar Bosque de Noruega' })).toBeNull();
+    await userEvent.click(abrir);
+    expect(onAbrir).toHaveBeenCalledWith('/pos?cuenta=a');
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir Bosque de Noruega' }));
+    expect(onAbrir).toHaveBeenLastCalledWith('/pos?pedido=2');
+  });
+
+  test('«Descartar» pregunta en una hoja de la app antes de descartar', async () => {
+    const onDescartar = vi.fn();
+    const confirmar = vi.spyOn(window, 'confirm');
+    wrap(<CuentasDelCierre pending={[]} cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={onDescartar} />);
+    await userEvent.click(screen.getByRole('button', { name: /Cuentas pendientes/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Descartar Levkoy' }));
+    expect(onDescartar).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
+    expect(onDescartar).toHaveBeenCalledWith('a', 3);
+    expect(confirmar).not.toHaveBeenCalled();
+  });
+
+  // NO HAY FIADOS (decisión del dueño, 2026-10-09): un entregado que debe bloquea el cierre. La
+  // lista sale de `owing`, el mismo predicado que la guardia del servidor.
+  describe('los entregados que deben', () => {
+    const DEBEN = [
+      { id: 5, number: 5, name: 'Persa', total: '120.00', paid: '0.00' },
+      { id: 6, number: 6, name: '', total: '80.00', paid: '30.00' },
+    ];
+
+    test('bloquean arriba, con lo que debe cada uno', () => {
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      expect(screen.getByText(/Falta cobrar 2 pedidos/)).toBeInTheDocument();
+      expect(screen.getByText(/no cierra hasta que se cobren o se cancelen/)).toBeInTheDocument();
+      expect(screen.getByText('$120')).toBeInTheDocument();
+      expect(screen.getByText('$50')).toBeInTheDocument();
+    });
+
+    test('«Cobrar» lleva a su cuenta y mide 44 px', async () => {
+      const onAbrir = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={onAbrir} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      const cobrar = screen.getByRole('button', { name: 'Cobrar Persa' });
+      expect(parseInt(getComputedStyle(cobrar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      await userEvent.click(cobrar);
+      expect(onAbrir).toHaveBeenCalledWith('/pos?pedido=5');
+    });
+
+    test('«Cancelar» pide el motivo en una hoja y solo existe si no hay pagos', async () => {
+      const onCancelar = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={onCancelar} />);
+      expect(screen.queryByRole('button', { name: 'Cancelar #6' })).toBeNull();
+      const cancelar = screen.getByRole('button', { name: 'Cancelar Persa' });
+      expect(parseInt(getComputedStyle(cancelar).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      expect(cancelar.parentElement).not.toBe(screen.getByRole('button', { name: 'Cobrar Persa' }).parentElement);
+      await userEvent.click(cancelar);
+      expect(onCancelar).not.toHaveBeenCalled();
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar pedido' }));
+      expect(onCancelar).toHaveBeenCalledWith(5, 'se fue sin pagar');
+    });
+
+    // Opción A del dueño (2026-10-09): el pagado a medias cuyo cliente se fue da por perdido el resto.
+    test('«Cancelar lo que falta» en el pagado a medias, con motivo', async () => {
+      const onCancelarResto = vi.fn();
+      wrap(<CuentasDelCierre pending={[]} owing={DEBEN} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()}
+        onCancelar={vi.fn()} onCancelarResto={onCancelarResto} />);
+      expect(screen.queryByRole('button', { name: 'Cancelar lo que falta de Persa' })).toBeNull();
+      const resto = screen.getByRole('button', { name: 'Cancelar lo que falta de #6' });
+      expect(parseInt(getComputedStyle(resto).minHeight, 10)).toBeGreaterThanOrEqual(44);
+      await userEvent.click(resto);
+      // Dice cuánto se pierde y que lo cobrado se queda, antes de confirmar (dueño, 2026-10-09).
+      expect(await screen.findByText(/Se dan por perdidos \$50\. Lo cobrado \(\$30\) se queda como venta/)).toBeInTheDocument();
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Motivo' }), 'se fue sin pagar');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar lo que falta' }));
+      expect(onCancelarResto).toHaveBeenCalledWith(6, 'se fue sin pagar');
+    });
+
+    test('un entregado que debe no se lista dos veces', async () => {
+      wrap(<CuentasDelCierre pending={[]} owing={[{ id: 2, number: 2, name: 'Bosque de Noruega', total: '195.00', paid: '0.00' }]}
+        cuentas={VIVAS} onAbrir={vi.fn()} onDescartar={vi.fn()} onCancelar={vi.fn()} />);
+      expect(screen.getByRole('button', { name: /Cuentas pendientes \(1\)/ })).toBeInTheDocument();
+    });
+  });
+
+  test('sin nada vivo no pinta nada', () => {
+    wrap(<CuentasDelCierre pending={[]} cuentas={[]} onAbrir={vi.fn()} onDescartar={vi.fn()} />);
+    expect(screen.queryByText(/Falta entregar|Cuentas pendientes/)).toBeNull();
+  });
+});
+
+describe('«Cerrar caja» confirma en una hoja de la app', () => {
+  test('pregunta y solo cierra al confirmar, sin confirm() del navegador', async () => {
+    const onCerrar = vi.fn();
+    const confirmar = vi.spyOn(window, 'confirm');
+    wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={onCerrar} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    expect(onCerrar).not.toHaveBeenCalled();
+    expect(await screen.findByText('¿Cerrar «Caja principal»?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Volver' }));
+    expect(onCerrar).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    const hoja = await screen.findByRole('dialog');
+    await userEvent.click(within(hoja).getByRole('button', { name: 'Cerrar caja' }));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+    expect(confirmar).not.toHaveBeenCalled();
+  });
+});
+
+// «TOTAL DIF.» DICE LO MISMO QUE EL HISTÓRICO (spec 031, D13).
+//
+// Los métodos del cajón guardan declarado = esperado, así que su diferencia por renglón es cero y la
+// del cajón vive en el conteo. La fila Total sumaba solo los renglones: un cajón $200 corto salía
+// «Total Dif. $0» en el detalle y −$200 en el histórico del mismo corte.
+test('Total Dif. incluye la diferencia del cajón', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '2000', declared: '2000', difference: '0', autoDeclare: false, requiresEntry: false },
+    { methodId: 2, name: 'Tarjeta', kind: 'tarjeta', expected: '500', declared: '500', difference: '0', autoDeclare: true, requiresEntry: false },
+  ];
+  wrap(<TotalsTable totals={totals} currency="MXN" withTotalRow drawerDifference="-200" />);
+  const fila = screen.getByText('Total').closest('tr') as HTMLElement;
+  expect(within(fila).getByText(/-\$200/)).toBeInTheDocument();
+});
+
+const devolucion = (o: Partial<SessionRefund>): SessionRefund => ({
+  method: 'Tarjeta débito', amount: '300', tip: '0', orderFolio: '#12', fromDrawer: false,
+  refundedBy: 'Ana', refundedAt: new Date().toISOString(), reason: 'No llegó', ...o,
+});
+
+// LAS DEVOLUCIONES DEL TURNO SE VEN, PLEGADAS (spec 031, D6/D7).
+//
+// Sin la lista, una devolución por tarjeta solo se notaba como un esperado más bajo; plegada para no
+// empujar fuera de los 600 px de la tableta la tabla donde se declara el cierre.
+test('la lista de devoluciones va plegada con su contador y se abre con un toque', async () => {
+  wrap(<RefundsList refunds={[devolucion({}), devolucion({ method: 'Efectivo', amount: '40', fromDrawer: true })]} currency="MXN" />);
+  const boton = screen.getByRole('button', { name: /Devoluciones \(2\)/ });
+  expect(screen.queryByText('Tarjeta débito')).not.toBeInTheDocument();
+  await userEvent.click(boton);
+  expect(screen.getByText('Tarjeta débito')).toBeInTheDocument();
+  expect(screen.getByText('salió del cajón')).toBeInTheDocument();
+});
+
+test('sin devoluciones la lista no se pinta', () => {
+  wrap(<RefundsList refunds={[]} currency="MXN" />);
+  expect(screen.queryByRole('button', { name: /Devoluciones/ })).not.toBeInTheDocument();
+});
+
+// UN CONCEPTO QUE RESTA SE LEE COMO RESTA: «Devoluciones» va en rojo, no en el gris de los ingresos.
+test('el concepto Devoluciones del desglose se pinta como resta', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Tarjeta débito', total: '200', items: [{ concept: 'Ventas', amount: '500' }, { concept: 'Devoluciones', amount: '-300' }] }],
+    ingresosTotal: '200', egresos: [], egresosTotal: '0', plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  const monto = screen.getByText(/-\$300/);
+  expect(monto).toHaveAttribute('data-negative', 'true');
+});
+
+// ---- Spec 029: el corte en la tableta ----
+
+// Un medio en negativo sin explicación deja al cajero buscando un faltante que no existe.
+test('un medio en negativo trae la nota que lo explica', () => {
+  const breakdown: CorteBreakdown = {
+    ingresos: [{ method: 'Tarjeta débito', total: '-300', items: [{ concept: 'Devoluciones', amount: '-300' }],
+      note: 'Negativo porque se devolvió dinero de ventas cobradas en otro turno.' }],
+    ingresosTotal: '-300', egresos: [], egresosTotal: '0', plataformas: [],
+  };
+  wrap(<IngresosEgresosCard openingCash="0" breakdown={breakdown} currency="MXN" />);
+  expect(screen.getByText(/se devolvió dinero de ventas cobradas en otro turno/)).toBeInTheDocument();
+});
+
+// El concepto se cortaba a 220 px con ancho de sobra: «Devolución: Producto en mal est…».
+test('el concepto de un movimiento no se corta a un ancho fijo', () => {
+  wrap(<MovementsTable movements={[mov({ concept: 'Devolución: Producto en mal estado' })]} currency="MXN" />);
+  expect(getComputedStyle(screen.getByText('Devolución: Producto en mal estado')).maxWidth).not.toBe('220px');
+});
+
+// La lista ya va plegada: abierta, un scroll propio de 3.5 renglones dentro de una página que ya
+// hace scroll obliga a adivinar cuál de los dos mover.
+test('la lista de devoluciones abierta no tiene scroll propio', async () => {
+  const muchas = Array.from({ length: 12 }, (_, i) => devolucion({ orderFolio: `#${i + 1}` }));
+  wrap(<RefundsList refunds={muchas} currency="MXN" />);
+  await userEvent.click(screen.getByRole('button', { name: /Devoluciones \(12\)/ }));
+  const lista = screen.getByRole('list', { name: 'Devoluciones' });
+  expect(getComputedStyle(lista).overflowY).not.toBe('auto');
+});
+
+// Todo control tocable mide al menos 44 px (constitución, restricciones del producto).
+test('los plegables del corte miden 44 px', () => {
+  wrap(<Plegable title="Efectivo contado"><Text>x</Text></Plegable>);
+  expect(getComputedStyle(screen.getByRole('button', { name: /Efectivo contado/ })).minHeight).toBe('44px');
+});
+
+test('el formulario de movimientos de efectivo mide 44 px', async () => {
+  const qc = new QueryClient();
+  const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
+  render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  await userEvent.click(screen.getByRole('button', { name: /Entrada/ }));
+  for (const campo of [screen.getByPlaceholderText('Monto'), screen.getByPlaceholderText(/Concepto/)]) {
+    expect(getComputedStyle(campo).minHeight).toBe('44px');
+  }
+});
+
+// UNA SALIDA SIN CONCEPTO NO SE GUARDA (spec 032, punto 3): el concepto se elige de la lista, no se
+// teclea suelto, y la salida viaja con su id.
+test('la salida pide el concepto de la lista y lo manda por id', async () => {
+  const { backofficeApi } = await import('../../api/backoffice');
+  vi.spyOn(backofficeApi, 'cashConcepts').mockResolvedValue({ items: [{ id: 7, name: 'Hielo', categoryId: null, categoryName: null, supplierId: null, supplierName: null }] });
+  const registrar = vi.spyOn(backofficeApi, 'cashMovement').mockResolvedValue({} as CashSession);
+  const qc = new QueryClient();
+  const sesion = { registerId: 1, currency: 'MXN', movements: [] } as unknown as CashSession;
+  render(<QueryClientProvider client={qc}><Provider><MovementsPanel session={sesion} /></Provider></QueryClientProvider>);
+  await userEvent.type(screen.getByPlaceholderText('Monto'), '45');
+  expect(screen.getByRole('button', { name: 'Registrar' })).toBeDisabled();
+  expect(screen.queryByPlaceholderText(/Concepto/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Concepto de la salida/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /Hielo/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Registrar' }));
+  expect(registrar).toHaveBeenCalledWith(1, { kind: 'salida', amount: 45, conceptId: 7 });
+});
+
+// «Corregir» aparece solo en una salida capturada a mano que no se ha corregido (EB-16).
+test('MovementsTable ofrece Corregir solo en salidas a mano sin corregir', () => {
+  const onCorregir = vi.fn();
+  wrap(<MovementsTable onCorregir={onCorregir} currency="MXN" movements={[
+    mov({ id: 1, kind: 'salida', amount: '10', concept: 'Hielo' }),
+    mov({ id: 2, kind: 'salida', amount: '20', concept: 'Basura', reversed: true }),
+    mov({ id: 3, kind: 'salida', amount: '30', concept: 'Traspaso', transferId: 4 }),
+    mov({ id: 4, kind: 'reverso', amount: '20', concept: 'Corrección: Basura', reversesId: 2 }),
+  ]} />);
+  expect(screen.getAllByRole('button', { name: 'Corregir' })).toHaveLength(1);
+  expect(screen.getByText('Corrección')).toBeInTheDocument();
+});
+
+// La salida de caja de una devolución se llama Devolución, igual que en el desglose: decía «Salida»
+// mientras el desglose ya no la contaba en «Salidas de efectivo».
+test('la salida de caja de una devolución se etiqueta Devolución', () => {
+  wrap(<MovementsTable movements={[mov({ kind: 'salida', amount: '73', concept: 'Devolución: Cliente se fue', isRefund: true })]} currency="MXN" />);
+  expect(screen.getByText('Devolución')).toBeInTheDocument();
+  expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});
+
+// Un turno abierto no tiene nada declarado: una conciliación con «Declarado $0 · Dif. $0» se lee
+// como un corte cuadrado.
+test('el detalle de un turno abierto no pinta la conciliación', () => {
+  const totals: MethodTotal[] = [
+    { methodId: 1, name: 'Efectivo', kind: 'efectivo', expected: '800', declared: '0', difference: '0', autoDeclare: false, requiresEntry: false },
+  ];
+  const data = { openingCash: '500', currency: 'MXN', breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+    totals, movements: [], expenses: [] };
+  render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} abierto /></Provider></QueryClientProvider>);
+  expect(screen.queryByText(/Conciliación/)).not.toBeInTheDocument();
+});
+
+// EL HISTÓRICO DE CAJA SE PAGINA (auditoría): solo traía los 50 cortes más recientes y uno más viejo
+// no se podía abrir desde la pantalla. Los controles caben a 1024×600 y miden 44 px.
+describe('los controles del histórico de cortes', () => {
+  const base = { page: 0, total: 55, pageSize: 20, desde: '', hasta: '', hoy: '2026-10-08', onPage: vi.fn(), onRango: vi.fn() };
+
+  test('dicen en qué página va y llegan a la última, donde está el corte más viejo', async () => {
+    const onPage = vi.fn();
+    wrap(<ControlesDelHistorico {...base} page={1} onPage={onPage} />);
+    expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+    expect(onPage).toHaveBeenCalledWith(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Página anterior' }));
+    expect(onPage).toHaveBeenCalledWith(0);
+  });
+
+  test('en la primera no retrocede y en la última no avanza', () => {
+    const { unmount } = wrap(<ControlesDelHistorico {...base} page={0} />);
+    expect(screen.getByRole('button', { name: 'Página anterior' })).toBeDisabled();
+    unmount();
+    wrap(<ControlesDelHistorico {...base} page={2} />);
+    expect(screen.getByRole('button', { name: 'Página siguiente' })).toBeDisabled();
+  });
+
+  test('los botones miden 44 px y no hay select nativo', () => {
+    const { container } = wrap(<ControlesDelHistorico {...base} />);
+    for (const b of screen.getAllByRole('button')) {
+      expect(parseInt(getComputedStyle(b).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    }
+    for (const i of [screen.getByLabelText('Desde'), screen.getByLabelText('Hasta')]) {
+      expect(parseInt(getComputedStyle(i).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    }
+    expect(container.querySelector('select')).toBeNull();
+  });
+
+  test('un rango al revés no se aplica y lo dice', async () => {
+    const onRango = vi.fn();
+    wrap(<ControlesDelHistorico {...base} onRango={onRango} />);
+    await userEvent.type(screen.getByLabelText('Desde'), '2026-09-10');
+    await userEvent.type(screen.getByLabelText('Hasta'), '2026-09-01');
+    expect(screen.getByRole('status')).toHaveTextContent(/inicio va después/);
+    expect(onRango).not.toHaveBeenLastCalledWith('2026-09-10', '2026-09-01');
+  });
+
+  test('con fechas puestas, «Quitar fechas» vuelve a todos los cortes', async () => {
+    const onRango = vi.fn();
+    wrap(<ControlesDelHistorico {...base} desde="2026-09-01" hasta="2026-09-03" onRango={onRango} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar fechas' }));
+    expect(onRango).toHaveBeenCalledWith('', '');
+  });
+});
+
+// La propina entregada sale del cajón pero no es una salida del negocio: se nombra aparte (spec 032).
+test('MovementsTable etiqueta la propina entregada como Propina, no como Salida', () => {
+  wrap(<MovementsTable movements={[mov({ id: 9, kind: 'propina', amount: '62', concept: 'Propina a Ana' })]} currency="MXN" />);
+  expect(screen.getByText('Propina')).toBeInTheDocument();
+  expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});
+
+// Histórico → Ver de un corte cerrado: lo que el turno abierto mostraba de terminales y propinas.
+// Un faltante de $2 en una terminal no se veía en ningún lado una vez cerrado el turno.
+test('el corte cerrado muestra declarado, esperado y diferencia por terminal y las propinas', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [{ terminalId: 3, name: 'Getnet', expected: '250', declared: '248', difference: '-2' }],
+    tipsPaidOut: '40', cardTipsPaidInCash: '15', tipsCarriedOver: '12.40',
+  }} />);
+  const fila = screen.getByText('Getnet').closest('tr') as HTMLElement;
+  expect(within(fila).getByText('$248')).toBeInTheDocument();
+  expect(within(fila).getByText('$250')).toBeInTheDocument();
+  expect(within(fila).getByText(/-\$2/)).toBeInTheDocument();
+  expect(screen.getByText(/Propinas entregadas/).closest('tr')?.textContent).toContain('$40');
+  expect(screen.getByText(/Se quedó en caja/).closest('tr')?.textContent).toContain('$12.40');
+  expect(screen.getByText(/tarjeta pagada en efectivo/).closest('tr')?.textContent).toContain('$15');
+});
+
+test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () => {
+  const { container } = wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [], tipsPaidOut: '0', cardTipsPaidInCash: '0', tipsCarriedOver: '0',
+  }} />);
+  expect(container.textContent).not.toMatch(/Terminales|Propinas/);
 });

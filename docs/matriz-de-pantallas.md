@@ -234,6 +234,20 @@ servidor, y el pedido se sigue creando ANTES de cobrarse.
 | W14 | El papel de un pedido pagado | Sale marcado `** REIMPRESIÓN **`: el original ya circuló | `marca el papel como reimpresión cuando el pedido YA se pagó` | Vitest |
 | W15 | El papel de un pedido en curso que SÍ existe | Sale con `POR COBRAR` y sin marca de reimpresión | `un pedido sin cobrar NO se marca como reimpresión` | Vitest |
 
+## Z. Dividir la cuenta en la hoja de cobro (spec 027)
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| Z1 | El selector de modo | Solo aparece tras tocar «Dividir» | `CobrarSheet.split.test.tsx` | Navegador (vitest) |
+| Z2 | El monto de una selección | Lo da la cotización del servidor, una por ráfaga de toques | idem | Navegador (vitest) |
+| Z3 | Lo pagado tras recargar | Sigue en gris con su pago y en las fichas, desde el servidor | idem | Navegador (vitest) |
+| Z4 | Otra tableta cobró la pieza | La hoja relee el pedido y suelta la selección | idem | Navegador (vitest) |
+| Z5 | Pedido de plataforma o de turno cerrado | Solo «Por monto» | idem | Navegador (vitest) |
+| Z6 | Devolver un pago sin permiso | El botón se apaga y dice a quién pedírselo, sin nombrar un rol | idem | Navegador (vitest) |
+| Z7 | Pasar con descuento, o todo a un pedido nuevo | Se apaga con su motivo antes de confirmar | idem | Navegador (vitest) |
+| Z8 | Un producto con piezas pagadas en el tablero | Bote apagado con «Pagado» | `OrdersBoardPage.test.tsx` | Navegador (vitest) |
+| Z9 | La hoja por productos con efectivo, propina y el teclado del sistema | Cabe en 600 px y «Cobrar» sigue a la vista | `cabe-en-la-tableta.spec.ts` (E7 bis) | Navegador contra el ambiente de pruebas (2026-10-08) |
+
 ## Y. El folio de la plataforma y su liquidación (spec 014)
 
 Renglones **abiertos**: se escriben antes que el código, como pide el principio IV, y su columna

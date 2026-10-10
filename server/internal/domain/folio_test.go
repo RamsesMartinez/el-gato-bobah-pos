@@ -320,3 +320,103 @@ func TestUnSorteoFueraDeRangoNoTumbaLaVenta(t *testing.T) {
 		}
 	}
 }
+
+// AvailableNames suma los nombres de las cuentas en captura vivas a lo ya usado. Un nombre que se
+// le dijo a un cliente al empezar su cuenta no se le puede dar a otra mientras esa siga viva: dos
+// «Persa» en la misma barra se entregan cruzados.
+func TestAvailableNames(t *testing.T) {
+	lista := []string{"Abisinio", "Bombay", "Persa", "Siamés"}
+
+	t.Run("un nombre vivo nunca sale", func(t *testing.T) {
+		got, _ := AvailableNames(lista, nil, nil, []string{"Persa"})
+		if contiene(got, "Persa") {
+			t.Fatalf("ofreció %q, que es de una cuenta viva: %v", "Persa", got)
+		}
+		if len(got) != 3 {
+			t.Fatalf("quería los otros tres, salió %v", got)
+		}
+	})
+
+	t.Run("tampoco cuando la bolsa se vacía", func(t *testing.T) {
+		// Todos consumidos: empieza vuelta nueva y la lista entera vuelve a la bolsa — menos el vivo.
+		got, vaciar := AvailableNames(lista, lista, nil, []string{"Persa"})
+		if !vaciar {
+			t.Fatal("con todo consumido la bolsa se tiene que vaciar")
+		}
+		if contiene(got, "Persa") {
+			t.Fatalf("la vuelta nueva devolvió el nombre de una cuenta viva: %v", got)
+		}
+	})
+
+	t.Run("tampoco cuando el día pasó del largo de la lista", func(t *testing.T) {
+		// Todo usado hoy: DisponiblesDeLaBolsa devuelve repetidos (para numerarlos), pero nunca el vivo.
+		got, _ := AvailableNames(lista, nil, lista, []string{"Persa"})
+		if contiene(got, "Persa") || len(got) == 0 {
+			t.Fatalf("quería repetidos sin el vivo, salió %v", got)
+		}
+	})
+
+	t.Run("sin vivos es DisponiblesDeLaBolsa", func(t *testing.T) {
+		consumidos, usados := []string{"Bombay"}, []string{"Siamés"}
+		got, v1 := AvailableNames(lista, consumidos, usados, nil)
+		want, v2 := DisponiblesDeLaBolsa(lista, consumidos, usados)
+		if strings.Join(got, ",") != strings.Join(want, ",") || v1 != v2 {
+			t.Fatalf("AvailableNames = %v/%v, DisponiblesDeLaBolsa = %v/%v", got, v1, want, v2)
+		}
+	})
+
+	t.Run("lo que queda en la bolsa está vivo: empieza otra vuelta", func(t *testing.T) {
+		// Quedan sin salir solo Persa y Siamés, y los dos son cuentas vivas. Sin vaciar la bolsa no
+		// habría nombre que dar, con dos nombres de la vuelta anterior libres.
+		got, vaciar := AvailableNames(lista, []string{"Abisinio", "Bombay"}, nil, []string{"Persa", "Siamés"})
+		if !vaciar || len(got) != 2 || contiene(got, "Persa") || contiene(got, "Siamés") {
+			t.Fatalf("quería Abisinio y Bombay vaciando la bolsa, salió %v (vaciar=%v)", got, vaciar)
+		}
+	})
+
+	t.Run("todos vivos: no hay nombre que dar", func(t *testing.T) {
+		got, _ := AvailableNames(lista, nil, nil, lista)
+		if len(got) != 0 {
+			t.Fatalf("quería vacío, salió %v", got)
+		}
+	})
+}
+
+func contiene(xs []string, x string) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
+// El nombre que amarró una cuenta puede llevar número de vuelta («Persa 2»): pasado el largo de la
+// lista en un turno, la cuenta nace ya numerada para que el pedido no cambie de nombre al mandarse.
+// La bolsa, en cambio, guarda animales: soltar o marcar «Persa 2» no tocaría a «Persa».
+func TestBoundFolioName(t *testing.T) {
+	casos := []struct {
+		entra, amarrado, animal string
+	}{
+		{"Persa", "Persa", "Persa"},
+		{"Persa 2", "Persa 2", "Persa"},
+		{"Maine Coon 12", "Maine Coon 12", "Maine Coon"},
+		{"  Persa 3 ", "Persa 3", "Persa"},
+		{"Persa 1", "", ""},   // la vuelta empieza en 2: «Persa 1» no lo produce nadie
+		{"Persa 100", "", ""}, // fuera del tope de SiguienteFolioLibre
+		{"Persa 02", "", ""},  // un cero a la izquierda no es un número de vuelta
+		{"Persa 2 2", "", ""}, // un número sobre otro no es un nombre
+		{"2", "", ""},         // sin animal
+		{"Pe 2", "", ""},      // el animal también pasa por SanitizarFolio
+		{"<b>Persa</b>", "", ""},
+		{"", "", ""},
+	}
+	for _, c := range casos {
+		if got := BoundFolio(c.entra); got != c.amarrado {
+			t.Errorf("BoundFolio(%q) = %q, quería %q", c.entra, got, c.amarrado)
+		}
+		if got := FolioAnimal(c.entra); got != c.animal {
+			t.Errorf("FolioAnimal(%q) = %q, quería %q", c.entra, got, c.animal)
+		}
+	}
+}

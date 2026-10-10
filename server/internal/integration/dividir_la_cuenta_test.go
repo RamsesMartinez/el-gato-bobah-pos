@@ -59,6 +59,7 @@ func pedidoDeProducto(t *testing.T, st *store.Store, svc *app.OrdersService, suf
 // Medido antes del arreglo: pedido de $500, dos llamadas idénticas de $250 + $50 de propina →
 // pagado $500, propina $100, dos filas, pedido cerrado.
 func TestUnDobleTapNoCobraDosVecesLaMismaMitad(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -103,6 +104,7 @@ func TestUnDobleTapNoCobraDosVecesLaMismaMitad(t *testing.T) {
 // propina mayor que la cuenta entera es un error de captura mucho más seguido que un regalo, y
 // cuando de verdad es un regalo se parte en dos cobros.
 func TestLaPropinaNoPuedeSuperarLaCuenta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -119,23 +121,19 @@ func TestLaPropinaNoPuedeSuperarLaCuenta(t *testing.T) {
 	}
 }
 
-// EL DEFECTO: dos predicados distintos sobre la misma cifra.
+// UN SOLO PREDICADO SOBRE LA MISMA CIFRA: lo que dice si el pedido está saldado y lo que la barra
+// muestra por cobrar.
 //
-// Dividir $100 en tres partes de $33.33 suma $99.99. `PagosCubren` tolera el centavo y CIERRA el
-// pedido, pero `PorCobrar` es exacto y lo sigue reportando con $0.01 de deuda: el tablero suma ese
-// centavo, y al día siguiente el pedido desaparece de la vista con la deuda abierta. Es el
-// corolario del principio III — la lista y el resumen de la misma pantalla salen del mismo
-// predicado — con el redondeo de por medio.
-//
-// Quien cierra el pedido es quien debe saldarlo: si el cobro alcanza para cerrarlo, no queda nada
-// por cobrar.
+// Dividir $100 tecleando tres cobros de $33.33 suma $99.99. Antes `PagosCubren` toleraba ese
+// centavo y cerraba el pedido mientras la barra lo seguía viendo con $0.01; luego se igualaron
+// tolerando los dos. Desde la spec 031 (D16) ninguno tolera: un centavo de menos es deuda, el pedido
+// sigue en la barra con $0.01 y ese centavo se puede cobrar. Las divisiones del sistema («Dividir
+// entre») le cargan el residuo al último pago y no llegan aquí.
 func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
-	// Tres refrescos del mostrador: no pasan por cocina, así que el pedido se cierra solo al quedar
-	// saldado. Es el caso donde el centavo se nota, porque el pedido ya no tiene por qué seguir en la
-	// barra y ahí sigue.
 	ord, cajero, efectivo := pedidoDeProducto(t, st, svc, "centavo", "100", false)
 
 	tercio := decimal.RequireFromString("33.33")
@@ -152,15 +150,28 @@ func TestUnPedidoCerradoNoDejaCentavosDeDeuda(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detail: %v", err)
 	}
-	if !tras.Paid {
-		t.Fatal("tres tercios de $33.33 no saldaron un pedido de $100")
+	if tras.Paid {
+		t.Fatal("tres cobros de $33.33 saldaron un pedido de $100: la venta y el corte diferirían un centavo")
 	}
-	// El tablero lee `outstanding` de ListOpenOrders, no `Paid`: es la cifra que ve el operador.
-	for _, o := range abiertosDelTablero(t, svc) {
-		if o.ID == ord.ID {
-			t.Fatalf("el pedido quedó saldado y cerrado pero la barra del POS lo sigue listando "+
-				"(outstanding=%s): cierra con un predicado tolerante y decide qué mostrar con uno exacto",
-				o.Outstanding)
+	enLaBarra := false
+	for _, o := range abiertosDelTablero(t, st, svc) {
+		if o.OrderID != nil && *o.OrderID == ord.ID {
+			enLaBarra = true
+			if !o.Outstanding.Equal(decimal.RequireFromString("0.01")) {
+				t.Fatalf("la barra dice que falta %s, quiere 0.01", o.Outstanding)
+			}
+		}
+	}
+	if !enLaBarra {
+		t.Fatal("el pedido debe un centavo y la barra no lo lista: el mismo dinero con dos predicados")
+	}
+	if _, err := svc.Charge(ctx, app.ChargeCmd{OrderID: ord.ID, MethodID: efectivo, Amount: decimal.RequireFromString("0.01"),
+		ActorID: cajero, ClientUUID: uuid.New()}); err != nil {
+		t.Fatalf("cobrar el centavo: %v", err)
+	}
+	for _, o := range abiertosDelTablero(t, st, svc) {
+		if o.OrderID != nil && *o.OrderID == ord.ID {
+			t.Fatalf("saldado al centavo y la barra lo sigue listando (outstanding=%s)", o.Outstanding)
 		}
 	}
 }
@@ -180,13 +191,13 @@ func sumaDePagos(t *testing.T, st *store.Store, orderID int64) (decimal.Decimal,
 
 // abiertosDelTablero es lo que ve el operador en la barra del POS: la lista de la que salen la
 // píldora y su total, no el campo Paid del detalle.
-func abiertosDelTablero(t *testing.T, svc *app.OrdersService) []app.BoardOrder {
+func abiertosDelTablero(t *testing.T, st *store.Store, svc *app.OrdersService) []app.AccountItem {
 	t.Helper()
-	items, _, err := svc.Open(context.Background(), false)
+	res, err := app.NewAccountsService(st, svc).Live(context.Background(), false)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Live: %v", err)
 	}
-	return items
+	return res.Items
 }
 
 // EL DEFECTO QUE ESTO PREVIENE: tomar por reintento un cobro mal dirigido.
@@ -196,6 +207,7 @@ func abiertosDelTablero(t *testing.T, svc *app.OrdersService) []app.BoardOrder {
 // operador ya cobró. Se rechaza en vez de aceptarse en silencio: quien manda la llave repetida está
 // equivocado, y el error se lo dice.
 func TestLaMismaLlaveEnOtroPedidoNoSeTomaComoReintento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -237,6 +249,7 @@ func TestLaMismaLlaveEnOtroPedidoNoSeTomaComoReintento(t *testing.T) {
 // implementaciones de la misma cifra son las que dejaron a la barra del POS diciendo $2,141
 // mientras su propia lista decía $1,928.
 func TestElDetalleDelPedidoDiceCuantoFalta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -297,6 +310,7 @@ func TestElDetalleDelPedidoDiceCuantoFalta(t *testing.T) {
 // uno le deja $40 al repartidor son $80 de propina sobre $60 de cuenta. El segundo cobro fallaría
 // con el dinero del cliente ya en la mano — justo lo que un tope de cordura no debe provocar.
 func TestDosPropinasPlausiblesNoSeBloqueanEntreEllas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -325,6 +339,7 @@ func TestDosPropinasPlausiblesNoSeBloqueanEntreEllas(t *testing.T) {
 // cierra esperando la tarjeta que nunca llegó sin esperar el efectivo que sí está. Descuadre por el
 // mismo monto en los dos métodos a la vez, y firmado en register_session_totals.
 func TestLaMismaLlaveConOtroMetodoNoPasaPorReintento(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -375,6 +390,7 @@ func TestLaMismaLlaveConOtroMetodoNoPasaPorReintento(t *testing.T) {
 // hay caja abierta". El operador concluye que no entró, borra el renglón y lo rehace con llave
 // nueva — que es el cobro doble que la llave existe para impedir.
 func TestUnCobroYaRegistradoSeReconoceConLaCajaCerrada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -411,6 +427,7 @@ func TestUnCobroYaRegistradoSeReconoceConLaCajaCerrada(t *testing.T) {
 
 // Y con la caja cerrada un cobro NUEVO sí se rechaza: la excepción es solo para lo ya registrado.
 func TestSinCajaAbiertaNoSeCobraNadaNuevo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -436,6 +453,7 @@ func TestSinCajaAbiertaNoSeCobraNadaNuevo(t *testing.T) {
 // justamente para dejar de recibir por ahí; que el servidor lo siga aceptando manda ese dinero a un
 // renglón del corte que nadie está contando.
 func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -462,6 +480,7 @@ func TestUnMetodoDesactivadoNoCobra(t *testing.T) {
 // venga. Sin él, la pantalla tendría que acordarse — y "acordarse" entre dos pantallas es la forma
 // en que ya divergieron otras tres cifras de este sistema.
 func TestElDetalleDiceConQueListaSeArmoElPedido(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

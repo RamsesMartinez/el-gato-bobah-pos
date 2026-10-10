@@ -24,6 +24,7 @@ import (
 // Cerrar es también el momento en que el operador SÍ puede resolverlos: está frente a la caja y el
 // local está vacío. Media hora después, no.
 func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -89,6 +90,7 @@ func TestLaCajaNoCierraConPedidosSinTerminar(t *testing.T) {
 // Un pedido cancelado no bloquea: no hay nada que entregar ni que cobrar. Si bloqueara, el operador
 // tendría que "terminar" algo que ya no existe y el único camino sería dejar la caja abierta.
 func TestUnPedidoCanceladoNoBloqueaElCierre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -133,6 +135,7 @@ func contiene(s, sub string) bool {
 // pantalla podría decir "todo listo" mientras el botón rebota, y quien lo lee no tendría cómo
 // saber cuál de las dos miente.
 func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -193,6 +196,7 @@ func TestElArqueoMuestraLoQueFaltaPorEntregar(t *testing.T) {
 // mismo dinero físico serían dos cifras inventadas; lo que sí se puede separar es quién cobró, y
 // ese dato ya existía en received_by.
 func TestElArqueoSeparaLoCobradoPorCadaPersona(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -264,6 +268,7 @@ func TestElArqueoSeparaLoCobradoPorCadaPersona(t *testing.T) {
 // arqueo no la nombre. Es el corolario del principio III: dos cifras de la misma pantalla que se
 // derivan de predicados distintos, sin declarar cuál incluye qué.
 func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordersSvc := app.NewOrdersService(st, clock)
@@ -309,6 +314,13 @@ func TestElArqueoDiceLoQueSeEntregoSinCobrar(t *testing.T) {
 	}
 	if err := ordersSvc.DeliverAll(ctx, fiado.ID); err != nil {
 		t.Fatalf("DeliverAll fiado: %v", err)
+	}
+	// De plataforma: desde el 2026-10-09 un entregado de mostrador que debe impide cerrar (no hay
+	// fiados), y el de plataforma —que paga la plataforma— es el que hoy puede llegar al cierre sin
+	// un pago registrado. El arqueo lo tiene que nombrar igual.
+	if _, err := st.Pool.Exec(ctx, `update orders set service_type = 'domicilio',
+		delivery_platform_id = (select min(id) from delivery_platforms) where id = $1`, fiado.ID); err != nil {
+		t.Fatal(err)
 	}
 
 	vista, err := backoffice.CurrentByRegister(ctx, principal)

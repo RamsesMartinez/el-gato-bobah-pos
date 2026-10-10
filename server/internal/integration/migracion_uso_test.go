@@ -19,6 +19,7 @@ import (
 // No es que la aplicación no lo escriba: es que no hay columna. Lo que no existe no se llena por
 // descuido, no se llena en un data-fix y no aparece en un `select *` dentro de seis meses.
 func TestElUsoNoTieneDondeGuardarAQuienLoHizo(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -90,6 +91,7 @@ func TestElUsoNoTieneDondeGuardarAQuienLoHizo(t *testing.T) {
 // crearía una fila nueva: el agregado dejaría de agregar en silencio y la tabla crecería como la de
 // eventos. `nulls not distinct` (Postgres 15+) es lo que lo evita.
 func TestElAgregadoDeUsoSumaConNulos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -126,6 +128,7 @@ func TestElAgregadoDeUsoSumaConNulos(t *testing.T) {
 // por evento e inflar justo el volumen que la feature promete acotar. Un control que solo vive en
 // Go se rodea por otra ruta; uno en la columna, no.
 func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -152,6 +155,7 @@ func TestUnNombreDePantallaAbsurdoNoEntra(t *testing.T) {
 // nada fallara, que es la peor forma de fallar. Y sin el grant ausente sobre `usage_events`, la
 // consola estaría leyendo hechos en vez de conteos.
 func TestLaConsolaVeElAgregadoDeTodasLasEmpresas(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)
@@ -176,13 +180,25 @@ func TestLaConsolaVeElAgregadoDeTodasLasEmpresas(t *testing.T) {
 	}
 
 	// El negocio sigue encerrado en lo suyo: abrir la política de plataforma no puede aflojar eso.
+	// EL TENANT VA EXPLÍCITO, y de paso se comprueba que sin él no se ve nada. Antes el arnés
+	// dejaba el default de empresa a nivel BASE y el rol de app lo heredaba: este caso pasaba por
+	// el ambiente, no por lo que afirma.
 	app := appRoleStore(t)
+	var sinTenant int
+	if err := app.Pool.QueryRow(ctx, `select count(*) from usage_daily`).Scan(&sinTenant); err != nil {
+		t.Fatalf("leer usage_daily sin tenant: %v", err)
+	}
+	if sinTenant != 0 {
+		t.Fatalf("sin empresa fijada el rol de app ve %d filas de usage_daily: RLS debe fallar CERRADO", sinTenant)
+	}
+
+	conn := conexionDeEmpresa(t, app, defaultCompanyID)
 	var vistasPorElNegocio int
-	if err := app.Pool.QueryRow(ctx, `select count(*) from usage_daily`).Scan(&vistasPorElNegocio); err != nil {
-		t.Fatalf("el rol del negocio no pudo leer su agregado: %v", err)
+	if err := conn.QueryRow(ctx, `select count(*) from usage_daily`).Scan(&vistasPorElNegocio); err != nil {
+		t.Fatalf("el negocio no pudo leer lo suyo: %v", err)
 	}
 	if vistasPorElNegocio != 1 {
-		t.Fatalf("el rol del negocio ve %d filas y debe ver 1: el aislamiento por empresa se aflojó", vistasPorElNegocio)
+		t.Fatalf("con su empresa fijada el negocio ve %d filas y debe ver 1", vistasPorElNegocio)
 	}
 }
 

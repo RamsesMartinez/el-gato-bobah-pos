@@ -13,7 +13,7 @@ const ETIQUETAS: Record<string, string> = {
   reportes: 'Reportes',
   ventas: 'Ventas',
   gastos: 'Gastos',
-  catalogo: 'Catálogo',
+  catalogo: 'Menú',
   inventario: 'Inventario',
   usuarios: 'Empleados',
   negocio: 'Ajustes del negocio',

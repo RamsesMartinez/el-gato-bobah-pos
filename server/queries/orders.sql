@@ -8,10 +8,15 @@ from products where id = any($1::bigint[]);
 -- max_per_line viaja porque el servidor lo valida: es el tope de veces que una opción puede ir en
 -- la misma línea, y desde que la pantalla deja pedir dos salsas del mismo sabor deja de ser un
 -- valor que nadie ejercía.
-select mo.id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
+select mo.id, mo.group_id, mo.name, mo.price_delta, mo.current_cost, mo.max_per_line, mg.name as group_title
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mo.id = any($1::bigint[]);
+
+-- name: GetProductModifierGroups :many
+-- Los grupos de extras que admite cada producto: una opción de otro grupo no es extra suyo, aunque
+-- exista en el menú (domain.BuildOrder la rechaza).
+select product_id, group_id from product_modifier_groups where product_id = any($1::bigint[]);
 
 -- Creación
 
@@ -55,12 +60,15 @@ insert into orders (client_uuid, business_date, daily_number, service_type, deli
                     customer_name, notes, register_session_id, opened_by, subtotal, total, delivery_fee,
                     folio_name, status, completed_at,
                     platform_order_ref, platform_ref_set_by, platform_ref_set_at,
-                    discount_total, discount_set_by, discount_set_at)
+                    discount_total, discount_set_by, discount_set_at, branch_id)
 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,@folio_name,
         @status, case when @status::order_status = 'entregada' then now() end,
         sqlc.narg('platform_order_ref'), sqlc.narg('platform_ref_set_by'), sqlc.narg('platform_ref_set_at'),
         @discount_total, case when @discount_total::numeric > 0 then @discount_set_by::bigint end,
-        case when @discount_total::numeric > 0 then now() end)
+        case when @discount_total::numeric > 0 then now() end,
+        -- Nulo = la de la caja del turno, o la única de la empresa (trigger de 0076). Solo la manda
+        -- el pedido de plataforma, cuya sucursal es la de su tienda.
+        sqlc.narg('branch_id'))
 returning *;
 
 -- name: FindOrderByPlatformRef :one
@@ -126,7 +134,7 @@ from order_payments where client_uuid = $1;
 
 -- name: ListActiveOrders :many
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -175,7 +183,7 @@ where id = $1;
 -- Órdenes entregadas del día (para la sección de reembolsos del tablero). Acotada a la
 -- fecha de negocio para no arrastrar todo el histórico.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.refund_amount,
+       o.customer_name, o.total, o.currency, o.refund_amount, o.written_off_amount,
        o.opened_at, o.ready_at,
        coalesce((select sum(amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
        (select count(*) from order_lines l
@@ -207,10 +215,24 @@ update orders set status = 'cancelada', cancelled_at = now(), cancelled_by = $2,
 where id = $1;
 
 -- name: RestockCancelledOrder :exec
--- Repone el stock de una orden cancelada: movimientos 'cancelacion' que invierten las ventas.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, user_id, reason)
-select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sqlc.arg(actor_id), 'cancelación de orden'
-from stock_movements sm where sm.order_id = sqlc.arg(oid) and sm.movement_type = 'venta';
+-- Repone el stock de una orden cancelada que no consta de qué renglón salió: los movimientos sin
+-- renglón, anteriores a 0060. Lo NETO, venta menos lo ya repuesto.
+--
+-- Los movimientos CON renglón ya no pasan por aquí (spec 031, D11): cancelar el pedido completo
+-- repone renglón por renglón con la MISMA regla que quitar uno (domain.ReponeInventario), así que lo
+-- que se prepara y ya salió a cocina no vuelve. Antes esta consulta revertía todo renglón vivo, y un
+-- frappé ya preparado devolvía su leche y su té al almacén si se cancelaba el pedido, pero no si se
+-- quitaba el renglón: el mismo hecho, dos inventarios.
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
+select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sum(sm.quantity), sm.order_id, null,
+       sqlc.arg(actor_id), 'cancelación de orden', sm.modifier_option_id, sm.component_of_product_id
+from stock_movements sm
+where sm.order_id = sqlc.arg(oid) and sm.movement_type in ('venta', 'cancelacion')
+  and sm.order_line_id is null
+group by sm.item_type, sm.ingredient_id, sm.product_id, sm.order_id,
+         sm.modifier_option_id, sm.component_of_product_id
+having sum(sm.quantity) <> 0;
 
 -- name: RecalcOrderTotals :exec
 -- Recalcula el total del pedido desde SUS renglones, después de agregarle más.
@@ -275,7 +297,7 @@ where o.id = $1;
 -- El pedido al que se le va a agregar, bloqueado dentro de la transacción: dos meseros agregando a
 -- la misma cuenta al mismo tiempo recalcularían el total sobre el estado viejo y uno de los dos
 -- agregados desaparecería del importe.
-select id, status, service_type, delivery_platform_id, total
+select id, status, service_type, delivery_platform_id, total, written_off_amount
 from orders where id = $1
 for update;
 
@@ -364,29 +386,26 @@ select coalesce(sum(amount), 0)::numeric(10,2) as pagado,
        coalesce(sum(tip_amount), 0)::numeric(10,2) as propina
 from order_payments where order_id = $1;
 
--- name: ListOpenOrders :many
--- Los pedidos que el punto de venta tiene que seguir viendo: la barra de pedidos en curso.
+-- name: ListLiveOrders :many
+-- Los pedidos de la fila de cuentas del POS (spec 030): los que siguen en cocina, de cualquier fecha,
+-- y los entregados que todavía deben dinero desde `since`.
 --
--- Es la UNIÓN de dos conjuntos que no son el mismo, y confundirlos ya costó una vez:
+-- Es la UNIÓN de dos conjuntos, y confundirlos ya costó una vez: el pedido ya cobrado que sigue en
+-- cocina es al que el cliente le pide algo más, y el ENTREGADO sin cobrar es el pendiente caro — el
+-- cliente ya se fue. Cancelada y reembolsada quedan fuera: su dinero ya se decidió.
 --
---   * en preparación — `abierta` o `lista`: se les puede AGREGAR y cobrar. Es al que el cliente le
---     pide algo más, y el que antes desaparecía de la pantalla al mandarlo a cocina.
---   * con saldo — debe dinero y no está cancelada ni reembolsada. Incluye el pedido ENTREGADO y sin
---     cobrar, que es el caro: el cliente ya se fue. Esa es la razón de ser de la píldora que esta
---     lista reemplaza, y quedarse solo con "en preparación" lo habría borrado del encabezado.
+-- Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where.
 --
--- `en_preparacion` viaja como dato y no se deduce del estado en el front: la pantalla tiene que
--- poder decir cuál se puede ampliar sin volver a implementar la regla.
---
--- Cancelada y reembolsada quedan fuera siempre: su dinero ya se decidió, y listarlas mandaría al
--- operador a perseguir cobros que nadie debe.
--- Lo pagado se calcula UNA vez, con un lateral, y se reusa en el select y en el where. Escrito
--- como dos subconsultas iguales, Postgres no las deduplica: en el plan real salían dos SubPlan y el
--- mismo agregado se recorría dos veces por cada pedido entregado sin cobrar.
+-- ponytail: `since` es la ventana de la deuda. La fila, que cada tableta pide cada 30 s, la acota a
+-- 90 días (techo medido en accounts_live_perf_test: ~6 ms con 30 mil pedidos); la hoja «+N» y el
+-- cierre de caja la piden desde el principio de los tiempos, y ese modo crece lineal con el
+-- histórico (~21 ms con 30 mil). Camino de subida: `orders.owes` mantenida por trigger sobre
+-- order_payments y orders.total, con índice parcial; se rellena desde order_payments al mismo costo
+-- que hoy. Partirla en UNION ALL de las dos ramas se midió y fue más lenta (~22 ms): la rama de
+-- cocina no puede acotar por fecha y Postgres la lee por el índice de empresa de todos modos.
 select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
-       o.customer_name, o.total, o.currency, o.opened_at, o.business_date,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
        pagos.paid::numeric(10,2) as paid,
-       (o.status in ('abierta', 'lista'))::boolean as en_preparacion,
        (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
 from orders o
 left join lateral (
@@ -394,25 +413,29 @@ left join lateral (
 ) pagos on true
 where o.status not in ('cancelada', 'reembolsada')
   -- Redundante a propósito, y no se puede quitar. El OR de abajo referencia `pagos.paid`, que sale
-  -- del lateral, así que Postgres no lo puede empujar al scan de `orders`: calculaba los pagos de
-  -- CADA pedido histórico no cancelado antes de descartarlo. Medido con 30 mil pedidos: 175 ms y
-  -- 90 mil buffers, en una consulta que cada tableta pide cada 30 segundos. Este predicado dice lo
-  -- mismo pero sin tocar el lateral, y baja a 20 ms y 155 buffers usando los índices que ya hay.
-  and (o.status in ('abierta', 'lista') or o.business_date = $1)
+  -- del lateral, así que Postgres no lo puede empujar al scan de `orders`: sin este predicado
+  -- calculaba los pagos de CADA pedido histórico antes de descartarlo (medido: 175 ms y 90 mil
+  -- buffers con 30 mil pedidos). Los dos `since` se mueven juntos.
+  and (o.status in ('abierta', 'lista') or o.business_date >= @since::date)
   and (
-    -- SIN filtro de fecha en los que siguen en curso, a propósito: un pedido abierto se ve hasta que
-    -- alguien lo cierre, sin importar de qué día sea. Es el mecanismo con el que se limpia el
-    -- rezago — un pedido que nadie ve es un pedido que nadie cierra, y así había once desde julio.
+    -- SIN filtro de fecha en los que siguen en curso: un pedido abierto se ve hasta que alguien lo
+    -- cierre. Un pedido que nadie ve es un pedido que nadie cierra.
     o.status in ('abierta', 'lista')
-    -- Los que deben dinero sí se acotan al día en curso: el pendiente de hace tres meses ya no es
-    -- algo que el cajero de hoy pueda cobrar, y traerlos convertiría la barra en un histórico.
-    --
     -- El centavo de tolerancia es el MISMO de `domain.PedidoSaldado`, y tiene que moverse con él.
-    -- Escrito como `pagos.paid < o.total` a secas, dividir $100 en tres partes de $33.33 cerraba el
-    -- pedido —con el predicado tolerante— y esta consulta lo seguía listando con $0.01 de deuda que
-    -- nadie podía cobrar. Lo cubre TestUnPedidoCerradoNoDejaCentavosDeDeuda, que pasa por los dos.
-    or (o.total - pagos.paid > 0.01 and o.business_date = $1)
+    -- Lo dado por perdido («cancelar lo que falta», 2026-10-09) deja de deberse.
+    or (o.total - o.written_off_amount - pagos.paid > 0.01 and o.business_date >= @since::date)
   )
+order by o.opened_at;
+
+-- name: GetOrdersForAccounts :many
+-- Los pedidos que la fila tiene que mostrar aunque ya no estén vivos: los cerrados que conservan una
+-- «Nuevo» viva (research R-9). Sin esto lo capturado quedaría en una cuenta que nadie ve.
+select o.id, o.daily_number, o.folio_name, o.status, o.service_type, o.delivery_platform_id,
+       o.customer_name, o.total, o.opened_at, o.updated_at, o.business_date, o.written_off_amount,
+       coalesce((select sum(p.amount) from order_payments p where p.order_id = o.id), 0)::numeric(10,2) as paid,
+       (select count(*) from order_lines l where l.order_id = o.id and l.cancelled_at is null)::int as renglones
+from orders o
+where o.id = any(@ids::bigint[])
 order by o.opened_at;
 
 -- name: MarcarTodoElPedidoEnviadoACocina :exec
@@ -440,18 +463,28 @@ where order_id = @order_id and id = any(@ids::bigint[]);
 -- embotellada en el mostrador—, que antes nacía entregado porque crear y cobrar eran una sola
 -- llamada. Al separarlos, ese pedido se quedaba abierto para siempre en la barra y el operador
 -- tenía que entregarlo a mano: un toque por cada refresco, en la venta más frecuente del día.
+--
+-- LEFT JOIN Y `coalesce(..., true)`: un renglón sin producto del catálogo —un platillo de plataforma
+-- que todavía no se empareja— SÍ hay que prepararlo. Con el join interno, un pedido cuyo único
+-- renglón fuera así se habría considerado «sin nada que preparar» y se cerraría solo: la cocina
+-- nunca lo vería y el cliente esperaría comida que nadie hizo.
 select exists (
   select 1 from order_lines l
-  join products p on p.id = l.product_id
-  where l.order_id = $1 and l.cancelled_at is null and p.needs_prep
+  left join products p on p.id = l.product_id
+  where l.order_id = $1 and l.cancelled_at is null and coalesce(p.needs_prep, true)
 )::boolean;
 
 -- name: SumOrderPaymentsByMethod :many
--- Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró.
+-- Cuánto entró por CADA medio de pago en un pedido, en el orden en que entró, y cuánto ya salió
+-- por él.
 --
 -- Es lo que decide de dónde sale cada peso al devolver: el dinero sale por donde entró. Devolver en
 -- efectivo lo que entró por tarjeta saca del cajón dinero que nunca estuvo ahí, y el arqueo cierra
 -- con un faltante inventado.
+--
+-- Lo DEVUELTO por medio viaja junto (spec 031, D1): con lo cobrado en bruto, una segunda devolución
+-- volvía a sacar del primer medio lo que ya había salido por él. Pagos y devoluciones se agregan por
+-- separado antes de unirse: son dos 1:N del pedido, y unirlos multiplicaría las sumas.
 --
 -- `is_active` viaja pero NO filtra: por un método desactivado ya no debe ENTRAR dinero, pero el que
 -- entró tiene que poder salir por donde entró, o queda atrapado.
@@ -460,13 +493,35 @@ select exists (
 -- «Didi efectivo» es de tipo plataforma y su dinero entra al cajón cuando lo reparte gente del
 -- local: son billetes en el mismo montón. Decidirlo por el tipo devolvía $135 de billetes sin
 -- registrar la salida, y el corte cerraba con un faltante de $135 que nadie podía explicar.
+with pagos as (
+  select op.payment_method_id, sum(op.amount) as cobrado, sum(op.tip_amount) as propina,
+         min(op.created_at) as primero
+    from order_payments op
+   where op.order_id = sqlc.arg(order_id)
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+   where r.order_id = sqlc.arg(order_id)
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name, pm.affects_cash_drawer as toca_el_cajon, pm.is_active,
-       coalesce(sum(op.amount), 0)::numeric(10,2) as cobrado
-from order_payments op
-join payment_methods pm on pm.id = op.payment_method_id
-where op.order_id = $1
-group by pm.id, pm.name, pm.affects_cash_drawer, pm.is_active
-order by min(op.created_at);
+       coalesce(p.cobrado, 0)::numeric(10,2) as cobrado,
+       coalesce(d.devuelto, 0)::numeric(10,2) as refunded,
+       coalesce(p.propina, 0)::numeric(10,2) as tip,
+       coalesce(d.propina_devuelta, 0)::numeric(10,2) as tip_refunded
+from pagos p
+join payment_methods pm on pm.id = p.payment_method_id
+left join devueltos d on d.payment_method_id = p.payment_method_id
+order by p.primero;
+
+-- name: GetOrderLineForRefund :one
+-- El renglón contra el que se devuelve, solo si es de ESE pedido y sigue vivo (spec 031, D4). La
+-- llave foránea de order_refunds solo exige que el renglón exista; sin el `order_id` en el where se
+-- podía devolver contra el platillo de otro pedido.
+select ol.line_total
+from order_lines ol
+where ol.id = sqlc.arg(line_id) and ol.order_id = sqlc.arg(order_id) and ol.cancelled_at is null;
 
 -- name: SumOrderRefunds :one
 -- Lo ya devuelto de un pedido, y de UNO de sus renglones.
@@ -478,8 +533,14 @@ select coalesce(sum(amount), 0)::numeric(10,2) as devuelto_total,
 from order_refunds where order_id = sqlc.arg('order_id');
 
 -- name: InsertOrderRefund :one
-insert into order_refunds (order_id, order_line_id, payment_method_id, amount, reason, refunded_by, cash_movement_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+-- Con su turno y su día (spec 031): una devolución cuenta en el turno y el día en que ocurrió, no en
+-- los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
+-- la reclama el turno que se abra después.
+insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
+                           cash_movement_id, register_session_id, business_date, card_refund_folio, card_refund_captured_by)
+values (sqlc.arg(order_id), sqlc.narg(order_line_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
+        sqlc.arg(reason), sqlc.arg(refunded_by), sqlc.narg(cash_movement_id), sqlc.narg(register_session_id),
+        sqlc.arg(business_date), sqlc.narg(card_refund_folio), sqlc.narg(card_refund_captured_by))
 returning id;
 
 -- name: RecalcOrderRefundAmount :exec
@@ -498,10 +559,13 @@ where o.id = $1;
 -- `for update of ol`: dos cajeros cancelando el mismo renglón a la vez lo cancelarían dos veces y
 -- repondrían el insumo dos veces. El pedido lo bloquea antes CancelarRenglon (GetOrderForUpdate):
 -- cancelar el último pendiente lo cierra, y eso se decide con el pedido y sus renglones quietos.
+--
+-- `needs_prep` porque lo que no se prepara vuelve al almacén aunque haya «salido a cocina».
 select ol.id, ol.order_id, ol.quantity, ol.delivered_qty, ol.cancelled_at, ol.enviado_a_cocina_at,
-       o.status as order_status
+       o.status as order_status, p.needs_prep
 from order_lines ol
 join orders o on o.id = ol.order_id
+join products p on p.id = ol.product_id
 where ol.id = $1 and ol.order_id = $2
 for update of ol;
 
@@ -520,9 +584,10 @@ where id = $1 and cancelled_at is null;
 -- Un renglón anterior a la migración 0060 no tiene movimientos ligados y no repone nada. Es la
 -- decisión: de un movimiento viejo no consta a qué renglón pertenecía, y adivinarlo inventaría
 -- existencias.
-insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason)
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, order_id, order_line_id, user_id, reason,
+                             modifier_option_id, component_of_product_id)
 select sm.item_type, sm.ingredient_id, sm.product_id, 'cancelacion', -sm.quantity, sm.order_id, sm.order_line_id,
-       sqlc.arg(actor_id), 'cancelación de renglón'
+       sqlc.arg(actor_id), 'cancelación de renglón', sm.modifier_option_id, sm.component_of_product_id
 from stock_movements sm
 where sm.order_line_id = sqlc.arg(line_id) and sm.movement_type = 'venta';
 
@@ -544,3 +609,288 @@ returning order_id;
 -- A qué pedido se aplicó un lote. Se consulta cuando el insert de arriba no devolvió nada, para
 -- distinguir el reenvío legítimo —misma llave, mismo pedido— del reintento mal dirigido.
 select order_id from order_line_batches where client_uuid = $1;
+
+-- name: ListLinesToSplit :many
+-- Lo que hace falta para quitar o partir los renglones vivos de un pedido: precio y costo para
+-- copiar el renglón al partirlo, y si el producto se prepara para decidir si se repone.
+--
+-- Sin `for update`: quien llama ya bloqueó el pedido (GetOrderForUpdate) y sus renglones
+-- (ListLinesForDelivery), en ese orden, igual que CancelarRenglon.
+select ol.id, ol.product_id, ol.quantity, ol.delivered_qty, ol.unit_price, ol.modifiers_total,
+       ol.line_total, ol.enviado_a_cocina_at, p.needs_prep
+from order_lines ol
+join products p on p.id = ol.product_id
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id;
+
+-- name: SplitOffOrderLine :one
+-- Parte un renglón: crea uno nuevo con `quantity` piezas que copia precio, modificadores por
+-- unidad, costo, nota y estado de cocina del original. `order_id` puede ser otro pedido (pasar
+-- productos). `parent_line_id` no se copia: nadie lo escribe y partir no arrastra hijos.
+insert into order_lines (order_id, product_id, product_name, quantity, unit_price, modifiers_total,
+                         unit_cost, line_total, notes, delivered_qty, enviado_a_cocina_at)
+select sqlc.arg(order_id), ol.product_id, ol.product_name, sqlc.arg(quantity), ol.unit_price, ol.modifiers_total,
+       ol.unit_cost, sqlc.arg(line_total), ol.notes, sqlc.arg(delivered_qty), ol.enviado_a_cocina_at
+from order_lines ol
+where ol.id = sqlc.arg(line_id)
+returning id;
+
+-- name: CopyOrderLineModifiers :exec
+-- Los modificadores del renglón partido. Son por unidad, así que se copian tal cual.
+insert into order_line_modifiers (order_line_id, modifier_option_id, group_title, option_name,
+                                  quantity, price_delta, unit_cost)
+select sqlc.arg(new_line_id), m.modifier_option_id, m.group_title, m.option_name, m.quantity, m.price_delta, m.unit_cost
+from order_line_modifiers m
+where m.order_line_id = sqlc.arg(line_id);
+
+-- name: ListLineComponents :many
+-- Lo que lleva el paquete de UN renglón, para repartirlo al partir el renglón. La cantidad es la
+-- del renglón entero, no por pieza.
+select id, product_id, quantity from order_line_components where order_line_id = $1 order by id;
+
+-- name: SetLineComponentQty :exec
+-- Lo que se queda con el renglón original después de partirlo.
+update order_line_components set quantity = sqlc.arg(quantity) where id = sqlc.arg(id);
+
+-- name: ShrinkOrderLine :exec
+-- Lo que se queda en el renglón original después de partirlo.
+update order_lines
+   set quantity = sqlc.arg(quantity), delivered_qty = sqlc.arg(delivered_qty), line_total = sqlc.arg(line_total)
+ where id = sqlc.arg(id);
+
+-- name: ListLineSaleMovements :many
+-- Los movimientos de venta de UN renglón, para partirlos en pares al partir el renglón. Incluye los
+-- pares de particiones anteriores: cada uno se parte en proporción y la suma sigue cuadrando. El
+-- extra o el paquete de origen viaja con el par: sin él, la perla extra quedaría contada como el
+-- producto mismo y el reporte por extra y por paquete dejaría de cuadrar.
+select item_type, ingredient_id, product_id, quantity, unit_cost, order_id,
+       modifier_option_id, component_of_product_id
+from stock_movements
+where order_line_id = $1 and movement_type = 'venta'
+order by id;
+
+-- ---------------------------------------------------------------------------------------------
+-- DIVIDIR LA CUENTA (spec 027)
+--
+-- Ninguna filtra por empresa: RLS lo agrega, y toda tabla nueva lleva la empresa en sus FKs.
+-- ---------------------------------------------------------------------------------------------
+
+-- name: ListLinesForSelection :many
+-- Los renglones vivos de un pedido con lo que decide el monto de una selección: el precio de una
+-- pieza con sus modificadores, cuántas lleva y cuántas ya cubren pagos vivos. Un pago devuelto ya
+-- no está en order_payments y su cobertura se fue con él en cascada, así que no cuenta.
+select ol.id, ol.quantity, ol.unit_price, ol.modifiers_total, ol.delivered_qty,
+       coalesce((select sum(pl.qty) from order_payment_lines pl where pl.order_line_id = ol.id), 0)::numeric(8,2) as covered_qty
+from order_lines ol
+where ol.order_id = $1 and ol.cancelled_at is null
+order by ol.id;
+
+-- name: CountOrderPaymentsForNumber :one
+-- Cuántos pagos ha tenido el pedido, vivos y devueltos, contando los viejos sin número. El número
+-- del siguiente es éste más uno: así uno nuevo nunca repite el de un pago viejo ni el de uno devuelto.
+select ((select count(*) from order_payments p where p.order_id = $1)
+      + (select count(*) from order_payment_voids v where v.order_id = $1))::int as n;
+
+-- name: ListChargedSplitParts :many
+-- Las partes ya cobradas de una serie «entre N personas» de este pedido.
+select split_part::int as part from order_payments
+where order_id = $1 and split_of = $2 and split_part is not null;
+
+-- name: CreateOrderPaymentNumbered :one
+-- `business_date`: el día del COBRO por el reloj de la app, no el del pedido (spec 031). Un pedido
+-- de ayer cobrado hoy es dinero de hoy.
+insert into order_payments (order_id, payment_method_id, amount, tip_amount, register_session_id, received_by,
+                            reference, client_uuid, payment_number, split_part, split_of, business_date)
+values (sqlc.arg(order_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
+        sqlc.narg(register_session_id), sqlc.narg(received_by), sqlc.narg(reference), sqlc.narg(client_uuid),
+        sqlc.arg(payment_number), sqlc.narg(split_part), sqlc.narg(split_of), sqlc.arg(business_date))
+returning id;
+
+-- name: CreateOrderPaymentLine :exec
+insert into order_payment_lines (order_payment_id, order_line_id, qty, amount) values ($1, $2, $3, $4);
+
+-- name: GetOrderPaymentShapeByClientUUID :one
+-- Lo que decide si un reenvío con la misma llave es el mismo cobro: la parte y lo que cubrió.
+-- `covered` va como texto ordenado («renglón:piezas,…») para compararlo de un golpe.
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.split_part, p.split_of, p.payment_number,
+       coalesce((select string_agg(pl.order_line_id || ':' || pl.qty, ',' order by pl.order_line_id)
+                   from order_payment_lines pl where pl.order_payment_id = p.id), '')::text as covered
+from order_payments p
+where p.client_uuid = $1;
+
+-- name: GetPaymentVoidByClientUUID :one
+-- ¿Esta llave es de un pago que ya se devolvió? Sin esto, reenviarla volvería a cobrar el pago que
+-- se acaba de devolver, como si nada.
+select order_id from order_payment_voids where client_uuid = $1;
+
+-- name: ListOrderPaymentsForView :many
+-- Los pagos vivos de un pedido como los pinta la hoja de cobro.
+select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, p.amount, p.tip_amount,
+       coalesce(p.reference, '')::text as reference, p.created_at, coalesce(u.name, '')::text as received_by,
+       p.split_part, p.split_of
+from order_payments p
+join payment_methods pm on pm.id = p.payment_method_id
+left join users u on u.id = p.received_by
+where p.order_id = $1
+order by p.created_at, p.id;
+
+-- name: ListOrderPaymentCoverage :many
+-- Qué cubrió cada pago vivo de un pedido.
+select pl.order_payment_id, pl.order_line_id, pl.qty, pl.amount
+from order_payment_lines pl
+join order_payments p on p.id = pl.order_payment_id
+where p.order_id = $1
+order by pl.order_payment_id, pl.order_line_id;
+
+-- name: ListOrderPaymentVoids :many
+-- Los pagos devueltos de un pedido, para pintarlos tachados con el número que tenían.
+select v.original_payment_id, v.payment_number, v.payment_method_id, pm.name as method_name, v.amount, v.tip_amount,
+       coalesce(v.reference, '')::text as reference, v.paid_at, coalesce(u.name, '')::text as received_by,
+       v.split_part, v.split_of, v.voided_at, v.reason
+from order_payment_voids v
+join payment_methods pm on pm.id = v.payment_method_id
+left join users u on u.id = v.received_by
+where v.order_id = $1
+order by v.payment_number;
+
+-- name: ListPaidQtyForOrders :many
+-- Cuántas piezas de cada renglón cubren pagos vivos, para varios pedidos a la vez (el tablero). Un
+-- renglón sin pagos no aparece: quien lee pone el cero.
+select pl.order_line_id, sum(pl.qty)::numeric(8,2) as paid_qty
+from order_payment_lines pl
+join order_lines ol on ol.id = pl.order_line_id
+where ol.order_id = any(sqlc.arg(order_ids)::bigint[])
+group by pl.order_line_id;
+
+-- name: GetOrderPaymentForVoid :one
+-- El pago a devolver con el estado de su turno. Se lee DESPUÉS de bloquear el pedido.
+select p.id, p.order_id, p.payment_method_id, p.amount, p.tip_amount, p.reference, p.register_session_id,
+       p.received_by, p.created_at, p.client_uuid, p.split_part, p.split_of, p.payment_number,
+       coalesce(rs.status::text, '')::text as session_status,
+       coalesce((select jsonb_agg(jsonb_build_object('lineId', pl.order_line_id, 'qty', pl.qty, 'amount', pl.amount)
+                                  order by pl.order_line_id)
+                   from order_payment_lines pl where pl.order_payment_id = p.id), '[]'::jsonb)::jsonb as covered
+from order_payments p
+left join register_sessions rs on rs.id = p.register_session_id
+where p.id = $1;
+
+-- name: CreateOrderPaymentVoid :exec
+insert into order_payment_voids (order_id, original_payment_id, payment_number, payment_method_id, amount, tip_amount,
+                                 reference, register_session_id, received_by, paid_at, client_uuid, split_part, split_of,
+                                 covered, voided_by, reason)
+values (sqlc.arg(order_id), sqlc.arg(original_payment_id), sqlc.arg(payment_number), sqlc.arg(payment_method_id),
+        sqlc.arg(amount), sqlc.arg(tip_amount), sqlc.narg(reference), sqlc.arg(register_session_id),
+        sqlc.narg(received_by), sqlc.arg(paid_at), sqlc.narg(client_uuid), sqlc.narg(split_part), sqlc.narg(split_of),
+        sqlc.arg(covered), sqlc.arg(voided_by), sqlc.arg(reason));
+
+-- name: DeleteOrderPayment :exec
+-- Saca el pago devuelto de order_payments: su cobertura cae en cascada y la copia ya está en la
+-- bitácora. Es lo que deja correctas sin tocarlas todas las consultas que suman pagos.
+delete from order_payments where id = $1;
+
+-- name: CreateLineMoveBatch :one
+-- Marca el lote de «Pasar». Cero filas significa que esta llave ya estaba: es un reintento.
+insert into order_line_move_batches (client_uuid, from_order_id, to_order_id, moved_by)
+values ($1, $2, $3, $4)
+on conflict do nothing
+returning client_uuid;
+
+-- name: GetLineMoveBatch :one
+select from_order_id, to_order_id from order_line_move_batches where client_uuid = $1;
+
+-- name: CreateLineMove :exec
+insert into order_line_moves (client_uuid, order_line_id, split_from_line_id, qty) values ($1, $2, $3, $4);
+
+-- name: MoveOrderLineToOrder :exec
+update order_lines set order_id = sqlc.arg(to_order_id) where id = sqlc.arg(id);
+
+-- name: MoveLineStockMovements :exec
+-- Los movimientos de inventario viajan con su renglón, nunca filtrando por pedido: en el pedido
+-- quedan los de los renglones que no se pasaron. El trigger de existencias es solo de insert, así
+-- que cambiar el pedido no mueve existencias.
+update stock_movements set order_id = sqlc.arg(to_order_id) where order_line_id = sqlc.arg(line_id);
+
+-- name: MarkOrderMerged :execrows
+-- El origen vacío al pasarle todo a otro pedido: cancelado, sin reponer (el consumo viajó con los
+-- productos), y marcado para que ningún reporte lo cuente como cancelación. Se protege sola: solo un
+-- pedido vivo y no juntado, para que un camino futuro que la llame sin sus guardas no cancele uno
+-- cobrado o entregado.
+update orders
+   set status = 'cancelada', cancelled_at = now(), cancelled_by = sqlc.arg(actor_id),
+       cancel_reason = 'Se juntó con otro pedido', merged_into_order_id = sqlc.arg(into_order_id)
+ where id = sqlc.arg(id) and status in ('abierta', 'lista') and merged_into_order_id is null;
+
+-- name: ListMovedLinesOfBatch :many
+-- Qué renglones del origen y cuántas piezas pasó un lote, para reconocer un reenvío: la misma llave
+-- con otra selección no es el mismo «Pasar».
+select coalesce(split_from_line_id, order_line_id)::bigint as line_id, qty
+from order_line_moves where client_uuid = $1;
+
+-- name: GetOrderForCharge :one
+-- El pedido a cobrar, BLOQUEADO, con lo que decide el monto de un cobro dividido y el estado de su
+-- turno. El candado es el mismo de siempre: entre leer lo cobrado y escribir el pago cabe otro
+-- cajero, y sin él los dos cubrirían la misma pieza.
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status, o.written_off_amount
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o;
+
+-- name: GetOrderForQuote :one
+-- Lo mismo sin candado: la cotización solo lee. Es una cotización, no una reserva; /pay recalcula.
+select o.id, o.status, o.delivery_platform_id, o.subtotal, o.discount_total, o.delivery_fee, o.total,
+       o.register_session_id, coalesce(rs.status::text, '')::text as session_status
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1;
+
+-- name: GetPaymentVoidByOriginalID :one
+-- ¿Este pago ya se devolvió? Distingue «ya se devolvió» de «no existe» al devolver dos veces.
+select order_id from order_payment_voids where original_payment_id = $1;
+
+-- name: GetOrderForMove :one
+-- Un pedido de «Pasar», BLOQUEADO, con lo que decide si puede dar o recibir productos y lo que
+-- hereda el pedido nuevo. Quien llama bloquea origen y destino en orden ascendente de id.
+select o.id, o.status, o.delivery_platform_id, o.register_session_id,
+       coalesce(rs.status::text, '')::text as session_status,
+       o.business_date, o.service_type, o.opened_by, o.branch_id, o.discount_total, o.delivery_fee, o.total
+from orders o
+left join register_sessions rs on rs.id = o.register_session_id
+where o.id = $1
+for update of o;
+
+-- name: ListRefundedLinesOfOrder :many
+-- Los renglones con una devolución: no se pasan, la devolución guarda su propio pedido.
+select distinct order_line_id::bigint as order_line_id from order_refunds
+where order_id = $1 and order_line_id is not null;
+
+-- name: CountUnattributedSales :one
+-- Ventas de inventario del pedido sin renglón (anteriores a 0060): de ellas no consta de qué
+-- renglón salieron, así que pasar un producto no sabría qué consumo llevarse.
+select count(*)::int from stock_movements
+where order_id = $1 and order_line_id is null and movement_type = 'venta';
+
+-- name: LockSessionStatusForShare :one
+-- El estado del turno de un pago, con candado compartido: un cierre de turno que corre a la vez
+-- termina antes, y devolver ve que ya cerró. Sin él, devolver leía «abierto», el corte confirmaba
+-- con ese pago en su esperado y luego la devolución lo borraba.
+select status::text from register_sessions where id = $1 for share;
+
+-- name: WriteOffOrder :execrows
+-- «Cancelar lo que falta» (dueño, 2026-10-09): el resto de un entregado pagado a medias se da por
+-- perdido con su motivo. `written_off_at is null` hace que dos toques no lo escriban dos veces.
+update orders
+   set written_off_amount = sqlc.arg(amount), written_off_reason = sqlc.arg(reason),
+       written_off_by = sqlc.arg(actor), written_off_at = now(),
+       written_off_business_date = sqlc.arg(business_date)
+ where id = sqlc.arg(id) and written_off_at is null and status = 'entregada';
+
+-- name: CardPaymentsOfOrder :many
+-- Los cobros con tarjeta de un pedido y su terminal (spec 032, punto 10): la devolución dice en
+-- cuál hacerla. Nombre nulo = cobro anterior a que se registrara la terminal.
+select op.card_terminal_name
+  from order_payments op
+  join payment_methods pm on pm.id = op.payment_method_id
+ where op.order_id = $1 and pm.kind = 'tarjeta'
+ order by op.id;

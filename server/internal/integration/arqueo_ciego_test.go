@@ -34,7 +34,7 @@ func prenderCiego(t *testing.T, ctx context.Context, settings *app.SettingsServi
 	print := domain.PrintSettings{
 		AutoPrintOnClose: cur.AutoPrintOnClose, PrintFreeModifiers: cur.PrintFreeModifiers,
 		PrintKitchenTicket: cur.PrintKitchenTicket, CorteDeVista: cur.CorteDeVista,
-		FolioScheme: cur.FolioScheme, KitchenCanCharge: cur.KitchenCanCharge,
+		FolioScheme:    cur.FolioScheme,
 		BlindCashCount: true,
 	}
 	ident := domain.IdentitySettings{PinOnlyUnlock: cur.PinOnlyUnlock,
@@ -50,6 +50,7 @@ func prenderCiego(t *testing.T, ctx context.Context, settings *app.SettingsServi
 // navegador: el control dejaría de serlo. Y aplica a TODOS los métodos, no solo al efectivo — ver
 // el esperado de la tarjeta permite el mismo acomodo.
 func TestConArqueoCiegoElEsperadoNoViaja(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -87,19 +88,27 @@ func TestConArqueoCiegoElEsperadoNoViaja(t *testing.T) {
 	// EL OTRO CAMINO: `GET /cash-sessions/{id}` acepta el id del turno abierto y está abierto a rol
 	// cajero, así que no basta con nulificar `/current`.
 	//
-	// Hoy no filtra nada por una razón distinta de la que uno esperaría, y por eso se afirma en vez
-	// de recorrer: `register_session_totals` se escribe AL CERRAR, así que el detalle de un turno
-	// abierto trae cero renglones y ningún arqueo. Recorrer `detalle.Totals` buscando esperados
-	// pasaría en verde sobre una lista vacía — un test que no puede fallar. Lo que se fija aquí es
-	// la forma real: si algún día este endpoint empieza a calcular el turno vivo, esta afirmación
-	// se rompe y obliga a mirar el ocultamiento, que por eso se deja puesto en `SessionDetail`.
+	// Desde la spec 029 ese detalle calcula el turno vivo —leía el snapshot del cierre, que un turno
+	// abierto no tiene, y el Histórico decía «Sin ingresos»—, así que ahora SÍ trae renglones y el
+	// ocultamiento de `SessionDetail` es lo que los protege. Se exige que haya renglones para que el
+	// recorrido no pase en verde sobre una lista vacía.
 	detalle, err := backoffice.SessionDetail(ctx, abierta.ID)
 	if err != nil {
 		t.Fatalf("SessionDetail del turno abierto: %v", err)
 	}
-	if len(detalle.Totals) != 0 || detalle.Drawer != nil {
-		t.Fatalf("el detalle del turno abierto empezó a traer cifras (%d métodos, arqueo %v): revisa que el ocultamiento del arqueo ciego las cubra",
-			len(detalle.Totals), detalle.Drawer)
+	if len(detalle.Totals) == 0 {
+		t.Fatal("el detalle del turno abierto llegó sin métodos: este recorrido no probaría nada")
+	}
+	for _, m := range detalle.Totals {
+		if m.Expected != nil {
+			t.Fatalf("el esperado de «%s» viajó con el arqueo ciego por el detalle del turno abierto: %v", m.Name, m.Expected)
+		}
+	}
+	if detalle.Drawer != nil && (detalle.Drawer.Expected != nil || detalle.Drawer.Difference != nil) {
+		t.Fatal("el arqueo del cajón viajó con el arqueo ciego por el detalle del turno abierto")
+	}
+	if len(detalle.Breakdown.Ingresos) != 0 {
+		t.Fatalf("el desglose de ingresos viajó con el arqueo ciego: %+v", detalle.Breakdown.Ingresos)
 	}
 }
 
@@ -110,6 +119,7 @@ func TestConArqueoCiegoElEsperadoNoViaja(t *testing.T) {
 // quedaría habilitado con la pantalla en blanco. El faltante inventado de $1,662 por la puerta de
 // atrás.
 func TestConArqueoCiegoElServidorSigueDiciendoQueFalta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -148,6 +158,7 @@ func TestConArqueoCiegoElServidorSigueDiciendoQueFalta(t *testing.T) {
 
 // CERRADO EL TURNO, LAS CIFRAS VUELVEN: es cuando la diferencia se muestra.
 func TestConArqueoCiegoLasCifrasVuelvenAlCerrar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -188,6 +199,7 @@ func TestConArqueoCiegoLasCifrasVuelvenAlCerrar(t *testing.T) {
 // Este test no busca claves llamadas `expected` —la fuga viaja en `amount` y en `total`—: reconstruye
 // la cifra como lo haría quien la quiere, y falla si le sale.
 func TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -237,6 +249,7 @@ func TestConArqueoCiegoLoDerivadoNoReconstruyeElEsperado(t *testing.T) {
 // una entrada de un centavo devolvía el esperado completo. El ocultamiento vivía en cada llamador y
 // éste se lo saltó — que es exactamente por qué ahora vive en un solo lugar.
 func TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -245,8 +258,8 @@ func TestConArqueoCiegoUnMovimientoNoDevuelveElEsperado(t *testing.T) {
 	principal, _, _, _ := turnoConEfectivoDeMostradorYDeApp(t, ctx, st, cajero)
 	prenderCiego(t, ctx, settings)
 
-	vista, err := backoffice.RecordCashMovement(ctx, principal, "entrada",
-		decimal.RequireFromString("0.01"), "cambio para el turno", cajero)
+	vista, err := backoffice.RecordCashMovement(ctx, principal, app.CashMovementCmd{Kind: "entrada",
+		Amount: decimal.RequireFromString("0.01"), Concept: "cambio para el turno", UserID: cajero})
 	if err != nil {
 		t.Fatalf("registrar el movimiento: %v", err)
 	}

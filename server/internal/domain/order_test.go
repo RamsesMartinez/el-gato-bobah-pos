@@ -48,12 +48,12 @@ func TestCanRefund(t *testing.T) {
 
 func TestBuildOrder(t *testing.T) {
 	products := map[int64]PricedProduct{
-		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true},
+		1: {ID: 1, Name: "Frappé", Price: d("45"), Cost: d("12"), Active: true, ModifierGroups: []int64{100}},
 		2: {ID: 2, Name: "Inactivo", Price: d("10"), Active: false},
 	}
 	options := map[int64]PricedOption{
-		10: {ID: 10, Name: "Perlas", PriceDelta: d("20"), Cost: d("5"), GroupTitle: "Toppings"},
-		11: {ID: 11, Name: "Litchi", PriceDelta: d("20"), Cost: d("6"), GroupTitle: "Toppings"},
+		10: {ID: 10, GroupID: 100, Name: "Perlas", PriceDelta: d("20"), Cost: d("5"), GroupTitle: "Toppings"},
+		11: {ID: 11, GroupID: 100, Name: "Litchi", PriceDelta: d("20"), Cost: d("6"), GroupTitle: "Toppings"},
 	}
 
 	// 2 Frappé con Perlas x1 y Litchi x1: unit = 45 + 20 + 20 = 85 ; línea = 170
@@ -216,11 +216,11 @@ func TestMetodoCorrespondeALaPlataforma(t *testing.T) {
 // ticket que el negocio nunca aceptó, y lo hace sin que nada avise.
 func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	products := map[int64]PricedProduct{
-		1: {ID: 1, Name: "Boneless", Price: d("200"), Cost: d("80"), Active: true},
+		1: {ID: 1, Name: "Boneless", Price: d("200"), Cost: d("80"), Active: true, ModifierGroups: []int64{300}},
 	}
 	options := map[int64]PricedOption{
-		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 2},
-		12: {ID: 12, Name: "Sin salsa", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 1},
+		10: {ID: 10, GroupID: 300, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 2},
+		12: {ID: 12, GroupID: 300, Name: "Sin salsa", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 1},
 	}
 	linea := func(optID int64, q int) []OrderLineInput {
 		return []OrderLineInput{{ProductID: 1, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: optID, Qty: q}}}}
@@ -248,47 +248,81 @@ func TestBuildOrderRespetaMaxPerLine(t *testing.T) {
 	// max_per_line en 0 significa "sin configurar", no "ninguna": el default de la columna es 1 y
 	// un 0 solo puede venir de datos viejos. Tratarlo como tope haría irrepetible TODO.
 	sinConfigurar := map[int64]PricedOption{
-		10: {ID: 10, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 0},
+		10: {ID: 10, GroupID: 300, Name: "Mango habanero", PriceDelta: d("0"), GroupTitle: "Salsas", MaxPerLine: 0},
 	}
 	if _, err := BuildOrder(linea(10, 1), products, sinConfigurar); err != nil {
 		t.Fatalf("una opción sin tope configurado debe aceptar la primera: %v", err)
 	}
 }
 
-// AL PEDIDO ENTREGADO SE LE PUEDE AGREGAR, Y DEJA DE ESTAR ENTREGADO.
+// QUIÉN RECIBE PRODUCTOS (D-9, D-11).
 //
-// El cliente que ya recibió su comida y sigue en la mesa pide una más. Antes eso se rechazaba y el
-// operador tenía que abrir un pedido aparte: dos cuentas para la misma mesa, y una de las dos se
-// pierde de vista.
+// Antes bastaba el estado: el entregado recibía siempre, porque el cliente que sigue en la mesa pide
+// una más. Con la 030 «cerrada» es pagada Y entregada: esa cuenta ya no recibe —lo que pidan después
+// es otra cuenta—, y la entregada que todavía debe sí, y vuelve a cocina. La pagada que sigue en
+// cocina también recibe: era el caso 2 del lienzo, al que no había forma de agregarle nada.
 //
-// Las dos mitades van juntas en un solo test a propósito: permitir el agregado SIN reabrir el
-// pedido es peor que rechazarlo — el renglón entra, el tablero solo lista abierta y lista, y nadie
-// prepara la comida que el cliente acaba de pedir y ya se le cobró.
-func TestElEntregadoRecibeRenglonesYVuelveAEstarEnCurso(t *testing.T) {
+// Las dos mitades (recibe y reabre) van juntas a propósito: permitir el agregado SIN reabrir es peor
+// que rechazarlo — el renglón entra, el tablero solo lista abierta y lista, y nadie prepara la comida.
+func TestCanReceiveLines(t *testing.T) {
+	d := decimal.RequireFromString
+	uber := int16(2)
 	casos := []struct {
-		estado string
-		recibe bool
+		nombre string
+		o      OrderForAdd
+		want   error
 		reabre bool
-		porQue string
 	}{
-		{StatusAbierta, true, false, "sigue en curso"},
-		{StatusLista, true, false, "sigue en curso"},
-		{StatusEntregada, true, true, "el cliente sigue en la mesa y pide una más"},
-		{StatusCancelada, false, false, "su dinero ya se decidió"},
-		{StatusReembolsada, false, false, "un arqueo firmado ya contó ese dinero"},
-		// La tableta suspendida media hora vuelve con un estado viejo en pantalla; uno que no
-		// existe no abre la puerta.
-		{"", false, false, "un estado que no existe no abre la puerta"},
+		{"abierta", OrderForAdd{Status: StatusAbierta, Paid: d("0"), Total: d("100")}, nil, false},
+		{"pagada en cocina recibe (caso 2)", OrderForAdd{Status: StatusAbierta, Paid: d("100"), Total: d("100")}, nil, false},
+		{"lista", OrderForAdd{Status: StatusLista, Paid: d("0"), Total: d("100")}, nil, false},
+		{"entregada que debe $5", OrderForAdd{Status: StatusEntregada, Paid: d("95"), Total: d("100")}, nil, true},
+		{"entregada y saldada: cerrada", OrderForAdd{Status: StatusEntregada, Paid: d("100"), Total: d("100")}, ErrOrderClosed, false},
+		// Desde la 031 no hay tolerancia: un centavo de diferencia es deuda y la cuenta sigue viva.
+		{"entregada con $0.01 de diferencia: debe y recibe (031 quitó la tolerancia)", OrderForAdd{Status: StatusEntregada, Paid: d("99.99"), Total: d("100")}, nil, true},
+		{"entregada de $0", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("0")}, ErrOrderClosed, false},
+		{"de plataforma abierta", OrderForAdd{Status: StatusAbierta, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"de plataforma entregada", OrderForAdd{Status: StatusEntregada, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"de plataforma cancelada", OrderForAdd{Status: StatusCancelada, Paid: d("0"), Total: d("100"), PlatformID: &uber}, ErrPlatformOrderNoLines, false},
+		{"cancelada: su dinero ya se decidió", OrderForAdd{Status: StatusCancelada, Paid: d("0"), Total: d("100")}, ErrConflict, false},
+		{"reembolsada: un arqueo firmado ya la contó", OrderForAdd{Status: StatusReembolsada, Paid: d("100"), Total: d("100")}, ErrConflict, false},
+		// La tableta suspendida vuelve con un estado viejo; uno que no existe no abre la puerta.
+		{"estado desconocido", OrderForAdd{Status: "", Paid: d("0"), Total: d("100")}, ErrConflict, false},
 	}
 	for _, c := range casos {
-		t.Run(c.estado, func(t *testing.T) {
-			if got := PuedeRecibirLineas(c.estado); got != c.recibe {
-				t.Errorf("PuedeRecibirLineas(%s) = %v, quiere %v: %s", c.estado, got, c.recibe, c.porQue)
+		t.Run(c.nombre, func(t *testing.T) {
+			err := CanReceiveLines(c.o)
+			if c.want == nil && err != nil {
+				t.Fatalf("CanReceiveLines = %v, quería nil", err)
 			}
-			if got := ReabreAlAgregar(c.estado); got != c.reabre {
-				t.Errorf("ReabreAlAgregar(%s) = %v, quiere %v", c.estado, got, c.reabre)
+			if c.want != nil && !errors.Is(err, c.want) {
+				t.Fatalf("CanReceiveLines = %v, quería %v", err, c.want)
+			}
+			if err == nil {
+				if got := ReabreAlAgregar(c.o.Status); got != c.reabre {
+					t.Fatalf("ReabreAlAgregar(%s) = %v, quería %v", c.o.Status, got, c.reabre)
+				}
 			}
 		})
+	}
+	// ErrOrderClosed no es el ErrConflict genérico: la pantalla ofrece «empezar cuenta nueva».
+	if errors.Is(ErrOrderClosed, ErrPlatformOrderNoLines) || errors.Is(ErrPlatformOrderNoLines, ErrConflict) {
+		t.Fatal("los dos rechazos tienen que distinguirse: uno ofrece cuenta nueva y el otro no")
+	}
+}
+
+// OrderNotVoided es lo que queda de PuedeRecibirLineas para los caminos que NO agregan: entregar un
+// renglón, cancelarlo, devolver un pago, pasar productos desde un pedido. Ahí la pregunta sigue
+// siendo solo «¿el dinero de este pedido ya se decidió?».
+func TestOrderNotVoided(t *testing.T) {
+	casos := map[string]bool{
+		StatusAbierta: true, StatusLista: true, StatusEntregada: true,
+		StatusCancelada: false, StatusReembolsada: false, "": false,
+	}
+	for estado, want := range casos {
+		if got := OrderNotVoided(estado); got != want {
+			t.Errorf("OrderNotVoided(%q) = %v, quería %v", estado, got, want)
+		}
 	}
 }
 
@@ -300,5 +334,63 @@ func TestDesEntregarSigueSinSerUnaTransicionPedible(t *testing.T) {
 		if CanTransition(StatusEntregada, destino) {
 			t.Errorf("CanTransition(entregada, %s) = true: des-entregar a mano no es una acción de esta app", destino)
 		}
+	}
+}
+
+// UN PEDIDO DE PLATAFORMA NO ES DE MOSTRADOR (spec 029). La base lo rechaza con un check, y ese
+// rechazo llegaba como 500: «el servidor se rompió» por una combinación que quien opera puede
+// corregir.
+func TestUnPedidoDePlataformaNoEsDeMostrador(t *testing.T) {
+	uber := int16(1)
+	casos := []struct {
+		servicio   string
+		plataforma *int16
+		ok         bool
+	}{
+		{"mostrador", &uber, false},
+		{"domicilio", &uber, true},
+		{"para_llevar", &uber, true},
+		{"mostrador", nil, true},
+	}
+	for _, c := range casos {
+		err := ValidPlatformServiceType(c.servicio, c.plataforma)
+		if c.ok && err != nil {
+			t.Errorf("%s con plataforma=%v debía aceptarse: %v", c.servicio, c.plataforma != nil, err)
+		}
+		if !c.ok && !errors.Is(err, ErrValidation) {
+			t.Errorf("%s con plataforma debía rechazarse como validación, fue %v", c.servicio, err)
+		}
+	}
+}
+
+// Un extra que no pertenece a ningún grupo del producto se aceptaba y se cobraba: bastaba mandar el
+// id de una opción de OTRO producto (o a un producto sin grupos). El precio sale del catálogo, pero
+// la combinación nunca la ofreció el negocio, y cocina recibe un ticket imposible.
+func TestBuildOrderRejectsAnOptionThatIsNotAnExtraOfTheProduct(t *testing.T) {
+	products := map[int64]PricedProduct{
+		1: {ID: 1, Name: "Frappé", Price: d("45"), Active: true, ModifierGroups: []int64{100}},
+		2: {ID: 2, Name: "Café solo", Price: d("30"), Active: true},
+	}
+	options := map[int64]PricedOption{
+		10: {ID: 10, GroupID: 100, Name: "Perlas", PriceDelta: d("20"), GroupTitle: "Toppings"},
+		20: {ID: 20, GroupID: 200, Name: "Salsa BBQ", PriceDelta: d("15"), GroupTitle: "Salsas"},
+	}
+	line := func(product, option int64) []OrderLineInput {
+		return []OrderLineInput{{ProductID: product, Qty: d("1"), Modifiers: []OrderModInput{{OptionID: option, Qty: 1}}}}
+	}
+	if _, err := BuildOrder(line(1, 10), products, options); err != nil {
+		t.Fatalf("un extra del producto debe pasar: %v", err)
+	}
+	cases := map[string][]OrderLineInput{
+		"opción de un grupo que el producto no tiene": line(1, 20),
+		"producto sin grupos con opción de otro":      line(2, 10),
+	}
+	for name, lines := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := BuildOrder(lines, products, options)
+			if !errors.Is(err, ErrOptionNotFound) {
+				t.Fatalf("= %v, quería que se rechace como opción que no es de ese producto", err)
+			}
+		})
 	}
 }

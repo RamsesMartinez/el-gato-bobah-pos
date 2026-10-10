@@ -192,10 +192,22 @@ func newTestStore(t *testing.T) *store.Store {
 	// privilegios ni los settings de la base plantilla—, así que van por clon.
 	for _, stmt := range []string{
 		"grant connect on database " + nombre + " to gatobobah_app",
-		// GUC de tenant por defecto a nivel BD: las conexiones del OWNER (que salta RLS)
-		// auto-sellan company_id=1 en sus inserts sin fijar el GUC en cada test. Aplica a
-		// conexiones NUEVAS → va antes de abrir el pool.
-		"alter database " + nombre + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
+		// GUC de tenant por defecto PARA EL DUEÑO Y SOLO PARA ÉL.
+		//
+		// Los helpers de fixtures escriben por el pool del owner (que salta RLS) sin fijar el GUC
+		// en cada prueba, y necesitan que sus inserts se auto-sellen con una empresa. Eso sigue
+		// igual.
+		//
+		// LO QUE CAMBIÓ Y POR QUÉ: antes era `alter database`, así que el default también lo
+		// heredaba `gatobobah_app`. Efecto: `appRoleStore(t)` significaba «empresa 1», NO «sin
+		// empresa» — y las pruebas que creían estar comprobando el aislamiento comprobaban otra
+		// cosa. Dos defectos se escaparon por ahí, los dos en la integración de plataformas: el
+		// `store.Q` de la 020 (22 lugares) y el webhook de la 021, que bajo RLS no resuelve
+		// ninguna tienda. Las dos suites pasaron en verde con el defecto puesto.
+		//
+		// `current_user` y no el literal `gatobobah`: en CI el dueño de la base es otro rol, y un
+		// literal rompería la suite en el primer clon.
+		"alter role current_user in database " + nombre + " set app.company_id = '" + itoa(defaultCompanyID) + "'",
 	} {
 		if _, err := adm.Pool.Exec(ctx, stmt); err != nil {
 			t.Fatalf("preparar la base de la prueba (%q): %v", stmt, err)
@@ -256,10 +268,15 @@ func itoa(n int) string {
 
 func makeCompany(t *testing.T, st *store.Store, slug string) int64 {
 	t.Helper()
-	var id int64
-	if err := st.Pool.QueryRow(context.Background(),
-		`insert into companies (slug, name) values ($1, $2) returning id`, slug, "Test "+slug).Scan(&id); err != nil {
+	// Por CreateCompany y no con un insert crudo: es la consulta que crea también la matriz (0076),
+	// y una empresa sin sucursal es un mundo que el sistema ya no produce.
+	co, err := st.Q.CreateCompany(context.Background(), db.CreateCompanyParams{Slug: slug, Name: "Test " + slug})
+	if err != nil {
 		t.Fatalf("makeCompany(%s): %v", slug, err)
+	}
+	id := co.ID
+	if _, err := st.Q.EnsurePlatformUnpairedProduct(context.Background(), id); err != nil {
+		t.Fatalf("producto genérico de %s: %v", slug, err)
 	}
 	// Espeja a provisionCompany: una empresa sin métodos de pago no puede cobrar, así que un test
 	// que la creara pelada estaría probando un mundo que el sistema no produce.
@@ -357,7 +374,10 @@ func platformID(t *testing.T, st *store.Store, companyID int64, name string) int
 
 // optionID devuelve una opción de modificador cualquiera de la empresa, creando el grupo si hace
 // falta. Sirve para probar los precios de plataforma de los extras sin montar un menú completo.
-func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
+//
+// Los `products` reciben el grupo: una opción solo se vende como extra de un producto que tiene su
+// grupo (domain.BuildOrder), así que la prueba que la pide en un pedido tiene que ligarla.
+func optionID(t *testing.T, st *store.Store, companyID int64, products ...int64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	var groupID int64
@@ -365,6 +385,12 @@ func optionID(t *testing.T, st *store.Store, companyID int64) int64 {
 		`insert into modifier_groups (company_id, name) values ($1, 'Extras de prueba') returning id`,
 		companyID).Scan(&groupID); err != nil {
 		t.Fatalf("grupo de modificadores: %v", err)
+	}
+	for _, p := range products {
+		if _, err := st.Pool.Exec(ctx, `insert into product_modifier_groups (company_id, product_id, group_id, min_select, max_select)
+			values ($1, $2, $3, 0, 1)`, companyID, p, groupID); err != nil {
+			t.Fatalf("ligar el grupo al producto %d: %v", p, err)
+		}
 	}
 	var id int64
 	if err := st.Pool.QueryRow(ctx,

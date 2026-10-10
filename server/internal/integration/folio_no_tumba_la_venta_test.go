@@ -25,6 +25,7 @@ import (
 // ser cierto en cuanto los nombres propuestos empezaron a ocupar lugares de esa misma lista. El
 // comentario de `resolverFolio` todavía lo afirma.
 func TestUnFolioOcupadoNoTumbaLaVenta(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)

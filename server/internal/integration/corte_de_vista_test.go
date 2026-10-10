@@ -26,6 +26,7 @@ import (
 //
 // Con dos empresas: el ajuste de una no puede tocar el de la otra.
 func TestElCorteDeVistaNaceEnMedianocheYValida(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -64,6 +65,7 @@ func TestElCorteDeVistaNaceEnMedianocheYValida(t *testing.T) {
 // abierto. El reloj de este test está puesto justo en ese hueco — las 23:00 del local, cuando en UTC
 // ya es el día siguiente — porque a cualquier otra hora el defecto no se nota.
 func TestLosEntregadosNoSeVacianALas18DelLocal(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -136,6 +138,7 @@ func contieneID(lista []app.BoardOrder, id int64) bool {
 // ninguna cifra de un turno ya cuadrado. Si alguna vez lo hiciera, el turno de ayer cerraría distinto
 // y nadie sabría por qué hasta el corte siguiente.
 func TestElCorteDeVistaNoCambiaUnArqueoCerrado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -206,6 +209,7 @@ func TestElCorteDeVistaNoCambiaUnArqueoCerrado(t *testing.T) {
 // contesta 500. Y en un negocio recién instalado, desde el primer día hasta la primera apertura.
 // Pasa con CUALQUIER modo de corte, porque la consulta corre antes de saber cuál se va a usar.
 func TestLosEntregadosSeVenConLaCajaCerrada(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -224,6 +228,7 @@ func TestLosEntregadosSeVenConLaCajaCerrada(t *testing.T) {
 // reembolso. La misma consulta ya ordenaba por `completed_at`, así que el filtro miraba una columna
 // y el orden otra.
 func TestElPedidoQueCruzaElCorteAlEntregarseSigueALaVista(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

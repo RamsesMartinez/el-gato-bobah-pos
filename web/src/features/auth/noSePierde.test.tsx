@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, expect, test } from 'vitest';
 import { Provider } from '../../components/ui/provider';
 import { BloqueoPorInactividad } from './BloqueoPorInactividad';
-import { useTicketStore } from '../../stores/ticket';
+import { usePosStore } from '../../stores/pos';
 
 vi.mock('../../api/pos', () => ({
   posApi: {
@@ -14,18 +14,12 @@ vi.mock('../../api/pos', () => ({
   },
 }));
 
-// FR-002 y SC-004. El carrito vive en localStorage y sobrevive incluso a una recarga, así que
-// sobrevive a un bloqueo por definición — HOY.
-//
-// El test existe para el día que alguien mueva ese estado a memoria de React "para simplificar":
-// ahí el bloqueo empezaría a vaciar cuentas capturadas, el operador aprendería a impedir que la
-// tableta se bloquee, y toda la protección se caería sin que nadie relacione una cosa con la otra.
-test('bloquear no desmonta la aplicación ni vacía lo capturado', async () => {
-  useTicketStore.getState().addLine({
-    productId: 7, name: 'Alitas', unitPrice: 200, qty: 2, modifiers: [],
-  });
-  const antes = useTicketStore.getState().tabs[0].lines.length;
-  expect(antes).toBe(1);
+// FR-002 y SC-004. Lo capturado vive en el servidor desde el primer producto (spec 030); en la
+// tableta solo queda CUÁL cuenta estaba abierta. El bloqueo no puede soltarla: el operador
+// volvería a una pantalla sin su cuenta, aprendería a impedir que la tableta se bloquee, y toda la
+// protección se caería sin que nadie relacione una cosa con la otra.
+test('bloquear no desmonta la aplicación ni suelta la cuenta abierta', async () => {
+  usePosStore.getState().seleccionar({ kind: 'draft', id: 'd-1' });
 
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -38,5 +32,5 @@ test('bloquear no desmonta la aplicación ni vacía lo capturado', async () => {
 
   // Los hijos siguen montados: el bloqueo va ENCIMA, no en su lugar.
   expect(await screen.findByText('contenido del POS')).toBeTruthy();
-  expect(useTicketStore.getState().tabs[0].lines.length).toBe(antes);
+  expect(usePosStore.getState().selected).toEqual({ kind: 'draft', id: 'd-1' });
 });

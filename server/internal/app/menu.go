@@ -25,6 +25,10 @@ type MenuDoc struct {
 	// Solo las EXCEPCIONES, por plataforma. Un producto ausente usa base × (1 + margen).
 	PlatformPrices    map[int16]map[int64]decimal.Decimal `json:"platformPrices"`
 	PlatformModPrices map[int16]map[int64]decimal.Decimal `json:"platformModPrices"`
+	// Cuándo copió la plataforma conectada cada precio (0077). Un id presente aquí NO se edita en el
+	// POS: lo pone la plataforma y la pantalla lo muestra bloqueado.
+	PlatformSynced    map[int16]map[int64]time.Time `json:"platformSynced"`
+	PlatformModSynced map[int16]map[int64]time.Time `json:"platformModSynced"`
 }
 
 // MenuPlatform: una lista de precios que el operador puede elegir. "Propio" NO se incluye — es
@@ -117,6 +121,8 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 		Platforms:         []MenuPlatform{},
 		PlatformPrices:    map[int16]map[int64]decimal.Decimal{},
 		PlatformModPrices: map[int16]map[int64]decimal.Decimal{},
+		PlatformSynced:    map[int16]map[int64]time.Time{},
+		PlatformModSynced: map[int16]map[int64]time.Time{},
 	}
 
 	platRows, err := s.store.QC(ctx).ListPlatformsWithMarkup(ctx)
@@ -131,10 +137,17 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 		}
 		if len(precios) > 0 {
 			m := map[int64]decimal.Decimal{}
+			sync := map[int64]time.Time{}
 			for _, x := range precios {
 				m[x.ProductID] = x.Price
+				if x.SyncedAt.Valid {
+					sync[x.ProductID] = x.SyncedAt.Time
+				}
 			}
 			doc.PlatformPrices[pl.ID] = m
+			if len(sync) > 0 {
+				doc.PlatformSynced[pl.ID] = sync
+			}
 		}
 		deltas, err := s.store.QC(ctx).GetOptionPlatformPrices(ctx, pl.ID)
 		if err != nil {
@@ -142,10 +155,17 @@ func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 		}
 		if len(deltas) > 0 {
 			m := map[int64]decimal.Decimal{}
+			sync := map[int64]time.Time{}
 			for _, x := range deltas {
 				m[x.OptionID] = x.PriceDelta
+				if x.SyncedAt.Valid {
+					sync[x.OptionID] = x.SyncedAt.Time
+				}
 			}
 			doc.PlatformModPrices[pl.ID] = m
+			if len(sync) > 0 {
+				doc.PlatformModSynced[pl.ID] = sync
+			}
 		}
 	}
 	for _, c := range catRows {
@@ -204,7 +224,13 @@ func (s *MenuService) Popular(ctx context.Context) ([]int64, error) {
 	}
 	ids := make([]int64, 0, len(rows))
 	for _, r := range rows {
-		ids = append(ids, r.ProductID)
+		// La consulta ya excluye los renglones sin producto —un platillo de plataforma sin
+		// emparejar no es un producto del catálogo— pero la columna es opcional desde la 0073 y el
+		// tipo lo refleja. La guarda es del compilador, no un recordatorio.
+		if r.ProductID == nil {
+			continue
+		}
+		ids = append(ids, *r.ProductID)
 	}
 	return ids, nil
 }

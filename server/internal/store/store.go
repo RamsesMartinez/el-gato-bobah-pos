@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -38,7 +39,7 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping: %w", err)
 	}
-	return &Store{Pool: pool, Q: db.New(pool)}, nil
+	return &Store{Pool: pool, Q: queriesOn(pool)}, nil
 }
 
 func (s *Store) Close() { s.Pool.Close() }
@@ -49,8 +50,9 @@ type tenantConnKey struct{}
 // tenantConn es una conexión del pool, tomada por request, con app.company_id fijado a nivel
 // de SESIÓN (is_local=false) → toda query sobre ella queda aislada por RLS a un solo tenant.
 type tenantConn struct {
-	conn *pgxpool.Conn
-	q    *db.Queries
+	conn    *pgxpool.Conn
+	q       *db.Queries
+	company int64
 }
 
 // AcquireTenant toma una conexión del pool y le fija el GUC app.company_id, devolviendo un ctx
@@ -66,7 +68,7 @@ func (s *Store) AcquireTenant(ctx context.Context, companyID int64) (context.Con
 		conn.Release()
 		return ctx, func() {}, err
 	}
-	tc := &tenantConn{conn: conn, q: db.New(conn)}
+	tc := &tenantConn{conn: conn, q: queriesOn(conn), company: companyID}
 	release := func() {
 		// Fail-closed: si el RESET falla, NO devolver la conexión al pool con el GUC del tenant
 		// "pegado" (otro request la tomaría y leería datos del tenant anterior). Se destruye.
@@ -76,6 +78,17 @@ func (s *Store) AcquireTenant(ctx context.Context, companyID int64) (context.Con
 		conn.Release()
 	}
 	return context.WithValue(ctx, tenantConnKey{}, tc), release, nil
+}
+
+// CompanyFrom devuelve la empresa que la sesión fijó con AcquireTenant. Es lo que usa el cifrado de
+// credenciales como segunda barrera: si RLS dejara pasar la fila de otra empresa, la empresa de la
+// SESIÓN no coincide con la de la fila y el secreto no se descifra. Sin sesión, `false`: quien
+// llama falla cerrado en vez de adivinar.
+func CompanyFrom(ctx context.Context) (int64, bool) {
+	if tc := tenantFrom(ctx); tc != nil {
+		return tc.company, true
+	}
+	return 0, false
 }
 
 func tenantFrom(ctx context.Context) *tenantConn {
@@ -95,14 +108,23 @@ func (s *Store) QC(ctx context.Context) *db.Queries {
 
 // WithTx runs fn inside a transaction with a tx-bound Queries. Si el request trae conexión de
 // tenant, la tx se abre sobre ELLA (hereda app.company_id → RLS aplica); si no, sobre el pool.
+// errNestedTx: WithTx llamado con la conexión de la empresa ya dentro de una transacción.
+var errNestedTx = errors.New("store: WithTx anidado sobre la misma conexión")
+
 func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error {
 	if tc := tenantFrom(ctx); tc != nil {
+		// Un BEGIN sobre una conexión que ya está en transacción no anida: Postgres lo ignora con un
+		// aviso y el COMMIT de aquí confirma la transacción de afuera a medias y suelta sus candados.
+		// Pasó con el cierre de caja (030 dentro de la 031, D8): se rechaza en vez de confirmar.
+		if tc.conn.Conn().PgConn().TxStatus() != 'I' {
+			return errNestedTx
+		}
 		tx, err := tc.conn.Begin(ctx)
 		if err != nil {
 			return err
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-		if err := fn(db.New(tx)); err != nil {
+		if err := fn(queriesOn(tx)); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
@@ -112,7 +134,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(q *db.Queries) error) error 
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
-	if err := fn(s.Q.WithTx(tx)); err != nil {
+	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -132,7 +154,7 @@ func (s *Store) WithTenant(ctx context.Context, companyID int64, fn func(q *db.Q
 	if _, err := tx.Exec(ctx, "select set_config('app.company_id', $1, true)", strconv.FormatInt(companyID, 10)); err != nil {
 		return err
 	}
-	if err := fn(s.Q.WithTx(tx)); err != nil {
+	if err := fn(queriesOn(tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

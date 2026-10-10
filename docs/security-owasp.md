@@ -228,6 +228,36 @@ consola —su rol solo alcanza `companies`, `platform_operators` y los dos agreg
 documenta, como se documentó el alcance del arqueo ciego, porque la promesa correcta es «no se
 guarda quién», no «es imposible saber quién».
 
+## Credenciales de las plataformas (0075) — lo que un respaldo ya no revela
+
+El Client Secret de la app de Uber y la llave de firma de sus avisos los captura cada empresa en
+pantalla. Son secretos **recuperables** —hay que usarlos, no se pueden hashear—, y la base sale del
+servidor en cada respaldo. Por eso van cifrados con una llave que no está ni en el entorno ni en el
+dump.
+
+| OWASP | Barrera | Qué la impone | Test |
+|-------|---------|---------------|------|
+| A02 | Un respaldo filtrado no trae secretos | Cifrado con Cloud KMS; la llave nunca sale de Google y solo la cuenta de servicio de su VM la usa. `config.Validate` no arranca en producción sin `CREDENTIALS_KMS_KEY` ni con la llave local. | `platform_credentials_test.go`, `config_test.go` |
+| A01 | Una empresa no usa la app de otra, aunque RLS falle | RLS sobre `platform_credentials`, y la AAD se arma con la empresa de la SESIÓN (`store.CompanyFrom`), no con la de la fila: ni un valor copiado a otra fila ni una fila ajena que RLS deje pasar descifran. | `TestCompanyBDoesNotUseCompanyAsApp`, `TestWithBrokenRLSCompanyBCannotDecryptCompanyAsCredential`, `TestCredentialsAreUnreachableInTheThreeCases` |
+| A04 | No se guarda una credencial que la plataforma rechaza | Se pide un token con ella antes de guardar; los rechazos se distinguen (no reconoce / sin permisos / no respondió). | `TestCredentialsAreSavedOnlyIfThePlatformAcceptsThem`, `verify_test.go` |
+| A05 | KMS caído no se disfraza de error interno | Si el servicio de llaves no responde, se responde 503 `KEY_SERVICE_UNAVAILABLE` con mensaje fijo (el estado HTTP de Google queda solo en el log) y no se guarda nada. | `TestKeyServiceDownOnSaveStoresNothingAndSaysSo`, `TestKeyServiceDownIsA503WithItsOwnCode` |
+| A02 | El token de Uber no viaja en claro | La liga del detalle del pedido se sigue solo con el MISMO esquema y host que la API configurada (https), y se rechaza antes de pedir el token. | `TestAnHTTPOrderLinkIsNotFollowed` |
+| A01 | Solo el administrador las cambia, y también la llave de firma | `RequireRole(admin)` en el `PUT` de credenciales (con límite por usuario: cada intento habla con la plataforma) y en el `PUT`/`DELETE` de la llave de firma. El gerente solo ve el estado. | `TestOnlyTheAdminChangesKeysAndCredentials` |
+| A09 | Rastro sin secretos | `platform_credentials_saved` / `platform_credentials_rejected` con usuario, plataforma y clase del rechazo; nunca el valor. El secreto no vuelve en ninguna respuesta. | `TestCredentialsAreSavedOnlyIfThePlatformAcceptsThem` |
+
+**El permiso de la VM es la barrera, y cuesta poco romperlo.** La cuenta de servicio por omisión
+de Compute tiene `roles/editor` sobre el proyecto; darle `cloud-platform` a una VM que la use le
+entrega un token de editor a cualquier contenedor. Por eso cada VM tiene una cuenta propia con un
+solo rol **sobre su llave** (verificado el 2026-09-27 desde un contenedor: la llave del otro
+ambiente responde 403 y leer el proyecto también).
+
+**Revocar el acceso ante un incidente.** Quitarle a la cuenta de servicio el rol sobre su llave
+(`gcloud kms keys remove-iam-policy-binding credenciales --keyring pos-prod …`) corta los descifrados
+NUEVOS de inmediato, pero la API recuerda lo ya descifrado: hasta 15 min normalmente, y con Google
+sin responder hasta **24 h** desde el último descifrado bueno (`secrets.Cache`, `maxStale`). Para
+cortar YA, además se reinicia la API (`docker compose restart api` en la VM). Lo vigila
+`TestTheStaleCopyExpiresAfterTheMaxAge`.
+
 ## Checklist de lanzamiento en el VPS (operador)
 
 **Secretos y config (antes del primer arranque):**
@@ -240,6 +270,8 @@ guarda quién», no «es imposible saber quién».
   la API no arranca).
 - [ ] `PLATFORM_DB_PASSWORD`: `openssl rand -hex 24`. Sin él en producción la consola no tiene su rol
   y la API no arranca.
+- [ ] `CREDENTIALS_KMS_KEY` con la llave de KMS de ESE ambiente, y la VM con su cuenta de servicio
+  propia (`pos-api-prod`, scope `cloud-platform`). Sin ella la API no arranca.
 - [ ] `scripts/check-env.sh` pasa. `deploy/.env` no versionado (ya lo está) y `chmod 600`.
 
 **Hardening del host:**
@@ -248,8 +280,9 @@ guarda quién», no «es imposible saber quién».
 - [ ] Rotar `ADMIN_PASSWORD`/`ADMIN_PIN` tras el primer login (`make reset-admin`).
 
 **Durabilidad (día uno):**
-- [ ] Backup nocturno: `pg_dump | gzip`, retención 7–14 días, **copiado fuera del VPS**
-  (un backup en el mismo disco no sobrevive a un fallo de disco). Redis no necesita backup (cache).
+- [x] Backup nocturno (2026-09-29): dump verificado a las 00:45, 14 en la VM y 90 días en un bucket
+  donde la VM solo puede crear, más snapshot diario del disco (14 días). Ver
+  [respaldos-produccion.md](respaldos-produccion.md). Falta la alerta si falla. Redis no necesita backup (cache).
 
 **Smoke post-deploy:**
 - [ ] `/auth/login` responde 429 tras repetidos fallos (B1 vivo).

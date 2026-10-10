@@ -41,6 +41,17 @@ describe('PlatformPriceDialog', () => {
     expect(screen.getByDisplayValue('587.22')).toBeInTheDocument();
   });
 
+  // 0077: con la plataforma conectada, el precio lo pone ella. El diálogo lo dice y no deja
+  // editarlo; el servidor también lo rechaza, pero una pantalla que invita a capturar algo que se
+  // va a rechazar es una trampa.
+  it('un precio que pone la plataforma se ve bloqueado y no se edita', () => {
+    montar({ base: 100, calculado: 135, vigente: 99, esManual: true, sincronizadoEn: '2026-10-03T16:42:00Z' });
+    expect(screen.getByText(/Lo pone Uber Eats/)).toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Quitar precio' })).toBeNull();
+  });
+
   it('guarda el precio capturado', async () => {
     montar(calculado);
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '599' } });

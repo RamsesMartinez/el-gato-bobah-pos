@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Input, Button, VStack } from '@chakra-ui/react';
+import { Input, Button, Text, VStack } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
   DialogTitle, DialogCloseTrigger,
@@ -10,6 +10,8 @@ import { useMutation } from '@tanstack/react-query';
 import { adminApi, type GroupOption } from '../../api/admin';
 import { useUiStore } from '../../stores/ui';
 import { montoTecleado } from '../../domain/numeros';
+import { CompositionSheet } from '../../shared/CompositionSheet';
+import { compositionLabel } from '../../shared/compositionLabel';
 
 // Crear/editar una opción de modificador (nombre, precio extra, máx por línea).
 // option=null → crear en groupId; option set → editar.
@@ -26,6 +28,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
   const [name, setName] = useState(option?.name ?? '');
   const [price, setPrice] = useState(String(option?.priceDelta ?? 0));
   const [maxPerLine, setMaxPerLine] = useState(String(option?.maxPerLine ?? 1));
+  const [composing, setComposing] = useState(false);
 
   const save = useMutation({
     mutationFn: () => {
@@ -37,7 +40,7 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
   });
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>{option ? 'Editar opción' : 'Nueva opción'}</DialogTitle></DialogHeader>
@@ -53,6 +56,12 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
             <Field label="Máx. por línea">
               <Input type="number" min={1} value={maxPerLine} onChange={(e) => setMaxPerLine(e.target.value)} />
             </Field>
+            {option && (
+              <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
+                <Text>Receta</Text>
+                <Text color="fg.muted" fontWeight="normal">{compositionLabel(option.compositionStatus)} ›</Text>
+              </Button>
+            )}
           </VStack>
         </DialogBody>
         <DialogFooter>
@@ -60,6 +69,10 @@ export function OptionFormDialog({ groupId, option, isOpen, onClose, onSaved }: 
           <Button loading={save.isPending} disabled={!name.trim()} onClick={() => save.mutate()}>Guardar</Button>
         </DialogFooter>
       </DialogContent>
+      {option && (
+        <CompositionSheet kind="option" id={option.id} name={option.name} open={composing}
+          onClose={() => setComposing(false)} />
+      )}
     </DialogRoot>
   );
 }

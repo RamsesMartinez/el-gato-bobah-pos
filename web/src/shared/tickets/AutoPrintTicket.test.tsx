@@ -97,3 +97,72 @@ test('si la impresión no sale, el operador se entera', async () => {
   await waitFor(() => expect(toast).toHaveBeenCalled());
   expect(String(toast.mock.calls[0][0].title)).toMatch(/no se pudo imprimir/i);
 });
+
+// Pedido dividido (spec 027): cada pago saca SU ticket, y se recuerda por id de pago. Recordando
+// por pedido, el segundo comensal se quedaría sin papel; sin recordar, cada re-render imprimiría
+// otra vez el del primero.
+describe('pedido dividido', () => {
+  const pago = (id: number, number: number, extra: object = {}) => ({
+    id, number, voided: false, methodId: 9, methodName: 'Efectivo', amount: '50.00', tip: '0.00',
+    reference: '', paidAt: '2026-10-04T21:23:28-06:00', receivedBy: 'carlos', split: null,
+    lines: [], ...extra,
+  });
+  const dividido = {
+    ...order, paid: false, outstanding: '50.00',
+    lines: [{ id: 1, productName: 'Ramen', quantity: '2', unitPrice: '50', lineTotal: '100', modifiers: [] }],
+    payments: [pago(201, 1, { lines: [{ lineId: 1, qty: '1', amount: '50.00' }] })],
+  };
+
+  test('el primer pago saca el ticket de ESE pago, no el del pedido', () => {
+    info.current.autoPrintOnClose = true;
+    render(<AutoPrintTicket order={dividido} />);
+    expect(printHtmlOffscreen).toHaveBeenCalledTimes(1);
+    const html = printHtmlOffscreen.mock.calls[0][0];
+    expect(html).toContain('Pago 1');
+    expect(html).toContain('1x Ramen');
+    expect(html).toContain('Del pedido quedan por pagar');
+  });
+
+  test('el siguiente pago del MISMO pedido también imprime, y solo el suyo', () => {
+    info.current.autoPrintOnClose = true;
+    const { rerender } = render(<AutoPrintTicket order={dividido} />);
+    rerender(<AutoPrintTicket order={{
+      ...dividido, paid: true, outstanding: '0.00',
+      payments: [...dividido.payments, pago(202, 2, { lines: [{ lineId: 1, qty: '1', amount: '50.00' }] })],
+    }} />);
+    expect(printHtmlOffscreen).toHaveBeenCalledTimes(2);
+    expect(printHtmlOffscreen.mock.calls[1][0]).toContain('Pago 2');
+    expect(printHtmlOffscreen.mock.calls[1][0]).not.toContain('Pago 1');
+  });
+
+  test('un re-render con los mismos pagos no saca un segundo ticket', () => {
+    info.current.autoPrintOnClose = true;
+    const { rerender } = render(<AutoPrintTicket order={dividido} />);
+    rerender(<AutoPrintTicket order={{ ...dividido }} />);
+    expect(printHtmlOffscreen).toHaveBeenCalledTimes(1);
+  });
+
+  test('un pago devuelto no imprime', () => {
+    info.current.autoPrintOnClose = true;
+    render(<AutoPrintTicket order={{
+      ...dividido,
+      payments: [pago(201, 1, { voided: true }), pago(202, 2)],
+    }} />);
+    expect(printHtmlOffscreen).toHaveBeenCalledTimes(1);
+    expect(printHtmlOffscreen.mock.calls[0][0]).toContain('Pago 2');
+  });
+
+  test('apagado no imprime ningún pago', () => {
+    info.current.autoPrintOnClose = false;
+    render(<AutoPrintTicket order={dividido} />);
+    expect(printHtmlOffscreen).not.toHaveBeenCalled();
+  });
+
+  test('un pedido pagado de una sola vez sigue sacando el ticket completo', () => {
+    info.current.autoPrintOnClose = true;
+    render(<AutoPrintTicket order={{ ...order, outstanding: '0.00', payments: [pago(300, 1, { amount: '100.00' })] }} />);
+    const html = printHtmlOffscreen.mock.calls[0][0];
+    expect(html).not.toContain('Pago 1');
+    expect(html).toContain('PAGADO');
+  });
+});

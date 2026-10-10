@@ -36,6 +36,13 @@ export interface SaleRow {
   platformOrderRef: string;
   openedBy: string;
   methods: string;
+  // Lo cobrado. Con `total` dice cuánto falta sin abrir el pedido (spec 029).
+  paid: string;
+  // Cuándo fue la última devolución; null si no hubo. Es lo que deja reconocer una devolución de
+  // otro mes en la lista.
+  lastRefundAt: string | null;
+  // Lo dado por perdido («cancelar lo que falta», 2026-10-09); ya no está en lo que falta.
+  writtenOff?: string;
 }
 
 export interface SalesRange { from: string; to: string }
@@ -50,14 +57,23 @@ export interface MethodTotals {
   methodId: number;
   method: string;
   payments: number;
+  // Cobrado en el periodo menos lo devuelto en el periodo: cada cobro cuenta el día en que se cobró
+  // y cada devolución el día en que se devolvió (spec 031). Puede ser negativo.
   total: string;
   tips: string;
+  // Lo devuelto de la venta por este medio en el periodo, YA restado de `total`.
+  refunds?: string;
+  // Propina devuelta por este medio en el periodo. No está en `total` ni en `refunds`.
+  tipRefunds?: string;
 }
 
 export interface ConceptCount { count: number; amount: string }
 
 // Cada campo declara qué incluye, y la separación no es estética:
-//   - total: ingreso REAL. NO incluye canceladas ni reembolsadas.
+//   - total: lo COBRADO en el periodo menos lo devuelto en el periodo (spec 029, decisión del dueño):
+//     cada cobro en su día y cada devolución en el suyo. Es la suma de `byMethod[].total`.
+//   - count y average: cifras de VENTA (pedidos no cancelados y su ticket promedio), no de dinero.
+//   - pending: lo que falta por cobrar de los pedidos del periodo. NO está en total.
 //   - tips: dinero del personal que pasa por la caja. NO está dentro de total.
 //   - deliveryFees: ya está DENTRO de total; viaja aparte solo como referencia.
 export interface SalesSummary {
@@ -68,9 +84,13 @@ export interface SalesSummary {
   tips: string;
   deliveryFees: string;
   cancelled: ConceptCount;
+  // Devoluciones HECHAS en el periodo, las mismas que `byMethod` ya restó (no el estado de los pedidos).
   refunded: ConceptCount;
   byMethod: MethodTotals[];
   cancelledLines: ConceptCount;
+  pending: ConceptCount;
+  // Lo dado por perdido en el periodo («cancelar lo que falta», 2026-10-09). No está en total.
+  writtenOff?: ConceptCount;
 }
 
 export type SalesPreset = 'hoy' | 'ayer' | 'semana' | 'mes' | 'rango';
@@ -105,6 +125,8 @@ function qs(q: SalesQuery): string {
 }
 
 export const salesApi = {
+  // Avisos de las cajas abiertas (spec 032, punto 7): propina sin entregar y salidas sin concepto.
+  cashAlerts: () => api.get<{ tipsPending: string; cashOutsWithoutConcept: number }>('/cash-alerts'),
   list: (q: SalesQuery = {}) => api.get<SalesPage>(`/sales?${qs(q)}`),
   // El resumen no lleva página ni orden: no cambian con ellos, y meterlos en la llave haría que se
   // vuelva a pedir en cada tap del paginador.

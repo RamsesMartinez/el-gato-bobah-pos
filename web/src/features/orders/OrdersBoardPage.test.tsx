@@ -1,0 +1,587 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+
+import { Provider } from '../../components/ui/provider';
+import { useSessionStore } from '../../stores/session';
+import type { BoardLine, BoardOrder } from '../../types/pos';
+
+const api = vi.hoisted(() => ({
+  businessSettings: vi.fn(),
+  activeOrders: vi.fn(),
+  deliveredOrders: vi.fn(),
+  deliverOrder: vi.fn(),
+  deliverLine: vi.fn(),
+  cancelOrder: vi.fn(),
+  cancelOrderLine: vi.fn(),
+  cancelPendingLines: vi.fn(),
+  refundOrder: vi.fn(),
+  order: vi.fn(),
+  paymentMethods: vi.fn(),
+  chargeOrder: vi.fn(),
+  setOrderDiscount: vi.fn(),
+}));
+vi.mock('../../api/pos', () => ({ posApi: api }));
+vi.mock('../../hooks/useOrderEvents', () => ({ useOrderEvents: () => true }));
+const medirAccion = vi.hoisted(() => vi.fn());
+vi.mock('../../api/uso', () => ({ medirAccion }));
+const toast = vi.hoisted(() => vi.fn());
+vi.mock('../../components/ui/toaster', () => ({ toaster: { create: toast } }));
+
+const navegar = vi.hoisted(() => vi.fn());
+vi.mock('react-router', async () => ({
+  ...(await vi.importActual<typeof import('react-router')>('react-router')),
+  useNavigate: () => navegar,
+}));
+
+// Quién puede entrar a Vender. Hoy todos los roles pueden; el caso «sin Vender» se fuerza aquí para
+// probar que el ajuste del tablero sigue mandando cuando ese rol exista.
+const sinVender = vi.hoisted(() => ({ activo: false }));
+vi.mock('../../app/roles', async (orig) => {
+  const real = await orig<typeof import('../../app/roles')>();
+  return { ...real, canAccess: (role: string | undefined, path: string) => (path === '/pos' && sinVender.activo ? false : real.canAccess(role, path)) };
+});
+
+import { OrdersBoardPage } from './OrdersBoardPage';
+
+const linea = (id: number, qty: number, delivered = 0): BoardLine => ({
+  id, name: `Producto ${id}`, qty: String(qty), delivered: String(delivered),
+});
+
+const pedido = (over: Partial<BoardOrder> = {}): BoardOrder => ({
+  id: 5, number: 3, folioName: 'Persa', status: 'abierta', serviceType: 'mostrador',
+  deliveryPlatformId: null, customerName: null, total: '110', currency: 'MXN' as const,
+  paid: false, outstanding: '110', openedAt: new Date().toISOString(),
+  enPreparacion: true, renglones: 1, lines: [linea(1, 1)], ...over,
+});
+
+function entrar(permissions: string[]) {
+  useSessionStore.setState({
+    token: 't', status: 'authed',
+    user: { id: 1, companyId: 2, name: 'Carlos', role: 'cajero', permissions },
+  });
+}
+
+function pintar(o: BoardOrder, ajustes: Record<string, unknown> = {}) {
+  api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '', ...ajustes } as never);
+  api.activeOrders.mockResolvedValue({ items: [o] });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const nodo: ReactNode = <QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider>;
+  return render(<Provider>{nodo}</Provider>);
+}
+
+const tarjeta = async (folio = 'Persa') => {
+  const titulo = await screen.findByText(folio);
+  return titulo.closest('[data-order-card]') as HTMLElement;
+};
+
+beforeEach(() => {
+  entrar(['orders.cancel_pending', 'orders.move_lines']);
+  api.deliveredOrders.mockResolvedValue({ items: [] });
+  api.paymentMethods.mockResolvedValue({ items: [] });
+});
+afterEach(() => {
+  vi.clearAllMocks();
+  useSessionStore.setState({ user: null, token: null });
+});
+
+// NINGUNA TARJETA SIN SALIDA (SC-003 en pantalla).
+//
+// El incidente: un pedido con todo lo vivo entregado y sin deuda se quedó en el tablero sin un solo
+// botón que lo cerrara, y la única salida era cancelarlo —que el servidor rechaza porque ya salió
+// comida—. Cada combinación de «falta entregar» × «debe», más las de un pedido sin productos, tiene que ofrecer algo que lo cierre o decir dónde se cierra.
+describe('la tarjeta ofrece una salida en cada combinación', () => {
+  const todoEntregado = { lines: [linea(1, 2, 2)] };
+  const conPendiente = { lines: [linea(1, 2, 1)] };
+  const sinDeuda = { outstanding: '0', paid: true };
+
+  type Caso = { nombre: string; o: Partial<BoardOrder>; espera: (c: HTMLElement) => void };
+  const casos: Caso[] = [
+    ...[false, true].map((debe): Caso => ({
+      nombre: `falta entregar · ${debe ? 'debe' : 'no debe'}`,
+      o: { ...conPendiente, ...(debe ? {} : sinDeuda) },
+      espera: (c) => {
+        expect(within(c).getByRole('button', { name: 'Entregar todo' })).toBeInTheDocument();
+        // Caso 25: el tablero ya no cobra; lleva a la cuenta, que es la única puerta.
+        expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
+      },
+    })),
+    {
+      nombre: 'todo entregado · no debe',
+      o: { ...todoEntregado, ...sinDeuda },
+      espera: (c) => {
+        expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
+      },
+    },
+    {
+      nombre: 'todo entregado · debe',
+      o: { ...todoEntregado, outstanding: '65' },
+      espera: (c) => {
+        expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument();
+        expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
+      },
+    },
+    {
+      nombre: 'sin productos · sin pagos',
+      o: { lines: [], total: '0', outstanding: '0', paid: true },
+      espera: (c) => {
+        expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
+      },
+    },
+    {
+      // Lo único que queda es el envío, y ya se cobró: hay dinero que devolver antes de cerrarlo.
+      nombre: 'sin productos · con pagos',
+      o: { lines: [], total: '30', outstanding: '0', paid: true },
+      espera: (c) => {
+        expect(within(c).getByText(/^Tiene pagos por devolver/)).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
+        expect(within(c).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
+      },
+    },
+    {
+      // Lo cobrado ya se devolvió todo: no queda pago que devolver y la salida es cerrarlo. Antes
+      // se medía con total − por cobrar, que no resta lo devuelto, y la tarjeta se quedaba sin salida.
+      nombre: 'sin productos · con los pagos ya devueltos',
+      o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '30' },
+      espera: (c) => {
+        expect(within(c).queryByText(/^Tiene pagos por devolver/)).toBeNull();
+        expect(within(c).getByRole('button', { name: 'Cerrar pedido' })).toBeInTheDocument();
+      },
+    },
+    {
+      nombre: 'sin productos · con una parte devuelta',
+      o: { lines: [], total: '30', outstanding: '0', paid: true, refund: '10' },
+      espera: (c) => {
+        expect(within(c).getByText(/^Tiene pagos por devolver/)).toBeInTheDocument();
+        expect(within(c).queryByRole('button', { name: 'Cerrar pedido' })).toBeNull();
+      },
+    },
+  ];
+
+  test('son ocho combinaciones', () => expect(casos).toHaveLength(8));
+
+  test.each(casos)('$nombre', async ({ o, espera }) => {
+    pintar(pedido(o));
+    const c = await tarjeta();
+    await waitFor(() => espera(c));
+  });
+});
+
+describe('qué llama «Cerrar pedido»', () => {
+  test('con todo entregado y sin deuda, entrega el pedido', async () => {
+    const u = userEvent.setup();
+    api.deliverOrder.mockResolvedValue(undefined);
+    pintar(pedido({ lines: [linea(1, 1, 1)], outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalledWith(5));
+    expect(api.cancelPendingLines).not.toHaveBeenCalled();
+  });
+
+  // Sin productos, el motivo es fijo («Sin productos») y lo pone el servidor; pedirlo aquí sería un
+  // toque que no decide nada.
+  test('sin productos y sin pagos, lo cierra sin pedir motivo', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 0, restocked: 0 });
+    pintar(pedido({ lines: [], total: '0', outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+
+    await waitFor(() => expect(api.cancelPendingLines).toHaveBeenCalled());
+    expect(api.cancelPendingLines.mock.calls[0]).toEqual([5]);
+    expect(api.deliverOrder).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+describe('el menú de la tarjeta', () => {
+  const abrirMenu = async (u: ReturnType<typeof userEvent.setup>) => {
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+  };
+
+  // Quien no puede cancelar el pedido sí tiene que poder quitar lo que no se va a entregar: son dos
+  // permisos, y antes la única salida era «Cancelar pedido», que rebotaba con 403.
+  test('«Quitar lo que falta» va aparte de «Cancelar pedido», cada uno con su permiso', async () => {
+    const u = userEvent.setup();
+    pintar(pedido({ lines: [linea(1, 2)] }));
+    await abrirMenu(u);
+
+    expect(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Cancelar pedido' })).toBeNull();
+  });
+
+  test('«Cancelar pedido» se ofrece solo con su permiso', async () => {
+    const u = userEvent.setup();
+    entrar(['orders.cancel']);
+    pintar(pedido({ lines: [linea(1, 2)] }));
+    await abrirMenu(u);
+
+    expect(await screen.findByRole('menuitem', { name: 'Cancelar pedido' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Quitar lo que falta' })).toBeNull();
+  });
+
+  test('«Quitar lo que falta» abre su hoja y manda el motivo elegido', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 2, restocked: 1 });
+    pintar(pedido({ lines: [linea(1, 1, 1), linea(2, 1), linea(3, 1)] }));
+    await abrirMenu(u);
+    await u.click(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' }));
+
+    // La hoja se monta en el mismo toque que cierra el menú: sin montar cerrada, no aparece.
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('radio', { name: 'Sin insumos' }));
+    await u.click(within(hoja).getByRole('button', { name: 'Quitar los 2 que faltan' }));
+
+    await waitFor(() => expect(api.cancelPendingLines).toHaveBeenCalledWith(5, 'Sin insumos'));
+    await waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+  });
+
+  // Cancelar un pedido del que ya salió comida lo rechaza el servidor. Ofrecer la hoja de cancelar
+  // ahí era mandar al operador a un 409; lo que sí puede hacer es quitar lo que falta.
+  test('«Cancelar pedido» con algo entregado abre la hoja de quitar lo que falta', async () => {
+    const u = userEvent.setup();
+    entrar(['orders.cancel', 'orders.cancel_pending']);
+    pintar(pedido({ lines: [linea(1, 1, 1), ...Array.from({ length: 10 }, (_, i) => linea(i + 2, 1))] }));
+    await abrirMenu(u);
+    await u.click(await screen.findByRole('menuitem', { name: 'Cancelar pedido' }));
+
+    await waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Quitar los 10 que faltan' }))
+      .toBeInTheDocument();
+  });
+});
+
+// La mesa del incidente medía ~620 px con once productos: en una tableta de 600 px los botones
+// quedaban debajo del borde y la tarjeta no tenía salida a la vista.
+test('una tarjeta de 11 productos deja los botones a la vista: la lista hace scroll propio', async () => {
+  pintar(pedido({ lines: Array.from({ length: 11 }, (_, i) => linea(i + 1, 1)) }));
+  const c = await tarjeta();
+
+  const lista = within(c).getByRole('list', { name: 'Falta por entregar' });
+  expect(lista).toHaveStyle({ overflowY: 'auto' });
+  expect(getComputedStyle(lista).maxHeight).toMatch(/dvh$/);
+  expect(within(lista).queryByRole('button', { name: 'Entregar todo' })).toBeNull();
+  expect(within(c).getByRole('button', { name: 'Entregar todo' })).toBeInTheDocument();
+});
+
+test('con pocos productos la lista no se recorta', async () => {
+  pintar(pedido({ lines: Array.from({ length: 5 }, (_, i) => linea(i + 1, 1)) }));
+  const lista = within(await tarjeta()).getByRole('list', { name: 'Falta por entregar' });
+  expect(getComputedStyle(lista).maxHeight).not.toMatch(/dvh$/);
+});
+
+// «Renglón» es palabra de quien programa; quien opera quita productos.
+test('quitar un producto avisa «Producto quitado»', async () => {
+  const u = userEvent.setup();
+  api.cancelOrderLine.mockResolvedValue({ repusoInventario: true });
+  pintar(pedido({ lines: [linea(1, 1), linea(2, 1)] }));
+
+  await u.click(within(await tarjeta()).getByRole('button', { name: 'Quitar Producto 1' }));
+  const hoja = await screen.findByRole('dialog');
+  await u.click(within(hoja).getByRole('radio', { name: 'Ya no lo quiere' }));
+  await u.click(within(hoja).getByRole('button', { name: 'Quitar del pedido' }));
+
+  await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Producto quitado' })));
+});
+
+// Las dos acciones del menú que quitan algo no pesan lo mismo: «Quitar lo que falta» deja vivo el
+// pedido y lo entregado; «Cancelar pedido» lo tira entero. Pegadas y del mismo rojo, un dedo que
+// erra por unos píxeles cancela lo que solo quería recortar.
+test('en el menú, «Cancelar pedido» va separado de «Quitar lo que falta» y es el único en rojo', async () => {
+  const u = userEvent.setup();
+  entrar(['orders.cancel', 'orders.cancel_pending']);
+  pintar(pedido({ lines: [linea(1, 2)] }));
+  await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+
+  const quitar = await screen.findByRole('menuitem', { name: 'Quitar lo que falta' });
+  const cancelar = screen.getByRole('menuitem', { name: 'Cancelar pedido' });
+  const entreLosDos = Array.from(document.querySelectorAll('[role="separator"]')).filter((s) =>
+    (quitar.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+    (s.compareDocumentPosition(cancelar) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
+  expect(entreLosDos, 'no hay separador entre «Quitar lo que falta» y «Cancelar pedido»').toHaveLength(1);
+  expect(getComputedStyle(cancelar).color).toMatch(/red/);
+  expect(getComputedStyle(quitar).color, '«Quitar lo que falta» no es destructivo y salió en rojo').not.toMatch(/red/);
+});
+
+// Un segundo toque mientras la primera petición viaja mandaba otra: con la red lenta, el operador
+// cree que no tocó bien y vuelve a tocar.
+describe('«Cerrar pedido» no se manda dos veces', () => {
+  const casos = [
+    { nombre: 'todo entregado (entrega el pedido)', o: { lines: [linea(1, 1, 1)], outstanding: '0', paid: true }, llamada: api.deliverOrder },
+    { nombre: 'sin productos (lo cierra vacío)', o: { lines: [], total: '0', outstanding: '0', paid: true }, llamada: api.cancelPendingLines },
+  ];
+  test.each(casos)('$nombre', async ({ o, llamada }) => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    llamada.mockReturnValue(new Promise(() => {}));
+    pintar(pedido(o));
+    const boton = within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' });
+
+    await u.click(boton);
+    await waitFor(() => expect(boton).toBeDisabled());
+    await u.click(boton);
+
+    expect(llamada).toHaveBeenCalledTimes(1);
+  });
+});
+
+// «Tiene pagos por devolver» a quien no puede devolverlos lo deja frente a una tarjeta sin salida
+// y sin saber a quién pedírsela.
+describe('a quién toca devolver los pagos de un pedido vacío', () => {
+  const vacioCobrado = { lines: [], total: '30', outstanding: '0', paid: true };
+  test('sin permiso de devolver, dice a quién avisar sin nombrar un rol', async () => {
+    pintar(pedido(vacioCobrado));
+    expect(within(await tarjeta()).getByText('Tiene pagos por devolver: avisa a quien encargue la caja')).toBeInTheDocument();
+  });
+  test('con permiso de devolver, basta con decir que tiene pagos', async () => {
+    entrar(['payments.void', 'orders.cancel_pending']);
+    pintar(pedido(vacioCobrado));
+    expect(within(await tarjeta()).getByText('Tiene pagos por devolver')).toBeInTheDocument();
+  });
+  // Y le da el camino: la hoja de cobro con las fichas de sus pagos, donde se devuelven.
+  test('con permiso, la tarjeta ofrece Devolver pagos; sin él, no', async () => {
+    entrar(['payments.void', 'orders.cancel_pending']);
+    const { unmount } = pintar(pedido(vacioCobrado));
+    const boton = within(await tarjeta()).getByRole('button', { name: 'Devolver pagos' });
+    expect(parseInt(getComputedStyle(boton).minHeight, 10)).toBeGreaterThanOrEqual(44);
+    unmount();
+    entrar(['orders.cancel_pending']);
+    pintar(pedido(vacioCobrado));
+    expect(within(await tarjeta()).queryByRole('button', { name: 'Devolver pagos' })).toBeNull();
+  });
+});
+
+// Los botones del renglón medían 32 px de ancho (`2rem`): en 7" el dedo atinaba al vecino, y el
+// vecino del bote de quitar es el botón verde de entregar.
+test('los botones del renglón miden al menos 44 px de ancho', async () => {
+  pintar(pedido({ lines: [linea(1, 3)] }));
+  const c = await tarjeta();
+  for (const nombre of ['Uno menos', 'Uno más', 'Quitar Producto 1']) {
+    expect(getComputedStyle(within(c).getByRole('button', { name: nombre })).minWidth, nombre).toBe('44px');
+  }
+});
+
+// QUITAR UNA DE DOS (spec 027, US7): el contador del diálogo llega al servidor como `qty`. Sin él,
+// el servidor quita todas las piezas pendientes.
+test('quitar una pieza de un producto con dos pendientes manda qty 1', async () => {
+  const u = userEvent.setup();
+  api.cancelOrderLine.mockResolvedValue({ repusoInventario: true });
+  pintar(pedido({ lines: [linea(1, 3, 1)] }));
+
+  await u.click(within(await tarjeta()).getByRole('button', { name: 'Quitar Producto 1' }));
+  const hoja = await screen.findByRole('dialog');
+  expect(within(hoja).getByText('1 de 2')).toBeInTheDocument();
+  await u.click(within(hoja).getByRole('radio', { name: 'Ya no lo quiere' }));
+  await u.click(within(hoja).getByRole('button', { name: 'Quitar del pedido' }));
+
+  await waitFor(() => expect(api.cancelOrderLine).toHaveBeenCalledWith(5, 1, 'Ya no lo quiere', 1));
+});
+
+// UN PRODUCTO PAGADO NO SE QUITA DESDE EL TABLERO (spec 027, US3).
+//
+// El servidor lo rechaza —primero hay que devolver el pago—, y ofrecer el bote era mandar al
+// operador a un error después de elegir el motivo. Se dice en la fila por qué no se puede.
+describe('el bote de un producto pagado', () => {
+  test('con piezas pagadas, el bote está apagado y dice «Pagado»', async () => {
+    pintar(pedido({ lines: [{ ...linea(1, 2), paidQty: '1' }, linea(2, 1)] }));
+    const c = await tarjeta();
+
+    const pagado = within(c).getByRole('button', { name: 'Quitar Producto 1' });
+    expect(pagado).toBeDisabled();
+    expect(pagado.textContent).toMatch(/Pagado/);
+    expect(within(c).getByRole('button', { name: 'Quitar Producto 2' })).toBeEnabled();
+  });
+
+  // paidQty llega ausente desde un servidor sin la feature, y «0» cuando nada se pagó: los dos
+  // dejan quitar.
+  test.each([['ausente', undefined], ['en cero', '0']])('con paidQty %s se puede quitar', async (_, paidQty) => {
+    pintar(pedido({ lines: [{ ...linea(1, 2), paidQty }] }));
+    const bote = within(await tarjeta()).getByRole('button', { name: 'Quitar Producto 1' });
+    expect(bote).toBeEnabled();
+    expect(bote.textContent).not.toMatch(/Pagado/);
+  });
+});
+
+// MEDICIÓN (D-15): qué tanto se cierran pedidos y se quita lo que falta desde el tablero. Se cuenta
+// DESPUÉS de que el servidor respondió: un toque que falló no es un pedido cerrado.
+describe('la medición del tablero', () => {
+  test('«Cerrar pedido» con todo entregado cuenta close-order al terminar', async () => {
+    const u = userEvent.setup();
+    let responder: () => void = () => {};
+    api.deliverOrder.mockReturnValue(new Promise<void>((r) => { responder = r; }));
+    pintar(pedido({ lines: [linea(1, 1, 1)], outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalled());
+    expect(medirAccion).not.toHaveBeenCalled();
+    responder();
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'close-order'));
+  });
+
+  test('«Cerrar pedido» sin productos cuenta close-order', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 0, restocked: 0 });
+    pintar(pedido({ lines: [], total: '0', outstanding: '0', paid: true }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Cerrar pedido' }));
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'close-order'));
+    expect(medirAccion).not.toHaveBeenCalledWith('pedidos', 'cancel-pending');
+  });
+
+  // «Entregar todo» usa la misma petición que «Cerrar pedido», pero no es cerrar: contarlo inflaría
+  // la acción con cada entrega normal.
+  test('«Entregar todo» no cuenta como cerrar', async () => {
+    const u = userEvent.setup();
+    api.deliverOrder.mockResolvedValue(undefined);
+    pintar(pedido({ lines: [linea(1, 2, 1)] }));
+
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Entregar todo' }));
+    await waitFor(() => expect(api.deliverOrder).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(medirAccion).not.toHaveBeenCalled();
+  });
+
+  test('confirmar «Quitar los que faltan» cuenta cancel-pending', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockResolvedValue({ removed: 2, restocked: 1 });
+    pintar(pedido({ lines: [linea(1, 1, 1), linea(2, 1), linea(3, 1)] }));
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('radio', { name: 'Sin insumos' }));
+    await u.click(within(hoja).getByRole('button', { name: 'Quitar los 2 que faltan' }));
+
+    await waitFor(() => expect(medirAccion).toHaveBeenCalledWith('pedidos', 'cancel-pending'));
+    expect(medirAccion).toHaveBeenCalledTimes(1);
+  });
+
+  test('si el servidor rechaza quitar lo que falta, no se cuenta', async () => {
+    const u = userEvent.setup();
+    api.cancelPendingLines.mockRejectedValue(new Error('no'));
+    pintar(pedido({ lines: [linea(1, 1, 1), linea(2, 1), linea(3, 1)] }));
+    await u.click(within(await tarjeta()).getByRole('button', { name: 'Más' }));
+    await u.click(await screen.findByRole('menuitem', { name: 'Quitar lo que falta' }));
+    const hoja = await screen.findByRole('dialog');
+    await u.click(within(hoja).getByRole('radio', { name: 'Sin insumos' }));
+    await u.click(within(hoja).getByRole('button', { name: 'Quitar los 2 que faltan' }));
+
+    await waitFor(() => expect(api.cancelPendingLines).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(medirAccion).not.toHaveBeenCalled();
+  });
+});
+
+// «ABRIR CUENTA» (spec 030, FR-019; caso 25 del lienzo, A4).
+//
+// El tablero tenía su propia puerta de cobro, y con ella eran tres: el ticket, el botón naranja y
+// el tablero. Ahora cada tarjeta lleva a la cuenta en Vender, donde se agrega o se cobra.
+describe('«Abrir cuenta» lleva a la cuenta en Vender', () => {
+  test('cada tarjeta lo ofrece, mide 44 px y navega a /pos?pedido=<id>', async () => {
+    pintar(pedido({ id: 42 }));
+    const c = await tarjeta();
+    const b = within(c).getByRole('button', { name: 'Abrir cuenta' });
+    expect(parseInt(getComputedStyle(b).minHeight || '0', 10)).toBeGreaterThanOrEqual(44);
+    await userEvent.click(b);
+    expect(navegar).toHaveBeenCalledWith('/pos?pedido=42');
+  });
+
+  test('el tablero ya no abre su propia hoja de cobro', async () => {
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }));
+    const c = await tarjeta();
+    await waitFor(() => expect(within(c).getByRole('button', { name: 'Abrir cuenta' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+  });
+});
+
+// EL AJUSTE «EL TABLERO PUEDE COBRAR» SE QUITÓ (decisión del dueño, 2026-10-09).
+//
+// Quien puede entrar a Vender cobra en la cuenta («Abrir cuenta»). Quien NO puede —una cocina con su
+// propio usuario— solo ve cuánto falta. Un servidor viejo que todavía mande el ajuste encendido no
+// vuelve a abrir la cuarta puerta de cobro.
+describe('quien no puede entrar a Vender', () => {
+  afterEach(() => { sinVender.activo = false; });
+
+  test('solo dice cuánto falta, aunque llegue el ajuste viejo encendido', async () => {
+    sinVender.activo = true;
+    pintar(pedido({ lines: [linea(1, 2, 2)], outstanding: '65' }), { kitchenCanCharge: true });
+    await waitFor(() => expect(api.businessSettings).toHaveBeenCalled());
+    const c = await tarjeta();
+    await waitFor(() => expect(within(c).getByText(/^Falta cobrar \$65/)).toBeInTheDocument());
+    expect(within(c).queryByRole('button', { name: /^Cobrar/ })).toBeNull();
+    expect(within(c).queryByRole('button', { name: 'Abrir cuenta' })).toBeNull();
+  });
+});
+
+// PENDIENTES DEL TABLERO QUE DEJÓ LA 029 (spec 029, «Pendiente para el tablero»).
+//
+// Las entregadas son la lista desde la que se devuelve. Sin la fecha, dos «Persa» del mismo día no
+// se distinguen; sin la marca, quien devuelve no sabe que ya se devolvió y lo intenta otra vez. Y el
+// botón «Devolver» se ofrecía con `total − por cobrar > 0`, que sigue siendo cierto después de
+// devolverlo todo: el operador lo tocaba con el cliente enfrente y el servidor lo rechazaba.
+describe('las entregadas dicen cuándo y cuánto se devolvió', () => {
+  const ABIERTO = '2026-10-08T02:25:00Z'; // 7 oct, 20:25 en la Ciudad de México
+  function pintarEntregada(o: Partial<BoardOrder>) {
+    useSessionStore.setState({
+      token: 't', status: 'authed',
+      user: { id: 1, companyId: 2, name: 'Ana', role: 'admin', permissions: [] },
+    });
+    api.businessSettings.mockResolvedValue({ timezone: 'America/Mexico_City', corteDeVista: '' });
+    api.activeOrders.mockResolvedValue({ items: [] });
+    api.deliveredOrders.mockResolvedValue({ items: [pedido({ id: 9, folioName: 'Siamés', status: 'entregada', lines: [], openedAt: ABIERTO, ...o })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<Provider><QueryClientProvider client={qc}><OrdersBoardPage /></QueryClientProvider></Provider>);
+  }
+  const renglon = async () => (await screen.findByText('Siamés')).closest('[data-delivered-row]') as HTMLElement;
+
+  test('el renglón trae fecha y hora del pedido en la zona del negocio', async () => {
+    pintarEntregada({ outstanding: '0', paid: true });
+    expect(within(await renglon()).getByText(/7 oct, 08:25 p\.?\s?m\.?/i)).toBeInTheDocument();
+  });
+
+  test('con una devolución, el renglón lo marca con lo devuelto', async () => {
+    pintarEntregada({ outstanding: '0', paid: true, refund: '40' });
+    expect(within(await renglon()).getByText('Devuelto $40')).toBeInTheDocument();
+  });
+
+  test('sin devolución, no hay marca', async () => {
+    pintarEntregada({ outstanding: '0', paid: true, refund: '0' });
+    expect(within(await renglon()).queryByText(/^Devuelto/)).toBeNull();
+  });
+
+  test('devuelto todo lo cobrado, ya no ofrece «Devolver»', async () => {
+    pintarEntregada({ total: '110', outstanding: '0', paid: true, refund: '110' });
+    const r = await renglon();
+    expect(within(r).getByText('Devuelto $110')).toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+
+  test('devuelto una parte, sigue ofreciendo «Devolver»', async () => {
+    pintarEntregada({ total: '110', outstanding: '0', paid: true, refund: '40' });
+    expect(within(await renglon()).getByRole('button', { name: 'Devolver' })).toBeInTheDocument();
+  });
+
+  test('abonado y devuelto el abono, no ofrece «Devolver» aunque deba', async () => {
+    pintarEntregada({ total: '110', outstanding: '60', paid: false, refund: '50' });
+    expect(within(await renglon()).queryByRole('button', { name: 'Devolver' })).toBeNull();
+  });
+});
+
+describe('la tarjeta del tablero dice cuándo y si se devolvió', () => {
+  test('trae fecha y hora del pedido', async () => {
+    pintar(pedido({ openedAt: '2026-10-08T02:25:00Z' }));
+    expect(within(await tarjeta()).getByText(/7 oct, 08:25 p\.?\s?m\.?/i)).toBeInTheDocument();
+  });
+
+  test('con una devolución, la marca con lo devuelto', async () => {
+    pintar(pedido({ outstanding: '0', paid: true, refund: '30' }));
+    expect(within(await tarjeta()).getByText('Devuelto $30')).toBeInTheDocument();
+  });
+});

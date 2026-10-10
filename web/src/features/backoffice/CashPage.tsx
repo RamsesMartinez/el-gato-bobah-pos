@@ -1,21 +1,38 @@
 import { useState, Fragment, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
+import { ReasonSheet } from '../../components/ReasonSheet';
+import { posApi } from '../../api/pos';
+import { descartarCuenta } from '../pos/descartarCuenta';
+import type { AccountItem } from '../../types/pos';
+import { ESTADO, nombreDeCuenta } from '../../domain/cuentas';
 import {
   Box, Heading, Text, Button, VStack, HStack, Table, Input, Textarea,
-  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, Wrap, useBreakpointValue,
+  Center, Spinner, Stat, Tabs, Badge, SimpleGrid, useBreakpointValue, IconButton,
 } from '@chakra-ui/react';
-import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp } from 'react-icons/lu';
+import { LuArrowDownLeft, LuArrowUpRight, LuArrowLeftRight, LuPlus, LuChevronDown, LuChevronUp, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { medirAccion } from '../../api/uso';
 import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
+import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
+import { MotivoDeApertura } from './MotivoDeApertura';
+import { AvisosDeCaja } from './AvisosDeCaja';
+import { FondoQueSeDeja } from './FondoQueSeDeja';
+import { useVolverAlCierre } from './volverAlCierre';
+import { fondoValido, fondoExcedeLoContado } from './fondoQueSeDeja';
+import { ConteoDeTerminales } from './ConteoDeTerminales';
+import { faltanTerminales } from './terminalesPorContar';
+import { faltaDecidirPropinas } from './propinas';
+import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type DiferenciasDelCierre,
@@ -51,17 +68,31 @@ function hhmm(iso: string, zona: string) {
 // Tipo del movimiento para la columna "Tipo": traspaso (azul) o entrada/salida (verde/rojo).
 function movementType(m: CashMovement): { label: string; palette: string } {
   if (m.transferId !== null) return { label: 'Traspaso', palette: 'blue' };
+  if (m.isRefund) return { label: 'Devolución', palette: 'orange' };
+  if (m.kind === 'propina') return { label: 'Propina', palette: 'purple' };
+  if (m.kind === 'reverso') return { label: 'Corrección', palette: 'gray' };
   return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
+}
+
+// Solo una salida capturada a mano y sin corregir; el servidor aplica la misma regla.
+function esCorregible(m: CashMovement): boolean {
+  return m.kind === 'salida' && !m.reversed && m.transferId === null && m.expenseId === null && !m.isRefund;
 }
 
 // ---- Tablas del resumen (compartidas entre caja en vivo, histórico y resumen post-cierre) ----
 
 // Totales por método: esperado (sistema) vs declarado (usuario) vs diferencia (solo lectura).
 // withTotalRow agrega una fila de totales (Sistema / Según usuario / Diferencia) al pie.
-export function TotalsTable({ totals, currency, withTotalRow }: { totals: MethodTotal[]; currency: string; withTotalRow?: boolean }) {
+//
+// `drawerDifference` es la diferencia del CAJÓN, que vive en el conteo y no en los renglones: los
+// métodos del cajón guardan declarado = esperado. Sin sumarla, la fila Total decía $0 en un corte con
+// el cajón corto, mientras el histórico —que sí la suma— decía la cifra real (spec 031, D13).
+export function TotalsTable({ totals, currency, withTotalRow, drawerDifference }: {
+  totals: MethodTotal[]; currency: string; withTotalRow?: boolean; drawerDifference?: string | null;
+}) {
   if (!totals?.length) return null;
   const sum = (pick: (t: MethodTotal) => string) => totals.reduce((s, t) => s + (Number(pick(t)) || 0), 0);
-  const diffTotal = sum((t) => t.difference);
+  const diffTotal = round2(sum((t) => t.difference) + (Number(drawerDifference) || 0));
   return (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm">
@@ -99,10 +130,12 @@ export function TotalsTable({ totals, currency, withTotalRow }: { totals: Method
 // La zona llega como PROP y no del hook: esto es una tabla de presentación, y que pidiera los
 // ajustes por su cuenta la vuelve imposible de pintar sin montar media aplicación alrededor. Quien
 // la usa ya tiene la zona a la mano.
-export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }: {
+export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, onCorregir }: {
   movements: CashMovement[];
   currency: string;
   zona?: string;
+  // Solo en el turno abierto: la salida a mano sin corregir ofrece «Corregir» (spec 032, punto 4).
+  onCorregir?: (m: CashMovement) => void;
 }) {
   const rows = (movements ?? []).filter((m) => m.expenseId === null);
   if (rows.length === 0) return <Text fontSize="sm" color="fg.muted">Sin movimientos de efectivo.</Text>;
@@ -115,6 +148,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
           <Table.ColumnHeader>Concepto</Table.ColumnHeader>
           <Table.ColumnHeader>Usuario</Table.ColumnHeader>
           <Table.ColumnHeader textAlign="end">Monto</Table.ColumnHeader>
+          {onCorregir && <Table.ColumnHeader />}
         </Table.Row></Table.Header>
         <Table.Body>
           {rows.map((m) => {
@@ -123,12 +157,22 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE }:
               <Table.Row key={m.id}>
                 <Table.Cell whiteSpace="nowrap" color="fg.muted">{hhmm(m.createdAt, zona)}</Table.Cell>
                 <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
-                <Table.Cell><Text truncate maxW="220px">{m.concept}</Text></Table.Cell>
+                {/* Sin ancho fijo: a 220 px «Devolución: Producto en mal estado» se cortaba con la
+                    tabla a medio llenar, y el motivo es justo lo que se vino a leer. */}
+                <Table.Cell><Text lineClamp={2}>{m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
-                  color={m.kind === 'entrada' ? 'green.500' : 'red.500'}>
-                  {m.kind === 'entrada' ? '+' : '−'}{money(m.amount, currency)}
+                  color={m.kind === 'entrada' || m.kind === 'reverso' ? 'green.500' : 'red.500'}
+                  textDecoration={m.reversed ? 'line-through' : undefined}>
+                  {m.kind === 'entrada' || m.kind === 'reverso' ? '+' : '−'}{money(m.amount, currency)}
                 </Table.Cell>
+                {onCorregir && (
+                  <Table.Cell textAlign="end">
+                    {esCorregible(m) && (
+                      <Button size="sm" minH="44px" variant="outline" onClick={() => onCorregir(m)}>Corregir</Button>
+                    )}
+                  </Table.Cell>
+                )}
               </Table.Row>
             );
           })}
@@ -181,14 +225,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // Fila de la tarjeta jerárquica Ingresos/Egresos (label a la izquierda, monto a la derecha).
-function SummaryLine({ label, amount, indent = 0, weight = '400', color, top }: {
-  label: string; amount?: string; indent?: number; weight?: string; color?: string; top?: boolean;
+function SummaryLine({ label, amount, indent = 0, weight = '400', color, top, negative }: {
+  label: string; amount?: string; indent?: number; weight?: string; color?: string; top?: boolean; negative?: boolean;
 }) {
   return (
     <HStack justify="space-between" px={3} py="6px" pl={3 + indent * 4}
       borderTopWidth={top ? '1px' : undefined} borderColor="border.muted">
       <Text fontSize="sm" fontWeight={weight} color={color}>{label}</Text>
-      {amount !== undefined && <Text fontSize="sm" fontWeight={weight} color={color} whiteSpace="nowrap">{amount}</Text>}
+      {amount !== undefined && (
+        <Text fontSize="sm" fontWeight={weight} color={negative ? 'red.600' : color} whiteSpace="nowrap"
+          data-negative={negative ? 'true' : undefined}>{amount}</Text>
+      )}
     </HStack>
   );
 }
@@ -206,8 +253,12 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
       {ingresos.map((m) => (
         <Fragment key={m.method}>
           <SummaryLine label={m.method} amount={money(m.total, currency)} indent={1} weight="600" />
+          {m.note && <Text fontSize="xs" color="fg.muted" px={3} pl={8} pb={1}>{m.note}</Text>}
           {m.items.map((it) => (
-            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted" />
+            // Un concepto que resta (Devoluciones) se pinta como los egresos: en gris se leería como
+            // otro ingreso.
+            <SummaryLine key={it.concept} label={it.concept} amount={money(it.amount, currency)} indent={2} color="fg.muted"
+              negative={Number(it.amount) < 0} />
           ))}
         </Fragment>
       ))}
@@ -234,15 +285,99 @@ export function IngresosEgresosCard({ openingCash, breakdown, currency }: { open
 }
 
 // Bloque plegable para el drill-down (tablas de movimientos/gastos) — ahorra espacio por defecto.
-function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+// 44 px: medía 36 y en la tableta el dedo cae en el renglón de al lado.
+export function Plegable({ title, children }: { title: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <Box>
-      <Button size="sm" variant="ghost" w="100%" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
+      <Button size="sm" minH="44px" variant="ghost" w="100%" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
         <Text fontWeight="700">{title}</Text>
         {open ? <LuChevronUp /> : <LuChevronDown />}
       </Button>
       {open && <Box mt={2}>{children}</Box>}
+    </Box>
+  );
+}
+
+// VoidedPaymentsList: los pagos que se devolvieron en el turno (spec 027).
+//
+// NO SUMA NADA, a propósito: un pago devuelto no es una salida de caja ni dinero del turno, y el
+// esperado del servidor ya lo excluye. Un total aquí invitaría a restarlo otra vez del cierre.
+// Sin devoluciones no se pinta: es el caso normal y cada renglón vacío le quita alto a la tableta.
+// El tope en dvh es para que en 600 px de alto la lista no empuje fuera la tabla del cierre.
+export function VoidedPaymentsList({ payments, currency, zona = DEFAULT_TIMEZONE }: {
+  payments?: VoidedPayment[]; currency: string; zona?: string;
+}) {
+  if (!payments?.length) return null;
+  return (
+    <Section title="Pagos devueltos">
+      <Box as="ul" aria-label="Pagos devueltos" listStyleType="none" m={0} p={0}
+        bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="35dvh" overflowY="auto">
+        {payments.map((p, i) => (
+          <Box as="li" key={i} px={3} py={2} borderTopWidth={i === 0 ? 0 : '1px'} fontSize="sm">
+            <HStack justify="space-between" gap={2}>
+              <HStack gap={2} minW={0}>
+                <Text fontWeight="600">{p.method}</Text>
+                <Text color="fg.muted" truncate>Pedido {p.orderFolio}</Text>
+              </HStack>
+              <HStack gap={2} flexShrink={0}>
+                {Number(p.tip) > 0 && <Text color="fg.muted">+ propina {money(p.tip, currency)}</Text>}
+                <Text fontWeight="600">{money(p.amount, currency)}</Text>
+              </HStack>
+            </HStack>
+            <Text color="fg.muted">
+              {hhmm(p.voidedAt, zona)} · {p.voidedBy}: {p.reason}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+    </Section>
+  );
+}
+
+// RefundsList: el dinero que se le devolvió al cliente en el turno (spec 031).
+//
+// No es la lista de «Pagos devueltos»: aquélla son cobros que no ocurrieron, ésta dinero que salió
+// hacia el cliente. Tampoco suma nada: cada devolución ya está en «Devoluciones» de su medio en el
+// desglose (spec 029), así que un total aquí invitaría a restarlas otra vez.
+// Va PLEGADA con su contador: abierta empujaría fuera de los 600 px de la tableta la tabla donde se
+// declara el cierre. Y por ir plegada, abierta NO lleva scroll propio (spec 029): un scroll de 3.5
+// renglones dentro de una página que ya hace scroll obligaba a adivinar cuál mover. «Pagos
+// devueltos» sí conserva su tope, a propósito: esa lista va abierta siempre.
+export function RefundsList({ refunds, currency, zona = DEFAULT_TIMEZONE }: {
+  refunds?: SessionRefund[]; currency: string; zona?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!refunds?.length) return null;
+  return (
+    <Box>
+      <Button variant="ghost" w="100%" minH="44px" justifyContent="space-between" onClick={() => setOpen((o) => !o)}>
+        <Text fontWeight="700">Devoluciones ({refunds.length})</Text>
+        {open ? <LuChevronUp /> : <LuChevronDown />}
+      </Button>
+      {open && (
+        <Box as="ul" aria-label="Devoluciones" listStyleType="none" m={0} mt={2} p={0}
+          bg="bg.panel" borderRadius="lg" borderWidth="1px">
+          {refunds.map((r, i) => (
+            <Box as="li" key={i} px={3} py={2} borderTopWidth={i === 0 ? 0 : '1px'} fontSize="sm">
+              <HStack justify="space-between" gap={2}>
+                <HStack gap={2} minW={0}>
+                  <Text fontWeight="600">{r.method}</Text>
+                  <Text color="fg.muted" truncate>Pedido {r.orderFolio}</Text>
+                </HStack>
+                <HStack gap={2} flexShrink={0}>
+                  {Number(r.tip) > 0 && <Text color="fg.muted">+ propina {money(r.tip, currency)}</Text>}
+                  <Text fontWeight="600">{money(r.amount, currency)}</Text>
+                </HStack>
+              </HStack>
+              <Text color="fg.muted">
+                {hhmm(r.refundedAt, zona)} · {r.refundedBy}: {r.reason}
+                {r.fromDrawer && <> · <Text as="span">salió del cajón</Text></>}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -257,10 +392,14 @@ interface CorteData {
   expenses: CashExpenseLine[];
   counts?: ConteosDelTurno | null;
   drawer?: ArqueoDelCajon | null;
+  voidedPayments?: VoidedPayment[];
+  refunds?: SessionRefund[];
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
-function CorteSummary({ data }: { data: CorteData }) {
+// `abierto`: el turno no se ha cerrado, así que no hay nada declarado y la conciliación no se pinta —
+// «Declarado $0 · Dif. $0» se leería como un corte cuadrado (spec 029).
+export function CorteSummary({ data, abierto = false }: { data: CorteData; abierto?: boolean }) {
   const horaNegocio = useHoraDelNegocio();
   const cur = data.currency;
   const totals = data.totals ?? [];
@@ -269,21 +408,23 @@ function CorteSummary({ data }: { data: CorteData }) {
   return (
     <VStack align="stretch" gap={4}>
       <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
-      {totals.length > 0 && (
+      {totals.length > 0 && !abierto && (
         <Section title="Conciliación (sistema vs declarado)">
-          <TotalsTable totals={totals} currency={cur} withTotalRow />
+          <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
         </Section>
       )}
       <ArqueoDelCorte drawer={data.drawer} currency={cur} />
       <DesgloseDelConteo counts={data.counts} currency={cur} />
-      <Collapsible title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
+      <Plegable title={`Movimientos de efectivo (${movements.filter((m) => m.expenseId === null).length})`}>
         <MovementsTable movements={movements} currency={cur} zona={horaNegocio.zona} />
-      </Collapsible>
+      </Plegable>
       {expenses.length > 0 && (
-        <Collapsible title={`Gastos (${expenses.length})`}>
+        <Plegable title={`Gastos (${expenses.length})`}>
           <ExpensesTable expenses={expenses} currency={cur} />
-        </Collapsible>
+        </Plegable>
       )}
+      <VoidedPaymentsList payments={data.voidedPayments} currency={cur} zona={horaNegocio.zona} />
+      <RefundsList refunds={data.refunds} currency={cur} zona={horaNegocio.zona} />
     </VStack>
   );
 }
@@ -304,12 +445,64 @@ function CorteDetail({ id }: { id: number }) {
           <Text textAlign="end">{data.closedByName ?? '—'} · {horaNegocio.fechaYHora(data.closedAt)}</Text>
         </>)}
       </SimpleGrid>
-      <CorteSummary data={data} />
+      <CorteSummary data={data} abierto={!data.closedAt} />
+      <TerminalesYPropinasDelCorte session={data} currency={data.currency} />
       <VentasDelCorte session={data} zona={horaNegocio.zona} />
       {data.notes && (
         <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
       )}
     </VStack>
+  );
+}
+
+// Terminales y propinas de un corte (spec 032): lo que el turno abierto mostraba y el cierre firmó.
+// Sin esto, un faltante en una terminal dejaba de verse en cuanto se cerraba el turno.
+export function TerminalesYPropinasDelCorte({ session, currency }: {
+  session: Pick<CashSessionDetail, 'terminalCounts' | 'tipsPaidOut' | 'cardTipsPaidInCash' | 'tipsCarriedOver'>;
+  currency: string;
+}) {
+  const terminales = session.terminalCounts ?? [];
+  const entregadas = Number(session.tipsPaidOut ?? 0);
+  const enEfectivo = Number(session.cardTipsPaidInCash ?? 0);
+  const enCaja = Number(session.tipsCarriedOver ?? 0);
+  return (
+    <>
+      {terminales.length > 0 && (
+        <Section title="Terminales">
+          <Table.Root size="sm">
+            <Table.Header><Table.Row>
+              <Table.ColumnHeader>Terminal</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
+            </Table.Row></Table.Header>
+            <Table.Body>
+              {terminales.map((t) => (
+                <Table.Row key={t.terminalId}>
+                  <Table.Cell>{t.name}</Table.Cell>
+                  <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end" fontWeight="600" color={diffColor(t.difference)}>{money(t.difference, currency)}</Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        </Section>
+      )}
+      {(entregadas > 0 || enEfectivo > 0 || enCaja > 0) && (
+        <Section title="Propinas">
+          <Table.Root size="sm">
+            <Table.Body>
+              <Table.Row><Table.Cell>Propinas entregadas</Table.Cell><Table.Cell textAlign="end">{money(session.tipsPaidOut ?? '0', currency)}</Table.Cell></Table.Row>
+              {enEfectivo > 0 && (
+                <Table.Row><Table.Cell>De ellas, propina de tarjeta pagada en efectivo</Table.Cell><Table.Cell textAlign="end">{money(session.cardTipsPaidInCash ?? '0', currency)}</Table.Cell></Table.Row>
+              )}
+              <Table.Row><Table.Cell>Se quedó en caja por entregar</Table.Cell><Table.Cell textAlign="end">{money(session.tipsCarriedOver ?? '0', currency)}</Table.Cell></Table.Row>
+            </Table.Body>
+          </Table.Root>
+        </Section>
+      )}
+    </>
   );
 }
 
@@ -321,9 +514,10 @@ export function CashPage() {
       <Heading size="lg" mb={4}>Caja</Heading>
       <Tabs.Root defaultValue="operar">
         <Tabs.List>
-          <Tabs.Trigger value="operar">Cajas</Tabs.Trigger>
-          <Tabs.Trigger value="historico">Histórico</Tabs.Trigger>
-          {canManage && <Tabs.Trigger value="gestion">Administrar</Tabs.Trigger>}
+          {/* 44 px: medían 40. */}
+          <Tabs.Trigger value="operar" minH="44px">Cajas</Tabs.Trigger>
+          <Tabs.Trigger value="historico" minH="44px">Histórico</Tabs.Trigger>
+          {canManage && <Tabs.Trigger value="gestion" minH="44px">Administrar</Tabs.Trigger>}
         </Tabs.List>
         <Tabs.Content value="operar" px={0} pt={4}><RegistersTab /></Tabs.Content>
         <Tabs.Content value="historico" px={0} pt={4}><HistoryTab /></Tabs.Content>
@@ -415,7 +609,7 @@ export function DesgloseDelConteo({ counts, currency }: {
     .filter((m) => m.conteo !== null);
   if (momentos.length === 0) return null;
   return (
-    <Collapsible title="Efectivo contado">
+    <Plegable title="Efectivo contado">
       <VStack align="stretch" gap={4}>
         {momentos.map(({ titulo, conteo }) => (
           <Box key={titulo}>
@@ -448,7 +642,7 @@ export function DesgloseDelConteo({ counts, currency }: {
           </Box>
         ))}
       </VStack>
-    </Collapsible>
+    </Plegable>
   );
 }
 
@@ -633,15 +827,64 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [notes, setNotes] = useState('');
   const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   const [transferOpen, setTransferOpen] = useState(false);
+  const [repartiendo, setRepartiendo] = useState(false);
+  const { ref: refDelCierre, marcar: marcarVueltaAlCierre, volver: volverAlCierre } = useVolverAlCierre<HTMLDivElement>();
+  // Apertura que no coincide con el cierre anterior: se guarda el conteo y se pide el motivo.
+  const [aperturaPendiente, setAperturaPendiente] = useState<AperturaInput | null>(null);
+  const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
+  const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
+  const [conteoTerminales, setConteoTerminales] = useState<Record<number, string>>({});
+  // El fondo que se queda para el siguiente turno (2026-10-10). Solo con cajón: sin efectivo no hay fondo.
+  const [fondo, setFondo] = useState('');
+  const faltaFondo = (session?.drawer ?? null) !== null && !fondoValido(fondo);
+  const terminalesSinCifra = faltanTerminales(session?.terminalsToCount ?? [], conteoTerminales);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
+  const navigate = useNavigate();
+  // Descartar una cuenta que se capturaba y nadie mandó. No bloquea el cierre, pero quien cierra
+  // puede limpiarla desde aquí (D-8).
+  const descartarDelCierre = async (draftId: string, version: number) => {
+    try {
+      await descartarCuenta(qc, draftId, version);
+    } catch (e) {
+      toaster.create({ title: 'No se pudo descartar', description: mensajeDeError(e), type: 'error' });
+    }
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+  };
+  // Cancelar un entregado que debe y no pagó nada («se fue sin pagar»): la otra salida del cierre
+  // sin fiados, además de cobrarlo en su cuenta.
+  const cancelarDelCierre = async (orderId: number, motivo: string, resto = false) => {
+    try {
+      await (resto ? posApi.writeOffOrder(orderId, motivo) : posApi.cancelOrder(orderId, motivo));
+    } catch (e) {
+      toaster.create({ title: 'No se pudo cancelar', description: mensajeDeError(e), type: 'error' });
+    }
+    invalidate();
+    qc.invalidateQueries({ queryKey: ['pos', 'accounts'] });
+  };
   const openMut = useMutation({
     mutationFn: (apertura: AperturaInput) => backofficeApi.cashOpen(register.id, apertura),
     // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
     // —que existe en la lista blanca— nunca se disparaba, y el conteo del cierre no se contaba en
     // ningún lado. Dos ceros permanentes que se leen como «nadie lo hace».
-    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); invalidate(); },
-    onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
+    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); setAperturaPendiente(null); invalidate(); },
+    onError: (e, apertura) => {
+      if (e instanceof ApiError && e.code === 'OPENING_REASON_REQUIRED') {
+        setContando(false); setAperturaPendiente(apertura);
+        return;
+      }
+      toaster.create({ title: 'No se pudo abrir la caja', description: mensajeDeError(e), type: 'error' });
+    },
+  });
+  const payoutMut = useMutation({
+    mutationFn: (input: TipPayoutInput) => backofficeApi.cashTipPayout(register.id, input),
+    onSuccess: (r) => {
+      setRepartiendo(false); invalidate(); volverAlCierre();
+      toaster.create({ title: r.items.length === 1 ? `Propina entregada a ${r.items[0].recipientName}`
+        : `Propina repartida entre ${r.items.length} personas`, type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo entregar la propina', description: mensajeDeError(e), type: 'error' }),
   });
   const closeMut = useMutation({
     mutationFn: () => {
@@ -661,17 +904,21 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         countedCash: aMano?.total,
         manualReason: aMano?.manualReason,
         notes: notes || undefined,
+        tipsDecision: Number(session?.tipsPending?.total ?? 0) >= 1 ? decisionPropinas ?? undefined : undefined,
+        floatLeft: fondoValido(fondo) ? Number(fondo) : undefined,
+        terminalCounts: Object.fromEntries((session?.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(''); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
     // pendiente, y el operador tiene que saber que la puede resolver y volver.
     onError: (e) => toaster.create({
-      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar' : 'No se pudo cerrar la caja',
+      title: e instanceof ApiError && e.code === 'OPEN_ORDERS' ? 'Faltan pedidos por terminar'
+        : e instanceof ApiError && e.code === 'UNPAID_ORDERS' ? 'Faltan pedidos por cobrar' : 'No se pudo cerrar la caja',
       description: e instanceof ApiError ? e.message : String(e),
       type: 'error',
       duration: 8000,
@@ -702,7 +949,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         <VStack align="stretch" gap={5}>
           <HStack justify="space-between" flexWrap="wrap" gap={2}>
             <Text fontWeight="700">{register.name}{session.isPrimary ? ' · recibe ventas' : ''}</Text>
-            <Button size="sm" variant="outline" onClick={() => setTransferOpen(true)}
+            <Button size="sm" minH="44px" variant="outline" onClick={() => setTransferOpen(true)}
               disabled={openRegisters.length < 2}>
               <LuArrowLeftRight /> Traspaso
             </Button>
@@ -737,6 +984,23 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             )}
           </Section>
 
+          {Number(session.tipsPending?.total ?? 0) >= 1 && (
+            <HStack borderWidth="1px" borderRadius="lg" p={3} justify="space-between" flexWrap="wrap" gap={2}>
+              <Box>
+                <Text fontWeight="700">Propinas por entregar: {money(session.tipsPending?.total ?? '0', session.currency)}</Text>
+                {Number(session.cardTipsPaidInCash ?? 0) > 0 && (
+                  <Text fontSize="sm" color="fg.muted">
+                    Propina de tarjeta pagada en efectivo: {money(session.cardTipsPaidInCash ?? '0', session.currency)}
+                  </Text>
+                )}
+              </Box>
+              <Button minH="52px" colorPalette="orange"
+                onClick={() => setRepartiendo(true)}>
+                Entregar propina
+              </Button>
+            </HStack>
+          )}
+
           <MovementsPanel session={session} />
 
           {(session.expenses ?? []).length > 0 && (
@@ -745,10 +1009,16 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Section>
           )}
 
+          <VoidedPaymentsList payments={session.voidedPayments} currency={session.currency} zona={horaNegocio.zona} />
+
           <TablaDelCierre totals={session.totals ?? []} currency={session.currency}
             declared={declared} onDeclared={setDeclared}
             cajon={cajon} conteo={conteoDelCierre} onContar={() => setContando(true)}
             diferencias={diferencias} />
+
+          {/* Después de la tabla del cierre y no antes: es lo que se viene a llenar, y la lista
+              abierta la empujaría fuera de los 600 px de la tableta. */}
+          <RefundsList refunds={session.refunds} currency={session.currency} zona={horaNegocio.zona} />
 
           <Textarea rows={2} resize="none" placeholder="Notas del cierre (opcional)"
             value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -756,10 +1026,14 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
               que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
-          {(porContar.length > 0 || faltaElCajon) && (
+          <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
+
+          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={conteoDelCierre?.total ?? null} />}
+
+          {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
               <Text fontSize="sm" fontWeight="600">
-                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name)].join(', ')}
+                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
               </Text>
             </Box>
           )}
@@ -795,28 +1069,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
-          {/* Lo que falta por entregar, ANTES de intentar cerrar. Antes solo se sabía al presionar
-              el botón y recibir el error: el operador terminaba de contar el efectivo para
-              enterarse entonces de que le faltaba sacar comida. */}
-          {session.pending.length > 0 && (
-            <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
-              _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
-              <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
-                Falta entregar {session.pending.length === 1 ? '1 pedido' : `${session.pending.length} pedidos`}
-              </Text>
-              <Text fontSize="sm" color="fg.muted" mb={2}>
-                La caja no cierra hasta que salgan o se cancelen. Estar cobrado no cuenta: lo que
-                falta es la comida.
-              </Text>
-              <Wrap gap={2}>
-                {session.pending.map((o) => (
-                  <Badge key={o.number} colorPalette="orange" px={2} py={1} fontSize="sm">
-                    {o.name ? `${o.name} · #${o.number}` : `#${o.number}`}
-                  </Badge>
-                ))}
-              </Wrap>
-            </Box>
-          )}
+          {/* Lo que falta por entregar (bloquea) y las cuentas que siguen vivas (no bloquean), ANTES
+              de intentar cerrar: antes solo se sabía al presionar el botón y recibir el error. */}
+          <CuentasDelCierre pending={session.pending} owing={session.owing ?? []} cuentas={session.liveAccounts ?? []}
+            onAbrir={(ruta) => navigate(ruta)} onDescartar={descartarDelCierre} onCancelar={cancelarDelCierre}
+            onCancelarResto={(id, motivo) => cancelarDelCierre(id, motivo, true)} />
 
           {/* Lo que se vendió y nadie pagó. NO bloquea el cierre —fiar o cobrar por fuera son
               decisiones del negocio— pero el arqueo tiene que decirlo: solo compara pagos contra
@@ -837,14 +1094,28 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             </Box>
           )}
 
+          {/* Lo dado por perdido («cancelar lo que falta»): ni cobrado ni sin cobrar. */}
+          {Number(session.writtenOff ?? 0) > 0 && (
+            <Text fontSize="sm" color="fg.muted">
+              Perdido: {money(session.writtenOff ?? '0')} (se canceló lo que faltaba)
+            </Text>
+          )}
+
           <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
             currency={session.currency} />
 
-          <Button colorPalette="red" size="lg" loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0}
-            onClick={() => { if (confirm(`¿Cerrar «${register.name}»? No podrás modificarla después.`)) closeMut.mutate(); }}>
-            Cerrar caja
-          </Button>
+          {(session.cashOutsWithoutConcept ?? 0) > 0 && (
+            <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
+          )}
+
+          <Box ref={refDelCierre}>
+            <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
+              onEntregarAhora={() => { marcarVueltaAlCierre(); setRepartiendo(true); }} onDecidir={setDecisionPropinas} />
+          </Box>
+
+          <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || fondoExcedeLoContado(fondo, conteoDelCierre?.total ?? null) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
 
@@ -866,6 +1137,15 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); setConteoDelCierre(r); setContando(false); }} />
       )}
 
+      {session && (
+        <RepartirPropinas isOpen={repartiendo} pendiente={session.tipsPending ?? null} currency={session.currency}
+          guardando={payoutMut.isPending} onEntregar={(i) => payoutMut.mutate(i)} onClose={() => setRepartiendo(false)} />
+      )}
+
+      <MotivoDeApertura isOpen={aperturaPendiente !== null} guardando={openMut.isPending}
+        onVolver={() => { setAperturaPendiente(null); setContando(true); }}
+        onConfirmar={(motivo, nota) => aperturaPendiente && openMut.mutate({ ...aperturaPendiente, openingReason: motivo, openingReasonNote: nota || undefined })} />
+
       <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)}
         from={register} openRegisters={openRegisters} onDone={() => { setTransferOpen(false); invalidate(); }} />
 
@@ -877,6 +1157,19 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DialogCloseTrigger />
           <DialogBody pb={6}>
             <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} />
+            {(closed?.terminalCounts ?? []).length > 0 && (
+              <Box mt={3}>
+                <Text fontWeight="700" mb={1}>Terminales</Text>
+                {(closed?.terminalCounts ?? []).map((t) => (
+                  <HStack key={t.terminalId} justify="space-between">
+                    <Text>{t.name}</Text>
+                    <Text color={diffColor(t.difference)}>
+                      {money(t.declared, closed?.currency ?? 'MXN')} · diferencia {money(t.difference, closed?.currency ?? 'MXN')}
+                    </Text>
+                  </HStack>
+                ))}
+              </Box>
+            )}
           </DialogBody>
         </DialogContent>
       </DialogRoot>
@@ -885,22 +1178,42 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 }
 
 // ---- Movimientos de efectivo (entrada/salida) de la sesión abierta ----
-function MovementsPanel({ session }: { session: CashSession }) {
+export function MovementsPanel({ session }: { session: CashSession }) {
   const horaNegocio = useHoraDelNegocio();
   const qc = useQueryClient();
   const [kind, setKind] = useState<'entrada' | 'salida'>('salida');
   const [amount, setAmount] = useState('');
   const [concept, setConcept] = useState('');
+  const [conceptId, setConceptId] = useState('');
+  const [corrigiendo, setCorrigiendo] = useState<CashMovement | null>(null);
+  const { data: conceptos } = useQuery({ queryKey: ['cash', 'concepts'], queryFn: () => backofficeApi.cashConcepts() });
+  const opciones = (conceptos?.items ?? []).map((c) => ({ value: String(c.id), label: c.name }));
+  const crearConcepto = async (name: string) => {
+    const c = await backofficeApi.createCashConcept(name);
+    qc.invalidateQueries({ queryKey: ['cash', 'concepts'] });
+    return { value: String(c.id), label: c.name };
+  };
 
   const mut = useMutation({
-    mutationFn: () => backofficeApi.cashMovement(session.registerId, kind, montoTecleado(amount) ?? 0, concept.trim()),
+    mutationFn: () => {
+      const monto = montoTecleado(amount) ?? 0;
+      return backofficeApi.cashMovement(session.registerId, kind === 'salida'
+        ? { kind: 'salida', amount: monto, conceptId: Number(conceptId) }
+        : { kind: 'entrada', amount: monto, concept: concept.trim() });
+    },
     onSuccess: () => {
       medirAccion('caja', 'traspaso');
-      setAmount(''); setConcept(''); qc.invalidateQueries({ queryKey: ['cash'] });
+      setAmount(''); setConcept(''); setConceptId(''); qc.invalidateQueries({ queryKey: ['cash'] });
     },
-    onError: (e) => toaster.create({ title: 'No se pudo registrar', description: String(e), type: 'error' }),
+    onError: (e) => toaster.create({ title: 'No se pudo registrar', description: mensajeDeError(e), type: 'error' }),
   });
-  const canAdd = (montoTecleado(amount) ?? 0) > 0 && concept.trim().length > 0;
+  const correctMut = useMutation({
+    mutationFn: (p: { id: number; amount: number; conceptId: number }) =>
+      backofficeApi.correctCashOut(p.id, { amount: p.amount, conceptId: p.conceptId }),
+    onSuccess: () => { setCorrigiendo(null); qc.invalidateQueries({ queryKey: ['cash'] }); },
+    onError: (e) => toaster.create({ title: 'No se pudo corregir', description: mensajeDeError(e), type: 'error' }),
+  });
+  const canAdd = (montoTecleado(amount) ?? 0) > 0 && (kind === 'salida' ? conceptId !== '' : concept.trim().length > 0);
   // Go serializa un slice vacío como null; sin esta guarda, `.length`/`.map` revienta el render.
   const movements = session.movements ?? [];
 
@@ -917,17 +1230,69 @@ function MovementsPanel({ session }: { session: CashSession }) {
             colorPalette={kind === 'salida' ? 'red' : 'gray'} onClick={() => setKind('salida')}>
             <LuArrowUpRight /> Salida
           </Button>
-          <Input size="sm" w="120px" type="number" inputMode="decimal" placeholder="Monto"
+          <Input size="sm" minH="44px" w="120px" type="number" inputMode="decimal" placeholder="Monto"
             value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <Input size="sm" flex="1" minW="140px" placeholder="Concepto (ej. pago proveedor)"
-            value={concept} onChange={(e) => setConcept(e.target.value)} />
+          {kind === 'salida' ? (
+            <Box flex="1" minW="180px">
+              {/* De la lista, y si no está se agrega ahí mismo (punto 3). */}
+              <Picker value={conceptId} onChange={setConceptId} options={opciones} onCreate={crearConcepto}
+                placeholder="Concepto de la salida" title="Concepto de la salida" />
+            </Box>
+          ) : (
+            <Input size="sm" minH="44px" flex="1" minW="140px" placeholder="Concepto (ej. cambio)"
+              value={concept} onChange={(e) => setConcept(e.target.value)} />
+          )}
           <Button size="sm" minH="44px" disabled={!canAdd} loading={mut.isPending} onClick={() => mut.mutate()}>
             Registrar
           </Button>
         </HStack>
       </Box>
-      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona} />
+      <MovementsTable movements={movements} currency={session.currency} zona={horaNegocio.zona}
+        onCorregir={setCorrigiendo} />
+      <CorregirSalida movimiento={corrigiendo} opciones={opciones} onCrear={crearConcepto} guardando={correctMut.isPending}
+        onCancelar={() => setCorrigiendo(null)}
+        onCorregir={(monto, cid) => { if (corrigiendo) correctMut.mutate({ id: corrigiendo.id, amount: monto, conceptId: cid }); }} />
     </Box>
+  );
+}
+
+// CorregirSalida: la salida bien capturada que reemplaza a la original. La original no cambia:
+// se le crea su reverso y queda a la vista, tachada (punto 4).
+function CorregirSalida({ movimiento, opciones, onCrear, guardando, onCancelar, onCorregir }: {
+  movimiento: CashMovement | null;
+  opciones: { value: string; label: string }[];
+  onCrear: (name: string) => Promise<{ value: string; label: string }>;
+  guardando: boolean;
+  onCancelar: () => void;
+  onCorregir: (monto: number, conceptId: number) => void;
+}) {
+  const [monto, setMonto] = useState('');
+  const [cid, setCid] = useState('');
+  const salir = () => { setMonto(''); setCid(''); onCancelar(); };
+  const valido = (montoTecleado(monto) ?? 0) > 0 && cid !== '';
+  return (
+    <DialogRoot open={movimiento !== null} onOpenChange={(e) => { if (!e.open && !guardando) salir(); }} placement="center" size="md">
+      <DialogBackdrop />
+      <DialogContent>
+        <DialogHeader><DialogTitle>Corregir salida</DialogTitle></DialogHeader>
+        <DialogBody>
+          <VStack align="stretch" gap={3}>
+            <Text fontSize="sm" color="fg.muted">
+              {movimiento ? `${movimiento.concept} · ${money(movimiento.amount)}` : ''} queda anulada y se registra esta en su lugar.
+            </Text>
+            <Input minH="48px" inputMode="decimal" placeholder="Monto correcto"
+              value={monto} onChange={(e) => setMonto(e.target.value)} />
+            <Picker value={cid} onChange={setCid} options={opciones} onCreate={onCrear}
+              placeholder="Concepto correcto" title="Concepto de la salida" />
+            <HStack gap={6} pt={2}>
+              <Button flex="1" minH="52px" variant="outline" disabled={guardando} onClick={salir}>Volver</Button>
+              <Button flex="1" minH="52px" colorPalette="orange" disabled={!valido} loading={guardando}
+                onClick={() => onCorregir(montoTecleado(monto) ?? 0, Number(cid))}>Corregir</Button>
+            </HStack>
+          </VStack>
+        </DialogBody>
+      </DialogContent>
+    </DialogRoot>
   );
 }
 
@@ -1030,7 +1395,7 @@ function ManageRegistersTab() {
                   <Switch checked={r.isActive} disabled={r.isPrimary}
                     onCheckedChange={(e) => update.mutate({ ...r, isActive: e.checked })} />
                 </Table.Cell>
-                <Table.Cell textAlign="end"><Button size="xs" variant="outline" onClick={() => setEdit(r)}>Editar</Button></Table.Cell>
+                <Table.Cell textAlign="end"><Button size="sm" minH="44px" variant="outline" onClick={() => setEdit(r)}>Editar</Button></Table.Cell>
               </Table.Row>
             ))}
           </Table.Body>
@@ -1060,18 +1425,35 @@ function ManageRegistersTab() {
 }
 
 // ---- Tab: histórico de cortes (lista + detalle: panel lateral en pantallas grandes, diálogo en 7") ----
+const CORTES_POR_PAGINA = 20;
+
 function HistoryTab() {
   const horaNegocio = useHoraDelNegocio();
-  const { data, isLoading } = useQuery({ queryKey: ['cash', 'history'], queryFn: backofficeApi.cashHistory });
+  const [page, setPage] = useState(0);
+  const [rango, setRango] = useState({ desde: '', hasta: '' });
+  const { data, isLoading } = useQuery({
+    queryKey: ['cash', 'history', page, rango.desde, rango.hasta],
+    queryFn: () => backofficeApi.cashHistory({ page, pageSize: CORTES_POR_PAGINA, from: rango.desde, to: rango.hasta }),
+    placeholderData: (prev) => prev,
+  });
   const [detailId, setDetailId] = useState<number | null>(null);
   // Panel lateral solo en pantallas anchas (xl+); en tablet de 7" se usa el diálogo a pantalla completa.
   const wide = useBreakpointValue({ base: false, xl: true }, { ssr: false });
 
   if (isLoading) return <Center h="40vh"><Spinner size="xl" /></Center>;
   const rows = data?.items ?? [];
-  if (rows.length === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
+  const filtrando = rango.desde !== '' || rango.hasta !== '';
+  if (rows.length === 0 && !filtrando && page === 0) return <Text color="fg.muted">Aún no hay cortes registrados.</Text>;
 
-  const list = (
+  const controles = (
+    <ControlesDelHistorico page={page} total={data?.total ?? 0} pageSize={CORTES_POR_PAGINA}
+      desde={rango.desde} hasta={rango.hasta} hoy={horaNegocio.diaDelNegocio(new Date())}
+      onPage={setPage} onRango={(desde, hasta) => { setRango({ desde, hasta }); setPage(0); }} />
+  );
+
+  const list = rows.length === 0 ? (
+    <Text color="fg.muted" py={4}>{filtrando ? 'No hay cortes en esas fechas.' : 'No hay más cortes.'}</Text>
+  ) : (
     <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" overflowX="auto">
       <Table.Root size="sm" interactive>
         <Table.Header><Table.Row>
@@ -1098,7 +1480,7 @@ function HistoryTab() {
                 {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
               </Table.Cell>
               <Table.Cell textAlign="end">
-                <Button size="xs" variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
+                <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
               </Table.Cell>
             </Table.Row>
           ))}
@@ -1110,7 +1492,7 @@ function HistoryTab() {
   if (wide) {
     return (
       <HStack align="start" gap={4}>
-        <Box flex="1.1" minW={0}>{list}</Box>
+        <VStack flex="1.1" minW={0} align="stretch" gap={2}>{controles}{list}</VStack>
         <Box flex="1" minW={0} bg="bg.panel" borderRadius="lg" borderWidth="1px" p={4} maxH="calc(100dvh - 220px)" overflowY="auto">
           {detailId
             ? <CorteDetail id={detailId} />
@@ -1120,10 +1502,51 @@ function HistoryTab() {
     );
   }
   return (
-    <>
+    <VStack align="stretch" gap={2}>
+      {controles}
       {list}
       <SessionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
-    </>
+    </VStack>
+  );
+}
+
+// Los controles del histórico: un rango opcional de días y la página. Van ARRIBA de la lista y en un
+// solo renglón: a 1024×600 abajo quedaban fuera de la pantalla, y cada renglón extra se le quita a
+// la lista que se vino a leer. Las fechas son `input type="date"` como en Ventas (el calendario del
+// sistema a pantalla completa, no el desplegable de renglones de 20 px que prohíbe la constitución).
+export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy, onPage, onRango }: {
+  page: number; total: number; pageSize: number; desde: string; hasta: string; hoy: string;
+  onPage: (page: number) => void; onRango: (desde: string, hasta: string) => void;
+}) {
+  // Lo tecleado vive aquí hasta que es un rango válido: un rango al revés no se pide al servidor.
+  const [borrador, setBorrador] = useState({ desde, hasta });
+  const alReves = borrador.desde !== '' && borrador.hasta !== '' && borrador.desde > borrador.hasta;
+  const cambiar = (d: string, h: string) => {
+    setBorrador({ desde: d, hasta: h });
+    if (!(d !== '' && h !== '' && d > h)) onRango(d, h);
+  };
+  const paginas = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <HStack gap={2} flexWrap="wrap" justify="space-between">
+      <HStack gap={2} flexWrap="wrap">
+        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Desde"
+          value={borrador.desde} onChange={(e) => cambiar(e.target.value, borrador.hasta)} />
+        <Text fontSize="sm" color="fg.muted">al</Text>
+        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Hasta"
+          value={borrador.hasta} onChange={(e) => cambiar(borrador.desde, e.target.value)} />
+        {(borrador.desde !== '' || borrador.hasta !== '' || desde !== '' || hasta !== '') && (
+          <Button size="sm" minH="44px" variant="ghost" onClick={() => cambiar('', '')}>Quitar fechas</Button>
+        )}
+        {alReves && <Text fontSize="sm" color="fg.error" role="status">La fecha de inicio va después de la final.</Text>}
+      </HStack>
+      <HStack gap={1}>
+        <IconButton size="sm" minH="44px" minW="44px" variant="outline" aria-label="Página anterior"
+          disabled={page === 0} onClick={() => onPage(page - 1)}><LuChevronLeft /></IconButton>
+        <Text fontSize="sm" minW="110px" textAlign="center">Página {page + 1} de {paginas}</Text>
+        <IconButton size="sm" minH="44px" minW="44px" variant="outline" aria-label="Página siguiente"
+          disabled={page + 1 >= paginas} onClick={() => onPage(page + 1)}><LuChevronRight /></IconButton>
+      </HStack>
+    </HStack>
   );
 }
 
@@ -1187,7 +1610,7 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
 
   if (total === 0) {
     return (
-      <Section title="Ventas del corte">
+      <Section title="Pedidos del corte">
         <Text fontSize="sm" color="fg.muted">Este corte no cobró ninguna venta.</Text>
       </Section>
     );
@@ -1195,12 +1618,19 @@ export function VentasDelCorte({ session, zona = DEFAULT_TIMEZONE }: {
 
   const recortadas = total > ventas.length;
   return (
-    <Section title="Ventas del corte">
+    <Section title="Pedidos del corte">
       <Text fontSize="sm" color="fg.muted" mb={2}>
         {total === 1 ? '1 venta' : `${total} ventas`} · {money(session.salesTotal ?? '0', session.currency)}
         {' '}sin canceladas, reembolsadas ni propinas
+        {/* Es lo VENDIDO, no lo cobrado: los ingresos de arriba son lo que entró (spec 029). */}
+        {' '}· importe vendido, incluye lo que falta por cobrar
         {recortadas && ` · se muestran las ${ventas.length} más recientes`}
       </Text>
+      {Number(session.writtenOff ?? 0) > 0 && (
+        <Text fontSize="sm" color="fg.muted" mb={2}>
+          Perdido: {money(session.writtenOff ?? '0', session.currency)} (se canceló lo que faltaba)
+        </Text>
+      )}
       <Box bg="bg.panel" borderRadius="lg" borderWidth="1px" maxH="240px" overflowY="auto">
         <Table.Root size="sm" stickyHeader>
           <Table.Header><Table.Row>
@@ -1244,4 +1674,187 @@ function colorDeEstadoDeVenta(estado: string) {
   if (estado === 'cancelada') return 'red';
   if (estado === 'reembolsada') return 'orange';
   return 'gray';
+}
+
+// LAS CUENTAS VIVAS EN EL CIERRE (spec 030, US8; D-10; lienzo V2-7).
+//
+// Arriba lo que BLOQUEA: los entregados que deben (no hay fiados, 2026-10-09) con «Cobrar» y
+// «Cancelar», y los pedidos en cocina o listos con «Abrir». Debajo, plegado, lo que NO bloquea —las
+// que se capturan y lo de plataforma—. Plegado porque en 600 px de alto la lista empujaba el botón de
+// cerrar fuera de la pantalla.
+export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir, onDescartar, onCancelar, onCancelarResto }: {
+  pending: PendingOrder[];
+  // Los entregados que deben: bloquean (no hay fiados, 2026-10-09). Se cobran en su cuenta o se
+  // cancelan con motivo; cancelar solo si no tienen pagos, como exige el servidor.
+  owing?: OwingOrder[];
+  cuentas: AccountItem[];
+  onAbrir: (ruta: string) => void;
+  onDescartar: (draftId: string, version: number) => void;
+  onCancelar?: (orderId: number, motivo: string) => void;
+  // «Cancelar lo que falta» del pagado a medias: lo pagado se queda y el resto se da por perdido.
+  onCancelarResto?: (orderId: number, motivo: string) => void;
+}) {
+  const [abierta, setAbierta] = useState(false);
+  const [descartando, setDescartando] = useState<AccountItem | null>(null);
+  const [cancelando, setCancelando] = useState<OwingOrder | null>(null);
+  const [perdiendo, setPerdiendo] = useState<OwingOrder | null>(null);
+  // Lo que ya va arriba como bloqueo no se repite en la sección plegada.
+  const deben = new Set(owing.map((o) => o.id));
+  const cuentas = todas.filter((c) => c.orderId == null || !deben.has(c.orderId));
+  if (pending.length === 0 && owing.length === 0 && cuentas.length === 0) return null;
+  const nombre = nombreDeCuenta;
+  const nombreDePedido = (o: { name: string; number: number }) => o.name || `#${o.number}`;
+  return (
+    <VStack align="stretch" gap={2}>
+      {owing.length > 0 && (
+        <Box borderWidth="1px" borderColor="red.300" bg="red.50"
+          _dark={{ bg: 'red.950' }} borderRadius="lg" p={3}>
+          <Text fontWeight="700" color="red.700" _dark={{ color: 'red.200' }} mb={1}>
+            Falta cobrar {owing.length === 1 ? '1 pedido' : `${owing.length} pedidos`}
+          </Text>
+          <Text fontSize="sm" color="fg.muted" mb={2}>
+            Ya se entregaron. La caja no cierra hasta que se cobren o se cancelen.
+          </Text>
+          <VStack align="stretch" gap={1} maxH="40dvh" overflowY="auto">
+            {owing.map((o) => (
+              <HStack key={o.id} justify="space-between" gap={2} flexWrap="wrap">
+                <Text fontWeight="600" truncate flex="1" minW="8rem">{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                <Text fontWeight="700" flexShrink={0}>{money(round2(Number(o.total) - Number(o.paid) - Number(o.writtenOff ?? 0)))}</Text>
+                <Box flexShrink={0}>
+                  <Button size="sm" minH="44px" colorPalette="orange" aria-label={`Cobrar ${nombreDePedido(o)}`}
+                    onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Cobrar</Button>
+                </Box>
+                {onCancelar && Number(o.paid) === 0 && (
+                  // Separado de «Cobrar»: es destructivo.
+                  <Box flexShrink={0} pl={6}>
+                    <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Cancelar ${nombreDePedido(o)}`}
+                      onClick={() => setCancelando(o)}>Cancelar</Button>
+                  </Box>
+                )}
+                {onCancelarResto && Number(o.paid) > 0 && (
+                  <Box flexShrink={0} pl={6}>
+                    <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Cancelar lo que falta de ${nombreDePedido(o)}`}
+                      onClick={() => setPerdiendo(o)}>Cancelar lo que falta</Button>
+                  </Box>
+                )}
+              </HStack>
+            ))}
+          </VStack>
+        </Box>
+      )}
+      {pending.length > 0 && (
+        <Box borderWidth="1px" borderColor="orange.300" bg="orange.50"
+          _dark={{ bg: 'orange.950' }} borderRadius="lg" p={3}>
+          <Text fontWeight="700" color="orange.700" _dark={{ color: 'orange.200' }} mb={1}>
+            Falta entregar {pending.length === 1 ? '1 pedido' : `${pending.length} pedidos`}
+          </Text>
+          <Text fontSize="sm" color="fg.muted" mb={2}>
+            La caja no cierra hasta que salgan o se cancelen.
+          </Text>
+          <VStack align="stretch" gap={1}>
+            {pending.map((o) => (
+              <HStack key={o.number} justify="space-between" gap={2}>
+                <Text fontWeight="600" truncate flex="1" minW={0}>{o.name ? `${o.name} · #${o.number}` : `#${o.number}`}</Text>
+                {o.total !== undefined && <Text fontWeight="700" flexShrink={0}>{money(o.total)}</Text>}
+                {o.id !== undefined && (
+                  <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${o.name || `#${o.number}`}`}
+                    onClick={() => onAbrir(`/pos?pedido=${o.id}`)}>Abrir</Button>
+                )}
+              </HStack>
+            ))}
+          </VStack>
+        </Box>
+      )}
+      {cuentas.length > 0 && (
+        <Box borderWidth="1px" borderRadius="lg" p={2}>
+          <Button variant="ghost" minH="44px" w="100%" justifyContent="space-between"
+            onClick={() => setAbierta((v) => !v)}>
+            <Text fontWeight="700">Cuentas pendientes ({cuentas.length})</Text>
+            {abierta ? <LuChevronUp /> : <LuChevronDown />}
+          </Button>
+          {!abierta && (
+            <Text fontSize="xs" color="fg.muted" px={4}>No impiden cerrar: siguen en la fila de cuentas.</Text>
+          )}
+          {abierta && (
+            <VStack align="stretch" gap={1} maxH="40dvh" overflowY="auto" mt={1}>
+              {cuentas.map((c) => (
+                <HStack key={c.key} justify="space-between" gap={3} px={2} py={1} borderTopWidth="1px">
+                  <Box minW={0} flex="1">
+                    <Text fontWeight="600" truncate>{nombre(c)}</Text>
+                    <Text fontSize="xs" color="fg.muted" truncate>
+                      {c.number !== null ? `#${c.number} · ` : ''}{ESTADO[c.state].texto}
+                    </Text>
+                  </Box>
+                  <Text fontWeight="700" flexShrink={0}>{money(c.state === 'capturing' ? c.total : c.outstanding)}</Text>
+                  <Box flexShrink={0}>
+                    <Button size="sm" minH="44px" variant="outline" aria-label={`Abrir ${nombre(c)}`}
+                      onClick={() => onAbrir(c.kind === 'draft' ? `/pos?cuenta=${c.draftId}` : `/pos?pedido=${c.orderId}`)}>
+                      Abrir
+                    </Button>
+                  </Box>
+                  {c.kind === 'draft' && c.draftId && c.draftVersion != null && (
+                    // ≥ 24 px de «Abrir»: es destructivo y la fila mide ~52 px.
+                    <Box flexShrink={0} pl={6}>
+                      <Button size="sm" minH="44px" variant="ghost" colorPalette="red" aria-label={`Descartar ${nombre(c)}`}
+                        onClick={() => setDescartando(c)}>
+                        Descartar
+                      </Button>
+                    </Box>
+                  )}
+                </HStack>
+              ))}
+            </VStack>
+          )}
+        </Box>
+      )}
+      <ReasonSheet isOpen={cancelando !== null} destructive required
+        title={`¿Cancelar ${cancelando ? nombreDePedido(cancelando) : ''}?`}
+        label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar pedido"
+        onDone={(motivo) => {
+          const o = cancelando;
+          setCancelando(null);
+          if (o && motivo) onCancelar?.(o.id, motivo);
+        }} />
+      <ReasonSheet isOpen={perdiendo !== null} destructive required
+        title={`¿Cancelar lo que falta de ${perdiendo ? nombreDePedido(perdiendo) : ''}?`}
+        label="Motivo" placeholder="Ej. se fue sin pagar" confirmLabel="Cancelar lo que falta"
+        atajos={['Se fue sin pagar']}
+        description={perdiendo ? `Se dan por perdidos ${money(round2(Number(perdiendo.total) - Number(perdiendo.paid) - Number(perdiendo.writtenOff ?? 0)))}. Lo cobrado (${money(perdiendo.paid)}) se queda como venta.` : undefined}
+        onDone={(motivo) => {
+          const o = perdiendo;
+          setPerdiendo(null);
+          if (o && motivo) onCancelarResto?.(o.id, motivo);
+        }} />
+      <ConfirmSheet isOpen={descartando !== null} destructive
+        title={`¿Descartar la cuenta de ${descartando ? nombre(descartando) : ''}?`}
+        description="No se ha mandado a cocina; su nombre vuelve a quedar libre."
+        cancelLabel="Volver" confirmLabel="Descartar"
+        onCancel={() => setDescartando(null)}
+        onConfirm={() => {
+          const c = descartando;
+          setDescartando(null);
+          if (c?.draftId && c.draftVersion != null) onDescartar(c.draftId, c.draftVersion);
+        }} />
+    </VStack>
+  );
+}
+
+// «Cerrar caja» confirma en una hoja de la app, no con el `confirm()` del navegador: el del sistema
+// se pinta fuera de la app con botones que en la tableta se aciertan al revés.
+export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar }: {
+  nombre: string; disabled: boolean; loading: boolean; onCerrar: () => void;
+}) {
+  const [preguntando, setPreguntando] = useState(false);
+  return (
+    <>
+      <Button colorPalette="red" size="lg" minH="52px" loading={loading} disabled={disabled}
+        onClick={() => setPreguntando(true)}>
+        Cerrar caja
+      </Button>
+      <ConfirmSheet isOpen={preguntando} title={`¿Cerrar «${nombre}»?`}
+        description="No podrás modificarla después." cancelLabel="Volver" confirmLabel="Cerrar caja"
+        onCancel={() => setPreguntando(false)}
+        onConfirm={() => { setPreguntando(false); onCerrar(); }} />
+    </>
+  );
 }

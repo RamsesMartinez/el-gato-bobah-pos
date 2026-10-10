@@ -32,18 +32,18 @@ jobs:
       - name: Lint (golangci-lint + gosec)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          # action v7+ soporta golangci-lint v2; la versión del linter debe estar compilada
-          # con Go >= el go directive del go.mod (1.27.0) o falla el self-check. Verifícalo con
-          # `go version $(which golangci-lint)` — v2.13.1 es go1.27.0. Versión pinada (no
-          # `latest`): una release nueva no debe romper CI sin revisión. Dependabot no rastrea
-          # inputs `with:`, así que se sube a mano.
-          version: v2.13.1
+          # action v7+ soporta golangci-lint v2. Se COMPILA con el Go de este job (goinstall):
+          # un binario hecho con go1.27.0 no lee la biblioteca estándar de go1.27.2 («export data
+          # version 5 is greater than maximum supported version 4») aunque el self-check compare
+          # solo el minor. Versión pinada (no `latest`): una release nueva no debe romper CI sin
+          # revisión. Dependabot no rastrea inputs `with:`, así que se sube a mano.
+          version: v2.14.0
+          install-mode: goinstall
           working-directory: server
+      # Con el Go de este job y no con govulncheck-action: la acción instala su propio Go y el día
+      # que salió go1.27.2 seguía bajando go1.27.1, que el go.mod ya rechaza (GOTOOLCHAIN=local).
       - name: Vulnerabilities (govulncheck)
-        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
-        with:
-          work-dir: server
-          go-version-file: server/go.mod
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   integration:
     name: Backend integration (Postgres)
@@ -131,16 +131,15 @@ jobs:
       # Flujos que solo se pueden probar contra un Postgres/Redis real (reuso de refresh, tx de
       # orden + depleción, reembolso, rate limiter compartido entre "réplicas").
       - name: Integration tests
-        # -timeout 10m contra ~45 s medidos: el margen es para un cuelgue, no para crecer dentro.
-        # Bajado de 30m el 2026-09-16 al dejar de correr las migraciones por prueba.
+        # -timeout 10m contra ~40 s medidos: el margen es para un cuelgue, no para crecer dentro.
         #
-        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo mueva sepa qué está comprando: la
-        # suite llama `newTestStore` ~364 veces y cada llamada CLONA una plantilla ya migrada
-        # (~30 ms), en vez de correr las 71 migraciones (~770 ms) como hasta el 2026-09-16. Medido
-        # sobre la suite completa: 447.8 s → 44.5 s, con el `fsync=off` de arriba. Si esto vuelve a
-        # crecer, lo que creció es el CUERPO de las pruebas, no su preparación: ahí sí aplica que
-        # una prueba que solo mira una restricción comparta esquema con subpruebas, como hace
-        # `TestLasRestriccionesDelEsquemaDeMenus`.
+        # DÓNDE SE VA EL TIEMPO, para que el siguiente que lo mueva sepa qué está comprando: cada
+        # prueba CLONA una plantilla ya migrada (~30 ms) en vez de correr las migraciones (~770 ms),
+        # y como cada una tiene su propia base, corren EN PARALELO. En serie la suite llegó a 183 s
+        # en CI (2026-10-09) sin que ninguna prueba fuera lenta: eran ~600 de ~0.25 s una tras otra.
+        # Medido en local a 4 CPU contra un Postgres igual a éste: 115 s en serie, 36-42 s en
+        # paralelo. `TestEveryIntegrationTestDeclaresHowItRuns` impide que una prueba nueva vuelva a
+        # la serie sin decir por qué.
         run: go test -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/gatobobah_test?sslmode=disable
@@ -371,7 +370,7 @@ jobs:
       image: ${{ steps.meta.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -390,7 +389,7 @@ jobs:
           # El tag móvil lleva el nombre de la rama: :main y :develop conviven sin pisarse.
           echo "moving=ghcr.io/${repo}/api:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: server
           push: true

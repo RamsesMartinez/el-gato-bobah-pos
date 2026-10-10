@@ -20,6 +20,11 @@
 -- que su parser no puede leer—, así que nombrarla aquí rompería `sqlc generate` por una columna que
 -- sí existe en Postgres.
 --
+-- EL PEDIDO JUNTADO (spec 027) NO ES UNA VENTA NI UNA CANCELACIÓN. Al pasarle todos sus productos a
+-- otro pedido queda `cancelada` con `merged_into_order_id`, y sus productos se cuentan en el pedido
+-- con el que se juntó. Lista, conteo y resumen lo excluyen con la misma línea
+-- (`o.merged_into_order_id is null`); `SalesTotalsByMethod` ya lo deja fuera por estado.
+--
 -- El resumen va en tres consultas y no en una: `order_payments` y `order_lines` son ambas 1:N con
 -- `orders`, así que unirlas en la misma consulta multiplica las filas (2 pagos × 3 líneas = 6) y
 -- duplica las sumas.
@@ -31,6 +36,7 @@
 -- páginas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -40,12 +46,20 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con `::timestamptz` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 order by
@@ -66,6 +80,7 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- línea es lo único que las distingue, y se editan juntas.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -75,13 +90,21 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con `::timestamptz` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by
 left join users du on du.id = o.discount_set_by
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 order by
@@ -101,6 +124,7 @@ limit sqlc.arg('lim') offset sqlc.arg('off');
 -- El mismo `where` que ListSales, palabra por palabra. Es el total del filtro para el paginador.
 select count(*) from orders o
 where o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
@@ -110,6 +134,7 @@ where o.business_date between @desde and @hasta
 select count(*) from orders o
 where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
+  and o.merged_into_order_id is null
   and (sqlc.narg('status')::order_status is null or o.status = sqlc.narg('status'))
   and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
 
@@ -130,6 +155,7 @@ with filtrado as (
   select o.id, o.status, o.total, o.delivery_fee
   from orders o
   where o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount
@@ -154,6 +180,7 @@ with filtrado as (
   from orders o
   where o.delivery_platform_id is not null and o.platform_order_ref is null
     and o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
 ), propinas as (
   select op.order_id, sum(op.tip_amount) as tip_amount
@@ -172,61 +199,155 @@ group by f.status;
 
 -- name: SalesTotalsByMethod :many
 -- Desglose por medio de pago: lo COBRADO, que no es lo mismo que lo vendido (una venta mandada a
--- cocina sin cobrar suma al total y no aparece aquí). Sale de order_payments porque una venta puede
--- pagarse con varios métodos.
+-- cocina sin cobrar suma al total y no aparece aquí).
+--
+-- Desde la spec 031 cada cobro cuenta el día en que se COBRÓ y cada devolución resta el día en que
+-- se DEVOLVIÓ (decisión del dueño): es dinero, no venta, y así un mes cerrado no cambia porque un
+-- pedido se cobre o se devuelva después. Es la misma regla que `SalesByMethod` de reports.sql —se
+-- editan juntas— y la explicación completa de qué pedidos cuentan vive ahí.
 --
 -- El filtro de ESTADO DE LA PANTALLA no aplica, por el mismo motivo que SalesTotalsByStatus: el
 -- resumen dice cuánto entró por cada medio aunque la tabla esté filtrada a un estado. El de tipo de
--- venta sí aplica.
---
--- Lo que SÍ se excluye son canceladas y reembolsadas, que no son un filtro de la pantalla sino la
--- misma regla que aplica el total de arriba. Sin ellas, los $500 de una venta devuelta salían en el
--- tile "Reembolsadas" Y en el de "Tarjeta" mientras el total —que sí las excluye— los ignoraba: el
--- mismo peso contado de tres maneras en tres renglones hermanos. Reconciliar contra la terminal
--- bancaria es trabajo del corte de caja, que es por turno y sí mira el flujo bruto; esta pantalla
--- responde qué VENDIÓ el negocio.
---
--- El hermano de esta consulta vive en reports.sql (`SalesByMethod`) y se corrigió primero; esta
--- copia se quedó con el defecto una versión entera. Se editan juntas.
+-- venta sí aplica, en las dos ramas.
+with pagos as (
+  select op.payment_method_id, count(*) as pagos, sum(op.amount) as cobrado, sum(op.tip_amount) as propinas
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where (op.business_date between @desde and @hasta
+          or (op.business_date is null and o.business_date between @desde and @hasta))
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+    join orders o on o.id = r.order_id
+   where coalesce(r.business_date, o.business_date) between @desde and @hasta
+     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name as method,
-       count(*)::int as pagos,
-       coalesce(sum(op.amount), 0)::numeric(12,2) as total,
-       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as propinas
-from order_payments op
-join orders o on o.id = op.order_id
-join payment_methods pm on pm.id = op.payment_method_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.business_date between @desde and @hasta
-  and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
-group by pm.id, pm.name
+       coalesce(p.pagos, 0)::int as pagos,
+       (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
+       (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
+       -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
+       coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
+from payment_methods pm
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where p.payment_method_id is not null or d.payment_method_id is not null
 order by total desc;
 
 -- name: SalesTotalsByMethodSinFolio :many
--- Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
--- línea es lo único que las distingue, y se editan juntas.
+-- Gemela de SalesTotalsByMethod con el predicado de pendientes LITERAL, en las dos ramas. Ver la
+-- cabecera del archivo: esa línea es lo único que las distingue, y se editan juntas.
+with pagos as (
+  select op.payment_method_id, count(*) as pagos, sum(op.amount) as cobrado, sum(op.tip_amount) as propinas
+    from order_payments op
+    join orders o on o.id = op.order_id
+   where o.delivery_platform_id is not null and o.platform_order_ref is null
+     and (op.business_date between @desde and @hasta
+          or (op.business_date is null and o.business_date between @desde and @hasta))
+     and (o.status not in ('cancelada', 'reembolsada')
+          or exists (select 1 from order_refunds r where r.order_id = o.id))
+     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+   group by op.payment_method_id
+), devueltos as (
+  select r.payment_method_id, count(*) as devoluciones, sum(r.amount) as devuelto, sum(r.tip_amount) as propina_devuelta
+    from order_refunds r
+    join orders o on o.id = r.order_id
+   where o.delivery_platform_id is not null and o.platform_order_ref is null
+     and coalesce(r.business_date, o.business_date) between @desde and @hasta
+     and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+   group by r.payment_method_id
+)
 select pm.id as method_id, pm.name as method,
-       count(*)::int as pagos,
-       coalesce(sum(op.amount), 0)::numeric(12,2) as total,
-       coalesce(sum(op.tip_amount), 0)::numeric(12,2) as propinas
-from order_payments op
-join orders o on o.id = op.order_id
-join payment_methods pm on pm.id = op.payment_method_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.delivery_platform_id is not null and o.platform_order_ref is null
-  and o.business_date between @desde and @hasta
-  and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
-group by pm.id, pm.name
+       coalesce(p.pagos, 0)::int as pagos,
+       (coalesce(p.cobrado, 0) - coalesce(d.devuelto, 0))::numeric(12,2) as total,
+       (coalesce(p.propinas, 0) - coalesce(d.propina_devuelta, 0))::numeric(12,2) as propinas,
+       coalesce(d.devuelto, 0)::numeric(12,2) as refunds,
+       coalesce(d.devoluciones, 0)::int as refund_count,
+       -- La propina devuelta va aparte: no es venta, y el corte la nombra igual (spec 029).
+       coalesce(d.propina_devuelta, 0)::numeric(12,2) as tip_refunds
+from payment_methods pm
+left join pagos p on p.payment_method_id = pm.id
+left join devueltos d on d.payment_method_id = pm.id
+where p.payment_method_id is not null or d.payment_method_id is not null
 order by total desc;
 
+-- name: SalesPending :one
+-- Lo que falta por cobrar de los pedidos del periodo (spec 029). NO entra al Total de Ventas —que es
+-- solo lo cobrado, decisión del dueño— y por eso viaja aparte: un pedido abierto o con saldo no tiene
+-- día de pago, así que su día es el del pedido, el mismo predicado de fecha que la lista.
+--
+-- Los pagos se pre-agregan por pedido antes de unirse: order_payments es 1:N con orders.
+with filtrado as (
+  select o.id, o.total - o.written_off_amount as total
+  from orders o
+  where o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
+    and o.status not in ('cancelada', 'reembolsada')
+    and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+), pagos as (
+  select op.order_id, sum(op.amount) as pagado
+  from order_payments op
+  join filtrado f on f.id = op.order_id
+  group by op.order_id
+)
+select count(*)::int as pedidos,
+       coalesce(sum(f.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto
+from filtrado f
+left join pagos p on p.order_id = f.id
+where f.total - coalesce(p.pagado, 0) > 0;
+
+-- name: SalesPendingSinFolio :one
+-- Gemela de SalesPending con el predicado de pendientes LITERAL. Ver la cabecera del archivo: esa
+-- línea es lo único que las distingue, y se editan juntas.
+with filtrado as (
+  select o.id, o.total - o.written_off_amount as total
+  from orders o
+  where o.delivery_platform_id is not null and o.platform_order_ref is null
+    and o.business_date between @desde and @hasta
+    and o.merged_into_order_id is null
+    and o.status not in ('cancelada', 'reembolsada')
+    and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'))
+), pagos as (
+  select op.order_id, sum(op.amount) as pagado
+  from order_payments op
+  join filtrado f on f.id = op.order_id
+  group by op.order_id
+)
+select count(*)::int as pedidos,
+       coalesce(sum(f.total - coalesce(p.pagado, 0)), 0)::numeric(12,2) as monto
+from filtrado f
+left join pagos p on p.order_id = f.id
+where f.total - coalesce(p.pagado, 0) > 0;
+
+-- name: SalesWrittenOff :one
+-- Lo dado por perdido en el periodo («cancelar lo que falta», dueño 2026-10-09), por el día en que se
+-- dio por perdido. No es venta cobrada, ni devolución, ni pendiente: concepto propio.
+select count(*)::int as pedidos, coalesce(sum(o.written_off_amount), 0)::numeric(12,2) as monto
+from orders o
+where o.written_off_business_date between @desde and @hasta
+  and o.merged_into_order_id is null
+  and o.status not in ('cancelada', 'reembolsada')
+  and (sqlc.narg('service_type')::service_type is null or o.service_type = sqlc.narg('service_type'));
+
 -- name: SalesCancelledLines :one
--- Líneas canceladas dentro de ventas que NO se cancelaron enteras: es la merma que se pierde de
--- vista, porque el pedido se cobró y el renglón no.
+-- Los renglones QUITADOS: la merma que se pierde de vista, porque el renglón no se cobró.
+--
+-- Cuentan aunque el pedido se haya cancelado después (spec 031, D14). Excluir los pedidos cancelados
+-- borraba lo que se les quitó antes: tres frappés quitados y el pedido cerrado sin productos salían
+-- en $0 en las dos cifras. No hay doble conteo con «Canceladas»: el total del pedido ya no incluye
+-- lo quitado (RecalcOrderTotals), y cancelar el pedido no toca sus renglones.
 select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.business_date between @desde and @hasta
+where o.business_date between @desde and @hasta
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
   -- seguía mostrando la merma de mostrador y las cifras dejaban de ser del mismo conjunto.
@@ -239,8 +360,7 @@ select count(*)::int as lineas,
        coalesce(sum(ol.line_total), 0)::numeric(12,2) as monto
 from order_lines ol
 join orders o on o.id = ol.order_id
-where o.status not in ('cancelada', 'reembolsada')
-  and o.delivery_platform_id is not null and o.platform_order_ref is null
+where o.delivery_platform_id is not null and o.platform_order_ref is null
   and o.business_date between @desde and @hasta
   and ol.cancelled_at is not null
   -- El mismo filtro de tipo que el resto del resumen: sin él, filtrar la pantalla a domicilio
@@ -268,6 +388,7 @@ where o.status not in ('cancelada', 'reembolsada')
 -- Sin filtro de empresa: RLS lo agrega.
 select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.completed_at,
        o.status, o.service_type, o.customer_name, o.total, o.discount_total, o.delivery_fee, o.refund_amount,
+       o.written_off_amount,
        o.platform_order_ref,
        dp.name as platform,
        u.name as opened_by_name,
@@ -277,7 +398,14 @@ select o.id, o.daily_number, o.folio_name, o.business_date, o.opened_at, o.compl
        (select coalesce(sum(op.tip_amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as tips,
        (select string_agg(distinct pm.name, ' + ' order by pm.name)
           from order_payments op join payment_methods pm on pm.id = op.payment_method_id
-         where op.order_id = o.id) as methods
+         where op.order_id = o.id) as methods,
+       -- Lo cobrado, para que el renglón diga cuánto falta sin abrir el pedido (spec 029).
+       (select coalesce(sum(op.amount), 0) from order_payments op where op.order_id = o.id)::numeric(10,2) as paid,
+       -- La última devolución, para que la marca del renglón diga CUÁNDO (spec 029). SIN cast a
+       -- propósito: con `::timestamptz` sqlc la tipa no nula y un pedido sin devoluciones revienta
+       -- el scan de la lista entera (AGENTS.md §1). Sin cast llega como valor suelto y el servicio
+       -- la convierte; nula = sin devoluciones.
+       (select max(r.created_at) from order_refunds r where r.order_id = o.id) as last_refund_at
 from orders o
 left join delivery_platforms dp on dp.id = o.delivery_platform_id
 left join users u on u.id = o.opened_by

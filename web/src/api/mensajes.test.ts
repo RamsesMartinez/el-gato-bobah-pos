@@ -22,3 +22,19 @@ describe('mensajeDeError', () => {
     expect(m.length).toBeGreaterThan(10);
   });
 });
+
+// Los rechazos de la cuenta en captura (spec 030) se dicen para quien opera: nunca «borrador»,
+// «versión» ni el código del servidor.
+describe('rechazos de la cuenta', () => {
+  test.each([
+    ['DRAFT_CHANGED', /otra tableta/i],
+    ['DRAFT_DISCARDED', /descart/i],
+    ['DRAFT_SENT', /cocina/i],
+    ['ORDER_CLOSED', /cuenta nueva/i],
+    ['PLATFORM_ORDER_NO_LINES', /plataforma/i],
+  ])('%s', (code, esperado) => {
+    const m = mensajeDeError(new ApiError(409, code, 'draft version mismatch', 'r'));
+    expect(m).toMatch(esperado);
+    expect(m).not.toMatch(/borrador|draft|versi[oó]n|409|DRAFT|ORDER/i);
+  });
+});

@@ -21,6 +21,7 @@ import (
 // abre la caja: 10,000 combinaciones en vez de un millón, y nadie lo ve porque el ajuste dice que
 // el modo está bien encendido.
 func TestEncenderSoloPinBorraTambienElPinDeQuienEstaDadoDeBaja(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -55,6 +56,7 @@ func TestEncenderSoloPinBorraTambienElPinDeQuienEstaDadoDeBaja(t *testing.T) {
 // intentos. Y el modo existe justamente para que la plantilla no se muestre: dejar el camino que
 // nombra a la persona lo contradice.
 func TestConSoloPinNoSePuedeDesbloquearEligiendoPersona(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -97,6 +99,7 @@ func TestConSoloPinNoSePuedeDesbloquearEligiendoPersona(t *testing.T) {
 // dígitos aceptara uno de cuatro y le calculara su huella de búsqueda, que en ese modo es
 // directamente desbloqueable. El modo de fallo de un control tiene que ser proteger.
 func TestSiNoSePuedeLeerElModoNoSeAceptaUnPinCorto(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")
@@ -126,6 +129,7 @@ func TestSiNoSePuedeLeerElModoNoSeAceptaUnPinCorto(t *testing.T) {
 // Deducir de quién es un PIN de cuatro dígitos con el modo apagado abre lo que el mínimo de seis
 // existe para cerrar. Hoy lo tapa el handler; un segundo llamador lo destapa.
 func TestConElModoApagadoElCaminoDeSoloPinSeNiega(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	users := app.NewUsersService(st, nil, false, "pepper-de-prueba")

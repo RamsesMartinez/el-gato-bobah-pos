@@ -68,7 +68,7 @@ where id = @id;
 -- name: AdminGroupOptions :many
 -- Opciones de un grupo (incluye inactivas, para gestionarlas desde el admin).
 select mo.id, mo.group_id, mo.name, mo.price_delta, mo.max_per_line,
-       mo.current_cost, mo.is_favorite, mo.is_active
+       mo.current_cost, mo.is_favorite, mo.is_active, mo.composition_status
 from modifier_options mo
 where mo.group_id = @group_id
 order by mo.sort_key, mo.name;

@@ -24,10 +24,11 @@ import { combinacionGuardada, completarConLaUltima, guardarCombinacion } from '.
 import { OptionPriceFields } from './OptionPriceFields';
 import { PlatformPriceDialog } from './PlatformPriceDialog';
 import { useMenu } from '../../hooks/useMenu';
-import { useActiveTicket } from '../../stores/ticket';
 
 interface Props {
   product: MenuProduct | null;
+  // La lista de precios de la cuenta abierta (null = mostrador).
+  lista: number | null;
   isOpen: boolean;
   initialModifiers?: TicketModifier[];
   initialNotes?: string;
@@ -41,7 +42,7 @@ type Sel = Record<number, Record<number, number>>;
 
 const SEARCH_THRESHOLD = 12; // muestra el buscador de opciones si hay más de esto
 
-export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes, optionRanks, onClose, onConfirm }: Props) {
+export function ModifierSheet({ product, lista, isOpen, initialModifiers, initialNotes, optionRanks, onClose, onConfirm }: Props) {
   const [sel, setSel] = useState<Sel>({});
   const [notes, setNotes] = useState('');
   const [qty, setQty] = useState(1);
@@ -51,7 +52,6 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
   // Los cargos de los extras siguen la lista de precios de la cuenta, igual que el producto: si
   // aquí se mostrara el delta base, el total de pantalla no cuadraría con el cobrado.
   const { data: menu } = useMenu();
-  const lista = useActiveTicket().platformId;
   const role = useSessionStore((s) => s.user?.role);
   const canManage = role === 'admin' || role === 'gerente';
   const qc = useQueryClient();
@@ -316,19 +316,17 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     onClose();
   };
 
-  // renderiza las opciones de un grupo: primero las "top" (rankeadas, con su %),
+  // renderiza las opciones de un grupo: primero las "top" (rankeadas),
   // luego el resto en orden alfabético. Al buscar, lista plana filtrada.
   const optionButtons = (g: MenuGroup) => {
     const single = g.max === 1;
     const picks = sel[g.id] ?? {};
     const ranked = strategyRanked(g);
-    const pctById = new Map(ranked.flatMap((r) => (r.pct === undefined ? [] : [[r.id, r.pct] as const])));
     const rankedIds = new Set(ranked.map((r) => r.id));
 
     const btn = (o: MenuOption) => {
       const veces = cantidadDe(picks, o.id);
       const on = veces > 0;
-      const pct = pctById.get(o.id);
       // El "+" solo aparece cuando de verdad cabe otra de ESTA opción, así que presionarlo nunca
       // le quita nada a otra. Es lo que faltaba para pedir dos del mismo sabor: el grupo pide dos
       // salsas y el cliente quiere las dos de mango habanero.
@@ -353,11 +351,6 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
             {veces > 1 && (
               <Text as="span" ml={1.5} fontSize="sm" fontWeight="800">
                 ×{veces}
-              </Text>
-            )}
-            {pct !== undefined && (
-              <Text as="span" ml={1.5} fontSize="xs" fontWeight="700" color={on ? 'whiteAlpha.800' : 'colorPalette.500'}>
-                {pct}%
               </Text>
             )}
             {deltaDeLista(menu, lista, o.id, Number(o.priceDelta)) !== 0 && (
@@ -425,11 +418,14 @@ export function ModifierSheet({ product, isOpen, initialModifiers, initialNotes,
     const rest = opts.filter((o) => !rankedIds.has(o.id));
     return (
       <VStack align="stretch" gap={2}>
+        {/* Sin porcentajes ni «TODAS»: para quien opera, el % era un número sin sentido y «TODAS»
+            parecía un filtro. Se dice lo que es: lo que más se pide y lo demás. */}
+        {top.length > 0 && rest.length > 0 && (
+          <Text fontSize="xs" color="fg.muted" fontWeight="600">Más pedidas</Text>
+        )}
         {top.length > 0 && <Wrap gap={2}>{top.map(btn)}</Wrap>}
         {top.length > 0 && rest.length > 0 && (
-          <Text fontSize="2xs" color="fg.subtle" fontWeight="700" letterSpacing="wide" textTransform="uppercase">
-            Todas
-          </Text>
+          <Text fontSize="xs" color="fg.muted" fontWeight="600">Las demás</Text>
         )}
         {rest.length > 0 && <Wrap gap={2}>{rest.map(btn)}</Wrap>}
         {archBlock}

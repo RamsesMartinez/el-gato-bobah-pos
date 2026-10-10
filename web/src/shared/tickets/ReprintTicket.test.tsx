@@ -33,8 +33,7 @@ vi.mock('./TicketPreview', () => ({
   },
 }));
 
-function wrap(ui: React.ReactElement) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrap(ui: React.ReactElement, qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
@@ -78,4 +77,18 @@ test('un pedido sin cobrar NO se marca como reimpresión: ese papel es la cuenta
 test('sin pedido seleccionado no pide nada al servidor', () => {
   wrap(<ReprintTicket orderId={null} onClose={vi.fn()} />);
   expect(getOrder).not.toHaveBeenCalled();
+});
+
+// El ticket abierto tiene que seguir al pedido: el resto de la app invalida el prefijo
+// `['orders']` al cobrar, devolver un pago o pasar productos. Con otra llave, el papel mostraba los
+// pagos de antes de cobrar y el ticket de un pago nuevo no aparecía.
+test('se refresca cuando la app invalida los pedidos', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  wrap(<ReprintTicket orderId={12} onClose={vi.fn()} />, qc);
+  await waitFor(() => expect(getOrder).toHaveBeenCalledTimes(1));
+  getOrder.mockResolvedValue({ ...order, total: '250' });
+  await qc.invalidateQueries({ queryKey: ['orders'] });
+  await waitFor(() => expect(getOrder).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect((previewProps.current as { order: ReceiptOrder }).order.total).toBe('250'));
 });

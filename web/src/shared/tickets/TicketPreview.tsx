@@ -6,7 +6,7 @@ import { DialogRoot, DialogBackdrop, DialogContent, DialogBody, DialogFooter } f
 import { buildReceiptHtml, printFrame } from '../../utils/printReceipt';
 import { useContainerWidth } from '../../hooks/useContainerWidth';
 import { useTicketBusinessInfo } from './ticketBusinessInfo';
-import type { ReceiptOrder } from '../../types/pos';
+import type { ReceiptOrder, PaymentView } from '../../types/pos';
 
 // Ancho real del papel: 80mm a 96dpi. La vista previa se muestra a ese tamaño para que lo que el
 // operador aprueba sea literalmente lo que sale por la impresora.
@@ -101,10 +101,13 @@ export function TicketPreview({
   reprint = false,
   sample = false,
   preCuenta = false,
+  payment,
   isOpen,
   onClose,
 }: {
-  order: ReceiptOrder | null;
+  order: (ReceiptOrder & { outstanding?: string }) | null;
+  // payment: el ticket de UN pago de una cuenta dividida, solo con lo que cubrió.
+  payment?: PaymentView;
   reprint?: boolean;
   sample?: boolean;
   // preCuenta: el papel de una cuenta que todavía NO es una venta. Lleva su marca, no lleva número
@@ -117,6 +120,6 @@ export function TicketPreview({
   const { data: business, printFreeModifiers } = useTicketBusinessInfo();
   // html vacío = el diálogo abre con un spinner en vez de no abrir. Un toque que no hace nada es
   // exactamente el fallo silencioso que esta feature vino a quitar.
-  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample, preCuenta, printFreeModifiers }) : '';
+  const html = order && business ? buildReceiptHtml(order, business, { reprint, sample, preCuenta, printFreeModifiers, payment }) : '';
   return <TicketPreviewDialog html={html} isOpen={isOpen} onClose={onClose} />;
 }

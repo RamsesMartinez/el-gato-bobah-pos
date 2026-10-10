@@ -1,8 +1,8 @@
 # El Gato Bobah POS — monorepo (web/ = frontend Vite, server/ = backend Go)
 .PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
-        sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo
+        sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import fudo-composiciones reset-admin reset-password build deploy \
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
@@ -91,6 +91,9 @@ web-lint: ## Lint frontend (eslint + tsc)
 	cd web && bun run lint && bun run typecheck
 web-audit: ## Auditoría de deps del frontend
 	cd web && bun audit || true
+ci-local: ## Lo mismo que CI (backend, integración, frontend) en paralelo y en local, antes de empujar
+	bash scripts/ci-local.sh
+
 sec: lint vuln web-lint web-audit ## Todos los chequeos de seguridad/calidad
 	@echo "\n✅ Chequeos de seguridad completados"
 
@@ -117,6 +120,9 @@ sqlc-vet: db-migrate ## Prepara TODA query contra el esquema real (db-prepare) �
 respaldo-anonimo: ## Baja producción, borra los datos personales y restaura en TEST_RESTORED_DATABASE_URL
 	bash scripts/respaldo-anonimo.sh
 
+db-restaurar: deps-up ## Restaura en dev un respaldo de prod CON sus permisos: make db-restaurar [dump=backups/prod/x.dump]
+	@bash scripts/restaurar-respaldo.sh $(dump)
+
 migrate-new: ## Crea migración goose: make migrate-new name=xxx
 	cd server && $(GOBIN)/goose -dir migrations create $(name) sql
 # FUDO_DIR: los exports viven FUERA del repositorio, a propósito. Traen el costo de compra de cada
@@ -131,6 +137,13 @@ fudo-import: deps-up ## Importa el catálogo FUDO desde $FUDO_DIR (y limpia la c
 	@# ver internal/cache/menu.go). Borrar la clave vieja no invalidaba nada y el POS seguía
 	@# sirviendo el menú anterior — o vacío, si se importó con la base recién migrada.
 	@docker compose -f deploy/docker-compose.dev.yml exec -T redis sh -c "redis-cli --scan --pattern 'pos:*' | xargs -r redis-cli DEL" >/dev/null 2>&1 || true
+
+# No borra nada: solo llena lo que no tiene composición, marcado como estimado (spec 028). La empresa
+# es obligatoria porque corre como owner, que salta RLS.
+fudo-composiciones: deps-up ## Carga desde FUDO lo que lleva cada producto, extra e insumo: make fudo-composiciones empresa=slug [prueba=1]
+	@test -d "$(FUDO_DIR)" || { echo "No existe $(FUDO_DIR). Los exports de FUDO viven fuera del repositorio; ver AGENTS.md §1."; exit 1; }
+	@test -n "$(empresa)" || { echo "Falta empresa=slug (la de El Gato Bobah es gatobobah)."; exit 1; }
+	cd server && DATABASE_URL="$(DEV_DATABASE_URL)" go run ./cmd/fudo-import --dir "$(FUDO_DIR)" -company "$(empresa)" -compositions $(if $(prueba),-dry-run,)
 	@echo "cache del menú limpiada"
 
 # --- Producción ---

@@ -63,6 +63,7 @@ func tresPedidosDePlataforma(t *testing.T, ctx context.Context, svc *app.OrdersS
 }
 
 func TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -101,6 +102,7 @@ func TestBuscarPegandoElFolioDelDocumentoDevuelveEsePedido(t *testing.T) {
 }
 
 func TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -140,6 +142,7 @@ func TestLaBusquedaNoEncuentraPorNumeroNiPorNombreInterno(t *testing.T) {
 }
 
 func TestUnFolioQueNadieCapturoDevuelveVacioYNoUnError(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	sales := app.NewSalesService(st, clock)
@@ -157,6 +160,7 @@ func TestUnFolioQueNadieCapturoDevuelveVacioYNoUnError(t *testing.T) {
 }
 
 func TestLaListaYElResumenDescribenElMismoConjunto(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)
@@ -191,9 +195,11 @@ func TestLaListaYElResumenDescribenElMismoConjunto(t *testing.T) {
 			"sin el filtro, y quien lee la pantalla no tiene forma de saber cuál mitad miente",
 			pagina.Total, resumen.Count)
 	}
-	// Y el total de dinero también sale del mismo conjunto.
-	if !resumen.Total.Equal(pagina.Items[0].Total) {
-		t.Fatalf("el resumen suma %s y el único pedido de la lista vale %s", resumen.Total, pagina.Items[0].Total)
+	// Y el dinero también sale del mismo conjunto. Desde la spec 029 el Total es solo lo cobrado y
+	// lo que falta va en «por cobrar»: entre los dos dicen el importe del único pedido de la lista.
+	if dicho := resumen.Total.Add(resumen.Pending.Amount); !dicho.Equal(pagina.Items[0].Total) {
+		t.Fatalf("el resumen dice %s cobrado + %s por cobrar y el único pedido de la lista vale %s",
+			resumen.Total, resumen.Pending.Amount, pagina.Items[0].Total)
 	}
 }
 
@@ -307,6 +313,7 @@ func patchFolio(t *testing.T, r http.Handler, tok string, id int64, folio string
 // En producción la API usa APP_DATABASE_URL (rol `gatobobah_app`) y RequireAuth fija el tenant con
 // AcquireTenant — que es exactamente lo que se reproduce aquí.
 func TestElFolioDeOtraEmpresaNoSeAlcanza(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	owner := newTestStore(t)
 	otra := makeCompany(t, owner, "otra-folio-014")
@@ -351,6 +358,7 @@ func TestElFolioDeOtraEmpresaNoSeAlcanza(t *testing.T) {
 }
 
 func TestElFolioSeCorrigePorElRouterConSuGateYSuTope(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	r, st, token := nuevaAPIDeFolio(t)
 
@@ -402,6 +410,7 @@ func TestElFolioSeCorrigePorElRouterConSuGateYSuTope(t *testing.T) {
 // una captura legítima. Sin este test, alguien convierte la consulta a `:one` creyendo que restaura
 // una garantía, y la búsqueda empieza a tronar el día que dos folios coinciden.
 func TestDosPlataformasPuedenCompartirFolioYLaBusquedaDevuelveLasDos(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	orders := app.NewOrdersService(st, clock)

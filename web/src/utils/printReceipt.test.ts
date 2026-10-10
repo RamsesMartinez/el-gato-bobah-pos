@@ -451,3 +451,94 @@ describe('desglose de precio en el ticket', () => {
     expect(html).toContain(money(conExtras.total));
   });
 });
+
+// Ticket por pago (spec 027): cuando una mesa paga por separado, cada quien se lleva el papel de
+// lo que ÉL pagó. Un ticket con el pedido entero en la mano de quien pagó un solo platillo le dice
+// que pagó de más, y quien atiende no tiene con qué explicarlo.
+describe('buildReceiptHtml — ticket de un pago', () => {
+  const pedido = {
+    ...baseOrder,
+    subtotal: '387',
+    total: '387',
+    outstanding: '177.00',
+    lines: [
+      { id: 704, productName: 'Ramen', quantity: '2', unitPrice: '110', lineTotal: '220', modifiers: [] },
+      { id: 705, productName: 'Té de jazmín', quantity: '1', unitPrice: '167', lineTotal: '167', modifiers: [] },
+    ],
+  };
+  const pago = {
+    id: 269, number: 1, voided: false, methodId: 10, methodName: 'Tarjeta débito',
+    amount: '210.00', tip: '15.00', reference: '', paidAt: '2026-10-04T21:23:28-06:00',
+    receivedBy: 'carlos', split: null,
+    lines: [{ lineId: 704, qty: '1', amount: '210.00' }],
+  };
+
+  it('lleva SOLO los renglones y las piezas que cubrió ese pago', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, { payment: pago });
+    expect(html).toContain('1x Ramen');
+    // La cobertura manda, no el renglón: el importe es el que el servidor le asignó a ese pago.
+    expect(html).toContain(money('210.00'));
+    expect(html).not.toContain('2x Ramen');
+    expect(html).not.toContain('Té de jazmín');
+  });
+
+  it('dice qué pago es, con qué se pagó y la propina', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, { payment: pago });
+    expect(html).toContain('Pago 1');
+    expect(html).toContain('Tarjeta débito');
+    expect(html).toMatch(new RegExp(`Propina</td><td class="r">${money('15.00').replace('$', '\\$')}`));
+  });
+
+  it('sin propina no imprime un renglón de propina en cero', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, { payment: { ...pago, tip: '0.00' } });
+    expect(html).not.toContain('Propina');
+  });
+
+  it('al pie dice cuánto le queda por pagar al pedido, no el total del pedido', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, { payment: pago });
+    expect(html).toContain(`Del pedido quedan por pagar ${money('177.00')}`);
+    // El TOTAL del pedido en este papel se leería como lo que pagó esta persona.
+    expect(html).not.toContain(money('387'));
+    expect(html).not.toContain('POR COBRAR');
+  });
+
+  it('el último pago dice que el pedido quedó pagado', () => {
+    const html = buildReceiptHtml({ ...pedido, outstanding: '0.00' }, baseBusiness, { payment: pago });
+    expect(html).not.toContain('quedan por pagar');
+    expect(html).toContain('PEDIDO PAGADO');
+  });
+
+  it('un pago por monto imprime su monto y ninguna lista de productos', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, {
+      payment: { ...pago, number: 2, amount: '100.00', tip: '0.00', lines: [] },
+    });
+    expect(html).toContain('Pago 2');
+    expect(html).toContain(money('100.00'));
+    expect(html).not.toContain('Ramen');
+    expect(html).not.toContain('Té de jazmín');
+  });
+
+  it('un pago por partes dice qué parte fue', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, {
+      payment: { ...pago, number: 3, amount: '129.00', lines: [], split: { part: 2, of: 3 } },
+    });
+    expect(html).toContain('Pago 3');
+    expect(html).toContain('Parte 2 de 3');
+    expect(html).not.toContain('Ramen');
+  });
+
+  it('escapa el nombre del método', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness, {
+      payment: { ...pago, methodName: '<img src=x onerror=alert(1)>' },
+    });
+    expect(html).not.toContain('<img src=x');
+  });
+
+  it('sin pago el ticket sigue siendo el del pedido completo', () => {
+    const html = buildReceiptHtml(pedido, baseBusiness);
+    expect(html).toContain('2x Ramen');
+    expect(html).toContain('Té de jazmín');
+    expect(html).not.toContain('Pago 1');
+    expect(html).toContain('POR COBRAR');
+  });
+});

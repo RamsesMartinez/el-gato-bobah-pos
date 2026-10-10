@@ -113,6 +113,35 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
+- **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
+  en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
+  **no se afloja para que algo "funcione en local"**.
+
+  | Pieza | Cómo queda en local |
+  | --- | --- |
+  | Migraciones y bootstrap | Como owner (`DATABASE_URL`), igual que en producción |
+  | Requests del POS | Como `gatobobah_app` (`APP_DATABASE_URL`), sujeto a RLS |
+  | Consola de plataforma | Como `gatobobah_platform` (`PLATFORM_DATABASE_URL`), solo sus GRANT |
+  | Passwords de los dos roles | `APP_DB_PASSWORD` y `PLATFORM_DB_PASSWORD` en `deploy/.env`, obligatorios también en dev (`make check-env` los exige y los genera al crear el archivo) |
+
+  [scripts/dev-api.sh](scripts/dev-api.sh) arma las dos URLs y **se niega a arrancar** si falta un
+  password; el bootstrap se los fija a los roles, y el arranque corre `assertRLSEnforced` y
+  `AssertPlatformGrants` igual que allá. Se sobreescriben con `DEV_APP_DATABASE_URL` /
+  `DEV_PLATFORM_DATABASE_URL`, pero apuntarlas al owner es justo lo prohibido.
+
+  **Datos de producción en local: `make db-restaurar`** (el `.dump` más reciente de
+  `backups/prod/`, o `dump=…`). Detén la API antes: recrea la base entera. Restaura **con**
+  dueños y GRANT y termina comprobando que `gatobobah_app` puede leer `orders` sin saltar RLS. Los
+  dos flags que "hacen que el restore no se queje" están prohibidos:
+  - `--no-privileges`: el rol de servicio queda sin un solo GRANT y la API no arranca.
+  - `--no-owner`: `candidatas_del_aviso` (0073) pasa a ser del owner en vez de `gatobobah_webhook`,
+    y el webhook resuelve tiendas con un bypass que en producción no existe.
+
+  **Cómo se ve si alguien lo rompe**: datos de las dos empresas mezclados en una pantalla. Pasó el
+  2026-09-25 con el selector de plataformas, que salió con cada una dos veces: la consulta
+  (`ListPlatformsWithMarkup`) no filtra por empresa porque ese filtro lo pone RLS. **Un `psql -U
+  gatobobah` a mano también es owner**: para ver lo que ve la API, `set role gatobobah_app; set
+  app.company_id = '2';` antes de la consulta.
 - `make web-dev` · `make web-build` · `make web-test` (vitest).
 - **`bun run e2e`** (en `web/`) — Playwright contra el **ambiente de pruebas desplegado**, a
   1024×600. No monta un servidor local a propósito: lo que estas pruebas atrapan es el desacuerdo
@@ -148,6 +177,7 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   que cree pedidos, ciérralos tú: entregar (`POST /orders/:id/deliver`) y cobrar
   (`POST /orders/:id/pay`, **no** `/charge`), y un pedido de plataforma solo acepta el método de SU
   plataforma.
+- **`make ci-local`** — lo mismo que los jobs de CI que gatean el despliegue (backend con lint y govulncheck, integración con `sqlc diff`/`sqlc vet` contra un Postgres desechable en `:5510`, y frontend), en paralelo y en ~2 min. **Se corre antes de empujar**: CI tarda ~10 min en avisar. No cubre el entorno de GitHub (versiones de las actions, el Go que instala `setup-go`), que es justo lo que se rompió el día de go1.27.2; CI sigue siendo el que despliega.
 - `make lint` (golangci-lint + gosec) · `make vuln` (govulncheck) · `make web-lint` (eslint + tsc) · `make sec` (todos).
 - **El precio de `product_platform_prices` NO es el precio al que se vende en la plataforma.** Es
   una copia que se captura **después**, a mano, para que el ticket del POS cuadre con lo que la
@@ -163,6 +193,64 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Un precio de plataforma muy por debajo del de mostrador es un dedazo de captura, no una
     promoción**, y hoy nada lo detecta. Medido el 2026-09-15: `Sodas explosivas` se publica en Uber
     a $110.00 y el POS la tenía capturada a $34.75 — dos ventas registradas a menos de un tercio.
+  - **Con la API de la plataforma conectada, el precio lo pone la plataforma y se sobrescribe solo**
+    (decidido el 2026-09-28; regla en la constitución, *Restricciones del producto*). La captura a
+    mano queda para las plataformas no conectadas, y la pantalla lo dice: bloqueado con «Lo pone
+    Uber» en el POS y un aviso fijo en la tienda. Construido en la spec 026: la mecánica está en
+    «Emparejar con la plataforma» más abajo y las decisiones en
+    [docs/emparejamiento-de-plataformas.md](docs/emparejamiento-de-plataformas.md).
+- **Sucursales** (spec 025, 0076): cajas, pedidos, tiendas de plataforma y existencias guardan
+  `branch_id`; catálogo, empleados y lo fiscal siguen por empresa. Tres cosas que muerden:
+  - **«La sucursal» la resuelve SOLO la base**: `branch_for_company(empresa)` y su envoltura
+    `current_branch_id()`. Con una sucursal activa la devuelven; con dos y sin selector truenan con
+    `EGB01`, que `store.DomainError` traduce a `domain.ErrBranchAmbiguous` (409 `BRANCH_AMBIGUOUS`).
+    No escribas en Go un «toma la matriz»: es justo el adivinar que mezcla las ventas de dos locales.
+  - **Un insert sin `branch_id` lo llena un trigger con la sucursal de la EMPRESA DE LA FILA**, no
+    la de la sesión. Por eso un insert como owner para otra empresa funciona sin pasarla. Un pedido
+    toma la de la caja de su turno; uno de plataforma, la de su tienda (explícita en `CreateOrder`).
+    Un movimiento de almacén con `order_id` toma la de su pedido (0078): antes tomaba la de la
+    empresa, y con dos sucursales toda venta tronaba con `BRANCH_AMBIGUOUS`. Una tabla nueva que
+    cuelgue de un pedido necesita el mismo trigger, no el genérico.
+  - **La matriz nace en `CreateCompany`, no en un trigger sobre `companies`**: `pg_restore` carga con
+    COPY, que dispara triggers, y duplicaría la matriz que el respaldo ya trae. Un script que cree
+    empresas a mano crea también su matriz (ver `docs/corte-produccion/01_nueva_empresa.sql`).
+- **Emparejar con la plataforma** (spec 026, 0077). Cuatro cosas que no se ven en la pantalla:
+  - **Una pareja apunta a un producto O a una opción** (`product_id` / `modifier_option_id` según
+    `local_kind`, con `check`). Antes la opción se guardaba en `product_id`; la 0077 aborta si
+    encuentra una así en vez de adivinar.
+  - **El precio por plataforma lo escribe la lectura del menú** cuando la tienda está conectada
+    (`source = platform`); la captura a mano de esa fila responde 409 `PLATFORM_PRICE_MANAGED`. Con
+    dos tiendas de la misma plataforma no se copia nada, porque el precio es por plataforma y una
+    pisaría a la otra (log `platform_price_sync_failed reason=several_stores_same_platform`).
+  - **La copia de precios avisa al POS** por `OnPricesSynced`, que httpapi conecta al caché del
+    menú y al canal de avisos. Un camino nuevo que escriba precios fuera de un handler tiene que
+    avisar igual, o las tabletas cobran con el precio viejo hasta 24 horas.
+  - **El producto genérico** (`products.system_kind = 'platform_unpaired'`, inactivo, sale en la
+    comanda) recibe los renglones de pedidos de plataforma sin pareja. Se resuelve con
+    `ensure_platform_unpaired_product(empresa)`, que filtra por la empresa explícita: con un
+    `where system_kind = …` a secas, como owner devolvía el de otra empresa.
+- **El almacén descuenta lo que de verdad se vendió** (spec 028, 0078). Cuatro cosas que no se ven:
+  - **Una sola función decide qué sale**: `domain.ExpandSale` (receta o existencias propias, cada
+    extra, lo que lleva un paquete, y los insumos preparados por su rendimiento). La usan crear
+    pedido, agregar renglones y aceptar un pedido de plataforma, por `descontarRenglon`. **Un camino
+    nuevo que venda tiene que pasar por ahí**, o vende sin descontar y nada truena.
+  - **Un paquete descuenta con la misma regla que lo costea** (`CostGraph`: el producto por omisión
+    de cada hueco × `max(min_select, 1)`). Si cambia una, cambia la otra: si no, el costo y el
+    almacén hablan de paquetes distintos.
+  - **Cada movimiento guarda su origen** (`modifier_option_id`, `component_of_product_id`) y las
+    cancelaciones reponen con el mismo origen. Los componentes vendidos se copian en
+    `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
+  - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
+    reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
+    ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
+    siempre son piezas por paquete— y rechaza insumos circulares.
+  - **Un producto es paquete porque su receta lleva productos (Menú › Recetas, «Es un combo»)**, no por un interruptor
+    aparte: capturarle productos lo vuelve `combo` con un hueco por producto, y capturarle insumos lo
+    regresa. El POS vende igual un paquete que un producto suelto; un paquete no lleva paquetes ni
+    se lleva a sí mismo.
+  - **Un insumo preparado se captura en Almacén → Insumos** (qué lleva y cuánto rinde, en su unidad
+    base). Los ciclos se rechazan con `StockGraph.ValidatePrepIngredient` contra todo el catálogo,
+    en la captura **y** en la carga de FUDO: una sola regla para los dos caminos.
 - **`company_id = 1` NO es El Gato Bobah.** Es **«Bobah Pruebas»**, con su propio catálogo muy
   parecido al bueno; el negocio real es **`company_id = 2`, slug `gatobobah`**. Filtrar por el id
   «porque es el primero» devuelve un catálogo plausible y equivocado —172 productos en vez de 174,
@@ -197,6 +285,47 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `rolesPorPantalla` en [uso.go](server/internal/domain/uso.go), más `PANTALLAS` en
     [rutas-medidas.ts](web/src/app/rutas-medidas.ts). Falta el mapa de roles y los eventos se
     descartan todos, en silencio.
+- **Credenciales de las plataformas** (0075, ampliación de la 021): el Client ID y el Client Secret
+  de la app de Uber **ya no van en el entorno**. Se capturan en Plataformas → «Acceso a la app», por
+  empresa, y se guardan solo si Uber entrega un token con ellas. Cuatro cosas que cuestan caro:
+  - **El secreto se guarda cifrado, y en producción solo con Cloud KMS.** El paquete
+    [internal/secrets](server/internal/secrets/) habla con KMS por REST con el token del metadata
+    server de la VM; no hay SDK ni archivo de llave de Google. Cada VM tiene su cuenta de servicio
+    (`pos-api-dev`, `pos-api-prod`) con un solo permiso: cifrar y descifrar con SU llave
+    (`keyRings/pos-dev` o `pos-prod`, `cryptoKeys/credenciales`). En `deploy/.env` del servidor va
+    `CREDENTIALS_KMS_KEY` con el nombre de la llave; **sin ella la API de producción no arranca**,
+    así que se pone ANTES de desplegar. En tu máquina va `CREDENTIALS_LOCAL_KEY`, que
+    `make check-env` genera y que producción rechaza.
+  - **Un respaldo de producción restaurado en local trae las credenciales ilegibles**: es la
+    protección funcionando. La pantalla dice «hay que volver a capturar el acceso», no un 500
+    (`TestABackupFromAnotherEnvironmentNeedsRecapture`). Lo mismo con la llave de firma.
+  - **El cliente armado se reusa por empresa, y no es optimización**: guarda su token, y Uber da 100
+    por hora e invalida el más viejo a partir del 101. El que se comprobó al guardar es el que se
+    queda atendiendo. Un servicio de credenciales por proceso, compartido por menús y pedidos.
+  - **La AAD de cada cifrado es `credential|company|platform|kind`** ([domain](server/internal/domain/platform_credentials.go)).
+    No se cambia su formato: todo lo ya guardado se cifró con él. La llave de firma usa el mismo
+    tipo para la primaria y la secundaria porque rotar mueve el cifrado entre columnas.
+- **Dividir la cuenta** (spec 027). Cinco cosas que cuestan caro si se olvidan:
+  - **Un pago devuelto SALE de `order_payments`** a la bitácora `order_payment_voids`, con su
+    cobertura en `covered` y el número que lleva su ticket. Por eso las ~32 consultas que suman pagos
+    no filtran devueltos: no hay devueltos ahí. Una consulta nueva que lea la bitácora como si fueran
+    pagos cuenta el dinero dos veces.
+  - **Qué cubrió cada pago vive en `order_payment_lines`**, y toda lectura que decide si una pieza
+    está pagada va bajo el `FOR UPDATE` del pedido (`GetOrderForCharge`, `GetOrderForUpdate`): es lo
+    que impide que dos tabletas cobren la misma pieza. Quitar un producto o lo que falta pasa por
+    **una sola** validación (`paymentGuard` en `devolucion.go`); un camino nuevo que quite
+    renglones la llama, no la copia.
+  - **El monto lo calcula el servidor**: `/quote` y `/pay` usan la misma función (`chargeAmount` →
+    `domain.SelectionAmount` / `SplitPartAmount`). La hoja no suma ni reparte; pide la cotización.
+  - **Pasar productos mueve el renglón y sus movimientos por `order_line_id`**, nunca por
+    `order_id`, y partir un renglón inserta pares de movimientos «renglón partido» (el trigger de
+    existencias es solo de insert) y reparte `order_line_components`. Pasar todo a otro pedido deja
+    el origen `cancelada` con `merged_into_order_id`: lista, conteo y resumen de Ventas y las ventas
+    del turno lo excluyen con la misma línea, y no es una cancelación.
+  - **Los controles nuevos preguntan por permiso** (`domain.Permission`, `RequirePermission`,
+    `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
+    principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
+    desplegarla, el rollback es restaurar el respaldo.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
@@ -239,8 +368,8 @@ mecánica:
 
 - **Frescura ≠ pre-commit.** Actualizar deps al día lo maneja **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)): github-actions, gomod (`/server`), **bun** (`/web`, no `npm`: es lo único que actualiza `bun.lock`) y docker (`/server`+`/deploy`), semanal. Chequeo manual: `go list -u -m all` (Go), `bun outdated` (web). **No** añadas un pre-commit de "deps desactualizadas" (ruidoso, bloquea cambios ajenos).
 - **Dónde corre cada scanner**: Go → `govulncheck` (pre-push lefthook **+** CI). Frontend → `bun audit --audit-level=high` en CI, sin `|| true`.
-- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.0`).
-- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.0`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
+- **Runtimes**: con línea LTS → la última LTS (Node = 24, `.nvmrc`); Go no tiene LTS → el último minor estable (hoy `go1.27.2`).
+- **Pin fuerte**: imágenes base por **digest** (`server/Dockerfile`, `deploy/docker-compose.yml`), GitHub Actions por **SHA** ([ci.yml](.github/workflows/ci.yml)), toolchain Go fijado en `go.mod` (hoy `go 1.27.2`). **No agregues una línea `toolchain` igual al `go` directive**: `go mod tidy` la borra por redundante en cada corrida — cuando coinciden, el `go` directive ES el pin.
 - **El backend NO se compila en el VPS.** La VM es un e2-micro (1 vCPU, 1 GB): compilar el módulo
   ahí tarda ~30 min y puede morir por OOM — se vio al subir a Go 1.27, que invalidó todas las capas
   cacheadas. El job `image` de [ci.yml](.github/workflows/ci.yml) construye y publica
@@ -290,7 +419,7 @@ mecánica:
   firma del `Page` (`max-width: 1150px`) — en jsdom `getComputedStyle` sí resuelve lo que emite
   Chakra, así que el defecto de disposición sí deja test.
 - **GOTCHA al subir el toolchain de Go (¡lee esto antes de bumpear Go!):** las herramientas de análisis basadas en Go (golangci-lint, govulncheck) hacen un self-check y **rechazan** analizar un módulo cuyo Go sea de un **minor mayor** al Go con que se compiló la herramienta. Al subir `toolchain`/`go` en go.mod:
-  - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
+  - **golangci-lint**: sube en `ci.yml` el input `version:` a una release compilada con Go del **mismo minor o mayor** (verifica con `go version $(which golangci-lint)`). Además el `golangci-lint-action` debe ser **v7+** para soportar golangci-lint v2. El self-check compara por **minor** (1.27.x sirve para cualquier toolchain 1.27.y), no por patch. Al subir a 1.27 se pinó `v2.13.1` (compilada con go1.27.0). **Y no basta el minor**: con go1.27.2 ese binario truena con *export data version 5 is greater than maximum supported version 4* al leer la biblioteca estándar. Por eso CI lo compila con el Go del job (`install-mode: goinstall`, hoy `v2.14.0`) y el contenedor del hook lo instala con `go install` sobre `golang:1.27`. Las herramientas **locales** también: `go install …@latest` desde un directorio SIN go.mod, porque dentro del módulo aplica el `toolchain` y las recompila con el Go viejo — el hook queda roto con un panic del type-checker.
   - **govulncheck**: la action lo compila con el Go del `go-version-file` (= go.mod), así que se resuelve solo si el `go` directive es coherente.
 - **`make install` y lefthook con Go 1.27**: `github.com/evilmartians/lefthook@latest` (módulo v1) **ya no compila** — su dep `go-json-experiment/json` referencia `json.SkipFunc`/`json.DiscardUnknownMembers`, que `encoding/json/v2` movió al entrar a la stdlib. El módulo **`/v2`** sí compila y valida el `lefthook.yml` actual sin tocarlo (`lefthook validate` → *All good*), así que el Makefile instala `lefthook/v2@latest`. Si el hook deja de sincronizarse, revisa primero eso y no `--no-verify`.
 - **Go 1.27 — lo que cambia para este repo.**
@@ -330,6 +459,10 @@ mecánica:
 cada comando ANTES de correrlo y pide aprobación si nombra esa máquina o su IP. Pasan solos los
 respaldos (`pg_dump` y traerse el archivo), que es la excepción que se autorizó: no cambian nada y
 son lo que uno quiere poder hacer rápido antes de una migración.
+
+**`pos-vps` tiene respaldo verificado cada noche a las 00:45** (hora del centro) y snapshot del
+disco a las 02:00; desde el 2026-10-05 ya no se apaga de noche. Runbook:
+[docs/respaldos-produccion.md](docs/respaldos-produccion.md).
 
 `pos-vps-dev` **no** está gateado: ahí se prueba, y frenar cada comando volvería inútil la
 verificación contra el ambiente desplegado.
@@ -406,10 +539,15 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
   - **La salida confiable es levantar la API en contenedor** (Linux, fuera del alcance de SAC), contra el postgres/redis del compose dev. Es lo que hay que usar cuando `make start` muere con *Permission denied* en `server/tmp/api`:
 
     ```bash
+    # Los roles de producción también aquí (ver §2, «La base local se comporta como producción»).
+    APP_PW=$(grep '^APP_DB_PASSWORD=' deploy/.env | cut -d= -f2-)
+    PLAT_PW=$(grep '^PLATFORM_DB_PASSWORD=' deploy/.env | cut -d= -f2-)
     MSYS_NO_PATHCONV=1 docker run --rm --name gatobobah-api-dev --network deploy_default -p 8080:8080 \
       -v "d:/git/el-gato-bobah-pos/server:/src" -v "d:/git/el-gato-bobah-pos/deploy/.env:/env/.env:ro" \
       -v gatobobah_gocache:/root/.cache/go-build -v gatobobah_gomod:/go/pkg/mod -w /src \
       -e DATABASE_URL='postgres://gatobobah:gatobobah@postgres:5432/gatobobah?sslmode=disable' \
+      -e APP_DATABASE_URL="postgres://gatobobah_app:$APP_PW@postgres:5432/gatobobah?sslmode=disable" \
+      -e PLATFORM_DATABASE_URL="postgres://gatobobah_platform:$PLAT_PW@postgres:5432/gatobobah?sslmode=disable" \
       -e REDIS_URL='redis://redis:6379' -e APP_ENV=development -e PORT=8080 -e ENV_FILE=/env/.env \
       -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e APP_BASE_URL='http://localhost:3000' \
       golang:1.27 go run ./cmd/api
@@ -418,7 +556,7 @@ La caja de dev es Windows 11 + Git Bash. Lo que muerde ahí y no en Linux/mac:
     Los volúmenes de caché no son opcionales: sin ellos cada arranque vuelve a bajar el módulo entero. El front sigue corriendo en el host con `bun run dev` y su proxy a `:8080`.
   - **`go test`, `govulncheck` y `golangci-lint` ya no se ejecutan en el host.** El binario que `go test` deja en `%TEMP%` es NUEVO en cada corrida, así que es el peor caso posible para SAC: bloquea un paquete al azar —hoy `internal/cache`, mañana otro— con el resto de la suite en verde. No es un test que falle, es un proceso que no arranca. `govulncheck.exe` se bloquea siempre, lo recompiles como lo recompiles (probado con `-ldflags="-s -w"` y desde otra ruta). `golangci-lint` corrió sin problema desde el 26-ago y el 29-ago empezó a dar *Permission denied* sin que nada cambiara: **el veredicto de SAC se mueve solo**, así que ninguna herramienta está a salvo por haber corrido ayer. Los dos hooks ya traen la salida y **no hay nada que hacer a mano** — si el binario local no arranca, el mismo escáner/linter corre en contenedor con la versión que usa CI:
     - [scripts/hooks/govulncheck.sh](scripts/hooks/govulncheck.sh) → `golang:1.27`.
-    - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golangci/golangci-lint:v2.13.1`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
+    - [scripts/hooks/golangci-lint.sh](scripts/hooks/golangci-lint.sh) → `golang:1.27` + `go install` de golangci-lint `v2.14.0`. La versión está fijada en el script y **debe moverse junto con la de `ci.yml`** por el self-check del §3.
     - [scripts/hooks/web-lint.sh](scripts/hooks/web-lint.sh) → `oven/bun:1`. **Con bun el síntoma es
       distinto**: no sale el mensaje de SAC sino un lacónico `bun: unknown error:` y un exit 1, sin
       decir qué script falló — mientras `tsc` y `eslint` corridos a mano pasan limpios. `node_modules`

@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 // Reinicia el borrador local cuando se abre para otro producto (patrón legítimo).
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Box, VStack, HStack, Text, Button, Input } from '@chakra-ui/react';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
@@ -11,10 +11,14 @@ import { Switch } from '../components/ui/switch';
 import { toaster } from '../components/ui/toaster';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { medirAccion } from '../api/uso';
-import { adminApi, type AdminProduct, type Category } from '../api/admin';
+import { adminApi, type AdminProduct, type Category, type CostChange } from '../api/admin';
+import { montoTecleado } from '../domain/numeros';
+import { moneyExact } from '../utils/format';
 import { Picker, type PickerOption } from '../components/Picker';
 import { useUiStore } from '../stores/ui';
 import { ProductGroupsManager } from './ProductGroupsManager';
+import { CompositionSheet } from './CompositionSheet';
+import { compositionLabel } from './compositionLabel';
 
 interface Props {
   product: AdminProduct | null;
@@ -28,7 +32,15 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   const qc = useQueryClient();
   const palette = useUiStore((s) => s.palette);
   const [edit, setEdit] = useState<AdminProduct | null>(product);
-  useEffect(() => { setEdit(product); }, [product]);
+  const [costMode, setCostMode] = useState<'manual' | 'receta'>(modoInicial(product));
+  const [costText, setCostText] = useState(product?.manualCost ?? '');
+  useEffect(() => {
+    setEdit(product);
+    setCostMode(modoInicial(product));
+    setCostText(product?.manualCost ?? '');
+  }, [product]);
+  const cost = edit ? cambioDeCosto(edit, costMode, costText) : undefined;
+  const [composing, setComposing] = useState(false);
   // Solo se piden al abrir el diálogo: es un catálogo chico que casi nunca cambia y no vale un
   // viaje por cada producto que se lista.
   const { data: cats } = useQuery({
@@ -45,6 +57,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
         name: p.name, price: Number(p.price), favorite: p.is_favorite, active: p.is_active,
         needsPrep: p.needsPrep, categoryId: p.categoryId,
         availableFrom: p.availableFrom, availableUntil: p.availableUntil,
+        ...(cost && cost !== 'invalido' ? { cost } : {}),
       }),
     onSuccess: () => {
       // Después de que el servidor guardó, nunca antes (spec 017, US3).
@@ -58,7 +71,7 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
   });
 
   return (
-    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }}>
+    <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} placement="center" scrollBehavior="inside">
       <DialogBackdrop />
       <DialogContent colorPalette={palette}>
         <DialogHeader><DialogTitle>Editar producto</DialogTitle></DialogHeader>
@@ -68,12 +81,41 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
             <DialogBody>
               <VStack align="stretch" gap={4}>
                 <Field label="Nombre">
-                  <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+                  <Input minH="44px" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
                 </Field>
-                <Field label="Precio">
-                  <Input type="number" value={edit.price}
+                {/* Precio y costo en una fila: cada renglón le quita alto a 600 px de pantalla. */}
+                <HStack align="start" gap={3}>
+                <Field flex="1" label="Precio">
+                  <Input type="number" inputMode="decimal" minH="44px" value={edit.price}
                     onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
                 </Field>
+                <Box flex="1">
+                {edit.type === 'combo' ? (
+                  <CostoFijo monto={edit.current_cost} nota="Se suma de lo que incluye" />
+                ) : costMode === 'receta' ? (
+                  // Recién elegido, current_cost todavía es el manual: mostrarlo con esta nota sería
+                  // un número falso. El servidor lo calcula al guardar.
+                  <CostoFijo monto={edit.costSource === 'receta' ? edit.current_cost : undefined}
+                    nota={edit.costSource === 'receta' ? 'Sale de su receta' : 'Se calculará de su receta al guardar'}>
+                    <Button variant="outline" size="sm" minH="44px" onClick={() => setCostMode('manual')}>Poner costo a mano</Button>
+                  </CostoFijo>
+                ) : (
+                  <VStack align="stretch" gap={2}>
+                    <Field label="Costo" invalid={cost === 'invalido'} errorText="Escribe el costo">
+                      <Input type="number" inputMode="decimal" minH="44px" value={costText}
+                        onChange={(e) => setCostText(e.target.value)} />
+                    </Field>
+                    {edit.hasRecipe && (
+                      <Button variant="outline" size="sm" minH="44px" onClick={() => setCostMode('receta')}>Usar el de su receta</Button>
+                    )}
+                  </VStack>
+                )}
+                </Box>
+                </HStack>
+                <Button variant="outline" minH="44px" justifyContent="space-between" onClick={() => setComposing(true)}>
+                  <Text>Receta</Text>
+                  <Text color="fg.muted" fontWeight="normal">{compositionLabel(edit.compositionStatus)} ›</Text>
+                </Button>
                 <Field label="Categoría">
                   {/* Picker táctil, no <select> nativo: en una tablet de 7" el desplegable del
                       sistema tapa la pantalla con renglones de 20px. Ver la constitución. */}
@@ -128,12 +170,16 @@ export function ProductEditDialog({ product, isOpen, onClose }: Props) {
               </VStack>
             </DialogBody>
             <DialogFooter>
-              <Button variant="ghost" mr={3} onClick={onClose}>Cancelar</Button>
-              <Button loading={save.isPending} onClick={() => save.mutate(edit)}>Guardar</Button>
+              <Button variant="ghost" minH="44px" mr={3} onClick={onClose}>Cancelar</Button>
+              <Button minH="44px" loading={save.isPending} disabled={cost === 'invalido'} onClick={() => save.mutate(edit)}>Guardar</Button>
             </DialogFooter>
           </>
         )}
       </DialogContent>
+      {edit && (
+        <CompositionSheet kind="product" id={edit.id} name={edit.name} open={composing}
+          onClose={() => setComposing(false)} />
+      )}
     </DialogRoot>
   );
 }
@@ -148,4 +194,34 @@ function opcionesDeCategoria(cats: Category[], producto: AdminProduct): PickerOp
     value: String(c.id),
     label: c.parentId ? `${nombrePorId.get(c.parentId) ?? '—'} › ${c.name}` : c.name,
   }));
+}
+
+// Un producto con receta arranca mostrando el costo calculado; «compra» y «manual» se editan igual.
+function modoInicial(p: AdminProduct | null): 'manual' | 'receta' {
+  return p?.costSource === 'receta' ? 'receta' : 'manual';
+}
+
+// cambioDeCosto decide qué viaja al guardar: nada si el costo no cambió (un guardado de nombre no
+// reescribe el costo), y 'invalido' si el campo quedó vacío o malformado — un vacío no es cero.
+function cambioDeCosto(p: AdminProduct, modo: 'manual' | 'receta', texto: string): CostChange | 'invalido' | undefined {
+  if (p.type === 'combo') return undefined;
+  if (modo === 'receta') return p.costSource === 'receta' ? undefined : { source: 'receta' };
+  const monto = texto.trim() === '' ? undefined : montoTecleado(texto);
+  if (p.costSource !== 'receta' && texto === (p.manualCost ?? '')) return undefined;
+  if (monto === undefined || monto < 0) return 'invalido';
+  return { source: 'manual', amount: monto };
+}
+
+// CostoFijo muestra un costo que no se captura aquí (receta o combo) con la razón al lado.
+export function CostoFijo({ monto, nota, children }: { monto?: string; nota: string; children?: ReactNode }) {
+  return (
+    <VStack align="stretch" gap={1}>
+      <Text fontSize="sm" fontWeight="500">Costo</Text>
+      <HStack gap={2} minH="44px">
+        {monto !== undefined && <Text fontWeight="600">{moneyExact(monto)}</Text>}
+        <Text fontSize="xs" color="fg.muted">{nota}</Text>
+      </HStack>
+      {children}
+    </VStack>
+  );
 }

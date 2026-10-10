@@ -28,6 +28,7 @@ import (
 // De integración y no unitario a propósito: el defecto vive en el where de la consulta y no hay
 // función a la que llamar para verlo.
 func TestElReporteDeVentasNoMezclaDosPeriodos(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -70,6 +71,7 @@ func TestElReporteDeVentasNoMezclaDosPeriodos(t *testing.T) {
 // devuelta seguía sumando abajo mientras el total de arriba no lo contaba: el mismo peso clasificado
 // de dos maneras en la misma pantalla, que es cómo se reporta dinero que el negocio no tuvo.
 func TestUnaVentaReembolsadaNoSumaEnLosMetodosDePago(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -112,6 +114,7 @@ func TestUnaVentaReembolsadaNoSumaEnLosMetodosDePago(t *testing.T) {
 // encima habría seguido contestando "de esa fecha a hoy"— y sobre un instante en UTC en vez del día
 // de negocio con el que el local cuadra su caja.
 func TestLaUtilidadPorProductoRespetaElRango(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)
@@ -166,14 +169,19 @@ func ventaCobrada(t *testing.T, ctx context.Context, st *store.Store, svc *app.O
 	return ord.ID
 }
 
-// moverAlDia reescribe el día de negocio de una venta. Es lo único que se toca a mano: el turno
-// abierto fecha igual a todos sus pedidos, y separar dos periodos exigiría abrir y cerrar un segundo
-// turno solo para eso.
+// moverAlDia reescribe el día de negocio de una venta Y DE SUS COBROS. Es lo único que se toca a
+// mano: el turno abierto fecha igual a todos sus pedidos, y separar dos periodos exigiría abrir y
+// cerrar un segundo turno solo para eso. Desde la spec 031 cada cobro guarda su propio día, así que
+// mover solo el pedido dejaría una venta de otro día cobrada hoy, que es otro caso.
 func moverAlDia(t *testing.T, st *store.Store, orderID int64, dia time.Time) {
 	t.Helper()
 	if _, err := st.Pool.Exec(context.Background(),
 		"update orders set business_date = $2 where id = $1", orderID, dia); err != nil {
 		t.Fatalf("mover business_date: %v", err)
+	}
+	if _, err := st.Pool.Exec(context.Background(),
+		"update order_payments set business_date = $2 where order_id = $1", orderID, dia); err != nil {
+		t.Fatalf("mover el día de los cobros: %v", err)
 	}
 }
 

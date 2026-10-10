@@ -1,10 +1,27 @@
+import type { CardTerminal } from './backoffice';
 import { api } from './client';
 import type {
-  BoardOrder, CobroHecho, CreateOrderBody, Menu, OrderView, PaymentMethod, RankedOption,
+  BoardOrder,
+  CobroHecho,
+  Menu,
+  OrderView,
+  PaymentMethod,
+  RankedOption,
+  ChargeShape,
+  Quote,
+  SelectedPieces,
+  ChangeDraftLineBody,
+  CreateDraftBody,
+  DraftIntoLineInput,
+  DraftLineInput,
+  DraftView,
+  ImportAccount,
+  ImportResult,
+  LiveAccounts,
+  PatchDraftBody,
+  SendResult,
 } from '../types/pos';
 
-// Se re-exporta para no romper a quien ya lo importaba de aquí; la definición vive en types/pos.
-export type { CreateOrderBody };
 import type { SessionUser } from '../stores/session';
 
 export const posApi = {
@@ -37,17 +54,6 @@ export const posApi = {
     api.post<void>('/me/password', { currentPassword, newPassword }),
   setOwnPin: (pin: string) => api.post<void>('/me/pin', { pin }),
 
-  // Agregar renglones a un pedido en curso: la libreta vuelve de la mesa con "pidieron dos más".
-  // Se manda el DELTA, no el pedido completo — mandar la lista entera obligaría al servidor a
-  // adivinar qué renglón es nuevo para no volver a descontar su stock.
-  //
-  // `clientUuid` identifica el LOTE que se agrega. Crear el pedido y cobrarlo ya eran idempotentes;
-  // agregar no lo era, y es el único de los tres que mueve dos cosas a la vez: lo que se le cobra al
-  // cliente y lo que se descuenta del almacén. Un doble tap sobre una tableta que no alcanzó a
-  // pintar la respuesta metía el renglón dos veces.
-  addOrderLines: (orderId: number, clientUuid: string, lines: CreateOrderBody['lines']) =>
-    api.post<OrderView>(`/orders/${orderId}/lines`, { clientUuid, lines }),
-
   // Precios por plataforma: solo las EXCEPCIONES. Quitar una devuelve el producto al calculado.
   // El servidor valida que el producto y la plataforma sean de la empresa antes de escribir, así
   // que aquí van ids pelones.
@@ -69,6 +75,33 @@ export const posApi = {
   company: () => api.get<Company>('/company'),
   updateCompany: (name: string, slug: string) => api.patch<Company>('/company', { name, slug }),
 
+  // --- La cuenta en captura (spec 030). Vive en el servidor desde el primer producto. ---
+  //
+  // Agregar es idempotente por `opId` (uno por toque, el mismo en cada reintento) y se SUMA entre
+  // tabletas; cambiar y quitar llevan la versión que la pantalla vio, y si otra tableta ya cambió
+  // ese renglón el servidor lo rechaza sin aplicar nada.
+  createDraft: (body: CreateDraftBody) => api.post<DraftView>('/pos/drafts', body),
+  getDraft: (id: string) => api.get<DraftView>(`/pos/drafts/${id}`),
+  addDraftLine: (id: string, body: DraftLineInput | DraftIntoLineInput) =>
+    api.post<DraftView>(`/pos/drafts/${id}/lines`, body),
+  changeDraftLine: (id: string, lineId: string, body: ChangeDraftLineBody) =>
+    api.patch<DraftView>(`/pos/drafts/${id}/lines/${lineId}`, body),
+  removeDraftLine: (id: string, lineId: string, expectedVersion: number) =>
+    api.del<DraftView>(`/pos/drafts/${id}/lines/${lineId}?expectedVersion=${expectedVersion}`),
+  patchDraft: (id: string, body: PatchDraftBody) => api.patch<DraftView>(`/pos/drafts/${id}`, body),
+  // Lleva la versión de la cuenta que la pantalla vio: si otra tableta la cambió, el servidor no
+  // descarta nada (DRAFT_CHANGED).
+  discardDraft: (id: string, expectedVersion: number) =>
+    api.post<void>(`/pos/drafts/${id}/discard`, { expectedVersion }),
+  // Manda a cocina. Idempotente por la cuenta: el reintento devuelve el mismo pedido y no reimprime.
+  sendDraft: (id: string) => api.post<SendResult>(`/pos/drafts/${id}/send`, {}),
+  importDrafts: (accounts: ImportAccount[]) =>
+    api.post<{ results?: ImportResult[] }>('/pos/drafts/import', { accounts }),
+  // Todas las cuentas vivas de la empresa. La fila la pide cada 30 s SIN `olderDebts` (el servidor
+  // mira 90 días); la hoja «+N» y el cierre lo piden con él, una vez por acción.
+  liveAccounts: (olderDebts = false) =>
+    api.get<LiveAccounts>(olderDebts ? '/pos/accounts?olderDebts=true' : '/pos/accounts'),
+
   menu: () => api.get<Menu>('/pos/menu'),
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).
   popular: () => api.get<{ items: number[] }>('/pos/popular'),
@@ -82,7 +115,6 @@ export const posApi = {
   // la pantalla que tiene su propio interruptor y no quedaba forma de volver a encenderlo.
   allPaymentMethods: () => api.get<{ items: PaymentMethod[] }>('/payment-methods/all'),
 
-  createOrder: (body: CreateOrderBody) => api.post<OrderView>('/orders', body),
   activeOrders: () => api.get<{ items: BoardOrder[] }>('/orders'),
   order: (id: number) => api.get<OrderView>(`/orders/${id}`),
   // Escribir o corregir el folio de la plataforma de un pedido que ya existe, incluido uno cobrado
@@ -101,27 +133,29 @@ export const posApi = {
   // `devolver` confirma que el dinero se le regresa al cliente. Sin él, un pedido con cobros NO se
   // cancela: cancelarlo a secas lo sacaba de los reportes y dejaba el arqueo esperando ese dinero
   // en el cajón.
-  cancelOrder: (id: number, reason: string, devolver = false) =>
-    api.post<void>(`/orders/${id}/cancel`, { reason, devolver }),
+  cancelOrder: (id: number, reason: string, devolver = false, cardFolio?: string) =>
+    api.post<void>(`/orders/${id}/cancel`, { reason, devolver, cardFolio }),
+  // «Cancelar lo que falta» (2026-10-09): lo pagado se queda como venta y el resto se da por perdido.
+  writeOffOrder: (id: number, reason: string) => api.post<void>(`/orders/${id}/write-off`, { reason }),
   // Cancelar UN renglón. Responde si repuso el inventario: el que ya salió a cocina baja el total
   // pero no devuelve el insumo, y la pantalla tiene que poder decirlo.
-  cancelOrderLine: (id: number, lineId: number, reason: string) =>
-    api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`, { reason }),
+  // `qty` quita solo esas piezas pendientes (1 de 2); sin él, todas las pendientes.
+  cancelOrderLine: (id: number, lineId: number, reason: string, qty?: number) =>
+    api.post<{ repusoInventario: boolean }>(`/orders/${id}/lines/${lineId}/cancel`,
+      qty === undefined ? { reason } : { reason, qty: String(qty) }),
+  // Quitar todo lo que falta por entregar, en una sola petición, y dejar lo entregado. Sin productos
+  // vivos va SIN cuerpo: el servidor cierra el pedido con el motivo fijo «Sin productos».
+  cancelPendingLines: (id: number, reason?: string) =>
+    api.post<{ removed: number; restocked: number }>(`/orders/${id}/lines/cancel-pending`,
+      reason === undefined ? undefined : { reason }),
   // Entregadas del día + reembolso (solo admin/gerente; el backend aplica el 403).
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
-  // Lo que falta por cobrar del día, en cualquier estado cobrable. Sin gate de rol: quien está en
-  // la caja es quien tiene que poder saldarlo.
-  // La barra de pedidos en curso. `porCobrar=true` deja fuera lo ya saldado: quien abre esa hoja
-  // viene a cobrar, y en el ambiente de pruebas abría con 30 renglones —14 ya cobrados— sobre una
-  // pantalla donde caben cinco.
-  //
-  // El filtro va en el SERVIDOR y no aquí, igual que la suma: el total pendiente sale del mismo
-  // recorrido que la lista, y recortar de este lado lo dejaría contando filas que no se muestran.
-  openOrders: () => api.get<{ items: BoardOrder[]; outstanding: string }>('/orders/open?porCobrar=true'),
   // `amount` vacío = todo lo que queda por devolver, que es el caso de todos los días. Con monto,
   // devuelve una parte: un platillo de tres.
-  refundOrder: (id: number, reason: string, amount?: number, lineId?: number) =>
-    api.post<void>(`/orders/${id}/refund`, { reason, amount, lineId }),
+  refundOrder: (id: number, reason: string, amount?: number, lineId?: number, cardFolio?: string) =>
+    api.post<void>(`/orders/${id}/refund`, { reason, amount, lineId, cardFolio }),
+  // En qué terminal se devuelve y si se pedirá folio (spec 032, punto 10).
+  refundInfo: (id: number) => api.get<{ cardTerminals: string[]; needsFolio: boolean }>(`/orders/${id}/refund-info`),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
   // la tarjeta, y "salieron 3 de 5 alitas" es sobre un renglón.
   deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),
@@ -136,8 +170,27 @@ export const posApi = {
   //
   // Devuelve lo que queda del pedido. Restarlo en la pantalla sería una segunda implementación de
   // la misma cifra.
-  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string }) =>
+  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string; terminalId?: number }) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
+  // Cobrar con productos, «todo lo que falta» o una parte (spec 027): el monto lo calcula el
+  // servidor y viene en la respuesta. Las formas se excluyen entre sí y con `amount`.
+  chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string; terminalId?: number } & ChargeShape) =>
+    api.post<CobroHecho>(`/orders/${id}/pay`, body),
+  // Terminales de tarjeta y la del usuario (spec 032, punto 8). La del usuario la guarda el
+  // servidor al cobrar con ella: tocar el selector y abandonar el cobro no la cambia.
+  cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
+  defaultTerminal: () => api.get<{ value: number | null }>('/me/preferences/card_terminal')
+    .then((r) => (typeof r?.value === 'number' ? r.value : null)).catch(() => null),
+  // Cuánto cobraría /pay por una selección, sin cobrarla. La hoja no calcula el monto: si lo hiciera
+  // habría dos reglas de dinero, y tarde o temprano dirían cosas distintas.
+  quoteOrder: (id: number, shape: ChargeShape) => api.post<Quote>(`/orders/${id}/quote`, shape),
+  // Devolver un pago de un turno abierto (permiso payments.void). Sus productos vuelven a quedar
+  // por cobrar.
+  voidPayment: (id: number, paymentId: number, reason: string) =>
+    api.post<{ outstanding: string; paid: boolean }>(`/orders/${id}/payments/${paymentId}/void`, { reason }),
+  // Pasar productos a otro pedido abierto, o a uno nuevo con `toOrderId` null.
+  moveLines: (id: number, body: { clientUuid: string; toOrderId: number | null; lines: SelectedPieces[] }) =>
+    api.post<{ from: OrderView; to: OrderView }>(`/orders/${id}/lines/move`, body),
 
   // Ajustes de negocio. GET lo puede leer cualquier autenticado (el cobro lo necesita); el
   // PUT lo restringe el backend a admin/gerente.
@@ -209,9 +262,6 @@ export interface BusinessSettings {
   // Si al mandar el pedido sale una comanda SIN precios para cocina. Apagado por default: donde la
   // cocina está pegada al mostrador sería papel que duplica lo que el cocinero ya ve.
   printKitchenTicket: boolean;
-  // Si el tablero de Pedidos puede cobrar. Apagado = /pedidos solo prepara y entrega, y el cobro
-  // vive donde le toca, en el punto de venta.
-  kitchenCanCharge: boolean;
   // Si quien cuenta el cajón ve lo que el sistema espera. Encendido, la diferencia aparece al
   // confirmar el cierre.
   blindCashCount: boolean;
@@ -245,7 +295,6 @@ export interface TicketSettingsInput {
   autoPrintOnClose?: boolean;
   printFreeModifiers?: boolean;
   printKitchenTicket?: boolean;
-  kitchenCanCharge?: boolean;
   pinOnlyUnlock?: boolean;
   lockAfterSeconds?: number;
   sessionHours?: number;

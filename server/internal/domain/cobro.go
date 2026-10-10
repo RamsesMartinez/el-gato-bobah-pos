@@ -35,13 +35,9 @@ var (
 // se registró así), y arrastrar ese negativo a la suma del tablero lo convertiría en un descuento
 // sobre lo que deben los demás pedidos.
 func PorCobrar(total, pagado decimal.Decimal) decimal.Decimal {
-	// El MISMO predicado que cierra el pedido decide que no queda nada por cobrar.
-	//
-	// PagosCubren tolera un centavo —el residuo de dividir $100 en tres partes de $33.33— y con él
-	// se marca el pedido entregado. Restar a pelo dejaba a la barra del POS viéndole $0.01 a un
-	// pedido que el sistema ya dio por saldado: dos predicados sobre la misma cifra, que es lo que
-	// el corolario del principio III prohíbe. El operador no tenía cómo cobrar ese centavo, y al
-	// día siguiente el pedido salía de la vista con la deuda abierta.
+	// El MISMO predicado que cierra el pedido decide que no queda nada por cobrar: dos predicados
+	// sobre la misma cifra dejaban a la barra del POS viéndole $0.01 a un pedido que el sistema ya
+	// había dado por saldado, que es lo que el corolario del principio III prohíbe.
 	if PagosCubren(pagado, total) {
 		return decimal.Zero
 	}
@@ -67,6 +63,21 @@ func ValidarCobro(estado string, total, pagado, monto decimal.Decimal) error {
 	}
 	if monto.GreaterThan(falta) {
 		return fmt.Errorf("%w: faltan %s y se intentó cobrar %s", ErrCobroExcede, falta, monto)
+	}
+	return nil
+}
+
+// minCharge: el centavo. Lo que está por debajo no es dinero que alguien pueda entregar.
+var minCharge = decimal.New(1, -2)
+
+// ValidChargeAmount rechaza un cobro por monto de menos de un centavo ANTES de redondear: $0.005
+// se redondeaba a $0.01 y saldaba un pedido con dinero que nadie entregó (spec 029). Fracciones de
+// centavo por encima de eso se siguen redondeando, como siempre.
+//
+// La escala se mira primero: comparar contra un exponente absurdo reescala a 10^|exp| y tira la API.
+func ValidChargeAmount(monto decimal.Decimal) error {
+	if !escalaSana(monto) || monto.LessThan(minCharge) {
+		return fmt.Errorf("%w: el monto a cobrar tiene que ser de al menos un centavo", ErrValidation)
 	}
 	return nil
 }

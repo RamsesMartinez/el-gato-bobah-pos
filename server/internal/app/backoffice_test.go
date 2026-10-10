@@ -121,3 +121,48 @@ func TestCorteSinPlataformasNoListaNada(t *testing.T) {
 		t.Fatalf("sin ventas de plataforma no debe listarse nada, listó %+v", b.Plataformas)
 	}
 }
+
+// EL DESGLOSE NOMBRA LO QUE NO ES VENTA DEL TURNO (spec 031, D6 y D12).
+//
+// Un cobro de un pedido de otro turno y una devolución por tarjeta ya están en el esperado del
+// medio. Sin nombrarlos, el corte los llamaba «Ventas» —o los escondía dentro de ellas— y la venta
+// del turno no cuadraba con ninguna otra cifra.
+func TestCorteBreakdownNamesEarlierChargesAndRefunds(t *testing.T) {
+	// Tarjeta: cobró 300 (100 de un pedido de otro turno) y devolvió 80 sin tocar el cajón.
+	// Esperado = 300 − 80 = 220.
+	methods := []methodExpected{
+		{name: "Tarjeta", expected: mustDec("220"), earlier: mustDec("100"), refunded: mustDec("80"),
+			refunds: domain.MethodRefunds{OffDrawer: mustDec("80")}},
+	}
+	b := corteBreakdown(decimal.Zero, methods, nil)
+	if len(b.Ingresos) != 1 {
+		t.Fatalf("ingresos = %+v", b.Ingresos)
+	}
+	want := map[string]string{"Ventas": "200", "Cobros de otros turnos": "100", "Devoluciones": "-80"}
+	got := map[string]string{}
+	for _, it := range b.Ingresos[0].Items {
+		got[it.Concept] = it.Amount.String()
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%q = %q, quiere %s (todos: %v)", k, got[k], v, got)
+		}
+	}
+	if !b.Ingresos[0].Total.Equal(mustDec("220")) {
+		t.Fatalf("total de tarjeta = %s, quiere 220: el desglose tiene que sumar el esperado", b.Ingresos[0].Total)
+	}
+}
+
+// Una propina entregada sale del cajón pero no es gasto ni salida del negocio: va en su propio
+// renglón de egresos y nunca en «Gastos» ni en «Salidas de efectivo» (spec 032, EB-02).
+func TestCorteBreakdownTipPayoutIsItsOwnBucket(t *testing.T) {
+	moves := []db.ListCashMovementsRow{{Kind: domain.CashPropina, Amount: mustDec("78")}}
+	methods := []methodExpected{{name: "Efectivo", expected: mustDec("52"), duenoDelFondo: true}}
+	b := corteBreakdown(decimal.Zero, methods, moves)
+	if len(b.Egresos) != 1 || b.Egresos[0].Concept != "Propinas entregadas" || !b.Egresos[0].Amount.Equal(mustDec("78")) {
+		t.Fatalf("egresos = %+v; la propina entregada debe ir sola en «Propinas entregadas»", b.Egresos)
+	}
+	if !b.Ingresos[0].Items[0].Amount.Equal(mustDec("130")) {
+		t.Fatalf("ventas = %s; quería 130 (52 esperado + 78 entregados)", b.Ingresos[0].Items[0].Amount)
+	}
+}

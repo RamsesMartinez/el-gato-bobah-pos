@@ -20,6 +20,7 @@ import (
 // Lo que solo se ve aquí: que la ruta quedó dentro del grupo con tenant —sin eso, RLS no tiene
 // empresa y el insert falla—, y que lo que el cliente manda de más no llega a ninguna columna.
 func TestLaMedicionPorElRouter(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

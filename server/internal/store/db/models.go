@@ -402,6 +402,51 @@ func (ns NullPlatformItemKind) Value() (driver.Value, error) {
 	return string(ns.PlatformItemKind), nil
 }
 
+type PlatformOrderState string
+
+const (
+	PlatformOrderStatePendiente PlatformOrderState = "pendiente"
+	PlatformOrderStateAceptado  PlatformOrderState = "aceptado"
+	PlatformOrderStateRechazado PlatformOrderState = "rechazado"
+	PlatformOrderStateCancelado PlatformOrderState = "cancelado"
+	PlatformOrderStateExpirado  PlatformOrderState = "expirado"
+)
+
+func (e *PlatformOrderState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlatformOrderState(s)
+	case string:
+		*e = PlatformOrderState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlatformOrderState: %T", src)
+	}
+	return nil
+}
+
+type NullPlatformOrderState struct {
+	PlatformOrderState PlatformOrderState `json:"platform_order_state"`
+	Valid              bool               `json:"valid"` // Valid is true if PlatformOrderState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatformOrderState) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlatformOrderState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlatformOrderState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatformOrderState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlatformOrderState), nil
+}
+
 type PlatformReadStatus string
 
 const (
@@ -747,6 +792,22 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type Branch struct {
+	ID             int64     `json:"id"`
+	CompanyID      int64     `json:"company_id"`
+	BranchNumber   int32     `json:"branch_number"`
+	Code           string    `json:"code"`
+	Name           string    `json:"name"`
+	IsHeadquarters bool      `json:"is_headquarters"`
+	IsActive       bool      `json:"is_active"`
+	Address        *string   `json:"address"`
+	Phone          *string   `json:"phone"`
+	PostalCode     *string   `json:"postal_code"`
+	Timezone       *string   `json:"timezone"`
+	CreatedAt      time.Time `json:"created_at"`
+	CardCountMode  string    `json:"card_count_mode"`
+}
+
 type BusinessSetting struct {
 	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
 	UpdatedAt          time.Time          `json:"updated_at"`
@@ -763,13 +824,41 @@ type BusinessSetting struct {
 	Timezone           string             `json:"timezone"`
 	PrintFreeModifiers bool               `json:"print_free_modifiers"`
 	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
-	KitchenCanCharge   bool               `json:"kitchen_can_charge"`
 	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
 	LockAfterSeconds   int32              `json:"lock_after_seconds"`
 	SessionHours       int32              `json:"session_hours"`
 	CorteDeVista       string             `json:"corte_de_vista"`
 	FolioScheme        FolioScheme        `json:"folio_scheme"`
 	BlindCashCount     bool               `json:"blind_cash_count"`
+	DailySummaryEmails []string           `json:"daily_summary_emails"`
+}
+
+type CandidatasDelAviso struct {
+	ConnectionID    int64  `json:"connection_id"`
+	CompanyID       int64  `json:"company_id"`
+	ExternalStoreID string `json:"external_store_id"`
+	IsActive        bool   `json:"is_active"`
+	PlatformName    string `json:"platform_name"`
+}
+
+type CardTerminal struct {
+	ID         int64              `json:"id"`
+	CompanyID  int64              `json:"company_id"`
+	BranchID   int64              `json:"branch_id"`
+	Name       string             `json:"name"`
+	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type CashConcept struct {
+	ID                int64              `json:"id"`
+	CompanyID         int64              `json:"company_id"`
+	Name              string             `json:"name"`
+	ExpenseCategoryID *int64             `json:"expense_category_id"`
+	SupplierID        *int64             `json:"supplier_id"`
+	ArchivedAt        pgtype.Timestamptz `json:"archived_at"`
+	MergedIntoID      *int64             `json:"merged_into_id"`
+	CreatedAt         time.Time          `json:"created_at"`
 }
 
 type CashDenomination struct {
@@ -787,6 +876,7 @@ type CashRegister struct {
 	IsPrimary bool   `json:"is_primary"`
 	IsActive  bool   `json:"is_active"`
 	CompanyID int64  `json:"company_id"`
+	BranchID  int64  `json:"branch_id"`
 }
 
 type CashTransfer struct {
@@ -847,6 +937,17 @@ type Company struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type DailySummarySend struct {
+	ID           int64              `json:"id"`
+	CompanyID    int64              `json:"company_id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	Status       string             `json:"status"`
+	Attempts     int32              `json:"attempts"`
+	LastError    *string            `json:"last_error"`
+	SentAt       pgtype.Timestamptz `json:"sent_at"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
 type DeliveryPlatform struct {
 	ID             int16           `json:"id"`
 	Name           string          `json:"name"`
@@ -874,6 +975,8 @@ type Expense struct {
 	DocKind      *string            `json:"doc_kind"`
 	DocFolio     *string            `json:"doc_folio"`
 	DocRaw       []byte             `json:"doc_raw"`
+	BranchID     *int64             `json:"branch_id"`
+	DocumentDate pgtype.Date        `json:"document_date"`
 }
 
 type ExpenseCategory struct {
@@ -937,23 +1040,26 @@ type FudoImportMap struct {
 }
 
 type Ingredient struct {
-	ID          int64            `json:"id"`
-	Name        string           `json:"name"`
-	CategoryID  *int64           `json:"category_id"`
-	BaseUnitID  int16            `json:"base_unit_id"`
-	IsPrep      bool             `json:"is_prep"`
-	RecipeID    *int64           `json:"recipe_id"`
-	YieldQty    *decimal.Decimal `json:"yield_qty"`
-	WastePct    decimal.Decimal  `json:"waste_pct"`
-	CurrentCost decimal.Decimal  `json:"current_cost"`
-	CostSource  CostSource       `json:"cost_source"`
-	SupplierID  *int64           `json:"supplier_id"`
-	IsPackaging bool             `json:"is_packaging"`
-	TrackStock  bool             `json:"track_stock"`
-	MinStock    *decimal.Decimal `json:"min_stock"`
-	IsActive    bool             `json:"is_active"`
-	CreatedAt   time.Time        `json:"created_at"`
-	UpdatedAt   time.Time        `json:"updated_at"`
+	ID                     int64              `json:"id"`
+	Name                   string             `json:"name"`
+	CategoryID             *int64             `json:"category_id"`
+	BaseUnitID             int16              `json:"base_unit_id"`
+	IsPrep                 bool               `json:"is_prep"`
+	RecipeID               *int64             `json:"recipe_id"`
+	YieldQty               *decimal.Decimal   `json:"yield_qty"`
+	WastePct               decimal.Decimal    `json:"waste_pct"`
+	CurrentCost            decimal.Decimal    `json:"current_cost"`
+	CostSource             CostSource         `json:"cost_source"`
+	SupplierID             *int64             `json:"supplier_id"`
+	IsPackaging            bool               `json:"is_packaging"`
+	TrackStock             bool               `json:"track_stock"`
+	MinStock               *decimal.Decimal   `json:"min_stock"`
+	IsActive               bool               `json:"is_active"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
 }
 
 type IngredientCategory struct {
@@ -972,6 +1078,16 @@ type IngredientPurchaseFormat struct {
 	IsDefault    bool             `json:"is_default"`
 }
 
+type LocalItemExclusion struct {
+	ID               int64     `json:"id"`
+	ConnectionID     int64     `json:"connection_id"`
+	ProductID        *int64    `json:"product_id"`
+	ModifierOptionID *int64    `json:"modifier_option_id"`
+	DecidedBy        int64     `json:"decided_by"`
+	DecidedAt        time.Time `json:"decided_at"`
+	CompanyID        int64     `json:"company_id"`
+}
+
 type ModifierGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
@@ -981,62 +1097,74 @@ type ModifierGroup struct {
 }
 
 type ModifierOption struct {
-	ID              int64           `json:"id"`
-	GroupID         int64           `json:"group_id"`
-	Name            string          `json:"name"`
-	PriceDelta      decimal.Decimal `json:"price_delta"`
-	RecipeID        *int64          `json:"recipe_id"`
-	LinkedProductID *int64          `json:"linked_product_id"`
-	MaxPerLine      int16           `json:"max_per_line"`
-	CurrentCost     decimal.Decimal `json:"current_cost"`
-	SortKey         decimal.Decimal `json:"sort_key"`
-	IsActive        bool            `json:"is_active"`
-	IsFavorite      bool            `json:"is_favorite"`
+	ID                     int64              `json:"id"`
+	GroupID                int64              `json:"group_id"`
+	Name                   string             `json:"name"`
+	PriceDelta             decimal.Decimal    `json:"price_delta"`
+	RecipeID               *int64             `json:"recipe_id"`
+	LinkedProductID        *int64             `json:"linked_product_id"`
+	MaxPerLine             int16              `json:"max_per_line"`
+	CurrentCost            decimal.Decimal    `json:"current_cost"`
+	SortKey                decimal.Decimal    `json:"sort_key"`
+	IsActive               bool               `json:"is_active"`
+	IsFavorite             bool               `json:"is_favorite"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
 }
 
 type ModifierOptionPlatformPrice struct {
-	OptionID   int64           `json:"option_id"`
-	PlatformID int16           `json:"platform_id"`
-	PriceDelta decimal.Decimal `json:"price_delta"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	OptionID   int64              `json:"option_id"`
+	PlatformID int16              `json:"platform_id"`
+	PriceDelta decimal.Decimal    `json:"price_delta"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Order struct {
-	ID                 int64              `json:"id"`
-	ClientUuid         uuid.UUID          `json:"client_uuid"`
-	BusinessDate       pgtype.Date        `json:"business_date"`
-	DailyNumber        int32              `json:"daily_number"`
-	Status             OrderStatus        `json:"status"`
-	ServiceType        ServiceType        `json:"service_type"`
-	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
-	CustomerName       *string            `json:"customer_name"`
-	Notes              *string            `json:"notes"`
-	RegisterSessionID  *int64             `json:"register_session_id"`
-	OpenedBy           int64              `json:"opened_by"`
-	Subtotal           decimal.Decimal    `json:"subtotal"`
-	DiscountTotal      decimal.Decimal    `json:"discount_total"`
-	Total              decimal.Decimal    `json:"total"`
-	OpenedAt           time.Time          `json:"opened_at"`
-	ReadyAt            pgtype.Timestamptz `json:"ready_at"`
-	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
-	CancelledAt        pgtype.Timestamptz `json:"cancelled_at"`
-	CancelledBy        *int64             `json:"cancelled_by"`
-	CancelReason       *string            `json:"cancel_reason"`
-	UpdatedAt          time.Time          `json:"updated_at"`
-	Currency           string             `json:"currency"`
-	RefundedAt         pgtype.Timestamptz `json:"refunded_at"`
-	RefundedBy         *int64             `json:"refunded_by"`
-	RefundReason       *string            `json:"refund_reason"`
-	RefundAmount       decimal.Decimal    `json:"refund_amount"`
-	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
-	FolioName          *string            `json:"folio_name"`
-	PlatformOrderRef   *string            `json:"platform_order_ref"`
-	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
-	PlatformRefSetAt   pgtype.Timestamptz `json:"platform_ref_set_at"`
-	DiscountSetBy      *int64             `json:"discount_set_by"`
-	DiscountSetAt      pgtype.Timestamptz `json:"discount_set_at"`
+	ID                     int64              `json:"id"`
+	ClientUuid             uuid.UUID          `json:"client_uuid"`
+	BusinessDate           pgtype.Date        `json:"business_date"`
+	DailyNumber            int32              `json:"daily_number"`
+	Status                 OrderStatus        `json:"status"`
+	ServiceType            ServiceType        `json:"service_type"`
+	DeliveryPlatformID     *int16             `json:"delivery_platform_id"`
+	CustomerName           *string            `json:"customer_name"`
+	Notes                  *string            `json:"notes"`
+	RegisterSessionID      *int64             `json:"register_session_id"`
+	OpenedBy               int64              `json:"opened_by"`
+	Subtotal               decimal.Decimal    `json:"subtotal"`
+	DiscountTotal          decimal.Decimal    `json:"discount_total"`
+	Total                  decimal.Decimal    `json:"total"`
+	OpenedAt               time.Time          `json:"opened_at"`
+	ReadyAt                pgtype.Timestamptz `json:"ready_at"`
+	CompletedAt            pgtype.Timestamptz `json:"completed_at"`
+	CancelledAt            pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy            *int64             `json:"cancelled_by"`
+	CancelReason           *string            `json:"cancel_reason"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+	Currency               string             `json:"currency"`
+	RefundedAt             pgtype.Timestamptz `json:"refunded_at"`
+	RefundedBy             *int64             `json:"refunded_by"`
+	RefundReason           *string            `json:"refund_reason"`
+	RefundAmount           decimal.Decimal    `json:"refund_amount"`
+	DeliveryFee            decimal.Decimal    `json:"delivery_fee"`
+	FolioName              *string            `json:"folio_name"`
+	PlatformOrderRef       *string            `json:"platform_order_ref"`
+	PlatformRefSetBy       *int64             `json:"platform_ref_set_by"`
+	PlatformRefSetAt       pgtype.Timestamptz `json:"platform_ref_set_at"`
+	DiscountSetBy          *int64             `json:"discount_set_by"`
+	DiscountSetAt          pgtype.Timestamptz `json:"discount_set_at"`
+	BranchID               int64              `json:"branch_id"`
+	MergedIntoOrderID      *int64             `json:"merged_into_order_id"`
+	WrittenOffAmount       decimal.Decimal    `json:"written_off_amount"`
+	WrittenOffReason       *string            `json:"written_off_reason"`
+	WrittenOffBy           *int64             `json:"written_off_by"`
+	WrittenOffAt           pgtype.Timestamptz `json:"written_off_at"`
+	WrittenOffBusinessDate pgtype.Date        `json:"written_off_business_date"`
 }
 
 type OrderCounter struct {
@@ -1044,10 +1172,59 @@ type OrderCounter struct {
 	LastNumber   int32       `json:"last_number"`
 }
 
+type OrderDraft struct {
+	ID                 uuid.UUID          `json:"id"`
+	CompanyID          int64              `json:"company_id"`
+	OrderID            *int64             `json:"order_id"`
+	Status             string             `json:"status"`
+	FolioName          *string            `json:"folio_name"`
+	FolioScheme        *FolioScheme       `json:"folio_scheme"`
+	ServiceType        ServiceType        `json:"service_type"`
+	CustomerName       *string            `json:"customer_name"`
+	DeliveryPlatformID *int16             `json:"delivery_platform_id"`
+	PlatformOrderRef   *string            `json:"platform_order_ref"`
+	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
+	DiscountAmount     *decimal.Decimal   `json:"discount_amount"`
+	DiscountPercent    *decimal.Decimal   `json:"discount_percent"`
+	DiscountSetBy      *int64             `json:"discount_set_by"`
+	PlatformRefSetBy   *int64             `json:"platform_ref_set_by"`
+	OpenedBy           int64              `json:"opened_by"`
+	HeaderVersion      int32              `json:"header_version"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	SentAt             pgtype.Timestamptz `json:"sent_at"`
+	DiscardedAt        pgtype.Timestamptz `json:"discarded_at"`
+	DiscardedBy        *int64             `json:"discarded_by"`
+	DiscardReason      *string            `json:"discard_reason"`
+	Version            int32              `json:"version"`
+}
+
+type OrderDraftAdd struct {
+	CompanyID int64     `json:"company_id"`
+	OpID      uuid.UUID `json:"op_id"`
+	DraftID   uuid.UUID `json:"draft_id"`
+	LineID    uuid.UUID `json:"line_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type OrderDraftLine struct {
+	ID        uuid.UUID       `json:"id"`
+	CompanyID int64           `json:"company_id"`
+	DraftID   uuid.UUID       `json:"draft_id"`
+	ProductID int64           `json:"product_id"`
+	Qty       decimal.Decimal `json:"qty"`
+	Modifiers []byte          `json:"modifiers"`
+	Notes     *string         `json:"notes"`
+	Position  int32           `json:"position"`
+	Version   int32           `json:"version"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
 type OrderLine struct {
 	ID               int64              `json:"id"`
 	OrderID          int64              `json:"order_id"`
-	ProductID        int64              `json:"product_id"`
+	ProductID        *int64             `json:"product_id"`
 	ParentLineID     *int64             `json:"parent_line_id"`
 	ProductName      string             `json:"product_name"`
 	Quantity         decimal.Decimal    `json:"quantity"`
@@ -1071,6 +1248,14 @@ type OrderLineBatch struct {
 	CompanyID  int64     `json:"company_id"`
 }
 
+type OrderLineComponent struct {
+	ID          int64           `json:"id"`
+	OrderLineID int64           `json:"order_line_id"`
+	ProductID   int64           `json:"product_id"`
+	Quantity    decimal.Decimal `json:"quantity"`
+	CompanyID   int64           `json:"company_id"`
+}
+
 type OrderLineModifier struct {
 	ID               int64           `json:"id"`
 	OrderLineID      int64           `json:"order_line_id"`
@@ -1080,6 +1265,24 @@ type OrderLineModifier struct {
 	Quantity         int16           `json:"quantity"`
 	PriceDelta       decimal.Decimal `json:"price_delta"`
 	UnitCost         decimal.Decimal `json:"unit_cost"`
+}
+
+type OrderLineMove struct {
+	ID              int64           `json:"id"`
+	CompanyID       int64           `json:"company_id"`
+	ClientUuid      uuid.UUID       `json:"client_uuid"`
+	OrderLineID     int64           `json:"order_line_id"`
+	SplitFromLineID *int64          `json:"split_from_line_id"`
+	Qty             decimal.Decimal `json:"qty"`
+}
+
+type OrderLineMoveBatch struct {
+	CompanyID   int64     `json:"company_id"`
+	ClientUuid  uuid.UUID `json:"client_uuid"`
+	FromOrderID int64     `json:"from_order_id"`
+	ToOrderID   int64     `json:"to_order_id"`
+	MovedBy     int64     `json:"moved_by"`
+	MovedAt     time.Time `json:"moved_at"`
 }
 
 type OrderPayment struct {
@@ -1093,19 +1296,61 @@ type OrderPayment struct {
 	Reference         *string         `json:"reference"`
 	CreatedAt         time.Time       `json:"created_at"`
 	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	PaymentNumber     *int16          `json:"payment_number"`
+	BusinessDate      pgtype.Date     `json:"business_date"`
+	CardTerminalID    *int64          `json:"card_terminal_id"`
+	CardTerminalName  *string         `json:"card_terminal_name"`
+}
+
+type OrderPaymentLine struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	OrderLineID    int64           `json:"order_line_id"`
+	Qty            decimal.Decimal `json:"qty"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+type OrderPaymentVoid struct {
+	ID                int64           `json:"id"`
+	CompanyID         int64           `json:"company_id"`
+	OrderID           int64           `json:"order_id"`
+	OriginalPaymentID int64           `json:"original_payment_id"`
+	PaymentNumber     int16           `json:"payment_number"`
+	PaymentMethodID   int16           `json:"payment_method_id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	Reference         *string         `json:"reference"`
+	RegisterSessionID int64           `json:"register_session_id"`
+	ReceivedBy        *int64          `json:"received_by"`
+	PaidAt            time.Time       `json:"paid_at"`
+	ClientUuid        *uuid.UUID      `json:"client_uuid"`
+	SplitPart         *int16          `json:"split_part"`
+	SplitOf           *int16          `json:"split_of"`
+	Covered           []byte          `json:"covered"`
+	VoidedBy          int64           `json:"voided_by"`
+	VoidedAt          time.Time       `json:"voided_at"`
+	Reason            string          `json:"reason"`
 }
 
 type OrderRefund struct {
-	ID              int64           `json:"id"`
-	OrderID         int64           `json:"order_id"`
-	OrderLineID     *int64          `json:"order_line_id"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	Amount          decimal.Decimal `json:"amount"`
-	Reason          string          `json:"reason"`
-	RefundedBy      int64           `json:"refunded_by"`
-	CashMovementID  *int64          `json:"cash_movement_id"`
-	CreatedAt       time.Time       `json:"created_at"`
-	CompanyID       int64           `json:"company_id"`
+	ID                   int64           `json:"id"`
+	OrderID              int64           `json:"order_id"`
+	OrderLineID          *int64          `json:"order_line_id"`
+	PaymentMethodID      int16           `json:"payment_method_id"`
+	Amount               decimal.Decimal `json:"amount"`
+	Reason               string          `json:"reason"`
+	RefundedBy           int64           `json:"refunded_by"`
+	CashMovementID       *int64          `json:"cash_movement_id"`
+	CreatedAt            time.Time       `json:"created_at"`
+	CompanyID            int64           `json:"company_id"`
+	RegisterSessionID    *int64          `json:"register_session_id"`
+	BusinessDate         pgtype.Date     `json:"business_date"`
+	TipAmount            decimal.Decimal `json:"tip_amount"`
+	CardRefundFolio      *string         `json:"card_refund_folio"`
+	CardRefundCapturedBy *int64          `json:"card_refund_captured_by"`
 }
 
 type OrdersBusinessDateFix struct {
@@ -1145,18 +1390,73 @@ type PlatformConnection struct {
 	IsActive           bool      `json:"is_active"`
 	CreatedAt          time.Time `json:"created_at"`
 	CompanyID          int64     `json:"company_id"`
+	BranchID           int64     `json:"branch_id"`
+}
+
+type PlatformCredential struct {
+	ID                    int64     `json:"id"`
+	DeliveryPlatformID    int16     `json:"delivery_platform_id"`
+	ClientID              string    `json:"client_id"`
+	ClientSecretEncrypted []byte    `json:"client_secret_encrypted"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	UpdatedBy             int64     `json:"updated_by"`
+	CompanyID             int64     `json:"company_id"`
+}
+
+type PlatformIncomingOrder struct {
+	ID              int64              `json:"id"`
+	ConnectionID    int64              `json:"connection_id"`
+	ExternalOrderID string             `json:"external_order_id"`
+	DisplayID       *string            `json:"display_id"`
+	PlacedAt        pgtype.Timestamptz `json:"placed_at"`
+	DecideBefore    pgtype.Timestamptz `json:"decide_before"`
+	Total           *decimal.Decimal   `json:"total"`
+	State           PlatformOrderState `json:"state"`
+	SettledAt       pgtype.Timestamptz `json:"settled_at"`
+	DecidedBy       *int64             `json:"decided_by"`
+	DenyReason      *string            `json:"deny_reason"`
+	OrderID         *int64             `json:"order_id"`
+	ServiceType     ServiceType        `json:"service_type"`
+	CustomerName    *string            `json:"customer_name"`
+	RawDetail       *string            `json:"raw_detail"`
+	CreatedAt       time.Time          `json:"created_at"`
+	CompanyID       int64              `json:"company_id"`
+}
+
+type PlatformIncomingOrderLine struct {
+	ID               int64           `json:"id"`
+	IncomingOrderID  int64           `json:"incoming_order_id"`
+	ParentLineID     *int64          `json:"parent_line_id"`
+	ExternalItemID   string          `json:"external_item_id"`
+	ExternalName     string          `json:"external_name"`
+	Quantity         decimal.Decimal `json:"quantity"`
+	UnitPrice        decimal.Decimal `json:"unit_price"`
+	ProductID        *int64          `json:"product_id"`
+	CompanyID        int64           `json:"company_id"`
+	ModifierOptionID *int64          `json:"modifier_option_id"`
+}
+
+type PlatformItemExclusion struct {
+	ConnectionID int64            `json:"connection_id"`
+	ExternalID   string           `json:"external_id"`
+	Kind         PlatformItemKind `json:"kind"`
+	DecidedBy    int64            `json:"decided_by"`
+	DecidedAt    time.Time        `json:"decided_at"`
+	CompanyID    int64            `json:"company_id"`
 }
 
 type PlatformItemLink struct {
-	ConnectionID int64              `json:"connection_id"`
-	ExternalID   string             `json:"external_id"`
-	Kind         PlatformItemKind   `json:"kind"`
-	ProductID    int64              `json:"product_id"`
-	LocalKind    string             `json:"local_kind"`
-	ConfirmedAt  pgtype.Timestamptz `json:"confirmed_at"`
-	ConfirmedBy  *int64             `json:"confirmed_by"`
-	CreatedAt    time.Time          `json:"created_at"`
-	CompanyID    int64              `json:"company_id"`
+	ConnectionID     int64              `json:"connection_id"`
+	ExternalID       string             `json:"external_id"`
+	Kind             PlatformItemKind   `json:"kind"`
+	ProductID        *int64             `json:"product_id"`
+	LocalKind        string             `json:"local_kind"`
+	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
+	ConfirmedBy      *int64             `json:"confirmed_by"`
+	CreatedAt        time.Time          `json:"created_at"`
+	CompanyID        int64              `json:"company_id"`
+	ModifierOptionID *int64             `json:"modifier_option_id"`
+	IsCapturePrice   bool               `json:"is_capture_price"`
 }
 
 type PlatformMenuItem struct {
@@ -1190,6 +1490,18 @@ type PlatformOperator struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type PlatformPriceChange struct {
+	ID               int64            `json:"id"`
+	ReadID           int64            `json:"read_id"`
+	ExternalID       string           `json:"external_id"`
+	Name             string           `json:"name"`
+	ProductID        *int64           `json:"product_id"`
+	ModifierOptionID *int64           `json:"modifier_option_id"`
+	OldPrice         *decimal.Decimal `json:"old_price"`
+	NewPrice         decimal.Decimal  `json:"new_price"`
+	CompanyID        int64            `json:"company_id"`
+}
+
 type PlatformSettlement struct {
 	OrderID          int64            `json:"order_id"`
 	ReportedGross    decimal.Decimal  `json:"reported_gross"`
@@ -1207,31 +1519,58 @@ type PlatformSettlement struct {
 	CompanyID        int64            `json:"company_id"`
 }
 
+type PlatformWebhookEvent struct {
+	ID           int64              `json:"id"`
+	EventID      string             `json:"event_id"`
+	EventType    string             `json:"event_type"`
+	ConnectionID int64              `json:"connection_id"`
+	ReceivedAt   time.Time          `json:"received_at"`
+	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
+	Outcome      *string            `json:"outcome"`
+	FailureKind  *string            `json:"failure_kind"`
+	RawBody      *string            `json:"raw_body"`
+	CompanyID    int64              `json:"company_id"`
+}
+
+type PlatformWebhookKey struct {
+	ID                    int64              `json:"id"`
+	DeliveryPlatformID    int16              `json:"delivery_platform_id"`
+	RotatedAt             pgtype.Timestamptz `json:"rotated_at"`
+	CreatedAt             time.Time          `json:"created_at"`
+	CompanyID             int64              `json:"company_id"`
+	KeyPrimaryEncrypted   []byte             `json:"key_primary_encrypted"`
+	KeySecondaryEncrypted []byte             `json:"key_secondary_encrypted"`
+}
+
 type Product struct {
-	ID             int64            `json:"id"`
-	Sku            *string          `json:"sku"`
-	Name           string           `json:"name"`
-	Description    *string          `json:"description"`
-	Type           ProductType      `json:"type"`
-	CategoryID     int64            `json:"category_id"`
-	Price          decimal.Decimal  `json:"price"`
-	CostSource     CostSource       `json:"cost_source"`
-	ManualCost     *decimal.Decimal `json:"manual_cost"`
-	CurrentCost    decimal.Decimal  `json:"current_cost"`
-	MarginAmount   *decimal.Decimal `json:"margin_amount"`
-	RecipeID       *int64           `json:"recipe_id"`
-	TrackStock     bool             `json:"track_stock"`
-	AllowOversell  bool             `json:"allow_oversell"`
-	MinStock       *decimal.Decimal `json:"min_stock"`
-	IsFavorite     bool             `json:"is_favorite"`
-	SortKey        decimal.Decimal  `json:"sort_key"`
-	ImageUrl       *string          `json:"image_url"`
-	IsActive       bool             `json:"is_active"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
-	AvailableFrom  pgtype.Date      `json:"available_from"`
-	AvailableUntil pgtype.Date      `json:"available_until"`
-	NeedsPrep      bool             `json:"needs_prep"`
+	ID                     int64              `json:"id"`
+	Sku                    *string            `json:"sku"`
+	Name                   string             `json:"name"`
+	Description            *string            `json:"description"`
+	Type                   ProductType        `json:"type"`
+	CategoryID             int64              `json:"category_id"`
+	Price                  decimal.Decimal    `json:"price"`
+	CostSource             CostSource         `json:"cost_source"`
+	ManualCost             *decimal.Decimal   `json:"manual_cost"`
+	CurrentCost            decimal.Decimal    `json:"current_cost"`
+	MarginAmount           *decimal.Decimal   `json:"margin_amount"`
+	RecipeID               *int64             `json:"recipe_id"`
+	TrackStock             bool               `json:"track_stock"`
+	AllowOversell          bool               `json:"allow_oversell"`
+	MinStock               *decimal.Decimal   `json:"min_stock"`
+	IsFavorite             bool               `json:"is_favorite"`
+	SortKey                decimal.Decimal    `json:"sort_key"`
+	ImageUrl               *string            `json:"image_url"`
+	IsActive               bool               `json:"is_active"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+	AvailableFrom          pgtype.Date        `json:"available_from"`
+	AvailableUntil         pgtype.Date        `json:"available_until"`
+	NeedsPrep              bool               `json:"needs_prep"`
+	SystemKind             *string            `json:"system_kind"`
+	CompositionStatus      *string            `json:"composition_status"`
+	CompositionConfirmedBy *int64             `json:"composition_confirmed_by"`
+	CompositionConfirmedAt pgtype.Timestamptz `json:"composition_confirmed_at"`
 }
 
 type ProductChannel struct {
@@ -1251,12 +1590,14 @@ type ProductModifierGroup struct {
 }
 
 type ProductPlatformPrice struct {
-	ProductID  int64           `json:"product_id"`
-	PlatformID int16           `json:"platform_id"`
-	Price      decimal.Decimal `json:"price"`
-	UpdatedBy  int64           `json:"updated_by"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	CompanyID  int64           `json:"company_id"`
+	ProductID  int64              `json:"product_id"`
+	PlatformID int16              `json:"platform_id"`
+	Price      decimal.Decimal    `json:"price"`
+	UpdatedBy  int64              `json:"updated_by"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	CompanyID  int64              `json:"company_id"`
+	Source     string             `json:"source"`
+	SyncedAt   pgtype.Timestamptz `json:"synced_at"`
 }
 
 type Recipe struct {
@@ -1285,29 +1626,38 @@ type RefreshToken struct {
 }
 
 type RegisterCashMovement struct {
-	ID         int64           `json:"id"`
-	SessionID  int64           `json:"session_id"`
-	Kind       string          `json:"kind"`
-	Amount     decimal.Decimal `json:"amount"`
-	Concept    string          `json:"concept"`
-	ExpenseID  *int64          `json:"expense_id"`
-	UserID     int64           `json:"user_id"`
-	CreatedAt  time.Time       `json:"created_at"`
-	TransferID *int64          `json:"transfer_id"`
+	ID              int64           `json:"id"`
+	SessionID       int64           `json:"session_id"`
+	Kind            string          `json:"kind"`
+	Amount          decimal.Decimal `json:"amount"`
+	Concept         string          `json:"concept"`
+	ExpenseID       *int64          `json:"expense_id"`
+	UserID          int64           `json:"user_id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	TransferID      *int64          `json:"transfer_id"`
+	RecipientUserID *int64          `json:"recipient_user_id"`
+	RecipientName   *string         `json:"recipient_name"`
+	ConceptID       *int64          `json:"concept_id"`
+	ReversesID      *int64          `json:"reverses_id"`
 }
 
 type RegisterSession struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
+	ID                int64              `json:"id"`
+	BusinessDate      pgtype.Date        `json:"business_date"`
+	Status            SessionStatus      `json:"status"`
+	OpeningCash       decimal.Decimal    `json:"opening_cash"`
+	OpenedBy          int64              `json:"opened_by"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	ClosedBy          *int64             `json:"closed_by"`
+	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	Notes             *string            `json:"notes"`
+	Currency          string             `json:"currency"`
+	RegisterID        int64              `json:"register_id"`
+	TipsCarriedOver   decimal.Decimal    `json:"tips_carried_over"`
+	OpeningReason     *string            `json:"opening_reason"`
+	OpeningReasonNote *string            `json:"opening_reason_note"`
+	CardCountMode     string             `json:"card_count_mode"`
+	FloatLeft         *decimal.Decimal   `json:"float_left"`
 }
 
 type RegisterSessionTotal struct {
@@ -1341,29 +1691,44 @@ type SessionCashCountLine struct {
 	CompanyID      int64 `json:"company_id"`
 }
 
+type SessionTerminalCount struct {
+	CompanyID      int64           `json:"company_id"`
+	SessionID      int64           `json:"session_id"`
+	CardTerminalID int64           `json:"card_terminal_id"`
+	TerminalName   string          `json:"terminal_name"`
+	Expected       decimal.Decimal `json:"expected"`
+	Declared       decimal.Decimal `json:"declared"`
+	CreatedBy      int64           `json:"created_by"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
 type StockLevel struct {
 	ItemType     StockItemType   `json:"item_type"`
 	IngredientID *int64          `json:"ingredient_id"`
 	ProductID    *int64          `json:"product_id"`
 	OnHand       decimal.Decimal `json:"on_hand"`
 	UpdatedAt    time.Time       `json:"updated_at"`
+	BranchID     int64           `json:"branch_id"`
 }
 
 type StockMovement struct {
-	ID           int64             `json:"id"`
-	ItemType     StockItemType     `json:"item_type"`
-	IngredientID *int64            `json:"ingredient_id"`
-	ProductID    *int64            `json:"product_id"`
-	MovementType StockMovementType `json:"movement_type"`
-	Quantity     decimal.Decimal   `json:"quantity"`
-	UnitCost     *decimal.Decimal  `json:"unit_cost"`
-	OrderID      *int64            `json:"order_id"`
-	ExpenseID    *int64            `json:"expense_id"`
-	UserID       *int64            `json:"user_id"`
-	Reason       *string           `json:"reason"`
-	Note         *string           `json:"note"`
-	CreatedAt    time.Time         `json:"created_at"`
-	OrderLineID  *int64            `json:"order_line_id"`
+	ID                   int64             `json:"id"`
+	ItemType             StockItemType     `json:"item_type"`
+	IngredientID         *int64            `json:"ingredient_id"`
+	ProductID            *int64            `json:"product_id"`
+	MovementType         StockMovementType `json:"movement_type"`
+	Quantity             decimal.Decimal   `json:"quantity"`
+	UnitCost             *decimal.Decimal  `json:"unit_cost"`
+	OrderID              *int64            `json:"order_id"`
+	ExpenseID            *int64            `json:"expense_id"`
+	UserID               *int64            `json:"user_id"`
+	Reason               *string           `json:"reason"`
+	Note                 *string           `json:"note"`
+	CreatedAt            time.Time         `json:"created_at"`
+	OrderLineID          *int64            `json:"order_line_id"`
+	BranchID             int64             `json:"branch_id"`
+	ModifierOptionID     *int64            `json:"modifier_option_id"`
+	ComponentOfProductID *int64            `json:"component_of_product_id"`
 }
 
 type Supplier struct {
@@ -1391,6 +1756,22 @@ type SupplierItem struct {
 	LastSeenAt    time.Time        `json:"last_seen_at"`
 	CreatedAt     time.Time        `json:"created_at"`
 	CompanyID     int64            `json:"company_id"`
+}
+
+type TipCarryover struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	SessionID      int64           `json:"session_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+type TipPayoutSource struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	MovementID     int64           `json:"movement_id"`
+	OrderPaymentID *int64          `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
 }
 
 type Unit struct {

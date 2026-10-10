@@ -30,6 +30,7 @@ import (
 // código. Lo que se prueba es el mecanismo: tomar la estación dos veces seguidas tiene que fallar la
 // segunda. Con un select y un update separados, las dos lecturas tendrían éxito.
 func TestTomarLaEstacionDosVecesSoloFuncionaLaPrimera(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -66,6 +67,7 @@ func TestTomarLaEstacionDosVecesSoloFuncionaLaPrimera(t *testing.T) {
 // acotado, así que desde el navegador no se llega; pero un token que se filtre por otro lado —un
 // respaldo, un log— no debería servir para tomar la estación de alguien más.
 func TestNoSeTomaLaEstacionConElRefreshDeOtro(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	jm := auth.NewManager("integration-test-secret-of-32+bytes-minimum", clock)

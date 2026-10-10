@@ -220,6 +220,51 @@ func SanitizarFolio(propuesto string) string {
 	return limpio
 }
 
+// BoundFolio valida el nombre que amarró una cuenta en captura, o devuelve "" si no sirve.
+//
+// Es SanitizarFolio más el número de vuelta («Persa 2», de 2 a 99, como lo escribe
+// SiguienteFolioLibre): pasado el largo de la lista en un turno, la cuenta nace ya numerada para que
+// el pedido no cambie de nombre al mandarse (D-2), y SanitizarFolio solo acepta letras.
+func BoundFolio(nombre string) string {
+	limpio := strings.TrimSpace(nombre)
+	animal, vuelta, numerado := partirVuelta(limpio)
+	if SanitizarFolio(animal) != animal || animal == "" {
+		return ""
+	}
+	if numerado && vuelta == "" {
+		return ""
+	}
+	return limpio
+}
+
+// FolioAnimal devuelve el animal de un nombre amarrado, sin su número de vuelta. La bolsa guarda
+// animales: marcar o soltar «Persa 2» tiene que tocar a «Persa».
+func FolioAnimal(nombre string) string {
+	limpio := BoundFolio(nombre)
+	if limpio == "" {
+		return ""
+	}
+	animal, _, _ := partirVuelta(limpio)
+	return animal
+}
+
+// partirVuelta separa «Persa 2» en «Persa» y «2». `numerado` dice si el último pedazo es de
+// dígitos; `vuelta` queda vacía si esos dígitos no son una vuelta válida (2..99, sin cero inicial).
+func partirVuelta(nombre string) (animal, vuelta string, numerado bool) {
+	i := strings.LastIndexByte(nombre, ' ')
+	if i < 0 {
+		return nombre, "", false
+	}
+	cola := nombre[i+1:]
+	if cola == "" || strings.Trim(cola, "0123456789") != "" {
+		return nombre, "", false
+	}
+	if cola[0] == '0' || len(cola) > 2 || cola == "1" {
+		return nombre[:i], "", true
+	}
+	return nombre[:i], cola, true
+}
+
 // SiguienteFolioLibre devuelve el nombre propuesto, o con su número de vuelta si ya se usó hoy.
 //
 // Es la misma regla que cuando el servidor reparte los nombres: al repetirse, el nombre lleva
@@ -242,4 +287,42 @@ func SiguienteFolioLibre(base string, usadosHoy []string) string {
 		}
 	}
 	return ""
+}
+
+// AvailableNames da los nombres que se pueden repartir: los de DisponiblesDeLaBolsa SIN los de las
+// cuentas en captura vivas (spec 030, R-3).
+//
+// Es UN predicado para los tres que reparten nombre —la pantalla, la cuenta que nace y el pedido que
+// se crea por otro camino (move_lines, API)—; con dos, uno de ellos le daría a otra mesa el nombre que
+// ya se le dijo a un cliente al empezar su cuenta.
+//
+// Los vivos se excluyen DURO, no como lo usado hoy: lo usado hoy vuelve cuando el día pasa del largo
+// de la lista (para numerarlo, «Persa 2»), pero un nombre vivo nunca, porque «Persa 2» al lado de la
+// cuenta «Persa» que sigue capturándose es justo la confusión que esto evita. Si todos están vivos
+// devuelve vacío y quien llama lo dice.
+func AvailableNames(lista, consumidos, usadosTurno, vivos []string) ([]string, bool) {
+	usados := append(append([]string(nil), usadosTurno...), vivos...)
+	opciones, vaciar := DisponiblesDeLaBolsa(lista, consumidos, usados)
+	if len(vivos) == 0 {
+		return opciones, vaciar
+	}
+	out := sinVivos(opciones, vivos)
+	if len(out) == 0 && !vaciar {
+		// Lo que queda sin salir en la bolsa son todos nombres vivos: se empieza otra vuelta antes que
+		// quedarse sin nombre teniendo libres los de la vuelta anterior.
+		opciones, vaciar = DisponiblesDeLaBolsa(lista, lista, usados)
+		out = sinVivos(opciones, vivos)
+	}
+	return out, vaciar
+}
+
+func sinVivos(opciones, vivos []string) []string {
+	vivo := aConjunto(vivos)
+	out := make([]string, 0, len(opciones))
+	for _, n := range opciones {
+		if !vivo[n] {
+			out = append(out, n)
+		}
+	}
+	return out
 }

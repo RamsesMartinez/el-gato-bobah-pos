@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { Box, HStack, Button } from '@chakra-ui/react';
-import { LuFlame } from 'react-icons/lu';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Box, HStack, Button, IconButton } from '@chakra-ui/react';
+import { LuChevronLeft, LuChevronRight, LuFlame } from 'react-icons/lu';
 import {
   DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -114,9 +114,36 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
 
   const cur = selection.kind === 'root' ? selection : null;
 
+  // QUE SE NOTE QUE HAY MÁS. Con el ticket abierto, Desayunos, Ramen y Snacks quedaban fuera del
+  // riel sin ninguna señal: un carrusel sin indicador es una categoría que nadie encuentra. En cada
+  // orilla con algo escondido va un desvanecido con una flecha de 44 px que avanza.
+  const riel = useRef<HTMLDivElement>(null);
+  const [orillas, setOrillas] = useState({ antes: false, despues: false });
+  const medir = useCallback(() => {
+    const el = riel.current;
+    if (!el) return;
+    const antes = el.scrollLeft > 4;
+    const despues = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setOrillas((o) => (o.antes === antes && o.despues === despues ? o : { antes, despues }));
+  }, []);
+  useEffect(() => {
+    const el = riel.current;
+    if (!el) return;
+    const id = requestAnimationFrame(medir);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medir);
+    ro?.observe(el);
+    return () => { cancelAnimationFrame(id); ro?.disconnect(); };
+  }, [medir, roots.length]);
+  const avanzar = (sentido: 1 | -1) => {
+    const el = riel.current;
+    if (el) el.scrollBy({ left: sentido * Math.round(el.clientWidth * 0.8), behavior: 'smooth' });
+  };
+
   return (
     <Box>
-      <HStack gap={2} overflowX="auto" py={1.5} css={railScroll}>
+      <Box position="relative">
+      <HStack ref={riel} data-riel="categorias" data-testid="riel-categorias" onScroll={medir}
+        gap={2} overflowX="auto" py={1.5} css={railScroll}>
         {/* Top global (más vendidos de todo) — fijo, no se reordena */}
         <Button {...chip(selection.kind === 'top', 'colorPalette.500')} onClick={() => onSelect({ kind: 'top' })}>
           <LuFlame /> Top
@@ -132,6 +159,23 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
           </SortableContext>
         </DndContext>
       </HStack>
+      {orillas.antes && (
+        <Orilla lado="izquierda">
+          <IconButton aria-label="Categorías anteriores" size="lg" minW="44px" minH="44px" variant="outline"
+            colorPalette="gray" bg="bg.panel" borderRadius="full" onClick={() => avanzar(-1)}>
+            <LuChevronLeft />
+          </IconButton>
+        </Orilla>
+      )}
+      {orillas.despues && (
+        <Orilla lado="derecha">
+          <IconButton aria-label="Más categorías" size="lg" minW="44px" minH="44px" variant="outline"
+            colorPalette="gray" bg="bg.panel" borderRadius="full" onClick={() => avanzar(1)}>
+            <LuChevronRight />
+          </IconButton>
+        </Orilla>
+      )}
+      </Box>
 
       {cur && (
         <Box mt={0.5} pl={3} borderLeftWidth={ACCENT_W} borderColor="colorPalette.400" bg="bg.muted" borderRadius={RADIUS}>
@@ -158,6 +202,18 @@ export function CategoryRail({ categories, selection, onSelect }: Props) {
           </HStack>
         </Box>
       )}
+    </Box>
+  );
+}
+
+// El desvanecido de una orilla del riel: deja ver que la fila sigue y sostiene la flecha.
+function Orilla({ lado, children }: { lado: 'izquierda' | 'derecha'; children: ReactNode }) {
+  const derecha = lado === 'derecha';
+  return (
+    <Box position="absolute" top={0} bottom={0} {...(derecha ? { right: 0, pl: 8 } : { left: 0, pr: 8 })}
+      display="flex" alignItems="center" pointerEvents="none"
+      bgImage={`linear-gradient(to ${derecha ? 'right' : 'left'}, transparent, var(--chakra-colors-bg-subtle) 45%)`}>
+      <Box pointerEvents="auto">{children}</Box>
     </Box>
   );
 }

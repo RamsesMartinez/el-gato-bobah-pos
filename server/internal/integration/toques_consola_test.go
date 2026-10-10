@@ -48,6 +48,7 @@ func rangoVigente() string {
 func hoy() string { return time.Now().Format(time.DateOnly) }
 
 func TestLaRejillaDeToquesPorElRouter(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, jm, pjm := routerConMapa(t, st)
@@ -182,6 +183,7 @@ func TestLaRejillaDeToquesPorElRouter(t *testing.T) {
 // horizontal y abajo del centro en vertical. Y el error sería invisible —la rejilla se ve normal,
 // solo que describe un lugar que no existe—.
 func TestLaRejillaNoSumaLasDosOrientaciones(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	r, _, pjm := routerConMapa(t, st)

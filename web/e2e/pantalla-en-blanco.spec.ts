@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import { API, USUARIO, EMPRESA, PASSWORD } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // NINGUNA RUTA SE QUEDA EN BLANCO, Y NINGUNA TIRA UNA EXCEPCIÓN AL PINTARSE.
 //
@@ -61,19 +62,14 @@ test('Z6 · ninguna pantalla se queda en blanco con una cuenta guardada por la v
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    const usuario = page.getByPlaceholder('usuario@empresa');
-    if (await usuario.isVisible().catch(() => false)) {
-      await usuario.fill(`${USUARIO}@${EMPRESA}`);
-      await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-      await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-      await page.waitForURL(/\/(pos)?$/);
-    }
+    await iniciarSesion(page);
 
-    // La cuenta sembrada tiene que seguir ahí: si el login la tiró, el recorrido se está haciendo
-    // con un perfil limpio y este caso no prueba lo que dice probar.
-    await expect(page.getByRole('button', { name: /Tigre/ }),
-      'el carrito sembrado no sobrevivió al login: el recorrido no representa la tableta de un operador')
-      .toBeVisible({ timeout: 30_000 });
+    // Desde la 030 la versión nueva SUBE las cuentas guardadas al servidor y borra la llave (D-12);
+    // una cuenta vacía no tiene nada que subir. Que la llave se haya ido es la prueba de que el POS
+    // leyó lo sembrado —con la forma vieja— y siguió pintando.
+    await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('egb:ticket:v2')),
+      { timeout: 20_000 }).toBeNull();
 
     const vacías: string[] = [];
     for (const ruta of RUTAS) {

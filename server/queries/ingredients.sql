@@ -18,11 +18,15 @@ insert into ingredient_categories (name) values ($1) returning id, name;
 -- name: ListIngredients :many
 select i.id, i.name, i.is_active, i.track_stock, i.is_packaging, i.min_stock,
        i.current_cost, i.base_unit_id, u.code as base_unit_code, u.kind as base_unit_kind,
-       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand
+       ic.name as category, coalesce(sl.on_hand, 0)::numeric(14,4) as on_hand,
+       i.is_prep, i.composition_status,
+       (select count(*) from recipe_items ri where ri.ingredient_id = i.id)::int as recipe_uses
 from ingredients i
 join units u on u.id = i.base_unit_id
 left join ingredient_categories ic on ic.id = i.category_id
-left join stock_levels sl on sl.ingredient_id = i.id
+-- Existencias de la sucursal (0076): sin el filtro, con dos sucursales cada insumo saldría dos
+-- veces sin decir de cuál es.
+left join stock_levels sl on sl.ingredient_id = i.id and sl.branch_id = current_branch_id()
 where (sqlc.narg('only_active')::boolean is not true or i.is_active)
 order by i.name;
 

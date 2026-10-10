@@ -1,15 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, tokenDeRequest } from './ambiente';
+import { pedidosEnCurso, tokenDeRequest } from './ambiente';
+import { botonCobrar, buscar, cerrarBusqueda } from './pos';
+import { iniciarSesion } from './sesion';
 
 // LA MATRIZ DE DINERO, PASANDO POR LA PANTALLA. Ver docs/matriz-de-cobro.md, sección E.
 //
 // Aquí no se prueba el contrato —eso está en dinero.spec.ts— sino el flujo que el operador recorre
 // con el cliente enfrente. Es el único lugar donde se ve que el pedido sale de la barra, que el
 // botón se apaga cuando debe, y que la pantalla y el servidor dicen la misma cifra.
-
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
 
 // El token para preguntarle al SERVIDOR qué pasó. La pantalla puede no pintar un pedido que sí se
 // creó, y esa diferencia es justo la que hay que medir.
@@ -19,16 +17,10 @@ async function entrar(page: Page) {
   // Se espera a que la app hidrate ANTES de teclear: sin esto, el formulario se re-renderiza al
   // resolverse el intento de sesión y se lleva lo escrito.
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
-  // El catálogo es lo que confirma que el POS cargó. El botón de cobrar NO sirve de señal: en
-  // 1024x600 el panel del pedido arranca colapsado para dejarle el ancho al catálogo, así que
-  // COBRAR ni siquiera está en el árbol hasta que se abre.
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await iniciarSesion(page);
+  // El «+» de la fila de cuentas es lo que confirma que el POS cargó. El botón de cobrar NO sirve de
+  // señal: en 1024x600 el panel del pedido arranca colapsado y Cobrar no está hasta que se abre.
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 // Abre el panel del pedido.
@@ -43,7 +35,7 @@ async function verElPedido(page: Page) {
     const abrir = page.getByRole('button', { name: /Ver pedido/ });
     if (await abrir.isVisible().catch(() => false)) await abrir.click();
   }
-  await expect(page.getByRole('button', { name: 'COBRAR' })).toBeVisible({ timeout: 15_000 });
+  await expect(botonCobrar(page)).toBeVisible({ timeout: 15_000 });
 }
 
 // El primer producto con precio del catálogo. Se toma de la pantalla y no de una lista fija: el
@@ -52,55 +44,63 @@ async function verElPedido(page: Page) {
 async function agregarUnProducto(page: Page): Promise<void> {
   // Uno SIN modificadores: los que los tienen abren otra hoja y lo que esta suite mide es el cobro,
   // no el armado del pedido.
+  await buscar(page, 'Dedos de Queso Pza');
   await page.getByText('Dedos de Queso Pza').first().click();
   const confirmar = page.getByRole('button', { name: /^(Agregar|Confirmar)/ });
   if (await confirmar.isVisible().catch(() => false)) await confirmar.click();
+  await expect(page.getByText('Guardando…')).toHaveCount(0, { timeout: 15_000 });
+  await cerrarBusqueda(page);
   await verElPedido(page);
 }
 
+// aDomicilio: el tipo de servicio es UN botón de icono en la cabecera del ticket que alterna el tipo;
+// su nombre dice a qué cambia.
+async function aDomicilio(page: Page) {
+  await page.getByRole('button', { name: 'Cambiar a domicilio' }).click();
+  await expect(page.getByRole('button', { name: 'Cambiar a mostrador' })).toBeVisible();
+}
+
 test.describe('E — el cobro, en la pantalla', () => {
-  // TOCAR COBRAR NO MANDA NADA A COCINA.
+  // «ENVIAR Y COBRAR» LO DICE, MANDA A COCINA PRIMERO, Y CERRAR LA HOJA NO CANCELA NADA (US4, caso 11).
   //
-  // Antes creaba el pedido aquí mismo. El botón vive junto al total, en la barra que se toca todo el
-  // día, así que un toque por equivocación dejaba comida preparándose y una cuenta que alguien tenía
-  // que ir a cancelar. Ahora el pedido nace al tocar el botón final, el que dice cuánto se cobra.
+  // Con una sola puerta, cobrar una cuenta que tiene algo sin enviar lo manda a cocina antes de
+  // abrir la hoja: «Por productos» necesita los renglones del pedido (research R-5). El botón lo
+  // dice, y quien cierra la hoja sin cobrar encuentra la cuenta en la fila, en cocina, no perdida.
   //
-  // Se mide contra el SERVIDOR —cuántos pedidos en curso hay antes y después— porque es lo único
-  // que distingue "no se creó" de "se creó y la pantalla no lo pintó".
-  test('E1 · COBRAR abre la hoja y NO manda el pedido a cocina', async ({ page, request }) => {
+  // Se mide contra el SERVIDOR: es lo único que distingue «se mandó» de «la pantalla lo pintó».
+  test('E1 · «Enviar y cobrar» manda a cocina antes de abrir la hoja, y cerrarla no cancela', async ({ page, request }) => {
     const jwt = await tokenDeRequest(request);
-    const cuantos = async () => {
-      const r = await request.get(`${API}/orders/open`, { headers: { Authorization: `Bearer ${jwt}` } });
-      return ((await r.json()).items ?? []).length as number;
-    };
-    const antes = await cuantos();
+    const antes = new Set((await pedidosEnCurso(jwt)).map((o) => o.id));
 
     await entrar(page);
     await agregarUnProducto(page);
-    await page.getByRole('button', { name: 'COBRAR' }).click();
+    const boton = botonCobrar(page);
+    await expect(boton).toHaveText(/^Enviar y cobrar/);
+    await boton.click();
 
-    // La hoja de cobro es la misma del botón naranja: se reconoce por el encabezado que dice las dos
-    // cifras. La pantalla vieja del carrito decía "Cobrar · $X" y ya no existe.
     await expect(page.getByText(/Falta \$/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/Total \$/)).toBeVisible();
-
-    // NINGÚN método viene preseleccionado, a propósito: un dedo que va directo a Cobrar registraría
-    // con tarjeta dinero que entró en efectivo.
+    // NINGÚN método viene preseleccionado: un dedo que va directo a Cobrar registraría con tarjeta
+    // dinero que entró en efectivo.
     await expect(page.getByText('Falta con qué paga.')).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Cobrar \$/ })).toBeDisabled();
+    await expect(page.getByRole('dialog').last().getByRole('button', { name: /^Cobrar \$/ })).toBeDisabled();
 
-    // Y lo que importa: cocina no se enteró de nada.
-    expect(await cuantos(), 'tocar COBRAR mandó el pedido a cocina').toBe(antes);
+    const nuevos = (await pedidosEnCurso(jwt)).filter((o) => !antes.has(o.id));
+    expect(nuevos, '«Enviar y cobrar» no mandó la cuenta a cocina').toHaveLength(1);
+
+    await page.keyboard.press('Escape');
+    // La cuenta sigue en la fila, ya en cocina, y en el servidor nada se canceló.
+    await expect(page.getByRole('button', { name: new RegExp(`^${nuevos[0].folioName} · En cocina`) })).toBeVisible({ timeout: 20_000 });
+    expect((await pedidosEnCurso(jwt)).some((o) => o.id === nuevos[0].id), 'cerrar la hoja canceló el pedido').toBe(true);
   });
 
   test('E1b · cobrando en efectivo, el pedido queda saldado y sale de la barra', async ({ page }) => {
     await entrar(page);
     await agregarUnProducto(page);
-    await page.getByRole('button', { name: 'COBRAR' }).click();
+    await botonCobrar(page).click();
     await expect(page.getByText(/Falta \$/)).toBeVisible({ timeout: 30_000 });
 
-    // El folio con el que se canta el pedido: es lo que después se busca en la barra.
-    const cobrar = page.getByRole('button', { name: /^Cobrar \$/ });
+    const cobrar = page.getByRole('dialog').last().getByRole('button', { name: /^Cobrar \$/ });
     await page.getByRole('button', { name: 'Efectivo', exact: true }).click();
     await expect(cobrar).toBeEnabled();
     await cobrar.click();
@@ -120,7 +120,7 @@ test.describe('E — el cobro, en la pantalla', () => {
       // botones de tipo en cuanto hay plataforma, así que ya no se puede corregir a mano.
       // Se afirma que el campo APARECE antes de asignar la plataforma. Sin esta comprobación el
       // test pasaría por vacío el día que el campo deje de existir por otra razón.
-      await page.getByRole('button', { name: 'Domicilio' }).click();
+      await aDomicilio(page);
       await expect(page.getByLabel('Costo de envío')).toBeVisible();
 
       // El panel se cierra para llegar al selector de plataforma, que vive en la barra de arriba.
@@ -137,12 +137,12 @@ test.describe('E — el cobro, en la pantalla', () => {
     await entrar(page);
     await agregarUnProducto(page);
 
-    await page.getByRole('button', { name: 'Domicilio' }).click();
+    await aDomicilio(page);
 
     // La coma de millar que el operador teclea por costumbre. `parseFloat` la leía como 1 y el
     // resto la volvía cero: envío gratis que nadie decidió.
     await page.getByLabel('Costo de envío').fill('1,000');
     await expect(page.getByText('Solo números')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'COBRAR' })).toBeDisabled();
+    await expect(botonCobrar(page)).toBeDisabled();
   });
 });

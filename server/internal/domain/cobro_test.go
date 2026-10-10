@@ -16,13 +16,11 @@ func TestPorCobrar(t *testing.T) {
 		// lo convertiría en un descuento sobre lo que deben los demás pedidos.
 		{"275", "300", "0"},
 		{"0.1", "0.05", "0.05"},
-		// El residuo de una división en tres: 33.33 x 3 = 99.99. Quien CIERRA el pedido tolera ese
-		// centavo (PagosCubren), así que quien muestra la deuda tiene que tolerarlo también, o el
-		// tablero le sigue viendo un centavo a un pedido que ya cerró — y al día siguiente el
-		// pedido desaparece de la vista con la deuda abierta. Dos predicados sobre la misma cifra
-		// es exactamente lo que el corolario del principio III prohibe.
-		{"100", "99.99", "0"},
-		// Un centavo más de diferencia SÍ es deuda: la tolerancia es del redondeo, no una condona.
+		// UN CENTAVO DE MENOS ES DEUDA (spec 031, D16). La tolerancia de un centavo existía por el
+		// residuo de dividir $100 en tres; desde la 027 las divisiones le cargan ese residuo al
+		// último pago, y la tolerancia solo servía para dar por saldado un cobro tecleado de menos:
+		// la venta decía $100 y el corte $99.99, para siempre.
+		{"100", "99.99", "0.01"},
 		{"100", "99.98", "0.02"},
 	}
 	for _, c := range casos {
@@ -109,8 +107,9 @@ func TestPedidoSaldado(t *testing.T) {
 		{"un abono", "100", "250", false},
 		{"justo", "250", "250", true},
 		{"de más", "300", "250", true},
-		// El residuo de dividir en tres: 33.33 x 3 = 99.99.
-		{"un centavo de menos por el redondeo", "99.99", "100", true},
+		// Un centavo de menos ya no salda (spec 031, D16): el residuo de dividir lo absorbe el último
+		// pago, y tolerarlo dejaba la venta y el corte un centavo distintos para siempre.
+		{"un centavo de menos", "99.99", "100", false},
 		{"dos centavos ya es deuda", "99.98", "100", false},
 		// UN PEDIDO EN CERO SÍ ESTÁ SALDADO, y este caso decía lo contrario hasta la feature 022.
 		//
@@ -132,5 +131,26 @@ func TestPedidoSaldado(t *testing.T) {
 				t.Fatalf("está saldado pero PorCobrar dice que faltan %s: dos predicados sobre la misma cifra", falta)
 			}
 		})
+	}
+}
+
+// UN COBRO DE MENOS DE UN CENTAVO NO EXISTE (spec 029). $0.005 se redondeaba a $0.01 y saldaba un
+// pedido de un centavo con dinero que nadie entregó; con un pedido de $100 entraba como un pago
+// fantasma que el corte esperaba.
+func TestUnCobroDeMenosDeUnCentavoSeRechaza(t *testing.T) {
+	for _, c := range []struct {
+		monto string
+		ok    bool
+	}{{"0.005", false}, {"0.009", false}, {"0.004", false}, {"0", false}, {"-1", false}, {"0.01", true}, {"10.5", true}} {
+		err := ValidChargeAmount(decimal.RequireFromString(c.monto))
+		if c.ok && err != nil {
+			t.Errorf("%s debía aceptarse: %v", c.monto, err)
+		}
+		if !c.ok && !errors.Is(err, ErrValidation) {
+			t.Errorf("%s debía rechazarse como validación, fue %v", c.monto, err)
+		}
+	}
+	if err := ValidChargeAmount(decimal.New(1, -100000)); !errors.Is(err, ErrValidation) {
+		t.Errorf("exponente absurdo debía rechazarse sin reescalar: %v", err)
 	}
 }

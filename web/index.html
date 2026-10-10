@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/webp" sizes="192x192" href="/logo192.webp" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- interactive-widget: con el teclado del sistema abierto, el alto en dvh encoge en vez de que
+         el teclado tape el pie de las hojas (el botón de cobrar). Sin él, Chrome de Android solo
+         achica el viewport visual y 100dvh sigue midiendo la pantalla entera. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#E23B2E" />
     <meta name="description" content="El Gato Bobah — Punto de venta" />
     <link rel="apple-touch-icon" href="/logo192.png" />

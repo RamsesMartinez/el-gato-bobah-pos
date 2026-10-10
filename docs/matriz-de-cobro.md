@@ -34,7 +34,7 @@ cobrar $115 de un pedido de $95.
 | A7 | Cobro **nuevo** con la caja cerrada | `ErrNoOpenRegister` | `TestSinCajaAbiertaNoSeCobraNadaNuevo` | Postgres |
 | A8 | Propina mayor que la cuenta entera | `ErrPropinaExcede` | `TestLaPropinaNoPuedeSuperarLaCuenta` | Postgres |
 | A9 | Dos propinas generosas que suman más que la cuenta | **Se aceptan**: el tope es por pago, no acumulado | `TestDosPropinasPlausiblesNoSeBloqueanEntreEllas` | Postgres |
-| A10 | Dividir $100 en tres partes de $33.33 | Queda saldado y **sin centavo** de deuda en ninguna vista | `TestUnPedidoCerradoNoDejaCentavosDeDeuda` | Postgres |
+| A10 | Tres cobros tecleados de $33.33 sobre $100 | **Debe $0.01** en todas las vistas, y ese centavo se cobra (spec 031: la tolerancia de un centavo se quitó; «Dividir entre» le carga el residuo al último pago) | `TestUnPedidoCerradoNoDejaCentavosDeDeuda` · `TestChargingOneCentLessDoesNotSettleTheOrder` | Postgres |
 | A11 | El detalle del pedido y la respuesta del cobro | Dicen **la misma** cifra de faltante | `TestElDetalleDelPedidoDiceCuantoFalta` | Postgres |
 | A12 | Método de pago desactivado | `ErrMetodoInactivo` | `TestUnMetodoDesactivadoNoCobra` | Postgres |
 | A13 | Método de una plataforma sobre un pedido de mostrador (y al revés) | `ErrPaymentMethodPlatform` | `metodo_de_plataforma_test.go` | Postgres |
@@ -321,7 +321,37 @@ decisión del dueño (2026-09-19), y reconstruirlo exige el documento de pago de
 Uber expone 31 días y Rappi 3 meses. Tampoco cubre la corrección del descuento de un pedido **ya
 creado** desde la pantalla: el endpoint existe y está probado, la pantalla para usarlo no.
 
+## K. Dividir la cuenta por productos (spec 027)
+
+Origen: el incidente del 2026-10-04, una mesa de tres que quiso pagar cada quien lo suyo y se
+resolvió quitando renglones y recapturándolos. Lo que se cobra lo calcula el servidor con la misma
+función para `/quote` y `/pay`; la pantalla nunca suma una selección.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| K1 | La mesa del incidente: pagos de 1, 4 y «Todo lo que falta» | 3 pagos que suman el total, 0 cancelaciones, sin cambio en existencias | `TestTheIncidentTableSplitsWithoutCancellingAnything` | Postgres |
+| K2 | Descuento de $50 sobre $907 en tres pagos por productos | Suman el total; el último absorbe el centavo; lo cubierto por producto suma cada pago | `TestDiscountedSplitAddsUpToTheTotal` | Postgres |
+| K3 | Tras un pago por monto, «Todo lo que falta» | Lo cubierto por producto se prorratea y suma exacto el pago | `TestAllRemainingAfterAnAmountPaymentProratesCoverage` | Postgres |
+| K4 | Todas las piezas cubiertas y saldo positivo | «Todo lo que falta» cobra el saldo sin cobertura | `TestAllRemainingWithNothingUncoveredChargesTheBalance` | Postgres |
+| K5 | Dos tabletas cobran la misma pieza a la vez | Una pasa; la otra «Ese producto ya se pagó» | `TestTheSamePieceCannotBePaidTwiceConcurrently` | Postgres |
+| K6 | La misma parte de «entre N personas» dos veces | «Esa parte ya se cobró» | `TestTheSameSplitPartCannotBeChargedTwiceAndSurvivesAReload` | Postgres |
+| K7 | La misma llave con otra selección | «Ese cobro ya se hizo con otros productos» | `TestPayByProductsContract` | Postgres |
+| K8 | La cotización y el cobro | `/quote` no escribe nada y da lo que `/pay` cobra | `TestQuoteMatchesWhatPayChargesAndWritesNothing` | Postgres |
+| K9 | Devolver un pago y cobrarlo a otra persona | Cuenta cero veces en el cajón: esperado, propinas y pendiente como si no hubiera entrado | `TestAVoidedPaymentCountsZeroTimesInTheDrawer` | Postgres |
+| K10 | Reenviar la llave de un pago devuelto, también a la vez que se devuelve | No revive | `TestAVoidedPaymentCannotBeRevivedByItsKey` | Postgres |
+| K11 | Devolver un pago de un turno cerrado o sin turno | Se rechaza: ese dinero ya se arqueó | `TestAPaymentIsVoidedOnceAndOnlyInItsOpenShift` | Postgres |
+| K12 | Quitar un producto pagado, o dejar el total bajo lo cobrado | Se rechaza (FR-023, defecto confirmado antes del arreglo) | `TestRemovingAPaidLineIsRejected`, `TestCancelPendingRespectsPayments` | Postgres |
+| K13 | Descuento con pagos hechos | Se rechaza | `TestDiscountIsRejectedOncePaymentsExist` | Postgres |
+| K14 | Pasar productos que ya se pagaron, o dejar el origen sobrepagado | Se rechaza | `TestMoveRejections` | Postgres |
+| K15 | Pasar todo a un pedido existente | El origen queda juntado; ni Ventas ni las ventas del turno lo cuentan como cancelación; lo quitado antes sí | `TestMovingEverythingMergesTheOriginAndIsNotACancellation` | Postgres |
+| K16 | Cualquier secuencia de cobrar, quitar, pasar, entregar y devolver | Ningún pedido queda sin una salida que lo cierre | `TestNoSequenceLeavesAnOrderWithoutAWayOut` (235 secuencias) | Postgres |
+| K17 | La mesa del incidente por la pantalla | Se resuelve con «Dividir → Por productos» en ≤ 20 toques | `split-bill-incident.spec.ts` | Navegador contra el ambiente de pruebas (2026-10-08) |
+
 ## Lo que esta matriz **no** cubre, y hay que decirlo
+
+- **Devolver un pago de un turno cerrado.** Va por la devolución de siempre, que no resta de lo
+  pagado ni de los reportes (hallazgo fuera de alcance del spec 027, research.md).
+- **Qué persona de la mesa pagó.** No se modela (decisión del dueño, spec 027).
 
 - **La terminal bancaria.** El sistema no se entera de que una tarjeta se declinó después del acuse.
   Por eso el cobro se registra de a un pedazo, en el instante en que el dinero está en la mano.
@@ -329,3 +359,41 @@ creado** desde la pantalla: el endpoint existe y está probado, la pantalla para
   sea cierto depende de quien cuenta.
 - **La pantalla en una tableta real.** Las medidas se calculan contra el presupuesto de 1024×600; lo
   que se ve en la Surface se verifica a mano.
+
+## J. Devoluciones, cortes y reportes de la auditoría de dinero (spec 031)
+
+Una auditoría de cuatro revisores encontró 18 defectos distintos por donde el dinero salía dos
+veces, por el medio equivocado o en el corte equivocado. Dos decisiones del dueño los gobiernan:
+**cada peso se clasifica por la hora y el turno de su propio movimiento** (cobro o devolución), y
+**una devolución cuenta en el periodo en que se devolvió**.
+
+| # | Caso | Qué debe pasar | Test | Medido |
+|---|---|---|---|---|
+| J1 | $40 efectivo + $60 tarjeta; devolver 40 y luego 60 | La segunda sale toda por tarjeta; **una** sola salida de caja | `TestASecondRefundDoesNotRepeatTheFirstMethod` · `TestLaSegundaDevolucionNoRepiteElPrimerMedio` | Postgres + unitario |
+| J2 | Devolver $40 y luego «Devolver pago» de los $100 | `ErrPaymentHasRefunds`; con la devolución por **otro** medio, sí se permite | `TestVoidingAPaymentWithRefundsIsRejected` | Postgres |
+| J3 | Dos «devolver todo» a la vez, o devolver y cancelar a la vez | Solo uno pasa; nunca se devuelve más de lo cobrado | `TestTwoSimultaneousRefundsDoNotBothPass` · `TestARefundAndACancellationTogetherDoNotOverRefund` | Postgres |
+| J4 | Devolver contra un renglón de $60 en un pedido de $500 | Tope $60; repetir da 0; un renglón de otro pedido es `ErrNotFound` | `TestARefundAgainstALineIsCappedByTheLine` · `TestElTopeDeUnRenglon` | Postgres + unitario |
+| J5 | Pedido de plataforma aceptado sin turno | Su **pago** entra al turno que reclama el pedido | `TestAnOrphanPlatformPaymentJoinsTheShiftThatClaimsIt` | Postgres |
+| J6 | Devolución por tarjeta en el mismo turno, o en el siguiente | El esperado de tarjeta de **ese** turno la resta (puede quedar negativo) y el corte la lista | `TestACardRefundLowersTheShiftExpected` · `TestARefundInALaterShiftBelongsToThatShift` | Postgres |
+| J7 | Devolver efectivo sin turno abierto | `ErrCashRefundNeedsOpenRegister`, nada registrado. Tarjeta sin turno: entra al siguiente turno de la sucursal, no las de antes del último cierre | `TestACashRefundWithoutAnOpenShiftIsRejected` · `TestACardRefundWithoutAShiftJoinsTheNextOne` · `TestASecondaryRegisterDoesNotClaimAnOrphanRefund` (la barra que abre primero no se la queda) | Postgres |
+| J8 | Cobro, movimiento de caja y cierre a la vez | Lo que confirma queda **dentro** del esperado firmado o rebota con caja cerrada | `TestWhatCommitsDuringTheCloseIsInsideTheSignedExpected` · `TestAcceptingAPlatformOrderDuringTheCloseStaysInsideTheSignedExpected` | Postgres |
+| J9 | $100 + $10 de propina en efectivo, cancelar con devolución | Salen $110; `refund_amount` 100; la propina va en su columna. Devolver una parte no toca la propina | `TestCancellingWithRefundReturnsTheTipToo` · `TestCancelarDevuelveCuentaYPropinaPorMedio` | Postgres + unitario |
+| J10 | Utilidad por producto con un renglón quitado y descuento | 1 pieza, ingreso neto del descuento | `TestProductMarginsSkipRemovedLinesAndSubtractTheDiscount` | Postgres |
+| J11 | Cancelar un pedido con un frappé ya enviado a cocina | No repone sus insumos; lo que no se prepara, sí | `TestCancellingTheWholeOrderFollowsTheSameRestockRuleAsRemovingALine` | Postgres |
+| J12 | Pedido del turno A cobrado en el turno B | A conserva su «sin cobrar»; B lo muestra como «Cobros de otros turnos», no como venta | `TestAnOrderChargedInALaterShiftIsExplainedInBoth` · `TestCorteBreakdownNamesEarlierChargesAndRefunds` | Postgres + unitario |
+| J12b | Cobro días después y devolución al día siguiente | Ventas por método: cada uno en su día; un mes cerrado no cambia | `TestEachPaymentAndRefundCountsOnItsOwnDay` | Postgres |
+| J13 | Detalle del corte con el cajón $200 corto | «Total Dif.» −$200, igual que el histórico | `CashPage.test.tsx` › Total Dif. incluye la diferencia del cajón | vitest |
+| J14 | Quitar productos y luego cancelar el pedido | «Renglones cancelados» los sigue contando | `TestRemovedLinesOfALaterCancelledOrderStillCount` | Postgres |
+| J15 | Ventas filtrada por tipo | El recuadro de plataformas desaparece (ya lo hacía; faltaba la prueba) | `SalesPage.plataformas.test.tsx` | vitest |
+| J16 | Cobrar $99.99 de $100 | Debe $0.01 | `TestChargingOneCentLessDoesNotSettleTheOrder` · `TestPedidoSaldado` | Postgres + unitario |
+| J17 | Partir $45.55 a la mitad | 22.77 + 22.78 = 45.55 | `TestSplittingALineKeepsItsTotalToTheCent` · `TestSplitLineTotalKeepsTheCent` | Postgres + unitario |
+| J18 | Pedido «reembolsado» por el flujo viejo | Devolver se rechaza: ya devolvió su dinero | `TestARefundedOrderFromTheOldFlowIsNotRefundedAgain` | Postgres |
+| J19 | Cancelado anterior al libro de devoluciones, con cobros | Sigue fuera de Ventas por método (medido: 5 en la empresa real) | `TestALegacyCancelledOrderWithoutLedgerStaysOut` | Postgres |
+| J20 | Migración 0080/0081 sobre un respaldo real | El dinero no se mueve; cada devolución queda en su turno, incluidas las del turno abierto al migrar; el Down se niega si perdería una propina devuelta | `TestMigrationMoneyByShiftOnARealBackup` | Postgres (respaldo real) |
+
+**Lo que J no cubre:**
+- Las devoluciones por tarjeta hechas en turnos **ya cerrados** antes de 0080 siguen sin turno: su
+  corte se firmó sin restarlas y no se reescribe.
+- Una devolución huérfana la reclama la primera caja principal que abra en la sucursal; con dos
+  cajas que vendan habría que guardar de qué caja es.
+- La pantalla de Ventas no lista las devoluciones parciales una por una; solo las resta por medio.

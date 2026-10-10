@@ -22,7 +22,7 @@ export type ClaseDeFallo =
 
 /** Cómo se le dice a cada fallo en pantalla. El operador no lee `failureKind`. */
 export const TEXTO_DE_FALLO: Record<ClaseDeFallo, string> = {
-  sin_credenciales: 'Esta tienda todavía no está conectada.',
+  sin_credenciales: 'No se puede leer el menú hasta conectar con la plataforma (en «Conexión con las plataformas»).',
   auth_rechazada: 'La plataforma no aceptó el acceso.',
   tiempo_agotado: 'La plataforma tardó demasiado en responder.',
   respuesta_invalida: 'La plataforma respondió algo que no se pudo leer.',
@@ -133,6 +133,29 @@ export const crearConexion = (body: { platformId: number; externalStoreId: strin
 
 export const borrarConexion = (id: number) => api.del<void>(`${RAIZ}/connections/${id}`);
 
+/**
+ * Lo que se puede saber de la llave con la que se verifican los pedidos que llegan: si hay, nunca
+ * cuál. Va por plataforma y no por tienda: es de la aplicación registrada en la plataforma.
+ */
+export interface EstadoDeLlave {
+  configured: boolean;
+  /** La anterior sigue sirviendo: se cambió y todavía nadie la retiró. */
+  rotating: boolean;
+  rotatedAt?: string;
+  /** Hay llave, pero este ambiente no la puede leer (un respaldo de otro): hay que volver a ponerla. */
+  needsRecapture?: boolean;
+}
+
+export const estadoDeLlave = (platformId: number) =>
+  api.get<EstadoDeLlave>(`${RAIZ}/webhook-keys/${platformId}`);
+
+/** Captura la llave o la cambia. Cambiarla deja la anterior sirviendo hasta que se retire. */
+export const guardarLlave = (platformId: number, key: string) =>
+  api.put<void>(`${RAIZ}/webhook-keys/${platformId}`, { key });
+
+export const retirarLlaveAnterior = (platformId: number) =>
+  api.del<void>(`${RAIZ}/webhook-keys/${platformId}/previous`);
+
 /** Cuántas parejas se pierden al dar de baja la tienda. Se muestra ANTES de confirmar. */
 export const parejasDeLaConexion = (id: number) =>
   api.get<{ links: number }>(`${RAIZ}/connections/${id}/links/count`).then((r) => r.links);
@@ -150,8 +173,81 @@ export const emparejamiento = (id: number, kind: ClaseDeItem = 'platillo') =>
 export const guardarPareja = (
   id: number,
   externalId: string,
-  body: { localId: number; localKind: ClaseLocal; kind: ClaseDeItem },
+  body: {
+    localId: number;
+    localKind: ClaseLocal;
+    kind: ClaseDeItem;
+    /** Pisar una pareja ya confirmada se pide explícito. */
+    replace?: boolean;
+    /** Si esta pareja da el precio de la captura a mano. Obligatorio cuando el producto ya tiene
+     *  otra pareja en la tienda: el servidor responde CAPTURE_PRICE_REQUIRED si falta. */
+    capturePrice?: boolean;
+  },
 ) => api.put<void>(`${RAIZ}/connections/${id}/links/${encodeURIComponent(externalId)}`, body);
+
+// --- La pantalla de emparejar (spec 026) ---
+
+export type GrupoDeEmparejamiento = 'unpaired' | 'toReview' | 'done' | 'excluded';
+
+export interface ParejaDelTablero {
+  localKind: ClaseLocal;
+  localId: number;
+  localName: string;
+  /** Esta pareja da el precio de la captura a mano de su producto u opción. */
+  isCapturePrice: boolean;
+  confirmedAt?: string | null;
+}
+
+export interface RenglonDelTablero {
+  externalId: string;
+  kind: ClaseDeItem;
+  name: string;
+  /** Texto decimal con dos cifras ("82.80"). */
+  price: string;
+  available: boolean;
+  group: GrupoDeEmparejamiento;
+  link?: ParejaDelTablero | null;
+  proposal?: { localKind: ClaseLocal; localId: number; localName: string } | null;
+}
+
+export interface TableroDeEmparejamiento {
+  platformName: string;
+  storeLabel: string;
+  readAt: string;
+  counts: { unpaired: number; toReview: number; done: number; excluded: number };
+  /** Opcional para que el compilador obligue a la guarda: un arreglo ausente tumba la pantalla. */
+  items?: RenglonDelTablero[];
+  priceChanges?: { name: string; old?: string | null; new: string }[];
+}
+
+export interface CandidatoDelPOS {
+  localKind: ClaseLocal;
+  id: number;
+  name: string;
+  /** La categoría de un producto o el grupo de una opción: distingue dos con el mismo nombre. */
+  context?: string;
+  /** Cuántos platillos de esta tienda ya están ligados a él. */
+  linkedCount: number;
+}
+
+export const tablero = (id: number) => api.get<TableroDeEmparejamiento>(`${RAIZ}/connections/${id}/board`);
+
+export const candidatos = (id: number, externalId: string, q = '') =>
+  api
+    .get<{ candidates?: CandidatoDelPOS[] }>(
+      `${RAIZ}/connections/${id}/candidates?externalId=${encodeURIComponent(externalId)}&q=${encodeURIComponent(q)}`,
+    )
+    .then((r) => r.candidates ?? []);
+
+export const confirmarLote = (id: number, confirm: string[]) =>
+  api.post<{ confirmed?: string[]; skipped?: string[] }>(`${RAIZ}/connections/${id}/links/batch`, { confirm });
+
+/** «Solo existe en la plataforma»: lo saca de «Sin pareja» sin ligarlo a nada. */
+export const marcarSoloEnPlataforma = (id: number, externalId: string) =>
+  api.put<void>(`${RAIZ}/connections/${id}/exclusions/${encodeURIComponent(externalId)}`, {});
+
+export const quitarSoloEnPlataforma = (id: number, externalId: string) =>
+  api.del<void>(`${RAIZ}/connections/${id}/exclusions/${encodeURIComponent(externalId)}`);
 
 export const borrarPareja = (id: number, externalId: string) =>
   api.del<void>(`${RAIZ}/connections/${id}/links/${encodeURIComponent(externalId)}`);
@@ -165,3 +261,27 @@ export const diferencias = (id: number, kinds?: ClaseDeDiferencia[]) => {
   const qs = kinds?.length ? '?' + kinds.map((k) => `kind=${k}`).join('&') : '';
   return api.get<Comparacion>(`${RAIZ}/connections/${id}/differences${qs}`);
 };
+
+/**
+ * Lo que se puede saber del acceso a la app de la plataforma: cuál app (el Client ID no es
+ * secreto) y si este sistema la puede usar. Nunca el Client Secret.
+ */
+export interface CredentialsState {
+  /** Este sistema sabe hablar con esa plataforma. Si no, no se piden credenciales. */
+  available: boolean;
+  /** De cuál app copiar: 'sandbox' es la de pruebas, 'production' la real. */
+  environment?: 'sandbox' | 'production';
+  configured: boolean;
+  clientId?: string;
+  /** Hay credenciales, pero este sistema no las puede leer: hay que capturarlas otra vez. */
+  needsRecapture: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const getCredentialsState = (platformId: number) =>
+  api.get<CredentialsState>(`${RAIZ}/credentials/${platformId}`);
+
+/** Se comprueban con la plataforma antes de guardarse: si no las acepta, no se guarda nada. */
+export const saveCredentials = (platformId: number, body: { clientId: string; clientSecret: string }) =>
+  api.put<void>(`${RAIZ}/credentials/${platformId}`, body);

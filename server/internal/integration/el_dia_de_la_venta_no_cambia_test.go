@@ -27,6 +27,7 @@ import (
 // Estaba solo como paso manual del recorrido de verificación. Un paso manual se salta, y este se
 // salta justo cuando hay prisa por desplegar.
 func TestNingunaVentaCambiaDeDia(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -64,8 +65,8 @@ func TestNingunaVentaCambiaDeDia(t *testing.T) {
 	antes := fechasDeNegocio(t, st, ids)
 
 	// Todo lo que la feature toca, corrido de punta a punta.
-	if _, _, err := svc.Open(ctx, false); err != nil {
-		t.Fatalf("Open: %v", err)
+	if _, err := app.NewAccountsService(st, svc).Live(ctx, true); err != nil {
+		t.Fatalf("Live: %v", err)
 	}
 	if _, err := svc.DeliveredToday(ctx); err != nil {
 		t.Fatalf("DeliveredToday: %v", err)

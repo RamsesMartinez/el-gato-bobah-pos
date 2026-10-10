@@ -29,6 +29,7 @@ import (
 //
 // Es exactamente la clase de defecto que la 015 vino a cerrar, entrando por la otra puerta.
 func TestDevolverElEfectivoDeUnaAppSaleDelCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -60,7 +61,7 @@ func TestDevolverElEfectivoDeUnaAppSaleDelCajon(t *testing.T) {
 	}
 	antesSalidas := salidasDeCaja(t, st)
 
-	if err := orders.Devolver(ctx, app.DevolucionCmd{
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: pedido.ID, Monto: cobrado, Motivo: "el cliente rechazó el pedido", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver el pedido de la app: %v", err)
@@ -93,6 +94,7 @@ func TestDevolverElEfectivoDeUnaAppSaleDelCajon(t *testing.T) {
 // Es la misma falla que `TestDesactivarUnMetodoNoDesapareceElDineroQueYaCobro` cierra para
 // `is_active`, entrando por el otro interruptor.
 func TestApagarVaAlCajonNoBorraElDineroQueYaEstaEnElCajon(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

@@ -24,6 +24,7 @@ import (
 // Se prueba con DOS empresas: con una sola, cualquier defecto de alcance —una migración que solo
 // toca la empresa del GUC— es un no-op y pasa verde para romper en producción.
 func TestLosRenglonesViejosNoQuedanMarcadosComoEnviados(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

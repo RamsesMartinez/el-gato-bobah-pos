@@ -1,6 +1,6 @@
 import { parseMonto } from './numeros';
 import { cobraEnvio } from './pedido';
-import type { TicketTab } from '../types/pos';
+import type { ServiceType } from '../types/pos';
 
 // El costo de envío de una cuenta, decidido en UN solo lugar.
 //
@@ -30,7 +30,7 @@ export interface EnvioDeLaCuenta {
 }
 
 export function envioDeLaCuenta(
-  cuenta: Pick<TicketTab, 'serviceType' | 'platformId'>,
+  cuenta: { serviceType: ServiceType | string; platformId: number | null },
   capturado: string,
   porDefecto: number,
 ): EnvioDeLaCuenta {

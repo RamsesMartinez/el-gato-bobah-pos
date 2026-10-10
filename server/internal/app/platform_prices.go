@@ -28,6 +28,9 @@ func NewPlatformPricesService(s *store.Store) *PlatformPricesService {
 
 // SetProductPrice captura o corrige el precio de un producto en una plataforma.
 func (s *PlatformPricesService) SetProductPrice(ctx context.Context, productID int64, platformID int16, price decimal.Decimal, userID int64) error {
+	if err := s.productManaged(ctx, productID, platformID); err != nil {
+		return err
+	}
 	// allowZero en false: un producto de plataforma en $0 es siempre un error de captura. Los
 	// regalos se manejan con descuento sobre el pedido, no con un precio de catálogo en cero.
 	p := domain.Round2(price)
@@ -58,6 +61,9 @@ func (s *PlatformPricesService) SetProductPrice(ctx context.Context, productID i
 // El bool importa: quien llama invalida el menú cacheado y despierta a todas las tablets. Borrar lo
 // que no existe no cambió nada, así que tampoco debe costar un refetch a todo el local.
 func (s *PlatformPricesService) DeleteProductPrice(ctx context.Context, productID int64, platformID int16) (bool, error) {
+	if err := s.productManaged(ctx, productID, platformID); err != nil {
+		return false, err
+	}
 	n, err := s.store.QC(ctx).DeleteProductPlatformPrice(ctx, db.DeleteProductPlatformPriceParams{
 		ProductID: productID, PlatformID: platformID,
 	})
@@ -69,6 +75,9 @@ func (s *PlatformPricesService) DeleteProductPrice(ctx context.Context, productI
 
 // SetOptionDelta hace lo mismo para el cargo de una opción de modificador.
 func (s *PlatformPricesService) SetOptionDelta(ctx context.Context, optionID int64, platformID int16, delta decimal.Decimal, userID int64) error {
+	if err := s.optionManaged(ctx, optionID, platformID); err != nil {
+		return err
+	}
 	// allowZero en TRUE, a diferencia de los productos: un extra sin costo ("sin cebolla") es
 	// normal y su delta es 0. Lo que no vale es negativo.
 	d := domain.Round2(delta)
@@ -90,6 +99,9 @@ func (s *PlatformPricesService) SetOptionDelta(ctx context.Context, optionID int
 }
 
 func (s *PlatformPricesService) DeleteOptionDelta(ctx context.Context, optionID int64, platformID int16) (bool, error) {
+	if err := s.optionManaged(ctx, optionID, platformID); err != nil {
+		return false, err
+	}
 	n, err := s.store.QC(ctx).DeleteOptionPlatformPrice(ctx, db.DeleteOptionPlatformPriceParams{
 		OptionID: optionID, PlatformID: platformID,
 	})
@@ -140,6 +152,40 @@ func (s *PlatformPricesService) pertenecePlataforma(ctx context.Context, platfor
 			return domain.ErrNotFound
 		}
 		return err
+	}
+	return nil
+}
+
+// productManaged rechaza tocar a mano un precio que pone la plataforma conectada (0077). Vive en el
+// servidor y no solo en la pantalla: una tableta con la pantalla vieja lo intentaría igual.
+func (s *PlatformPricesService) productManaged(ctx context.Context, productID int64, platformID int16) error {
+	src, err := s.store.QC(ctx).GetProductPlatformPriceSource(ctx, db.GetProductPlatformPriceSourceParams{
+		ProductID: productID, PlatformID: platformID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if src == "platform" {
+		return domain.ErrPlatformPriceManaged
+	}
+	return nil
+}
+
+func (s *PlatformPricesService) optionManaged(ctx context.Context, optionID int64, platformID int16) error {
+	src, err := s.store.QC(ctx).GetOptionPlatformPriceSource(ctx, db.GetOptionPlatformPriceSourceParams{
+		OptionID: optionID, PlatformID: platformID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if src == "platform" {
+		return domain.ErrPlatformPriceManaged
 	}
 	return nil
 }

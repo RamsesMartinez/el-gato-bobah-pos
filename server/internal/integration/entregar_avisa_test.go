@@ -34,6 +34,7 @@ import (
 // Se prueba por el ROUTER y no por el servicio: el aviso vive en el handler, así que un test de
 // servicio pasaría verde con el evento quitado.
 func TestEntregarPublicaEventoParaLaOtraTableta(t *testing.T) {
+	t.Parallel()
 	r, st, broker, token := newEntregasAPI(t)
 	ctx := context.Background()
 

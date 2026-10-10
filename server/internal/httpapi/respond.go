@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/app"
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -63,6 +64,18 @@ func Error(w http.ResponseWriter, err error) {
 		// y se lo llevaría a 400. El código propio deja que la pantalla diga qué hacer en vez de un
 		// "datos inválidos" que no nombra el camino correcto.
 		status, code = http.StatusUnprocessableEntity, "CONFIRMAR_PRIMERO"
+	// Spec 032: rechazos a los que la pantalla de caja responde con su propia hoja. Antes que
+	// ErrValidation, que los envuelve.
+	case errors.Is(err, domain.ErrOpeningReasonRequired):
+		status, code = http.StatusUnprocessableEntity, "OPENING_REASON_REQUIRED"
+	case errors.Is(err, domain.ErrTipsDecisionNeeded):
+		status, code = http.StatusUnprocessableEntity, "TIPS_DECISION_REQUIRED"
+	case errors.Is(err, domain.ErrRefundFolioRequired):
+		status, code = http.StatusUnprocessableEntity, "REFUND_FOLIO_REQUIRED"
+	case errors.Is(err, domain.ErrCardTerminalRequired):
+		status, code = http.StatusUnprocessableEntity, "CARD_TERMINAL_REQUIRED"
+	case errors.Is(err, domain.ErrTerminalCountRequired):
+		status, code = http.StatusUnprocessableEntity, "TERMINAL_COUNT_REQUIRED"
 	case errors.Is(err, domain.ErrValidation):
 		status, code = http.StatusBadRequest, "VALIDATION"
 	case errors.Is(err, domain.ErrPlatformNotFound):
@@ -80,17 +93,48 @@ func Error(w http.ResponseWriter, err error) {
 		// opción. El mensaje trae el nombre y los dos números para que la pantalla diga qué
 		// corregir en vez de un "datos inválidos" que no dice nada.
 		status, code = http.StatusUnprocessableEntity, "OPTION_OVER_MAX"
+	case errors.Is(err, domain.ErrUnpaidOrders):
+		// 409 con código propio, como OPEN_ORDERS: el cierre lista esos pedidos con «Cobrar» y
+		// «Cancelar», y el mensaje nombra cada uno con lo que debe (no hay fiados, 2026-10-09).
+		status, code = http.StatusConflict, "UNPAID_ORDERS"
 	case errors.Is(err, domain.ErrOpenOrders):
 		// 409 y código propio, igual que ErrNoOpenRegister: no es un error de lo que mandó el
 		// cliente sino del estado del negocio. El front lo necesita distinguible para llevar al
 		// operador al tablero con los folios que faltan, en vez de mostrar un error que no puede
 		// accionar desde la pantalla de cierre.
 		status, code = http.StatusConflict, "OPEN_ORDERS"
+	// Emparejamiento (spec 026). Códigos propios porque cada uno pide a la pantalla algo distinto:
+	// el precio bloqueado se explica, el de captura abre la elección y el de tipo no debería pasar.
+	case errors.Is(err, domain.ErrPlatformPriceManaged):
+		status, code = http.StatusConflict, "PLATFORM_PRICE_MANAGED"
+	case errors.Is(err, domain.ErrCapturePriceRequired):
+		status, code = http.StatusUnprocessableEntity, "CAPTURE_PRICE_REQUIRED"
+	case errors.Is(err, domain.ErrLinkKindMismatch):
+		status, code = http.StatusUnprocessableEntity, "LINK_KIND_MISMATCH"
+	case errors.Is(err, domain.ErrBranchAmbiguous):
+		// 409 y código propio: es el estado del negocio (dos sucursales y nadie eligió), no algo
+		// que el operador mandó mal. Con un 500 genérico parecería una caída.
+		status, code = http.StatusConflict, "BRANCH_AMBIGUOUS"
+		msg = domain.ErrBranchAmbiguous.Error()
 	case errors.Is(err, domain.ErrNoOpenRegister):
 		// 409 y código propio: no es un error de lo que mandó el cliente sino del estado del
 		// negocio. El front lo necesita distinguible para bloquear la pantalla de venta y mandar a
 		// abrir turno, en vez de mostrar un mensaje que el operador no puede accionar desde ahí.
 		status, code = http.StatusConflict, "NO_OPEN_REGISTER"
+	// Una sola puerta para cobrar (spec 030). Todos ANTES de ErrConflict, que los envuelve: la
+	// pantalla decide por el código qué ofrecer — recargar la cuenta, empezar una nueva, o nada.
+	case errors.Is(err, domain.ErrDraftChanged):
+		status, code = http.StatusConflict, "DRAFT_CHANGED"
+	case errors.Is(err, domain.ErrDraftDiscarded):
+		status, code = http.StatusConflict, "DRAFT_DISCARDED"
+	case errors.Is(err, domain.ErrDraftAlreadySent):
+		status, code = http.StatusConflict, "DRAFT_SENT"
+	case errors.Is(err, domain.ErrOrderClosed):
+		status, code = http.StatusConflict, "ORDER_CLOSED"
+	case errors.Is(err, domain.ErrPlatformOrderNoLines):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_ORDER_NO_LINES"
+	case errors.Is(err, domain.ErrDraftHasOrderHeader):
+		status, code = http.StatusUnprocessableEntity, "DRAFT_HAS_ORDER_HEADER"
 	case errors.Is(err, domain.ErrPlatformRefTaken):
 		// 409 con código propio, y va ANTES de ErrConflict, que lo envuelve. El front lo necesita
 		// distinguible para llevar el foco al campo del folio con el pedido dueño a la vista, en
@@ -103,6 +147,27 @@ func Error(w http.ResponseWriter, err error) {
 		// 412 y no 404: la tienda existe, lo que falta es la configuración del despliegue. La
 		// pantalla dice «esta tienda no está conectada», que es distinto de «no hay diferencias».
 		status, code = http.StatusPreconditionFailed, "PLATFORM_NOT_CONFIGURED"
+	// Captura de credenciales (0075). Un código por caso porque cada uno pide corregir algo
+	// distinto, y la pantalla lo dice en palabras de quien opera, no las de Uber.
+	case errors.Is(err, domain.ErrCredentialsRejected):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_REJECTED"
+		msg = domain.ErrCredentialsRejected.Error()
+	case errors.Is(err, domain.ErrCredentialsMissingScopes):
+		status, code = http.StatusUnprocessableEntity, "PLATFORM_CREDENTIALS_MISSING_SCOPES"
+		msg = domain.ErrCredentialsMissingScopes.Error()
+	case errors.Is(err, domain.ErrPlatformUnavailable):
+		// 503: no es culpa de quien captura y reintentar más tarde es lo correcto.
+		status, code = http.StatusServiceUnavailable, "PLATFORM_UNAVAILABLE"
+		msg = domain.ErrPlatformUnavailable.Error()
+	case errors.Is(err, domain.ErrKeyServiceUnavailable):
+		// 503 como la plataforma caída: no es culpa de quien captura y reintentar es lo correcto.
+		// Mensaje fijo: el error envuelto trae el estado HTTP de Google, que no le sirve a nadie aquí.
+		status, code = http.StatusServiceUnavailable, "KEY_SERVICE_UNAVAILABLE"
+		msg = domain.ErrKeyServiceUnavailable.Error()
+	case errors.Is(err, domain.ErrCredentialsUnreadable):
+		// 412 como «sin credenciales»: la tienda existe, lo que falta es configurar — pero con su
+		// propio código, porque la pantalla dice «vuelve a capturarlas», no «nunca se capturaron».
+		status, code = http.StatusPreconditionFailed, "PLATFORM_CREDENTIALS_UNREADABLE"
 	case errors.Is(err, domain.ErrLecturaEnCurso):
 		status, code = http.StatusConflict, "READ_IN_PROGRESS"
 	case errors.Is(err, domain.ErrSinLecturaValida), errors.Is(err, domain.ErrLecturaVacia):
@@ -160,7 +225,34 @@ func Error(w http.ResponseWriter, err error) {
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
 	}
-	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: msg, Details: details}})
+	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
+}
+
+// sentinelPrefixes son los sentinels base que deciden el status. Se envuelven con `%w: texto`, y
+// su nombre («conflicto», «datos inválidos») quedaba pegado delante de todo 400, 403, 404 y 409:
+// un detalle de cómo se arman los errores en Go que quien opera no puede accionar.
+var sentinelPrefixes = []string{
+	domain.ErrConflict.Error() + ": ",
+	domain.ErrValidation.Error() + ": ",
+	domain.ErrForbidden.Error() + ": ",
+	domain.ErrNotFound.Error() + ": ",
+}
+
+// operatorMessage quita los prefijos de los sentinels base del INICIO del mensaje, también los
+// encadenados («conflicto: datos inválidos: …»). Solo del inicio: en medio del texto «no
+// encontrado» es parte de la frase («Producto no encontrado: Taco»), no un prefijo. El status ya
+// lo decidió errors.Is; el texto es solo para quien opera.
+func operatorMessage(msg string) string {
+	for {
+		stripped := msg
+		for _, p := range sentinelPrefixes {
+			stripped = strings.TrimPrefix(stripped, p)
+		}
+		if stripped == msg {
+			return msg
+		}
+		msg = stripped
+	}
 }
 
 // Decode parses a JSON request body into v, returning a validation error on failure.

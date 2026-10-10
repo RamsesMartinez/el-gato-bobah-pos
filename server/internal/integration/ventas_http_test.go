@@ -20,6 +20,7 @@ import (
 // quedó dentro del grupo con RequireAuth y RequireRole, y que un parámetro inválido sale como 4xx
 // en vez de caer a un default. Mover una ruta fuera de su grupo no rompe ningún test de servicio.
 func TestRutasDeVentasPorElRouter(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)
 	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Sales: app.NewSalesService(st, clock)})

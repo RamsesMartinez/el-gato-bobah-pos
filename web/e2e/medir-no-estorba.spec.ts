@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { buscar } from './pos';
+import { iniciarSesion } from './sesion';
 
 // LA MEDICIÓN NO SE METE EN EL CAMINO DEL OPERADOR (spec 017, US3 · SC-003).
 //
@@ -10,20 +12,11 @@ import { test, expect, type Page } from '@playwright/test';
 // Lo que se simula NO es la red caída: es la red del restaurante, que responde pero tarde. El
 // endpoint de medición se bloquea a propósito mientras el resto de la aplicación sigue viva.
 
-const USUARIO = process.env.E2E_USER ?? 'admin';
-const EMPRESA = process.env.E2E_SLUG ?? 'gatobobah';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Dev-ffb903b3dfb31073!';
-
 async function entrar(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  const usuario = page.getByPlaceholder('usuario@empresa');
-  if (await usuario.isVisible().catch(() => false)) {
-    await usuario.fill(`${USUARIO}@${EMPRESA}`);
-    await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
-  }
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await iniciarSesion(page);
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
@@ -55,10 +48,12 @@ test('M1 · con la medición muerta, el POS se usa igual', async ({ page }) => {
 
   await page.goto('/pos');
   // El POS sigue respondiendo: el catálogo carga y la cuenta se puede abrir.
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Y ni un aviso sobre la medición. El operador no tiene por qué enterarse de que existe.
-  const avisos = await page.getByText(/uso|medici[óo]n|analytics/i).count();
+  // Palabras completas: la fila de cuentas trae nombres como «Azul Ruso», y «uso» suelto lo
+  // contaba como un aviso de medición.
+  const avisos = await page.getByText(/\b(uso|medici[óo]n|analytics)\b/i).count();
   expect(avisos, 'la medición no se le menciona a quien opera').toBe(0);
 
   // Que el registrador HAYA intentado mandar algo es lo que hace válido el resto del test: sin un
@@ -83,7 +78,10 @@ test('M2 · con la medición muerta, capturar tocando rápido responde igual', a
   // Tocar un producto. En este catálogo casi todos abren la hoja de modificadores, así que el
   // primer toque se comprueba por su EFECTO: si el escuchador cancelara o detuviera el evento, la
   // hoja no abriría y el mostrador se quedaría sin poder capturar.
-  const producto = page.getByRole('button').filter({ hasText: /\$/ }).first();
+  // Un mosaico del menú, no cualquier botón con «$»: las fichas de la fila de cuentas también
+  // llevan cifra, y tocar una abre la cuenta de otro en vez de capturar.
+  await buscar(page, 'Capuccino');
+  const producto = page.getByRole('button', { name: /^Capuccino/ }).first();
   await producto.click({ timeout: 15_000 });
   const hoja = page.getByRole('dialog').first();
   await expect(hoja, 'el toque no llegó al producto: la medición se metió en el camino del dedo').toBeVisible({
@@ -107,7 +105,7 @@ test('M2 · con la medición muerta, capturar tocando rápido responde igual', a
 
   // La pantalla sigue viva después de la ráfaga: se cierra la hoja y el POS responde.
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Cuenta 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Cuenta nueva', exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.waitForTimeout(12_000);
   expect(intentos, 'el registrador no intentó mandar nada: el test no probó lo que dice').toBeGreaterThan(0);

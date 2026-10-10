@@ -19,6 +19,7 @@ import (
 // El techo declarado son **20 MB por empresa**. Un techo que solo está escrito en un documento no
 // es un techo: es una intención.
 func TestLosToquesDeUnTrimestreCabenEnElTecho(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("siembra un trimestre de toques; se omite en -short")
 	}
@@ -98,6 +99,7 @@ func TestLosToquesDeUnTrimestreCabenEnElTecho(t *testing.T) {
 // compartieran constante, los toques vivirían trece meses y la mitad de ese tiempo estarían
 // describiendo una pantalla que ya se rediseñó.
 func TestElRecorteDeToquesUsaSuPropiaRetencion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

@@ -1,4 +1,4 @@
-import type { Menu, TicketLine } from '../../types/pos';
+import type { Menu } from '../../types/pos';
 import { round2 } from '../../domain/cobro';
 
 // Espejo en el cliente de la regla del servidor (domain.PlatformPrice). El servidor sigue siendo la
@@ -51,6 +51,8 @@ export interface DesglosePrecio {
   calculado: number; // base + margen de la plataforma
   vigente: number;   // lo que se cobra hoy: el manual si existe, si no el calculado
   esManual: boolean;
+  // Cuándo lo copió la plataforma conectada. Presente = lo pone la plataforma y no se edita aquí.
+  sincronizadoEn?: string;
 }
 
 // desglosePrecio abre el número en sus partes para que el operador vea de dónde sale antes de
@@ -70,7 +72,8 @@ export function desglosePrecio(
   if (manual === undefined) {
     return { base, calculado, vigente: calculado, esManual: false };
   }
-  return { base, calculado, vigente: round2(Number(manual)), esManual: true };
+  const sincronizadoEn = menu.platformSynced?.[lista]?.[productId];
+  return { base, calculado, vigente: round2(Number(manual)), esManual: true, ...(sincronizadoEn ? { sincronizadoEn } : {}) };
 }
 
 // desgloseDelta: lo mismo para el cargo de un extra. Va aparte de desglosePrecio y no como un
@@ -90,42 +93,7 @@ export function desgloseDelta(
   if (manual === undefined) {
     return { base, calculado, vigente: calculado, esManual: false };
   }
-  return { base, calculado, vigente: round2(Number(manual)), esManual: true };
+  const sincronizadoEn = menu.platformModSynced?.[lista]?.[optionId];
+  return { base, calculado, vigente: round2(Number(manual)), esManual: true, ...(sincronizadoEn ? { sincronizadoEn } : {}) };
 }
 
-// repreciador devuelve la función que el store usa al cambiar de lista: toma una línea y dice cuál
-// es su precio y el de sus modificadores en la lista nueva.
-//
-// El precio BASE sale del menú y no de la línea, porque la línea trae el precio de la lista
-// anterior: derivar el nuevo del viejo iría acumulando el margen en cada cambio de lista, y tres
-// idas y vueltas entre mostrador y Uber dejarían un precio que no es ninguno de los dos.
-//
-// Una línea cuyo producto ya no está en el menú —lo desactivaron con el ticket abierto— se queda
-// como está: ponerla en 0 cobraría de menos sin que nadie lo note, y dejarla hace que el servidor
-// la rechace al cobrar, que es ruidoso pero no pierde dinero.
-export function repreciador(menu: Menu | undefined, lista: ListaActiva) {
-  return (line: TicketLine): Pick<TicketLine, 'unitPrice' | 'modifiers'> => {
-    const producto = menu?.products?.find((p) => p.id === line.productId);
-    if (!producto) return { unitPrice: line.unitPrice, modifiers: line.modifiers };
-    return {
-      unitPrice: precioDeLista(menu, lista, line.productId, Number(producto.price)),
-      modifiers: line.modifiers.map((m) => ({
-        ...m,
-        priceDelta: deltaDeLista(menu, lista, m.optionId, baseDeOpcion(menu, m.optionId, m.priceDelta)),
-      })),
-    };
-  };
-}
-
-// baseDeOpcion busca el cargo BASE de una opción en el menú, por el mismo motivo que el precio del
-// producto. El fallback es el delta que trae la línea: si la opción ya no está en el menú, dejarlo
-// como está es mejor que ponerlo en cero.
-function baseDeOpcion(menu: Menu | undefined, optionId: number, fallback: number): number {
-  for (const p of menu?.products ?? []) {
-    for (const g of p.groups ?? []) {
-      const o = g.options?.find((x) => x.id === optionId);
-      if (o) return Number(o.priceDelta);
-    }
-  }
-  return fallback;
-}

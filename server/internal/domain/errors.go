@@ -35,6 +35,11 @@ var (
 	// no ve, y el faltante se descubre al cerrar sin manera de reconstruir de dónde salió.
 	// Solo la caja PRINCIPAL habilita el cobro — las secundarias existen para traspasos y gastos.
 	ErrNoOpenRegister = errors.New("no hay una caja abierta: abre el turno antes de cobrar")
+	// ErrBranchAmbiguous: la operación necesita saber en qué sucursal ocurre y no hay cómo
+	// saberlo — la empresa tiene más de una activa y todavía no existe el selector (0076). Se
+	// rechaza en vez de escoger la matriz: adivinar mezclaría las ventas de dos sucursales y el
+	// corte de cada una dejaría de cuadrar sin que nada lo avise.
+	ErrBranchAmbiguous = errors.New("este negocio tiene más de una sucursal y falta elegir en cuál trabajar")
 	// ErrInvalidTimezone: la zona horaria capturada no es un nombre IANA real. Se rechaza al
 	// GUARDAR y no al usar: donde se usa está el camino de una venta, que cae a UTC antes que
 	// tumbar un cobro, y sin este rechazo ese fallback correría las fechas en silencio.
@@ -78,4 +83,81 @@ var (
 	// mandó el cliente sino del estado del negocio, y llega envuelto con los folios pendientes
 	// para que el operador sepa cuáles resolver — un error que no dice cuáles no se puede accionar.
 	ErrOpenOrders = errors.New("hay pedidos sin terminar")
+)
+
+// Dividir la cuenta (spec 027). Cada uno envuelve al sentinel base que decide el status; el texto
+// es el que lee quien opera, porque httpapi.Error quita el nombre del sentinel base del mensaje.
+var (
+	ErrPieceAlreadyPaid           = fmt.Errorf("%w: Ese producto ya se pagó", ErrConflict)
+	ErrSplitPartAlreadyCharged    = fmt.Errorf("%w: Esa parte ya se cobró", ErrConflict)
+	ErrChargeKeyMismatch          = fmt.Errorf("%w: Ese cobro ya se hizo con otros productos. Vuelve a intentarlo", ErrConflict)
+	ErrPaymentVoidedKey           = fmt.Errorf("%w: Ese pago ya se devolvió. Vuelve a cobrar", ErrConflict)
+	ErrPaymentAlreadyVoided       = fmt.Errorf("%w: Ese pago ya se devolvió", ErrConflict)
+	ErrPaymentFromClosedShift     = fmt.Errorf("%w: Ese pago es de un turno cerrado: devuélvelo desde Pedidos entregados", ErrConflict)
+	ErrOrderFromClosedShift       = fmt.Errorf("%w: Ese pedido es de un turno cerrado; no se divide", ErrConflict)
+	ErrPlatformOrderNotSplittable = fmt.Errorf("%w: Los pedidos de plataforma no se dividen", ErrConflict)
+	ErrOrderWouldBeOverpaid       = fmt.Errorf("%w: Ya se cobró más de lo que quedaría. Primero hay que devolver un pago", ErrConflict)
+	ErrMixedDeliveredPieces       = fmt.Errorf("%w: Ese producto tiene piezas entregadas y otras sin entregar. Pásalas todas juntas", ErrConflict)
+	ErrAlreadyItsOwnOrder         = fmt.Errorf("%w: Ya es su propio pedido; no hace falta pasarlo", ErrConflict)
+	ErrMoveKeyMismatch            = fmt.Errorf("%w: Esto ya se pasó a otro pedido", ErrConflict)
+	ErrOrderHasPayments           = fmt.Errorf("%w: Tiene pagos: hay que devolverlos primero", ErrConflict)
+	ErrNoProducts                 = fmt.Errorf("%w: Este pedido ya no tiene productos: ciérralo", ErrConflict)
+	ErrDiscountWithPayments       = fmt.Errorf("%w: Ya hay pagos; el descuento se pone antes de cobrar", ErrConflict)
+	ErrOneChargeShape             = fmt.Errorf("%w: Elige una sola forma de cobrar", ErrValidation)
+	ErrEmptySelection             = fmt.Errorf("%w: Elige qué productos paga", ErrValidation)
+	ErrTooManyPieces              = fmt.Errorf("%w: No hay tantas piezas por quitar", ErrValidation)
+	ErrMoveWithDiscount           = fmt.Errorf("%w: Quita el descuento antes de pasar productos", ErrConflict)
+	ErrMoveTargetClosed           = fmt.Errorf("%w: Ese pedido ya no recibe productos", ErrConflict)
+	ErrMoveTargetOtherShift       = fmt.Errorf("%w: Ese pedido es de otro turno", ErrConflict)
+	ErrMergeWithShipping          = fmt.Errorf("%w: Ese pedido tiene envío; cóbralo o quítalo antes de juntarlo", ErrConflict)
+	ErrMoveRefundedLine           = fmt.Errorf("%w: Ese producto tiene una devolución; no se puede pasar", ErrConflict)
+	ErrMoveLegacyLine             = fmt.Errorf("%w: Ese producto es de un pedido viejo; no se puede pasar", ErrConflict)
+	ErrOrderClosedForVoid         = fmt.Errorf("%w: Ese pedido ya se cerró; no se le pueden devolver pagos", ErrConflict)
+
+	// Variantes por operación: el mismo rechazo dice qué hacer según desde dónde se intentó.
+	ErrPieceAlreadyPaidToMove     = Reword(ErrPieceAlreadyPaid, "Ese producto ya se pagó; no se puede pasar")
+	ErrPieceAlreadyPaidToRemove   = Reword(ErrPieceAlreadyPaid, "Ese producto ya se pagó. Primero hay que devolver el pago")
+	ErrOrderFromClosedShiftToMove = Reword(ErrOrderFromClosedShift, "Ese pedido es de un turno cerrado; no se puede pasar")
+)
+
+// reworded conserva el sentinel para errors.Is y cambia el texto entero.
+type reworded struct {
+	base error
+	text string
+}
+
+func (e reworded) Error() string { return e.text }
+func (e reworded) Unwrap() error { return e.base }
+
+// Reword devuelve un error que es base para errors.Is pero se lee como text.
+//
+// Existe porque `%w: texto` siempre arrastra el texto del sentinel delante, y hay rechazos que
+// reusan un sentinel (y su status) con una frase propia que no es continuación de la de él: «Ya se
+// cobraron $X sin elegir productos…» es ErrCobroExcede, pero no empieza con «no puedes cobrar…».
+func Reword(base error, text string) error {
+	return reworded{base: base, text: text}
+}
+
+// Una sola puerta para cobrar (spec 030). El texto es el que lee quien opera: sin «borrador»,
+// «versión» ni códigos (constitución, Restricciones del producto).
+var (
+	// ErrDraftChanged: se quiso cambiar o quitar un renglón, o la cabecera, con una versión que ya no
+	// es la de la base — otra tableta lo cambió antes (D-5). Nada se aplicó; la pantalla recarga.
+	ErrDraftChanged = fmt.Errorf("%w: La cuenta cambió en otra tableta", ErrConflict)
+	// ErrDraftDiscarded: la cuenta ya se descartó (a mano en otra tableta o por las 12 horas).
+	ErrDraftDiscarded = fmt.Errorf("%w: Esa cuenta ya se descartó", ErrConflict)
+	// ErrDraftAlreadySent: la cuenta ya es un pedido. Quien lo envuelve agrega el pedido.
+	ErrDraftAlreadySent = fmt.Errorf("%w: Ya se mandó a cocina; para quitarla hay que cancelar el pedido", ErrConflict)
+	// ErrOrderClosed: el pedido está pagado y entregado (D-9). La pantalla ofrece cuenta nueva.
+	ErrOrderClosed = fmt.Errorf("%w: Esa cuenta ya se pagó y se entregó; lo que pidan va en una cuenta nueva", ErrConflict)
+)
+
+// Sin envolver ErrConflict ni ErrValidation a propósito: son 422 con código propio y no deben caer en
+// el 409 o el 400 genérico si alguien los mueve de lugar en httpapi.Error.
+var (
+	// ErrPlatformOrderNoLines: a un pedido de plataforma no se le agregan productos (D-11).
+	ErrPlatformOrderNoLines = errors.New("a los pedidos de plataforma no se les agregan productos")
+	// ErrDraftHasOrderHeader: lo nuevo de un pedido ya enviado no tiene cliente, canal ni descuento
+	// propios: son los del pedido, y se cambian ahí.
+	ErrDraftHasOrderHeader = errors.New("esos datos son del pedido; se cambian en el pedido")
 )

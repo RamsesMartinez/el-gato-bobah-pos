@@ -79,14 +79,15 @@ case "$NOMBRE_BASE" in
 esac
 
 echo "==> 1/5 Bajando el respaldo de producción ($VPS_INSTANCE:$PROD_CONTAINER/$PROD_DB)"
-# --no-owner: el dueño en producción y en la caja local se llaman igual hoy, pero depender de eso
-# hace que el restore falle el día que alguien cambie uno. Los GRANT sí se conservan (NO se usa
-# --no-privileges): el test de que `gatobobah_app` tiene permiso sobre cada tabla es justamente uno
-# de los que esta base viene a hacer posibles, y quitarlos lo volvería un test que se prueba a sí
-# mismo.
+# Sin --no-owner ni --no-privileges: los dueños y los GRANT llegan como están en producción. Los
+# GRANT porque el test de que `gatobobah_app` tiene permiso sobre cada tabla es justamente uno de
+# los que esta base viene a hacer posibles. Los dueños porque `candidatas_del_aviso` (0073) es de
+# gatobobah_webhook a propósito: con --no-owner pasa a ser del owner, salta RLS, y los tests del
+# webhook corren contra un bypass que allá no existe. Que los roles se llamen igual aquí y allá es
+# requisito, no casualidad (constitución IV, «La base local niega lo mismo que producción»).
 # gzip: el enlace a la VM es lento y el dump es texto; comprimir en el origen ahorra minutos.
 gcloud compute ssh "$VPS_USER@$VPS_INSTANCE" --zone="$VPS_ZONE" --quiet \
-  --command="docker exec $PROD_CONTAINER pg_dump -U $PROD_DB_USER -d $PROD_DB --no-owner | gzip -6" \
+  --command="docker exec $PROD_CONTAINER pg_dump -U $PROD_DB_USER -d $PROD_DB | gzip -6" \
   > "$DESTINO_DUMP"
 
 if [[ ! -s "$DESTINO_DUMP" ]]; then
@@ -104,12 +105,19 @@ URL_ADMIN="$SIN_BASE/postgres$QUERY"
 echo "==> 2/5 Recreando la base destino ($NOMBRE_BASE)"
 psql_ "$URL_ADMIN" -v ON_ERROR_STOP=1 -q -c "drop database if exists \"$NOMBRE_BASE\" with (force)"
 psql_ "$URL_ADMIN" -v ON_ERROR_STOP=1 -q -c "create database \"$NOMBRE_BASE\""
-# El rol tiene que existir ANTES del restore: el dump trae los GRANT que lo nombran, y sin el rol
-# psql los rechaza uno por uno y la base queda a medias sin que el exit code lo diga.
+# Los roles tienen que existir ANTES del restore: el dump trae los GRANT y los OWNER TO que los
+# nombran, y sin el rol psql los rechaza uno por uno y la base queda a medias sin que el exit code
+# lo diga.
 psql_ "$URL_ADMIN" -v ON_ERROR_STOP=1 -q -c \
   "do \$\$ begin
      if not exists (select 1 from pg_roles where rolname = 'gatobobah_app') then
        create role gatobobah_app;
+     end if;
+     if not exists (select 1 from pg_roles where rolname = 'gatobobah_platform') then
+       create role gatobobah_platform nologin;
+     end if;
+     if not exists (select 1 from pg_roles where rolname = 'gatobobah_webhook') then
+       create role gatobobah_webhook nologin nobypassrls;
      end if;
    end \$\$;"
 

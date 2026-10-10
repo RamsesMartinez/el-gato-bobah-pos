@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/shopspring/decimal"
 )
@@ -93,10 +94,14 @@ type PricedProduct struct {
 	Price  decimal.Decimal
 	Cost   decimal.Decimal
 	Active bool
+	// ModifierGroups son los grupos de extras que el producto admite (product_modifier_groups). Una
+	// opción de un grupo que no está aquí no es extra de este producto, aunque exista en el menú.
+	ModifierGroups []int64
 }
 
 type PricedOption struct {
 	ID         int64
+	GroupID    int64
 	Name       string
 	PriceDelta decimal.Decimal
 	Cost       decimal.Decimal
@@ -175,6 +180,11 @@ func BuildOrder(lines []OrderLineInput, products map[int64]PricedProduct, option
 			o, ok := options[m.OptionID]
 			if !ok {
 				return BuiltOrder{}, fmt.Errorf("%w (id %d)", ErrOptionNotFound, m.OptionID)
+			}
+			// Fail-closed: un producto sin grupos no admite ningún extra. El precio de la opción sale del
+			// catálogo, pero la combinación la decide el negocio al ligar grupos al producto.
+			if !slices.Contains(p.ModifierGroups, o.GroupID) {
+				return BuiltOrder{}, fmt.Errorf("%w: %s no es un extra de %s", ErrOptionNotFound, o.Name, p.Name)
 			}
 			q := m.Qty
 			if q <= 0 {
@@ -272,11 +282,15 @@ func MetodoCorrespondeALaPlataforma(delMetodo, delPedido *int16) bool {
 	return *delMetodo == *delPedido
 }
 
-// PagosCubren dice si lo pagado salda el total. Tolera un centavo de diferencia por el mismo motivo
-// que la pantalla de cobro: el redondeo a dos decimales de varias líneas de pago puede dejar un
-// centavo de sobra o de falta, y rechazar una venta saldada por eso deja al cliente esperando.
+// PagosCubren dice si lo pagado salda el total, al centavo.
+//
+// Toleraba un centavo de falta por el residuo de dividir una cuenta ($100 en tres de $33.33). Desde
+// la 027 cada división le carga ese residuo al último pago, y la tolerancia solo servía para dar por
+// saldado un cobro tecleado de menos: un pedido de $100 cobrado en $99.99 cerraba, el centavo
+// restante rebotaba con «ya está cobrado», y la venta y el corte diferían para siempre (spec 031,
+// D16). UncollectedInSession ya era exacta: así las dos cifras salen del mismo predicado.
 func PagosCubren(pagado, total decimal.Decimal) bool {
-	return pagado.Sub(total).GreaterThanOrEqual(decimal.RequireFromString("-0.01"))
+	return pagado.GreaterThanOrEqual(total)
 }
 
 // PedidoSaldado dice si un pedido ya no debe nada. Es EL predicado: quien cierra el pedido, quien
@@ -304,18 +318,49 @@ func PedidoSaldado(pagado, total decimal.Decimal) bool {
 	return total.IsPositive() && PagosCubren(pagado, total)
 }
 
-// PuedeRecibirLineas dice si a un pedido todavía se le puede agregar.
+// OrderForAdd es lo que hace falta saber de un pedido para decidir si recibe productos.
+type OrderForAdd struct {
+	Status     string
+	Paid       decimal.Decimal
+	Total      decimal.Decimal
+	PlatformID *int16
+}
+
+// CanReceiveLines dice si a un pedido todavía se le puede agregar (spec 030, R-11).
 //
-// Incluye el ENTREGADO. El cliente que ya recibió su comida y sigue en la mesa pide una más, y
-// mandarla como pedido aparte deja dos cuentas para la misma mesa: una de las dos se pierde de
-// vista y termina cobrándose a medias o no cobrándose. Su dinero además no está cerrado — el pago
-// se registra cuando se cobra, no cuando se entrega.
+//   - De plataforma, nunca (D-11): lo cobró la plataforma entero y con su precio; un renglón más
+//     sería dinero que ningún depósito trae.
+//   - Cancelada o reembolsada, nunca: su dinero ya se decidió, y subirle el total a un reembolso es
+//     mover algo que un arqueo firmado ya contó.
+//   - Entregada Y saldada está CERRADA (D-9): lo que pidan después es otra cuenta. Antes se reabría
+//     al agregarle, y la cuenta que el cliente ya pagó y se llevó volvía a deber.
+//   - La entregada que debe sí recibe —el cliente sigue en la mesa— y vuelve a cocina
+//     (ReabreAlAgregar). La pagada que sigue en cocina también: era el caso 2 del lienzo.
 //
-// Cancelada y reembolsada quedan fuera: ahí el dinero YA se decidió, y subirle el total a un
-// reembolso es mover algo que un arqueo firmado ya contó.
+// El saldo se mide con PedidoSaldado, el mismo predicado que cierra el pedido: con `paid >= total`
+// a secas, el centavo de redondeo de tres partes de $33.33 dejaría abierta una cuenta cerrada.
+func CanReceiveLines(o OrderForAdd) error {
+	if o.PlatformID != nil {
+		return ErrPlatformOrderNoLines
+	}
+	switch o.Status {
+	case StatusAbierta, StatusLista:
+		return nil
+	case StatusEntregada:
+		if PedidoSaldado(o.Paid, o.Total) {
+			return ErrOrderClosed
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: Ese pedido ya está %s y no admite más productos", ErrConflict, o.Status)
+}
+
+// OrderNotVoided dice si el dinero de un pedido sigue sin decidirse: abierta, lista o entregada.
 //
-// Un entregado que recibe renglones deja de estar entregado; eso lo dice ReabreAlAgregar.
-func PuedeRecibirLineas(estado string) bool {
+// Es lo que queda de PuedeRecibirLineas para los caminos que NO agregan —entregar o cancelar un
+// renglón, devolver un pago, pasar productos DESDE un pedido—, donde la pregunta sigue siendo solo
+// el estado. Agregar pasó a CanReceiveLines, que además mira el saldo y la plataforma.
+func OrderNotVoided(estado string) bool {
 	return estado == StatusAbierta || estado == StatusLista || estado == StatusEntregada
 }
 
@@ -330,4 +375,18 @@ func PuedeRecibirLineas(estado string) bool {
 // ofrezca; aquí es la consecuencia de agregar, no una acción.
 func ReabreAlAgregar(estado string) bool {
 	return estado == StatusEntregada
+}
+
+// ErrPlatformOrderAtCounter: un pedido de plataforma no se entrega en el mostrador.
+var ErrPlatformOrderAtCounter = fmt.Errorf("%w: un pedido de plataforma es para llevar o a domicilio, no de mostrador", ErrValidation)
+
+// ValidPlatformServiceType rechaza un pedido de plataforma de mostrador ANTES de la base. El check
+// `orders_servicio_de_plataforma` lo rechaza también, pero ese rechazo llegaba como 500 — «el
+// servidor se rompió» — por una combinación que quien opera puede corregir (spec 029). El check
+// queda como red; esta es la barrera que habla.
+func ValidPlatformServiceType(serviceType string, platformID *int16) error {
+	if platformID != nil && serviceType == "mostrador" {
+		return ErrPlatformOrderAtCounter
+	}
+	return nil
 }

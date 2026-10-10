@@ -38,6 +38,7 @@ func pedidoDePlataformaConFolio(cajero, prod int64, plataforma int16, folio stri
 }
 
 func TestElFolioSeGuardaTalCualConLosExtremosRecortados(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -65,6 +66,7 @@ func TestElFolioSeGuardaTalCualConLosExtremosRecortados(t *testing.T) {
 }
 
 func TestUnFolioRepetidoDiceCualPedidoLoTiene(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -98,6 +100,7 @@ func TestUnFolioRepetidoDiceCualPedidoLoTiene(t *testing.T) {
 }
 
 func TestElMismoFolioEnDosPlataformasEsUnaCapturaLegitima(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -120,6 +123,7 @@ func TestElMismoFolioEnDosPlataformasEsUnaCapturaLegitima(t *testing.T) {
 }
 
 func TestElServicioRechazaLoQueNoEsUnFolio(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -151,6 +155,7 @@ func TestElServicioRechazaLoQueNoEsUnFolio(t *testing.T) {
 }
 
 func TestUnPedidoDeMostradorNoAceptaFolioDePlataforma(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)
@@ -179,6 +184,7 @@ func TestUnPedidoDeMostradorNoAceptaFolioDePlataforma(t *testing.T) {
 // Un pedido CANCELADO conserva su folio. La plataforma también lo canceló y su documento de pago lo
 // trae, así que borrarlo destruye justo el rastro que sirve para explicar la cancelación.
 func TestUnPedidoCanceladoConservaSuFolio(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewOrdersService(st, clock)

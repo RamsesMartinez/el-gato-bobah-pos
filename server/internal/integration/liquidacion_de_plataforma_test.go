@@ -64,6 +64,7 @@ func otroPedidoDePlataforma(t *testing.T, ctx context.Context, st *store.Store, 
 }
 
 func TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -96,6 +97,7 @@ func TestUnDocumentoCorregidoReemplazaLaLiquidacionYNoLaDuplica(t *testing.T) {
 // "Todavía no llega el documento" y "el documento dice cero" NO son lo mismo. Es la mitad de la
 // feature: sin la distinción, un periodo sin capturar se lee como un periodo sin comisiones.
 func TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -120,6 +122,7 @@ func TestSinLiquidacionNoEsLoMismoQueUnaLiquidacionEnCeros(t *testing.T) {
 }
 
 func TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -139,6 +142,7 @@ func TestElNetoNegativoSeAceptaPorqueEsLoQueDeVerdadPaso(t *testing.T) {
 }
 
 func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -149,7 +153,10 @@ func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
 		"tasa fuera de rango":                func(s *domain.Settlement) { p := decimal.RequireFromString("180"); s.CommissionPct = &p },
 		"descuento de plataforma > el total": func(s *domain.Settlement) { s.DiscountPlatform = decimal.RequireFromString("500") },
 		"importe por encima del tope":        func(s *domain.Settlement) { s.ReportedGross = domain.MaxMoney.Add(decimal.NewFromInt(1)) },
-		"exponente absurdo":                  func(s *domain.Settlement) { s.NetAmount = decimal.RequireFromString("1e100000000") },
+		// Con decimal.New y no con RequireFromString: desde decimal 1.5 el parser ya rechaza un
+		// exponente así, pero un valor armado en código no pasa por él y el servicio tiene que
+		// rechazarlo igual.
+		"exponente absurdo": func(s *domain.Settlement) { s.NetAmount = decimal.New(1, 100000000) },
 	}
 	for nombre, toca := range casos {
 		t.Run(nombre, func(t *testing.T) {
@@ -172,6 +179,7 @@ func TestLaLiquidacionRechazaLoQueUnDocumentoNoPuedeDecir(t *testing.T) {
 // Es el modo de falla más caro de la feature: la comisión es dinero que el negocio vendió y no
 // recibió, pero restarla de una venta reescribiría lo que el POS cobró.
 func TestRegistrarUnaLiquidacionNoMueveNingunaVenta(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	sales := app.NewSalesService(st, clock)
@@ -218,6 +226,7 @@ func TestRegistrarUnaLiquidacionNoMueveNingunaVenta(t *testing.T) {
 }
 
 func TestElResumenDePlataformasDelPeriodo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	svc := app.NewSettlementsService(st)
@@ -256,6 +265,7 @@ func TestElResumenDePlataformasDelPeriodo(t *testing.T) {
 
 // El cajero NO captura liquidaciones: es dinero que no pasó por la caja.
 func TestLaLiquidacionExigeRolDeAdministracion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := newTestStore(t)
 	jm := auth.NewManager("secreto-de-pruebas-suficientemente-largo-para-el-manager", nil)

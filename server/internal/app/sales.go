@@ -54,8 +54,15 @@ type SaleRow struct {
 	DiscountBy  string          `json:"discountBy"`
 	DeliveryFee decimal.Decimal `json:"deliveryFee"`
 	Refund      decimal.Decimal `json:"refund"`
-	Tips        decimal.Decimal `json:"tips"`
-	Platform    string          `json:"platform"`
+	// Paid: lo cobrado. Con Total dice cuánto falta sin abrir el pedido (spec 029).
+	Paid decimal.Decimal `json:"paid"`
+	// WrittenOff: lo dado por perdido («cancelar lo que falta», 2026-10-09); ya no se debe.
+	WrittenOff decimal.Decimal `json:"writtenOff"`
+	// LastRefundAt: cuándo fue la última devolución, null si no hubo. Es lo que deja reconocer en
+	// la lista una devolución de otro mes sin abrir el pedido (spec 029).
+	LastRefundAt *time.Time      `json:"lastRefundAt"`
+	Tips         decimal.Decimal `json:"tips"`
+	Platform     string          `json:"platform"`
 	// PlatformOrderRef viaja en la lista para que el dueño no tenga que abrir cada pedido con el
 	// documento de pago en la mano. Vacío = sin capturar, que es lo que el filtro de pendientes lista.
 	PlatformOrderRef string `json:"platformOrderRef"`
@@ -86,6 +93,15 @@ type MethodTotals struct {
 	Payments int32           `json:"payments"`
 	Total    decimal.Decimal `json:"total"`
 	Tips     decimal.Decimal `json:"tips"`
+	// Refunds: lo devuelto por este medio en el periodo, ya restado de Total (spec 031). Un cobro
+	// cuenta el día en que se cobró y una devolución el día en que se devolvió.
+	Refunds decimal.Decimal `json:"refunds"`
+	// TipRefunds: propina devuelta por este medio en el periodo. NO está en Refunds ni en Total
+	// (la propina nunca entra al Total); viaja para que la pantalla la nombre igual que el corte.
+	TipRefunds decimal.Decimal `json:"tipRefunds"`
+	// RefundCount: cuántas devoluciones de este medio cayeron en el periodo; alimenta el tile de
+	// devoluciones del resumen.
+	RefundCount int `json:"refundCount"`
 }
 
 // SalesSummaryView es el resumen de arriba. Agrega al de dominio el desglose por método y las
@@ -180,7 +196,19 @@ func filaDeVenta(r db.ListSalesRow) SaleRow {
 		DeliveryFee: domain.Round2(r.DeliveryFee), Refund: domain.Round2(r.RefundAmount),
 		Tips: domain.Round2(r.Tips), Platform: texto(r.Platform), OpenedBy: texto(r.OpenedByName),
 		Methods: string(r.Methods), PlatformOrderRef: texto(r.PlatformOrderRef),
+		Paid:         domain.Round2(r.Paid),
+		WrittenOff:   domain.Round2(r.WrittenOffAmount),
+		LastRefundAt: optionalTime(r.LastRefundAt),
 	}
+}
+
+// optionalTime convierte el `max()` sin tipo de la consulta: pgx lo entrega como time.Time, o nil
+// cuando el pedido no tiene devoluciones.
+func optionalTime(v any) *time.Time {
+	if t, ok := v.(time.Time); ok {
+		return &t
+	}
+	return nil
 }
 
 // Summary arma el resumen. Son tres consultas y no una porque `order_payments` y `order_lines` son
@@ -212,13 +240,48 @@ func (s *SalesService) Summary(ctx context.Context, f domain.SalesFilter) (*Sale
 	if err != nil {
 		return nil, err
 	}
+	pendiente, err := s.pending(ctx, f, desde, hasta, tipo)
+	if err != nil {
+		return nil, err
+	}
 
+	netos := make([]domain.MethodNet, 0, len(metodos))
+	for _, m := range metodos {
+		netos = append(netos, domain.MethodNet{Net: m.Total, Refunds: m.Refunds, RefundCount: m.RefundCount})
+	}
+	resumen := domain.SummarizeSales(totales, netos)
+	resumen.Pending = pendiente
+	// Lo perdido solo existe en pedidos de mostrador; la vista de pendientes de folio es de
+	// plataforma, así que ahí vale cero sin consulta gemela.
+	if !f.SoloSinFolio() {
+		w, err := s.store.QC(ctx).SalesWrittenOff(ctx, db.SalesWrittenOffParams{Desde: desde, Hasta: hasta, ServiceType: tipo})
+		if err != nil {
+			return nil, err
+		}
+		resumen.WrittenOff = domain.ConceptCount{Count: int(w.Pedidos), Amount: domain.Round2(w.Monto)}
+	}
 	return &SalesSummaryView{
 		Range:          rango(f.Range),
-		SalesSummary:   domain.SummarizeSales(totales),
+		SalesSummary:   resumen,
 		ByMethod:       metodos,
 		CancelledLines: domain.ConceptCount{Count: lineas, Amount: monto},
 	}, nil
+}
+
+// pending: lo que falta por cobrar de los pedidos del periodo, con su gemela de pendientes.
+func (s *SalesService) pending(ctx context.Context, f domain.SalesFilter, desde, hasta pgtype.Date, tipo *db.ServiceType) (domain.ConceptCount, error) {
+	if f.SoloSinFolio() {
+		r, err := s.store.QC(ctx).SalesPendingSinFolio(ctx, db.SalesPendingSinFolioParams{Desde: desde, Hasta: hasta, ServiceType: tipo})
+		if err != nil {
+			return domain.ConceptCount{}, err
+		}
+		return domain.ConceptCount{Count: int(r.Pedidos), Amount: domain.Round2(r.Monto)}, nil
+	}
+	r, err := s.store.QC(ctx).SalesPending(ctx, db.SalesPendingParams{Desde: desde, Hasta: hasta, ServiceType: tipo})
+	if err != nil {
+		return domain.ConceptCount{}, err
+	}
+	return domain.ConceptCount{Count: int(r.Pedidos), Amount: domain.Round2(r.Monto)}, nil
 }
 
 // Las tres consultas del resumen, cada una con su gemela de pendientes. Elegir la variante en un
@@ -263,7 +326,8 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 		}
 		for _, r := range rows {
 			out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas)})
+				Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds),
+				TipRefunds: domain.Round2(r.TipRefunds), RefundCount: int(r.RefundCount)})
 		}
 		return out, nil
 	}
@@ -275,7 +339,8 @@ func (s *SalesService) totalesPorMetodo(ctx context.Context, f domain.SalesFilte
 	}
 	for _, r := range rows {
 		out = append(out, MethodTotals{MethodID: r.MethodID, Method: r.Method, Payments: r.Pagos,
-			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas)})
+			Total: domain.Round2(r.Total), Tips: domain.Round2(r.Propinas), Refunds: domain.Round2(r.Refunds),
+			TipRefunds: domain.Round2(r.TipRefunds), RefundCount: int(r.RefundCount)})
 	}
 	return out, nil
 }
@@ -310,14 +375,31 @@ func (s *SalesService) resumenDeLaBusqueda(ctx context.Context, f domain.SalesFi
 		return nil, err
 	}
 	totales := make([]domain.StatusTotals, 0, len(pagina.Items))
+	// El Total de la búsqueda es lo cobrado de ESE pedido menos lo devuelto: la misma regla que el
+	// periodo, sobre las mismas filas que pinta la lista. Sin el día de cada movimiento —buscar un
+	// folio es mirar un pedido, no un periodo—.
+	netos := make([]domain.MethodNet, 0, len(pagina.Items))
+	var pendiente domain.ConceptCount
 	for _, r := range pagina.Items {
 		totales = append(totales, domain.StatusTotals{
 			Status: r.Status, Count: 1, Total: r.Total, Tips: r.Tips, DeliveryFee: r.DeliveryFee,
 		})
+		neto := domain.MethodNet{Net: r.Paid.Sub(r.Refund), Refunds: r.Refund}
+		if r.Refund.IsPositive() {
+			neto.RefundCount = 1
+		}
+		netos = append(netos, neto)
+		vivo := r.Status != domain.StatusCancelada && r.Status != domain.StatusReembolsada
+		if falta := domain.Owed(r.Total, r.Paid, r.WrittenOff); vivo && falta.IsPositive() {
+			pendiente.Count++
+			pendiente.Amount = pendiente.Amount.Add(falta)
+		}
 	}
+	resumen := domain.SummarizeSales(totales, netos)
+	resumen.Pending = pendiente
 	return &SalesSummaryView{
 		Range:        rango(f.Range),
-		SalesSummary: domain.SummarizeSales(totales),
+		SalesSummary: resumen,
 		ByMethod:     []MethodTotals{},
 	}, nil
 }

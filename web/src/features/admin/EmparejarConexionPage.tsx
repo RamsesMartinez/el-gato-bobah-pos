@@ -1,4 +1,4 @@
-import { Button, HStack, Text, VStack } from '@chakra-ui/react';
+import { Button, HStack, Text } from '@chakra-ui/react';
 import { LuArrowLeft } from 'react-icons/lu';
 import { useNavigate, useParams } from 'react-router';
 import { Page } from '../../components/Page';
@@ -23,16 +23,16 @@ export function EmparejarConexionPage() {
     );
   }
 
+  // `fill`: la lista de la tienda hace scroll en su propia caja y para eso la página tiene que
+  // tener alto (patrón de Page.tsx). Sin él la lista crece y saca de la tableta todo lo de abajo.
   return (
-    <Page>
-      <VStack align="stretch" gap={4}>
-        <HStack>
-          <Button variant="ghost" minH="44px" onClick={() => navegar('/plataformas')}>
-            <LuArrowLeft /> Tiendas
-          </Button>
-        </HStack>
-        <EmparejarPage conexionId={conexionId} onListo={() => navegar('/plataformas')} />
-      </VStack>
+    <Page fill py={3}>
+      <HStack>
+        <Button variant="ghost" minH="44px" onClick={() => navegar('/plataformas')}>
+          <LuArrowLeft /> Tiendas
+        </Button>
+      </HStack>
+      <EmparejarPage conexionId={conexionId} />
     </Page>
   );
 }

@@ -167,3 +167,126 @@ func TestElRepartoNoInventaDinero(t *testing.T) {
 		t.Fatalf("el reparto devolvió %s de los 100 que entraron", total)
 	}
 }
+
+// UNA SEGUNDA DEVOLUCIÓN NO VUELVE A SACAR LO QUE YA SALIÓ POR UN MEDIO (D1, spec 031).
+//
+// El reparto recibía lo cobrado en bruto por medio. Pedido de $100: $40 en efectivo y $60 con
+// tarjeta; se devuelven $40 (salen del efectivo) y luego los $60 restantes. La segunda volvía a
+// empezar por el efectivo —«disponible» $40 otra vez— y sacaba otros $40 de billetes y solo $20 de
+// tarjeta: el libro decía que salieron $80 en efectivo de $40 que entraron.
+func TestLaSegundaDevolucionNoRepiteElPrimerMedio(t *testing.T) {
+	entradas := []CobradoPorMetodo{
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Refunded: d("40")},
+		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("60")},
+	}
+	partes := RepartirDevolucion(entradas, d("60"))
+	if len(partes) != 1 || partes[0].MetodoID != 2 || !partes[0].Monto.Equal(d("60")) {
+		t.Fatalf("reparto de los 60 restantes = %+v, quiere 60 por tarjeta y nada en efectivo", partes)
+	}
+
+	// A medias: lo que queda del efectivo sale primero, y nunca más de eso.
+	entradas[0].Refunded = d("25")
+	partes = RepartirDevolucion(entradas, d("75"))
+	if len(partes) != 2 || !partes[0].Monto.Equal(d("15")) || !partes[1].Monto.Equal(d("60")) {
+		t.Fatalf("reparto de 75 con 25 ya devueltos en efectivo = %+v, quiere 15 de efectivo y 60 de tarjeta", partes)
+	}
+}
+
+// EL TOPE DE UN RENGLÓN ES LO QUE VALE ESE RENGLÓN, Y NUNCA MÁS DE LO QUE QUEDA DEL PEDIDO (D4).
+//
+// Con renglón, el tope era lo cobrado del pedido ENTERO menos lo devuelto de ese renglón: un
+// platillo de $60 en un pedido de $500 devolvía $500, y otra vez por cada platillo.
+func TestElTopeDeUnRenglon(t *testing.T) {
+	casos := []struct {
+		nombre                                           string
+		cobrado, devueltoTotal, importe, devueltoRenglon string
+		quiere                                           string
+	}{
+		{"el platillo, no el pedido", "500", "0", "60", "0", "60"},
+		{"lo que queda del platillo", "500", "20", "60", "20", "40"},
+		{"un platillo ya devuelto", "500", "60", "60", "60", "0"},
+		{"la cuenta ya se devolvió entera", "500", "500", "60", "0", "0"},
+		{"queda menos del pedido que del platillo", "500", "470", "60", "0", "30"},
+		{"devuelto de más no da negativo", "500", "0", "60", "80", "0"},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			got := LineRefundable(d(c.cobrado), d(c.devueltoTotal), d(c.importe), d(c.devueltoRenglon))
+			if !got.Equal(d(c.quiere)) {
+				t.Fatalf("tope = %s, quiere %s", got, c.quiere)
+			}
+		})
+	}
+}
+
+// DEVOLVER UN PAGO NO PUEDE DEJAR UNA DEVOLUCIÓN SIN COBRO DETRÁS (D2).
+//
+// Pedido de $100 en efectivo, «Devolver» $40 y luego «Devolver pago» de los $100: el cliente
+// recibía $140 por un pedido que pagó con $100, y el pedido volvía a deber.
+func TestDevolverUnPagoRespetaLasDevoluciones(t *testing.T) {
+	casos := []struct {
+		nombre                  string
+		quedaDelMedio, devuelto string
+		ok                      bool
+	}{
+		{"sin devoluciones", "0", "0", true},
+		{"devolución de $40 y el único pago se va", "0", "40", false},
+		{"otro pago del mismo medio la cubre", "50", "40", true},
+		{"otro pago del mismo medio no alcanza", "30", "40", false},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			err := VoidKeepsRefunds(d(c.quedaDelMedio), d(c.devuelto))
+			if c.ok && err != nil {
+				t.Fatalf("err = %v, quiere permitido", err)
+			}
+			if !c.ok && !errors.Is(err, ErrPaymentHasRefunds) {
+				t.Fatalf("err = %v, quiere ErrPaymentHasRefunds", err)
+			}
+		})
+	}
+}
+
+// CANCELAR CON DEVOLUCIÓN REGRESA LO QUE QUEDA DE CADA MEDIO, CUENTA Y PROPINA (D9).
+//
+// Solo se devolvía la cuenta: la propina se quedaba en el esperado del cajón y ningún reparto de
+// propinas la contaba, porque el pedido estaba cancelado.
+func TestCancelarDevuelveCuentaYPropinaPorMedio(t *testing.T) {
+	entradas := []CobradoPorMetodo{
+		{MetodoID: 1, Nombre: "Efectivo", TocaElCajon: true, Monto: d("40"), Refunded: d("40"), Tip: d("5")},
+		{MetodoID: 2, Nombre: "Tarjeta", Monto: d("60"), Tip: d("10"), TipRefunded: d("4")},
+		{MetodoID: 3, Nombre: "Transferencia", Monto: d("20"), Refunded: d("20")},
+	}
+	partes := SplitCancellationRefund(entradas)
+	if len(partes) != 2 {
+		t.Fatalf("partes = %+v, quiere dos: efectivo (solo propina) y tarjeta", partes)
+	}
+	if partes[0].MetodoID != 1 || !partes[0].Monto.IsZero() || !partes[0].Tip.Equal(d("5")) || !partes[0].SaleDelCajon {
+		t.Fatalf("efectivo = %+v, quiere 0 de cuenta y 5 de propina, del cajón", partes[0])
+	}
+	if partes[1].MetodoID != 2 || !partes[1].Monto.Equal(d("60")) || !partes[1].Tip.Equal(d("6")) {
+		t.Fatalf("tarjeta = %+v, quiere 60 de cuenta y 6 de propina", partes[1])
+	}
+}
+
+// NADA POR DEVOLVER SE DICE COMO TAL (spec 029). Devolver sin monto pide «lo que queda», y cuando lo
+// que queda es cero el monto llegaba en $0 y rebotaba con «el monto a devolver no es una cantidad de
+// dinero»: el operador revisaba un campo que nunca tecleó. Medido en el ambiente de pruebas.
+func TestNadaPorDevolverSeDiceComoTal(t *testing.T) {
+	err := ValidarDevolucion(d("0"), d("100"), d("100"))
+	if !errors.Is(err, ErrNothingLeftToRefund) {
+		t.Fatalf("pedido ya devuelto completo: err = %v, quiere ErrNothingLeftToRefund", err)
+	}
+	if err := ValidateLineRefund(d("0"), d("0")); !errors.Is(err, ErrNothingLeftOnLine) {
+		t.Fatalf("renglón ya devuelto: err = %v, quiere ErrNothingLeftOnLine", err)
+	}
+	if err := ValidateLineRefund(d("61"), d("60")); !errors.Is(err, ErrDevolucionExcede) {
+		t.Fatalf("más de lo que queda del renglón: err = %v, quiere ErrDevolucionExcede", err)
+	}
+	if err := ValidateLineRefund(d("60"), d("60")); err != nil {
+		t.Fatalf("lo que queda del renglón debe pasar: %v", err)
+	}
+	if !errors.Is(ErrNothingLeftOnLine, ErrValidation) || !errors.Is(ErrNothingLeftToRefund, ErrValidation) {
+		t.Fatal("los dos tienen que llegar como 4xx")
+	}
+}

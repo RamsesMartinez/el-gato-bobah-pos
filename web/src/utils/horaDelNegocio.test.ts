@@ -1,4 +1,4 @@
-import { fechaYHora, soloHora, soloFecha, zonaSegura, zonaEsUsable } from './horaDelNegocio';
+import { fechaYHora, soloHora, soloFecha, zonaSegura, zonaEsUsable, diaCorto, diaCortoYHora } from './horaDelNegocio';
 
 // LA HORA QUE SE MUESTRA ES LA DEL NEGOCIO, NO LA DE LA TABLETA.
 //
@@ -55,4 +55,20 @@ test('una fecha inválida se pinta vacía', () => {
   expect(fechaYHora('no soy una fecha', 'America/Mexico_City')).toBe('');
   expect(fechaYHora(null, 'America/Mexico_City')).toBe('');
   expect(soloHora(undefined, 'America/Mexico_City')).toBe('');
+});
+
+// Spec 029: el renglón de Ventas dice el día y la hora sin repetir el año, y una fecha de negocio
+// ("2026-10-08", sin hora) se lee como «8 oct», no como el formato con el que habla el servidor.
+test('día corto con hora, en la zona del negocio', () => {
+  const mx = diaCortoYHora(instante, 'America/Mexico_City');
+  expect(mx).toContain('1 sep');
+  expect(mx).toMatch(/8:25\s*p/);
+  expect(mx).not.toContain('2026');
+});
+
+test('una fecha de negocio se lee como día corto y no corre de día', () => {
+  // Sin hora no hay zona que aplicar: el día es el día. Interpretarla como medianoche UTC y
+  // formatearla en México la corría al 7.
+  expect(diaCorto('2026-10-08')).toBe('8 oct');
+  expect(diaCorto('')).toBe('');
 });

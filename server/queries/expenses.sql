@@ -36,12 +36,12 @@ returning id, name, phone, notes, is_active;
 -- ==== Gastos ====
 
 -- name: CreateExpense :one
--- expense_date la manda el llamador (antes se forzaba a hoy): es la fecha del DOCUMENTO, y una
--- factura se captura días después de emitirse. received_at va aparte, al recibir la mercancía.
+-- expense_date es el DÍA DEL GASTO (spec 032, punto 5): el del turno abierto, o el que se elige sin
+-- turno. La fecha del documento va en document_date y no lo mueve. received_at va aparte.
 insert into expenses (
   expense_date, category_id, supplier_id, amount, description, created_by,
-  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 returning id;
 
 -- name: GetExpense :one
@@ -52,7 +52,7 @@ select * from expenses where id = $1;
 -- detalle. GetExpense devuelve la fila cruda y la usa el servicio para decidir transiciones.
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name
+       e.paid_at, ub.name as created_by_name, e.document_date
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id

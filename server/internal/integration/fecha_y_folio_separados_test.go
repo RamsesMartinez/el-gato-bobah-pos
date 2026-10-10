@@ -29,6 +29,7 @@ import (
 // El turno de este test tiene CUATRO días de antigüedad a propósito: con uno solo, un cálculo que
 // se equivoque por una hora todavía pasa.
 func TestLaVentaSeArchivaEnElDiaEnQueOcurrioYNoEnElDelTurno(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -77,6 +78,7 @@ func TestLaVentaSeArchivaEnElDiaEnQueOcurrioYNoEnElDelTurno(t *testing.T) {
 // número 1 en su siguiente venta. Antes eso pasaba callado; ahora el índice único lo convierte en
 // un 23505 y la venta no se puede cobrar, que es peor. Por eso la semilla no es opcional.
 func TestUnTurnoConFoliosRepartidosContinuaLaNumeracion(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -131,6 +133,7 @@ func TestUnTurnoConFoliosRepartidosContinuaLaNumeracion(t *testing.T) {
 // se puede perder sin que nada más se note: la numeración solo se rompe cuando dos personas cobran
 // a la vez, o sea el día ocupado y no el día de la prueba manual.
 func TestDosCobrosSimultaneosNoCompartenFolio(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -188,6 +191,7 @@ func TestDosCobrosSimultaneosNoCompartenFolio(t *testing.T) {
 // pasa todos los tests, pasa `make start` —dev conecta como owner— y devuelve 42501 en el primer
 // pedido de producción. Este test es el único lugar donde eso se ve antes de desplegarlo.
 func TestElFolioSeReparteBajoElRolDeLaAplicacion(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	app_ := appRoleStore(t)
 	ctx := context.Background()
@@ -197,8 +201,18 @@ func TestElFolioSeReparteBajoElRolDeLaAplicacion(t *testing.T) {
 	efectivo := paymentMethodID(t, owner, "Efectivo")
 	abrirCajaPrincipal(t, owner, cajero)
 
+	// EL TENANT SE FIJA EXPLÍCITO, como lo hace `WithTenant` en producción. Antes no hacía falta
+	// porque el arnés dejaba el default de empresa a nivel BASE y el rol de app lo heredaba — o
+	// sea, este caso corría con un tenant que nadie pidió. Eso es justo lo que escondió dos
+	// defectos de aislamiento en la integración de plataformas.
+	ctxT, soltar, err := app_.AcquireTenant(ctx, defaultCompanyID)
+	if err != nil {
+		t.Fatalf("tomar la conexión de la empresa: %v", err)
+	}
+	defer soltar()
+
 	svc := app.NewOrdersService(app_, clock)
-	if _, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
+	if _, err := crearYCobrar(t, ctxT, svc, app.CreateOrderCmd{
 		ClientUUID: uuid.New(), ServiceType: "mostrador", OpenedBy: cajero,
 		Lines:    []domain.OrderLineInput{{ProductID: prod, Qty: decimal.RequireFromString("1")}},
 		Payments: []app.PaymentInput{{MethodID: efectivo, Amount: decimal.RequireFromString("15")}},
@@ -217,6 +231,7 @@ func TestElFolioSeReparteBajoElRolDeLaAplicacion(t *testing.T) {
 // pasar el cruce a cualquier escritura que corra como owner — un data-fix, o el propio backfill de
 // la migración. Es el mismo hueco que cerró 0041.
 func TestElEsquemaRechazaUnContadorDeFolioQueCruzaEmpresas(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -242,6 +257,7 @@ func TestElEsquemaRechazaUnContadorDeFolioQueCruzaEmpresas(t *testing.T) {
 // regla del cierre, el reinicio del folio deja de ser inofensivo y pasa a ser una colisión entre
 // pedidos que están a la vez en la barra. Por eso se prueba aquí y no solo donde vive la regla.
 func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -275,7 +291,7 @@ func TestReabrirLaCajaElMismoDiaRenumeraSinColisionar(t *testing.T) {
 	if _, err := back.CloseSession(ctx, principal, cajero, cierreDelCajonAMano(t, st, declarado)); err != nil {
 		t.Fatalf("cerrar el turno ya sin pendientes: %v", err)
 	}
-	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
+	if _, err := back.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero); err != nil {
 		t.Fatalf("reabrir el mismo día: %v", err)
 	}
 
@@ -331,6 +347,7 @@ func abrirCajaEn(t *testing.T, st *store.Store, por int64, cuando time.Time) int
 // RLS no aplica al owner, así que una fuga entre empresas no se ve hasta que hay un segundo
 // cliente. Se prueba con el rol de la aplicación, que es el único que la sufre.
 func TestElContadorDeFolioNoSeVeDesdeOtraEmpresa(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	appSt := appRoleStore(t)
 	ctx := context.Background()
@@ -415,6 +432,11 @@ func TestLaMigracionDelFolioSeRevierteYSeReaplica(t *testing.T) {
 	// test que ejecuta un solo bloque a mano se salta ese orden y se rompe con cada migración nueva
 	// que toque lo mismo.
 	t.Cleanup(func() { migrarArriba(t, st.Pool) })
+	// Todo pago nace con número desde la 0079, y su Down se niega a perderlo. Estos pagos son
+	// siembra de la prueba, no lo que se prueba.
+	if _, err := st.Pool.Exec(ctx, `update order_payments set payment_number = null`); err != nil {
+		t.Fatal(err)
+	}
 	migrarAbajoHasta(t, st.Pool, 60)
 	var existe bool
 	if err := st.Pool.QueryRow(ctx,
@@ -443,6 +465,7 @@ func TestLaMigracionDelFolioSeRevierteYSeReaplica(t *testing.T) {
 // medio separar: qué nombre sale dependería de cuál de las dos cosas cambió primero. Lo que tiene
 // que sostenerse es que dos pedidos VIVOS del mismo turno nunca comparten nombre.
 func TestDosPedidosVivosDelMismoTurnoNoCompartenNombre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -476,6 +499,7 @@ func TestDosPedidosVivosDelMismoTurnoNoCompartenNombre(t *testing.T) {
 // Caer a UTC corre la fecha seis horas y se ve plausible: es el peor modo de fallo posible, porque
 // nadie lo audita. Y fallar tampoco es opción — esta función está en el camino de un cobro.
 func TestConZonaInvalidaLaVentaCaeAlDefaultDelProductoYSeCobra(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -522,6 +546,7 @@ func TestConZonaInvalidaLaVentaCaeAlDefaultDelProductoYSeCobra(t *testing.T) {
 //
 // Lo que se prueba es justo eso: que agotar la bolsa NO tumbe la venta.
 func TestUnTurnoLargoAgotaLaBolsaYAunAsiSeSigueCobrando(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 

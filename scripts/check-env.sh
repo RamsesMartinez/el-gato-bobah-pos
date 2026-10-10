@@ -12,12 +12,11 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YEL='\033[0;33m'; NC='\033[0m'
 # Variables obligatorias para producción
 # PLATFORM_JWT_SECRET entra aquí porque la API NO ARRANCA sin él (consola de plataforma, spec
 # 016). Atraparlo aquí evita el arranque que falla con un mensaje que nadie relaciona con el .env.
-REQUIRED=(POSTGRES_PASSWORD JWT_SECRET PLATFORM_JWT_SECRET ADMIN_PASSWORD ADMIN_PIN)
-
-# PLATFORM_DB_PASSWORD no entra en REQUIRED porque en DESARROLLO se sirve como dueño y no hace
-# falta; en producción sí, y ahí lo exige config.Validate al arrancar. Fallaba feo sin ese check:
-# el compose la interpola dentro de PLATFORM_DATABASE_URL, así que sin ella la URL queda válida a
-# la vista y la API muere al conectar con un error que no nombra la variable.
+# APP_DB_PASSWORD y PLATFORM_DB_PASSWORD entran también en DESARROLLO: la API local sirve como
+# gatobobah_app y gatobobah_platform, igual que producción (scripts/dev-api.sh arma las URLs con
+# ellas). Servir como owner en local salta RLS y los GRANT, y lo que se desarrolla ahí no es lo que
+# corre allá.
+REQUIRED=(POSTGRES_PASSWORD JWT_SECRET PLATFORM_JWT_SECRET APP_DB_PASSWORD PLATFORM_DB_PASSWORD ADMIN_PASSWORD ADMIN_PIN)
 
 gen_secret() {
   openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
@@ -43,7 +42,12 @@ if [ ! -f "$ENV_FILE" ]; then
   # Dos secretos distintos, generados por separado: la consola de plataforma y el negocio no
   # pueden compartir firma, y copiar el mismo valor a los dos es justo lo que la API rechaza.
   sed -i.bak "s|^PLATFORM_JWT_SECRET=.*|PLATFORM_JWT_SECRET=$(gen_secret)|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
-  printf "${YEL}Se creó deploy/.env desde el ejemplo (con JWT_SECRET y PLATFORM_JWT_SECRET generados).${NC}\n"
+  sed -i.bak "s|^APP_DB_PASSWORD=.*|APP_DB_PASSWORD=$(gen_secret)|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+  sed -i.bak "s|^PLATFORM_DB_PASSWORD=.*|PLATFORM_DB_PASSWORD=$(gen_secret)|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+  # La llave local de cifrado de credenciales: 32 bytes en base64. Solo sirve en desarrollo; en
+  # producción va CREDENTIALS_KMS_KEY y la API rechaza esta.
+  sed -i.bak "s|^CREDENTIALS_LOCAL_KEY=.*|CREDENTIALS_LOCAL_KEY=$(openssl rand -base64 32)|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+  printf "${YEL}Se creó deploy/.env desde el ejemplo (con JWT_SECRET, PLATFORM_JWT_SECRET y los passwords de los roles generados).${NC}\n"
   printf "${RED}Falta configurarlo antes de continuar.${NC} Edita deploy/.env y define:\n"
   printf "  - POSTGRES_PASSWORD  (contraseña de la base de datos)\n"
   printf "  - ADMIN_PASSWORD     (contraseña del usuario admin inicial)\n"
@@ -76,6 +80,18 @@ fi
 if [ -n "$jwt" ] && [ "$jwt" = "$platform_jwt" ]; then
   printf "${RED}✗${NC} PLATFORM_JWT_SECRET es IGUAL a JWT_SECRET: la consola y el negocio dejarían de estar separados\n"
   missing+=("PLATFORM_JWT_SECRET")
+fi
+
+# Cifrado de credenciales: exactamente una de las dos. La API valida lo mismo al arrancar; decirlo
+# aquí evita descubrirlo en un deploy con la API caída.
+kms="$(get_val CREDENTIALS_KMS_KEY)"
+llave_local="$(get_val CREDENTIALS_LOCAL_KEY)"
+if [ -n "$kms" ] && [ -n "$llave_local" ]; then
+  printf "${RED}✗${NC} CREDENTIALS_KMS_KEY y CREDENTIALS_LOCAL_KEY a la vez: deja solo una\n"
+  missing+=("CREDENCIALES_*")
+elif [ -z "$kms" ] && [ -z "$llave_local" ]; then
+  printf "${RED}✗${NC} falta CREDENTIALS_KMS_KEY (servidor) o CREDENTIALS_LOCAL_KEY (tu máquina: openssl rand -base64 32)\n"
+  missing+=("CREDENCIALES_*")
 fi
 
 if [ ${#missing[@]} -ne 0 ]; then

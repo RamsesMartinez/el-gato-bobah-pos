@@ -1,4 +1,4 @@
-import { Box, HStack, Text, VStack } from '@chakra-ui/react';
+import { Box, HStack, Text } from '@chakra-ui/react';
 import { LuCircleHelp } from 'react-icons/lu';
 
 import type { SalesSummary } from '../../api/sales';
@@ -26,32 +26,45 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
     );
   }
 
+  const pendiente = resumen.pending ?? { count: 0, amount: '0' };
   return (
-    <VStack align="stretch" gap={2}>
-      {/* Scroll horizontal propio: en una tablet de 7" cuatro cifras no caben, y que se desborde la
-          página entera obligaría a mover la tabla para leer el total. */}
-      <HStack gap={2} overflowX="auto" pb={1} css={{ scrollbarWidth: 'none' }}>
-        <Tile label="Ventas" valor={String(resumen.count)} />
-        <Tile label="Total" valor={money(resumen.total)} destacado />
-        <Tile label="Promedio" valor={money(resumen.average)} />
+    // UNA sola fila con scroll horizontal, en este orden: Total → Por cobrar → Perdido → medios → separador →
+    // lo demás. Medido a 1024×600: dos filas (tiles y medios) dejaban la tabla en DOS renglones. Y
+    // el orden no es estético: los medios son lo que prueba que el Total cuadra, así que van pegados
+    // a él y no pasado el borde derecho. El degradado del borde avisa que la fila sigue.
+    <Box position="relative">
+      <HStack gap={2} overflowX="auto" pb={1} pr={8} css={{ scrollbarWidth: 'none' }} align="stretch">
+        <Tile label="Total" valor={money(resumen.total)} nota="cobrado − devuelto" destacado />
+        {pendiente.count > 0 && (
+          <Tile label="Por cobrar" valor={money(pendiente.amount)} tono="orange"
+            nota={`no entra al total · ${pendiente.count} ${pendiente.count === 1 ? 'pedido' : 'pedidos'}`} />
+        )}
+        {/* Junto a «Por cobrar» y antes de los medios: es la otra cifra que NO está en el total, y al
+            final de la fila no se veía sin deslizar a 1024×600 (dueño, 2026-10-09). */}
+        {(resumen.writtenOff?.count ?? 0) > 0 && resumen.writtenOff && (
+          <Tile label="Perdido" valor={money(resumen.writtenOff.amount)}
+            nota={`no entra al total · ${resumen.writtenOff.count} ${resumen.writtenOff.count === 1 ? 'pedido' : 'pedidos'}`} />
+        )}
+        {resumen.byMethod.map((m) => (
+          <Medio key={m.methodId} m={m} />
+        ))}
+
+        <Box alignSelf="stretch" borderLeftWidth="1px" mx={1} flexShrink={0} />
+        <Tile label="Ventas" valor={String(resumen.count)} nota="sin canceladas" />
+        <Tile label="Ticket promedio" valor={money(resumen.average)} nota="de los pedidos" />
         {Number(resumen.tips) > 0 && <Tile label="Propinas" valor={money(resumen.tips)} nota="no entra al total" />}
         {resumen.cancelled.count > 0 && (
           <Tile label="Canceladas" valor={money(resumen.cancelled.amount)} nota={`${resumen.cancelled.count}`} />
         )}
         {resumen.refunded.count > 0 && (
-          <Tile label="Reembolsadas" valor={money(resumen.refunded.amount)} nota={`${resumen.refunded.count}`} />
+          <Tile label="Devoluciones" valor={money(resumen.refunded.amount)} nota={`${resumen.refunded.count}`} />
         )}
         {resumen.cancelledLines.count > 0 && (
           <Tile label="Renglones cancelados" valor={money(resumen.cancelledLines.amount)} nota={`${resumen.cancelledLines.count}`} />
         )}
 
-        {/* Las cifras de plataformas van en ESTA MISMA fila, detrás de un separador, y no en una
-            propia. Medido a 1024×600 contra el ambiente desplegado: una fila aparte cuesta 101 px y
-            deja el contenedor de la tabla en 66 px — UN renglón. Esta fila ya scrollea en
-            horizontal, así que meterlas aquí cuesta cero alto, y el operador vino a leer la tabla.
-
-            Lo que impide que se resten con las de arriba NO es estar en otra fila: es que cada una
-            lleva SOBRE CUÁNTOS PEDIDOS habla. Los conjuntos son distintos —hay pedidos vendidos
+        {/* Lo que impide que las cifras de plataformas se resten con las de arriba es que cada una
+            lleva SOBRE CUÁNTOS PEDIDOS habla: los conjuntos son distintos —hay pedidos vendidos
             cuyo documento todavía no llega— y sin el conteo tres importes hermanos se restan a ojo.
             Es la forma exacta del fondo de caja que dejó un turno con $4,500 de faltante. */}
         {plataformas && plataformas.llegoAlBanco.orders > 0 && (
@@ -71,18 +84,30 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
           </>
         )}
       </HStack>
+      <Box position="absolute" top={0} right={0} bottom={1} w={8} pointerEvents="none"
+        bgGradient="to-l" gradientFrom="bg" gradientTo="transparent" />
+    </Box>
+  );
+}
 
-      {resumen.byMethod.length > 0 && (
-        <HStack gap={2} overflowX="auto" pb={1} css={{ scrollbarWidth: 'none' }}>
-          {resumen.byMethod.map((m) => (
-            <Box key={m.methodId} borderWidth="1px" borderRadius="lg" px={3} py={2} minW="150px" bg="bg.subtle">
-              <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{m.method}</Text>
-              <Text fontWeight="700" whiteSpace="nowrap">{money(m.total)}</Text>
-            </Box>
-          ))}
-        </HStack>
+// Un medio de pago: lo cobrado neto. Lo devuelto se dice como YA RESTADO y en gris: en rojo y con
+// un «−» se leía como algo pendiente de restar, y el operador lo restaba otra vez a ojo.
+function Medio({ m }: { m: SalesSummary['byMethod'][number] }) {
+  const devuelto = Number(m.refunds ?? 0);
+  const propina = Number(m.tipRefunds ?? 0);
+  return (
+    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} minW="130px" bg="bg.subtle" flexShrink={0}>
+      <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{m.method}</Text>
+      <Text fontSize="lg" fontWeight="700" whiteSpace="nowrap" color={Number(m.total) < 0 ? 'red.600' : undefined}>
+        {money(m.total)}
+      </Text>
+      {devuelto > 0 && (
+        <Text fontSize="2xs" color="fg.muted" whiteSpace="nowrap">ya restados {money(devuelto)} devueltos</Text>
       )}
-    </VStack>
+      {propina > 0 && (
+        <Text fontSize="2xs" color="fg.muted" whiteSpace="nowrap">+ {money(propina)} de propina devuelta</Text>
+      )}
+    </Box>
   );
 }
 
@@ -91,7 +116,7 @@ export function SalesSummaryTiles({ resumen, plataformas, cargando }: {
 // explicación de un cálculo — justo lo que la constitución manda guardar detrás de la ayuda.
 function CifraDePlataformaTile({ c, label }: { c: PlatformMoney['vendido']; label: string }) {
   return (
-    <Box borderWidth="1px" borderRadius="lg" px={4} py={3} minW="170px" bg="bg.panel">
+    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} minW="150px" bg="bg.panel" flexShrink={0}>
       <HStack gap={1} align="center">
         <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{label}</Text>
         <Tooltip content={`Incluye: ${c.incluye}. Excluye: ${c.excluye}.`}>
@@ -107,9 +132,12 @@ function CifraDePlataformaTile({ c, label }: { c: PlatformMoney['vendido']; labe
   );
 }
 
-function Tile({ label, valor, nota, destacado }: { label: string; valor: string; nota?: string; destacado?: boolean }) {
+function Tile({ label, valor, nota, destacado, tono }: {
+  label: string; valor: string; nota?: string; destacado?: boolean; tono?: 'orange';
+}) {
   return (
-    <Box borderWidth="1px" borderRadius="lg" px={4} py={3} minW="140px"
+    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} minW="120px" flexShrink={0}
+      borderColor={tono === 'orange' ? 'orange.300' : undefined}
       bg={destacado ? 'colorPalette.subtle' : 'bg.panel'}>
       <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">{label}</Text>
       <Text fontSize={destacado ? '2xl' : 'xl'} fontWeight="800" whiteSpace="nowrap">{valor}</Text>

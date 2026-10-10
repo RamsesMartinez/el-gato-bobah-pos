@@ -104,9 +104,14 @@ func (s *SuggestService) Defaults(ctx context.Context, companyID int64) (map[int
 	if err != nil {
 		return nil, err
 	}
-	picks := make([]pick, len(rows))
-	for i, r := range rows {
-		picks[i] = pick{productID: r.ProductID, groupID: r.GroupID, optionID: r.OptionID, at: r.CreatedAt.In(loc)}
+	picks := make([]pick, 0, len(rows))
+	for _, r := range rows {
+		// Un renglón sin producto del catálogo —un platillo de plataforma sin emparejar— no puede
+		// sugerir modificadores de nada. Se salta en vez de sugerir sobre un producto inventado.
+		if r.ProductID == nil {
+			continue
+		}
+		picks = append(picks, pick{productID: *r.ProductID, groupID: r.GroupID, optionID: r.OptionID, at: r.CreatedAt.In(loc)})
 	}
 	result := rankDefaults(picks, now)
 

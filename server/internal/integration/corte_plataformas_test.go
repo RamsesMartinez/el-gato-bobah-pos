@@ -23,6 +23,7 @@ import (
 // que no existe: los tres métodos nuevos esperan $1,500 cada uno y, como no se autodeclaran, el
 // cierre los compara contra lo que el front no mandó.
 func TestElFondoDeCajaSeCuentaUnaSolaVez(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -69,6 +70,7 @@ func TestElFondoDeCajaSeCuentaUnaSolaVez(t *testing.T) {
 // regla vista desde el cierre, que es donde el operador la sufre: un faltante inventado obliga a
 // contar el cajón tres veces buscando dinero que nunca faltó.
 func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -104,6 +106,7 @@ func TestCerrarSinVentasNoInventaFaltante(t *testing.T) {
 // Correcto por coincidencia no es correcto. Ahora que cada pago guarda su register_session_id, el
 // vínculo es explícito: un pago de otro turno no puede colarse aunque caiga dentro de la ventana.
 func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -139,7 +142,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 	}
 
 	// Turno 2, el mismo día y con el mismo reloj: debe esperar SOLO su propia venta.
-	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{}, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero); err != nil {
 		t.Fatalf("OpenSession 2: %v", err)
 	}
 	vender()
@@ -164,6 +167,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 // que se concilia el depósito que la plataforma manda después, y sumarlo a mano a las once de la
 // noche es donde se equivoca cualquiera.
 func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)
@@ -245,6 +249,7 @@ func TestElCorteSubtotalizaPorPlataforma(t *testing.T) {
 // error, sin renglón, sin nada que avisara— porque la consulta del turno cerrado es otra y no
 // traía la plataforma del método.
 func TestElSubtotalPorPlataformaSobreviveAlCierre(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	backoffice := app.NewBackofficeService(st, clock)

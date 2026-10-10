@@ -22,6 +22,7 @@ import (
 // aplica el servidor y que no se movió — por eso las tres se comprueban juntas: apagar el bloqueo
 // de pantalla no puede haber aflojado la sesión de paso.
 func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
 
@@ -44,6 +45,7 @@ func TestLosAjustesDeIdentificacionNacenSeguros(t *testing.T) {
 // Los tres viven en la MISMA fila que los ajustes del ticket y se escriben con el mismo UPDATE.
 // Un interruptor que apaga otro es el fallo clásico de esa tabla y ya mordió una vez.
 func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")
@@ -59,7 +61,6 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 		AutoPrintOnClose:   true,
 		PrintFreeModifiers: antes.PrintFreeModifiers,
 		PrintKitchenTicket: true,
-		KitchenCanCharge:   true,
 	}
 	info := domain.BusinessInfo{
 		Name: antes.BusinessName, Address: antes.Address, Phone: antes.Phone,
@@ -77,7 +78,7 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 	if tras.LockAfterSeconds != 60 || tras.SessionHours != 12 {
 		t.Errorf("los tiempos no se guardaron: bloqueo=%d sesión=%d", tras.LockAfterSeconds, tras.SessionHours)
 	}
-	if !tras.PrintKitchenTicket || !tras.KitchenCanCharge || !tras.AutoPrintOnClose {
+	if !tras.PrintKitchenTicket || !tras.AutoPrintOnClose {
 		t.Error("guardar la identificación apagó ajustes del ticket que vivían en la misma fila")
 	}
 }
@@ -85,6 +86,7 @@ func TestGuardarLaIdentificacionNoPisaLosAjustesDelTicket(t *testing.T) {
 // Un tiempo de bloqueo negativo o una sesión de cero horas dejarían la tableta bloqueada siempre o
 // nunca autenticada. Se rechazan en la frontera, no se ajustan a un default en silencio.
 func TestLosTiemposAbsurdosSeRechazan(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	settings := app.NewSettingsService(st, "pepper-de-prueba")

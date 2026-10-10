@@ -32,6 +32,14 @@ const manual: DesglosePrecio = { base: 20, calculado: 27, vigente: 30, esManual:
 describe('OptionPriceFields', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('un cargo que pone la plataforma se ve bloqueado y no se edita (0077)', () => {
+    montar({ base: 20, calculado: 27, vigente: 15, esManual: true, sincronizadoEn: '2026-10-03T16:42:00Z' });
+    expect(screen.getByText(/Lo pone Uber Eats/)).toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Guardar cargo' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Quitar cargo capturado' })).toBeNull();
+  });
+
   // El operador está corrigiendo un número que el sistema calculó. Sin ver de dónde salió, corrige
   // a ciegas y no tiene forma de saber si 30 es mucho o poco.
   it('muestra de dónde sale el cargo vigente', () => {

@@ -28,13 +28,15 @@ vi.mock('../../api/pos', () => ({
   },
 }));
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: vi.fn() } }));
+// Los ajustes de caja tienen su propia prueba (AjustesDeCaja.test.tsx).
+vi.mock('./AjustesDeCaja', () => ({ AjustesDeCaja: () => null }));
 
 import { BusinessSettingsPage } from './BusinessSettingsPage';
 
 const ajustes = {
   deliveryFee: '20', businessName: 'Gato', address: '', phone: '', headerNote: '', footerNote: '',
   autoPrintOnClose: false, timezone: 'America/Mexico_City', printFreeModifiers: true,
-  printKitchenTicket: true, kitchenCanCharge: false, pinOnlyUnlock: false, lockAfterSeconds: 180,
+  printKitchenTicket: true, pinOnlyUnlock: false, lockAfterSeconds: 180,
   sessionHours: 8, hasLogo: false, logoUpdatedAt: null, corteDeVista: 'medianoche', blindCashCount: false,
 };
 

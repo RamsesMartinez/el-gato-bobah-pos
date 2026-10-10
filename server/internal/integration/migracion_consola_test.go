@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/store"
@@ -38,6 +39,10 @@ func platformRoleStore(t *testing.T) *store.Store {
 	return st
 }
 
+// rolDePlataformaMu serializa el `alter role`: el rol es del servidor y no de la base, y dos pruebas
+// en paralelo que lo alteran a la vez chocan en Postgres con "tuple concurrently updated".
+var rolDePlataformaMu sync.Mutex
+
 // prepararRolDePlataforma le pone contraseña y acceso al rol, como el harness ya hace con el de la
 // app. La migración crea el rol; la contraseña es cosa del despliegue.
 func prepararRolDePlataforma(t *testing.T, st *store.Store) {
@@ -45,6 +50,8 @@ func prepararRolDePlataforma(t *testing.T, st *store.Store) {
 	ctx := context.Background()
 	u, _ := url.Parse(testURL(t))
 	dbName := u.Path[1:]
+	rolDePlataformaMu.Lock()
+	defer rolDePlataformaMu.Unlock()
 	for _, stmt := range []string{
 		"alter role gatobobah_platform with login password '" + platformRolePassword + "'",
 		"grant connect on database " + dbName + " to gatobobah_platform",
@@ -61,6 +68,7 @@ func prepararRolDePlataforma(t *testing.T, st *store.Store) {
 // `users`, y si el operador no está ahí no puede encontrarlo ni con el mismo nombre. Una columna
 // `company_id` en esta tabla sería la señal de que alguien la metió al modelo de tenant.
 func TestElOperadorDePlataformaNoTieneEmpresa(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -101,6 +109,7 @@ func TestElOperadorDePlataformaNoTieneEmpresa(t *testing.T) {
 // Si lo fuera, las otras dos barreras no existirían: un superusuario lee todo sin que ningún grant
 // ni ninguna política lo detengan.
 func TestElRolDePlataformaNoEsSuperusuario(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -124,6 +133,7 @@ func TestElRolDePlataformaNoEsSuperusuario(t *testing.T) {
 // credencial de operador leída desde el rol de la aplicación sería la forma más tonta de perderlo
 // todo.
 func TestElRolDeLaAppNoPuedeLeerLosOperadores(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	app := appRoleStore(t)
 
@@ -162,6 +172,7 @@ func esPermisoDenegado(err error) bool {
 // permisivas se suman, así que se verifica en la misma corrida que el rol de la aplicación sigue
 // viendo solo la suya.
 func TestLaConsolaVeTodasLasEmpresasYElNegocioNo(t *testing.T) {
+	t.Parallel()
 	owner := newTestStore(t)
 	ctx := context.Background()
 
@@ -189,8 +200,21 @@ func TestLaConsolaVeTodasLasEmpresasYElNegocioNo(t *testing.T) {
 
 	// Y el negocio sigue encerrado en la suya.
 	app := appRoleStore(t)
+
+	// SIN EMPRESA FIJADA, NADA. Antes este caso no lo comprobaba: el arnés ponía el default de
+	// empresa a nivel BASE y el rol de app lo heredaba, así que «el negocio ve 1» era cierto por el
+	// ambiente. Ahora el default es del dueño y esto mide lo que dice medir.
+	var sinTenant int
+	if err := app.Pool.QueryRow(ctx, `select count(*) from companies`).Scan(&sinTenant); err != nil {
+		t.Fatalf("el rol de la aplicación no pudo leer companies: %v", err)
+	}
+	if sinTenant != 0 {
+		t.Fatalf("sin empresa fijada el rol de la aplicación ve %d empresas: RLS debe fallar CERRADO", sinTenant)
+	}
+
+	conn := conexionDeEmpresa(t, app, defaultCompanyID)
 	var vistasPorElNegocio int
-	if err := app.Pool.QueryRow(ctx, `select count(*) from companies`).Scan(&vistasPorElNegocio); err != nil {
+	if err := conn.QueryRow(ctx, `select count(*) from companies`).Scan(&vistasPorElNegocio); err != nil {
 		t.Fatalf("el rol de la aplicación no pudo leer companies: %v", err)
 	}
 	if vistasPorElNegocio != 1 {
@@ -269,6 +293,7 @@ func TestRevertirLaConsolaNoBorraElRolYVolverAAplicarlaLaRevive(t *testing.T) {
 // Por eso la comprobación es FUNCIONAL y no solo de banderas: pregunta si el rol puede leer
 // `orders`, que es justo lo que ningún rol de plataforma debe poder.
 func TestElArranqueRechazaUnaConsolaConRolPrestado(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	prepararRolDePlataforma(t, st)

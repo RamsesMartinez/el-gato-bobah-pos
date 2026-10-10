@@ -45,7 +45,7 @@ func (q *Queries) AdminCreateProduct(ctx context.Context, arg AdminCreateProduct
 
 const adminListModifierOptions = `-- name: AdminListModifierOptions :many
 select mo.id, mo.group_id, mg.name as group_name, mo.name, mo.price_delta, mo.is_favorite, mo.is_active,
-       count(*) over() as total
+       mo.composition_status, count(*) over() as total
 from modifier_options mo
 join modifier_groups mg on mg.id = mo.group_id
 where mg.is_active
@@ -53,26 +53,31 @@ where mg.is_active
         or ($1 = 'act' and mo.is_active)
         or ($1 = 'inact' and not mo.is_active))
   and ($2::text = '' or mo.name ilike '%' || $2 || '%' or mg.name ilike '%' || $2 || '%')
+  and ($3::text = ''
+        or ($3 = 'none' and mo.composition_status is null)
+        or ($3 = 'estimated' and mo.composition_status = 'estimated'))
 order by mg.name, mo.sort_key, mo.name
-limit nullif($4::int, 0) offset $3
+limit nullif($5::int, 0) offset $4
 `
 
 type AdminListModifierOptionsParams struct {
-	Status string `json:"status"`
-	Search string `json:"search"`
-	Off    int32  `json:"off"`
-	Lim    int32  `json:"lim"`
+	Status      string `json:"status"`
+	Search      string `json:"search"`
+	Composition string `json:"composition"`
+	Off         int32  `json:"off"`
+	Lim         int32  `json:"lim"`
 }
 
 type AdminListModifierOptionsRow struct {
-	ID         int64           `json:"id"`
-	GroupID    int64           `json:"group_id"`
-	GroupName  string          `json:"group_name"`
-	Name       string          `json:"name"`
-	PriceDelta decimal.Decimal `json:"price_delta"`
-	IsFavorite bool            `json:"is_favorite"`
-	IsActive   bool            `json:"is_active"`
-	Total      int64           `json:"total"`
+	ID                int64           `json:"id"`
+	GroupID           int64           `json:"group_id"`
+	GroupName         string          `json:"group_name"`
+	Name              string          `json:"name"`
+	PriceDelta        decimal.Decimal `json:"price_delta"`
+	IsFavorite        bool            `json:"is_favorite"`
+	IsActive          bool            `json:"is_active"`
+	CompositionStatus *string         `json:"composition_status"`
+	Total             int64           `json:"total"`
 }
 
 // Página de opciones (de grupos activos) filtrada por estado (”=todas | 'act' | 'inact') y
@@ -82,6 +87,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 	rows, err := q.db.Query(ctx, adminListModifierOptions,
 		arg.Status,
 		arg.Search,
+		arg.Composition,
 		arg.Off,
 		arg.Lim,
 	)
@@ -100,6 +106,7 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 			&i.PriceDelta,
 			&i.IsFavorite,
 			&i.IsActive,
+			&i.CompositionStatus,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -113,10 +120,11 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.group_count, q.override_count, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
+         p.composition_status, p.cost_source, p.manual_cost, (p.recipe_id is not null)::bool as has_recipe,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -124,58 +132,70 @@ from (
            where pmg.product_id = p.id and pmg.min_select is not null)::int as override_count
   from products p
   join categories c on c.id = p.category_id
-  where ($1::text = ''
+  -- El producto genérico de plataforma (0077) no es del catálogo: lo usa el sistema para renglones
+  -- sin pareja. Editarlo o borrarlo desde aquí dejaría a esos pedidos sin a dónde ir.
+  where p.system_kind is null
+    and ($1::text = ''
           or ($1 = 'act' and p.is_active)
           or ($1 = 'inact' and not p.is_active))
     and ($2::text = '' or p.name ilike '%' || $2 || '%')
     and ($3::bigint = 0 or p.category_id = $3 or c.parent_id = $3)
+    -- Composición (spec 028): ''=todas | 'none'=sin capturar | 'estimated'=por revisar.
+    and ($4::text = ''
+          or ($4 = 'none' and p.composition_status is null)
+          or ($4 = 'estimated' and p.composition_status = 'estimated'))
 ) q
-where ($4::text = ''
-        or ($4 = 'none' and q.group_count = 0)
-        or ($4 = 'some' and q.group_count > 0))
+where ($5::text = ''
+        or ($5 = 'none' and q.group_count = 0)
+        or ($5 = 'some' and q.group_count > 0))
 order by
-  case when $5::text = 'price'    and $6::text = 'asc'  then q.price end asc  nulls last,
-  case when $5::text = 'price'    and $6::text <> 'asc' then q.price end desc nulls last,
-  case when $5::text = 'cost'     and $6::text = 'asc'  then q.current_cost end asc  nulls last,
-  case when $5::text = 'cost'     and $6::text <> 'asc' then q.current_cost end desc nulls last,
-  case when $5::text = 'margin'   and $6::text = 'asc'  then (q.price - q.current_cost) end asc  nulls last,
-  case when $5::text = 'margin'   and $6::text <> 'asc' then (q.price - q.current_cost) end desc nulls last,
-  case when $5::text = 'groups'   and $6::text = 'asc'  then q.group_count end asc  nulls last,
-  case when $5::text = 'groups'   and $6::text <> 'asc' then q.group_count end desc nulls last,
-  case when $5::text = 'category' and $6::text = 'asc'  then q.category end asc  nulls last,
-  case when $5::text = 'category' and $6::text <> 'asc' then q.category end desc nulls last,
-  case when $5::text = 'name'     and $6::text = 'desc' then q.name end desc nulls last,
+  case when $6::text = 'price'    and $7::text = 'asc'  then q.price end asc  nulls last,
+  case when $6::text = 'price'    and $7::text <> 'asc' then q.price end desc nulls last,
+  case when $6::text = 'cost'     and $7::text = 'asc'  then q.current_cost end asc  nulls last,
+  case when $6::text = 'cost'     and $7::text <> 'asc' then q.current_cost end desc nulls last,
+  case when $6::text = 'margin'   and $7::text = 'asc'  then (q.price - q.current_cost) end asc  nulls last,
+  case when $6::text = 'margin'   and $7::text <> 'asc' then (q.price - q.current_cost) end desc nulls last,
+  case when $6::text = 'groups'   and $7::text = 'asc'  then q.group_count end asc  nulls last,
+  case when $6::text = 'groups'   and $7::text <> 'asc' then q.group_count end desc nulls last,
+  case when $6::text = 'category' and $7::text = 'asc'  then q.category end asc  nulls last,
+  case when $6::text = 'category' and $7::text <> 'asc' then q.category end desc nulls last,
+  case when $6::text = 'name'     and $7::text = 'desc' then q.name end desc nulls last,
   q.name
-limit nullif($8::int, 0) offset $7
+limit nullif($9::int, 0) offset $8
 `
 
 type AdminListProductsParams struct {
-	Status     string `json:"status"`
-	Search     string `json:"search"`
-	CategoryID int64  `json:"category_id"`
-	Groups     string `json:"groups"`
-	Sort       string `json:"sort"`
-	Dir        string `json:"dir"`
-	Off        int32  `json:"off"`
-	Lim        int32  `json:"lim"`
+	Status      string `json:"status"`
+	Search      string `json:"search"`
+	CategoryID  int64  `json:"category_id"`
+	Composition string `json:"composition"`
+	Groups      string `json:"groups"`
+	Sort        string `json:"sort"`
+	Dir         string `json:"dir"`
+	Off         int32  `json:"off"`
+	Lim         int32  `json:"lim"`
 }
 
 type AdminListProductsRow struct {
-	ID             int64           `json:"id"`
-	Name           string          `json:"name"`
-	Price          decimal.Decimal `json:"price"`
-	CurrentCost    decimal.Decimal `json:"current_cost"`
-	Type           ProductType     `json:"type"`
-	IsActive       bool            `json:"is_active"`
-	IsFavorite     bool            `json:"is_favorite"`
-	AvailableFrom  pgtype.Date     `json:"available_from"`
-	AvailableUntil pgtype.Date     `json:"available_until"`
-	NeedsPrep      bool            `json:"needs_prep"`
-	Category       string          `json:"category"`
-	CategoryID     int64           `json:"category_id"`
-	GroupCount     int32           `json:"group_count"`
-	OverrideCount  int32           `json:"override_count"`
-	Total          int64           `json:"total"`
+	ID                int64            `json:"id"`
+	Name              string           `json:"name"`
+	Price             decimal.Decimal  `json:"price"`
+	CurrentCost       decimal.Decimal  `json:"current_cost"`
+	Type              ProductType      `json:"type"`
+	IsActive          bool             `json:"is_active"`
+	IsFavorite        bool             `json:"is_favorite"`
+	AvailableFrom     pgtype.Date      `json:"available_from"`
+	AvailableUntil    pgtype.Date      `json:"available_until"`
+	NeedsPrep         bool             `json:"needs_prep"`
+	Category          string           `json:"category"`
+	CategoryID        int64            `json:"category_id"`
+	CompositionStatus *string          `json:"composition_status"`
+	CostSource        CostSource       `json:"cost_source"`
+	ManualCost        *decimal.Decimal `json:"manual_cost"`
+	HasRecipe         bool             `json:"has_recipe"`
+	GroupCount        int32            `json:"group_count"`
+	OverrideCount     int32            `json:"override_count"`
+	Total             int64            `json:"total"`
 }
 
 // Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro), categoría
@@ -188,6 +208,7 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 		arg.Status,
 		arg.Search,
 		arg.CategoryID,
+		arg.Composition,
 		arg.Groups,
 		arg.Sort,
 		arg.Dir,
@@ -214,6 +235,10 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.NeedsPrep,
 			&i.Category,
 			&i.CategoryID,
+			&i.CompositionStatus,
+			&i.CostSource,
+			&i.ManualCost,
+			&i.HasRecipe,
 			&i.GroupCount,
 			&i.OverrideCount,
 			&i.Total,
@@ -296,6 +321,43 @@ type AdminSetOptionFavoriteParams struct {
 func (q *Queries) AdminSetOptionFavorite(ctx context.Context, arg AdminSetOptionFavoriteParams) error {
 	_, err := q.db.Exec(ctx, adminSetOptionFavorite, arg.ID, arg.IsFavorite)
 	return err
+}
+
+const adminSetProductManualCost = `-- name: AdminSetProductManualCost :one
+update products
+set cost_source = 'manual', manual_cost = $1, current_cost = $1, updated_at = now()
+where id = $2 and type <> 'combo'
+returning id
+`
+
+type AdminSetProductManualCostParams struct {
+	Cost *decimal.Decimal `json:"cost"`
+	ID   int64            `json:"id"`
+}
+
+// Costo capturado a mano. current_cost se escribe en la misma sentencia para que el margen de la
+// lista cambie aunque el recálculo posterior falle. Un combo no se toca: su costo es la suma de
+// sus componentes y el motor de costeo sobrescribiría cualquier captura.
+func (q *Queries) AdminSetProductManualCost(ctx context.Context, arg AdminSetProductManualCostParams) (int64, error) {
+	row := q.db.QueryRow(ctx, adminSetProductManualCost, arg.Cost, arg.ID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const adminSetProductRecipeCost = `-- name: AdminSetProductRecipeCost :one
+update products
+set cost_source = 'receta', updated_at = now()
+where id = $1 and recipe_id is not null and type <> 'combo'
+returning id
+`
+
+// Vuelve a costear por receta; solo si el producto tiene una. El monto lo pone el motor de costeo.
+func (q *Queries) AdminSetProductRecipeCost(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, adminSetProductRecipeCost, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const adminUpdateProduct = `-- name: AdminUpdateProduct :exec

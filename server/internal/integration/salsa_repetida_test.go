@@ -24,6 +24,7 @@ import (
 // El tope por opción (`max_per_line`) ya estaba en 2 para las 64 salsas de producción; lo que
 // faltaba era ejercerlo. Este test cubre que la cantidad llegue a la base y que el tope se respete.
 func TestDosSalsasDelMismoSaborEnUnaLinea(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	svc := app.NewOrdersService(st, clock)
@@ -34,8 +35,8 @@ func TestDosSalsasDelMismoSaborEnUnaLinea(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 
 	// Una salsa que admite dos por línea y una que no, como están hoy en producción.
-	mango := opcionConTope(t, st, "Salsas alitas", "Mango habanero", decimal.RequireFromString("15"), 2)
-	sinSalsa := opcionConTope(t, st, "Salsas alitas", "Sin salsa", decimal.Zero, 1)
+	mango := opcionConTope(t, st, "Salsas alitas", "Mango habanero", decimal.RequireFromString("15"), 2, prod)
+	sinSalsa := opcionConTope(t, st, "Salsas alitas", "Sin salsa", decimal.Zero, 1, prod)
 
 	pedir := func(opt int64, veces int, monto string) error {
 		_, err := crearYCobrar(t, ctx, svc, app.CreateOrderCmd{
@@ -85,7 +86,9 @@ func TestDosSalsasDelMismoSaborEnUnaLinea(t *testing.T) {
 
 // opcionConTope siembra una opción de modificador con su `max_per_line`. El harness general crea
 // opciones con el default, y este test necesita justo las dos variantes.
-func opcionConTope(t *testing.T, st *store.Store, grupo, nombre string, delta decimal.Decimal, tope int16) int64 {
+//
+// Los `products` reciben el grupo: una opción solo se vende como extra de un producto que lo tiene.
+func opcionConTope(t *testing.T, st *store.Store, grupo, nombre string, delta decimal.Decimal, tope int16, products ...int64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	var groupID int64
@@ -94,6 +97,12 @@ func opcionConTope(t *testing.T, st *store.Store, grupo, nombre string, delta de
 		 on conflict (company_id, name) do update set name = excluded.name returning id`,
 		defaultCompanyID, grupo).Scan(&groupID); err != nil {
 		t.Fatalf("grupo %s: %v", grupo, err)
+	}
+	for _, p := range products {
+		if _, err := st.Pool.Exec(ctx, `insert into product_modifier_groups (company_id, product_id, group_id, min_select, max_select)
+			values ($1, $2, $3, 0, 3) on conflict (product_id, group_id) do nothing`, defaultCompanyID, p, groupID); err != nil {
+			t.Fatalf("ligar el grupo %s al producto %d: %v", grupo, p, err)
+		}
 	}
 	var id int64
 	if err := st.Pool.QueryRow(ctx,

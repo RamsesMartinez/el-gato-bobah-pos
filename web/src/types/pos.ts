@@ -1,4 +1,3 @@
-import type { ModoDeDescuento } from '../domain/descuento';
 // Tipos del dominio POS (espejo del backend Go). camelCase. El DINERO viaja como string
 // decimal exacto ("70.50") — nunca number en el cable (ver utils/format.ts money()). Los
 // tipos internos del ticket (TicketLine/TicketModifier) sí usan number: son solo la
@@ -66,6 +65,10 @@ export interface Menu {
   // Un id ausente usa base × (1 + margen). El dinero viaja como string decimal exacto.
   platformPrices: Record<number, Record<number, string>>;
   platformModPrices: Record<number, Record<number, string>>;
+  // Cuándo copió la plataforma conectada cada precio. Un id presente aquí no se edita en el POS:
+  // lo pone la plataforma. Opcionales para que el compilador obligue a la guarda.
+  platformSynced?: Record<number, Record<number, string>>;
+  platformModSynced?: Record<number, Record<number, string>>;
 }
 
 export interface MenuPlatform {
@@ -151,6 +154,58 @@ export interface OrderView {
   outstanding: string;
   openedAt: string;
   lines?: OrderLine[];
+  // Los pagos del pedido, vivos y devueltos, en el orden de su número (spec 027). Opcional para que
+  // el compilador obligue a la guarda: un `null` tumbaría la hoja de cobro sin error del servidor.
+  payments?: PaymentView[];
+  // El pedido con el que se juntó éste al pasarle todos sus productos.
+  mergedIntoOrderId?: number | null;
+  // Si se puede dividir o pasar productos: no es de plataforma y su turno sigue abierto.
+  canSplit?: boolean;
+}
+
+// PaymentView es un pago del pedido como lo pinta la hoja de cobro. `number` es el de su ticket
+// impreso y no cambia: un pago devuelto conserva el suyo y sale tachado.
+export interface PaymentView {
+  id: number;
+  number: number;
+  voided: boolean;
+  voidedAt?: string;
+  voidReason?: string;
+  methodId: number;
+  methodName: string;
+  amount: string;
+  tip: string;
+  reference: string;
+  paidAt: string;
+  receivedBy: string;
+  split: { part: number; of: number } | null;
+  // Lo que cubrió: vacío en un pago por monto o por partes.
+  lines: PaymentLine[];
+}
+
+export interface PaymentLine {
+  lineId: number;
+  qty: string;
+  amount: string;
+}
+
+// SelectedPieces: cuántas piezas de un renglón paga, pasa o quita esta persona.
+export interface SelectedPieces {
+  lineId: number;
+  qty: string;
+}
+
+// ChargeShape es la forma de un cobro dividido; se excluyen entre sí y con el monto tecleado.
+export type ChargeShape =
+  | { lines: SelectedPieces[] }
+  | { allRemaining: true }
+  | { split: { part: number; of: number } };
+
+// Quote es lo que /pay cobraría con esa selección, calculado por el servidor.
+export interface Quote {
+  amount: string;
+  lines: PaymentLine[];
+  outstandingAfter: string;
 }
 
 // PedidoParaCobrar es lo MÍNIMO que la hoja de cobro necesita para hacer su trabajo.
@@ -177,6 +232,12 @@ export interface CobroHecho {
   // una llamada cuya respuesta se perdió. La pantalla lo necesita para no cantar un cobro que no
   // ocurrió y para no volver a contar su propina.
   yaEstaba: boolean;
+  // El pago, su número y lo que se cobró. Con productos o por partes el monto lo calcula el
+  // servidor, y la hoja refresca el botón y «Falta» con esta cifra. Opcionales: el front se
+  // despliega antes que el backend.
+  paymentId?: number;
+  number?: number;
+  amount?: string;
 }
 
 // OrderLine es un renglón tal como lo manda el servidor.
@@ -265,85 +326,171 @@ export interface BoardLine {
   // Si ya salió a cocina. Decide qué pasa con el insumo al cancelar el renglón: si ya salió, la
   // comida se hizo y el ingrediente no vuelve al almacén.
   enviadoACocina?: boolean;
+  // Piezas que cubren pagos vivos. Con alguna, la tarjeta deshabilita el bote con «Pagado».
+  paidQty?: string;
 }
 
-// --- Contratos que `domain` necesita, y por eso viven aquí y no en la capa que los usa ---
+// --- Cuentas en captura y cuentas vivas (spec 030, contracts/api.md) ---
 //
-// `domain` es puro: no importa de `api/`, de `stores/` ni de React. Estos dos tipos vivían en esos
-// dos lugares, así que una función de dominio que los necesitara tenía que alcanzar hacia arriba —
-// y eso es exactamente la puerta por la que se cuela el acoplamiento que este árbol quiere cerrar.
+// La cuenta que se está capturando vive en el SERVIDOR desde el primer producto. Los precios los
+// calcula él en cada lectura con la lista de la cuenta: aquí no se guarda ni se suma ningún precio.
 
-export interface TicketTab {
-  id: string;
-  num: number; // etiqueta estable "Cuenta N" mientras no haya nombre de cliente
-  // El animal con el que se va a cantar este pedido en cocina. Se pone al ABRIR la cuenta y no al
-  // cobrar, para que el operador lo vea desde el primer producto y pueda decírselo al cliente;
-  // viaja al servidor con la venta y es el que acaba impreso. El servidor lo sanea y, si otro
-  // pedido del día se le adelantó, le agrega la vuelta ("Tigre 2") — nunca lo cambia de animal.
-  //
-  // Vacío mientras la lista de animales no haya llegado del servidor. No se inventa uno: un
-  // nombre que la pantalla muestra y el ticket contradice es peor que no mostrar ninguno.
-  folioName: string;
-  // El folio con el que la plataforma nombra a este pedido, tal como el operador lo tecleó.
-  //
-  // Vive en la CUENTA y no en un useState de la pantalla por lo mismo que el envío: sobrevive a un
-  // cambio de cuenta y a un F5, y no se mezcla entre dos cuentas abiertas a la vez. Vacío mientras
-  // no haya plataforma; cambiar de lista lo tira, porque un folio de Uber colgando de Rappi es
-  // basura silenciosa.
-  platformOrderRef: string;
-  lines: TicketLine[];
-  // El costo de envío TAL COMO SE TECLEÓ, y por cuenta.
-  //
-  // Vivía en un useState de la pantalla, y de ahí salían cuatro defectos: no sobrevivía a un F5
-  // mientras el resto del carrito sí (se cobraba el default sin avisar), se heredaba entre
-  // pestañas y sobrevivía al cierre de la cuenta que lo capturó, y la píldora que cobra no lo veía.
-  // El envío es parte de `orders.total`: pertenece a la cuenta.
-  //
-  // Se guarda el TEXTO y no el número: un valor mal escrito tiene que poder bloquear el cobro, y un
-  // número ya parseado no distingue "vacío" de "ilegible".
-  envio: string;
-  // El descuento TAL COMO SE TECLEÓ, y su modo ($ o %). Vive en la cuenta por lo mismo que el
-  // envío: sobrevive a un F5 y a un cambio de cuenta, y no se mezcla entre dos cuentas abiertas.
-  //
-  // Se guarda el TEXTO y no el número, por la misma razón que el envío: un valor mal escrito tiene
-  // que poder bloquear el cobro, y un número ya parseado no distingue "vacío" de "ilegible".
-  descuento: string;
-  // El modo se guarda con la cuenta y no en la pantalla: cambiar de cuenta y volver tiene que
-  // encontrar el mismo campo que se dejó, o el operador reescribe un 20 creyendo que son pesos.
-  descuentoModo: ModoDeDescuento;
-  serviceType: ServiceType;
-  customerName: string;
-  // Con qué lista de precios se está armando esta cuenta. null = mostrador. Vive en la CUENTA y no
-  // en la pantalla: se pueden tener abiertas una de mostrador y una de Uber al mismo tiempo, y
-  // cada una tiene que conservar su lista.
-  platformId: number | null;
+export type DraftStatus = 'capturando' | 'enviada' | 'descartada';
+
+export interface DraftModifierInput {
+  optionId: number;
+  qty: number;
+  // Porción de un modificador de combo; vacío en los de siempre.
+  portion?: string;
 }
 
-export interface CreateOrderBody {
-  clientUuid: string;
-  serviceType: string;
-  customerName?: string;
+export interface DraftModifierView {
+  optionId: number;
+  name: string;
+  qty: number;
+  priceDelta: string;
+  portion?: string;
+}
+
+export interface DraftLineView {
+  id: string;
+  version: number;
+  productId: number;
+  productName: string;
+  qty: string;
+  unitPrice: string;
+  // Opcional para que el compilador obligue a la guarda: un `null` del servidor tumbaría el ticket.
+  modifiers?: DraftModifierView[];
+  notes: string;
+  lineTotal: string;
+  // false = ya no está en el menú: no suma al total y bloquea el envío.
+  available: boolean;
+}
+
+export type DraftDiscount = { amount: string } | { percent: string };
+
+export interface DraftHeader {
+  serviceType?: ServiceType;
+  customerName?: string | null;
+  platformId?: number | null;
+  platformOrderRef?: string | null;
+  deliveryFee?: string;
+  discount?: DraftDiscount | null;
+}
+
+export interface DraftView {
+  id: string;
+  // null = cuenta nueva; número = lo «Nuevo» de ese pedido.
+  orderId: number | null;
+  folioName: string | null;
+  status: DraftStatus;
+  headerVersion: number;
+  // La de la cuenta entera: avanza con cualquier cambio. Descartar la exige.
+  version: number;
+  updatedAt: string;
+  createdAt: string;
+  openedBy: string;
+  serviceType: ServiceType;
+  customerName: string | null;
+  platformId: number | null;
+  platformOrderRef: string | null;
+  deliveryFee: string;
+  discount: DraftDiscount | null;
+  lines?: DraftLineView[];
+  subtotal: string;
+  discountTotal: string;
+  total: string;
+  unavailable?: string[];
+}
+
+export interface DraftLineInput {
+  opId: string;
+  productId: number;
+  qty: string;
+  modifiers: DraftModifierInput[];
+  notes: string;
+}
+
+// El «+» de un renglón: un agregado más (se suma entre tabletas), no un cambio de cantidad.
+export interface DraftIntoLineInput {
+  opId: string;
+  intoLineId: string;
+  qty: string;
+}
+
+export interface CreateDraftBody {
+  id: string;
+  orderId: number | null;
+  folioName?: string | null;
+  header?: DraftHeader;
+  lines: DraftLineInput[];
+}
+
+export interface ChangeDraftLineBody {
+  expectedVersion: number;
+  qty?: string;
+  modifiers?: DraftModifierInput[];
   notes?: string;
-  // Nombre con el que la pantalla ya bautizó la cuenta. El servidor lo sanea y resuelve los
-  // choques del día, así que proponerlo no es decidirlo.
-  folioName?: string;
-  deliveryFee?: number; // solo aplica a domicilio; el server lo ignora si no
-  // El descuento capturado. EXCLUYENTES: mandar los dos es un 400. El porcentaje viaja como
-  // porcentaje porque el servidor lo resuelve contra SU subtotal, no contra el de la pantalla.
-  discountAmount?: number;
-  discountPercent?: number;
-  // Con qué lista de precios se armó. El servidor la resuelve BAJO RLS y recalcula cada precio:
-  // lo que va aquí es el id, nunca los precios.
-  deliveryPlatformId?: number;
-  // Solo viaja cuando hay plataforma Y el operador lo escribió. Ausente = se tomó la salida
-  // explícita, y el pedido queda listado como pendiente de folio.
-  platformOrderRef?: string;
-  lines: Array<{
-    productId: number;
-    qty: number;
-    notes?: string;
-    modifiers: Array<{ optionId: number; qty: number }>;
-  }>;
-  // pago dividido: una línea por método. El pedido queda pagado cuando la suma cubre el total.
-  payments?: Array<{ methodId: number; amount: number; tip?: number }>;
+}
+
+export type PatchDraftBody = DraftHeader & { expectedHeaderVersion: number };
+
+export interface SendResult {
+  order: OrderView;
+  // Renglones para la comanda: todos si nació el pedido, solo lo nuevo si se agregó, vacío en el
+  // reintento (para no reimprimir).
+  printLineIds?: number[];
+  created: boolean;
+}
+
+export interface ImportAccount {
+  id: string;
+  folioName: string;
+  header: DraftHeader;
+  lines: DraftLineInput[];
+}
+
+export interface ImportResult {
+  id: string;
+  outcome: 'created' | 'exists' | 'already_sent' | 'skipped_empty';
+  draftId: string | null;
+  orderId: number | null;
+}
+
+// El estado y el grupo los decide el servidor (domain.AccountState / AccountGroup): aquí no se
+// recalcula ninguna regla.
+export type AccountState = 'capturing' | 'in_kitchen' | 'paid_in_kitchen' | 'partly_paid' | 'delivered_owes' | 'closed_with_new';
+export type AccountGroup = 'capturing' | 'in_kitchen' | 'delivered_owes' | 'previous_days';
+
+export interface AccountItem {
+  key: string;
+  kind: 'draft' | 'order';
+  draftId?: string | null;
+  // La versión de la cuenta en captura (kind=draft), para descartarla desde la fila.
+  draftVersion?: number | null;
+  orderId?: number | null;
+  number: number | null;
+  folioName: string | null;
+  state: AccountState;
+  group: AccountGroup;
+  kitchenReady: boolean;
+  platformId: number | null;
+  serviceType: ServiceType;
+  customerName: string | null;
+  openedAt: string;
+  updatedAt: string;
+  businessDate: string | null;
+  total: string;
+  paid: string;
+  outstanding: string;
+  lineCount: number;
+  pendingDraftId: string | null;
+  pendingCount: number;
+  closedWithPending: boolean;
+}
+
+export interface LiveAccounts {
+  items?: AccountItem[];
+  outstanding: string;
+  serverTime: string;
 }

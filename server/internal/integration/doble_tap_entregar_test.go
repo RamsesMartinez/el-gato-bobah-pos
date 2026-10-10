@@ -22,6 +22,7 @@ import (
 // pantalla táctil el doble tap es el primer borde de la lista, y aquí además el botón no se apaga
 // mientras la petición viaja.
 func TestUnDobleTapEnEntregarTodoNoDaError(t *testing.T) {
+	t.Parallel()
 	st := newTestStore(t)
 	ctx := context.Background()
 	ordenes := app.NewOrdersService(st, clock)

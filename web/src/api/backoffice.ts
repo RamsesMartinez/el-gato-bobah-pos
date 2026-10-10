@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { PaymentMethod } from '../types/pos';
+import type { PaymentMethod, AccountItem } from '../types/pos';
 
 // Dinero/cantidades = string decimal exacto desde el backend (ver types/pos.ts).
 export interface MethodTotal {
@@ -33,14 +33,40 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida';
+  kind: 'entrada' | 'salida' | 'propina' | 'reverso';
   amount: string;
   concept: string;
   createdAt: string;
   userName: string;
   transferId: number | null; // no-null si el movimiento es una pierna de un traspaso entre cajas
   expenseId: number | null;  // no-null si es la salida de un gasto (se muestra en la sección Gastos)
+  // La salida de caja de una devolución (spec 029): se nombra Devolución, como en el desglose.
+  isRefund?: boolean;
+  // Corrección por reverso (spec 032): `reversesId` en el reverso, `reversed` en la salida corregida.
+  reversesId?: number | null;
+  reversed?: boolean;
 }
+
+export interface CashConcept {
+  id: number;
+  name: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  supplierId: number | null;
+  supplierName: string | null;
+}
+
+export interface CardTerminal {
+  id: number;
+  branchId: number;
+  branchName: string;
+  name: string;
+  archived: boolean;
+}
+
+export type CashMovementInput =
+  | { kind: 'entrada'; amount: number; concept: string }
+  | { kind: 'salida'; amount: number; conceptId: number };
 // PAGO de gasto atribuido a un corte (sección "Gastos" del resumen). Es el pago y no el gasto:
 // uno liquidado con dos medios toca dos cortes y cada uno ve solo su parte.
 export interface CashExpenseLine {
@@ -55,7 +81,8 @@ export interface CashExpenseLine {
 }
 // Descomposición jerárquica del corte: ingresos por método→concepto y egresos de efectivo.
 export interface CorteBucket { concept: string; amount: string }
-export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[] }
+// note: por qué un medio salió en negativo en el turno (spec 029). Solo viene cuando lo está.
+export interface CorteMethodBreakdown { method: string; total: string; items: CorteBucket[]; note?: string }
 // plataformas: lo que entró por cada plataforma, sumando sus DOS métodos (en línea y efectivo).
 // Viene del servidor y no se calcula aquí: es el número contra el que se concilia el depósito.
 export interface CortePlatformSubtotal { platform: string; total: string }
@@ -86,9 +113,10 @@ export interface Denomination {
 //
 // El servidor los rechaza si llegan juntos, pero llegar hasta el rechazo con el cajón contado es un
 // conteo perdido: la unión discriminada lo vuelve imposible de escribir desde aquí.
-export type AperturaInput =
+export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
-  | { openingCash: number; manualReason: string };
+  | { openingCash: number; manualReason: string }
+) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.
@@ -140,8 +168,70 @@ export interface CashSession {
   // no ha salido, ésta qué dinero no entró. No bloquea el cierre.
   uncollected: string;
   uncollectedCount: number;
+  // Lo dado por perdido («cancelar lo que falta», 2026-10-09): ni cobrado ni sin cobrar.
+  writtenOff?: string;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
+  // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
+  // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
+  voidedPayments?: VoidedPayment[];
+  // Las cuentas vivas que NO bloquean el cierre (spec 030, D-10): las que se capturan y las
+  // entregadas que deben, de cualquier día. Opcional para que el compilador obligue a la guarda.
+  liveAccounts?: AccountItem[];
+  // Los entregados de mostrador que deben, de cualquier día. BLOQUEAN el cierre (no hay fiados,
+  // 2026-10-09) y salen del mismo predicado que la guardia del servidor. Opcional: un servidor que
+  // todavía no lo manda deja la sección sin pintar, no rota.
+  owing?: OwingOrder[];
+  // Dinero devuelto al cliente en el turno (spec 031). Opcional por la misma razón que el anterior.
+  refunds?: SessionRefund[];
+  // Propinas (spec 032). Opcionales: un servidor viejo no las manda y la sección no se pinta.
+  tipsPending?: TipsPending | null;
+  // Arqueo de tarjeta por terminal (spec 032): lo que se pide al cerrar y, cerrado, la diferencia.
+  cardCountMode?: 'auto' | 'per_terminal';
+  cashOutsWithoutConcept?: number;
+  terminalsToCount?: { terminalId: number; name: string }[];
+  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  tipsPaidOut?: string;
+  cardTipsPaidInCash?: string;
+}
+
+// Propina por entregar del turno abierto y a quién se le puede entregar.
+export interface TipsPending {
+  total: string;
+  cash: string;
+  nonCash: string;
+  inherited: string;
+  people?: { id: number; name: string }[];
+}
+
+export type TipsDecision = 'quedan_en_caja';
+
+export interface TipPayoutInput {
+  mode: 'parejo' | 'ajustado';
+  recipients: { userId: number; amount?: number }[];
+}
+
+// Una devolución del turno. `fromDrawer`: salió del cajón (con su salida de caja); si no, ya bajó
+// el esperado de su medio.
+export interface SessionRefund {
+  method: string;
+  amount: string;
+  tip: string;
+  orderFolio: string;
+  fromDrawer: boolean;
+  refundedBy: string;
+  refundedAt: string;
+  reason: string;
+}
+
+export interface VoidedPayment {
+  method: string;
+  amount: string;
+  tip: string;
+  orderFolio: string;
+  voidedBy: string;
+  voidedAt: string;
+  reason: string;
 }
 
 // El efectivo va aparte porque es lo único que está en el cajón: una diferencia de arqueo solo
@@ -158,6 +248,21 @@ export interface CashierTotal {
 export interface PendingOrder {
   number: number;
   name: string;
+  // El pedido, para «Abrir» su cuenta desde el cierre. Opcional: un servidor que todavía no lo
+  // manda deja el renglón sin el botón, no roto.
+  id?: number;
+  // De cuánto es, para no tener que abrirlo. Opcional por la misma razón.
+  total?: string;
+}
+// Un pedido entregado que todavía debe.
+export interface OwingOrder {
+  id: number;
+  number: number;
+  name: string;
+  total: string;
+  paid: string;
+  // Lo ya dado por perdido; con todo el resto perdido el pedido ya no aparece aquí.
+  writtenOff?: string;
 }
 // Fila del histórico de cortes.
 export interface CashSessionRow {
@@ -199,8 +304,21 @@ export interface CashSessionDetail {
   salesShown: number;
   // Sin canceladas, sin reembolsadas y sin propinas. La pantalla lo declara.
   salesTotal: string;
+  // Lo dado por perdido de los pedidos del corte («cancelar lo que falta», 2026-10-09).
+  writtenOff?: string;
   counts: ConteosDelTurno | null;
   drawer: ArqueoDelCajon | null;
+  // Pagos devueltos en el turno (spec 027). Lista aparte y no una salida: el esperado ya los
+  // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
+  voidedPayments?: VoidedPayment[];
+  refunds?: SessionRefund[];
+  // Arqueo por terminal y propinas del turno (spec 032). Opcionales: un backend viejo no los manda.
+  cardCountMode?: string;
+  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  tipsPaidOut?: string;
+  cardTipsPaidInCash?: string;
+  // La propina pendiente que el cierre dejó en caja para el siguiente turno.
+  tipsCarriedOver?: string;
 }
 
 export interface CorteSale {
@@ -233,7 +351,8 @@ export interface Supplier {
 }
 export interface Expense {
   id: number;
-  expenseDate: string;       // YYYY-MM-DD, fecha del DOCUMENTO
+  expenseDate: string;       // YYYY-MM-DD, DÍA DEL GASTO (spec 032)
+  documentDate?: string | null; // YYYY-MM-DD, fecha del documento
   receivedAt: string | null; // null = mercancía sin recibir (no ha tocado el almacén)
   status: ExpenseStatus;
   category: string;
@@ -304,6 +423,11 @@ export interface Ingredient {
   baseUnitId: number;
   baseUnitCode: string;
   baseUnitKind: string;
+  // Se prepara en el local con otros insumos, y si su composición está estimada o confirmada.
+  isPrep?: boolean;
+  compositionStatus?: '' | 'estimated' | 'confirmed';
+  // En cuántas recetas aparece: los más usados van arriba en el buscador.
+  recipeUses?: number;
   category: string | null;
   onHand: string;
 }
@@ -467,16 +591,46 @@ export const backofficeApi = {
     countedCash?: number;
     manualReason?: string;
     notes?: string;
+    tipsDecision?: TipsDecision;
+    terminalCounts?: Record<string, number>;
+    floatLeft?: number;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
-  cashHistory: () => api.get<{ items: CashSessionRow[] }>('/cash-sessions'),
+  cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
+  cashTipPayout: (registerId: number, input: TipPayoutInput) =>
+    api.post<{ items: { movementId: number; recipientName: string; amount: string }[] }>(
+      '/cash-sessions/tips/payouts', { registerId, ...input }),
+  // Paginado y con rango opcional por día del turno: sin páginas solo existían los 50 más recientes.
+  cashHistory: (p: { page: number; pageSize: number; from?: string; to?: string }) => {
+    const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });
+    if (p.from) q.set('from', p.from);
+    if (p.to) q.set('to', p.to);
+    return api.get<{ items: CashSessionRow[]; total: number; page: number; pageSize: number }>(`/cash-sessions?${q}`);
+  },
   cashSession: (id: number) => api.get<CashSessionDetail>(`/cash-sessions/${id}`),
   // Las ventas de un corte más allá de la primera página. El detalle trae las primeras; esto existe
   // para poder llegar al resto — un arqueo cuyas ventas no se pueden recorrer no se puede auditar.
   cashSessionSales: (id: number, page: number, pageSize: number) =>
     api.get<{ items: CorteSale[]; total: number; salesTotal: string }>(
       `/cash-sessions/${id}/sales?page=${page}&pageSize=${pageSize}`),
-  cashMovement: (registerId: number, kind: 'entrada' | 'salida', amount: number, concept: string) =>
-    api.post<CashSession>('/cash-sessions/movements', { registerId, kind, amount, concept }),
+  cashMovement: (registerId: number, input: CashMovementInput) =>
+    api.post<CashSession>('/cash-sessions/movements', { registerId, ...input }),
+  // Conceptos de salida (spec 032): la lista, y el alta en línea desde la captura.
+  cashConcepts: () => api.get<{ items: CashConcept[] }>('/cash-concepts'),
+  createCashConcept: (name: string) => api.post<CashConcept>('/cash-concepts', { name }),
+  updateCashConcept: (id: number, body: { name: string; categoryId: number | null; supplierId: number | null } | { archived: true }) =>
+    api.patch<CashConcept | null>(`/cash-concepts/${id}`, body),
+  mergeCashConcept: (id: number, intoId: number) => api.post<null>(`/cash-concepts/${id}/merge`, { intoId }),
+  summaryEmails: () => api.get<{ emails: string[] }>('/settings/daily-summary-emails'),
+  setSummaryEmails: (emails: string[]) => api.put<{ emails: string[] }>('/settings/daily-summary-emails', { emails }),
+  cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
+  createCardTerminal: (branchId: number, name: string) => api.post<CardTerminal>('/card-terminals', { branchId, name }),
+  updateCardTerminal: (id: number, body: { name: string } | { archived: true }) =>
+    api.patch<CardTerminal | null>(`/card-terminals/${id}`, body),
+  cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
+  setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
+    api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
+  correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
+    api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
   cashTransfer: (fromRegisterId: number, toRegisterId: number, amount: number, note?: string) =>
     api.post<{ id: number }>('/cash-sessions/transfer', { fromRegisterId, toRegisterId, amount, note }),
@@ -514,7 +668,8 @@ export const backofficeApi = {
     return api.get<{ items: Expense[]; total: number; page: number; pageSize: number }>(`/expenses${qs ? `?${qs}` : ''}`);
   },
   createExpense: (b: {
-    expenseDate?: string;
+    expenseDate?: string; // fecha del documento
+    expenseDay?: string;  // día del gasto, solo sin caja abierta (spec 032)
     receivedAt?: string;
     categoryId: number;
     supplierId?: number;
@@ -595,8 +750,15 @@ export const backofficeApi = {
   reportMargins: (q: ReportQuery = {}) =>
     api.get<{
       range: ReportRange;
-      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string }>;
+      // uncosted_revenue: lo vendido sin costo capturado; NO está en margin (spec 029).
+      items: Array<{ product_name: string; qty: string; revenue: string; cost: string; margin: string; uncosted_revenue?: string }>;
     }>(`/reports/margins?${qsReporte({ ...q, limit: 50 })}`),
+  // Unidades por producto, sueltas y dentro de paquetes.
+  reportProductsSold: (q: ReportQuery = {}) =>
+    api.get<{
+      range: ReportRange;
+      items: Array<{ product_name: string; alone: string; in_packages: string }>;
+    }>(`/reports/products-sold?${qsReporte({ ...q, limit: 50 })}`),
   // Propinas (pass-through, para repartir): por empleado que cobró y por día.
   reportTips: (q: ReportQuery = {}) =>
     api.get<{

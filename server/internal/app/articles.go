@@ -40,6 +40,12 @@ type IngredientView struct {
 	BaseUnitKind string           `json:"baseUnitKind"`
 	Category     *string          `json:"category"`
 	OnHand       decimal.Decimal  `json:"onHand"`
+	// IsPrep: se prepara en el local con otros insumos. CompositionStatus: "", "estimated" o
+	// "confirmed" (spec 028).
+	IsPrep            bool   `json:"isPrep"`
+	CompositionStatus string `json:"compositionStatus"`
+	// RecipeUses: en cuántas recetas aparece; ordena el buscador de insumos con los más usados arriba.
+	RecipeUses int `json:"recipeUses"`
 }
 
 // ArticleView es una entrada del buscador único: ingredientes y productos con control de stock
@@ -95,6 +101,7 @@ func (s *BackofficeService) Ingredients(ctx context.Context, onlyActive bool) ([
 			IsPackaging: r.IsPackaging, MinStock: r.MinStock, CurrentCost: r.CurrentCost,
 			BaseUnitID: r.BaseUnitID, BaseUnitCode: r.BaseUnitCode, BaseUnitKind: string(r.BaseUnitKind),
 			Category: r.Category, OnHand: r.OnHand,
+			IsPrep: r.IsPrep, CompositionStatus: textoDe(r.CompositionStatus), RecipeUses: int(r.RecipeUses),
 		}
 	}
 	return out, nil

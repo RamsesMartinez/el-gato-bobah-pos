@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { LuLock } from 'react-icons/lu';
 
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter,
@@ -10,6 +11,7 @@ import { toaster } from '../../components/ui/toaster';
 import { usePlatformPrice } from '../../hooks/usePlatformPrice';
 import { useUiStore } from '../../stores/ui';
 import { money } from '../../utils/format';
+import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import type { DesglosePrecio } from './precioPlataforma';
 import { montoTecleado } from '../../domain/numeros';
 
@@ -28,6 +30,7 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const { fechaYHora } = useHoraDelNegocio();
   const palette = useUiStore((s) => s.palette);
   const { guardar, quitar } = usePlatformPrice();
   const [precio, setPrecio] = useState(String(desglose.vigente));
@@ -76,6 +79,17 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
                 <Text fontWeight="600">{money(desglose.calculado)}</Text>
               </HStack>
             </VStack>
+            {desglose.sincronizadoEn ? (
+              <HStack justify="space-between" color="blue.700">
+                <HStack gap={2}>
+                  <LuLock aria-hidden />
+                  <Text>
+                    Lo pone {plataforma} · se actualizó {fechaYHora(desglose.sincronizadoEn)}
+                  </Text>
+                </HStack>
+                <Text fontWeight="700" fontSize="xl">{money(desglose.vigente)}</Text>
+              </HStack>
+            ) : (
             <Field label={`Precio en ${plataforma}`}>
               <Input
                 type="number" inputMode="decimal" step="0.01" min="0"
@@ -85,7 +99,8 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
                 autoFocus
               />
             </Field>
-            {desglose.esManual && (
+            )}
+            {desglose.esManual && !desglose.sincronizadoEn && (
               <Text fontSize="sm" color="fg.muted">
                 Este producto tiene un precio capturado a mano. Quítalo para que vuelva a {money(desglose.calculado)}.
               </Text>
@@ -93,18 +108,25 @@ export function PlatformPriceDialog({ productId, productName, plataforma, plataf
           </VStack>
         </DialogBody>
         <DialogFooter>
-          {desglose.esManual && (
-            <Button variant="outline" colorPalette="red" mr="auto" minH="48px"
-              loading={quitar.isPending} onClick={onQuitar}>
-              Quitar precio
-            </Button>
+          {desglose.sincronizadoEn ? (
+            <Button minH="48px" onClick={onClose}>Cerrar</Button>
+          ) : (
+            <>
+              {desglose.esManual && (
+                <Button variant="outline" colorPalette="red" mr="auto" minH="48px"
+                  loading={quitar.isPending} onClick={onQuitar}>
+                  Quitar precio
+                </Button>
+              )}
+              <Button variant="ghost" mr={3} minH="48px" onClick={onClose}>Cancelar</Button>
+              <Button minH="48px" loading={guardar.isPending} disabled={!valido} onClick={onGuardar}>
+                Guardar
+              </Button>
+            </>
           )}
-          <Button variant="ghost" mr={3} minH="48px" onClick={onClose}>Cancelar</Button>
-          <Button minH="48px" loading={guardar.isPending} disabled={!valido} onClick={onGuardar}>
-            Guardar
-          </Button>
         </DialogFooter>
       </DialogContent>
     </DialogRoot>
   );
 }
+

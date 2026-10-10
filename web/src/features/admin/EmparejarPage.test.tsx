@@ -1,138 +1,206 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from '../../components/ui/provider';
 import { EmparejarPage } from './EmparejarPage';
 import * as api from '../../api/plataformas';
+import { ApiError } from '../../api/client';
 
 vi.mock('../../api/plataformas', async () => {
   const real = await vi.importActual<typeof api>('../../api/plataformas');
-  return { ...real, emparejamiento: vi.fn(), guardarPareja: vi.fn(), borrarPareja: vi.fn() };
+  return {
+    ...real,
+    tablero: vi.fn(),
+    candidatos: vi.fn(),
+    guardarPareja: vi.fn(),
+    borrarPareja: vi.fn(),
+    confirmarLote: vi.fn(),
+    marcarSoloEnPlataforma: vi.fn(),
+    quitarSoloEnPlataforma: vi.fn(),
+  };
 });
 
-const datos = (): api.Emparejamiento => ({
-  readAt: '2026-09-15T10:00:00Z',
+const renglon = (r: Partial<api.RenglonDelTablero> & { externalId: string }): api.RenglonDelTablero => ({
+  kind: 'platillo',
+  name: r.externalId,
+  price: '99.00',
+  available: true,
+  group: 'unpaired',
+  link: null,
+  proposal: null,
+  ...r,
+});
+
+const datos = (): api.TableroDeEmparejamiento => ({
+  platformName: 'Uber Eats',
+  storeLabel: 'Sucursal Centro',
+  readAt: '2026-10-03T16:42:00Z',
+  counts: { unpaired: 2, toReview: 2, done: 1, excluded: 0 },
   items: [
-    // Dos ya confirmadas, en orden ALFABÉTICO y no cronológico: la lista llega ordenada por nombre
-    // y «Aguas frescas» se confirmó ANTES que «Zarzamora». Es el caso que rompía el deshacer.
-    {
-      externalId: 'Aguas_frescas',
-      kind: 'platillo' as const,
-      name: 'Aguas frescas',
-      priceCents: 4500,
-      available: true,
-      link: { localId: 2, localName: 'Agua', localKind: 'producto' as const, confirmed: true, confirmedAt: '2026-09-15T09:00:00Z' },
-    },
-    {
-      externalId: 'Zarzamora',
-      kind: 'platillo' as const,
-      name: 'Zarzamora',
-      priceCents: 5500,
-      available: true,
-      link: { localId: 3, localName: 'Zarza', localKind: 'producto' as const, confirmed: true, confirmedAt: '2026-09-15T11:00:00Z' },
-    },
-    {
-      externalId: 'Chamoyada_de_Mango',
-      kind: 'platillo',
-      name: 'Chamoyada de Mango 🥭',
-      priceCents: 9900,
-      available: true,
-      link: { localId: 7, localName: 'Chamoyada', localKind: 'producto', confirmed: false },
-    },
-    {
-      externalId: 'Dedos_de_queso',
-      kind: 'platillo',
-      name: 'Dedos de queso',
-      priceCents: 7500,
-      available: true,
-      link: null,
-    },
+    renglon({ externalId: 'crepa', name: 'Crepa de Nutella con Fresa', price: '149.00' }),
+    renglon({ externalId: 'queso', name: 'Dedos de queso', price: '82.80' }),
+    renglon({
+      externalId: 'chai', name: 'Chai Latte', group: 'toReview',
+      proposal: { localKind: 'producto', localId: 41, localName: 'Chai Latte' },
+    }),
+    renglon({
+      externalId: 'capu', name: 'Capuccino', group: 'toReview',
+      proposal: { localKind: 'producto', localId: 42, localName: 'Capuccino' },
+    }),
+    renglon({
+      externalId: 'mango', name: 'Chamoyada de Mango', group: 'done',
+      link: { localKind: 'producto', localId: 7, localName: 'Chamoyada', isCapturePrice: true, confirmedAt: '2026-10-03T16:00:00Z' },
+    }),
   ],
-  unlinkedLocal: [
-    { id: 7, name: 'Chamoyada' },
-    { id: 9, name: 'Papas Fritas - Corte Gajo 270g' },
-  ],
+  priceChanges: [{ name: 'Capuccino', old: '80.00', new: '85.05' }],
 });
 
 const montar = () =>
   render(
-    <Provider>
-      <EmparejarPage conexionId={1} />
-    </Provider>,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Provider>
+        <EmparejarPage conexionId={1} />
+      </Provider>
+    </QueryClientProvider>,
   );
 
 beforeEach(() => {
-  vi.mocked(api.emparejamiento).mockResolvedValue(datos());
+  vi.resetAllMocks();
+  vi.mocked(api.tablero).mockResolvedValue(datos());
+  vi.mocked(api.candidatos).mockResolvedValue([
+    { localKind: 'producto', id: 50, name: 'Arma tu Crepa', context: 'Crepas', linkedCount: 2 },
+    { localKind: 'producto', id: 51, name: 'Crepa Nutella', linkedCount: 0 },
+  ]);
   vi.mocked(api.guardarPareja).mockResolvedValue(undefined as never);
+  vi.mocked(api.confirmarLote).mockResolvedValue({ confirmed: ['chai', 'capu'], skipped: [] });
+  vi.mocked(api.marcarSoloEnPlataforma).mockResolvedValue(undefined as never);
 });
 
-describe('EmparejarPage', () => {
-  // FR-011: una propuesta es una propuesta y se ve así. Aceptada en silencio produce
-  // comparaciones falsas que nadie puede auditar — medido, el nombre acierta 6 de 65.
-  it('marca la sugerencia como propuesta, no como hecho', async () => {
+describe('EmparejarPage (diseño B)', () => {
+  it('muestra los grupos con su conteo, el aviso de precios y el precio con dos decimales', async () => {
     montar();
-    expect(await screen.findByText('Propuesta')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Sin pareja 2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Por revisar 2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Listos 1/ })).toBeInTheDocument();
+    expect(screen.getByText(/Precios: los pone Uber/)).toBeInTheDocument();
+    // «$82.8» se lee como un error al compararlo con lo que publica la plataforma.
+    expect(screen.getByText('$82.80')).toBeInTheDocument();
+    expect(screen.getByText(/1 precio cambió/)).toBeInTheDocument();
   });
 
-  // El nombre completo del platillo tiene que estar: es lo único que lo distingue de sus hermanos.
-  it('muestra el nombre completo del platillo de la plataforma', async () => {
+  // Lo vio el ensayo con datos de producción: «Sin pareja 1» y la lista vacía, porque el conteo
+  // sumaba platillos y opciones y la lista mostraba solo platillos. Conteo y lista, el mismo filtro.
+  it('el conteo de cada grupo es el de la lista que se ve, del nivel elegido', async () => {
+    const user = userEvent.setup();
+    const d = datos();
+    d.items!.push(renglon({ externalId: 'ranch', kind: 'opcion', name: 'Ranch Cremoso' }));
+    d.counts.unpaired = 3; // el servidor cuenta los dos niveles
+    vi.mocked(api.tablero).mockResolvedValue(d);
     montar();
-    expect(await screen.findByText('Chamoyada de Mango 🥭')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Sin pareja 2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Opciones' }));
+    expect(await screen.findByRole('button', { name: /Sin pareja 1/ })).toBeInTheDocument();
+    expect(within(screen.getByTestId('lista-de-la-tienda')).getByText('Ranch Cremoso')).toBeInTheDocument();
   });
 
-  // Una decisión a la vez: el segundo pendiente no se pinta hasta resolver el primero. Con dos
-  // listas lado a lado a 1024 px los nombres se truncan justo por donde se distinguen.
-  it('presenta un solo pendiente a la vez', async () => {
-    montar();
-    await screen.findByText('Chamoyada de Mango 🥭');
-    expect(screen.queryByText('Dedos de queso')).not.toBeInTheDocument();
+  it('no usa select nativo y todo control tappable mide al menos 44 px', async () => {
+    const { container } = montar();
+    await screen.findByRole('button', { name: /Sin pareja 2/ });
+    expect(container.querySelector('select')).toBeNull();
+    for (const b of screen.getAllByRole('button')) {
+      const alto = getComputedStyle(b).minHeight;
+      expect(parseInt(alto || '0', 10), b.textContent ?? '').toBeGreaterThanOrEqual(44);
+    }
   });
 
-  it('confirmar guarda la pareja y vuelve a cargar', async () => {
+  // `overflowY` SIN ALTO NO HACE SCROLL: con 33 platillos sin pareja, a 600 px solo se verían 7 y
+  // el resto no existiría para quien opera.
+  it('la lista tiene su propio scroll con alto acotado', async () => {
     montar();
-    await userEvent.click(await screen.findByRole('button', { name: /es el mismo/i }));
+    const lista = await screen.findByTestId('lista-de-la-tienda');
+    const estilo = getComputedStyle(lista);
+    expect(estilo.overflowY).toBe('auto');
+    expect(estilo.minHeight).toBe('0px');
+  });
+
+  it('un platillo sin pareja ofrece candidatos, y un producto ya ligado sigue apareciendo', async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(within(await screen.findByTestId('lista-de-la-tienda')).getByText('Crepa de Nutella con Fresa'));
+    const panel = await screen.findByRole('region', { name: 'Decidir' });
+    expect(await within(panel).findByText('Arma tu Crepa')).toBeInTheDocument();
+    expect(within(panel).getByText(/ya ligado a 2 platillos/)).toBeInTheDocument();
+    // Dos productos u opciones con el mismo nombre se distinguen por su categoría o grupo.
+    expect(within(panel).getByText('Categoría: Crepas')).toBeInTheDocument();
+  });
+
+  it('el segundo platillo al mismo producto pide el precio de captura y no liga sin elegir', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.guardarPareja).mockRejectedValueOnce(
+      new ApiError(422, 'CAPTURE_PRICE_REQUIRED', 'elige', 'r1'),
+    );
+    montar();
+    await user.click(within(await screen.findByTestId('lista-de-la-tienda')).getByText('Crepa de Nutella con Fresa'));
+    await user.click(await screen.findByText('Arma tu Crepa'));
+    const grupo = await screen.findByRole('radiogroup', { name: /Precio para capturar a mano/ });
+    await user.click(within(grupo).getByRole('radio', { name: /Crepa de Nutella con Fresa/ }));
+    await user.click(screen.getByRole('button', { name: /Ligar/ }));
     await waitFor(() =>
-      expect(api.guardarPareja).toHaveBeenCalledWith(1, 'Chamoyada_de_Mango', {
-        localId: 7,
-        localKind: 'producto',
-        kind: 'platillo',
-      }),
+      expect(api.guardarPareja).toHaveBeenLastCalledWith(1, 'crepa', expect.objectContaining({ localId: 50, capturePrice: true })),
     );
   });
 
-  // El POS vive en tabletas: el desplegable nativo lo pinta el sistema con renglones de ~20 px y no
-  // se acierta con el dedo. Va el Picker, que además trae buscador.
-  it('no usa ningún select nativo', async () => {
-    const { container } = montar();
-    await screen.findByText('Chamoyada de Mango 🥭');
-    expect(container.querySelector('select')).toBeNull();
+  it('en lote confirma todas las marcadas con un toque, y desmarcar deja fuera', async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(await screen.findByRole('button', { name: /Por revisar 2/ }));
+    await user.click(screen.getByRole('button', { name: 'En lote' }));
+    await user.click(screen.getByRole('checkbox', { name: /Capuccino/ }));
+    await user.click(screen.getByRole('button', { name: /Confirmar 1/ }));
+    await waitFor(() => expect(api.confirmarLote).toHaveBeenCalledWith(1, ['chai']));
   });
-});
 
-describe('EmparejarPage — lo que la revisión encontró', () => {
-  // DESHACER TIENE QUE DESHACER EL ÚLTIMO, no el primero alfabético.
-  //
-  // La lista llega ordenada por nombre, así que un `.find()` devolvía «Aguas frescas» (confirmada a
-  // las 09:00) en vez de «Zarzamora» (a las 11:00). El operador se equivocaba en la última, tocaba
-  // deshacer, y el sistema borraba en silencio otra pareja: un error nuevo en vez de la corrección
-  // que pidió, y encima invisible hasta semanas después.
-  it('deshace la pareja más reciente, no la primera de la lista', async () => {
+  // Un lote de doce mal confirmado no puede costar doce toques de corregir.
+  it('un lote se deshace completo con un toque', async () => {
+    const user = userEvent.setup();
     vi.mocked(api.borrarPareja).mockResolvedValue(undefined as never);
     montar();
-    const boton = await screen.findByRole('button', { name: /Deshacer «Zarzamora»/ });
-    await userEvent.click(boton);
-    await waitFor(() => expect(api.borrarPareja).toHaveBeenCalledWith(1, 'Zarzamora'));
+    await user.click(await screen.findByRole('button', { name: /Por revisar 2/ }));
+    await user.click(screen.getByRole('button', { name: 'En lote' }));
+    await user.click(screen.getByRole('button', { name: /Confirmar 2/ }));
+    await user.click(await screen.findByRole('button', { name: /Deshacer 2/ }));
+    await waitFor(() => expect(api.borrarPareja).toHaveBeenCalledTimes(2));
+    expect(api.borrarPareja).toHaveBeenCalledWith(1, 'chai');
+    expect(api.borrarPareja).toHaveBeenCalledWith(1, 'capu');
   });
 
-  // UN PLATILLO SIN PAREJA POSIBLE NO PUEDE ATORAR LA SESIÓN.
-  //
-  // Con 65 platillos y 109 productos sin pareja es seguro toparse con uno que no corresponde a
-  // nada. Sin salida, el operador solo podía confirmar algo que sabía mal o abandonar las decisiones
-  // que faltaban — y el spec pide terminarlas de un tirón.
-  it('deja saltar un platillo y pasa al siguiente', async () => {
+  it('uno por uno confirma la propuesta y avanza sola', async () => {
+    const user = userEvent.setup();
     montar();
-    await screen.findByText('Chamoyada de Mango 🥭');
-    await userEvent.click(screen.getByRole('button', { name: /Más tarde/ }));
-    expect(await screen.findByText('Dedos de queso')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /Por revisar 2/ }));
+    await user.click(screen.getByRole('button', { name: /Es el mismo/ }));
+    await waitFor(() =>
+      expect(api.guardarPareja).toHaveBeenCalledWith(1, 'chai', expect.objectContaining({ localId: 41, localKind: 'producto' })),
+    );
+  });
+
+  it('«Solo existe en Uber» guarda la decisión', async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(within(await screen.findByTestId('lista-de-la-tienda')).getByText('Dedos de queso'));
+    await user.click(screen.getByRole('button', { name: 'Solo existe en Uber' }));
+    await waitFor(() => expect(api.marcarSoloEnPlataforma).toHaveBeenCalledWith(1, 'queso'));
+  });
+
+  it('una pareja lista muestra que el precio lo pone Uber y se puede quitar', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.borrarPareja).mockResolvedValue(undefined as never);
+    montar();
+    await user.click(await screen.findByRole('button', { name: /Listos 1/ }));
+    await user.click(within(screen.getByTestId('lista-de-la-tienda')).getByText('Chamoyada de Mango'));
+    expect(await screen.findByText(/lo pone Uber/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Quitar la pareja' }));
+    await waitFor(() => expect(api.borrarPareja).toHaveBeenCalledWith(1, 'mango'));
   });
 });

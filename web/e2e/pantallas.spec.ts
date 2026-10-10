@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
+import { API, tokenDeRequest } from './ambiente';
+import { iniciarSesion } from './sesion';
 
 // LA MATRIZ DE PANTALLAS, EXTREMO A EXTREMO. Ver docs/matriz-de-pantallas.md.
 //
@@ -20,9 +21,8 @@ import { API, EMPRESA, PASSWORD, USUARIO, tokenDeRequest } from './ambiente';
 // porque solo visitan `/`, y su aserción de URL acepta `/pos`.
 async function entrar(page: Page, ruta: string) {
   await page.goto('/');
-  await page.getByPlaceholder('usuario@empresa').fill(`${USUARIO}@${EMPRESA}`);
-  await page.getByPlaceholder('Contraseña').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForLoadState('networkidle');
+  await iniciarSesion(page);
   await page.waitForURL(/\/(pos)?$/);
   await page.goto(ruta);
 }
@@ -259,8 +259,10 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
   test('D1 · devolver más de lo cobrado se rechaza', async ({ request }) => {
     const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
-    const alguno = (abiertos.items ?? [])[0];
+    const abiertos = await (await request.get(`${API}/pos/accounts`, { headers: auth })).json();
+    const cuenta = (abiertos.items ?? []).find((o: { kind: string }) => o.kind === 'order');
+    // Puede no haber ninguno: el `test.skip` de abajo lo dice.
+    const alguno = (cuenta ? { id: cuenta.orderId } : undefined) as { id: number };
     test.skip(!alguno, 'no hay pedidos en el ambiente para probar el rechazo');
 
     const r = await request.post(`${API}/orders/${alguno.id}/refund`, {
@@ -275,8 +277,10 @@ test.describe('D — devolver dinero: lo que el servidor NO acepta', () => {
   test('D2 · un motivo en blanco se rechaza', async ({ request }) => {
     const jwt = await tokenDeRequest(request);
     const auth = { Authorization: `Bearer ${jwt}` };
-    const abiertos = await (await request.get(`${API}/orders/open`, { headers: auth })).json();
-    const alguno = (abiertos.items ?? [])[0];
+    const abiertos = await (await request.get(`${API}/pos/accounts`, { headers: auth })).json();
+    const cuenta = (abiertos.items ?? []).find((o: { kind: string }) => o.kind === 'order');
+    // Puede no haber ninguno: el `test.skip` de abajo lo dice.
+    const alguno = (cuenta ? { id: cuenta.orderId } : undefined) as { id: number };
     test.skip(!alguno, 'no hay pedidos en el ambiente para probar el rechazo');
 
     for (const reason of ['', '   ']) {

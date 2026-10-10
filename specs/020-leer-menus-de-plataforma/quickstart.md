@@ -5,7 +5,11 @@
 
 ## Prerrequisitos
 
-1. **Credenciales del ambiente de pruebas de Uber** en `deploy/.env`:
+> **Desde el 2026-09-27 (0075) las credenciales ya no van en `deploy/.env`**: solo
+> `UBER_EATS_ENV=sandbox`, y el Client ID y el Client Secret se capturan en Plataformas → «Acceso a
+> la app». El resto de este quickstart sigue valiendo.
+
+1. **Credenciales del ambiente de pruebas de Uber** en `deploy/.env` (histórico, ver la nota):
 
    ```
    UBER_EATS_CLIENT_ID=…

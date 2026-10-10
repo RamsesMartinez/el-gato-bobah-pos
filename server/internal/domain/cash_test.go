@@ -66,3 +66,35 @@ func TestResolveDeclared(t *testing.T) {
 		})
 	}
 }
+
+// UNA DEVOLUCIÓN SE CLASIFICA IGUAL SALGA O NO DEL CAJÓN (spec 029).
+//
+// El corte mandaba la de efectivo a «Salidas de efectivo» y la de tarjeta a «Devoluciones» dentro de
+// Ingresos, y contaba la propina devuelta dentro de lo devuelto mientras Ventas la dejaba fuera. Las
+// dos pantallas decían cifras distintas del mismo dinero.
+func TestUnaDevolucionSeClasificaIgualSalgaONoDelCajon(t *testing.T) {
+	r := MethodRefunds{
+		OffDrawer: decimal.RequireFromString("35"), OffDrawerTips: decimal.RequireFromString("5"),
+		Drawer: decimal.RequireFromString("110"), DrawerTips: decimal.RequireFromString("10"),
+	}
+	if got := r.Sale(); !got.Equal(decimal.RequireFromString("130")) {
+		t.Fatalf("devolución de venta = %s, quiere 130: la propina devuelta se contó como venta devuelta", got)
+	}
+	if got := r.Tips(); !got.Equal(decimal.RequireFromString("15")) {
+		t.Fatalf("propina devuelta = %s, quiere 15", got)
+	}
+	// Venta + propina devueltas = todo lo que salió, ni un peso más ni uno menos.
+	if !r.Sale().Add(r.Tips()).Equal(r.OffDrawer.Add(r.Drawer)) {
+		t.Fatal("la clasificación inventó o perdió dinero")
+	}
+}
+
+// UN MEDIO EN NEGATIVO DICE POR QUÉ.
+func TestUnMedioEnNegativoDicePorQue(t *testing.T) {
+	if NegativeMethodNote(decimal.RequireFromString("-300")) == "" {
+		t.Fatal("un medio en negativo sin nota deja al cajero buscando un faltante que no existe")
+	}
+	if NegativeMethodNote(decimal.Zero) != "" || NegativeMethodNote(decimal.RequireFromString("10")) != "" {
+		t.Fatal("solo el negativo lleva nota")
+	}
+}
