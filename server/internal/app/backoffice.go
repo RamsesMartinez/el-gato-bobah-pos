@@ -323,7 +323,7 @@ type methodExpected struct {
 // ventas se derivan del esperado restando propinas y (en efectivo) fondo + neto de movimientos, así
 // una caja secundaria (esperado = fondo + neto) da 0 ventas sola. Propinas se listan aparte.
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
-	var entradas, traspasosIn, salidas, traspasosOut, gastos, net decimal.Decimal
+	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, net decimal.Decimal
 	for _, m := range moves {
 		if m.Kind == domain.CashEntrada {
 			net = net.Add(m.Amount)
@@ -331,6 +331,9 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 			net = net.Sub(m.Amount)
 		}
 		switch {
+		case m.Kind == domain.CashPropina:
+			// Dinero del personal que sale del cajón: ni gasto ni salida del negocio (spec 032).
+			propinas = propinas.Add(m.Amount)
 		case m.IsRefund:
 			// La salida de caja de una devolución se presenta en «Devoluciones» de su medio, como la
 			// de tarjeta (spec 029). Sigue en el neto: el esperado no cambia.
@@ -402,6 +405,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		{Concept: "Gastos", Amount: domain.Round2(gastos)},
 		{Concept: "Salidas de efectivo", Amount: domain.Round2(salidas)},
 		{Concept: "Traspasos enviados", Amount: domain.Round2(traspasosOut)},
+		{Concept: "Propinas entregadas", Amount: domain.Round2(propinas)},
 	} {
 		if b.Amount.IsPositive() {
 			out.Egresos = append(out.Egresos, b)
@@ -414,19 +418,24 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 }
 
 type SessionView struct {
-	ID           int64              `json:"id"`
-	RegisterID   int64              `json:"registerId"`
-	RegisterName string             `json:"registerName"`
-	IsPrimary    bool               `json:"isPrimary"` // la caja primaria recibe las ventas del POS
-	Status       string             `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"openingCash"`
-	Currency     domain.Currency    `json:"currency"`
-	OpenedAt     time.Time          `json:"openedAt"`
-	NetMovements decimal.Decimal    `json:"netMovements"` // entradas − salidas de efectivo
-	Totals       []MethodTotal      `json:"totals"`
-	Movements    []CashMovementView `json:"movements"`
-	Expenses     []CashExpenseView  `json:"expenses"`
-	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Propinas (spec 032): por entregar, entregadas en el turno y cuánto de lo entregado era
+	// propina de tarjeta u otro medio pagada con efectivo del cajón.
+	TipsPending        *TipsPendingView   `json:"tipsPending"`
+	TipsPaidOut        decimal.Decimal    `json:"tipsPaidOut"`
+	CardTipsPaidInCash decimal.Decimal    `json:"cardTipsPaidInCash"`
+	ID                 int64              `json:"id"`
+	RegisterID         int64              `json:"registerId"`
+	RegisterName       string             `json:"registerName"`
+	IsPrimary          bool               `json:"isPrimary"` // la caja primaria recibe las ventas del POS
+	Status             string             `json:"status"`
+	OpeningCash        decimal.Decimal    `json:"openingCash"`
+	Currency           domain.Currency    `json:"currency"`
+	OpenedAt           time.Time          `json:"openedAt"`
+	NetMovements       decimal.Decimal    `json:"netMovements"` // entradas − salidas de efectivo
+	Totals             []MethodTotal      `json:"totals"`
+	Movements          []CashMovementView `json:"movements"`
+	Expenses           []CashExpenseView  `json:"expenses"`
+	Breakdown          CorteBreakdown     `json:"breakdown"`
 	// Blind: este turno se está contando a ciegas, así que la vista viene SIN el desglose de la
 	// venta ni lo cobrado por cada cajero.
 	//
@@ -1343,6 +1352,17 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	view.Drawer = arqueo
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
+	fuentes, err := tipSources(ctx, s.store.QC(ctx), sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	pend := pendingView(fuentes)
+	view.TipsPending = &pend
+	entregado, err := s.store.QC(ctx).TipPayoutTotalsForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.TipsPaidOut, view.CardTipsPaidInCash = entregado.PaidOut, entregado.NonCashPaidInCash
 	for _, m := range moves {
 		view.Movements = append(view.Movements, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
@@ -1386,6 +1406,9 @@ type CierreCmd struct {
 	Total  *decimal.Decimal
 	Motivo string
 	Notas  string
+	// Propinas: qué se hace con la propina pendiente (spec 032). Obligatoria si queda al menos un
+	// peso; «quedan_en_caja» la hereda el siguiente turno de esta caja.
+	Propinas string
 }
 
 func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, userID int64, cmd CierreCmd) (*SessionView, error) {
@@ -1400,6 +1423,10 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		if !domain.ValidMoney(domain.Round2(d), true) {
 			return nil, domain.ErrValidation
 		}
+	}
+	decision, err := domain.ParseTipsDecision(cmd.Propinas)
+	if err != nil {
+		return nil, err
 	}
 	reg, err := s.store.QC(ctx).GetCashRegister(ctx, registerID)
 	if err != nil {
@@ -1447,6 +1474,20 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		}
 		if errDebe := domain.NoOwingOrders(debe); errDebe != nil {
 			return errDebe
+		}
+		// LA PROPINA PENDIENTE NO SE QUEDA SIN DUEÑO (spec 032). Con un peso o más hay que decidir;
+		// lo que quede —incluido un sobrante de centavos, que no se puede entregar— lo hereda el
+		// siguiente turno de esta misma caja.
+		fuentes, errTips := tipSources(ctx, q, sess.ID)
+		if errTips != nil {
+			return errTips
+		}
+		pendiente := domain.PendingTips(fuentes)
+		if domain.TipsDecisionRequired(pendiente) && decision != domain.TipsDecisionKeepInBox {
+			return domain.ErrTipsDecisionNeeded
+		}
+		if errTips := q.SetTipsCarriedOver(ctx, db.SetTipsCarriedOverParams{ID: sess.ID, TipsCarriedOver: pendiente}); errTips != nil {
+			return errTips
 		}
 		var err error
 		// Sin las cuentas vivas: su barrido abre su propia transacción, y con la conexión del turno

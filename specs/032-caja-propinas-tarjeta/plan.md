@@ -109,3 +109,18 @@ Hallazgos incorporados como reglas del plan; `tasks.md` los cubre.
 - U7 Mensajes de error en lenguaje de operador («Escribe el folio que imprimió la terminal»).
 - U8 Avisos de salidas sin concepto con botón que lleva a corregirlas.
 - U9 Modo de arqueo con control segmentado de 44 px; fusionar conceptos con `Picker` de destino y confirmación, separado de «Archivar».
+
+## Decisiones del dueño del 2026-10-09 (D-A, D-B, D-C del spec)
+
+- `domain.SplitEven(pending, n)` devuelve pesos enteros por persona y el sobrante; `domain.ValidWholePesos` rechaza centavos. El sobrante no se guarda aparte: el pendiente se recalcula siempre y lo incluye.
+- La pregunta del cierre usa `domain.TipsDecisionRequired(pending) = pending >= 1`; un sobrante menor a $1 se hereda solo, sin preguntar.
+- Correos del resumen: `business_settings.daily_summary_emails text[]`, validados en `domain.ValidSummaryEmails`. Reemplaza el supuesto del correo de recuperación.
+
+## Límites conocidos de la entrega de propinas (revisión de código, 2026-10-09)
+
+- Lo heredado (`tips_carried_over`) es un solo número: al entregarlo en el turno siguiente cuenta
+  como efectivo, así que la «propina de tarjeta pagada en efectivo» de ese turno sale menor. Se
+  corrige heredando por separado efectivo y otros medios.
+- Una devolución de propina posterior al cierre no baja lo ya heredado: el turno siguiente puede
+  ofrecer entregar propina que ya se devolvió.
+- En modo ajustado los montos no se precargan con el reparto parejo (revisor de tableta).

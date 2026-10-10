@@ -11,6 +11,15 @@
 verificables y enumera sus bordes. Se citan por número de punto; los datos del negocio que las
 motivaron no entran al repositorio.
 
+## Decisiones del dueño del 2026-10-09 (posteriores a las maquetas)
+
+- **D-A** «Entregar propina» es la opción C: reparto entre una o varias personas, parejo o ajustado.
+- **D-B** Los centavos no se reparten. El reparto parejo entrega pesos enteros por persona; lo que no
+  alcanza un peso entero por persona (incluidos $0.01–$0.99) se queda como propina pendiente para el
+  siguiente reparto. Los montos ajustados también son pesos enteros.
+- **D-C** El correo diario va a las direcciones capturadas en un campo nuevo de Configuración del
+  negocio (una o varias, validadas).
+
 ## Casos de borde enumerados ANTES del diseño *(constitución IV)*
 
 Formas de fallar, agrupadas por las cuatro familias de la constitución. Cada una tiene un requisito
@@ -102,6 +111,13 @@ Formas de fallar, agrupadas por las cuatro familias de la constitución. Cada un
 
 - **EB-41** «Entregar propina» sin rol o sin caja abierta; entrega a una persona de otra empresa o
   inactiva.
+- **EB-43** (D-B) Reparto parejo que no da un peso entero a cada persona (pendiente $2.50 entre 3):
+  no se entrega nada y se avisa; nunca se entregan centavos ni se pierde el sobrante.
+- **EB-44** (D-B) Monto ajustado con centavos (`$40.50`) rechazado en servidor, no solo en pantalla.
+- **EB-45** (D-B) El sobrante de centavos se queda pendiente al cerrar: la pregunta del cierre no
+  debe exigir decisión por un pendiente que no se puede entregar (menor a $1), pero sí heredarlo.
+- **EB-46** (D-A) La misma persona dos veces en un reparto, o un reparto vacío.
+- **EB-47** (D-C) Correo mal formado, lista vacía, duplicados o más de 10 direcciones.
 - **EB-42** Montos absurdos (NaN, negativos, por encima de `MaxMoney`) en entrega, conteo por
   denominación, total de terminal.
 
@@ -248,12 +264,18 @@ hora.
 - **FR-002** «Entregar propina» MUST registrar un movimiento de caja de tipo propina con: persona que
   la recibe (usuario activo de la empresa), monto, método de origen, cobros que la generaron, quién
   la entregó y el turno (EB-41).
-- **FR-003** MUST rechazar una entrega mayor al pendiente de su método de origen (EB-06).
+- **FR-003** MUST rechazar una entrega mayor al pendiente (EB-06). El método de origen lo decide
+  el servidor: primero lo heredado, luego lo cobrado en efectivo y después los demás métodos, en
+  orden de cobro.
+- **FR-003a** (D-A) Una entrega MAY repartirse entre varias personas, parejo o ajustado; queda un
+  movimiento por persona. Sin personas o con una persona repetida se rechaza (EB-46).
+- **FR-003b** (D-B) Toda entrega es en pesos enteros. Parejo = `floor(pendiente / n)` pesos por
+  persona; el sobrante sigue pendiente. Un monto con centavos se rechaza (EB-43, EB-44).
 - **FR-004** Una propina entregada MUST NOT contar en ventas ni en gastos (EB-01, EB-02).
 - **FR-005** El efectivo esperado del cajón MUST bajar por propinas entregadas en efectivo,
   cualquiera que sea el método con que se cobraron, y la de efectivo MUST haber entrado una sola vez
   (EB-03, EB-04).
-- **FR-006** Al cerrar con pendiente > 0 MUST preguntar «¿se entrega ahora o se queda en caja?».
+- **FR-006** Al cerrar con pendiente de al menos $1 MUST preguntar «¿se entrega ahora o se queda en caja?».
 - **FR-007** El arqueo de cierre MUST separar efectivo del negocio y propinas por entregar (EB-13).
 - **FR-008** Los gastos históricos que eran propinas (punto 1) MUST migrarse al tipo propina por una
   corrección de datos con lista aprobada, respaldo y rollback, y dejar de salir en gastos (EB-09).
@@ -300,7 +322,9 @@ hora.
   pagadas en efectivo; salidas por concepto y proveedor; y salidas sin concepto (las históricas).
 - **FR-023** Avisos de salidas sin concepto y propinas sin entregar MUST aparecer en el cierre y en
   Ventas del día.
-- **FR-024** Un correo diario al dueño con el resumen del cierre MUST enviarse una vez por empresa y
+- **FR-024a** (D-C) Configuración del negocio MUST tener un campo de correos para el resumen
+  diario: uno o varios, cada uno validado, sin duplicados, a lo más 10 (EB-47).
+- **FR-024** Un correo diario a esas direcciones con el resumen del cierre MUST enviarse una vez por empresa y
   día de negocio, sin bloquear el cierre si falla, y dejar evento en el log si no hay destinatario
   (EB-37 a EB-40).
 - **FR-025** Los reportes de gastos MUST excluir propinas y traspasos y mostrarlos aparte (EB-10).
@@ -333,10 +357,10 @@ hora.
 ## Assumptions
 
 - «Persona que recibe» es un usuario de la empresa; no se crea un catálogo aparte de empleados.
-- La propina se reparte a criterio de quien entrega; el sistema no calcula repartos.
+- El reparto lo decide quien entrega (parejo o ajustado); el sistema no reparte por horas trabajadas.
 - El modo de arqueo y las terminales cuelgan de la sucursal existente; con una sola sucursal todo
   funciona igual.
-- El correo usa el mailer existente y el destinatario es el correo de recuperación del dueño.
+- El correo usa el mailer existente; el destinatario sale del campo de D-C.
 - La corrección de los gastos 45 y 46 (punto 5) es corrección de datos fuera de esta feature.
 - Las listas de motivos de apertura arrancan con un catálogo fijo en código (YAGNI); si se piden
   editables, se agregan después al mismo costo.

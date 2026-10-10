@@ -771,3 +771,10 @@ describe('los controles del histórico de cortes', () => {
     expect(onRango).toHaveBeenCalledWith('', '');
   });
 });
+
+// La propina entregada sale del cajón pero no es una salida del negocio: se nombra aparte (spec 032).
+test('MovementsTable etiqueta la propina entregada como Propina, no como Salida', () => {
+  wrap(<MovementsTable movements={[mov({ id: 9, kind: 'propina', amount: '62', concept: 'Propina a Ana' })]} currency="MXN" />);
+  expect(screen.getByText('Propina')).toBeInTheDocument();
+  expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});

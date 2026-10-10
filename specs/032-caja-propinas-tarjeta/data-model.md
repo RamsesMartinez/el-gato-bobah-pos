@@ -31,6 +31,9 @@ Toda tabla nueva: `company_id` con default `nullif(current_setting('app.company_
 ### branches
 `card_count_mode text not null default 'automatico' check in ('automatico','por_terminal')`.
 
+### business_settings
+`daily_summary_emails text[] not null default '{}'` (D-C, 2026-10-09); validado en dominio: formato, sin duplicados, máx. 10.
+
 ### user_preferences
 `default_card_terminal_id bigint → card_terminals on delete set null`.
 
@@ -44,6 +47,7 @@ Toda tabla nueva: `company_id` con default `nullif(current_setting('app.company_
 
 ## Reglas de cálculo (domain)
 
+- Entregas en pesos enteros (D-B, 2026-10-09); parejo = `floor(pendiente/n)` por persona, el sobrante sigue pendiente.
 - `pendiente(método) = cobradas − devueltas − entregadas (+ heredado si efectivo)`; nunca < 0.
 - `efectivo_esperado = fondo + ventas_efectivo + propinas_efectivo − propinas_entregadas(todas) + entradas − salidas ± reversos − devoluciones_cajón`.
 - `efectivo_negocio = contado − propinas_pendientes_en_cajón`.

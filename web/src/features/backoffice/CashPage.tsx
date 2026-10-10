@@ -23,6 +23,9 @@ import type { ResultadoDelConteo } from './conteo';
 import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
+import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
+import { faltaDecidirPropinas } from './propinas';
+import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type DiferenciasDelCierre,
@@ -59,6 +62,7 @@ function hhmm(iso: string, zona: string) {
 function movementType(m: CashMovement): { label: string; palette: string } {
   if (m.transferId !== null) return { label: 'Traspaso', palette: 'blue' };
   if (m.isRefund) return { label: 'Devolución', palette: 'orange' };
+  if (m.kind === 'propina') return { label: 'Propina', palette: 'purple' };
   return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
 }
 
@@ -747,6 +751,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [notes, setNotes] = useState('');
   const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   const [transferOpen, setTransferOpen] = useState(false);
+  const [repartiendo, setRepartiendo] = useState(false);
+  const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
+  const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const navigate = useNavigate();
@@ -780,6 +787,15 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
     onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); invalidate(); },
     onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
   });
+  const payoutMut = useMutation({
+    mutationFn: (input: TipPayoutInput) => backofficeApi.cashTipPayout(register.id, input),
+    onSuccess: (r) => {
+      setRepartiendo(false); invalidate();
+      toaster.create({ title: r.items.length === 1 ? `Propina entregada a ${r.items[0].recipientName}`
+        : `Propina repartida entre ${r.items.length} personas`, type: 'success' });
+    },
+    onError: (e) => toaster.create({ title: 'No se pudo entregar la propina', description: mensajeDeError(e), type: 'error' }),
+  });
   const closeMut = useMutation({
     mutationFn: () => {
       // `declared` lleva SOLO lo que no está en el cajón. Un método de cajón aquí lo rechaza el
@@ -798,11 +814,12 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         countedCash: aMano?.total,
         manualReason: aMano?.manualReason,
         notes: notes || undefined,
+        tipsDecision: Number(session?.tipsPending?.total ?? 0) >= 1 ? decisionPropinas ?? undefined : undefined,
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
@@ -874,6 +891,23 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               <IngresosEgresosCard openingCash={session.openingCash} breakdown={session.breakdown} currency={session.currency} />
             )}
           </Section>
+
+          {Number(session.tipsPending?.total ?? 0) >= 1 && (
+            <HStack borderWidth="1px" borderRadius="lg" p={3} justify="space-between" flexWrap="wrap" gap={2}>
+              <Box>
+                <Text fontWeight="700">Propinas por entregar: {money(session.tipsPending?.total ?? '0', session.currency)}</Text>
+                {Number(session.cardTipsPaidInCash ?? 0) > 0 && (
+                  <Text fontSize="sm" color="fg.muted">
+                    Propina de tarjeta pagada en efectivo: {money(session.cardTipsPaidInCash ?? '0', session.currency)}
+                  </Text>
+                )}
+              </Box>
+              <Button minH="52px" colorPalette="orange"
+                onClick={() => setRepartiendo(true)}>
+                Entregar propina
+              </Button>
+            </HStack>
+          )}
 
           <MovementsPanel session={session} />
 
@@ -974,8 +1008,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
             currency={session.currency} />
 
+          <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
+            onEntregarAhora={() => setRepartiendo(true)} onDecidir={setDecisionPropinas} />
+
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
@@ -996,6 +1033,11 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           titulo={`Efectivo en «${register.name}»`} currency={session.currency}
           etiquetaConfirmar="Usar este conteo" guardando={false}
           onConfirmar={(r) => { medirAccion('caja', 'contar-efectivo'); setConteoDelCierre(r); setContando(false); }} />
+      )}
+
+      {session && (
+        <RepartirPropinas isOpen={repartiendo} pendiente={session.tipsPending ?? null} currency={session.currency}
+          guardando={payoutMut.isPending} onEntregar={(i) => payoutMut.mutate(i)} onClose={() => setRepartiendo(false)} />
       )}
 
       <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)}

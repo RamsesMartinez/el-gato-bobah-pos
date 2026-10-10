@@ -247,6 +247,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		CountedCash  *decimal.Decimal `json:"countedCash"`
 		ManualReason string           `json:"manualReason"`
 		Notes        string           `json:"notes"`
+		TipsDecision string           `json:"tipsDecision"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -267,7 +268,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
-		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes,
+		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
 	if err != nil {
 		Error(w, err)
@@ -402,6 +403,41 @@ func (h *Handlers) CreateCashMovement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, sess)
+}
+
+// PendingTips: la propina por entregar del turno abierto de una caja.
+func (h *Handlers) PendingTips(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("registerId"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, fmt.Errorf("%w: caja inválida", domain.ErrValidation))
+		return
+	}
+	v, err := h.tips.Pending(r.Context(), id)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
+// PayoutTips: reparte la propina pendiente entre una o varias personas.
+func (h *Handlers) PayoutTips(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RegisterID int64 `json:"registerId"`
+		app.TipPayoutCmd
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	body.ActorID = u.ID
+	items, err := h.tips.Payout(r.Context(), body.RegisterID, body.TipPayoutCmd)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, map[string]any{"items": items})
 }
 
 // ---- Categorías de gasto ----

@@ -1588,29 +1588,32 @@ type RefreshToken struct {
 }
 
 type RegisterCashMovement struct {
-	ID         int64           `json:"id"`
-	SessionID  int64           `json:"session_id"`
-	Kind       string          `json:"kind"`
-	Amount     decimal.Decimal `json:"amount"`
-	Concept    string          `json:"concept"`
-	ExpenseID  *int64          `json:"expense_id"`
-	UserID     int64           `json:"user_id"`
-	CreatedAt  time.Time       `json:"created_at"`
-	TransferID *int64          `json:"transfer_id"`
+	ID              int64           `json:"id"`
+	SessionID       int64           `json:"session_id"`
+	Kind            string          `json:"kind"`
+	Amount          decimal.Decimal `json:"amount"`
+	Concept         string          `json:"concept"`
+	ExpenseID       *int64          `json:"expense_id"`
+	UserID          int64           `json:"user_id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	TransferID      *int64          `json:"transfer_id"`
+	RecipientUserID *int64          `json:"recipient_user_id"`
+	RecipientName   *string         `json:"recipient_name"`
 }
 
 type RegisterSession struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
+	ID              int64              `json:"id"`
+	BusinessDate    pgtype.Date        `json:"business_date"`
+	Status          SessionStatus      `json:"status"`
+	OpeningCash     decimal.Decimal    `json:"opening_cash"`
+	OpenedBy        int64              `json:"opened_by"`
+	OpenedAt        time.Time          `json:"opened_at"`
+	ClosedBy        *int64             `json:"closed_by"`
+	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
+	Notes           *string            `json:"notes"`
+	Currency        string             `json:"currency"`
+	RegisterID      int64              `json:"register_id"`
+	TipsCarriedOver decimal.Decimal    `json:"tips_carried_over"`
 }
 
 type RegisterSessionTotal struct {
@@ -1698,6 +1701,14 @@ type SupplierItem struct {
 	LastSeenAt    time.Time        `json:"last_seen_at"`
 	CreatedAt     time.Time        `json:"created_at"`
 	CompanyID     int64            `json:"company_id"`
+}
+
+type TipPayoutSource struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	MovementID     int64           `json:"movement_id"`
+	OrderPaymentID *int64          `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
 }
 
 type Unit struct {

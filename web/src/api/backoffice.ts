@@ -33,7 +33,7 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida';
+  kind: 'entrada' | 'salida' | 'propina';
   amount: string;
   concept: string;
   createdAt: string;
@@ -159,6 +159,26 @@ export interface CashSession {
   owing?: OwingOrder[];
   // Dinero devuelto al cliente en el turno (spec 031). Opcional por la misma razón que el anterior.
   refunds?: SessionRefund[];
+  // Propinas (spec 032). Opcionales: un servidor viejo no las manda y la sección no se pinta.
+  tipsPending?: TipsPending | null;
+  tipsPaidOut?: string;
+  cardTipsPaidInCash?: string;
+}
+
+// Propina por entregar del turno abierto y a quién se le puede entregar.
+export interface TipsPending {
+  total: string;
+  cash: string;
+  nonCash: string;
+  inherited: string;
+  people?: { id: number; name: string }[];
+}
+
+export type TipsDecision = 'quedan_en_caja';
+
+export interface TipPayoutInput {
+  mode: 'parejo' | 'ajustado';
+  recipients: { userId: number; amount?: number }[];
 }
 
 // Una devolución del turno. `fromDrawer`: salió del cajón (con su salida de caja); si no, ya bajó
@@ -533,7 +553,12 @@ export const backofficeApi = {
     countedCash?: number;
     manualReason?: string;
     notes?: string;
+    tipsDecision?: TipsDecision;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
+  cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
+  cashTipPayout: (registerId: number, input: TipPayoutInput) =>
+    api.post<{ items: { movementId: number; recipientName: string; amount: string }[] }>(
+      '/cash-sessions/tips/payouts', { registerId, ...input }),
   // Paginado y con rango opcional por día del turno: sin páginas solo existían los 50 más recientes.
   cashHistory: (p: { page: number; pageSize: number; from?: string; to?: string }) => {
     const q = new URLSearchParams({ page: String(p.page), pageSize: String(p.pageSize) });

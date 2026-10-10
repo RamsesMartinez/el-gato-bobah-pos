@@ -514,7 +514,7 @@ func (q *Queries) GetOpenPrimarySessionOfBranch(ctx context.Context, branchID in
 
 const getOpenSessionByRegister = `-- name: GetOpenSessionByRegister :one
 
-select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id from register_sessions where register_id = $1 and status = 'abierta' limit 1
+select id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over from register_sessions where register_id = $1 and status = 'abierta' limit 1
 `
 
 // Cortes de caja (sesiones de una caja)
@@ -533,6 +533,7 @@ func (q *Queries) GetOpenSessionByRegister(ctx context.Context, registerID int64
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
 	)
 	return i, err
 }
@@ -573,7 +574,7 @@ func (q *Queries) GetPaymentMethod(ctx context.Context, id int16) (GetPaymentMet
 }
 
 const getSession = `-- name: GetSession :one
-select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
+select s.id, s.business_date, s.status, s.opening_cash, s.opened_by, s.opened_at, s.closed_by, s.closed_at, s.notes, s.currency, s.register_id, s.tips_carried_over, r.name as register_name, ob.name as opened_by_name, cb.name as closed_by_name
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -582,20 +583,21 @@ where s.id = $1
 `
 
 type GetSessionRow struct {
-	ID           int64              `json:"id"`
-	BusinessDate pgtype.Date        `json:"business_date"`
-	Status       SessionStatus      `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"opening_cash"`
-	OpenedBy     int64              `json:"opened_by"`
-	OpenedAt     time.Time          `json:"opened_at"`
-	ClosedBy     *int64             `json:"closed_by"`
-	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
-	Notes        *string            `json:"notes"`
-	Currency     string             `json:"currency"`
-	RegisterID   int64              `json:"register_id"`
-	RegisterName string             `json:"register_name"`
-	OpenedByName string             `json:"opened_by_name"`
-	ClosedByName *string            `json:"closed_by_name"`
+	ID              int64              `json:"id"`
+	BusinessDate    pgtype.Date        `json:"business_date"`
+	Status          SessionStatus      `json:"status"`
+	OpeningCash     decimal.Decimal    `json:"opening_cash"`
+	OpenedBy        int64              `json:"opened_by"`
+	OpenedAt        time.Time          `json:"opened_at"`
+	ClosedBy        *int64             `json:"closed_by"`
+	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
+	Notes           *string            `json:"notes"`
+	Currency        string             `json:"currency"`
+	RegisterID      int64              `json:"register_id"`
+	TipsCarriedOver decimal.Decimal    `json:"tips_carried_over"`
+	RegisterName    string             `json:"register_name"`
+	OpenedByName    string             `json:"opened_by_name"`
+	ClosedByName    *string            `json:"closed_by_name"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, error) {
@@ -613,6 +615,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
 		&i.RegisterName,
 		&i.OpenedByName,
 		&i.ClosedByName,
@@ -623,7 +626,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (GetSessionRow, erro
 const insertCashMovement = `-- name: InsertCashMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id)
 values ($1, $2, $3, $4, $5)
-returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id
+returning id, session_id, kind, amount, concept, expense_id, user_id, created_at, transfer_id, recipient_user_id, recipient_name
 `
 
 type InsertCashMovementParams struct {
@@ -654,6 +657,8 @@ func (q *Queries) InsertCashMovement(ctx context.Context, arg InsertCashMovement
 		&i.UserID,
 		&i.CreatedAt,
 		&i.TransferID,
+		&i.RecipientUserID,
+		&i.RecipientName,
 	)
 	return i, err
 }
@@ -1575,7 +1580,7 @@ func (q *Queries) OpenOrdersInSession(ctx context.Context, registerSessionID *in
 const openSession = `-- name: OpenSession :one
 insert into register_sessions (business_date, opening_cash, opened_by, register_id)
 values ($1, $2, $3, $4)
-returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id
+returning id, business_date, status, opening_cash, opened_by, opened_at, closed_by, closed_at, notes, currency, register_id, tips_carried_over
 `
 
 type OpenSessionParams struct {
@@ -1605,6 +1610,7 @@ func (q *Queries) OpenSession(ctx context.Context, arg OpenSessionParams) (Regis
 		&i.Notes,
 		&i.Currency,
 		&i.RegisterID,
+		&i.TipsCarriedOver,
 	)
 	return i, err
 }

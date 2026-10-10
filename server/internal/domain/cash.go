@@ -6,6 +6,9 @@ import "github.com/shopspring/decimal"
 const (
 	CashEntrada = "entrada"
 	CashSalida  = "salida"
+	// CashPropina es la entrega de propina al personal (spec 032). No es un tipo que se capture
+	// por el registro genérico de movimientos: exige a quién se entregó.
+	CashPropina = "propina"
 )
 
 // ValidCashKind rechaza en la frontera cualquier tipo que no sea entrada/salida (un check

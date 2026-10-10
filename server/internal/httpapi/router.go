@@ -277,7 +277,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					r.Get("/{id}/sales", h.CashSessionSales)
 					r.Post("/close", h.CloseCashSession)
 					r.Post("/movements", h.CreateCashMovement)
-					r.Post("/transfer", h.CashTransfer) // traspaso entre dos cajas abiertas
+					r.Get("/tips", h.PendingTips)         // propina por entregar del turno (spec 032)
+					r.Post("/tips/payouts", h.PayoutTips) // repartirla entre una o varias personas
+					r.Post("/transfer", h.CashTransfer)   // traspaso entre dos cajas abiertas
 				})
 				// Listar cajas (para elegir dónde abrir/operar/pagar): el cajero la necesita.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/cash-registers", h.CashRegisters)
