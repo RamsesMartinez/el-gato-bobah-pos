@@ -33,7 +33,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 	// Un pedido de $500 del que solo entraron $300.
 	ord := pedidoCobradoParcial(t, ctx, st, ordenes, "dev_cobrado", "500", "300", cajero, efectivo, false)
 
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("500"),
 		Motivo: "se equivocó el platillo", ActorID: cajero,
 	}); !errors.Is(err, domain.ErrDevolucionExcede) {
@@ -41,7 +41,7 @@ func TestSeDevuelveLoCobradoNoElTotalDelPedido(t *testing.T) {
 	}
 
 	// Lo que sí entró, se puede devolver.
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("300"),
 		Motivo: "se equivocó el platillo", ActorID: cajero,
 	}); err != nil {
@@ -74,7 +74,7 @@ func TestUnPedidoSinCobrarNoSeDevuelve(t *testing.T) {
 	prod := makeProduct(t, st, "Sin cobrar dev", decimal.RequireFromString("220"), false)
 	ord := crearPedidoSimple(t, ctx, ordenes, prod, cajero)
 
-	err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: ord, Monto: decimal.RequireFromString("220"), Motivo: "prueba", ActorID: cajero,
 	})
 	if !errors.Is(err, domain.ErrSinCobrosQueDevolver) {
@@ -109,7 +109,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 	conTarjeta := pedidoCobradoParcial(t, ctx, st, ordenes, "dev_cajon_tar", "100", "100", cajero, tarjeta, false)
 
 	antes := salidasDeCaja(t, st)
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: conTarjeta, Monto: decimal.RequireFromString("100"), Motivo: "devuelta", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver con tarjeta: %v", err)
@@ -118,7 +118,7 @@ func TestSoloLaDevolucionEnEfectivoTocaElCajon(t *testing.T) {
 		t.Fatalf("la devolución con tarjeta sacó %s del cajón: ese dinero nunca estuvo ahí", s.Sub(antes))
 	}
 
-	if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+	if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: enEfectivo, Monto: decimal.RequireFromString("100"), Motivo: "devuelta", ActorID: cajero,
 	}); err != nil {
 		t.Fatalf("devolver en efectivo: %v", err)
@@ -152,7 +152,7 @@ func TestCancelarUnPedidoCobradoExigeLaDevolucion(t *testing.T) {
 
 	// Con devolución: pasa, y el cajón queda cuadrado.
 	antes := salidasDeCaja(t, st)
-	if err := ordenes.CancelarConDevolucion(ctx, app.CancelacionCmd{
+	if err := ordenes.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1",
 		OrderID: ord, Motivo: "el cliente se arrepintió", ActorID: cajero, Devolver: true,
 	}); err != nil {
 		t.Fatalf("cancelar con devolución: %v", err)
@@ -362,7 +362,7 @@ func TestElReporteDeDevolucionesCuadraConLoQueSalioDelCajon(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PorDevolver: %v", err)
 		}
-		if err := ordenes.Devolver(ctx, app.DevolucionCmd{
+		if err := ordenes.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 			OrderID: o, Monto: monto, Motivo: "cuadre", ActorID: cajero,
 		}); err != nil {
 			t.Fatalf("devolver: %v", err)

@@ -104,7 +104,7 @@ func TestCloseLiveAccountsDoNotBlock(t *testing.T) {
 	if err := closeShift(); !errors.Is(err, domain.ErrUnpaidOrders) {
 		t.Fatalf("con uno todavía debiendo, cerrar = %v, quiere ErrUnpaidOrders", err)
 	}
-	if err := k.orders.CancelarConDevolucion(ctx, app.CancelacionCmd{
+	if err := k.orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1",
 		OrderID: old.ID, Motivo: "se fue sin pagar", ActorID: k.user,
 	}); err != nil {
 		t.Fatalf("cancelar el entregado que debía: %v", err)
@@ -140,7 +140,7 @@ func TestCancelDeliveredWithPaymentsIsRejected(t *testing.T) {
 		Amount: half.Total.Div(decimal.NewFromInt(2)).Round(2), ActorID: k.user}); err != nil {
 		t.Fatal(err)
 	}
-	err := k.orders.CancelarConDevolucion(k.ctx, app.CancelacionCmd{OrderID: half.ID, Motivo: "se fue sin pagar", ActorID: k.user})
+	err := k.orders.CancelarConDevolucion(k.ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: half.ID, Motivo: "se fue sin pagar", ActorID: k.user})
 	if !errors.Is(err, domain.ErrCancelDeliveredWithPayments) {
 		t.Fatalf("cancelar un entregado con pagos = %v, quiere ErrCancelDeliveredWithPayments", err)
 	}

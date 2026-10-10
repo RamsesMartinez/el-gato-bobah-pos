@@ -121,7 +121,7 @@ func TestCancellingTheLastPendingLineClosesTheOrder(t *testing.T) {
 	}
 
 	// Cancelar el pedido completo rebota: ya soltó comida. Es el 409 del incidente, y es correcto.
-	err = svc.CancelarConDevolucion(tctx, app.CancelacionCmd{OrderID: ord.ID, Motivo: "se fue", ActorID: cajero})
+	err = svc.CancelarConDevolucion(tctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord.ID, Motivo: "se fue", ActorID: cajero})
 	if !errors.Is(err, domain.ErrCancelarConEntregas) {
 		t.Fatalf("cancelar el pedido con un renglón entregado = %v, quiere ErrCancelarConEntregas", err)
 	}
@@ -183,7 +183,7 @@ func TestCancellingEveryLineLeavesTheOrderOpenToBeCancelled(t *testing.T) {
 		t.Fatalf("todo cancelado sin entregas: estado=%s completed_at=%v, quiere abierta sin cerrar — "+
 			"marcarlo entregado lo contaría como venta", estado, cerrado)
 	}
-	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord.ID, Motivo: "se fue", ActorID: cajero}); err != nil {
+	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord.ID, Motivo: "se fue", ActorID: cajero}); err != nil {
 		t.Fatalf("cancelar el pedido vacío = %v, quiere nil: si no, queda atorado igual que el del incidente", err)
 	}
 	if estado, _ := estadoYCierre(t, st, ord.ID); estado != domain.StatusCancelada {

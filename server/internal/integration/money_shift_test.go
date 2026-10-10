@@ -74,7 +74,7 @@ func TestACardRefundLowersTheShiftExpected(t *testing.T) {
 	abrirCajaPrincipal(t, st, cajero)
 
 	ord := pedidoCobradoParcial(t, ctx, st, orders, "d6", "300", "300", cajero, tarjeta, true)
-	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "no llegó", ActorID: cajero, Devolver: true}); err != nil {
+	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "no llegó", ActorID: cajero, Devolver: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -152,7 +152,7 @@ func TestACashRefundWithoutAnOpenShiftIsRejected(t *testing.T) {
 	ord := pedidoCobradoParcial(t, ctx, st, orders, "d7", "120", "120", cajero, efectivo, false)
 	closeBySQL(t, st, sess)
 
-	err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, Monto: dec("120"), Motivo: "ayer", ActorID: cajero})
+	err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, Monto: dec("120"), Motivo: "ayer", ActorID: cajero})
 	if !errors.Is(err, domain.ErrCashRefundNeedsOpenRegister) {
 		t.Fatalf("devolver efectivo sin turno: err = %v, quiere ErrCashRefundNeedsOpenRegister", err)
 	}

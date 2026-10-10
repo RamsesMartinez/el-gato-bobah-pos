@@ -105,7 +105,7 @@ func TestCancellingAfterRemovingALineRestocksOnce(t *testing.T) {
 			t.Fatalf("CancelarRenglon %d: %v", l.ID, err)
 		}
 	}
-	if err := svc.CancelarConDevolucion(tctx, app.CancelacionCmd{OrderID: ord.ID, Motivo: "Se equivocó el pedido", ActorID: cajero}); err != nil {
+	if err := svc.CancelarConDevolucion(tctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord.ID, Motivo: "Se equivocó el pedido", ActorID: cajero}); err != nil {
 		t.Fatalf("cancelar el pedido: %v", err)
 	}
 

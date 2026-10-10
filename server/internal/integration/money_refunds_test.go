@@ -68,7 +68,7 @@ func TestTwoSimultaneousRefundsDoNotBothPass(t *testing.T) {
 	for intento := 0; intento < 5; intento++ {
 		ord := pedidoCobradoParcial(t, ctx, st, orders, "d3_"+itoa(intento), "400", "400", cajero, efectivo, true)
 		errs := concurrently(2, func(int) error {
-			return orders.Devolver(ctx, app.DevolucionCmd{
+			return orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 				OrderID: ord, Monto: decimal.RequireFromString("400"), Motivo: "doble toque", ActorID: cajero,
 			})
 		})
@@ -102,11 +102,11 @@ func TestARefundAndACancellationTogetherDoNotOverRefund(t *testing.T) {
 		ord := pedidoCobradoParcial(t, ctx, st, orders, "d3b_"+itoa(intento), "200", "200", cajero, efectivo, true)
 		concurrently(2, func(i int) error {
 			if i == 0 {
-				return orders.Devolver(ctx, app.DevolucionCmd{
+				return orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 					OrderID: ord, Monto: decimal.RequireFromString("200"), Motivo: "a la vez", ActorID: cajero,
 				})
 			}
-			return orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "a la vez", ActorID: cajero, Devolver: true})
+			return orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "a la vez", ActorID: cajero, Devolver: true})
 		})
 		if total := refundedTotal(t, st, ord); total.GreaterThan(decimal.RequireFromString("200")) {
 			t.Fatalf("intento %d: se devolvieron %s de 200 cobrados", intento, total)
@@ -136,19 +136,19 @@ func TestARefundAgainstALineIsCappedByTheLine(t *testing.T) {
 	if !queda.Equal(decimal.RequireFromString("60")) {
 		t.Fatalf("por devolver del renglón de $60 = %s, quiere 60", queda)
 	}
-	if err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, LineID: &lines[0], Monto: decimal.RequireFromString("61"),
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, LineID: &lines[0], Monto: decimal.RequireFromString("61"),
 		Motivo: "platillo frío", ActorID: cajero}); !errors.Is(err, domain.ErrDevolucionExcede) {
 		t.Fatalf("devolver 61 de un renglón de 60: err = %v, quiere ErrDevolucionExcede", err)
 	}
 	refundLine(t, ctx, orders, ord, lines[0], "60", cajero)
-	if err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, LineID: &lines[0], Monto: decimal.RequireFromString("1"),
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, LineID: &lines[0], Monto: decimal.RequireFromString("1"),
 		Motivo: "otra vez", ActorID: cajero}); !errors.Is(err, domain.ErrDevolucionExcede) {
 		t.Fatalf("devolver otra vez el mismo renglón: err = %v, quiere ErrDevolucionExcede", err)
 	}
 
 	// La cuenta entera ya devuelta deja en cero a cualquier renglón.
 	refund(t, ctx, orders, ord, nil, "40", cajero)
-	if err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, LineID: &lines[1], Monto: decimal.RequireFromString("1"),
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, LineID: &lines[1], Monto: decimal.RequireFromString("1"),
 		Motivo: "y éste", ActorID: cajero}); !errors.Is(err, domain.ErrDevolucionExcede) {
 		t.Fatalf("devolver un renglón de un pedido ya devuelto entero: err = %v, quiere ErrDevolucionExcede", err)
 	}
@@ -159,7 +159,7 @@ func TestARefundAgainstALineIsCappedByTheLine(t *testing.T) {
 	// Un renglón de OTRO pedido no existe para éste.
 	otro, otras := twoLineOrder(t, ctx, st, orders, "d4_otro", "10", "10", cajero)
 	charge(t, ctx, orders, otro, efectivo, "20", cajero)
-	if err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: otro, LineID: &lines[1], Monto: decimal.RequireFromString("1"),
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: otro, LineID: &lines[1], Monto: decimal.RequireFromString("1"),
 		Motivo: "renglón ajeno", ActorID: cajero}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("devolver contra un renglón de otro pedido: err = %v, quiere ErrNotFound", err)
 	}
@@ -185,7 +185,7 @@ func TestARefundedOrderFromTheOldFlowIsNotRefundedAgain(t *testing.T) {
 		t.Fatalf("Refund: %v", err)
 	}
 	before := salidasDeCaja(t, st)
-	err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, Monto: decimal.RequireFromString("220"), Motivo: "otra vez", ActorID: cajero})
+	err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, Monto: decimal.RequireFromString("220"), Motivo: "otra vez", ActorID: cajero})
 	if !errors.Is(err, domain.ErrRefundOnRefundedOrder) {
 		t.Fatalf("devolver un pedido reembolsado: err = %v, quiere ErrRefundOnRefundedOrder", err)
 	}
@@ -249,7 +249,7 @@ func charge(t *testing.T, ctx context.Context, svc *app.OrdersService, order int
 
 func refund(t *testing.T, ctx context.Context, svc *app.OrdersService, order int64, line *int64, amount string, actor int64) {
 	t.Helper()
-	if err := svc.Devolver(ctx, app.DevolucionCmd{OrderID: order, LineID: line, Monto: decimal.RequireFromString(amount),
+	if err := svc.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: order, LineID: line, Monto: decimal.RequireFromString(amount),
 		Motivo: "prueba", ActorID: actor}); err != nil {
 		t.Fatalf("Devolver(%s): %v", amount, err)
 	}
@@ -366,7 +366,7 @@ func TestCancellingWithRefundReturnsTheTipToo(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := salidasDeCaja(t, st)
-	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "se fue", ActorID: cajero, Devolver: true}); err != nil {
+	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "se fue", ActorID: cajero, Devolver: true}); err != nil {
 		t.Fatal(err)
 	}
 	if out := salidasDeCaja(t, st).Sub(before); !out.Equal(decimal.RequireFromString("110")) {

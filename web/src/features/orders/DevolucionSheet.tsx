@@ -26,7 +26,9 @@ interface Props {
   cancelando?: boolean;
   enviando: boolean;
   onCerrar: () => void;
-  onConfirmar: (monto: number, motivo: string) => void;
+  onConfirmar: (monto: number, motivo: string, folio: string) => void;
+  // Lo cobrado con tarjeta se devuelve en la terminal y pide su folio (spec 032, punto 10).
+  tarjeta?: { terminales: string[]; pideFolio: boolean };
 }
 
 // La hoja con la que se devuelve dinero.
@@ -38,7 +40,7 @@ interface Props {
 //
 // El monto se puede editar porque devolver una PARTE es un caso real: un platillo de tres. Arranca
 // con todo lo que queda, que es lo de casi siempre.
-export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConfirmar }: Props) {
+export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConfirmar, tarjeta }: Props) {
   // Monta cerrada y se abre en el render siguiente: sin una transición de cerrado a abierto de
   // verdad, una hoja que nace con `open` puesto no se monta si otra se está cerrando en la misma
   // actualización (ver el comentario de CobrarSheet).
@@ -52,6 +54,7 @@ export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConf
 
   const [monto, setMonto] = useState(queda > 0 ? String(queda) : '');
   const [motivo, setMotivo] = useState(MOTIVOS[0]);
+  const [folio, setFolio] = useState('');
 
   const m = parseMonto(monto);
   const valor = m.estado === 'valido' ? m.valor : NaN;
@@ -61,6 +64,7 @@ export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConf
   const impedimento = soloCancelar
     ? (motivo.trim() === '' ? 'sin-motivo' as const : null)
     : sePuedeDevolver(valor, cobrado, yaDevuelto, motivo);
+  const faltaFolio = !soloCancelar && tarjeta?.pideFolio === true && folio.trim() === '';
 
   return (
     <DrawerRoot open={visible} placement="bottom" size="md"
@@ -109,6 +113,18 @@ export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConf
           </>
           )}
 
+          {!soloCancelar && tarjeta?.pideFolio && (
+            <Box>
+              <Text fontSize="sm" fontWeight="600" mb={1}>
+                {tarjeta.terminales.length > 0
+                  ? `Devuélvelo en la terminal ${tarjeta.terminales.join(' o ')} y escribe el folio que imprime.`
+                  : 'Devuélvelo en la terminal con la que se cobró y escribe el folio que imprime.'}
+              </Text>
+              <Input minH={TAP} aria-label="Folio de la terminal" placeholder="Folio de la devolución" maxLength={60}
+                value={folio} onChange={(e) => setFolio(e.target.value)} />
+            </Box>
+          )}
+
           <Box>
             <Text fontSize="sm" color="fg.muted" mb={1}>Por qué</Text>
             <Picker value={motivo} onChange={setMotivo} title="Motivo"
@@ -124,8 +140,8 @@ export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConf
           )}
 
           <Button size="lg" h="56px" colorPalette="red" fontWeight="800"
-            loading={enviando} disabled={impedimento !== null}
-            onClick={() => onConfirmar(soloCancelar ? 0 : round2(valor), motivo)}>
+            loading={enviando} disabled={impedimento !== null || faltaFolio}
+            onClick={() => onConfirmar(soloCancelar ? 0 : round2(valor), motivo, folio.trim())}>
             {soloCancelar
               ? 'Cancelar pedido'
               : `${cancelando ? 'Cancelar y devolver' : 'Devolver'} ${impedimento ? '' : money(round2(valor), pedido.currency)}`}

@@ -537,10 +537,10 @@ from order_refunds where order_id = sqlc.arg('order_id');
 -- los del pedido. El turno va nulo solo si no había uno abierto y el dinero no salió del cajón; ésa
 -- la reclama el turno que se abra después.
 insert into order_refunds (order_id, order_line_id, payment_method_id, amount, tip_amount, reason, refunded_by,
-                           cash_movement_id, register_session_id, business_date)
+                           cash_movement_id, register_session_id, business_date, card_refund_folio, card_refund_captured_by)
 values (sqlc.arg(order_id), sqlc.narg(order_line_id), sqlc.arg(payment_method_id), sqlc.arg(amount), sqlc.arg(tip_amount),
         sqlc.arg(reason), sqlc.arg(refunded_by), sqlc.narg(cash_movement_id), sqlc.narg(register_session_id),
-        sqlc.arg(business_date))
+        sqlc.arg(business_date), sqlc.narg(card_refund_folio), sqlc.narg(card_refund_captured_by))
 returning id;
 
 -- name: RecalcOrderRefundAmount :exec
@@ -885,3 +885,12 @@ update orders
        written_off_by = sqlc.arg(actor), written_off_at = now(),
        written_off_business_date = sqlc.arg(business_date)
  where id = sqlc.arg(id) and written_off_at is null and status = 'entregada';
+
+-- name: CardPaymentsOfOrder :many
+-- Los cobros con tarjeta de un pedido y su terminal (spec 032, punto 10): la devolución dice en
+-- cuál hacerla. Nombre nulo = cobro anterior a que se registrara la terminal.
+select op.card_terminal_name
+  from order_payments op
+  join payment_methods pm on pm.id = op.payment_method_id
+ where op.order_id = $1 and pm.kind = 'tarjeta'
+ order by op.id;

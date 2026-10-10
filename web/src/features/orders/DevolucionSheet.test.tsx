@@ -65,7 +65,7 @@ describe('la hoja de devolución', () => {
     await u.type(campo, '60');
     await u.click(screen.getByRole('button', { name: /^Devolver/ }));
 
-    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith(60, 'Producto en mal estado'));
+    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith(60, 'Producto en mal estado', ''));
   });
 
   // CANCELAR UN PEDIDO SIN COBROS NO PIDE MONTO.
@@ -82,7 +82,7 @@ describe('la hoja de devolución', () => {
     expect(screen.queryByLabelText('Cuánto se devuelve')).toBeNull();
 
     await u.click(screen.getByRole('button', { name: 'Cancelar pedido' }));
-    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith(0, 'Producto en mal estado'));
+    await waitFor(() => expect(onConfirmar).toHaveBeenCalledWith(0, 'Producto en mal estado', ''));
   });
 
   // Y cancelar uno YA COBRADO sí lo pide: es la devolución que el arqueo necesita para cuadrar.
@@ -97,5 +97,23 @@ describe('la hoja de devolución', () => {
   it('el campo del monto mide al menos 44 px', async () => {
     pintar(<DevolucionSheet pedido={pedido()} enviando={false} onCerrar={() => {}} onConfirmar={() => {}} />);
     expect(await screen.findByLabelText('Cuánto se devuelve')).toHaveStyle({ minHeight: '44px' });
+  });
+});
+
+// CON TARJETA SE DEVUELVE EN LA TERMINAL Y SE ESCRIBE SU FOLIO (spec 032, punto 10). La hoja dice en
+// cuál y no termina sin el folio; en blanco no cuenta.
+describe('devolución con tarjeta', () => {
+  it('dice la terminal y exige el folio', async () => {
+    const onConfirmar = vi.fn();
+    pintar(<DevolucionSheet pedido={pedido()} enviando={false} onCerrar={() => {}} onConfirmar={onConfirmar}
+      tarjeta={{ terminales: ['Getnet'], pideFolio: true }} />);
+    expect(await screen.findByText(/Devuélvelo en la terminal Getnet/)).toBeInTheDocument();
+    const boton = screen.getByRole('button', { name: /^Devolver/ });
+    expect(boton).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Folio de la terminal'), '   ');
+    expect(boton).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Folio de la terminal'), 'A12');
+    await userEvent.click(boton);
+    expect(onConfirmar).toHaveBeenCalledWith(500, 'Producto en mal estado', 'A12');
   });
 });

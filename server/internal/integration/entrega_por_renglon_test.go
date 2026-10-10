@@ -188,7 +188,7 @@ func TestUnPedidoSinEntregasSiSeCancela(t *testing.T) {
 		t.Fatalf("cancelar un pedido cobrado sin devolver = %v, quiere ErrCancelarSinDevolver", err)
 	}
 
-	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{
+	if err := svc.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1",
 		OrderID: ord.ID, Motivo: "se equivocó de pedido", ActorID: cajero, Devolver: true,
 	}); err != nil {
 		t.Fatalf("cancelar con devolución: %v", err)

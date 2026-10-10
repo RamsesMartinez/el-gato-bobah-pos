@@ -71,7 +71,7 @@ func TestTheCutShowsEveryRefundTheSameWay(t *testing.T) {
 		return ord
 	}
 	cancelarDevolviendo := func(ord int64) {
-		if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
+		if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
 			t.Fatalf("CancelarConDevolucion: %v", err)
 		}
 	}

@@ -155,7 +155,7 @@ func TestProductsSoldCountOnTheDayTheOrderWasFullyPaid(t *testing.T) {
 	paidYesterday := crearPedidoSimple(t, ctx, orders, prod, cashier)
 	charge(paidYesterday, "100")
 	toYesterday(paidYesterday)
-	if err := orders.Devolver(ctx, app.DevolucionCmd{
+	if err := orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1",
 		OrderID: paidYesterday, Monto: decimal.RequireFromString("100"), Motivo: "no le gustó", ActorID: cashier,
 	}); err != nil {
 		t.Fatalf("Devolver: %v", err)

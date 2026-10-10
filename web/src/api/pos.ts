@@ -133,8 +133,8 @@ export const posApi = {
   // `devolver` confirma que el dinero se le regresa al cliente. Sin él, un pedido con cobros NO se
   // cancela: cancelarlo a secas lo sacaba de los reportes y dejaba el arqueo esperando ese dinero
   // en el cajón.
-  cancelOrder: (id: number, reason: string, devolver = false) =>
-    api.post<void>(`/orders/${id}/cancel`, { reason, devolver }),
+  cancelOrder: (id: number, reason: string, devolver = false, cardFolio?: string) =>
+    api.post<void>(`/orders/${id}/cancel`, { reason, devolver, cardFolio }),
   // «Cancelar lo que falta» (2026-10-09): lo pagado se queda como venta y el resto se da por perdido.
   writeOffOrder: (id: number, reason: string) => api.post<void>(`/orders/${id}/write-off`, { reason }),
   // Cancelar UN renglón. Responde si repuso el inventario: el que ya salió a cocina baja el total
@@ -152,8 +152,10 @@ export const posApi = {
   deliveredOrders: () => api.get<{ items: BoardOrder[] }>('/orders/delivered'),
   // `amount` vacío = todo lo que queda por devolver, que es el caso de todos los días. Con monto,
   // devuelve una parte: un platillo de tres.
-  refundOrder: (id: number, reason: string, amount?: number, lineId?: number) =>
-    api.post<void>(`/orders/${id}/refund`, { reason, amount, lineId }),
+  refundOrder: (id: number, reason: string, amount?: number, lineId?: number, cardFolio?: string) =>
+    api.post<void>(`/orders/${id}/refund`, { reason, amount, lineId, cardFolio }),
+  // En qué terminal se devuelve y si se pedirá folio (spec 032, punto 10).
+  refundInfo: (id: number) => api.get<{ cardTerminals: string[]; needsFolio: boolean }>(`/orders/${id}/refund-info`),
   // Entregar. Son dos caminos porque son dos gestos distintos: "ya se llevó todo" es un tap sobre
   // la tarjeta, y "salieron 3 de 5 alitas" es sobre un renglón.
   deliverOrder: (id: number) => api.post<void>(`/orders/${id}/deliver`, {}),

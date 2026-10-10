@@ -34,7 +34,7 @@ func TestCancellingTheWholeOrderFollowsTheSameRestockRuleAsRemovingALine(t *test
 	ord, lines := twoLineOrderOf(t, ctx, orders, enCocina, refresco, cajero)
 	_ = lines
 	antesFrappe, antesRefresco := existencias(t, st, enCocina), existencias(t, st, refresco)
-	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: ord, Motivo: "se fue", ActorID: cajero}); err != nil {
+	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: ord, Motivo: "se fue", ActorID: cajero}); err != nil {
 		t.Fatal(err)
 	}
 	if e := existencias(t, st, enCocina); !e.Equal(antesFrappe) {

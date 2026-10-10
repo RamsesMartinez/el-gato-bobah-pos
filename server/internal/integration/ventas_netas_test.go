@@ -81,7 +81,7 @@ func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: PorDevolver: %v", caso.nombre, err)
 		}
-		err = orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, LineID: &lines[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
+		err = orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: ord, LineID: &lines[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
 		if !errors.Is(err, caso.quiere) || err.Error() != caso.quiere.Error() {
 			t.Fatalf("%s: err = %v, quiere %v", caso.nombre, err, caso.quiere)
 		}
@@ -94,7 +94,7 @@ func TestRefundingAFullyRefundedLineSaysNothingIsLeft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = orders.Devolver(ctx, app.DevolucionCmd{OrderID: sinCobrar, LineID: &lineas[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
+	err = orders.Devolver(ctx, app.DevolucionCmd{CardFolio: "F-1", OrderID: sinCobrar, LineID: &lineas[0], Monto: monto, Motivo: "prueba", ActorID: cajero})
 	if !errors.Is(err, domain.ErrSinCobrosQueDevolver) {
 		t.Fatalf("producto de un pedido sin cobros: err = %v, quiere ErrSinCobrosQueDevolver", err)
 	}
@@ -185,7 +185,7 @@ func TestSalesTotalIsCollectedNetOfRefunds(t *testing.T) {
 		Amount: decimal.RequireFromString("50"), Tip: decimal.RequireFromString("5"), ActorID: cajero}); err != nil {
 		t.Fatalf("Charge con propina: %v", err)
 	}
-	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{OrderID: conPropina, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
+	if err := orders.CancelarConDevolucion(ctx, app.CancelacionCmd{CardFolio: "F-1", OrderID: conPropina, Motivo: "prueba", ActorID: cajero, Devolver: true}); err != nil {
 		t.Fatalf("CancelarConDevolucion: %v", err)
 	}
 
