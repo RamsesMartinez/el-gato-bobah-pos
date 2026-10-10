@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Button, HStack, Input, Text, VStack, Wrap } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { backofficeApi, type CashConcept } from '../../api/backoffice';
+import { backofficeApi, type CardTerminal, type CashConcept } from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { toaster } from '../../components/ui/toaster';
@@ -60,6 +60,13 @@ export function AjustesDeCaja() {
   const archivarTerminal = useMutation({
     mutationFn: (id: number) => backofficeApi.updateCardTerminal(id, { archived: true }),
     onSuccess: recargar('card-terminals'), onError: avisar('No se pudo archivar'),
+  });
+  const [terminalArchivando, setTerminalArchivando] = useState<CardTerminal | null>(null);
+  const [terminalRenombrando, setTerminalRenombrando] = useState<{ id: number; name: string } | null>(null);
+  const renombrarTerminal = useMutation({
+    mutationFn: (p: { id: number; name: string }) => backofficeApi.updateCardTerminal(p.id, { name: p.name }),
+    onSuccess: () => { setTerminalRenombrando(null); qc.invalidateQueries({ queryKey: ['card-terminals'] }); },
+    onError: avisar('No se pudo renombrar'),
   });
   const cambiarModo = useMutation({
     mutationFn: (p: { branchId: number; mode: 'auto' | 'per_terminal' }) => backofficeApi.setCardCountMode(p.branchId, p.mode),
@@ -145,9 +152,22 @@ export function AjustesDeCaja() {
               </Text>
               <VStack align="stretch" gap={2}>
                 {(terminales?.items ?? []).filter((t) => t.branchId === b.branchId && !t.archived).map((t) => (
-                  <HStack key={t.id} justify="space-between">
-                    <Text>{t.name}</Text>
-                    <Button minH={TAP} variant="ghost" colorPalette="red" onClick={() => archivarTerminal.mutate(t.id)}>Archivar</Button>
+                  <HStack key={t.id} data-terminal justify="space-between" flexWrap="wrap" gap={2}>
+                    {terminalRenombrando?.id === t.id ? (
+                      <HStack flex="1">
+                        <Input minH={TAP} maxLength={40} aria-label={`Nuevo nombre de ${t.name}`} value={terminalRenombrando.name}
+                          onChange={(e) => setTerminalRenombrando({ id: t.id, name: e.target.value })} />
+                        <Button minH={TAP} disabled={terminalRenombrando.name.trim() === ''} loading={renombrarTerminal.isPending}
+                          onClick={() => renombrarTerminal.mutate({ id: t.id, name: terminalRenombrando.name.trim() })}>Guardar</Button>
+                      </HStack>
+                    ) : (
+                      <Text flex="1">{t.name}</Text>
+                    )}
+                    <HStack gap={2}>
+                      <Button minH={TAP} variant="outline" onClick={() => setTerminalRenombrando({ id: t.id, name: t.name })}>Renombrar</Button>
+                      <Box w={4} />
+                      <Button minH={TAP} variant="ghost" colorPalette="red" onClick={() => setTerminalArchivando(t)}>Archivar</Button>
+                    </HStack>
                   </HStack>
                 ))}
                 <HStack>
@@ -163,6 +183,11 @@ export function AjustesDeCaja() {
           ))}
         </VStack>
       </Bloque>
+
+      <ConfirmSheet isOpen={terminalArchivando !== null} destructive title={`¿Archivar «${terminalArchivando?.name ?? ''}»?`}
+        description="Deja de ofrecerse al cobrar con tarjeta. Los cobros que ya la usaron no cambian."
+        confirmLabel="Archivar" onCancel={() => setTerminalArchivando(null)}
+        onConfirm={() => { if (terminalArchivando) archivarTerminal.mutate(terminalArchivando.id); setTerminalArchivando(null); }} />
 
       <Bloque titulo="Resumen diario del cierre por correo">
         <Wrap gap={2} mb={2}>

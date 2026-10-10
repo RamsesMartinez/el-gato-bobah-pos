@@ -27,7 +27,8 @@ import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AvisosDeCaja } from './AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
-import { fondoValido } from './fondoQueSeDeja';
+import { useVolverAlCierre } from './volverAlCierre';
+import { fondoValido, fondoExcedeLoContado } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
@@ -827,6 +828,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   const [transferOpen, setTransferOpen] = useState(false);
   const [repartiendo, setRepartiendo] = useState(false);
+  const { ref: refDelCierre, marcar: marcarVueltaAlCierre, volver: volverAlCierre } = useVolverAlCierre<HTMLDivElement>();
   // Apertura que no coincide con el cierre anterior: se guarda el conteo y se pide el motivo.
   const [aperturaPendiente, setAperturaPendiente] = useState<AperturaInput | null>(null);
   const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
@@ -878,7 +880,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const payoutMut = useMutation({
     mutationFn: (input: TipPayoutInput) => backofficeApi.cashTipPayout(register.id, input),
     onSuccess: (r) => {
-      setRepartiendo(false); invalidate();
+      setRepartiendo(false); invalidate(); volverAlCierre();
       toaster.create({ title: r.items.length === 1 ? `Propina entregada a ${r.items[0].recipientName}`
         : `Propina repartida entre ${r.items.length} personas`, type: 'success' });
     },
@@ -1026,7 +1028,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
           <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
 
-          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} />}
+          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={conteoDelCierre?.total ?? null} />}
 
           {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
@@ -1106,11 +1108,13 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
           )}
 
-          <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
-            onEntregarAhora={() => setRepartiendo(true)} onDecidir={setDecisionPropinas} />
+          <Box ref={refDelCierre}>
+            <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
+              onEntregarAhora={() => { marcarVueltaAlCierre(); setRepartiendo(true); }} onDecidir={setDecisionPropinas} />
+          </Box>
 
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || fondoExcedeLoContado(fondo, conteoDelCierre?.total ?? null) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}

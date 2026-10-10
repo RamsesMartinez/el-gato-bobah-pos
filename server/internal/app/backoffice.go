@@ -1081,7 +1081,8 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 			return err
 		}
 		sess = abierta
-		if err := q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
+		// El modo de tarjeta lo copia este update; la fila de OpenSession todavía trae el default.
+		if sess.CardCountMode, err = q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
 			return err
 		}
 		// Solo la caja PRINCIPAL reclama lo huérfano: es la única que vende, y el esperado de una

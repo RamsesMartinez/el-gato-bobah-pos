@@ -2023,11 +2023,12 @@ func (q *Queries) SetFloatLeft(ctx context.Context, arg SetFloatLeftParams) erro
 	return err
 }
 
-const setOpeningExtras = `-- name: SetOpeningExtras :exec
+const setOpeningExtras = `-- name: SetOpeningExtras :one
 update register_sessions s set opening_reason = $1, opening_reason_note = $2,
        card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
                                     where r.id = s.register_id), 'auto')
  where s.id = $3
+returning s.card_count_mode
 `
 
 type SetOpeningExtrasParams struct {
@@ -2039,9 +2040,11 @@ type SetOpeningExtrasParams struct {
 // El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
 // de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
 // quien cuenta.
-func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasParams) error {
-	_, err := q.db.Exec(ctx, setOpeningExtras, arg.Reason, arg.Note, arg.ID)
-	return err
+func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasParams) (string, error) {
+	row := q.db.QueryRow(ctx, setOpeningExtras, arg.Reason, arg.Note, arg.ID)
+	var card_count_mode string
+	err := row.Scan(&card_count_mode)
+	return card_count_mode, err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

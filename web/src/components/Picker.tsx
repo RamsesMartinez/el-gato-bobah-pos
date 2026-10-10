@@ -30,6 +30,9 @@ interface Props {
 // Picker táctil: reemplaza al <select> nativo (malo en tablet con muchos ítems). Abre un
 // bottom-sheet con buscador y filas grandes; opcionalmente permite crear un elemento nuevo
 // sin salir del flujo. Ver memoria touch-pickers-no-native-select.
+// comparable: igual que el servidor al dar de alta, sin mayúsculas ni espacios de más.
+const comparable = (s: string) => normalize(s).trim().replace(/\s+/g, ' ');
+
 export function Picker({
   value, options, onChange, placeholder = 'Seleccionar', title, clearable,
   clearLabel = '— Ninguno —', searchThreshold = 6, disabled, size = 'md', onCreate,
@@ -41,10 +44,10 @@ export function Picker({
   const selected = options.find((o) => o.value === value);
   const showSearch = options.length > searchThreshold || !!onCreate;
   const filtered = useMemo(() => {
-    const n = normalize(q);
-    return n ? options.filter((o) => normalize(o.label).includes(n)) : options;
+    const n = comparable(q);
+    return n ? options.filter((o) => comparable(o.label).includes(n)) : options;
   }, [q, options]);
-  const exact = q.trim() !== '' && options.some((o) => normalize(o.label) === normalize(q));
+  const exact = q.trim() !== '' && options.some((o) => comparable(o.label) === comparable(q));
 
   const pick = (v: string) => { onChange(v); setOpen(false); setQ(''); };
 

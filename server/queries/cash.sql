@@ -700,11 +700,12 @@ select coalesce(s.float_left, c.total)::numeric(10,2) as total
 -- name: SetFloatLeft :exec
 update register_sessions set float_left = $2 where id = $1;
 
--- name: SetOpeningExtras :exec
+-- name: SetOpeningExtras :one
 -- El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
 -- de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
 -- quien cuenta.
 update register_sessions s set opening_reason = sqlc.narg('reason'), opening_reason_note = sqlc.narg('note'),
        card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
                                     where r.id = s.register_id), 'auto')
- where s.id = sqlc.arg(id);
+ where s.id = sqlc.arg(id)
+returning s.card_count_mode;

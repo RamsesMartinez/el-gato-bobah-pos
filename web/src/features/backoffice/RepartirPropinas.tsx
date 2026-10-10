@@ -73,6 +73,11 @@ export function RepartirPropinas({ isOpen, pendiente, currency, guardando, onEnt
             <Text fontSize="lg" fontWeight="700">Repartir propinas</Text>
             <Text fontSize="lg" fontWeight="700">{money(total, currency)}</Text>
           </HStack>
+          {Number(pendiente?.nonCash ?? 0) > 0 && (
+            <Text fontSize="sm">
+              Efectivo {money(pendiente?.cash ?? '0', currency)} · Tarjeta y otros {money(pendiente?.nonCash ?? '0', currency)}
+            </Text>
+          )}
           <Text fontSize="sm" color="fg.muted">Toca a una o varias personas.</Text>
         </DrawerHeader>
         <DrawerBody flex="1" minH={0} overflowY="auto" pb={2}>

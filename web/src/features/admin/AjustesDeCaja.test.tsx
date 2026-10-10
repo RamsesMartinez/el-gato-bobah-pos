@@ -67,3 +67,27 @@ test('agrega un correo del resumen y lo guarda', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Guardar correos' }));
   expect(api.setSummaryEmails).toHaveBeenCalledWith(['dueno@ejemplo.com', 'conta@ejemplo.mx']);
 });
+
+// Una terminal se renombra (el banco cambia el aparato y el nombre deja de ser cierto).
+test('renombra una terminal', async () => {
+  pinta();
+  const fila = (await screen.findByText('Getnet')).closest('[data-terminal]') as HTMLElement;
+  await userEvent.click(within(fila).getByRole('button', { name: 'Renombrar' }));
+  const campo = screen.getByLabelText('Nuevo nombre de Getnet');
+  await userEvent.clear(campo);
+  await userEvent.type(campo, 'Getnet barra');
+  await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+  await waitFor(() => expect(api.updateCardTerminal).toHaveBeenCalledWith(5, { name: 'Getnet barra' }));
+});
+
+// Archivar una terminal pide confirmación, igual que un concepto: un toque de más dejaba a la
+// sucursal sin la terminal con la que cobra.
+test('archivar una terminal pide confirmar', async () => {
+  pinta();
+  const fila = (await screen.findByText('Getnet')).closest('[data-terminal]') as HTMLElement;
+  await userEvent.click(within(fila).getByRole('button', { name: 'Archivar' }));
+  expect(api.updateCardTerminal).not.toHaveBeenCalled();
+  const hoja = await screen.findByRole('dialog');
+  await userEvent.click(within(hoja).getByRole('button', { name: 'Archivar' }));
+  await waitFor(() => expect(api.updateCardTerminal).toHaveBeenCalledWith(5, { archived: true }));
+});

@@ -158,8 +158,14 @@ func TestPerTerminalCountAtClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	cero := dec("0")
-	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &cero, Motivo: "prueba"}, cajero); err != nil {
+	abierto, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &cero, Motivo: "prueba"}, cajero)
+	if err != nil {
 		t.Fatal(err)
+	}
+	// La respuesta de abrir dice el modo con el que quedó el turno, no el de la columna recién
+	// insertada: decía «auto» con la sucursal en «por terminal».
+	if abierto.CardCountMode != "per_terminal" {
+		t.Fatalf("abrir respondió modo %q; la sucursal está en per_terminal", abierto.CardCountMode)
 	}
 	// Cambiar el modo con la caja abierta no cambia este turno.
 	if err := terms.SetCardCountMode(ctx, branch, "auto"); err != nil {

@@ -85,3 +85,11 @@ test('ajustar montos arranca con el reparto parejo precargado', async () => {
   await userEvent.click(screen.getByRole('button', { name: /Entregar a 2 personas/ }));
   expect(onEntregar).toHaveBeenCalledWith({ mode: 'ajustado', recipients: [{ userId: 1, amount: 93 }, { userId: 2, amount: 93 }] });
 });
+
+// La hoja dice de qué medio viene lo pendiente: la de tarjeta se paga con efectivo del cajón y
+// quien reparte tiene que saber cuánto de eso sale de la caja sin haber entrado en efectivo.
+test('la hoja dice cuánto de lo pendiente es efectivo y cuánto tarjeta u otro medio', () => {
+  abrir();
+  expect(screen.getByText(/Efectivo \$96\.50/)).toBeInTheDocument();
+  expect(screen.getByText(/Tarjeta y otros \$90/)).toBeInTheDocument();
+});
