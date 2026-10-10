@@ -67,6 +67,11 @@ func TestTipIsNeitherSaleNorExpenseAndLeavesDrawerOnce(t *testing.T) {
 	if !vista {
 		t.Fatalf("la lista de personas no trae a quien recibe: %+v", pend.People)
 	}
+	// La hoja de reparto se abre desde la vista de la caja: sin personas ahí, la hoja sale vacía
+	// (visto en la captura a 1024×600 del 2026-10-10).
+	if len(antes.TipsPending.People) == 0 {
+		t.Fatal("la vista de la caja trae la propina pendiente sin las personas a quien entregarla")
+	}
 
 	// Parejo entre tres: 26 pesos enteros a cada uno; sobran 2.50 que siguen pendientes.
 	out, err := tips.Payout(ctx, reg, app.TipPayoutCmd{

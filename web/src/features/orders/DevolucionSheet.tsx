@@ -117,7 +117,7 @@ export function DevolucionSheet({ pedido, cancelando, enviando, onCerrar, onConf
             <Box>
               <Text fontSize="sm" fontWeight="600" mb={1}>
                 {tarjeta.terminales.length > 0
-                  ? `Devuélvelo en la terminal ${tarjeta.terminales.join(' o ')} y escribe el folio que imprime.`
+                  ? `Devuélvelo en la terminal ${tarjeta.terminales.map((t) => `«${t}»`).join(' o ')} y escribe el folio que imprime.`
                   : 'Devuélvelo en la terminal con la que se cobró y escribe el folio que imprime.'}
               </Text>
               <Input minH={TAP} aria-label="Folio de la terminal" placeholder="Folio de la devolución" maxLength={60}

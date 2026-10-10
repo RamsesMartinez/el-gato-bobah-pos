@@ -1360,12 +1360,15 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		if reg.IsPrimary {
 			devuelto = refundsOf(r.Refunded, r.RefundedTips, r.DrawerRefunded, r.DrawerRefundedTips)
 		}
+		// Con arqueo por terminal la tarjeta se declara una vez, por terminal (spec 032): el método
+		// toma lo esperado y la diferencia sale en el conteo de cada terminal.
+		autoDeclara := r.AutoDeclare || (r.Kind == db.PaymentKindTarjeta && domain.CardCountMode(sess.CardCountMode) == domain.CardCountPerTerminal)
 		view.Totals = append(view.Totals, MethodTotal{MethodID: int(r.PaymentMethodID), Name: r.Name,
 			Kind: string(r.Kind), Expected: &expected, Tips: domain.Round2(tips.Sub(devuelto.Tips())), grossTips: tips,
-			AutoDeclare: r.AutoDeclare,
+			AutoDeclare: autoDeclara,
 			// Un método cuyo dinero está en el cajón NO pide cifra: su dinero se declara una vez,
 			// contándolo. Los demás piden la suya si esperaban algo.
-			RequiresEntry: !r.AutoDeclare && !r.AffectsCashDrawer && !expected.IsZero()})
+			RequiresEntry: !autoDeclara && !r.AffectsCashDrawer && !expected.IsZero()})
 		delCorte = append(delCorte, domain.MetodoDelCorte{
 			ID: int(r.PaymentMethodID), Esperado: expected, TocaElCajon: r.AffectsCashDrawer,
 		})
@@ -1394,6 +1397,9 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		return nil, err
 	}
 	pend := pendingView(fuentes)
+	if pend.People, err = tipPeople(ctx, s.store.QC(ctx)); err != nil {
+		return nil, err
+	}
 	view.TipsPending = &pend
 	entregado, err := s.store.QC(ctx).TipPayoutTotalsForSession(ctx, sess.ID)
 	if err != nil {

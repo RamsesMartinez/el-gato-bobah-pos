@@ -177,15 +177,23 @@ func (s *TipsService) Pending(ctx context.Context, registerID int64) (TipsPendin
 		return TipsPendingView{}, err
 	}
 	v := pendingView(src)
-	users, err := q.ListActiveUsers(ctx)
-	if err != nil {
+	if v.People, err = tipPeople(ctx, q); err != nil {
 		return TipsPendingView{}, err
 	}
-	v.People = make([]TipPerson, 0, len(users))
-	for _, u := range users {
-		v.People = append(v.People, TipPerson{ID: u.ID, Name: u.Name})
-	}
 	return v, nil
+}
+
+// tipPeople: las personas activas del negocio, solo id y nombre.
+func tipPeople(ctx context.Context, q *db.Queries) ([]TipPerson, error) {
+	users, err := q.ListActiveUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TipPerson, 0, len(users))
+	for _, u := range users {
+		out = append(out, TipPerson{ID: u.ID, Name: u.Name})
+	}
+	return out, nil
 }
 
 // Payout reparte la propina pendiente: un movimiento de caja tipo propina por persona, ligado a los

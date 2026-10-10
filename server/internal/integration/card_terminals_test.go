@@ -211,3 +211,35 @@ func TestCardRefundLowersTerminalExpected(t *testing.T) {
 		t.Fatalf("DEVOLUCIÓN NO DESCONTADA de la terminal: esperado %s, diferencia %s", v.TerminalCounts[0].Expected, v.TerminalCounts[0].Difference)
 	}
 }
+
+// Con arqueo por terminal, la tarjeta se declara UNA vez: por terminal. El método de tarjeta no pide
+// otra cifra suya (visto en la captura del cierre del 2026-10-10: pedía las dos).
+func TestPerTerminalModeDoesNotAskCardMethodTwice(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_tarjeta_una_vez", "admin")
+	reg := principalRegister(t, st)
+	if _, err := st.Pool.Exec(ctx, `update payment_methods set auto_declare = false where kind = 'tarjeta'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.NewTerminalsService(st).SetCardCountMode(ctx, branchOfPrincipal(t, st), "per_terminal"); err != nil {
+		t.Fatal(err)
+	}
+	cero := dec("0")
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &cero, Motivo: "prueba"}, cajero); err != nil {
+		t.Fatal(err)
+	}
+	pedidoCobradoParcial(t, ctx, st, orders, "una vez", "100", "100", cajero, paymentMethodID(t, st, "Tarjeta débito"), false)
+	v, err := back.CurrentByRegister(ctx, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range v.Totals {
+		if m.Kind == "tarjeta" && m.RequiresEntry {
+			t.Fatalf("TARJETA DECLARADA DOS VECES: %q pide su cifra además de la de la terminal", m.Name)
+		}
+	}
+}

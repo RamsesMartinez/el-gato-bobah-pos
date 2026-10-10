@@ -1224,7 +1224,7 @@ function CorregirSalida({ movimiento, opciones, onCrear, guardando, onCancelar, 
             <Text fontSize="sm" color="fg.muted">
               {movimiento ? `${movimiento.concept} · ${money(movimiento.amount)}` : ''} queda anulada y se registra esta en su lugar.
             </Text>
-            <Input minH="48px" type="number" inputMode="decimal" placeholder="Monto correcto"
+            <Input minH="48px" inputMode="decimal" placeholder="Monto correcto"
               value={monto} onChange={(e) => setMonto(e.target.value)} />
             <Picker value={cid} onChange={setCid} options={opciones} onCreate={onCrear}
               placeholder="Concepto correcto" title="Concepto de la salida" />

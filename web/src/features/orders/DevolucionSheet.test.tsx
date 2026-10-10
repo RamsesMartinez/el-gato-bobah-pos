@@ -107,7 +107,7 @@ describe('devolución con tarjeta', () => {
     const onConfirmar = vi.fn();
     pintar(<DevolucionSheet pedido={pedido()} enviando={false} onCerrar={() => {}} onConfirmar={onConfirmar}
       tarjeta={{ terminales: ['Getnet'], pideFolio: true }} />);
-    expect(await screen.findByText(/Devuélvelo en la terminal Getnet/)).toBeInTheDocument();
+    expect(await screen.findByText(/Devuélvelo en la terminal «Getnet»/)).toBeInTheDocument();
     const boton = screen.getByRole('button', { name: /^Devolver/ });
     expect(boton).toBeDisabled();
     await userEvent.type(screen.getByLabelText('Folio de la terminal'), '   ');
