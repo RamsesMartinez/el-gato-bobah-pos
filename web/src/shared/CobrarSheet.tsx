@@ -697,7 +697,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
             {esTarjeta && (
               <TerminalDelCobro terminales={terminales?.items ?? []} porOmision={terminalDelUsuario ?? null}
                 elegida={terminalElegida}
-                onChange={(id) => { setTerminalElegida(id); posApi.setDefaultTerminal(id).catch(() => {}); }} />
+                onChange={setTerminalElegida} />
             )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}

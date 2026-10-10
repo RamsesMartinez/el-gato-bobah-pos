@@ -83,6 +83,24 @@ func TestCardChargeRecordsTerminal(t *testing.T) {
 	if id, _ := terminalDelPago(t, st, ord); id == nil || *id != hey.ID {
 		t.Fatalf("no usó la terminal del usuario: %v", id)
 	}
+	// Cobrar con una terminal la deja como la del usuario: la última con la que cobró, no la última
+	// que tocó en el selector (un cobro abandonado no cuenta).
+	otra, err := terms.Create(ctx, branch, "Otra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cobrar("Tarjeta con otra", &otra.ID); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := terms.UserDefault(ctx, cajero); err != nil || d == nil || *d != otra.ID {
+		t.Fatalf("cobrar con una terminal no la dejó como la del usuario: %v %v", d, err)
+	}
+	if err := terms.Archive(ctx, otra.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := terms.SetUserDefault(ctx, cajero, &hey.ID); err != nil {
+		t.Fatal(err)
+	}
 	// Archivada, la del usuario se ignora y se vuelve a pedir.
 	if err := terms.Archive(ctx, hey.ID); err != nil {
 		t.Fatal(err)

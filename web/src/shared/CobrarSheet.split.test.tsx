@@ -23,7 +23,7 @@ vi.mock('../api/pos', () => ({
     order, paymentMethods, chargeOrder, chargeOrderShape, quoteOrder, voidPayment, moveLines, activeOrders,
     setOrderDiscount,
     cardTerminals: () => Promise.resolve({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] }),
-    defaultTerminal: () => Promise.resolve(null), setDefaultTerminal: () => Promise.resolve(),
+    defaultTerminal: () => Promise.resolve(null),
     businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
   },
 }));

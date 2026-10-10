@@ -151,13 +151,6 @@ test('la devolución de un cobro con tarjeta no se registra sin el folio de la t
 });
 
 test('la terminal que el usuario usó la última vez llega puesta al cobrar con tarjeta', async ({ page }) => {
-  // DEFECTO ABIERTO (2026-10-10): `posApi.defaultTerminal` lee `/me/preferences/card_terminal` como
-  // si fuera el id, y el servidor responde `{ "value": 3 }`. Con una sola terminal no se nota —la
-  // hoja cae a «la única activa»—, pero en cuanto el negocio da de alta una segunda, cada cobro con
-  // tarjeta pide elegirla otra vez y «Cobrar» queda apagado hasta hacerlo. Quita esta línea al
-  // arreglarlo: el caso tiene que pasar.
-  test.fail(true, 'la hoja de cobro no entiende la forma de /me/preferences');
-
   const jwt = await tokenDeApi();
   test.skip((await turnoDeLaPrincipal(jwt)) === null, 'no hay caja abierta en el ambiente');
   type Terminal = { id: number; branchId: number; name: string; archived: boolean };

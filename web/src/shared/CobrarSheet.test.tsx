@@ -15,11 +15,10 @@ const chargeOrderShape = vi.hoisted(() => vi.fn());
 const quoteOrder = vi.hoisted(() => vi.fn());
 const cardTerminals = vi.hoisted(() => vi.fn());
 const defaultTerminal = vi.hoisted(() => vi.fn());
-const setDefaultTerminal = vi.hoisted(() => vi.fn());
 vi.mock('../api/pos', () => ({
   posApi: {
     order, paymentMethods, chargeOrder, setOrderDiscount, chargeOrderShape, quoteOrder,
-    cardTerminals, defaultTerminal, setDefaultTerminal,
+    cardTerminals, defaultTerminal,
     businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
   },
 }));
@@ -64,7 +63,6 @@ beforeEach(() => {
   quoteOrder.mockReset();
   cardTerminals.mockResolvedValue({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] });
   defaultTerminal.mockResolvedValue(null);
-  setDefaultTerminal.mockResolvedValue(undefined);
   // Por omisión cotiza una parte de N sobre el faltante del pedido de prueba, sin partes cobradas.
   quoteOrder.mockImplementation(async (_id: number, shape: { split?: { part: number; of: number } }) => ({
     amount: String(partOf(500, shape.split?.of ?? 2, (shape.split?.part ?? 1) - 1)), lines: [], outstandingAfter: '0',

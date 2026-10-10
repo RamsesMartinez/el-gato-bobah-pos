@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -2016,6 +2017,15 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		}
 		if terminal != nil {
 			if err := q.SetPaymentTerminal(ctx, db.SetPaymentTerminalParams{ID: paymentID, CardTerminalID: &terminal.ID, CardTerminalName: &terminal.Name}); err != nil {
+				return err
+			}
+		}
+		// La terminal del usuario es la última con la que COBRÓ eligiéndola, en la misma transacción:
+		// tocar el selector y abandonar el cobro no la cambia. La que se usó sola por ser la única no
+		// cuenta: al agregar una segunda terminal se volvería a preguntar.
+		if terminal != nil && cmd.TerminalID != nil {
+			v, _ := json.Marshal(terminal.ID)
+			if err := q.SetUserPreference(ctx, db.SetUserPreferenceParams{UserID: cmd.ActorID, Key: prefDefaultTerminal, Value: v}); err != nil {
 				return err
 			}
 		}

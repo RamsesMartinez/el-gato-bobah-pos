@@ -176,11 +176,11 @@ export const posApi = {
   // servidor y viene en la respuesta. Las formas se excluyen entre sí y con `amount`.
   chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string; terminalId?: number } & ChargeShape) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
-  // Terminales de tarjeta y la del usuario (spec 032, punto 8). La del usuario es una preferencia:
-  // se recuerda la última que eligió.
+  // Terminales de tarjeta y la del usuario (spec 032, punto 8). La del usuario la guarda el
+  // servidor al cobrar con ella: tocar el selector y abandonar el cobro no la cambia.
   cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
-  defaultTerminal: () => api.get<number | null>('/me/preferences/card_terminal').catch(() => null),
-  setDefaultTerminal: (id: number) => api.put<void>('/me/preferences/card_terminal', id),
+  defaultTerminal: () => api.get<{ value: number | null }>('/me/preferences/card_terminal')
+    .then((r) => (typeof r?.value === 'number' ? r.value : null)).catch(() => null),
   // Cuánto cobraría /pay por una selección, sin cobrarla. La hoja no calcula el monto: si lo hiciera
   // habría dos reglas de dinero, y tarde o temprano dirían cosas distintas.
   quoteOrder: (id: number, shape: ChargeShape) => api.post<Quote>(`/orders/${id}/quote`, shape),
