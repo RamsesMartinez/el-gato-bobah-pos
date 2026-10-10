@@ -25,6 +25,8 @@ import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
+import { ConteoDeTerminales } from './ConteoDeTerminales';
+import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
 import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
@@ -774,6 +776,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [aperturaPendiente, setAperturaPendiente] = useState<AperturaInput | null>(null);
   const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
   const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
+  const [conteoTerminales, setConteoTerminales] = useState<Record<number, string>>({});
+  const terminalesSinCifra = faltanTerminales(session?.terminalsToCount ?? [], conteoTerminales);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const navigate = useNavigate();
@@ -841,11 +845,12 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         manualReason: aMano?.manualReason,
         notes: notes || undefined,
         tipsDecision: Number(session?.tipsPending?.total ?? 0) >= 1 ? decisionPropinas ?? undefined : undefined,
+        terminalCounts: Object.fromEntries((session?.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
@@ -960,10 +965,12 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           {/* Un campo en blanco se guardaba como cero declarado y quedaba registrado un faltante
               que no existía: pasó con un corte real de $1,662. Escribir 0 sigue siendo válido —
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
-          {(porContar.length > 0 || faltaElCajon) && (
+          <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
+
+          {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
               <Text fontSize="sm" fontWeight="600">
-                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name)].join(', ')}
+                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra].join(', ')}
               </Text>
             </Box>
           )}
@@ -1038,7 +1045,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             onEntregarAhora={() => setRepartiendo(true)} onDecidir={setDecisionPropinas} />
 
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
@@ -1081,6 +1088,19 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           <DialogCloseTrigger />
           <DialogBody pb={6}>
             <TotalsTable totals={closed?.totals ?? []} currency={closed?.currency ?? 'MXN'} />
+            {(closed?.terminalCounts ?? []).length > 0 && (
+              <Box mt={3}>
+                <Text fontWeight="700" mb={1}>Terminales</Text>
+                {(closed?.terminalCounts ?? []).map((t) => (
+                  <HStack key={t.terminalId} justify="space-between">
+                    <Text>{t.name}</Text>
+                    <Text color={diffColor(t.difference)}>
+                      {money(t.declared, closed?.currency ?? 'MXN')} · dif. {money(t.difference, closed?.currency ?? 'MXN')}
+                    </Text>
+                  </HStack>
+                ))}
+              </Box>
+            )}
           </DialogBody>
         </DialogContent>
       </DialogRoot>

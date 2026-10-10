@@ -1,3 +1,4 @@
+import type { CardTerminal } from './backoffice';
 import { api } from './client';
 import type {
   BoardOrder,
@@ -167,12 +168,17 @@ export const posApi = {
   //
   // Devuelve lo que queda del pedido. Restarlo en la pantalla sería una segunda implementación de
   // la misma cifra.
-  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string }) =>
+  chargeOrder: (id: number, body: { methodId: number; amount: number; tip?: number; clientUuid?: string; terminalId?: number }) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
   // Cobrar con productos, «todo lo que falta» o una parte (spec 027): el monto lo calcula el
   // servidor y viene en la respuesta. Las formas se excluyen entre sí y con `amount`.
-  chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string } & ChargeShape) =>
+  chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string; terminalId?: number } & ChargeShape) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
+  // Terminales de tarjeta y la del usuario (spec 032, punto 8). La del usuario es una preferencia:
+  // se recuerda la última que eligió.
+  cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
+  defaultTerminal: () => api.get<number | null>('/me/preferences/card_terminal').catch(() => null),
+  setDefaultTerminal: (id: number) => api.put<void>('/me/preferences/card_terminal', id),
   // Cuánto cobraría /pay por una selección, sin cobrarla. La hoja no calcula el monto: si lo hiciera
   // habría dos reglas de dinero, y tarde o temprano dirían cosas distintas.
   quoteOrder: (id: number, shape: ChargeShape) => api.post<Quote>(`/orders/${id}/quote`, shape),

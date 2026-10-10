@@ -295,6 +295,9 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/card-terminals", h.CreateCardTerminal)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/card-terminals/{id}", h.UpdateCardTerminal)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/branches/card-count-modes", h.CardCountModes)
+				// Correos del resumen diario del cierre (spec 032): configuración del negocio.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/settings/daily-summary-emails", h.SummaryEmails)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/settings/daily-summary-emails", h.SetSummaryEmails)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/branches/{id}/card-count-mode", h.SetCardCountMode)
 				// Corregir una salida: reverso + salida nueva. Gerente o admin.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)

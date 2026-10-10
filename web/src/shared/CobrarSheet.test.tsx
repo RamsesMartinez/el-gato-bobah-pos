@@ -13,9 +13,13 @@ const chargeOrder = vi.hoisted(() => vi.fn());
 const setOrderDiscount = vi.hoisted(() => vi.fn());
 const chargeOrderShape = vi.hoisted(() => vi.fn());
 const quoteOrder = vi.hoisted(() => vi.fn());
+const cardTerminals = vi.hoisted(() => vi.fn());
+const defaultTerminal = vi.hoisted(() => vi.fn());
+const setDefaultTerminal = vi.hoisted(() => vi.fn());
 vi.mock('../api/pos', () => ({
   posApi: {
     order, paymentMethods, chargeOrder, setOrderDiscount, chargeOrderShape, quoteOrder,
+    cardTerminals, defaultTerminal, setDefaultTerminal,
     businessSettings: () => Promise.resolve({ timezone: 'America/Mexico_City' }),
   },
 }));
@@ -58,6 +62,9 @@ beforeEach(() => {
   setOrderDiscount.mockReset();
   chargeOrderShape.mockReset();
   quoteOrder.mockReset();
+  cardTerminals.mockResolvedValue({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] });
+  defaultTerminal.mockResolvedValue(null);
+  setDefaultTerminal.mockResolvedValue(undefined);
   // Por omisión cotiza una parte de N sobre el faltante del pedido de prueba, sin partes cobradas.
   quoteOrder.mockImplementation(async (_id: number, shape: { split?: { part: number; of: number } }) => ({
     amount: String(partOf(500, shape.split?.of ?? 2, (shape.split?.part ?? 1) - 1)), lines: [], outstandingAfter: '0',
@@ -518,4 +525,28 @@ test('un pedido sin descuento no muestra un renglón en cero, pero deja agregar 
   // El acceso vive en el encabezado, junto a «Cuenta» y «Dividir»: ahí no cuesta alto nuevo, y el
   // flujo más común de esta hoja —cobrar un pedido ya mandado— casi nunca lleva descuento.
   expect(screen.getByRole('button', { name: /Descuento/ })).toBeInTheDocument();
+});
+
+// CON TARJETA SE REGISTRA LA TERMINAL (spec 032, punto 8). Con una sola, va sola: el caso común no
+// cuesta un toque más.
+test('cobrar con tarjeta manda la terminal que llegó puesta', async () => {
+  chargeOrder.mockResolvedValue({ outstanding: '0', paid: true, yaEstaba: false, amount: '500' });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Tarjeta' }));
+  expect(await screen.findByRole('button', { name: /Getnet/ })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /^Cobrar / }));
+  await waitFor(() => expect(chargeOrder).toHaveBeenCalledTimes(1));
+  expect(chargeOrder.mock.calls[0][1]).toMatchObject({ methodId: 2, terminalId: 5 });
+});
+
+// Con varias terminales y sin la del usuario, se pide antes de cobrar (EB-31).
+test('con varias terminales y ninguna puesta no deja cobrar con tarjeta', async () => {
+  cardTerminals.mockResolvedValue({ items: [
+    { id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false },
+    { id: 6, branchId: 1, branchName: 'Matriz', name: 'Hey', archived: false },
+  ] });
+  pinta(<CobrarSheet pantalla="pos" order={pedido()} onClose={() => {}} onCobrado={() => {}} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Tarjeta' }));
+  expect(await screen.findByRole('button', { name: /Elige la terminal/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Cobrar / })).toBeDisabled();
 });

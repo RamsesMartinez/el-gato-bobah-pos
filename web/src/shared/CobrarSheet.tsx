@@ -30,6 +30,8 @@ import { TAP_LG, TAP_XL } from '../theme/ui';
 import { useUiStore } from '../stores/ui';
 import { uuid } from '../utils/uuid';
 import { esEfectivo, metodosDeLaLista } from '../domain/metodosDePago';
+import { TerminalDelCobro } from './TerminalDelCobro';
+import { terminalEfectiva } from './terminalEfectiva';
 import { billetesUtiles, presetsDePropina, validarCobro, round2 } from '../domain/cobro';
 import type { MotivoInvalido } from '../domain/cobro';
 
@@ -272,6 +274,13 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   );
   const elegido = elegibles.find((m) => m.id === metodo);
   const efectivo = esEfectivo(elegido);
+  // Con tarjeta se registra la terminal (spec 032): llega la del usuario o la única de la sucursal.
+  const esTarjeta = elegido?.kind === 'tarjeta';
+  const { data: terminales } = useQuery({ queryKey: ['card-terminals'], queryFn: posApi.cardTerminals, enabled: order !== null });
+  const { data: terminalDelUsuario } = useQuery({ queryKey: ['card-terminal-default'], queryFn: posApi.defaultTerminal, enabled: order !== null });
+  const [terminalElegida, setTerminalElegida] = useState<number | null>(null);
+  const terminal = esTarjeta ? terminalEfectiva(terminales?.items ?? [], terminalDelUsuario ?? null, terminalElegida) : null;
+  const faltaTerminal = esTarjeta && terminal === null;
 
   const v = validarCobro({
     monto, metodoId: metodo, propina, recibido, esEfectivo: efectivo, falta, totalDelPedido,
@@ -294,7 +303,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
     mutationFn: () => accionPropia(async () => {
       const id = pedidoCreado?.id ?? order?.id ?? null;
       if (id === null) throw new Error('no hay pedido que cobrar');
-      const tip = v.propina > 0 ? { tip: v.propina } : {};
+      const tip = { ...(v.propina > 0 ? { tip: v.propina } : {}), ...(terminal !== null ? { terminalId: terminal } : {}) };
       if (shape !== null) {
         return posApi.chargeOrderShape(id, { methodId: metodo!, clientUuid: llave, ...tip, ...shape });
       }
@@ -419,10 +428,11 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   };
   const waitingQuote = shape !== null && idPedido !== null && !quoteFresh && !quoteError;
   const aviso = saldado ? 'Este pedido ya está cobrado.'
+    : faltaTerminal && v.ok ? 'Elige la terminal.'
     : waitingQuote ? 'Calculando…'
       : quoteError ? loQueLee(quoteError).titulo
         : textos[v.motivo ?? 'sin-monto'];
-  const canCharge = v.ok && !waitingQuote && !quoteError;
+  const canCharge = v.ok && !waitingQuote && !quoteError && !faltaTerminal;
 
   const chosenCount = allRemaining ? rows.pending.reduce((n, r) => n + r.free, 0) : selected.reduce((n, s) => n + Number(s.qty), 0);
   const chosenNames = (allRemaining ? rows.pending.map((r) => r.line) : selected.map((s) => lines.find((l) => l.id === s.lineId)))
@@ -681,6 +691,13 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
                     value={propina} onChange={(e) => setPropina(e.target.value)} />
                 </HStack>
               </HStack>
+            )}
+
+            {/* Con tarjeta, la terminal en lugar de «Paga con»: no se apilan (revisión de tableta U1). */}
+            {esTarjeta && (
+              <TerminalDelCobro terminales={terminales?.items ?? []} porOmision={terminalDelUsuario ?? null}
+                elegida={terminalElegida}
+                onChange={(id) => { setTerminalElegida(id); posApi.setDefaultTerminal(id).catch(() => {}); }} />
             )}
 
             {/* Con qué billete paga, solo para efectivo: es lo único que produce cambio. */}

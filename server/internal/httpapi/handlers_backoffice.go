@@ -477,6 +477,32 @@ func (h *Handlers) CorrectCashOut(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, sess)
 }
 
+// ---- Correos del resumen diario (spec 032, punto 7) ----
+
+func (h *Handlers) SummaryEmails(w http.ResponseWriter, r *http.Request) {
+	e, err := h.dailySummary.Emails(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"emails": e})
+}
+
+func (h *Handlers) SetSummaryEmails(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Emails []string `json:"emails"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.dailySummary.SetEmails(r.Context(), body.Emails); err != nil {
+		Error(w, err)
+		return
+	}
+	h.SummaryEmails(w, r)
+}
+
 // ---- Terminales de tarjeta (spec 032, puntos 8 y 9) ----
 
 func (h *Handlers) ListCardTerminals(w http.ResponseWriter, r *http.Request) {

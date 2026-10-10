@@ -203,6 +203,18 @@ func main() {
 	credentials := app.NewPlatformCredentialsService(st, cipher, platformClientFactories(cfg), cfg.UberEatsEnv)
 	// La cuenta en captura se convierte en pedido por el MISMO servicio de pedidos que atiende la API.
 	orders := app.NewOrdersService(st, nil)
+	// EL RESUMEN DIARIO DEL CIERRE (spec 032, punto 7), cada 15 minutos. Las empresas las lista la
+	// conexión de plataforma (la única que las ve todas); cada resumen se arma bajo RLS de su empresa.
+	resumen := app.NewDailySummaryService(st, nil, func(to []string, subject, body string) error {
+		if !mail.Enabled() {
+			return errors.New("correo no configurado")
+		}
+		var errs []error
+		for _, dest := range to {
+			errs = append(errs, mail.Send(dest, subject, body))
+		}
+		return errors.Join(errs...)
+	})
 	handlers := httpapi.NewHandlers(httpapi.Deps{
 		Cfg:          cfg,
 		Version:      version,
@@ -221,6 +233,7 @@ func main() {
 		Tips:         app.NewTipsService(st, nil),
 		CashConcepts: app.NewCashConceptsService(st),
 		Terminals:    app.NewTerminalsService(st),
+		DailySummary: resumen,
 		Admin:        app.NewAdminService(st),
 		Settings:     app.NewSettingsService(st, cfg.PinPepper),
 		Company:      app.NewCompanyService(st),
@@ -262,6 +275,20 @@ func main() {
 	defer detenerRecorte()
 	go app.RecortarPeriodicamente(ctxRecorte, 24*time.Hour, func(c context.Context) (*store.Store, error) {
 		return store.New(c, cfg.DatabaseURL)
+	})
+
+	go app.SendSummariesPeriodically(ctxRecorte, 15*time.Minute, resumen, func(c context.Context) ([]int64, error) {
+		rows, err := plataforma.QC(c).ListCompaniesForPlatform(c)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, len(rows))
+		for _, r := range rows {
+			if r.IsActive {
+				ids = append(ids, r.ID)
+			}
+		}
+		return ids, nil
 	})
 
 	srv := &http.Server{

@@ -56,6 +56,14 @@ export interface CashConcept {
   supplierName: string | null;
 }
 
+export interface CardTerminal {
+  id: number;
+  branchId: number;
+  branchName: string;
+  name: string;
+  archived: boolean;
+}
+
 export type CashMovementInput =
   | { kind: 'entrada'; amount: number; concept: string }
   | { kind: 'salida'; amount: number; conceptId: number };
@@ -178,6 +186,10 @@ export interface CashSession {
   refunds?: SessionRefund[];
   // Propinas (spec 032). Opcionales: un servidor viejo no las manda y la sección no se pinta.
   tipsPending?: TipsPending | null;
+  // Arqueo de tarjeta por terminal (spec 032): lo que se pide al cerrar y, cerrado, la diferencia.
+  cardCountMode?: 'automatico' | 'por_terminal';
+  terminalsToCount?: { terminalId: number; name: string }[];
+  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
 }
@@ -572,6 +584,7 @@ export const backofficeApi = {
     manualReason?: string;
     notes?: string;
     tipsDecision?: TipsDecision;
+    terminalCounts?: Record<string, number>;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
   cashTipPayout: (registerId: number, input: TipPayoutInput) =>
@@ -598,6 +611,13 @@ export const backofficeApi = {
   updateCashConcept: (id: number, body: { name: string; categoryId: number | null; supplierId: number | null } | { archived: true }) =>
     api.patch<CashConcept | null>(`/cash-concepts/${id}`, body),
   mergeCashConcept: (id: number, intoId: number) => api.post<null>(`/cash-concepts/${id}/merge`, { intoId }),
+  cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
+  createCardTerminal: (branchId: number, name: string) => api.post<CardTerminal>('/card-terminals', { branchId, name }),
+  updateCardTerminal: (id: number, body: { name: string } | { archived: true }) =>
+    api.patch<CardTerminal | null>(`/card-terminals/${id}`, body),
+  cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'automatico' | 'por_terminal' }[] }>('/branches/card-count-modes'),
+  setCardCountMode: (branchId: number, mode: 'automatico' | 'por_terminal') =>
+    api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
   correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
     api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),
   // Traspaso de efectivo entre dos cajas abiertas (genera salida en origen + entrada en destino).
