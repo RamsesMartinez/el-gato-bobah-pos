@@ -1703,6 +1703,14 @@ type SupplierItem struct {
 	CompanyID     int64            `json:"company_id"`
 }
 
+type TipCarryover struct {
+	ID             int64           `json:"id"`
+	CompanyID      int64           `json:"company_id"`
+	SessionID      int64           `json:"session_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
 type TipPayoutSource struct {
 	ID             int64           `json:"id"`
 	CompanyID      int64           `json:"company_id"`

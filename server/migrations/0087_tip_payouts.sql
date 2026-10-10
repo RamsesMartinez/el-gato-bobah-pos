@@ -63,6 +63,32 @@ alter table register_sessions
   add column tips_carried_over numeric(10,2) not null default 0
   constraint register_sessions_tips_carried_over_check check (tips_carried_over >= 0);
 
+-- 4. Qué se quedó en caja, COBRO POR COBRO. Un solo número perdía dos hechos: de qué medio era
+--    (la propina de tarjeta heredada se entregaba como si fuera de efectivo y el corte dejaba de
+--    decir «propina de tarjeta pagada en efectivo») y de qué pedido (una devolución posterior al
+--    cierre no podía bajar lo heredado). `tips_carried_over` queda como total para mostrar.
+create table tip_carryovers (
+  id               bigint generated always as identity primary key,
+  company_id       bigint not null default nullif(current_setting('app.company_id', true), '')::bigint
+                   references companies(id) on delete cascade,
+  session_id       bigint not null,
+  order_payment_id bigint not null,
+  amount           numeric(10,2) not null check (amount > 0),
+  constraint tip_carryovers_unique unique (session_id, order_payment_id),
+  constraint tip_carryovers_session_fkey
+    foreign key (company_id, session_id) references register_sessions (company_id, id) on delete restrict,
+  constraint tip_carryovers_payment_fkey
+    foreign key (order_payment_id, company_id) references order_payments (id, company_id) on delete restrict
+);
+create index tip_carryovers_company_session on tip_carryovers (company_id, session_id);
+create index tip_carryovers_company_payment on tip_carryovers (company_id, order_payment_id);
+
+alter table tip_carryovers enable row level security;
+create policy tenant_isolation on tip_carryovers
+  using (company_id = nullif(current_setting('app.company_id', true), '')::bigint)
+  with check (company_id = nullif(current_setting('app.company_id', true), '')::bigint);
+grant select, insert on tip_carryovers to gatobobah_app;
+
 -- +goose Down
 -- Falla en vez de borrar: una propina entregada es dinero que salió del cajón, y quitarla haría que
 -- el corte de ese turno esperara dinero que ya no está.
@@ -75,6 +101,7 @@ begin
   end if;
 end $$;
 -- +goose StatementEnd
+drop table tip_carryovers;
 alter table register_sessions drop column tips_carried_over;
 drop index if exists register_cash_movements_company_session_kind;
 drop table tip_payout_sources;

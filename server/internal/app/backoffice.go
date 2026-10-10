@@ -1489,6 +1489,9 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		if errTips := q.SetTipsCarriedOver(ctx, db.SetTipsCarriedOverParams{ID: sess.ID, TipsCarriedOver: pendiente}); errTips != nil {
 			return errTips
 		}
+		if errTips := carryOver(ctx, q, sess.ID, fuentes); errTips != nil {
+			return errTips
+		}
 		var err error
 		// Sin las cuentas vivas: su barrido abre su propia transacción, y con la conexión del turno
 		// bloqueado eso confirmaba el cierre a medias y soltaba el candado de la 031 (D8).

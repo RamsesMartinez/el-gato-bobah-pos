@@ -29,22 +29,46 @@ select r.order_id, sum(r.tip_amount)::numeric(10,2) as refunded_tips
                        where op.register_session_id = sqlc.arg(session_id)::bigint and op.tip_amount > 0)
  group by r.order_id;
 
--- name: InheritedTipsForSession :one
--- Lo que el turno anterior de la MISMA caja dejó en caja, menos lo que este turno ya entregó de
--- ello. Por caja y no por empresa: con dos cajas abiertas cada una hereda solo lo suyo.
-select coalesce((select p.tips_carried_over
-                   from register_sessions p
-                  where p.register_id = cur.register_id
-                    and p.id <> cur.id
-                    and p.opened_at < cur.opened_at
-                  order by p.opened_at desc, p.id desc
-                  limit 1), 0)::numeric(10,2) as carried_in,
-       coalesce((select sum(s.amount)
-                   from tip_payout_sources s
-                   join register_cash_movements m on m.company_id = s.company_id and m.id = s.movement_id
-                  where m.session_id = cur.id and s.order_payment_id is null), 0)::numeric(10,2) as used
-  from register_sessions cur
- where cur.id = sqlc.arg(session_id)::bigint;
+-- name: InheritedTipSources :many
+-- Lo que el turno anterior de la MISMA caja dejó en caja, cobro por cobro, con su medio y su pedido.
+-- Lo que este turno ya entregó de cada cobro se pre-agrega aparte (1:N). Por caja y no por empresa:
+-- con dos cajas abiertas cada una hereda solo lo suyo.
+with prev as (
+  select p.id, p.closed_at
+    from register_sessions p
+    join register_sessions cur on cur.id = sqlc.arg(session_id)::bigint
+   where p.register_id = cur.register_id and p.id <> cur.id and p.opened_at < cur.opened_at
+   order by p.opened_at desc, p.id desc
+   limit 1
+), usado as (
+  select s.order_payment_id, sum(s.amount) as used
+    from tip_payout_sources s
+    join register_cash_movements m on m.company_id = s.company_id and m.id = s.movement_id
+   where m.session_id = sqlc.arg(session_id)::bigint and s.order_payment_id is not null
+   group by s.order_payment_id
+)
+select c.order_payment_id, op.order_id, pm.is_cash, c.amount,
+       coalesce(u.used, 0)::numeric(10,2) as used,
+       prev.closed_at
+  from tip_carryovers c
+  join prev on prev.id = c.session_id
+  join order_payments op on op.id = c.order_payment_id
+  join payment_methods pm on pm.id = op.payment_method_id
+  left join usado u on u.order_payment_id = c.order_payment_id
+ order by op.created_at, op.id;
+
+-- name: TipRefundsAfter :many
+-- Propina devuelta de esos pedidos DESPUÉS del cierre que la heredó: lo devuelto antes ya no se
+-- heredó.
+select r.order_id, sum(r.tip_amount)::numeric(10,2) as refunded_tips
+  from order_refunds r
+ where r.tip_amount > 0
+   and r.order_id = any(sqlc.arg(order_ids)::bigint[])
+   and r.created_at > sqlc.arg(after)::timestamptz
+ group by r.order_id;
+
+-- name: InsertTipCarryover :exec
+insert into tip_carryovers (session_id, order_payment_id, amount) values ($1, $2, $3);
 
 -- name: InsertTipMovement :one
 insert into register_cash_movements (session_id, kind, amount, concept, user_id, recipient_user_id, recipient_name)
@@ -67,7 +91,7 @@ update register_sessions set tips_carried_over = $2 where id = $1;
 
 -- name: TipPayoutTotalsForSession :one
 -- Lo entregado en el turno y cuánto de eso fue propina de un medio que no es efectivo, pagada con
--- efectivo del cajón (punto 2). Lo heredado cuenta como efectivo: ya estaba en el cajón.
+-- efectivo del cajón (punto 2). Lo heredado conserva su cobro de origen y, con él, su medio.
 select coalesce(sum(s.amount), 0)::numeric(10,2) as paid_out,
        coalesce(sum(s.amount) filter (where pm.is_cash is false), 0)::numeric(10,2) as non_cash_paid_in_cash
   from tip_payout_sources s

@@ -27,10 +27,18 @@ export function RepartirPropinas({ isOpen, pendiente, currency, guardando, onEnt
 
   // Se limpia al salir: la hoja queda montada entre aperturas.
   const salir = () => { setElegidas([]); setAjustado(false); setMontos({}); onClose(); };
-  const alternar = (id: number) =>
+  const alternar = (id: number) => {
     setElegidas((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
+    // Quien se agrega ya ajustando arranca vacío: el parejo cambió y no se adivina su parte.
+  };
 
   const parejo = repartoParejo(total, elegidas.length);
+  // Ajustar arranca del reparto parejo: lo común es mover un monto, no teclearlos todos.
+  const precargar = () => {
+    const m: Record<number, string> = {};
+    for (const id of elegidas) m[id] = montos[id] ?? (parejo ? String(parejo.cada) : '');
+    return m;
+  };
   const errorAjustado = ajustado && elegidas.length > 0
     ? validarAjustado(total, elegidas.map((id) => montos[id] ?? '')) : null;
 
@@ -84,7 +92,7 @@ export function RepartirPropinas({ isOpen, pendiente, currency, guardando, onEnt
             <Button minH="48px" flex="1" variant={!ajustado ? 'solid' : 'outline'} colorPalette="gray"
               onClick={() => setAjustado(false)}>Parejo</Button>
             <Button minH="48px" flex="1" variant={ajustado ? 'solid' : 'outline'} colorPalette="gray"
-              onClick={() => setAjustado(true)}>Ajustar montos</Button>
+              onClick={() => { setMontos(precargar()); setAjustado(true); }}>Ajustar montos</Button>
           </HStack>
 
           {ajustado && elegidas.length > 0 && (

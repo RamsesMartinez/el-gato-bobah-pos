@@ -62,6 +62,27 @@ type TipPayoutView struct {
 	Amount        decimal.Decimal `json:"amount"`
 }
 
+// carryOver deja en caja, cobro por cobro, lo que no se entregó del turno que se cierra.
+func carryOver(ctx context.Context, q *db.Queries, sessionID int64, src []domain.TipSource) error {
+	por := map[int64]decimal.Decimal{}
+	orden := []int64{}
+	for _, s := range src {
+		if !s.Available.IsPositive() {
+			continue
+		}
+		if _, ya := por[s.PaymentID]; !ya {
+			orden = append(orden, s.PaymentID)
+		}
+		por[s.PaymentID] = por[s.PaymentID].Add(s.Available)
+	}
+	for _, id := range orden {
+		if err := q.InsertTipCarryover(ctx, db.InsertTipCarryoverParams{SessionID: sessionID, OrderPaymentID: id, Amount: domain.Round2(por[id])}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // tipSources arma las fuentes del pendiente del turno. Lo devuelto de un pedido se descuenta de sus
 // cobros en orden; lo que exceda lo que queda (porque ya se entregó) no deja la fuente en negativo.
 func tipSources(ctx context.Context, q *db.Queries, sessionID int64) ([]domain.TipSource, error) {
@@ -77,11 +98,35 @@ func tipSources(ctx context.Context, q *db.Queries, sessionID int64) ([]domain.T
 	for _, r := range refunds {
 		refunded[r.OrderID] = r.RefundedTips
 	}
-	inh, err := q.InheritedTipsForSession(ctx, sessionID)
+	inh, err := q.InheritedTipSources(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	out := []domain.TipSource{{Inherited: true, Available: decimal.Max(decimal.Zero, inh.CarriedIn.Sub(inh.Used))}}
+	out := []domain.TipSource{}
+	if len(inh) > 0 && inh[0].ClosedAt.Valid {
+		ids := make([]int64, 0, len(inh))
+		for _, h := range inh {
+			ids = append(ids, h.OrderID)
+		}
+		later, err := q.TipRefundsAfter(ctx, db.TipRefundsAfterParams{OrderIds: ids, After: inh[0].ClosedAt.Time})
+		if err != nil {
+			return nil, err
+		}
+		after := map[int64]decimal.Decimal{}
+		for _, r := range later {
+			after[r.OrderID] = r.RefundedTips
+		}
+		for _, h := range inh {
+			avail := h.Amount.Sub(h.Used)
+			if r := after[h.OrderID]; r.IsPositive() {
+				take := decimal.Min(r, h.Amount)
+				after[h.OrderID] = r.Sub(take)
+				avail = avail.Sub(take)
+			}
+			out = append(out, domain.TipSource{PaymentID: h.OrderPaymentID, Cash: h.IsCash, Inherited: true,
+				Available: decimal.Max(decimal.Zero, avail)})
+		}
+	}
 	for _, p := range pays {
 		avail := p.TipAmount.Sub(p.PaidOut)
 		if r := refunded[p.OrderID]; r.IsPositive() {
@@ -97,9 +142,10 @@ func tipSources(ctx context.Context, q *db.Queries, sessionID int64) ([]domain.T
 func pendingView(src []domain.TipSource) TipsPendingView {
 	v := TipsPendingView{People: []TipPerson{}}
 	for _, s := range src {
-		switch {
-		case s.Inherited:
+		if s.Inherited {
 			v.Inherited = v.Inherited.Add(s.Available)
+		}
+		switch {
 		case s.Cash:
 			v.Cash = v.Cash.Add(s.Available)
 		default:
@@ -224,11 +270,7 @@ func (s *TipsService) Payout(ctx context.Context, registerID int64, cmd TipPayou
 				return err
 			}
 			for _, a := range alloc {
-				var pid *int64
-				if a.PaymentID != 0 {
-					pid = new(a.PaymentID)
-				}
-				if err := q.InsertTipSource(ctx, db.InsertTipSourceParams{MovementID: mid, Amount: a.Amount, OrderPaymentID: pid}); err != nil {
+				if err := q.InsertTipSource(ctx, db.InsertTipSourceParams{MovementID: mid, Amount: a.Amount, OrderPaymentID: new(a.PaymentID)}); err != nil {
 					return err
 				}
 				// La fuente usada ya no está disponible para la siguiente persona del reparto.

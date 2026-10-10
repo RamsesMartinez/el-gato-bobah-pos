@@ -116,11 +116,8 @@ Hallazgos incorporados como reglas del plan; `tasks.md` los cubre.
 - La pregunta del cierre usa `domain.TipsDecisionRequired(pending) = pending >= 1`; un sobrante menor a $1 se hereda solo, sin preguntar.
 - Correos del resumen: `business_settings.daily_summary_emails text[]`, validados en `domain.ValidSummaryEmails`. Reemplaza el supuesto del correo de recuperación.
 
-## Límites conocidos de la entrega de propinas (revisión de código, 2026-10-09)
+## Límites de la entrega de propinas corregidos (2026-10-10)
 
-- Lo heredado (`tips_carried_over`) es un solo número: al entregarlo en el turno siguiente cuenta
-  como efectivo, así que la «propina de tarjeta pagada en efectivo» de ese turno sale menor. Se
-  corrige heredando por separado efectivo y otros medios.
-- Una devolución de propina posterior al cierre no baja lo ya heredado: el turno siguiente puede
-  ofrecer entregar propina que ya se devolvió.
-- En modo ajustado los montos no se precargan con el reparto parejo (revisor de tableta).
+- Lo heredado se guarda cobro por cobro (`tip_carryovers`): conserva su medio y una devolución
+  posterior al cierre lo baja. Pruebas: `tip_inheritance_test.go`.
+- «Ajustar montos» arranca con el reparto parejo.

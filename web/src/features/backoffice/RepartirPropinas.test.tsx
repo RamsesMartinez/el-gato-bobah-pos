@@ -74,3 +74,14 @@ test('«Se queda en caja» se puede desmarcar', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Se queda en caja' }));
   expect(onDecidir).toHaveBeenCalledWith(null);
 });
+
+// «Ajustar montos» arranca con el reparto parejo: se corrige un monto, no se teclean todos.
+test('ajustar montos arranca con el reparto parejo precargado', async () => {
+  const { onEntregar } = abrir();
+  for (const n of ['Ana', 'Beto']) await userEvent.click(screen.getByRole('button', { name: n }));
+  await userEvent.click(screen.getByRole('button', { name: 'Ajustar montos' }));
+  expect(screen.getByLabelText('Monto para Ana')).toHaveValue('93');
+  expect(screen.getByLabelText('Monto para Beto')).toHaveValue('93');
+  await userEvent.click(screen.getByRole('button', { name: /Entregar a 2 personas/ }));
+  expect(onEntregar).toHaveBeenCalledWith({ mode: 'ajustado', recipients: [{ userId: 1, amount: 93 }, { userId: 2, amount: 93 }] });
+});

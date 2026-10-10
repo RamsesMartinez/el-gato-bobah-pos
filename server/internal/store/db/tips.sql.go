@@ -7,38 +7,90 @@ package db
 
 import (
 	"context"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 )
 
-const inheritedTipsForSession = `-- name: InheritedTipsForSession :one
-select coalesce((select p.tips_carried_over
-                   from register_sessions p
-                  where p.register_id = cur.register_id
-                    and p.id <> cur.id
-                    and p.opened_at < cur.opened_at
-                  order by p.opened_at desc, p.id desc
-                  limit 1), 0)::numeric(10,2) as carried_in,
-       coalesce((select sum(s.amount)
-                   from tip_payout_sources s
-                   join register_cash_movements m on m.company_id = s.company_id and m.id = s.movement_id
-                  where m.session_id = cur.id and s.order_payment_id is null), 0)::numeric(10,2) as used
-  from register_sessions cur
- where cur.id = $1::bigint
+const inheritedTipSources = `-- name: InheritedTipSources :many
+with prev as (
+  select p.id, p.closed_at
+    from register_sessions p
+    join register_sessions cur on cur.id = $1::bigint
+   where p.register_id = cur.register_id and p.id <> cur.id and p.opened_at < cur.opened_at
+   order by p.opened_at desc, p.id desc
+   limit 1
+), usado as (
+  select s.order_payment_id, sum(s.amount) as used
+    from tip_payout_sources s
+    join register_cash_movements m on m.company_id = s.company_id and m.id = s.movement_id
+   where m.session_id = $1::bigint and s.order_payment_id is not null
+   group by s.order_payment_id
+)
+select c.order_payment_id, op.order_id, pm.is_cash, c.amount,
+       coalesce(u.used, 0)::numeric(10,2) as used,
+       prev.closed_at
+  from tip_carryovers c
+  join prev on prev.id = c.session_id
+  join order_payments op on op.id = c.order_payment_id
+  join payment_methods pm on pm.id = op.payment_method_id
+  left join usado u on u.order_payment_id = c.order_payment_id
+ order by op.created_at, op.id
 `
 
-type InheritedTipsForSessionRow struct {
-	CarriedIn decimal.Decimal `json:"carried_in"`
-	Used      decimal.Decimal `json:"used"`
+type InheritedTipSourcesRow struct {
+	OrderPaymentID int64              `json:"order_payment_id"`
+	OrderID        int64              `json:"order_id"`
+	IsCash         bool               `json:"is_cash"`
+	Amount         decimal.Decimal    `json:"amount"`
+	Used           decimal.Decimal    `json:"used"`
+	ClosedAt       pgtype.Timestamptz `json:"closed_at"`
 }
 
-// Lo que el turno anterior de la MISMA caja dejó en caja, menos lo que este turno ya entregó de
-// ello. Por caja y no por empresa: con dos cajas abiertas cada una hereda solo lo suyo.
-func (q *Queries) InheritedTipsForSession(ctx context.Context, sessionID int64) (InheritedTipsForSessionRow, error) {
-	row := q.db.QueryRow(ctx, inheritedTipsForSession, sessionID)
-	var i InheritedTipsForSessionRow
-	err := row.Scan(&i.CarriedIn, &i.Used)
-	return i, err
+// Lo que el turno anterior de la MISMA caja dejó en caja, cobro por cobro, con su medio y su pedido.
+// Lo que este turno ya entregó de cada cobro se pre-agrega aparte (1:N). Por caja y no por empresa:
+// con dos cajas abiertas cada una hereda solo lo suyo.
+func (q *Queries) InheritedTipSources(ctx context.Context, sessionID int64) ([]InheritedTipSourcesRow, error) {
+	rows, err := q.db.Query(ctx, inheritedTipSources, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InheritedTipSourcesRow{}
+	for rows.Next() {
+		var i InheritedTipSourcesRow
+		if err := rows.Scan(
+			&i.OrderPaymentID,
+			&i.OrderID,
+			&i.IsCash,
+			&i.Amount,
+			&i.Used,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertTipCarryover = `-- name: InsertTipCarryover :exec
+insert into tip_carryovers (session_id, order_payment_id, amount) values ($1, $2, $3)
+`
+
+type InsertTipCarryoverParams struct {
+	SessionID      int64           `json:"session_id"`
+	OrderPaymentID int64           `json:"order_payment_id"`
+	Amount         decimal.Decimal `json:"amount"`
+}
+
+func (q *Queries) InsertTipCarryover(ctx context.Context, arg InsertTipCarryoverParams) error {
+	_, err := q.db.Exec(ctx, insertTipCarryover, arg.SessionID, arg.OrderPaymentID, arg.Amount)
+	return err
 }
 
 const insertTipMovement = `-- name: InsertTipMovement :one
@@ -223,10 +275,51 @@ type TipPayoutTotalsForSessionRow struct {
 }
 
 // Lo entregado en el turno y cuánto de eso fue propina de un medio que no es efectivo, pagada con
-// efectivo del cajón (punto 2). Lo heredado cuenta como efectivo: ya estaba en el cajón.
+// efectivo del cajón (punto 2). Lo heredado conserva su cobro de origen y, con él, su medio.
 func (q *Queries) TipPayoutTotalsForSession(ctx context.Context, sessionID int64) (TipPayoutTotalsForSessionRow, error) {
 	row := q.db.QueryRow(ctx, tipPayoutTotalsForSession, sessionID)
 	var i TipPayoutTotalsForSessionRow
 	err := row.Scan(&i.PaidOut, &i.NonCashPaidInCash)
 	return i, err
+}
+
+const tipRefundsAfter = `-- name: TipRefundsAfter :many
+select r.order_id, sum(r.tip_amount)::numeric(10,2) as refunded_tips
+  from order_refunds r
+ where r.tip_amount > 0
+   and r.order_id = any($1::bigint[])
+   and r.created_at > $2::timestamptz
+ group by r.order_id
+`
+
+type TipRefundsAfterParams struct {
+	OrderIds []int64   `json:"order_ids"`
+	After    time.Time `json:"after"`
+}
+
+type TipRefundsAfterRow struct {
+	OrderID      int64           `json:"order_id"`
+	RefundedTips decimal.Decimal `json:"refunded_tips"`
+}
+
+// Propina devuelta de esos pedidos DESPUÉS del cierre que la heredó: lo devuelto antes ya no se
+// heredó.
+func (q *Queries) TipRefundsAfter(ctx context.Context, arg TipRefundsAfterParams) ([]TipRefundsAfterRow, error) {
+	rows, err := q.db.Query(ctx, tipRefundsAfter, arg.OrderIds, arg.After)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TipRefundsAfterRow{}
+	for rows.Next() {
+		var i TipRefundsAfterRow
+		if err := rows.Scan(&i.OrderID, &i.RefundedTips); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
