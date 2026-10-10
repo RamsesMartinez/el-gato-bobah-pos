@@ -312,6 +312,13 @@ export interface CashSessionDetail {
   // excluye. Opcional para que el compilador obligue a la guarda ante un backend viejo.
   voidedPayments?: VoidedPayment[];
   refunds?: SessionRefund[];
+  // Arqueo por terminal y propinas del turno (spec 032). Opcionales: un backend viejo no los manda.
+  cardCountMode?: string;
+  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  tipsPaidOut?: string;
+  cardTipsPaidInCash?: string;
+  // La propina pendiente que el cierre dejó en caja para el siguiente turno.
+  tipsCarriedOver?: string;
 }
 
 export interface CorteSale {

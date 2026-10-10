@@ -445,11 +445,63 @@ function CorteDetail({ id }: { id: number }) {
         </>)}
       </SimpleGrid>
       <CorteSummary data={data} abierto={!data.closedAt} />
+      <TerminalesYPropinasDelCorte session={data} currency={data.currency} />
       <VentasDelCorte session={data} zona={horaNegocio.zona} />
       {data.notes && (
         <Box><Text fontWeight="700" fontSize="sm">Notas</Text><Text fontSize="sm" color="fg.muted">{data.notes}</Text></Box>
       )}
     </VStack>
+  );
+}
+
+// Terminales y propinas de un corte (spec 032): lo que el turno abierto mostraba y el cierre firmó.
+// Sin esto, un faltante en una terminal dejaba de verse en cuanto se cerraba el turno.
+export function TerminalesYPropinasDelCorte({ session, currency }: {
+  session: Pick<CashSessionDetail, 'terminalCounts' | 'tipsPaidOut' | 'cardTipsPaidInCash' | 'tipsCarriedOver'>;
+  currency: string;
+}) {
+  const terminales = session.terminalCounts ?? [];
+  const entregadas = Number(session.tipsPaidOut ?? 0);
+  const enEfectivo = Number(session.cardTipsPaidInCash ?? 0);
+  const enCaja = Number(session.tipsCarriedOver ?? 0);
+  return (
+    <>
+      {terminales.length > 0 && (
+        <Section title="Terminales">
+          <Table.Root size="sm">
+            <Table.Header><Table.Row>
+              <Table.ColumnHeader>Terminal</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Declarado</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Esperado</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end">Diferencia</Table.ColumnHeader>
+            </Table.Row></Table.Header>
+            <Table.Body>
+              {terminales.map((t) => (
+                <Table.Row key={t.terminalId}>
+                  <Table.Cell>{t.name}</Table.Cell>
+                  <Table.Cell textAlign="end">{money(t.declared, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end">{money(t.expected, currency)}</Table.Cell>
+                  <Table.Cell textAlign="end" fontWeight="600" color={diffColor(t.difference)}>{money(t.difference, currency)}</Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        </Section>
+      )}
+      {(entregadas > 0 || enEfectivo > 0 || enCaja > 0) && (
+        <Section title="Propinas">
+          <Table.Root size="sm">
+            <Table.Body>
+              <Table.Row><Table.Cell>Propinas entregadas</Table.Cell><Table.Cell textAlign="end">{money(session.tipsPaidOut ?? '0', currency)}</Table.Cell></Table.Row>
+              {enEfectivo > 0 && (
+                <Table.Row><Table.Cell>De ellas, propina de tarjeta pagada en efectivo</Table.Cell><Table.Cell textAlign="end">{money(session.cardTipsPaidInCash ?? '0', currency)}</Table.Cell></Table.Row>
+              )}
+              <Table.Row><Table.Cell>Se quedó en caja por entregar</Table.Cell><Table.Cell textAlign="end">{money(session.tipsCarriedOver ?? '0', currency)}</Table.Cell></Table.Row>
+            </Table.Body>
+          </Table.Root>
+        </Section>
+      )}
+    </>
   );
 }
 

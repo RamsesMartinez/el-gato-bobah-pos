@@ -6,7 +6,7 @@ import { Text } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
-import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico } from './CashPage';
+import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte } from './CashPage';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
 import type { ResultadoDelConteo } from './conteo';
@@ -809,4 +809,27 @@ test('MovementsTable etiqueta la propina entregada como Propina, no como Salida'
   wrap(<MovementsTable movements={[mov({ id: 9, kind: 'propina', amount: '62', concept: 'Propina a Ana' })]} currency="MXN" />);
   expect(screen.getByText('Propina')).toBeInTheDocument();
   expect(screen.queryByText('Salida')).not.toBeInTheDocument();
+});
+
+// Histórico → Ver de un corte cerrado: lo que el turno abierto mostraba de terminales y propinas.
+// Un faltante de $2 en una terminal no se veía en ningún lado una vez cerrado el turno.
+test('el corte cerrado muestra declarado, esperado y diferencia por terminal y las propinas', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [{ terminalId: 3, name: 'Getnet', expected: '250', declared: '248', difference: '-2' }],
+    tipsPaidOut: '40', cardTipsPaidInCash: '15', tipsCarriedOver: '12.40',
+  }} />);
+  const fila = screen.getByText('Getnet').closest('tr') as HTMLElement;
+  expect(within(fila).getByText('$248')).toBeInTheDocument();
+  expect(within(fila).getByText('$250')).toBeInTheDocument();
+  expect(within(fila).getByText(/-\$2/)).toBeInTheDocument();
+  expect(screen.getByText(/Propinas entregadas/).closest('tr')?.textContent).toContain('$40');
+  expect(screen.getByText(/Se quedó en caja/).closest('tr')?.textContent).toContain('$12.40');
+  expect(screen.getByText(/tarjeta pagada en efectivo/).closest('tr')?.textContent).toContain('$15');
+});
+
+test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () => {
+  const { container } = wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [], tipsPaidOut: '0', cardTipsPaidInCash: '0', tipsCarriedOver: '0',
+  }} />);
+  expect(container.textContent).not.toMatch(/Terminales|Propinas/);
 });

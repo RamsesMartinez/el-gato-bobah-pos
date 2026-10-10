@@ -290,8 +290,12 @@ func TestClosingAsksAboutTipsAndNextShiftOfSameRegisterInherits(t *testing.T) {
 	if _, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &total, Motivo: "prueba"}); !errors.Is(err, domain.ErrTipsDecisionNeeded) {
 		t.Fatalf("cerrar con propina pendiente sin decidir: err = %v", err)
 	}
-	if _, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &total, Motivo: "prueba", Propinas: "quedan_en_caja"}); err != nil {
+	primero, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &total, Motivo: "prueba", Propinas: "quedan_en_caja"})
+	if err != nil {
 		t.Fatalf("cerrar dejando la propina en caja: %v", err)
+	}
+	if d, err := back.SessionDetail(ctx, primero.ID); err != nil || !d.TipsCarriedOver.Equal(dec("12.4")) || !d.TipsPaidOut.IsZero() {
+		t.Fatalf("el corte cerrado no dice que la propina se quedó en caja: %+v %v", d, err)
 	}
 	abrirCajaPrincipal(t, st, cajero)
 	pend, err := tips.Pending(ctx, reg)
@@ -315,6 +319,14 @@ func TestClosingAsksAboutTipsAndNextShiftOfSameRegisterInherits(t *testing.T) {
 	_ = st.Pool.QueryRow(ctx, `select tips_carried_over from register_sessions where id = $1`, cerrado.ID).Scan(&carried)
 	if !carried.Equal(dec("0.4")) {
 		t.Fatalf("los centavos se perdieron al cerrar: heredado %s, quería 0.40", carried)
+	}
+	d, err := back.SessionDetail(ctx, cerrado.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.TipsPaidOut.Equal(dec("12")) || !d.TipsCarriedOver.Equal(dec("0.4")) || !d.CardTipsPaidInCash.IsZero() {
+		t.Fatalf("corte cerrado: entregado %s (quería 12), queda en caja %s (quería 0.40), tarjeta en efectivo %s",
+			d.TipsPaidOut, d.TipsCarriedOver, d.CardTipsPaidInCash)
 	}
 }
 

@@ -604,20 +604,28 @@ type CashRegisterView struct {
 // movimientos, para el histórico. Difiere de SessionView en que los totales vienen de
 // register_session_totals (snapshot al cerrar), no del cálculo en vivo.
 type SessionDetailView struct {
-	ID           int64              `json:"id"`
-	RegisterName string             `json:"registerName"`
-	Status       string             `json:"status"`
-	OpeningCash  decimal.Decimal    `json:"openingCash"`
-	Currency     domain.Currency    `json:"currency"`
-	OpenedAt     time.Time          `json:"openedAt"`
-	ClosedAt     *time.Time         `json:"closedAt"`
-	OpenedByName string             `json:"openedByName"`
-	ClosedByName *string            `json:"closedByName"`
-	Notes        *string            `json:"notes"`
-	Totals       []MethodTotal      `json:"totals"`
-	Movements    []CashMovementView `json:"movements"`
-	Expenses     []CashExpenseView  `json:"expenses"`
-	Breakdown    CorteBreakdown     `json:"breakdown"`
+	// Arqueo de tarjeta y propinas del turno (spec 032), lo mismo que muestra el turno abierto. En
+	// uno cerrado salen de lo que guardó el cierre: el conteo por terminal y la propina que se quedó
+	// en caja (tips_carried_over).
+	CardCountMode      string              `json:"cardCountMode"`
+	TerminalCounts     []TerminalCountView `json:"terminalCounts"`
+	TipsPaidOut        decimal.Decimal     `json:"tipsPaidOut"`
+	CardTipsPaidInCash decimal.Decimal     `json:"cardTipsPaidInCash"`
+	TipsCarriedOver    decimal.Decimal     `json:"tipsCarriedOver"`
+	ID                 int64               `json:"id"`
+	RegisterName       string              `json:"registerName"`
+	Status             string              `json:"status"`
+	OpeningCash        decimal.Decimal     `json:"openingCash"`
+	Currency           domain.Currency     `json:"currency"`
+	OpenedAt           time.Time           `json:"openedAt"`
+	ClosedAt           *time.Time          `json:"closedAt"`
+	OpenedByName       string              `json:"openedByName"`
+	ClosedByName       *string             `json:"closedByName"`
+	Notes              *string             `json:"notes"`
+	Totals             []MethodTotal       `json:"totals"`
+	Movements          []CashMovementView  `json:"movements"`
+	Expenses           []CashExpenseView   `json:"expenses"`
+	Breakdown          CorteBreakdown      `json:"breakdown"`
 
 	// Las ventas que este corte cobró. Viven aquí y no en un filtro de la pantalla de Ventas: ahí
 	// convivirían con el filtro de fechas y bastaría elegir un rango que no toque el corte para
@@ -2156,6 +2164,17 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 		return nil, err
 	}
 	view.Breakdown = corteBreakdown(sess.OpeningCash, methods, moves)
+	// Las mismas fuentes que el cierre y que el turno abierto: el conteo por terminal guardado, las
+	// entregas del turno y lo que el cierre dejó en caja.
+	view.CardCountMode, view.TipsCarriedOver = sess.CardCountMode, sess.TipsCarriedOver
+	if view.TerminalCounts, err = s.terminalCounts(ctx, sess.ID); err != nil {
+		return nil, err
+	}
+	entregado, err := s.store.QC(ctx).TipPayoutTotalsForSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.TipsPaidOut, view.CardTipsPaidInCash = entregado.PaidOut, entregado.NonCashPaidInCash
 	// Un turno ABIERTO no tiene totales guardados: se calculan en vivo con la misma función que
 	// Cajas (spec 029). Leía el snapshot vacío y el Histórico decía «Sin ingresos» mientras Cajas
 	// decía $630.

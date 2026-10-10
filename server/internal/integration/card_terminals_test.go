@@ -185,6 +185,17 @@ func TestPerTerminalCountAtClose(t *testing.T) {
 	if len(v.TerminalCounts) != 1 || !v.TerminalCounts[0].Difference.Equal(dec("-10")) {
 		t.Fatalf("diferencia por terminal = %+v; quería -10", v.TerminalCounts)
 	}
+	// El corte cerrado (Histórico → Ver) muestra lo mismo que firmó el cierre: un faltante de una
+	// terminal que solo se ve con el turno abierto es un faltante que nadie vuelve a ver.
+	d, err := back.SessionDetail(ctx, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.CardCountMode != "per_terminal" || len(d.TerminalCounts) != 1 ||
+		!d.TerminalCounts[0].Declared.Equal(dec("240")) || !d.TerminalCounts[0].Expected.Equal(dec("250")) ||
+		!d.TerminalCounts[0].Difference.Equal(dec("-10")) {
+		t.Fatalf("FALTANTE DE TERMINAL INVISIBLE en el corte cerrado: modo %q, terminales %+v", d.CardCountMode, d.TerminalCounts)
+	}
 }
 
 // sinArqueoPorTerminal deja todas las sucursales en arqueo automático de tarjeta, para los casos
