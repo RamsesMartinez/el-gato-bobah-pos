@@ -1100,7 +1100,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
                   <HStack key={t.terminalId} justify="space-between">
                     <Text>{t.name}</Text>
                     <Text color={diffColor(t.difference)}>
-                      {money(t.declared, closed?.currency ?? 'MXN')} · dif. {money(t.difference, closed?.currency ?? 'MXN')}
+                      {money(t.declared, closed?.currency ?? 'MXN')} · diferencia {money(t.difference, closed?.currency ?? 'MXN')}
                     </Text>
                   </HStack>
                 ))}

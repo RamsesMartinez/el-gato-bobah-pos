@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -170,6 +171,10 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 		return 0, err
 	} else if ok {
 		shiftDay = &d
+		// Con turno abierto el día lo pone el turno: un día elegido se rechaza, no se ignora.
+		if hasChosen {
+			return 0, fmt.Errorf("%w: con la caja abierta el día del gasto es el del turno", domain.ErrValidation)
+		}
 	}
 	expenseDay := domain.ExpenseDay(shiftDay, s.now(), chosenPtr)
 	received, hasReceived, err := s.parseOptionalDay(in.ReceivedAt)

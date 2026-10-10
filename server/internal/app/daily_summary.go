@@ -54,7 +54,10 @@ func (s *DailySummaryService) SetEmails(ctx context.Context, emails []string) er
 	if err != nil {
 		return err
 	}
-	_, err = s.store.QC(ctx).SetSummaryEmails(ctx, clean)
+	n, err := s.store.QC(ctx).SetSummaryEmails(ctx, clean)
+	if err == nil && n == 0 {
+		return domain.ErrNotFound // sin fila de ajustes no hay dónde guardar: no se finge que se guardó
+	}
 	return err
 }
 
@@ -140,7 +143,7 @@ func summaryHTML(day time.Time, m db.DaySummaryMoneyRow, salidas []db.DaySummary
 	}
 	fmt.Fprintf(&b, "<h2>Cierre del %s</h2><table>", day.Format("02/01/2006"))
 	row("Turnos cerrados", fmt.Sprint(m.Shifts))
-	row("Ventas", "$"+m.Sales.StringFixed(2))
+	row("Cobrado (sin propinas, antes de devoluciones)", "$"+m.Sales.StringFixed(2))
 	row("Propinas cobradas", "$"+m.Tips.StringFixed(2))
 	row("Propinas entregadas", "$"+m.TipsPaidOut.StringFixed(2))
 	row("Propinas por entregar", "$"+m.TipsPending.StringFixed(2))

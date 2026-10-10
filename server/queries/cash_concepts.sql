@@ -63,4 +63,6 @@ returning id;
 select count(*)::int from register_cash_movements m
  where m.session_id = $1 and m.kind = 'salida' and m.concept_id is null
    and m.expense_id is null and m.transfer_id is null
-   and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id);
+   and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id)
+   -- Una salida vieja ya corregida tiene su reverso: deja de avisarse.
+   and not exists (select 1 from register_cash_movements x where x.reverses_id = m.id);

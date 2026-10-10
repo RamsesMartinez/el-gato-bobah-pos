@@ -84,9 +84,9 @@ func TestOpeningReason(t *testing.T) {
 		reason, note string
 		ok           bool
 	}{
-		{"cambio_de_fondo", "", true},
-		{"otro", "", false},
-		{"otro", "se llevó cambio el gerente", true},
+		{"float_changed", "", true},
+		{"other", "", false},
+		{"other", "se llevó cambio el gerente", true},
 		{"", "", false},
 		{"inventado", "x", false},
 	} {

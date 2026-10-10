@@ -73,7 +73,7 @@ func ExpenseDay(openShiftDay *time.Time, today time.Time, chosen *time.Time) tim
 
 // Motivos de una apertura que no coincide con el cierre anterior (punto 6).
 var openingReasons = map[string]bool{
-	"conteo_anterior_mal": true, "cambio_de_fondo": true, "retiro_no_registrado": true, "otro": true,
+	"last_count_wrong": true, "float_changed": true, "unrecorded_withdrawal": true, "other": true,
 }
 
 // OpeningNeedsReason: hay cierre anterior y lo contado difiere de él al centavo.
@@ -87,7 +87,7 @@ func ValidOpeningReason(reason, note string) error {
 		return ErrOpeningReasonRequired
 	}
 	n := strings.TrimSpace(note)
-	if reason == "otro" && n == "" {
+	if reason == "other" && n == "" {
 		return fmt.Errorf("%w: explica el motivo", ErrValidation)
 	}
 	if len([]rune(n)) > 200 {
@@ -100,8 +100,8 @@ func ValidOpeningReason(reason, note string) error {
 type CardCountMode string
 
 const (
-	CardCountAuto        CardCountMode = "automatico"
-	CardCountPerTerminal CardCountMode = "por_terminal"
+	CardCountAuto        CardCountMode = "auto"
+	CardCountPerTerminal CardCountMode = "per_terminal"
 )
 
 // ParseCardCountMode rechaza cualquier valor desconocido.

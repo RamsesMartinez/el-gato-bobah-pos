@@ -6,10 +6,10 @@ import {
 
 // Los motivos son los mismos que acepta el servidor (domain.ValidOpeningReason).
 const MOTIVOS: { value: string; label: string }[] = [
-  { value: 'conteo_anterior_mal', label: 'El cierre se contó mal' },
-  { value: 'cambio_de_fondo', label: 'Cambié el fondo' },
-  { value: 'retiro_no_registrado', label: 'Se sacó dinero sin registrar' },
-  { value: 'otro', label: 'Otro' },
+  { value: 'last_count_wrong', label: 'El cierre se contó mal' },
+  { value: 'float_changed', label: 'Cambié el fondo' },
+  { value: 'unrecorded_withdrawal', label: 'Se sacó dinero sin registrar' },
+  { value: 'other', label: 'Otro' },
 ];
 
 // MotivoDeApertura: lo contado al abrir no coincide con el cierre anterior (spec 032, punto 6). No
@@ -23,7 +23,7 @@ export function MotivoDeApertura({ isOpen, guardando, onConfirmar, onVolver }: {
   const [motivo, setMotivo] = useState('');
   const [nota, setNota] = useState('');
   const salir = () => { setMotivo(''); setNota(''); onVolver(); };
-  const listo = motivo !== '' && (motivo !== 'otro' || nota.trim() !== '');
+  const listo = motivo !== '' && (motivo !== 'other' || nota.trim() !== '');
   return (
     <DrawerRoot open={isOpen} placement="bottom" onOpenChange={(e) => { if (!e.open && !guardando) salir(); }}>
       <DrawerBackdrop />
@@ -41,7 +41,7 @@ export function MotivoDeApertura({ isOpen, guardando, onConfirmar, onVolver }: {
             ))}
           </SimpleGrid>
           <Input mt={3} minH="52px" aria-label="Motivo" maxLength={200}
-            placeholder={motivo === 'otro' ? 'Escribe el motivo' : 'Detalle (opcional)'}
+            placeholder={motivo === 'other' ? 'Escribe el motivo' : 'Detalle (opcional)'}
             value={nota} onChange={(e) => setNota(e.target.value)} />
         </DrawerBody>
         <DrawerFooter borderTopWidth="1px" pt={3}>

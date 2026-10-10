@@ -23,7 +23,7 @@
 - **Alternatives**: enviarlo dentro del cierre (bloquea el cierre si el SMTP falla, EB-39).
 
 ## R6. Motivos de apertura
-- **Decision**: lista fija en `domain` (`conteo_anterior_mal`, `cambio_de_fondo`, `retiro_no_registrado`, `otro`) + texto obligatorio con `otro`.
+- **Decision**: lista fija en `domain` (`last_count_wrong`, `float_changed`, `unrecorded_withdrawal`, `otro`) + texto obligatorio con `otro`.
 - **Alternatives**: catálogo editable (se agrega después al mismo costo).
 
 ## R7. Apertura ciega

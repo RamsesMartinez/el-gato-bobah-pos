@@ -142,7 +142,7 @@ func TestElCorteSumaPorTurnoYNoPorHora(t *testing.T) {
 	}
 
 	// Turno 2, el mismo día y con el mismo reloj: debe esperar SOLO su propia venta.
-	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{Reason: "cambio_de_fondo"}, cajero); err != nil {
+	if _, err := backoffice.OpenSession(ctx, principal, app.AperturaCmd{Reason: "float_changed"}, cajero); err != nil {
 		t.Fatalf("OpenSession 2: %v", err)
 	}
 	vender()

@@ -34,16 +34,16 @@ func TestOpeningDifferentFromLastCloseNeedsReason(t *testing.T) {
 	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &otro, Motivo: "prueba"}, cajero); !errors.Is(err, domain.ErrOpeningReasonRequired) {
 		t.Fatalf("abrir con 450 tras cerrar con 500 sin motivo: err = %v", err)
 	}
-	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &otro, Motivo: "prueba", Reason: "otro"}, cajero); !errors.Is(err, domain.ErrValidation) {
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &otro, Motivo: "prueba", Reason: "other"}, cajero); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("«otro» sin texto: err = %v", err)
 	}
-	v, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &otro, Motivo: "prueba", Reason: "cambio_de_fondo"}, cajero)
+	v, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &otro, Motivo: "prueba", Reason: "float_changed"}, cajero)
 	if err != nil {
 		t.Fatalf("abrir con motivo: %v", err)
 	}
 	var motivo string
 	_ = st.Pool.QueryRow(ctx, `select opening_reason from register_sessions where id = $1`, v.ID).Scan(&motivo)
-	if motivo != "cambio_de_fondo" {
+	if motivo != "float_changed" {
 		t.Fatalf("el motivo no se guardó: %q", motivo)
 	}
 }

@@ -15,25 +15,25 @@ select distinct s.business_date
  where s.status = 'cerrada' and s.business_date >= sqlc.arg(since)::date
    and not exists (select 1 from register_sessions o where o.status = 'abierta' and o.business_date = s.business_date)
    and not exists (select 1 from daily_summary_sends d
-                    where d.business_date = s.business_date and (d.status = 'enviado' or d.attempts >= 5))
+                    where d.business_date = s.business_date and (d.status = 'sent' or d.attempts >= 5))
  order by s.business_date;
 
 -- name: ClaimSummarySend :one
 -- La fila se toma ANTES de mandar: un reintento o una pasada paralela no manda dos veces. Solo se
 -- vuelve a tomar una fallida (o una pendiente que quedó colgada más de 10 minutos).
-insert into daily_summary_sends (business_date, status, attempts) values ($1, 'pendiente', 1)
+insert into daily_summary_sends (business_date, status, attempts) values ($1, 'pending', 1)
 on conflict (company_id, business_date) do update
-   set status = 'pendiente', attempts = daily_summary_sends.attempts + 1, last_error = null
+   set status = 'pending', attempts = daily_summary_sends.attempts + 1, last_error = null
  where daily_summary_sends.attempts < 5
-   and (daily_summary_sends.status = 'fallido'
-        or (daily_summary_sends.status = 'pendiente' and daily_summary_sends.created_at < now() - interval '10 minutes'))
+   and (daily_summary_sends.status = 'failed'
+        or (daily_summary_sends.status = 'pending' and daily_summary_sends.created_at < now() - interval '10 minutes'))
 returning id;
 
 -- name: MarkSummarySent :exec
-update daily_summary_sends set status = 'enviado', sent_at = now() where id = $1;
+update daily_summary_sends set status = 'sent', sent_at = now() where id = $1;
 
 -- name: MarkSummaryFailed :exec
-update daily_summary_sends set status = 'fallido', last_error = left($2, 500) where id = $1;
+update daily_summary_sends set status = 'failed', last_error = left($2, 500) where id = $1;
 
 -- name: DaySummaryMoney :one
 -- Las cifras del día, cada rama pre-agregada por su cuenta (1:N con los turnos). Ventas sin
@@ -47,7 +47,8 @@ with t as (
   select coalesce(sum(m.amount) filter (where m.kind = 'propina'), 0) as entregadas,
          count(*) filter (where m.kind = 'salida' and m.concept_id is null and m.expense_id is null
                           and m.transfer_id is null
-                          and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id)) as sin_concepto
+                          and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id)
+                          and not exists (select 1 from register_cash_movements x where x.reverses_id = m.id)) as sin_concepto
     from register_cash_movements m where m.session_id in (select id from t)
 ), cajon as (
   select coalesce(sum(c.difference), 0) as diferencia

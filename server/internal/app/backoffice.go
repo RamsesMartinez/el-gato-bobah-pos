@@ -1556,7 +1556,7 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		if errTips := carryOver(ctx, q, sess.ID, fuentes); errTips != nil {
 			return errTips
 		}
-		if err := s.guardarConteoDeTerminales(ctx, q, sess, userID, cmd.TerminalCounts); err != nil {
+		if err := s.saveTerminalCounts(ctx, q, sess, userID, cmd.TerminalCounts); err != nil {
 			return err
 		}
 		var err error
@@ -1689,10 +1689,10 @@ type TerminalToCount struct {
 	Name       string `json:"name"`
 }
 
-// guardarConteoDeTerminales: con arqueo por terminal, cada terminal que cobró en el turno tiene que
+// saveTerminalCounts: con arqueo por terminal, cada terminal que cobró en el turno tiene que
 // traer el total de su corte; con automático no se pide nada. El modo es el del turno (copiado al
 // abrir), no el actual de la sucursal.
-func (s *BackofficeService) guardarConteoDeTerminales(ctx context.Context, q *db.Queries, sess db.RegisterSession, userID int64, declared map[int64]decimal.Decimal) error {
+func (s *BackofficeService) saveTerminalCounts(ctx context.Context, q *db.Queries, sess db.RegisterSession, userID int64, declared map[int64]decimal.Decimal) error {
 	cobrado, err := q.TerminalCollectedForSession(ctx, sess.ID)
 	if err != nil {
 		return err

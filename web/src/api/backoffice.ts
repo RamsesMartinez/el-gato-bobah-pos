@@ -187,7 +187,7 @@ export interface CashSession {
   // Propinas (spec 032). Opcionales: un servidor viejo no las manda y la sección no se pinta.
   tipsPending?: TipsPending | null;
   // Arqueo de tarjeta por terminal (spec 032): lo que se pide al cerrar y, cerrado, la diferencia.
-  cardCountMode?: 'automatico' | 'por_terminal';
+  cardCountMode?: 'auto' | 'per_terminal';
   cashOutsWithoutConcept?: number;
   terminalsToCount?: { terminalId: number; name: string }[];
   terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
@@ -618,8 +618,8 @@ export const backofficeApi = {
   createCardTerminal: (branchId: number, name: string) => api.post<CardTerminal>('/card-terminals', { branchId, name }),
   updateCardTerminal: (id: number, body: { name: string } | { archived: true }) =>
     api.patch<CardTerminal | null>(`/card-terminals/${id}`, body),
-  cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'automatico' | 'por_terminal' }[] }>('/branches/card-count-modes'),
-  setCardCountMode: (branchId: number, mode: 'automatico' | 'por_terminal') =>
+  cardCountModes: () => api.get<{ items: { branchId: number; name: string; mode: 'auto' | 'per_terminal' }[] }>('/branches/card-count-modes'),
+  setCardCountMode: (branchId: number, mode: 'auto' | 'per_terminal') =>
     api.put<null>(`/branches/${branchId}/card-count-mode`, { mode }),
   correctCashOut: (movementId: number, input: { amount: number; conceptId: number }) =>
     api.post<CashSession>(`/cash-movements/${movementId}/correct`, input),

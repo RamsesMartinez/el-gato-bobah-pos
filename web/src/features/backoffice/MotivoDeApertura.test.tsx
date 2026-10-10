@@ -13,7 +13,7 @@ test('elige un motivo de la lista y confirma', async () => {
   expect(screen.getByRole('button', { name: 'Abrir caja' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Cambié el fondo' }));
   await userEvent.click(screen.getByRole('button', { name: 'Abrir caja' }));
-  expect(onConfirmar).toHaveBeenCalledWith('cambio_de_fondo', '');
+  expect(onConfirmar).toHaveBeenCalledWith('float_changed', '');
 });
 
 test('«Otro» exige escribir el motivo', async () => {
@@ -23,5 +23,5 @@ test('«Otro» exige escribir el motivo', async () => {
   expect(screen.getByRole('button', { name: 'Abrir caja' })).toBeDisabled();
   await userEvent.type(screen.getByLabelText('Motivo'), 'se llevó cambio');
   await userEvent.click(screen.getByRole('button', { name: 'Abrir caja' }));
-  expect(onConfirmar).toHaveBeenCalledWith('otro', 'se llevó cambio');
+  expect(onConfirmar).toHaveBeenCalledWith('other', 'se llevó cambio');
 });

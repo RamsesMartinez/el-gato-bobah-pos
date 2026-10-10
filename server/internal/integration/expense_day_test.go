@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -75,5 +76,25 @@ func TestExpenseDayWithoutOpenShiftIsChosenOrToday(t *testing.T) {
 	_ = st.Pool.QueryRow(ctx, `select expense_date from expenses where id = $1`, hoy).Scan(&d2)
 	if d1.Format("2006-01-02") != "2026-07-15" || d2.Format("2006-01-02") != fixedNow.Format("2006-01-02") {
 		t.Fatalf("elegido %s (quería 2026-07-15), sin elegir %s (quería hoy)", d1.Format("2006-01-02"), d2.Format("2006-01-02"))
+	}
+}
+
+// Con turno abierto el día lo pone el turno: un día elegido a mano no se descarta en silencio, se
+// rechaza (constitución V).
+func TestExpenseDayChosenWithOpenShiftIsRejected(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	admin := makeUser(t, st, "admin_dia_rechazo", "admin")
+	var catID int64
+	if err := st.Pool.QueryRow(ctx,
+		`insert into expense_categories (name, financial_group) values ('Dia rechazo', 'operacional') returning id`).Scan(&catID); err != nil {
+		t.Fatal(err)
+	}
+	abrirCajaPrincipal(t, st, admin)
+	if _, err := back.CreateExpense(ctx, app.ExpenseInput{ExpenseDay: "2026-07-01", CategoryID: catID, Amount: dec("10"),
+		Status: domain.ExpensePendiente, UserID: admin}); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("día elegido con turno abierto: err = %v", err)
 	}
 }

@@ -136,7 +136,7 @@ func TestPerTerminalCountAtClose(t *testing.T) {
 	cajero := makeUser(t, st, "cajero_arqueo_terminal", "cajero")
 	branch := branchOfPrincipal(t, st)
 	reg := principalRegister(t, st)
-	if err := terms.SetCardCountMode(ctx, branch, "por_terminal"); err != nil {
+	if err := terms.SetCardCountMode(ctx, branch, "per_terminal"); err != nil {
 		t.Fatal(err)
 	}
 	cero := dec("0")
@@ -144,7 +144,7 @@ func TestPerTerminalCountAtClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cambiar el modo con la caja abierta no cambia este turno.
-	if err := terms.SetCardCountMode(ctx, branch, "automatico"); err != nil {
+	if err := terms.SetCardCountMode(ctx, branch, "auto"); err != nil {
 		t.Fatal(err)
 	}
 	prod := makeProduct(t, st, "Tarjeta arqueo", dec("250"), false)
@@ -173,7 +173,41 @@ func TestPerTerminalCountAtClose(t *testing.T) {
 // que prueban otra cosa y cierran turnos con cobros con tarjeta.
 func sinArqueoPorTerminal(t *testing.T, st *store.Store) {
 	t.Helper()
-	if _, err := st.Pool.Exec(context.Background(), `update branches set card_count_mode = 'automatico'`); err != nil {
+	if _, err := st.Pool.Exec(context.Background(), `update branches set card_count_mode = 'auto'`); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Una devolución con tarjeta en el mismo turno baja lo esperado de su terminal: sin eso el arqueo por
+// terminal marcaba un faltante igual a lo devuelto, que la terminal ya regresó.
+func TestCardRefundLowersTerminalExpected(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_term_dev", "admin")
+	reg := principalRegister(t, st)
+	if err := app.NewTerminalsService(st).SetCardCountMode(ctx, branchOfPrincipal(t, st), "per_terminal"); err != nil {
+		t.Fatal(err)
+	}
+	cero := dec("0")
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &cero, Motivo: "prueba"}, cajero); err != nil {
+		t.Fatal(err)
+	}
+	ord := pedidoCobradoParcial(t, ctx, st, orders, "term dev", "300", "300", cajero, paymentMethodID(t, st, "Tarjeta débito"), false)
+	if err := orders.Devolver(ctx, app.DevolucionCmd{OrderID: ord, Monto: dec("100"), Motivo: "prueba", ActorID: cajero, CardFolio: "F9"}); err != nil {
+		t.Fatal(err)
+	}
+	entregarPendientes(t, st)
+	var term int64
+	_ = st.Pool.QueryRow(ctx, `select card_terminal_id from order_payments where order_id = $1`, ord).Scan(&term)
+	v, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &cero, Motivo: "prueba",
+		TerminalCounts: map[int64]decimal.Decimal{term: dec("200")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.TerminalCounts[0].Difference.IsZero() {
+		t.Fatalf("DEVOLUCIÓN NO DESCONTADA de la terminal: esperado %s, diferencia %s", v.TerminalCounts[0].Expected, v.TerminalCounts[0].Difference)
 	}
 }

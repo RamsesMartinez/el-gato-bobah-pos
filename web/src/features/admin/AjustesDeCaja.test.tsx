@@ -21,7 +21,7 @@ beforeEach(() => {
     { id: 2, name: 'hielo bolsa', categoryId: null, categoryName: null, supplierId: null, supplierName: null },
   ] });
   api.cardTerminals.mockResolvedValue({ items: [{ id: 5, branchId: 1, branchName: 'Matriz', name: 'Getnet', archived: false }] });
-  api.cardCountModes.mockResolvedValue({ items: [{ branchId: 1, name: 'Matriz', mode: 'automatico' }] });
+  api.cardCountModes.mockResolvedValue({ items: [{ branchId: 1, name: 'Matriz', mode: 'auto' }] });
   api.summaryEmails.mockResolvedValue({ emails: ['dueno@ejemplo.com'] });
   for (const f of [api.updateCashConcept, api.mergeCashConcept, api.createCardTerminal, api.updateCardTerminal, api.setCardCountMode]) f.mockResolvedValue(null);
   api.setSummaryEmails.mockResolvedValue({ emails: [] });
@@ -36,7 +36,7 @@ function pinta() {
 test('el modo de arqueo se cambia con un toque por sucursal', async () => {
   pinta();
   await userEvent.click(await screen.findByRole('button', { name: 'Por terminal' }));
-  expect(api.setCardCountMode).toHaveBeenCalledWith(1, 'por_terminal');
+  expect(api.setCardCountMode).toHaveBeenCalledWith(1, 'per_terminal');
 });
 
 // Punto 8: terminales por sucursal, con nombre propio.

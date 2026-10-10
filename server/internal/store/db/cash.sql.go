@@ -2008,7 +2008,7 @@ func (q *Queries) SessionWrittenOff(ctx context.Context, registerSessionID *int6
 const setOpeningExtras = `-- name: SetOpeningExtras :exec
 update register_sessions s set opening_reason = $1, opening_reason_note = $2,
        card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
-                                    where r.id = s.register_id), 'automatico')
+                                    where r.id = s.register_id), 'auto')
  where s.id = $3
 `
 

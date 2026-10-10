@@ -33,17 +33,29 @@ update branches set card_count_mode = $2 where id = $1;
 select id, name, card_count_mode from branches where is_active order by branch_number;
 
 -- name: TerminalCollectedForSession :many
--- Lo cobrado por terminal en el turno, menos lo devuelto de esos cobros (sin pasar por el cajón).
--- Se pre-agrega cada rama por terminal: cobros y devoluciones son dos 1:N.
+-- Lo cobrado por terminal en el turno, menos lo devuelto con tarjeta en el turno. La devolución no
+-- guarda terminal: se le atribuye la del último cobro con tarjeta de su pedido (donde se devuelve).
+-- Cobros y devoluciones son dos 1:N: cada rama se pre-agrega por terminal antes de unirse.
 with cobrado as (
   select op.card_terminal_id, max(op.card_terminal_name) as name, sum(op.amount + op.tip_amount) as total
     from order_payments op
    where op.register_session_id = sqlc.arg(session_id)::bigint and op.card_terminal_id is not null
    group by op.card_terminal_id
+), devuelto as (
+  select t.card_terminal_id, sum(r.amount + r.tip_amount) as total
+    from order_refunds r
+    join payment_methods pm on pm.id = r.payment_method_id and pm.kind = 'tarjeta'
+    join lateral (select op.card_terminal_id from order_payments op
+                   where op.order_id = r.order_id and op.payment_method_id = r.payment_method_id
+                     and op.card_terminal_id is not null
+                   order by op.id desc limit 1) t on true
+   where r.register_session_id = sqlc.arg(session_id)::bigint and r.cash_movement_id is null
+   group by t.card_terminal_id
 )
 select c.card_terminal_id::bigint as terminal_id, c.name::text as name,
-       coalesce(c.total, 0)::numeric(10,2) as collected
+       greatest(coalesce(c.total, 0) - coalesce(d.total, 0), 0)::numeric(10,2) as collected
   from cobrado c
+  left join devuelto d on d.card_terminal_id = c.card_terminal_id
  order by c.card_terminal_id;
 
 -- name: InsertSessionTerminalCount :exec

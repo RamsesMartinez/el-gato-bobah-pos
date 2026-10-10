@@ -29,7 +29,7 @@ Toda tabla nueva: `company_id` con default `nullif(current_setting('app.company_
 `card_refund_folio text`, `card_refund_captured_by bigint → users`; trigger: si el pago original es tarjeta, folio no vacío tras `btrim`.
 
 ### branches
-`card_count_mode text not null default 'automatico' check in ('automatico','por_terminal')`.
+`card_count_mode text not null default 'auto' check in ('auto','per_terminal')`.
 
 ### business_settings
 `daily_summary_emails text[] not null default '{}'` (D-C, 2026-10-09); validado en dominio: formato, sin duplicados, máx. 10.
@@ -54,5 +54,5 @@ Toda tabla nueva: `company_id` con default `nullif(current_setting('app.company_
 - Gastos del periodo excluyen `propina` y traspasos; se muestran aparte.
 
 ## Siembra
-- Cada sucursal existente recibe una terminal por omisión; la sucursal de la empresa `gatobobah` (por slug) queda en `por_terminal`.
+- Cada sucursal existente recibe una terminal por omisión; la sucursal de la empresa `gatobobah` (por slug) queda en `per_terminal`.
 - Conceptos por omisión por empresa: basura, hielo, vigilancia, insumos.

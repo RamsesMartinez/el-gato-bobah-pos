@@ -3,6 +3,7 @@ import { Box, Button, HStack, Input, Text, VStack, Wrap } from '@chakra-ui/react
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi, type CashConcept } from '../../api/backoffice';
 import { Picker } from '../../components/Picker';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { toaster } from '../../components/ui/toaster';
 import { mensajeDeError } from '../../api/mensajes';
 
@@ -29,6 +30,8 @@ export function AjustesDeCaja() {
   const [juntando, setJuntando] = useState<CashConcept | null>(null);
   const [destino, setDestino] = useState('');
   const [renombrando, setRenombrando] = useState<{ id: number; name: string } | null>(null);
+  // Archivar pide confirmación: el concepto deja de ofrecerse en la caja (revisión de tableta).
+  const [archivando, setArchivando] = useState<CashConcept | null>(null);
   const archivar = useMutation({
     mutationFn: (id: number) => backofficeApi.updateCashConcept(id, { archived: true }),
     onSuccess: recargar('cash'), onError: avisar('No se pudo archivar'),
@@ -59,7 +62,7 @@ export function AjustesDeCaja() {
     onSuccess: recargar('card-terminals'), onError: avisar('No se pudo archivar'),
   });
   const cambiarModo = useMutation({
-    mutationFn: (p: { branchId: number; mode: 'automatico' | 'por_terminal' }) => backofficeApi.setCardCountMode(p.branchId, p.mode),
+    mutationFn: (p: { branchId: number; mode: 'auto' | 'per_terminal' }) => backofficeApi.setCardCountMode(p.branchId, p.mode),
     onSuccess: recargar('card-count-modes'), onError: avisar('No se pudo cambiar'),
   });
 
@@ -97,7 +100,7 @@ export function AjustesDeCaja() {
                 <Button minH={TAP} variant="outline" onClick={() => setJuntando(c)}>Juntar con…</Button>
                 {/* Archivar aparte: no se confunde con juntar, que mueve salidas. */}
                 <Box w={4} />
-                <Button minH={TAP} variant="ghost" colorPalette="red" onClick={() => archivar.mutate(c.id)}>Archivar</Button>
+                <Button minH={TAP} variant="ghost" colorPalette="red" onClick={() => setArchivando(c)}>Archivar</Button>
               </HStack>
             </HStack>
           ))}
@@ -115,6 +118,11 @@ export function AjustesDeCaja() {
         )}
       </Bloque>
 
+      <ConfirmSheet isOpen={archivando !== null} destructive title={`¿Archivar «${archivando?.name ?? ''}»?`}
+        description="Deja de ofrecerse al registrar salidas. Las salidas que ya lo usan no cambian."
+        confirmLabel="Archivar" onCancel={() => setArchivando(null)}
+        onConfirm={() => { if (archivando) archivar.mutate(archivando.id); setArchivando(null); }} />
+
       <Bloque titulo="Terminales de tarjeta">
         <VStack align="stretch" gap={4}>
           {sucursales.map((b) => (
@@ -122,16 +130,16 @@ export function AjustesDeCaja() {
               <HStack justify="space-between" flexWrap="wrap" gap={2} mb={2}>
                 <Text fontWeight="600">{b.name}</Text>
                 <HStack gap={0} role="group" aria-label={`Arqueo de tarjeta en ${b.name}`}>
-                  {(['automatico', 'por_terminal'] as const).map((m) => (
+                  {(['auto', 'per_terminal'] as const).map((m) => (
                     <Button key={m} minH={TAP} borderRadius={0} variant={b.mode === m ? 'solid' : 'outline'}
                       aria-pressed={b.mode === m} onClick={() => cambiarModo.mutate({ branchId: b.branchId, mode: m })}>
-                      {m === 'automatico' ? 'Automático' : 'Por terminal'}
+                      {m === 'auto' ? 'Automático' : 'Por terminal'}
                     </Button>
                   ))}
                 </HStack>
               </HStack>
               <Text fontSize="sm" color="fg.muted" mb={2}>
-                {b.mode === 'por_terminal'
+                {b.mode === 'per_terminal'
                   ? 'Al cerrar caja se escribe el total del corte de cada terminal.'
                   : 'Al cerrar caja la tarjeta se da por cuadrada.'}
               </Text>

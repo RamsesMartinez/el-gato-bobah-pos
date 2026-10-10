@@ -73,17 +73,17 @@ alter table expenses add column document_date date;
 -- 4. APERTURA A CIEGAS CON MOTIVO (punto 6) y modo de arqueo de tarjeta copiado al abrir (punto 9):
 --    cambiar el ajuste con la caja abierta no cambia lo que se le pide a quien ya está contando.
 alter table register_sessions
-  add column opening_reason      text check (opening_reason in ('conteo_anterior_mal', 'cambio_de_fondo', 'retiro_no_registrado', 'otro')),
+  add column opening_reason      text check (opening_reason in ('last_count_wrong', 'float_changed', 'unrecorded_withdrawal', 'other')),
   add column opening_reason_note text check (opening_reason_note is null or length(opening_reason_note) between 1 and 200),
-  add column card_count_mode     text not null default 'automatico' check (card_count_mode in ('automatico', 'por_terminal'));
+  add column card_count_mode     text not null default 'auto' check (card_count_mode in ('auto', 'per_terminal'));
 alter table register_sessions add constraint register_sessions_other_needs_note
-  check (opening_reason is distinct from 'otro' or opening_reason_note is not null);
+  check (opening_reason is distinct from 'other' or opening_reason_note is not null);
 
 -- 5. TERMINALES POR SUCURSAL (punto 8) y modo de arqueo por sucursal (punto 9).
-alter table branches add column card_count_mode text not null default 'automatico'
-  check (card_count_mode in ('automatico', 'por_terminal'));
+alter table branches add column card_count_mode text not null default 'auto'
+  check (card_count_mode in ('auto', 'per_terminal'));
 -- El Gato Bobah arranca con arqueo por terminal (decisión del dueño). Por slug: el id 1 es otra empresa.
-update branches b set card_count_mode = 'por_terminal'
+update branches b set card_count_mode = 'per_terminal'
   from companies c where c.id = b.company_id and c.slug = 'gatobobah';
 
 create table card_terminals (
@@ -169,7 +169,7 @@ create table daily_summary_sends (
   company_id    bigint not null default nullif(current_setting('app.company_id', true), '')::bigint
                 references companies(id) on delete cascade,
   business_date date not null,
-  status        text not null default 'pendiente' check (status in ('pendiente', 'enviado', 'fallido')),
+  status        text not null default 'pending' check (status in ('pending', 'sent', 'failed')),
   attempts      int not null default 0 check (attempts >= 0),
   last_error    text,
   sent_at       timestamptz,
