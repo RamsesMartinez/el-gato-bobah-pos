@@ -252,6 +252,8 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		ManualReason string           `json:"manualReason"`
 		Notes        string           `json:"notes"`
 		TipsDecision string           `json:"tipsDecision"`
+		// terminalId(string) → total del corte de la terminal (spec 032, arqueo por terminal).
+		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -269,9 +271,19 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		}
 		declared[id] = v
 	}
+	terminales := map[int64]decimal.Decimal{}
+	for k, v := range body.TerminalCounts {
+		id, err := strconv.ParseInt(k, 10, 64)
+		if err != nil {
+			Error(w, fmt.Errorf("%w: %q no es una terminal", domain.ErrValidation, k))
+			return
+		}
+		terminales[id] = v
+	}
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
-		Declarado: declared, Piezas: piezasDelBody(body.Counts),
+		TerminalCounts: terminales,
+		Declarado:      declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
 	if err != nil {
@@ -463,6 +475,93 @@ func (h *Handlers) CorrectCashOut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusCreated, sess)
+}
+
+// ---- Terminales de tarjeta (spec 032, puntos 8 y 9) ----
+
+func (h *Handlers) ListCardTerminals(w http.ResponseWriter, r *http.Request) {
+	items, err := h.terminals.List(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) CreateCardTerminal(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		BranchID int64  `json:"branchId"`
+		Name     string `json:"name"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	t, err := h.terminals.Create(r.Context(), body.BranchID, body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, t)
+}
+
+func (h *Handlers) UpdateCardTerminal(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		Archived bool   `json:"archived"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if body.Archived {
+		if err := h.terminals.Archive(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	t, err := h.terminals.Rename(r.Context(), id, body.Name)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, t)
+}
+
+func (h *Handlers) CardCountModes(w http.ResponseWriter, r *http.Request) {
+	items, err := h.terminals.CardCountModes(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handlers) SetCardCountMode(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	if err := h.terminals.SetCardCountMode(r.Context(), id, body.Mode); err != nil {
+		Error(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- Conceptos de salida (spec 032, punto 3) ----

@@ -289,6 +289,13 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Post("/cash-concepts", h.CreateCashConcept)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/cash-concepts/{id}", h.UpdateCashConcept)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-concepts/{id}/merge", h.MergeCashConcept)
+				// Terminales (spec 032): quien cobra las lee; agregarlas, renombrarlas, archivarlas y el
+				// modo de arqueo por sucursal son configuración.
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente, domain.RoleCajero)).Get("/card-terminals", h.ListCardTerminals)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/card-terminals", h.CreateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Patch("/card-terminals/{id}", h.UpdateCardTerminal)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/branches/card-count-modes", h.CardCountModes)
+				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Put("/branches/{id}/card-count-mode", h.SetCardCountMode)
 				// Corregir una salida: reverso + salida nueva. Gerente o admin.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/cash-movements/{id}/correct", h.CorrectCashOut)
 				// El catálogo de denominaciones: lo pide la hoja de conteo, que abre el mismo que

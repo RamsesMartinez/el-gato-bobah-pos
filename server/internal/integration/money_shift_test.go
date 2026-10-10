@@ -97,6 +97,8 @@ func TestACardRefundLowersTheShiftExpected(t *testing.T) {
 func TestARefundInALaterShiftBelongsToThatShift(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
+	// Este caso no es del arqueo por terminal (spec 032): la sucursal arquea la tarjeta en automático.
+	sinArqueoPorTerminal(t, st)
 	ctx := context.Background()
 	orders := app.NewOrdersService(st, clock)
 	back := app.NewBackofficeService(st, clock)

@@ -220,6 +220,7 @@ func main() {
 		Backoffice:   app.NewBackofficeService(st, nil),
 		Tips:         app.NewTipsService(st, nil),
 		CashConcepts: app.NewCashConceptsService(st),
+		Terminals:    app.NewTerminalsService(st),
 		Admin:        app.NewAdminService(st),
 		Settings:     app.NewSettingsService(st, cfg.PinPepper),
 		Company:      app.NewCompanyService(st),

@@ -405,6 +405,8 @@ type chargeOrderBody struct {
 	Lines        []selectedPiecesBody `json:"lines"`
 	AllRemaining bool                 `json:"allRemaining"`
 	Split        *app.ChargeSplit     `json:"split"`
+	// TerminalID: la terminal de un cobro con tarjeta (spec 032). Opcional: sin ella, la del usuario.
+	TerminalID *int64 `json:"terminalId"`
 }
 
 type selectedPiecesBody struct {
@@ -443,6 +445,7 @@ func (h *Handlers) ChargeOrder(w http.ResponseWriter, r *http.Request) {
 		OrderID: id, MethodID: body.MethodID, Amount: body.Amount, Tip: body.Tip,
 		ClientUUID: body.ClientUuid, Reference: body.Reference, ActorID: u.ID,
 		Lines: selectedPieces(body.Lines), AllRemaining: body.AllRemaining, Split: body.Split,
+		TerminalID: body.TerminalID,
 	})
 	if err != nil {
 		Error(w, err)
