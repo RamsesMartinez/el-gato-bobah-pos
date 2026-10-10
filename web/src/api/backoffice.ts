@@ -330,7 +330,8 @@ export interface Supplier {
 }
 export interface Expense {
   id: number;
-  expenseDate: string;       // YYYY-MM-DD, fecha del DOCUMENTO
+  expenseDate: string;       // YYYY-MM-DD, DÍA DEL GASTO (spec 032)
+  documentDate?: string | null; // YYYY-MM-DD, fecha del documento
   receivedAt: string | null; // null = mercancía sin recibir (no ha tocado el almacén)
   status: ExpenseStatus;
   category: string;
@@ -635,7 +636,8 @@ export const backofficeApi = {
     return api.get<{ items: Expense[]; total: number; page: number; pageSize: number }>(`/expenses${qs ? `?${qs}` : ''}`);
   },
   createExpense: (b: {
-    expenseDate?: string;
+    expenseDate?: string; // fecha del documento
+    expenseDay?: string;  // día del gasto, solo sin caja abierta (spec 032)
     receivedAt?: string;
     categoryId: number;
     supplierId?: number;

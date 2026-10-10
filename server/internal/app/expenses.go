@@ -26,8 +26,9 @@ import (
 
 type ExpenseView struct {
 	ID             int64           `json:"id"`
-	ExpenseDate    string          `json:"expenseDate"` // YYYY-MM-DD, fecha del documento
-	ReceivedAt     *string         `json:"receivedAt"`  // null = mercancía no recibida
+	ExpenseDate    string          `json:"expenseDate"` // YYYY-MM-DD, día del gasto (spec 032)
+	DocumentDate   *string         `json:"documentDate,omitempty"`
+	ReceivedAt     *string         `json:"receivedAt"` // null = mercancía no recibida
 	Status         string          `json:"status"`
 	Category       string          `json:"category"`
 	FinancialGroup string          `json:"financialGroup"`
@@ -113,7 +114,10 @@ type ExpensePaymentInput struct {
 }
 
 type ExpenseInput struct {
-	ExpenseDate string // YYYY-MM-DD; vacío = hoy
+	ExpenseDate string // YYYY-MM-DD: fecha del DOCUMENTO; vacío = sin fecha de documento
+	// ExpenseDay: el día del gasto elegido a mano. Solo cuenta sin caja abierta: con turno abierto
+	// el día es el del turno (spec 032, punto 5). Vacío = hoy.
+	ExpenseDay  string
 	ReceivedAt  string // YYYY-MM-DD; vacío = aún no recibido
 	CategoryID  int64
 	SupplierID  *int64
@@ -150,10 +154,24 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	if len(in.Items) > maxExpenseItems {
 		return 0, domain.ErrValidation
 	}
-	docDate, err := s.parseDayOrToday(in.ExpenseDate)
+	docDate, hasDoc, err := s.parseOptionalDay(in.ExpenseDate)
 	if err != nil {
 		return 0, err
 	}
+	chosen, hasChosen, err := s.parseOptionalDay(in.ExpenseDay)
+	if err != nil {
+		return 0, err
+	}
+	var chosenPtr, shiftDay *time.Time
+	if hasChosen {
+		chosenPtr = &chosen
+	}
+	if d, ok, err := s.openShiftDay(ctx, in.Payments); err != nil {
+		return 0, err
+	} else if ok {
+		shiftDay = &d
+	}
+	expenseDay := domain.ExpenseDay(shiftDay, s.now(), chosenPtr)
 	received, hasReceived, err := s.parseOptionalDay(in.ReceivedAt)
 	if err != nil {
 		return 0, err
@@ -161,7 +179,7 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 
 	// Los pagos se validan ANTES de abrir la transacción: resolver la caja y el método son
 	// lecturas, y así un pago inválido no deja una tx abierta a medias.
-	payments, err := s.validatePayments(ctx, in.Payments, docDate)
+	payments, err := s.validatePayments(ctx, in.Payments, expenseDay)
 	if err != nil {
 		return 0, err
 	}
@@ -172,8 +190,9 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 	}
 
 	params := db.CreateExpenseParams{
-		ExpenseDate: pgtype.Date{Time: docDate, Valid: true},
-		CategoryID:  in.CategoryID, SupplierID: in.SupplierID, Amount: amount,
+		ExpenseDate:  pgtype.Date{Time: expenseDay, Valid: true},
+		DocumentDate: pgtype.Date{Time: docDate, Valid: hasDoc},
+		CategoryID:   in.CategoryID, SupplierID: in.SupplierID, Amount: amount,
 		Description: strPtr(in.Description), CreatedBy: in.UserID,
 		Status:   db.ExpenseStatus(in.Status),
 		DocKind:  strPtr(in.DocKind),
@@ -702,7 +721,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 		return out, err
 	}
 	out.ExpenseView = ExpenseView{
-		ID: exp.ID, ExpenseDate: exp.ExpenseDate.Time.Format(dateFmt),
+		ID: exp.ID, ExpenseDate: exp.ExpenseDate.Time.Format(dateFmt), DocumentDate: dateStr(exp.DocumentDate),
 		ReceivedAt: dateStr(exp.ReceivedAt), Status: string(exp.Status),
 		Category: exp.Category, FinancialGroup: string(exp.FinancialGroup), Supplier: exp.Supplier,
 		Amount: exp.Amount, Currency: domain.Currency(exp.Currency), Description: exp.Description,
@@ -761,6 +780,32 @@ func (s *BackofficeService) parseDayOrToday(v string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return d.Time, nil
+}
+
+// openShiftDay: el día de negocio del turno abierto que paga el gasto (la caja de su primer pago
+// que la nombre) o, si no nombra caja, el de la caja principal.
+func (s *BackofficeService) openShiftDay(ctx context.Context, payments []ExpensePaymentInput) (time.Time, bool, error) {
+	q := s.store.QC(ctx)
+	for _, p := range payments {
+		if p.RegisterID == nil {
+			continue
+		}
+		sess, err := q.GetOpenSessionByRegister(ctx, *p.RegisterID)
+		if err == nil {
+			return sess.BusinessDate.Time, true, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return time.Time{}, false, err
+		}
+	}
+	sess, err := q.GetOpenPrimarySession(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return sess.BusinessDate.Time, true, nil
 }
 
 // parseOptionalDay distingue "no viene" (válido: aún no se recibe) de "viene mal" (400).

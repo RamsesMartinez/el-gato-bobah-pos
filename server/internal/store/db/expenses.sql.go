@@ -54,30 +54,31 @@ const createExpense = `-- name: CreateExpense :one
 
 insert into expenses (
   expense_date, category_id, supplier_id, amount, description, created_by,
-  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  status, paid_at, paid_by, received_at, doc_kind, doc_folio, doc_raw, document_date
+) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 returning id
 `
 
 type CreateExpenseParams struct {
-	ExpenseDate pgtype.Date        `json:"expense_date"`
-	CategoryID  int64              `json:"category_id"`
-	SupplierID  *int64             `json:"supplier_id"`
-	Amount      decimal.Decimal    `json:"amount"`
-	Description *string            `json:"description"`
-	CreatedBy   int64              `json:"created_by"`
-	Status      ExpenseStatus      `json:"status"`
-	PaidAt      pgtype.Timestamptz `json:"paid_at"`
-	PaidBy      *int64             `json:"paid_by"`
-	ReceivedAt  pgtype.Date        `json:"received_at"`
-	DocKind     *string            `json:"doc_kind"`
-	DocFolio    *string            `json:"doc_folio"`
-	DocRaw      []byte             `json:"doc_raw"`
+	ExpenseDate  pgtype.Date        `json:"expense_date"`
+	CategoryID   int64              `json:"category_id"`
+	SupplierID   *int64             `json:"supplier_id"`
+	Amount       decimal.Decimal    `json:"amount"`
+	Description  *string            `json:"description"`
+	CreatedBy    int64              `json:"created_by"`
+	Status       ExpenseStatus      `json:"status"`
+	PaidAt       pgtype.Timestamptz `json:"paid_at"`
+	PaidBy       *int64             `json:"paid_by"`
+	ReceivedAt   pgtype.Date        `json:"received_at"`
+	DocKind      *string            `json:"doc_kind"`
+	DocFolio     *string            `json:"doc_folio"`
+	DocRaw       []byte             `json:"doc_raw"`
+	DocumentDate pgtype.Date        `json:"document_date"`
 }
 
 // ==== Gastos ====
-// expense_date la manda el llamador (antes se forzaba a hoy): es la fecha del DOCUMENTO, y una
-// factura se captura días después de emitirse. received_at va aparte, al recibir la mercancía.
+// expense_date es el DÍA DEL GASTO (spec 032, punto 5): el del turno abierto, o el que se elige sin
+// turno. La fecha del documento va en document_date y no lo mueve. received_at va aparte.
 func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (int64, error) {
 	row := q.db.QueryRow(ctx, createExpense,
 		arg.ExpenseDate,
@@ -93,6 +94,7 @@ func (q *Queries) CreateExpense(ctx context.Context, arg CreateExpenseParams) (i
 		arg.DocKind,
 		arg.DocFolio,
 		arg.DocRaw,
+		arg.DocumentDate,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -277,7 +279,7 @@ func (q *Queries) GetExpense(ctx context.Context, id int64) (Expense, error) {
 const getExpenseView = `-- name: GetExpenseView :one
 select e.id, e.expense_date, e.received_at, e.status, ec.name as category, ec.financial_group,
        s.name as supplier, e.amount, e.currency, e.description, e.doc_kind, e.doc_folio,
-       e.paid_at, ub.name as created_by_name
+       e.paid_at, ub.name as created_by_name, e.document_date
 from expenses e
 join expense_categories ec on ec.id = e.category_id
 left join suppliers s on s.id = e.supplier_id
@@ -300,6 +302,7 @@ type GetExpenseViewRow struct {
 	DocFolio       *string            `json:"doc_folio"`
 	PaidAt         pgtype.Timestamptz `json:"paid_at"`
 	CreatedByName  *string            `json:"created_by_name"`
+	DocumentDate   pgtype.Date        `json:"document_date"`
 }
 
 // El encabezado ya resuelto (categoría, proveedor, quién lo capturó) para la pantalla de
@@ -322,6 +325,7 @@ func (q *Queries) GetExpenseView(ctx context.Context, id int64) (GetExpenseViewR
 		&i.DocFolio,
 		&i.PaidAt,
 		&i.CreatedByName,
+		&i.DocumentDate,
 	)
 	return i, err
 }

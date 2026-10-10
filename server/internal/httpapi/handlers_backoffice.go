@@ -742,6 +742,7 @@ func toPaymentInputs(in []expensePaymentBody) []app.ExpensePaymentInput {
 func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ExpenseDate string               `json:"expenseDate"`
+		ExpenseDay  string               `json:"expenseDay"`
 		ReceivedAt  string               `json:"receivedAt"`
 		CategoryID  int64                `json:"categoryId"`
 		SupplierID  *int64               `json:"supplierId"`
@@ -760,7 +761,7 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	id, err := h.backoffice.CreateExpense(r.Context(), app.ExpenseInput{
-		ExpenseDate: body.ExpenseDate, ReceivedAt: body.ReceivedAt,
+		ExpenseDate: body.ExpenseDate, ExpenseDay: body.ExpenseDay, ReceivedAt: body.ReceivedAt,
 		CategoryID: body.CategoryID, SupplierID: body.SupplierID, Amount: body.Amount,
 		Description: body.Description, Status: body.Status,
 		Items: toItemInputs(body.Items), Payments: toPaymentInputs(body.Payments),
