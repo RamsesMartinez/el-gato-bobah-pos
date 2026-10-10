@@ -24,6 +24,7 @@ import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
+import { MotivoDeApertura } from './MotivoDeApertura';
 import { faltaDecidirPropinas } from './propinas';
 import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
@@ -769,6 +770,8 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [closed, setClosed] = useState<CashSession | null>(null); // resumen tras cerrar
   const [transferOpen, setTransferOpen] = useState(false);
   const [repartiendo, setRepartiendo] = useState(false);
+  // Apertura que no coincide con el cierre anterior: se guarda el conteo y se pide el motivo.
+  const [aperturaPendiente, setAperturaPendiente] = useState<AperturaInput | null>(null);
   const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
   const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
 
@@ -801,8 +804,14 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
     // Esto abre el TURNO. Medía «contar-efectivo» y era falso por partida doble: `abrir-turno`
     // —que existe en la lista blanca— nunca se disparaba, y el conteo del cierre no se contaba en
     // ningún lado. Dos ceros permanentes que se leen como «nadie lo hace».
-    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); invalidate(); },
-    onError: (e) => toaster.create({ title: 'No se pudo abrir la caja', description: String(e), type: 'error' }),
+    onSuccess: () => { medirAccion('caja', 'abrir-turno'); setContando(false); setAperturaPendiente(null); invalidate(); },
+    onError: (e, apertura) => {
+      if (e instanceof ApiError && e.code === 'OPENING_REASON_REQUIRED') {
+        setContando(false); setAperturaPendiente(apertura);
+        return;
+      }
+      toaster.create({ title: 'No se pudo abrir la caja', description: mensajeDeError(e), type: 'error' });
+    },
   });
   const payoutMut = useMutation({
     mutationFn: (input: TipPayoutInput) => backofficeApi.cashTipPayout(register.id, input),
@@ -1056,6 +1065,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         <RepartirPropinas isOpen={repartiendo} pendiente={session.tipsPending ?? null} currency={session.currency}
           guardando={payoutMut.isPending} onEntregar={(i) => payoutMut.mutate(i)} onClose={() => setRepartiendo(false)} />
       )}
+
+      <MotivoDeApertura isOpen={aperturaPendiente !== null} guardando={openMut.isPending}
+        onVolver={() => { setAperturaPendiente(null); setContando(true); }}
+        onConfirmar={(motivo, nota) => aperturaPendiente && openMut.mutate({ ...aperturaPendiente, openingReason: motivo, openingReasonNote: nota || undefined })} />
 
       <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)}
         from={register} openRegisters={openRegisters} onDone={() => { setTransferOpen(false); invalidate(); }} />

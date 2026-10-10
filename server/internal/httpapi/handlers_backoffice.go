@@ -204,14 +204,18 @@ func (h *Handlers) OpenCashSession(w http.ResponseWriter, r *http.Request) {
 		// ahora es el camino MANUAL: exige `manualReason` y es excluyente con `counts`.
 		OpeningCash  *decimal.Decimal `json:"openingCash"`
 		ManualReason string           `json:"manualReason"`
+		// Motivo de una apertura distinta del cierre anterior (spec 032, punto 6).
+		OpeningReason     string `json:"openingReason"`
+		OpeningReasonNote string `json:"openingReasonNote"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
 		return
 	}
 	u, _ := userFrom(r.Context())
-	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID,
-		aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason), u.ID)
+	apertura := aperturaDelBody(body.Counts, body.OpeningCash, body.ManualReason)
+	apertura.Reason, apertura.ReasonNote = body.OpeningReason, body.OpeningReasonNote
+	sess, err := h.backoffice.OpenSession(r.Context(), body.RegisterID, apertura, u.ID)
 	if err != nil {
 		Error(w, err)
 		return

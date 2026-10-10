@@ -1002,6 +1002,9 @@ type AperturaCmd struct {
 	Piezas []PiezaCapturada
 	Total  *decimal.Decimal
 	Motivo string
+	// Reason y ReasonNote: por qué lo contado no coincide con el cierre anterior (spec 032).
+	Reason     string
+	ReasonNote string
 }
 
 func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, cmd AperturaCmd, userID int64) (*SessionView, error) {
@@ -1028,6 +1031,24 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 	if err != nil {
 		return nil, err
 	}
+	// A CIEGAS (punto 6): el cierre anterior se compara aquí y no se devuelve. Una diferencia exige
+	// motivo de la lista; sin cierre anterior contado no hay contra qué comparar.
+	var prev *decimal.Decimal
+	if p, err := s.store.QC(ctx).LastClosingCountOfRegister(ctx, registerID); err == nil {
+		prev = &p
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	var reason, note *string
+	if domain.OpeningNeedsReason(prev, total) {
+		if err := domain.ValidOpeningReason(cmd.Reason, cmd.ReasonNote); err != nil {
+			return nil, err
+		}
+		reason = &cmd.Reason
+		if n := strings.TrimSpace(cmd.ReasonNote); n != "" {
+			note = &n
+		}
+	}
 
 	var sess db.RegisterSession
 	// UNA SOLA TRANSACCIÓN. Son tres escrituras —la sesión, el conteo y sus renglones— y si la
@@ -1045,6 +1066,9 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 			return err
 		}
 		sess = abierta
+		if err := q.SetOpeningExtras(ctx, db.SetOpeningExtrasParams{ID: abierta.ID, Reason: reason, Note: note}); err != nil {
+			return err
+		}
 		// Solo la caja PRINCIPAL reclama lo huérfano: es la única que vende, y el esperado de una
 		// secundaria ignora ventas y devoluciones. Si la barra abría primero se quedaba con ellas y
 		// no restaban ni sumaban en ningún corte (spec 031, revisión de D7).

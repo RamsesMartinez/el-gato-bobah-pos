@@ -105,9 +105,10 @@ export interface Denomination {
 //
 // El servidor los rechaza si llegan juntos, pero llegar hasta el rechazo con el cajón contado es un
 // conteo perdido: la unión discriminada lo vuelve imposible de escribir desde aquí.
-export type AperturaInput =
+export type AperturaInput = (
   | { counts: { denominationId: number; pieces: number }[] }
-  | { openingCash: number; manualReason: string };
+  | { openingCash: number; manualReason: string }
+) & { openingReason?: string; openingReasonNote?: string }; // spec 032: si no coincide con el cierre anterior
 
 // Un renglón del desglose. `subtotal` viene calculado del servidor aunque sea derivable: lo lee un
 // humano comparando contra su cajón, y dos multiplicaciones del mismo dato pueden diferir.

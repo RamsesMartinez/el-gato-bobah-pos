@@ -725,6 +725,25 @@ func (q *Queries) InsertTransferMovement(ctx context.Context, arg InsertTransfer
 	return err
 }
 
+const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
+select c.total
+  from register_sessions s
+  join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
+ where s.register_id = $1 and s.status = 'cerrada'
+ order by s.closed_at desc, s.id desc
+ limit 1
+`
+
+// Lo que se contó al cerrar el último turno de esta caja (spec 032, punto 6). Solo lo lee el servidor
+// para decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser
+// a ciegas.
+func (q *Queries) LastClosingCountOfRegister(ctx context.Context, registerID int64) (decimal.Decimal, error) {
+	row := q.db.QueryRow(ctx, lastClosingCountOfRegister, registerID)
+	var total decimal.Decimal
+	err := row.Scan(&total)
+	return total, err
+}
+
 const listAllCashRegisters = `-- name: ListAllCashRegisters :many
 select id, name, is_primary, is_active from cash_registers order by is_primary desc, name
 `
@@ -1984,6 +2003,27 @@ func (q *Queries) SessionWrittenOff(ctx context.Context, registerSessionID *int6
 	var monto decimal.Decimal
 	err := row.Scan(&monto)
 	return monto, err
+}
+
+const setOpeningExtras = `-- name: SetOpeningExtras :exec
+update register_sessions s set opening_reason = $1, opening_reason_note = $2,
+       card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
+                                    where r.id = s.register_id), 'automatico')
+ where s.id = $3
+`
+
+type SetOpeningExtrasParams struct {
+	Reason *string `json:"reason"`
+	Note   *string `json:"note"`
+	ID     int64   `json:"id"`
+}
+
+// El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
+// de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
+// quien cuenta.
+func (q *Queries) SetOpeningExtras(ctx context.Context, arg SetOpeningExtrasParams) error {
+	_, err := q.db.Exec(ctx, setOpeningExtras, arg.Reason, arg.Note, arg.ID)
+	return err
 }
 
 const uncollectedInSession = `-- name: UncollectedInSession :one

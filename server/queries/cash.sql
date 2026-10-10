@@ -685,3 +685,23 @@ update order_refunds r
    and r.cash_movement_id is null
    and r.created_at >= coalesce((select max(p.closed_at) from register_sessions p
                                   where p.register_id = s.register_id and p.id <> s.id), '-infinity'::timestamptz);
+
+-- name: LastClosingCountOfRegister :one
+-- Lo que se contó al cerrar el último turno de esta caja (spec 032, punto 6). Solo lo lee el servidor
+-- para decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser
+-- a ciegas.
+select c.total
+  from register_sessions s
+  join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
+ where s.register_id = $1 and s.status = 'cerrada'
+ order by s.closed_at desc, s.id desc
+ limit 1;
+
+-- name: SetOpeningExtras :exec
+-- El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
+-- de la sucursal copiado al abrir: cambiarlo con la caja abierta no cambia lo que ya se le pide a
+-- quien cuenta.
+update register_sessions s set opening_reason = sqlc.narg('reason'), opening_reason_note = sqlc.narg('note'),
+       card_count_mode = coalesce((select b.card_count_mode from cash_registers r join branches b on b.id = r.branch_id
+                                    where r.id = s.register_id), 'automatico')
+ where s.id = sqlc.arg(id);
