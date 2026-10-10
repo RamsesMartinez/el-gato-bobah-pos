@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,11 @@ type AdminProductView struct {
 	CompositionStatus string `json:"compositionStatus"`
 	GroupCount        int    `json:"groupCount"`    // grupos de modificadores activos ligados al producto
 	OverrideCount     int    `json:"overrideCount"` // grupos con min/max personalizado en este producto
+	// CostSource: "manual" | "compra" | "receta". La pantalla muestra el costo de receta solo de
+	// lectura y el manual editable; HasRecipe decide si se ofrece regresar a «de su receta».
+	CostSource string           `json:"costSource"`
+	ManualCost *decimal.Decimal `json:"manualCost"`
+	HasRecipe  bool             `json:"hasRecipe"`
 }
 
 const dateFmt = "2006-01-02"
@@ -100,29 +106,85 @@ func (s *AdminService) Categories(ctx context.Context) ([]CategoryView, error) {
 }
 
 // CreateProduct da de alta un producto mínimo (activo, tipo simple). categoryID debe existir
-// (FK); el costo/receta/canales se configuran después. Nombre duplicado (por empresa) → 409.
-func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool) (int64, error) {
+// (FK); receta y canales se configuran después. manualCost nil = sin costo capturado.
+// Nombre duplicado (por empresa) → 409.
+func (s *AdminService) CreateProduct(ctx context.Context, name string, categoryID int64, price decimal.Decimal, favorite, trackStock bool, manualCost *decimal.Decimal) (int64, error) {
 	if name == "" || categoryID == 0 || !domain.ValidMoney(domain.Round2(price), true) {
 		return 0, domain.ErrValidation
 	}
-	id, err := s.store.QC(ctx).AdminCreateProduct(ctx, db.AdminCreateProductParams{
-		Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
+	cost, err := optionalManualCost(manualCost)
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		var err error
+		id, err = q.AdminCreateProduct(ctx, db.AdminCreateProductParams{
+			Name: name, CategoryID: categoryID, Price: domain.Round2(price), IsFavorite: favorite, TrackStock: trackStock,
+		})
+		if err != nil {
+			return err
+		}
+		return setProductCost(ctx, q, id, cost)
 	})
 	if isUniqueViolation(err) {
 		return 0, domain.ErrDuplicateName
 	}
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// optionalManualCost valida el costo opcional del alta y el duplicado: ausente = no tocarlo.
+func optionalManualCost(v *decimal.Decimal) (*domain.ProductCostChange, error) {
+	if v == nil {
+		return nil, nil
+	}
+	c, err := domain.NewProductCostChange(domain.CostSourceManual, v)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// setProductCost escribe el origen del costo. Sin filas afectadas es un combo, un producto sin
+// receta (al pedir «de su receta») o uno que esta empresa no ve: los tres son petición inválida, y
+// no distinguir el último evita confirmar que el id existe en otra empresa.
+func setProductCost(ctx context.Context, q *db.Queries, id int64, c *domain.ProductCostChange) error {
+	if c == nil {
+		return nil
+	}
+	var err error
+	switch c.Source {
+	case domain.CostSourceManual:
+		amount := c.Amount
+		_, err = q.AdminSetProductManualCost(ctx, db.AdminSetProductManualCostParams{ID: id, Cost: &amount})
+	case domain.CostSourceRecipe:
+		_, err = q.AdminSetProductRecipeCost(ctx, id)
+	default:
+		return domain.ErrValidation
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: este producto no admite ese costo", domain.ErrValidation)
+	}
+	return err
 }
 
 // DuplicateProduct clona un producto de origen con TODAS sus relaciones (receta + ítems, grupos
 // de modificadores, canales y, si es combo, sus slots y productos) en una sola tx. El clon lleva
 // un nombre nuevo (obligatorio y distinto: nombre duplicado → 409). El sku no se copia (es unique).
-func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, newName string) (int64, error) {
+// manualCost nil = el clon hereda el costo del original.
+func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, newName string, manualCost *decimal.Decimal) (int64, error) {
 	if newName == "" {
 		return 0, domain.ErrValidation
 	}
+	cost, err := optionalManualCost(manualCost)
+	if err != nil {
+		return 0, err
+	}
 	var newID int64
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
 		info, err := q.GetProductCloneInfo(ctx, sourceID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -170,7 +232,7 @@ func (s *AdminService) DuplicateProduct(ctx context.Context, sourceID int64, new
 				}
 			}
 		}
-		return nil
+		return setProductCost(ctx, q, newID, cost)
 	})
 	if isUniqueViolation(err) {
 		return 0, domain.ErrDuplicateName
@@ -202,6 +264,7 @@ func (s *AdminService) ListProducts(ctx context.Context, status, search string, 
 			AvailableFrom: dateStr(r.AvailableFrom), AvailableUntil: dateStr(r.AvailableUntil),
 			GroupCount: int(r.GroupCount), OverrideCount: int(r.OverrideCount),
 			CompositionStatus: textoDe(r.CompositionStatus),
+			CostSource:        string(r.CostSource), ManualCost: r.ManualCost, HasRecipe: r.HasRecipe,
 		})
 	}
 	c, err := s.store.QC(ctx).AdminProductCounts(ctx)
@@ -226,6 +289,8 @@ type UpdateProductInput struct {
 	// NeedsPrep: si el producto necesita prepararse, que es lo que decide si su pedido va al
 	// tablero. Viaja sin puntero porque la pantalla siempre manda el valor del interruptor.
 	NeedsPrep bool
+	// Cost nil = no tocar el costo; así un cliente que no conoce el campo no borra costos.
+	Cost *domain.ProductCostChange
 }
 
 // AdminOptionView: opción de modificador con su grupo, para gestionar (favorito/activo) en el admin.
@@ -326,5 +391,13 @@ func (s *AdminService) UpdateProduct(ctx context.Context, in UpdateProductInput)
 	if isUniqueViolation(err) { // renombrar a un nombre ya usado → 409 accionable
 		return domain.ErrDuplicateName
 	}
-	return err
+	if err != nil || in.Cost == nil {
+		return err
+	}
+	if err := setProductCost(ctx, s.store.QC(ctx), in.ID, in.Cost); err != nil {
+		return err
+	}
+	// Recalcular todo y no solo este producto: los combos y los extras ligados a él suman su costo,
+	// y al volver a «de su receta» el monto lo pone el motor, no la petición.
+	return NewCostingService(s.store).RecomputeAll(ctx)
 }

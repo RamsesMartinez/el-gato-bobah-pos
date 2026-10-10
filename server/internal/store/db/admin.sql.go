@@ -120,11 +120,11 @@ func (q *Queries) AdminListModifierOptions(ctx context.Context, arg AdminListMod
 }
 
 const adminListProducts = `-- name: AdminListProducts :many
-select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.group_count, q.override_count, count(*) over() as total
+select q.id, q.name, q.price, q.current_cost, q.type, q.is_active, q.is_favorite, q.available_from, q.available_until, q.needs_prep, q.category, q.category_id, q.composition_status, q.cost_source, q.manual_cost, q.has_recipe, q.group_count, q.override_count, count(*) over() as total
 from (
   select p.id, p.name, p.price, p.current_cost, p.type, p.is_active, p.is_favorite,
          p.available_from, p.available_until, p.needs_prep, c.name as category, p.category_id,
-         p.composition_status,
+         p.composition_status, p.cost_source, p.manual_cost, (p.recipe_id is not null)::bool as has_recipe,
          (select count(*) from product_modifier_groups pmg
             join modifier_groups mg on mg.id = pmg.group_id
            where pmg.product_id = p.id and mg.is_active)::int as group_count,
@@ -177,22 +177,25 @@ type AdminListProductsParams struct {
 }
 
 type AdminListProductsRow struct {
-	ID                int64           `json:"id"`
-	Name              string          `json:"name"`
-	Price             decimal.Decimal `json:"price"`
-	CurrentCost       decimal.Decimal `json:"current_cost"`
-	Type              ProductType     `json:"type"`
-	IsActive          bool            `json:"is_active"`
-	IsFavorite        bool            `json:"is_favorite"`
-	AvailableFrom     pgtype.Date     `json:"available_from"`
-	AvailableUntil    pgtype.Date     `json:"available_until"`
-	NeedsPrep         bool            `json:"needs_prep"`
-	Category          string          `json:"category"`
-	CategoryID        int64           `json:"category_id"`
-	CompositionStatus *string         `json:"composition_status"`
-	GroupCount        int32           `json:"group_count"`
-	OverrideCount     int32           `json:"override_count"`
-	Total             int64           `json:"total"`
+	ID                int64            `json:"id"`
+	Name              string           `json:"name"`
+	Price             decimal.Decimal  `json:"price"`
+	CurrentCost       decimal.Decimal  `json:"current_cost"`
+	Type              ProductType      `json:"type"`
+	IsActive          bool             `json:"is_active"`
+	IsFavorite        bool             `json:"is_favorite"`
+	AvailableFrom     pgtype.Date      `json:"available_from"`
+	AvailableUntil    pgtype.Date      `json:"available_until"`
+	NeedsPrep         bool             `json:"needs_prep"`
+	Category          string           `json:"category"`
+	CategoryID        int64            `json:"category_id"`
+	CompositionStatus *string          `json:"composition_status"`
+	CostSource        CostSource       `json:"cost_source"`
+	ManualCost        *decimal.Decimal `json:"manual_cost"`
+	HasRecipe         bool             `json:"has_recipe"`
+	GroupCount        int32            `json:"group_count"`
+	OverrideCount     int32            `json:"override_count"`
+	Total             int64            `json:"total"`
 }
 
 // Página filtrada por estado (”=todos | 'act' | 'inact'), búsqueda (”=sin filtro), categoría
@@ -233,6 +236,9 @@ func (q *Queries) AdminListProducts(ctx context.Context, arg AdminListProductsPa
 			&i.Category,
 			&i.CategoryID,
 			&i.CompositionStatus,
+			&i.CostSource,
+			&i.ManualCost,
+			&i.HasRecipe,
 			&i.GroupCount,
 			&i.OverrideCount,
 			&i.Total,
@@ -315,6 +321,43 @@ type AdminSetOptionFavoriteParams struct {
 func (q *Queries) AdminSetOptionFavorite(ctx context.Context, arg AdminSetOptionFavoriteParams) error {
 	_, err := q.db.Exec(ctx, adminSetOptionFavorite, arg.ID, arg.IsFavorite)
 	return err
+}
+
+const adminSetProductManualCost = `-- name: AdminSetProductManualCost :one
+update products
+set cost_source = 'manual', manual_cost = $1, current_cost = $1, updated_at = now()
+where id = $2 and type <> 'combo'
+returning id
+`
+
+type AdminSetProductManualCostParams struct {
+	Cost *decimal.Decimal `json:"cost"`
+	ID   int64            `json:"id"`
+}
+
+// Costo capturado a mano. current_cost se escribe en la misma sentencia para que el margen de la
+// lista cambie aunque el recálculo posterior falle. Un combo no se toca: su costo es la suma de
+// sus componentes y el motor de costeo sobrescribiría cualquier captura.
+func (q *Queries) AdminSetProductManualCost(ctx context.Context, arg AdminSetProductManualCostParams) (int64, error) {
+	row := q.db.QueryRow(ctx, adminSetProductManualCost, arg.Cost, arg.ID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const adminSetProductRecipeCost = `-- name: AdminSetProductRecipeCost :one
+update products
+set cost_source = 'receta', updated_at = now()
+where id = $1 and recipe_id is not null and type <> 'combo'
+returning id
+`
+
+// Vuelve a costear por receta; solo si el producto tiene una. El monto lo pone el motor de costeo.
+func (q *Queries) AdminSetProductRecipeCost(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, adminSetProductRecipeCost, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const adminUpdateProduct = `-- name: AdminUpdateProduct :exec
