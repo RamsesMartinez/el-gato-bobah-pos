@@ -26,6 +26,8 @@ import { money } from '../../utils/format';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AvisosDeCaja } from './AvisosDeCaja';
+import { FondoQueSeDeja } from './FondoQueSeDeja';
+import { fondoValido } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
@@ -778,6 +780,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const [decisionPropinas, setDecisionPropinas] = useState<TipsDecision | null>(null);
   const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
   const [conteoTerminales, setConteoTerminales] = useState<Record<number, string>>({});
+  // El fondo que se queda para el siguiente turno (2026-10-10). Solo con cajón: sin efectivo no hay fondo.
+  const [fondo, setFondo] = useState('');
+  const faltaFondo = (session?.drawer ?? null) !== null && !fondoValido(fondo);
   const terminalesSinCifra = faltanTerminales(session?.terminalsToCount ?? [], conteoTerminales);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
@@ -846,12 +851,13 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         manualReason: aMano?.manualReason,
         notes: notes || undefined,
         tipsDecision: Number(session?.tipsPending?.total ?? 0) >= 1 ? decisionPropinas ?? undefined : undefined,
+        floatLeft: fondoValido(fondo) ? Number(fondo) : undefined,
         terminalCounts: Object.fromEntries((session?.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(''); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
@@ -968,10 +974,12 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
           <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
 
-          {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0) && (
+          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} />}
+
+          {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
               <Text fontSize="sm" fontWeight="600">
-                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra].join(', ')}
+                Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
               </Text>
             </Box>
           )}
@@ -1050,7 +1058,7 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
             onEntregarAhora={() => setRepartiendo(true)} onDecidir={setDecisionPropinas} />
 
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}

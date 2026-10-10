@@ -586,6 +586,7 @@ export const backofficeApi = {
     notes?: string;
     tipsDecision?: TipsDecision;
     terminalCounts?: Record<string, number>;
+    floatLeft?: number;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
   cashTipPayout: (registerId: number, input: TipPayoutInput) =>

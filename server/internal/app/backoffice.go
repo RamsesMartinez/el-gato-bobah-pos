@@ -1471,6 +1471,9 @@ type CierreCmd struct {
 	// Propinas: qué se hace con la propina pendiente (spec 032). Obligatoria si queda al menos un
 	// peso; «quedan_en_caja» la hereda el siguiente turno de esta caja.
 	Propinas string
+	// FloatLeft: cuánto se deja de fondo para el siguiente turno; el resto se retira (decisión del
+	// 2026-10-10). Ausente = se deja todo lo contado. No puede pasar de lo contado.
+	FloatLeft *decimal.Decimal
 	// TerminalCounts: terminal → total de su corte, con arqueo por terminal (spec 032, punto 9).
 	TerminalCounts map[int64]decimal.Decimal
 }
@@ -1646,6 +1649,18 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		var n *string
 		if cmd.Notas != "" {
 			n = &cmd.Notas
+		}
+		if conteo != nil {
+			deja := conteo.total
+			if cmd.FloatLeft != nil {
+				deja = domain.Round2(*cmd.FloatLeft)
+				if !domain.ValidMoney(deja, true) || deja.GreaterThan(conteo.total) {
+					return fmt.Errorf("%w: el fondo que se deja no puede ser mayor a lo contado", domain.ErrValidation)
+				}
+			}
+			if err := q.SetFloatLeft(ctx, db.SetFloatLeftParams{ID: sess.ID, FloatLeft: &deja}); err != nil {
+				return err
+			}
 		}
 		return q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n})
 	})

@@ -20,6 +20,18 @@ motivaron no entran al repositorio.
 - **D-C** El correo diario va a las direcciones capturadas en un campo nuevo de Configuración del
   negocio (una o varias, validadas).
 
+## Decisiones del dueño del 2026-10-10
+
+- **D-D** La apertura a ciegas se compara contra el **fondo que se dejó al cerrar**, no contra todo
+  lo contado: al cerrar se registra cuánto se queda de fondo para el siguiente turno (el resto se
+  retira), y la apertura pide motivo solo si lo contado difiere de ese fondo. Reemplaza la
+  comparación contra el conteo de cierre de FR-014/FR-015.
+- **D-E** La terminal por omisión de cada usuario es la última que usó al cobrar; no hay pantalla
+  para fijarla aparte.
+- Bordes nuevos: **EB-48** fondo que se deja mayor a lo contado (se rechaza); **EB-49** cierre sin
+  fondo capturado en pantalla (no deja cerrar; un campo vacío no es cero); **EB-50** cierres de antes
+  de la decisión sin fondo registrado (se compara contra lo contado).
+
 ## Casos de borde enumerados ANTES del diseño *(constitución IV)*
 
 Formas de fallar, agrupadas por las cuatro familias de la constitución. Cada una tiene un requisito

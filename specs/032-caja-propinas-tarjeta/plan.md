@@ -121,3 +121,12 @@ Hallazgos incorporados como reglas del plan; `tasks.md` los cubre.
 - Lo heredado se guarda cobro por cobro (`tip_carryovers`): conserva su medio y una devolución
   posterior al cierre lo baja. Pruebas: `tip_inheritance_test.go`.
 - «Ajustar montos» arranca con el reparto parejo.
+
+## Decisiones del dueño del 2026-10-10
+
+- **Fondo que se deja (D-D):** `register_sessions.float_left` (en `0088`), lo escribe el cierre con
+  `CierreCmd.FloatLeft` (ausente en la API = todo lo contado; mayor a lo contado = 400). La apertura
+  compara contra `coalesce(float_left, conteo de cierre)`. La pantalla del cierre lo pide siempre que
+  hay cajón. Prueba: `TestOpeningComparesAgainstFloatLeftAtClose`.
+- **Terminal por omisión (D-E):** la última que eligió el usuario al cobrar (preferencia
+  `card_terminal`); se queda así.

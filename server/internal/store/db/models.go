@@ -1657,6 +1657,7 @@ type RegisterSession struct {
 	OpeningReason     *string            `json:"opening_reason"`
 	OpeningReasonNote *string            `json:"opening_reason_note"`
 	CardCountMode     string             `json:"card_count_mode"`
+	FloatLeft         *decimal.Decimal   `json:"float_left"`
 }
 
 type RegisterSessionTotal struct {

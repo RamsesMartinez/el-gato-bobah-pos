@@ -254,6 +254,8 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		TipsDecision string           `json:"tipsDecision"`
 		// terminalId(string) → total del corte de la terminal (spec 032, arqueo por terminal).
 		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
+		// FloatLeft: el fondo que se queda para el siguiente turno (2026-10-10).
+		FloatLeft *decimal.Decimal `json:"floatLeft"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -282,8 +284,8 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
-		TerminalCounts: terminales,
-		Declarado:      declared, Piezas: piezasDelBody(body.Counts),
+		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
+		Declarado: declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
 	if err != nil {

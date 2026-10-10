@@ -687,15 +687,18 @@ update order_refunds r
                                   where p.register_id = s.register_id and p.id <> s.id), '-infinity'::timestamptz);
 
 -- name: LastClosingCountOfRegister :one
--- Lo que se contó al cerrar el último turno de esta caja (spec 032, punto 6). Solo lo lee el servidor
--- para decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser
--- a ciegas.
-select c.total
+-- El fondo que dejó el último cierre de esta caja (spec 032, punto 6; decisión del 2026-10-10): lo
+-- que se dejó, o en cierres de antes de esa decisión, todo lo contado. Solo lo lee el servidor para
+-- decidir si la apertura pide motivo: nunca viaja a la pantalla, o el conteo dejaría de ser a ciegas.
+select coalesce(s.float_left, c.total)::numeric(10,2) as total
   from register_sessions s
   join session_cash_counts c on c.session_id = s.id and c.moment = 'cierre'
  where s.register_id = $1 and s.status = 'cerrada'
  order by s.closed_at desc, s.id desc
  limit 1;
+
+-- name: SetFloatLeft :exec
+update register_sessions set float_left = $2 where id = $1;
 
 -- name: SetOpeningExtras :exec
 -- El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta

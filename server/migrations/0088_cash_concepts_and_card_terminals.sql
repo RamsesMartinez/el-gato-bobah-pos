@@ -76,6 +76,10 @@ alter table register_sessions
   add column opening_reason      text check (opening_reason in ('last_count_wrong', 'float_changed', 'unrecorded_withdrawal', 'other')),
   add column opening_reason_note text check (opening_reason_note is null or length(opening_reason_note) between 1 and 200),
   add column card_count_mode     text not null default 'auto' check (card_count_mode in ('auto', 'per_terminal'));
+-- Lo que se deja de fondo al cerrar (decisión del dueño del 2026-10-10): el resto se retira, y la
+-- apertura siguiente se compara contra esto. Nulo en los cierres de antes.
+alter table register_sessions add column float_left numeric(10,2)
+  constraint register_sessions_float_left_check check (float_left is null or float_left >= 0);
 alter table register_sessions add constraint register_sessions_other_needs_note
   check (opening_reason is distinct from 'other' or opening_reason_note is not null);
 
@@ -210,6 +214,7 @@ alter table order_payments drop column card_terminal_name, drop column card_term
 drop table card_terminals;
 alter table branches drop column card_count_mode;
 alter table register_sessions drop constraint register_sessions_other_needs_note;
+alter table register_sessions drop column float_left;
 alter table register_sessions drop column card_count_mode, drop column opening_reason_note, drop column opening_reason;
 alter table expenses drop column document_date;
 drop index register_cash_movements_company_concept;

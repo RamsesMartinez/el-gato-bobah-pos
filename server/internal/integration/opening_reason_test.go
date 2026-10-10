@@ -67,3 +67,29 @@ func TestOpeningEqualToLastCloseNeedsNoReason(t *testing.T) {
 		t.Fatalf("mismo conteo no pide motivo: %v", err)
 	}
 }
+
+// LA APERTURA SE COMPARA CONTRA EL FONDO QUE SE DEJÓ AL CERRAR, no contra todo lo contado (decisión
+// del dueño del 2026-10-10): al cerrar se retira lo vendido y se deja un fondo; abrir con ese fondo
+// no pide motivo, y abrir con otra cifra sí.
+func TestOpeningComparesAgainstFloatLeftAtClose(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_fondo_dejado", "cajero")
+	reg := principalRegister(t, st)
+	fondo := dec("500")
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &fondo, Motivo: "prueba"}, cajero); err != nil {
+		t.Fatal(err)
+	}
+	contado, deja := dec("2300"), dec("500")
+	if _, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &contado, Motivo: "prueba", FloatLeft: &deja}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: &fondo, Motivo: "prueba"}, cajero); err != nil {
+		t.Fatalf("abrir con el fondo que se dejó no pide motivo: %v", err)
+	}
+	if _, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: &fondo, Motivo: "prueba", FloatLeft: &contado}); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("dejar de fondo más de lo contado: err = %v", err)
+	}
+}
