@@ -351,3 +351,44 @@ func TestTipPendingIsIsolatedInTheThreeCases(t *testing.T) {
 		}
 	})
 }
+
+// AVISOS (punto 7): la propina sin entregar y las salidas sin concepto del turno abierto se dicen
+// en Ventas del día, no solo al cerrar.
+func TestCashAlertsReportPendingTipsAndCashOutsWithoutConcept(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	back := app.NewBackofficeService(st, clock)
+	cajero := makeUser(t, st, "cajero_avisos", "admin")
+	sess := abrirCajaPrincipal(t, st, cajero)
+	cobrarConPropina(t, ctx, st, orders, "avisos", "100", "15", cajero, paymentMethodID(t, st, "Efectivo"))
+	// Una salida vieja, de antes de los conceptos.
+	if _, err := st.Pool.Exec(ctx, `insert into register_cash_movements (session_id, kind, amount, concept, user_id) values ($1, 'salida', 10, 'algo', $2)`, sess, cajero); err != nil {
+		t.Fatal(err)
+	}
+	a, err := back.CashAlerts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.TipsPending.Equal(dec("15")) || a.CashOutsWithoutConcept != 1 {
+		t.Fatalf("avisos = %+v; quería 15 de propina y 1 salida sin concepto", a)
+	}
+}
+
+func TestCashAlertsIsolatedInTheThreeCases(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	ctx := context.Background()
+	orders := app.NewOrdersService(st, clock)
+	cajero := makeUser(t, st, "cajero_avisos_rls", "admin")
+	abrirCajaPrincipal(t, st, cajero)
+	cobrarConPropina(t, ctx, st, orders, "avisos rls", "100", "15", cajero, paymentMethodID(t, st, "Efectivo"))
+	otra := makeCompany(t, st, "otra-avisos")
+	inTheThreeCases(t, defaultCompanyID, otra, func(t *testing.T, as *store.Store, ctx context.Context) {
+		a, err := app.NewBackofficeService(as, clock).CashAlerts(ctx)
+		if err == nil && a.TipsPending.IsPositive() {
+			t.Fatalf("se vio propina de otra empresa: %s", a.TipsPending)
+		}
+	})
+}

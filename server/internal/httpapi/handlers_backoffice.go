@@ -477,6 +477,16 @@ func (h *Handlers) CorrectCashOut(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusCreated, sess)
 }
 
+// CashAlerts: propina sin entregar y salidas sin concepto de las cajas abiertas (spec 032).
+func (h *Handlers) CashAlerts(w http.ResponseWriter, r *http.Request) {
+	v, err := h.backoffice.CashAlerts(r.Context())
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // ---- Correos del resumen diario (spec 032, punto 7) ----
 
 func (h *Handlers) SummaryEmails(w http.ResponseWriter, r *http.Request) {

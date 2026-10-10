@@ -188,6 +188,7 @@ export interface CashSession {
   tipsPending?: TipsPending | null;
   // Arqueo de tarjeta por terminal (spec 032): lo que se pide al cerrar y, cerrado, la diferencia.
   cardCountMode?: 'automatico' | 'por_terminal';
+  cashOutsWithoutConcept?: number;
   terminalsToCount?: { terminalId: number; name: string }[];
   terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
   tipsPaidOut?: string;
@@ -611,6 +612,8 @@ export const backofficeApi = {
   updateCashConcept: (id: number, body: { name: string; categoryId: number | null; supplierId: number | null } | { archived: true }) =>
     api.patch<CashConcept | null>(`/cash-concepts/${id}`, body),
   mergeCashConcept: (id: number, intoId: number) => api.post<null>(`/cash-concepts/${id}/merge`, { intoId }),
+  summaryEmails: () => api.get<{ emails: string[] }>('/settings/daily-summary-emails'),
+  setSummaryEmails: (emails: string[]) => api.put<{ emails: string[] }>('/settings/daily-summary-emails', { emails }),
   cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
   createCardTerminal: (branchId: number, name: string) => api.post<CardTerminal>('/card-terminals', { branchId, name }),
   updateCardTerminal: (id: number, body: { name: string } | { archived: true }) =>

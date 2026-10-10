@@ -426,9 +426,11 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 type SessionView struct {
 	// Arqueo de tarjeta (spec 032): el modo del turno, las terminales que hay que declarar al cerrar
 	// y, cerrado, lo declarado contra lo cobrado por terminal.
-	CardCountMode    string              `json:"cardCountMode"`
-	TerminalsToCount []TerminalToCount   `json:"terminalsToCount"`
-	TerminalCounts   []TerminalCountView `json:"terminalCounts"`
+	CardCountMode string `json:"cardCountMode"`
+	// Salidas a mano sin concepto del turno (las de antes de los conceptos): aviso del cierre.
+	CashOutsWithoutConcept int                 `json:"cashOutsWithoutConcept"`
+	TerminalsToCount       []TerminalToCount   `json:"terminalsToCount"`
+	TerminalCounts         []TerminalCountView `json:"terminalCounts"`
 	// Propinas (spec 032): por entregar, entregadas en el turno y cuánto de lo entregado era
 	// propina de tarjeta u otro medio pagada con efectivo del cajón.
 	TipsPending        *TipsPendingView   `json:"tipsPending"`
@@ -1399,6 +1401,11 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	}
 	view.TipsPaidOut, view.CardTipsPaidInCash = entregado.PaidOut, entregado.NonCashPaidInCash
 	view.CardCountMode = sess.CardCountMode
+	sinConcepto, err := s.store.QC(ctx).CashOutsWithoutConceptInSession(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.CashOutsWithoutConcept = int(sinConcepto)
 	view.TerminalsToCount = []TerminalToCount{}
 	cobrado, err := s.store.QC(ctx).TerminalCollectedForSession(ctx, sess.ID)
 	if err != nil {

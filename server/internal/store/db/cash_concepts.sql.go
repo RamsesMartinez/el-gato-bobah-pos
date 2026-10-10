@@ -24,6 +24,22 @@ func (q *Queries) ArchiveCashConcept(ctx context.Context, id int64) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const cashOutsWithoutConceptInSession = `-- name: CashOutsWithoutConceptInSession :one
+select count(*)::int from register_cash_movements m
+ where m.session_id = $1 and m.kind = 'salida' and m.concept_id is null
+   and m.expense_id is null and m.transfer_id is null
+   and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id)
+`
+
+// Salidas a mano sin concepto del turno: las de antes de los conceptos. Gastos, traspasos y
+// devoluciones tienen el suyo.
+func (q *Queries) CashOutsWithoutConceptInSession(ctx context.Context, sessionID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, cashOutsWithoutConceptInSession, sessionID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const findActiveCashConceptByName = `-- name: FindActiveCashConceptByName :one
 select id, name from cash_concepts where archived_at is null and lower(name) = lower($1::text)
 `

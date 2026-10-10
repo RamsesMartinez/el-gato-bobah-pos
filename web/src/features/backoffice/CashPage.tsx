@@ -25,6 +25,7 @@ import { Switch } from '../../components/ui/switch';
 import { money } from '../../utils/format';
 import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
+import { AvisosDeCaja } from './AvisosDeCaja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
@@ -1040,6 +1041,10 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
 
           <DiferenciaDelCierre diferencias={diferencias} cajon={cajon} conteo={conteoDelCierre}
             currency={session.currency} />
+
+          {(session.cashOutsWithoutConcept ?? 0) > 0 && (
+            <AvisosDeCaja tipsPending="0" cashOutsWithoutConcept={session.cashOutsWithoutConcept ?? 0} />
+          )}
 
           <PropinasDelCierre pendiente={session.tipsPending} currency={session.currency} decision={decisionPropinas}
             onEntregarAhora={() => setRepartiendo(true)} onDecidir={setDecisionPropinas} />

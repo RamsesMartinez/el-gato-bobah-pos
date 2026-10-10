@@ -28,6 +28,8 @@ vi.mock('../../api/pos', () => ({
   },
 }));
 vi.mock('../../components/ui/toaster', () => ({ toaster: { create: vi.fn() } }));
+// Los ajustes de caja tienen su propia prueba (AjustesDeCaja.test.tsx).
+vi.mock('./AjustesDeCaja', () => ({ AjustesDeCaja: () => null }));
 
 import { BusinessSettingsPage } from './BusinessSettingsPage';
 

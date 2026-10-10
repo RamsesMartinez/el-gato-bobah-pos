@@ -325,6 +325,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Group(func(r chi.Router) {
 					r.Get("/sales", h.ListSales)
 					r.Get("/sales/summary", h.SalesSummary)
+					r.Get("/cash-alerts", h.CashAlerts) // avisos de Ventas del día (spec 032)
 					// La liquidación de un pedido de plataforma. MISMO gate que la pantalla de
 					// Ventas y no el de crear pedidos: es dinero que NO pasó por la caja —lo que la
 					// plataforma se quedó— y se captura con el estado de cuenta en la mano, días

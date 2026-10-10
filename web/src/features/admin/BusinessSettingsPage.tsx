@@ -9,6 +9,7 @@ import { Picker } from '../../components/Picker';
 import { Switch } from '../../components/ui/switch';
 import { Page } from '../../components/Page';
 import { InstallAppSection } from '../../shared/pwa/InstallAppSection';
+import { AjustesDeCaja } from './AjustesDeCaja';
 import { ZONAS_MEXICO } from './zonas';
 import { montoTecleado } from '../../domain/numeros';
 
@@ -334,6 +335,10 @@ export function BusinessSettingsPage() {
             </Table.Body>
           </Table.Root>
         </Box>
+      </Box>
+
+      <Box mt={6}>
+        <AjustesDeCaja />
       </Box>
 
       <InstallAppSection />

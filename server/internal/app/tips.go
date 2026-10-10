@@ -289,3 +289,33 @@ func (s *TipsService) Payout(ctx context.Context, registerID int64, cmd TipPayou
 	}
 	return out, nil
 }
+
+// CashAlertsView: lo que Ventas del día y el cierre avisan de las cajas abiertas (punto 7).
+type CashAlertsView struct {
+	TipsPending            decimal.Decimal `json:"tipsPending"`
+	CashOutsWithoutConcept int             `json:"cashOutsWithoutConcept"`
+}
+
+// CashAlerts suma la propina sin entregar y las salidas sin concepto de los turnos abiertos.
+func (s *BackofficeService) CashAlerts(ctx context.Context) (CashAlertsView, error) {
+	q := s.store.QC(ctx)
+	abiertas, err := q.ListOpenSessions(ctx)
+	if err != nil {
+		return CashAlertsView{}, err
+	}
+	v := CashAlertsView{TipsPending: decimal.Zero}
+	for _, a := range abiertas {
+		src, err := tipSources(ctx, q, a.ID)
+		if err != nil {
+			return CashAlertsView{}, err
+		}
+		v.TipsPending = v.TipsPending.Add(domain.PendingTips(src))
+		n, err := q.CashOutsWithoutConceptInSession(ctx, a.ID)
+		if err != nil {
+			return CashAlertsView{}, err
+		}
+		v.CashOutsWithoutConcept += int(n)
+	}
+	v.TipsPending = domain.Round2(v.TipsPending)
+	return v, nil
+}

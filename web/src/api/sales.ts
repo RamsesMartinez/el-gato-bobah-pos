@@ -125,6 +125,8 @@ function qs(q: SalesQuery): string {
 }
 
 export const salesApi = {
+  // Avisos de las cajas abiertas (spec 032, punto 7): propina sin entregar y salidas sin concepto.
+  cashAlerts: () => api.get<{ tipsPending: string; cashOutsWithoutConcept: number }>('/cash-alerts'),
   list: (q: SalesQuery = {}) => api.get<SalesPage>(`/sales?${qs(q)}`),
   // El resumen no lleva página ni orden: no cambian con ellos, y meterlos en la llave haría que se
   // vuelva a pedir en cada tap del paginador.

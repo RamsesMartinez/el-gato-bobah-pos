@@ -152,6 +152,15 @@ describe('el pie: totales y dos botones (caso 30)', () => {
     expect(screen.getByRole('button', { name: /Enviar y cobrar \$109/ })).toBeInTheDocument();
   });
 
+  // Punto 11 de las decisiones del 2026-10-09: en mostrador «Cobrar» es la acción principal al
+  // enviar a cocina: va primero y es el botón grande. Ya estaba así; esto impide que se pierda.
+  test('cobrar va primero y es el botón principal', () => {
+    pinta(vista({ draft: draft() }));
+    const [primero, segundo] = within(screen.getByRole('group', { name: 'Enviar y cobrar' })).getAllByRole('button');
+    expect(primero).toHaveTextContent(/cobrar/i);
+    expect(segundo).toHaveTextContent(/a cocina/);
+  });
+
   test('el pie no tiene otros controles que los dos botones', () => {
     pinta(vista({ draft: draft() }));
     const pie = screen.getByRole('group', { name: 'Enviar y cobrar' });

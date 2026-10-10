@@ -56,3 +56,11 @@ returning id;
 insert into register_cash_movements (session_id, kind, amount, concept, user_id, reverses_id)
 values ($1, 'reverso', $2, $3, $4, $5)
 returning id;
+
+-- name: CashOutsWithoutConceptInSession :one
+-- Salidas a mano sin concepto del turno: las de antes de los conceptos. Gastos, traspasos y
+-- devoluciones tienen el suyo.
+select count(*)::int from register_cash_movements m
+ where m.session_id = $1 and m.kind = 'salida' and m.concept_id is null
+   and m.expense_id is null and m.transfer_id is null
+   and not exists (select 1 from order_refunds r where r.cash_movement_id = m.id);
