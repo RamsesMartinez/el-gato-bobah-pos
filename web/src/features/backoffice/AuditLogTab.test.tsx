@@ -55,3 +55,13 @@ test('el detalle dice desde qué red y aparato se hizo', async () => {
   
   expect(screen.getByText('Android · SM-A145 · 7C21')).toBeInTheDocument();
 });
+
+// FR-016: el filtro ofrece los aparatos de todo el periodo, no solo los de la página que se ve.
+test('el filtro «Aparato» ofrece también los que no salen en esta página', async () => {
+  list.mockResolvedValue({ ...samplePage, deviceKeys: ['7c21aaaabbbbccccddddeeeeffff0000', '9e04aaaabbbbccccddddeeeeffff0000'] });
+  renderView();
+  await screen.findByText('Precio cambiado');
+  fireEvent.click(screen.getByRole('button', { name: /Más filtros/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Todos los aparatos/ }));
+  expect(await screen.findByText('Aparato 9E04')).toBeInTheDocument();
+});
