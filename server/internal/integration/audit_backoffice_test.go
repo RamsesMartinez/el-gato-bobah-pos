@@ -233,3 +233,34 @@ func TestDeletingAPlatformPriceKeepsWhatItWas(t *testing.T) {
 		t.Fatalf("antes = %s, autor = %v", before, actor)
 	}
 }
+
+// EL FILTRO «APARATO» OFRECE LOS DE TODO EL PERIODO (FR-016). Sacarlos de la página visible dejaba
+// fuera al aparato que solo actuó en la página dos, que es justo el que se busca; y elegir uno no
+// debe borrar a los demás de la lista, o no hay forma de cambiar de aparato.
+func TestTheDeviceFilterOffersEveryDeviceInTheRange(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "bitacora-aparatos")
+	ana := makeUserIn(t, st, co, "ana-aparatos", "gerente")
+	keyA, keyB := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	for _, key := range []string{keyA, keyA, keyB, ""} {
+		if _, err := st.Pool.Exec(context.Background(), `insert into audit_events (company_id, actor_kind, actor_user_id, action, entity_type, entity_id, device_key)
+			values ($1, 'user', $2, 'price.set', 'product', 1, nullif($3, ''))`, co, ana, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	k := &draftsKit{appSt: appRoleStore(t)}
+	ctx := k.tenant(t, co)
+	today := time.Now()
+	theDay := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	svc := app.NewAuditService(k.appSt)
+	for _, key := range []string{"", keyB} {
+		p, err := svc.List(ctx, domain.AuditFilter{From: theDay.AddDate(0, 0, -1), To: theDay.AddDate(0, 0, 1), Size: 25, Page: 0, DeviceKey: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(p.DeviceKeys, ",") != keyA+","+keyB {
+			t.Errorf("con el filtro %q el selector ofrece %v, quiere los dos", key, p.DeviceKeys)
+		}
+	}
+}
