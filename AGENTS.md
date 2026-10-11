@@ -326,6 +326,24 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
     principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
     desplegarla, el rollback es restaurar el respaldo.
+- **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
+  - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
+    `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
+    lista blanca de `domain/audit.go` y en las etiquetas de `web/src/shared/audit/labels.ts`. Sin la
+    misma transacción, una acción que se revierte deja evento y una que se confirma puede no
+    dejarlo. `TestEveryAuditActionIsProduced` falla si una acción de la lista no tiene prueba que la
+    produzca.
+  - **La bitácora no se borra, ni como owner.** Un test que revierte migraciones por debajo de la
+    0089 con pedidos creados pasa por `migrarAbajoHasta`, que la vacía antes (solo en pruebas); el
+    Down de la 0089 se niega con datos, igual que en producción.
+  - **`attendance_entries.branch_id` queda nulo con varias sucursales y no se rellena después**: es
+    lo que el selector de sucursal tendrá que resolver. Los eventos de pedido y caja sí guardan la
+    sucursal del pedido o de la caja.
+  - **La clave del aparato (`X-Device-Key`) la genera el navegador**: sirve para auditar, no
+    identifica. CORS la anuncia junto con `X-Device-Info`; un header propio que CORS no anuncia
+    tumba todas las peticiones desde otro dominio.
+  - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
+    decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en
