@@ -57,7 +57,9 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 		}
 	}
 	var toID int64
-	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+	// replay: el lote ya se había aplicado (reenvío de la misma tableta). No vuelve a la bitácora.
+	var replay bool
+	mover := func(q *db.Queries) error {
 		from, to, err := lockMoveOrders(ctx, q, cmd.FromOrderID, cmd.ToOrderID)
 		if err != nil {
 			return err
@@ -80,6 +82,7 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 				return domain.ErrMoveKeyMismatch
 			}
 			toID = b.ToOrderID
+			replay = true
 			return nil
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
@@ -165,6 +168,21 @@ func (s *OrdersService) MoveLines(ctx context.Context, cmd MoveLinesCmd) (*MoveL
 			return err
 		}
 		return cerrarSiYaSeEntregoTodo(ctx, q, from.ID, lineas)
+	}
+	// El traslado queda en el historial de LOS DOS pedidos, cada uno apuntando al otro.
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		if err := mover(q); err != nil {
+			return err
+		}
+		if replay {
+			return nil
+		}
+		if err := auditOrder(ctx, q, "order.lines_moved", cmd.FromOrderID, &cmd.ActorID, nil,
+			map[string]any{"toOrderId": toID, "lines": len(cmd.Lines)}); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.lines_moved", toID, &cmd.ActorID, nil,
+			map[string]any{"fromOrderId": cmd.FromOrderID, "lines": len(cmd.Lines)})
 	})
 	if err != nil {
 		return nil, err

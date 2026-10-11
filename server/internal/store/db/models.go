@@ -7,6 +7,7 @@ package db
 import (
 	"database/sql/driver"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -792,6 +793,59 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type AttendanceCorrection struct {
+	ID          int64              `json:"id"`
+	CompanyID   int64              `json:"company_id"`
+	EntryID     int64              `json:"entry_id"`
+	Field       string             `json:"field"`
+	Before      pgtype.Timestamptz `json:"before"`
+	After       time.Time          `json:"after"`
+	Reason      string             `json:"reason"`
+	CorrectedBy int64              `json:"corrected_by"`
+	CorrectedAt time.Time          `json:"corrected_at"`
+}
+
+type AttendanceEntry struct {
+	ID           int64              `json:"id"`
+	CompanyID    int64              `json:"company_id"`
+	UserID       int64              `json:"user_id"`
+	BranchID     *int64             `json:"branch_id"`
+	BusinessDate pgtype.Date        `json:"business_date"`
+	ClockInAt    time.Time          `json:"clock_in_at"`
+	ClockOutAt   pgtype.Timestamptz `json:"clock_out_at"`
+	Status       string             `json:"status"`
+	Source       string             `json:"source"`
+	Corrected    bool               `json:"corrected"`
+	InIp         *netip.Addr        `json:"in_ip"`
+	InDevice     []byte             `json:"in_device"`
+	InDeviceKey  *string            `json:"in_device_key"`
+	OutIp        *netip.Addr        `json:"out_ip"`
+	OutDevice    []byte             `json:"out_device"`
+	OutDeviceKey *string            `json:"out_device_key"`
+	CreatedBy    *int64             `json:"created_by"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
+type AuditEvent struct {
+	ID            int64       `json:"id"`
+	CompanyID     int64       `json:"company_id"`
+	BranchID      *int64      `json:"branch_id"`
+	OccurredAt    time.Time   `json:"occurred_at"`
+	ActorKind     string      `json:"actor_kind"`
+	ActorUserID   *int64      `json:"actor_user_id"`
+	ActorLabel    *string     `json:"actor_label"`
+	Action        string      `json:"action"`
+	EntityType    string      `json:"entity_type"`
+	EntityID      int64       `json:"entity_id"`
+	OrderID       *int64      `json:"order_id"`
+	SubjectUserID *int64      `json:"subject_user_id"`
+	Ip            *netip.Addr `json:"ip"`
+	Device        []byte      `json:"device"`
+	DeviceKey     *string     `json:"device_key"`
+	Before        []byte      `json:"before"`
+	After         []byte      `json:"after"`
+}
+
 type Branch struct {
 	ID             int64     `json:"id"`
 	CompanyID      int64     `json:"company_id"`
@@ -809,28 +863,32 @@ type Branch struct {
 }
 
 type BusinessSetting struct {
-	DeliveryFee        decimal.Decimal    `json:"delivery_fee"`
-	UpdatedAt          time.Time          `json:"updated_at"`
-	UpdatedBy          *int64             `json:"updated_by"`
-	BusinessName       string             `json:"business_name"`
-	Address            *string            `json:"address"`
-	Phone              *string            `json:"phone"`
-	FooterNote         *string            `json:"footer_note"`
-	LogoBytes          []byte             `json:"logo_bytes"`
-	LogoMime           *string            `json:"logo_mime"`
-	LogoUpdatedAt      pgtype.Timestamptz `json:"logo_updated_at"`
-	HeaderNote         *string            `json:"header_note"`
-	AutoPrintOnClose   bool               `json:"auto_print_on_close"`
-	Timezone           string             `json:"timezone"`
-	PrintFreeModifiers bool               `json:"print_free_modifiers"`
-	PrintKitchenTicket bool               `json:"print_kitchen_ticket"`
-	PinOnlyUnlock      bool               `json:"pin_only_unlock"`
-	LockAfterSeconds   int32              `json:"lock_after_seconds"`
-	SessionHours       int32              `json:"session_hours"`
-	CorteDeVista       string             `json:"corte_de_vista"`
-	FolioScheme        FolioScheme        `json:"folio_scheme"`
-	BlindCashCount     bool               `json:"blind_cash_count"`
-	DailySummaryEmails []string           `json:"daily_summary_emails"`
+	DeliveryFee               decimal.Decimal    `json:"delivery_fee"`
+	UpdatedAt                 time.Time          `json:"updated_at"`
+	UpdatedBy                 *int64             `json:"updated_by"`
+	BusinessName              string             `json:"business_name"`
+	Address                   *string            `json:"address"`
+	Phone                     *string            `json:"phone"`
+	FooterNote                *string            `json:"footer_note"`
+	LogoBytes                 []byte             `json:"logo_bytes"`
+	LogoMime                  *string            `json:"logo_mime"`
+	LogoUpdatedAt             pgtype.Timestamptz `json:"logo_updated_at"`
+	HeaderNote                *string            `json:"header_note"`
+	AutoPrintOnClose          bool               `json:"auto_print_on_close"`
+	Timezone                  string             `json:"timezone"`
+	PrintFreeModifiers        bool               `json:"print_free_modifiers"`
+	PrintKitchenTicket        bool               `json:"print_kitchen_ticket"`
+	PinOnlyUnlock             bool               `json:"pin_only_unlock"`
+	LockAfterSeconds          int32              `json:"lock_after_seconds"`
+	SessionHours              int32              `json:"session_hours"`
+	CorteDeVista              string             `json:"corte_de_vista"`
+	FolioScheme               FolioScheme        `json:"folio_scheme"`
+	BlindCashCount            bool               `json:"blind_cash_count"`
+	DailySummaryEmails        []string           `json:"daily_summary_emails"`
+	AttendanceEnabled         bool               `json:"attendance_enabled"`
+	AttendanceMeasureSchedule bool               `json:"attendance_measure_schedule"`
+	AttendanceGraceInMin      int16              `json:"attendance_grace_in_min"`
+	AttendanceGraceOutMin     int16              `json:"attendance_grace_out_min"`
 }
 
 type CandidatasDelAviso struct {
@@ -1815,6 +1873,7 @@ type User struct {
 	RecoveryEmail      *string   `json:"recovery_email"`
 	MustChangePassword bool      `json:"must_change_password"`
 	PinLookup          *string   `json:"pin_lookup"`
+	TracksAttendance   bool      `json:"tracks_attendance"`
 }
 
 type UserPreference struct {
@@ -1822,4 +1881,23 @@ type UserPreference struct {
 	Key       string    `json:"key"`
 	Value     []byte    `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type WorkScheduleDay struct {
+	ID        int64       `json:"id"`
+	CompanyID int64       `json:"company_id"`
+	VersionID int64       `json:"version_id"`
+	Weekday   int16       `json:"weekday"`
+	ShiftNo   int16       `json:"shift_no"`
+	StartTime pgtype.Time `json:"start_time"`
+	EndTime   pgtype.Time `json:"end_time"`
+}
+
+type WorkScheduleVersion struct {
+	ID            int64       `json:"id"`
+	CompanyID     int64       `json:"company_id"`
+	UserID        int64       `json:"user_id"`
+	EffectiveFrom pgtype.Date `json:"effective_from"`
+	CreatedBy     int64       `json:"created_by"`
+	CreatedAt     time.Time   `json:"created_at"`
 }

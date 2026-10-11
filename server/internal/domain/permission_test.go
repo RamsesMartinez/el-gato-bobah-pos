@@ -10,13 +10,17 @@ import (
 // productos vuelve a quedarse sin salida para quien atiende el mostrador; si le da `payments.void`
 // a un cajero, cualquiera puede sacar dinero cobrado del corte.
 func TestPermissionsForEachRoleOfToday(t *testing.T) {
-	all := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending}
+	all := AllPermissions()
+	// El gerente revisa a los demás pero no se corrige a sí mismo ni configura la asistencia: una
+	// corrección propia mueve horas pagadas sin que nadie más la vea (decisión del 2026-10-10).
+	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
+		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView}
 	cases := []struct {
 		role Role
 		want []Permission
 	}{
 		{RoleAdmin, all},
-		{RoleGerente, all},
+		{RoleGerente, gerente},
 		{RoleCajero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
 		{RoleMesero, []Permission{PermOrdersMoveLines, PermOrdersCancelPending}},
 		{Role("dueño"), nil},
@@ -45,10 +49,15 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 // empresa, «gerente» puede no existir, y un texto que lo nombre manda a buscar a alguien que no hay.
 func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 	want := map[Permission]string{
-		PermPaymentsVoid:        "Tu usuario no puede devolver pagos",
-		PermOrdersCancel:        "Tu usuario no puede cancelar pedidos",
-		PermOrdersMoveLines:     "Tu usuario no puede pasar productos",
-		PermOrdersCancelPending: "Tu usuario no puede quitar productos",
+		PermPaymentsVoid:            "Tu usuario no puede devolver pagos",
+		PermOrdersCancel:            "Tu usuario no puede cancelar pedidos",
+		PermOrdersMoveLines:         "Tu usuario no puede pasar productos",
+		PermOrdersCancelPending:     "Tu usuario no puede quitar productos",
+		PermAttendanceConfigure:     "Tu usuario no puede configurar la asistencia",
+		PermAttendanceReport:        "Tu usuario no puede ver la asistencia del personal",
+		PermAttendanceCorrectOthers: "Tu usuario no puede corregir la asistencia de otras personas",
+		PermAttendanceCorrectOwn:    "Tu usuario no puede corregir su propia asistencia",
+		PermAuditView:               "Tu usuario no puede ver la bitácora",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

@@ -231,7 +231,11 @@ func (s *BackofficeService) CreateExpense(ctx context.Context, in ExpenseInput) 
 				return err
 			}
 		}
-		return s.learnSupplierItems(ctx, q, in.SupplierID, in.Items)
+		if err := s.learnSupplierItems(ctx, q, in.SupplierID, in.Items); err != nil {
+			return err
+		}
+		return auditEntity(ctx, q, "expense.created", "expense", id, nil, &in.UserID, nil,
+			map[string]any{"amount": params.Amount, "reason": in.Description, "status": in.Status})
 	})
 	return id, err
 }
@@ -369,6 +373,10 @@ func (s *BackofficeService) AddExpensePayment(ctx context.Context, expenseID int
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
 		if err := s.insertPayments(ctx, q, expenseID, derefStr(exp.Description), userID, payments); err != nil {
+			return err
+		}
+		if err := auditEntity(ctx, q, "expense.paid", "expense", expenseID, nil, &userID, nil,
+			map[string]any{"amount": in.Amount, "reason": derefStr(exp.Description)}); err != nil {
 			return err
 		}
 		paid, err := q.SumExpensePayments(ctx, expenseID)
@@ -651,16 +659,19 @@ func (s *BackofficeService) CancelExpense(ctx context.Context, id int64, reason 
 	if exp.ReceivedAt.Valid {
 		return domain.ErrConflict
 	}
-	n, err := s.store.QC(ctx).CancelExpense(ctx, db.CancelExpenseParams{
-		ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
+	return s.store.WithTx(ctx, func(q *db.Queries) error {
+		n, err := q.CancelExpense(ctx, db.CancelExpenseParams{
+			ID: id, CancelledBy: &userID, CancelReason: strPtr(reason),
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return domain.ErrConflict
+		}
+		return auditEntity(ctx, q, "expense.cancelled", "expense", id, nil, &userID,
+			map[string]any{"amount": exp.Amount, "status": exp.Status}, map[string]any{"status": "cancelada", "reason": reason})
 	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return domain.ErrConflict
-	}
-	return nil
 }
 
 // ---- Consultas ----

@@ -67,6 +67,8 @@ var pantallasMedibles = map[string]struct{}{
 	// que la medición de la pantalla sale vacía SIN un solo error visible.
 	"plataformas": {},
 	"emparejar":   {},
+	// Asistencia (spec 033): checar es de todos; el reporte va en la misma ruta.
+	"asistencia": {},
 }
 
 // accionesMedibles son las acciones con nombre que vale la pena contar, por pantalla.
@@ -142,6 +144,8 @@ var rolesPorPantalla = map[string][]Role{
 	// tiene su tablero de pedidos; esto administra el catálogo.
 	"plataformas": {RoleAdmin, RoleGerente},
 	"emparejar":   {RoleAdmin, RoleGerente},
+	// Asistencia (spec 033): cualquier rol checa su entrada.
+	"asistencia": {RoleAdmin, RoleGerente, RoleCajero, RoleMesero},
 }
 
 // PantallaPermitidaParaRol dice si ese rol puede siquiera abrir esa pantalla.

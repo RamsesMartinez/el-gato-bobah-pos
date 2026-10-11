@@ -768,6 +768,22 @@ func (s *PedidosDePlataformaService) Aceptar(ctx context.Context, entranteID, us
 			return domain.ErrPedidoYaDecidido
 		}
 		creado = PedidoAceptado{ID: ord.ID, Number: int(ord.DailyNumber), PlatformRef: ent.ExternalOrderID}
+		// El autor es la plataforma, no la persona de la tableta: el pedido y su cobro los hizo el
+		// cliente en la aplicación.
+		for _, ev := range []domain.AuditEvent{
+			{Action: "order.created", After: map[string]any{"total": total, "platformRef": ent.ExternalOrderID, "acceptedBy": usuarioID}},
+			{Action: "payment.charged", After: map[string]any{"methodId": metodo, "amount": total, "reference": ent.ExternalOrderID}},
+		} {
+			oid, branch := ord.ID, ord.BranchID
+			ev.ActorKind, ev.ActorLabel = domain.ActorPlatform, ent.PlatformName
+			if ev.ActorLabel == "" {
+				ev.ActorLabel = "plataforma"
+			}
+			ev.EntityType, ev.EntityID, ev.OrderID, ev.BranchID = "order", ord.ID, &oid, &branch
+			if err := recordAudit(ctx, q, ev); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {

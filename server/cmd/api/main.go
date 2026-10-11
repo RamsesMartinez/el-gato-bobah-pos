@@ -256,6 +256,8 @@ func main() {
 		// con la de plataforma, que solo alcanza el agregado. Dos servicios sobre dos conexiones,
 		// no uno compartido: son dos permisos distintos.
 		Usage:        app.NewUsageService(st),
+		Attendance:   app.NewAttendanceService(st, nil),
+		Audit:        app.NewAuditService(st),
 		UsageConsola: app.NewUsageService(plataforma),
 	})
 	router := httpapi.Router(cfg, jm, handlers, st)

@@ -313,6 +313,17 @@ func TestAGoodReadCopiesThePlatformPriceAndLocksIt(t *testing.T) {
 	if _, ok := doc.PlatformSynced[plat][f.mango]; !ok {
 		t.Fatalf("el menú debe decir que ese precio lo pone la plataforma: %v", doc.PlatformSynced)
 	}
+	// La bitácora (spec 033): el precio a mano lo firma la persona; el copiado, el sistema.
+	var manual, synced string
+	if err := f.st.Pool.QueryRow(context.Background(), `
+		select (select actor_kind from audit_events where action = 'price.set' and entity_id = $1),
+		       (select actor_kind || ' ' || (before->>'price') || '→' || (after->>'price')
+		          from audit_events where action = 'price.synced' and entity_id = $1)`, f.mango).Scan(&manual, &synced); err != nil {
+		t.Fatalf("eventos de precio: %v", err)
+	}
+	if manual != "user" || synced != "system 80→99" {
+		t.Fatalf("bitácora de precios: a mano=%q copiado=%q", manual, synced)
+	}
 }
 
 func TestTwoStoresOfTheSamePlatformDoNotCopyPrices(t *testing.T) {
