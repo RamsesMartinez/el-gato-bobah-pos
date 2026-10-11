@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { pickDate } from '../../testing/pickDate';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -69,8 +70,8 @@ describe('pantalla de Reportes', () => {
     await waitFor(() => expect(api.reportSales).toHaveBeenCalled());
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
-    await u.type(screen.getByLabelText('Hasta'), '2026-08-15');
+    await pickDate('Desde', '2026-08-01');
+    await pickDate('Hasta', '2026-08-15');
 
     const periodo = { preset: 'rango', from: '2026-08-01', to: '2026-08-15' };
     await waitFor(() => {
@@ -100,7 +101,7 @@ describe('pantalla de Reportes', () => {
     api.reportSales.mockClear();
 
     await u.click(screen.getByRole('button', { name: 'Rango' }));
-    await u.type(screen.getByLabelText('Desde'), '2026-08-01');
+    await pickDate('Desde', '2026-08-01');
 
     expect(await screen.findByText(/Elige las dos fechas/)).toBeInTheDocument();
     await waitFor(() => expect(api.reportSales).not.toHaveBeenCalled());
