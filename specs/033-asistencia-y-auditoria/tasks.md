@@ -156,7 +156,7 @@ cada fase.
 - [X] T058 [P] Anotar en `docs/security-owasp.md` que `clientIP` confía en X-Forwarded-For siempre y sólo sirve para logs, y que la evidencia usa `rateKeyIP`
 - [X] T059 [P] `AGENTS.md`: sección «Asistencia y auditoría» con lo que no se ve — todo camino nuevo que mueva dinero llama `recordAudit` en su transacción y agrega su acción a la lista blanca; `attendance_entries.branch_id` queda nulo con varias sucursales y no se rellena; la clave del aparato es pista, no prueba
 - [X] T060 Captura real del riel y de las pantallas nuevas a 1024×600 (incluido el renglón de filtros del reporte: si baja a dos renglones, medir cuántas filas quedan visibles) como admin y como cajero (ningún ítem oculto sin indicio; el paso 2 de checar cabe), y revisión de un usuario nuevo (memoria «Validar UX como usuario nuevo»)
-- [ ] T061 e2e en `web/e2e/asistencia-y-auditoria.spec.ts` usando `tokenDeApi` de `web/e2e/ambiente.ts`: checar entrada/salida en menos de 15 s desde que se abre la pantalla (SC-001), historial de un pedido creado y cobrado; los pedidos se cobran en el teardown
+- [X] T061 e2e en `web/e2e/asistencia-y-auditoria.spec.ts` usando `tokenDeApi` de `web/e2e/ambiente.ts`: checar entrada/salida en menos de 15 s desde que se abre la pantalla (SC-001), historial de un pedido creado y cobrado; los pedidos se cobran en el teardown
 - [ ] T062 `make ci-local` verde
 
 ## Dependencies
