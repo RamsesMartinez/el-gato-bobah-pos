@@ -268,8 +268,8 @@ encabezado, así que acortar uno lo cierra sin que nadie lo note. Por eso tambi�
 ## Lo que sigue sin medirse
 
 - **El teclado del sistema de verdad.** Chromium headless no lo abre; lo que el e2e mide es la
-  ventana encogida a 350 px, que reproduce el efecto pero no el teclado. En una tableta real esto
-  se verifica a mano.
+  ventana encogida a 350 px, que reproduce el efecto pero no el teclado. Es simulado, y así se
+  queda: no hay verificación manual en tableta (constitución, *Restricciones del producto*).
 - **El alto de Ventas con el aviso de turno viejo puesto.** Los números de arriba son sin él; el
   aviso desplaza el shell 53 px como en el POS.
 - **El alto de una fila de Ventas CON folio capturado.** La celda "Tipo" pasa de una a dos líneas.
