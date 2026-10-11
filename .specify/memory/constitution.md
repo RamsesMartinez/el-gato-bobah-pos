@@ -325,6 +325,11 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
 
 - **`/speckit-analyze` corre antes de `/speckit-implement`, siempre.** El flujo publicado lo marca opcional; en este repo no lo es. Un hallazgo CRITICAL o HIGH bloquea la implementación hasta resolverse o hasta que el dueño lo exima explícitamente.
 - **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
+- **Una pantalla nueva o con disposición cambiada no se implementa sin maqueta elegida.** El hook
+  `after_plan` corre `/maquetas` antes que los revisores de diseño: 2 o 3 opciones navegables a
+  1024×600 por pantalla, el dueño elige y la decisión queda en la sección «Maquetas» del plan. Una
+  pantalla aprobada en una tabla se aprueba sin verla, y el defecto aparece en la tableta. Un plan
+  que toca `web/` con la sección vacía es un hallazgo CRITICAL de `/speckit-analyze`.
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
 - **Verificación de backend antes de dar algo por bueno**: `make api-build && make api-test`.
 - Commits pequeños y enfocados.
@@ -348,4 +353,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.16.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-07
+**Version**: 1.17.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-10
