@@ -177,3 +177,13 @@ cada fase.
 - **MVP**: Phase 2 + US1 + US2 + US3 — se deja el grupo de WhatsApp y los pedidos ya tienen historial desde el primer despliegue (lo que no se audita desde el inicio no se recupera).
 - Después US4 (bitácora), US5 (banco de horas, apagado por omisión) y US6.
 - Cada fase cierra con `go build ./... && go test ./...` y vitest.
+
+## Phase 10: Convergence
+
+- [X] T063 CRITICAL: escribir la prueba del límite por IP de `POST /attendance/clock` en `server/internal/integration/attendance_ratelimit_test.go` —el router real necesita base— (agotar `authIPs` desde una IP y esperar 429 con el router real) per Constitution V (missing)
+- [X] T064 Mostrar el traslado en `web/src/shared/audit/OrderHistoryTimeline.tsx`: «Pasado al pedido N» / «Viene del pedido N» con `toOrderId`/`fromOrderId` del evento, y abrir el historial del otro pedido al tocarlo, con su prueba per US3/AC2 (partial)
+- [X] T065 Ofrecer en el filtro «Aparato» de `web/src/features/backoffice/AuditLogTab.tsx` las claves de todo el rango y no solo de la página (consulta `ListAuditDeviceKeys` con el mismo `where` en `server/queries/audit.sql`, devuelta como `deviceKeys` en la misma respuesta de la bitácora) per FR-016 (partial)
+- [X] T066 Decir «Sin conexión» en `web/src/shared/attendance/ClockView.tsx` cuando no se puede cargar la lista para checar, con su prueba per Edge Cases: Sin red (partial)
+- [X] T067 Al abrir el otro pedido desde un traslado, llevar la hoja al inicio en `web/src/shared/audit/OrderHistoryTimeline.tsx`, con su prueba (revisión de tableta)
+- [X] T068 Distinguir en `web/src/shared/attendance/ClockView.tsx` «Sin conexión» (sin respuesta) de «No se pudo cargar la lista» (el servidor respondió con error), con su prueba (revisión de tableta)
+- [X] T069 Medir la carga de la bitácora con el rango más ancho que acepta (un año, 730,000 eventos, más otra empresa igual) con y sin filtros, y dejar el techo de 1.5 s en `server/internal/integration/audit_volume_test.go` (revisión de base de datos)

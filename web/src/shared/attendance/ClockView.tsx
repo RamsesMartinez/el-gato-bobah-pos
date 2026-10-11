@@ -23,7 +23,7 @@ function hoursLabel(min: number): string {
 export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
   const qc = useQueryClient();
   const { zona: zone } = useHoraDelNegocio();
-  const { data } = useQuery({ queryKey: ROSTER, queryFn: attendanceApi.roster });
+  const { data, isError, error: rosterError, refetch, isFetching } = useQuery({ queryKey: ROSTER, queryFn: attendanceApi.roster });
   const [chosen, setChosen] = useState<RosterPerson | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -108,6 +108,21 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
         </Flex>
       </Flex>
       {error && !chosen && <Text color="red.500" fontWeight="600">{error}</Text>}
+      {isError && !data ? (
+        <VStack flex="1" justify="center" gap={3}>
+          {/* Un ApiError es que el servidor sí respondió: mandar a revisar el internet sería mandar a
+              buscar donde no es. */}
+          {rosterError instanceof ApiError ? (
+            <Text fontSize="lg" fontWeight="700">No se pudo cargar la lista</Text>
+          ) : (
+            <>
+              <Text fontSize="lg" fontWeight="700">Sin conexión</Text>
+              <Text color="fg.muted">Revisa el internet de la tableta y vuelve a intentar.</Text>
+            </>
+          )}
+          <Button minH="44px" loading={isFetching} onClick={() => void refetch()}>Reintentar</Button>
+        </VStack>
+      ) : (
       <SimpleGrid columns={2} gap={5} flex="1" minH={0}>
         <VStack align="stretch" gap={2} minH={0}>
           <Text fontSize="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.06em" color="fg.muted">Por entrar</Text>
@@ -122,6 +137,7 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
           </VStack>
         </VStack>
       </SimpleGrid>
+      )}
 
       {chosen && (
         <Flex position="absolute" inset={0} bg="blackAlpha.400" align="flex-end" zIndex={1}>

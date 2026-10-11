@@ -70,6 +70,7 @@ type AuditPage struct {
 	Items         []AuditEventView `json:"items"`
 	Total         int64            `json:"total"`
 	CountsByGroup map[string]int64 `json:"countsByGroup"`
+	DeviceKeys    []string         `json:"deviceKeys"`
 }
 
 // List devuelve una página de la bitácora general. Los días se resuelven en la zona del negocio.
@@ -97,7 +98,7 @@ func (s *AuditService) List(ctx context.Context, f domain.AuditFilter) (*AuditPa
 		}
 	}
 
-	page := &AuditPage{Items: []AuditEventView{}, CountsByGroup: map[string]int64{}}
+	page := &AuditPage{Items: []AuditEventView{}, CountsByGroup: map[string]int64{}, DeviceKeys: []string{}}
 	for _, g := range domain.AllAuditGroups() {
 		page.CountsByGroup[string(g)] = 0
 	}
@@ -115,6 +116,12 @@ func (s *AuditService) List(ctx context.Context, f domain.AuditFilter) (*AuditPa
 		FromAt: from, ToAt: to, ActorUserID: f.ActorUserID, Actions: actions, DeviceKey: key}); err != nil {
 		return nil, err
 	}
+	keys, err := q.ListAuditDeviceKeys(ctx, db.ListAuditDeviceKeysParams{
+		FromAt: from, ToAt: to, ActorUserID: f.ActorUserID, Actions: actions})
+	if err != nil {
+		return nil, err
+	}
+	page.DeviceKeys = append(page.DeviceKeys, keys...)
 	rows, err := q.ListAuditEvents(ctx, db.ListAuditEventsParams{
 		FromAt: from, ToAt: to, ActorUserID: f.ActorUserID, Actions: actions, DeviceKey: key,
 		Lim: int32(f.Size), Off: int32(f.Page * f.Size)})

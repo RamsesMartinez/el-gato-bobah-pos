@@ -275,6 +275,49 @@ func (q *Queries) ListAuditActors(ctx context.Context) ([]ListAuditActorsRow, er
 	return items, nil
 }
 
+const listAuditDeviceKeys = `-- name: ListAuditDeviceKeys :many
+select distinct e.device_key::text as device_key from audit_events e
+ where e.occurred_at >= $1 and e.occurred_at < $2
+   and ($3::bigint is null or e.actor_user_id = $3)
+   and ($4::text[] is null or e.action = any($4::text[]))
+   and e.device_key is not null
+ order by 1
+`
+
+type ListAuditDeviceKeysParams struct {
+	FromAt      time.Time `json:"from_at"`
+	ToAt        time.Time `json:"to_at"`
+	ActorUserID *int64    `json:"actor_user_id"`
+	Actions     []string  `json:"actions"`
+}
+
+// Los aparatos que el filtro «Aparato» ofrece: los de todo el rango, no los de la página. Sin el
+// filtro de aparato a propósito: elegir uno no debe borrar a los demás del selector.
+func (q *Queries) ListAuditDeviceKeys(ctx context.Context, arg ListAuditDeviceKeysParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAuditDeviceKeys,
+		arg.FromAt,
+		arg.ToAt,
+		arg.ActorUserID,
+		arg.Actions,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var device_key string
+		if err := rows.Scan(&device_key); err != nil {
+			return nil, err
+		}
+		items = append(items, device_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAuditEvents = `-- name: ListAuditEvents :many
 
 select e.id, e.occurred_at, e.action, e.actor_kind, e.actor_label, u.name as actor_name,

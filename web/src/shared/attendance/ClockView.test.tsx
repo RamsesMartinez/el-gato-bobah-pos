@@ -102,3 +102,22 @@ test('Enter del teclado físico manda un solo intento', async () => {
   fireEvent.keyDown(window, { key: 'Enter' });
   await waitFor(() => expect(clock).toHaveBeenCalledTimes(1));
 });
+
+// Edge case «Sin red»: una lista vacía sin explicación se lee como «no hay nadie que checar».
+test('sin red dice «Sin conexión» y deja reintentar', async () => {
+  roster.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  renderView();
+  expect(await screen.findByText('Sin conexión')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+  expect(await screen.findByText('Ana')).toBeInTheDocument();
+  expect(screen.queryByText('Sin conexión')).toBeNull();
+});
+
+// Con red pero con el servidor fallando, mandar a revisar el internet es mandar a buscar donde no es.
+test('si responde el servidor con error no dice «Sin conexión»', async () => {
+  roster.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'falló', 'r1'));
+  renderView();
+  expect(await screen.findByText('No se pudo cargar la lista')).toBeInTheDocument();
+  expect(screen.queryByText('Sin conexión')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+});

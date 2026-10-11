@@ -20,6 +20,8 @@ export interface AuditPage {
   items: AuditEvent[];
   total: number;
   countsByGroup: Record<AuditGroup, number>;
+  // Opcional para que el compilador obligue a la guarda: un servidor viejo no lo manda.
+  deviceKeys?: string[];
 }
 
 export interface AuditQuery {

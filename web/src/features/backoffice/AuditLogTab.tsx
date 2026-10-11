@@ -153,8 +153,7 @@ export function AuditLogTab() {
               options={Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }))} />
             <Picker title="Aparato" placeholder="Todos los aparatos" clearable clearLabel="Todos los aparatos" value={deviceKeyFilter}
               onChange={(v) => { setDeviceKeyFilter(v); resetPage(); }}
-              options={[...new Set((data?.items ?? []).map((e) => e.deviceKey).filter(Boolean))]
-                .map((k) => ({ value: k, label: `Aparato ${k.slice(0, 4)}` }))} />
+              options={(data?.deviceKeys ?? []).map((k) => ({ value: k, label: `Aparato ${k.slice(0, 4).toUpperCase()}` }))} />
           </VStack>
         </BottomSheet>
       )}

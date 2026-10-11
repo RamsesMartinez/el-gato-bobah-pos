@@ -30,7 +30,7 @@ Nunca devuelve IP, aparato ni registros anteriores.
 |---|---|---|
 | GET | `/orders/{id}/history` | eventos del pedido, cronológico |
 | GET | `/admin/audit/actors` | `[{id, name}]` — personas para filtrar (también las inactivas) |
-| GET | `/admin/audit?from&to&actorUserId&action&group&deviceKey&page&size` | `{items, total, countsByGroup}`; `Count` y conteo por grupo con el mismo `where` (sin el filtro `group`, para que los cinco contadores no se vacíen al tocar uno); `group` ∈ {`money`, `cancel`, `price`, `cash`, `attendance`}; `size` ∈ {25, 50} |
+| GET | `/admin/audit?from&to&actorUserId&action&group&deviceKey&page&size` | `{items, total, countsByGroup, deviceKeys}`; `deviceKeys` son los aparatos de todo el rango (sin el filtro de aparato, para poder cambiar de uno a otro); `Count` y conteo por grupo con el mismo `where` (sin el filtro `group`, para que los cinco contadores no se vacíen al tocar uno); `group` ∈ {`money`, `cancel`, `price`, `cash`, `attendance`}; `size` ∈ {25, 50} |
 
 ## Sesión
 

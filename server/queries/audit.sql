@@ -68,6 +68,16 @@ select e.action, count(*) as n from audit_events e
    and (sqlc.narg('device_key')::text is null or e.device_key = sqlc.narg('device_key'))
  group by e.action;
 
+-- name: ListAuditDeviceKeys :many
+-- Los aparatos que el filtro «Aparato» ofrece: los de todo el rango, no los de la página. Sin el
+-- filtro de aparato a propósito: elegir uno no debe borrar a los demás del selector.
+select distinct e.device_key::text as device_key from audit_events e
+ where e.occurred_at >= sqlc.arg('from_at') and e.occurred_at < sqlc.arg('to_at')
+   and (sqlc.narg('actor_user_id')::bigint is null or e.actor_user_id = sqlc.narg('actor_user_id'))
+   and (sqlc.narg('actions')::text[] is null or e.action = any(sqlc.narg('actions')::text[]))
+   and e.device_key is not null
+ order by 1;
+
 -- name: ListAuditActors :many
 -- Las personas por las que se puede filtrar la bitácora, activas o no: quien ya se fue también
 -- hizo cosas que se revisan.
