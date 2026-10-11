@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { pickDate } from '../../testing/pickDate';
 import { vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { Provider } from '../../components/ui/provider';
@@ -781,7 +782,7 @@ describe('los controles del histórico de cortes', () => {
     for (const b of screen.getAllByRole('button')) {
       expect(parseInt(getComputedStyle(b).minHeight, 10)).toBeGreaterThanOrEqual(44);
     }
-    for (const i of [screen.getByLabelText('Desde'), screen.getByLabelText('Hasta')]) {
+    for (const i of [screen.getByRole('button', { name: 'Desde' }), screen.getByRole('button', { name: 'Hasta' })]) {
       expect(parseInt(getComputedStyle(i).minHeight, 10)).toBeGreaterThanOrEqual(44);
     }
     expect(container.querySelector('select')).toBeNull();
@@ -790,8 +791,8 @@ describe('los controles del histórico de cortes', () => {
   test('un rango al revés no se aplica y lo dice', async () => {
     const onRango = vi.fn();
     wrap(<ControlesDelHistorico {...base} onRango={onRango} />);
-    await userEvent.type(screen.getByLabelText('Desde'), '2026-09-10');
-    await userEvent.type(screen.getByLabelText('Hasta'), '2026-09-01');
+    await pickDate('Desde', '2026-09-10');
+    await pickDate('Hasta', '2026-09-01');
     expect(screen.getByRole('status')).toHaveTextContent(/inicio va después/);
     expect(onRango).not.toHaveBeenLastCalledWith('2026-09-10', '2026-09-01');
   });

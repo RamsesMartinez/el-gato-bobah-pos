@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { pickDate } from './pickDate';
 import { API, tokenDeRequest } from './ambiente';
 import { iniciarSesion } from './sesion';
 
@@ -154,7 +155,7 @@ test.describe('F — el control de rango en la tableta', () => {
     await entrar(page, '/ventas');
 
     await page.getByRole('button', { name: 'Rango' }).click();
-    await expect(page.getByLabel('Desde')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Desde', exact: true })).toBeVisible();
 
     // El presupuesto es 600 px de alto. Lo que gastan el encabezado, los chips, las fechas, las
     // tarjetas de resumen y los filtros es alto que la tabla ya no tiene: si no quedan al menos dos
@@ -177,7 +178,7 @@ test.describe('F — el control de rango en la tableta', () => {
     }
     await page.getByRole('button', { name: 'Rango' }).click();
     for (const campo of ['Desde', 'Hasta']) {
-      const caja = await page.getByLabel(campo).boundingBox();
+      const caja = await page.getByRole('button', { name: campo, exact: true }).boundingBox();
       expect(caja?.height ?? 0, `el campo "${campo}" mide ${caja?.height} px`).toBeGreaterThanOrEqual(44);
     }
   });
@@ -191,7 +192,7 @@ test.describe('F — el control de rango en la tableta', () => {
 
     let peticiones = 0;
     page.on('request', (r) => { if (r.url().includes('/sales?')) peticiones += 1; });
-    await page.getByLabel('Desde').fill('2026-08-01');
+    await pickDate(page, 'Desde', '2026-08-01');
 
     await expect(page.getByText(/Elige las dos fechas/)).toBeVisible();
     expect(peticiones, 'se consultó con media fecha').toBe(0);
@@ -200,8 +201,8 @@ test.describe('F — el control de rango en la tableta', () => {
   test('F3 · un rango invertido se avisa antes de ir al servidor', async ({ page }) => {
     await entrar(page, '/ventas');
     await page.getByRole('button', { name: 'Rango' }).click();
-    await page.getByLabel('Desde').fill('2026-08-31');
-    await page.getByLabel('Hasta').fill('2026-08-01');
+    await pickDate(page, 'Desde', '2026-08-31');
+    await pickDate(page, 'Hasta', '2026-08-01');
 
     await expect(page.getByText(/La fecha de inicio va antes que la de fin/)).toBeVisible();
   });
@@ -212,8 +213,8 @@ test.describe('F — el control de rango en la tableta', () => {
     await entrar(page, '/reportes');
 
     await page.getByRole('button', { name: 'Rango' }).click();
-    await page.getByLabel('Desde').fill('2026-08-01');
-    await page.getByLabel('Hasta').fill('2026-08-31');
+    await pickDate(page, 'Desde', '2026-08-01');
+    await pickDate(page, 'Hasta', '2026-08-31');
 
     await expect(page.getByText('2026-08-01 al 2026-08-31')).toBeVisible();
     await expect(page.getByText(/últimos 30 días/i)).toHaveCount(0);
@@ -222,7 +223,7 @@ test.describe('F — el control de rango en la tableta', () => {
   test('F11 · Reportes cabe en la tableta con el rango abierto', async ({ page }) => {
     await entrar(page, '/reportes');
     await page.getByRole('button', { name: 'Rango' }).click();
-    await expect(page.getByLabel('Desde')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Desde', exact: true })).toBeVisible();
 
     // Nada del filtro puede empujar el contenido fuera de la pantalla horizontalmente: el cuerpo no
     // se desplaza de lado en una tableta; se desplazan las tablas dentro de su caja.

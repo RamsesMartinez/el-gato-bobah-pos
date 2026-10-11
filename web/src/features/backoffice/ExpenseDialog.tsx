@@ -1,4 +1,5 @@
 import { DiaDelGasto } from './DiaDelGasto';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import { useRef, useState, type ReactNode } from 'react';
 import {
   Box, Button, HStack, VStack, Text, Input, Badge, IconButton, Separator,
@@ -272,7 +273,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
               <HStack flexWrap="wrap" gap={3} align="start">
                 <DiaDelGasto turno={turno} value={expenseDay} onChange={setExpenseDay} />
                 <Field label="Fecha del documento" w="170px">
-                  <Input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+                  <DatePickerButton label="Fecha del documento" value={expenseDate} onChange={setExpenseDate} />
                 </Field>
                 <Field label="Categoría" flex="1" minW="180px">
                   <Picker value={categoryId} onChange={setCategoryId} placeholder="Elegir categoría" title="Categoría"
@@ -337,7 +338,7 @@ export function ExpenseDialog({ open, onClose, onSaved }: {
                   </Switch>
                   {markReceived && (
                     <Field label="Fecha de recepción" w="170px">
-                      <Input type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} />
+                      <DatePickerButton label="Fecha de recepción" value={receivedAt} onChange={setReceivedAt} />
                     </Field>
                   )}
                   <VStack align="end" gap={0}>
@@ -598,7 +599,7 @@ function PaymentRow({ payment, methods, registers, onChange, onRemove }: {
           onChange={(e) => onChange({ amount: e.target.value })} />
       </Field>
       <Field label="Fecha del pago" w="160px">
-        <Input type="date" value={payment.paidOn} onChange={(e) => onChange({ paidOn: e.target.value })} />
+        <DatePickerButton label="Fecha del pago" value={payment.paidOn} onChange={(v) => onChange({ paidOn: v })} />
       </Field>
       <Field label={cash ? 'Caja (obligatoria)' : 'Caja (arqueo)'} flex="1" minW="160px">
         {registers.length === 0 ? (

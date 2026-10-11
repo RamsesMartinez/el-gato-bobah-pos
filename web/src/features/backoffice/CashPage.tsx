@@ -1,4 +1,5 @@
 import { useState, Fragment, type ReactNode } from 'react';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import { useNavigate } from 'react-router';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { ReasonSheet } from '../../components/ReasonSheet';
@@ -1512,8 +1513,8 @@ function HistoryTab() {
 
 // Los controles del histórico: un rango opcional de días y la página. Van ARRIBA de la lista y en un
 // solo renglón: a 1024×600 abajo quedaban fuera de la pantalla, y cada renglón extra se le quita a
-// la lista que se vino a leer. Las fechas son `input type="date"` como en Ventas (el calendario del
-// sistema a pantalla completa, no el desplegable de renglones de 20 px que prohíbe la constitución).
+// la lista que se vino a leer. Las fechas se eligen con `DatePickerButton`, como en Ventas: el
+// calendario del sistema tiene celdas de ~30 px y la constitución lo prohíbe en la tableta.
 export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy, onPage, onRango }: {
   page: number; total: number; pageSize: number; desde: string; hasta: string; hoy: string;
   onPage: (page: number) => void; onRango: (desde: string, hasta: string) => void;
@@ -1529,11 +1530,9 @@ export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy
   return (
     <HStack gap={2} flexWrap="wrap" justify="space-between">
       <HStack gap={2} flexWrap="wrap">
-        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Desde"
-          value={borrador.desde} onChange={(e) => cambiar(e.target.value, borrador.hasta)} />
+        <DatePickerButton label="Desde" max={hoy} value={borrador.desde} onChange={(v) => cambiar(v, borrador.hasta)} />
         <Text fontSize="sm" color="fg.muted">al</Text>
-        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Hasta"
-          value={borrador.hasta} onChange={(e) => cambiar(borrador.desde, e.target.value)} />
+        <DatePickerButton label="Hasta" max={hoy} value={borrador.hasta} onChange={(v) => cambiar(borrador.desde, v)} />
         {(borrador.desde !== '' || borrador.hasta !== '' || desde !== '' || hasta !== '') && (
           <Button size="sm" minH="44px" variant="ghost" onClick={() => cambiar('', '')}>Quitar fechas</Button>
         )}
