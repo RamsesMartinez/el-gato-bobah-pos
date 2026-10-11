@@ -288,6 +288,12 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     de pasos de 15 minutos (decidido el 2026-10-11).
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
+  - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
+    2026-10-11). No hay paso manual «en tableta real» ni se deja como pendiente: se mide con
+    Playwright a 1024×600 contra el ambiente de pruebas, con capturas, y con subagentes que usan la
+    pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
+    del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
+    nombra como simulado, no como pendiente para alguien más.
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -356,4 +362,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.17.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-11
+**Version**: 1.18.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-11

@@ -319,8 +319,8 @@ construcción).
 | C4 | Contar 40 monedas y abrir la caja | Se teclean, no se tapean 40 veces, y **el turno abre con la misma cifra que mostró la hoja**. El servidor recalcula desde las piezas: si las dos sumas no coinciden, el arqueo se compara contra un fondo que nadie contó | `contar-el-cajon.spec.ts` › **C4** | Playwright + servidor |
 | C5 | El desglose después del cierre | Piezas por denominación y subtotal del servidor; un arqueo capturado a mano muestra su motivo; **un corte anterior a la feature no pinta nada**, sin avisos que hablen del sistema | `CashPage.test.tsx` › *el desglose de lo contado* | Vitest |
 
-**Lo que no se midió en tableta real:** el teclado del sistema operativo. C3 recorta la ventana, que
-es el efecto que importa, pero el teclado real de una Surface puede tapar de otra forma.
+**Simulado, no medido:** el teclado del sistema operativo. C3 recorta la ventana, que es el efecto
+que importa; el teclado real de una Surface puede tapar de otra forma.
 
 ## J. El cierre con un solo cajón y los métodos configurables (spec 015)
 
@@ -349,8 +349,8 @@ cupiera.
 | J9 | La separación entre los tres interruptores de un renglón | **46 px y 63 px medidos**, contra un piso de 22. Una revisión los estimó en 16 px calculando el padding de la celda; la medición dice otra cosa, porque el ancho lo dan los encabezados «Va al cajón» y «Automático», más anchos que el interruptor. Se afirma en el test porque acortar un encabezado cerraría el hueco sin que nadie lo note | `presupuesto-del-cierre.spec.ts` › **P2** | Playwright |
 | J10 | El mensaje del cierre rechazado | Dice qué hacer primero y nombra el método, sin explicar el mecanismo: *«recarga la pantalla para cerrar: «Efectivo» ahora se cuenta con el cajón»* | `TestUnMetodoDeCajonEnDeclaradoSeRechaza` | Postgres |
 
-**Lo que J no cubre:** la tableta real. J1–J8 miden un Chromium a 1024×600, que es el presupuesto,
-no una Surface con su teclado y su densidad de píxeles.
+**Lo que J simula:** J1–J8 miden un Chromium a 1024×600, que es el presupuesto; el teclado y la
+densidad de una Surface se simulan, no se verifican a mano.
 
 ## K. Que ninguna pantalla esté rota sin que nadie se entere (2026-09-11)
 
@@ -510,8 +510,8 @@ cuenten, y que el volumen no crezca con los dedos.
 - **El techo es POR PANTALLA INSTRUMENTADA.** Hoy la lista tiene una y ocupa el 82 % de los 20 MB.
   Agregar otra cuesta una línea de código **y otro tanto de disco**, y el test de volumen no lo
   atrapa hasta que alguien la agrega y vuelve a correrlo.
-- **La orientación vertical no se ha probado en una tableta real.** Los tests la cubren; que el POS
-  en vertical se parezca a la leyenda vertical, no.
+- **La orientación vertical se mide en Chromium, no contra la leyenda.** Los tests la cubren; que el
+  POS en vertical se parezca a la leyenda vertical, no.
 - **El anonimato no resiste un cruce con la base del cliente.** La consulta admite un solo día, y en
   un local donde ese día trabajó una sola persona de ese rol, esa rejilla es suya —`orders.opened_by`
   dice quién—. Un mínimo de ventana no lo arregla (restar dos rangos recupera el día). Está escrito
