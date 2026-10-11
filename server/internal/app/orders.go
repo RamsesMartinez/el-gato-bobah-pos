@@ -460,6 +460,10 @@ func (s *OrdersService) createInTx(ctx context.Context, q *db.Queries, p *create
 	if err := q.MarcarTodoElPedidoEnviadoACocina(ctx, ord.ID); err != nil {
 		return 0, err
 	}
+	if err := auditOrder(ctx, q, "order.created", ord.ID, &cmd.OpenedBy, nil,
+		map[string]any{"total": built.Total, "lines": len(built.Lines), "serviceType": cmd.ServiceType}); err != nil {
+		return 0, err
+	}
 	return ord.ID, nil
 }
 
@@ -508,8 +512,20 @@ func (s *OrdersService) SetPlatformRef(ctx context.Context, id int64, raw string
 			"%w: ese pedido no es de plataforma, así que no tiene folio de plataforma", domain.ErrValidation)
 	}
 
-	row, err := s.store.QC(ctx).SetPlatformRef(ctx, db.SetPlatformRefParams{
-		ID: id, PlatformOrderRef: &ref, PlatformRefSetBy: &quien,
+	var row db.SetPlatformRefRow
+	err = s.store.WithTx(ctx, func(q *db.Queries) error {
+		// El «antes» se lee dentro de la transacción, con candado: leído antes de ella, otra
+		// corrección simultánea dejaría un valor anterior que ya no era.
+		if ord.PlatformOrderRef, err = q.GetPlatformRefForUpdate(ctx, id); err != nil {
+			return err
+		}
+		if row, err = q.SetPlatformRef(ctx, db.SetPlatformRefParams{
+			ID: id, PlatformOrderRef: &ref, PlatformRefSetBy: &quien,
+		}); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.platform_ref_set", id, &quien,
+			map[string]any{"ref": derefStr(ord.PlatformOrderRef)}, map[string]any{"ref": derefStr(row.PlatformOrderRef)})
 	})
 	if err != nil {
 		return SetPlatformRefResult{}, s.traduceFolioRepetido(ctx, err, &ref, ord.DeliveryPlatformID)
@@ -582,9 +598,13 @@ func (s *OrdersService) SetDiscount(ctx context.Context, cmd SetDiscountCmd) (Se
 			return err
 		}
 		res.Anterior, res.Actual = o.DiscountTotal, descuento
-		return q.SetOrderDiscount(ctx, db.SetOrderDiscountParams{
+		if err := q.SetOrderDiscount(ctx, db.SetOrderDiscountParams{
 			ID: cmd.OrderID, Descuento: descuento, Quien: cmd.Actor,
-		})
+		}); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.discount_set", cmd.OrderID, &cmd.Actor,
+			map[string]any{"discount": o.DiscountTotal}, map[string]any{"discount": descuento})
 	})
 	if err != nil {
 		return SetDiscountResult{}, err
@@ -982,7 +1002,14 @@ func (s *OrdersService) SetStatus(ctx context.Context, id int64, status string) 
 		if !domain.CanTransition(string(o.Status), status) {
 			return domain.ErrConflict
 		}
-		return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: id, Status: db.OrderStatus(status)})
+		if err := q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: id, Status: db.OrderStatus(status)}); err != nil {
+			return err
+		}
+		// «Lista» es un paso de cocina, no mueve dinero ni producto: no va a la bitácora.
+		if status != domain.StatusEntregada {
+			return nil
+		}
+		return auditOrder(ctx, q, "order.delivered", id, nil, map[string]any{"status": o.Status}, map[string]any{"status": status})
 	})
 }
 
@@ -1024,9 +1051,13 @@ func (s *OrdersService) Refund(ctx context.Context, id, actor int64, reason stri
 		if !domain.CanRefund(string(o.Status)) {
 			return domain.ErrConflict
 		}
-		return q.RefundOrder(ctx, db.RefundOrderParams{
+		if err := q.RefundOrder(ctx, db.RefundOrderParams{
 			ID: id, RefundedBy: &actor, RefundReason: &reason, RefundAmount: o.Total,
-		})
+		}); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "payment.refunded", id, &actor,
+			map[string]any{"status": o.Status}, map[string]any{"status": "reembolsada", "amount": o.Total, "reason": reason})
 	})
 }
 
@@ -1435,7 +1466,10 @@ func addLinesInTx(ctx context.Context, q *db.Queries, orderID int64, p *addPlan,
 				return err
 			}
 		}
-		return q.RecalcOrderTotals(ctx, orderID)
+		if err := q.RecalcOrderTotals(ctx, orderID); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.lines_added", orderID, &actor, nil, map[string]any{"lines": len(agregados)})
 	}()
 	return agregados, err
 }
@@ -1503,7 +1537,10 @@ func (s *OrdersService) DeliverLine(ctx context.Context, orderID, lineID int64, 
 		}
 
 		lineas[i].Entregado = lineas[i].Entregado.Add(cantidad)
-		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
+		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.delivered", orderID, nil, nil, map[string]any{"lineId": lineID, "qty": cantidad})
 	})
 }
 
@@ -1538,7 +1575,10 @@ func (s *OrdersService) DeliverAll(ctx context.Context, orderID int64) error {
 		if err := q.DeliverAllOrderLines(ctx, orderID); err != nil {
 			return err
 		}
-		return q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada})
+		if err := q.SetOrderStatus(ctx, db.SetOrderStatusParams{ID: orderID, Status: db.OrderStatusEntregada}); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.delivered", orderID, nil, map[string]any{"status": o.Status}, map[string]any{"status": domain.StatusEntregada})
 	})
 }
 
@@ -2041,6 +2081,11 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 			Outstanding: domain.PorCobrar(o.Total, yaPagado),
 			Paid:        domain.PedidoSaldado(yaPagado, o.Total),
 			PaymentID:   paymentID, Number: int(number), Amount: amount,
+		}
+		if err := auditOrder(ctx, q, "payment.charged", cmd.OrderID, &cmd.ActorID, map[string]any{"paid": pagado},
+			map[string]any{"paymentId": paymentID, "methodId": cmd.MethodID, "amount": amount, "tip": cmd.Tip,
+				"terminalId": cmd.TerminalID, "reference": cmd.Reference, "paid": yaPagado}); err != nil {
+			return err
 		}
 
 		// El pedido que no pasa por cocina y queda SALDADO se cierra aquí mismo.

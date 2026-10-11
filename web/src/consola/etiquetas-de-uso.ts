@@ -19,6 +19,7 @@ const ETIQUETAS: Record<string, string> = {
   negocio: 'Ajustes del negocio',
   impresion: 'Impresión',
   cuenta: 'Cuenta propia',
+  asistencia: 'Asistencia',
 };
 
 const ACCIONES: Record<string, string> = {

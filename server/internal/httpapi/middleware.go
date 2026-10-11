@@ -57,7 +57,8 @@ func RequireAuth(jm *auth.Manager) func(http.Handler) http.Handler {
 				ti.userID = u.ID
 				ti.role = string(u.Role)
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, u)))
+			ctx := app.WithActorUser(context.WithValue(r.Context(), userCtxKey, u), u.ID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

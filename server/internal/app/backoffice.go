@@ -1109,8 +1109,12 @@ func (s *BackofficeService) OpenSession(ctx context.Context, registerID int64, c
 		}
 		// Sin esperado: al abrir no hay nada que esperar — el fondo ES lo que se contó. El check del
 		// esquema lo exige nulo justo aquí.
-		return s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total, nil,
-			cmd.Piezas, motivoDelCamino(cmd.Total, cmd.Motivo), userID)
+		if err := s.guardarConteo(ctx, q, abierta.ID, db.CashCountMomentApertura, total, nil,
+			cmd.Piezas, motivoDelCamino(cmd.Total, cmd.Motivo), userID); err != nil {
+			return err
+		}
+		return auditCash(ctx, q, "cash.opened", abierta.ID, &userID, nil,
+			map[string]any{"amount": total, "reason": cmd.Motivo})
 	})
 	if err != nil {
 		// El pre-check de arriba NO es atómico: dos tabletas pueden pasarlo las dos y la segunda
@@ -1677,7 +1681,11 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 				return err
 			}
 		}
-		return q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n})
+		if err := q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n}); err != nil {
+			return err
+		}
+		return auditCash(ctx, q, "cash.closed", sess.ID, &userID, nil,
+			map[string]any{"declared": cmd.Declarado, "total": cmd.Total, "reason": cmd.Motivo, "tips": cmd.Propinas})
 	})
 	if err != nil {
 		return nil, traduceConflictoDeCaja(err, db.CashCountMomentCierre)
@@ -1880,12 +1888,16 @@ func (s *BackofficeService) RecordCashMovement(ctx context.Context, registerID i
 		}
 		if cmd.Kind == domain.CashSalida {
 			_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
+		} else {
+			_, err = q.InsertCashMovement(ctx, db.InsertCashMovementParams{
+				SessionID: sess.ID, Kind: cmd.Kind, Amount: amt, Concept: concept, UserID: cmd.UserID,
+			})
+		}
+		if err != nil {
 			return err
 		}
-		_, err = q.InsertCashMovement(ctx, db.InsertCashMovementParams{
-			SessionID: sess.ID, Kind: cmd.Kind, Amount: amt, Concept: concept, UserID: cmd.UserID,
-		})
-		return err
+		return auditCash(ctx, q, "cash.movement", sess.ID, &cmd.UserID, nil,
+			map[string]any{"kind": cmd.Kind, "amount": amt, "reason": concept})
 	}); err != nil {
 		return nil, err
 	}
@@ -1940,8 +1952,11 @@ func (s *BackofficeService) CorrectCashOut(ctx context.Context, movementID int64
 			}
 			return err
 		}
-		_, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID})
-		return err
+		if _, err = q.InsertCashOut(ctx, db.InsertCashOutParams{SessionID: sess.ID, Amount: amt, Concept: concept, UserID: cmd.UserID, ConceptID: cmd.ConceptID}); err != nil {
+			return err
+		}
+		return auditCash(ctx, q, "cash.movement_corrected", sess.ID, &cmd.UserID,
+			map[string]any{"amount": m.Amount, "reason": m.Concept}, map[string]any{"amount": amt, "reason": concept})
 	})
 	if err != nil {
 		return nil, err
@@ -2019,10 +2034,14 @@ func (s *BackofficeService) Transfer(ctx context.Context, fromRegisterID, toRegi
 		}); e != nil {
 			return e
 		}
-		return q.InsertTransferMovement(ctx, db.InsertTransferMovementParams{
+		if e = q.InsertTransferMovement(ctx, db.InsertTransferMovementParams{
 			SessionID: toSess.ID, Kind: domain.CashEntrada, Amount: amt,
 			Concept: "Traspaso desde " + from.Name, UserID: userID, TransferID: &transferID,
-		})
+		}); e != nil {
+			return e
+		}
+		return auditCash(ctx, q, "cash.movement", fromSess.ID, &userID, nil,
+			map[string]any{"kind": "traspaso", "amount": amt, "reason": "Traspaso a " + to.Name})
 	})
 	if err != nil {
 		return 0, err

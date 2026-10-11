@@ -282,7 +282,10 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     sistema operativo con renglones de ~20 px, tapa la pantalla y no se acierta con el dedo. Va
     [`Picker`](../../web/src/components/Picker.tsx): una hoja inferior con filas grandes y buscador.
     Esta regla ya se había perdido una vez por vivir solo en el comentario de un componente; por eso
-    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema.
+    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema: el calendario de
+    `input type="date"` o `type="time"` también (celdas de ~30 px). Va
+    [`DatePickerButton`](../../web/src/components/DatePickerButton.tsx) o, para horas, un `Picker`
+    de pasos de 15 minutos (decidido el 2026-10-11).
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
@@ -353,4 +356,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.17.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-10
+**Version**: 1.17.1 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-11

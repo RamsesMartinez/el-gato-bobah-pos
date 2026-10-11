@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import {
   Box, Heading, Text, Button, HStack, VStack, Table, Input, Textarea,
   Center, Spinner, Tabs, Badge,
@@ -241,7 +242,7 @@ function PayDialog({ expense, methods, onClose, onPaid }: {
                 onChange={(e) => setAmount(e.target.value)} />
             </Field>
             <Field label="Fecha del pago">
-              <Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+              <DatePickerButton label="Fecha del pago" value={paidOn} onChange={setPaidOn} />
             </Field>
             <Field label={cash ? 'Caja (obligatoria en efectivo)' : 'Caja (para el arqueo)'}>
               {openRegisters.length === 0 ? (

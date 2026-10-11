@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Button, HStack, Input, Spinner, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, HStack, Input, Spinner, Tabs, Text, VStack } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { posApi } from '../../api/pos';
@@ -16,6 +16,9 @@ import { round2 } from '../../domain/cobro';
 import { etiquetaEstado, etiquetaTipo } from './etiquetas';
 import { diaCortoYHora, fechaYHora } from '../../utils/horaDelNegocio';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
+import { can } from '../../app/permissions';
+import { useSessionStore } from '../../stores/session';
+import { OrderHistoryTimeline } from '../../shared/audit/OrderHistoryTimeline';
 
 // El detalle de una venta: sus renglones con modificadores y de dónde salió el dinero.
 //
@@ -26,7 +29,7 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 // Los datos de cabecera (folio, estado, medio de pago) salen del renglón que ya se tiene en la
 // tabla, así que el diálogo pinta algo útil desde el primer cuadro y no una pantalla en blanco
 // mientras carga.
-export function SaleDetailDialog({ venta, isOpen, onClose }: {
+export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
   venta: SaleRow;
   isOpen: boolean;
   onClose: () => void;
@@ -34,20 +37,25 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
   const horaNegocio = useHoraDelNegocio();
   const palette = useUiStore((s) => s.palette);
   const qc = useQueryClient();
-  const [folio, setFolio] = useState(venta.platformOrderRef);
+  const [folio, setFolio] = useState(sale.platformOrderRef);
   const [error, setError] = useState('');
   const [capturando, setCapturando] = useState(false);
+  // La pestaña de historial existe solo con el permiso: sin él, el detalle se ve como siempre, sin
+  // una fila de pestañas que le quite alto.
+  const user = useSessionStore((s) => s.user);
+  const canSeeHistory = can('audit.view', user);
+  const [tab, setTab] = useState<'venta' | 'historial'>('venta');
   // La liquidación se consulta aparte del pedido: es otro momento y otro camino, y un pedido de
   // mostrador no la tiene. El 404 es la respuesta legítima de "todavía no llega el documento", así
   // que no se reintenta.
   const liquidacion = useQuery({
-    queryKey: ['settlement', venta.id],
-    queryFn: () => settlementsApi.get(venta.id),
-    enabled: isOpen && !!venta.platform,
+    queryKey: ['settlement', sale.id],
+    queryFn: () => settlementsApi.get(sale.id),
+    enabled: isOpen && !!sale.platform,
     retry: false,
   });
   const guardarFolio = useMutation({
-    mutationFn: () => posApi.setPlatformRef(venta.id, folio.trim()),
+    mutationFn: () => posApi.setPlatformRef(sale.id, folio.trim()),
     onSuccess: (r) => {
       setFolio(r.platformOrderRef);
       setError('');
@@ -59,8 +67,8 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
     onError: (e: Error) => setError(e.message),
   });
   const { data, isLoading } = useQuery({
-    queryKey: ['orders', venta.id],
-    queryFn: () => posApi.order(venta.id),
+    queryKey: ['orders', sale.id],
+    queryFn: () => posApi.order(sale.id),
     enabled: isOpen,
   });
 
@@ -70,37 +78,47 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
       <DialogContent colorPalette={palette}>
         <DialogHeader>
           <DialogTitle>
-            {venta.folioName ? `${venta.folioName} · #${venta.dailyNumber}` : `Venta #${venta.dailyNumber}`} · {money(venta.total)}
+            {sale.folioName ? `${sale.folioName} · #${sale.dailyNumber}` : `Venta #${sale.dailyNumber}`} · {money(sale.total)}
           </DialogTitle>
         </DialogHeader>
         <DialogCloseTrigger />
-        <DialogBody>
+        {/* Las pestañas van FUERA del cuerpo con scroll: fijas bajo el encabezado. */}
+        {canSeeHistory && (
+          <Tabs.Root value={tab} onValueChange={(e) => setTab(e.value as 'venta' | 'historial')} px={6}>
+            <Tabs.List>
+              <Tabs.Trigger value="venta" minH="44px">Venta</Tabs.Trigger>
+              <Tabs.Trigger value="historial" minH="44px">Historial</Tabs.Trigger>
+            </Tabs.List>
+          </Tabs.Root>
+        )}
+        <DialogBody minH={0}>
+          {tab === 'historial' && canSeeHistory ? <OrderHistoryTimeline orderId={sale.id} /> : (
           <VStack align="stretch" gap={4}>
             <VStack align="stretch" gap={1}>
-              <Dato k="Estado" v={etiquetaEstado(venta.status)} />
-              <Dato k="Tipo" v={venta.platform || etiquetaTipo(venta.serviceType)} />
-              <Dato k="Abierta" v={fechaHora(venta.openedAt, horaNegocio.zona)} />
-              {venta.completedAt && <Dato k="Cerrada" v={fechaHora(venta.completedAt, horaNegocio.zona)} />}
-              {venta.openedBy && <Dato k="Atendió" v={venta.openedBy} />}
-              {venta.customer && <Dato k="Cliente" v={venta.customer} />}
-              <Dato k="Medio de pago" v={venta.methods || 'Sin cobrar'} />
+              <DetailRow k="Estado" v={etiquetaEstado(sale.status)} />
+              <DetailRow k="Tipo" v={sale.platform || etiquetaTipo(sale.serviceType)} />
+              <DetailRow k="Abierta" v={fechaHora(sale.openedAt, horaNegocio.zona)} />
+              {sale.completedAt && <DetailRow k="Cerrada" v={fechaHora(sale.completedAt, horaNegocio.zona)} />}
+              {sale.openedBy && <DetailRow k="Atendió" v={sale.openedBy} />}
+              {sale.customer && <DetailRow k="Cliente" v={sale.customer} />}
+              <DetailRow k="Medio de pago" v={sale.methods || 'Sin cobrar'} />
               {/* El folio de la plataforma se ve COMPLETO aquí —en la tabla va truncado— y se
                   escribe o corrige desde aquí. Solo aparece en pedidos de plataforma: en uno de
                   mostrador el dato no existe. */}
-              {venta.platform && (
+              {sale.platform && (
                 <HStack justify="space-between" align="center" gap={3} py={1}>
                   <Text fontSize="sm" color="fg.muted" flexShrink={0}>
-                    Folio de {venta.platform}
+                    Folio de {sale.platform}
                   </Text>
                   <HStack gap={2} flex="1" justify="flex-end">
                     <Input size="sm" minH="44px" maxW="260px"
-                      aria-label={`Folio de ${venta.platform}`}
+                      aria-label={`Folio de ${sale.platform}`}
                       placeholder="Sin capturar"
                       value={folio}
                       onChange={(e) => { setFolio(e.target.value); setError(''); }}
                       autoComplete="off" autoCapitalize="off" spellCheck={false} />
                     <Button size="sm" minH="44px" px={4}
-                      disabled={!folio.trim() || folio.trim() === venta.platformOrderRef || guardarFolio.isPending}
+                      disabled={!folio.trim() || folio.trim() === sale.platformOrderRef || guardarFolio.isPending}
                       onClick={() => guardarFolio.mutate()}>
                       Guardar
                     </Button>
@@ -111,7 +129,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
               {/* La liquidación: lo que la plataforma se quedó. NO se suma ni se resta de ninguna
                   cifra de arriba — es dinero que el negocio vendió y no recibió, y mezclarlo con el
                   total reescribiría lo que el POS cobró. */}
-              {venta.platform && (
+              {sale.platform && (
                 <HStack justify="space-between" align="center" gap={3} py={1}>
                   <Text fontSize="sm" color="fg.muted" flexShrink={0}>Liquidación</Text>
                   <HStack gap={2} flex="1" justify="flex-end">
@@ -132,24 +150,24 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
               )}
               {/* Solo cuando hubo: un renglón que siempre dice $0 enseña a no leer esta zona, que
                   es donde vive el dinero. */}
-              {Number(venta.discount) > 0 && (
-                <Dato k="Descuento"
-                  v={venta.discountBy
-                    ? `-${money(venta.discount)} · ${venta.discountBy}`
-                    : `-${money(venta.discount)}`} />
+              {Number(sale.discount) > 0 && (
+                <DetailRow k="Descuento"
+                  v={sale.discountBy
+                    ? `-${money(sale.discount)} · ${sale.discountBy}`
+                    : `-${money(sale.discount)}`} />
               )}
-              {Number(venta.tips) > 0 && <Dato k="Propina" v={money(venta.tips)} />}
-              {Number(venta.deliveryFee) > 0 && <Dato k="Envío" v={money(venta.deliveryFee)} />}
-              {Number(venta.refund) > 0 && (
-                <Dato k="Devuelto" v={venta.lastRefundAt
-                  ? `${money(venta.refund)} · ${diaCortoYHora(venta.lastRefundAt, horaNegocio.zona)}`
-                  : money(venta.refund)} />
+              {Number(sale.tips) > 0 && <DetailRow k="Propina" v={money(sale.tips)} />}
+              {Number(sale.deliveryFee) > 0 && <DetailRow k="Envío" v={money(sale.deliveryFee)} />}
+              {Number(sale.refund) > 0 && (
+                <DetailRow k="Devuelto" v={sale.lastRefundAt
+                  ? `${money(sale.refund)} · ${diaCortoYHora(sale.lastRefundAt, horaNegocio.zona)}`
+                  : money(sale.refund)} />
               )}
-              {Number(venta.paid ?? 0) < Number(venta.total) && venta.status !== 'cancelada' && venta.status !== 'reembolsada' && (
-                <Dato k="Cobrado" v={money(venta.paid ?? '0')} />
+              {Number(sale.paid ?? 0) < Number(sale.total) && sale.status !== 'cancelada' && sale.status !== 'reembolsada' && (
+                <DetailRow k="Cobrado" v={money(sale.paid ?? '0')} />
               )}
-              {Number(venta.paid ?? 0) < Number(venta.total) && venta.status !== 'cancelada' && venta.status !== 'reembolsada' && (
-                <Dato k="Por cobrar" v={money(round2(Number(venta.total) - Number(venta.paid ?? 0) - Number(venta.writtenOff ?? 0)))} />
+              {Number(sale.paid ?? 0) < Number(sale.total) && sale.status !== 'cancelada' && sale.status !== 'reembolsada' && (
+                <DetailRow k="Por cobrar" v={money(round2(Number(sale.total) - Number(sale.paid ?? 0) - Number(sale.writtenOff ?? 0)))} />
               )}
             </VStack>
 
@@ -182,9 +200,10 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
               </VStack>
             </Box>
           </VStack>
+          )}
         </DialogBody>
-        {venta.platform && (
-          <LiquidacionSheet orderId={venta.id} plataforma={venta.platform}
+        {sale.platform && (
+          <LiquidacionSheet orderId={sale.id} plataforma={sale.platform}
             isOpen={capturando} onClose={() => setCapturando(false)} />
         )}
       </DialogContent>
@@ -192,7 +211,7 @@ export function SaleDetailDialog({ venta, isOpen, onClose }: {
   );
 }
 
-function Dato({ k, v }: { k: string; v: string }) {
+function DetailRow({ k, v }: { k: string; v: string }) {
   return (
     <HStack justify="space-between" align="baseline">
       <Text color="fg.muted" fontSize="sm">{k}</Text>
@@ -202,8 +221,8 @@ function Dato({ k, v }: { k: string; v: string }) {
 }
 
 // La zona llega como parámetro: esta es una función de módulo y el hook solo vive en un componente.
-function fechaHora(iso: string, zona: string): string {
-  return fechaYHora(iso, zona);
+function fechaHora(iso: string, zone: string): string {
+  return fechaYHora(iso, zone);
 }
 
 // sumar dos importes que vienen como string del servidor. Solo para PINTAR: ninguna cifra que se

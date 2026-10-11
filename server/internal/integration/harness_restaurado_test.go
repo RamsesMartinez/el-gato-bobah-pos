@@ -116,6 +116,9 @@ func migrarArriba(t *testing.T, pool *pgxpool.Pool) {
 // y de paso ejercita que las posteriores también se revierten.
 func migrarAbajoHasta(t *testing.T, pool *pgxpool.Pool, version int64) {
 	t.Helper()
+	if version < 89 {
+		emptyAuditLogBeforeRevert(t, pool)
+	}
 	db := prepararGoose(t, pool)
 	if err := goose.DownToContext(context.Background(), db, ".", version); err != nil {
 		t.Fatalf("goose down-to %d: %v", version, err)
@@ -195,4 +198,29 @@ func versionDeEsquema(t *testing.T, st *store.Store) int64 {
 		t.Fatalf("leer la versión del esquema: %v", err)
 	}
 	return v
+}
+
+// emptyAuditLogBeforeRevert borra la bitácora de auditoría para que un test pueda revertir por
+// debajo de la 0089.
+//
+// SOLO EN PRUEBAS. El Down de la 0089 se niega con eventos adentro —en producción la bitácora es la
+// única copia de quién hizo qué—, y desde la 0089 cualquier pedido deja eventos. Un test que crea
+// pedidos y luego revierte hasta una migración vieja quedaría bloqueado por algo que no es lo que
+// prueba. El trigger de solo agregar se apaga y se vuelve a prender alrededor del borrado.
+func emptyAuditLogBeforeRevert(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	var existe bool
+	if err := pool.QueryRow(ctx, `select to_regclass('audit_events') is not null`).Scan(&existe); err != nil || !existe {
+		return
+	}
+	for _, stmt := range []string{
+		`alter table audit_events disable trigger audit_events_append_only`,
+		`delete from audit_events`,
+		`alter table audit_events enable trigger audit_events_append_only`,
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("vaciar la bitácora para revertir (%s): %v", stmt, err)
+		}
+	}
 }

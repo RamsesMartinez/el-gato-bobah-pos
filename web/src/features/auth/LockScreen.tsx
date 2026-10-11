@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Box, Button, Center, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react';
-import { LuDelete, LuLock } from 'react-icons/lu';
+import { LuLock } from 'react-icons/lu';
+import { PinPad } from '../../components/PinPad';
+import { attendanceApi } from '../../api/attendance';
+import { ClockView } from '../../shared/attendance/ClockView';
 import { posApi } from '../../api/pos';
 import { useSessionStore } from '../../stores/session';
 
@@ -36,6 +39,11 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   };
 
   const { data } = useQuery({ queryKey: ['auth', 'unlock-options'], queryFn: posApi.unlockOptions });
+  const { data: attendance } = useQuery({ queryKey: ['asistencia', 'roster'], queryFn: attendanceApi.roster });
+  // Checar desde aquí no desbloquea: la vista va ENCIMA y este teclado se desmonta mientras tanto.
+  // Con los dos montados, cada dígito del teclado físico caía en los dos PIN y un Enter mandaba
+  // dos intentos que cuentan doble para el bloqueo por intentos.
+  const [clocking, setClocking] = useState(false);
   const pinOnly = data?.pinOnly ?? false;
   const personas = data?.users ?? [];
 
@@ -60,11 +68,11 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   const pidiendoPin = pinOnly || persona !== null;
   const largoMinimo = pinOnly ? 6 : 4;
 
-  const teclear = useCallback((d: string) => {
+  const typeDigit = useCallback((d: string) => {
     setError('');
     setPin((p) => (p.length >= 12 ? p : p + d));
   }, []);
-  const borrar = useCallback(() => {
+  const backspace = useCallback(() => {
     setError('');
     setPin((p) => p.slice(0, -1));
   }, []);
@@ -78,42 +86,13 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
   const caja = useRef<HTMLDivElement>(null);
   useEffect(() => { caja.current?.focus(); }, []);
 
-  // El teclado físico marca el PIN igual que la pantalla.
-  //
-  // Varias tabletas del local trabajan con teclado conectado y el PIN solo se podía marcar con el
-  // dedo. Se consume la tecla con preventDefault para que no llegue también a lo que haya debajo.
-  useEffect(() => {
-    const alTeclear = (e: KeyboardEvent) => {
-      // Ctrl+1 cambia de pestaña y Alt+F4 cierra: una combinación no es teclear un PIN.
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // Sin persona elegida no hay PIN que llenar, y acumular dígitos aquí los mandaría con quien se
-      // elija después: en esta pantalla eso es atribuirle la venta a quien no fue.
-      if (!pidiendoPin) return;
-
-      if (/^[0-9]$/.test(e.key)) {
-        e.preventDefault();
-        teclear(e.key);
-        return;
-      }
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        borrar();
-        return;
-      }
-      if (e.key === 'Enter') {
-        // Con el foco en un botón, Enter es DE ese botón: es como se sale por "Entrar con usuario y
-        // contraseña" sin ratón, y esa es la única salida de quien olvidó su PIN.
-        if (document.activeElement instanceof HTMLButtonElement) return;
-        // La misma condición que apaga el botón. El servidor bloquea la cuenta tras varios fallos
-        // seguidos, así que mandar un PIN a medias acerca al operador al lockout por una tecla.
-        if (pin.length < largoMinimo || desbloquear.isPending) return;
-        e.preventDefault();
-        desbloquear.mutate();
-      }
-    };
-    window.addEventListener('keydown', alTeclear);
-    return () => window.removeEventListener('keydown', alTeclear);
-  }, [pidiendoPin, pin, largoMinimo, teclear, borrar, desbloquear]);
+  if (clocking) {
+    return (
+      <Box position="fixed" inset={0} zIndex={2000} bg="bg.subtle">
+        <ClockView onCerrar={() => setClocking(false)} />
+      </Box>
+    );
+  }
 
   return (
     // `role="dialog"` y `aria-modal` porque eso ES: una capa que cubre toda la pantalla y no deja
@@ -149,22 +128,9 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
             <Text color="fg.muted" fontSize="sm">
               {pinOnly ? 'Teclea tu PIN' : personas.find((u) => u.id === persona)?.name}
             </Text>
-            {/* Puntos y no el número: la pantalla se ve desde el mostrador. */}
-            <Text fontSize="2xl" letterSpacing="0.4em" minH="2rem">{'•'.repeat(pin.length)}</Text>
-            <SimpleGrid columns={3} gap={2} w="100%">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-                <Button key={d} minH={TAP} fontSize="xl" onClick={() => teclear(d)}>{d}</Button>
-              ))}
-              <Button minH={TAP} variant="ghost" aria-label="Borrar" onClick={borrar}>
-                <LuDelete />
-              </Button>
-              <Button minH={TAP} fontSize="xl" onClick={() => teclear('0')}>0</Button>
-              <Button minH={TAP} colorPalette="green" fontWeight="800"
-                disabled={pin.length < largoMinimo} loading={desbloquear.isPending}
-                onClick={() => desbloquear.mutate()}>
-                Entrar
-              </Button>
-            </SimpleGrid>
+            <PinPad pin={pin} onDigit={typeDigit} onBackspace={backspace}
+              onSubmit={() => desbloquear.mutate()} canSubmit={pin.length >= largoMinimo}
+              loading={desbloquear.isPending} actionLabel="Entrar" />
             {!pinOnly && (
               <Button variant="ghost" size="sm" minH="44px" onClick={() => { setPersona(null); setPin(''); setError(''); }}>
                 No soy yo
@@ -178,6 +144,13 @@ export function LockScreen({ onDesbloqueado }: { onDesbloqueado: () => void }) {
         {/* La salida de quien olvidó su PIN. Va VISIBLE y no escondida detrás de un menú: si no se
             ve, la única persona con acceso a media noche queda encerrada fuera con el local
             abierto, y no puede esperar a que otra llegue. */}
+        {attendance?.enabled && (
+          <Button variant="outline" minH="44px"
+            onClick={() => { setPersona(null); setPin(''); setError(''); setClocking(true); }}>
+            Registrar asistencia
+          </Button>
+        )}
+
         <Box pt={2}>
           <Button variant="outline" minH="44px" loading={saliendo} onClick={salir}>
             Entrar con usuario y contraseña

@@ -134,6 +134,8 @@ type Deps struct {
 	// Permissions resuelve los permisos de un rol. Nil = domain.PermissionsFor, el mapa de hoy; las
 	// pruebas inyectan uno que no da ninguno para ver el 403 de un permiso que hoy tienen todos.
 	Permissions PermissionResolver
+	Attendance  *app.AttendanceService
+	Audit       *app.AuditService
 }
 
 type Handlers struct {
@@ -194,6 +196,8 @@ type Handlers struct {
 	authFails   *rateLimiter // account-targeted brute-force lockout (per username / user id)
 	authIPs     *rateLimiter // per-IP request throttle for the /auth group
 	permissions PermissionResolver
+	attendance  *app.AttendanceService
+	audit       *app.AuditService
 }
 
 func NewHandlers(d Deps) *Handlers {
@@ -216,6 +220,8 @@ func newHandlers(d Deps) *Handlers {
 	}
 	return &Handlers{
 		permissions: permissions,
+		attendance:  d.Attendance,
+		audit:       d.Audit,
 		cfg:         d.Cfg, version: d.Version, builtAt: d.BuiltAt, jwt: d.JWT, auth: d.Auth, users: d.Users,
 		menu: d.Menu, menuCache: d.MenuCache, suggest: d.Suggest, costing: d.Costing, orders: d.Orders, drafts: d.Drafts, accounts: d.Accounts,
 		backoffice: d.Backoffice, tips: d.Tips, cashConcepts: d.CashConcepts, terminals: d.Terminals, dailySummary: d.DailySummary, admin: d.Admin, settings: d.Settings, company: d.Company, reset: d.Reset, broker: d.Broker,

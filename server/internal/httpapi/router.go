@@ -24,6 +24,7 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 	r.Use(maxBody(1 << 20)) // 1 MiB: acota el cuerpo antes de leerlo (anti-DoS)
 	r.Use(RequestLogger)    // captura request/response (redactado) en todos los ambientes
 	r.Use(cors(cfg.CORSOrigin, cfg.Env != "production"))
+	r.Use(withRequestOrigin(cfg.Env == "production"))
 
 	// Ops (unversioned)
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -121,6 +122,14 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Sin `RequireRole`: la mide cualquiera que esté trabajando, que es justo el punto.
 				r.Post("/usage", h.RegistrarUso)
 
+				// ASISTENCIA (spec 033). Cualquier rol: checa quien llega, desde la sesión de la
+				// estación y sin cambiarla. El PIN comparte el bloqueo del desbloqueo, y además se
+				// limita por IP: es una superficie para probar PINs.
+				if h.attendance != nil {
+					r.Get("/attendance/roster", h.AttendanceRoster)
+					r.With(rateLimit(h.authIPs, cfg.Env == "production")).Post("/attendance/clock", h.ClockAttendance)
+				}
+
 				r.Get("/pos/menu", h.PosMenu)
 				r.Get("/pos/popular", h.PosPopular)
 				r.Get("/pos/modifier-defaults", h.ModifierDefaults)
@@ -183,6 +192,10 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 					// Cuánto cobraría /pay por una selección, sin cobrarla. Mismo gate: quien puede
 					// cobrar puede preguntar cuánto.
 					r.Post("/{id}/quote", h.QuoteOrder)
+					// Historial del pedido (spec 033): quién hizo qué, con IP y aparato.
+					if h.audit != nil {
+						r.With(RequirePermission(h.permissions, domain.PermAuditView)).Get("/{id}/history", h.OrderHistory)
+					}
 					// LOS PEDIDOS QUE LLEGAN DE UNA PLATAFORMA (spec 021). Sin gate de rol, como
 					// la barra de pedidos en curso: quien atiende es quien decide, y el plazo de
 					// la plataforma no espera a que llegue un gerente.
@@ -491,6 +504,22 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 
 				// Recarga cachés en memoria/Redis sin reiniciar (menú, popular, recomendador).
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/reload", h.AdminReload)
+				// Bitácora general (spec 033): por permiso, no por rol.
+				if h.audit != nil {
+					r.With(RequirePermission(h.permissions, domain.PermAuditView)).Get("/admin/audit", h.ListAudit)
+					r.With(RequirePermission(h.permissions, domain.PermAuditView)).Get("/admin/audit/actors", h.AuditActors)
+				}
+				if h.attendance != nil {
+					configure := RequirePermission(h.permissions, domain.PermAttendanceConfigure)
+					r.With(configure).Get("/admin/attendance/settings", h.AttendanceSettings)
+					r.With(configure).Put("/admin/attendance/settings", h.SetAttendanceSettings)
+					r.With(configure).Put("/admin/attendance/people/{userId}/tracks", h.SetTracksAttendance)
+					r.With(configure).Get("/admin/attendance/schedules/{userId}", h.AttendanceSchedules)
+					r.With(configure).Post("/admin/attendance/schedules/{userId}", h.SetAttendanceSchedule)
+					r.With(RequirePermission(h.permissions, domain.PermAttendanceReport)).Get("/admin/attendance/report", h.AttendanceReport)
+					r.Post("/admin/attendance/entries/{id}/corrections", h.CorrectAttendance)
+					r.Post("/admin/attendance/entries", h.ManualAttendanceEntry)
+				}
 
 				r.With(RequireRole(domain.RoleAdmin)).Route("/users", func(r chi.Router) {
 					r.Get("/", h.ListUsers)
@@ -549,8 +578,8 @@ func cors(allowed string, dev bool) func(http.Handler) http.Handler {
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,"+RequestIDHeader)
-				w.Header().Set("Access-Control-Expose-Headers", RequestIDHeader)
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,"+RequestIDHeader+","+DeviceKeyHeader+","+DeviceInfoHeader)
+				w.Header().Set("Access-Control-Expose-Headers", RequestIDHeader+",Retry-After")
 			}
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)

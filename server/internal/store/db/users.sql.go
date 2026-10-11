@@ -82,7 +82,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 const createUser = `-- name: CreateUser :one
 insert into users (name, username, role, pin_hash, pin_lookup, password_hash, recovery_email, must_change_password)
 values ($1, $2, $3, $4, $8, $5, $6, $7)
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance
 `
 
 type CreateUserParams struct {
@@ -123,6 +123,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
 		&i.PinLookup,
+		&i.TracksAttendance,
 	)
 	return i, err
 }
@@ -148,7 +149,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where id = $1
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance from users where id = $1
 `
 
 // RLS acota a la empresa del tenant activo (GUC app.company_id); no hace falta filtrar por company_id aquí.
@@ -169,12 +170,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
 		&i.PinLookup,
+		&i.TracksAttendance,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where username = $1 and is_active
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance from users where username = $1 and is_active
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User, error) {
@@ -194,6 +196,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username *string) (User
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
 		&i.PinLookup,
+		&i.TracksAttendance,
 	)
 	return i, err
 }
@@ -215,7 +218,7 @@ func (q *Queries) GetUserPreference(ctx context.Context, arg GetUserPreferencePa
 }
 
 const listActiveUsers = `-- name: ListActiveUsers :many
-select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup from users where is_active order by name
+select id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance from users where is_active order by name
 `
 
 func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
@@ -241,6 +244,7 @@ func (q *Queries) ListActiveUsers(ctx context.Context) ([]User, error) {
 			&i.RecoveryEmail,
 			&i.MustChangePassword,
 			&i.PinLookup,
+			&i.TracksAttendance,
 		); err != nil {
 			return nil, err
 		}
@@ -473,7 +477,7 @@ const updateUser = `-- name: UpdateUser :one
 update users
 set name = $2, role = $3, is_active = $4, recovery_email = $5, updated_at = now()
 where id = $1
-returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup
+returning id, name, username, role, pin_hash, password_hash, is_active, created_at, updated_at, company_id, recovery_email, must_change_password, pin_lookup, tracks_attendance
 `
 
 type UpdateUserParams struct {
@@ -507,6 +511,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.RecoveryEmail,
 		&i.MustChangePassword,
 		&i.PinLookup,
+		&i.TracksAttendance,
 	)
 	return i, err
 }

@@ -5,6 +5,7 @@ import {
 import { LuPencil, LuKeyRound, LuHash } from 'react-icons/lu';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ScheduleEditor } from './ScheduleEditor';
 import { adminApi, type AdminUser } from '../../api/admin';
 import {
   DialogRoot, DialogBackdrop, DialogContent, DialogHeader, DialogBody, DialogFooter, DialogTitle, DialogCloseTrigger,
@@ -56,6 +57,7 @@ export function EmployeesPage() {
   });
 
   const [manage, setManage] = useState<AdminUser | null>(null);
+  const [scheduleUser, setScheduleUser] = useState<AdminUser | null>(null);
 
   if (isLoading) return <Center h="60vh"><Spinner size="xl" /></Center>;
 
@@ -111,14 +113,17 @@ export function EmployeesPage() {
         </Table.Root>
       </Box>
 
-      {manage && <ManageDialog user={manage} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr} />}
+      {manage && <ManageDialog user={manage} onClose={() => setManage(null)} onSaved={invalidate} onError={onErr}
+        onSchedule={() => { setScheduleUser(manage); setManage(null); }} />}
+      {scheduleUser && <ScheduleEditor userId={scheduleUser.id} name={scheduleUser.name} onClose={() => setScheduleUser(null)}
+        people={(data?.items ?? []).map((u) => ({ id: u.id, name: u.name }))} />}
     </Page>
   );
 }
 
 // Dialog de gestión: editar datos, resetear contraseña, fijar PIN, activar/desactivar.
-function ManageDialog({ user, onClose, onSaved, onError }: {
-  user: AdminUser; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void;
+function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
+  user: AdminUser; onClose: () => void; onSaved: () => void; onError: (e: unknown) => void; onSchedule: () => void;
 }) {
   const [name, setName] = useState(user.name);
   const [role, setRole] = useState(user.role);
@@ -181,7 +186,10 @@ function ManageDialog({ user, onClose, onSaved, onError }: {
             </VStack>
           </VStack>
         </DialogBody>
-        <DialogFooter><Button variant="ghost" onClick={onClose}>Cerrar</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
+          <Button variant="ghost" onClick={onClose}>Cerrar</Button>
+        </DialogFooter>
       </DialogContent>
     </DialogRoot>
   );
