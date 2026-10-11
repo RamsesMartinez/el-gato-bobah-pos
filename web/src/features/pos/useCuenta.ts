@@ -132,9 +132,24 @@ interface Opciones {
   envioPorDefecto?: number;
   // Esta tableta está cobrando: lo que cambie el pedido mientras tanto es suyo, no de otra.
   cobrando?: boolean;
+  // El servidor rechazó un producto o extra porque el menú de esta tableta es viejo. Recibe el
+  // producto que hay que volver a elegir, o null cuando se cambiaba un renglón ya capturado (ahí
+  // solo se recarga el menú: reabrir la hoja como alta duplicaría el renglón).
+  onMenuCambiado?: (productId: number | null) => void;
 }
 
-export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = {}): Cuenta {
+// El rechazo por menú viejo lleva su propio código (MENU_CHANGED) para no adivinarlo del texto.
+function esMenuViejo(e: unknown): boolean {
+  return e instanceof ApiError && e.code === 'MENU_CHANGED';
+}
+
+// Aviso neutro con id fijo: varios toques rechazados seguidos por lo mismo dejan UN aviso, no una
+// pila. No es un error del operador, así que no va en rojo.
+function avisarMenuCambiado() {
+  toaster.create({ id: 'menu-cambiado', title: 'El menú se actualizó; elige de nuevo', type: 'info' });
+}
+
+export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuCambiado }: Opciones = {}): Cuenta {
   const qc = useQueryClient();
   const seleccion = usePosStore((s) => s.selected);
   const nueva = usePosStore((s) => s.nueva);
@@ -252,6 +267,12 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
       toaster.create({ title: 'No se guardó el cambio', description: mensajeDeError(e), type: 'error' });
       return;
     }
+    if (esMenuViejo(e)) {
+      avisarMenuCambiado();
+      onMenuCambiado?.(null);
+      void recargar(id);
+      return;
+    }
     const fresca = await recargar(id);
     if (e instanceof ApiError && (e.code === 'DRAFT_CHANGED' || e.status === 404)) {
       if (!fresca || !yaQuedo(fresca)) avisarCambio();
@@ -316,6 +337,11 @@ export function useCuenta({ envioPorDefecto = 0, cobrando = false }: Opciones = 
             title: mensajeDeError(e), type: 'info',
             action: { label: 'Cuenta nueva', onClick: () => usePosStore.getState().cuentaNueva() },
           });
+          return;
+        }
+        if (esMenuViejo(e)) {
+          avisarMenuCambiado();
+          onMenuCambiado?.(pendiente.productId);
           return;
         }
         if (e instanceof ApiError && e.status === 404) {

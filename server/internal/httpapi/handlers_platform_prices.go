@@ -147,12 +147,10 @@ func (h *Handlers) DeleteOptionPlatformPrice(w http.ResponseWriter, r *http.Requ
 	JSON(w, http.StatusNoContent, nil)
 }
 
-// invalidarMenu tira el menú cacheado y avisa a las demás pantallas. El TTL es de 24 horas: sin
-// esto, otra tablet seguiría mostrando el precio viejo un día entero mientras el servidor cobra el
-// nuevo — total impreso distinto del cobrado, justo lo que este diseño quiere evitar.
+// invalidarMenu avisa a las demás pantallas para que pidan el menú al instante: si no, otra tablet
+// mostraría el precio viejo hasta su siguiente revisión mientras el servidor cobra el nuevo. El
+// menú guardado ya cambió de llave con la versión de catálogo (0089).
 func (h *Handlers) invalidarMenu(r *http.Request, companyID int64) {
-	ctx := r.Context()
-	h.menuCache.Invalidate(ctx, companyID)
 	h.broker.Publish(companyID, realtime.Event{Type: "menu.updated"})
 }
 

@@ -94,6 +94,25 @@ func NewMenuService(s *store.Store, now func() time.Time) *MenuService {
 	return &MenuService{store: s, now: now}
 }
 
+// MenuVersion identifica el contenido del menú de la empresa de la sesión: la versión de catálogo
+// que suben los triggers (0089) y el día de la base, porque la disponibilidad por fecha cambia el
+// menú sin que nadie toque el catálogo.
+type MenuVersion struct {
+	Catalog int64
+	Day     string // YYYYMMDD
+}
+
+// Version lee la versión vigente. Se lee ANTES de armar el documento: si el catálogo cambia en
+// medio, el menú nuevo queda bajo la versión vieja (se rearma de más), nunca un menú viejo bajo la
+// versión nueva.
+func (s *MenuService) Version(ctx context.Context) (MenuVersion, error) {
+	r, err := s.store.QC(ctx).CatalogVersion(ctx)
+	if err != nil {
+		return MenuVersion{}, err
+	}
+	return MenuVersion{Catalog: r.Version, Day: r.Today.Time.Format("20060102")}, nil
+}
+
 // Build arma el documento del menú desde lecturas planas.
 func (s *MenuService) Build(ctx context.Context) (*MenuDoc, error) {
 	catRows, err := s.store.QC(ctx).MenuCategories(ctx)

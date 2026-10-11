@@ -51,6 +51,7 @@ import { DescartarCuentaSheet } from './DescartarCuentaSheet';
 import { hayQuePreguntar } from './estadosDeCuenta';
 import { ProductGrid } from './ProductGrid';
 import { ModifierSheet } from './ModifierSheet';
+import { productoParaReelegir } from './reelegir';
 import { Ticket } from './Ticket';
 import { CobrarSheet } from '../../shared/CobrarSheet';
 import { FolioPlataformaSheet } from './FolioPlataformaSheet';
@@ -115,7 +116,24 @@ export function POSPage() {
 
   // El pedido que se está cobrando. La hoja se abre SIEMPRE sobre un pedido que ya existe.
   const [cobrando, setCobrando] = useState<PedidoParaCobrar | null>(null);
-  const cuenta = useCuenta({ envioPorDefecto, cobrando: cobrando !== null });
+  // Rechazo por menú viejo: se trae el menú nuevo y, si el producto sigue a la venta con extras, su
+  // hoja se reabre con lo actual.
+  const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
+  const [editing, setEditing] = useState<RenglonNuevo | null>(null);
+  const modSheet = useDisclosure();
+  const cuenta = useCuenta({
+    envioPorDefecto, cobrando: cobrando !== null,
+    onMenuCambiado: (productId) => {
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresco) => {
+        if (productId === null) return;
+        const p = productoParaReelegir(fresco, productId);
+        if (!p) return;
+        setEditing(null);
+        setModProduct(p);
+        modSheet.onOpen();
+      }).catch(() => undefined);
+    },
+  });
   const { vista } = cuenta;
   const lista = vista.platformId;
   const { data: vivas } = useCuentasVivas();
@@ -132,8 +150,6 @@ export function POSPage() {
   const [showPrices, setShowPrices] = useState(() => localStorage.getItem('pos.showPrices') !== '0');
   const togglePrices = () =>
     setShowPrices((v) => { localStorage.setItem('pos.showPrices', v ? '0' : '1'); return !v; });
-  const [modProduct, setModProduct] = useState<MenuProduct | null>(null);
-  const [editing, setEditing] = useState<RenglonNuevo | null>(null);
   // La comanda: el pedido y los renglones que salen a cocina.
   const [comanda, setComanda] = useState<{ order: OrderView; ids: number[] } | null>(null);
   const [lastOrder, setLastOrder] = useState<OrderView | null>(null);
@@ -298,7 +314,6 @@ export function POSPage() {
     else if (c.orderId) seleccionar({ kind: 'order', id: c.orderId });
   };
 
-  const modSheet = useDisclosure();
   // En pantallas bajas (7" landscape) el panel lateral roba ~31% del ancho: arranca colapsado.
   const [panelHidden, setPanelHidden] = useState(
     () => window.matchMedia?.('(max-height: 720px)')?.matches ?? false,
@@ -448,7 +463,9 @@ export function POSPage() {
   };
 
   if (isLoading) return <Center h="80vh"><Spinner size="xl" /></Center>;
-  if (error) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
+  // Solo sin menú alguno: una revisión periódica que falla sin red deja el error puesto pero conserva
+  // el menú anterior, y con él se sigue vendiendo.
+  if (error && !menu) return <Center h="80vh"><Text color="red.500">Error cargando el menú</Text></Center>;
 
   // Sin turno abierto la pantalla de venta no se muestra.
   if (cashStatus.data && !cashStatus.data.open) {

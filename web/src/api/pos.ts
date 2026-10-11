@@ -24,6 +24,13 @@ import type {
 
 import type { SessionUser } from '../stores/session';
 
+let ultimoMenu: { etag: string; menu: Menu } | null = null;
+
+// olvidarMenu suelta el menú guardado para que la siguiente petición lo traiga completo.
+export function olvidarMenu(): void {
+  ultimoMenu = null;
+}
+
 export const posApi = {
   // Login multi-empresa: un solo identificador usuario@empresa. El backend separa el @ y
   // resuelve la empresa por su slug.
@@ -102,7 +109,20 @@ export const posApi = {
   liveAccounts: (olderDebts = false) =>
     api.get<LiveAccounts>(olderDebts ? '/pos/accounts?olderDebts=true' : '/pos/accounts'),
 
-  menu: () => api.get<Menu>('/pos/menu'),
+  // Condicional: la tableta lo revisa cada minuto y al volver al frente, y si no cambió el servidor
+  // responde 304 sin el catálogo. El último menú vive aquí y no en la caché de React Query porque es
+  // el que corresponde al ETag que se mandó.
+  menu: async (): Promise<Menu> => {
+    const r = await api.getConditional<Menu>('/pos/menu', ultimoMenu?.etag ?? null);
+    if (r.notModified && ultimoMenu) return ultimoMenu.menu;
+    if (r.notModified) {
+      // Un 304 sin menú guardado no debería pasar (no se mandó ETag); se pide completo.
+      olvidarMenu();
+      return posApi.menu();
+    }
+    ultimoMenu = r.etag ? { etag: r.etag, menu: r.data } : null;
+    return r.data;
+  },
   // IDs de producto más vendidos (read model aparte, refresca cada pocos minutos).
   popular: () => api.get<{ items: number[] }>('/pos/popular'),
   // producto → grupo → [optionId rankeadas] por probabilidad contextual. Claves string (JSON).

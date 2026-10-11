@@ -12,11 +12,10 @@ import (
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/realtime"
 )
 
-// menuChanged: invalida la caché del menú y avisa a las tablets de la MISMA empresa tras un
-// cambio de catálogo (company_id del JWT vía contexto).
+// menuChanged avisa a las tablets de la MISMA empresa tras un cambio de catálogo (company_id del
+// JWT vía contexto). El menú guardado no se borra: cambia de llave solo con la versión (0089).
 func (h *Handlers) menuChanged(ctx context.Context) {
 	u, _ := userFrom(ctx)
-	h.menuCache.Invalidate(ctx, u.CompanyID)
 	h.broker.Publish(u.CompanyID, realtime.Event{Type: "menu.updated"})
 }
 

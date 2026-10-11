@@ -48,7 +48,7 @@ func TestErrorProductoNoDisponibleViajaConNombreEId(t *testing.T) {
 			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 				t.Fatalf("respuesta ilegible: %v", err)
 			}
-			if got.Error.Code != "UNPROCESSABLE" {
+			if got.Error.Code != "MENU_CHANGED" {
 				t.Fatalf("code = %q", got.Error.Code)
 			}
 			if got.Error.Details == nil {
@@ -356,5 +356,38 @@ func TestCaja032ErrorsHaveTheirOwnCode(t *testing.T) {
 		if w.Code != 422 || !strings.Contains(w.Body.String(), `"code":"`+want+`"`) {
 			t.Errorf("%v → %d %s; quería 422 %s", err, w.Code, w.Body.String(), want)
 		}
+	}
+}
+
+// La tableta reacciona a un menú viejo recargándolo y pidiendo elegir de nuevo, y lo decide por el
+// código, no por el texto. Un rechazo que no es de menú viejo no puede caer ahí: la tableta
+// escondería el motivo real detrás de «el menú se actualizó».
+func TestStaleMenuRejectionsShareOneStableCode(t *testing.T) {
+	casos := []struct {
+		nombre string
+		err    error
+		code   string
+	}{
+		{"extra que ya no es del producto", fmt.Errorf("%w: Chocolate no es un extra de Frappé", domain.ErrOptionNotFound), "MENU_CHANGED"},
+		{"producto que ya no se vende", domain.ProductUnavailable{ProductID: 7, Name: "Chococino"}, "MENU_CHANGED"},
+		{"extra pedido más veces de las que hoy se permite", fmt.Errorf("%w: Perlas admite 1", domain.ErrOptionOverMax), "MENU_CHANGED"},
+		{"cuenta vacía", domain.ErrEmptyOrder, "UNPROCESSABLE"},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != http.StatusUnprocessableEntity || got.Error.Code != c.code {
+				t.Fatalf("status %d code %q, quería 422 %q", w.Code, got.Error.Code, c.code)
+			}
+		})
 	}
 }
