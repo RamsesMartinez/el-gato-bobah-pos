@@ -526,7 +526,7 @@ export function POSPage() {
     onQuitar: cuenta.quitar,
     onEditLine: editLine,
     onCabecera: cuenta.cabecera,
-    onQuitarNoDisponibles: () => vista.noDisponibles.forEach((l) => cuenta.quitar(l)),
+    onQuitarNoDisponibles: () => vista.noDisponibles.filter((l) => l.id !== reelegir).forEach((l) => cuenta.quitar(l)),
     onEnviar: enviarACocina,
     onCobrar: cobrarLaCuenta,
     onDescartar: pedirDescartar,

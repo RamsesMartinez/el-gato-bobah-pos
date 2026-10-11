@@ -54,6 +54,7 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 - [X] T027 [US3] Test y `details.lineId` en server/internal/httpapi/respond.go
 - [X] T028 [P] [US3] Tests vitest en web/src/features/pos/useEnviarCuenta.test.tsx y cobrarDesdeElTicket.test.tsx (mandar y cobrar): aviso neutro, sin rojo, renglón señalado, cobro sin abrir
 - [X] T029 [US3] `onMenuCambiado` en useEnviarCuenta.ts, `reelegir` en Ticket.tsx y reapertura en POSPage.tsx; aviso compartido en menuCambiado.ts
+- [X] T030 [US3] Revisión de tableta: el renglón por volver a elegir no se tacha ni entra en «Ya no están en el menú · Quitar» (su producto sigue a la venta); test en Ticket.test.tsx
 
 ## Phase 6: Polish
 

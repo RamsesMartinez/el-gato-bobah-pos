@@ -271,7 +271,10 @@ func TestIdleDraftExpires(t *testing.T) {
 		t.Fatalf("la de 11 h quedó %s: las 12 horas cuentan desde el último cambio", got)
 	}
 	var still int
-	if err := k.st.Pool.QueryRow(ctx, `select count(*) from folio_consumido where name = $1`, *old.FolioName).Scan(&still); err != nil {
+	// Solo la marca VIEJA: un nombre liberado vuelve a la bolsa y otra prueba en paralelo puede tomarlo
+	// en el acto (marca nueva); contarlo hacía fallar esta prueba al azar en CI.
+	if err := k.st.Pool.QueryRow(ctx, `select count(*) from folio_consumido where name = $1
+		and taken_at < now() - interval '1 day'`, *old.FolioName).Scan(&still); err != nil {
 		t.Fatal(err)
 	}
 	if still != 0 {

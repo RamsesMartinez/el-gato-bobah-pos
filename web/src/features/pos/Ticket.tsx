@@ -83,10 +83,13 @@ export function Ticket(props: Props) {
 
   const hayNuevo = vista.nuevos.length > 0;
   const noSeVende = vista.noDisponibles.length > 0;
+  // El renglón por volver a elegir sigue a la venta (cambió su extra): no se ofrece quitarlo.
+  const quitables = vista.noDisponibles.filter((l) => l.id !== props.reelegir);
   const bloqueo = sinConexion
     ? 'Sin conexión: no se puede mandar a cocina ni cobrar.'
     : vista.guardando ? 'Guardando…'
-      : noSeVende ? 'Quita lo que ya no se vende para mandar o cobrar.' : null;
+      : quitables.length > 0 ? 'Quita lo que ya no se vende para mandar o cobrar.'
+        : noSeVende ? 'Elige de nuevo lo señalado para mandar o cobrar.' : null;
   const capturaMal = (llevaEnvio && envioMal) || descuentoMal;
   const enviarApagado = !hayNuevo || bloqueo !== null || noSeVende || capturaMal;
   const cobrarApagado = vista.falta <= 0 || bloqueo !== null || capturaMal;
@@ -228,11 +231,11 @@ export function Ticket(props: Props) {
       <Separator />
       {/* Lo que el servidor ya no vende. Vive FUERA de la caja de totales: adentro mandaba Cobrar a
           un scroll interno. */}
-      {noSeVende && (
+      {quitables.length > 0 && (
         <Box colorPalette="orange" borderWidth="1px" borderColor="colorPalette.emphasized"
           bg="colorPalette.subtle" borderRadius="lg" p={2} mx={3} mb={2} flexShrink={0}>
           <Text fontWeight="700" fontSize="sm" color="colorPalette.fg">Ya no están en el menú</Text>
-          <Text fontSize="xs" color="fg.muted" mb={2}>{vista.noDisponibles.map((l) => l.name).join(', ')}</Text>
+          <Text fontSize="xs" color="fg.muted" mb={2}>{quitables.map((l) => l.name).join(', ')}</Text>
           <Button size="sm" minH="44px" variant="outline" colorPalette="orange" onClick={props.onQuitarNoDisponibles}>
             Quitar del pedido
           </Button>
@@ -344,7 +347,7 @@ function Nuevos({ vista, reelegir, onMas, onMenos, onQuitar, onEditLine }: Props
               colorPalette="red" flexShrink={0} onClick={() => onQuitar(l)}><LuTrash2 /></IconButton>
           )}
           <Box flex="1" minW={0} onClick={() => !l.guardando && onEditLine(l)} cursor="pointer">
-            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available ? undefined : 'line-through'}>
+            <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available || l.id === reelegir ? undefined : 'line-through'}>
               {l.name}
             </Text>
             {l.id === reelegir && (
