@@ -391,3 +391,40 @@ func TestStaleMenuRejectionsShareOneStableCode(t *testing.T) {
 		})
 	}
 }
+
+// Al mandar a cocina o cobrar, la tableta señala el renglón que hay que volver a elegir. Lo decide por
+// el dato, no por el texto: el renglón y el producto viajan en details junto al código MENU_CHANGED.
+func TestMenuChangedCarriesTheRejectedLine(t *testing.T) {
+	casos := []struct {
+		nombre string
+		err    error
+		prod   int64
+	}{
+		{"extra que ya no es del producto", domain.LineRejected{Index: 1, LineID: "a1b2", ProductID: 630,
+			Err: fmt.Errorf("%w: Perlas no es un extra de Frappé", domain.ErrOptionNotFound)}, 630},
+		{"producto que ya no se vende", domain.LineRejected{Index: 0, LineID: "a1b2", ProductID: 7,
+			Err: domain.ProductUnavailable{ProductID: 7, Name: "Chococino"}}, 7},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			Error(w, c.err)
+			var got struct {
+				Error struct {
+					Code    string `json:"code"`
+					Details struct {
+						LineID    string `json:"lineId"`
+						ProductID int64  `json:"productId"`
+					} `json:"details"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Error.Code != "MENU_CHANGED" || got.Error.Details.LineID != "a1b2" || got.Error.Details.ProductID != c.prod {
+				t.Fatalf("code %q lineId %q productId %d: la tableta no puede señalar qué renglón volver a elegir",
+					got.Error.Code, got.Error.Details.LineID, got.Error.Details.ProductID)
+			}
+		})
+	}
+}

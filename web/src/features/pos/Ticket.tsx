@@ -38,6 +38,9 @@ interface Props {
   // Por qué no se pudo enviar o cobrar la última vez (sin caja, un producto que ya no se vende).
   // Se queda en el pie: un aviso que se va solo no se lee con el cliente enfrente.
   motivo?: string | null;
+  // El renglón que el servidor rechazó por menú viejo al mandar o cobrar: se señala para elegirlo
+  // de nuevo.
+  reelegir?: string | null;
   puedeCancelar: boolean;
   onMas: (r: RenglonNuevo) => void;
   onMenos: (r: RenglonNuevo) => void;
@@ -327,12 +330,13 @@ function Seccion({ titulo, color, plegable, total, children }: {
 // Un renglón de 44 px en UNA línea: papelera · nombre y precio · −/cantidad/+. En dos líneas medía
 // ~80 px y en el panel de 600 px cabían tres. La papelera va al extremo OPUESTO del «+»: quitar un
 // renglón por accidente obliga a volver a buscar el producto en el menú.
-function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
+function Nuevos({ vista, reelegir, onMas, onMenos, onQuitar, onEditLine }: Props) {
   return (
     <>
       {vista.nuevos.map((l) => (
         <HStack key={l.id} py={1} px={1} gap={1} minH="44px" borderBottomWidth="1px" borderColor="border.muted"
-          opacity={l.guardando ? 0.6 : 1}>
+          opacity={l.guardando ? 0.6 : 1}
+          {...(l.id === reelegir ? { borderLeftWidth: '4px', borderLeftColor: 'orange.solid', bg: 'orange.subtle' } : {})}>
           {l.guardando ? (
             <Box minW="44px" />
           ) : (
@@ -343,6 +347,9 @@ function Nuevos({ vista, onMas, onMenos, onQuitar, onEditLine }: Props) {
             <Text fontWeight="600" fontSize="sm" lineClamp={2} textDecoration={l.available ? undefined : 'line-through'}>
               {l.name}
             </Text>
+            {l.id === reelegir && (
+              <Text fontSize="xs" fontWeight="600" color="orange.fg">Elige de nuevo</Text>
+            )}
             {l.modifiers.length > 0 && (
               <Text fontSize="xs" color="fg.muted" lineClamp={2}>{detalleDeModificadores(l.modifiers)}</Text>
             )}

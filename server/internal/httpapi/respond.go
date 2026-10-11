@@ -23,11 +23,12 @@ type errorBody struct {
 	Details *errorDetails `json:"details,omitempty"`
 }
 
-// errorDetails son los campos estructurados que un error puede aportar. Hoy solo el producto que
-// tumbó el cobro; se agregan campos cuando otro error los necesite, no antes.
+// errorDetails son los campos estructurados que un error puede aportar: el producto que tumbó el
+// cobro y, si el rechazo fue de un renglón de la cuenta, cuál (para señalarlo en la tableta).
 type errorDetails struct {
 	ProductID   int64  `json:"productId,omitempty"`
 	ProductName string `json:"productName,omitempty"`
+	LineID      string `json:"lineId,omitempty"`
 }
 
 // JSON writes v as JSON with the given status.
@@ -225,6 +226,13 @@ func Error(w http.ResponseWriter, err error) {
 	var pu domain.ProductUnavailable
 	if errors.As(err, &pu) {
 		details = &errorDetails{ProductID: pu.ProductID, ProductName: pu.Name}
+	}
+	var lr domain.LineRejected
+	if errors.As(err, &lr) && lr.LineID != "" {
+		if details == nil {
+			details = &errorDetails{ProductID: lr.ProductID}
+		}
+		details.LineID = lr.LineID
 	}
 	JSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: operatorMessage(msg), Details: details}})
 }

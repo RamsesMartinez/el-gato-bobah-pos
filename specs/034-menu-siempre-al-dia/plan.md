@@ -66,6 +66,8 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 | E13 | `MENU_CHANGED` de un producto que ya no está o no tiene extras → no abre hoja | vitest |
 | E14 | Varios rechazos seguidos → un solo aviso (toast con id fijo) | vitest |
 | E15 | Lectura del contador en `inTheThreeCases` (otra empresa, conexión reciclada, sin empresa) | integración |
+| E17 | `MENU_CHANGED` al mandar a cocina o «Enviar y cobrar»: el rechazo nombra el renglón de la cuenta (`domain.LineRejected` con índice → `LineID` en `DraftsService.trySend`), `details.lineId` viaja en el 422 | unitario `domain` + integración `drafts_send_menu_changed_test.go` + `respond_test.go` |
+| E18 | En la tableta: aviso neutro, sin motivo rojo en el pie, renglón señalado «Elige de nuevo», cobro no se abre, la cuenta se queda | vitest `useEnviarCuenta`, `cobrarDesdeElTicket` |
 | E16 | `RecomputeAll` (mil `update` en una tx) no bloquea cobros: los pedidos no escriben en las diez tablas | revisión de queries (hecha) + test E2 de que solo el catálogo sube |
 
 ## Capas
@@ -81,6 +83,10 @@ siendo correcta (más invalidaciones, nunca menos). No cierra ninguna puerta.
 | `api.getConditional`, `posApi.menu` con ETag | `web/src/api/` |
 | `useMenu`: 60 s + foco; `POSPage` no se cae por un refetch fallido | `web/src/hooks`, `features/pos` |
 | `onMenuCambiado` en `useCuenta` (agregar y cambiar) y reapertura de la hoja en `POSPage` | `web/src/features/pos` |
+| `LineRejected` (en qué renglón falló `BuildOrder`, sin cambiar el sentinel) | `domain/order.go` |
+| `onDraftLine`: índice → id del renglón de la cuenta al mandar | `app/drafts.go` |
+| `details.lineId` en el 422 | `httpapi/respond.go` |
+| `onMenuCambiado` en `useEnviarCuenta`, renglón señalado en `Ticket` y hoja reabierta en `POSPage` | `web/src/features/pos` |
 | Regla en `AGENTS.md` | docs |
 
 ## Project Structure
@@ -101,6 +107,11 @@ AGENTS.md
   lee el contador con candado (lectura MVCC).
 - **Despliegue**: migrar primero; la API vieja ignora tabla y triggers. La API nueva con caché vieja
   usa otra llave: el primer request arma el menú, una vez.
+- **Medido (2026-10-10)**: la 0089 tarda **17.68 ms** (lo que reporta goose) sobre una copia de la
+  base local restaurada de producción, en 0088 y con dos empresas (1018 productos, 564 ligas
+  producto-grupo); `catalog_versions` nace vacía y se llena con el primer cambio. Un `update` de
+  todos los productos con los triggers ya puestos: 22.6 ms. Postgres 16 en Docker sobre WSL2, no la
+  VM de producción.
 - **Costo por escritura**: un `insert … on conflict` por sentencia de catálogo; despreciable.
 
 ## Complexity Tracking

@@ -12,6 +12,8 @@ const DEBUG = import.meta.env.DEV;
 export interface ApiErrorDetails {
   productId?: number;
   productName?: string;
+  // El renglón de la cuenta que el servidor rechazó por menú viejo (MENU_CHANGED al mandar o cobrar).
+  lineId?: string;
 }
 
 export class ApiError extends Error {

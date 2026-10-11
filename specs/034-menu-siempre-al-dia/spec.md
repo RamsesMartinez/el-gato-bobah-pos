@@ -89,6 +89,13 @@ siguen ahí.
    neutro, el menú se recarga (el producto desaparece) y no se abre ninguna hoja.
 3. **Given** cualquier otro rechazo (sin caja, red caída, cuenta cerrada), **Then** el
    comportamiento es el de hoy.
+4. **Given** una cuenta capturada con un extra cuyo grupo se cambió después (perlas viejas → nuevas),
+   **When** se toca «Enviar a cocina» o «Enviar y cobrar», **Then** no se manda nada, no se abre el
+   cobro, se ve el aviso neutro (no el rojo «No se pudo: X»), el menú se recarga, el renglón
+   afectado queda señalado con «Elige de nuevo» y su hoja de extras se reabre con lo actual; los
+   demás renglones siguen en la cuenta.
+5. **Given** un producto de la cuenta que dejó de venderse, **When** se manda o se cobra, **Then**
+   el mismo aviso neutro y el renglón queda señalado (y tachado) sin abrir hoja, para quitarlo.
 
 ### Edge Cases
 
@@ -129,6 +136,10 @@ siguen ahí.
   extras, y conservar el resto de la cuenta.
 - **FR-011**: El cambio de esquema MUST ser aditivo: la versión anterior del servidor sigue
   funcionando con él, porque se despliega con el negocio operando.
+- **FR-013**: El mismo código MUST aplicar al mandar a cocina y al «Enviar y cobrar», y la respuesta
+  MUST identificar el renglón de la cuenta rechazado; la tableta MUST señalarlo para elegirlo de
+  nuevo, sin perder la cuenta y sin el aviso rojo. Cobrar un pedido ya enviado no revalida el menú
+  (sus renglones ya son pedido) y queda fuera.
 - **FR-012**: La documentación operativa MUST decir que un cambio de catálogo por script ya no
   necesita borrar el menú guardado a mano.
 

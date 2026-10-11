@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { mensajeDeError } from '../../api/mensajes';
+import { avisarMenuCambiado, esMenuViejo } from './menuCambiado';
 import { posApi } from '../../api/pos';
 import { toaster } from '../../components/ui/toaster';
 import { usePosStore, type Seleccion } from '../../stores/pos';
@@ -136,17 +137,6 @@ interface Opciones {
   // producto que hay que volver a elegir, o null cuando se cambiaba un renglón ya capturado (ahí
   // solo se recarga el menú: reabrir la hoja como alta duplicaría el renglón).
   onMenuCambiado?: (productId: number | null) => void;
-}
-
-// El rechazo por menú viejo lleva su propio código (MENU_CHANGED) para no adivinarlo del texto.
-function esMenuViejo(e: unknown): boolean {
-  return e instanceof ApiError && e.code === 'MENU_CHANGED';
-}
-
-// Aviso neutro con id fijo: varios toques rechazados seguidos por lo mismo dejan UN aviso, no una
-// pila. No es un error del operador, así que no va en rojo.
-function avisarMenuCambiado() {
-  toaster.create({ id: 'menu-cambiado', title: 'El menú se actualizó; elige de nuevo', type: 'info' });
 }
 
 export function useCuenta({ envioPorDefecto = 0, cobrando = false, onMenuCambiado }: Opciones = {}): Cuenta {

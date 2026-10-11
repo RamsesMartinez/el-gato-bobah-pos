@@ -45,6 +45,16 @@ TDD estricto (constitución IV): cada test se escribe y se ve fallar antes de su
 - [X] T018 [US3] `onMenuCambiado` en web/src/features/pos/useCuenta.ts (agregar y `alRechazo`)
 - [X] T019 [US3] En web/src/features/pos/POSPage.tsx: al recibirlo, refetch del menú y reabrir `ModifierSheet` con el producto fresco si sigue a la venta y tiene extras (E13)
 
+### Ampliación: mandar a cocina y «Enviar y cobrar» (FR-013)
+
+- [X] T023 [US3] Test en server/internal/domain/order_test.go: `BuildOrder` dice en qué renglón rechazó (`LineRejected`) sin dejar de ser el sentinel
+- [X] T024 [US3] `LineRejected` y `buildLine` en server/internal/domain/order.go
+- [X] T025 [US3] Test de integración server/internal/integration/drafts_send_menu_changed_test.go: grupo cambiado y producto apagado → el rechazo de `Send` nombra el renglón de la cuenta
+- [X] T026 [US3] `onDraftLine` en server/internal/app/drafts.go (y el rechazo propio de `orderLinesOf`)
+- [X] T027 [US3] Test y `details.lineId` en server/internal/httpapi/respond.go
+- [X] T028 [P] [US3] Tests vitest en web/src/features/pos/useEnviarCuenta.test.tsx y cobrarDesdeElTicket.test.tsx (mandar y cobrar): aviso neutro, sin rojo, renglón señalado, cobro sin abrir
+- [X] T029 [US3] `onMenuCambiado` en useEnviarCuenta.ts, `reelegir` en Ticket.tsx y reapertura en POSPage.tsx; aviso compartido en menuCambiado.ts
+
 ## Phase 6: Polish
 
 - [X] T020 Regla y nota del incidente en AGENTS.md (sin números del negocio): un cambio de catálogo por SQL ya no necesita borrar el menú guardado

@@ -176,8 +176,22 @@ export function POSPage() {
 
   const ticketDrawer = useDisclosure();
   const ticketSwipe = useSwipeDownToClose(ticketDrawer.onClose);
+  // El renglón que el servidor rechazó por menú viejo al mandar o cobrar. Se señala hasta que se
+  // vuelve a elegir o se quita; su hoja se reabre con el menú nuevo si el producto sigue a la venta.
+  const [reelegir, setReelegir] = useState<string | null>(null);
   const { enviar, enviando, motivo, limpiarMotivo } = useEnviarCuenta({
     onComanda: (order, ids) => setComanda({ order, ids }),
+    onMenuCambiado: ({ lineId, productId }) => {
+      setReelegir(lineId);
+      void qc.fetchQuery({ queryKey: ['menu'], queryFn: posApi.menu, staleTime: 0 }).then((fresco) => {
+        const r = cuenta.vista.nuevos.find((x) => x.id === lineId);
+        const p = productId === null ? null : productoParaReelegir(fresco, productId);
+        if (!r || !p) return;
+        setEditing(r);
+        setModProduct(p);
+        modSheet.onOpen();
+      }).catch(() => undefined);
+    },
   });
 
   const claveCuenta = vista.borradorId ?? '';
@@ -450,6 +464,7 @@ export function POSPage() {
     if (!modProduct) return;
     if (editing) {
       cuenta.cambiar(editing, modifiers, notes);
+      if (editing.id === reelegir) setReelegir(null);
     } else {
       for (let i = 0; i < qty; i++) {
         cuenta.agregar({
@@ -504,6 +519,7 @@ export function POSPage() {
     envioPorDefecto,
     enviando,
     motivo,
+    reelegir: vista.nuevos.some((r) => r.id === reelegir) ? reelegir : null,
     puedeCancelar: can('orders.cancel', user),
     onMas: cuenta.mas,
     onMenos: cuenta.menos,
