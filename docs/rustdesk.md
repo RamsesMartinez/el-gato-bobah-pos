@@ -33,7 +33,7 @@ la dirección del servidor, no la llave. Una llave nueva obligaría a recapturar
 En RustDesk → Ajustes → Red → Servidor ID/Relay:
 
 1. **Servidor ID**: `rustdesk.elgatobobah.com`
-2. **Servidor relay**: vacío (lo deduce del de ID)
+2. **Servidor relay**: `rustdesk.elgatobobah.com`
 3. **Key**: la pública del servidor, que se lee con
    `sudo cat /var/lib/rustdesk-server/id_ed25519.pub` en `pos-vps`. No se copia aquí: el repo es
    público.
