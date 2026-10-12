@@ -68,6 +68,7 @@ stop: ## Detiene todo lo que 'make start' dejó vivo (docker + API/web huérfano
 deps-up: ## Levanta postgres + redis (dev)
 	docker compose -f deploy/docker-compose.dev.yml up -d
 deps-down: ## Detiene postgres + redis (dev)
+	@bash scripts/guard-shared-compose.sh
 	docker compose -f deploy/docker-compose.dev.yml down
 
 # --- Frontend ---

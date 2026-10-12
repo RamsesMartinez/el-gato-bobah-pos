@@ -145,6 +145,12 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     contenedor viejo; se traen con `make db-restaurar` si hacen falta).
   - **La carpeta principal no se toca**: el script se niega a correr ahí, y sin el archivo todo
     sigue con los puertos de siempre (5490, 6390, 8080, 3000). Producción, por supuesto, tampoco.
+  - **Nunca `docker compose down` (y menos `down -v`) directo en la terminal: siempre `make stop` o
+    `make deps-down`.** El proyecto de cada worktree vive en `.env.worktree.local`, que solo cargan
+    el Makefile y los scripts; un `docker compose` a mano cae en el proyecto `deploy`, el de la
+    carpeta principal. Pasó el 2026-10-12: un `down -v` así borró `deploy_pgdata_dev` y hubo que
+    restaurarla de un respaldo. `make stop` y `make deps-down` se niegan a bajar `deploy` desde un
+    worktree ([guard-shared-compose.sh](scripts/guard-shared-compose.sh)).
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
