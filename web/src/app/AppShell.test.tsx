@@ -38,4 +38,18 @@ describe('el menú lateral', () => {
     renderView();
     expect(await screen.findByText('Asistencia')).toBeInTheDocument();
   });
+
+  // A 600 px la flecha de «hay más abajo» iba encima del último ítem y su rótulo se encimaba con el
+  // nombre de quien entró. Va en su propio renglón, fuera de la lista.
+  test('la flecha de «hay más» no se encima sobre la lista', async () => {
+    useSessionStore.setState({ user: { id: 1, name: 'Administrador', role: 'admin', permissions: [] } as never });
+    const { container } = renderView();
+    await screen.findByText('Vender');
+    const flecha = container.querySelector('[data-rail-more]') as HTMLElement;
+    expect(flecha).not.toBeNull();
+    expect(getComputedStyle(flecha).position).not.toBe('absolute');
+    const lista = screen.getByText('Vender').closest('a')!.parentElement!;
+    expect(lista.contains(flecha)).toBe(false);
+  });
 });
+

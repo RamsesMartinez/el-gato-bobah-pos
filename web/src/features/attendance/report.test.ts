@@ -1,5 +1,6 @@
 import { vi, expect, test, afterEach } from 'vitest';
 import { daysBetween, loadView, saveView, weekViewAllowed } from './report';
+import { quarterOfDay } from './report';
 
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
 
@@ -27,4 +28,9 @@ test('la hora capturada es la de la zona del negocio, no la del navegador', asyn
   const { instantInZone } = await import('./report');
   expect(instantInZone('2026-10-12', 9 * 60, 'America/Mexico_City')).toBe('2026-10-12T15:00:00.000Z');
   expect(instantInZone('2026-10-12', 23 * 60 + 30, 'America/Mexico_City')).toBe('2026-10-13T05:30:00.000Z');
+});
+
+test('quarterOfDay da la hora del registro en la zona del negocio, bajada al cuarto de hora', () => {
+  expect(quarterOfDay('2026-10-12T23:07:00Z', 'America/Mexico_City')).toBe(17 * 60);
+  expect(quarterOfDay('2026-10-12T15:44:00Z', 'America/Mexico_City')).toBe(9 * 60 + 30);
 });

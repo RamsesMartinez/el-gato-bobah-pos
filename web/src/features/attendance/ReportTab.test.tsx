@@ -133,9 +133,19 @@ test('corregir nombra el registro y explica el traslape', async () => {
   fireEvent.click((await screen.findAllByRole('cell', { name: 'Ana' }))[0]);
   fireEvent.click(await screen.findByRole('button', { name: 'Corregir salida' }));
   expect(screen.getByText('Salida correcta del registro de 09:00 a.m. – 05:00 p.m.')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Hora' }));
+  fireEvent.click(screen.getByRole('button', { name: /^05:00 p\.m\./ }));
   fireEvent.click(await screen.findByRole('button', { name: '06:00 p.m.' }));
   fireEvent.change(screen.getByPlaceholderText('Motivo (obligatorio)'), { target: { value: 'Se quedó' } });
   fireEvent.click(await screen.findByRole('button', { name: 'Guardar corrección' }));
   expect(await screen.findByText('Esa hora se encima con otro registro de Ana. Revisa los registros de este día.')).toBeInTheDocument();
+});
+
+// Corregir arrancaba en «Hora» vacío y la hoja en 12:00 a.m.: había que bajar con el dedo hasta las
+// 5 p.m. para mover la salida unos minutos.
+test('corregir arranca en la hora que el registro ya tiene', async () => {
+  renderView();
+  fireEvent.click(await screen.findByRole('button', { name: 'Día por día' }));
+  fireEvent.click((await screen.findAllByRole('cell', { name: 'Ana' }))[0]);
+  fireEvent.click(await screen.findByRole('button', { name: 'Corregir salida' }));
+  expect(await screen.findByRole('button', { name: /05:00 p\.m\./ })).toBeInTheDocument();
 });

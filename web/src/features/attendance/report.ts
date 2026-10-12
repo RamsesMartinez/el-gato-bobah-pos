@@ -52,6 +52,15 @@ function zoneOffsetMs(t: number, zone: string): number {
   return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - t;
 }
 
+// quarterOfDay: la hora de `iso` en la zona del negocio, en minutos desde la medianoche y bajada al
+// cuarto de hora del selector. Es de donde arranca corregir: la hora que el registro ya tiene.
+export function quarterOfDay(iso: string, zone: string): number {
+  const t = Date.parse(iso);
+  const local = new Date(t + zoneOffsetMs(t, zone));
+  const min = local.getUTCHours() * 60 + local.getUTCMinutes();
+  return min - (min % 15);
+}
+
 // instantInZone convierte «este día a esta hora, en la zona del negocio» al instante que se manda
 // al servidor. La hora del navegador no cuenta: dos tabletas con el reloj distinto capturarían
 // instantes distintos para la misma hora.

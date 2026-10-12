@@ -17,7 +17,7 @@ import { useSessionStore } from '../../stores/session';
 import { soloHora } from '../../utils/horaDelNegocio';
 import { QUARTERS } from '../../shared/attendance/schedule';
 import {
-  daysBetween, instantInZone, loadView, minutesLabel, rowsByDay, saveView, weekViewAllowed, type ReportView,
+  daysBetween, instantInZone, quarterOfDay, loadView, minutesLabel, rowsByDay, saveView, weekViewAllowed, type ReportView,
 } from './report';
 
 const PRESETS = [
@@ -304,7 +304,9 @@ function CorrectionForm({ personName, date, entry, field, onDone, onCancel }: {
 }) {
   const qc = useQueryClient();
   const { zona: zone } = useHoraDelNegocio();
-  const [timeValue, setTimeValue] = useState('');
+  // Arranca en la hora que el registro ya tiene: corregir casi siempre es moverla unos minutos.
+  const current = field === 'clock_in_at' ? entry.in : entry.out;
+  const [timeValue, setTimeValue] = useState(() => (current ? String(quarterOfDay(current, zone)) : ''));
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const save = useMutation({
