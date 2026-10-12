@@ -248,6 +248,73 @@ type CashMovementView struct {
 	// ReversesID: es el reverso de esa salida; Reversed: esta salida ya se corrigió (spec 032).
 	ReversesID *int64 `json:"reversesId"`
 	Reversed   bool   `json:"reversed"`
+	// RecipientName: a quién se le dio (propina entregada o retiro al cierre); nulo en lo demás.
+	RecipientName *string `json:"recipientName"`
+}
+
+// WithdrawalView es el retiro al cierre (spec 035): lo contado menos el fondo que se dejó, y quién
+// se lo llevó.
+type WithdrawalView struct {
+	Amount   decimal.Decimal `json:"amount"`
+	UserName string          `json:"userName"`
+}
+
+// ocultarElFondoDejado quita de un corte cerrado todo lo que dice cuánto se quedó en el cajón: el
+// fondo, el fijo contra el que se comparó (casi siempre es el mismo número) y el retiro, en sus
+// tres lugares. Lo contado del último cierre lo quita ocultarElArqueoDelUltimoCierre (R8).
+func ocultarElFondoDejado(view *SessionDetailView) {
+	view.FloatLeft, view.FixedFloatAtClose, view.Withdrawal = nil, nil, nil
+	movs := view.Movements[:0]
+	for _, m := range view.Movements {
+		if m.Kind != domain.CashRetiro {
+			movs = append(movs, m)
+		}
+	}
+	view.Movements = movs
+	egresos := []CorteBucket{}
+	for _, e := range view.Breakdown.Egresos {
+		if e.Concept == conceptoRetiro {
+			view.Breakdown.EgresosTotal = domain.Round2(view.Breakdown.EgresosTotal.Sub(e.Amount))
+			continue
+		}
+		egresos = append(egresos, e)
+	}
+	view.Breakdown.Egresos = egresos
+}
+
+// ocultarElArqueoDelUltimoCierre quita del último cierre de una caja todo lo que da lo contado: el
+// conteo de cierre, el arqueo del cajón, el esperado y la diferencia de cada método (en los del
+// cajón lo declarado ES el esperado) y los ingresos, que sumados al fondo y al neto dan el esperado.
+// Sin retiro, lo contado es el fondo dejado, o sea el esperado de la siguiente apertura (R8). La
+// apertura no se toca: es lo que el propio cajero contó. Se va el renglón entero y no se pone en
+// cero: un $0 se lee como «no hubo», y ArqueoHidden le dice a la pantalla que hay algo oculto.
+func ocultarElArqueoDelUltimoCierre(view *SessionDetailView) {
+	view.ArqueoHidden = true
+	if view.Counts != nil {
+		view.Counts.Cierre = nil
+	}
+	view.Drawer = nil
+	view.Totals = []MethodTotal{}
+	view.Breakdown.Ingresos = []CorteMethodBreakdown{}
+	view.Breakdown.IngresosTotal = decimal.Zero
+	view.Breakdown.Plataformas = []CortePlatformSubtotal{}
+}
+
+// conceptoRetiro es el renglón del retiro en los egresos del corte.
+const conceptoRetiro = "Retiro al cierre"
+
+// withdrawalOf saca el retiro de los movimientos del turno; nil si no hubo.
+func withdrawalOf(moves []db.ListCashMovementsRow) *WithdrawalView {
+	for _, m := range moves {
+		if m.Kind == domain.CashRetiro {
+			w := &WithdrawalView{Amount: m.Amount}
+			if m.RecipientName != nil {
+				w.UserName = *m.RecipientName
+			}
+			return w
+		}
+	}
+	return nil
 }
 
 // CashExpenseView es un PAGO de gasto atribuido a un corte (efectivo o no), para la sección
@@ -328,8 +395,14 @@ type methodExpected struct {
 // ventas se derivan del esperado restando propinas y (en efectivo) fondo + neto de movimientos, así
 // una caja secundaria (esperado = fondo + neto) da 0 ventas sola. Propinas se listan aparte.
 func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []db.ListCashMovementsRow) CorteBreakdown {
-	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, net decimal.Decimal
+	var entradas, traspasosIn, salidas, traspasosOut, gastos, propinas, retiro, net decimal.Decimal
 	for _, m := range moves {
+		// El retiro al cierre se registra DESPUÉS de contar: ni es parte del esperado ni salida del
+		// negocio. Restarlo del neto inflaba «Ventas» por el monto del retiro (spec 035).
+		if m.Kind == domain.CashRetiro {
+			retiro = retiro.Add(m.Amount)
+			continue
+		}
 		if m.Kind == domain.CashEntrada || m.Kind == domain.CashReverso {
 			net = net.Add(m.Amount)
 		} else {
@@ -414,6 +487,7 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 		{Concept: "Salidas de efectivo", Amount: domain.Round2(salidas)},
 		{Concept: "Traspasos enviados", Amount: domain.Round2(traspasosOut)},
 		{Concept: "Propinas entregadas", Amount: domain.Round2(propinas)},
+		{Concept: conceptoRetiro, Amount: domain.Round2(retiro)},
 	} {
 		if b.Amount.IsPositive() {
 			out.Egresos = append(out.Egresos, b)
@@ -426,6 +500,9 @@ func corteBreakdown(opening decimal.Decimal, methods []methodExpected, moves []d
 }
 
 type SessionView struct {
+	// corteMethods: los esperados con los que se armó el desglose. El cierre los reusa para rehacerlo
+	// con el retiro, que nace después de armar la vista.
+	corteMethods []methodExpected
 	// Arqueo de tarjeta (spec 032): el modo del turno, las terminales que hay que declarar al cerrar
 	// y, cerrado, lo declarado contra lo cobrado por terminal.
 	CardCountMode string `json:"cardCountMode"`
@@ -508,6 +585,13 @@ type SessionView struct {
 	// cajón ya bajaron el esperado de su medio; las de efectivo, por su salida de caja. Siempre
 	// arreglo.
 	Refunds []RefundView `json:"refunds"`
+	// Fondo fijo y retiro (spec 035). FixedFloat va solo en el turno abierto: es lo que la hoja de
+	// cierre pone en el campo. FloatLeft, FixedFloatAtClose y Withdrawal salen del cierre; nulos
+	// mientras el turno está abierto y Withdrawal nulo si no hubo retiro.
+	FixedFloat        *decimal.Decimal `json:"fixedFloat"`
+	FloatLeft         *decimal.Decimal `json:"floatLeft"`
+	FixedFloatAtClose *decimal.Decimal `json:"fixedFloatAtClose"`
+	Withdrawal        *WithdrawalView  `json:"withdrawal"`
 }
 
 // RefundView es una devolución del turno, para la lista del corte.
@@ -602,6 +686,16 @@ type CashRegisterView struct {
 	OpenSessionID *int64 `json:"openSessionId"`
 }
 
+// CashRegisterConfigView es una caja para la gestión: incluye el fondo fijo (spec 035), que la lista
+// del cajero NO lleva porque la apertura se cuenta a ciegas.
+type CashRegisterConfigView struct {
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	IsPrimary  bool             `json:"isPrimary"`
+	IsActive   bool             `json:"isActive"`
+	FixedFloat *decimal.Decimal `json:"fixedFloat"`
+}
+
 // SessionDetailView es una sesión (normalmente ya cerrada) con sus totales guardados y
 // movimientos, para el histórico. Difiere de SessionView en que los totales vienen de
 // register_session_totals (snapshot al cerrar), no del cálculo en vivo.
@@ -628,6 +722,9 @@ type SessionDetailView struct {
 	Movements          []CashMovementView  `json:"movements"`
 	Expenses           []CashExpenseView   `json:"expenses"`
 	Breakdown          CorteBreakdown      `json:"breakdown"`
+	// ArqueoHidden: ver SessionHistoryRow.ArqueoHidden. Con él en true, totales, arqueo, conteo de
+	// cierre e ingresos vienen vacíos porque se ocultaron, no porque no hubo.
+	ArqueoHidden bool `json:"arqueoHidden"`
 
 	// Las ventas que este corte cobró. Viven aquí y no en un filtro de la pantalla de Ventas: ahí
 	// convivirían con el filtro de fechas y bastaría elegir un rango que no toque el corte para
@@ -640,6 +737,10 @@ type SessionDetailView struct {
 	// Cuántas hay EN TOTAL, no cuántas se mandaron. Un recorte silencioso se lee como "esto es todo".
 	SalesCount int `json:"salesCount"`
 	SalesShown int `json:"salesShown"`
+	// Lo que se dejó de fondo, contra qué fijo, y el retiro (spec 035). Nulos en cierres de antes.
+	FloatLeft         *decimal.Decimal `json:"floatLeft"`
+	FixedFloatAtClose *decimal.Decimal `json:"fixedFloatAtClose"`
+	Withdrawal        *WithdrawalView  `json:"withdrawal"`
 	// Suma de las ventas que dejaron ingreso: sin canceladas, sin reembolsadas y sin propinas. La
 	// pantalla declara las tres exclusiones.
 	SalesTotal decimal.Decimal `json:"salesTotal"`
@@ -672,17 +773,22 @@ type SessionSaleView struct {
 }
 
 type SessionHistoryRow struct {
-	ID              int64           `json:"id"`
-	RegisterName    string          `json:"registerName"`
-	Status          string          `json:"status"`
-	OpeningCash     decimal.Decimal `json:"openingCash"`
-	Currency        domain.Currency `json:"currency"`
-	OpenedAt        time.Time       `json:"openedAt"`
-	ClosedAt        *time.Time      `json:"closedAt"`
-	OpenedByName    string          `json:"openedByName"`
-	ClosedByName    *string         `json:"closedByName"`
-	TotalDifference decimal.Decimal `json:"totalDifference"`
-	Notes           *string         `json:"notes"`
+	ID           int64           `json:"id"`
+	RegisterName string          `json:"registerName"`
+	Status       string          `json:"status"`
+	OpeningCash  decimal.Decimal `json:"openingCash"`
+	Currency     domain.Currency `json:"currency"`
+	OpenedAt     time.Time       `json:"openedAt"`
+	ClosedAt     *time.Time      `json:"closedAt"`
+	OpenedByName string          `json:"openedByName"`
+	ClosedByName *string         `json:"closedByName"`
+	// TotalDifference: nil cuando el arqueo está oculto (ArqueoHidden).
+	TotalDifference *decimal.Decimal `json:"totalDifference"`
+	Notes           *string          `json:"notes"`
+	// ArqueoHidden: con arqueo ciego, el último cierre de una caja que no se ha vuelto a abrir no le
+	// muestra su arqueo a quien no configura la caja: lo contado es el esperado de la siguiente
+	// apertura (spec 035, R8). Viaja para que la pantalla diga «oculto» y no pinte $0.
+	ArqueoHidden bool `json:"arqueoHidden"`
 }
 
 // CashRegisters lista las cajas activas + el id de su sesión abierta (para pickers y la vista de caja).
@@ -699,16 +805,36 @@ func (s *BackofficeService) CashRegisters(ctx context.Context) ([]CashRegisterVi
 }
 
 // AllCashRegisters lista TODAS las cajas (incl. inactivas) para la gestión; sin estado de sesión.
-func (s *BackofficeService) AllCashRegisters(ctx context.Context) ([]CashRegisterView, error) {
+func (s *BackofficeService) AllCashRegisters(ctx context.Context) ([]CashRegisterConfigView, error) {
 	rows, err := s.store.QC(ctx).ListAllCashRegisters(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]CashRegisterView, len(rows))
+	out := make([]CashRegisterConfigView, len(rows))
 	for i, r := range rows {
-		out[i] = CashRegisterView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive}
+		out[i] = CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, FixedFloat: r.FixedFloat}
 	}
 	return out, nil
+}
+
+// SetFixedFloat fija (o quita, con nil) lo que se queda en el cajón al cerrar esta caja. Cambia lo
+// que proponen los cierres siguientes, nunca los que ya se hicieron (spec 035).
+func (s *BackofficeService) SetFixedFloat(ctx context.Context, id int64, fixed *decimal.Decimal) (CashRegisterConfigView, error) {
+	if fixed != nil {
+		v := domain.Round2(*fixed)
+		if !domain.ValidMoney(v, true) {
+			return CashRegisterConfigView{}, fmt.Errorf("%w: el fondo fijo no es una cantidad válida", domain.ErrValidation)
+		}
+		fixed = &v
+	}
+	r, err := s.store.QC(ctx).SetRegisterFixedFloat(ctx, db.SetRegisterFixedFloatParams{ID: id, FixedFloat: fixed})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return CashRegisterConfigView{}, domain.ErrNotFound
+		}
+		return CashRegisterConfigView{}, err
+	}
+	return CashRegisterConfigView{ID: r.ID, Name: r.Name, IsPrimary: r.IsPrimary, IsActive: r.IsActive, FixedFloat: r.FixedFloat}, nil
 }
 
 func (s *BackofficeService) CreateCashRegister(ctx context.Context, name string) (CashRegisterView, error) {
@@ -1229,6 +1355,10 @@ func traduceConflictoDeCaja(err error, momento db.CashCountMoment) error {
 	case strings.Contains(pgErr.ConstraintName, "one_open_session_per_register"):
 		return fmt.Errorf("%w: esa caja ya está abierta; recarga para ver el turno que quedó",
 			domain.ErrConflict)
+	case strings.Contains(pgErr.ConstraintName, "register_cash_movements_one_withdrawal"):
+		// Segunda barrera: el candado del cierre ya impide dos cierres del mismo turno.
+		return fmt.Errorf("%w: este turno ya registró su retiro; recarga para ver el cierre",
+			domain.ErrConflict)
 	case strings.Contains(pgErr.ConstraintName, "session_cash_count_lines_unicas"):
 		return fmt.Errorf("%w: llegó la misma denominación dos veces en el conteo",
 			domain.ErrValidation)
@@ -1324,6 +1454,8 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 		Currency: domain.Currency(sess.Currency), OpenedAt: sess.OpenedAt, NetMovements: domain.Round2(net),
 		Totals: []MethodTotal{}, Movements: []CashMovementView{}, Expenses: exps,
 		Uncollected: domain.Round2(sinCobrar.Monto), UncollectedCount: int(sinCobrar.Pedidos),
+		// El fijo que la hoja de cierre pone en el campo (spec 035).
+		FixedFloat: reg.FixedFloat,
 	}
 	if view.WrittenOff, err = s.store.QC(ctx).SessionWrittenOff(ctx, &sess.ID); err != nil {
 		return nil, err
@@ -1446,13 +1578,22 @@ func (s *BackofficeService) sessionWithExpected(ctx context.Context, sess db.Reg
 	if view.TerminalCounts, err = s.terminalCounts(ctx, sess.ID); err != nil {
 		return nil, err
 	}
+	view.Movements = movementViews(moves)
+	view.corteMethods = methods
+	return view, nil
+}
+
+// movementViews: los movimientos del turno como los ve la pantalla. Una sola función para el turno
+// abierto, la respuesta del cierre y el corte reabierto, que antes los armaban cada uno a su modo.
+func movementViews(moves []db.ListCashMovementsRow) []CashMovementView {
+	out := make([]CashMovementView, 0, len(moves))
 	for _, m := range moves {
-		view.Movements = append(view.Movements, CashMovementView{
+		out = append(out, CashMovementView{
 			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
-			IsRefund: m.IsRefund, ReversesID: m.ReversesID, Reversed: m.Reversed,
+			IsRefund: m.IsRefund, ReversesID: m.ReversesID, Reversed: m.Reversed, RecipientName: m.RecipientName,
 		})
 	}
-	return view, nil
+	return out
 }
 
 // businessDate: el día de negocio de AHORA, en la zona del local. Si la zona no se puede leer cae a
@@ -1495,6 +1636,12 @@ type CierreCmd struct {
 	// FloatLeft: cuánto se deja de fondo para el siguiente turno; el resto se retira (decisión del
 	// 2026-10-10). Ausente = se deja todo lo contado. No puede pasar de lo contado.
 	FloatLeft *decimal.Decimal
+	// FixedFloatShown: el fondo fijo que la hoja de cierre mostró (spec 035). Es el snapshot contra
+	// el que se compara lo que se dejó; ausente = el fijo vigente al cerrar.
+	FixedFloatShown *decimal.Decimal
+	// WithdrawalUserID: quién se lleva el retiro. Ausente = quien cierra (y lo que manda una tableta
+	// con el front anterior).
+	WithdrawalUserID *int64
 	// TerminalCounts: terminal → total de su corte, con arqueo por terminal (spec 032, punto 9).
 	TerminalCounts map[int64]decimal.Decimal
 }
@@ -1672,15 +1819,50 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 			n = &cmd.Notas
 		}
 		if conteo != nil {
-			deja := conteo.total
-			if cmd.FloatLeft != nil {
-				deja = domain.Round2(*cmd.FloatLeft)
-				if !domain.ValidMoney(deja, true) || deja.GreaterThan(conteo.total) {
-					return fmt.Errorf("%w: el fondo que se deja no puede ser mayor a lo contado", domain.ErrValidation)
+			deja, errFondo := domain.ResolveFloatLeft(cmd.FloatLeft, reg.FixedFloat, conteo.total)
+			if errFondo != nil {
+				return errFondo
+			}
+			mostrado := reg.FixedFloat
+			if cmd.FixedFloatShown != nil {
+				if v := domain.Round2(*cmd.FixedFloatShown); domain.ValidMoney(v, true) {
+					mostrado = &v
+				} else {
+					return fmt.Errorf("%w: el fondo fijo mostrado no es una cantidad válida", domain.ErrValidation)
 				}
 			}
-			if err := q.SetFloatLeft(ctx, db.SetFloatLeftParams{ID: sess.ID, FloatLeft: &deja}); err != nil {
+			if err := q.SetFloatLeft(ctx, db.SetFloatLeftParams{ID: sess.ID, FloatLeft: &deja, FixedFloatAtClose: mostrado}); err != nil {
 				return err
+			}
+			view.FloatLeft, view.FixedFloatAtClose = &deja, mostrado
+			// EL RETIRO VA EN LA MISMA TRANSACCIÓN QUE EL CIERRE: o quedan los dos o ninguno. Va
+			// después del conteo a propósito: no es parte del esperado que se acaba de firmar.
+			retiro, errRetiro := domain.Withdrawal(conteo.total, deja)
+			if errRetiro != nil {
+				return errRetiro
+			}
+			if retiro.IsPositive() {
+				quien := userID
+				if cmd.WithdrawalUserID != nil {
+					quien = *cmd.WithdrawalUserID
+				}
+				fila, err := q.InsertWithdrawal(ctx, db.InsertWithdrawalParams{
+					SessionID: sess.ID, Amount: retiro, UserID: userID, RecipientUserID: quien,
+				})
+				if err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						return fmt.Errorf("%w: elige a una persona activa del personal para el retiro", domain.ErrValidation)
+					}
+					var pgErr *pgconn.PgError
+					if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+						return fmt.Errorf("%w: elige a una persona activa del personal para el retiro", domain.ErrValidation)
+					}
+					return err
+				}
+				view.Withdrawal = &WithdrawalView{Amount: retiro}
+				if fila.RecipientName != nil {
+					view.Withdrawal.UserName = *fila.RecipientName
+				}
 			}
 		}
 		if err := q.CloseSession(ctx, db.CloseSessionParams{ID: sess.ID, ClosedBy: &userID, Notes: n}); err != nil {
@@ -1693,6 +1875,15 @@ func (s *BackofficeService) CloseSession(ctx context.Context, registerID int64, 
 		return nil, traduceConflictoDeCaja(err, db.CashCountMomentCierre)
 	}
 	view.Status = "cerrada"
+	view.FixedFloat = nil // solo viaja en el turno abierto
+	// El retiro nace dentro del cierre, después de armar la vista: se releen los movimientos para que
+	// esta respuesta diga lo mismo que el corte reabierto (movimientos y egresos).
+	moves, err := s.store.QC(ctx).ListCashMovements(ctx, sess.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.Movements = movementViews(moves)
+	view.Breakdown = corteBreakdown(sess.OpeningCash, view.corteMethods, moves)
 	if view.TerminalCounts, err = s.terminalCounts(ctx, sess.ID); err != nil {
 		return nil, err
 	}
@@ -2098,6 +2289,12 @@ func (s *BackofficeService) openSessionOrConflict(ctx context.Context, registerI
 // SessionHistory devuelve una página del histórico de cortes (abiertos y cerrados), el más reciente
 // primero, y cuántos hay con el mismo filtro.
 func (s *BackofficeService) SessionHistory(ctx context.Context, f domain.SessionHistoryFilter) ([]SessionHistoryRow, int64, error) {
+	return s.SessionHistoryFor(ctx, f, true)
+}
+
+// SessionHistoryFor es SessionHistory para quien la pide: sin el permiso de configurar caja y con
+// arqueo ciego, la diferencia del último cierre de cada caja no reabierta no viaja (ver R8).
+func (s *BackofficeService) SessionHistoryFor(ctx context.Context, f domain.SessionHistoryFilter, canSeeArqueo bool) ([]SessionHistoryRow, int64, error) {
 	if err := f.Validate(); err != nil {
 		return nil, 0, err
 	}
@@ -2117,20 +2314,32 @@ func (s *BackofficeService) SessionHistory(ctx context.Context, f domain.Session
 	if err != nil {
 		return nil, 0, err
 	}
+	ciego := !canSeeArqueo && s.arqueoCiego(ctx)
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
 		out[i] = SessionHistoryRow{
 			ID: r.ID, RegisterName: r.RegisterName, Status: string(r.Status), OpeningCash: r.OpeningCash,
 			Currency: domain.Currency(r.Currency), OpenedAt: r.OpenedAt, ClosedAt: tsPtr(r.ClosedAt),
 			OpenedByName: r.OpenedByName, ClosedByName: r.ClosedByName,
-			TotalDifference: r.TotalDifference, Notes: r.Notes,
+			TotalDifference: &r.TotalDifference, Notes: r.Notes,
+		}
+		if ciego && r.Status == db.SessionStatusCerrada && r.IsLatestOfRegister {
+			out[i].TotalDifference, out[i].ArqueoHidden = nil, true
 		}
 	}
 	return out, total, nil
 }
 
-// SessionDetail devuelve una sesión con sus totales GUARDADOS (snapshot al cerrar) y movimientos.
+// SessionDetail devuelve una sesión con sus totales GUARDADOS (snapshot al cerrar) y movimientos,
+// completa: es la vista de quien configura la caja.
 func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*SessionDetailView, error) {
+	return s.SessionDetailFor(ctx, id, true)
+}
+
+// SessionDetailFor es SessionDetail para quien la pide. Con arqueo ciego, quien no configura la
+// caja no ve en un turno cerrado el fondo que se dejó ni el retiro (spec 035, R8): el fondo dejado
+// —o lo contado menos el retiro— es la cifra contra la que se compara la siguiente apertura.
+func (s *BackofficeService) SessionDetailFor(ctx context.Context, id int64, canSeeFloat bool) (*SessionDetailView, error) {
 	sess, err := s.store.QC(ctx).GetSession(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -2236,11 +2445,18 @@ func (s *BackofficeService) SessionDetail(ctx context.Context, id int64) (*Sessi
 			return nil, err
 		}
 	}
-	for _, m := range moves {
-		view.Movements = append(view.Movements, CashMovementView{
-			ID: m.ID, Kind: m.Kind, Amount: m.Amount, Concept: m.Concept, CreatedAt: m.CreatedAt, UserName: m.UserName, TransferID: m.TransferID, ExpenseID: m.ExpenseID,
-			IsRefund: m.IsRefund,
-		})
+	view.Movements = movementViews(moves)
+	view.FloatLeft, view.FixedFloatAtClose, view.Withdrawal = sess.FloatLeft, sess.FixedFloatAtClose, withdrawalOf(moves)
+	if !canSeeFloat && string(sess.Status) == "cerrada" && s.arqueoCiego(ctx) {
+		ocultarElFondoDejado(view)
+		ultimo, err := s.store.QC(ctx).IsLatestSessionOfRegister(ctx, db.IsLatestSessionOfRegisterParams{
+			RegisterID: sess.RegisterID, SessionID: sess.ID})
+		if err != nil {
+			return nil, err
+		}
+		if ultimo {
+			ocultarElArqueoDelUltimoCierre(view)
+		}
 	}
 	// El mismo ocultamiento que en el turno abierto, y aquí no es redundante: este endpoint
 	// acepta el id del turno ABIERTO y está abierto a rol cajero, así que nulificar solo el otro

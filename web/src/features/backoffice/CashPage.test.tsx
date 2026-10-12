@@ -8,8 +8,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IngresosEgresosCard, TotalsTable, MovementsTable, Plegable, MovementsPanel, CorteSummary, ExpensesTable, VentasDelCorte, TablaDelCierre, DiferenciaDelCierre, DesgloseDelConteo, ArqueoDelCorte, VoidedPaymentsList, RefundsList } from './CashPage';
 import type { CashMovement, CashExpenseLine, MethodTotal, CorteBreakdown, CashSessionDetail, CorteSale, ConteosDelTurno, ArqueoDelCajon, VoidedPayment, SessionRefund, CashSession } from '../../api/backoffice';
 import { CuentasDelCierre, BotonCerrarCaja, ControlesDelHistorico, TerminalesYPropinasDelCorte } from './CashPage';
+import { diferenciaDelHistorico } from './historicoDeCaja';
 import type { AccountItem } from '../../types/pos';
 import { diferenciasDelCierre } from './cierreDeCaja';
+import { money } from '../../utils/format';
 import type { ResultadoDelConteo } from './conteo';
 
 // Render con el Provider de Chakra (los componentes usan su sistema de temas).
@@ -858,4 +860,43 @@ test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () 
     terminalCounts: [], tipsPaidOut: '0', cardTipsPaidInCash: '0', tipsCarriedOver: '0',
   }} />);
   expect(container.textContent).not.toMatch(/Terminales|Propinas/);
+});
+
+// Spec 035 (Maquetas: «Hoja de cierre», A). El retiro no es una salida del negocio: se nombra
+// «Retiro» con quién se lo llevó, y la confirmación del cierre lo dice antes de volverlo definitivo.
+describe('retiro al cierre', () => {
+  test('el movimiento de retiro se nombra «Retiro» y dice quién se lo llevó', () => {
+    wrap(<MovementsTable movements={[mov({ id: 9, kind: 'retiro', amount: '4300', concept: 'Retiro al cierre', recipientName: 'Luis' })]} currency="MXN" />);
+    expect(screen.getByText('Retiro')).toBeInTheDocument();
+    expect(screen.queryByText('Salida')).toBeNull();
+    expect(screen.getByText(/Retiro al cierre · Luis/)).toBeInTheDocument();
+  });
+
+  test('la hoja de «¿Cerrar caja?» muestra el resumen del retiro', async () => {
+    wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={vi.fn()}
+      descripcion="Se retiran $4,300 · se los lleva Luis. No podrás modificarla después." />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    expect(await screen.findByText(/Se retiran \$4,300 · se los lleva Luis/)).toBeInTheDocument();
+  });
+});
+
+// Con arqueo ciego, el último cierre de una caja no reabierta llega sin arqueo para el cajero (spec
+// 035, R8). Lo vacío es oculto, no cero: pintar «Ingresos $0» o «Diferencia $0.00» se leería como un
+// turno sin ventas o cuadrado.
+describe('el último cierre con el arqueo oculto', () => {
+  test('el resumen dice que está oculto y no pinta ingresos en cero', () => {
+    const data = { openingCash: '0', currency: 'MXN', arqueoHidden: true,
+      breakdown: { ingresos: [], ingresosTotal: '0', egresos: [], egresosTotal: '0', plataformas: [] },
+      totals: [], movements: [], expenses: [], counts: null, drawer: null };
+    render(<QueryClientProvider client={new QueryClient()}><Provider><CorteSummary data={data} /></Provider></QueryClientProvider>);
+    expect(screen.getByText(/se ve cuando se vuelva a abrir la caja/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Ingresos/)).not.toBeInTheDocument();
+  });
+
+  test('el histórico dice «Oculto» en vez de una diferencia', () => {
+    const fila = { status: 'cerrada', totalDifference: null, arqueoHidden: true, currency: 'MXN' };
+    expect(diferenciaDelHistorico(fila)).toBe('Oculto');
+    expect(diferenciaDelHistorico({ ...fila, arqueoHidden: false, totalDifference: '-50' })).toBe(money('-50', 'MXN'));
+    expect(diferenciaDelHistorico({ ...fila, status: 'abierta' })).toBe('—');
+  });
 });

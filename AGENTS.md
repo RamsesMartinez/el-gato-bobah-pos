@@ -367,6 +367,13 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     atribuye a la terminal del último pago con tarjeta de su pedido, así que cambiar ese pago mueve
     también la devolución (que puede ser de otro turno), y si la terminal nueva no cobró nada en el
     turno de la devolución, la devolución no aparece en la lista por terminal de ese turno.
+- **Fondo fijo y retiro al cierre** (spec 035). Dos cosas que no se ven:
+  - **El retiro (`register_cash_movements.kind = 'retiro'`) no es una salida ni entra al neto del
+    cajón**: se registra DESPUÉS de contar. Toda suma de movimientos nombra cada tipo con su signo
+    (`NetCashMovements`, `corteBreakdown`); una suma «todo lo que no es entrada resta» lo cuenta y
+    el corte cerrado reporta ventas infladas por el monto del retiro.
+  - **El rollback de la API es solo hacia adelante** en cuanto existe un retiro: la API anterior lo
+    resta como salida. El fondo fijo no viaja en `GET /cash-registers` (la apertura es a ciegas).
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en

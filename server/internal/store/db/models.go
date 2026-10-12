@@ -929,12 +929,13 @@ type CashDenomination struct {
 }
 
 type CashRegister struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	IsPrimary bool   `json:"is_primary"`
-	IsActive  bool   `json:"is_active"`
-	CompanyID int64  `json:"company_id"`
-	BranchID  int64  `json:"branch_id"`
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	IsPrimary  bool             `json:"is_primary"`
+	IsActive   bool             `json:"is_active"`
+	CompanyID  int64            `json:"company_id"`
+	BranchID   int64            `json:"branch_id"`
+	FixedFloat *decimal.Decimal `json:"fixed_float"`
 }
 
 type CashTransfer struct {
@@ -1716,6 +1717,7 @@ type RegisterSession struct {
 	OpeningReasonNote *string            `json:"opening_reason_note"`
 	CardCountMode     string             `json:"card_count_mode"`
 	FloatLeft         *decimal.Decimal   `json:"float_left"`
+	FixedFloatAtClose *decimal.Decimal   `json:"fixed_float_at_close"`
 }
 
 type RegisterSessionTotal struct {
