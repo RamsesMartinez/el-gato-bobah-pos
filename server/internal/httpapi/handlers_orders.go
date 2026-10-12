@@ -515,6 +515,40 @@ func (h *Handlers) VoidOrderPayment(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, res)
 }
 
+// POST /orders/{id}/payments/{paymentId}/terminal  {fromTerminalId, terminalId, reason}
+func (h *Handlers) ChangePaymentTerminal(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	paymentID, err := strconv.ParseInt(chi.URLParam(r, "paymentId"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		FromTerminalID *int64 `json:"fromTerminalId"`
+		TerminalID     int64  `json:"terminalId"`
+		Reason         string `json:"reason"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	u, _ := userFrom(r.Context())
+	order, err := h.orders.ChangePaymentTerminal(r.Context(), app.ChangeTerminalCmd{OrderID: id, PaymentID: paymentID,
+		ActorID: u.ID, FromTerminalID: body.FromTerminalID, TerminalID: body.TerminalID, Reason: body.Reason})
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	// Mueve dinero entre terminales del corte: evento de seguridad con quién y qué pago, sin montos.
+	logging.SecurityEvent(r.Context(), "order_payment_terminal_changed", "user_id", u.ID, "order_id", id, "payment_id", paymentID)
+	h.broker.Publish(u.CompanyID, realtime.Event{Type: "order.updated", Data: map[string]any{"id": id}})
+	JSON(w, http.StatusOK, order)
+}
+
 // POST /orders/{id}/lines/move  {clientUuid, toOrderId, lines}
 //
 // Pasa productos a otro pedido abierto, o a uno nuevo con toOrderId null. Responde los dos pedidos

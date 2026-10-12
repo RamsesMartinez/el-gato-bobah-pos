@@ -2272,9 +2272,9 @@ func (q *Queries) ListOrderPayments(ctx context.Context, orderID int64) ([]ListO
 }
 
 const listOrderPaymentsForView = `-- name: ListOrderPaymentsForView :many
-select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, p.amount, p.tip_amount,
+select p.id, p.payment_number, p.payment_method_id, pm.name as method_name, pm.kind::text as method_kind, p.amount, p.tip_amount,
        coalesce(p.reference, '')::text as reference, p.created_at, coalesce(u.name, '')::text as received_by,
-       p.split_part, p.split_of
+       p.split_part, p.split_of, p.card_terminal_id, p.card_terminal_name
 from order_payments p
 join payment_methods pm on pm.id = p.payment_method_id
 left join users u on u.id = p.received_by
@@ -2283,17 +2283,20 @@ order by p.created_at, p.id
 `
 
 type ListOrderPaymentsForViewRow struct {
-	ID              int64           `json:"id"`
-	PaymentNumber   *int16          `json:"payment_number"`
-	PaymentMethodID int16           `json:"payment_method_id"`
-	MethodName      string          `json:"method_name"`
-	Amount          decimal.Decimal `json:"amount"`
-	TipAmount       decimal.Decimal `json:"tip_amount"`
-	Reference       string          `json:"reference"`
-	CreatedAt       time.Time       `json:"created_at"`
-	ReceivedBy      string          `json:"received_by"`
-	SplitPart       *int16          `json:"split_part"`
-	SplitOf         *int16          `json:"split_of"`
+	ID               int64           `json:"id"`
+	PaymentNumber    *int16          `json:"payment_number"`
+	PaymentMethodID  int16           `json:"payment_method_id"`
+	MethodName       string          `json:"method_name"`
+	MethodKind       string          `json:"method_kind"`
+	Amount           decimal.Decimal `json:"amount"`
+	TipAmount        decimal.Decimal `json:"tip_amount"`
+	Reference        string          `json:"reference"`
+	CreatedAt        time.Time       `json:"created_at"`
+	ReceivedBy       string          `json:"received_by"`
+	SplitPart        *int16          `json:"split_part"`
+	SplitOf          *int16          `json:"split_of"`
+	CardTerminalID   *int64          `json:"card_terminal_id"`
+	CardTerminalName *string         `json:"card_terminal_name"`
 }
 
 // Los pagos vivos de un pedido como los pinta la hoja de cobro.
@@ -2311,6 +2314,7 @@ func (q *Queries) ListOrderPaymentsForView(ctx context.Context, orderID int64) (
 			&i.PaymentNumber,
 			&i.PaymentMethodID,
 			&i.MethodName,
+			&i.MethodKind,
 			&i.Amount,
 			&i.TipAmount,
 			&i.Reference,
@@ -2318,6 +2322,8 @@ func (q *Queries) ListOrderPaymentsForView(ctx context.Context, orderID int64) (
 			&i.ReceivedBy,
 			&i.SplitPart,
 			&i.SplitOf,
+			&i.CardTerminalID,
+			&i.CardTerminalName,
 		); err != nil {
 			return nil, err
 		}

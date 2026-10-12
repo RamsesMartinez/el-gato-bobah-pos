@@ -1,4 +1,5 @@
-import { Field, Input, Text } from '@chakra-ui/react';
+import { Field, Text } from '@chakra-ui/react';
+import { DatePickerButton } from '../../components/DatePickerButton';
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre',
   'octubre', 'noviembre', 'diciembre'];
@@ -21,7 +22,7 @@ export function DiaDelGasto({ turno, value, onChange }: {
   return (
     <Field.Root w="170px">
       <Field.Label>Día del gasto</Field.Label>
-      <Input type="date" minH="44px" aria-label="Día del gasto" value={value} onChange={(e) => onChange(e.target.value)} />
+      <DatePickerButton label="Día del gasto" value={value} onChange={onChange} />
     </Field.Root>
   );
 }

@@ -9,11 +9,27 @@ const (
 	PermOrdersCancel        Permission = "orders.cancel"
 	PermOrdersMoveLines     Permission = "orders.move_lines"
 	PermOrdersCancelPending Permission = "orders.cancel_pending"
+
+	// Asistencia y auditoría (spec 033). Corregir lo propio va aparte de corregir a otros: una
+	// corrección propia mueve horas pagadas sin que nadie más la revise.
+	PermAttendanceConfigure     Permission = "attendance.configure"
+	PermAttendanceReport        Permission = "attendance.report"
+	PermAttendanceCorrectOthers Permission = "attendance.correct_others"
+	PermAttendanceCorrectOwn    Permission = "attendance.correct_own"
+	PermAuditView               Permission = "audit.view"
+
+	// Corregir en qué terminal se cobró un pago (spec 036). Mueve dinero entre terminales del corte.
+	PermPaymentsChangeTerminal Permission = "payments.change_terminal"
+	// PermCashConfigure: el fondo fijo de cada caja (spec 035). Cambia lo que el cierre propone dejar
+	// y, con eso, cuánto se retira; por eso no es de quien opera la caja.
+	PermCashConfigure Permission = "cash.configure"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
 func AllPermissions() []Permission {
-	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending}
+	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
+		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
+		PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -25,8 +41,11 @@ func AllPermissions() []Permission {
 // falta no, y negárselos a quien atiende el mostrador deja pedidos sin salida.
 func PermissionsFor(role Role) []Permission {
 	switch role {
-	case RoleAdmin, RoleGerente:
+	case RoleAdmin:
 		return AllPermissions()
+	case RoleGerente:
+		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
+			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal, PermCashConfigure}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending}
 	}
@@ -45,6 +64,20 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede pasar productos"
 	case PermOrdersCancelPending:
 		return "Tu usuario no puede quitar productos"
+	case PermAttendanceConfigure:
+		return "Tu usuario no puede configurar la asistencia"
+	case PermAttendanceReport:
+		return "Tu usuario no puede ver la asistencia del personal"
+	case PermAttendanceCorrectOthers:
+		return "Tu usuario no puede corregir la asistencia de otras personas"
+	case PermAttendanceCorrectOwn:
+		return "Tu usuario no puede corregir su propia asistencia"
+	case PermAuditView:
+		return "Tu usuario no puede ver la bitácora"
+	case PermPaymentsChangeTerminal:
+		return "Tu usuario no puede cambiar la terminal de un pago"
+	case PermCashConfigure:
+		return "Tu usuario no puede configurar la caja"
 	}
 	return "Tu usuario no puede hacer esto"
 }

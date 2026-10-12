@@ -240,6 +240,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Cada movimiento guarda su origen** (`modifier_option_id`, `component_of_product_id`) y las
     cancelaciones reponen con el mismo origen. Los componentes vendidos se copian en
     `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
+  - **Cancelar repone solo lo que no se gastó** (decisión del dueño, 2026-10-11): lo que se prepara
+    y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
+    prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
+    cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
@@ -326,6 +330,50 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     `can()` en el front), no por nombre de rol: los roles serán de cada empresa (constitución,
     principio VIII). La migración 0079 se niega a bajar en cuanto hay un cobro nuevo; tras
     desplegarla, el rollback es restaurar el respaldo.
+- **Asistencia y bitácora de auditoría** (spec 033, 0089). Cinco cosas que no se ven:
+  - **Todo camino nuevo que mueva dinero, caja, precios o asistencia escribe su evento** con
+    `recordAudit` (o `auditOrder` / `auditCash`) **dentro de su transacción**, y su acción va en la
+    lista blanca de `domain/audit.go` y en las etiquetas de `web/src/shared/audit/labels.ts`. Sin la
+    misma transacción, una acción que se revierte deja evento y una que se confirma puede no
+    dejarlo. `TestEveryAuditActionIsProduced` falla si una acción de la lista no tiene prueba que la
+    produzca.
+  - **La bitácora no se borra, ni como owner.** Un test que revierte migraciones por debajo de la
+    0089 con pedidos creados pasa por `migrarAbajoHasta`, que la vacía antes (solo en pruebas); el
+    Down de la 0089 se niega con datos, igual que en producción.
+  - **`attendance_entries.branch_id` queda nulo con varias sucursales y no se rellena después**: es
+    lo que el selector de sucursal tendrá que resolver. Los eventos de pedido y caja sí guardan la
+    sucursal del pedido o de la caja.
+  - **La clave del aparato (`X-Device-Key`) la genera el navegador**: sirve para auditar, no
+    identifica. CORS la anuncia junto con `X-Device-Info`; un header propio que CORS no anuncia
+    tumba todas las peticiones desde otro dominio.
+  - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
+    decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
+- **Terminales de tarjeta** (spec 032, corrección en la 036). Tres cosas que no se ven:
+  - **Con dos o más terminales activas, la terminal se elige en CADA cobro; nada llega marcado.**
+    Antes llegaba puesta la última con la que cobró el usuario, y así un débito quedó registrado en
+    una terminal cuando se pasó en otra. Es una excepción decidida por el dueño a la
+    regla de la constitución «quien opera no decide en el momento»: la terminal es un hecho físico
+    (dónde se pasó la tarjeta), no algo que la configuración pueda saber. Con una sola activa, va
+    sola. En cuenta dividida se limpia tras cada cobro. No la vuelvas a recordar por usuario, en el
+    servidor (`resolveTerminal`) ni en la hoja (`terminalEfectiva`).
+  - **Corregir la terminal de un pago ya cobrado** es `POST /orders/{id}/payments/{paymentId}/terminal`
+    (permiso `payments.change_terminal`) y deja `payment.terminal_changed` en la bitácora en la misma
+    transacción. Manda `fromTerminalId`, la terminal que vio la pantalla: si ya no es la del pago,
+    responde 409 en vez de pisar otro cambio.
+  - **El arqueo de un turno cerrado no se reescribe.** El corte compara al pintarse lo firmado contra
+    lo esperado hoy (`expectedNow`), sobre la unión de los renglones guardados y lo cobrado por
+    terminal, y avisa por terminal. Solo hay aviso donde hubo arqueo por terminal: con arqueo
+    automático no se firmó nada por terminal. Límite que ya existía: una devolución con tarjeta se
+    atribuye a la terminal del último pago con tarjeta de su pedido, así que cambiar ese pago mueve
+    también la devolución (que puede ser de otro turno), y si la terminal nueva no cobró nada en el
+    turno de la devolución, la devolución no aparece en la lista por terminal de ese turno.
+- **Fondo fijo y retiro al cierre** (spec 035). Dos cosas que no se ven:
+  - **El retiro (`register_cash_movements.kind = 'retiro'`) no es una salida ni entra al neto del
+    cajón**: se registra DESPUÉS de contar. Toda suma de movimientos nombra cada tipo con su signo
+    (`NetCashMovements`, `corteBreakdown`); una suma «todo lo que no es entrada resta» lo cuenta y
+    el corte cerrado reporta ventas infladas por el monto del retiro.
+  - **El rollback de la API es solo hacia adelante** en cuanto existe un retiro: la API anterior lo
+    resta como salida. El fondo fijo no viaja en `GET /cash-registers` (la apertura es a ciegas).
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en

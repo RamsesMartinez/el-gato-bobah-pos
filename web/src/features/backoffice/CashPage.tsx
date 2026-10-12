@@ -1,4 +1,5 @@
 import { useState, Fragment, type ReactNode } from 'react';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import { useNavigate } from 'react-router';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { ReasonSheet } from '../../components/ReasonSheet';
@@ -16,7 +17,7 @@ import { ApiError } from '../../api/client';
 import { toaster } from '../../components/ui/toaster';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
+  backofficeApi, type CashSession, type CashSessionDetail, type CorteSale, type CashRegister, type CashRegisterConfig, type PendingOrder, type OwingOrder, type CashMovement, type CashExpenseLine, type MethodTotal, type CorteBreakdown, type AperturaInput, type ConteosDelTurno, type ArqueoDelCajon, type VoidedPayment, type SessionRefund,
 } from '../../api/backoffice';
 import { ContadorDeEfectivo } from './ContadorDeEfectivo';
 import type { ResultadoDelConteo } from './conteo';
@@ -27,12 +28,13 @@ import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AvisosDeCaja } from './AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
+import { diferenciaDelHistorico } from './historicoDeCaja';
 import { useVolverAlCierre } from './volverAlCierre';
-import { fondoValido, fondoExcedeLoContado } from './fondoQueSeDeja';
+import { fondoValido, fondoExcedeLoContado, retiroDelCierre, resumenDelRetiro, avisoDeQuienSeLoLleva } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
-import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
+import type { TerminalCount, TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type DiferenciasDelCierre,
@@ -71,6 +73,8 @@ function movementType(m: CashMovement): { label: string; palette: string } {
   if (m.isRefund) return { label: 'Devolución', palette: 'orange' };
   if (m.kind === 'propina') return { label: 'Propina', palette: 'purple' };
   if (m.kind === 'reverso') return { label: 'Corrección', palette: 'gray' };
+  // El retiro al cierre (spec 035) no es una salida del negocio: se nombra aparte.
+  if (m.kind === 'retiro') return { label: 'Retiro', palette: 'teal' };
   return m.kind === 'entrada' ? { label: 'Entrada', palette: 'green' } : { label: 'Salida', palette: 'red' };
 }
 
@@ -159,7 +163,7 @@ export function MovementsTable({ movements, currency, zona = DEFAULT_TIMEZONE, o
                 <Table.Cell><Badge colorPalette={t.palette}>{t.label}</Badge></Table.Cell>
                 {/* Sin ancho fijo: a 220 px «Devolución: Producto en mal estado» se cortaba con la
                     tabla a medio llenar, y el motivo es justo lo que se vino a leer. */}
-                <Table.Cell><Text lineClamp={2}>{m.concept}</Text></Table.Cell>
+                <Table.Cell><Text lineClamp={2}>{m.recipientName ? `${m.concept} · ${m.recipientName}` : m.concept}</Text></Table.Cell>
                 <Table.Cell color="fg.muted" whiteSpace="nowrap">{m.userName}</Table.Cell>
                 <Table.Cell textAlign="end" fontWeight="600" whiteSpace="nowrap"
                   color={m.kind === 'entrada' || m.kind === 'reverso' ? 'green.500' : 'red.500'}
@@ -394,6 +398,7 @@ interface CorteData {
   drawer?: ArqueoDelCajon | null;
   voidedPayments?: VoidedPayment[];
   refunds?: SessionRefund[];
+  arqueoHidden?: boolean;
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -407,7 +412,12 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
   const expenses = data.expenses ?? [];
   return (
     <VStack align="stretch" gap={4}>
-      <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
+      {data.arqueoHidden ? (
+        <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+          <Text fontWeight="700">Arqueo oculto</Text>
+          <Text fontSize="sm" color="fg.muted">Se ve cuando se vuelva a abrir la caja.</Text>
+        </Box>
+      ) : <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />}
       {totals.length > 0 && !abierto && (
         <Section title="Conciliación (sistema vs declarado)">
           <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
@@ -455,6 +465,10 @@ function CorteDetail({ id }: { id: number }) {
   );
 }
 
+function cambioTrasElArqueo(t: TerminalCount): boolean {
+  return t.expectedNow !== undefined && Number(t.expectedNow) !== Number(t.expected);
+}
+
 // Terminales y propinas de un corte (spec 032): lo que el turno abierto mostraba y el cierre firmó.
 // Sin esto, un faltante en una terminal dejaba de verse en cuanto se cerraba el turno.
 export function TerminalesYPropinasDelCorte({ session, currency }: {
@@ -487,6 +501,13 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
               ))}
             </Table.Body>
           </Table.Root>
+          {/* Lo firmado no se reescribe: si después del arqueo se corrigió la terminal de un pago,
+              se dice aquí cuánto se espera hoy y la diferencia contra lo declarado. */}
+          {terminales.filter(cambioTrasElArqueo).map((t) => (
+            <Text key={t.terminalId} role="status" fontSize="sm" color="orange.fg" mt={2}>
+              {`${t.name}: el esperado pasó de ${money(t.expected, currency)} a ${money(t.expectedNow as string, currency)} después del arqueo. Diferencia ahora: ${money(t.differenceNow ?? '0', currency)}`}
+            </Text>
+          ))}
         </Section>
       )}
       {(entregadas > 0 || enEfectivo > 0 || enCaja > 0) && (
@@ -835,8 +856,22 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
   const faltaDecidir = faltaDecidirPropinas(session?.tipsPending, decisionPropinas);
   const [conteoTerminales, setConteoTerminales] = useState<Record<number, string>>({});
   // El fondo que se queda para el siguiente turno (2026-10-10). Solo con cajón: sin efectivo no hay fondo.
-  const [fondo, setFondo] = useState('');
-  const faltaFondo = (session?.drawer ?? null) !== null && !fondoValido(fondo);
+  // Mientras nadie lo toca, es el fijo de la caja (spec 035); null = no se ha tocado.
+  const [fondoTecleado, setFondo] = useState<string | null>(null);
+  const fijo = session?.fixedFloat != null ? Number(session.fixedFloat) : null;
+  const fondo = fondoTecleado ?? (fijo !== null ? String(fijo) : '');
+  // «¿Se retira dinero del cajón?» abre en Sí (decisión del dueño sobre la maqueta A).
+  const [retirar, setRetirar] = useState(true);
+  const yo = useSessionStore((s) => s.user?.id ?? null);
+  const personas = session?.tipsPending?.people ?? [];
+  const [quienTocado, setQuien] = useState<number | null>(null);
+  // Por omisión se lo lleva quien cierra, si está en la lista; si no, hay que elegir.
+  const quien = quienTocado ?? (personas.some((p) => p.id === yo) ? yo : null);
+  const contadoAlCerrar = conteoDelCierre?.total ?? null;
+  const retiro = retirar ? retiroDelCierre(contadoAlCerrar, fondo) : 0;
+  const faltaFondo = (session?.drawer ?? null) !== null && retirar && !fondoValido(fondo);
+  const faltaQuien = (session?.drawer ?? null) !== null && retirar && (retiro ?? 0) > 0 && quien === null;
+  const avisoQuien = avisoDeQuienSeLoLleva(faltaQuien, retiro, session?.currency ?? 'MXN');
   const terminalesSinCifra = faltanTerminales(session?.terminalsToCount ?? [], conteoTerminales);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
@@ -905,13 +940,16 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
         manualReason: aMano?.manualReason,
         notes: notes || undefined,
         tipsDecision: Number(session?.tipsPending?.total ?? 0) >= 1 ? decisionPropinas ?? undefined : undefined,
-        floatLeft: fondoValido(fondo) ? Number(fondo) : undefined,
+        // «No, todo se queda»: el fondo es lo contado y no hay retiro.
+        floatLeft: !retirar ? contadoAlCerrar ?? undefined : fondoValido(fondo) ? Number(fondo) : undefined,
+        fixedFloatShown: fijo ?? undefined,
+        withdrawalUserId: retirar && (retiro ?? 0) > 0 ? quien ?? undefined : undefined,
         terminalCounts: Object.fromEntries((session?.terminalsToCount ?? []).map((t) => [String(t.terminalId), Number(conteoTerminales[t.terminalId])])),
       });
     },
     onSuccess: (s) => {
       medirAccion('caja', 'cerrar-turno');
-      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(''); invalidate();
+      setClosed(s); setDeclared({}); setConteoDelCierre(null); setNotes(''); setDecisionPropinas(null); setConteoTerminales({}); setFondo(null); setRetirar(true); setQuien(null); invalidate();
     },
     // El servidor distingue "hay pedidos sin terminar" de cualquier otro fallo y manda los folios
     // en el mensaje. Se pinta con su propio título porque no es un error del cierre: es una tarea
@@ -1028,13 +1066,20 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
               puede no haber efectivo—; lo que no vale es dejarlo vacío. */}
           <ConteoDeTerminales terminales={session.terminalsToCount ?? []} valores={conteoTerminales} onChange={setConteoTerminales} />
 
-          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={conteoDelCierre?.total ?? null} />}
+          {cajon && <FondoQueSeDeja value={fondo} onChange={setFondo} contado={contadoAlCerrar} fijo={fijo}
+            retirar={retirar} onRetirar={setRetirar} personas={personas} quien={quien} onQuien={setQuien}
+            quienCierra={yo} currency={session.currency} />}
 
           {(porContar.length > 0 || faltaElCajon || terminalesSinCifra.length > 0 || faltaFondo) && (
             <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
               <Text fontSize="sm" fontWeight="600">
                 Falta capturar lo contado en: {[...(faltaElCajon ? ['el cajón'] : []), ...porContar.map((m) => m.name), ...terminalesSinCifra, ...(faltaFondo ? ['el fondo que se queda'] : [])].join(', ')}
               </Text>
+            </Box>
+          )}
+          {avisoQuien && (
+            <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3} colorPalette="orange" bg="colorPalette.subtle">
+              <Text fontSize="sm" fontWeight="600">{avisoQuien}</Text>
             </Box>
           )}
 
@@ -1114,7 +1159,9 @@ function RegisterPanel({ register, openRegisters }: { register: CashRegister; op
           </Box>
 
           <BotonCerrarCaja nombre={register.name} loading={closeMut.isPending}
-            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || fondoExcedeLoContado(fondo, conteoDelCierre?.total ?? null) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
+            descripcion={cajon ? resumenDelRetiro({ retirar, retiro, quien: personas.find((p) => p.id === quien)?.name ?? null,
+              contado: contadoAlCerrar, currency: session.currency }) : undefined}
+            disabled={porContar.length > 0 || faltaElCajon || faltaDecidir || faltaFondo || faltaQuien || (retirar && fondoExcedeLoContado(fondo, contadoAlCerrar)) || terminalesSinCifra.length > 0 || session.pending.length > 0 || (session.owing?.length ?? 0) > 0}
             onCerrar={() => closeMut.mutate()} />
         </VStack>
       )}
@@ -1352,7 +1399,7 @@ function ManageRegistersTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cash', 'registers', 'all'], queryFn: backofficeApi.allCashRegisters });
   const [name, setName] = useState('');
-  const [edit, setEdit] = useState<CashRegister | null>(null);
+  const [edit, setEdit] = useState<CashRegisterConfig | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cash'] });
   const create = useMutation({
@@ -1361,7 +1408,7 @@ function ManageRegistersTab() {
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
   const update = useMutation({
-    mutationFn: (r: CashRegister) => backofficeApi.updateCashRegister(r.id, { name: r.name.trim(), isActive: r.isActive }),
+    mutationFn: (r: CashRegisterConfig) => backofficeApi.updateCashRegister(r.id, { name: r.name.trim(), isActive: r.isActive }),
     onSuccess: () => { invalidate(); setEdit(null); },
     onError: (e) => toaster.create({ title: 'Error', description: String(e), type: 'error' }),
   });
@@ -1476,8 +1523,8 @@ function HistoryTab() {
                 </Badge>
               </Table.Cell>
               {!wide && <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>}
-              <Table.Cell textAlign="end" color={diffColor(r.totalDifference)} fontWeight="600">
-                {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
+              <Table.Cell textAlign="end" color={r.totalDifference === null ? 'fg.muted' : diffColor(r.totalDifference)} fontWeight="600">
+                {diferenciaDelHistorico(r)}
               </Table.Cell>
               <Table.Cell textAlign="end">
                 <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>
@@ -1512,8 +1559,8 @@ function HistoryTab() {
 
 // Los controles del histórico: un rango opcional de días y la página. Van ARRIBA de la lista y en un
 // solo renglón: a 1024×600 abajo quedaban fuera de la pantalla, y cada renglón extra se le quita a
-// la lista que se vino a leer. Las fechas son `input type="date"` como en Ventas (el calendario del
-// sistema a pantalla completa, no el desplegable de renglones de 20 px que prohíbe la constitución).
+// la lista que se vino a leer. Las fechas se eligen con `DatePickerButton`, como en Ventas: el
+// calendario del sistema tiene celdas de ~30 px y la constitución lo prohíbe en la tableta.
 export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy, onPage, onRango }: {
   page: number; total: number; pageSize: number; desde: string; hasta: string; hoy: string;
   onPage: (page: number) => void; onRango: (desde: string, hasta: string) => void;
@@ -1529,11 +1576,9 @@ export function ControlesDelHistorico({ page, total, pageSize, desde, hasta, hoy
   return (
     <HStack gap={2} flexWrap="wrap" justify="space-between">
       <HStack gap={2} flexWrap="wrap">
-        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Desde"
-          value={borrador.desde} onChange={(e) => cambiar(e.target.value, borrador.hasta)} />
+        <DatePickerButton label="Desde" max={hoy} value={borrador.desde} onChange={(v) => cambiar(v, borrador.hasta)} />
         <Text fontSize="sm" color="fg.muted">al</Text>
-        <Input type="date" size="sm" minH="44px" w="150px" max={hoy} aria-label="Hasta"
-          value={borrador.hasta} onChange={(e) => cambiar(borrador.desde, e.target.value)} />
+        <DatePickerButton label="Hasta" max={hoy} value={borrador.hasta} onChange={(v) => cambiar(borrador.desde, v)} />
         {(borrador.desde !== '' || borrador.hasta !== '' || desde !== '' || hasta !== '') && (
           <Button size="sm" minH="44px" variant="ghost" onClick={() => cambiar('', '')}>Quitar fechas</Button>
         )}
@@ -1841,8 +1886,10 @@ export function CuentasDelCierre({ pending, owing = [], cuentas: todas, onAbrir,
 
 // «Cerrar caja» confirma en una hoja de la app, no con el `confirm()` del navegador: el del sistema
 // se pinta fuera de la app con botones que en la tableta se aciertan al revés.
-export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar }: {
+export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar, descripcion = 'No podrás modificarla después.' }: {
   nombre: string; disabled: boolean; loading: boolean; onCerrar: () => void;
+  // Lo que se lee antes de confirmar: con cajón, el retiro y quién se lo lleva (spec 035).
+  descripcion?: string;
 }) {
   const [preguntando, setPreguntando] = useState(false);
   return (
@@ -1852,7 +1899,7 @@ export function BotonCerrarCaja({ nombre, disabled, loading, onCerrar }: {
         Cerrar caja
       </Button>
       <ConfirmSheet isOpen={preguntando} title={`¿Cerrar «${nombre}»?`}
-        description="No podrás modificarla después." cancelLabel="Volver" confirmLabel="Cerrar caja"
+        description={descripcion} cancelLabel="Volver" confirmLabel="Cerrar caja"
         onCancel={() => setPreguntando(false)}
         onConfirm={() => { setPreguntando(false); onCerrar(); }} />
     </>

@@ -33,7 +33,7 @@ export interface ArqueoDelCajon {
 }
 export interface CashMovement {
   id: number;
-  kind: 'entrada' | 'salida' | 'propina' | 'reverso';
+  kind: 'entrada' | 'salida' | 'propina' | 'reverso' | 'retiro';
   amount: string;
   concept: string;
   createdAt: string;
@@ -45,6 +45,14 @@ export interface CashMovement {
   // Corrección por reverso (spec 032): `reversesId` en el reverso, `reversed` en la salida corregida.
   reversesId?: number | null;
   reversed?: boolean;
+  // A quién se le dio: propina entregada o retiro al cierre (spec 035).
+  recipientName?: string | null;
+}
+
+// El retiro al cierre (spec 035): lo contado menos el fondo que se dejó, y quién se lo llevó.
+export interface Withdrawal {
+  amount: string;
+  userName: string;
 }
 
 export interface CashConcept {
@@ -54,6 +62,19 @@ export interface CashConcept {
   categoryName: string | null;
   supplierId: number | null;
   supplierName: string | null;
+}
+
+// TerminalCount es el arqueo de una terminal en un turno. `expectedNow`/`differenceNow` (spec 036):
+// lo que se espera hoy, distinto de lo firmado si alguien cambió la terminal de un pago después del
+// arqueo. Opcionales: un backend anterior no los manda.
+export interface TerminalCount {
+  terminalId: number;
+  name: string;
+  expected: string;
+  declared: string;
+  difference: string;
+  expectedNow?: string;
+  differenceNow?: string;
 }
 
 export interface CardTerminal {
@@ -100,6 +121,15 @@ export interface CashRegister {
   isPrimary: boolean;
   isActive: boolean;
   openSessionId: number | null; // no-null si la caja tiene una sesión abierta
+}
+// Caja para la gestión (`/cash-registers/all`): trae el fondo fijo, que la lista del cajero no lleva
+// porque la apertura se cuenta a ciegas (spec 035).
+export interface CashRegisterConfig {
+  id: number;
+  name: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  fixedFloat?: string | null;
 }
 // Una pieza que se puede contar. `value` es string por lo mismo que el resto del dinero: es una
 // columna `numeric(10,2)` y convertirla a número en la frontera pierde exactitud.
@@ -190,9 +220,15 @@ export interface CashSession {
   cardCountMode?: 'auto' | 'per_terminal';
   cashOutsWithoutConcept?: number;
   terminalsToCount?: { terminalId: number; name: string }[];
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
+  // Fondo fijo y retiro (spec 035). `fixedFloat` solo en el turno abierto: lo que la hoja de cierre
+  // pone en el campo. Opcionales: un servidor anterior no los manda.
+  fixedFloat?: string | null;
+  floatLeft?: string | null;
+  fixedFloatAtClose?: string | null;
+  withdrawal?: Withdrawal | null;
 }
 
 // Propina por entregar del turno abierto y a quién se le puede entregar.
@@ -275,8 +311,12 @@ export interface CashSessionRow {
   closedAt: string | null;
   openedByName: string;
   closedByName: string | null;
-  totalDifference: string;
+  // Null con el arqueo oculto (spec 035, R8).
+  totalDifference: string | null;
   notes: string | null;
+  // Con arqueo ciego, el último cierre de una caja no reabierta no muestra su arqueo a quien no
+  // configura la caja. Opcional: un backend viejo no lo manda.
+  arqueoHidden?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -294,6 +334,8 @@ export interface CashSessionDetail {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Ver CashSession.arqueoHidden: con él, totales, arqueo, conteo de cierre e ingresos vienen vacíos.
+  arqueoHidden?: boolean;
   // Las ventas que este corte cobró. Viven en el corte y no como filtro de la pantalla de Ventas:
   // ahí convivirían con el filtro de fechas y bastaría un rango que no toque el corte para llegar a
   // una pantalla vacía sin explicación.
@@ -314,11 +356,15 @@ export interface CashSessionDetail {
   refunds?: SessionRefund[];
   // Arqueo por terminal y propinas del turno (spec 032). Opcionales: un backend viejo no los manda.
   cardCountMode?: string;
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
   // La propina pendiente que el cierre dejó en caja para el siguiente turno.
   tipsCarriedOver?: string;
+  // Lo que se dejó de fondo, contra qué fijo, y el retiro (spec 035). Nulos en cierres de antes.
+  floatLeft?: string | null;
+  fixedFloatAtClose?: string | null;
+  withdrawal?: Withdrawal | null;
 }
 
 export interface CorteSale {
@@ -568,7 +614,10 @@ export interface ExpensePaymentBody {
 export const backofficeApi = {
   // Cajas (catálogo). `cashRegisters` = activas + estado de sesión; `allCashRegisters` = gestión.
   cashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers'),
-  allCashRegisters: () => api.get<{ items: CashRegister[] }>('/cash-registers/all'),
+  allCashRegisters: () => api.get<{ items: CashRegisterConfig[] }>('/cash-registers/all'),
+  // null quita el fondo fijo: el cierre vuelve a pedir teclearlo.
+  setFixedFloat: (id: number, fixedFloat: number | null) =>
+    api.put<CashRegisterConfig>(`/cash-registers/${id}/fixed-float`, { fixedFloat }),
   createCashRegister: (name: string) => api.post<CashRegister>('/cash-registers', { name }),
   updateCashRegister: (id: number, b: { name: string; isActive: boolean }) =>
     api.patch<CashRegister>(`/cash-registers/${id}`, b),
@@ -594,6 +643,8 @@ export const backofficeApi = {
     tipsDecision?: TipsDecision;
     terminalCounts?: Record<string, number>;
     floatLeft?: number;
+    fixedFloatShown?: number;
+    withdrawalUserId?: number;
   }) => api.post<CashSession>('/cash-sessions/close', { registerId, declared, ...extra }),
   cashTips: (registerId: number) => api.get<TipsPending>(`/cash-sessions/tips?registerId=${registerId}`),
   cashTipPayout: (registerId: number, input: TipPayoutInput) =>

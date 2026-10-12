@@ -282,9 +282,18 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
     sistema operativo con renglones de ~20 px, tapa la pantalla y no se acierta con el dedo. Va
     [`Picker`](../../web/src/components/Picker.tsx): una hoja inferior con filas grandes y buscador.
     Esta regla ya se había perdido una vez por vivir solo en el comentario de un componente; por eso
-    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema.
+    está aquí. Aplica igual a cualquier control cuyo desplegable pinte el sistema: el calendario de
+    `input type="date"` o `type="time"` también (celdas de ~30 px). Va
+    [`DatePickerButton`](../../web/src/components/DatePickerButton.tsx) o, para horas, un `Picker`
+    de pasos de 15 minutos (decidido el 2026-10-11).
   - **Todo control tappable mide al menos 44 px de alto.** Es el mínimo con el que un dedo acierta a
     la primera; por debajo, el operador toca dos veces y la segunda cae en otra cosa.
+  - **La pantalla la verifica el agente, no una persona con la tableta en la mano** (decidido el
+    2026-10-11). No hay paso manual «en tableta real» ni se deja como pendiente: se mide con
+    Playwright a 1024×600 contra el ambiente de pruebas, con capturas, y con subagentes que usan la
+    pantalla como alguien nuevo y reportan dónde se atoran. Lo que Chromium no reproduce (el teclado
+    del sistema, la densidad de una Surface) se simula —ventana encogida, `deviceScaleFactor`— y se
+    nombra como simulado, no como pendiente para alguien más.
 - **El texto de la interfaz es para quien opera el negocio, no para quien lo programa.** Este producto se vende. Una pantalla que justifica *por qué* una decisión técnica es la correcta, o que argumenta contra la alternativa, delata al desarrollador y resta confianza en el producto. En pantalla va lo que el operador necesita para decidir; el porqué vive en el comentario del código o en `docs/`.
   - **Prohibido en la UI**: justificar un tradeoff ("peor que el toque que esto viene a quitar"), nombrar internals (flags del navegador, endpoints, columnas) o advertir de algo que el usuario no puede accionar desde ahí.
   - **El detalle operativo que sí sirve** —cómo dejar la tablet lista, qué formato de imagen se acepta— se guarda detrás de un icono de ayuda y se redacta como instrucción en pasos, no como explicación. Ej.: el interruptor de impresión automática en [`PrintSettingsPage`](../../web/src/features/admin/PrintSettingsPage.tsx) dice qué hace en un renglón y deja el "cómo configurarlo" en un diálogo de ayuda.
@@ -325,6 +334,11 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
 
 - **`/speckit-analyze` corre antes de `/speckit-implement`, siempre.** El flujo publicado lo marca opcional; en este repo no lo es. Un hallazgo CRITICAL o HIGH bloquea la implementación hasta resolverse o hasta que el dueño lo exima explícitamente.
 - **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
+- **Una pantalla nueva o con disposición cambiada no se implementa sin maqueta elegida.** El hook
+  `after_plan` corre `/maquetas` antes que los revisores de diseño: 2 o 3 opciones navegables a
+  1024×600 por pantalla, el dueño elige y la decisión queda en la sección «Maquetas» del plan. Una
+  pantalla aprobada en una tabla se aprueba sin verla, y el defecto aparece en la tableta. Un plan
+  que toca `web/` con la sección vacía es un hallazgo CRITICAL de `/speckit-analyze`.
 - **Los hooks de lefthook quedan verdes** antes de commitear o pushear. `--no-verify` no se usa: si un hook falla, se arregla la causa. (Qué corre cada hook: `AGENTS.md`.)
 - **Verificación de backend antes de dar algo por bueno**: `make api-build && make api-test`.
 - Commits pequeños y enfocados.
@@ -348,4 +362,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.16.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-07
+**Version**: 1.18.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-11

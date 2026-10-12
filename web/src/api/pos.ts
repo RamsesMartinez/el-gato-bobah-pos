@@ -176,11 +176,8 @@ export const posApi = {
   // servidor y viene en la respuesta. Las formas se excluyen entre sí y con `amount`.
   chargeOrderShape: (id: number, body: { methodId: number; tip?: number; clientUuid: string; terminalId?: number } & ChargeShape) =>
     api.post<CobroHecho>(`/orders/${id}/pay`, body),
-  // Terminales de tarjeta y la del usuario (spec 032, punto 8). La del usuario la guarda el
-  // servidor al cobrar con ella: tocar el selector y abandonar el cobro no la cambia.
+  // Terminales de tarjeta (spec 032, punto 8). Ya no hay terminal del usuario (spec 036).
   cardTerminals: () => api.get<{ items: CardTerminal[] }>('/card-terminals'),
-  defaultTerminal: () => api.get<{ value: number | null }>('/me/preferences/card_terminal')
-    .then((r) => (typeof r?.value === 'number' ? r.value : null)).catch(() => null),
   // Cuánto cobraría /pay por una selección, sin cobrarla. La hoja no calcula el monto: si lo hiciera
   // habría dos reglas de dinero, y tarde o temprano dirían cosas distintas.
   quoteOrder: (id: number, shape: ChargeShape) => api.post<Quote>(`/orders/${id}/quote`, shape),
@@ -188,6 +185,10 @@ export const posApi = {
   // por cobrar.
   voidPayment: (id: number, paymentId: number, reason: string) =>
     api.post<{ outstanding: string; paid: boolean }>(`/orders/${id}/payments/${paymentId}/void`, { reason }),
+  // Corregir en qué terminal se cobró un pago con tarjeta (permiso payments.change_terminal).
+  // `fromTerminalId` es la que vio la pantalla: si otro cambio llegó antes, el servidor responde 409.
+  changePaymentTerminal: (id: number, paymentId: number, body: { fromTerminalId: number | null; terminalId: number; reason: string }) =>
+    api.post<OrderView>(`/orders/${id}/payments/${paymentId}/terminal`, body),
   // Pasar productos a otro pedido abierto, o a uno nuevo con `toOrderId` null.
   moveLines: (id: number, body: { clientUuid: string; toOrderId: number | null; lines: SelectedPieces[] }) =>
     api.post<{ from: OrderView; to: OrderView }>(`/orders/${id}/lines/move`, body),

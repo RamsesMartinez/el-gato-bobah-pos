@@ -141,7 +141,9 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const [yieldText, setYieldText] = useState(data.yield ? fmt(Number(data.yield)) : '');
   const [dirty, setDirtyState] = useState(false);
   const [removed, setRemoved] = useState<{ undo: () => void; label: string } | null>(null);
-  const [applyTwins, setApplyTwins] = useState(true);
+  // Apagado por omisión: un mismo nombre puede ser otra cosa (la salsa y el sazonador en polvo
+  // «Lemon Pepper»), y copiar sin querer pisó una receta en producción (2026-10-11).
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
   const [picker, setPicker] = useState<null | 'ing' | 'part' | 'link' | 'copy'>(null);
   const [pickerError, setPickerError] = useState('');
   const [failure, setFailure] = useState<null | { conflict: boolean; message: string }>(null);
@@ -245,14 +247,16 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
   const confirmOnly = data.status === 'estimated' && !dirty;
   const twins = kind === 'option' ? (data.sameName ?? []) : [];
   const offerTwins = twins.length > 0 && (mode === 'items' || mode === 'product' || mode === 'nothing') && !confirmOnly;
+  const chosen = offerTwins ? twins.filter((t) => picked.has(t.id)) : [];
+  const togglePick = (id: number) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const body = (): CompositionBody => ({
     items: mode === 'items' ? rows.map((r) => ({ ingredientId: r.ingredientId, quantity: fmt(toNumber(r.text)), unitId: r.unitId })) : [],
     linkedProductId: mode === 'product' ? linked : null,
     components: mode === 'package' ? parts : [],
     ...(isIng ? { yield: mode === 'items' ? fmt(yieldNum) : null } : {}),
-    ...(offerTwins && applyTwins
-      ? { alsoOptionIds: twins.map((t) => t.id), alsoBasedOn: Object.fromEntries(twins.map((t) => [t.id, t.stamp ?? ''])) }
+    ...(chosen.length
+      ? { alsoOptionIds: chosen.map((t) => t.id), alsoBasedOn: Object.fromEntries(chosen.map((t) => [t.id, t.stamp ?? ''])) }
       : {}),
     basedOn: data.stamp ?? '',
   });
@@ -263,7 +267,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       if (mode === 'nothing') {
         // «No gasta insumos» es una receta vacía confirmada por una persona.
         await adminApi.saveComposition(kind, id, { ...body(), items: [], components: [], linkedProductId: null });
-        if (offerTwins && applyTwins) for (const t of twins) await adminApi.confirmComposition(kind, t.id);
+        for (const t of chosen) await adminApi.confirmComposition(kind, t.id);
         return adminApi.confirmComposition(kind, id);
       }
       return adminApi.saveComposition(kind, id, body());
@@ -272,7 +276,7 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
       qc.setQueryData(['admin', 'composition', kind, id], c);
       qc.invalidateQueries({ queryKey: ['admin'] });
       qc.invalidateQueries({ queryKey: ['ingredients'] });
-      const extra = offerTwins && applyTwins ? ` (y ${twins.length} con el mismo nombre)` : '';
+      const extra = chosen.length ? ` (y ${chosen.length} con el mismo nombre)` : '';
       toaster.create({ title: `${confirmOnly ? 'Confirmada' : 'Lista'}: ${name}${extra}`, type: 'success' });
       onDirty(false);
       if (onSaved) onSaved(); else onClose();
@@ -375,6 +379,27 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
               </Button>
             ))}
           </Grid>
+
+          {/* Antes de los insumos: con varios renglones quedaba bajo el corte de la tableta. */}
+          {offerTwins && (
+            <VStack align="stretch" gap={1.5}>
+              <Text fontSize="sm" color="fg.muted">Se llama igual en {twins.length} {twins.length === 1 ? 'grupo' : 'grupos'} más. Marca dónde guardar esta misma receta:</Text>
+              {twins.map((t) => {
+                const on = picked.has(t.id);
+                return (
+                  <Button key={t.id} aria-pressed={on} onClick={() => togglePick(t.id)}
+                    variant="outline" h="auto" minH="48px" py={1.5} px={3} justifyContent="start" textAlign="left" gap={3}
+                    borderColor={on ? 'red.600' : 'border'} bg={on ? 'red.50' : undefined}>
+                    <Text fontSize="lg" lineHeight="1" aria-hidden>{on ? '☑' : '☐'}</Text>
+                    <VStack align="start" gap={0} minW={0} flex="1">
+                      <Text fontWeight="600" truncate maxW="100%">También en «{t.group}»</Text>
+                      <Text fontSize="xs" color="fg.muted" fontWeight="normal" truncate maxW="100%">Hoy: {t.today || 'Pendiente'}</Text>
+                    </VStack>
+                  </Button>
+                );
+              })}
+            </VStack>
+          )}
 
           {mode === 'items' && (
             <VStack align="stretch" gap={2}>
@@ -523,11 +548,6 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
         <Text truncate>{preview}</Text>
       </HStack>
       <DrawerFooter gap={2}>
-        {offerTwins && (
-          <Button minH="44px" variant="outline" aria-pressed={applyTwins} onClick={() => setApplyTwins((v) => !v)}>
-            {applyTwins ? '☑' : '☐'} También en «{twins.map((t) => t.group).join('», «')}»
-          </Button>
-        )}
         <Text flex="1" fontSize="sm" color={hint ? 'orange.700' : 'fg.muted'}>{hint || unsaved}</Text>
         <Button variant="ghost" minH="48px" onClick={requestClose}>Cancelar</Button>
         <Button minH="48px" colorPalette="red" disabled={!confirmOnly && !valid} loading={save.isPending} onClick={() => save.mutate()}>

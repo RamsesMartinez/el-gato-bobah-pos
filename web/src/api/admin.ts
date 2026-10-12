@@ -64,7 +64,8 @@ export interface Composition {
   // Cuándo se guardó por última vez: se devuelve al guardar para saber si otra persona la cambió.
   stamp?: string;
   // Extras que se llaman igual en otro grupo.
-  sameName?: { id: number; group: string; stamp?: string }[];
+  // today: lo que ese extra lleva hoy, para que copiarle la receta no esconda que es otra cosa.
+  sameName?: { id: number; group: string; stamp?: string; today?: string }[];
 }
 export interface CompositionBody {
   items: { ingredientId: number; quantity: string; unitId: number }[];

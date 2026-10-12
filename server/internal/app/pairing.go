@@ -534,6 +534,17 @@ func (s *MenusDePlataformaService) syncPrices(ctx context.Context, companyID, co
 			}); err != nil {
 				return err
 			}
+			// El autor es el sistema: el precio lo puso la plataforma al leer el menú, nadie lo tecleó.
+			entity := "product"
+			if w.Target.Kind == domain.LocalOpcion {
+				entity = "modifier_option"
+			}
+			if err := recordAudit(ctx, q, domain.AuditEvent{Action: "price.synced", ActorKind: domain.ActorSystem,
+				EntityType: entity, EntityID: w.Target.ID,
+				Before: map[string]any{"price": w.Old, "platformId": con.DeliveryPlatformID},
+				After:  map[string]any{"price": w.Price, "platformId": con.DeliveryPlatformID, "name": w.Name}}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

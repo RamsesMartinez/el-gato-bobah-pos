@@ -1,4 +1,5 @@
-import { Box, Button, HStack, Input, Text, Wrap } from '@chakra-ui/react';
+import { DatePickerButton } from './DatePickerButton';
+import { Box, Button, HStack, Text, Wrap } from '@chakra-ui/react';
 
 import { mensajeDeRango, validarRango } from '../domain/rangoDeFechas';
 
@@ -26,9 +27,10 @@ interface Props {
 // lo que pasara— y las reglas de qué rango se puede pedir viven en `domain/rangoDeFechas`, no aquí:
 // esto solo las pinta.
 //
-// Los campos de fecha son `input type="date"`, que en tableta abre el calendario del sistema a
-// pantalla completa. No es el `<select>` que la constitución prohíbe: lo que ahí se prohíbe es el
-// desplegable de renglones de 20 px, y el calendario nativo es justo lo contrario.
+// Las fechas se eligen con `DatePickerButton`, no con `input type="date"`: el calendario de ese
+// campo lo pinta el sistema, con celdas de ~30 px en una tableta de 7", que es lo que la
+// constitución prohíbe para cualquier control cuyo desplegable pinte el sistema (decisión del dueño,
+// 2026-10-11). Los días posteriores a `hoy` no se pueden tocar.
 export function RangoDeFechas({ presets, preset, onPreset, desde, hasta, onRango, hoy }: Props) {
   const esRango = preset === 'rango';
   const motivo = esRango ? validarRango(desde, hasta, hoy) : null;
@@ -56,27 +58,9 @@ export function RangoDeFechas({ presets, preset, onPreset, desde, hasta, onRango
 
       {esRango && (
         <HStack gap={2} mt={2} flexWrap="wrap" align="center">
-          <Input
-            type="date"
-            size="sm"
-            minH="44px"
-            w="160px"
-            max={hoy}
-            aria-label="Desde"
-            value={desde}
-            onChange={(e) => onRango(e.target.value, hasta)}
-          />
+          <DatePickerButton label="Desde" value={desde} max={hoy} onChange={(v) => onRango(v, hasta)} />
           <Text fontSize="sm" color="fg.muted">al</Text>
-          <Input
-            type="date"
-            size="sm"
-            minH="44px"
-            w="160px"
-            max={hoy}
-            aria-label="Hasta"
-            value={hasta}
-            onChange={(e) => onRango(desde, e.target.value)}
-          />
+          <DatePickerButton label="Hasta" value={hasta} max={hoy} onChange={(v) => onRango(desde, v)} />
           {/* El aviso va JUNTO a los campos y no donde iría la tabla: mientras el rango está a
               medias la pantalla sigue mostrando el periodo anterior, y hay que poder ver de un
               vistazo que lo que se está capturando todavía no se aplicó. */}

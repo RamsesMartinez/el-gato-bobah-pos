@@ -42,6 +42,19 @@
 
 [Gates determined based on constitution file]
 
+## Pantallas y maquetas
+
+<!--
+  Cada pantalla nueva o con disposición cambiada en web/: dónde vive, cómo se reparte el alto de
+  1024×600 y qué componentes existentes usa. El hook after_plan corre /maquetas, que publica 2 o 3
+  opciones navegables por pantalla, el dueño elige y la tabla de abajo queda llena.
+  Si la feature no toca pantallas, escribe "Sin pantallas nuevas" y borra la tabla.
+-->
+
+| Pantalla | Maquetas | Elegida | Por qué |
+|----------|----------|---------|---------|
+| [nombre] | [liga] | [A/B/C] | [una línea] |
+
 ## Project Structure
 
 ### Documentation (this feature)

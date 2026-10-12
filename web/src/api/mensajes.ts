@@ -8,6 +8,14 @@ import { ApiError } from './client';
 //
 // La constitución lo prohíbe en dos frentes: en pantalla no van internals, y un aviso que el
 // operador no puede accionar es peor que ninguno.
+// isOffline: el pedido no llegó al servidor. Un ApiError con otro código es que el servidor sí
+// respondió, y mandar a revisar el internet sería mandar a buscar donde no es.
+export function isOffline(e: unknown): boolean {
+  // Solo NETWORK: el cliente ya envuelve el fallo de `fetch`. Un TypeError suelto es un defecto del
+  // código, y mandar a revisar el wifi por eso es mandar a buscar donde no es.
+  return e instanceof ApiError && e.code === 'NETWORK';
+}
+
 export function mensajeDeError(e: unknown): string {
   if (e instanceof ApiError) return MENSAJES_DE_CUENTA[e.code] ?? e.message;
   // Un fallo de red no tiene mensaje que sirva: el navegador dice "Failed to fetch" y quien opera

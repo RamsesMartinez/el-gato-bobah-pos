@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DatePickerButton } from '../../components/DatePickerButton';
 import {
   Box, Button, HStack, VStack, Text, Input, Table, Badge, Center, Spinner, Separator,
 } from '@chakra-ui/react';
@@ -126,8 +127,7 @@ export function ExpenseDetailDialog({ id, onClose, onChanged }: {
                     <HStack flexWrap="wrap" gap={3} justify="space-between">
                       <Box>
                         <Text fontSize="xs" color="fg.muted" mb={1}>Fecha de recepción</Text>
-                        <Input type="date" w="170px" value={receivedAt}
-                          onChange={(e) => setReceivedAt(e.target.value)} />
+                        <DatePickerButton label="Fecha de recepción" w="170px" value={receivedAt} onChange={setReceivedAt} />
                       </Box>
                       <Button colorPalette="green" loading={receive.isPending} onClick={() => receive.mutate()}>
                         <LuPackageCheck /> Recibir mercancía

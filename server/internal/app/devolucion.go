@@ -58,7 +58,11 @@ func (s *OrdersService) Devolver(ctx context.Context, cmd DevolucionCmd) error {
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		return s.devolverEnTx(ctx, q, cmd, motivo)
+		if err := s.devolverEnTx(ctx, q, cmd, motivo); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "payment.refunded", cmd.OrderID, &cmd.ActorID, nil,
+			map[string]any{"amount": cmd.Monto, "lineId": cmd.LineID, "reason": motivo, "cardFolio": cmd.CardFolio})
 	})
 }
 
@@ -230,11 +234,11 @@ func (s *OrdersService) refundable(ctx context.Context, q *db.Queries, orderID i
 	for _, e := range entradas {
 		t.paid = t.paid.Add(e.Monto)
 	}
-	devuelto, err := q.SumOrderRefunds(ctx, db.SumOrderRefundsParams{OrderID: orderID, LineID: lineID})
+	refundedParts, err := q.SumOrderRefunds(ctx, db.SumOrderRefundsParams{OrderID: orderID, LineID: lineID})
 	if err != nil {
 		return refundTop{}, err
 	}
-	t.refundedTotal = devuelto.DevueltoTotal
+	t.refundedTotal = refundedParts.DevueltoTotal
 	t.remaining = domain.MontoDevolvible(t.paid, t.refundedTotal)
 	if lineID != nil {
 		importe, err := q.GetOrderLineForRefund(ctx, db.GetOrderLineForRefundParams{LineID: *lineID, OrderID: orderID})
@@ -244,7 +248,7 @@ func (s *OrdersService) refundable(ctx context.Context, q *db.Queries, orderID i
 			}
 			return refundTop{}, err
 		}
-		t.remaining = domain.LineRefundable(t.paid, t.refundedTotal, importe, devuelto.DevueltoDelRenglon)
+		t.remaining = domain.LineRefundable(t.paid, t.refundedTotal, importe, refundedParts.DevueltoDelRenglon)
 	}
 	return t, nil
 }
@@ -264,74 +268,90 @@ func (s *OrdersService) CancelarConDevolucion(ctx context.Context, cmd Cancelaci
 		return err
 	}
 	return s.store.WithTx(ctx, func(q *db.Queries) error {
-		// Con candado, como CancelarRenglon: la reposición neta lee lo que ya repuso un renglón, y
-		// una cancelación de renglón concurrente no debe colarse entre esa lectura y la escritura.
-		o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return domain.ErrNotFound
-			}
+		var refundedParts []domain.ParteDeDevolucion
+		if err := s.cancelarEnTx(ctx, q, cmd, motivo, &refundedParts); err != nil {
 			return err
 		}
-		// Un entregado que debe se cancela con su motivo («se fue sin pagar»): es la salida que exige
-		// el cierre sin fiados (2026-10-09). La comida ya salió, así que no se repone inventario.
-		if o.Status == db.OrderStatusEntregada {
-			return s.cancelDeliveredOwing(ctx, q, o.Total, cmd, motivo)
+		refunds := make([]map[string]any, 0, len(refundedParts))
+		for _, p := range refundedParts {
+			refunds = append(refunds, map[string]any{"methodId": p.MetodoID, "method": p.Nombre, "amount": p.Monto, "tip": p.Tip})
 		}
-		if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
-			return domain.ErrConflict
-		}
-		lineas, err := lineasDeEntrega(ctx, q, cmd.OrderID)
-		if err != nil {
-			return err
-		}
-		if domain.HayEntregaParcial(lineas) {
-			return domain.ErrCancelarConEntregas
-		}
-
-		entradas, err := s.cobradoPorMetodo(ctx, q, cmd.OrderID)
-		if err != nil {
-			return err
-		}
-		// Lo que queda por devolver de CADA medio, cuenta y propina: cancelar dice que la venta no
-		// ocurrió, así que el cliente recibe lo que dio (spec 031, D9). Lo ya devuelto antes no se
-		// devuelve otra vez.
-		partes := domain.SplitCancellationRefund(entradas)
-		if len(entradas) > 0 && !cmd.Devolver {
-			return domain.ErrCancelarSinDevolver
-		}
-		if len(partes) > 0 {
-			if err := s.recordRefundParts(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID, cmd.CardFolio); err != nil {
-				return err
-			}
-			if err := q.RecalcOrderRefundAmount(ctx, cmd.OrderID); err != nil {
-				return err
-			}
-		}
-
-		if err := q.CancelOrder(ctx, db.CancelOrderParams{
-			ID: cmd.OrderID, CancelledBy: &cmd.ActorID, CancelReason: &motivo,
-		}); err != nil {
-			return err
-		}
-		// Cada renglón vivo con la MISMA regla que quitarlo: lo que se prepara y ya salió a cocina se
-		// consumió y no vuelve (spec 031, D11). Lo que no consta de qué renglón salió —anterior a
-		// 0060— se repone por pedido, como siempre.
-		renglones, err := q.ListLinesToSplit(ctx, cmd.OrderID)
-		if err != nil {
-			return err
-		}
-		for _, l := range renglones {
-			if !domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt)) {
-				continue
-			}
-			lineID := l.ID
-			if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{LineID: &lineID, ActorID: &cmd.ActorID}); err != nil {
-				return err
-			}
-		}
-		return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &cmd.OrderID, ActorID: &cmd.ActorID})
+		return auditOrder(ctx, q, "order.cancelled", cmd.OrderID, &cmd.ActorID, nil,
+			map[string]any{"reason": motivo, "refunds": refunds})
 	})
+}
+
+// cancelarEnTx es la cancelación en sí, dentro de la transacción de CancelarConDevolucion.
+// `refunded` recibe lo que se devolvió por cada medio, para el evento de la bitácora.
+func (s *OrdersService) cancelarEnTx(ctx context.Context, q *db.Queries, cmd CancelacionCmd, motivo string, refunded *[]domain.ParteDeDevolucion) error {
+	// Con candado, como CancelarRenglon: la reposición neta lee lo que ya repuso un renglón, y
+	// una cancelación de renglón concurrente no debe colarse entre esa lectura y la escritura.
+	o, err := q.GetOrderForUpdate(ctx, cmd.OrderID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		return err
+	}
+	// Un entregado que debe se cancela con su motivo («se fue sin pagar»): es la salida que exige
+	// el cierre sin fiados (2026-10-09). La comida ya salió, así que no se repone inventario.
+	if o.Status == db.OrderStatusEntregada {
+		return s.cancelDeliveredOwing(ctx, q, o.Total, cmd, motivo)
+	}
+	if !domain.CanTransition(string(o.Status), domain.StatusCancelada) {
+		return domain.ErrConflict
+	}
+	lineas, err := lineasDeEntrega(ctx, q, cmd.OrderID)
+	if err != nil {
+		return err
+	}
+	if domain.HayEntregaParcial(lineas) {
+		return domain.ErrCancelarConEntregas
+	}
+
+	entradas, err := s.cobradoPorMetodo(ctx, q, cmd.OrderID)
+	if err != nil {
+		return err
+	}
+	// Lo que queda por devolver de CADA medio, cuenta y propina: cancelar dice que la venta no
+	// ocurrió, así que el cliente recibe lo que dio (spec 031, D9). Lo ya devuelto antes no se
+	// devuelve otra vez.
+	partes := domain.SplitCancellationRefund(entradas)
+	*refunded = partes
+	if len(entradas) > 0 && !cmd.Devolver {
+		return domain.ErrCancelarSinDevolver
+	}
+	if len(partes) > 0 {
+		if err := s.recordRefundParts(ctx, q, cmd.OrderID, nil, partes, motivo, cmd.ActorID, cmd.CardFolio); err != nil {
+			return err
+		}
+		if err := q.RecalcOrderRefundAmount(ctx, cmd.OrderID); err != nil {
+			return err
+		}
+	}
+
+	if err := q.CancelOrder(ctx, db.CancelOrderParams{
+		ID: cmd.OrderID, CancelledBy: &cmd.ActorID, CancelReason: &motivo,
+	}); err != nil {
+		return err
+	}
+	// Cada renglón vivo con la MISMA regla que quitarlo: lo que se prepara y ya salió a cocina se
+	// consumió y no vuelve (spec 031, D11). Lo que no consta de qué renglón salió —anterior a
+	// 0060— se repone por pedido, como siempre.
+	renglones, err := q.ListLinesToSplit(ctx, cmd.OrderID)
+	if err != nil {
+		return err
+	}
+	for _, l := range renglones {
+		if !domain.ReponeInventario(l.NeedsPrep, nullTime(l.EnviadoACocinaAt)) {
+			continue
+		}
+		lineID := l.ID
+		if err := q.RestockCancelledLine(ctx, db.RestockCancelledLineParams{LineID: &lineID, ActorID: &cmd.ActorID}); err != nil {
+			return err
+		}
+	}
+	return q.RestockCancelledOrder(ctx, db.RestockCancelledOrderParams{Oid: &cmd.OrderID, ActorID: &cmd.ActorID})
 }
 
 // cancelDeliveredOwing cancela un entregado que no pagó nada. Con un cobro adentro se niega:
@@ -399,7 +419,8 @@ func (s *OrdersService) WriteOff(ctx context.Context, cmd WriteOffCmd) error {
 		if n == 0 {
 			return domain.ErrCancelDeliveredPaid
 		}
-		return nil
+		return auditOrder(ctx, q, "stock.written_off", cmd.OrderID, &cmd.ActorID, nil,
+			map[string]any{"amount": monto, "reason": motivo})
 	})
 }
 
@@ -519,7 +540,10 @@ func (s *OrdersService) RemovePieces(ctx context.Context, orderID, lineID, actor
 		if err != nil {
 			return err
 		}
-		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
+		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"lineId": lineID, "qty": qty, "reason": motivo})
 	})
 	return repuso, err
 }
@@ -669,7 +693,9 @@ func (s *OrdersService) VoidPayment(ctx context.Context, orderID, paymentID, act
 			return err
 		}
 		res = VoidResult{Outstanding: domain.PorCobrar(o.Total, sums.Pagado), Paid: domain.PedidoSaldado(sums.Pagado, o.Total)}
-		return nil
+		return auditOrder(ctx, q, "payment.voided", orderID, &actor,
+			map[string]any{"paymentId": p.ID, "amount": p.Amount, "tip": p.TipAmount, "methodId": p.PaymentMethodID},
+			map[string]any{"reason": why, "paid": sums.Pagado})
 	})
 	return res, err
 }
@@ -829,7 +855,10 @@ func (s *OrdersService) CancelPending(ctx context.Context, orderID, actor int64,
 		if err != nil {
 			return err
 		}
-		return cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas)
+		if err := cerrarSiYaSeEntregoTodo(ctx, q, orderID, lineas); err != nil {
+			return err
+		}
+		return auditOrder(ctx, q, "order.line_removed", orderID, &actor, nil, map[string]any{"pending": true, "reason": reason})
 	})
 	return res, err
 }

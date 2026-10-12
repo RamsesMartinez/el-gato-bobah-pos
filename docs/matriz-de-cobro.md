@@ -357,8 +357,8 @@ función para `/quote` y `/pay`; la pantalla nunca suma una selección.
   Por eso el cobro se registra de a un pedazo, en el instante en que el dinero está en la mano.
 - **El conteo físico del cajón.** El arqueo compara lo esperado contra lo declarado; que el declarado
   sea cierto depende de quien cuenta.
-- **La pantalla en una tableta real.** Las medidas se calculan contra el presupuesto de 1024×600; lo
-  que se ve en la Surface se verifica a mano.
+- **La densidad de píxeles de la Surface.** Las medidas se calculan contra el presupuesto de
+  1024×600 en Chromium; la densidad se simula con `deviceScaleFactor`, no se verifica a mano.
 
 ## J. Devoluciones, cortes y reportes de la auditoría de dinero (spec 031)
 

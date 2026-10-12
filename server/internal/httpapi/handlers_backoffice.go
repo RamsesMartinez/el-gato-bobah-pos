@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -148,6 +149,28 @@ func (h *Handlers) UpdateCashRegister(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, v)
 }
 
+// PUT /cash-registers/{id}/fixed-float — el fondo que se queda al cerrar (spec 035); null lo quita.
+func (h *Handlers) SetFixedFloat(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		Error(w, domain.ErrValidation)
+		return
+	}
+	var body struct {
+		FixedFloat *decimal.Decimal `json:"fixedFloat"`
+	}
+	if err := Decode(r, &body); err != nil {
+		Error(w, err)
+		return
+	}
+	v, err := h.backoffice.SetFixedFloat(r.Context(), id, body.FixedFloat)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, v)
+}
+
 // GET /cash/denominations?currency= — qué piezas se pueden contar.
 //
 // La moneda es un parámetro de frontera: uno desconocido se RECHAZA y no cae a MXN en silencio. Un
@@ -256,6 +279,11 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 		TerminalCounts map[string]decimal.Decimal `json:"terminalCounts"`
 		// FloatLeft: el fondo que se queda para el siguiente turno (2026-10-10).
 		FloatLeft *decimal.Decimal `json:"floatLeft"`
+		// FixedFloatShown y WithdrawalUserID (spec 035): el fijo que la hoja mostró y quién se lleva
+		// el retiro. Ausentes en una tableta con el front anterior: el servidor usa el fijo vigente y
+		// a quien cierra.
+		FixedFloatShown  *decimal.Decimal `json:"fixedFloatShown"`
+		WithdrawalUserID *int64           `json:"withdrawalUserId"`
 	}
 	if err := Decode(r, &body); err != nil {
 		Error(w, err)
@@ -285,6 +313,7 @@ func (h *Handlers) CloseCashSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFrom(r.Context())
 	sess, err := h.backoffice.CloseSession(r.Context(), body.RegisterID, u.ID, app.CierreCmd{
 		TerminalCounts: terminales, FloatLeft: body.FloatLeft,
+		FixedFloatShown: body.FixedFloatShown, WithdrawalUserID: body.WithdrawalUserID,
 		Declarado: declared, Piezas: piezasDelBody(body.Counts),
 		Total: body.CountedCash, Motivo: body.ManualReason, Notas: body.Notes, Propinas: body.TipsDecision,
 	})
@@ -379,7 +408,8 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 			*p.dst = &d
 		}
 	}
-	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
+	u, _ := userFrom(r.Context())
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return
@@ -394,7 +424,8 @@ func (h *Handlers) CashSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Error(w, domain.ErrValidation)
 		return
 	}
-	view, err := h.backoffice.SessionDetail(r.Context(), id)
+	u, _ := userFrom(r.Context())
+	view, err := h.backoffice.SessionDetailFor(r.Context(), id, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return

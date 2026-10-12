@@ -12,5 +12,5 @@ test('con caja abierta muestra el día del turno y no deja editarlo', () => {
 
 test('sin caja abierta se elige el día', () => {
   render(<Provider><DiaDelGasto turno={null} value="2026-10-09" onChange={() => {}} /></Provider>);
-  expect(screen.getByLabelText('Día del gasto')).toHaveValue('2026-10-09');
+  expect(screen.getByRole('button', { name: 'Día del gasto' })).toHaveTextContent('9 oct 2026');
 });
