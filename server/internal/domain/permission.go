@@ -17,13 +17,16 @@ const (
 	PermAttendanceCorrectOthers Permission = "attendance.correct_others"
 	PermAttendanceCorrectOwn    Permission = "attendance.correct_own"
 	PermAuditView               Permission = "audit.view"
+
+	// Corregir en qué terminal se cobró un pago (spec 036). Mueve dinero entre terminales del corte.
+	PermPaymentsChangeTerminal Permission = "payments.change_terminal"
 )
 
 // AllPermissions devuelve todos los permisos que existen, en un orden fijo.
 func AllPermissions() []Permission {
 	return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
 		PermAttendanceConfigure, PermAttendanceReport, PermAttendanceCorrectOthers, PermAttendanceCorrectOwn,
-		PermAuditView}
+		PermAuditView, PermPaymentsChangeTerminal}
 }
 
 // PermissionsFor devuelve los permisos de un rol. Nunca devuelve nil: la sesión lo entrega como
@@ -39,7 +42,7 @@ func PermissionsFor(role Role) []Permission {
 		return AllPermissions()
 	case RoleGerente:
 		return []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
-			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView}
+			PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal}
 	case RoleCajero, RoleMesero:
 		return []Permission{PermOrdersMoveLines, PermOrdersCancelPending}
 	}
@@ -68,6 +71,8 @@ func PermissionDeniedMessage(p Permission) string {
 		return "Tu usuario no puede corregir su propia asistencia"
 	case PermAuditView:
 		return "Tu usuario no puede ver la bitácora"
+	case PermPaymentsChangeTerminal:
+		return "Tu usuario no puede cambiar la terminal de un pago"
 	}
 	return "Tu usuario no puede hacer esto"
 }

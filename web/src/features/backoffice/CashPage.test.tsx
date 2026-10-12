@@ -816,16 +816,41 @@ test('MovementsTable etiqueta la propina entregada como Propina, no como Salida'
 // Un faltante de $2 en una terminal no se veía en ningún lado una vez cerrado el turno.
 test('el corte cerrado muestra declarado, esperado y diferencia por terminal y las propinas', () => {
   wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
-    terminalCounts: [{ terminalId: 3, name: 'Getnet', expected: '250', declared: '248', difference: '-2' }],
+    terminalCounts: [{ terminalId: 3, name: 'Terminal B', expected: '250', declared: '248', difference: '-2' }],
     tipsPaidOut: '40', cardTipsPaidInCash: '15', tipsCarriedOver: '12.40',
   }} />);
-  const fila = screen.getByText('Getnet').closest('tr') as HTMLElement;
+  const fila = screen.getByText('Terminal B').closest('tr') as HTMLElement;
   expect(within(fila).getByText('$248')).toBeInTheDocument();
   expect(within(fila).getByText('$250')).toBeInTheDocument();
   expect(within(fila).getByText(/-\$2/)).toBeInTheDocument();
   expect(screen.getByText(/Propinas entregadas/).closest('tr')?.textContent).toContain('$40');
   expect(screen.getByText(/Se quedó en caja/).closest('tr')?.textContent).toContain('$12.40');
   expect(screen.getByText(/tarjeta pagada en efectivo/).closest('tr')?.textContent).toContain('$15');
+});
+
+// Si alguien corrigió la terminal de un pago después del arqueo (spec 036), lo firmado no cambia y
+// el corte lo dice terminal por terminal. Sin el aviso, el faltante de Terminal A real seguiría
+// viéndose como faltante aunque el dinero ya esté en Terminal B.
+test('el corte cerrado avisa qué terminal cambió después del arqueo, y solo esa', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [
+      { terminalId: 2, name: 'Terminal A', expected: '250', declared: '0', difference: '-250', expectedNow: '0', differenceNow: '0' },
+      { terminalId: 3, name: 'Terminal B', expected: '0', declared: '0', difference: '0', expectedNow: '250', differenceNow: '-250' },
+      { terminalId: 4, name: 'Clip', expected: '50', declared: '50', difference: '0', expectedNow: '50', differenceNow: '0' },
+    ],
+  }} />);
+  const avisos = screen.getAllByRole('status').map((n) => n.textContent);
+  expect(avisos).toEqual([
+    'Terminal A: el esperado pasó de $250 a $0 después del arqueo. Diferencia ahora: $0',
+    'Terminal B: el esperado pasó de $0 a $250 después del arqueo. Diferencia ahora: -$250',
+  ]);
+});
+
+test('un backend sin «expectedNow» no inventa avisos', () => {
+  wrap(<TerminalesYPropinasDelCorte currency="MXN" session={{
+    terminalCounts: [{ terminalId: 3, name: 'Terminal B', expected: '250', declared: '248', difference: '-2' }],
+  }} />);
+  expect(screen.queryByRole('status')).toBeNull();
 });
 
 test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () => {

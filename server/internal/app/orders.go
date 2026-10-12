@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -159,18 +158,24 @@ type OrderView struct {
 type PaymentView struct {
 	ID int64 `json:"id"`
 	// Number es el que lleva su ticket impreso, y no cambia: un pago devuelto conserva el suyo.
-	Number     int             `json:"number"`
-	Voided     bool            `json:"voided"`
-	VoidedAt   *time.Time      `json:"voidedAt,omitempty"`
-	VoidReason string          `json:"voidReason,omitempty"`
-	MethodID   int16           `json:"methodId"`
-	MethodName string          `json:"methodName"`
+	Number     int        `json:"number"`
+	Voided     bool       `json:"voided"`
+	VoidedAt   *time.Time `json:"voidedAt,omitempty"`
+	VoidReason string     `json:"voidReason,omitempty"`
+	MethodID   int16      `json:"methodId"`
+	MethodName string     `json:"methodName"`
+	// MethodKind dice si es tarjeta: solo esos tienen terminal. Vacío en un pago devuelto.
+	MethodKind string          `json:"methodKind"`
 	Amount     decimal.Decimal `json:"amount"`
 	Tip        decimal.Decimal `json:"tip"`
 	Reference  string          `json:"reference"`
 	PaidAt     time.Time       `json:"paidAt"`
 	ReceivedBy string          `json:"receivedBy"`
 	Split      *SplitPartView  `json:"split"`
+	// TerminalID y TerminalName: en qué terminal se cobró con tarjeta; null en efectivo, en un pago
+	// devuelto y en uno de tarjeta anterior a las terminales.
+	TerminalID   *int64  `json:"terminalId"`
+	TerminalName *string `json:"terminalName"`
 	// Lines es lo que cubrió: vacío en un pago por monto o por partes, nunca null.
 	Lines []PaymentLineView `json:"lines"`
 }
@@ -764,9 +769,10 @@ func paymentsOf(ctx context.Context, q *db.Queries, orderID int64) ([]PaymentVie
 			pl = []PaymentLineView{}
 		}
 		out = append(out, PaymentView{
-			ID: p.ID, Number: int(deref16(p.PaymentNumber)), MethodID: p.PaymentMethodID, MethodName: p.MethodName,
+			ID: p.ID, Number: int(deref16(p.PaymentNumber)), MethodID: p.PaymentMethodID, MethodName: p.MethodName, MethodKind: p.MethodKind,
 			Amount: p.Amount, Tip: p.TipAmount, Reference: p.Reference, PaidAt: p.CreatedAt,
 			ReceivedBy: p.ReceivedBy, Split: splitView(p.SplitPart, p.SplitOf), Lines: pl,
+			TerminalID: p.CardTerminalID, TerminalName: p.CardTerminalName,
 		})
 	}
 	for _, v := range voids {
@@ -1839,7 +1845,7 @@ type ChargeCmd struct {
 	Lines        []domain.SelectedPieces
 	AllRemaining bool
 	Split        *ChargeSplit
-	// TerminalID: la terminal de un cobro con tarjeta (spec 032). Nil = la del usuario o la única de
+	// TerminalID: la terminal de un cobro con tarjeta (spec 032). Nil = la única de
 	// la sucursal; con varias y sin ninguna, el cobro se rechaza.
 	TerminalID *int64
 }
@@ -2018,7 +2024,7 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		// La terminal se resuelve antes de escribir: un cobro con tarjeta sin terminal no entra.
 		var terminal *db.ActiveTerminalsOfRegisterBranchRow
 		if m.Kind == db.PaymentKindTarjeta {
-			t, err := resolveTerminal(ctx, q, sess.RegisterID, cmd.ActorID, cmd.TerminalID)
+			t, err := resolveTerminal(ctx, q, sess.RegisterID, cmd.TerminalID)
 			if err != nil {
 				return err
 			}
@@ -2057,15 +2063,6 @@ func (s *OrdersService) Charge(ctx context.Context, cmd ChargeCmd) (*ChargeResul
 		}
 		if terminal != nil {
 			if err := q.SetPaymentTerminal(ctx, db.SetPaymentTerminalParams{ID: paymentID, CardTerminalID: &terminal.ID, CardTerminalName: &terminal.Name}); err != nil {
-				return err
-			}
-		}
-		// La terminal del usuario es la última con la que COBRÓ eligiéndola, en la misma transacción:
-		// tocar el selector y abandonar el cobro no la cambia. La que se usó sola por ser la única no
-		// cuenta: al agregar una segunda terminal se volvería a preguntar.
-		if terminal != nil && cmd.TerminalID != nil {
-			v, _ := json.Marshal(terminal.ID)
-			if err := q.SetUserPreference(ctx, db.SetUserPreferenceParams{UserID: cmd.ActorID, Key: prefDefaultTerminal, Value: v}); err != nil {
 				return err
 			}
 		}

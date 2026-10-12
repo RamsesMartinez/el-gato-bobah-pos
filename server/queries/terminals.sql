@@ -72,3 +72,15 @@ select op.id, op.card_terminal_name, pm.kind
   from order_payments op
   join payment_methods pm on pm.id = op.payment_method_id
  where op.id = $1;
+
+-- name: GetPaymentForTerminalChange :one
+-- El pago cuya terminal se corrige, leído DESPUÉS del candado del pedido y solo si es de ese pedido:
+-- un id de pago de otro pedido por la ruta de éste no existe. La caja y la sucursal salen del turno
+-- del pago, que es donde se cobró, no de la sesión de quien corrige.
+select op.id, op.amount, op.tip_amount, op.card_terminal_id, op.card_terminal_name, op.register_session_id,
+       pm.kind::text as method_kind, rs.register_id, r.branch_id
+  from order_payments op
+  join payment_methods pm on pm.id = op.payment_method_id
+  left join register_sessions rs on rs.id = op.register_session_id
+  left join cash_registers r on r.id = rs.register_id
+ where op.id = $1 and op.order_id = $2;

@@ -344,6 +344,25 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     tumba todas las peticiones desde otro dominio.
   - **Corregir asistencia propia es otro permiso** (`attendance.correct_own`). El router no puede
     decidirlo —depende de quién es el dueño del registro— y lo decide `domain.CanCorrect`.
+- **Terminales de tarjeta** (spec 032, corrección en la 036). Tres cosas que no se ven:
+  - **Con dos o más terminales activas, la terminal se elige en CADA cobro; nada llega marcado.**
+    Antes llegaba puesta la última con la que cobró el usuario, y así un débito quedó registrado en
+    una terminal cuando se pasó en otra. Es una excepción decidida por el dueño a la
+    regla de la constitución «quien opera no decide en el momento»: la terminal es un hecho físico
+    (dónde se pasó la tarjeta), no algo que la configuración pueda saber. Con una sola activa, va
+    sola. En cuenta dividida se limpia tras cada cobro. No la vuelvas a recordar por usuario, en el
+    servidor (`resolveTerminal`) ni en la hoja (`terminalEfectiva`).
+  - **Corregir la terminal de un pago ya cobrado** es `POST /orders/{id}/payments/{paymentId}/terminal`
+    (permiso `payments.change_terminal`) y deja `payment.terminal_changed` en la bitácora en la misma
+    transacción. Manda `fromTerminalId`, la terminal que vio la pantalla: si ya no es la del pago,
+    responde 409 en vez de pisar otro cambio.
+  - **El arqueo de un turno cerrado no se reescribe.** El corte compara al pintarse lo firmado contra
+    lo esperado hoy (`expectedNow`), sobre la unión de los renglones guardados y lo cobrado por
+    terminal, y avisa por terminal. Solo hay aviso donde hubo arqueo por terminal: con arqueo
+    automático no se firmó nada por terminal. Límite que ya existía: una devolución con tarjeta se
+    atribuye a la terminal del último pago con tarjeta de su pedido, así que cambiar ese pago mueve
+    también la devolución (que puede ser de otro turno), y si la terminal nueva no cobró nada en el
+    turno de la devolución, la devolución no aparece en la lista por terminal de ese turno.
 - **Mapa de toques por zona** (spec 019): los toques viajan en el MISMO request, en un arreglo
   `toques` aparte, y la consola los lee en `GET /api/v1/platform/touches`. **Instrumentar una
   pantalla también son dos lugares**: `pantallasConToque` en

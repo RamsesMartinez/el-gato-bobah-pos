@@ -16,7 +16,7 @@ func TestAllAuditActionsIsTheWhitelistOfThePlan(t *testing.T) {
 		"cash.movement", "cash.movement_corrected", "expense.created", "expense.paid", "expense.cancelled", "tip.paid_out",
 		"price.set", "price.deleted", "price.synced", "attendance.clock_in", "attendance.clock_out",
 		"attendance.corrected", "attendance.manual_entry", "attendance.settings_changed",
-		"attendance.schedule_set", "user.tracks_attendance_changed",
+		"attendance.schedule_set", "user.tracks_attendance_changed", "payment.terminal_changed",
 	}
 	got := AllAuditActions()
 	if len(got) != len(want) {
@@ -54,7 +54,7 @@ func TestEveryAuditActionHasAGroup(t *testing.T) {
 		}
 	}
 	cases := map[AuditAction]AuditGroup{
-		"payment.charged": AuditGroupMoney, "payment.voided": AuditGroupCancel, "stock.written_off": AuditGroupCancel,
+		"payment.charged": AuditGroupMoney, "payment.terminal_changed": AuditGroupMoney, "payment.voided": AuditGroupCancel, "stock.written_off": AuditGroupCancel,
 		"order.cancelled": AuditGroupCancel, "price.synced": AuditGroupPrice, "tip.paid_out": AuditGroupCash,
 		"attendance.corrected": AuditGroupAttendance, "user.tracks_attendance_changed": AuditGroupAttendance,
 	}

@@ -56,6 +56,19 @@ export interface CashConcept {
   supplierName: string | null;
 }
 
+// TerminalCount es el arqueo de una terminal en un turno. `expectedNow`/`differenceNow` (spec 036):
+// lo que se espera hoy, distinto de lo firmado si alguien cambió la terminal de un pago después del
+// arqueo. Opcionales: un backend anterior no los manda.
+export interface TerminalCount {
+  terminalId: number;
+  name: string;
+  expected: string;
+  declared: string;
+  difference: string;
+  expectedNow?: string;
+  differenceNow?: string;
+}
+
 export interface CardTerminal {
   id: number;
   branchId: number;
@@ -190,7 +203,7 @@ export interface CashSession {
   cardCountMode?: 'auto' | 'per_terminal';
   cashOutsWithoutConcept?: number;
   terminalsToCount?: { terminalId: number; name: string }[];
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
 }
@@ -314,7 +327,7 @@ export interface CashSessionDetail {
   refunds?: SessionRefund[];
   // Arqueo por terminal y propinas del turno (spec 032). Opcionales: un backend viejo no los manda.
   cardCountMode?: string;
-  terminalCounts?: { terminalId: number; name: string; expected: string; declared: string; difference: string }[];
+  terminalCounts?: TerminalCount[];
   tipsPaidOut?: string;
   cardTipsPaidInCash?: string;
   // La propina pendiente que el cierre dejó en caja para el siguiente turno.

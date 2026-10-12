@@ -1,9 +1,11 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1719,6 +1721,11 @@ type TerminalCountView struct {
 	Expected   decimal.Decimal `json:"expected"`
 	Declared   decimal.Decimal `json:"declared"`
 	Difference decimal.Decimal `json:"difference"`
+	// ExpectedNow y DifferenceNow: lo que se espera HOY de la terminal en ese turno y su diferencia
+	// contra lo declarado. Difieren de Expected y Difference cuando alguien cambió la terminal de un
+	// pago después del arqueo (spec 036); lo firmado no se reescribe.
+	ExpectedNow   decimal.Decimal `json:"expectedNow"`
+	DifferenceNow decimal.Decimal `json:"differenceNow"`
 }
 
 // TerminalToCount es una terminal cuyo total se pide al cerrar.
@@ -1763,14 +1770,40 @@ func (s *BackofficeService) saveTerminalCounts(ctx context.Context, q *db.Querie
 }
 
 func (s *BackofficeService) terminalCounts(ctx context.Context, sessionID int64) ([]TerminalCountView, error) {
-	rows, err := s.store.QC(ctx).SessionTerminalCounts(ctx, sessionID)
+	q := s.store.QC(ctx)
+	rows, err := q.SessionTerminalCounts(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]TerminalCountView, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, TerminalCountView{TerminalID: r.CardTerminalID, Name: r.TerminalName, Expected: r.Expected, Declared: r.Declared, Difference: r.Difference})
+	// Sin arqueo guardado (turno abierto, o arqueo automático) no hay nada firmado contra qué avisar.
+	if len(rows) == 0 {
+		return out, nil
 	}
+	cobrado, err := q.TerminalCollectedForSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	now := map[int64]decimal.Decimal{}
+	for _, c := range cobrado {
+		now[c.TerminalID] = c.Collected
+	}
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		seen[r.CardTerminalID] = true
+		en := now[r.CardTerminalID]
+		out = append(out, TerminalCountView{TerminalID: r.CardTerminalID, Name: r.TerminalName, Expected: r.Expected,
+			Declared: r.Declared, Difference: r.Difference, ExpectedNow: en, DifferenceNow: domain.Round2(r.Declared.Sub(en))})
+	}
+	// La UNIÓN con lo cobrado hoy: la terminal que recibió un pago corregido pudo no tener renglón al
+	// cerrar (el caso real). Sin renglón, al cerrar se esperaba $0 y no se declaró nada.
+	for _, c := range cobrado {
+		if !seen[c.TerminalID] {
+			out = append(out, TerminalCountView{TerminalID: c.TerminalID, Name: c.Name, Expected: decimal.Zero,
+				Declared: decimal.Zero, Difference: decimal.Zero, ExpectedNow: c.Collected, DifferenceNow: domain.Round2(c.Collected.Neg())})
+		}
+	}
+	slices.SortFunc(out, func(a, b TerminalCountView) int { return cmp.Compare(a.TerminalID, b.TerminalID) })
 	return out, nil
 }
 

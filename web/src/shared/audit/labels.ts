@@ -33,6 +33,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'attendance.settings_changed': 'Ajustes de asistencia',
   'attendance.schedule_set': 'Horario capturado',
   'user.tracks_attendance_changed': 'Lleva asistencia',
+  'payment.terminal_changed': 'Terminal cambiada',
 };
 
 export function actionLabel(action: string): string {
@@ -41,6 +42,7 @@ export function actionLabel(action: string): string {
 
 // Los campos que se muestran, con su nombre y si son dinero. Lo demás (ids internos) no se pinta.
 const FIELDS: Array<[string, string, boolean]> = [
+  ['terminalName', 'Terminal', false],
   ['discount', 'Descuento', true],
   ['price', 'Precio', true],
   ['amount', 'Monto', true],
@@ -54,7 +56,9 @@ const FIELDS: Array<[string, string, boolean]> = [
 
 type ChangeData = Record<string, unknown> | null | undefined;
 
-function formatValue(v: unknown, isMoney: boolean): string {
+function formatValue(v: unknown, isMoney: boolean, key: string): string {
+  // Un pago con tarjeta sin terminal es un hecho que se corrige, no un dato que falta.
+  if ((v === null || v === undefined || v === '') && key === 'terminalName') return 'Sin terminal';
   if (v === null || v === undefined || v === '') return '—';
   return isMoney ? money(String(v)) : String(v);
 }
@@ -66,9 +70,10 @@ export function summarizeChange(before: ChangeData, after: ChangeData): string {
     const a = before?.[k];
     const d = after?.[k];
     if (a === undefined && d === undefined) continue;
-    parts.push(a !== undefined && d !== undefined
-      ? `${name}: ${formatValue(a, isMoney)} → ${formatValue(d, isMoney)}`
-      : `${name}: ${formatValue(d ?? a, isMoney)}`);
+    // Lo que no cambió (el monto de un pago al cambiarle la terminal) se dice una vez.
+    parts.push(a !== undefined && d !== undefined && a !== d
+      ? `${name}: ${formatValue(a, isMoney, k)} → ${formatValue(d, isMoney, k)}`
+      : `${name}: ${formatValue(d ?? a, isMoney, k)}`);
   }
   return parts.join(' · ');
 }
