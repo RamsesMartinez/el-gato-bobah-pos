@@ -240,6 +240,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
   - **Cada movimiento guarda su origen** (`modifier_option_id`, `component_of_product_id`) y las
     cancelaciones reponen con el mismo origen. Los componentes vendidos se copian en
     `order_line_components`, que es de donde sale «unidades por producto» en Reportes.
+  - **Cancelar repone solo lo que no se gastó** (decisión del dueño, 2026-10-11): lo que se prepara
+    y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
+    prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
+    cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no
