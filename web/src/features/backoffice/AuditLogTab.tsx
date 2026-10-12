@@ -135,10 +135,10 @@ export function AuditLogTab() {
               <HStack as="button" w="100%" textAlign="left" minH="52px" px={4} gap={3} borderBottomWidth="1px"
                 _hover={{ bg: 'bg.subtle' }} onClick={() => setSelectedEvent(e)}>
                 <Text w="72px" fontSize="sm" color="fg.muted" flexShrink={0}>{soloHora(e.occurredAt, zone)}</Text>
-                <Text w="130px" fontWeight="700" lineClamp={1} flexShrink={0}>{e.actorName}</Text>
+                <Text w="150px" fontWeight="700" lineClamp={1} flexShrink={0}>{e.actorName}</Text>
                 <Box flex="1" minW={0}>
                   <HStack gap={2}><Box w="8px" h="8px" borderRadius="full" bg={COLOR[groupOf(e.action)]} /><Text fontWeight="600">{actionLabel(e.action)}</Text>
-                    {e.orderLabel && <Text fontSize="sm" color="fg.muted" lineClamp={1}>· {e.orderLabel}</Text>}</HStack>
+                    {e.orderLabel && <Text fontSize="sm" color="fg.muted" lineClamp={1}>{e.orderLabel}</Text>}</HStack>
                   <Text fontSize="sm" color="fg.muted" lineClamp={1}>{summarizeChange(e.before, e.after)}</Text>
                 </Box>
               </HStack>

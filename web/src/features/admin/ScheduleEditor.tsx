@@ -90,9 +90,9 @@ export function ScheduleEditor({ userId, name, people, onClose }: {
               {displayedWeek[weekday].map((s, i) => (
                 <HStack key={i} gap={1}>
                   {i > 0 && <Text color="fg.muted">y</Text>}
-                  <Box w="116px"><Picker title={`${label} · entrada`} value={String(s.start)} options={QUARTERS} onChange={(v) => changeShift(weekday, i, 'start', Number(v))} /></Box>
+                  <Box w="136px"><Picker title={`${label} · entrada`} value={String(s.start)} options={QUARTERS} onChange={(v) => changeShift(weekday, i, 'start', Number(v))} /></Box>
                   <Text color="fg.muted">a</Text>
-                  <Box w="116px"><Picker title={`${label} · salida`} value={String(s.end)} options={QUARTERS} onChange={(v) => changeShift(weekday, i, 'end', Number(v))} /></Box>
+                  <Box w="136px"><Picker title={`${label} · salida`} value={String(s.end)} options={QUARTERS} onChange={(v) => changeShift(weekday, i, 'end', Number(v))} /></Box>
                   {crossesMidnight(s) && <Badge colorPalette="purple">+1 día</Badge>}
                 </HStack>
               ))}

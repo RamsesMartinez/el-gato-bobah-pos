@@ -162,3 +162,18 @@ test('un error del código no se anuncia como «Sin conexión»', async () => {
   expect(await screen.findByText('No se pudo cargar', {}, { timeout: 3000 })).toBeInTheDocument();
   expect(screen.queryByText('Sin conexión')).toBeNull();
 });
+
+// Sin red la lista no se vuelve a pedir sola: sin escuchar al navegador, la lista vieja se quedaba.
+test('si el navegador pierde la red, quita la lista aunque nada se haya vuelto a pedir', async () => {
+  renderView();
+  await screen.findByText('Ana');
+  const spy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  try {
+    window.dispatchEvent(new Event('offline'));
+    expect(await screen.findByText('Sin conexión')).toBeInTheDocument();
+    expect(screen.queryByText('Ana')).toBeNull();
+  } finally {
+    spy.mockRestore();
+    window.dispatchEvent(new Event('online'));
+  }
+});
