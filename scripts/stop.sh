@@ -7,8 +7,12 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Infraestructura propia del worktree, si la tiene (make worktree-env).
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-env-load.sh"
 
 echo "▶ Bajando postgres + redis (docker)…"
+# Desde un worktree sin infraestructura propia esto bajaría la de la carpeta principal.
+bash "$ROOT/scripts/guard-shared-compose.sh" || exit 1
 docker compose -f "$ROOT/deploy/docker-compose.dev.yml" down 2>/dev/null || true
 
 if ! command -v lsof >/dev/null 2>&1; then
