@@ -33,7 +33,7 @@ import { fondoValido, fondoExcedeLoContado } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
 import { faltanTerminales } from './terminalesPorContar';
 import { faltaDecidirPropinas } from './propinas';
-import type { TipPayoutInput, TipsDecision } from '../../api/backoffice';
+import type { TerminalCount, TipPayoutInput, TipsDecision } from '../../api/backoffice';
 import {
   faltanPorContar, diferenciasDelCierre, faltaContarElCajon, diferenciaDelCajon,
   type DiferenciasDelCierre,
@@ -456,6 +456,10 @@ function CorteDetail({ id }: { id: number }) {
   );
 }
 
+function cambioTrasElArqueo(t: TerminalCount): boolean {
+  return t.expectedNow !== undefined && Number(t.expectedNow) !== Number(t.expected);
+}
+
 // Terminales y propinas de un corte (spec 032): lo que el turno abierto mostraba y el cierre firmó.
 // Sin esto, un faltante en una terminal dejaba de verse en cuanto se cerraba el turno.
 export function TerminalesYPropinasDelCorte({ session, currency }: {
@@ -488,6 +492,13 @@ export function TerminalesYPropinasDelCorte({ session, currency }: {
               ))}
             </Table.Body>
           </Table.Root>
+          {/* Lo firmado no se reescribe: si después del arqueo se corrigió la terminal de un pago,
+              se dice aquí cuánto se espera hoy y la diferencia contra lo declarado. */}
+          {terminales.filter(cambioTrasElArqueo).map((t) => (
+            <Text key={t.terminalId} role="status" fontSize="sm" color="orange.fg" mt={2}>
+              {`${t.name}: el esperado pasó de ${money(t.expected, currency)} a ${money(t.expectedNow as string, currency)} después del arqueo. Diferencia ahora: ${money(t.differenceNow ?? '0', currency)}`}
+            </Text>
+          ))}
         </Section>
       )}
       {(entregadas > 0 || enEfectivo > 0 || enCaja > 0) && (

@@ -57,6 +57,53 @@ func (q *Queries) ArchiveCardTerminal(ctx context.Context, id int64) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const getPaymentForTerminalChange = `-- name: GetPaymentForTerminalChange :one
+select op.id, op.amount, op.tip_amount, op.card_terminal_id, op.card_terminal_name, op.register_session_id,
+       pm.kind::text as method_kind, rs.register_id, r.branch_id
+  from order_payments op
+  join payment_methods pm on pm.id = op.payment_method_id
+  left join register_sessions rs on rs.id = op.register_session_id
+  left join cash_registers r on r.id = rs.register_id
+ where op.id = $1 and op.order_id = $2
+`
+
+type GetPaymentForTerminalChangeParams struct {
+	ID      int64 `json:"id"`
+	OrderID int64 `json:"order_id"`
+}
+
+type GetPaymentForTerminalChangeRow struct {
+	ID                int64           `json:"id"`
+	Amount            decimal.Decimal `json:"amount"`
+	TipAmount         decimal.Decimal `json:"tip_amount"`
+	CardTerminalID    *int64          `json:"card_terminal_id"`
+	CardTerminalName  *string         `json:"card_terminal_name"`
+	RegisterSessionID *int64          `json:"register_session_id"`
+	MethodKind        string          `json:"method_kind"`
+	RegisterID        *int64          `json:"register_id"`
+	BranchID          *int64          `json:"branch_id"`
+}
+
+// El pago cuya terminal se corrige, leído DESPUÉS del candado del pedido y solo si es de ese pedido:
+// un id de pago de otro pedido por la ruta de éste no existe. La caja y la sucursal salen del turno
+// del pago, que es donde se cobró, no de la sesión de quien corrige.
+func (q *Queries) GetPaymentForTerminalChange(ctx context.Context, arg GetPaymentForTerminalChangeParams) (GetPaymentForTerminalChangeRow, error) {
+	row := q.db.QueryRow(ctx, getPaymentForTerminalChange, arg.ID, arg.OrderID)
+	var i GetPaymentForTerminalChangeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.TipAmount,
+		&i.CardTerminalID,
+		&i.CardTerminalName,
+		&i.RegisterSessionID,
+		&i.MethodKind,
+		&i.RegisterID,
+		&i.BranchID,
+	)
+	return i, err
+}
+
 const insertCardTerminal = `-- name: InsertCardTerminal :one
 insert into card_terminals (branch_id, name) values ($1, $2) returning id, branch_id, name
 `

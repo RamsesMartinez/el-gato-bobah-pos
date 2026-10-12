@@ -19,6 +19,8 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { can } from '../../app/permissions';
 import { useSessionStore } from '../../stores/session';
 import { OrderHistoryTimeline } from '../../shared/audit/OrderHistoryTimeline';
+import type { PaymentView } from '../../types/pos';
+import { CambiarTerminalSheet } from './CambiarTerminalSheet';
 
 // El detalle de una venta: sus renglones con modificadores y de dónde salió el dinero.
 //
@@ -26,7 +28,7 @@ import { OrderHistoryTimeline } from '../../shared/audit/OrderHistoryTimeline';
 // el día que el detalle lleve costo o margen por renglón — eso sí es información de gestión y el
 // endpoint de órdenes no exige rol.
 //
-// Los datos de cabecera (folio, estado, medio de pago) salen del renglón que ya se tiene en la
+// Los datos de cabecera (folio, estado) salen del renglón que ya se tiene en la
 // tabla, así que el diálogo pinta algo útil desde el primer cuadro y no una pantalla en blanco
 // mientras carga.
 export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
@@ -71,6 +73,14 @@ export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
     queryFn: () => posApi.order(sale.id),
     enabled: isOpen,
   });
+  // Los devueltos ya no son dinero del pedido: no se listan ni se corrigen aquí.
+  const vivos = (data?.payments ?? []).filter((p) => !p.voided);
+  // Con una sola terminal activa no hay a dónde mover un pago: no se ofrece.
+  const terminales = useQuery({ queryKey: ['card-terminals'], queryFn: posApi.cardTerminals,
+    enabled: isOpen && can('payments.change_terminal', user) });
+  const canChangeTerminal = can('payments.change_terminal', user)
+    && (terminales.data?.items ?? []).filter((t) => !t.archived).length >= 2;
+  const [cambiando, setCambiando] = useState<PaymentView | null>(null);
 
   return (
     <DialogRoot open={isOpen} onOpenChange={(e) => { if (!e.open) onClose(); }} size="lg" scrollBehavior="inside">
@@ -101,7 +111,6 @@ export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
               {sale.completedAt && <DetailRow k="Cerrada" v={fechaHora(sale.completedAt, horaNegocio.zona)} />}
               {sale.openedBy && <DetailRow k="Atendió" v={sale.openedBy} />}
               {sale.customer && <DetailRow k="Cliente" v={sale.customer} />}
-              <DetailRow k="Medio de pago" v={sale.methods || 'Sin cobrar'} />
               {/* El folio de la plataforma se ve COMPLETO aquí —en la tabla va truncado— y se
                   escribe o corrige desde aquí. Solo aparece en pedidos de plataforma: en uno de
                   mostrador el dato no existe. */}
@@ -171,6 +180,34 @@ export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
               )}
             </VStack>
 
+            {/* Un renglón por pago, con la terminal donde se cobró: es lo que se compara contra el
+                cierre de cada terminal. Reemplaza al «Medio de pago» que juntaba los nombres. */}
+            <Box borderTopWidth="1px" pt={3}>
+              <Text fontWeight="700" mb={2} id="pagos-de-la-venta">Pagos</Text>
+              {!isLoading && vivos.length === 0 && <Text color="fg.muted" fontSize="sm">Sin cobrar</Text>}
+              <VStack as="ul" aria-labelledby="pagos-de-la-venta" align="stretch" gap={2} listStyleType="none">
+                {vivos.map((p) => {
+                  const tarjeta = p.methodKind === 'tarjeta';
+                  const conBoton = tarjeta && canChangeTerminal;
+                  return (
+                    <HStack as="li" key={p.id} minH={conBoton ? '44px' : undefined} justify="space-between" gap={3}>
+                      <Text fontSize="sm" flex="1" minW={0}>
+                        {tarjeta ? `${p.methodName} · ${p.terminalName ?? 'Sin terminal'}` : p.methodName}
+                      </Text>
+                      <Text fontSize="sm" fontWeight="700" whiteSpace="nowrap">{money(p.amount)}</Text>
+                      {conBoton && (
+                        <Button size="sm" minH="44px" px={3} variant="outline"
+                          aria-label={`Cambiar terminal del pago ${p.number}`}
+                          onClick={() => setCambiando(p)}>
+                          Cambiar terminal
+                        </Button>
+                      )}
+                    </HStack>
+                  );
+                })}
+              </VStack>
+            </Box>
+
             <Box borderTopWidth="1px" pt={3}>
               <Text fontWeight="700" mb={2}>Qué se vendió</Text>
               {isLoading && <HStack><Spinner size="sm" /><Text color="fg.muted">Cargando renglones…</Text></HStack>}
@@ -202,6 +239,9 @@ export function SaleDetailDialog({ venta: sale, isOpen, onClose }: {
           </VStack>
           )}
         </DialogBody>
+        {cambiando && (
+          <CambiarTerminalSheet orderId={sale.id} pago={cambiando} onCerrar={() => setCambiando(null)} />
+        )}
         {sale.platform && (
           <LiquidacionSheet orderId={sale.id} plataforma={sale.platform}
             isOpen={capturando} onClose={() => setCapturando(false)} />

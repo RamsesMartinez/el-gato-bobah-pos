@@ -62,6 +62,7 @@ var auditActions = []struct {
 	{"attendance.settings_changed", AuditGroupAttendance},
 	{"attendance.schedule_set", AuditGroupAttendance},
 	{"user.tracks_attendance_changed", AuditGroupAttendance},
+	{"payment.terminal_changed", AuditGroupMoney},
 }
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.

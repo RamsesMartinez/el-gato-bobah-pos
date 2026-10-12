@@ -274,12 +274,12 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
   );
   const elegido = elegibles.find((m) => m.id === metodo);
   const efectivo = esEfectivo(elegido);
-  // Con tarjeta se registra la terminal (spec 032): llega la del usuario o la única de la sucursal.
+  // Con tarjeta se registra la terminal (spec 032). Con varias se elige en cada cobro; con una sola
+  // va sola (spec 036: la recordada del usuario dejó cobros en la terminal equivocada).
   const esTarjeta = elegido?.kind === 'tarjeta';
   const { data: terminales } = useQuery({ queryKey: ['card-terminals'], queryFn: posApi.cardTerminals, enabled: order !== null });
-  const { data: terminalDelUsuario } = useQuery({ queryKey: ['card-terminal-default'], queryFn: posApi.defaultTerminal, enabled: order !== null });
   const [terminalElegida, setTerminalElegida] = useState<number | null>(null);
-  const terminal = esTarjeta ? terminalEfectiva(terminales?.items ?? [], terminalDelUsuario ?? null, terminalElegida) : null;
+  const terminal = esTarjeta ? terminalEfectiva(terminales?.items ?? [], terminalElegida) : null;
   const faltaTerminal = esTarjeta && terminal === null;
 
   const v = validarCobro({
@@ -292,8 +292,10 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
     setSelection({});
     setAllRemaining(false);
     setTypedAmount('');
-    // El método NO se hereda: cada persona paga con lo suyo.
+    // El método NO se hereda: cada persona paga con lo suyo. La terminal tampoco: cada quien pasa su
+    // tarjeta donde la pasa.
     setMetodo(null);
+    setTerminalElegida(null);
     setRecibido('');
     setPropina('');
   };
@@ -695,7 +697,7 @@ export function CobrarSheet({ order, onClose, onCobrado, pantalla }: Props) {
 
             {/* Con tarjeta, la terminal en lugar de «Paga con»: no se apilan (revisión de tableta U1). */}
             {esTarjeta && (
-              <TerminalDelCobro terminales={terminales?.items ?? []} porOmision={terminalDelUsuario ?? null}
+              <TerminalDelCobro terminales={terminales?.items ?? []}
                 elegida={terminalElegida}
                 onChange={setTerminalElegida} />
             )}

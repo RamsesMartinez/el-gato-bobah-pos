@@ -13,8 +13,9 @@ func TestPermissionsForEachRoleOfToday(t *testing.T) {
 	all := AllPermissions()
 	// El gerente revisa a los demás pero no se corrige a sí mismo ni configura la asistencia: una
 	// corrección propia mueve horas pagadas sin que nadie más la vea (decisión del 2026-10-10).
+	// Cambiar la terminal de un pago mueve dinero entre terminales del corte: lo hace quien lo revisa.
 	gerente := []Permission{PermPaymentsVoid, PermOrdersCancel, PermOrdersMoveLines, PermOrdersCancelPending,
-		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView}
+		PermAttendanceReport, PermAttendanceCorrectOthers, PermAuditView, PermPaymentsChangeTerminal}
 	cases := []struct {
 		role Role
 		want []Permission
@@ -58,6 +59,7 @@ func TestEveryPermissionHasADeniedMessageWithoutRoleNames(t *testing.T) {
 		PermAttendanceCorrectOthers: "Tu usuario no puede corregir la asistencia de otras personas",
 		PermAttendanceCorrectOwn:    "Tu usuario no puede corregir su propia asistencia",
 		PermAuditView:               "Tu usuario no puede ver la bitácora",
+		PermPaymentsChangeTerminal:  "Tu usuario no puede cambiar la terminal de un pago",
 	}
 	for _, p := range AllPermissions() {
 		msg := PermissionDeniedMessage(p)

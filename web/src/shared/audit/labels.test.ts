@@ -10,7 +10,7 @@ const FROM_SERVER = [
   'cash.movement', 'cash.movement_corrected', 'expense.created', 'expense.paid', 'expense.cancelled', 'tip.paid_out',
   'price.set', 'price.deleted', 'price.synced', 'attendance.clock_in', 'attendance.clock_out',
   'attendance.corrected', 'attendance.manual_entry', 'attendance.settings_changed',
-  'attendance.schedule_set', 'user.tracks_attendance_changed',
+  'attendance.schedule_set', 'user.tracks_attendance_changed', 'payment.terminal_changed',
 ];
 
 test('cada acción del servidor tiene etiqueta en español', () => {
@@ -30,4 +30,11 @@ test('el cambio se lee como antes → después y con dinero', () => {
   expect(summarizeChange(null, { amount: '45', paid: '45' })).toContain('Monto: $45');
   expect(summarizeChange(null, { reason: 'Llegó frío' })).toBe('Motivo: Llegó frío');
   expect(summarizeChange(null, null)).toBe('');
+});
+
+test('el cambio de terminal se lee con el nombre, no con el id', () => {
+  expect(summarizeChange({ terminalId: 2, terminalName: 'Terminal A' }, { terminalId: 3, terminalName: 'Terminal B' }))
+    .toBe('Terminal: Terminal A → Terminal B');
+  expect(summarizeChange({ terminalId: null, terminalName: null }, { terminalId: 3, terminalName: 'Terminal B' }))
+    .toBe('Terminal: Sin terminal → Terminal B');
 });
