@@ -185,25 +185,57 @@ describe('la receta', () => {
     expect(api.saveComposition).not.toHaveBeenCalled();
   });
 
-  it('un extra que se llama igual en otro grupo recibe la misma receta, si se deja marcado', async () => {
-    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '2026-10-01T00:00:00Z' }] });
-    montar('option');
-    fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
-    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
-    await guardar();
-    await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
-  });
+  // Lo encontró producción (2026-10-11): la casilla venía encendida y copió la receta de la salsa
+  // «Lemon Pepper» al sazonador en polvo del mismo nombre. Ahora viene apagada, va una por grupo y
+  // cada una dice lo que ese extra lleva hoy.
+  describe('«También en…»', () => {
+    const gemelos = [
+      { id: 77, group: 'Salsa extra', stamp: '2026-10-01T00:00:00Z', today: '36 ml Lemon Pepper Salsa' },
+      { id: 78, group: 'Sazonador de polvo', stamp: '2026-10-02T00:00:00Z', today: '5 g Sazonador Lemon Pepper' },
+    ];
 
-  // Lo encontró una persona nueva: «También en…» quedaba marcado y al escoger «No gasta insumos»
-  // desaparecía; los otros extras seguían pendientes.
-  it('«No gasta insumos» también se guarda en el extra que se llama igual', async () => {
-    api.composition.mockResolvedValue({ ...vacia, sameName: [{ id: 77, group: 'Toppings de frappé', stamp: '' }] });
-    montar('option');
-    fireEvent.click(await screen.findByText('No gasta insumos'));
-    expect(await screen.findByRole('button', { name: /También en «Toppings de frappé»/ })).toHaveAttribute('aria-pressed', 'true');
-    await guardar();
-    await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 77));
-    expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], alsoOptionIds: [77] }));
+    it('viene apagada y no copia nada si no se marca', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      for (const g of ['Salsa extra', 'Sazonador de polvo']) {
+        expect(screen.getByRole('button', { name: new RegExp(`También en «${g}»`) })).toHaveAttribute('aria-pressed', 'false');
+      }
+      await guardar();
+      await waitFor(() => expect(api.saveComposition).toHaveBeenCalled());
+      const body = api.saveComposition.mock.calls[0][2] as { alsoOptionIds?: number[] };
+      expect(body.alsoOptionIds ?? []).toEqual([]);
+    });
+
+    it('dice lo que lleva hoy cada uno, para ver que es otra cosa', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      expect(screen.getByRole('button', { name: /También en «Sazonador de polvo»/ })).toHaveTextContent('Hoy: 5 g Sazonador Lemon Pepper');
+      expect(screen.getByRole('button', { name: /También en «Salsa extra»/ })).toHaveTextContent('Hoy: 36 ml Lemon Pepper Salsa');
+    });
+
+    it('copia solo a los que se marcan, con la marca de cada uno', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
+      fireEvent.click(screen.getByRole('button', { name: /También en «Salsa extra»/ }));
+      expect(screen.getByRole('button', { name: /También en «Salsa extra»/ })).toHaveAttribute('aria-pressed', 'true');
+      await guardar();
+      await waitFor(() => expect(api.saveComposition).toHaveBeenCalledWith('option', 55,
+        expect.objectContaining({ alsoOptionIds: [77], alsoBasedOn: { 77: '2026-10-01T00:00:00Z' } })));
+    });
+
+    it('«No gasta insumos» también se guarda en el que se marca', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      fireEvent.click(await screen.findByText('No gasta insumos'));
+      fireEvent.click(await screen.findByRole('button', { name: /También en «Salsa extra»/ }));
+      await guardar();
+      await waitFor(() => expect(api.confirmComposition).toHaveBeenCalledWith('option', 77));
+      expect(api.confirmComposition).not.toHaveBeenCalledWith('option', 78);
+      expect(api.saveComposition).toHaveBeenCalledWith('option', 55, expect.objectContaining({ items: [], alsoOptionIds: [77] }));
+    });
   });
 
   it('una receta nueva no empieza con un aviso de error', async () => {

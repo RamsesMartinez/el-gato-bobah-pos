@@ -178,7 +178,18 @@ update ingredients set composition_status = 'confirmed', composition_confirmed_b
 -- name: ListSameNameOptions :many
 -- Los extras que se llaman igual en otro grupo («Tapioca» en Toppings y en Toppings de frappé): la
 -- pantalla ofrece guardarles la misma receta.
-select o.id, g.name::text as group_name, o.composition_confirmed_at
+-- Cada uno trae lo que lleva hoy: copiarle la receta lo pisa, y un mismo nombre puede ser otra cosa
+-- (la salsa y el sazonador en polvo «Lemon Pepper»).
+select o.id, g.name::text as group_name, o.composition_confirmed_at,
+       coalesce(o.composition_status::text, '')::text as status,
+       coalesce((select lp.name::text from products lp where lp.id = o.linked_product_id), '')::text as linked_name,
+       coalesce((select array_agg(x.txt order by x.pos, x.id) from (
+          select ri.position as pos, ri.id,
+                 case when u.code in ('kg', 'l') and ri.quantity < 1
+                 then trim_scale(ri.quantity * 1000)::text || ' ' || case u.code when 'kg' then 'g' else 'ml' end
+                 else trim_scale(ri.quantity)::text || ' ' || u.code end || ' ' || i.name as txt
+            from recipe_items ri join units u on u.id = ri.unit_id join ingredients i on i.id = ri.ingredient_id
+           where ri.recipe_id = o.recipe_id) x), '{}')::text[] as items
   from modifier_options o
   join modifier_groups g on g.id = o.group_id
   join modifier_options me on me.id = sqlc.arg(id)

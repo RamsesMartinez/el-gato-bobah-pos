@@ -126,6 +126,9 @@ type SameNameOption struct {
 	Group string `json:"group"`
 	// Stamp vuelve en AlsoBasedOn: copiarle la receta también pisaría lo que alguien le guardó.
 	Stamp string `json:"stamp"`
+	// Today es lo que lleva hoy, en una línea: la pantalla lo muestra junto a la casilla para que
+	// copiarle otra receta no esconda que es otra cosa.
+	Today string `json:"today"`
 }
 
 // CompositionInputItem es un renglón capturado.
@@ -208,7 +211,8 @@ func (s *AdminService) Composition(ctx context.Context, kind CompositionKind, id
 			return v, err
 		}
 		for _, t := range twins {
-			v.SameName = append(v.SameName, SameNameOption{ID: t.ID, Group: t.GroupName, Stamp: stampOf(t.CompositionConfirmedAt)})
+			v.SameName = append(v.SameName, SameNameOption{ID: t.ID, Group: t.GroupName, Stamp: stampOf(t.CompositionConfirmedAt),
+				Today: domain.RecipeToday(t.Status, t.LinkedName, t.Items)})
 		}
 	case CompositionOfIngredient:
 		in, err := q.GetIngredientComposition(ctx, id)
