@@ -20,7 +20,7 @@ function RolePicker({ value, onChange }: { value: string; onChange: (r: string) 
   return (
     <HStack gap={1} flexWrap="wrap">
       {ROLES.map((r) => (
-        <Button key={r} size="sm" minH="40px" textTransform="capitalize"
+        <Button key={r} size="sm" minH="44px" textTransform="capitalize"
           variant={value === r ? 'solid' : 'outline'} colorPalette={value === r ? undefined : 'gray'}
           onClick={() => onChange(r)}>{r}</Button>
       ))}
@@ -70,18 +70,18 @@ export function EmployeesPage() {
       <Box bg="bg.panel" p={4} borderRadius="lg" borderWidth="1px" mb={4}>
         <VStack align="stretch" gap={3}>
           <HStack flexWrap="wrap" gap={3}>
-            <Input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxW="220px" />
-            <Input placeholder="Usuario (login)" value={username} onChange={(e) => setUsername(e.target.value)} maxW="180px" autoCapitalize="none" />
+            <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} maxW="220px" />
+            <Input minH="44px" placeholder="Usuario (login)" value={username} onChange={(e) => setUsername(e.target.value)} maxW="180px" autoCapitalize="none" />
             <RolePicker value={role} onChange={setRole} />
           </HStack>
           <HStack flexWrap="wrap" gap={3} align="end">
             <Box>
-              <Input type="password" placeholder={`Contraseña (mín. ${MIN_LEN}, sin @)`} value={password} onChange={(e) => setPassword(e.target.value)} maxW="220px" />
+              <Input minH="44px" type="password" placeholder={`Contraseña (mín. ${MIN_LEN}, sin @)`} value={password} onChange={(e) => setPassword(e.target.value)} maxW="220px" />
               {password !== '' && (password.length < MIN_LEN || password.includes('@')) && <Text color="red.500" fontSize="xs" mt={1}>Mín. {MIN_LEN} caracteres, sin @</Text>}
             </Box>
-            <Input placeholder="PIN opcional" value={pin} onChange={(e) => setPin(e.target.value)} maxW="130px" inputMode="numeric" />
-            <Input placeholder="Email de recuperación (opcional)" value={email} onChange={(e) => setEmail(e.target.value)} maxW="260px" type="email" />
-            <Button disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>Crear</Button>
+            <Input minH="44px" placeholder="PIN opcional" value={pin} onChange={(e) => setPin(e.target.value)} maxW="130px" inputMode="numeric" />
+            <Input minH="44px" placeholder="Email de recuperación (opcional)" value={email} onChange={(e) => setEmail(e.target.value)} maxW="260px" type="email" />
+            <Button minH="44px" disabled={!canCreate} loading={create.isPending} onClick={() => create.mutate()}>Crear</Button>
           </HStack>
         </VStack>
       </Box>
@@ -105,7 +105,7 @@ export function EmployeesPage() {
                 <Table.Cell>{u.recoveryEmail ? u.recoveryEmail : <Text color="fg.subtle">—</Text>}</Table.Cell>
                 <Table.Cell>{u.isActive ? <Badge colorPalette="green">activo</Badge> : <Badge>inactivo</Badge>}</Table.Cell>
                 <Table.Cell textAlign="end">
-                  <IconButton aria-label="Gestionar" size="sm" variant="ghost" onClick={() => setManage(u)}><LuPencil /></IconButton>
+                  <IconButton aria-label="Gestionar" size="sm" minW="44px" minH="44px" variant="ghost" onClick={() => setManage(u)}><LuPencil /></IconButton>
                 </Table.Cell>
               </Table.Row>
             ))}
@@ -158,21 +158,21 @@ function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
           <VStack align="stretch" gap={5}>
             <VStack align="stretch" gap={2}>
               <Text fontWeight="700">Datos</Text>
-              <Input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input minH="44px" placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
               <RolePicker value={role} onChange={setRole} />
-              <Input placeholder="Email de recuperación" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+              <Input minH="44px" placeholder="Email de recuperación" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
               <HStack justify="space-between">
                 <Text>Activo</Text>
                 <Switch checked={isActive} onCheckedChange={(e) => setIsActive(e.checked)} />
               </HStack>
-              <Button loading={save.isPending} onClick={() => save.mutate()}>Guardar datos</Button>
+              <Button minH="44px" loading={save.isPending} onClick={() => save.mutate()}>Guardar datos</Button>
             </VStack>
 
             <VStack align="stretch" gap={2}>
               <Text fontWeight="700"><LuKeyRound style={{ display: 'inline' }} /> Restablecer contraseña</Text>
               <HStack>
-                <Input type="password" placeholder={`Nueva contraseña (mín. ${MIN_LEN}, sin @)`} value={newPass} onChange={(e) => setNewPass(e.target.value)} />
-                <Button variant="outline" colorPalette="orange" loading={resetPass.isPending}
+                <Input minH="44px" type="password" placeholder={`Nueva contraseña (mín. ${MIN_LEN}, sin @)`} value={newPass} onChange={(e) => setNewPass(e.target.value)} />
+                <Button minH="44px" variant="outline" colorPalette="orange" loading={resetPass.isPending}
                   disabled={newPass.length < MIN_LEN || newPass.includes('@')} onClick={() => resetPass.mutate()}>Restablecer</Button>
               </HStack>
             </VStack>
@@ -180,15 +180,15 @@ function ManageDialog({ user, onClose, onSaved, onError, onSchedule }: {
             <VStack align="stretch" gap={2}>
               <Text fontWeight="700"><LuHash style={{ display: 'inline' }} /> PIN</Text>
               <HStack>
-                <Input inputMode="numeric" placeholder="Nuevo PIN (4-6 díg.)" value={newPin} onChange={(e) => setNewPin(e.target.value)} />
-                <Button variant="outline" loading={setPinMut.isPending} disabled={newPin.length < 4} onClick={() => setPinMut.mutate()}>Fijar PIN</Button>
+                <Input minH="44px" inputMode="numeric" placeholder="Nuevo PIN (4-6 díg.)" value={newPin} onChange={(e) => setNewPin(e.target.value)} />
+                <Button minH="44px" variant="outline" loading={setPinMut.isPending} disabled={newPin.length < 4} onClick={() => setPinMut.mutate()}>Fijar PIN</Button>
               </HStack>
             </VStack>
           </VStack>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" minH="44px" mr="auto" onClick={onSchedule}>Horario y asistencia</Button>
-          <Button variant="ghost" onClick={onClose}>Cerrar</Button>
+          <Button minH="44px" variant="ghost" onClick={onClose}>Cerrar</Button>
         </DialogFooter>
       </DialogContent>
     </DialogRoot>

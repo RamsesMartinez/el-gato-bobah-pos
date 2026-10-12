@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from './ui/provider';
@@ -69,4 +70,17 @@ test('no ofrece crear un nombre que ya existe con espacios de más', async () =>
   await u.clear(screen.getByPlaceholderText('Buscar…'));
   await u.type(screen.getByPlaceholderText('Buscar…'), 'sams   coacalco');
   expect(screen.queryByRole('button', { name: /Crear/ })).not.toBeInTheDocument();
+});
+
+// Con 96 horas en la lista, abrir arriba del todo obligaba a bajar con el dedo hasta la hora que ya
+// estaba elegida. La hoja abre en la elegida.
+test('al abrir, la hoja baja hasta lo que ya está elegido', async () => {
+  const spy = vi.fn();
+  Element.prototype.scrollIntoView = spy;
+  const options = Array.from({ length: 40 }, (_, i) => ({ value: String(i), label: `Opción ${i}` }));
+  render(<Provider><Picker title="Hora" value="30" options={options} onChange={() => {}} /></Provider>);
+  await userEvent.click(screen.getByRole('button', { name: /Opción 30/ }));
+  await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+  const row = spy.mock.contexts[0] as HTMLElement;
+  expect(row.textContent).toContain('Opción 30');
 });

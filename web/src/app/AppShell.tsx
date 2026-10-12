@@ -86,14 +86,14 @@ export function AppShell() {
             );
           })}
         </VStack>
-        {moreBelow && (
-          <Flex position="absolute" bottom={0} left={0} right={0} h="16px" justify="center" align="flex-end"
-            pointerEvents="none" bgGradient="to-t" gradientFrom="gray.900" gradientTo="transparent" aria-hidden>
-            <LuChevronDown size={14} />
-          </Flex>
-        )}
         </Box>
-        <VStack gap={0} flexShrink={0}>
+        {/* La flecha va en su propio renglón y no encima de la lista: superpuesta tapaba el rótulo del
+            último ítem visible, y a 600 px «Reportes» se leía encimado con el nombre de quien entró. */}
+        <Flex data-rail-more h="16px" flexShrink={0} justify="center" align="center" aria-hidden
+          visibility={moreBelow ? 'visible' : 'hidden'}>
+          <LuChevronDown size={14} />
+        </Flex>
+        <VStack gap={0} flexShrink={0} borderTopWidth="1px" borderColor="whiteAlpha.300" pt={1}>
           <Text fontSize="10px" color="gray.400" lineClamp={1} px={1}>{user?.name}</Text>
           {/* 44 px: es un control táctil como cualquier otro, aunque se toque poco. */}
           <Button size="xs" minH="44px" w="100%" variant="ghost" colorPalette="whiteAlpha" onClick={logout}>Salir</Button>
