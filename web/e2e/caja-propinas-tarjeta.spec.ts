@@ -150,19 +150,19 @@ test('la devolución de un cobro con tarjeta no se registra sin el folio de la t
   await page.keyboard.press('Escape');
 });
 
-test('la terminal que el usuario usó la última vez llega puesta al cobrar con tarjeta', async ({ page }) => {
+// Con dos o más terminales activas ninguna llega marcada (spec 036): la recordada del usuario dejaba
+// cobros en la terminal equivocada. Aunque una preferencia vieja siga guardada, no decide.
+test('con varias terminales ninguna llega marcada y Cobrar espera a que se elija', async ({ page }) => {
   const jwt = await tokenDeApi();
   test.skip((await turnoDeLaPrincipal(jwt)) === null, 'no hay caja abierta en el ambiente');
   type Terminal = { id: number; branchId: number; name: string; archived: boolean };
   const terminales = (await get<{ items: Terminal[] }>(jwt, '/card-terminals')).items.filter((t) => !t.archived);
   test.skip(terminales.length === 0, 'el ambiente no tiene terminales');
-  const previa = (await get<{ value: number | null }>(jwt, '/me/preferences/card_terminal')).value;
 
   const creada = await enviar(jwt, 'POST', '/card-terminals', { branchId: terminales[0].branchId, name: `E2E ${Date.now() % 100000}` });
   expect(creada.ok, `alta de terminal: ${creada.status}`).toBe(true);
   const nueva = (await creada.json()) as Terminal;
   try {
-    await enviar(jwt, 'PUT', '/me/preferences/card_terminal', nueva.id);
     const pedido = await pedidoPorApi(jwt);
     await entrar(page, `/pos?pedido=${pedido.id}`);
     const cobrar = page.getByRole('button', { name: /^(Enviar y cobrar|Cobrar)( \$[\d,.]+)?$/ }).filter({ visible: true }).first();
@@ -170,12 +170,14 @@ test('la terminal que el usuario usó la última vez llega puesta al cobrar con 
     await cobrar.click();
     const hoja = page.getByRole('dialog').last();
     await hoja.getByRole('button', { name: 'Tarjeta débito', exact: true }).click();
-    await expect(hoja.getByRole('button', { name: nueva.name })).toBeVisible();
+    const boton = hoja.getByRole('button', { name: nueva.name, exact: true });
+    await expect(boton).toHaveAttribute('aria-pressed', 'false');
+    await expect(hoja.getByRole('button', { name: /^Cobrar \$/ })).toBeDisabled();
+    await boton.click();
     await expect(hoja.getByRole('button', { name: /^Cobrar \$/ })).toBeEnabled();
     await page.keyboard.press('Escape');
   } finally {
     await enviar(jwt, 'PATCH', `/card-terminals/${nueva.id}`, { archived: true });
-    await enviar(jwt, 'PUT', '/me/preferences/card_terminal', previa);
   }
 });
 
