@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, Heading, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { attendanceApi, type ClockKind, type ClockResult, type RosterPerson } from '../../api/attendance';
@@ -10,6 +10,15 @@ import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { soloHora } from '../../utils/horaDelNegocio';
 
 const ROSTER = ['asistencia', 'roster'] as const;
+
+// La lista de checar no se vuelve a pedir sola: sin red, nada falla y la lista vieja se queda en
+// pantalla como si fuera cierta. Por eso se escucha al navegador, no solo a la consulta.
+function subscribeOnline(cb: () => void) {
+  window.addEventListener('online', cb);
+  window.addEventListener('offline', cb);
+  return () => { window.removeEventListener('online', cb); window.removeEventListener('offline', cb); };
+}
+const useBrowserOffline = () => useSyncExternalStore(subscribeOnline, () => !navigator.onLine, () => false);
 
 function hoursLabel(min: number): string {
   const h = Math.floor(min / 60);
@@ -31,6 +40,8 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
     // local» como si fuera cierto. Con `always` la consulta falla y la pantalla lo dice.
     networkMode: 'always', retry: 1,
   });
+  const offline = useBrowserOffline();
+  const unavailable = isError || offline;
   const [chosen, setChosen] = useState<RosterPerson | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -113,13 +124,13 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
       <Flex justify="space-between" align="center">
         <Heading size="lg">Asistencia</Heading>
         <Flex align="center" gap={3}>
-          {!isError && <Text color="fg.muted">{inside.length} en el local</Text>}
+          {!unavailable && <Text color="fg.muted">{inside.length} en el local</Text>}
           {onCerrar && <Button variant="ghost" minH="44px" onClick={onCerrar}>Cerrar</Button>}
         </Flex>
       </Flex>
       {error && !chosen && <Text color="red.500" fontWeight="600">{error}</Text>}
-      {isError ? (
-        <LoadError error={rosterError} onRetry={() => void refetch()} retrying={isFetching} />
+      {unavailable ? (
+        <LoadError error={rosterError} offline={offline} onRetry={() => void refetch()} retrying={isFetching} />
       ) : (
       <SimpleGrid columns={2} gap={5} flex="1" minH={0}>
         <VStack align="stretch" gap={2} minH={0}>

@@ -72,7 +72,7 @@ function Timeline({ orderId, onOpenOrder }: { orderId: number; onOpenOrder: (id:
         const moved = movedTo(e);
         return (
         <HStack key={e.id} align="flex-start" gap={3} py={2} borderBottomWidth="1px">
-          <Text fontSize="sm" color="fg.muted" w="64px" flexShrink={0}>{soloHora(e.occurredAt, zone)}</Text>
+          <Text fontSize="sm" color="fg.muted" w="80px" flexShrink={0} whiteSpace="nowrap">{soloHora(e.occurredAt, zone)}</Text>
           <Box w="10px" h="10px" borderRadius="full" bg={dotColor(e.action)} mt="6px" flexShrink={0} />
           <Box minW={0}>
             <Text fontWeight="700">{actionLabel(e.action)}</Text>

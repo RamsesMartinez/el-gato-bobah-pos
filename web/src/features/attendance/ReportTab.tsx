@@ -284,8 +284,10 @@ function DayDetail({ person, day, onClose }: { person: ReportPerson; day: Report
                 </HStack>
               )}
             </HStack>
+            {e.source === 'manual' && !e.inIp ? <Text fontSize="sm" color="fg.muted">Capturado a mano, no desde una tableta</Text> : <>
             <Text fontSize="sm" color="fg.muted">Entrada: {[e.inIp, deviceLabel(e.inDevice), e.inDeviceKey && `Aparato ${e.inDeviceKey.slice(0, 4).toUpperCase()}`].filter(Boolean).join(' · ') || '—'}</Text>
             {e.out && <Text fontSize="sm" color="fg.muted">Salida: {[e.outIp, deviceLabel(e.outDevice), e.outDeviceKey && `Aparato ${e.outDeviceKey.slice(0, 4).toUpperCase()}`].filter(Boolean).join(' · ') || '—'}</Text>}
+            </>}
           </Box>
         ))}
       </VStack>
@@ -325,7 +327,7 @@ function CorrectionForm({ personName, date, entry, field, onDone, onCancel }: {
         {field === 'clock_in_at' ? 'Entrada' : 'Salida'} correcta del registro de {entryRange(entry, zone)}
       </Text>
       <HStack gap={2}>
-        <Box w="120px"><Picker title="Hora" placeholder="Hora" value={timeValue} options={QUARTERS} onChange={setTimeValue} /></Box>
+        <Box w="136px"><Picker title="Hora" placeholder="Hora" value={timeValue} options={QUARTERS} onChange={setTimeValue} /></Box>
         <Input minH="44px" flex="1" placeholder="Motivo (obligatorio)" value={reason} onChange={(e) => setReason(e.target.value)} />
       </HStack>
       {error && <Text color="red.500" fontWeight="600">{error}</Text>}
@@ -375,8 +377,8 @@ function ManualEntrySheet({ people, onClose }: { people: Array<{ id: number; nam
           options={people.map((p) => ({ value: String(p.id), label: p.name }))} />
         <HStack gap={2}>
           <DatePickerButton label="Día" value={dayValue} max={diaDelNegocio(new Date())} onChange={setDayValue} />
-          <Box w="120px"><Picker title="Entrada" placeholder="Entrada" value={inTime} options={QUARTERS} onChange={setInTime} /></Box>
-          <Box w="120px"><Picker title="Salida" placeholder="Salida" value={outTime} options={QUARTERS} onChange={setOutTime} /></Box>
+          <Box w="136px"><Picker title="Entrada" placeholder="Entrada" value={inTime} options={QUARTERS} onChange={setInTime} /></Box>
+          <Box w="136px"><Picker title="Salida" placeholder="Salida" value={outTime} options={QUARTERS} onChange={setOutTime} /></Box>
         </HStack>
         <Input minH="44px" placeholder="Motivo (obligatorio)" value={reason} onChange={(e) => setReason(e.target.value)} />
         {error && <Text color="red.500" fontWeight="600">{error}</Text>}
