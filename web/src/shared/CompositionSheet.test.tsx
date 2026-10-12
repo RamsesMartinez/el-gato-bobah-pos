@@ -207,12 +207,15 @@ describe('la receta', () => {
       expect(body.alsoOptionIds ?? []).toEqual([]);
     });
 
-    it('dice lo que lleva hoy cada uno, para ver que es otra cosa', async () => {
+    // La revisión de tableta: un aria-label con solo el grupo callaba justo el «Hoy» al lector de
+    // pantalla, y con varios gemelos el último quedaba bajo el corte sin que nada dijera cuántos son.
+    it('dice cuántos son y lo que lleva hoy cada uno, también al lector de pantalla', async () => {
       api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
       montar('option');
       fireEvent.click(await screen.findByRole('button', { name: '+ Vaso 16 oz' }));
-      expect(screen.getByRole('button', { name: /También en «Sazonador de polvo»/ })).toHaveTextContent('Hoy: 5 g Sazonador Lemon Pepper');
-      expect(screen.getByRole('button', { name: /También en «Salsa extra»/ })).toHaveTextContent('Hoy: 36 ml Lemon Pepper Salsa');
+      expect(screen.getByText('Se llama igual en 2 grupos más. Marca dónde guardar esta misma receta:')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /También en «Sazonador de polvo».*Hoy: 5 g Sazonador Lemon Pepper/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /También en «Salsa extra».*Hoy: 36 ml Lemon Pepper Salsa/ })).toBeInTheDocument();
     });
 
     it('copia solo a los que se marcan, con la marca de cada uno', async () => {

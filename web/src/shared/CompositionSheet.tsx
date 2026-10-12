@@ -513,11 +513,11 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
 
           {offerTwins && (
             <VStack align="stretch" gap={1.5}>
-              <Text fontSize="sm" color="fg.muted">Se llama igual en otros grupos. Marca dónde guardar esta misma receta:</Text>
+              <Text fontSize="sm" color="fg.muted">Se llama igual en {twins.length} {twins.length === 1 ? 'grupo' : 'grupos'} más. Marca dónde guardar esta misma receta:</Text>
               {twins.map((t) => {
                 const on = picked.has(t.id);
                 return (
-                  <Button key={t.id} aria-label={`También en «${t.group}»`} aria-pressed={on} onClick={() => togglePick(t.id)}
+                  <Button key={t.id} aria-pressed={on} onClick={() => togglePick(t.id)}
                     variant="outline" h="auto" minH="48px" py={1.5} px={3} justifyContent="start" textAlign="left" gap={3}
                     borderColor={on ? 'red.600' : 'border'} bg={on ? 'red.50' : undefined}>
                     <Text fontSize="lg" lineHeight="1" aria-hidden>{on ? '☑' : '☐'}</Text>
