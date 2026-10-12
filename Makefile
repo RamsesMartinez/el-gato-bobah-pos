@@ -2,12 +2,18 @@
 .PHONY: help deploy-journald install start stop check check-env deps-up deps-down \
         web-dev web-build web-test api-dev api-run api-build api-test \
         sqlc sqlc-diff sqlc-vet db-migrate migrate-new fudo-import fudo-composiciones reset-admin reset-password build deploy \
-        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar
+        prod-db-tunnel prod-reset-password deploy-image respaldo-anonimo db-restaurar worktree-env test-integration
 .DEFAULT_GOAL := help
 
 # Puertos de la infra dev. Son env con default (y no un número fijo) porque el 5433/6380 de
 # antes chocaba con el postgres/redis de otros compose locales. Overridea con
 # `PG_PORT=… make db-migrate` si start.sh tuvo que mover el puerto.
+# Un worktree con infraestructura propia (make worktree-env n=NN) trae aquí sus puertos y su proyecto
+# de compose; en la carpeta principal no hay archivo y todo sigue igual.
+ifneq ($(wildcard .env.worktree.local),)
+include .env.worktree.local
+export COMPOSE_PROJECT_NAME PG_TEST_PORT CI_PG_PORT MAILPIT_HTTP_PORT MAILPIT_SMTP_PORT BACKEND_PORT FRONTEND_PORT PORT TEST_DATABASE_URL
+endif
 PG_PORT    ?= 5490
 REDIS_PORT ?= 6390
 export PG_PORT
@@ -91,6 +97,14 @@ web-lint: ## Lint frontend (eslint + tsc)
 	cd web && bun run lint && bun run typecheck
 web-audit: ## Auditoría de deps del frontend
 	cd web && bun audit || true
+worktree-env: ## Infra propia para este worktree (Postgres, pruebas, Redis, puertos): make worktree-env n=35
+	@bash scripts/worktree-env.sh "$(n)"
+
+test-integration: ## Pruebas de integración contra el Postgres de pruebas de este worktree (no el de la API)
+	@test -n "$(TEST_DATABASE_URL)" || { echo "Sin TEST_DATABASE_URL: corre antes make worktree-env n=NN."; exit 1; }
+	docker compose -f deploy/docker-compose.dev.yml --profile test up -d --wait postgres-test
+	cd server && go test -count=1 -timeout 10m -tags=integration ./internal/integration/... ./internal/httpapi/...
+
 ci-local: ## Lo mismo que CI (backend, integración, frontend) en paralelo y en local, antes de empujar
 	bash scripts/ci-local.sh
 

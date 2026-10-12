@@ -112,6 +112,39 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
 
 - `make install` — setup completo (valida entorno, instala deps y herramientas). `make check` solo verifica prereqs.
 - `make start` — levanta todo: Postgres (default **:5490**), Redis (**:6390**), mailpit (**:8095**/**:1095**), API (default **:8080**) y web (Vite default **:3000**). **Ningún puerto es fijo**: un default, por raro que sea, choca con el postgres/redis de otro compose local. `start.sh` reusa el puerto que ya publica el contenedor vivo o toma el primero libre desde el default, y exporta `PG_PORT`/`REDIS_PORT`/`MAILPIT_*` para el compose y `dev-api.sh`; el `Makefile` los lee igual (`PG_PORT=… make db-migrate`). Pregunta los puertos de API/web (defaults auto-ajustados al primer libre) y **detecta puertos ocupados** antes de levantar. Fíjalos sin preguntar con `BACKEND_PORT=… FRONTEND_PORT=… make start`. El binario Go lee `PORT`; `vite.config.ts` lee `BACKEND_PORT` (proxy `/api`) y `FRONTEND_PORT`.
+- **Varios worktrees a la vez: cada uno con su propia infraestructura** (decidido el 2026-10-12).
+  `docker compose` toma el nombre del proyecto de la carpeta del compose (`deploy/`), que es la
+  misma en todos los worktrees: sin esto, cada `make start` cae en los MISMOS `deploy-postgres-1` y
+  `deploy-redis-1`. Lo que costaba, medido: una rama migra la base de otra (dos ramas con la misma
+  migración 0089 dejan a la otra API sin arrancar), el caché del menú y los bloqueos de login se
+  comparten en Redis, y las pruebas de integración —que fijan las contraseñas de los roles de TODO
+  el servidor de Postgres— dejaron «db_down» la API local que usaba ese servidor.
+
+  Al crear un worktree, antes del primer `make start`: **`make worktree-env n=NN`**, con NN el número
+  de la feature (035 → 35). Escribe `.env.worktree.local` (ignorado por git), que leen el Makefile,
+  `start.sh`, `stop.sh`, `dev-api.sh` y `ci-local.sh`:
+
+  | Pieza | Puerto | Nota |
+  | --- | --- | --- |
+  | Proyecto de compose | `egbNN` | Contenedores y volúmenes propios |
+  | Postgres de la API | 5500+NN | |
+  | Postgres de pruebas | 5600+NN | Servicio `postgres-test` (perfil `test`, en memoria); lo usa `make test-integration` |
+  | Postgres de `make ci-local` | 5700+NN | Antes fijo en 5510: dos `ci-local` a la vez chocaban |
+  | Redis | 6400+NN | |
+  | API · web | 8000+NN · 3000+NN | |
+  | mailpit (web · SMTP) | 8200+NN · 1100+NN | |
+
+  Reglas:
+  - **Las credenciales son las del `deploy/.env` de ese worktree**; si no existe, `make check-env`
+    lo crea con contraseñas nuevas. Como cada worktree tiene su propio servidor de Postgres, los
+    roles y sus contraseñas ya no se pisan.
+  - **Las pruebas de integración van contra el Postgres de pruebas, nunca contra el de la API**:
+    `make test-integration`, no `TEST_DATABASE_URL=<la base de la API>`.
+  - **Un worktree que ya trabaja se cambia solo entre tareas**, nunca a media corrida de pruebas:
+    cambiar el proyecto de compose deja su base anterior fuera de su alcance (los datos siguen en el
+    contenedor viejo; se traen con `make db-restaurar` si hacen falta).
+  - **La carpeta principal no se toca**: el script se niega a correr ahí, y sin el archivo todo
+    sigue con los puertos de siempre (5490, 6390, 8080, 3000). Producción, por supuesto, tampoco.
 - `make api-dev` (hot reload con air) · `make api-build` (= `cd server && go build ./...`) · `make api-test` (= `cd server && go test ./...`).
 - **La base local se comporta como producción: RLS y GRANT aplican también en dev.** La regla vive
   en la constitución (IV, *La base local niega lo mismo que producción*); esto es la mecánica, y
