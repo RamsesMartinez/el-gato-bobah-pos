@@ -4,7 +4,7 @@ import { useSessionStore, type SessionUser } from '../stores/session';
 // sigue siendo `RequirePermission` allá, esto solo evita ofrecer lo que terminaría en 403.
 export type Permission = 'payments.void' | 'orders.cancel' | 'orders.move_lines' | 'orders.cancel_pending'
   | 'attendance.configure' | 'attendance.report' | 'attendance.correct_others' | 'attendance.correct_own'
-  | 'audit.view' | 'payments.change_terminal';
+  | 'audit.view' | 'payments.change_terminal' | 'cash.configure';
 
 // can pregunta por permiso y nunca por nombre de rol: cuando cada empresa defina sus roles, lo único
 // que cambia es de dónde saca el servidor la lista, y ninguna pantalla se reescribe.

@@ -859,3 +859,21 @@ test('sin terminales arqueadas ni propinas, el corte no agrega la sección', () 
   }} />);
   expect(container.textContent).not.toMatch(/Terminales|Propinas/);
 });
+
+// Spec 035 (Maquetas: «Hoja de cierre», A). El retiro no es una salida del negocio: se nombra
+// «Retiro» con quién se lo llevó, y la confirmación del cierre lo dice antes de volverlo definitivo.
+describe('retiro al cierre', () => {
+  test('el movimiento de retiro se nombra «Retiro» y dice quién se lo llevó', () => {
+    wrap(<MovementsTable movements={[mov({ id: 9, kind: 'retiro', amount: '4300', concept: 'Retiro al cierre', recipientName: 'Luis' })]} currency="MXN" />);
+    expect(screen.getByText('Retiro')).toBeInTheDocument();
+    expect(screen.queryByText('Salida')).toBeNull();
+    expect(screen.getByText(/Retiro al cierre · Luis/)).toBeInTheDocument();
+  });
+
+  test('la hoja de «¿Cerrar caja?» muestra el resumen del retiro', async () => {
+    wrap(<BotonCerrarCaja nombre="Caja principal" disabled={false} loading={false} onCerrar={vi.fn()}
+      descripcion="Se retiran $4,300 · se los lleva Luis. No podrás modificarla después." />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar caja' }));
+    expect(await screen.findByText(/Se retiran \$4,300 · se los lleva Luis/)).toBeInTheDocument();
+  });
+});

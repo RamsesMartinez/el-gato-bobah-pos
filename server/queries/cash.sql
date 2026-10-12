@@ -65,10 +65,16 @@ where r.is_active
 order by r.is_primary desc, r.name;
 
 -- name: ListAllCashRegisters :many
-select id, name, is_primary, is_active from cash_registers order by is_primary desc, name;
+-- fixed_float va aquí (configuración) y NO en ListCashRegisters, la que lee el cajero para abrir: el
+-- fijo es casi siempre el esperado de la apertura y la apertura se cuenta a ciegas (spec 035).
+select id, name, is_primary, is_active, fixed_float from cash_registers order by is_primary desc, name;
 
 -- name: GetCashRegister :one
-select id, name, is_primary, is_active from cash_registers where id = $1;
+select id, name, is_primary, is_active, fixed_float from cash_registers where id = $1;
+
+-- name: SetRegisterFixedFloat :one
+update cash_registers set fixed_float = sqlc.narg(fixed_float) where id = sqlc.arg(id)
+returning id, name, is_primary, is_active, fixed_float;
 
 -- name: CreateCashRegister :one
 -- is_primary/is_active toman su default (secundaria, activa): la primaria la fija la migración.
@@ -187,6 +193,7 @@ returning *;
 -- «Devoluciones» de su medio y no en «Salidas de efectivo»; el esperado no cambia, porque el neto
 -- de movimientos la sigue restando.
 select m.id, m.kind, m.amount, m.concept, m.created_at, u.name as user_name, m.transfer_id, m.expense_id, m.reverses_id,
+       m.recipient_name,
        exists (select 1 from register_cash_movements x where x.reverses_id = m.id) as reversed,
        exists (select 1 from order_refunds r where r.cash_movement_id = m.id) as is_refund
 from register_cash_movements m
@@ -213,7 +220,11 @@ order by ep.id;
 -- Neto de efectivo movido en la sesión (entradas − salidas); suma al efectivo esperado al cerrar.
 -- name: NetCashMovements :one
 -- Un reverso solo corrige salidas (domain.CanReverse): devuelve al cajón lo que la salida restó.
-select coalesce(sum(case when kind in ('entrada', 'reverso') then amount else -amount end), 0)::numeric(10,2) as net
+-- Cada tipo con su signo y ninguno por descarte: el retiro al cierre (spec 035) se registra DESPUÉS
+-- de contar, y restarlo dejaría el arqueo con un sobrante igual al retiro.
+select coalesce(sum(case when kind in ('entrada', 'reverso') then amount
+                         when kind in ('salida', 'propina') then -amount
+                         else 0 end), 0)::numeric(10,2) as net
 from register_cash_movements where session_id = $1;
 
 -- Traspasos entre cajas: la fila de traspaso + cada pierna como movimiento ligado.
@@ -698,7 +709,18 @@ select coalesce(s.float_left, c.total)::numeric(10,2) as total
  limit 1;
 
 -- name: SetFloatLeft :exec
-update register_sessions set float_left = $2 where id = $1;
+-- fixed_float_at_close: el fijo que la hoja de cierre mostró (spec 035), para saber después si ese
+-- día se dejó otra cantidad aunque el fijo haya cambiado.
+update register_sessions set float_left = sqlc.arg(float_left), fixed_float_at_close = sqlc.narg(fixed_float_at_close)
+ where id = sqlc.arg(id);
+
+-- name: InsertWithdrawal :one
+-- El retiro al cierre (spec 035): quién se lo llevó, con su nombre copiado para que renombrar al
+-- usuario no reescriba un corte firmado. El índice único deja uno por turno.
+insert into register_cash_movements (session_id, kind, amount, concept, user_id, recipient_user_id, recipient_name)
+select sqlc.arg(session_id), 'retiro', sqlc.arg(amount), 'Retiro al cierre', sqlc.arg(user_id), u.id, u.name
+  from users u where u.id = sqlc.arg(recipient_user_id) and u.is_active
+returning id, recipient_name;
 
 -- name: SetOpeningExtras :one
 -- El motivo de una apertura que no coincide con el cierre anterior, y el modo de arqueo de tarjeta
