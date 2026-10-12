@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, Button, DrawerBackdrop, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader, DrawerRoot, Grid, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { Box, Button, Grid, HStack, Input, Text, VStack } from '@chakra-ui/react';
+import { DrawerBackdrop, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader, DrawerRoot } from '../../components/ui/drawer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backofficeApi, type CashRegisterConfig } from '../../api/backoffice';
 import { can } from '../../app/permissions';

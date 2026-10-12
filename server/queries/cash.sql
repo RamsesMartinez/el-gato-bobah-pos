@@ -132,7 +132,11 @@ select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at,
        -- order_payments/order_lines.
        (coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)
         + coalesce((select c.difference from session_cash_counts c
-                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference
+                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference,
+       -- El último turno de su caja: con arqueo ciego, su arqueo no se le muestra al cajero hasta
+       -- que la caja se vuelve a abrir (spec 035, R8).
+       not exists (select 1 from register_sessions o
+                   where o.register_id = s.register_id and o.id > s.id) as is_latest_of_register
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -731,3 +735,9 @@ update register_sessions s set opening_reason = sqlc.narg('reason'), opening_rea
                                     where r.id = s.register_id), 'auto')
  where s.id = sqlc.arg(id)
 returning s.card_count_mode;
+
+-- name: IsLatestSessionOfRegister :one
+-- ¿Es el último turno de su caja? Mientras lo sea y esté cerrado, lo contado al cerrarlo es el
+-- esperado de la siguiente apertura (spec 035, R8).
+select not exists (select 1 from register_sessions o
+                   where o.register_id = sqlc.arg(register_id) and o.id > sqlc.arg(session_id)::bigint) as latest;

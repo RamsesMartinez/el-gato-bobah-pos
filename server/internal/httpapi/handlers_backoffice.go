@@ -408,7 +408,8 @@ func (h *Handlers) CashHistory(w http.ResponseWriter, r *http.Request) {
 			*p.dst = &d
 		}
 	}
-	rows, total, err := h.backoffice.SessionHistory(r.Context(), f)
+	u, _ := userFrom(r.Context())
+	rows, total, err := h.backoffice.SessionHistoryFor(r.Context(), f, slices.Contains(h.permissions(u.Role), domain.PermCashConfigure))
 	if err != nil {
 		Error(w, err)
 		return

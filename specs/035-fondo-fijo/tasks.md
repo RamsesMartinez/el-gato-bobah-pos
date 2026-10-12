@@ -60,7 +60,7 @@
 
 - [X] T022 Correr `cd server && go build ./... && go test ./...` y `cd web && bun run lint && bun run vitest run && bun run build`
 - [X] T023 [P] Documentar en `AGENTS.md` (sección de caja): `retiro` no es salida ni entra al neto, y toda suma de movimientos lo excluye; el rollback de esta feature es solo hacia adelante
-- [ ] T024 Recorrer [quickstart.md](quickstart.md) contra la API local como `gatobobah_app`
+- [X] T024 Recorrer [quickstart.md](quickstart.md) contra la API local como `gatobobah_app` — resultado y capturas a 1024×600 en [validacion.md](validacion.md); los pasos 4 y 5 de la guía quedaron cubiertos por las pruebas de integración y no por la pantalla
 
 ## Phase 7: Revisión de código (2026-10-12)
 
@@ -69,6 +69,9 @@
 - [X] T027 [US3] Test de atomicidad: un retiro rechazado deja el turno abierto, sin fondo, sin el snapshot del fijo y sin conteo de cierre. Test: `TestRejectedWithdrawalLeavesTheShiftOpenAndUntouched`.
 - [X] T028 [US3] Aviso propio «Elige quién se lleva el retiro de $X», fuera de «Falta capturar lo contado», en `avisoDeQuienSeLoLleva` (`web/src/features/backoffice/fondoQueSeDeja.ts`) y `CashPage.tsx`.
 - [X] T029 [US2] `FondoQueSeDeja.tsx` pinta el borde rojo solo con «Sí» y cuando el fondo excede lo contado.
+
+- [X] T030 [US3] Apertura a ciegas, lo contado (decisión del dueño 2026-10-12, research R8): `IsLatestSessionOfRegister` y `is_latest_of_register` en `server/queries/cash.sql`; `ocultarElArqueoDelUltimoCierre` y `SessionHistoryFor` en `server/internal/app/backoffice.go`; `arqueoHidden` en `web/src/api/backoffice.ts`, «Arqueo oculto» en `CashPage.tsx` y «Oculto» en `historicoDeCaja.ts`. Tests: `TestLastCloseHidesCountedFromCashierUntilReopened` (visto en rojo: el cajero leía 5317.45 en el detalle) y `CashPage.test.tsx › el último cierre con el arqueo oculto` (rojo: el texto no existía y `diferenciaDelHistorico` no era función)
+- [X] T031 [US1] La hoja del fondo fijo en Ajustes usa `components/ui/drawer` (con `Positioner`) en `web/src/features/admin/FondoFijo.tsx`: con las piezas crudas de Chakra se pintaba a media página y «Guardar» quedaba fuera de los 600 px (encontrado en T024). Test: `AjustesDeCaja.test.tsx › la hoja va fija al borde inferior de la pantalla` (visto en rojo)
 
 ## Dependencies
 

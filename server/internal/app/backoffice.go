@@ -261,7 +261,7 @@ type WithdrawalView struct {
 
 // ocultarElFondoDejado quita de un corte cerrado todo lo que dice cuánto se quedó en el cajón: el
 // fondo, el fijo contra el que se comparó (casi siempre es el mismo número) y el retiro, en sus
-// tres lugares. Lo contado sigue a la vista; ver research R8 sobre el cierre sin retiro.
+// tres lugares. Lo contado del último cierre lo quita ocultarElArqueoDelUltimoCierre (R8).
 func ocultarElFondoDejado(view *SessionDetailView) {
 	view.FloatLeft, view.FixedFloatAtClose, view.Withdrawal = nil, nil, nil
 	movs := view.Movements[:0]
@@ -280,6 +280,24 @@ func ocultarElFondoDejado(view *SessionDetailView) {
 		egresos = append(egresos, e)
 	}
 	view.Breakdown.Egresos = egresos
+}
+
+// ocultarElArqueoDelUltimoCierre quita del último cierre de una caja todo lo que da lo contado: el
+// conteo de cierre, el arqueo del cajón, el esperado y la diferencia de cada método (en los del
+// cajón lo declarado ES el esperado) y los ingresos, que sumados al fondo y al neto dan el esperado.
+// Sin retiro, lo contado es el fondo dejado, o sea el esperado de la siguiente apertura (R8). La
+// apertura no se toca: es lo que el propio cajero contó. Se va el renglón entero y no se pone en
+// cero: un $0 se lee como «no hubo», y ArqueoHidden le dice a la pantalla que hay algo oculto.
+func ocultarElArqueoDelUltimoCierre(view *SessionDetailView) {
+	view.ArqueoHidden = true
+	if view.Counts != nil {
+		view.Counts.Cierre = nil
+	}
+	view.Drawer = nil
+	view.Totals = []MethodTotal{}
+	view.Breakdown.Ingresos = []CorteMethodBreakdown{}
+	view.Breakdown.IngresosTotal = decimal.Zero
+	view.Breakdown.Plataformas = []CortePlatformSubtotal{}
 }
 
 // conceptoRetiro es el renglón del retiro en los egresos del corte.
@@ -704,6 +722,9 @@ type SessionDetailView struct {
 	Movements          []CashMovementView  `json:"movements"`
 	Expenses           []CashExpenseView   `json:"expenses"`
 	Breakdown          CorteBreakdown      `json:"breakdown"`
+	// ArqueoHidden: ver SessionHistoryRow.ArqueoHidden. Con él en true, totales, arqueo, conteo de
+	// cierre e ingresos vienen vacíos porque se ocultaron, no porque no hubo.
+	ArqueoHidden bool `json:"arqueoHidden"`
 
 	// Las ventas que este corte cobró. Viven aquí y no en un filtro de la pantalla de Ventas: ahí
 	// convivirían con el filtro de fechas y bastaría elegir un rango que no toque el corte para
@@ -752,17 +773,22 @@ type SessionSaleView struct {
 }
 
 type SessionHistoryRow struct {
-	ID              int64           `json:"id"`
-	RegisterName    string          `json:"registerName"`
-	Status          string          `json:"status"`
-	OpeningCash     decimal.Decimal `json:"openingCash"`
-	Currency        domain.Currency `json:"currency"`
-	OpenedAt        time.Time       `json:"openedAt"`
-	ClosedAt        *time.Time      `json:"closedAt"`
-	OpenedByName    string          `json:"openedByName"`
-	ClosedByName    *string         `json:"closedByName"`
-	TotalDifference decimal.Decimal `json:"totalDifference"`
-	Notes           *string         `json:"notes"`
+	ID           int64           `json:"id"`
+	RegisterName string          `json:"registerName"`
+	Status       string          `json:"status"`
+	OpeningCash  decimal.Decimal `json:"openingCash"`
+	Currency     domain.Currency `json:"currency"`
+	OpenedAt     time.Time       `json:"openedAt"`
+	ClosedAt     *time.Time      `json:"closedAt"`
+	OpenedByName string          `json:"openedByName"`
+	ClosedByName *string         `json:"closedByName"`
+	// TotalDifference: nil cuando el arqueo está oculto (ArqueoHidden).
+	TotalDifference *decimal.Decimal `json:"totalDifference"`
+	Notes           *string          `json:"notes"`
+	// ArqueoHidden: con arqueo ciego, el último cierre de una caja que no se ha vuelto a abrir no le
+	// muestra su arqueo a quien no configura la caja: lo contado es el esperado de la siguiente
+	// apertura (spec 035, R8). Viaja para que la pantalla diga «oculto» y no pinte $0.
+	ArqueoHidden bool `json:"arqueoHidden"`
 }
 
 // CashRegisters lista las cajas activas + el id de su sesión abierta (para pickers y la vista de caja).
@@ -2263,6 +2289,12 @@ func (s *BackofficeService) openSessionOrConflict(ctx context.Context, registerI
 // SessionHistory devuelve una página del histórico de cortes (abiertos y cerrados), el más reciente
 // primero, y cuántos hay con el mismo filtro.
 func (s *BackofficeService) SessionHistory(ctx context.Context, f domain.SessionHistoryFilter) ([]SessionHistoryRow, int64, error) {
+	return s.SessionHistoryFor(ctx, f, true)
+}
+
+// SessionHistoryFor es SessionHistory para quien la pide: sin el permiso de configurar caja y con
+// arqueo ciego, la diferencia del último cierre de cada caja no reabierta no viaja (ver R8).
+func (s *BackofficeService) SessionHistoryFor(ctx context.Context, f domain.SessionHistoryFilter, canSeeArqueo bool) ([]SessionHistoryRow, int64, error) {
 	if err := f.Validate(); err != nil {
 		return nil, 0, err
 	}
@@ -2282,13 +2314,17 @@ func (s *BackofficeService) SessionHistory(ctx context.Context, f domain.Session
 	if err != nil {
 		return nil, 0, err
 	}
+	ciego := !canSeeArqueo && s.arqueoCiego(ctx)
 	out := make([]SessionHistoryRow, len(rows))
 	for i, r := range rows {
 		out[i] = SessionHistoryRow{
 			ID: r.ID, RegisterName: r.RegisterName, Status: string(r.Status), OpeningCash: r.OpeningCash,
 			Currency: domain.Currency(r.Currency), OpenedAt: r.OpenedAt, ClosedAt: tsPtr(r.ClosedAt),
 			OpenedByName: r.OpenedByName, ClosedByName: r.ClosedByName,
-			TotalDifference: r.TotalDifference, Notes: r.Notes,
+			TotalDifference: &r.TotalDifference, Notes: r.Notes,
+		}
+		if ciego && r.Status == db.SessionStatusCerrada && r.IsLatestOfRegister {
+			out[i].TotalDifference, out[i].ArqueoHidden = nil, true
 		}
 	}
 	return out, total, nil
@@ -2413,6 +2449,14 @@ func (s *BackofficeService) SessionDetailFor(ctx context.Context, id int64, canS
 	view.FloatLeft, view.FixedFloatAtClose, view.Withdrawal = sess.FloatLeft, sess.FixedFloatAtClose, withdrawalOf(moves)
 	if !canSeeFloat && string(sess.Status) == "cerrada" && s.arqueoCiego(ctx) {
 		ocultarElFondoDejado(view)
+		ultimo, err := s.store.QC(ctx).IsLatestSessionOfRegister(ctx, db.IsLatestSessionOfRegisterParams{
+			RegisterID: sess.RegisterID, SessionID: sess.ID})
+		if err != nil {
+			return nil, err
+		}
+		if ultimo {
+			ocultarElArqueoDelUltimoCierre(view)
+		}
 	}
 	// El mismo ocultamiento que en el turno abierto, y aquí no es redundante: este endpoint
 	// acepta el id del turno ABIERTO y está abierto a rol cajero, así que nulificar solo el otro

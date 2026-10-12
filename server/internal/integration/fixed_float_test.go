@@ -502,3 +502,64 @@ func TestRejectedWithdrawalLeavesTheShiftOpenAndUntouched(t *testing.T) {
 			status, floatLeft, fijo, conteos)
 	}
 }
+
+// Con arqueo ciego, el último cierre de una caja que todavía no se vuelve a abrir no le dice al
+// cajero lo contado ni nada de donde salga: en un cierre sin retiro lo contado ES el esperado de la
+// siguiente apertura (spec 035, R8). Se busca la cifra en la respuesta cruda, en el detalle y en el
+// histórico, porque cualquier campo que la traiga —el conteo, la diferencia, el esperado— basta.
+func TestLastCloseHidesCountedFromCashierUntilReopened(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	appSt := appRoleStore(t)
+	ctx := context.Background()
+	back := app.NewBackofficeService(st, clock)
+	jm := auth.NewManager(secretoDelNegocioEnPruebas, nil)
+	h := httpapi.NewHandlers(httpapi.Deps{JWT: jm, Backoffice: app.NewBackofficeService(appSt, clock), Broker: realtime.NewBroker()})
+	r := httpapi.Router(config.Config{}, jm, h, appSt)
+	token := func(username, role string) (int64, string) {
+		id := makeUser(t, st, username, role)
+		tok, err := jm.Issue(domain.User{ID: id, CompanyID: defaultCompanyID, Name: username, Role: domain.Role(role)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id, tok
+	}
+	cajero, cajeroTok := token("cajero_ff_contado", "cajero")
+	_, gerenteTok := token("gerente_ff_contado", "gerente")
+	prenderCiego(t, ctx, app.NewSettingsService(st, "pepper-de-prueba"))
+	reg := principalRegister(t, st)
+	abrirTurnoFF(t, back, ctx, reg, cajero)
+	// «No, todo se queda en el cajón»: el fondo es lo contado y no hay retiro.
+	v, err := back.CloseSession(ctx, reg, cajero, app.CierreCmd{Total: decPtr("5317.45"), Motivo: "prueba", FloatLeft: decPtr("5317.45")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const contado = "5317.45"
+	detalle := "/api/v1/cash-sessions/" + strconv.FormatInt(v.ID, 10)
+	historial := "/api/v1/cash-sessions?page=0&pageSize=50"
+	leer := func(path, tok string) string {
+		w := do(t, r, http.MethodGet, path, tok, nil, "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+		}
+		return w.Body.String()
+	}
+	for _, p := range []string{detalle, historial} {
+		if body := leer(p, cajeroTok); strings.Contains(body, contado) {
+			t.Fatalf("el cajero leyó lo contado del último cierre (%s) en %s: es el esperado de su próxima apertura", contado, p)
+		}
+	}
+	if body := leer(detalle, cajeroTok); !strings.Contains(body, `"arqueoHidden":true`) {
+		t.Fatalf("el detalle oculto no lo dice: la pantalla pintaría $0 donde hay una cifra: %s", body)
+	}
+	if body := leer(detalle, gerenteTok); !strings.Contains(body, contado) {
+		t.Fatal("quien configura la caja dejó de ver lo contado")
+	}
+	// Ya contada la apertura siguiente, la cifra no protege nada: el cajero vuelve a ver el corte.
+	if _, err := back.OpenSession(ctx, reg, app.AperturaCmd{Total: decPtr(contado), Motivo: "prueba"}, cajero); err != nil {
+		t.Fatalf("reabrir: %v", err)
+	}
+	if body := leer(detalle, cajeroTok); !strings.Contains(body, contado) {
+		t.Fatal("con la caja ya reabierta, el cajero sigue sin ver el corte anterior")
+	}
+}

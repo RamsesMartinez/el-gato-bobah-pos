@@ -28,6 +28,7 @@ import { RepartirPropinas, PropinasDelCierre } from './RepartirPropinas';
 import { MotivoDeApertura } from './MotivoDeApertura';
 import { AvisosDeCaja } from './AvisosDeCaja';
 import { FondoQueSeDeja } from './FondoQueSeDeja';
+import { diferenciaDelHistorico } from './historicoDeCaja';
 import { useVolverAlCierre } from './volverAlCierre';
 import { fondoValido, fondoExcedeLoContado, retiroDelCierre, resumenDelRetiro, avisoDeQuienSeLoLleva } from './fondoQueSeDeja';
 import { ConteoDeTerminales } from './ConteoDeTerminales';
@@ -397,6 +398,7 @@ interface CorteData {
   drawer?: ArqueoDelCajon | null;
   voidedPayments?: VoidedPayment[];
   refunds?: SessionRefund[];
+  arqueoHidden?: boolean;
 }
 
 // Resumen del corte reutilizable (histórico y panel lateral): jerarquía + conciliación + drill-down.
@@ -410,7 +412,12 @@ export function CorteSummary({ data, abierto = false }: { data: CorteData; abier
   const expenses = data.expenses ?? [];
   return (
     <VStack align="stretch" gap={4}>
-      <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />
+      {data.arqueoHidden ? (
+        <Box borderWidth="1px" borderColor="border" borderRadius="lg" p={3}>
+          <Text fontWeight="700">Arqueo oculto</Text>
+          <Text fontSize="sm" color="fg.muted">Se ve cuando se vuelva a abrir la caja.</Text>
+        </Box>
+      ) : <IngresosEgresosCard openingCash={data.openingCash} breakdown={data.breakdown} currency={cur} />}
       {totals.length > 0 && !abierto && (
         <Section title="Conciliación (sistema vs declarado)">
           <TotalsTable totals={totals} currency={cur} withTotalRow drawerDifference={data.drawer?.difference} />
@@ -1516,8 +1523,8 @@ function HistoryTab() {
                 </Badge>
               </Table.Cell>
               {!wide && <Table.Cell fontSize="sm">{r.openedByName}{r.closedByName ? ` → ${r.closedByName}` : ''}</Table.Cell>}
-              <Table.Cell textAlign="end" color={diffColor(r.totalDifference)} fontWeight="600">
-                {r.status === 'cerrada' ? money(r.totalDifference, r.currency) : '—'}
+              <Table.Cell textAlign="end" color={r.totalDifference === null ? 'fg.muted' : diffColor(r.totalDifference)} fontWeight="600">
+                {diferenciaDelHistorico(r)}
               </Table.Cell>
               <Table.Cell textAlign="end">
                 <Button size="sm" minH="44px" px={4} variant="outline" onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}>Ver</Button>

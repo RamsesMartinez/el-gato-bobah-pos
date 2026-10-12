@@ -124,6 +124,15 @@ describe('fondo fijo', () => {
     await waitFor(() => expect(api.setFixedFloat).toHaveBeenCalledWith(2, 500));
   });
 
+  // Se veía en la tableta a 1024×600 como una caja a media página con «Guardar» en y=848: la hoja se
+  // armaba con las piezas crudas de Chakra, sin el Positioner que la fija al borde de la pantalla.
+  test('la hoja va fija al borde inferior de la pantalla, no a media página', async () => {
+    pinta();
+    await userEvent.click(await screen.findByRole('button', { name: /Barra/ }));
+    const hoja = await screen.findByRole('dialog');
+    expect(hoja.closest('[data-part="positioner"]')).not.toBeNull();
+  });
+
   test('«Quitar fondo fijo» manda null', async () => {
     pinta();
     await userEvent.click(await screen.findByRole('button', { name: /Caja principal/ }));

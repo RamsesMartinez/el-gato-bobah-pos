@@ -311,8 +311,12 @@ export interface CashSessionRow {
   closedAt: string | null;
   openedByName: string;
   closedByName: string | null;
-  totalDifference: string;
+  // Null con el arqueo oculto (spec 035, R8).
+  totalDifference: string | null;
   notes: string | null;
+  // Con arqueo ciego, el último cierre de una caja no reabierta no muestra su arqueo a quien no
+  // configura la caja. Opcional: un backend viejo no lo manda.
+  arqueoHidden?: boolean;
 }
 // Detalle de un corte (totales GUARDADOS al cerrar + movimientos).
 export interface CashSessionDetail {
@@ -330,6 +334,8 @@ export interface CashSessionDetail {
   movements: CashMovement[];
   expenses: CashExpenseLine[];
   breakdown: CorteBreakdown;
+  // Ver CashSession.arqueoHidden: con él, totales, arqueo, conteo de cierre e ingresos vienen vacíos.
+  arqueoHidden?: boolean;
   // Las ventas que este corte cobró. Viven en el corte y no como filtro de la pantalla de Ventas:
   // ahí convivirían con el filtro de fechas y bastaría un rango que no toque el corte para llegar a
   // una pantalla vacía sin explicación.

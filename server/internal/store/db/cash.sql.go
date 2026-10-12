@@ -766,6 +766,25 @@ func (q *Queries) InsertWithdrawal(ctx context.Context, arg InsertWithdrawalPara
 	return i, err
 }
 
+const isLatestSessionOfRegister = `-- name: IsLatestSessionOfRegister :one
+select not exists (select 1 from register_sessions o
+                   where o.register_id = $1 and o.id > $2::bigint) as latest
+`
+
+type IsLatestSessionOfRegisterParams struct {
+	RegisterID int64 `json:"register_id"`
+	SessionID  int64 `json:"session_id"`
+}
+
+// ¿Es el último turno de su caja? Mientras lo sea y esté cerrado, lo contado al cerrarlo es el
+// esperado de la siguiente apertura (spec 035, R8).
+func (q *Queries) IsLatestSessionOfRegister(ctx context.Context, arg IsLatestSessionOfRegisterParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isLatestSessionOfRegister, arg.RegisterID, arg.SessionID)
+	var latest bool
+	err := row.Scan(&latest)
+	return latest, err
+}
+
 const lastClosingCountOfRegister = `-- name: LastClosingCountOfRegister :one
 select coalesce(s.float_left, c.total)::numeric(10,2) as total
   from register_sessions s
@@ -1417,7 +1436,11 @@ select s.id, s.business_date, s.status, s.opening_cash, s.currency, s.opened_at,
        -- order_payments/order_lines.
        (coalesce((select sum(difference) from register_session_totals t where t.session_id = s.id), 0)
         + coalesce((select c.difference from session_cash_counts c
-                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference
+                    where c.session_id = s.id and c.moment = 'cierre'), 0))::numeric(10,2) as total_difference,
+       -- El último turno de su caja: con arqueo ciego, su arqueo no se le muestra al cajero hasta
+       -- que la caja se vuelve a abrir (spec 035, R8).
+       not exists (select 1 from register_sessions o
+                   where o.register_id = s.register_id and o.id > s.id) as is_latest_of_register
 from register_sessions s
 join cash_registers r on r.id = s.register_id
 join users ob on ob.id = s.opened_by
@@ -1436,18 +1459,19 @@ type ListSessionsParams struct {
 }
 
 type ListSessionsRow struct {
-	ID              int64              `json:"id"`
-	BusinessDate    pgtype.Date        `json:"business_date"`
-	Status          SessionStatus      `json:"status"`
-	OpeningCash     decimal.Decimal    `json:"opening_cash"`
-	Currency        string             `json:"currency"`
-	OpenedAt        time.Time          `json:"opened_at"`
-	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
-	Notes           *string            `json:"notes"`
-	RegisterName    string             `json:"register_name"`
-	OpenedByName    string             `json:"opened_by_name"`
-	ClosedByName    *string            `json:"closed_by_name"`
-	TotalDifference decimal.Decimal    `json:"total_difference"`
+	ID                 int64              `json:"id"`
+	BusinessDate       pgtype.Date        `json:"business_date"`
+	Status             SessionStatus      `json:"status"`
+	OpeningCash        decimal.Decimal    `json:"opening_cash"`
+	Currency           string             `json:"currency"`
+	OpenedAt           time.Time          `json:"opened_at"`
+	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+	Notes              *string            `json:"notes"`
+	RegisterName       string             `json:"register_name"`
+	OpenedByName       string             `json:"opened_by_name"`
+	ClosedByName       *string            `json:"closed_by_name"`
+	TotalDifference    decimal.Decimal    `json:"total_difference"`
+	IsLatestOfRegister bool               `json:"is_latest_of_register"`
 }
 
 // El mismo `where` que CountSessions, y se editan juntos: si divergen, «Página 3 de 2».
@@ -1480,6 +1504,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 			&i.OpenedByName,
 			&i.ClosedByName,
 			&i.TotalDifference,
+			&i.IsLatestOfRegister,
 		); err != nil {
 			return nil, err
 		}

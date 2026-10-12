@@ -77,6 +77,7 @@ con la persona elegida; el faltante/sobrante del arqueo no cambia por registrarl
 - **Recarga o caída de red a media captura**: lo tecleado puede perderse, pero nunca queda un cierre sin su retiro ni un retiro sin cierre.
 - **Persona que se lleva el retiro dada de baja después**: la salida conserva quién fue.
 - **Corregir un retiro mal registrado**: el retiro nace con el cierre y el turno ya está cerrado; no se reversa ni se edita. Lo que salió mal se aclara en las notas del cierre (fuera de alcance corregirlo después).
+- **El historial no adelanta la siguiente apertura**: con arqueo ciego, quien no configura la caja no ve en el último cierre de una caja que no se ha vuelto a abrir ni el fondo dejado, ni el retiro, ni lo contado, ni nada de donde salga (diferencia, esperado, ingresos). La pantalla dice «Arqueo oculto» y el histórico «Oculto», nunca $0. Al abrir la caja de nuevo, el corte se ve completo.
 - **Varias cajas en la sucursal**: cada caja tiene su propio fondo fijo.
 
 ## Requirements *(mandatory)*
