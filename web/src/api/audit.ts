@@ -12,6 +12,8 @@ export interface AuditEvent {
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
   orderId?: number;
+  // orderLabel: el pedido como lo nombra Ventas («Mesa 4 · #12»).
+  orderLabel?: string;
 }
 
 export type AuditGroup = 'money' | 'cancel' | 'price' | 'cash' | 'attendance';

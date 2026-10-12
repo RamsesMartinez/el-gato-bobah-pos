@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Box, Button, Flex, HStack, SimpleGrid, Spinner, Text, VStack } from '@chakra-ui/react';
 import { auditApi, type AuditEvent, type AuditGroup } from '../../api/audit';
+import { LoadError } from '../../shared/LoadError';
 import { Picker } from '../../components/Picker';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
@@ -11,7 +12,7 @@ import { OrderHistoryTimeline } from '../../shared/audit/OrderHistoryTimeline';
 
 // `short` va en el contador (una línea de 44 px); `label` es lo que se anuncia completo.
 const GROUPS: Array<{ id: AuditGroup; label: string; short: string; color: string }> = [
-  { id: 'money', label: 'Cobros y pedidos', short: 'Cobros', color: 'green.500' },
+  { id: 'money', label: 'Pedidos y cobros', short: 'Pedidos', color: 'green.500' },
   { id: 'cancel', label: 'Cancelaciones y devoluciones', short: 'Cancelaciones', color: 'red.500' },
   { id: 'price', label: 'Precios', short: 'Precios', color: 'purple.500' },
   { id: 'cash', label: 'Caja', short: 'Caja', color: 'blue.500' },
@@ -61,6 +62,7 @@ export function AuditLogTab() {
   const [page, setPage] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
   const [historyOrderId, setHistoryOrderId] = useState<number | null>(null);
+  const [historyLabel, setHistoryLabel] = useState('');
 
   const range = preset === 'hoy' ? { from: today, to: today }
     : preset === 'ayer' ? { from: subtractDays(today, 1), to: subtractDays(today, 1) }
@@ -71,12 +73,16 @@ export function AuditLogTab() {
     group: groupFilter, action: actionFilter || undefined, deviceKey: deviceKeyFilter || undefined };
 
   const actorsQuery = useQuery({ queryKey: ['audit', 'actors'], queryFn: auditApi.actors });
-  const { data, isLoading } = useQuery({
+  const { data: fetched, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['audit', 'list', listQuery],
     queryFn: () => auditApi.list(listQuery),
     enabled: ready,
     placeholderData: keepPreviousData,
+    // Sin red, TanStack pausa y deja la página anterior bajo el filtro nuevo, sin aviso. Con `always`
+    // falla, y la página vieja se descarta: no responde a lo que se pidió.
+    networkMode: 'always', retry: 1,
   });
+  const data = isError ? undefined : fetched;
   const resetPage = () => setPage(0);
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / 25));
 
@@ -115,6 +121,7 @@ export function AuditLogTab() {
       </SimpleGrid>
 
       <Box flex="1" minH={0} overflowY="auto" borderWidth="1px" borderRadius="lg">
+        {isError && <LoadError error={error} onRetry={() => void refetch()} retrying={isFetching} />}
         {isLoading && <HStack p={4}><Spinner size="sm" /><Text color="fg.muted">Cargando…</Text></HStack>}
         {data && data.items.length === 0 && <Text p={4} color="fg.muted">No hay acciones con estos filtros.</Text>}
         {items.map((e, i) => {
@@ -128,9 +135,10 @@ export function AuditLogTab() {
               <HStack as="button" w="100%" textAlign="left" minH="52px" px={4} gap={3} borderBottomWidth="1px"
                 _hover={{ bg: 'bg.subtle' }} onClick={() => setSelectedEvent(e)}>
                 <Text w="72px" fontSize="sm" color="fg.muted" flexShrink={0}>{soloHora(e.occurredAt, zone)}</Text>
-                <Text w="96px" fontWeight="700" lineClamp={1} flexShrink={0}>{e.actorName}</Text>
+                <Text w="130px" fontWeight="700" lineClamp={1} flexShrink={0}>{e.actorName}</Text>
                 <Box flex="1" minW={0}>
-                  <HStack gap={2}><Box w="8px" h="8px" borderRadius="full" bg={COLOR[groupOf(e.action)]} /><Text fontWeight="600">{actionLabel(e.action)}</Text></HStack>
+                  <HStack gap={2}><Box w="8px" h="8px" borderRadius="full" bg={COLOR[groupOf(e.action)]} /><Text fontWeight="600">{actionLabel(e.action)}</Text>
+                    {e.orderLabel && <Text fontSize="sm" color="fg.muted" lineClamp={1}>· {e.orderLabel}</Text>}</HStack>
                   <Text fontSize="sm" color="fg.muted" lineClamp={1}>{summarizeChange(e.before, e.after)}</Text>
                 </Box>
               </HStack>
@@ -168,7 +176,7 @@ export function AuditLogTab() {
             <DetailRow k="Qué cambió" v={summarizeChange(selectedEvent.before, selectedEvent.after) || '—'} />
             {selectedEvent.orderId && (
               <Button mt={2} minH="44px" variant="outline" alignSelf="flex-start"
-                onClick={() => { setHistoryOrderId(selectedEvent.orderId!); setSelectedEvent(null); }}>
+                onClick={() => { setHistoryOrderId(selectedEvent.orderId!); setHistoryLabel(selectedEvent.orderLabel ?? ''); setSelectedEvent(null); }}>
                 Ver historial del pedido
               </Button>
             )}
@@ -177,7 +185,7 @@ export function AuditLogTab() {
       )}
 
       {historyOrderId !== null && (
-        <BottomSheet titulo="Historial del pedido" onCerrar={() => setHistoryOrderId(null)}>
+        <BottomSheet titulo={historyLabel ? `Historial · ${historyLabel}` : 'Historial del pedido'} onCerrar={() => setHistoryOrderId(null)}>
           <OrderHistoryTimeline orderId={historyOrderId} />
         </BottomSheet>
       )}

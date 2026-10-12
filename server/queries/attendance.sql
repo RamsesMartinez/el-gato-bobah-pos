@@ -7,9 +7,16 @@ select attendance_enabled, attendance_measure_schedule, attendance_grace_in_min,
 
 -- name: ListAttendanceRoster :many
 -- Quiénes pueden checar: activos y con «Lleva asistencia». Primero los que están dentro.
-select u.id, u.name, (u.pin_hash is not null)::boolean as has_pin, e.clock_in_at as open_since
+-- `left_at` es la última salida del día del negocio: sin ella, quien ya salió se ve «sin entrada».
+select u.id, u.name, (u.pin_hash is not null)::boolean as has_pin, e.clock_in_at as open_since,
+       l.clock_out_at as left_at
   from users u
   left join attendance_entries e on e.user_id = u.id and e.status = 'open'
+  left join lateral (
+    select x.clock_out_at from attendance_entries x
+     where x.user_id = u.id and x.business_date = @business_date::date and x.clock_out_at is not null
+     order by x.clock_out_at desc limit 1
+  ) l on true
  where u.is_active and u.tracks_attendance
  order by (e.id is null), lower(u.name);
 

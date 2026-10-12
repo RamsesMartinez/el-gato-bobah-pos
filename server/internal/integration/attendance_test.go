@@ -307,3 +307,32 @@ func TestClockInAndOutEachKeepTheirOrigin(t *testing.T) {
 		t.Fatalf("el evento de la salida guardó la IP %s", evIP)
 	}
 }
+
+// QUIEN YA SALIÓ HOY NO SE VE «SIN ENTRADA HOY». La pantalla de checar decía eso justo después de
+// la salida: quien llega nuevo entiende que su día no quedó registrado. El roster dice a qué hora
+// salió en el día del negocio, y al día siguiente ya no.
+func TestTheRosterSaysWhenSomeoneLeftToday(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	co := makeCompany(t, st, "checar-salio")
+	ana := clockingEmployeeIn(t, st, co, "ana-salio")
+	now := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC) // 9:00 en Ciudad de México
+	svc, ctx := attendanceAs(t, co, &now)
+	if _, err := svc.Clock(ctx, ana, testPIN, domain.ClockIn); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Hour)
+	if _, err := svc.Clock(ctx, ana, testPIN, domain.ClockOut); err != nil {
+		t.Fatal(err)
+	}
+	leftAt := now
+	_, people, _ := svc.Roster(ctx)
+	if len(people) != 1 || people[0].LeftAt == nil || !people[0].LeftAt.Equal(leftAt) {
+		t.Fatalf("tras salir, el roster no dice a qué hora salió: %+v", people)
+	}
+	now = now.Add(24 * time.Hour)
+	_, people, _ = svc.Roster(ctx)
+	if people[0].LeftAt != nil {
+		t.Fatalf("al día siguiente sigue diciendo que salió: %+v", people[0])
+	}
+}

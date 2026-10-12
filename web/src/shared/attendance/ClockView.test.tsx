@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { vi, expect, test, beforeEach } from 'vitest';
 import { Provider } from '../../components/ui/provider';
 import { ApiError } from '../../api/client';
@@ -14,6 +14,7 @@ const sampleRoster = {
   enabled: true,
   people: [
     { userId: 1, name: 'Ana', openSince: '2026-10-10T15:02:00Z', hasPin: true },
+    { userId: 4, name: 'Luz', leftAt: '2026-10-10T20:30:00Z', hasPin: true },
     { userId: 2, name: 'Beto', hasPin: true },
     { userId: 3, name: 'Mar', hasPin: false },
   ],
@@ -40,7 +41,7 @@ test('reparte a la gente entre «Por entrar» y «Dentro»', async () => {
 
 test('quien no tiene PIN no puede tocar su nombre y se le dice qué hacer', async () => {
   renderView();
-  const mar = (await screen.findByText('Pide tu PIN a tu gerente')).closest('button');
+  const mar = (await screen.findByText('Aún no tiene PIN')).closest('button');
   expect(mar).toBeDisabled();
 });
 
@@ -105,9 +106,10 @@ test('Enter del teclado físico manda un solo intento', async () => {
 
 // Edge case «Sin red»: una lista vacía sin explicación se lee como «no hay nadie que checar».
 test('sin red dice «Sin conexión» y deja reintentar', async () => {
-  roster.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  roster.mockRejectedValue(new ApiError(0, 'NETWORK', 'Sin conexión con el servidor', 'r0'));
   renderView();
-  expect(await screen.findByText('Sin conexión')).toBeInTheDocument();
+  expect(await screen.findByText('Sin conexión', {}, { timeout: 3000 })).toBeInTheDocument();
+  roster.mockResolvedValue(sampleRoster);
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
   expect(await screen.findByText('Ana')).toBeInTheDocument();
   expect(screen.queryByText('Sin conexión')).toBeNull();
@@ -115,9 +117,48 @@ test('sin red dice «Sin conexión» y deja reintentar', async () => {
 
 // Con red pero con el servidor fallando, mandar a revisar el internet es mandar a buscar donde no es.
 test('si responde el servidor con error no dice «Sin conexión»', async () => {
-  roster.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'falló', 'r1'));
+  roster.mockRejectedValue(new ApiError(500, 'INTERNAL', 'falló', 'r1'));
   renderView();
-  expect(await screen.findByText('No se pudo cargar la lista')).toBeInTheDocument();
+  expect(await screen.findByText('No se pudo cargar', {}, { timeout: 3000 })).toBeInTheDocument();
   expect(screen.queryByText('Sin conexión')).toBeNull();
   expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+});
+
+// La red caída llega del cliente como ApiError NETWORK, no como TypeError: es el caso real.
+test('la red caída del cliente también dice «Sin conexión»', async () => {
+  roster.mockRejectedValue(new ApiError(0, 'NETWORK', 'Sin conexión con el servidor', 'r1'));
+  renderView();
+  expect(await screen.findByText('Sin conexión', {}, { timeout: 3000 })).toBeInTheDocument();
+});
+
+// SIN RED, LA LISTA VIEJA NO SE QUEDA COMO SI FUERA CIERTA. TanStack pausaba la consulta con el
+// navegador desconectado: ni error ni aviso, y «1 en el local» seguía en pantalla.
+test('si se cae la red con la lista ya pintada, la lista se quita y dice «Sin conexión»', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={qc}><Provider><ClockView /></Provider></QueryClientProvider>);
+  await screen.findByText('Ana');
+  onlineManager.setOnline(false);
+  try {
+    roster.mockRejectedValue(new ApiError(0, 'NETWORK', 'x', 'r2'));
+    await qc.refetchQueries({ queryKey: ['asistencia', 'roster'] });
+    expect(await screen.findByText('Sin conexión', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByText('1 en el local')).toBeNull();
+    expect(screen.queryByText('Ana')).toBeNull();
+  } finally {
+    onlineManager.setOnline(true);
+  }
+});
+
+// Quien ya salió hoy no se ve «Sin entrada hoy»: se leía como que su día no quedó registrado.
+test('quien ya salió hoy dice a qué hora salió', async () => {
+  renderView();
+  expect(await screen.findByText('Salió a las 02:30 p.m.')).toBeInTheDocument();
+});
+
+// Un TypeError del código no es la red: decir «revisa el internet» manda a buscar donde no es.
+test('un error del código no se anuncia como «Sin conexión»', async () => {
+  roster.mockRejectedValue(new TypeError("Cannot read properties of undefined (reading 'map')"));
+  renderView();
+  expect(await screen.findByText('No se pudo cargar', {}, { timeout: 3000 })).toBeInTheDocument();
+  expect(screen.queryByText('Sin conexión')).toBeNull();
 });

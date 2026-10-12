@@ -33,6 +33,7 @@ type RosterPerson struct {
 	UserID    int64      `json:"userId"`
 	Name      string     `json:"name"`
 	OpenSince *time.Time `json:"openSince,omitempty"`
+	LeftAt    *time.Time `json:"leftAt,omitempty"`
 	HasPin    bool       `json:"hasPin"`
 }
 
@@ -51,17 +52,22 @@ func (s *AttendanceService) Roster(ctx context.Context) (enabled bool, people []
 	if !cfg.AttendanceEnabled {
 		return false, []RosterPerson{}, nil
 	}
-	rows, err := q.ListAttendanceRoster(ctx)
+	now := s.now()
+	today := domain.BusinessDateOf(now, domain.LoadBusinessLocation(cfg.Timezone))
+	rows, err := q.ListAttendanceRoster(ctx, pgtype.Date{Time: today, Valid: true})
 	if err != nil {
 		return false, nil, err
 	}
-	now := s.now()
 	people = make([]RosterPerson, 0, len(rows))
 	for _, r := range rows {
 		p := RosterPerson{UserID: r.ID, Name: r.Name, HasPin: r.HasPin}
 		if r.OpenSince.Valid && !domain.IsStaleOpen(r.OpenSince.Time, now) {
 			t := r.OpenSince.Time
 			p.OpenSince = &t
+		}
+		if r.LeftAt.Valid {
+			t := r.LeftAt.Time
+			p.LeftAt = &t
 		}
 		people = append(people, p)
 	}

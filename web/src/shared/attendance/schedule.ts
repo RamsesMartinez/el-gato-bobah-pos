@@ -39,5 +39,13 @@ export function hhmm(min: number): string {
   return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 }
 
+// clockLabel escribe la hora como el resto de la pantalla («03:00 p.m.»): el reporte la mostraba en
+// 12 horas y el selector para corregirla en 24, y la misma hora se leía de dos formas.
+export function clockLabel(min: number): string {
+  const h = Math.floor(min / 60);
+  const h12 = ((h + 11) % 12) + 1;
+  return `${String(h12).padStart(2, '0')}:${String(min % 60).padStart(2, '0')} ${h < 12 ? 'a.m.' : 'p.m.'}`;
+}
+
 // Las horas del selector: de 15 en 15 minutos en todo el día.
-export const QUARTERS = Array.from({ length: 96 }, (_, i) => ({ value: String(i * 15), label: hhmm(i * 15) }));
+export const QUARTERS = Array.from({ length: 96 }, (_, i) => ({ value: String(i * 15), label: clockLabel(i * 15) }));

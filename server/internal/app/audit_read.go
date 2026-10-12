@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/ramthedev/el-gato-bobah-pos/server/internal/domain"
@@ -31,6 +32,19 @@ type AuditEventView struct {
 	Before     json.RawMessage `json:"before,omitempty"`
 	After      json.RawMessage `json:"after,omitempty"`
 	OrderID    *int64          `json:"orderId,omitempty"`
+	// OrderLabel es el nombre del pedido como lo dice Ventas: la bitácora se cruza con esa pantalla.
+	OrderLabel string `json:"orderLabel,omitempty"`
+}
+
+// orderLabel nombra el pedido igual que Ventas: «Mesa 4 · #12», o «Venta #12» sin nombre.
+func orderLabel(number *int32, folio *string) string {
+	if number == nil {
+		return ""
+	}
+	if folio != nil && *folio != "" {
+		return fmt.Sprintf("%s · #%d", *folio, *number)
+	}
+	return fmt.Sprintf("Venta #%d", *number)
 }
 
 // actorName es el nombre que se muestra: la persona, o la plataforma, o «Sistema».
@@ -129,8 +143,10 @@ func (s *AuditService) List(ctx context.Context, f domain.AuditFilter) (*AuditPa
 		return nil, err
 	}
 	for _, r := range rows {
-		page.Items = append(page.Items, viewOf(r.ID, r.OccurredAt, r.Action, r.ActorKind,
-			actorName(r.ActorKind, r.ActorName, r.ActorLabel), r.Ip, r.Device, r.DeviceKey, r.Before, r.After, r.OrderID))
+		v := viewOf(r.ID, r.OccurredAt, r.Action, r.ActorKind,
+			actorName(r.ActorKind, r.ActorName, r.ActorLabel), r.Ip, r.Device, r.DeviceKey, r.Before, r.After, r.OrderID)
+		v.OrderLabel = orderLabel(r.OrderNumber, r.OrderFolio)
+		page.Items = append(page.Items, v)
 	}
 	return page, nil
 }

@@ -60,7 +60,7 @@ test('el historial de un pedido cobrado se lee en la bitácora', async ({ page, 
   await page.getByRole('tab', { name: 'Bitácora' }).click();
   await page.getByRole('button', { name: /Entregado/ }).first().click();
   await page.getByRole('button', { name: 'Ver historial del pedido' }).click();
-  const hoja = page.getByRole('dialog', { name: 'Historial del pedido' });
+  const hoja = page.getByRole('dialog', { name: /^Historial/ });
   await expect(hoja).toBeVisible();
   await expect(hoja.getByText('Pedido creado').first()).toBeVisible();
 });
