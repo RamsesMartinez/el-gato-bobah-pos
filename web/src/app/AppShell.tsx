@@ -3,7 +3,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LuChevronDown } from 'react-icons/lu';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { posApi } from '../api/pos';
 import { attendanceApi } from '../api/attendance';
@@ -19,6 +19,7 @@ export function AppShell() {
   const clear = useSessionStore((s) => s.clear);
   const palette = useUiStore((s) => s.palette);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   // No mostrar accesos que el rol no puede usar (evita el 403 sorpresa). El backend sigue
   // siendo la autoridad; esto es solo UX.
   // La asistencia es activable por empresa: apagada, su ítem no ocupa lugar en el riel.
@@ -30,6 +31,11 @@ export function AppShell() {
     setMoreBelow(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4);
   }, []);
   const nav = NAV.filter((n) => canAccess(user?.role, n.to) && (n.to !== '/asistencia' || attendance?.enabled === true));
+  // El ítem de la pantalla abierta siempre a la vista: a 600 px «Reportes» quedaba partido bajo el
+  // pliegue, y no se veía en qué pantalla estaba uno.
+  useEffect(() => {
+    navList.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [pathname, nav.length]);
   useEffect(() => {
     measureRail();
     window.addEventListener('resize', measureRail);
