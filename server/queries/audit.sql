@@ -43,9 +43,11 @@ select price_delta from modifier_option_platform_prices where option_id = $1 and
 
 -- name: ListAuditEvents :many
 select e.id, e.occurred_at, e.action, e.actor_kind, e.actor_label, u.name as actor_name,
-       coalesce(host(e.ip), '')::text as ip, e.device, e.device_key, e.before, e.after, e.order_id
+       coalesce(host(e.ip), '')::text as ip, e.device, e.device_key, e.before, e.after, e.order_id,
+       o.daily_number as order_number, o.folio_name as order_folio
   from audit_events e
   left join users u on u.id = e.actor_user_id
+  left join orders o on o.id = e.order_id
  where e.occurred_at >= sqlc.arg('from_at') and e.occurred_at < sqlc.arg('to_at')
    and (sqlc.narg('actor_user_id')::bigint is null or e.actor_user_id = sqlc.narg('actor_user_id'))
    and (sqlc.narg('actions')::text[] is null or e.action = any(sqlc.narg('actions')::text[]))

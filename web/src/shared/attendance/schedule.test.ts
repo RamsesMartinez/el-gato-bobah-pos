@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { copyToWeekdays, crossesMidnight, emptyWeek, shiftsFromWeek, weekFromShifts } from './schedule';
+import { clockLabel } from './schedule';
 
 test('copiar a lunes–viernes no toca el fin de semana', () => {
   const w = emptyWeek();
@@ -25,4 +26,11 @@ test('el segundo turno del día se guarda como turno 2', () => {
 test('22:00 a 6:00 termina al día siguiente', () => {
   expect(crossesMidnight({ start: 1320, end: 360 })).toBe(true);
   expect(crossesMidnight({ start: 540, end: 1020 })).toBe(false);
+});
+
+test('las horas del selector se escriben como en el reporte, en 12 horas', () => {
+  expect(clockLabel(0)).toBe('12:00 a.m.');
+  expect(clockLabel(6 * 60)).toBe('06:00 a.m.');
+  expect(clockLabel(12 * 60)).toBe('12:00 p.m.');
+  expect(clockLabel(15 * 60 + 45)).toBe('03:45 p.m.');
 });

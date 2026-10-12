@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
+import { ApiError } from '../../api/client';
 import { vi, expect, test, beforeEach } from 'vitest';
 import { Provider } from '../../components/ui/provider';
 import { AuditLogTab } from './AuditLogTab';
@@ -64,4 +65,37 @@ test('el filtro «Aparato» ofrece también los que no salen en esta página', a
   fireEvent.click(screen.getByRole('button', { name: /Más filtros/ }));
   fireEvent.click(await screen.findByRole('button', { name: /Todos los aparatos/ }));
   expect(await screen.findByText('Aparato 9E04')).toBeInTheDocument();
+});
+
+// SIN RED, UN FILTRO NUEVO NO SE QUEDA CON LA LISTA VIEJA. Tocar «Ayer» sin red marcaba «Ayer» y
+// seguía mostrando lo de hoy, sin aviso: la pantalla contestaba otra pregunta.
+test('sin red, cambiar el filtro quita la lista y dice «Sin conexión»', async () => {
+  renderView();
+  await screen.findByText('Precio cambiado');
+  onlineManager.setOnline(false);
+  try {
+    list.mockRejectedValue(new ApiError(0, 'NETWORK', 'x', 'r1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ayer' }));
+    expect(await screen.findByText('Sin conexión', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByText('Precio cambiado')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancelaciones y devoluciones: 0' })).toBeInTheDocument();
+  } finally {
+    onlineManager.setOnline(true);
+  }
+});
+
+// «Cobros 5» contaba también «Pedido creado» y «Entregado»: el contador no decía lo que contaba.
+test('el contador del dinero no se llama «Cobros»', async () => {
+  renderView();
+  await screen.findByText('Precio cambiado');
+  expect(screen.queryByText('Cobros')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Pedidos y cobros: 4' })).toBeInTheDocument();
+});
+
+// Cada renglón de pedido dice de qué pedido es, igual que Ventas.
+test('el renglón de un pedido lo nombra como Ventas', async () => {
+  list.mockResolvedValue({ ...samplePage, items: [{ ...samplePage.items[0], action: 'payment.charged', orderId: 9,
+    orderLabel: 'Selkirk Rex · #12', before: { paid: '0' }, after: { amount: '63', paid: '63' } }] });
+  renderView();
+  expect(await screen.findByText(/Selkirk Rex · #12/)).toBeInTheDocument();
 });

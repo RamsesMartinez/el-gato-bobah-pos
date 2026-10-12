@@ -321,9 +321,11 @@ func (q *Queries) ListAuditDeviceKeys(ctx context.Context, arg ListAuditDeviceKe
 const listAuditEvents = `-- name: ListAuditEvents :many
 
 select e.id, e.occurred_at, e.action, e.actor_kind, e.actor_label, u.name as actor_name,
-       coalesce(host(e.ip), '')::text as ip, e.device, e.device_key, e.before, e.after, e.order_id
+       coalesce(host(e.ip), '')::text as ip, e.device, e.device_key, e.before, e.after, e.order_id,
+       o.daily_number as order_number, o.folio_name as order_folio
   from audit_events e
   left join users u on u.id = e.actor_user_id
+  left join orders o on o.id = e.order_id
  where e.occurred_at >= $1 and e.occurred_at < $2
    and ($3::bigint is null or e.actor_user_id = $3)
    and ($4::text[] is null or e.action = any($4::text[]))
@@ -343,18 +345,20 @@ type ListAuditEventsParams struct {
 }
 
 type ListAuditEventsRow struct {
-	ID         int64     `json:"id"`
-	OccurredAt time.Time `json:"occurred_at"`
-	Action     string    `json:"action"`
-	ActorKind  string    `json:"actor_kind"`
-	ActorLabel *string   `json:"actor_label"`
-	ActorName  *string   `json:"actor_name"`
-	Ip         string    `json:"ip"`
-	Device     []byte    `json:"device"`
-	DeviceKey  *string   `json:"device_key"`
-	Before     []byte    `json:"before"`
-	After      []byte    `json:"after"`
-	OrderID    *int64    `json:"order_id"`
+	ID          int64     `json:"id"`
+	OccurredAt  time.Time `json:"occurred_at"`
+	Action      string    `json:"action"`
+	ActorKind   string    `json:"actor_kind"`
+	ActorLabel  *string   `json:"actor_label"`
+	ActorName   *string   `json:"actor_name"`
+	Ip          string    `json:"ip"`
+	Device      []byte    `json:"device"`
+	DeviceKey   *string   `json:"device_key"`
+	Before      []byte    `json:"before"`
+	After       []byte    `json:"after"`
+	OrderID     *int64    `json:"order_id"`
+	OrderNumber *int32    `json:"order_number"`
+	OrderFolio  *string   `json:"order_folio"`
 }
 
 // La bitácora general (spec 033). Lista, conteo y conteo por acción comparten el MISMO where: si
@@ -389,6 +393,8 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 			&i.Before,
 			&i.After,
 			&i.OrderID,
+			&i.OrderNumber,
+			&i.OrderFolio,
 		); err != nil {
 			return nil, err
 		}

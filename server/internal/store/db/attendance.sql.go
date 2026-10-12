@@ -356,9 +356,15 @@ func (q *Queries) ListAttendanceEntriesInRange(ctx context.Context, arg ListAtte
 }
 
 const listAttendanceRoster = `-- name: ListAttendanceRoster :many
-select u.id, u.name, (u.pin_hash is not null)::boolean as has_pin, e.clock_in_at as open_since
+select u.id, u.name, (u.pin_hash is not null)::boolean as has_pin, e.clock_in_at as open_since,
+       l.clock_out_at as left_at
   from users u
   left join attendance_entries e on e.user_id = u.id and e.status = 'open'
+  left join lateral (
+    select x.clock_out_at from attendance_entries x
+     where x.user_id = u.id and x.business_date = $1::date and x.clock_out_at is not null
+     order by x.clock_out_at desc limit 1
+  ) l on true
  where u.is_active and u.tracks_attendance
  order by (e.id is null), lower(u.name)
 `
@@ -368,11 +374,13 @@ type ListAttendanceRosterRow struct {
 	Name      string             `json:"name"`
 	HasPin    bool               `json:"has_pin"`
 	OpenSince pgtype.Timestamptz `json:"open_since"`
+	LeftAt    pgtype.Timestamptz `json:"left_at"`
 }
 
 // Quiénes pueden checar: activos y con «Lleva asistencia». Primero los que están dentro.
-func (q *Queries) ListAttendanceRoster(ctx context.Context) ([]ListAttendanceRosterRow, error) {
-	rows, err := q.db.Query(ctx, listAttendanceRoster)
+// `left_at` es la última salida del día del negocio: sin ella, quien ya salió se ve «sin entrada».
+func (q *Queries) ListAttendanceRoster(ctx context.Context, businessDate pgtype.Date) ([]ListAttendanceRosterRow, error) {
+	rows, err := q.db.Query(ctx, listAttendanceRoster, businessDate)
 	if err != nil {
 		return nil, err
 	}
@@ -385,6 +393,7 @@ func (q *Queries) ListAttendanceRoster(ctx context.Context) ([]ListAttendanceRos
 			&i.Name,
 			&i.HasPin,
 			&i.OpenSince,
+			&i.LeftAt,
 		); err != nil {
 			return nil, err
 		}

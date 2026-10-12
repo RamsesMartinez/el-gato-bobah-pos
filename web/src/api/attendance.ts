@@ -4,6 +4,8 @@ export interface RosterPerson {
   userId: number;
   name: string;
   openSince?: string;
+  // leftAt: la última salida del día del negocio, para no decir «sin entrada» a quien ya salió.
+  leftAt?: string;
   hasPin: boolean;
 }
 

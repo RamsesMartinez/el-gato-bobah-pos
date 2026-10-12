@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Flex, Heading, SimpleGrid, Text, VStack } from '@chakra-ui/react';
 import { attendanceApi, type ClockKind, type ClockResult, type RosterPerson } from '../../api/attendance';
 import { ApiError } from '../../api/client';
+import { isOffline } from '../../api/mensajes';
+import { LoadError } from '../LoadError';
 import { PinPad } from '../../components/PinPad';
 import { useHoraDelNegocio } from '../../hooks/useHoraDelNegocio';
 import { soloHora } from '../../utils/horaDelNegocio';
@@ -23,7 +25,12 @@ function hoursLabel(min: number): string {
 export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
   const qc = useQueryClient();
   const { zona: zone } = useHoraDelNegocio();
-  const { data, isError, error: rosterError, refetch, isFetching } = useQuery({ queryKey: ROSTER, queryFn: attendanceApi.roster });
+  const { data, isError, error: rosterError, refetch, isFetching } = useQuery({
+    queryKey: ROSTER, queryFn: attendanceApi.roster,
+    // Sin red, TanStack pausa la consulta y deja la lista vieja sin error: quien llega vería «0 en el
+    // local» como si fuera cierto. Con `always` la consulta falla y la pantalla lo dice.
+    networkMode: 'always', retry: 1,
+  });
   const [chosen, setChosen] = useState<RosterPerson | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -46,6 +53,8 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
 
   const expected: ClockKind = chosen?.openSince ? 'out' : 'in';
   const clockMutation = useMutation({
+    // Sin esto, sin red la mutación se pausa y el botón se queda girando sin decir nada.
+    networkMode: 'always',
     mutationFn: () => attendanceApi.clock(chosen!.userId, pin, expected),
     onSuccess: (r) => {
       setDone({ ...r, name: chosen!.name });
@@ -62,7 +71,7 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
         setError('Tu registro cambió en otra tableta. Vuelve a tocar tu nombre.');
         setChosen(null);
         void qc.invalidateQueries({ queryKey: ROSTER });
-      } else if (e instanceof ApiError && e.code === 'NETWORK') {
+      } else if (isOffline(e)) {
         setError('Sin conexión. Checa cuando vuelva la red.');
       } else {
         // No dice si falló la persona o el PIN, igual que el bloqueo: distinguirlos enumera usuarios.
@@ -93,7 +102,8 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
       onClick={() => void choose(p)}>
       <Text fontWeight="700" fontSize="md">{p.name}</Text>
       <Text fontSize="xs" color={p.openSince ? 'green.700' : 'fg.muted'}>
-        {!p.hasPin ? 'Pide tu PIN a tu gerente' : p.openSince ? `Dentro desde ${soloHora(p.openSince, zone)}` : 'Sin entrada hoy'}
+        {!p.hasPin ? 'Aún no tiene PIN' : p.openSince ? `Dentro desde ${soloHora(p.openSince, zone)}`
+          : p.leftAt ? `Salió a las ${soloHora(p.leftAt, zone)}` : 'Sin entrada hoy'}
       </Text>
     </Button>
   );
@@ -103,25 +113,13 @@ export function ClockView({ onCerrar }: { onCerrar?: () => void }) {
       <Flex justify="space-between" align="center">
         <Heading size="lg">Asistencia</Heading>
         <Flex align="center" gap={3}>
-          <Text color="fg.muted">{inside.length} en el local</Text>
+          {!isError && <Text color="fg.muted">{inside.length} en el local</Text>}
           {onCerrar && <Button variant="ghost" minH="44px" onClick={onCerrar}>Cerrar</Button>}
         </Flex>
       </Flex>
       {error && !chosen && <Text color="red.500" fontWeight="600">{error}</Text>}
-      {isError && !data ? (
-        <VStack flex="1" justify="center" gap={3}>
-          {/* Un ApiError es que el servidor sí respondió: mandar a revisar el internet sería mandar a
-              buscar donde no es. */}
-          {rosterError instanceof ApiError ? (
-            <Text fontSize="lg" fontWeight="700">No se pudo cargar la lista</Text>
-          ) : (
-            <>
-              <Text fontSize="lg" fontWeight="700">Sin conexión</Text>
-              <Text color="fg.muted">Revisa el internet de la tableta y vuelve a intentar.</Text>
-            </>
-          )}
-          <Button minH="44px" loading={isFetching} onClick={() => void refetch()}>Reintentar</Button>
-        </VStack>
+      {isError ? (
+        <LoadError error={rosterError} onRetry={() => void refetch()} retrying={isFetching} />
       ) : (
       <SimpleGrid columns={2} gap={5} flex="1" minH={0}>
         <VStack align="stretch" gap={2} minH={0}>

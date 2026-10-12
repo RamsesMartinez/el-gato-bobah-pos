@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -263,4 +264,37 @@ func TestTheDeviceFilterOffersEveryDeviceInTheRange(t *testing.T) {
 			t.Errorf("con el filtro %q el selector ofrece %v, quiere los dos", key, p.DeviceKeys)
 		}
 	}
+}
+
+// CADA RENGLÓN DE PEDIDO DICE DE QUÉ PEDIDO ES, con el mismo nombre que Ventas («Mesa 4 · #12»).
+// Sin eso, la bitácora no se puede cruzar con Ventas ni con el ticket.
+func TestAuditRowsNameTheirOrderLikeSales(t *testing.T) {
+	t.Parallel()
+	k := newLiveKit(t)
+	abrirCajaPrincipal(t, k.st, k.user)
+	k.ctx = app.WithActorUser(k.ctx, k.user)
+	o := k.order(t, "1", "0", false)
+	var number int32
+	var folio string
+	if err := k.st.Pool.QueryRow(context.Background(), `select daily_number, coalesce(folio_name, '') from orders where id = $1`, o.ID).Scan(&number, &folio); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("Venta #%d", number)
+	if folio != "" {
+		want = fmt.Sprintf("%s · #%d", folio, number)
+	}
+	now := time.Now()
+	p, err := app.NewAuditService(k.appSt).List(k.ctx, domain.AuditFilter{From: now.AddDate(0, 0, -1), To: now.AddDate(0, 0, 1), Size: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range p.Items {
+		if e.OrderID != nil && *e.OrderID == o.ID {
+			if e.OrderLabel != want {
+				t.Fatalf("el renglón del pedido dice %q, Ventas dice %q", e.OrderLabel, want)
+			}
+			return
+		}
+	}
+	t.Fatal("el pedido no aparece en la bitácora")
 }

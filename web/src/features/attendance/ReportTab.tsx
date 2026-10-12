@@ -7,6 +7,8 @@ import {
 import { auditApi } from '../../api/audit';
 import { ApiError } from '../../api/client';
 import { can } from '../../app/permissions';
+import { isOffline } from '../../api/mensajes';
+import { LoadError } from '../../shared/LoadError';
 import { Picker } from '../../components/Picker';
 import { DatePickerButton } from '../../components/DatePickerButton';
 import { RangoDeFechas } from '../../components/RangoDeFechas';
@@ -57,6 +59,10 @@ function statusLabel(d: ReportDay): string {
   return '';
 }
 
+function entryRange(e: ReportEntry, zone: string): string {
+  return `${soloHora(e.in, zone)} – ${e.out ? soloHora(e.out, zone) : 'Falta salida'}`;
+}
+
 function deviceLabel(dev?: Record<string, string>): string {
   return [dev?.platform, dev?.browser, dev?.model].filter(Boolean).join(' · ');
 }
@@ -86,12 +92,16 @@ export function ReportTab() {
   const effectiveView: ReportView = view === 'semana' && !weekViewPossible ? 'persona' : view;
 
   const actorsQuery = useQuery({ queryKey: ['audit', 'actors'], queryFn: auditApi.actors, enabled: can('audit.view', user) });
-  const { data } = useQuery({
+  const { data: fetched, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['asistencia', 'report', range, personFilter],
     queryFn: () => attendanceAdminApi.report(range.from, range.to, personFilter ? Number(personFilter) : undefined),
     enabled: ready,
     placeholderData: keepPreviousData,
+    // Sin red, TanStack pausa y deja el periodo anterior bajo el nuevo, sin aviso. Con `always`
+    // falla y el reporte viejo se descarta: no es el periodo que se pidió.
+    networkMode: 'always', retry: 1,
   });
+  const data = isError ? undefined : fetched;
   const people = data?.people ?? [];
   const measure = data?.measureSchedule ?? false;
   const chooseView = (v: ReportView) => { setView(v); saveView(v); };
@@ -132,7 +142,8 @@ export function ReportTab() {
       </Flex>
 
       <Box flex="1" minH={0} overflow="auto" borderWidth="1px" borderRadius="lg">
-        {ready && people.length === 0 && <Text p={4} color="fg.muted">Sin registros en este periodo.</Text>}
+        {isError && <LoadError error={error} onRetry={() => void refetch()} retrying={isFetching} />}
+        {ready && data && people.length === 0 && <Text p={4} color="fg.muted">Sin registros en este periodo.</Text>}
         {people.length > 0 && effectiveView === 'persona' && (
           <Table.Root size="sm" stickyHeader>
             <Table.Header><Table.Row>
@@ -141,7 +152,7 @@ export function ReportTab() {
               <Table.ColumnHeader>Horas</Table.ColumnHeader>
               {measure && <Table.ColumnHeader>Retardo</Table.ColumnHeader>}
               {measure && <Table.ColumnHeader>Extra</Table.ColumnHeader>}
-              <Table.ColumnHeader>Pendiente</Table.ColumnHeader>
+              <Table.ColumnHeader>Avisos</Table.ColumnHeader>
             </Table.Row></Table.Header>
             <Table.Body>
               {people.flatMap((p) => [
@@ -172,20 +183,22 @@ export function ReportTab() {
             <Table.Header><Table.Row>
               <Table.ColumnHeader>Día</Table.ColumnHeader>
               <Table.ColumnHeader>Persona</Table.ColumnHeader>
-              <Table.ColumnHeader>Entrada</Table.ColumnHeader>
-              <Table.ColumnHeader>Salida</Table.ColumnHeader>
+              <Table.ColumnHeader>Entrada – Salida</Table.ColumnHeader>
               <Table.ColumnHeader>Horas</Table.ColumnHeader>
               {measure && <Table.ColumnHeader>Retardo</Table.ColumnHeader>}
               {measure && <Table.ColumnHeader>Extra</Table.ColumnHeader>}
-              <Table.ColumnHeader />
+              <Table.ColumnHeader>Avisos</Table.ColumnHeader>
             </Table.Row></Table.Header>
             <Table.Body>
               {rowsByDay(people).map(({ person, day }) => (
                 <Table.Row key={`${person.userId}-${day.date}`} h="48px" cursor="pointer" onClick={() => setSelectedDay({ person, day })}>
                   <Table.Cell>{longDay(day.date)}</Table.Cell>
                   <Table.Cell fontWeight="700">{person.name}</Table.Cell>
-                  <Table.Cell>{soloHora(day.entries[0]?.in, zone)}</Table.Cell>
-                  <Table.Cell>{day.entries.at(-1)?.out ? soloHora(day.entries.at(-1)!.out, zone) : '—'}</Table.Cell>
+                  {/* Un renglón por registro: la primera entrada y la última salida escondían el hueco
+                      entre dos turnos del mismo día. */}
+                  <Table.Cell>
+                    {day.entries.map((e) => <Text key={e.id}>{entryRange(e, zone)}</Text>)}
+                  </Table.Cell>
                   <Table.Cell>{day.missingOut ? '—' : minutesLabel(day.workedMinutes)}</Table.Cell>
                   {measure && <Table.Cell>{day.lateMinutes ?? '—'}</Table.Cell>}
                   {measure && <Table.Cell>{day.overtimeMinutes ?? '—'}</Table.Cell>}
@@ -277,15 +290,15 @@ function DayDetail({ person, day, onClose }: { person: ReportPerson; day: Report
         ))}
       </VStack>
       {correcting && (
-        <CorrectionForm date={day.date} entry={correcting.entry} field={correcting.field}
+        <CorrectionForm personName={person.name} date={day.date} entry={correcting.entry} field={correcting.field}
           onDone={() => { setCorrecting(null); onClose(); }} onCancel={() => setCorrecting(null)} />
       )}
     </Sheet>
   );
 }
 
-function CorrectionForm({ date, entry, field, onDone, onCancel }: {
-  date: string; entry: ReportEntry; field: 'clock_in_at' | 'clock_out_at'; onDone: () => void; onCancel: () => void;
+function CorrectionForm({ personName, date, entry, field, onDone, onCancel }: {
+  personName: string; date: string; entry: ReportEntry; field: 'clock_in_at' | 'clock_out_at'; onDone: () => void; onCancel: () => void;
 }) {
   const qc = useQueryClient();
   const { zona: zone } = useHoraDelNegocio();
@@ -293,6 +306,7 @@ function CorrectionForm({ date, entry, field, onDone, onCancel }: {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const save = useMutation({
+    networkMode: 'always',
     mutationFn: () => {
       let at = instantInZone(date, Number(timeValue), zone);
       // Una salida que no es posterior a la entrada es del día siguiente (turno nocturno): 22:00 a
@@ -303,11 +317,13 @@ function CorrectionForm({ date, entry, field, onDone, onCancel }: {
       return attendanceCorrectionApi.correct(entry.id, field, at, reason.trim());
     },
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['asistencia', 'report'] }); onDone(); },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'No se pudo guardar.'),
+    onError: (e) => setError(saveErrorMessage(e, personName)),
   });
   return (
     <VStack align="stretch" gap={2} mt={4} borderTopWidth="1px" pt={4}>
-      <Text fontWeight="700">{field === 'clock_in_at' ? 'Hora de entrada correcta' : 'Hora de salida correcta'}</Text>
+      <Text fontWeight="700">
+        {field === 'clock_in_at' ? 'Entrada' : 'Salida'} correcta del registro de {entryRange(entry, zone)}
+      </Text>
       <HStack gap={2}>
         <Box w="120px"><Picker title="Hora" placeholder="Hora" value={timeValue} options={QUARTERS} onChange={setTimeValue} /></Box>
         <Input minH="44px" flex="1" placeholder="Motivo (obligatorio)" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -321,6 +337,16 @@ function CorrectionForm({ date, entry, field, onDone, onCancel }: {
   );
 }
 
+// saveErrorMessage: qué hacer cuando no se guardó. El traslape se dice con el nombre de la persona;
+// el texto del servidor venía en minúscula y sin decir dónde mirar.
+function saveErrorMessage(e: unknown, personName: string): string {
+  if (isOffline(e)) return 'Sin conexión. No se guardó; vuelve a intentar cuando regrese la red.';
+  if (e instanceof ApiError && e.code === 'ATTENDANCE_OVERLAP') {
+    return `Esa hora se encima con otro registro de ${personName}. Revisa los registros de este día.`;
+  }
+  return e instanceof ApiError ? e.message : 'No se pudo guardar.';
+}
+
 // ManualEntrySheet captura un turno completo de alguien que no checó.
 function ManualEntrySheet({ people, onClose }: { people: Array<{ id: number; name: string }>; onClose: () => void }) {
   const qc = useQueryClient();
@@ -332,6 +358,7 @@ function ManualEntrySheet({ people, onClose }: { people: Array<{ id: number; nam
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const save = useMutation({
+    networkMode: 'always',
     mutationFn: () => {
       const inAt = instantInZone(dayValue, Number(inTime), zone);
       // Una salida que no es posterior a la entrada es del día siguiente (turno nocturno).
@@ -339,7 +366,7 @@ function ManualEntrySheet({ people, onClose }: { people: Array<{ id: number; nam
       return attendanceCorrectionApi.manual(Number(personFilter), inAt, instantInZone(outDate, Number(outTime), zone), reason.trim());
     },
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['asistencia', 'report'] }); onClose(); },
-    onError: (e) => setError(e instanceof ApiError ? e.message : 'No se pudo guardar.'),
+    onError: (e) => setError(saveErrorMessage(e, people.find((p) => String(p.id) === personFilter)?.name ?? 'esta persona')),
   });
   return (
     <Sheet title="Capturar a mano" onClose={onClose}>
