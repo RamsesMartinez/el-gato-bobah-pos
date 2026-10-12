@@ -218,6 +218,16 @@ describe('la receta', () => {
       expect(screen.getByRole('button', { name: /También en «Salsa extra».*Hoy: 36 ml Lemon Pepper Salsa/ })).toBeInTheDocument();
     });
 
+    // Con varios insumos la lista de casillas quedaba bajo el corte de la tableta: va antes de
+    // los insumos, justo debajo del tipo de receta, para que siempre se vea sin desplazar.
+    it('va antes de los insumos', async () => {
+      api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
+      montar('option');
+      const agregar = await screen.findByRole('button', { name: /Agregar insumo/ });
+      const casilla = screen.getByRole('button', { name: /También en «Salsa extra»/ });
+      expect(casilla.compareDocumentPosition(agregar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it('copia solo a los que se marcan, con la marca de cada uno', async () => {
       api.composition.mockResolvedValue({ ...vacia, sameName: gemelos });
       montar('option');

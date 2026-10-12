@@ -380,6 +380,27 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
             ))}
           </Grid>
 
+          {/* Antes de los insumos: con varios renglones quedaba bajo el corte de la tableta. */}
+          {offerTwins && (
+            <VStack align="stretch" gap={1.5}>
+              <Text fontSize="sm" color="fg.muted">Se llama igual en {twins.length} {twins.length === 1 ? 'grupo' : 'grupos'} más. Marca dónde guardar esta misma receta:</Text>
+              {twins.map((t) => {
+                const on = picked.has(t.id);
+                return (
+                  <Button key={t.id} aria-pressed={on} onClick={() => togglePick(t.id)}
+                    variant="outline" h="auto" minH="48px" py={1.5} px={3} justifyContent="start" textAlign="left" gap={3}
+                    borderColor={on ? 'red.600' : 'border'} bg={on ? 'red.50' : undefined}>
+                    <Text fontSize="lg" lineHeight="1" aria-hidden>{on ? '☑' : '☐'}</Text>
+                    <VStack align="start" gap={0} minW={0} flex="1">
+                      <Text fontWeight="600" truncate maxW="100%">También en «{t.group}»</Text>
+                      <Text fontSize="xs" color="fg.muted" fontWeight="normal" truncate maxW="100%">Hoy: {t.today || 'Pendiente'}</Text>
+                    </VStack>
+                  </Button>
+                );
+              })}
+            </VStack>
+          )}
+
           {mode === 'items' && (
             <VStack align="stretch" gap={2}>
               {rows.length === 0 && (copyChips.length > 0 || (sources.data ?? []).length > 0) && (
@@ -510,26 +531,6 @@ function Editor({ kind, id, name, data, onDirty, onClose, onSaved, requestClose 
           )}
           {mode === 'nothing' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Al venderlo no sale nada del almacén.</Box>}
           {mode === 'bought' && <Box p={3} borderRadius="lg" bg="bg.muted" color="fg.muted">Se compra hecho: cada vez que una receta lo usa, baja de sus existencias.</Box>}
-
-          {offerTwins && (
-            <VStack align="stretch" gap={1.5}>
-              <Text fontSize="sm" color="fg.muted">Se llama igual en {twins.length} {twins.length === 1 ? 'grupo' : 'grupos'} más. Marca dónde guardar esta misma receta:</Text>
-              {twins.map((t) => {
-                const on = picked.has(t.id);
-                return (
-                  <Button key={t.id} aria-pressed={on} onClick={() => togglePick(t.id)}
-                    variant="outline" h="auto" minH="48px" py={1.5} px={3} justifyContent="start" textAlign="left" gap={3}
-                    borderColor={on ? 'red.600' : 'border'} bg={on ? 'red.50' : undefined}>
-                    <Text fontSize="lg" lineHeight="1" aria-hidden>{on ? '☑' : '☐'}</Text>
-                    <VStack align="start" gap={0} minW={0} flex="1">
-                      <Text fontWeight="600" truncate maxW="100%">También en «{t.group}»</Text>
-                      <Text fontSize="xs" color="fg.muted" fontWeight="normal" truncate maxW="100%">Hoy: {t.today || 'Pendiente'}</Text>
-                    </VStack>
-                  </Button>
-                );
-              })}
-            </VStack>
-          )}
 
           {removed && (
             <HStack justify="space-between" bg="bg.muted" borderRadius="md" px={3}>
