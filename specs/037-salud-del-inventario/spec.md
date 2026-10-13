@@ -25,6 +25,13 @@ Este spec convierte esa auditoría en algo que cualquier empresa puede ver y cor
 consultas a quien programa. El producto se vende a otras empresas: nada de esto puede depender de
 nombres, marcas o reglas de un local.
 
+## Clarifications
+
+### Session 2026-10-13
+
+- Q: Cuando un producto con existencia propia se convierte en receta de 1 pieza de un insumo nuevo, ¿qué pasa con su existencia? → A: Pasa al insumo nuevo con un movimiento que lo dice; el producto queda en cero.
+- Q: Mientras ninguna compra entra al almacén (hasta el 038), ¿cómo se muestra «Insumos sin compras registradas», que listaría más de 100 insumos? → A: Un renglón resumen («118 de 130 insumos sin compras registradas») que con un toque se despliega en la lista completa; la exportación siempre trae la lista completa.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ver qué está mal en el inventario, en una sola pantalla (Priority: P1)
@@ -91,7 +98,7 @@ sale de «Se vende sin descontar».
 **Acceptance Scenarios**:
 
 1. **Given** un producto revendido sin receta, **When** se elige «receta con insumos» y «es un producto que se compra hecho», **Then** el sistema ofrece crear el insumo con el nombre del producto, por pieza, con 1 pieza en la receta; la cantidad y el insumo se pueden cambiar antes de guardar.
-2. **Given** un producto con existencia propia y existencia registrada, **When** se cambia a «receta con insumos», **Then** el historial de movimientos del producto se conserva, y lo que quedaba de su existencia propia deja de contar con un ajuste visible que dice por qué.
+2. **Given** un producto con existencia propia y 12 piezas registradas, **When** se convierte en receta de 1 pieza de un insumo nuevo, **Then** las 12 piezas pasan al insumo con un movimiento que dice de dónde vienen, el producto queda en cero, y el historial de ambos se conserva.
 3. **Given** un producto con receta, **When** se cambia a «existencia propia», **Then** la receta se conserva sin usarse (no se borra) y el cambio queda registrado con quién y cuándo.
 4. **Given** un combo cuyos componentes son productos revendidos configurados como receta, **When** se vende el combo, **Then** baja cada insumo de cada componente.
 5. **Given** un usuario sin permiso de configurar el menú, **When** intenta cambiar el modo de un producto, **Then** el sistema lo rechaza aunque la petición no pase por la pantalla.
@@ -149,7 +156,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-003**: Un producto MUST NOT marcarse si lo que se vende con él descuenta: su receta, su existencia propia, las piezas de su paquete o un extra obligatorio con receta o producto ligado.
 - **FR-004**: Un producto o extra confirmado como «No gasta insumos» MUST NOT marcarse como problema; uno que nunca se decidió, sí.
 - **FR-005**: «Insumos en negativo» MUST listar cada insumo activo con existencia menor que cero, con su existencia y las recetas activas que lo usan.
-- **FR-006**: «Insumos sin compras registradas» MUST listar cada insumo activo usado por alguna receta activa que no tiene ninguna entrada de compra desde una fecha elegible.
+- **FR-006**: «Insumos sin compras registradas» MUST mostrar primero un renglón resumen («N de M insumos sin compras registradas») y, con un toque, desplegar la lista de cada insumo activo usado por alguna receta activa sin ninguna entrada de compra desde una fecha elegible. La exportación MUST traer siempre la lista completa.
 - **FR-007**: «Recetas mal formadas» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
 - **FR-008**: «Recetas pendientes de confirmar» MUST mostrar cuántos productos y extras están «Por revisar» y llevar a Menú › Recetas con ese filtro.
 - **FR-009**: Cada renglón MUST llevar a la pantalla donde se corrige (la receta del producto o extra, el insumo).
@@ -161,7 +168,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **FR-013**: Cada producto MUST tener un modo de consumo visible y configurable desde la pantalla: sin control («No gasta insumos»), existencia propia o receta con insumos. Los paquetes siguen descontando por sus componentes.
 - **FR-014**: Al elegir «receta con insumos» para un producto que se compra hecho, el sistema MUST ofrecer crear el insumo con el nombre del producto, por pieza, y una receta de 1 pieza; insumo y cantidad editables antes de guardar.
-- **FR-015**: Cambiar de modo MUST conservar el historial de movimientos y dejar registro de quién lo cambió y cuándo; la existencia propia que queda sin uso se cierra con un ajuste que dice el motivo.
+- **FR-015**: Cambiar de modo MUST conservar el historial de movimientos y dejar registro de quién lo cambió y cuándo. Al convertir un producto con existencia propia en receta de **un solo** insumo (nuevo o existente), su existencia MUST pasar a ese insumo en su equivalencia (cada pieza de producto = la cantidad de la receta) con movimientos ligados que digan de dónde viene, y el producto quedar en cero. Si la receta lleva varios insumos, no hay equivalencia única: la existencia del producto se cierra en cero con un ajuste que dice el motivo.
 - **FR-016**: Cambiar el modo MUST requerir el permiso de configurar el menú, verificado en el servidor.
 
 **Extras que son productos (Historia 4)**
