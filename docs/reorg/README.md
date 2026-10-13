@@ -36,6 +36,7 @@ precios, categorías, nombres, modificadores.
 | 18 | Desactivar "otros/envío" |
 | 19 | Papas de corte recto |
 | 20 | «Sin…» y «No Aplica» no gastan insumos (2026-10-11) |
+| 21 | Corrección del 4-oct: cuenta dividida a mano en «Aegean» (2026-10-13) |
 
 No hay `04`: se descartó antes de aplicarse.
 
