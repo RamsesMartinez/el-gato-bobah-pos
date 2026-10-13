@@ -1,16 +1,16 @@
--- 21 — Corrección del 4-oct: la cuenta dividida a mano en «Aegean».
+-- 21 — Corrección del 4-oct: una cuenta dividida a mano (pedidos 285, 286 y 287).
 --
--- QUÉ PASÓ. Una mesa de tres pagó por separado antes de que existiera «Dividir la cuenta». Para
--- lograrlo se quitaron 18 renglones de «Aegean» (285) y «York Chocolate» (286) y se volvieron a
--- capturar en «York Chocolate» y «Balinés» (287). Las bajas quedaron como cancelaciones con motivo
+-- QUÉ PASÓ. Una cuenta se pagó por separado antes de que existiera «Dividir la cuenta». Para
+-- lograrlo se quitaron 18 renglones de los pedidos 285 y 286 y se volvieron a capturar en el 286 y
+-- el 287. Las bajas quedaron como cancelaciones con motivo
 -- «Ya no lo quiere» y no regresaron nada al almacén, porque ya habían salido a cocina: lo que se
 -- volvió a capturar se descontó dos veces, y lo que nunca se sirvió salió sin venderse.
 --
 -- DECISIÓN DEL DUEÑO (2026-10-13): se cobró bien una sola vez y no se cocinó nada de más. Por eso,
 -- como excepción a «lo que salió a cocina se da por gastado»:
 --   1. Se regresa al almacén lo que salió por esas 18 bajas, con un ajuste «Corrección 4-oct: cuenta
---      dividida». Menos el Capuccino, que ya quedó en cero el 10-oct al pasar a receta y dejó de
---      llevar existencia propia: reponerlo inventaría dos piezas.
+--      dividida». Menos el renglón 693, cuyo producto ya quedó en cero el 10-oct al pasar a receta
+--      y dejó de llevar existencia propia: reponerlo inventaría piezas.
 --   2. El motivo de las 18 bajas pasa a «Se capturó de más / se cobró en otro pedido».
 -- No cambia lo cobrado ni las ventas: solo existencias y el motivo de las bajas.
 --
@@ -36,8 +36,8 @@ declare
 begin
   select count(*) into n from orders
    where business_date = '2026-10-04'
-     and (id, folio_name) in ((285, 'Aegean'), (286, 'York Chocolate'), (287, 'Balinés'));
-  if n <> 3 then raise exception 'no están los tres pedidos de la mesa del 4-oct (hay %): nada se cambió', n; end if;
+     and id in (285, 286, 287) and status = 'entregada';
+  if n <> 3 then raise exception 'no están los tres pedidos del 4-oct (hay %): nada se cambió', n; end if;
 
   select count(*) into n from order_lines l join bajas_4oct b on b.id = l.id
    where l.order_id in (285, 286) and l.cancelled_at is not null
@@ -50,7 +50,7 @@ begin
   select id into quien from users where username = 'admin' and is_active;
   if quien is null then raise exception 'no está el usuario admin de gatobobah'; end if;
 
-  -- Lo que salió por las bajas, salvo el Capuccino: cada movimiento de venta se repone con su mismo
+  -- Lo que salió por las bajas, salvo el renglón 693: cada movimiento de venta se repone con su mismo
   -- artículo, costo y origen. El disparador de stock_movements suma a stock_levels.
   insert into stock_movements (company_id, item_type, ingredient_id, product_id, movement_type, quantity,
                                unit_cost, order_id, order_line_id, user_id, reason, note,
@@ -60,9 +60,8 @@ begin
          'Baja de la cuenta dividida a mano; se cobró una sola vez (decisión del dueño, 2026-10-13).',
          m.modifier_option_id, m.component_of_product_id
     from stock_movements m join bajas_4oct b on b.id = m.order_line_id
-    left join products p on p.id = m.product_id
    where m.movement_type = 'venta' and m.quantity < 0
-     and not (m.item_type = 'producto' and p.name = 'Capuccino');
+     and m.order_line_id <> 693;
   get diagnostics n = row_count;
   if n <> 16 then raise exception 'se esperaban 16 movimientos a reponer, salieron %: se deshace', n; end if;
 
