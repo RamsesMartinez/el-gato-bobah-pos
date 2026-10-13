@@ -6,14 +6,17 @@
 
 Una pestaña nueva en Almacén, «Salud», muestra cinco secciones calculadas en el servidor y
 exportables a CSV:
-- lo que se vende sin descontar (medido por las ventas que no dejaron movimiento);
-- insumos en negativo;
+- lo que se vende sin restar (medido por las ventas que no dejaron movimiento), con costo estimado
+  y los combos con un hueco de varios productos;
+- lo guardado en negativo (resumido mientras no haya compras);
 - insumos sin compras;
-- recetas mal formadas;
+- recetas con un error;
 - recetas por revisar.
 
-La hoja de receta del producto gana el modo «Existencia propia» y el atajo «Se compra hecho». Al
-cambiar de modo se traslada o se cierra la existencia, y el cambio queda en la bitácora.
+La hoja de receta del producto gana la tarjeta «Se compra hecho». La existencia propia deja de
+ofrecerse: un producto que la tiene sale de ella eligiendo otra tarjeta, y su existencia se traslada
+o se cierra con la bitácora. Nada recalcula ventas anteriores (criterio del dueño, 13-oct: de aquí en
+adelante, no hacia atrás).
 
 No hay migración: todo se deduce de columnas que ya existen (research R1). Decisiones en
 [research.md](research.md); contratos en [contracts/api.md](contracts/api.md).
@@ -55,10 +58,10 @@ Sin violaciones.
 | Permiso `inventory.health_view` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
 | Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo nuevo `inventory`) |
 | Reporte y CSV | app | `server/internal/app/inventory_health.go` |
-| Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition`, `validateComposition` deja de rechazar receta en `track_stock`) |
+| Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition` con `actualStock`; `validateComposition` deja de rechazar receta en `track_stock`) |
 | Rutas | httpapi | `server/internal/httpapi/handlers_inventory_health.go`, `router.go` (bajo `/stock`) |
 | Pantalla Salud | web | `web/src/features/backoffice/InventoryHealthTab.tsx` (pestaña de `StockPage`) |
-| Modo «Existencia propia» y «Se compra hecho» | web | `web/src/shared/CompositionSheet.tsx` |
+| Tarjeta «Se compra hecho» y «¿Cuántas tienes de verdad?» | web | `web/src/shared/CompositionSheet.tsx` |
 | Filtro por URL en Recetas | web | `web/src/features/admin/RecipesPage.tsx` (`?status=`, `?open=`) |
 | Medición de uso | web + domain | `pantallasMedibles` / `rolesPorPantalla` en `uso.go` y `PANTALLAS` en `rutas-medidas.ts` (AGENTS.md: tres lugares) |
 
@@ -70,9 +73,12 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - Arriba, una barra: el periodo, que abre una hoja inferior con «Hoy», «Últimos 7 días», «Últimos 30 días», «Este mes» y «Elegir fechas…», más un resumen de una línea y «Exportar».
    - Debajo, una sola lista (`Page fill` + `flex="1" minH={0}`). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin descontar» abre por omisión.
    - Renglones de 54 px:
-     - con nombre y grupo, más una pastilla de estado («Sin decidir», «Extra sin ligar»);
-     - las unidades por canal como pastillas, y «›» lleva a corregir;
+     - con nombre y grupo, más una pastilla de estado («Falta decir qué resta», «Extra que no resta nada»);
+     - las piezas por canal como pastillas y el costo estimado a la derecha (ordena la lista); «›» lleva a corregir;
      - «Ver 25 más · quedan N» como en Recetas.
+   - Al pie de «Se vende sin restar», una línea fija: «Las ventas anteriores no se recalculan».
+   - Los combos con un hueco de varios productos salen dentro de esa sección con su pastilla («Siempre resta el de fábrica»).
+   - «Lo guardado en negativo», mientras la empresa no tenga compras, abre con un renglón que explica que lo guardado solo baja y se despliega con un toque.
    - «Insumos sin compras registradas» abierto muestra un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
    - «Recetas por revisar» muestra un renglón con «Ir a Recetas ›».
    - Una empresa sin problemas ve «El inventario está sano» en vez de cinco ceros.
@@ -84,7 +90,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - Avisos solo cuando hay existencia que mover:
      - Si el insumo es nuevo: «El sistema tenía contadas 12 latas… cada vez que vendas una, quedará una menos».
      - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito); «Guardar» se apaga hasta elegir. Reemplaza el «sumar o quedarse» de FR-014a: la cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
-     - En las otras tres tarjetas: «Tus latas siguen donde están; el sistema solo deja de contarlas…».
+     - En las otras tres tarjetas, y solo si el producto tenía existencia propia (FR-020): «Tus latas siguen donde están; el sistema solo deja de contarlas…», con confirmación antes de guardar (FR-014b).
    - «Guardar» cierra la hoja; el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N».
    - Palabras para quien no conoce el sistema: «se resta» y «lo que tienes guardado», no «insumo» ni «existencia propia».
 
@@ -113,7 +119,7 @@ server/internal/integration/consumption_mode_test.go
 web/src/api/backoffice.ts                          # health, exportHealth
 web/src/features/backoffice/InventoryHealthTab.tsx (+test)
 web/src/features/backoffice/StockPage.tsx          # pestaña
-web/src/shared/CompositionSheet.tsx (+test)        # modo own, «Se compra hecho»
+web/src/shared/CompositionSheet.tsx (+test)        # «Se compra hecho», salida de existencia propia
 web/src/features/admin/RecipesPage.tsx (+test)     # ?status= ?open=
 web/src/app/permissions.ts, web/src/app/rutas-medidas.ts
 ```
@@ -123,4 +129,5 @@ web/src/app/permissions.ts, web/src/app/rutas-medidas.ts
 ## Riesgos
 
 - **El reporte es una consulta pesada** (anti-join de renglones contra movimientos). Hay índice en `stock_movements(order_line_id)` desde la 0060; el `EXPLAIN` sobre la copia de producción entra en la revisión de `db-architect`.
+- **Una sucursal o varias.** «¿Cuántas tienes de verdad?» se resuelve con una sola sucursal con existencia; con varias responde 409 y lo resuelve el conteo del 038 (research R6).
 - **Habilitar receta en un producto con existencia propia** cambia una validación vieja (`validateComposition` rechazaba). El hermano que no se movió (constitución IV): la carga de FUDO y `CloneProduct` siguen fijando `track_stock` sin pasar por la transición; quedan fuera, con test de que no cambian.

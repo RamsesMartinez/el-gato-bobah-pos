@@ -283,6 +283,10 @@ en [server/queries/expenses.sql](server/queries/expenses.sql) y las cinco de
     y ya salió a cocina se da por gastado y no vuelve; lo que no se ha mandado, sí. Lo que no se
     prepara (una lata) se repone aunque ya se haya mandado. Una sola regla para quitar un renglón y
     cancelar el pedido entero: `domain.ReponeInventario`. Un pedido entregado no repone nada.
+  - **Corregir una receta no recalcula lo ya vendido** (decisión del dueño, 2026-10-13): el
+    inventario de la empresa en producción es un histórico heredado de FUDO y se corrige de aquí en
+    adelante, no hacia atrás. La diferencia acumulada la ajusta un conteo, nunca un script que
+    reescriba `stock_movements` de ventas pasadas.
   - **La carga de FUDO** es `make fudo-composiciones empresa=gatobobah` (con `prueba=1` solo
     reporta). Llena solo lo que no tiene composición y lo marca **estimado**, que descuenta desde
     ese momento (decisión del dueño, 2026-10-07). No arma paquetes —sus cantidades en FUDO no

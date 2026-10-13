@@ -24,10 +24,13 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
     "total": 31,
     "items": [{ "kind": "product", "id": 1013, "name": "…", "group": "Ramen & Asiática",
                 "mode": "undecided", "units": [{ "channel": "Mostrador", "units": "1" }],
-                "linesWithoutDeduction": 1, "fixAt": "/catalogo/recetas?open=product:1013" }],
+                "linesWithoutDeduction": 1, "estimatedCost": "47.00",
+                "fixAt": "/catalogo/recetas?open=product:1013" }],
     "unpairedPlatformLines": 0
   },
-  "negativeStock": { "total": 126, "items": [{ "ingredientId": 566, "name": "…", "unit": "pieza",
+  "comboChoices": { "total": 0, "items": [{ "productId": 0, "name": "…", "slot": "…", "options": 3,
+                    "fixAt": "/catalogo/recetas?open=product:0" }] },
+  "negativeStock": { "total": 126, "collapsed": true, "items": [{ "ingredientId": 566, "name": "…", "unit": "pieza",
                      "onHand": "-10", "branch": null, "usedBy": 2, "fixAt": "/almacen/insumos/566" }] },
   "noPurchases": { "total": 118, "of": 130, "items": [] },
   "malformedRecipes": { "total": 0, "items": [{ "ownerKind": "extra", "ownerId": 0, "ownerName": "…",
@@ -39,32 +42,36 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 
 - `units` y `onHand` son cadenas decimales, como el resto de la API.
 - `noPurchases.items` viene vacío salvo con `section=no_purchases`: la pantalla lo pide al desplegar.
+- `negativeStock.collapsed` es `true` mientras la empresa no tenga ninguna compra registrada (FR-005): la pantalla abre la sección con su renglón explicativo.
+- `estimatedCost` = piezas sin restar × costo de hoy; cadena decimal, ordena la lista de mayor a menor. No se suma a ningún total.
+- `comboChoices` lista los combos con un hueco de más de un producto (FR-002b).
 
 ## GET /stock/health.csv
 
 Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 - `200 text/csv; charset=utf-8`, con BOM y `Content-Disposition: attachment; filename="salud-del-inventario-<from>-<to>.csv"`.
-- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, unidades, existencia, sucursal, problema`. Un renglón por problema y por canal.
+- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`. Un renglón por problema y por canal.
 - Lo calcula el mismo servicio que la pantalla (SC-005).
 
 ## PUT /admin/products/{id}/composition (cambio)
 
-Guarda igual que hoy; agrega el modo `own`:
+Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un modo de existencia propia (research R6). Deja de rechazar un producto con existencia propia y agrega un campo opcional:
 
 ```json
-{ "mode": "own", "basedOn": "<stamp>" }
+{ "mode": "items", "items": [{ "ingredientId": 9, "quantity": "1", "unitId": 8 }],
+  "actualStock": "20", "basedOn": "<stamp>" }
 ```
 
-| Transición | Efecto |
+| Producto con existencia propia → | Efecto |
 |---|---|
-| `own` → `items` (un insumo) | traslada la existencia al insumo (2 ajustes ligados) y apaga la existencia propia |
-| `own` → `items` (varios insumos) | cierra la existencia del producto en cero y apaga la existencia propia |
-| `items` / `nothing` → `own` | prende la existencia propia; la receta queda guardada sin usarse |
+| `items` de un insumo sin existencia | traslada la existencia al insumo (2 ajustes ligados) y apaga la existencia propia |
+| `items` de un insumo con existencia | exige `actualStock`; el insumo queda en esa cifra (1 ajuste), el producto en cero |
+| `items` de varios insumos, `package` o `nothing` | cierra la existencia del producto en cero y apaga la existencia propia |
 
 - Toda transición deja un evento `product.consumption_mode` en la bitácora.
-- Sin cambio de modo, el comportamiento es el de hoy.
-- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 si se pide `own` en un paquete.
+- Sin existencia propia de por medio, el comportamiento es el de hoy, salvo el evento de bitácora cuando cambia el modo.
+- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 `VALIDATION` si falta `actualStock` cuando hace falta, o si viene negativo o mal formado; 409 si el producto tiene existencia en más de una sucursal y el insumo también (se resuelve con un conteo).
 
 ## GET /admin/recipes (cambio menor)
 

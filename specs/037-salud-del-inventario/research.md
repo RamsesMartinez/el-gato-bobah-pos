@@ -42,11 +42,13 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 ## R6. Cambio de modo dentro de la captura de receta
 
-- **Decisión:** `SaveComposition` acepta un modo más en producto, `own` (existencia propia), y deja de rechazar receta en un producto con `track_stock`. En su lugar, la transición la decide `domain.PlanModeChange` (pura):
-  - **existencia propia → receta de un solo insumo:** traslada la existencia (`ajuste −N` del producto y `ajuste +N×cantidad` del insumo, ligados por la nota) y apaga `track_stock`;
-  - **existencia propia → receta de varios insumos:** cierra la existencia del producto en cero con un `ajuste` y apaga `track_stock`;
-  - **receta → existencia propia:** prende `track_stock` y **conserva** `recipe_id` sin usar (FR-015); `ExpandSale` ya prefiere `TrackStock`;
-  - **cualquier cambio:** un evento `product.consumption_mode` en `audit_events`, con antes y después.
+- **Decisión:** `SaveComposition` deja de rechazar receta, combo o «No gasta insumos» en un producto con `track_stock`: en su lugar, la transición la decide `domain.PlanModeChange` (pura). **No** se agrega un modo `own`: la existencia propia ya no se elige (FR-013, decisión del dueño: los revendidos son receta), solo se sale de ella.
+  - **existencia propia → receta de un insumo sin existencia:** traslada (`ajuste −N` del producto y `ajuste +N×cantidad` del insumo, ligados por la nota) y apaga `track_stock`;
+  - **existencia propia → receta de un insumo con existencia:** la petición trae `actualStock` («¿Cuántas tienes de verdad?», FR-014a); el insumo queda en esa cifra con un `ajuste` por la diferencia, el producto en cero, y se apaga `track_stock`. Sin `actualStock` → 400;
+  - **existencia propia → varios insumos, combo o «No gasta insumos»:** cierra la existencia del producto en cero con un `ajuste` y apaga `track_stock`; la pantalla confirma antes (FR-014b);
+  - **cualquier cambio de modo:** un evento `product.consumption_mode` en `audit_events`, con antes y después.
+- **Con más de una sucursal:** el traslado y el cierre se hacen por sucursal, sobre cada `stock_levels` del producto. «¿Cuántas tienes de verdad?» se pregunta solo si hay una sucursal con existencia en los dos; con más de una, el servidor responde 409 y la pantalla pide hacerlo en un conteo (038). Hoy ninguna empresa tiene dos sucursales con existencia.
+- **Ventas anteriores:** ningún camino reescribe movimientos `venta` (FR-002a, criterio del dueño del 13-oct).
 - Todo en la transacción de `SaveComposition`, con `LockCompositionEdits`.
 - **Descartado:** un endpoint aparte para el modo. Partiría en dos la decisión de cómo descuenta un producto.
 
@@ -54,6 +56,15 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 - **Decisión:** en la hoja de receta del producto, «Se compra hecho» propone crear el insumo con el nombre del producto, por pieza. Usa `POST /stock/ingredients`, que ya existe, y precarga 1 pieza en la receta (FR-014).
 - **Descartado:** un endpoint «convertir a revendido». Haría lo mismo que dos llamadas que ya existen, con su propia validación.
+
+## R7b. Combos con un hueco de varios productos
+
+- **Decisión:** el reporte los señala (FR-002b) leyendo los huecos activos con más de un producto. No se cambia `ExpandSale` ni el POS: el punto de venta no deja elegir el componente de un combo, y lo que el cliente elige se configura como extra ligado a su producto, que ya descuenta.
+- **Descartado:** guardar el componente elegido en cada renglón. Sería una pantalla nueva en el POS para algo que el extra ligado ya resuelve.
+
+## R7c. Costo estimado de lo que no se restó
+
+- **Decisión:** piezas sin restar × el costo de hoy del producto o extra (el mismo que muestra Menú › Recetas). Es una cifra para ordenar, no contable: la pantalla la llama «costo estimado» y no la suma a ningún total (constitución III).
 
 ## R8. Existencias con más de una sucursal
 

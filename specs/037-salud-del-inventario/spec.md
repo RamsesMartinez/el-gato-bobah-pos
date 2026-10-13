@@ -25,12 +25,20 @@ Este spec convierte esa auditoría en algo que cualquier empresa puede ver y cor
 consultas a quien programa. El producto se vende a otras empresas: nada de esto puede depender de
 nombres, marcas o reglas de un local.
 
+**Criterio del dueño (13-oct): de aquí en adelante, no hacia atrás.** El inventario de la empresa en
+producción es un histórico heredado de FUDO, que tampoco estaba bien llevado; esa empresa es el banco
+de pruebas. Esta feature no corrige el pasado: deja el sistema correcto desde ahora, para ofrecerlo
+como producto a tiendas nuevas. Lo heredado se ajusta con el conteo del 038, no recalculando ventas.
+
 ## Clarifications
 
 ### Session 2026-10-13
 
 - Q: Cuando un producto con existencia propia se convierte en receta de 1 pieza de un insumo nuevo, ¿qué pasa con su existencia? → A: Pasa al insumo nuevo con un movimiento que lo dice; el producto queda en cero.
 - Q: Mientras ninguna compra entra al almacén (hasta el 038), ¿cómo se muestra «Insumos sin compras registradas», que listaría más de 100 insumos? → A: Un renglón resumen («118 de 130 insumos sin compras registradas») que con un toque se despliega en la lista completa; la exportación siempre trae la lista completa.
+- Q: ¿Corregir una receta corrige lo ya vendido? → A: No. Las ventas anteriores no se recalculan y la pantalla lo dice; la diferencia la ajusta el conteo del 038.
+- Q: Un combo con una parte «a elegir» (varios productos en un hueco) siempre resta el de fábrica, porque el punto de venta no deja elegir el componente: ¿se corrige? → A: Sí, como configuración y no como función nueva: lo que el cliente elige va como extra ligado a su producto, y «Salud del inventario» señala los combos con huecos de varios productos.
+- Q (pruebas con usuarios sin contexto, 13-oct): ¿los negativos que solo existen porque las compras no entran deben llenar la pantalla? → A: No. Mientras la empresa no tenga ninguna compra registrada, «Lo guardado en negativo» abre con un renglón que lo explica y se despliega, igual que «sin compras».
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -81,9 +89,10 @@ por problema, con las mismas cifras que la pantalla.
 
 ### User Story 3 - Decidir cómo descuenta cada producto, desde la pantalla (Priority: P1)
 
-Quien configura el menú elige, para cada producto, cómo descuenta del almacén: **sin control**
-(«No gasta insumos»), **existencia propia** (cuenta el producto mismo por pieza) o **receta con
-insumos**. Un producto que se compra hecho se configura como receta de uno o más insumos con
+Quien configura el menú elige, para cada producto, qué se resta al venderlo: **se prepara aquí**
+(receta con insumos), **se compra hecho** (receta de un insumo por pieza), **es un combo** o **no se
+cuenta** («No gasta insumos»). La existencia propia del producto ya no se ofrece: un producto que
+la tiene se convierte eligiendo «Se compra hecho». Un producto que se compra hecho se configura como receta de uno o más insumos con
 cantidad editable, de 1 pieza por omisión, para que sirva en combos y en variaciones (con un extra,
 sin empaque, otra presentación).
 
@@ -99,7 +108,7 @@ sale de «Se vende sin descontar».
 
 1. **Given** un producto revendido sin receta, **When** se elige «receta con insumos» y «es un producto que se compra hecho», **Then** el sistema ofrece crear el insumo con el nombre del producto, por pieza, con 1 pieza en la receta; la cantidad y el insumo se pueden cambiar antes de guardar.
 2. **Given** un producto con existencia propia y 12 piezas registradas, **When** se convierte en receta de 1 pieza de un insumo nuevo, **Then** las 12 piezas pasan al insumo con un movimiento que dice de dónde vienen, el producto queda en cero, y el historial de ambos se conserva.
-3. **Given** un producto con receta, **When** se cambia a «existencia propia», **Then** la receta se conserva sin usarse (no se borra) y el cambio queda registrado con quién y cuándo.
+3. **Given** un producto con receta, **When** se cambia a «No se cuenta», **Then** la receta se conserva sin usarse (no se borra) y el cambio queda registrado con quién y cuándo.
 4. **Given** un combo cuyos componentes son productos revendidos configurados como receta, **When** se vende el combo, **Then** baja cada insumo de cada componente.
 5. **Given** un usuario sin permiso de configurar el menú, **When** intenta cambiar el modo de un producto, **Then** el sistema lo rechaza aunque la petición no pase por la pantalla.
 
@@ -152,13 +161,15 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 **Salud del inventario (Historia 1 y 2)**
 
-- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin descontar; insumos en negativo; insumos sin compras registradas; recetas mal formadas; recetas pendientes de confirmar.
-- **FR-002**: «Se vende sin descontar» MUST listar cada producto y cada extra activos que en el periodo elegido se vendieron y no dejaron ningún movimiento de almacén, con sus unidades vendidas separadas por canal (mostrador y cada plataforma de reparto).
+- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin descontar; insumos en negativo; insumos sin compras registradas; recetas con un error; recetas pendientes de confirmar.
+- **FR-002**: «Se vende sin descontar» MUST listar cada producto y cada extra activos que en el periodo elegido se vendieron y no dejaron ningún movimiento de almacén, con sus piezas vendidas separadas por canal (mostrador y cada plataforma de reparto) y el costo estimado de lo que no se restó (piezas por el costo de hoy del producto o extra), para priorizar por dinero.
+- **FR-002a**: Corregir la receta de un producto MUST NOT recalcular sus ventas anteriores; la pantalla MUST decirlo junto al renglón («las ventas anteriores no se recalculan»).
+- **FR-002b**: La pantalla MUST señalar cada combo activo que tenga un hueco con más de un producto, porque siempre resta el producto de fábrica: lo que el cliente elige debe configurarse como extra ligado a su producto.
 - **FR-003**: Un producto MUST NOT marcarse si lo que se vende con él descuenta: su receta, su existencia propia, las piezas de su paquete o un extra obligatorio con receta o producto ligado.
 - **FR-004**: Un producto o extra confirmado como «No gasta insumos» MUST NOT marcarse como problema; uno que nunca se decidió, sí.
-- **FR-005**: «Insumos en negativo» MUST listar cada insumo activo con existencia menor que cero, con su existencia y las recetas activas que lo usan.
+- **FR-005**: «Insumos en negativo» MUST listar cada insumo activo con existencia menor que cero **a hoy** (lo dice la sección; no depende del periodo), con su existencia y las recetas activas que lo usan. Mientras la empresa no tenga ninguna compra registrada, la sección MUST abrir con un renglón que explique que lo guardado solo baja, y desplegar la lista con un toque.
 - **FR-006**: «Insumos sin compras registradas» MUST mostrar primero un renglón resumen («N de M insumos sin compras registradas») y, con un toque, desplegar la lista de cada insumo activo usado por alguna receta activa sin ninguna entrada de compra desde una fecha elegible. La exportación MUST traer siempre la lista completa.
-- **FR-007**: «Recetas mal formadas» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
+- **FR-007**: «Recetas con un error» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
 - **FR-008**: «Recetas pendientes de confirmar» MUST mostrar cuántos productos y extras están «Por revisar» y llevar a Menú › Recetas con ese filtro.
 - **FR-009**: Cada renglón MUST llevar a la pantalla donde se corrige (la receta del producto o extra, el insumo).
 - **FR-010**: El periodo MUST poder elegirse; un periodo mal formado se rechaza con un mensaje, nunca se reemplaza en silencio por otro (constitución V).
@@ -167,7 +178,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 **Modo de consumo (Historia 3)**
 
-- **FR-013**: Cada producto MUST tener un modo de consumo visible y configurable desde la pantalla: sin control («No gasta insumos»), existencia propia o receta con insumos. Los paquetes siguen descontando por sus componentes.
+- **FR-013**: Cada producto MUST tener un modo de consumo visible y configurable desde la pantalla: «Se prepara aquí», «Se compra hecho», «Es un combo» o «No se cuenta». La existencia propia MUST NOT ofrecerse como opción; un producto que ya la tiene la sigue usando hasta que se le elija otro modo. Los paquetes siguen descontando por sus componentes.
 - **FR-014**: Al configurar un producto que se compra hecho para que descuente también en combos, el sistema MUST buscar primero en el almacén y ofrecer los insumos de nombre parecido; crear uno nuevo con el nombre del producto, por pieza, es la última opción. La receta queda de 1 pieza por venta suelta, cambiable antes de guardar.
 - **FR-014a**: Si el insumo elegido ya tiene existencia y el producto también, el sistema MUST mostrar de dónde sale cada número y preguntar cuántas hay de verdad: la del producto, la del insumo, las dos sumadas u otra cifra escrita. La cifra elegida queda como existencia del insumo con un ajuste que lo dice, y la del producto en cero. «Guardar» no se habilita hasta elegir. Se decide al configurar, nunca al vender.
 - **FR-014b**: El sistema MUST NOT guardar «Se prepara aquí» ni «Es un combo» sin lo que lleva; y antes de dejar una existencia en cero MUST pedir confirmación, diciendo que si después se regresa, la existencia no vuelve sola.
@@ -181,11 +192,13 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 **Principio de producto**
 
 - **FR-018**: Ningún nombre, marca, producto o regla de un negocio en particular MUST aparecer en el código ni en las migraciones de esquema; todo lo que distingue a un negocio es dato configurable.
+- **FR-019**: Los textos de la pantalla MUST usar palabras de quien opera, validadas con usuarios sin contexto (13-oct): «restar» (nunca «descontar»), «lo que tienes guardado», «Falta decir qué resta» (no «Sin decidir»), «Extra que no resta nada» (no «Extra sin ligar»), «Recetas con un error» diciendo cuál, «Las cargó el sistema y nadie las ha confirmado» para las recetas por revisar, y «piezas» en las cifras por canal.
+- **FR-020**: El aviso de que la existencia de un producto deja de contarse MUST aparecer solo si ese producto tenía existencia propia.
 
 ### Key Entities
 
 - **Problema de inventario**: algo que hace que las existencias no cuadren. Tiene un tipo (una de las cinco secciones), a qué apunta (producto, extra, insumo o renglón de receta), su peso (unidades vendidas por canal o existencia) y a dónde se va a corregir. Se calcula; no se guarda.
-- **Modo de consumo**: cómo descuenta un producto al venderse (sin control, existencia propia, receta). Es una propiedad del producto con historial de cambios.
+- **Modo de consumo**: qué se resta al vender un producto (se prepara aquí, se compra hecho, es un combo, no se cuenta; la existencia propia solo como estado heredado). Es una propiedad del producto con historial de cambios.
 - **Extra que es producto**: un extra que, al venderse, debe descontar como un producto (ligado o con receta).
 
 ## Success Criteria *(mandatory)*
