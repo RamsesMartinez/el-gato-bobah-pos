@@ -31,7 +31,7 @@ No hay migración: todo se deduce de columnas que ya existen (research R1). Deci
 **Project Type**: web-service + SPA
 **Performance Goals**: el reporte de 30 días responde en menos de 1 s con el volumen de producción (unos cientos de productos y miles de renglones)
 **Constraints**: se sube con el local operando; ninguna lectura del reporte bloquea ventas
-**Scale/Scope**: 1 pantalla nueva (Almacén › Salud), 1 hoja cambiada (receta del producto), 1 permiso, 1 acción de bitácora
+**Scale/Scope**: 1 pantalla nueva (Almacén › Salud), 1 hoja cambiada (receta del producto), 2 permisos, 1 acción de bitácora
 
 ## Constitution Check
 
@@ -42,7 +42,7 @@ No hay migración: todo se deduce de columnas que ya existen (research R1). Deci
 | III Dinero | no toca dinero. Las cantidades de existencia usan `Round4`; el traslado multiplica por la cantidad de la receta y redondea una vez |
 | IV Test-first | casos de borde del spec enumerados antes (sección *Edge Cases*); tests de dominio de `PlanModeChange` y `HealthFilter`; integración del reporte **y de la transición de modo en `SaveComposition`** (que ahora escribe `stock_levels`/`stock_movements`) bajo `appRoleStore` con `inTheThreeCases`; test de concurrencia: una venta entre mostrar y guardar responde 409 y nunca deja el producto distinto de cero ni inventa existencia en el insumo; test que falla nombrando «la exportación y la pantalla divergen»; test de regresión con el caso de la auditoría (producto cuyo extra obligatorio descuenta: no se marca) |
 | IV Local = producción | el test del reporte corre con dos empresas y bajo el rol de la app |
-| V Seguridad | `RequirePermission(PermInventoryHealthView)` en las dos rutas; parámetros mal formados → 400; el CSV no lleva datos de otra empresa (RLS + test) y escapa celdas que empiezan con `=`, `+`, `-` o `@` (inyección de fórmulas en hojas de cálculo) |
+| V Seguridad | `RequirePermission(PermInventoryHealthView)` en las dos rutas y `RequirePermission(PermMenuConfigure)` en las rutas de composición; parámetros mal formados → 400; el CSV no lleva datos de otra empresa (RLS + test) y escapa celdas que empiezan con `=`, `+`, `-` o `@` (inyección de fórmulas en hojas de cálculo) |
 | VI YAGNI | sin tabla de modo, sin endpoint de conversión, sin permiso por sección, sin PDF |
 | VII Comentarios / idioma | identificadores en inglés (`inventory_health`, `consumption_mode`); UI y docs en español; sin nombres del negocio en código ni migraciones (FR-018) |
 | VIII Puertas | ninguna se cierra: sin cambios de esquema; con más de una sucursal el reporte muestra la sucursal en vez de asumir una (R8) |
@@ -55,7 +55,7 @@ Sin violaciones.
 |---|---|---|
 | Consultas del reporte (5 secciones + sus `Count`) | store (sqlc) | `server/queries/inventory_health.sql` |
 | `HealthFilter`, `HealthIssueKind`, `ConsumptionMode`, `ModeOf`, `PlanModeChange` | domain | `server/internal/domain/inventory_health.go`, `consumption_mode.go` (+ `_test`) |
-| Permiso `inventory.health_view` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
+| Permisos `inventory.health_view` y `menu.configure` | domain | `server/internal/domain/permission.go` (+ espejo en `web/src/app/permissions.ts`) |
 | Acción de bitácora `product.consumption_mode` | domain | `server/internal/domain/audit.go` (lista blanca, grupo nuevo `inventory`) |
 | Reporte y CSV | app | `server/internal/app/inventory_health.go` |
 | Transición de modo en la captura | app | `server/internal/app/composition.go` (`SaveComposition` con `actualStock`; `validateComposition` deja de rechazar receta en `track_stock`) |
@@ -73,7 +73,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - Arriba, una barra: el periodo, que abre una hoja inferior con «Hoy», «Últimos 7 días», «Últimos 30 días», «Este mes» y «Elegir fechas…», más un resumen de una línea y «Exportar».
    - Contenedor: `StockPage` pasa a `<Page fill>` (las tres pestañas de hoy igual, solo dentro de esa estructura) y `InventoryHealthTab` NO trae su propio `Page`: es un `Box flex="1" minH={0}` dentro de su `Tabs.Content`, con la barra fija arriba y la lista con scroll. Los `Tabs.Trigger` de Almacén ganan `minH="44px"` (corrige también las tres existentes).
    - El periodo: `Picker` con las cinco opciones; «Elegir fechas…» abre dos `DatePickerButton` (desde y hasta). Ningún `input type="date"`.
-   - Debajo, una sola lista (`flex="1" minH={0}`, overflow con alto). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin descontar» abre por omisión.
+   - Debajo, una sola lista (`flex="1" minH={0}`, overflow con alto). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin restar» abre por omisión.
    - Renglones de 54 px:
      - con nombre y grupo, más una pastilla de estado («Falta decir qué resta», «Extra que no resta nada»);
      - las piezas por canal como pastillas y el costo estimado a la derecha (ordena la lista); el renglón completo (54 px) es el botón que lleva a corregir, como en Recetas, y «›» solo lo señala;
@@ -81,7 +81,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - Al pie de «Se vende sin restar», una línea fija: «Las ventas anteriores no se recalculan».
    - Los combos con un hueco de varios productos salen dentro de esa sección con su pastilla («Siempre resta el de fábrica»).
    - «Lo guardado en negativo», mientras la empresa no tenga compras, abre con un renglón que explica que lo guardado solo baja y se despliega con un toque.
-   - «Insumos sin compras registradas» abierto muestra un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
+   - «Insumos sin compras registradas» abierto muestra un `DatePickerButton` «Sin compras desde» (vacío = nunca) y un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
    - «Recetas por revisar» muestra un renglón con el texto de FR-019 tal cual, «Las cargó el sistema y nadie las ha confirmado», y «Ir a Recetas ›». El aviso de la hoja de receta (`CompositionSheet`, «Esta receta se cargó de tu sistema anterior…») cambia a la misma frase.
    - Una empresa sin problemas ve «El inventario está sano» en vez de cinco ceros.
 2. **Hoja de receta del producto** (cambiada) — opción **B simplificada, versión 7**, después de cinco pruebas con usuarios sin contexto (las versiones 1 a 4, con dos preguntas y resúmenes, no se entendían):

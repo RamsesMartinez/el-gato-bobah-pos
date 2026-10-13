@@ -13,14 +13,14 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 - **Por qué:** un modo guardado aparte se desincroniza del que de verdad usa `ExpandSale`. Ese desacuerdo sería justo un problema de salud que el reporte no vería.
 - **Descartado:** una columna `consumption_mode`. Duplica `track_stock` + `recipe_id` y obliga a mantener las dos alineadas.
 
-## R2. «Se vende sin descontar» se mide sobre lo que pasó, no sobre la configuración
+## R2. «Se vende sin restar» se mide sobre lo que pasó, no sobre la configuración
 
-- **Decisión:** un renglón vendido cuenta como «sin descontar» si no dejó **ningún** movimiento `venta` con su `order_line_id`. Un extra vendido cuenta si no dejó movimiento con su `order_line_id` **y** su `modifier_option_id`.
+- **Decisión:** un renglón vendido cuenta como «sin restar» si no dejó **ningún** movimiento `venta` con su `order_line_id`. Un extra vendido cuenta si no dejó movimiento con su `order_line_id` **y** su `modifier_option_id`.
 - **Por qué:** cubre sin reglas extra todos los caminos que ya descuentan (receta, existencia propia, paquete, extra obligatorio con receta). Es la definición que usó la auditoría del 13-oct, y por eso reproduce sus 31 productos (SC-001).
 - **Excepciones:**
   - lo confirmado «No gasta insumos» (FR-004);
   - el producto genérico de plataforma (`system_kind = 'platform_unpaired'`), que sale en su propio renglón y no se suma al catálogo.
-- **Descartado:** clasificar por configuración («no tiene receta»). Marca productos cuyo extra obligatorio sí descuenta (Arizona, Frappé de Agua) y no ve un extra que dejó de descontar.
+- **Descartado:** clasificar por configuración («no tiene receta»). Marca productos cuyo extra obligatorio sí descuenta (bebidas con sabor a elegir) y no ve un extra que dejó de descontar.
 
 ## R3. Unidades por canal
 
@@ -37,7 +37,7 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 ## R5. Permiso nuevo para ver la salud del inventario
 
 - **Decisión:** `inventory.health_view`, con admin y gerente por omisión (FR-012), siguiendo la regla de la 027: todo control nuevo cuelga de un permiso, no de un rol.
-- El cambio de modo **no** lleva permiso nuevo: es parte de editar la receta, que hoy protege `RequireRole(admin, gerente)` en `/admin/products/{id}/composition`.
+- El cambio de modo mueve existencias, una capacidad nueva sobre una ruta que hoy protege `RequireRole(admin, gerente)`. Para no colgar algo nuevo de un nombre de rol (puerta «roles por empresa» del principio VIII), las tres rutas `PUT …/composition` (producto, extra, insumo) y sus `confirm` pasan a `RequirePermission(PermMenuConfigure)` (`menu.configure`, admin y gerente). Mismo resultado hoy, y es lo que pasará a la base cuando lleguen los roles por empresa.
 - **Descartado:** un permiso por cada sección del reporte. Nadie pidió verlas por separado.
 
 ## R6. Cambio de modo dentro de la captura de receta
@@ -69,7 +69,7 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 ## R8. Existencias con más de una sucursal
 
-- **Decisión:** «Insumos en negativo» lee `stock_levels` por sucursal y muestra la sucursal solo si la empresa tiene más de una. No usa `current_branch_id()`, que con dos sucursales truena con `EGB01`.
+- **Decisión:** «Lo guardado en negativo» lee `stock_levels` por sucursal y muestra la sucursal solo si la empresa tiene más de una. No usa `current_branch_id()`, que con dos sucursales truena con `EGB01`.
 
 ## R9. Escala en la tableta
 

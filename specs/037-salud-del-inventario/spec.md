@@ -59,10 +59,10 @@ vendidas por canal.
 
 **Acceptance Scenarios**:
 
-1. **Given** un producto activo sin receta, sin existencia propia y sin piezas de paquete que se vendió en el periodo, **When** se abre «Salud del inventario», **Then** aparece en «Se vende sin descontar» con sus unidades vendidas por canal (mostrador y cada plataforma).
+1. **Given** un producto activo sin receta, sin existencia propia y sin piezas de paquete que se vendió en el periodo, **When** se abre «Salud del inventario», **Then** aparece en «Se vende sin restar» con sus unidades vendidas por canal (mostrador y cada plataforma).
 2. **Given** un producto que no descuenta por sí mismo pero cuyo extra obligatorio sí descuenta (por ejemplo un tamaño o sabor con receta), **When** se abre la pantalla, **Then** no aparece como problema.
-3. **Given** un extra activo sin receta ni producto ligado, que no está confirmado como «No gasta insumos», y se vendió en el periodo, **When** se abre la pantalla, **Then** aparece en «Se vende sin descontar» con sus unidades.
-4. **Given** un insumo con existencia negativa, **When** se abre la pantalla, **Then** aparece en «Insumos en negativo» con su existencia y las recetas que lo usan.
+3. **Given** un extra activo sin receta ni producto ligado, que no está confirmado como «No gasta insumos», y se vendió en el periodo, **When** se abre la pantalla, **Then** aparece en «Se vende sin restar» con sus unidades.
+4. **Given** un insumo con existencia negativa, **When** se abre la pantalla, **Then** aparece en «Lo guardado en negativo» con su existencia y las recetas que lo usan.
 5. **Given** una receta con un renglón en cantidad cero, con unidad de otro tipo que la del insumo, o que apunta a un insumo archivado o duplicado, **When** se abre la pantalla, **Then** aparece en «Recetas mal formadas» con el renglón señalado.
 6. **Given** recetas «Por revisar», **When** se abre la pantalla, **Then** se ve cuántas son y un toque lleva a Menú › Recetas filtrado en «Por revisar».
 7. **Given** una empresa sin ningún problema, **When** se abre la pantalla, **Then** dice que el inventario está sano, sin listas vacías que parezcan error.
@@ -102,11 +102,11 @@ volverse receta.
 
 **Independent Test**: Tomar un producto que se compra hecho y no descuenta, convertirlo en receta de
 1 pieza de un insumo nuevo con su nombre, vender uno y ver que el insumo baja 1 y que el producto
-sale de «Se vende sin descontar».
+sale de «Se vende sin restar».
 
 **Acceptance Scenarios**:
 
-1. **Given** un producto revendido sin receta, **When** se elige «receta con insumos» y «es un producto que se compra hecho», **Then** el sistema ofrece crear el insumo con el nombre del producto, por pieza, con 1 pieza en la receta; la cantidad y el insumo se pueden cambiar antes de guardar.
+1. **Given** un producto revendido sin receta, **When** se elige la tarjeta «Se compra hecho», **Then** el sistema busca primero en el almacén y, si no hay uno parecido, ofrece crear el insumo con el nombre del producto, por pieza, con 1 pieza en la receta; la cantidad y el insumo se pueden cambiar antes de guardar.
 2. **Given** un producto con existencia propia y 12 piezas registradas, **When** se convierte en receta de 1 pieza de un insumo nuevo, **Then** las 12 piezas pasan al insumo con un movimiento que dice de dónde vienen, el producto queda en cero, y el historial de ambos se conserva.
 3. **Given** un producto con receta, **When** se cambia a «No se cuenta», **Then** la receta se conserva sin usarse (no se borra) y el cambio queda registrado con quién y cuándo.
 4. **Given** un combo cuyos componentes son productos revendidos configurados como receta, **When** se vende el combo, **Then** baja cada insumo de cada componente.
@@ -140,7 +140,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **El valor vacío que significa algo:**
   - Un producto «sin control» confirmado a propósito («No gasta insumos») no es un problema; uno sin decidir sí. La pantalla no puede confundirlos.
-  - Un periodo sin ventas no es «todo sano»: se dice que no hubo ventas, y los problemas que no dependen de ventas (negativos, recetas mal formadas) se siguen mostrando.
+  - Un periodo sin ventas no es «todo sano»: «Se vende sin restar» dice «No hubo ventas en este periodo», y los problemas que no dependen de ventas (negativos, recetas con un error) se siguen mostrando.
 - **El camino nuevo que se salta el control viejo:**
   - Un producto que no descuenta por sí mismo pero cuyo extra obligatorio sí descuenta no se marca. Pero si ese extra obligatorio tiene una opción que no descuenta, esa opción sí se marca.
   - Un pedido de plataforma que entra con un platillo sin pareja (producto genérico) descuenta nada: aparece como su propio renglón, no se mezcla con los productos del catálogo.
@@ -161,13 +161,13 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 **Salud del inventario (Historia 1 y 2)**
 
-- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin descontar; insumos en negativo; insumos sin compras registradas; recetas con un error; recetas pendientes de confirmar.
-- **FR-002**: «Se vende sin descontar» MUST listar cada producto y cada extra activos que en el periodo elegido se vendieron y no dejaron ningún movimiento de almacén, con sus piezas vendidas separadas por canal (mostrador y cada plataforma de reparto) y el costo estimado de lo que no se restó (piezas por el costo de hoy del producto o extra), para priorizar por dinero.
+- **FR-001**: El sistema MUST mostrar una pantalla «Salud del inventario» con cinco secciones: se vende sin restar; lo guardado en negativo; insumos sin compras registradas; recetas con un error; recetas pendientes de confirmar.
+- **FR-002**: «Se vende sin restar» MUST listar cada producto y cada extra activos que en el periodo elegido se vendieron y no dejaron ningún movimiento de almacén, con sus piezas vendidas separadas por canal (mostrador y cada plataforma de reparto) y el costo estimado de lo que no se restó (piezas por el costo de hoy del producto o extra), para priorizar por dinero.
 - **FR-002a**: Corregir la receta de un producto MUST NOT recalcular sus ventas anteriores; la pantalla MUST decirlo junto al renglón («las ventas anteriores no se recalculan»).
 - **FR-002b**: La pantalla MUST señalar cada combo activo que tenga un hueco con más de un producto, porque siempre resta el producto de fábrica: lo que el cliente elige debe configurarse como extra ligado a su producto.
 - **FR-003**: Un producto MUST NOT marcarse si lo que se vende con él descuenta: su receta, su existencia propia, las piezas de su paquete o un extra obligatorio con receta o producto ligado.
 - **FR-004**: Un producto o extra confirmado como «No gasta insumos» MUST NOT marcarse como problema; uno que nunca se decidió, sí.
-- **FR-005**: «Insumos en negativo» MUST listar cada insumo activo con existencia menor que cero **a hoy** (lo dice la sección; no depende del periodo), con su existencia y las recetas activas que lo usan. Mientras la empresa no tenga ninguna compra registrada, la sección MUST abrir con un renglón que explique que lo guardado solo baja, y desplegar la lista con un toque.
+- **FR-005**: «Lo guardado en negativo» MUST listar cada insumo activo con existencia menor que cero **a hoy** (lo dice la sección; no depende del periodo), con su existencia y las recetas activas que lo usan. Mientras la empresa no tenga ninguna compra registrada, la sección MUST abrir con un renglón que explique que lo guardado solo baja, y desplegar la lista con un toque.
 - **FR-006**: «Insumos sin compras registradas» MUST mostrar primero un renglón resumen («N de M insumos sin compras registradas») y, con un toque, desplegar la lista de cada insumo activo usado por alguna receta activa sin ninguna entrada de compra desde una fecha elegible. La exportación MUST traer siempre la lista completa.
 - **FR-007**: «Recetas con un error» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
 - **FR-008**: «Recetas pendientes de confirmar» MUST mostrar cuántos productos y extras están «Por revisar» y llevar a Menú › Recetas con ese filtro.
@@ -183,7 +183,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-014a**: Si el insumo elegido ya tiene existencia y el producto también, el sistema MUST mostrar de dónde sale cada número y preguntar cuántas hay de verdad: la del producto, la del insumo, las dos sumadas u otra cifra escrita. La cifra elegida queda como existencia del insumo con un ajuste que lo dice, y la del producto en cero. «Guardar» no se habilita hasta elegir. Se decide al configurar, nunca al vender.
 - **FR-014b**: El sistema MUST NOT guardar «Se prepara aquí» ni «Es un combo» sin lo que lleva; y antes de dejar una existencia en cero MUST pedir confirmación, diciendo que si después se regresa, la existencia no vuelve sola.
 - **FR-015**: Cambiar de modo MUST conservar el historial de movimientos y dejar registro de quién lo cambió y cuándo. Al convertir un producto con existencia propia en receta de **un solo** insumo (nuevo o existente), su existencia MUST pasar a ese insumo en su equivalencia (cada pieza de producto = la cantidad de la receta) con movimientos ligados que digan de dónde viene, y el producto quedar en cero; si ese insumo ya tenía existencia, aplica la elección de FR-014a. Si la receta lleva varios insumos, no hay equivalencia única: la existencia del producto se cierra en cero con un ajuste que dice el motivo.
-- **FR-016**: Cambiar el modo MUST requerir el permiso de configurar el menú, verificado en el servidor.
+- **FR-016**: Cambiar el modo MUST requerir el permiso de configurar el menú (`menu.configure`, admin y gerente por omisión), verificado en el servidor; no el nombre de un rol (constitución VIII, roles por empresa).
 
 **Extras que son productos (Historia 4)**
 
@@ -208,7 +208,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **SC-001**: Sobre la copia del respaldo de producción del 13-oct, la pantalla marca los 31 productos sin descuento y los 126 insumos en negativo que encontró la auditoría, con las mismas unidades vendidas por canal.
 - **SC-002**: Quien administra encuentra qué corregir y llega a la pantalla donde se corrige en 2 toques o menos desde «Salud del inventario».
 - **SC-003**: Un cliente nuevo configura sin soporte técnico un producto revendido (receta de 1 pieza), un combo que lo incluye y una variación (con un extra), y los tres descuentan bien en la primera venta.
-- **SC-004**: Después de corregir con la pantalla los productos marcados, vender cada uno una vez deja un movimiento de almacén por cada venta (cero ventas sin descontar en ese grupo).
+- **SC-004**: Después de corregir con la pantalla los productos marcados, vender cada uno una vez deja un movimiento de almacén por cada venta (cero ventas sin restar en ese grupo).
 - **SC-005**: La exportación coincide renglón por renglón con la pantalla para el mismo periodo.
 - **SC-006**: Ninguna referencia a marcas ni productos de un negocio aparece en el código ni en las migraciones de esquema de esta feature.
 
@@ -216,7 +216,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 - **Fuera de alcance, en el 038 (issue #60):** que las compras entren al almacén, las presentaciones de compra y el conteo inicial. Mientras no exista, «Insumos sin compras registradas» marcará casi todos los insumos: es correcto, y es lo que el 038 corrige.
 - **Fuera de alcance:** alérgenos (issue #59), multi-almacén y traspasos, mermas y cortesías, kardex y valor del inventario.
-- **Periodo por omisión** de «Se vende sin descontar»: los últimos 30 días.
+- **Periodo por omisión** de «Se vende sin restar»: los últimos 30 días.
 - **Exportación** en un formato de texto separado por comas que abren las hojas de cálculo comunes; no PDF.
 - **Permisos:** los mismos roles que hoy administran el menú y el almacén (administrador y gerente).
 - **«Unidades vendidas»** cuenta renglones no cancelados de pedidos no cancelados ni reembolsados, con la fecha del día de negocio.

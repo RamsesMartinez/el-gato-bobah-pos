@@ -19,7 +19,7 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 
 ```json
 {
-  "from": "2026-09-13", "to": "2026-10-13", "multipleBranches": false,
+  "from": "2026-09-13", "to": "2026-10-13", "multipleBranches": false, "salesInPeriod": 812,
   "unsoldDeduction": {
     "total": 31,
     "items": [{ "kind": "product", "id": 1013, "name": "…", "group": "Ramen & Asiática",
@@ -44,17 +44,19 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
 - `noPurchases.items` viene vacío salvo con `section=no_purchases`: la pantalla lo pide al desplegar.
 - `negativeStock.collapsed` es `true` mientras la empresa no tenga ninguna compra registrada (FR-005): la pantalla abre la sección con su renglón explicativo.
 - `estimatedCost` = piezas sin restar × costo de hoy; cadena decimal, ordena la lista de mayor a menor. No se suma a ningún total.
-- `comboChoices` lista los combos con un hueco de más de un producto (FR-002b).
+- `comboChoices` lista los combos con un hueco de más de un producto (FR-002b). No es una sección propia: la pantalla los muestra dentro de «Se vende sin restar» y el total de esa sección los incluye. No se pagina (son pocos: uno por combo). En la exportación salen con `seccion=se_vende_sin_restar`, `tipo=combo` y `problema=varias_opciones`.
 
 ## GET /stock/health.csv
 
 Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 - `200 text/csv; charset=utf-8`, con BOM y `Content-Disposition: attachment; filename="salud-del-inventario-<from>-<to>.csv"`.
-- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`. Un renglón por problema y por canal.
+- Columnas: `seccion, tipo, id, nombre, grupo, estado, canal, piezas, costo_estimado, existencia, sucursal, problema`. `tipo` ∈ producto, extra, combo, insumo, renglon_receta. Un renglón por problema y por canal.
 - Lo calcula el mismo servicio que la pantalla (SC-005).
 
 ## PUT /admin/products/{id}/composition (cambio)
+
+Permiso: `menu.configure` (antes, rol admin o gerente; mismo resultado hoy). Aplica también a las rutas de composición de extras e insumos y a sus `confirm`.
 
 Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un modo de existencia propia (research R6). Deja de rechazar un producto con existencia propia y agrega un campo opcional:
 

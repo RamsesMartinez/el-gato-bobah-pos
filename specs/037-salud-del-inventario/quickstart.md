@@ -8,12 +8,12 @@
 ## Escenarios
 
 1. **Reproduce la auditoría (SC-001).** Almacén › Salud, periodo del 5 al 13-oct:
-   - «Se vende sin descontar» lista los productos de la auditoría del 13-oct con las mismas unidades por canal;
-   - «Insumos en negativo» dice 126.
-2. **No marca lo que sí descuenta.** Arizona, Frappé de Agua y Frappé Gatuno no aparecen. Lo confirmado «No gasta insumos» («Sin perlas», «No Aplica») tampoco.
+   - «Se vende sin restar» lista los productos de la auditoría del 13-oct con las mismas unidades por canal;
+   - «Lo guardado en negativo» dice 126 (abre resumido mientras no haya compras).
+2. **No marca lo que sí descuenta.** Los productos cuyo extra obligatorio sí resta (una bebida con sabor a elegir que lleva receta) no aparecen. Lo confirmado «No gasta insumos» (un «Sin …» o «No aplica») tampoco.
 3. **Corrige un revendido (SC-003).**
-   - Desde un renglón de «Se vende sin descontar», abrir la receta de un producto revendido, elegir «Se compra hecho» y guardar 1 pieza.
-   - Vender uno: el insumo nuevo baja 1, y el producto deja de aparecer para ventas posteriores.
+   - Desde un renglón de «Se vende sin restar», abrir la receta de un producto revendido, elegir «Se compra hecho» y guardar 1 pieza.
+   - Vender uno: el insumo nuevo baja 1, y el producto deja de aparecer para ventas posteriores; las ventas anteriores no se recalculan.
 4. **Traslado de existencia.**
    - A un producto con existencia propia y 12 piezas, convertirlo en receta de 1 pieza de un insumo nuevo.
    - El insumo queda en +12, el producto en 0, hay dos ajustes ligados y un evento en la bitácora.
