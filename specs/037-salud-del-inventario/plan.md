@@ -66,13 +66,32 @@ Sin violaciones.
 
 Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantalla; el dueño elige.
 
-1. **Almacén › Salud** (nueva). Lo que debe caber en 1024×600: las cinco secciones con su conteo; la primera abierta con sus primeros renglones; el periodo; «Exportar». Componentes: `Page fill`, `Picker` para el periodo, renglones de 44 px o más, paginación como en Recetas.
-2. **Hoja de receta del producto** (cambiada). Agrega el modo «Existencia propia» junto a «Lleva insumos», «Es un combo» y «No gasta insumos», y el atajo «Se compra hecho». Debe dejar claro qué pasa con la existencia al cambiar de modo antes de guardar.
+1. **Almacén › Salud** (nueva, pestaña de `StockPage`) — opción **A**:
+   - Arriba, una barra: el periodo, que abre una hoja inferior con «Hoy», «Últimos 7 días», «Últimos 30 días», «Este mes» y «Elegir fechas…», más un resumen de una línea y «Exportar».
+   - Debajo, una sola lista (`Page fill` + `flex="1" minH={0}`). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin descontar» abre por omisión.
+   - Renglones de 54 px:
+     - con nombre y grupo, más una pastilla de estado («Sin decidir», «Extra sin ligar»);
+     - las unidades por canal como pastillas, y «›» lleva a corregir;
+     - «Ver 25 más · quedan N» como en Recetas.
+   - «Insumos sin compras registradas» abierto muestra un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
+   - «Recetas por revisar» muestra un renglón con «Ir a Recetas ›».
+   - Una empresa sin problemas ve «El inventario está sano» en vez de cinco ceros.
+2. **Hoja de receta del producto** (cambiada) — opción **B simplificada, versión 7**, después de cinco pruebas con usuarios sin contexto (las versiones 1 a 4, con dos preguntas y resúmenes, no se entendían):
+   - Título en pregunta: «Cuando vendes X, ¿qué se resta de lo que tienes?».
+   - Cuatro tarjetas: «Se prepara aquí» (la de «Lleva insumos» de hoy), «Se compra hecho» (nueva), «Es un combo» y «No se cuenta».
+   - «Existencia propia» NO aparece en pantalla (decisión del dueño: los revendidos son receta). Un producto que hoy la tiene se convierte eligiendo «Se compra hecho».
+   - «Se compra hecho» viene lleno: «Cada venta resta 1 de [insumo]». Si existe uno de nombre parecido, se preselecciona; si no, «se crea con este nombre». El buscador marca con ✓ lo elegido y deja «Crear una nueva» al final. «¿Una venta lleva más de una? (por ejemplo, un six)» muestra el − / +.
+   - Avisos solo cuando hay existencia que mover:
+     - Si el insumo es nuevo: «El sistema tenía contadas 12 latas… cada vez que vendas una, quedará una menos».
+     - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito); «Guardar» se apaga hasta elegir. Reemplaza el «sumar o quedarse» de FR-014a: la cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
+     - En las otras tres tarjetas: «Tus latas siguen donde están; el sistema solo deja de contarlas…».
+   - «Guardar» cierra la hoja; el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N».
+   - Palabras para quien no conoce el sistema: «se resta» y «lo que tienes guardado», no «insumo» ni «existencia propia».
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Almacén › Salud | (pendiente) | | |
-| Hoja de receta: modo de consumo | (pendiente) | | |
+| Almacén › Salud | https://claude.ai/artifact/3rvxVnxqBmmevh4WsEkSJj | A · Secciones que se abren | Los cinco problemas de un vistazo, sin alto fijo; la primera abierta |
+| Hoja de receta: modo de consumo | https://claude.ai/artifact/WkmDrBVZgXaqDw2txF9uvm | B simplificada, versión 7 | La hoja de hoy + «Se compra hecho»: 2 toques en el caso normal; validada con 5 pruebas de usuario sin contexto |
 
 ## Project Structure
 

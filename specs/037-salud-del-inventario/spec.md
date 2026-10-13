@@ -136,6 +136,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
   - Un producto que no descuenta por sí mismo pero cuyo extra obligatorio sí descuenta no se marca. Pero si ese extra obligatorio tiene una opción que no descuenta, esa opción sí se marca.
   - Un pedido de plataforma que entra con un platillo sin pareja (producto genérico) descuenta nada: aparece como su propio renglón, no se mezcla con los productos del catálogo.
   - El componente de un paquete que no descuenta hace que el paquete no descuente esa parte: se marca el componente.
+- **Lo que entra en otro orden:** el almacén puede tener ya el artículo antes de que exista el producto (un cliente nuevo que da de alta su almacén o registra compras primero). Convertir el producto revendido no puede crear un segundo insumo con el mismo nombre, y si las dos cuentas tienen existencia, no puede sumar en silencio las mismas latas contadas dos veces.
 - **El hermano que no se movió:**
   - Cambiar de modo deja datos del modo anterior (existencia propia sin uso, una receta guardada). Ninguno puede seguir descontando ni desaparecer sin rastro.
   - Un insumo duplicado (mismo nombre, otro id) se marca aunque cada copia esté bien usada por separado.
@@ -167,8 +168,10 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 **Modo de consumo (Historia 3)**
 
 - **FR-013**: Cada producto MUST tener un modo de consumo visible y configurable desde la pantalla: sin control («No gasta insumos»), existencia propia o receta con insumos. Los paquetes siguen descontando por sus componentes.
-- **FR-014**: Al elegir «receta con insumos» para un producto que se compra hecho, el sistema MUST ofrecer crear el insumo con el nombre del producto, por pieza, y una receta de 1 pieza; insumo y cantidad editables antes de guardar.
-- **FR-015**: Cambiar de modo MUST conservar el historial de movimientos y dejar registro de quién lo cambió y cuándo. Al convertir un producto con existencia propia en receta de **un solo** insumo (nuevo o existente), su existencia MUST pasar a ese insumo en su equivalencia (cada pieza de producto = la cantidad de la receta) con movimientos ligados que digan de dónde viene, y el producto quedar en cero. Si la receta lleva varios insumos, no hay equivalencia única: la existencia del producto se cierra en cero con un ajuste que dice el motivo.
+- **FR-014**: Al configurar un producto que se compra hecho para que descuente también en combos, el sistema MUST buscar primero en el almacén y ofrecer los insumos de nombre parecido; crear uno nuevo con el nombre del producto, por pieza, es la última opción. La receta queda de 1 pieza por venta suelta, cambiable antes de guardar.
+- **FR-014a**: Si el insumo elegido ya tiene existencia y el producto también, el sistema MUST mostrar de dónde sale cada número y preguntar cuántas hay de verdad: la del producto, la del insumo, las dos sumadas u otra cifra escrita. La cifra elegida queda como existencia del insumo con un ajuste que lo dice, y la del producto en cero. «Guardar» no se habilita hasta elegir. Se decide al configurar, nunca al vender.
+- **FR-014b**: El sistema MUST NOT guardar «Se prepara aquí» ni «Es un combo» sin lo que lleva; y antes de dejar una existencia en cero MUST pedir confirmación, diciendo que si después se regresa, la existencia no vuelve sola.
+- **FR-015**: Cambiar de modo MUST conservar el historial de movimientos y dejar registro de quién lo cambió y cuándo. Al convertir un producto con existencia propia en receta de **un solo** insumo (nuevo o existente), su existencia MUST pasar a ese insumo en su equivalencia (cada pieza de producto = la cantidad de la receta) con movimientos ligados que digan de dónde viene, y el producto quedar en cero; si ese insumo ya tenía existencia, aplica la elección de FR-014a. Si la receta lleva varios insumos, no hay equivalencia única: la existencia del producto se cierra en cero con un ajuste que dice el motivo.
 - **FR-016**: Cambiar el modo MUST requerir el permiso de configurar el menú, verificado en el servidor.
 
 **Extras que son productos (Historia 4)**
