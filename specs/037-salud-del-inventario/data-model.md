@@ -30,6 +30,7 @@
   - a receta de un insumo **con** existencia: exige `actualStock` (la cifra que eligió quien configura, FR-014a); el insumo queda en esa cifra y el producto en cero; sin `actualStock` → `ErrValidation`;
   - a receta de varios insumos, combo o «No se cuenta»: cierre del producto en cero, con confirmación previa (FR-014b);
   - cualquier otra transición: ningún ajuste.
+  - `productOnHand` e `ingredientOnHand` son los leídos con `FOR UPDATE` dentro de la tx, no los de la pantalla; si difieren de `seen…` de la petición → `ErrConflict`.
 - **`HealthFilter{From, To, Limit, Offset, Section}`** con `Validate()`:
   - un rango invertido, de más de 366 días o con fecha mal formada → `ErrValidation`;
   - sin fechas, por omisión los últimos 30 días.

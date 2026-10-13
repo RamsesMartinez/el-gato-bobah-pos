@@ -60,7 +60,8 @@ Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un mo
 
 ```json
 { "mode": "items", "items": [{ "ingredientId": 9, "quantity": "1", "unitId": 8 }],
-  "actualStock": "20", "basedOn": "<stamp>" }
+  "actualStock": "20", "seenProductOnHand": "12", "seenIngredientOnHand": "20",
+  "basedOn": "<stamp>" }
 ```
 
 | Producto con existencia propia → | Efecto |
@@ -71,7 +72,7 @@ Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un mo
 
 - Toda transición deja un evento `product.consumption_mode` en la bitácora.
 - Sin existencia propia de por medio, el comportamiento es el de hoy, salvo el evento de bitácora cuando cambia el modo.
-- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 `VALIDATION` si falta `actualStock` cuando hace falta, o si viene negativo o mal formado; 409 si el producto tiene existencia en más de una sucursal y el insumo también (se resuelve con un conteo).
+- Errores: 409 `CONFLICT` si la copia está vieja (como hoy); 400 `VALIDATION` si falta `actualStock` cuando hace falta, o si viene negativo o mal formado; 409 `CONFLICT` si la existencia cambió desde que se mostró (una venta en medio): la hoja vuelve a preguntar con las cifras nuevas; 409 si el producto tiene existencia en más de una sucursal y el insumo también (se resuelve con un conteo).
 
 ## GET /admin/recipes (cambio menor)
 

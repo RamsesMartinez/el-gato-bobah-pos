@@ -40,7 +40,7 @@ No hay migración: todo se deduce de columnas que ya existen (research R1). Deci
 | I Layering | `queries/inventory_health.sql` (sqlc) → `domain` puro (`HealthFilter.Validate`, `ModeOf`, `PlanModeChange`, `HealthIssueKind`) → `app.InventoryHealthService` (lectura y CSV) y `app.AdminService.SaveComposition` (transición en su tx) → handlers finos `GetInventoryHealth` y `ExportInventoryHealth` |
 | II Errores | `domain.ErrValidation` / `ErrConflict` envueltos con `%w`; mapeo solo en `httpapi.Error`; ctx propagado hasta la query |
 | III Dinero | no toca dinero. Las cantidades de existencia usan `Round4`; el traslado multiplica por la cantidad de la receta y redondea una vez |
-| IV Test-first | casos de borde del spec enumerados antes (sección *Edge Cases*); tests de dominio de `PlanModeChange` y `HealthFilter`; integración del reporte bajo `appRoleStore` con `inTheThreeCases`; test que falla nombrando «la exportación y la pantalla divergen»; test de regresión con el caso de la auditoría (producto cuyo extra obligatorio descuenta: no se marca) |
+| IV Test-first | casos de borde del spec enumerados antes (sección *Edge Cases*); tests de dominio de `PlanModeChange` y `HealthFilter`; integración del reporte **y de la transición de modo en `SaveComposition`** (que ahora escribe `stock_levels`/`stock_movements`) bajo `appRoleStore` con `inTheThreeCases`; test de concurrencia: una venta entre mostrar y guardar responde 409 y nunca deja el producto distinto de cero ni inventa existencia en el insumo; test que falla nombrando «la exportación y la pantalla divergen»; test de regresión con el caso de la auditoría (producto cuyo extra obligatorio descuenta: no se marca) |
 | IV Local = producción | el test del reporte corre con dos empresas y bajo el rol de la app |
 | V Seguridad | `RequirePermission(PermInventoryHealthView)` en las dos rutas; parámetros mal formados → 400; el CSV no lleva datos de otra empresa (RLS + test) y escapa celdas que empiezan con `=`, `+`, `-` o `@` (inyección de fórmulas en hojas de cálculo) |
 | VI YAGNI | sin tabla de modo, sin endpoint de conversión, sin permiso por sección, sin PDF |
@@ -71,16 +71,18 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
 
 1. **Almacén › Salud** (nueva, pestaña de `StockPage`) — opción **A**:
    - Arriba, una barra: el periodo, que abre una hoja inferior con «Hoy», «Últimos 7 días», «Últimos 30 días», «Este mes» y «Elegir fechas…», más un resumen de una línea y «Exportar».
-   - Debajo, una sola lista (`Page fill` + `flex="1" minH={0}`). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin descontar» abre por omisión.
+   - Contenedor: `StockPage` pasa a `<Page fill>` (las tres pestañas de hoy igual, solo dentro de esa estructura) y `InventoryHealthTab` NO trae su propio `Page`: es un `Box flex="1" minH={0}` dentro de su `Tabs.Content`, con la barra fija arriba y la lista con scroll. Los `Tabs.Trigger` de Almacén ganan `minH="44px"` (corrige también las tres existentes).
+   - El periodo: `Picker` con las cinco opciones; «Elegir fechas…» abre dos `DatePickerButton` (desde y hasta). Ningún `input type="date"`.
+   - Debajo, una sola lista (`flex="1" minH={0}`, overflow con alto). Cada una de las cinco secciones es un renglón de 52 px con punto de color, nombre y número; se abre y se cierra con un toque. «Se vende sin descontar» abre por omisión.
    - Renglones de 54 px:
      - con nombre y grupo, más una pastilla de estado («Falta decir qué resta», «Extra que no resta nada»);
-     - las piezas por canal como pastillas y el costo estimado a la derecha (ordena la lista); «›» lleva a corregir;
+     - las piezas por canal como pastillas y el costo estimado a la derecha (ordena la lista); el renglón completo (54 px) es el botón que lleva a corregir, como en Recetas, y «›» solo lo señala;
      - «Ver 25 más · quedan N» como en Recetas.
    - Al pie de «Se vende sin restar», una línea fija: «Las ventas anteriores no se recalculan».
    - Los combos con un hueco de varios productos salen dentro de esa sección con su pastilla («Siempre resta el de fábrica»).
    - «Lo guardado en negativo», mientras la empresa no tenga compras, abre con un renglón que explica que lo guardado solo baja y se despliega con un toque.
    - «Insumos sin compras registradas» abierto muestra un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
-   - «Recetas por revisar» muestra un renglón con «Ir a Recetas ›».
+   - «Recetas por revisar» muestra un renglón con el texto de FR-019 tal cual, «Las cargó el sistema y nadie las ha confirmado», y «Ir a Recetas ›». El aviso de la hoja de receta (`CompositionSheet`, «Esta receta se cargó de tu sistema anterior…») cambia a la misma frase.
    - Una empresa sin problemas ve «El inventario está sano» en vez de cinco ceros.
 2. **Hoja de receta del producto** (cambiada) — opción **B simplificada, versión 7**, después de cinco pruebas con usuarios sin contexto (las versiones 1 a 4, con dos preguntas y resúmenes, no se entendían):
    - Título en pregunta: «Cuando vendes X, ¿qué se resta de lo que tienes?».
@@ -89,7 +91,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - «Se compra hecho» viene lleno: «Cada venta resta 1 de [insumo]». Si existe uno de nombre parecido, se preselecciona; si no, «se crea con este nombre». El buscador marca con ✓ lo elegido y deja «Crear una nueva» al final. «¿Una venta lleva más de una? (por ejemplo, un six)» muestra el − / +.
    - Avisos solo cuando hay existencia que mover:
      - Si el insumo es nuevo: «El sistema tenía contadas 12 latas… cada vez que vendas una, quedará una menos».
-     - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito); «Guardar» se apaga hasta elegir. Reemplaza el «sumar o quedarse» de FR-014a: la cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
+     - Si el insumo ya existía con existencia: «¿Cuántas tienes de verdad?» con 12, 20, «32 (las dos)» u «Otra» (número escrito), en rejilla de 2×2 como las tarjetas de modo; el campo de «Otra» lleva el mismo `onFocus` → `scrollIntoView({ block: 'center' })` que los otros campos de la hoja, para que el teclado no tape «Guardar»; «Guardar» se apaga hasta elegir. Reemplaza el «sumar o quedarse» de FR-014a: la cifra elegida queda como existencia del insumo, con un ajuste que lo dice.
      - En las otras tres tarjetas, y solo si el producto tenía existencia propia (FR-020): «Tus latas siguen donde están; el sistema solo deja de contarlas…», con confirmación antes de guardar (FR-014b).
    - «Guardar» cierra la hoja; el renglón de Menú › Recetas muestra «Resta 1 por venta · tienes N».
    - Palabras para quien no conoce el sistema: «se resta» y «lo que tienes guardado», no «insumo» ni «existencia propia».
@@ -129,5 +131,6 @@ web/src/app/permissions.ts, web/src/app/rutas-medidas.ts
 ## Riesgos
 
 - **El reporte es una consulta pesada** (anti-join de renglones contra movimientos). Hay índice en `stock_movements(order_line_id)` desde la 0060; el `EXPLAIN` sobre la copia de producción entra en la revisión de `db-architect`.
+- **Venta simultánea a la conversión.** Las filas de `stock_levels` se bloquean con `FOR UPDATE` dentro de la tx y la petición trae lo que vio la pantalla; si cambió, 409 (research R6).
 - **Una sucursal o varias.** «¿Cuántas tienes de verdad?» se resuelve con una sola sucursal con existencia; con varias responde 409 y lo resuelve el conteo del 038 (research R6).
 - **Habilitar receta en un producto con existencia propia** cambia una validación vieja (`validateComposition` rechazaba). El hermano que no se movió (constitución IV): la carga de FUDO y `CloneProduct` siguen fijando `track_stock` sin pasar por la transición; quedan fuera, con test de que no cambian.
