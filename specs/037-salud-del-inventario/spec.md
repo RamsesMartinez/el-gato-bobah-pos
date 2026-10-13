@@ -46,7 +46,7 @@ como producto a tiendas nuevas. Lo heredado se ajusta con el conteo del 038, no 
 
 Quien administra el negocio abre «Salud del inventario» y ve, agrupado por tipo de problema, todo lo
 que hace que las existencias no cuadren: lo que se vende sin descontar, los insumos en negativo, los
-insumos sin compras registradas, las recetas mal formadas y las recetas pendientes de confirmar.
+insumos sin compras registradas, las recetas con un error y las recetas pendientes de confirmar.
 Cada renglón dice qué es, cuánto pesa (unidades vendidas por canal en el periodo, existencia
 actual) y lleva directo a donde se corrige.
 
@@ -63,7 +63,7 @@ vendidas por canal.
 2. **Given** un producto que no descuenta por sí mismo pero cuyo extra obligatorio sí descuenta (por ejemplo un tamaño o sabor con receta), **When** se abre la pantalla, **Then** no aparece como problema.
 3. **Given** un extra activo sin receta ni producto ligado, que no está confirmado como «No gasta insumos», y se vendió en el periodo, **When** se abre la pantalla, **Then** aparece en «Se vende sin restar» con sus unidades.
 4. **Given** un insumo con existencia negativa, **When** se abre la pantalla, **Then** aparece en «Lo guardado en negativo» con su existencia y las recetas que lo usan.
-5. **Given** una receta con un renglón en cantidad cero, con unidad de otro tipo que la del insumo, o que apunta a un insumo archivado o duplicado, **When** se abre la pantalla, **Then** aparece en «Recetas mal formadas» con el renglón señalado.
+5. **Given** una receta con un renglón en cantidad cero, con unidad de otro tipo que la del insumo, o que apunta a un insumo archivado o duplicado, **When** se abre la pantalla, **Then** aparece en «Recetas con un error» con el renglón señalado.
 6. **Given** recetas «Por revisar», **When** se abre la pantalla, **Then** se ve cuántas son y un toque lleva a Menú › Recetas filtrado en «Por revisar».
 7. **Given** una empresa sin ningún problema, **When** se abre la pantalla, **Then** dice que el inventario está sano, sin listas vacías que parezcan error.
 
@@ -218,7 +218,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **Fuera de alcance:** alérgenos (issue #59), multi-almacén y traspasos, mermas y cortesías, kardex y valor del inventario.
 - **Periodo por omisión** de «Se vende sin restar»: los últimos 30 días.
 - **Exportación** en un formato de texto separado por comas que abren las hojas de cálculo comunes; no PDF.
-- **Permisos:** los mismos roles que hoy administran el menú y el almacén (administrador y gerente).
+- **Permisos:** dos permisos, `inventory.health_view` (ver y exportar) y `menu.configure` (cambiar qué resta un producto); los roles sugeridos administrador y gerente los traen por omisión, y una empresa podrá dárselos a sus roles propios (constitución, «Roles: modelo híbrido»).
 - **«Unidades vendidas»** cuenta renglones no cancelados de pedidos no cancelados ni reembolsados, con la fecha del día de negocio.
 - **Los combos ya descuentan** por sus componentes y los extras por su receta o producto ligado (spec 028): este spec no cambia esas reglas, solo las hace visibles y configurables.
 - **Convertir los 7 productos revendidos** de la auditoría se puede hacer antes con el script preparado para finanzas; la Historia 3 es el camino para que cualquier empresa lo haga sola.

@@ -45,12 +45,12 @@
 
 - [ ] T013 [US1] Escribir las consultas (sin descontar con anti-join por `order_line_id` / `modifier_option_id`, sin agregar dos 1:N en la misma consulta, `coalesce` en todo agregado vaciable; negativos por sucursal; sin compras; recetas con un error; combos con varias opciones; existe alguna compra) y sus `Count…` con el mismo `where` en `server/queries/inventory_health.sql`; `make sqlc`
 - [ ] T014 [US1] Implementar `InventoryHealthService.Report` (arreglos normalizados a vacío, costo estimado con `CostGraph` y `Round2`, ordenado por costo) en `server/internal/app/inventory_health.go`
-- [ ] T015 [US1] Handler fino `GetInventoryHealth` y ruta `GET /stock/health` con `RequirePermission(PermInventoryHealthView)` en `server/internal/httpapi/handlers_inventory_health.go` y `server/internal/httpapi/router.go`
+- [ ] T015 [US1] Handler fino `GetInventoryHealth` y ruta `GET /stock/health` con `RequirePermission(PermInventoryHealthView)`, registrada FUERA del grupo `/stock` con `RequireRole` (test: un usuario sin rol admin/gerente pero con el permiso entra; uno con rol y sin permiso, no) en `server/internal/httpapi/handlers_inventory_health.go` y `server/internal/httpapi/router.go`
 - [ ] T016 [US1] Medir con `EXPLAIN (ANALYZE, BUFFERS)` como `gatobobah_app` sobre el respaldo del 13-oct; 30 días < 1 s; anotar el resultado en `specs/037-salud-del-inventario/research.md`
 - [ ] T017 [P] [US1] Cliente `health()` y tipos (campos de arreglo opcionales) en `web/src/api/backoffice.ts`
 - [ ] T018 [P] [US1] Tests de vitest de la pestaña (secciones que se abren, primera abierta, «El inventario está sano» solo con ventas en el periodo y cero problemas, «No hubo ventas en este periodo» sin ventas (y las demás secciones igual visibles), negativos con renglón explicativo, «Las ventas anteriores no se recalculan», textos de FR-019 tal cual, renglón completo como botón, sin `Page` anidado contando `max-width: 1150px`) en `web/src/features/backoffice/InventoryHealthTab.test.tsx`
 - [ ] T019 [US1] `InventoryHealthTab` según plan.md › Maquetas, fila «Almacén › Salud» (opción A): `Box flex="1" minH={0}`, periodo con `Picker` y dos `DatePickerButton`; al desplegar «sin compras», un `DatePickerButton` «Sin compras desde» (ausente = nunca) que manda `noPurchasesSince`; renglones de 54 px, «Ver 25 más» que pide `section=…`, en `web/src/features/backoffice/InventoryHealthTab.tsx`
-- [ ] T020 [US1] `StockPage` pasa a `<Page fill>` con la pestaña «Salud» visible solo con `can('inventory.health_view')`, y `Tabs.Trigger` con `minH="44px"` en `web/src/features/backoffice/StockPage.tsx`
+- [ ] T020 [US1] `StockPage` pasa a `<Page fill>` con la pestaña «Salud» visible solo con `can('inventory.health_view')` (nunca por nombre de rol), y `Tabs.Trigger` con `minH="44px"` en `web/src/features/backoffice/StockPage.tsx`
 - [ ] T021 [P] [US1] Menú › Recetas lee `?status=` y `?open=` de la URL, con test, en `web/src/features/admin/RecipesPage.tsx` y `RecipesPage.test.tsx`
 - [ ] T022 [US1] Instrumentar la pantalla en los tres lugares: `pantallasMedibles` y `rolesPorPantalla` en `server/internal/domain/uso.go`, y `PANTALLAS` en `web/src/app/rutas-medidas.ts`
 
@@ -70,7 +70,7 @@
 - [ ] T024 [P] [US3] Test de integración bajo `appRoleStore` con `inTheThreeCases` de la transición en `SaveComposition` (escribe `stock_levels` y `stock_movements`), con dos empresas: ajustes ligados con su nota, producto en cero, `track_stock` apagado, receta anterior conservada, un evento `product.consumption_mode` en la misma transacción; un combo cuyos componentes son revendidos ya convertidos resta cada insumo al venderse (Historia 3, escenario 4; SC-003); un cambio de receta a «No gasta insumos» sin existencia propia también deja su evento; en `server/internal/integration/consumption_mode_test.go`
 - [ ] T025 [P] [US3] Test de concurrencia: una venta del producto entre mostrar y guardar → 409 y nunca deja el producto distinto de cero ni inventa existencia en el insumo; dos sucursales con existencia en los dos → 409; en `server/internal/integration/consumption_mode_test.go`
 - [ ] T026 [P] [US3] Test del hermano que no se movió: la carga de FUDO y `CloneProduct` siguen sin pasar por la transición y no cambian su resultado; un producto con existencia propia heredada que nadie tocó sigue restando de sí mismo al venderse (FR-013), en `server/internal/integration/consumption_mode_test.go`
-- [ ] T027 [P] [US3] Test de que un cajero recibe 403 en las rutas `PUT …/composition` y `…/confirm` de producto, extra e insumo aunque la petición no venga de la pantalla (FR-016); luego cambiar esas rutas a `RequirePermission(PermMenuConfigure)` en `server/internal/httpapi/router.go`; test en `server/internal/httpapi/handlers_composition_test.go`
+- [ ] T027 [P] [US3] Test de que un cajero recibe 403 en las rutas `PUT …/composition` y `…/confirm` de producto, extra e insumo aunque la petición no venga de la pantalla (FR-016); luego sacar esas rutas de los grupos con `RequireRole` y dejarlas solo con `RequirePermission(PermMenuConfigure)` en `server/internal/httpapi/router.go` (test: la decisión la toma el permiso, no el rol); test en `server/internal/httpapi/handlers_composition_test.go`
 
 ### Implementación
 
@@ -91,7 +91,7 @@
 
 - [ ] T034 [P] [US2] Test que falla nombrando «la exportación y la pantalla divergen» (mismo servicio, mismo filtro, mismos renglones), más BOM, acentos y escape de celdas que empiezan con `=`, `+`, `-`, `@`, en `server/internal/integration/inventory_health_test.go`
 - [ ] T035 [US2] `InventoryHealthService.CSV` con `encoding/csv` sobre el mismo `Report` sin paginar, en `server/internal/app/inventory_health.go`
-- [ ] T036 [US2] Ruta `GET /stock/health.csv` con el mismo permiso y parámetros, en `server/internal/httpapi/handlers_inventory_health.go` y `router.go`
+- [ ] T036 [US2] Ruta `GET /stock/health.csv` con el mismo permiso y parámetros, fuera del grupo con `RequireRole`, en `server/internal/httpapi/handlers_inventory_health.go` y `router.go`
 - [ ] T037 [US2] Botón «Exportar» que descarga con el periodo de la pantalla, con test, en `web/src/features/backoffice/InventoryHealthTab.tsx`
 
 ---

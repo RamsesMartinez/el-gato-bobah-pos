@@ -38,6 +38,7 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 
 - **Decisión:** `inventory.health_view`, con admin y gerente por omisión (FR-012), siguiendo la regla de la 027: todo control nuevo cuelga de un permiso, no de un rol.
 - El cambio de modo mueve existencias, una capacidad nueva sobre una ruta que hoy protege `RequireRole(admin, gerente)`. Para no colgar algo nuevo de un nombre de rol (puerta «roles por empresa» del principio VIII), las tres rutas `PUT …/composition` (producto, extra, insumo) y sus `confirm` pasan a `RequirePermission(PermMenuConfigure)` (`menu.configure`, admin y gerente). Mismo resultado hoy, y es lo que pasará a la base cuando lleguen los roles por empresa.
+- **Los grupos del router todavía preguntan por rol** (constitución 1.19.0, «Roles: modelo híbrido»): `/stock` (`router.go:397`) y `/admin/products`, `/admin/modifier-options`, `/stock/ingredients` cuelgan de `RequireRole(admin, gerente)`. Un `RequirePermission` anidado ahí no basta: el rol se sigue exigiendo antes. Por eso las rutas que toca esta feature (`GET /stock/health`, `GET /stock/health.csv` y los `PUT …/composition` y `…/confirm` de producto, extra e insumo) se registran **fuera** de esos grupos, solo con su permiso. El resto de cada grupo se queda como está y se migra cuando alguien lo toque (issue #61).
 - **Descartado:** un permiso por cada sección del reporte. Nadie pidió verlas por separado.
 
 ## R6. Cambio de modo dentro de la captura de receta
