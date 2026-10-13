@@ -56,7 +56,7 @@ Mismo permiso y mismos parámetros que `/stock/health`, sin paginar.
 
 ## PUT /admin/products/{id}/composition (cambio)
 
-Permiso: `menu.configure` (antes, rol admin o gerente; mismo resultado hoy). Aplica también a las rutas de composición de extras e insumos y a sus `confirm`.
+Permiso: `menu.configure` (antes, rol admin o gerente; mismo resultado hoy). Aplica también a la ruta de composición de extras y a los `confirm` de los dos. Las de insumo siguen como están (research R5).
 
 Los mismos modos que hoy (`items`, `package`, `nothing`); **no** se agrega un modo de existencia propia (research R6). Deja de rechazar un producto con existencia propia y agrega un campo opcional:
 
