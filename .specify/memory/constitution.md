@@ -350,6 +350,13 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
 ## Quality gates
 
 - **`/speckit-analyze` corre antes de `/speckit-implement`, siempre.** El flujo publicado lo marca opcional; en este repo no lo es. Un hallazgo CRITICAL o HIGH bloquea la implementación hasta resolverse o hasta que el dueño lo exima explícitamente.
+- **Un gate de spec-kit se cumple corriendo el comando, nunca con una revisión a mano** (decidido el
+  2026-10-13). Después de cualquier cambio a `spec.md`, `plan.md`, `tasks.md` o a esta constitución,
+  `/speckit-analyze` se vuelve a correr completo, y su reporte trae la tabla de cobertura requisito
+  por requisito. Un «está cubierto» sin esa tabla no cuenta, lo diga quien lo diga. Pasó en el spec
+  037: una revisión a mano declaró 24 de 24 requisitos cubiertos y el comando completo encontró uno
+  sin ninguna tarea (una de las cinco secciones de la pantalla) y dos choques con la regla de roles
+  enmendada ese mismo día.
 - **Los revisores de diseño corren solos, no por recordatorio.** [`.specify/extensions.yml`](../extensions.yml) engancha `/revision-de-arquitectura` en `after_plan` —`db-architect` y `tablet-ui-reviewer` sobre el plan, cuando corregir todavía cuesta editar un documento— y `/revision-de-codigo` en `after_implement`. Ninguno es `optional`: un hook opcional imprime una sugerencia, y una sugerencia es justo el recordatorio que el hook viene a reemplazar. Que qué revisor aplica se decida leyendo el diff, y no en el archivo de hooks, es a propósito.
 - **Una pantalla nueva o con disposición cambiada no se implementa sin maqueta elegida.** El hook
   `after_plan` corre `/maquetas` antes que los revisores de diseño: 2 o 3 opciones navegables a
@@ -379,4 +386,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.19.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-13
+**Version**: 1.20.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-13
