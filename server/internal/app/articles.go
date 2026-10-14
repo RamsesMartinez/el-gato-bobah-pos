@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -122,11 +123,31 @@ func (s *BackofficeService) CreateIngredient(ctx context.Context, in IngredientI
 		}
 		in.MinStock = &v
 	}
-	r, err := s.store.QC(ctx).CreateIngredient(ctx, db.CreateIngredientParams{
-		Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
-		MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
+	var r db.CreateIngredientRow
+	err := s.store.WithTx(ctx, func(q *db.Queries) error {
+		// Mismo nombre sin mayúsculas, acentos ni espacios de más: dos cuentas de las mismas latas se
+		// contarían dos veces (spec 037). El candado es por empresa, para que dos altas casi
+		// simultáneas no pasen las dos.
+		if err := q.LockIngredientNames(ctx); err != nil {
+			return err
+		}
+		taken, err := q.IngredientNameTaken(ctx, name)
+		if err != nil {
+			return err
+		}
+		if taken {
+			return fmt.Errorf("%w: ya hay un insumo que se llama así", domain.ErrConflict)
+		}
+		r, err = q.CreateIngredient(ctx, db.CreateIngredientParams{
+			Name: name, BaseUnitID: in.BaseUnitID, CategoryID: in.CategoryID,
+			MinStock: in.MinStock, TrackStock: in.TrackStock, IsPackaging: in.IsPackaging,
+		})
+		return err
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return IngredientView{}, err
+		}
 		// El unique (company_id, name) protege contra dos "Leche entera" en la misma empresa;
 		// llega como 409 accionable en vez de un 500 opaco.
 		if isUniqueViolation(err) {

@@ -63,7 +63,13 @@ var auditActions = []struct {
 	{"attendance.schedule_set", AuditGroupAttendance},
 	{"user.tracks_attendance_changed", AuditGroupAttendance},
 	{"payment.terminal_changed", AuditGroupMoney},
+	// Qué resta un producto (spec 037). Va con los precios porque es configuración del menú: un
+	// grupo propio cambiaría la rejilla de contadores de la bitácora, pensada para la tableta.
+	{AuditProductConsumptionMode, AuditGroupPrice},
 }
+
+// AuditProductConsumptionMode: cambió qué resta un producto al venderse.
+const AuditProductConsumptionMode AuditAction = "product.consumption_mode"
 
 // AllAuditActions devuelve la lista blanca de acciones, en orden fijo.
 func AllAuditActions() []AuditAction {

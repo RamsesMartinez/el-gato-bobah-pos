@@ -35,3 +35,45 @@ left join ingredients i on i.id = sm.ingredient_id
 left join products p on p.id = sm.product_id
 order by sm.created_at desc
 limit $1;
+
+-- Cambio de modo de consumo (spec 037, research R6) -----------------------------------------------
+
+-- name: LockProductStockLevels :many
+-- Las existencias del producto, una por sucursal, BLOQUEADAS: una venta simultánea espera a que la
+-- conversión termine en vez de aplicar su delta sobre una cifra que ya se trasladó. El trigger de
+-- existencias suma deltas y no relee nada, así que sin este bloqueo se perdería o se inventaría.
+select branch_id, on_hand from stock_levels
+ where item_type = 'producto' and product_id = $1
+ order by branch_id
+   for update;
+
+-- name: LockIngredientStockLevels :many
+select branch_id, on_hand from stock_levels
+ where item_type = 'ingrediente' and ingredient_id = $1
+ order by branch_id
+   for update;
+
+-- name: InsertModeAdjustment :exec
+-- Un ajuste del cambio de modo. Va con su sucursal explícita (la de la fila bloqueada), la nota que
+-- liga los dos movimientos de un traslado y quién lo hizo.
+insert into stock_movements (item_type, ingredient_id, product_id, movement_type, quantity, branch_id, user_id, reason, note)
+values (sqlc.arg(item_type)::stock_item_type, sqlc.narg(ingredient_id), sqlc.narg(product_id), 'ajuste',
+        sqlc.arg(quantity), sqlc.arg(branch_id), sqlc.arg(user_id), 'cambio de modo', sqlc.arg(note));
+
+-- name: TurnOffProductTrackStock :exec
+-- Antes de ponerle receta: el check de products no deja existencia propia y receta a la vez.
+update products set track_stock = false, updated_at = now() where id = $1;
+
+-- name: GetUnitToIngredientBase :one
+-- Cuánto de la unidad base del insumo es una unidad capturada: «1 caja» de un insumo que se lleva
+-- por pieza. La captura ya exige que sean del mismo tipo.
+select (u.to_base / bu.to_base)::numeric as factor
+  from units u, ingredients i join units bu on bu.id = i.base_unit_id
+ where u.id = sqlc.arg(unit_id) and i.id = sqlc.arg(ingredient_id);
+
+-- name: GetProductOnHand :one
+-- La existencia propia de un producto, sumada: es lo que la hoja de receta muestra al preguntar
+-- «¿Cuántas tienes de verdad?». La cifra que manda manda la vuelve a comparar contra la bloqueada.
+select coalesce(sum(on_hand), 0)::numeric(14,4) as on_hand,
+       count(*) filter (where on_hand <> 0)::int as branches
+  from stock_levels where item_type = 'producto' and product_id = $1;

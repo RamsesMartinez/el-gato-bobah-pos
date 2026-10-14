@@ -87,7 +87,8 @@ with owners as (
            when not ing.is_active then 'archived_ingredient'
            when exists (select 1 from ingredients d
                          where d.id <> ing.id and d.is_active
-                           and translate(lower(d.name), 'áéíóúüñ', 'aeiouun') = translate(lower(ing.name), 'áéíóúüñ', 'aeiouun'))
+                           and regexp_replace(translate(lower(trim(d.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g')
+                             = regexp_replace(translate(lower(trim(ing.name)), 'áéíóúüñ', 'aeiouun'), '\s+', ' ', 'g'))
              then 'duplicate_ingredient'
          end as problem
     from owners o
@@ -120,7 +121,8 @@ type HealthMalformedRecipesRow struct {
 
 // Renglones de receta activa con un error (FR-007): cantidad cero o menos, unidad de otro tipo que
 // la del insumo, insumo archivado, o insumo duplicado (otro activo con el mismo nombre sin
-// mayúsculas ni acentos: la misma normalización que usa Menú › Recetas al buscar).
+// mayúsculas, acentos ni espacios de más: la misma normalización que IngredientNameTaken, que
+// impide darlos de alta).
 func (q *Queries) HealthMalformedRecipes(ctx context.Context, arg HealthMalformedRecipesParams) ([]HealthMalformedRecipesRow, error) {
 	rows, err := q.db.Query(ctx, healthMalformedRecipes, arg.Off, arg.Lim)
 	if err != nil {

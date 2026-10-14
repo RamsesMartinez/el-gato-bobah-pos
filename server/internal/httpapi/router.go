@@ -422,26 +422,37 @@ func Router(cfg config.Config, jm *auth.Manager, h *Handlers, st *store.Store) h
 				// Menú › Recetas: lo que gasta cada producto, extra y preparado.
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Get("/admin/recipes", h.ListRecipes)
 				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Post("/admin/recipes/confirm", h.ConfirmRecipes)
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/products", func(r chi.Router) {
-					r.Get("/", h.AdminListProducts)
-					r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
-					r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
-					r.Patch("/{id}", h.AdminUpdateProduct)
-					// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
-					r.Get("/{id}/composition", h.GetProductComposition)
-					r.Put("/{id}/composition", h.PutProductComposition)
-					r.Post("/{id}/composition/confirm", h.ConfirmProductComposition)
-					r.Get("/{id}/groups", h.AdminProductGroups)
-					r.Post("/{id}/groups", h.AdminAttachProductGroup)
-					r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
+				// Decidir qué resta un producto o un extra (spec 037) mueve existencias al salir de la
+				// existencia propia: por permiso y FUERA de los grupos por rol, para que un rol propio de
+				// una empresa con `menu.configure` pueda (constitución, «Roles: modelo híbrido»). Leer la
+				// receta sigue en el grupo de siempre.
+				menuConfigure := RequirePermission(h.permissions, domain.PermMenuConfigure)
+				r.Route("/admin/products", func(r chi.Router) {
+					r.With(menuConfigure).Put("/{id}/composition", h.PutProductComposition)
+					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmProductComposition)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/", h.AdminListProducts)
+						r.Post("/", h.AdminCreateProduct)                  // alta de producto (gerente y admin)
+						r.Post("/{id}/duplicate", h.AdminDuplicateProduct) // clon con todas sus relaciones
+						r.Patch("/{id}", h.AdminUpdateProduct)
+						// grupos de modificadores asignados a un producto (min/max/obligatorio por producto)
+						r.Get("/{id}/composition", h.GetProductComposition)
+						r.Get("/{id}/groups", h.AdminProductGroups)
+						r.Post("/{id}/groups", h.AdminAttachProductGroup)
+						r.Delete("/{id}/groups/{groupId}", h.AdminDetachProductGroup)
+					})
 				})
 
-				r.With(RequireRole(domain.RoleAdmin, domain.RoleGerente)).Route("/admin/modifier-options", func(r chi.Router) {
-					r.Get("/", h.AdminListModifierOptions)
-					r.Patch("/{id}", h.AdminUpdateOption)
-					r.Get("/{id}/composition", h.GetOptionComposition)
-					r.Put("/{id}/composition", h.PutOptionComposition)
-					r.Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
+				r.Route("/admin/modifier-options", func(r chi.Router) {
+					r.With(menuConfigure).Put("/{id}/composition", h.PutOptionComposition)
+					r.With(menuConfigure).Post("/{id}/composition/confirm", h.ConfirmOptionComposition)
+					r.Group(func(r chi.Router) {
+						r.Use(RequireRole(domain.RoleAdmin, domain.RoleGerente))
+						r.Get("/", h.AdminListModifierOptions)
+						r.Patch("/{id}", h.AdminUpdateOption)
+						r.Get("/{id}/composition", h.GetOptionComposition)
+					})
 				})
 
 				// catálogo global de grupos + sus opciones
