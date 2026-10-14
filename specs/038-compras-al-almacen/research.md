@@ -63,8 +63,10 @@ símbolos citados son de `develop` en `c33f50e`.
 ## R2b. Por recibir: el renglón manda, por partes
 
 - **Decisión (dueño, 14-oct):** lo recibido de un renglón es la suma de sus movimientos `compra`
-  (lo «aplicado» de R2). Un renglón está **pendiente** si lo aplicado es menor que lo pedido y no
-  está cerrado; **cerrado** («Ya no va a llegar») con `closed_at`. Recibir una parte inserta un
+  (lo «aplicado» de R2), guardada también en `expense_items.applied_qty_base` en la misma
+  transacción para poder listar pendientes sin sumar otra tabla. Un renglón está **pendiente** si lo
+  pedido menos lo aplicado menos lo que «ya no va a llegar» (`not_coming_qty`, puede ser una parte)
+  es mayor que cero. Recibir una parte inserta un
   movimiento por la parte, con la fecha del día; nada se sobrescribe.
 - `expenses.received_at` deja de ser la guarda de todo el gasto: pasa a ser la fecha en que ya no
   quedó nada pendiente (último renglón recibido o cerrado). Lo que ya está guardado se respeta.
@@ -112,6 +114,9 @@ símbolos citados son de `develop` en `c33f50e`.
 
 - **Decisión (dueño, 14-oct):** por omisión, el costo de la última compra; cada empresa puede elegir
   promedio ponderado en su configuración (`business_settings.costing_method`, `last` | `weighted`).
+- El bloqueo del insumo para el costo usa `FOR UPDATE NOWAIT` (como el 037): una venta tiene
+  tomadas las existencias en el orden de su ticket, y esperar aquí podría cerrar un ciclo. Si está
+  tomado, 409 y se reintenta; la compra no queda a medias porque todo va en una transacción.
 - Fórmula en `domain.NextIngredientCost(method, onHand, cost, qty, unitCost)`:
   - `last`: `unitCost`.
   - `weighted`: `(max(onHand,0)·cost + qty·unitCost) / (max(onHand,0) + qty)`; con `onHand ≤ 0` es

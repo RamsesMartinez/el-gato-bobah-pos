@@ -50,7 +50,8 @@ Sin violaciones.
 
 | Pieza | Capa | Archivo |
 |---|---|---|
-| Esquema (presentaciones, conteos, columnas nuevas, método de costeo) | migración | `server/migrations/0091_purchases_into_stock.sql` + `server/internal/integration/migration_0091_test.go` |
+| Tipo de unidad «longitud» (sola: un valor de enum no se usa en la transacción que lo agrega) | migración | `server/migrations/0091_unit_kind_length.sql` |
+| Esquema (llaves por empresa, presentaciones, conteos, columnas nuevas, trigger de presentaciones, método de costeo) | migración | `server/migrations/0092_purchases_into_stock.sql` + `server/internal/integration/migration_0092_test.go` |
 | Lo aplicado por renglón, inserción de diferencias, bloqueo del gasto y del insumo | store (sqlc) | `server/queries/purchases.sql` |
 | Conteos y sus renglones | store (sqlc) | `server/queries/stock_counts.sql` |
 | Presentaciones | store (sqlc) | `server/queries/ingredients.sql` |
@@ -80,16 +81,23 @@ nombres de empaque salen de la empresa.
      empaque con su contenido o unidad, «+ Otro empaque» (número y unidad, con la equivalencia antes
      de guardar), importe, y estado **Llegó / Llega después**. Un renglón dudoso («¿Es …?») no suma
      hasta confirmarlo y no bloquea guardar; un renglón surtido se **parte**.
-   - El pie dice qué suma y si cuadra el dinero (falta importe, renglones sobre el total). Si el
-     ticket trae otro total, pregunta cuál usar.
+   - El pie dice qué suma, si cuadra el dinero (falta importe, renglones sobre el total) y cuántos
+     renglones siguen sin confirmar; los dudosos van arriba de la lista (FR-005a). Si el ticket trae
+     otro total, pregunta cuál usar. Los avisos aparecen debajo del encabezado, sin taparlo. Quitar
+     un renglón ya capturado pide confirmación y el botón va separado del importe.
 2. **Corregir lo que llegó** (cambiada, `ExpenseDetailDialog`) — opción **B, editar todo y ver la
    diferencia**: por renglón, cantidad y estado (Llegó / Llega después / No va a llegar), con
-   «Tendrás X guardados (hoy Y)»; el pie resume la diferencia antes de guardar. «Anular compra»
+   «Tendrás X guardados (hoy Y)», cifra que se vuelve a pedir al servidor justo antes de habilitar
+   «Guardar» (una venta pudo moverla); el pie resume la diferencia antes de guardar. «Anular compra»
    confirma diciendo cuánto quedará y la compra se ve anulada después. El total pagado no cambia.
 3. **Almacén › Insumos, «Cómo llega»** (cambiada, columna en la tabla de insumos) — opción **B, a
    la vista en la lista**: empaques activos con su contenido, «Ya no llega en: …», «+ Agregar» y
    «Cambiar ›» que abre la hoja con editar y «Ya no llega así». Nombres sugeridos: los que la empresa
    ya usa, más «Otro…». Empaque aproximado marcado «≈».
+**Pestañas de Almacén, en este orden y con estos nombres:** Existencias · Movimientos · Insumos
+(con la palabra configurable) · Por recibir · Conteo · Salud. Medido: caben en 1024 px con ~340 px
+de sobra.
+
 4. **Almacén › Por recibir** (nueva, pestaña) — opción **A con buscador**: agrupado por compra
    (proveedor, fecha, pagado), por renglón «Recibir…» (cantidad tecleada, acepta de más con su
    importe) y «Ya no va a llegar…» (cuántas); «Llegó todo…» con confirmación; «Llegó algo más…»
@@ -113,12 +121,12 @@ nombres de empaque salen de la empresa.
 ```text
 specs/038-compras-al-almacen/  spec.md plan.md research.md data-model.md quickstart.md contracts/api.md
 
-server/migrations/0091_purchases_into_stock.sql
+server/migrations/0091_unit_kind_length.sql, 0092_purchases_into_stock.sql
 server/queries/purchases.sql, stock_counts.sql, ingredients.sql, inventory_health.sql
 server/internal/domain/purchases.go, stock_count.go, permission.go, audit.go (+_test)
 server/internal/app/expenses.go, costing.go, stock_counts.go, articles.go, settings.go
 server/internal/httpapi/handlers_backoffice.go, handlers_stock_counts.go, router.go
-server/internal/integration/migration_0091_test.go, purchases_test.go, stock_counts_test.go
+server/internal/integration/migration_0092_test.go, purchases_test.go, stock_counts_test.go
 
 web/src/api/backoffice.ts
 web/src/features/backoffice/ExpenseDialog.tsx, ExpenseDetailDialog.tsx, expenseDraft.ts (+test)
@@ -140,5 +148,7 @@ web/src/app/permissions.ts, web/src/shared/audit/labels.ts
 - **El hermano que no se movió:** la lectura de tickets y los formatos aprendidos llenan renglones
   por el mismo `CreateExpense`; la prueba de regresión cubre los dos caminos. `RecordMovement`
   (ajuste manual) sigue sin bitácora ni lista blanca de tipos: es anterior y queda fuera, anotado.
-- **Rollback:** la 0091 solo agrega; su Down se niega si hay conteos o movimientos con
-  `expense_item_id`, como la 0089.
+- **Rollback:** la 0092 solo agrega; su Down se niega si hay conteos, presentaciones usadas o
+  movimientos con `expense_item_id`, como la 0089. La 0091 no puede quitar el valor del enum.
+- **Bloqueos:** corregir, recibir y cerrar un conteo insertan movimientos ordenados por insumo, y el
+  bloqueo del insumo para el costo es `NOWAIT` (data-model, «Movimientos: sucursal y orden»).

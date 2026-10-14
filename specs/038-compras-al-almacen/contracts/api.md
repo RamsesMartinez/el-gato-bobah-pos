@@ -55,9 +55,11 @@ Permiso `inventory.receive`. «Llegó algo más»: `{ "ingredientId", "quantity"
 "unitId", "amount", "isGift": false }`. Llega ya recibido: suma al guardarse. Con `isGift`, `amount`
 debe ser 0 y no cambia el total; sin él, `amount > 0` y el total de la compra sube por ese importe.
 
-### `POST /expenses/{id}/items/{itemId}/close` (nuevo)
+### `POST /expenses/{id}/items/{itemId}/not-coming` (nuevo)
 
-Permiso `inventory.receive`. «Ya no va a llegar». No suma ni cambia el total.
+Permiso `inventory.receive`. «Ya no va a llegar»: `{ "qty": "1" }` en la unidad del renglón,
+hasta lo que falta (puede ser una parte). No suma ni cambia el total; si ya no queda nada
+pendiente en la compra, fija `received_at`.
 
 ### `POST /expenses/{id}/cancel` (existente, cambia)
 
