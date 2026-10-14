@@ -124,7 +124,13 @@ select ei.id, ei.item_type, ei.ingredient_id, ei.product_id, ei.description,
        ei.qty_received, ei.unit_cost, ei.amount, ei.pack_qty_in_base, ei.position,
        i.name as ingredient_name, p.name as product_name,
        ei.applied_qty_base, ei.not_coming_qty, ei.voided_at, ei.is_gift, ei.presentation_id,
-       iu.code as base_unit_code
+       iu.code as base_unit_code,
+       -- Lo guardado hoy del insumo, para «Tendrás X (hoy Y)» al corregir (spec 038). En toda la
+       -- empresa y no por sucursal: con dos sucursales y sin selector, ver el detalle no debe
+       -- tronar; guardar sí, y ése es el que dice BRANCH_AMBIGUOUS.
+       (select coalesce(sum(sl.on_hand), 0) from stock_levels sl
+         where sl.item_type = ei.item_type and sl.ingredient_id is not distinct from ei.ingredient_id
+           and sl.product_id is not distinct from ei.product_id)::numeric(14,4) as on_hand
 from expense_items ei
 left join units u on u.id = ei.unit_id
 left join ingredients i on i.id = ei.ingredient_id

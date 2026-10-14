@@ -10,7 +10,8 @@ const BIG: Record<string, { at: number; unit: string }> = {
   cm: { at: 100, unit: 'm' },
 };
 
-const num = (n: number) => round2(n).toLocaleString('es-MX', { maximumFractionDigits: 2 });
+// Un número, no una fecha: no lleva zona (ver formateoUnico.test.ts).
+const num = (v: number) => { const n = round2(v); return n.toLocaleString('es-MX', { maximumFractionDigits: 2 }); };
 
 // formatBaseQty muestra una cantidad en unidad base («12000», «ml») como la diría alguien
 // («12 L»). Los negativos se muestran tal cual: quien decide cómo decirlos es la pantalla.

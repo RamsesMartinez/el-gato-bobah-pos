@@ -65,6 +65,8 @@ type ExpenseItemView struct {
 	NotComing      decimal.Decimal `json:"notComing"`
 	IsGift         bool            `json:"isGift"`
 	PresentationID *int64          `json:"presentationId"`
+	// OnHand: lo guardado hoy del artículo, en unidad base (solo renglones de almacén).
+	OnHand *decimal.Decimal `json:"onHand"`
 }
 
 type ExpensePaymentView struct {
@@ -770,6 +772,7 @@ func (s *BackofficeService) ExpenseDetail(ctx context.Context, id int64) (Expens
 		if r.ItemType != nil {
 			t := string(*r.ItemType)
 			v.ItemType = &t
+			v.OnHand = &r.OnHand
 		}
 		out.Items = append(out.Items, v)
 	}

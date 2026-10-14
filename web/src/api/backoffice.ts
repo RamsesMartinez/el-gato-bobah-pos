@@ -419,6 +419,9 @@ export interface Expense {
 
 export type ItemType = 'ingrediente' | 'producto';
 
+// Cómo cambia el costo de un insumo al comprarlo: el de la última compra o el promedio ponderado.
+export type CostingMethod = 'last' | 'weighted';
+
 export interface ExpenseItem {
   id: number;
   itemType: ItemType | null; // null = línea no inventariable (bolsa, envío, IVA)
@@ -432,6 +435,14 @@ export interface ExpenseItem {
   unitCost: string;
   amount: string;
   packQtyInBase: string | null;
+  // Spec 038. `applied`: lo que el renglón ya sumó al almacén, en `baseUnitCode`; se devuelve como
+  // `seenApplied` al corregir. `onHand`: lo guardado hoy del artículo (null fuera del almacén).
+  applied: string;
+  baseUnitCode: string | null;
+  notComing: string;
+  isGift: boolean;
+  presentationId: number | null;
+  onHand?: string | null;
 }
 export interface ExpensePayment {
   id: number;
@@ -623,6 +634,27 @@ export interface ExpenseItemBody {
   // personal: venía en el ticket pero no es del local. El backend lo aprende y no lo guarda
   // como línea del gasto.
   personal?: boolean;
+  // El empaque del insumo: el servidor copia su contenido y fija la unidad (spec 038).
+  presentationId?: number;
+  // Llegó sin costo: importe 0, suma a lo guardado y no mueve el costo.
+  isGift?: boolean;
+}
+
+// Un renglón de «Corregir lo que llegó» (spec 038). Cantidades en la unidad del renglón.
+export interface StockLineBody {
+  id?: number;
+  seenApplied?: string;
+  itemType: ItemType;
+  ingredientId?: number;
+  productId?: number;
+  description: string;
+  quantity: string;
+  received: string;
+  notComing: string;
+  presentationId?: number;
+  unitId?: number;
+  amount: string;
+  isGift?: boolean;
 }
 export interface ExpensePaymentBody {
   methodId: number;
@@ -812,6 +844,11 @@ export const backofficeApi = {
   receiveExpense: (id: number, b: { receivedAt?: string; received?: Record<string, string> }) =>
     api.post<void>(`/expenses/${id}/receive`, b),
   cancelExpense: (id: number, reason: string) => api.post<void>(`/expenses/${id}/cancel`, { reason }),
+  // El conjunto deseado de renglones de almacén: el servidor mueve el almacén por la diferencia.
+  saveStockLines: (id: number, lines: StockLineBody[]) =>
+    api.put<ExpenseDetail>(`/expenses/${id}/stock-lines`, { lines }),
+  updateInventorySettings: (b: { costingMethod: CostingMethod; stockItemLabel: string }) =>
+    api.put<unknown>('/settings/inventory', b),
 
   // Extracción del documento → borrador. NO escribe nada: el operador confirma.
   parseDoc: (file: File) => {

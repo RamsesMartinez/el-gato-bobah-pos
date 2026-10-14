@@ -176,6 +176,14 @@ func TestAPurchaseInPackagesAddsToStockAndSetsTheCost(t *testing.T) {
 	if !pc.Equal(dd("0.4")) {
 		t.Errorf("costo del producto = %s; quiere 0.40 (el costo del insumo no se propagó)", pc)
 	}
+	// El detalle dice lo aplicado y lo guardado: es lo que «Corregir lo que llegó» compara.
+	detail, err := k.svc.ExpenseDetail(k.ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := detail.Items[0]; !it.Applied.Equal(dd("50000")) || it.OnHand == nil || !it.OnHand.Equal(dd("50000")) {
+		t.Errorf("detalle: applied %s, onHand %v; quiere 50000 y 50000", it.Applied, it.OnHand)
+	}
 	if n := k.audited(t, "expense.received", id); n != 1 {
 		t.Errorf("eventos expense.received = %d; quiere 1 (lo que entró al almacén deja rastro)", n)
 	}

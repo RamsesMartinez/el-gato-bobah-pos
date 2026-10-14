@@ -26,6 +26,18 @@ test('crear desde el picker da de alta y deja el nuevo elemento seleccionado', a
   expect(onChange).toHaveBeenCalledWith('9');
 });
 
+// La captura de compras pregunta en qué se mide un insumo antes de crearlo (spec 038); si quien
+// crea se arrepiente, no se elige nada en vez de reventar con una opción indefinida.
+test('un alta que se cancela a medio camino no elige nada', async () => {
+  const u = userEvent.setup();
+  const onChange = vi.fn();
+  wrap(<Picker value="" options={sups} onChange={onChange} onCreate={vi.fn(async () => null)} title="Proveedor" />);
+  await u.click(screen.getByRole('button', { name: /seleccionar/i }));
+  await u.type(screen.getByPlaceholderText('Buscar…'), 'Bimbo');
+  await u.click(screen.getByRole('button', { name: /Crear «Bimbo»/ }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 test('la hoja anuncia el alta inline antes de escribir, y no ofrece crear un duplicado', async () => {
   const u = userEvent.setup();
   const onCreate = vi.fn(async (name: string) => ({ value: '9', label: name }));
