@@ -36,6 +36,7 @@ como producto a tiendas nuevas. Lo heredado se ajusta con el conteo del 038, no 
 
 - Q: Cuando un producto con existencia propia se convierte en receta de 1 pieza de un insumo nuevo, ¿qué pasa con su existencia? → A: Pasa al insumo nuevo con un movimiento que lo dice; el producto queda en cero.
 - Q: Mientras ninguna compra entra al almacén (hasta el 038), ¿cómo se muestra «Insumos sin compras registradas», que listaría más de 100 insumos? → A: Un renglón resumen («118 de 130 insumos sin compras registradas») que con un toque se despliega en la lista completa; la exportación siempre trae la lista completa.
+- Q (al implementar, 13-oct): los «31 productos sin descuento» de la auditoría salían de la configuración, aunque no se hubieran vendido, y «Se vende sin restar» mide ventas reales. ¿Dónde quedan los que nadie configuró y no se vendieron? → A: «Se vende sin restar» sigue midiendo ventas; «Recetas pendientes» cuenta además los que nadie ha decidido qué restan, vendidos o no, con enlace a Recetas. SC-001 se corrigió con eso.
 - Q: ¿Corregir una receta corrige lo ya vendido? → A: No. Las ventas anteriores no se recalculan y la pantalla lo dice; la diferencia la ajusta el conteo del 038.
 - Q: Un combo con una parte «a elegir» (varios productos en un hueco) siempre resta el de fábrica, porque el punto de venta no deja elegir el componente: ¿se corrige? → A: Sí, como configuración y no como función nueva: lo que el cliente elige va como extra ligado a su producto, y «Salud del inventario» señala los combos con huecos de varios productos.
 - Q (pruebas con usuarios sin contexto, 13-oct): ¿los negativos que solo existen porque las compras no entran deben llenar la pantalla? → A: No. Mientras la empresa no tenga ninguna compra registrada, «Lo guardado en negativo» abre con un renglón que lo explica y se despliega, igual que «sin compras».
@@ -53,9 +54,10 @@ actual) y lleva directo a donde se corrige.
 **Why this priority**: Es lo que hoy costó una auditoría a mano. Sin verlo, nadie sabe qué
 corregir, y el 038 (compras) no sirve si las ventas no descuentan.
 
-**Independent Test**: Sobre una copia del respaldo de producción del 13-oct, la pantalla lista los
-31 productos sin descuento y los 126 insumos en negativo de la auditoría, con las mismas unidades
-vendidas por canal.
+**Independent Test**: Sobre una copia del respaldo de producción del 13-oct, con el periodo del 5 al
+13-oct, «Se vende sin restar» lista lo que se vendió sin restar (las columnas «Sin descontar» de la
+auditoría), «Lo guardado en negativo» los 126 insumos, y «Recetas pendientes» cuenta los productos
+sin decidir que la auditoría encontró aunque no se hayan vendido.
 
 **Acceptance Scenarios**:
 
@@ -170,7 +172,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 - **FR-005**: «Lo guardado en negativo» MUST listar cada insumo activo con existencia menor que cero **a hoy** (lo dice la sección; no depende del periodo), con su existencia y las recetas activas que lo usan. Mientras la empresa no tenga ninguna compra registrada, la sección MUST abrir con un renglón que explique que lo guardado solo baja, y desplegar la lista con un toque.
 - **FR-006**: «Insumos sin compras registradas» MUST mostrar primero un renglón resumen («N de M insumos sin compras registradas») y, con un toque, desplegar la lista de cada insumo activo usado por alguna receta activa sin ninguna entrada de compra desde una fecha elegible. La exportación MUST traer siempre la lista completa.
 - **FR-007**: «Recetas con un error» MUST listar cada renglón de receta activa con cantidad cero o menor, con unidad de un tipo distinto al del insumo, o que apunta a un insumo archivado o a uno duplicado (mismo nombre, sin distinguir mayúsculas ni acentos, que otro insumo activo).
-- **FR-008**: «Recetas pendientes de confirmar» MUST mostrar cuántos productos y extras están «Por revisar» y llevar a Menú › Recetas con ese filtro.
+- **FR-008**: «Recetas pendientes de confirmar» MUST mostrar dos cuentas, cada una de productos y de extras activos, con el mismo criterio que las pestañas de Menú › Recetas: los que nadie ha decidido qué restan («Falta decir qué resta», se hayan vendido o no) y los que «Las cargó el sistema y nadie las ha confirmado». Cada cuenta lleva a Menú › Recetas con su filtro.
 - **FR-009**: Cada renglón MUST llevar a la pantalla donde se corrige (la receta del producto o extra, el insumo).
 - **FR-010**: El periodo MUST poder elegirse; un periodo mal formado se rechaza con un mensaje, nunca se reemplaza en silencio por otro (constitución V).
 - **FR-011**: La pantalla MUST exportarse a un archivo que abre en una hoja de cálculo, con las mismas cifras y el mismo periodo que se ven.
@@ -205,7 +207,7 @@ Formas de fallar, pensadas antes del diseño (constitución IV):
 
 ### Measurable Outcomes
 
-- **SC-001**: Sobre la copia del respaldo de producción del 13-oct, la pantalla marca los 31 productos sin descuento y los 126 insumos en negativo que encontró la auditoría, con las mismas unidades vendidas por canal.
+- **SC-001**: Sobre la copia del respaldo de producción del 13-oct y el periodo del 5 al 13-oct, «Se vende sin restar» marca cada producto y extra cuyas ventas no restaron (los renglones «Sin descontar» de la auditoría, con las mismas piezas por canal), «Lo guardado en negativo» marca los 126 insumos, y «Recetas pendientes» cuenta los productos activos que nadie ha decidido qué restan, vendidos o no. Entre las dos secciones aparecen los productos sin configurar de la auditoría, salvo los que están confirmados «No gasta insumos» a propósito.
 - **SC-002**: Quien administra encuentra qué corregir y llega a la pantalla donde se corrige en 2 toques o menos desde «Salud del inventario».
 - **SC-003**: Un cliente nuevo configura sin soporte técnico un producto revendido (receta de 1 pieza), un combo que lo incluye y una variación (con un extra), y los tres descuentan bien en la primera venta.
 - **SC-004**: Después de corregir con la pantalla los productos marcados, vender cada uno una vez deja un movimiento de almacén por cada venta (cero ventas sin restar en ese grupo).

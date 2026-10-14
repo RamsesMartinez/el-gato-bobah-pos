@@ -8,7 +8,8 @@
 ## Escenarios
 
 1. **Reproduce la auditoría (SC-001).** Almacén › Salud, periodo del 5 al 13-oct:
-   - «Se vende sin restar» lista los productos de la auditoría del 13-oct con las mismas unidades por canal;
+   - «Se vende sin restar» lista los productos y extras con «Sin descontar» mayor que cero en la auditoría del 13-oct, con las mismas piezas por canal;
+   - «Recetas pendientes» cuenta los productos sin decidir de la auditoría, vendidos o no;
    - «Lo guardado en negativo» dice 126 (abre resumido mientras no haya compras).
 2. **No marca lo que sí descuenta.** Los productos cuyo extra obligatorio sí resta (una bebida con sabor a elegir que lleva receta) no aparecen. Lo confirmado «No gasta insumos» (un «Sin …» o «No aplica») tampoco.
 3. **Corrige un revendido (SC-003).**

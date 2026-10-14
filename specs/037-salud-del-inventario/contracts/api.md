@@ -36,7 +36,10 @@ Respuesta 200 (todo arreglo viaja aunque esté vacío, nunca `null`):
   "malformedRecipes": { "total": 0, "items": [{ "ownerKind": "extra", "ownerId": 0, "ownerName": "…",
                         "ingredient": "…", "problem": "unit_mismatch|zero_quantity|archived_ingredient|duplicate_ingredient",
                         "fixAt": "…" }] },
-  "pendingRecipes": { "products": 42, "extras": 200, "fixAt": "/catalogo/recetas?status=review" }
+  "pendingRecipes": {
+    "undecided": { "products": 24, "extras": 180, "fixAt": "/catalogo/recetas?status=pending" },
+    "review":    { "products": 42, "extras": 200, "fixAt": "/catalogo/recetas?status=review" }
+  }
 }
 ```
 

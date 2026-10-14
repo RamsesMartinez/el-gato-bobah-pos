@@ -11,7 +11,7 @@ exportables a CSV:
 - lo guardado en negativo (resumido mientras no haya compras);
 - insumos sin compras;
 - recetas con un error;
-- recetas por revisar.
+- recetas pendientes: las que nadie ha decidido (vendidas o no) y las que cargó el sistema.
 
 La hoja de receta del producto gana la tarjeta «Se compra hecho». La existencia propia deja de
 ofrecerse: un producto que la tiene sale de ella eligiendo otra tarjeta, y su existencia se traslada
@@ -83,7 +83,7 @@ Las llena `/maquetas` (hook `after_plan`): 2 o 3 opciones navegables por pantall
    - Los combos con un hueco de varios productos salen dentro de esa sección con su pastilla («Siempre resta el de fábrica»).
    - «Lo guardado en negativo», mientras la empresa no tenga compras, abre con un renglón que explica que lo guardado solo baja y se despliega con un toque.
    - «Insumos sin compras registradas» abierto muestra un `DatePickerButton` «Sin compras desde» (vacío = nunca) y un renglón resumen («118 de 130 insumos sin compras registradas») que se despliega.
-   - «Recetas por revisar» muestra un renglón con el texto de FR-019 tal cual, «Las cargó el sistema y nadie las ha confirmado», y «Ir a Recetas ›». El aviso de la hoja de receta (`CompositionSheet`, «Esta receta se cargó de tu sistema anterior…») cambia a la misma frase.
+   - «Recetas pendientes» muestra dos renglones: «Falta decir qué resta» (productos y extras que nadie ha decidido, vendidos o no) y «Las cargó el sistema y nadie las ha confirmado» (texto de FR-019 tal cual), cada uno con su cuenta y «Ir a Recetas ›» a su filtro. El aviso de la hoja de receta (`CompositionSheet`, «Esta receta se cargó de tu sistema anterior…») cambia a la misma frase.
    - Una empresa sin problemas ve «El inventario está sano» en vez de cinco ceros.
 2. **Hoja de receta del producto** (cambiada) — opción **B simplificada, versión 7**, después de cinco pruebas con usuarios sin contexto (las versiones 1 a 4, con dos preguntas y resúmenes, no se entendían):
    - Título en pregunta: «Cuando vendes X, ¿qué se resta de lo que tienes?».

@@ -16,7 +16,8 @@ Decisiones de diseño, cada una con lo que se descartó. Base: mapa del código 
 ## R2. «Se vende sin restar» se mide sobre lo que pasó, no sobre la configuración
 
 - **Decisión:** un renglón vendido cuenta como «sin restar» si no dejó **ningún** movimiento `venta` con su `order_line_id`. Un extra vendido cuenta si no dejó movimiento con su `order_line_id` **y** su `modifier_option_id`.
-- **Por qué:** cubre sin reglas extra todos los caminos que ya descuentan (receta, existencia propia, paquete, extra obligatorio con receta). Es la definición que usó la auditoría del 13-oct, y por eso reproduce sus 31 productos (SC-001).
+- **Por qué:** cubre sin reglas extra todos los caminos que ya descuentan (receta, existencia propia, paquete, extra obligatorio con receta). Coincide con la columna «Sin descontar» de la auditoría del 13-oct. Los 31 productos de esa auditoría salían de la configuración (también los no vendidos); esos los cuenta «Recetas pendientes» con el criterio de Menú › Recetas (SC-001, aclaración del 13-oct).
+- **Costo estimado:** piezas × `current_cost` del producto o del extra, el mismo costo de hoy que muestra el catálogo.
 - **Excepciones:**
   - lo confirmado «No gasta insumos» (FR-004);
   - el producto genérico de plataforma (`system_kind = 'platform_unpaired'`), que sale en su propio renglón y no se suma al catálogo.
