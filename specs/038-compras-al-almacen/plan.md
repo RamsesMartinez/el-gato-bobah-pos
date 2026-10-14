@@ -28,7 +28,7 @@ Decisiones en [research.md](research.md); esquema en [data-model.md](data-model.
 **Project Type**: web-service + SPA
 **Performance Goals**: guardar un gasto de 10 renglones con recálculo de costos en menos de 1 s con el catálogo de producción
 **Constraints**: se sube con el local operando; recibir, corregir y cerrar un conteo no bloquean ventas más que la inserción de un movimiento
-**Scale/Scope**: 2 pantallas cambiadas (captura y detalle del gasto), 2 nuevas (presentaciones de un insumo, conteo), 1 renglón de configuración; 3 permisos; 4 acciones de bitácora
+**Scale/Scope**: 3 pantallas cambiadas (captura y detalle del gasto, insumos), 2 nuevas (por recibir, conteo), 1 renglón de configuración; 3 permisos; 4 acciones de bitácora; un tipo de unidad nuevo (longitud)
 
 ## Constitution Check
 
@@ -67,26 +67,46 @@ Sin violaciones.
 
 ## Pantallas y maquetas
 
-1. **Captura del gasto** (cambiada, `ExpenseDialog`): cada renglón de mercancía elige insumo,
-   presentación (o unidad) y cantidad; muestra en una línea lo que suma («= 36 L»). Desde el
-   renglón se crea la presentación que falta. «Ya llegó» solo aparece con renglones de mercancía y
-   arranca encendido.
-2. **Detalle del gasto** (cambiada, `ExpenseDetailDialog`): «Corregir lo que llegó» abre los
-   renglones editables con lo que ya sumó cada uno; «Anular» de un gasto recibido avisa que se
-   restará lo que sumó.
-3. **Cómo llega un insumo** (nueva, desde Almacén › Insumos): una hoja con sus presentaciones
-   («Caja = 12 L»), agregar, editar y desactivar.
-4. **Almacén › Conteo** (nueva, pestaña de `StockPage`): empezar, buscar o recorrer insumos,
-   capturar cuánto hay (con ayuda de presentaciones), ver cuántos van contados y cerrar o descartar.
-5. **Costeo** (un renglón en la configuración del negocio): «Costo de los insumos: última compra /
-   promedio». No cambia la disposición de la pantalla.
+Probadas sin contexto con dos personas de comida (un café y una fonda) y, por error, una ferretería;
+los hallazgos están en el spec (Clarifications del 14-oct). Las listas de categorías, proveedores y
+nombres de empaque salen de la empresa.
+
+1. **Captura de una compra** (cambiada, `ExpenseDialog`) — opción **C, primero el ticket**:
+   - Abre con «Sube la foto del ticket»; «Capturar sin ticket» lleva a la captura a mano, que sirve
+     también para un gasto sin mercancía («¿Trae mercancía para el almacén? Sí / No, solo el gasto»).
+   - Encabezado editable: fecha (`DatePickerButton`), categoría y proveedor (`Picker` de la empresa,
+     con «+ Nuevo»), total pagado. No se guarda sin categoría ni total.
+   - Renglones del ticket editables: insumo («Buscar o crear», que pregunta en qué se mide), cantidad,
+     empaque con su contenido o unidad, «+ Otro empaque» (número y unidad, con la equivalencia antes
+     de guardar), importe, y estado **Llegó / Llega después**. Un renglón dudoso («¿Es …?») no suma
+     hasta confirmarlo y no bloquea guardar; un renglón surtido se **parte**.
+   - El pie dice qué suma y si cuadra el dinero (falta importe, renglones sobre el total). Si el
+     ticket trae otro total, pregunta cuál usar.
+2. **Corregir lo que llegó** (cambiada, `ExpenseDetailDialog`) — opción **B, editar todo y ver la
+   diferencia**: por renglón, cantidad y estado (Llegó / Llega después / No va a llegar), con
+   «Tendrás X guardados (hoy Y)»; el pie resume la diferencia antes de guardar. «Anular compra»
+   confirma diciendo cuánto quedará y la compra se ve anulada después. El total pagado no cambia.
+3. **Almacén › Insumos, «Cómo llega»** (cambiada, columna en la tabla de insumos) — opción **B, a
+   la vista en la lista**: empaques activos con su contenido, «Ya no llega en: …», «+ Agregar» y
+   «Cambiar ›» que abre la hoja con editar y «Ya no llega así». Nombres sugeridos: los que la empresa
+   ya usa, más «Otro…». Empaque aproximado marcado «≈».
+4. **Almacén › Por recibir** (nueva, pestaña) — opción **A con buscador**: agrupado por compra
+   (proveedor, fecha, pagado), por renglón «Recibir…» (cantidad tecleada, acepta de más con su
+   importe) y «Ya no va a llegar…» (cuántas); «Llegó todo…» con confirmación; «Llegó algo más…»
+   (lo pagué / fue regalo).
+5. **Almacén › Conteo** (nueva, pestaña) — **las dos vistas** con interruptor «Lista / Uno por
+   uno» (se recuerda por tableta), agrupadas por lugar; teclado numérico en pantalla; a ciegas;
+   «✓ guardado»; el cierre nombra lo no contado y marca diferencias grandes.
+6. **Configuración del negocio** (un renglón, sin cambiar la disposición): método de costeo y la
+   palabra para lo del almacén; el lugar de cada insumo se edita en su hoja de Insumos.
 
 | Pantalla | Maquetas | Elegida | Por qué |
 |----------|----------|---------|---------|
-| Captura del gasto | | | |
-| Detalle del gasto | | | |
-| Cómo llega un insumo | | | |
-| Almacén › Conteo | | | |
+| Captura de una compra | https://claude.ai/artifact/BASLWZZp7XrAv98LrfeC23 | C · Primero el ticket (v3) | Elección del dueño: el ticket es el camino normal; la captura a mano queda a un toque |
+| Corregir lo que llegó | https://claude.ai/artifact/YXNh1NMBQbfAhgHxbNoF7i | B · Editar todo y ver la diferencia (v3) | Varios cambios a la vez con resumen; la única que dice cuánto quedará guardado |
+| Cómo llega un insumo | https://claude.ai/artifact/BD8sJG6j2a8vBrorbDdtaQ | B · A la vista en la lista | Se ve qué insumos no tienen empaque; agregar es un toque |
+| Almacén › Por recibir | https://claude.ai/artifact/GcNdLqbCqWHSujwN7Gsrm8 | A con buscador (v3) | El repartidor llega con una nota; el buscador cubre «¿dónde quedó la leche?» |
+| Almacén › Conteo | https://claude.ai/artifact/JYz2e9k2Pej1FVHJFPhRax | Las dos vistas, con teclado en pantalla (v3) | El café cuenta con su hoja, la fonda caminando: cada quien elige |
 
 ## Project Structure
 
@@ -102,7 +122,8 @@ server/internal/integration/migration_0091_test.go, purchases_test.go, stock_cou
 
 web/src/api/backoffice.ts
 web/src/features/backoffice/ExpenseDialog.tsx, ExpenseDetailDialog.tsx, expenseDraft.ts (+test)
-web/src/features/backoffice/StockPage.tsx, StockCountTab.tsx, PresentationsSheet.tsx (+test)
+web/src/features/backoffice/StockPage.tsx, StockCountTab.tsx, PendingReceiptsTab.tsx, PresentationsSheet.tsx (+test)
+web/src/components/NumericKeypad.tsx (+test)                 # teclado del conteo
 web/src/features/admin/BusinessSettingsPage.tsx (+test)
 web/src/app/permissions.ts, web/src/shared/audit/labels.ts
 ```
