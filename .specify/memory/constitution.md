@@ -329,6 +329,12 @@ recategorizar un producto reescribe el pasado de cualquier reporte por categorí
   cobran, si hay meseros identificados y cuántas sucursales tiene una empresa los decide un cliente
   que todavía no existe. Por eso las puertas del principio VIII no son hipótesis: son requisitos con
   fecha desconocida, y cerrar una es cerrarla para un cliente que ya firmó.
+- **El producto es para negocios de comida** (decidido el 2026-10-14): restaurantes, cafeterías,
+  fondas y parecidos. Cuando una feature dice «configurable por empresa», la vara es otro negocio
+  de comida con otra operación (una fonda, una taquería, una panadería), no cualquier giro. Las
+  pruebas de pantalla con alguien sin contexto usan esas personas. Lo que ya sirve de más (la
+  longitud como unidad, la palabra «artículo» configurable) se deja: no estorba y un cliente de
+  comida puede necesitarlo; pero no se diseña una feature para otro giro.
 - **Roles: modelo híbrido, roles sugeridos más roles propios de cada empresa** (decidido el
   2026-10-13). Así se vende el producto: una empresa nueva arranca con roles sugeridos que ya traen
   sus permisos cargados (los cuatro de hoy: admin, gerente, cajero, cocina) y puede crear roles
@@ -386,4 +392,4 @@ sección, **PATCH** si es redacción o una cita de código. Al enmendar, verific
 citados existan y que los subagentes de `.claude/agents/` y `.codex/agents/` sigan apuntando al
 principio correcto.
 
-**Version**: 1.20.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-13
+**Version**: 1.21.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-10-14
